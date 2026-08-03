@@ -16,8 +16,8 @@ const FAMILIES: FamilyGroup[] = [
   {
     id: 'button',
     title: 'Button',
-    signal: '目标：主应用按钮统一收口到 NotionButton，避免业务继续新增私有按钮壳。',
-    targetIds: ['NotionButton'],
+    signal: '目标：主应用按钮统一收口到 DsButton，避免业务继续新增私有按钮壳。',
+    targetIds: ['DsButton'],
     legacyIds: ['ShadButton', 'NativeButton'],
   },
   {
@@ -31,7 +31,7 @@ const FAMILIES: FamilyGroup[] = [
     id: 'dialog',
     title: 'Dialog / Overlay',
     signal: '目标：Dialog、Sheet、Menu 统一 overlay、radius、focus-ring 和 action row 语义。',
-    targetIds: ['NotionDialog'],
+    targetIds: ['DsDialog'],
     legacyIds: ['ShadDialog', 'ShadSheet', 'AppMenu'],
   },
   {

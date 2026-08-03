@@ -1,0 +1,446 @@
+/**
+ * 卡片库（fc-lib-*）增强样式：筛选 chips、批量操作条、行 hover 操作、
+ * 行内展开编辑、状态徽标、骨架屏。基础表面样式继续复用 wb-fc-*。
+ */
+
+/* ---------- 筛选 / 排序行 ---------- */
+
+.fc-lib-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.fc-lib-filters-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fc-lib-filters-label {
+  margin-right: 2px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  user-select: none;
+}
+
+.fc-lib-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+}
+
+.fc-lib-chip:hover {
+  background: color-mix(in hsl, hsl(var(--muted)) 45%, transparent 55%);
+  color: hsl(var(--foreground));
+}
+
+.fc-lib-chip[data-active='true'] {
+  border-color: color-mix(in hsl, hsl(var(--foreground)) 45%, transparent 55%);
+  background: color-mix(in hsl, hsl(var(--foreground)) 9%, transparent 91%);
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+.fc-lib-chip:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: 1px;
+}
+
+.fc-lib-chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.fc-lib-result-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+/* ---------- 批量操作条 ---------- */
+
+.fc-lib-bulkbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in hsl, hsl(var(--info)) 35%, hsl(var(--border)) 65%);
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--info)) 8%, transparent 92%);
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  animation: fc-lib-slide-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fc-lib-bulkbar-count {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.fc-lib-bulkbar-spacer {
+  flex: 1;
+}
+
+/* 二次点击确认时的强调态 */
+.fc-lib-armed {
+  border-color: hsl(var(--danger)) !important;
+  color: hsl(var(--danger)) !important;
+}
+
+/* ---------- 列表头（全选） ---------- */
+
+.fc-lib-list-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  background: color-mix(in hsl, hsl(var(--card)) 94%, hsl(var(--muted)) 6%);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.fc-lib-kbd-hint {
+  margin-left: auto;
+  white-space: nowrap;
+  opacity: 0.8;
+  user-select: none;
+}
+
+/* ---------- 行 ---------- */
+
+.fc-lib-row {
+  position: relative;
+  outline: none;
+  transition: background-color 120ms ease-out;
+}
+
+.fc-lib-row:hover {
+  background: color-mix(in hsl, hsl(var(--muted)) 26%, transparent 74%);
+}
+
+.fc-lib-row[data-selected='true'] {
+  background: color-mix(in hsl, hsl(var(--info)) 8%, transparent 92%);
+}
+
+.fc-lib-row[data-expanded='true'] {
+  background: color-mix(in hsl, hsl(var(--muted)) 20%, transparent 80%);
+}
+
+.fc-lib-row:focus-visible {
+  box-shadow: inset 0 0 0 2px hsl(var(--ring) / 0.55);
+}
+
+.fc-lib-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.fc-lib-row-check {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+}
+
+/* hover 浮现操作：保持可访问（仅透明度过渡，不移出可达性树） */
+.fc-lib-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.fc-lib-row:hover .fc-lib-row-actions,
+.fc-lib-row:focus-within .fc-lib-row-actions,
+.fc-lib-row[data-selected='true'] .fc-lib-row-actions,
+.fc-lib-row[data-expanded='true'] .fc-lib-row-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .fc-lib-row-actions {
+    opacity: 1;
+  }
+}
+
+/* ---------- 状态徽标 ---------- */
+
+.fc-lib-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+  color: hsl(var(--muted-foreground));
+}
+
+.fc-lib-badge[data-status='new'] {
+  background: color-mix(in hsl, hsl(var(--info)) 14%, transparent 86%);
+  color: hsl(var(--info));
+}
+
+.fc-lib-badge[data-status='learning'],
+.fc-lib-badge[data-status='relearning'] {
+  background: color-mix(in hsl, hsl(var(--warning)) 16%, transparent 84%);
+  color: hsl(var(--warning));
+}
+
+.fc-lib-badge[data-status='review'] {
+  background: color-mix(in hsl, hsl(var(--success)) 14%, transparent 86%);
+  color: hsl(var(--success));
+}
+
+.fc-lib-badge[data-status='suspended'] {
+  background: color-mix(in hsl, hsl(var(--neutral, var(--muted))) 40%, transparent 60%);
+  color: hsl(var(--muted-foreground));
+  text-decoration: line-through;
+}
+
+.fc-lib-badge[data-status='due'] {
+  background: color-mix(in hsl, hsl(var(--danger)) 13%, transparent 87%);
+  color: hsl(var(--danger));
+  font-weight: 500;
+}
+
+/* ---------- 行内展开（grid rows 高度动画） ---------- */
+
+.fc-lib-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 190ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fc-lib-row[data-expanded='true'] .fc-lib-expand {
+  grid-template-rows: 1fr;
+}
+
+.fc-lib-expand-inner {
+  overflow: hidden;
+  min-height: 0;
+  /* 折叠时移出可达性树 / 焦点链，展开后立即可见（高度动画由 grid 承担） */
+  visibility: hidden;
+  transition: visibility 190ms;
+}
+
+.fc-lib-row[data-expanded='true'] .fc-lib-expand-inner {
+  visibility: visible;
+  transition: none;
+}
+
+.fc-lib-expand-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 2px 4px 26px;
+  cursor: default;
+}
+
+.fc-lib-face {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--card)) 70%, transparent 30%);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fc-lib-face-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+}
+
+.fc-lib-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.fc-lib-meta dt {
+  display: inline;
+  margin: 0;
+  font-weight: 500;
+}
+
+.fc-lib-meta dd {
+  display: inline;
+  margin: 0 0 0 4px;
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.fc-lib-meta > div {
+  white-space: nowrap;
+}
+
+.fc-lib-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fc-lib-edit-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+.fc-lib-edit-error {
+  font-size: 11px;
+  color: hsl(var(--danger));
+}
+
+.fc-lib-expand-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- 行内删除确认条 ---------- */
+
+.fc-lib-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in hsl, hsl(var(--danger)) 40%, hsl(var(--border)) 60%);
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--danger)) 7%, transparent 93%);
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  animation: fc-lib-slide-in 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  cursor: default;
+}
+
+.fc-lib-confirm-text {
+  min-width: 0;
+  flex: 1;
+}
+
+/* ---------- 骨架屏 ---------- */
+
+.fc-lib-skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+}
+
+.fc-lib-skeleton {
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%) 25%,
+    color-mix(in hsl, hsl(var(--muted)) 30%, transparent 70%) 50%,
+    color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%) 75%
+  );
+  background-size: 200% 100%;
+  animation: fc-lib-shimmer 1.4s ease-in-out infinite;
+}
+
+/* 刷新中：保留旧列表并整体降不透明度，避免闪空白 */
+.fc-lib-list-dimmed {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+@keyframes fc-lib-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fc-lib-slide-in {
+  from {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* ---------- 触屏适配 ---------- */
+
+/* 筛选/排序 chips 是库页主操作，基准 ~24px 触控过小；
+   仅触屏放大到 ≥40px（与 flashcards.css 的 wb-fc-tab 同基线） */
+@media (pointer: coarse) {
+  .fc-lib-chip {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+}
+
+/* 键盘操作提示（shift 连选等）对触屏无意义，隐藏释放行宽 */
+@media (hover: none) and (pointer: coarse) {
+  .fc-lib-kbd-hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-lib-expand,
+  .fc-lib-row,
+  .fc-lib-chip,
+  .fc-lib-row-actions {
+    transition: none;
+  }
+
+  .fc-lib-bulkbar,
+  .fc-lib-confirm {
+    animation: none;
+  }
+
+  .fc-lib-skeleton {
+    animation: none;
+  }
+}

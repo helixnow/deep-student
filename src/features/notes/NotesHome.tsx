@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { PanelGroup, Panel, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
 import { useNotes } from "./NotesContext";
-import { NotesAPI } from "../../utils/notesApi";
 import { NotesSidebarV2 } from "./NotesSidebarV2";
 import { NotesHeader } from "./NotesHeader";
 import { NotesCrepeEditor } from "./NotesCrepeEditor";
@@ -25,7 +24,7 @@ export default function NotesHome() {
 
   // 移动端统一顶栏配置
   useMobileHeader('notes', {
-    title: active?.title || t('notes:sidebar.title', '笔记'),
+    title: active?.title || t('notes:sidebar.title'),
     showMenu: true,
     onMenuClick: () => setIsMobileSidebarOpen(prev => !prev),
   }, [active?.title, t]);
@@ -86,9 +85,10 @@ export default function NotesHome() {
     >
       <NotesHeader
       />
-      <NotesCrepeEditor />
+      {/* 抽屉打开时隐藏 body 上 fixed 的底部工具条，避免盖住抽屉底部/误触编辑命令 */}
+      <NotesCrepeEditor suppressMobileToolbar={isMobileSidebarOpen} />
     </div>
-  ), [isSmallScreen]);
+  ), [isSmallScreen, isMobileSidebarOpen]);
 
   // ===== 移动端布局：DeepSeek 风格推拉式侧边栏 =====
   if (isMobile) {
@@ -177,7 +177,6 @@ const NotesEventsBridge: React.FC = () => {
     const handler = (e: any) => {
       const detail = e.detail || {};
       const id: string | undefined = detail.id;
-      const title: string | undefined = detail.title;
       if (id) {
         setSidebarRevealId(id);
         openTab(id);

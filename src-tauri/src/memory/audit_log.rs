@@ -29,6 +29,8 @@ pub enum MemoryOpSource {
     AutoExtract,
     Handler,
     Evolution,
+    /// 语义去重 pass（semantic_dedup.rs），与常规进化周期在审计界面区分
+    SemanticDedup,
 }
 
 impl MemoryOpSource {
@@ -38,6 +40,7 @@ impl MemoryOpSource {
             Self::AutoExtract => "auto_extract",
             Self::Handler => "handler",
             Self::Evolution => "evolution",
+            Self::SemanticDedup => "semantic_dedup",
         }
     }
 }
@@ -57,6 +60,10 @@ pub enum MemoryOpType {
     UpdateTags,
     AddRelation,
     RemoveRelation,
+    /// LLM 决策熔断器状态变更（开启/关闭）
+    DecisionBreaker,
+    /// 语义去重 pass 的合并操作（保留一条、删除语义重复的另一条）
+    SemanticMerge,
 }
 
 impl MemoryOpType {
@@ -75,6 +82,8 @@ impl MemoryOpType {
             Self::UpdateTags => "update_tags",
             Self::AddRelation => "add_relation",
             Self::RemoveRelation => "remove_relation",
+            Self::DecisionBreaker => "decision_breaker",
+            Self::SemanticMerge => "semantic_merge",
         }
     }
 }

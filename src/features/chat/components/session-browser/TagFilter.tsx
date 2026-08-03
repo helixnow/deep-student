@@ -8,7 +8,7 @@ import { Tag, X, Plus, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 interface TagInfo {
   tag: string;
@@ -52,9 +52,9 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
           <span>{t('tags.filterTitle')}</span>
         </div>
         {selectedTags.size > 0 && (
-          <NotionButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-[10px]">
+          <DsButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs">
             {t('tags.clearFilter')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -65,7 +65,8 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
               key={tag}
               onClick={() => onToggleTag(tag)}
               className={cn(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border transition-colors',
+                // min-h-7 保证触屏可点（面板现已在移动端可达）
+                'inline-flex items-center gap-1 px-2 py-1 min-h-7 rounded-full text-[11px] border transition-colors',
                 isSelected
                   ? 'bg-primary/10 border-primary/50 text-primary'
                   : 'bg-muted/30 border-transparent text-muted-foreground hover:bg-[var(--interactive-hover)]'
@@ -80,7 +81,7 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
       {allTags.length > 12 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground"
+          className="flex items-center gap-1 text-2xs text-muted-foreground/60 hover:text-muted-foreground"
         >
           <CaretDown size={12} className={cn('transition-transform', expanded && 'rotate-180')} />
           {expanded ? t('tags.showLess') : t('tags.showMore', { count: allTags.length - 12 })}
@@ -107,7 +108,7 @@ export const SessionTagBadges: React.FC<{
         <Badge
           key={tag}
           variant="secondary"
-          className="h-4 px-1.5 py-0 text-[10px] font-normal bg-muted/40 text-muted-foreground border-0 gap-0.5"
+          className="h-4 px-1.5 py-0 text-2xs font-normal bg-muted/40 text-muted-foreground border-0 gap-0.5"
         >
           {tag}
           {onRemove && (
@@ -116,7 +117,9 @@ export const SessionTagBadges: React.FC<{
                 e.stopPropagation();
                 onRemove(tag);
               }}
-              className="ml-0.5 opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity"
+              aria-label={tag}
+              // 触屏无 hover：pointer-coarse 下常显；伪元素扩大命中区（视觉仍为 10px 图标）
+              className="ml-0.5 relative opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:opacity-60 after:absolute after:-inset-2 after:content-['']"
             >
               <X size={10} />
             </button>
@@ -124,7 +127,7 @@ export const SessionTagBadges: React.FC<{
         </Badge>
       ))}
       {overflow > 0 && (
-        <Badge variant="secondary" className="h-4 px-1 py-0 text-[10px] font-normal bg-muted/40 text-muted-foreground/50 border-0">
+        <Badge variant="secondary" className="h-4 px-1 py-0 text-2xs font-normal bg-muted/40 text-muted-foreground/50 border-0">
           +{overflow}
         </Badge>
       )}
@@ -153,7 +156,9 @@ export const AddTagInput: React.FC<{
     return (
       <button
         onClick={() => setShowInput(true)}
-        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
+        aria-label={t('tags.addPlaceholder')}
+        // 伪元素扩大触控命中区（视觉保持紧凑）
+        className="relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors after:absolute after:-inset-2 after:content-['']"
       >
         <Plus size={12} />
       </button>
@@ -166,13 +171,21 @@ export const AddTagInput: React.FC<{
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
+        // IME 安全：中文输入法组合期间的 Enter/Escape 只作用于候选词
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
         if (e.key === 'Enter') handleSubmit();
-        if (e.key === 'Escape') setShowInput(false);
+        if (e.key === 'Escape') {
+          // 取消输入：清空草稿，避免下次打开残留旧值
+          setValue('');
+          setShowInput(false);
+        }
       }}
       onBlur={handleSubmit}
       autoFocus
       placeholder={t('tags.addPlaceholder')}
-      className="h-5 w-20 text-[10px]"
+      // 📱 16px 输入契约：2xs（10px）在 coarse 指针下会触发 iOS 聚焦放大且难以点按，
+      // 放大字号并加宽输入框（桌面视觉不变）
+      className="h-7 w-24 text-2xs [@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:w-32"
     />
   );
 };

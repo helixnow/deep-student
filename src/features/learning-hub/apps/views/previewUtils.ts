@@ -77,11 +77,40 @@ export const clampNumber = (value: number, min: number, max: number): number =>
 // ============================================================================
 
 /** 预览缩放最小值 */
-export const ZOOM_MIN = 0.5;
+export const ZOOM_MIN = 0.25;
 /** 预览缩放最大值 */
-export const ZOOM_MAX = 2.0;
-/** 预览缩放步进 */
-export const ZOOM_STEP = 0.1;
+export const ZOOM_MAX = 4.0;
+
+/**
+ * 缩放档位阶梯（常见 PDF 工具栏习惯）：
+ * 加减按钮与 Ctrl+=/− 快捷键沿阶梯跳档，低倍区细、高倍区粗
+ */
+export const ZOOM_LADDER: readonly number[] = [
+  0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4,
+];
+
+/** 缩放预设档位（工具栏百分比 Popover 菜单展示） */
+export const ZOOM_PRESETS: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+
+/**
+ * 沿缩放阶梯跳到下一档 / 上一档
+ *
+ * 当前值不在阶梯上时（如滚轮平滑缩放后的 1.37），
+ * 取阶梯中最近的相邻档位，保证按钮步进始终有响应
+ */
+export const stepZoom = (current: number, direction: 1 | -1): number => {
+  const EPSILON = 0.001;
+  if (direction === 1) {
+    for (const level of ZOOM_LADDER) {
+      if (level > current + EPSILON) return level;
+    }
+    return ZOOM_MAX;
+  }
+  for (let i = ZOOM_LADDER.length - 1; i >= 0; i--) {
+    if (ZOOM_LADDER[i] < current - EPSILON) return ZOOM_LADDER[i];
+  }
+  return ZOOM_MIN;
+};
 
 /** 字号缩放最小值 */
 export const FONT_MIN = 0.8;
@@ -167,6 +196,49 @@ export const savePreviewPrefs = (
   }
 };
 
+/** 偏好写入防抖间隔（毫秒）：滚轮/连点缩放期间合并写入 */
+const PREFS_SAVE_DEBOUNCE_MS = 400;
+
+/** 每种预览类型一个防抖定时器 + 待写入值 */
+const pendingPrefsSaves = new Map<
+  'docx' | 'xlsx' | 'pptx',
+  { timer: ReturnType<typeof setTimeout>; prefs: PreviewPreferences }
+>();
+
+/**
+ * 立即写出所有待持久化的偏好（页面卸载 / Provider 卸载时调用）
+ */
+export const flushPreviewPrefsSaves = (): void => {
+  pendingPrefsSaves.forEach((entry, type) => {
+    clearTimeout(entry.timer);
+    savePreviewPrefs(type, entry.prefs);
+  });
+  pendingPrefsSaves.clear();
+};
+
+/**
+ * 防抖保存预览偏好：连续缩放时只在停顿后写一次 localStorage
+ */
+export const schedulePreviewPrefsSave = (
+  type: 'docx' | 'xlsx' | 'pptx',
+  prefs: PreviewPreferences
+): void => {
+  const existing = pendingPrefsSaves.get(type);
+  if (existing) {
+    clearTimeout(existing.timer);
+  }
+  const timer = setTimeout(() => {
+    pendingPrefsSaves.delete(type);
+    savePreviewPrefs(type, prefs);
+  }, PREFS_SAVE_DEBOUNCE_MS);
+  pendingPrefsSaves.set(type, { timer, prefs });
+};
+
+// 页面关闭前兜底写出（Tauri WebView 同样触发 beforeunload）
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushPreviewPrefsSaves);
+}
+
 /**
  * 从 localStorage 读取预览偏好
  */
@@ -177,15 +249,14 @@ export const loadPreviewPrefs = (
     const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${type}`);
     if (!stored) return null;
     const parsed = JSON.parse(stored) as PreviewPreferences;
-    // 验证数据有效性
-    if (
-      typeof parsed.zoomScale === 'number' &&
-      parsed.zoomScale >= ZOOM_MIN &&
-      parsed.zoomScale <= ZOOM_MAX
-    ) {
+    // 验证数据有效性（越界值 clamp 回范围内，避免历史数据因范围调整而被整体丢弃）
+    if (typeof parsed.zoomScale === 'number' && Number.isFinite(parsed.zoomScale)) {
+      parsed.zoomScale = clampNumber(parsed.zoomScale, ZOOM_MIN, ZOOM_MAX);
       // 🔒 审计修复: fontScale 也需要范围验证，防止 localStorage 中的极端值导致渲染崩溃
-      if (typeof parsed.fontScale === 'number') {
-        parsed.fontScale = Math.max(FONT_MIN, Math.min(FONT_MAX, parsed.fontScale));
+      if (typeof parsed.fontScale === 'number' && Number.isFinite(parsed.fontScale)) {
+        parsed.fontScale = clampNumber(parsed.fontScale, FONT_MIN, FONT_MAX);
+      } else {
+        delete parsed.fontScale;
       }
       return parsed;
     }

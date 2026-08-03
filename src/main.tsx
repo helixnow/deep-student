@@ -1,104 +1,13 @@
-const normalizeErrorLike = (input: unknown): { message: string; stack: string } => {
-  if (input instanceof Error) {
-    return {
-      message: input.message || '',
-      stack: input.stack || '',
-    };
-  }
-  if (typeof input === 'string') {
-    return { message: input, stack: '' };
-  }
-  if (input && typeof input === 'object') {
-    const record = input as Record<string, unknown>;
-    return {
-      message: typeof record.message === 'string' ? record.message : '',
-      stack: typeof record.stack === 'string' ? record.stack : '',
-    };
-  }
-  return { message: '', stack: '' };
-};
-
-const isKnownTauriHttpNoise = (message: string, stack?: string): boolean => {
-  const lcMessage = (message || '').toLowerCase();
-  const lcStack = (stack || '').toLowerCase();
-  if (!lcMessage && !lcStack) return false;
-
-  const combined = `${lcMessage}\n${lcStack}`;
-  const hasTauriHttpHint =
-    combined.includes('http.fetch_') ||
-    combined.includes('streamchannel') ||
-    combined.includes('ipc custom protocol') ||
-    combined.includes('@tauri-apps/plugin-http') ||
-    combined.includes('tauri-plugin-http') ||
-    combined.includes('tauri');
-
-  const fetchCancelBodyNoise =
-    (combined.includes('http.fetch_cancel_body') || combined.includes('fetch_cancel_body')) &&
-    hasTauriHttpHint;
-  const streamChannelBodyNoise =
-    (combined.includes('fetch_read_body') || combined.includes('fetch_send')) &&
-    combined.includes('streamchannel') &&
-    hasTauriHttpHint;
-  const staleResourceNoise =
-    combined.includes('resource id') &&
-    combined.includes('invalid') &&
-    (combined.includes('http.fetch_') ||
-      combined.includes('streamchannel') ||
-      combined.includes('ipc custom protocol'));
-
-  return fetchCancelBodyNoise || streamChannelBodyNoise || staleResourceNoise;
-};
-
-// ★ 2026-02-04: 最早的全局错误过滤器
-// 必须在任何其他代码之前运行，以便在 tauri-plugin-mcp-bridge 之前捕获错误
-// 这是一个 IIFE，在模块加载时立即执行
-(() => {
-  if (typeof window === 'undefined') return;
-  
-  // 过滤 Tauri HTTP 插件的已知无害错误
-  // 包括：fetch_cancel_body、fetch_read_body+streamChannel、resource id invalid
-  // 这些错误在连接重建或 HMR 热重载时是正常现象，不影响功能
-  const earlyFilter = (event: PromiseRejectionEvent) => {
-    const reason = event.reason;
-    const { message, stack } = normalizeErrorLike(reason);
-    if (isKnownTauriHttpNoise(message, stack)) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-  };
-
-  // 使用 capture: true 确保在其他处理器之前运行
-  window.addEventListener('unhandledrejection', earlyFilter, true);
-
-  // 拦截 console.error 中的 Tauri HTTP 插件 stale resource 错误
-  // 这些错误通过 Tauri IPC 同步触发 console.error，不经过 unhandledrejection
-  const _origConsoleError = console.error;
-  console.error = (...args: any[]) => {
-    try {
-      const first = normalizeErrorLike(args[0]);
-      const second = normalizeErrorLike(args[1]);
-      const combinedMessage = [first.message, second.message].filter(Boolean).join(' ');
-      const combinedStack = [first.stack, second.stack].filter(Boolean).join('\n');
-      if (isKnownTauriHttpNoise(combinedMessage, combinedStack)) {
-        return; // 静默过滤已知无害错误
-      }
-    } catch { /* pass through on filter error */ }
-    _origConsoleError.apply(console, args);
-  };
-})();
-
 import './polyfills/promiseWithResolvers';
 import React from "react";
-import ReactDOM from "react-dom/client";
 // 🚀 性能优化：KaTeX CSS 改为按需加载，见 src/utils/lazyStyles.ts
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { TopLevelFallback } from './components/TopLevelFallback';
 import { OverlayCoordinatorProvider } from './components/shared/OverlayCoordinator';
 // 日志与错误上报初始化（跨平台）：结合 Tauri 日志插件与自定义上报
 import { disposeGlobalCacheManager } from './utils/cacheConsistencyManager';
 import { DialogControlProvider } from './contexts/DialogControlContext';
-import i18n from './i18n';
 import { McpService, bootstrapMcpFromSettings } from './mcp/mcpService';
 // ★ DSTU Logger 初始化（依赖注入模式）
 import { setDstuLogger, createLoggerFromDebugPlugin } from './dstu';
@@ -106,10 +15,49 @@ import { dstuDebugLog } from './debug-panel/plugins/DstuDebugPlugin';
 import { debugMasterSwitch, debugLog } from './debug-panel/debugMasterSwitch';
 // ★ 平台检测初始化（为 Android WebView 兼容性添加 CSS 类）
 import { initPlatformClasses } from './utils/platform';
+// ★ 材质档位提前初始化：把 data-wb-material 写到 <html>，让应用壳（侧边栏毛玻璃、
+// composer/菜单 blur、全屏遮罩）在不进入工作台时也能按档位降级。
+// materialTier 模块只依赖 utils/platform，不会把 workbench 主体拖进首屏 chunk。
+import { getMaterialTier } from './features/workbench/core/materialTier';
+import { installChatV2DomainEventBridge } from './utils/chatV2DomainEventBridge';
 import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
+import { getOrCreateReactRoot } from './reactRoot';
+import { initializeFontSetting } from './hooks/useAppInitialization';
+import {
+  FRONTEND_ERROR_REPORTED_EVENT,
+  installGlobalErrorReporter,
+  reportFrontendError,
+  serializeUnknown,
+} from './logging/errorReporter';
+import { getStartupRecoveryStatus } from './features/data-recovery/dataRecoveryApi';
+import { RecoveryShell } from './features/data-recovery/RecoveryShell';
+import { StartupPreflight } from './features/data-recovery/StartupPreflight';
+import { ComponentRecoveryShell } from './features/data-recovery/ComponentRecoveryShell';
+import {
+  clearRecoveryDebugScenario,
+  createCoreMigrationFailureDebugIssues,
+  createStartupConflictDebugStatus,
+  createStartupPreflightFailureDebugStatus,
+  getRecoveryDebugScenario,
+} from './features/data-recovery/debugRecoveryScenarios';
+import { getMaintenanceStatus } from './api/dataGovernance';
+import { useSystemStatusStore } from './stores/systemStatusStore';
 
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
+// 尽早写入材质档位属性（内部自带软件渲染/系统偏好检测），供全局 CSS 降级选择器使用
+getMaterialTier();
+void installChatV2DomainEventBridge();
+
+// Dev-only：UI 自动化桥（本地 UI 审查用，生产构建不包含）。
+// 快捷助手等辅助窗口不接桥：bridge 服务端只保留最后一条连接，辅助窗口会顶掉主窗口。
+if (
+  import.meta.env.DEV &&
+  import.meta.env.VITE_DS_UI_BRIDGE === '1' &&
+  new URLSearchParams(window.location.search).get('window') === null
+) {
+  void import('./dev/uiAutomationBridge');
+}
 
 // 注册 OverlayScrollbars ClickScrollPlugin — 点击轨道时平滑滚动到目标位置
 OverlayScrollbars.plugin(ClickScrollPlugin);
@@ -164,11 +112,13 @@ const registerCleanup = (fn: CleanupFn) => {
   });
 };
 
+registerCleanup(installGlobalErrorReporter());
+
 // 过滤特定 Tauri 警告（调试开关关闭时）
 const installConsoleWarningFilter = () => {
   const originalWarn = console.warn;
   const tauriCallbackWarn = "[TAURI] Couldn't find callback id";
-  console.warn = (...args: unknown[]) => {
+  const filteredWarn = (...args: unknown[]) => {
     const first = args[0];
     const shouldSuppress =
       !debugMasterSwitch.isEnabled() &&
@@ -178,8 +128,11 @@ const installConsoleWarningFilter = () => {
       originalWarn.apply(console, args as any);
     }
   };
+  console.warn = filteredWarn;
   registerCleanup(() => {
-    console.warn = originalWarn;
+    if (console.warn === filteredWarn) {
+      console.warn = originalWarn;
+    }
   });
 };
 
@@ -256,180 +209,179 @@ installTauriLabFrontendLogBridge();
 // 🆕 合规要求：Sentry 默认关闭，需用户在设置中主动开启
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 let __sentryInit = false as boolean;
-async function initSentryIfConfigured() {
-  try {
-    const dsn = (import.meta as any).env?.VITE_SENTRY_DSN;
-    if (!dsn || __sentryInit) return;
+let __sentryModule: any = null;
+let sentryConsentRevision = 0;
+let sentryDesiredConsent = false;
+let sentryConsentKnown = false;
+const pendingSentryErrors: any[] = [];
 
-    // 检查用户是否同意了错误报告
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const consent = await invoke('get_setting', { key: SENTRY_CONSENT_KEY }) as string | null;
-      if (consent !== 'true') return; // 默认不开启
-    } catch {
-      return; // 数据库未就绪或读取失败，不初始化
+const captureFrontendPayloadInSentry = (Sentry: any, payload: any) => {
+  const error = new Error(String(payload?.message || 'Frontend error'));
+  if (typeof payload?.stack === 'string') error.stack = payload.stack;
+  Sentry.captureException(error, {
+    tags: {
+      kind: payload?.kind,
+      component: payload?.component,
+    },
+    extra: serializeUnknown({
+      route: payload?.route,
+      url: payload?.url,
+      line: payload?.line,
+      column: payload?.column,
+      details: payload?.extra,
+    }),
+  });
+};
+
+async function applyFrontendSentryConsent(enabled: boolean) {
+  const revision = ++sentryConsentRevision;
+  sentryDesiredConsent = enabled;
+  sentryConsentKnown = true;
+  if (!enabled) {
+    pendingSentryErrors.length = 0;
+    if (__sentryInit) {
+      const previousClient = __sentryModule?.getClient?.();
+      __sentryInit = false;
+      __sentryModule = null;
+      try {
+        await previousClient?.close?.(2000);
+      } catch {
+        // Consent has still been revoked locally; no new events are captured.
+      }
     }
+    return;
+  }
 
-    const Sentry: any = await import('@sentry/browser');
-    const { VERSION_INFO: vi } = await import('./version');
-    Sentry.init({
-      dsn,
-      integrations: [
-        Sentry.browserTracingIntegration?.() || undefined,
-      ].filter(Boolean),
-      tracesSampleRate: Number((import.meta as any).env?.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
-      environment: (import.meta as any).env?.MODE || 'production',
-      release: vi.SENTRY_RELEASE || (window as any).__APP_VERSION__ || '0.0.0',
-    });
-    __sentryInit = true;
-  } catch {}
+  const dsn = (import.meta as any).env?.VITE_SENTRY_DSN;
+  if (!dsn || __sentryInit) return;
+  const Sentry: any = await import('@sentry/browser');
+  if (revision !== sentryConsentRevision || !sentryDesiredConsent) return;
+  const { VERSION_INFO: vi } = await import('./version');
+  if (revision !== sentryConsentRevision || !sentryDesiredConsent) return;
+  Sentry.init({
+    dsn,
+    sendDefaultPii: false,
+    integrations: (defaults: any[]) => [
+      ...defaults.filter(integration =>
+        !['GlobalHandlers', 'TryCatch', 'BrowserApiErrors'].includes(integration?.name),
+      ),
+      Sentry.browserTracingIntegration?.() || undefined,
+    ].filter(Boolean),
+    tracesSampleRate: Number((import.meta as any).env?.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
+    environment: (import.meta as any).env?.MODE || 'production',
+    release: vi.SENTRY_RELEASE || (window as any).__APP_VERSION__ || '0.0.0',
+    beforeSend(event: any) {
+      if (typeof event.message === 'string') {
+        event.message = serializeUnknown(event.message);
+      }
+      if (Array.isArray(event.exception?.values)) {
+        event.exception.values = event.exception.values.map((value: any) => ({
+          ...value,
+          value: typeof value?.value === 'string' ? serializeUnknown(value.value) : value?.value,
+          stacktrace: value?.stacktrace
+            ? {
+                ...value.stacktrace,
+                frames: value.stacktrace.frames?.map((frame: any) => ({
+                  ...frame,
+                  filename: typeof frame.filename === 'string'
+                    ? frame.filename.replace(/[?#].*$/, '')
+                    : frame.filename,
+                  abs_path: typeof frame.abs_path === 'string'
+                    ? frame.abs_path.replace(/[?#].*$/, '')
+                    : frame.abs_path,
+                })),
+              }
+            : value?.stacktrace,
+        }));
+      }
+      if (event.user) event.user = undefined;
+      if (event.request) {
+        if (typeof event.request.url === 'string') {
+          event.request.url = event.request.url.replace(/[?#].*$/, '');
+        }
+        if (event.request.headers) {
+          for (const key of Object.keys(event.request.headers)) {
+            if (/authorization|cookie|token|api[-_]?key/i.test(key)) {
+              delete event.request.headers[key];
+            }
+          }
+        }
+        event.request.data = serializeUnknown(event.request.data);
+      }
+      event.extra = serializeUnknown(event.extra);
+      event.contexts = serializeUnknown(event.contexts);
+      event.tags = serializeUnknown(event.tags);
+      event.spans = serializeUnknown(event.spans);
+      if (typeof event.transaction === 'string') {
+        event.transaction = event.transaction.replace(/\?.*$/, '');
+      }
+      event.breadcrumbs = event.breadcrumbs?.map((breadcrumb: any) => ({
+        ...breadcrumb,
+        message: typeof breadcrumb.message === 'string'
+          ? serializeUnknown(breadcrumb.message)
+          : breadcrumb.message,
+        data: serializeUnknown(breadcrumb.data),
+      }));
+      return event;
+    },
+  });
+  __sentryModule = Sentry;
+  __sentryInit = true;
+  pendingSentryErrors.splice(0).forEach(payload => {
+    captureFrontendPayloadInSentry(Sentry, payload);
+  });
 }
 
-/** 导出 Sentry 同意 key，供设置页面使用 */
-export { SENTRY_CONSENT_KEY };
+async function initSentryIfConfigured() {
+  const revisionBeforeRead = sentryConsentRevision;
+  try {
+    // 检查用户是否同意了错误报告
+    const { invoke } = await import('@tauri-apps/api/core');
+    const consent = await invoke('get_setting', { key: SENTRY_CONSENT_KEY }) as string | null;
+    if (revisionBeforeRead !== sentryConsentRevision) return;
+    await applyFrontendSentryConsent(consent === 'true');
+  } catch (error) {
+    void reportFrontendError(error, {
+      kind: 'PLUGIN_ERROR',
+      component: 'sentry-initialization',
+    }).catch(() => undefined);
+  }
+}
 
-const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
+const handleFrontendErrorForSentry = (event: Event) => {
+  const payload = (event as CustomEvent).detail;
+  if (String(payload?.level || 'ERROR').toUpperCase() !== 'ERROR') return;
+  if (__sentryInit && __sentryModule) {
+    captureFrontendPayloadInSentry(__sentryModule, payload);
+    return;
+  }
+  if (sentryConsentKnown && !sentryDesiredConsent) return;
+  if (pendingSentryErrors.length >= 20) pendingSentryErrors.shift();
+  pendingSentryErrors.push(payload);
+};
+window.addEventListener(FRONTEND_ERROR_REPORTED_EVENT, handleFrontendErrorForSentry);
+registerCleanup(() => {
+  window.removeEventListener(FRONTEND_ERROR_REPORTED_EVENT, handleFrontendErrorForSentry);
+});
+
+/*
+ * HMR contract:
+ * - Keep React component declarations out of this side-effectful entry module.
+ * - Persist the root outside the module instance so re-evaluation can only render
+ *   into the existing root, never append another live application tree.
+ */
+const rootContainer = document.getElementById('root');
+if (!(rootContainer instanceof HTMLElement)) {
+  throw new Error('[main] Missing #root container');
+}
+const root = getOrCreateReactRoot(rootContainer);
 
 // ★ 3.2 番茄钟置顶小窗：独立轻量入口（不挂载完整 App）
 const IS_POMODORO_MINI_WINDOW =
   new URLSearchParams(window.location.search).get('window') === 'pomodoro-mini';
-
-/** Safe i18n accessor for contexts where hooks are unavailable (e.g. error boundary fallback).
- *  Falls back to the provided default string if i18n is not yet initialised or throws. */
-const safeT = (key: string, fallback: string, options?: Record<string, unknown>): string => {
-  try { return i18n.t(key, { defaultValue: fallback, ...options }) as string; } catch { return fallback; }
-};
-
-const TopLevelFallback: React.FC<{ error?: any; componentStack?: string }> = ({ error, componentStack }) => {
-  const errorMessage = error instanceof Error ? error.message : String(error ?? 'Unknown error');
-  const errorStack = error instanceof Error ? error.stack : undefined;
-  const fullLog = [
-    `Error: ${errorMessage}`,
-    errorStack ? `\nStack:\n${errorStack}` : '',
-    componentStack ? `\nComponent Stack:\n${componentStack}` : '',
-    `\nTimestamp: ${new Date().toISOString()}`,
-    `\nUserAgent: ${navigator.userAgent}`,
-  ].filter(Boolean).join('');
-
-  const [showDetails, setShowDetails] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
-
-  const handleCopy = () => {
-    try {
-      navigator.clipboard.writeText(fullLog).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    } catch {
-      // fallback: select text for manual copy
-      const el = document.getElementById('error-log-content');
-      if (el) {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      }
-    }
-  };
-
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      width: '100vw',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      backgroundColor: '#fafafa',
-      color: '#1a1a1a',
-    }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
-      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>
-        {safeT('common:error_boundary.title', '应用遇到严重错误')}
-      </h1>
-      <p style={{ fontSize: 14, color: '#666', marginBottom: 24, maxWidth: 400, textAlign: 'center' }}>
-        {safeT('common:error_boundary.description', '应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。')}
-      </p>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-        <button
-          onClick={() => window.location.reload()}
-          style={{
-            padding: '10px 24px',
-            fontSize: 14,
-            fontWeight: 500,
-            color: '#fff',
-            backgroundColor: '#2563eb',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-          }}
-        >
-          {safeT('common:error_boundary.refresh', '刷新页面')}
-        </button>
-        <button
-          onClick={() => setShowDetails(v => !v)}
-          style={{
-            padding: '10px 24px',
-            fontSize: 14,
-            fontWeight: 500,
-            color: '#333',
-            backgroundColor: '#fff',
-            border: '1px solid #ddd',
-            borderRadius: 8,
-            cursor: 'pointer',
-          }}
-        >
-          {showDetails
-            ? safeT('common:error_boundary.hide_details', '隐藏详情')
-            : safeT('common:error_boundary.show_details', '查看错误详情')}
-        </button>
-      </div>
-      {showDetails && (
-        <div style={{ width: '100%', maxWidth: 640, padding: '0 24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-            <button
-              onClick={handleCopy}
-              style={{
-                padding: '6px 16px',
-                fontSize: 13,
-                color: copied ? '#16a34a' : '#555',
-                backgroundColor: '#fff',
-                border: '1px solid #ddd',
-                borderRadius: 6,
-                cursor: 'pointer',
-              }}
-            >
-              {copied
-                ? safeT('common:error_boundary.copied', '已复制')
-                : safeT('common:error_boundary.copy_error', '复制错误日志')}
-            </button>
-          </div>
-          <pre
-            id="error-log-content"
-            style={{
-              padding: 16,
-              fontSize: 12,
-              lineHeight: 1.6,
-              backgroundColor: '#f5f5f5',
-              border: '1px solid #e5e5e5',
-              borderRadius: 8,
-              overflow: 'auto',
-              maxHeight: 300,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              color: '#d32f2f',
-              userSelect: 'text',
-            }}
-          >
-            {fullLog}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-};
+const IS_QUICK_ASSISTANT_WINDOW =
+  new URLSearchParams(window.location.search).get('window') === 'quick-assistant';
+const IS_LIGHTWEIGHT_WINDOW = IS_POMODORO_MINI_WINDOW || IS_QUICK_ASSISTANT_WINDOW;
 
 const appTree = (
   <ErrorBoundary name="TopLevel" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
@@ -441,6 +393,41 @@ const appTree = (
   </ErrorBoundary>
 );
 
+const recoveryTree = (
+  status: Awaited<ReturnType<typeof getStartupRecoveryStatus>>,
+  debugPreview = false,
+  onDebugExit?: () => void,
+) => (
+  <ErrorBoundary name="RecoveryShell" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
+    <OverlayCoordinatorProvider>
+      <DialogControlProvider>
+        <RecoveryShell
+          status={status}
+          debugPreview={debugPreview}
+          onDebugExit={onDebugExit}
+        />
+      </DialogControlProvider>
+    </OverlayCoordinatorProvider>
+  </ErrorBoundary>
+);
+
+const getStartupRecoveryStatusWithTimeout = async () => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      getStartupRecoveryStatus(),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Startup recovery preflight timed out after 15 seconds')),
+          15_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 // F22: React 18 的 StrictMode 双调用诊断仅在开发态生效，生产构建为 no-op——
 // 因此原先「仅 prod 启用」等于全程没有 StrictMode 检查（注释意图与 React 行为相反）。
 // 调整为：
@@ -451,32 +438,131 @@ const enableDevStrictMode =
   (import.meta as any).env?.MODE !== 'production' &&
   (import.meta as any).env?.VITE_ENABLE_STRICT_MODE === 'true';
 
+if (IS_LIGHTWEIGHT_WINDOW) {
+  // 轻量窗口跳过 useAppInitialization，需单独应用全局字体/字号设置，
+  // 否则这两个窗口永远停留在默认字体与 100% 字号
+  initializeFontSetting().catch(console.warn);
+}
+
 if (IS_POMODORO_MINI_WINDOW) {
   // 置顶小窗：只渲染番茄钟 UI，跳过 App 与全部重量级初始化
   import('./features/pomodoro/components/PomodoroMiniWindow').then(({ PomodoroMiniWindow }) => {
     root.render(<PomodoroMiniWindow />);
   });
-} else if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
-  initSentryIfConfigured().finally(() => {
-    root.render(<React.StrictMode>{appTree}</React.StrictMode>);
+} else if (IS_QUICK_ASSISTANT_WINDOW) {
+  import('./quick-assistant/QuickAssistantWindow').then(({ QuickAssistantWindow }) => {
+    root.render(<QuickAssistantWindow />);
   });
+  void initSentryIfConfigured();
 } else {
-  initSentryIfConfigured().finally(() => {
-    root.render(appTree);
-  });
-}
+  const debugScenario = getRecoveryDebugScenario();
+  const exitDebugPreview = () => {
+    clearRecoveryDebugScenario();
+    window.location.reload();
+  };
+  if (debugScenario === 'startup-conflict') {
+    root.render(recoveryTree(createStartupConflictDebugStatus(), true, exitDebugPreview));
+  } else if (debugScenario === 'startup-preflight-failure') {
+    root.render(recoveryTree(
+      createStartupPreflightFailureDebugStatus(),
+      true,
+      exitDebugPreview,
+    ));
+  } else if (debugScenario === 'core-migration-failure') {
+    root.render(
+      <ErrorBoundary name="DebugComponentRecoveryShell" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
+        <ComponentRecoveryShell
+          components={createCoreMigrationFailureDebugIssues()}
+          debugPreview
+          onDebugExit={exitDebugPreview}
+        />
+      </ErrorBoundary>,
+    );
+  } else {
+  root.render(<StartupPreflight />);
+  void getStartupRecoveryStatusWithTimeout()
+    .then(async (status) => {
+      if (status.recovery_required) {
+        root.render(recoveryTree(status));
+        return;
+      }
 
+      const maintenanceStatus = await getMaintenanceStatus().catch((error) => ({
+        is_in_maintenance_mode: false,
+        blocked_components: [],
+        component_health: {
+          components: [{
+            component: 'vfs',
+            status: 'blocked' as const,
+            reason: `Startup component health unavailable: ${String(error)}`,
+            dependency: null,
+          }],
+        },
+        component_issues: [],
+      }));
+      const componentHealth = maintenanceStatus.component_health?.components ?? [];
+      useSystemStatusStore.getState().setComponentHealth(componentHealth);
+      const coreRecoveryRequired = componentHealth.some(
+        (component) =>
+          component.status === 'blocked'
+          && (component.component === 'vfs' || component.component === 'mistakes'),
+      );
+      if (coreRecoveryRequired) {
+        root.render(
+          <ErrorBoundary name="ComponentRecoveryShell" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
+            <ComponentRecoveryShell components={componentHealth} />
+          </ErrorBoundary>,
+        );
+        return;
+      }
 
-// Initialize Frontend MCP Service from saved settings (best-effort)
-if (!IS_POMODORO_MINI_WINDOW) {
-  bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
-    debugLog.warn('[MCP] Bootstrap failed:', err);
-  });
+      if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
+        root.render(<React.StrictMode>{appTree}</React.StrictMode>);
+      } else {
+        root.render(appTree);
+      }
+      startNormalFrontendRuntime();
+    })
+    .catch((error) => {
+      // 纯 Web 预览没有 Tauri IPC，可继续渲染；桌面端不能把预检故障误判为安全启动，
+      // 因为恢复专用后端不会创建普通 AppState。
+      if ((window as any).__TAURI_INTERNALS__) {
+        const unavailable = [{
+          component: 'startup_preflight',
+          status: 'blocked' as const,
+          reason: `Startup recovery preflight unavailable: ${String(error)}`,
+          dependency: null,
+        }];
+        useSystemStatusStore.getState().setComponentHealth(unavailable);
+        root.render(
+          <ErrorBoundary name="StartupPreflightFailure" fallback={(renderError, componentStack) => <TopLevelFallback error={renderError} componentStack={componentStack} />}>
+            <ComponentRecoveryShell components={unavailable} />
+          </ErrorBoundary>,
+        );
+        return;
+      }
+      console.warn('[main] Tauri startup preflight unavailable in web preview.', error);
+      if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
+        root.render(<React.StrictMode>{appTree}</React.StrictMode>);
+      } else {
+        root.render(appTree);
+      }
+      startNormalFrontendRuntime();
+    });
+  }
 }
 
 // Respond to settings change to reload MCP servers from DB
 const handleSystemSettingsChanged = async (event?: Event) => {
   const detail = (event as CustomEvent<any> | undefined)?.detail;
+  if (typeof detail?.sentryConsent === 'boolean') {
+    void applyFrontendSentryConsent(detail.sentryConsent).catch(error => {
+      void reportFrontendError(error, {
+        kind: 'PLUGIN_ERROR',
+        component: 'sentry-consent-update',
+      }).catch(() => undefined);
+    });
+  }
   const shouldReloadMcp = Boolean(
     detail?.mcpReloaded ||
     detail?.mcpChanged ||
@@ -487,178 +573,11 @@ const handleSystemSettingsChanged = async (event?: Event) => {
     debugLog.warn('[MCP] Bootstrap (settings reload) failed:', err);
   });
 };
-window.addEventListener('systemSettingsChanged', handleSystemSettingsChanged);
-registerCleanup(() => window.removeEventListener('systemSettingsChanged', handleSystemSettingsChanged));
 
-if ((window as any).__TAURI_INTERNALS__) {
+const initializeMcpDebugRuntime = () => {
+  if (!(window as any).__TAURI_INTERNALS__) return;
   (async () => {
     try {
-      const baseWarn = console.warn.bind(console) as (...args: unknown[]) => void;
-      // 安全加载日志插件（可选）。使用 vite-ignore 避免 Vite 预打包时强制解析依赖。
-      const safeLoadLogPlugin = async () => {
-        try {
-          const PKG = '@tauri-apps/plugin-log';
-          const mod = await import(/* @vite-ignore */ PKG);
-          return mod as any;
-        } catch {
-          return null;
-        }
-      };
-
-      const logPlugin = await safeLoadLogPlugin();
-      if (logPlugin && typeof logPlugin.attachConsole === 'function') {
-        try { await logPlugin.attachConsole(); } catch {}
-        const safeFallbackWarn = (...warnArgs: unknown[]) => {
-          try {
-            baseWarn?.(...warnArgs);
-          } catch {
-            // ignore fallback logging failures
-          }
-        };
-        const forwardConsole = (
-          fnName: 'log' | 'debug' | 'info' | 'warn' | 'error',
-          logger: (message: string) => Promise<void>
-        ) => {
-          const original = (console as any)[fnName]?.bind(console) as (...args: any[]) => void;
-          (console as any)[fnName] = (...args: any[]) => {
-            try { original?.(...args); } catch {}
-            try {
-              const msg = args.map(a => {
-                if (a instanceof Error) return `${a.name}: ${a.message}`;
-                if (typeof a === 'string') return a;
-                try { return JSON.stringify(a); } catch { return String(a); }
-              }).join(' ');
-              logger?.(msg).catch((err) => {
-                // 不能再走被代理 console.warn，否则 warn 通道失败时会递归。
-                safeFallbackWarn('[Main] console forward failed:', err);
-              });
-            } catch {
-              // ignore serialization/logging errors
-            }
-          };
-        };
-        forwardConsole('log', logPlugin.trace ?? logPlugin.info);
-        forwardConsole('debug', logPlugin.debug ?? logPlugin.info);
-        forwardConsole('info', logPlugin.info);
-        forwardConsole('warn', logPlugin.warn ?? logPlugin.info);
-        forwardConsole('error', logPlugin.error ?? logPlugin.info);
-      }
-
-      const { invoke } = await import('@tauri-apps/api/core');
-      const recent = new Map<string, number>();
-      const throttleMs = 10_000;
-
-      const serializeUnknown = (value: unknown) => {
-        if (value === undefined || value === null) {
-          return null;
-        }
-        if (value instanceof Error) {
-          return {
-            message: value.message,
-            name: value.name,
-            stack: value.stack ?? null,
-          };
-        }
-        const valueType = typeof value;
-        if (valueType === 'string' || valueType === 'number' || valueType === 'boolean') {
-          return value;
-        }
-        try {
-          return JSON.parse(JSON.stringify(value));
-        } catch {
-          return String(value);
-        }
-      };
-
-      const emitLog = (payload: any) => {
-        const key = JSON.stringify({
-          message: payload?.message,
-          stack: payload?.stack,
-          kind: payload?.kind,
-        });
-        const now = Date.now();
-        for (const [storedKey, storedAt] of recent) {
-          if (now - storedAt > throttleMs) {
-            recent.delete(storedKey);
-          }
-        }
-        const last = recent.get(key);
-        if (last && now - last < throttleMs) {
-          return;
-        }
-        recent.set(key, now);
-        invoke('report_frontend_log', { payload }).catch((err) => {
-          baseWarn?.('[Main] report_frontend_log failed:', err);
-        });
-      };
-
-      const handleWindowError = (event: ErrorEvent) => {
-        if (!event.message && !(event.error instanceof Error)) {
-          return;
-        }
-        const stack = event.error instanceof Error ? event.error.stack ?? null : null;
-        emitLog({
-          level: 'ERROR',
-          kind: 'WINDOW_ERROR',
-          message: event.message || (event.error && String(event.error)) || safeT('common:frontend_errors.window_error', 'Window Error'),
-          stack,
-          url: event.filename || window.location.href,
-          line: event.lineno ?? null,
-          column: event.colno ?? null,
-          route: window.location.hash || window.location.pathname,
-          user_agent: navigator.userAgent,
-          extra: serializeUnknown(event.error),
-        });
-        // 同步写入日志插件（若可用）
-        (async () => {
-          const lp = await safeLoadLogPlugin();
-          try { await lp?.error?.(`[WINDOW_ERROR] ${event.message}`); } catch {}
-        })();
-      };
-      window.addEventListener('error', handleWindowError);
-      registerCleanup(() => window.removeEventListener('error', handleWindowError));
-
-      const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-        const reason = event.reason;
-        let message = safeT('common:frontend_errors.unhandled_promise_rejection', 'Unhandled Promise Rejection');
-        let stack: string | null = null;
-        if (reason instanceof Error) {
-          message = reason.message || message;
-          stack = reason.stack ?? null;
-        } else if (typeof reason === 'string') {
-          message = reason;
-        } else if (reason && typeof reason === 'object' && 'message' in reason) {
-          message = String((reason as { message?: unknown }).message ?? message);
-        }
-
-        // ★ 2026-02-04: 过滤 Tauri HTTP 插件的已知 bug
-        // 当请求被取消时，插件内部会尝试调用 fetch_cancel_body 命令
-        // 但该命令在某些情况下未正确注册，导致大量无害的错误日志
-        // 参考: https://github.com/tauri-apps/plugins-workspace/issues/2557
-        if (isKnownTauriHttpNoise(message, stack || undefined)) {
-          event.preventDefault(); // 阻止默认的错误输出
-          return; // 静默忽略此错误
-        }
-
-        emitLog({
-          level: 'ERROR',
-          kind: 'UNHANDLED_REJECTION',
-          message,
-          stack,
-          url: window.location.href,
-          route: window.location.hash || window.location.pathname,
-          user_agent: navigator.userAgent,
-          extra: serializeUnknown(reason),
-        });
-        (async () => {
-          const lp = await safeLoadLogPlugin();
-          try { await lp?.error?.(`[UNHANDLED_REJECTION] ${message}`); } catch {}
-        })();
-      };
-
-      window.addEventListener('unhandledrejection', handleUnhandledRejection);
-      registerCleanup(() => window.removeEventListener('unhandledrejection', handleUnhandledRejection));
-      
       // 🔧 MCP Debug Enhancement Module - 全自动调试支持
       // 仅在开发模式 + 调试总开关开启时初始化（或通过 env 强制启用）
       const env = (import.meta as any).env ?? {};
@@ -715,7 +634,7 @@ if ((window as any).__TAURI_INTERNALS__) {
       // ignore initialization errors
     }
   })();
-}
+};
 
 // 🆕 P1防闪退：Chat V2 会话保存（应用生命周期）
 // 动态导入避免循环依赖，使用同步方式触发保存
@@ -744,8 +663,6 @@ const handleBeforeUnload = () => {
     disposeGlobalCacheManager();
   } catch {}
 };
-window.addEventListener('beforeunload', handleBeforeUnload);
-registerCleanup(() => window.removeEventListener('beforeunload', handleBeforeUnload));
 
 // 🆕 P1防闪退：移动端 visibilitychange 监听
 // 当应用进入后台时触发保存（移动端常见场景）
@@ -754,8 +671,39 @@ const handleVisibilityChange = () => {
     triggerChatV2EmergencySave();
   }
 };
-document.addEventListener('visibilitychange', handleVisibilityChange);
-registerCleanup(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
+
+let normalFrontendRuntimeStarted = false;
+
+function startNormalFrontendRuntime() {
+  if (normalFrontendRuntimeStarted || IS_LIGHTWEIGHT_WINDOW) return;
+  normalFrontendRuntimeStarted = true;
+
+  void initSentryIfConfigured();
+  bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
+    debugLog.warn('[MCP] Bootstrap failed:', err);
+  });
+
+  void import('./quick-assistant/window').then(async ({
+    initializeQuickAssistantGlobalShortcut,
+    initializeQuickAssistantMainBridge,
+  }) => {
+    const cleanups = await Promise.all([
+      initializeQuickAssistantGlobalShortcut(),
+      initializeQuickAssistantMainBridge(),
+    ]);
+    cleanups.forEach(registerCleanup);
+  }).catch((error) => {
+    console.warn('[QuickAssistant] initialization failed:', error);
+  });
+
+  window.addEventListener('systemSettingsChanged', handleSystemSettingsChanged);
+  registerCleanup(() => window.removeEventListener('systemSettingsChanged', handleSystemSettingsChanged));
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  registerCleanup(() => window.removeEventListener('beforeunload', handleBeforeUnload));
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  registerCleanup(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
+  initializeMcpDebugRuntime();
+}
 
 if ((import.meta as any)?.hot) {
   (import.meta as any).hot.dispose(() => {
@@ -764,5 +712,7 @@ if ((import.meta as any)?.hot) {
     if (typeof window !== 'undefined' && (window as any)[GLOBAL_MAIN_CLEANUP_KEY] === cleanupRegistry) {
       delete (window as any)[GLOBAL_MAIN_CLEANUP_KEY];
     }
+    // Do not unmount the React root here. getOrCreateReactRoot keeps it alive
+    // across module replacement and the next evaluation reuses the same handle.
   });
 }

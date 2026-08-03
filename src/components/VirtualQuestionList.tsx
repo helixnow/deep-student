@@ -11,14 +11,16 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   CheckCircle,
   XCircle,
   Star,
   CaretRight,
+  BookOpen,
 } from '@phosphor-icons/react';
 import type { Question, QuestionStatus, Difficulty } from '@/api/questionBankApi';
+import { CustomScrollArea } from './custom-scroll-area';
 
 interface VirtualQuestionListProps {
   questions: Question[];
@@ -29,11 +31,12 @@ interface VirtualQuestionListProps {
   estimateSize?: number;
 }
 
+// 语义色 token：跟随主题深浅模式，与做题视图状态配色一致
 const statusColors: Record<QuestionStatus, string> = {
-  new: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  mastered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  review: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+  new: 'bg-muted text-muted-foreground',
+  in_progress: 'bg-primary/10 text-primary',
+  mastered: 'bg-success/10 text-success',
+  review: 'bg-warning/10 text-warning',
 };
 
 // Status labels are resolved via i18n at render time
@@ -44,11 +47,12 @@ const STATUS_KEYS: Record<QuestionStatus, string> = {
   review: 'review',
 };
 
+// 语义色 token：与 ReviewQuestionsView / QuestionBankEditor 的难度配色一致
 const difficultyColors: Record<Difficulty, string> = {
-  easy: 'text-emerald-500',
-  medium: 'text-amber-500',
-  hard: 'text-red-500',
-  very_hard: 'text-purple-500',
+  easy: 'text-success',
+  medium: 'text-warning',
+  hard: 'text-destructive/80',
+  very_hard: 'text-destructive',
 };
 
 export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
@@ -82,17 +86,20 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
 
   if (questions.length === 0) {
     return (
-      <div className={cn('flex items-center justify-center h-full text-muted-foreground', className)}>
-        {t('questionBank.noQuestions')}
+      <div className={cn('flex flex-col items-center justify-center gap-2 h-full text-muted-foreground', className)}>
+        <div className="rounded-md bg-muted/50 p-2.5">
+          <BookOpen size={20} aria-hidden />
+        </div>
+        <span className="text-sm">{t('questionBank.noQuestions')}</span>
       </div>
     );
   }
 
   return (
-    <div
-      ref={parentRef}
-      className={cn('overflow-auto', className)}
-      style={{ contain: 'strict' }}
+    <CustomScrollArea
+      viewportRef={parentRef}
+      viewportProps={{ style: { contain: 'strict' } }}
+      className={className}
     >
       <div
         style={{
@@ -104,6 +111,8 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
         {virtualItems.map((virtualItem) => {
           const question = questions[virtualItem.index];
           const isActive = virtualItem.index === currentIndex;
+          // Question.status 为可选字段，缺失时按"新题"渲染，避免 undefined 索引产生空样式/空文案
+          const status: QuestionStatus = question.status ?? 'new';
 
           return (
             <div
@@ -139,10 +148,10 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                       {question.questionLabel || `${t('questionBank.content')} ${virtualItem.index + 1}`}
                     </span>
                     {question.isCorrect === true && (
-                      <CheckCircle size={14} className="text-green-500 flex-shrink-0" />
+                      <CheckCircle size={14} className="text-success flex-shrink-0" />
                     )}
                     {question.isCorrect === false && (
-                      <XCircle size={14} className="text-red-500 flex-shrink-0" />
+                      <XCircle size={14} className="text-destructive flex-shrink-0" />
                     )}
                     {question.difficulty && (
                       <span className={cn('text-xs', difficultyColors[question.difficulty])}>
@@ -157,25 +166,27 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                 </div>
 
                 {/* 状态 */}
-                <Badge className={cn('text-xs flex-shrink-0', statusColors[question.status])}>
-                  {t(`questionBank.status.${STATUS_KEYS[question.status]}`)}
+                <Badge className={cn('text-xs flex-shrink-0', statusColors[status])}>
+                  {t(`questionBank.status.${STATUS_KEYS[status]}`)}
                 </Badge>
 
                 {/* 操作 */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <NotionButton
+                  {/* 触屏：收藏钮命中区放大到 44px，负 margin 抵消占位保持行高稳定 */}
+                  <DsButton
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    aria-label={t('questionBank.favorite', { defaultValue: 'favorite' })}
+                    className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-m-2"
                     onClick={(e) => handleFavorite(e, question.id)}
                   >
                     <Star
                       className={cn(
                         'w-3.5 h-3.5',
-                        question.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
+                        question.isFavorite ? 'fill-warning text-warning' : 'text-muted-foreground'
                       )}
 />
-                  </NotionButton>
+                  </DsButton>
                 </div>
 
                 <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
@@ -184,7 +195,7 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
           );
         })}
       </div>
-    </div>
+    </CustomScrollArea>
   );
 };
 

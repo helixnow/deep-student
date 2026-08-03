@@ -2,23 +2,34 @@ import React, { useCallback, useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { MagnifyingGlass, X, Funnel, Tag as TagIcon } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/shad/Input";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/shad/Popover";
 import { Badge } from "@/components/ui/shad/Badge";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { useNotes } from "../NotesContext";
 import { NotesAPI } from "../../../utils/notesApi";
 import { useDebounce } from "../../../hooks/useDebounce";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
 
-export const NotesSidebarSearch: React.FC = () => {
+export interface NotesSidebarSearchProps {
+    /** ↑/↓ 在搜索结果列表中移动高亮项（-1 向上 / 1 向下） */
+    onResultNavigate?: (delta: 1 | -1) => void;
+    /** Enter 打开当前高亮的搜索结果 */
+    onResultSubmit?: () => void;
+}
+
+export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
+    onResultNavigate,
+    onResultSubmit,
+}) => {
     const { t } = useTranslation(['notes', 'common']);
     const { performSearch, setSearchQuery, searchQuery } = useNotes();
     const [localTerm, setLocalTerm] = useState(searchQuery);
-    const debouncedTerm = useDebounce(localTerm, 500);
+    const debouncedTerm = useDebounce(localTerm, 250);
     const inputRef = useRef<HTMLInputElement>(null);
     const [highlight, setHighlight] = useState(false);
     const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,7 +50,7 @@ export const NotesSidebarSearch: React.FC = () => {
             .catch(error => {
                 console.error("Failed to load tags", error);
                 setIsLoadError(true);
-                showGlobalNotification('error', t('notes:errors.load_tags_failed', '标签加载失败，请刷新重试'));
+                showGlobalNotification('error', t('notes:errors.load_tags_failed'));
             })
             .finally(() => setIsLoadingTags(false));
     }, [t]);
@@ -99,28 +110,45 @@ export const NotesSidebarSearch: React.FC = () => {
         };
     }, []);
 
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (!localTerm.trim()) return;
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            onResultNavigate?.(1);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            onResultNavigate?.(-1);
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            onResultSubmit?.();
+        }
+    }, [localTerm, onResultNavigate, onResultSubmit]);
+
     return (
-        <div className="space-y-2">
+        // notes-sidebar-search：命令面板 NOTES_FOCUS_SEARCH 依赖此 class 定位输入框，勿删
+        <div className="notes-sidebar-search space-y-2">
             {/* 搜索输入框 */}
             <div className="relative px-0 group">
                 <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
                 <Input
                     ref={inputRef}
-                    className={`h-8 pl-8 pr-8 text-xs bg-background/50 border-transparent hover:bg-background focus:bg-background focus:border-border/50 focus:ring-0 transition-all placeholder:text-muted-foreground/40 shadow-sm ${highlight ? 'ring-2 ring-primary/60 ring-offset-1' : ''}`}
+                    type="search"
+                    className={`h-8 pl-8 pr-8 text-xs bg-background/50 border-transparent hover:bg-background focus:bg-background focus:border-border/50 focus:ring-0 transition-all placeholder:text-muted-foreground/40 shadow-sm ${highlight ? 'border-[color:var(--border)] bg-background' : ''}`}
                     data-highlight={highlight ? "true" : "false"}
                     placeholder={t('notes:sidebar.search.search_placeholder')}
                     value={localTerm}
                     onChange={(e) => setLocalTerm(e.target.value)}
+                    onKeyDown={handleKeyDown}
                 />
                 <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     {/* 标签过滤器按钮 */}
                     <Popover open={showTagFilter} onOpenChange={setShowTagFilter}>
                         <PopoverTrigger asChild>
-                            <NotionButton
+                            <DsButton
                                 variant="ghost"
                                 size="icon"
                                 className={`h-6 w-6 ${selectedTags.length > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                                title={t('notes:sidebar.search.filter_by_tag', 'Filter by tags')}
+                                title={t('notes:sidebar.search.filter_by_tag')}
                             >
                                 <Funnel className="h-3.5 w-3.5" />
                                 {selectedTags.length > 0 && (
@@ -128,51 +156,57 @@ export const NotesSidebarSearch: React.FC = () => {
                                         {selectedTags.length}
                                     </Badge>
                                 )}
-                            </NotionButton>
+                            </DsButton>
                         </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2" align="end">
+                        <PopoverContent
+                            className="w-64 p-2"
+                            align="end"
+                            onWheel={(event) => event.stopPropagation()}
+                        >
                             <div className="space-y-2">
                                 <div className="text-xs font-medium text-muted-foreground">
-                                    {t('notes:sidebar.search.filter_by_tag', 'Filter by tags')}
+                                    {t('notes:sidebar.search.filter_by_tag')}
                                 </div>
                                 {isLoadingTags ? (
                                     <div className="text-xs text-muted-foreground/60 italic">
-                                        {t('notes:sidebar.search.loading_tags', 'Loading tags...')}
+                                        {t('notes:sidebar.search.loading_tags')}
                                     </div>
                                 ) : isLoadError ? (
                                     <div className="flex flex-col items-center gap-1.5 py-2">
                                         <div className="text-xs text-destructive/80">
-                                            {t('notes:errors.load_tags_failed', '标签加载失败，请刷新重试')}
+                                            {t('notes:errors.load_tags_failed')}
                                         </div>
-                                        <NotionButton
+                                        <DsButton
                                             variant="ghost"
                                             size="sm"
                                             className="h-6 text-xs"
                                             onClick={loadTags}
                                         >
-                                            {t('common:retry', '重试')}
-                                        </NotionButton>
+                                            {t('common:retry')}
+                                        </DsButton>
                                     </div>
                                 ) : availableTags.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto">
-                                        {availableTags.map(tag => (
-                                            <Badge
-                                                key={tag}
-                                                variant={selectedTags.includes(tag) ? "default" : "outline"}
-                                                className="text-[10px] cursor-pointer hover:bg-primary/10"
-                                                onClick={() => toggleTag(tag)}
-                                            >
-                                                <TagIcon className="h-2.5 w-2.5 mr-1" />
-                                                {tag}
-                                                {selectedTags.includes(tag) && (
-                                                    <X className="h-2.5 w-2.5 ml-1 opacity-70" />
-                                                )}
-                                            </Badge>
-                                        ))}
-                                    </div>
+                                    <CustomScrollArea className="max-h-40" fullHeight={false}>
+                                        <div className="flex flex-wrap gap-1 pr-1">
+                                            {availableTags.map(tag => (
+                                                <Badge
+                                                    key={tag}
+                                                    variant={selectedTags.includes(tag) ? "default" : "outline"}
+                                                    className="text-[10px] cursor-pointer hover:bg-primary/10"
+                                                    onClick={() => toggleTag(tag)}
+                                                >
+                                                    <TagIcon className="h-2.5 w-2.5 mr-1" />
+                                                    {tag}
+                                                    {selectedTags.includes(tag) && (
+                                                        <X className="h-2.5 w-2.5 ml-1 opacity-70" />
+                                                    )}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </CustomScrollArea>
                                 ) : (
                                     <div className="text-xs text-muted-foreground/60 italic">
-                                        {t('notes:sidebar.search.no_tags', 'No tags available')}
+                                        {t('notes:sidebar.search.no_tags')}
                                     </div>
                                 )}
                             </div>
@@ -180,14 +214,14 @@ export const NotesSidebarSearch: React.FC = () => {
                     </Popover>
                     {/* 清除按钮 */}
                     {localTerm && (
-                        <NotionButton
+                        <DsButton
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6 text-muted-foreground hover:text-foreground"
                             onClick={handleClear}
                         >
                             <X className="h-3 w-3" />
-                        </NotionButton>
+                        </DsButton>
                     )}
                 </div>
             </div>

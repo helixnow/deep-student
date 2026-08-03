@@ -1,9 +1,8 @@
 /**
  * Shad Switch 组件样式。
  *
- * 用非 layer 选择器承载核心视觉属性，规避以下两处 unlayered 通配重置的影响：
- *   - src/App.css 里的 `* { margin:0; padding:0; box-sizing:border-box; }`
- *   - src/DeepStudent.css 里重复的 `* { margin:0; padding:0; box-sizing:border-box; }`
+ * 用非 layer 选择器承载核心视觉属性，规避以下 unlayered 通配重置的影响：
+ *   - src/shared/styles/app.css 里的 `* { margin:0; padding:0; box-sizing:border-box; }`
  *   - src/styles/tailwind.css `@layer base { * { border-color: ... } }`（layered，不影响）
  *
  * 这些通配符只会清掉 margin/padding/box-sizing/border-color，并不会覆盖我们在这里
@@ -27,7 +26,7 @@
   cursor: pointer;
   outline: none;
   flex-shrink: 0;
-  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color var(--dropdown-close-dur, 150ms) var(--ease-material);
   background-color: hsl(var(--muted-foreground) / 0.2);
   will-change: background-color;
 }
@@ -42,7 +41,7 @@
 }
 
 [data-slot="switch"]:focus-visible {
-  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring, 215 72% 42% / 0.4));
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring) / 0.4);
 }
 
 /* ---- Thumb (默认 20×20) ---- */
@@ -53,9 +52,9 @@
   border-radius: 9999px;
   background-color: hsl(var(--background));
   /* 单层轻阴影，避免 Material 双层阴影在小尺寸上显脏 */
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.08);
+  box-shadow: 0 1px 2px 0 hsl(var(--shadow-base) / 0.08);
   pointer-events: none;
-  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--dropdown-close-dur, 150ms) var(--ease-material);
   transform: translateX(0);
   will-change: transform;
 }
@@ -74,11 +73,31 @@
 [data-slot="switch"][data-size="sm"] > span {
   height: 0.75rem;       /* 12 */
   width: 0.75rem;        /* 12 */
-  box-shadow: 0 1px 1.5px 0 rgb(0 0 0 / 0.08);
+  box-shadow: 0 1px 1.5px 0 hsl(var(--shadow-base) / 0.08);
 }
 
 [data-slot="switch"][data-size="sm"][data-state="checked"] > span {
   transform: translateX(0.75rem);  /* 12 */
+}
+
+/* ---- 触屏命中区扩展（2026-07 移动端审计 M-3） ----
+   轨道本身仅 24px 高（sm 档 16×28），低于 44×44 触控基线。
+   触屏下用透明伪元素以轨道中心为锚扩出至少 44×44 的命中区，
+   视觉尺寸不变、不占布局（与 TouchTarget extend 模式同款做法）。 */
+@media (hover: none) and (pointer: coarse) {
+  [data-slot="switch"] {
+    position: relative;
+  }
+
+  [data-slot="switch"]::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* ---- Dark mode ---- */

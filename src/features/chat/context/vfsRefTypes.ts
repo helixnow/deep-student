@@ -11,23 +11,45 @@
  */
 
 // ============================================================================
-// VFS 资源类型
+// VFS 资源类型（单一数据源 - SSOT）
 // ============================================================================
+//
+// 三个集合的关系（禁止在别处重复手写字面量列表）：
+// - VFS_SOURCE_RESOURCE_TYPES：具体的业务资源类型（有 sourceId 的实体）
+// - VFS_RESOURCE_TYPES = SOURCE + 'retrieval'（检索结果是虚拟资源，无独立业务实体）
+// - VFS_REF_TYPES     = 'folder' + SOURCE（folder 是引用容器，解析时展开为内部资源，
+//                        自身不是可解析出的资源类型；retrieval 不走 ref 解析）
+//
+// 后端对应：src-tauri/src/vfs/types.rs `VfsResourceType`（serde lowercase，
+// 含 note/textbook/exam/translation/essay/image/file/retrieval/mindmap，无 folder）。
 
 /**
- * VFS 支持的资源类型
- * ★ 2026-01 添加 mindmap 类型支持
+ * ★ 具体业务资源类型（SSOT 基础集合）
+ *
+ * 既可以出现在引用（VfsResourceRef.type）中，也可以出现在解析结果
+ * （ResolvedResource.type）中。
  */
-export type VfsResourceType =
-  | 'note'
-  | 'textbook'
-  | 'exam'
-  | 'translation'
-  | 'essay'
-  | 'image'
-  | 'file'
-  | 'retrieval'   // ★ 检索结果
-  | 'mindmap';    // ★ 知识导图
+export const VFS_SOURCE_RESOURCE_TYPES = [
+  'note',         // note_xxx - 笔记
+  'textbook',     // tb_xxx - 教材
+  'exam',         // exam_xxx - 题目集识别
+  'translation',  // tr_xxx - 翻译
+  'essay',        // essay_xxx - 作文
+  'image',        // att_xxx (type=image) - 图片附件
+  'file',         // att_xxx (type=file) - 文档附件
+  'mindmap',      // mm_xxx - 知识导图
+] as const;
+
+export type VfsSourceResourceType = typeof VFS_SOURCE_RESOURCE_TYPES[number];
+
+/**
+ * VFS 支持的资源类型（= 业务类型 + retrieval 虚拟类型）
+ *
+ * 与后端 `VfsResourceType` 枚举一一对应。
+ */
+export const VFS_RESOURCE_TYPES = [...VFS_SOURCE_RESOURCE_TYPES, 'retrieval'] as const;
+
+export type VfsResourceType = typeof VFS_RESOURCE_TYPES[number];
 
 // ============================================================================
 // 上下文引用数据结构
@@ -114,6 +136,12 @@ export interface MultimodalContentBlock {
 
 /**
  * 解析后的完整资源数据（发送时实时获取）
+ *
+ * 后端对应：src-tauri/src/vfs/types.rs `ResolvedResource`（serde camelCase）。
+ * - 后端 `path: String` 恒为字符串（可能为空串）；
+ * - 前端在资源未命中（found=false）时会本地合成占位对象，此时 path/content
+ *   为 null（见 contextHelper.invokeVfsResolve）。因此消费方必须先判 found，
+ *   再使用 path/content。
  */
 export interface ResolvedResource {
   /** 稳定的业务 ID */
@@ -128,11 +156,20 @@ export interface ResolvedResource {
   /** 资源名称/标题 */
   name: string;
 
-  /** ★ 当前路径（实时获取，从 folder_items.cached_path 或计算） */
-  path: string;
+  /**
+   * ★ 当前路径（实时获取，从 folder_items.cached_path 或计算）
+   *
+   * found=false 的前端合成占位对象中为 null。
+   */
+  path: string | null;
 
-  /** ★ 内容（实时获取，从 resources.data 或 blob） */
-  content?: string;
+  /**
+   * ★ 内容（实时获取，从 resources.data 或 blob）
+   *
+   * 后端 content 为 None 时字段缺省（undefined）；found=false 的前端合成
+   * 占位对象中为 null。
+   */
+  content?: string | null;
 
   /** 字节大小（可选） */
   byteSize?: number;
@@ -151,9 +188,9 @@ export interface ResolvedResource {
    *
    * 对于题目集识别（exam）类型，这里存储图文交替的 ContentBlock[]。
    * ★ 2025-12-10 统一改造：由后端 vfs_resolve_resource_refs 命令统一填充，
-   * 前端无需额外调用。
+   * 前端无需额外调用。found=false 的前端合成占位对象中为 null。
    */
-  multimodalBlocks?: MultimodalContentBlock[];
+  multimodalBlocks?: MultimodalContentBlock[] | null;
 }
 
 // ============================================================================
@@ -275,18 +312,10 @@ export const VFS_REF_ERRORS = {
  *
  * 后端对应：ref_handlers.rs 的 get_source_id_type() 函数
  * ★ 2026-01 添加 mindmap 类型支持
+ * ★ 从 VFS_SOURCE_RESOURCE_TYPES 派生，禁止再手写重复列表；
+ *   folder（fld_xxx）是引用容器，解析时展开为内部资源。
  */
-export const VFS_REF_TYPES = [
-  'folder',       // fld_xxx - 文件夹（展开内部资源）
-  'note',         // note_xxx - 笔记
-  'textbook',     // tb_xxx - 教材
-  'exam',         // exam_xxx - 题目集识别
-  'essay',        // essay_xxx - 作文
-  'translation',  // tr_xxx - 翻译
-  'image',        // att_xxx (type=image) - 图片附件
-  'file',         // att_xxx (type=file) - 文档附件
-  'mindmap',      // mm_xxx - 知识导图
-] as const;
+export const VFS_REF_TYPES = ['folder', ...VFS_SOURCE_RESOURCE_TYPES] as const;
 
 /**
  * VFS 引用类型（从常量数组派生）
@@ -326,10 +355,9 @@ export const VFS_MAX_PATH_DEPTH = 10;
 /**
  * 检查是否为有效的 VFS 资源类型
  * @deprecated 使用 isVfsRefType 替代
- * ★ 2026-01 添加 mindmap 类型支持
  */
 export function isVfsResourceType(type: string): type is VfsResourceType {
-  return ['note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'retrieval', 'mindmap'].includes(type);
+  return VFS_RESOURCE_TYPES.includes(type as VfsResourceType);
 }
 
 /**

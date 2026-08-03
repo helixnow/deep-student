@@ -1,0 +1,593 @@
+/*
+ * @nvq/flowtoken/dist/styles.css 的本地修补版（原版勿直接 import）。
+ *
+ * 修补原因（2026-07 拖拽性能排查）：原版含 `pre[class*="language-"] *` 等
+ * 按 class 属性建键的宽键失效集选择器——Blink 失效集按属性名建键，页面上
+ * 任何元素的 class 一变（如 overlayscrollbars 每帧切类、React 重渲染）都会
+ * 触发这些规则的子树全失效，造成大范围 style recalc（CDP invalidationTracking
+ * 实锤）。本文件将其改写为稳定类名作键（.flowtoken-markdown / .ft-code-content），
+ * 其余内容与原版一致。升级 flowtoken 后请对照 diff 重新修补。
+ */
+@keyframes ft-fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ft-blurIn {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0px);
+  }
+}
+
+@keyframes ft-typewriter {
+  from {
+    width: 0;
+    overflow: hidden;
+  }
+  to {
+    width: fit-content;
+  }
+}
+
+@keyframes ft-slideInFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0%);
+    opacity: 1;
+  }
+}
+
+@keyframes ft-fadeAndScale {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ft-colorTransition {
+  from {
+    color: red;
+  }
+  to {
+    color: black;
+  }
+}
+
+@keyframes ft-rotateIn {
+  from {
+    transform: rotate(-360deg);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes ft-bounceIn {
+  0%,
+  40%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+  20% {
+    transform: translateY(-10%);
+  }
+  60% {
+    transform: translateY(-5%);
+  }
+}
+
+@keyframes ft-elastic {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  10% {
+    transform: scale(1.2);
+  }
+}
+
+@keyframes ft-highlight {
+  from {
+    background-color: yellow;
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes ft-blurAndSharpen {
+  from {
+    filter: blur(5px);
+    opacity: 0;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ft-dropIn {
+  from {
+    transform: translateY(-10%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ft-slideUp {
+  from {
+    transform: translateY(10%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ft-wave {
+  from {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+:root {
+  --ft-marker-animation: none;
+  --animation-duration: 0.6s;
+  --fade-animation-function: ease-out;
+}
+
+/* V3: Gemini-style animation classes */
+.pending {
+  opacity: 0;
+  animation-name: pending-pulse;
+  animation-duration: 0.1s;
+  animation-fill-mode: forwards;
+}
+
+.animating {
+  animation-name: fade-in-text;
+  animation-duration: var(--animation-duration);
+  animation-timing-function: var(--fade-animation-function);
+  animation-fill-mode: forwards;
+}
+
+@keyframes pending-pulse {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in-text {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.ft-custom-li::marker {
+  animation: var(--ft-marker-animation);
+}
+
+.ft-code-block {
+  animation: var(--ft-marker-animation);
+}
+
+/* Override Tailwind Typography .prose styles for code blocks */
+.prose .rounded-b-xl {
+  overflow: visible !important;
+  border-radius: 0 0 0.75rem 0.75rem !important;
+}
+
+.prose code::before,
+.prose code::after {
+  content: none !important;
+}
+
+.prose blockquote p::before,
+.prose blockquote p::after {
+  content: none !important;
+}
+
+/* React Syntax Highlighter - GitHub Theme CSS Variables */
+/* CSS Variables - Light Theme (GitHub Light) */
+html:not(.dark) {
+  --rsh-bg: hsl(300 50% 100%);
+  --rsh-text: hsl(210, 12%, 16%);
+  --rsh-comment: hsl(212, 8%, 45%);
+  --rsh-keyword: hsl(354, 66%, 54%);
+  --rsh-string: hsl(212, 94%, 20%);
+  --rsh-constant: hsl(212, 100%, 39%);
+  --rsh-function: hsl(261, 51%, 51%);
+  --rsh-variable: hsl(24, 92%, 46%);
+  --rsh-operator: hsl(24, 92%, 46%);
+  --rsh-punctuation: hsl(210, 12%, 16%);
+  --rsh-tag: hsl(134, 60%, 33%);
+  --rsh-property: hsl(212, 100%, 39%);
+  --rsh-url: hsl(212, 94%, 20%);
+}
+
+/* CSS Variables - Dark Theme (GitHub Dark) */
+html.dark {
+  --rsh-bg: hsl(240.02 6% 10%);
+  --rsh-text: hsl(214, 13%, 90%);
+  --rsh-comment: hsl(212, 8%, 45%);
+  --rsh-keyword: hsl(354, 92%, 72%);
+  --rsh-string: hsl(212, 100%, 81%);
+  --rsh-constant: hsl(212, 100%, 74%);
+  --rsh-function: hsl(261, 76%, 76%);
+  --rsh-variable: hsl(25, 100%, 72%);
+  --rsh-operator: hsl(25, 100%, 72%);
+  --rsh-punctuation: hsl(214, 13%, 90%);
+  --rsh-tag: hsl(135, 68%, 72%);
+  --rsh-property: hsl(212, 100%, 74%);
+  --rsh-url: hsl(210, 100%, 93%);
+}
+
+/* Base container styles */
+.prose .rsh-container,
+.rsh-container {
+  background: var(--rsh-bg) !important;
+  color: var(--rsh-text) !important;
+}
+
+/* Override react-syntax-highlighter default styles
+ * 修补：原版 `pre[class*="language-"]`（class 属性宽键）改为按稳定容器类作键。
+ * flowtoken 的块级代码渲染在 .ft-code-content 内；.flowtoken-markdown 兜底
+ * 覆盖直接渲染的 pre。不含裸 `code`，避免波及 .ft-inline-code 行内码。 */
+.flowtoken-markdown pre,
+.flowtoken-markdown pre code,
+.ft-code-content pre,
+.ft-code-content code {
+  background: var(--rsh-bg) !important;
+  color: var(--rsh-text) !important;
+  text-shadow: none !important;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Monaco,
+    "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace !important;
+}
+
+/* Force text color for all syntax elements（键为稳定类，仅挂载时失效一次） */
+.flowtoken-markdown pre *,
+.ft-code-content pre * {
+  color: inherit !important;
+}
+
+/* Token styles based on test-complete-classes.js analysis */
+/* Comments */
+.prose .comment,
+.prose .token.comment,
+.prose .prolog,
+.prose .token.prolog,
+.prose .cdata,
+.prose .token.cdata,
+.prose code .comment,
+.prose code .token.comment,
+.prose code .prolog,
+.prose code .token.prolog,
+.prose code .cdata,
+.prose code .token.cdata,
+.comment,
+.token.comment,
+.prolog,
+.token.prolog,
+.cdata,
+.token.cdata {
+  color: var(--rsh-comment) !important;
+  font-style: italic !important;
+}
+
+/* Keywords */
+.prose .keyword,
+.prose .token.keyword,
+.prose .module,
+.prose .token.module,
+.prose code .keyword,
+.prose code .token.keyword,
+.prose code .module,
+.prose code .token.module,
+.keyword,
+.token.keyword,
+.module,
+.token.module {
+  color: var(--rsh-keyword) !important;
+}
+
+/* Strings */
+.prose .string,
+.prose .token.string,
+.prose .char,
+.prose .attr-value,
+.prose .selector,
+.prose .builtin,
+.prose .inserted,
+.prose .regex,
+.prose .imports,
+.prose .token.imports,
+.prose code .string,
+.prose code .token.string,
+.prose code .char,
+.prose code .attr-value,
+.prose code .selector,
+.prose code .builtin,
+.prose code .inserted,
+.prose code .regex,
+.prose code .imports,
+.prose code .token.imports,
+.string,
+.token.string,
+.char,
+.attr-value,
+.selector,
+.builtin,
+.inserted,
+.regex,
+.imports,
+.token.imports {
+  color: var(--rsh-string) !important;
+}
+
+/* Numbers and constants */
+.prose .number,
+.prose .token.number,
+.prose .boolean,
+.prose .token.boolean,
+.prose .constant,
+.prose .token.constant,
+.prose .attr-name,
+.prose .token.attr-name,
+.prose .class-name,
+.prose .token.class-name,
+.prose .maybe-class-name,
+.prose .token.maybe-class-name,
+.prose .atrule,
+.prose .token.atrule,
+.prose code .number,
+.prose code .token.number,
+.prose code .boolean,
+.prose code .token.boolean,
+.prose code .constant,
+.prose code .token.constant,
+.prose code .attr-name,
+.prose code .token.attr-name,
+.prose code .class-name,
+.prose code .token.class-name,
+.prose code .maybe-class-name,
+.prose code .token.maybe-class-name,
+.prose code .atrule,
+.prose code .token.atrule,
+.number,
+.token.number,
+.boolean,
+.token.boolean,
+.constant,
+.token.constant,
+.attr-name,
+.token.attr-name,
+.class-name,
+.token.class-name,
+.maybe-class-name,
+.token.maybe-class-name,
+.atrule,
+.token.atrule {
+  color: var(--rsh-constant) !important;
+}
+
+/* Functions and variables */
+.prose .function,
+.prose .token.function,
+.prose .method,
+.prose .token.method,
+.prose .variable,
+.prose .token.variable,
+.prose .operator,
+.prose .token.operator,
+.prose code .function,
+.prose code .token.function,
+.prose code .method,
+.prose code .token.method,
+.prose code .variable,
+.prose code .token.variable,
+.prose code .operator,
+.prose code .token.operator,
+.function,
+.token.function,
+.method,
+.token.method,
+.variable,
+.token.variable,
+.operator,
+.token.operator {
+  color: var(--rsh-function) !important;
+}
+
+/* Tags and properties */
+.prose .tag,
+.prose .token.tag,
+.prose .property,
+.prose .token.property,
+.prose .literal-property,
+.prose .token.literal-property,
+.prose .property-access,
+.prose .token.property-access,
+.prose .symbol,
+.prose .token.symbol,
+.prose .deleted,
+.prose .token.deleted,
+.prose .important,
+.prose .token.important,
+.prose code .tag,
+.prose code .token.tag,
+.prose code .property,
+.prose code .token.property,
+.prose code .literal-property,
+.prose code .token.literal-property,
+.prose code .property-access,
+.prose code .token.property-access,
+.prose code .symbol,
+.prose code .token.symbol,
+.prose code .deleted,
+.prose code .token.deleted,
+.prose code .important,
+.prose code .token.important,
+.tag,
+.token.tag,
+.property,
+.token.property,
+.literal-property,
+.token.literal-property,
+.property-access,
+.token.property-access,
+.symbol,
+.token.symbol,
+.deleted,
+.token.deleted,
+.important,
+.token.important {
+  color: var(--rsh-tag) !important;
+}
+
+/* Punctuation */
+.prose .punctuation,
+.prose .token.punctuation,
+.prose code .punctuation,
+.prose code .token.punctuation,
+.punctuation,
+.token.punctuation {
+  color: var(--rsh-punctuation) !important;
+}
+
+/* URLs */
+.prose .url,
+.prose .token.url,
+.prose code .url,
+.prose code .token.url,
+.url,
+.token.url {
+  color: var(--rsh-url) !important;
+}
+
+/* FlowToken DefaultCode Component Styles */
+.ft-inline-code {
+  font-size: 0.75rem;
+  font-weight: normal;
+  background-color: #f4f4f5;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.375rem;
+}
+
+html.dark .ft-inline-code {
+  background-color: #27272a;
+}
+
+.ft-code-container {
+  position: relative;
+  margin: 0.5rem 0;
+}
+
+.ft-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f4f4f5;
+  padding: 0.25rem;
+  border-radius: 0.75rem 0.75rem 0 0;
+  border: 1px solid #e4e4e7;
+  border-bottom: none;
+}
+
+html.dark .ft-code-header {
+  background-color: #27272a;
+  border-color: #3f3f46;
+}
+
+.ft-code-language {
+  font-size: 0.75rem;
+  color: #18181b;
+}
+
+html.dark .ft-code-language {
+  color: #fafafa;
+}
+
+.ft-copy-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  padding: 0.375rem;
+  border-radius: 0.5rem;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.ft-copy-button:hover {
+  background-color: #e4e4e7;
+}
+
+html.dark .ft-copy-button:hover {
+  background-color: #3f3f46;
+}
+
+.ft-copy-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  transition: all 0.3s;
+}
+
+.ft-copy-icon-default {
+  color: #71717a;
+}
+
+html.dark .ft-copy-icon-default {
+  color: #a1a1aa;
+}
+
+.ft-copy-icon-success {
+  color: #22c55e;
+}
+
+.ft-code-content {
+  border: 1px solid #e4e4e7;
+  border-radius: 0 0 0.75rem 0.75rem;
+  overflow: visible;
+}
+
+html.dark .ft-code-content {
+  border-color: #3f3f46;
+  background-color: #0c0a09;
+}

@@ -4,6 +4,11 @@ mod exam_engine;
 mod model2_pipeline;
 pub(crate) mod parser;
 mod rag_extension;
+pub mod routing;
+pub mod utf8_stream;
+
+// 🔒 URL 日志脱敏工具（Gemini 等把 API key 放在 query 中），供 llm_manager 外的调用方复用
+pub(crate) use model2_pipeline::sanitize_url_for_log;
 
 use crate::canonical_tools::{
     build_openai_function_tool_schema, prepare_external_tool, ApiNameSource, CanonicalExternalTool,
@@ -13,6 +18,7 @@ use crate::crypto::{CryptoService, EncryptedData};
 use crate::database::Database;
 use crate::file_manager::FileManager;
 use crate::models::{AppError, ChatMessage, ExamCardBBox, ModelAssignments};
+use crate::openai_codex::CodexAuthManager;
 use crate::providers::{ProviderAdapter, ProviderError};
 use crate::vendors::load_builtin_api_configs;
 use base64::{engine::general_purpose, Engine as _};
@@ -33,6 +39,9 @@ use std::sync::LazyLock;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
 use uuid::Uuid;
+
+/// Suffix used by ChatV2 run-scoped LLM hook keys to carry the owning stream generation.
+pub(crate) const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
 
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryCapabilityFlags {
@@ -125,6 +134,62 @@ static PROVIDER_PROTOCOL_REGISTRY: LazyLock<Vec<ProviderProtocolRegistryRecord>>
     },
 );
 
+pub const AUTH_MODE_NONE: &str = "none";
+pub const AUTH_MODE_OPENAI_CODEX_OAUTH: &str = "openai_codex_oauth";
+
+fn api_origins_match(left: &str, right: &str) -> bool {
+    let Ok(left) = url::Url::parse(left.trim()) else {
+        return false;
+    };
+    let Ok(right) = url::Url::parse(right.trim()) else {
+        return false;
+    };
+    left.scheme().eq_ignore_ascii_case(right.scheme())
+        && left.host_str().map(str::to_ascii_lowercase)
+            == right.host_str().map(str::to_ascii_lowercase)
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn is_sensitive_vendor_header(name: &str) -> bool {
+    // 自定义 Header 的语义不可可靠推断（X-Auth、X-Api-Key-V2、租户签名等命名
+    // 没有统一标准），因此一律按凭据处理：落盘加密、返回 renderer 时掩码，
+    // 跨源修改时要求显式重输。
+    !name.trim().is_empty()
+}
+
+fn is_masked_secret(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty() && value.chars().all(|character| character == '*')
+}
+
+fn deserialize_vendor_configs(
+    raw: &str,
+) -> std::result::Result<Vec<VendorConfig>, serde_json::Error> {
+    let mut value: Value = serde_json::from_str(raw)?;
+    if let Some(vendors) = value.as_array_mut() {
+        for vendor in vendors {
+            let Some(object) = vendor.as_object_mut() else {
+                continue;
+            };
+            let legacy_no_api_key = object
+                .get("noApiKey")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let has_auth_mode = object
+                .get("authMode")
+                .and_then(Value::as_str)
+                .is_some_and(|mode| !mode.trim().is_empty());
+            if legacy_no_api_key && !has_auth_mode {
+                object.insert(
+                    "authMode".to_string(),
+                    Value::String(AUTH_MODE_NONE.to_string()),
+                );
+            }
+        }
+    }
+    serde_json::from_value(value)
+}
+
 /// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
 /// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
 pub(crate) struct IncrementalJsonArrayParser {
@@ -190,6 +255,76 @@ mod tests {
         LLMManager::new(db, file_manager).expect("create llm manager")
     }
 
+    struct TestStreamHooks;
+    impl LLMStreamHooks for TestStreamHooks {}
+
+    #[tokio::test]
+    async fn stale_stream_hook_owner_cannot_unregister_replacement() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let old_owner: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+        let replacement: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+
+        manager
+            .register_stream_hooks("chat_v2_event_test", old_owner.clone())
+            .await;
+        manager
+            .register_stream_hooks("chat_v2_event_test", replacement.clone())
+            .await;
+
+        assert!(
+            !manager
+                .unregister_stream_hooks_if_owner("chat_v2_event_test", &old_owner)
+                .await,
+            "stale cleanup must not remove the replacement Arc"
+        );
+        let current = manager
+            .get_hook("chat_v2_event_test")
+            .await
+            .expect("replacement hook should remain registered");
+        assert!(Arc::ptr_eq(&current, &replacement));
+        assert!(
+            manager
+                .unregister_stream_hooks_if_owner("chat_v2_event_test", &replacement)
+                .await
+        );
+        assert!(manager.get_hook("chat_v2_event_test").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn stream_guard_cleanup_clears_hook_channel_and_pending_cancel() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = Arc::new(create_test_llm_manager(&temp_dir));
+        let stream_event = "chat_v2_event_test_var_msg_run_1";
+        let owner: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+
+        manager
+            .register_stream_hooks(stream_event, owner.clone())
+            .await;
+        let _receiver = manager.register_cancel_channel(stream_event).await;
+        manager.request_cancel_stream(stream_event).await;
+        assert!(manager
+            .cancel_channels
+            .lock()
+            .await
+            .contains_key(stream_event));
+        assert!(manager.cancel_registry.lock().await.contains(stream_event));
+        let mut guard = crate::chat_v2::pipeline::tool_loop::StreamHooksGuard::new(
+            Arc::clone(&manager),
+            stream_event.to_string(),
+            owner,
+        );
+        guard.cleanup().await;
+
+        assert!(manager.get_hook(stream_event).await.is_none());
+        assert!(!manager
+            .cancel_channels
+            .lock()
+            .await
+            .contains_key(stream_event));
+        assert!(!manager.cancel_registry.lock().await.contains(stream_event));
+    }
+
     #[test]
     fn prepare_frontend_mcp_tool_for_legacy_api_encodes_invalid_names_with_namespace_prefix() {
         let tool = FrontendMcpTool {
@@ -219,6 +354,7 @@ mod tests {
             id: "builtin-openai".to_string(),
             name: "OpenAI".to_string(),
             provider_type: "openai".to_string(),
+            auth_mode: None,
             api_protocol: Some(resolve_preferred_protocol_for_provider(
                 Some("openai"),
                 Some("openai"),
@@ -232,6 +368,7 @@ mod tests {
             )),
             base_url: "https://api.openai.com/v1".to_string(),
             api_key: api_key.to_string(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -313,6 +450,548 @@ mod tests {
     }
 
     #[test]
+    fn registry_level_responses_support_only_unlocks_option_without_switching_default() {
+        // qwen/doubao：注册表 supports_openai_responses=true（白名单制端点），
+        // 默认路由必须保持 default_protocol = chat completions。
+        for (provider, base_url) in [
+            ("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            ("doubao", "https://ark.cn-beijing.volces.com/api/v3"),
+            ("ernie", "https://qianfan.baidubce.com/v2"),
+        ] {
+            let record = get_provider_protocol_record(Some(provider))
+                .unwrap_or_else(|| panic!("{provider} provider should exist in registry"));
+            assert!(record.supports_openai_responses, "{provider} supports flag");
+            assert!(
+                record
+                    .allowed_protocols
+                    .iter()
+                    .any(|protocol| protocol == "openai_responses"),
+                "{provider} should keep responses selectable"
+            );
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    base_url,
+                    None
+                ),
+                "openai_chat_completions",
+                "{provider} default routing should stay on chat completions"
+            );
+            // 供应商级显式声明仍可切换到 Responses。
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    base_url,
+                    Some(true),
+                ),
+                "openai_responses",
+                "{provider} explicit opt-in should unlock responses"
+            );
+        }
+
+        for provider in ["grok", "xai"] {
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    "https://api.x.ai/v1",
+                    None,
+                ),
+                "openai_responses",
+                "{provider} should honor its registry Responses default"
+            );
+        }
+    }
+
+    #[test]
+    fn responses_routing_accepts_all_model_adapters_when_the_host_declares_support() {
+        for adapter in [
+            "qwen",
+            "deepseek",
+            "doubao",
+            "anthropic",
+            "claude",
+            "google",
+            "gemini",
+        ] {
+            let explicit = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                base_url: "https://proxy.example.com/v1".to_string(),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_responses".to_string()),
+                supports_openai_responses: Some(true),
+                ..ApiConfig::default()
+            };
+            assert!(
+                should_use_openai_responses_for_config(&explicit),
+                "{adapter} should honor an explicitly supported Responses protocol"
+            );
+
+            let defaulted = ApiConfig {
+                api_protocol: None,
+                ..explicit
+            };
+            assert!(
+                should_use_openai_responses_for_config(&defaulted),
+                "{adapter} should use the vendor-declared Responses default"
+            );
+        }
+
+        let official_openai_with_compatible_adapter = ApiConfig {
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model_adapter: "deepseek".to_string(),
+            api_protocol: None,
+            supports_openai_responses: None,
+            ..ApiConfig::default()
+        };
+        assert!(should_use_openai_responses_for_config(
+            &official_openai_with_compatible_adapter
+        ));
+    }
+
+    #[test]
+    fn protocol_routing_uses_native_transports_only_when_the_protocol_selects_them() {
+        let cases = [
+            (
+                "anthropic",
+                "anthropic",
+                None,
+                "https://api.anthropic.com",
+                "claude-sonnet-4-6",
+                "/v1/messages",
+            ),
+            (
+                "gemini",
+                "google",
+                None,
+                "https://generativelanguage.googleapis.com",
+                "gemini-3.1-pro-preview",
+                ":streamGenerateContent",
+            ),
+            (
+                "custom",
+                "anthropic",
+                None,
+                "https://one-api.example.com/v1",
+                "claude-sonnet-4-6",
+                "/chat/completions",
+            ),
+            (
+                "openrouter",
+                "google",
+                None,
+                "https://openrouter.ai/api/v1",
+                "google/gemini-3.1-pro-preview",
+                "/chat/completions",
+            ),
+            (
+                "custom",
+                "anthropic",
+                Some("openai_responses"),
+                "https://one-api.example.com/v1",
+                "anthropic/claude-sonnet-4-6",
+                "/responses",
+            ),
+        ];
+
+        for (provider, model_adapter, api_protocol, base_url, model, expected_url) in cases {
+            let config = ApiConfig {
+                provider_type: Some(provider.to_string()),
+                model_adapter: model_adapter.to_string(),
+                api_protocol: api_protocol.map(str::to_string),
+                supports_openai_responses: api_protocol.map(|_| true),
+                base_url: base_url.to_string(),
+                model: model.to_string(),
+                ..ApiConfig::default()
+            };
+            let request = build_provider_adapter(&config)
+                .build_request(
+                    &config.base_url,
+                    "test-key",
+                    &config.model,
+                    &json!({
+                        "model": config.model,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "stream": true
+                    }),
+                )
+                .expect("provider request should build");
+            assert!(
+                request.url.contains(expected_url),
+                "provider={provider}, adapter={model_adapter}, url={}",
+                request.url
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_native_protocols_still_select_native_transports_on_custom_hosts() {
+        for (adapter, protocol, expected_url) in [
+            ("anthropic", "anthropic_messages", "/messages"),
+            (
+                "google",
+                "google_generate_content",
+                ":streamGenerateContent",
+            ),
+        ] {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some(protocol.to_string()),
+                base_url: "https://proxy.example.com/v1".to_string(),
+                model: if adapter == "anthropic" {
+                    "claude-sonnet-4-6".to_string()
+                } else {
+                    "gemini-3.1-pro-preview".to_string()
+                },
+                ..ApiConfig::default()
+            };
+            let request = build_provider_adapter(&config)
+                .build_request(
+                    &config.base_url,
+                    "test-key",
+                    &config.model,
+                    &json!({
+                        "model": config.model,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "stream": true
+                    }),
+                )
+                .expect("native provider request should build");
+            assert!(request.url.contains(expected_url), "url={}", request.url);
+        }
+    }
+
+    #[test]
+    fn explicit_native_protocols_use_native_reasoning_body_dialects_on_custom_hosts() {
+        let cases = [
+            (
+                "anthropic",
+                "anthropic_messages",
+                "claude-sonnet-4-6",
+                "thinking",
+            ),
+            (
+                "google",
+                "google_generate_content",
+                "gemini-3.1-pro-preview",
+                "thinkingConfig",
+            ),
+        ];
+
+        for (adapter, protocol, model, expected_field) in cases {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                provider_scope: Some("custom".to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some(protocol.to_string()),
+                model: model.to_string(),
+                supports_reasoning: true,
+                thinking_enabled: true,
+                reasoning_effort: Some("high".to_string()),
+                ..ApiConfig::default()
+            };
+            let mut body = json!({"temperature": 0.7});
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+            assert!(body.get(expected_field).is_some(), "body={body}");
+            assert!(body.get("enable_thinking").is_none(), "body={body}");
+        }
+    }
+
+    #[test]
+    fn proxied_claude_and_gemini_keep_openai_nonstream_responses_unchanged() {
+        let response = json!({
+            "id": "chatcmpl_proxy",
+            "choices": [{"message": {"role": "assistant", "content": "complete"}}],
+            "usage": {"completion_tokens": 12}
+        });
+
+        for (provider, adapter) in [("custom", "anthropic"), ("openrouter", "google")] {
+            let config = ApiConfig {
+                provider_type: Some(provider.to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_chat_completions".to_string()),
+                base_url: "https://proxy.example.com/v1".to_string(),
+                ..ApiConfig::default()
+            };
+            assert_eq!(
+                normalize_nonstream_response_to_openai(&config, &response)
+                    .expect("OpenAI-shaped response should parse"),
+                response
+            );
+        }
+    }
+
+    #[test]
+    fn proxied_model_families_use_gateway_reasoning_fields() {
+        for (provider, adapter, model, uses_nested_reasoning) in [
+            ("custom", "anthropic", "claude-sonnet-4-6", false),
+            (
+                "openrouter",
+                "google",
+                "google/gemini-3.1-pro-preview",
+                true,
+            ),
+            ("custom", "qwen", "qwen3.5-plus", false),
+            ("openrouter", "zhipu", "z-ai/glm-5", true),
+            ("one-api", "moonshot", "moonshotai/kimi-k2.5", false),
+        ] {
+            let config = ApiConfig {
+                provider_type: Some(provider.to_string()),
+                provider_scope: Some(provider.to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_chat_completions".to_string()),
+                model: model.to_string(),
+                supports_reasoning: true,
+                thinking_enabled: true,
+                reasoning_effort: Some("high".to_string()),
+                ..ApiConfig::default()
+            };
+            let mut body = json!({"temperature": 0.7});
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+            if uses_nested_reasoning {
+                assert_eq!(body["reasoning"]["effort"], json!("high"));
+                assert!(body.get("reasoning_effort").is_none(), "body={body}");
+            } else {
+                assert_eq!(body["reasoning_effort"], json!("high"));
+                assert!(body.get("reasoning").is_none(), "body={body}");
+            }
+            assert!(body.get("enable_thinking").is_none(), "body={body}");
+            assert!(body.get("thinking").is_none(), "body={body}");
+            assert!(body.get("thinkingConfig").is_none(), "body={body}");
+            assert!(body.get("output_config").is_none(), "body={body}");
+        }
+    }
+
+    #[test]
+    fn proxied_provider_effort_aliases_normalize_to_openai_values() {
+        for (adapter, model, requested, expected) in [
+            ("doubao", "doubao-seed-1-6-thinking", "auto", "medium"),
+            ("minimax", "MiniMax-M3", "adaptive", "medium"),
+            ("ernie", "ernie-5.0-thinking", "max", "xhigh"),
+            ("deepseek", "deepseek-v4-pro", "max", "xhigh"),
+            ("zhipu", "glm-5.2", "disabled", "none"),
+        ] {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                provider_scope: Some("custom".to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_chat_completions".to_string()),
+                model: model.to_string(),
+                supports_reasoning: true,
+                thinking_enabled: true,
+                reasoning_effort: Some(requested.to_string()),
+                ..ApiConfig::default()
+            };
+            let mut body = json!({"temperature": 0.7});
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+            assert_eq!(
+                body["reasoning_effort"],
+                json!(expected),
+                "adapter={adapter}, requested={requested}, body={body}"
+            );
+            assert!(body.get("enable_thinking").is_none(), "body={body}");
+            assert!(body.get("thinking").is_none(), "body={body}");
+        }
+    }
+
+    #[test]
+    fn proxied_budget_only_reasoning_maps_to_standard_effort() {
+        let config = ApiConfig {
+            provider_type: Some("sub2api".to_string()),
+            provider_scope: Some("sub2api".to_string()),
+            model_adapter: "qwen".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            model: "qwen3.7-plus".to_string(),
+            supports_reasoning: true,
+            thinking_enabled: true,
+            thinking_budget: Some(32768),
+            include_thoughts: true,
+            ..ApiConfig::default()
+        };
+        let mut body = json!({"temperature": 0.7});
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body["reasoning_effort"], json!("xhigh"));
+        assert!(body.get("enable_thinking").is_none(), "body={body}");
+        assert!(body.get("thinking_budget").is_none(), "body={body}");
+        assert!(body.get("include_thoughts").is_none(), "body={body}");
+    }
+
+    #[test]
+    fn proxied_toggle_only_reasoning_survives_responses_conversion() {
+        for (thinking_enabled, expected_effort) in [(false, "none"), (true, "medium")] {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                provider_scope: Some("custom".to_string()),
+                model_adapter: "anthropic".to_string(),
+                api_protocol: Some("openai_responses".to_string()),
+                supports_openai_responses: Some(true),
+                model: "anthropic/claude-sonnet-4-6".to_string(),
+                supports_reasoning: true,
+                thinking_enabled,
+                ..ApiConfig::default()
+            };
+            let mut body = json!({
+                "model": config.model,
+                "messages": [{"role": "user", "content": "test"}],
+                "stream": true
+            });
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+            let request = build_provider_adapter(&config)
+                .build_request(&config.base_url, "test-key", &config.model, &body)
+                .expect("Responses request should build");
+
+            assert_eq!(request.body["reasoning"]["effort"], json!(expected_effort));
+            assert!(request.body.get("enable_thinking").is_none());
+        }
+    }
+
+    #[test]
+    fn openrouter_reasoning_survives_responses_conversion_without_double_wrapping() {
+        let config = ApiConfig {
+            provider_type: Some("openrouter".to_string()),
+            provider_scope: Some("openrouter".to_string()),
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model_adapter: "google".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            supports_openai_responses: Some(true),
+            model: "google/gemini-3.1-pro-preview".to_string(),
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("high".to_string()),
+            ..ApiConfig::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [{"role": "user", "content": "test"}],
+            "stream": true
+        });
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body["reasoning"]["effort"], json!("high"));
+        assert!(body.get("reasoning_effort").is_none());
+
+        let request = build_provider_adapter(&config)
+            .build_request(&config.base_url, "test-key", &config.model, &body)
+            .expect("OpenRouter Responses request should build");
+
+        assert_eq!(request.body["reasoning"]["effort"], json!("high"));
+        assert_eq!(request.body["reasoning"]["summary"], json!("auto"));
+        assert!(request.body.get("reasoning_effort").is_none());
+        assert!(request.body.pointer("/reasoning/reasoning").is_none());
+    }
+
+    #[test]
+    fn openrouter_chat_request_uses_nested_reasoning_dialect() {
+        let config = ApiConfig {
+            provider_type: Some("openrouter".to_string()),
+            provider_scope: Some("openrouter".to_string()),
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model_adapter: "anthropic".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            model: "anthropic/claude-sonnet-4.6".to_string(),
+            supports_reasoning: true,
+            reasoning_effort: Some("high".to_string()),
+            ..ApiConfig::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [{"role": "user", "content": "test"}],
+            "stream": true
+        });
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+        let request = build_provider_adapter(&config)
+            .build_request(&config.base_url, "test-key", &config.model, &body)
+            .expect("OpenRouter Chat request should build");
+
+        assert!(
+            request.url.ends_with("/chat/completions"),
+            "url={}",
+            request.url
+        );
+        assert_eq!(request.body["reasoning"]["effort"], json!("high"));
+        assert!(request.body.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn providers_without_responses_endpoint_no_longer_allow_openai_responses() {
+        for provider in [
+            "deepseek",
+            "zhipu",
+            "moonshot",
+            "minimax",
+            "mimo",
+            "nvidia",
+            "siliconflow",
+            "mistral",
+        ] {
+            let allowed = provider_allowed_protocols(Some(provider));
+            assert!(
+                !allowed
+                    .iter()
+                    .any(|protocol| protocol == "openai_responses"),
+                "{provider} must not expose the phantom openai_responses protocol"
+            );
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(Some(provider), Some("general"), "", None),
+                "openai_chat_completions"
+            );
+        }
+    }
+
+    #[test]
+    fn new_2026_providers_are_registered_with_expected_defaults() {
+        for provider in ["grok", "xai", "ernie", "mistral"] {
+            let record = get_provider_protocol_record(Some(provider))
+                .unwrap_or_else(|| panic!("{provider} provider should exist in registry"));
+            let expected_default = if matches!(provider, "grok" | "xai") {
+                "openai_responses"
+            } else {
+                "openai_chat_completions"
+            };
+            assert_eq!(record.default_protocol, expected_default);
+            assert!(
+                !record
+                    .allowed_protocols
+                    .iter()
+                    .any(|protocol| protocol == "anthropic_messages"),
+                "{provider} must not declare anthropic_messages (backend does not consume api_protocol yet)"
+            );
+        }
+    }
+
+    #[test]
+    fn official_openai_detection_uses_exact_host_match() {
+        assert!(resolves_to_official_openai(
+            Some("openai"),
+            "https://api.openai.com/v1"
+        ));
+        assert!(resolves_to_official_openai(Some("openai"), ""));
+        // 中转 URL 在 path 中携带官方域名时不得误判。
+        assert!(!resolves_to_official_openai(
+            Some("openai"),
+            "https://myproxy.com/api.openai.com/v1"
+        ));
+        assert!(!resolves_to_official_openai(
+            Some("openai"),
+            "https://api.openai.com.evil.example/v1"
+        ));
+    }
+
+    #[test]
     fn provider_protocol_registry_contract_is_well_formed() {
         let raw = include_str!("../../../scripts/provider-protocol-registry.json");
         let registry: ProviderProtocolRegistryDocument =
@@ -358,6 +1037,86 @@ mod tests {
     }
 
     #[test]
+    fn openai_codex_registry_is_responses_only() {
+        let codex = get_provider_protocol_record(Some("openai_codex"))
+            .expect("openai_codex provider should exist in registry");
+
+        assert_eq!(codex.default_protocol, "openai_responses");
+        assert_eq!(codex.allowed_protocols, vec!["openai_responses"]);
+        assert!(codex.supports_openai_responses);
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("openai_codex"),
+                Some("general"),
+                "https://chatgpt.com/backend-api/codex",
+                Some(true),
+            ),
+            "openai_responses"
+        );
+    }
+
+    #[test]
+    fn auth_mode_defaults_for_legacy_serialized_configs() {
+        let mut api_value =
+            serde_json::to_value(ApiConfig::default()).expect("serialize api config");
+        api_value
+            .as_object_mut()
+            .expect("api config object")
+            .remove("authMode");
+        let api_config: ApiConfig =
+            serde_json::from_value(api_value).expect("deserialize legacy api config");
+        assert_eq!(api_config.auth_mode, None);
+
+        let mut vendor_value =
+            serde_json::to_value(VendorConfig::default()).expect("serialize vendor config");
+        vendor_value
+            .as_object_mut()
+            .expect("vendor config object")
+            .remove("authMode");
+        let vendor_config: VendorConfig =
+            serde_json::from_value(vendor_value).expect("deserialize legacy vendor config");
+        assert_eq!(vendor_config.auth_mode, None);
+    }
+
+    #[test]
+    fn oauth_codex_builtin_model_requires_an_authenticated_session() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let (vendors, profiles) = manager
+            .load_builtin_vendor_profiles()
+            .expect("load builtin vendor profiles");
+        let vendor = vendors
+            .iter()
+            .find(|vendor| vendor.id == "builtin-openai-codex")
+            .expect("Codex subscription vendor");
+        let profile = profiles
+            .iter()
+            .find(|profile| profile.id == "builtin-codex-gpt-5.4")
+            .expect("Codex subscription model");
+
+        assert!(vendor.api_key.is_empty());
+        assert_eq!(
+            vendor.auth_mode.as_deref(),
+            Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
+        );
+        let signed_out = manager
+            .merge_vendor_profile(vendor, profile, false)
+            .expect("resolve signed-out Codex subscription model");
+        assert!(!signed_out.runtime.enabled);
+
+        let resolved = manager
+            .merge_vendor_profile(vendor, profile, true)
+            .expect("resolve Codex subscription model");
+        assert!(resolved.runtime.enabled);
+        assert!(resolved.runtime.api_key.is_empty());
+        assert_eq!(
+            resolved.runtime.api_protocol.as_deref(),
+            Some("openai_responses")
+        );
+        assert!(should_use_openai_responses_for_config(&resolved.runtime));
+    }
+
+    #[test]
     fn third_party_openai_compatible_base_url_does_not_imply_official_responses_support() {
         assert!(!provider_supports_openai_responses(
             Some("openai"),
@@ -374,10 +1133,12 @@ mod tests {
             id: "vendor-qsl".to_string(),
             name: "QSL".to_string(),
             provider_type: "openai".to_string(),
+            auth_mode: None,
             api_protocol: Some("openai_responses".to_string()),
             supports_openai_responses: None,
             base_url: "https://api.qsl.fan/v1".to_string(),
             api_key: String::new(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -453,6 +1214,65 @@ mod tests {
             }) => assert_eq!(thinking_content.as_deref(), Some("")),
             _ => panic!("expected merged tool call message"),
         }
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_preserves_responses_reasoning_item_and_round_text() {
+        let reasoning_item = json!({
+            "type": "reasoning",
+            "id": "reasoning_1",
+            "encrypted_content": "encrypted-state"
+        });
+        let mut message = tool_call_message("call_1", None);
+        message.content = "Calling the tool".to_string();
+        message.metadata = Some(json!({
+            "openai_responses_reasoning_item": reasoning_item.clone()
+        }));
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&[message]);
+
+        match merged.first() {
+            Some(MergedChatMessage::MergedToolCalls {
+                content,
+                response_reasoning_item,
+                ..
+            }) => {
+                assert_eq!(content, "Calling the tool");
+                assert_eq!(response_reasoning_item.as_ref(), Some(&reasoning_item));
+            }
+            _ => panic!("expected merged tool call message"),
+        }
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_splits_distinct_responses_reasoning_rounds() {
+        let mut first = tool_call_message("call_1", None);
+        first.metadata = Some(json!({
+            "openai_responses_reasoning_item": {"type": "reasoning", "id": "reasoning_1"}
+        }));
+        let mut second = tool_call_message("call_2", None);
+        second.metadata = Some(json!({
+            "openai_responses_reasoning_item": {"type": "reasoning", "id": "reasoning_2"}
+        }));
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&[first, second]);
+        let rounds: Vec<_> = merged
+            .iter()
+            .filter_map(|message| match message {
+                MergedChatMessage::MergedToolCalls {
+                    tool_calls,
+                    response_reasoning_item,
+                    ..
+                } => Some((tool_calls, response_reasoning_item)),
+                MergedChatMessage::Regular(_) => None,
+            })
+            .collect();
+
+        assert_eq!(rounds.len(), 2);
+        assert_eq!(rounds[0].0[0].id, "call_1");
+        assert_eq!(rounds[0].1.as_ref().unwrap()["id"], "reasoning_1");
+        assert_eq!(rounds[1].0[0].id, "call_2");
+        assert_eq!(rounds[1].1.as_ref().unwrap()["id"], "reasoning_2");
     }
 
     #[test]
@@ -671,7 +1491,7 @@ mod tests {
         let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
         let config = ApiConfig {
             provider_type: Some("siliconflow".to_string()),
-            provider_scope: Some("deepseek".to_string()),
+            provider_scope: Some("siliconflow".to_string()),
             model_adapter: "deepseek".to_string(),
             model: "deepseek-ai/DeepSeek-V3.2".to_string(),
             base_url: "https://api.siliconflow.cn/v1".to_string(),
@@ -999,7 +1819,7 @@ mod tests {
             ("qwen-plus", Some("qwen")),
             ("qwq-plus", Some("qwen")),
             ("glm-5", Some("zhipu")),
-            ("kimi-latest", Some("moonshot")),
+            ("kimi-k2.6", Some("moonshot")),
             ("MiniMax-M2.5", Some("minimax")),
             ("doubao-seed-2-0-pro-260215", Some("doubao")),
             ("gpt-5-mini", Some("openai")),
@@ -1148,24 +1968,13 @@ static CONTROL_CHARS_REGEX: LazyLock<Regex> =
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 struct StoredUserPreferenceProfile {
     enabled: bool,
     background: String,
     goals: String,
     communication: String,
     notes: String,
-}
-
-impl Default for StoredUserPreferenceProfile {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            background: String::new(),
-            goals: String::new(),
-            communication: String::new(),
-            notes: String::new(),
-        }
-    }
 }
 
 fn sanitize_user_preference_field(value: &str) -> String {
@@ -1282,6 +2091,235 @@ pub struct OcrModelConfig {
     pub priority: u32,
 }
 
+/// Free-text OCR 的运行时候选。系统 OCR 没有 HTTP 模型配置，必须作为独立候选执行。
+#[derive(Debug, Clone)]
+pub(crate) enum OcrRuntimeCandidate {
+    Remote {
+        config: ApiConfig,
+        engine_type: crate::ocr_adapters::OcrEngineType,
+    },
+    SystemOcr,
+}
+
+impl OcrRuntimeCandidate {
+    pub(crate) fn engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
+        match self {
+            Self::Remote { engine_type, .. } => *engine_type,
+            Self::SystemOcr => crate::ocr_adapters::OcrEngineType::SystemOcr,
+        }
+    }
+}
+
+fn build_ocr_runtime_candidates(
+    available: &[OcrModelConfig],
+    configs: &[ApiConfig],
+    task_type: crate::ocr_adapters::OcrTaskType,
+    system_ocr_supported: bool,
+) -> Vec<OcrRuntimeCandidate> {
+    use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType, OcrTaskType};
+
+    let mut enabled_models: Vec<&OcrModelConfig> =
+        available.iter().filter(|model| model.enabled).collect();
+    enabled_models.sort_by_key(|model| model.priority);
+
+    let mut result = Vec::new();
+    let mut included_system_ocr = false;
+    for ocr_config in enabled_models {
+        let declared_engine = OcrEngineType::from_str(&ocr_config.engine_type);
+        if declared_engine == OcrEngineType::SystemOcr
+            || ocr_config.config_id == crate::cmd::ocr::SYSTEM_OCR_CONFIG_ID
+        {
+            if task_type == OcrTaskType::FreeText && system_ocr_supported && !included_system_ocr {
+                result.push(OcrRuntimeCandidate::SystemOcr);
+                included_system_ocr = true;
+            }
+            continue;
+        }
+
+        let Some(config) = configs
+            .iter()
+            .find(|config| config.id == ocr_config.config_id)
+        else {
+            continue;
+        };
+        if !config.enabled || !config.is_multimodal {
+            continue;
+        }
+        let effective_engine =
+            if OcrAdapterFactory::validate_model_for_engine(&config.model, declared_engine) {
+                declared_engine
+            } else {
+                OcrAdapterFactory::infer_engine_from_model(&config.model)
+            };
+        result.push(OcrRuntimeCandidate::Remote {
+            config: config.clone(),
+            engine_type: effective_engine,
+        });
+    }
+
+    // `sort_by_key` is stable, so user priority remains authoritative within each class.
+    match task_type {
+        OcrTaskType::FreeText => result.sort_by_key(|candidate| {
+            if candidate.engine_type().is_dedicated_ocr() {
+                0
+            } else {
+                1
+            }
+        }),
+        OcrTaskType::Structured => result.sort_by_key(|candidate| {
+            if candidate.engine_type().is_dedicated_ocr() {
+                1
+            } else {
+                0
+            }
+        }),
+    }
+    result
+}
+
+fn inspect_free_text_ocr_available_from_settings(
+    available_models_json: Option<&str>,
+    legacy_engine: Option<&str>,
+    configs: &[ApiConfig],
+    system_ocr_supported: bool,
+) -> bool {
+    use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType, OcrTaskType};
+
+    if let Some(raw) = available_models_json {
+        if let Ok(models) = serde_json::from_str::<Vec<OcrModelConfig>>(raw) {
+            return !build_ocr_runtime_candidates(
+                &models,
+                configs,
+                OcrTaskType::FreeText,
+                system_ocr_supported,
+            )
+            .is_empty();
+        }
+    }
+
+    let Some(engine) = legacy_engine.and_then(OcrEngineType::try_from_str) else {
+        // Before the ordered engine list exists, supported native OCR is the compatibility
+        // default. Once the list exists, its explicit enabled flags are authoritative above.
+        return system_ocr_supported;
+    };
+    if engine == OcrEngineType::SystemOcr {
+        return system_ocr_supported;
+    }
+
+    configs.iter().any(|config| {
+        config.enabled
+            && config.is_multimodal
+            && !config.is_embedding
+            && !config.is_reranker
+            && !config.is_image_generation
+            && (OcrAdapterFactory::validate_model_for_engine(&config.model, engine)
+                || OcrAdapterFactory::infer_engine_from_model(&config.model) == engine)
+    })
+}
+
+#[cfg(test)]
+mod ocr_runtime_candidate_tests {
+    use super::*;
+    use crate::ocr_adapters::OcrTaskType;
+
+    fn system_model(enabled: bool) -> OcrModelConfig {
+        OcrModelConfig {
+            config_id: crate::cmd::ocr::SYSTEM_OCR_CONFIG_ID.to_string(),
+            model: "system".to_string(),
+            engine_type: "system_ocr".to_string(),
+            name: "System OCR".to_string(),
+            is_free: true,
+            enabled,
+            priority: 0,
+        }
+    }
+
+    fn generic_vlm() -> (OcrModelConfig, ApiConfig) {
+        (
+            OcrModelConfig {
+                config_id: "vlm".to_string(),
+                model: "vision-model".to_string(),
+                engine_type: "generic_vlm".to_string(),
+                name: "Vision".to_string(),
+                is_free: false,
+                enabled: true,
+                priority: 1,
+            },
+            ApiConfig {
+                id: "vlm".to_string(),
+                model: "vision-model".to_string(),
+                enabled: true,
+                is_multimodal: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    #[test]
+    fn system_ocr_is_native_free_text_candidate_but_never_structured() {
+        let models = vec![system_model(true)];
+        let free = build_ocr_runtime_candidates(&models, &[], OcrTaskType::FreeText, true);
+        assert!(matches!(free.as_slice(), [OcrRuntimeCandidate::SystemOcr]));
+
+        let structured = build_ocr_runtime_candidates(&models, &[], OcrTaskType::Structured, true);
+        assert!(structured.is_empty());
+    }
+
+    #[test]
+    fn readonly_ocr_inspection_uses_native_default_until_explicit_engine_list_exists() {
+        assert!(inspect_free_text_ocr_available_from_settings(
+            None,
+            None,
+            &[],
+            true
+        ));
+        assert!(!inspect_free_text_ocr_available_from_settings(
+            None,
+            None,
+            &[],
+            false
+        ));
+        let disabled = serde_json::to_string(&vec![system_model(false)]).unwrap();
+        assert!(!inspect_free_text_ocr_available_from_settings(
+            Some(&disabled),
+            None,
+            &[],
+            true
+        ));
+        let enabled = serde_json::to_string(&vec![system_model(true)]).unwrap();
+        assert!(inspect_free_text_ocr_available_from_settings(
+            Some(&enabled),
+            None,
+            &[],
+            true
+        ));
+        assert!(!inspect_free_text_ocr_available_from_settings(
+            Some(&enabled),
+            None,
+            &[],
+            false
+        ));
+    }
+
+    #[test]
+    fn readonly_ocr_inspection_accepts_enabled_remote_vlm_and_legacy_selection() {
+        let (model, config) = generic_vlm();
+        let raw = serde_json::to_string(&vec![model]).unwrap();
+        assert!(inspect_free_text_ocr_available_from_settings(
+            Some(&raw),
+            None,
+            std::slice::from_ref(&config),
+            false
+        ));
+        assert!(inspect_free_text_ocr_available_from_settings(
+            None,
+            Some("generic_vlm"),
+            &[config],
+            false
+        ));
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -1299,6 +2337,8 @@ pub struct ApiConfig {
     pub provider_type: Option<String>,
     #[serde(default)]
     pub provider_scope: Option<String>,
+    #[serde(default)]
+    pub auth_mode: Option<String>,
     #[serde(default)]
     pub api_protocol: Option<String>,
     #[serde(default)]
@@ -1329,6 +2369,9 @@ pub struct ApiConfig {
     pub is_read_only: bool,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// GPT-5.6 Responses API reasoning.mode (standard/pro)
+    #[serde(default)]
+    pub reasoning_mode: Option<String>,
     #[serde(default)]
     pub thinking_enabled: bool,
     #[serde(default)]
@@ -1390,6 +2433,7 @@ impl Default for ApiConfig {
             vendor_name: None,
             provider_type: None,
             provider_scope: None,
+            auth_mode: None,
             api_protocol: None,
             supports_openai_responses: None,
             api_key: String::new(),
@@ -1409,6 +2453,7 @@ impl Default for ApiConfig {
             is_builtin: false,
             is_read_only: false,
             reasoning_effort: None,
+            reasoning_mode: None,
             thinking_enabled: false,
             thinking_budget: None,
             include_thoughts: false,
@@ -1438,11 +2483,17 @@ pub struct VendorConfig {
     pub name: String,
     pub provider_type: String,
     #[serde(default)]
+    pub auth_mode: Option<String>,
+    #[serde(default)]
     pub api_protocol: Option<String>,
     #[serde(default)]
     pub supports_openai_responses: Option<bool>,
     pub base_url: String,
     pub api_key: String,
+    /// 🆕 Failover：同一供应商的额外 API key（api_key 之外的备用 key，
+    /// 可重试错误时按顺序轮换）。serde 默认空数组，旧配置向后兼容。
+    #[serde(default)]
+    pub api_keys: Vec<String>,
     #[serde(default)]
     pub headers: HashMap<String, String>,
     #[serde(default)]
@@ -1472,6 +2523,7 @@ impl Default for VendorConfig {
             id: Uuid::new_v4().to_string(),
             name: "New Vendor".to_string(),
             provider_type: "openai".to_string(),
+            auth_mode: None,
             api_protocol: Some(resolve_preferred_protocol_for_provider(
                 Some("openai"),
                 Some("openai"),
@@ -1485,6 +2537,7 @@ impl Default for VendorConfig {
             )),
             base_url: String::new(),
             api_key: String::new(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -1535,6 +2588,9 @@ pub struct ModelProfile {
     pub temperature: f32,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
+    /// GPT-5.6 Responses API reasoning.mode (standard/pro)
+    #[serde(default)]
+    pub reasoning_mode: Option<String>,
     #[serde(default)]
     pub thinking_enabled: bool,
     #[serde(default)]
@@ -1564,7 +2620,7 @@ pub struct ModelProfile {
     /// 是否收藏（收藏的模型在列表中优先显示）
     #[serde(default)]
     pub is_favorite: bool,
-    /// 模型级别的 max_tokens 限制（优先于供应商级别）
+    /// 模型级 max_tokens 限制；与供应商限制同时存在时取较小值。
     #[serde(default)]
     pub max_tokens_limit: Option<u32>,
     /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
@@ -1594,6 +2650,7 @@ impl Default for ModelProfile {
             max_output_tokens: default_max_output_tokens(),
             temperature: default_temperature(),
             reasoning_effort: None,
+            reasoning_mode: None,
             thinking_enabled: false,
             thinking_budget: None,
             include_thoughts: false,
@@ -1687,8 +2744,20 @@ fn provider_allowed_protocols(provider_type: Option<&str>) -> Vec<String> {
 fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
     let normalized_provider = normalize_provider_protocol_registry_value(provider_type);
     let normalized_base_url = normalize_base_url_for_provider_protocol_registry(base_url);
-    normalized_base_url.contains("api.openai.com")
-        || (normalized_provider == "openai" && normalized_base_url.is_empty())
+    if normalized_provider == "openai" && normalized_base_url.is_empty() {
+        return true;
+    }
+    // host 精确匹配，避免 `https://myproxy.com/api.openai.com/v1` 这类中转地址被误判为官方端点。
+    let without_scheme = normalized_base_url
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(normalized_base_url.as_str());
+    let host_port = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    let host = host_port.split(':').next().unwrap_or_default();
+    host == "api.openai.com"
 }
 
 pub(crate) fn provider_supports_openai_responses(
@@ -1710,13 +2779,38 @@ pub(crate) fn provider_supports_openai_responses(
         .unwrap_or(false)
 }
 
+fn native_protocol_for_model_adapter(model_adapter: &str) -> Option<&'static str> {
+    match normalize_provider_protocol_registry_value(Some(model_adapter)).as_str() {
+        "anthropic" | "claude" => Some("anthropic_messages"),
+        "google" | "gemini" => Some("google_generate_content"),
+        _ => None,
+    }
+}
+
+fn uses_generic_openai_gateway(config: &ApiConfig) -> bool {
+    let host_type = config
+        .provider_type
+        .as_deref()
+        .or(config.provider_scope.as_deref());
+    let normalized = normalize_provider_protocol_registry_value(host_type);
+
+    // SiliconFlow has its own OpenAI-compatible reasoning dialect and is
+    // intentionally handled by its host-aware adapters.
+    if normalized == "siliconflow" {
+        return false;
+    }
+
+    get_provider_protocol_record(host_type)
+        .map(|record| !record.official)
+        .unwrap_or(true)
+}
+
 fn should_honor_explicit_openai_responses_protocol(config: &ApiConfig) -> bool {
-    config.model_adapter == "general"
-        && provider_supports_openai_responses(
-            config.provider_type.as_deref(),
-            &config.base_url,
-            config.supports_openai_responses,
-        )
+    provider_supports_openai_responses(
+        config.provider_type.as_deref(),
+        &config.base_url,
+        config.supports_openai_responses,
+    )
 }
 
 pub(crate) fn resolve_preferred_protocol_for_provider(
@@ -1725,16 +2819,19 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
     base_url: &str,
     supports_openai_responses: Option<bool>,
 ) -> String {
-    match normalize_provider_protocol_registry_value(adapter).as_str() {
-        "anthropic" => return "anthropic_messages".to_string(),
-        "google" => return "google_generate_content".to_string(),
-        _ => {}
+    let allowed = provider_allowed_protocols(provider_type);
+    if let Some(native_protocol) = adapter.and_then(native_protocol_for_model_adapter) {
+        if allowed.iter().any(|protocol| protocol == native_protocol) {
+            return native_protocol.to_string();
+        }
     }
 
-    let allowed = provider_allowed_protocols(provider_type);
-    let supports_responses =
-        provider_supports_openai_responses(provider_type, base_url, supports_openai_responses);
-    if supports_responses
+    // 仅「供应商级显式声明」或「官方 OpenAI 端点」才把默认路由切到 Responses；
+    // 注册表级 supports_openai_responses=true 只解锁可选项（qwen/doubao 等白名单制端点），
+    // 默认路由仍由 default_protocol 决定（与前端 resolvePreferredProtocol 保持一致）。
+    let explicitly_prefers_responses = supports_openai_responses == Some(true)
+        || resolves_to_official_openai(provider_type, base_url);
+    if explicitly_prefers_responses
         && allowed
             .iter()
             .any(|protocol| protocol == "openai_responses")
@@ -1742,20 +2839,82 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
         return "openai_responses".to_string();
     }
 
+    if normalize_provider_protocol_registry_value(provider_type) == "openai"
+        && !resolves_to_official_openai(provider_type, base_url)
+        && allowed
+            .iter()
+            .any(|protocol| protocol == "openai_chat_completions")
+    {
+        return "openai_chat_completions".to_string();
+    }
+
     if let Some(record) = get_provider_protocol_record(provider_type) {
-        if record.default_protocol != "openai_responses"
-            && allowed
-                .iter()
-                .any(|protocol| protocol == &record.default_protocol)
+        if allowed
+            .iter()
+            .any(|protocol| protocol == &record.default_protocol)
         {
             return record.default_protocol.clone();
         }
     }
 
     allowed
-        .into_iter()
-        .find(|protocol| supports_responses || protocol != "openai_responses")
+        .iter()
+        .find(|protocol| protocol.as_str() == "openai_chat_completions")
+        .cloned()
+        .or_else(|| allowed.first().cloned())
         .unwrap_or_else(|| "openai_chat_completions".to_string())
+}
+
+fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
+    if let Some(protocol) = config.api_protocol.as_deref() {
+        let normalized = normalize_provider_protocol_registry_value(Some(protocol));
+        match normalized.as_str() {
+            "openai_responses" if should_honor_explicit_openai_responses_protocol(config) => {
+                return normalized;
+            }
+            "openai_responses" => {}
+            "openai_chat_completions" | "anthropic_messages" | "google_generate_content" => {
+                return normalized;
+            }
+            _ => {}
+        }
+    }
+
+    resolve_preferred_protocol_for_provider(
+        config.provider_type.as_deref(),
+        Some(config.model_adapter.as_str()),
+        &config.base_url,
+        config.supports_openai_responses,
+    )
+}
+
+pub(crate) fn request_adapter_for_config(
+    config: &ApiConfig,
+) -> &'static dyn adapters::RequestAdapter {
+    let effective_protocol = effective_api_protocol_for_config(config);
+    let uses_openai_transport = matches!(
+        effective_protocol.as_str(),
+        "openai_chat_completions" | "openai_responses"
+    );
+    let uses_openai_dialect = uses_openai_transport
+        && (uses_generic_openai_gateway(config)
+            || native_protocol_for_model_adapter(&config.model_adapter).is_some());
+    let uses_native_transport = matches!(
+        effective_protocol.as_str(),
+        "anthropic_messages" | "google_generate_content"
+    );
+
+    if uses_openai_dialect {
+        adapters::get_adapter(None, None, "general")
+    } else if uses_native_transport {
+        adapters::get_adapter(None, None, &config.model_adapter)
+    } else {
+        adapters::get_adapter(
+            config.provider_type.as_deref(),
+            config.provider_scope.as_deref(),
+            &config.model_adapter,
+        )
+    }
 }
 
 #[inline]
@@ -1768,21 +2927,7 @@ pub(crate) fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Opt
 
 #[inline]
 pub(crate) fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
-    if let Some(protocol) = config.api_protocol.as_deref() {
-        let normalized = normalize_provider_protocol_registry_value(Some(protocol));
-        return normalized == "openai_responses"
-            && should_honor_explicit_openai_responses_protocol(config);
-    }
-    if config.model_adapter != "general" {
-        return false;
-    }
-
-    resolve_preferred_protocol_for_provider(
-        config.provider_type.as_deref(),
-        Some(config.model_adapter.as_str()),
-        &config.base_url,
-        config.supports_openai_responses,
-    ) == "openai_responses"
+    effective_api_protocol_for_config(config) == "openai_responses"
 }
 
 fn normalize_vendor_protocol_config(vendor: &mut VendorConfig) -> bool {
@@ -1857,7 +3002,7 @@ fn normalize_model_profile_protocol_config(
 }
 
 pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdapter> {
-    let use_responses = should_use_openai_responses_for_config(config);
+    let effective_protocol = effective_api_protocol_for_config(config);
     if matches!(
         config
             .api_protocol
@@ -1865,24 +3010,22 @@ pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdap
             .map(|protocol| normalize_provider_protocol_registry_value(Some(protocol)))
             .as_deref(),
         Some("openai_responses")
-    ) && !use_responses
+    ) && effective_protocol != "openai_responses"
     {
         warn!(
-            "[LLM Manager] Downgrading unsupported openai_responses protocol to chat_completions: provider_type={:?}, base_url={}, model={}, adapter={}",
+            "[LLM Manager] Ignoring unsupported openai_responses protocol; using {}: provider_type={:?}, base_url={}, model={}, adapter={}",
+            effective_protocol,
             config.provider_type,
             config.base_url,
             config.model,
             config.model_adapter
         );
     }
-    if use_responses {
-        Box::new(crate::providers::OpenAIResponsesAdapter)
-    } else {
-        match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        }
+    match effective_protocol.as_str() {
+        "openai_responses" => Box::new(crate::providers::OpenAIResponsesAdapter::new()),
+        "anthropic_messages" => Box::new(crate::providers::AnthropicAdapter::new()),
+        "google_generate_content" => Box::new(crate::providers::GeminiAdapter::new()),
+        _ => Box::new(crate::providers::OpenAIAdapter),
     }
 }
 
@@ -1890,61 +3033,97 @@ pub(crate) fn normalize_nonstream_response_to_openai(
     config: &ApiConfig,
     response_json: &Value,
 ) -> Result<Value> {
-    if config.model_adapter == "google" {
-        if let Some(safety_msg) = LLMManager::extract_gemini_safety_error(response_json) {
-            return Err(AppError::llm(safety_msg));
+    match effective_api_protocol_for_config(config).as_str() {
+        "google_generate_content" => {
+            if let Some(safety_msg) = LLMManager::extract_gemini_safety_error(response_json) {
+                return Err(AppError::llm(safety_msg));
+            }
+            return crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(
+                response_json,
+                &config.model,
+            )
+            .map_err(|e| AppError::llm(format!("Gemini响应转换失败: {}", e)));
         }
-        return crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(
-            response_json,
-            &config.model,
-        )
-        .map_err(|e| AppError::llm(format!("Gemini响应转换失败: {}", e)));
+        "anthropic_messages" => {
+            let stop_reason = response_json.get("stop_reason").and_then(Value::as_str);
+            let refusal_category = response_json
+                .get("stop_details")
+                .and_then(|details| details.get("category"))
+                .and_then(Value::as_str)
+                .filter(|category| !category.is_empty() && *category != "none");
+            if stop_reason == Some("refusal") || refusal_category.is_some() {
+                return Err(AppError::llm(format!(
+                    "模型拒绝了该请求{}",
+                    refusal_category
+                        .map(|category| format!(": {category}"))
+                        .unwrap_or_default()
+                )));
+            }
+            return crate::providers::convert_anthropic_response_to_openai(
+                response_json,
+                &config.model,
+            )
+            .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()));
+        }
+        "openai_responses" => {}
+        _ => {
+            return Ok(crate::providers::normalize_openai_nonstream_response(
+                response_json,
+            ))
+        }
     }
 
-    if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-        return crate::providers::convert_anthropic_response_to_openai(
-            response_json,
-            &config.model,
-        )
-        .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()));
+    let response_status = response_json.get("status").and_then(Value::as_str);
+    if response_json
+        .get("error")
+        .is_some_and(|error| !error.is_null())
+        || matches!(response_status, Some("failed" | "cancelled" | "canceled"))
+    {
+        let code = response_json
+            .get("error")
+            .and_then(|error| error.get("code").or_else(|| error.get("type")))
+            .and_then(Value::as_str)
+            .unwrap_or("response_failed");
+        return Err(AppError::llm(format!("Responses 请求失败: {}", code)));
     }
-
-    if should_use_openai_responses_for_config(config) {
-        let mut text_segments: Vec<String> = Vec::new();
-        if let Some(output) = response_json.get("output").and_then(|v| v.as_array()) {
-            for item in output {
-                if let Some(content_arr) = item.get("content").and_then(|v| v.as_array()) {
-                    for entry in content_arr {
-                        let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                        if matches!(entry_type, "output_text" | "text") {
-                            if let Some(text) = entry.get("text").and_then(|v| v.as_str()) {
-                                if !text.is_empty() {
-                                    text_segments.push(text.to_string());
-                                }
+    let mut text_segments: Vec<String> = Vec::new();
+    if let Some(output) = response_json.get("output").and_then(|v| v.as_array()) {
+        for item in output {
+            if let Some(content_arr) = item.get("content").and_then(|v| v.as_array()) {
+                for entry in content_arr {
+                    let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    if entry_type == "refusal" {
+                        return Err(AppError::llm("模型拒绝了该请求"));
+                    }
+                    if matches!(entry_type, "output_text" | "text") {
+                        if let Some(text) = entry.get("text").and_then(|v| v.as_str()) {
+                            if !text.is_empty() {
+                                text_segments.push(text.to_string());
                             }
                         }
                     }
                 }
             }
         }
-        if text_segments.is_empty() {
-            if let Some(output_text) = response_json.get("output_text").and_then(|v| v.as_str()) {
-                if !output_text.is_empty() {
-                    text_segments.push(output_text.to_string());
-                }
+    }
+    if text_segments.is_empty() {
+        if let Some(output_text) = response_json.get("output_text").and_then(|v| v.as_str()) {
+            if !output_text.is_empty() {
+                text_segments.push(output_text.to_string());
             }
         }
-        return Ok(json!({
-            "choices": [{
-                "message": {
-                    "content": text_segments.join("")
-                }
-            }],
-            "usage": response_json.get("usage").cloned()
-        }));
     }
-
-    Ok(response_json.clone())
+    if text_segments.is_empty() && response_status == Some("incomplete") {
+        return Err(AppError::llm("Responses 请求未能完成"));
+    }
+    Ok(json!({
+        "choices": [{
+            "message": {
+                "content": text_segments.join("")
+            }
+        }],
+        "usage": response_json.get("usage").cloned()
+    }))
 }
 
 #[derive(Debug, Clone)]
@@ -1972,6 +3151,7 @@ pub struct ExamSegmentationOutput {
 pub struct LLMManager {
     client: Client,
     db: Arc<Database>,
+    openai_codex_auth: CodexAuthManager,
     file_manager: Arc<FileManager>,
     crypto_service: CryptoService,
     cancel_registry: Arc<TokioMutex<HashSet<String>>>,
@@ -1981,8 +3161,10 @@ pub struct LLMManager {
         Arc<TokioMutex<std::collections::HashMap<String, std::sync::Arc<dyn LLMStreamHooks>>>>,
 }
 
+// pub：被 model2_pipeline 的 pub 方法（call_model2_raw_prompt / call_ocr_model_raw_prompt）
+// 作为参数类型暴露，pub(crate) 会触发 private_interfaces 警告
 #[derive(Debug, Clone)]
-pub(crate) struct ImagePayload {
+pub struct ImagePayload {
     pub mime: String,
     pub base64: String,
 }
@@ -2003,6 +3185,8 @@ enum MergedChatMessage {
         thinking_content: Option<String>,
         /// 🔧 Gemini 3 思维签名：工具调用场景下必须在后续请求中回传
         thought_signature: Option<String>,
+        /// OpenAI Responses encrypted reasoning item required for stateless continuation.
+        response_reasoning_item: Option<Value>,
     },
 }
 
@@ -2010,6 +3194,8 @@ enum MergedChatMessage {
 pub trait LLMStreamHooks: Send + Sync {
     fn on_content_chunk(&self, _text: &str) {}
     fn on_reasoning_chunk(&self, _text: &str) {}
+    /// Complete OpenAI Responses reasoning item used for stateless tool continuation.
+    fn on_response_reasoning_item(&self, _item: &serde_json::Value) {}
     /// Gemini 3 思维签名回调（工具调用必需）
     /// 在工具调用场景下，需要缓存此签名并在后续请求中回传
     fn on_thought_signature(&self, _signature: &str) {}
@@ -2382,14 +3568,16 @@ impl LLMManager {
 
     pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Result<Self> {
         let client = Self::create_http_client_with_fallback();
+        let openai_codex_auth = CodexAuthManager::new(db.clone());
 
         let app_data_dir_path = file_manager.get_app_data_dir();
-        let crypto_service = CryptoService::new(&app_data_dir_path.to_path_buf())
+        let crypto_service = CryptoService::new(app_data_dir_path)
             .map_err(|e| AppError::configuration(format!("加密服务初始化失败: {e}")))?;
 
         Ok(Self {
             client,
             db,
+            openai_codex_auth,
             file_manager,
             crypto_service,
             cancel_registry: Arc::new(TokioMutex::new(HashSet::new())),
@@ -2402,6 +3590,10 @@ impl LLMManager {
     // 对外暴露 HTTP 客户端，便于独立管线重用统一配置的客户端
     pub fn get_http_client(&self) -> Client {
         self.client.clone()
+    }
+
+    pub fn openai_codex_auth(&self) -> CodexAuthManager {
+        self.openai_codex_auth.clone()
     }
 
     // 订阅指定流事件的取消通道（用于独立流式实现）
@@ -2489,14 +3681,11 @@ impl LLMManager {
             return;
         };
 
-        // 获取适配器：优先使用 provider_type，回退到 model_adapter
-        // 注意：适配器类型由前端推断引擎在配置时预设，后端直接使用
-        let adapter = adapters::get_adapter(
-            config.provider_type.as_deref(),
-            config.provider_scope.as_deref(),
-            &config.model_adapter,
-        );
-
+        // Native model-family adapters emit provider-specific fields. When the
+        // selected transport is OpenAI-compatible, keep the model family for
+        // capability detection but shape reasoning parameters in the host
+        // protocol instead.
+        let adapter = request_adapter_for_config(config);
         // 移除采样参数（如果适配器要求）
         if adapter.should_remove_sampling_params(config) {
             map.remove("temperature");
@@ -2525,8 +3714,11 @@ impl LLMManager {
     ) {
         let key = stream_event.to_string();
         debug!("[Hook] 注册 hook: key={}", key);
-        self.hooks_registry.lock().await.insert(key, hooks);
-        let count = self.hooks_registry.lock().await.len();
+        let count = {
+            let mut registry = self.hooks_registry.lock().await;
+            registry.insert(key, hooks);
+            registry.len()
+        };
         debug!("[Hook] 注册后 registry 大小: {}", count);
     }
 
@@ -2534,6 +3726,36 @@ impl LLMManager {
         let key = stream_event.to_string();
         debug!("[Hook] 注销 hook: key={}", key);
         self.hooks_registry.lock().await.remove(&key);
+    }
+
+    /// Remove a hook only if the registry still points at the caller's exact Arc allocation.
+    ///
+    /// Cancellation cleanup is spawned from `Drop`, so it may run after a replacement request has
+    /// registered under the same logical key. A key-only remove would silently detach the new
+    /// stream; Arc identity turns cleanup into compare-and-remove.
+    pub async fn unregister_stream_hooks_if_owner(
+        &self,
+        stream_event: &str,
+        owner: &std::sync::Arc<dyn LLMStreamHooks>,
+    ) -> bool {
+        use std::collections::hash_map::Entry;
+
+        let key = stream_event.to_string();
+        let mut registry = self.hooks_registry.lock().await;
+        match registry.entry(key) {
+            Entry::Occupied(entry) if std::sync::Arc::ptr_eq(entry.get(), owner) => {
+                entry.remove();
+                true
+            }
+            Entry::Occupied(_) => {
+                debug!(
+                    "[Hook] 忽略旧 owner 的延迟注销，保留 replacement hook: key={}",
+                    stream_event
+                );
+                false
+            }
+            Entry::Vacant(_) => false,
+        }
     }
 
     async fn get_hook(&self, stream_event: &str) -> Option<std::sync::Arc<dyn LLMStreamHooks>> {
@@ -2562,10 +3784,12 @@ impl LLMManager {
         let mut result = Vec::new();
         let mut pending_tool_calls: Vec<crate::models::ToolCall> = Vec::new();
         let mut pending_tool_results: Vec<ChatMessage> = Vec::new();
+        let mut current_content = String::new();
         // 🔧 保留当前轮次的思维链
         let mut current_thinking_content: Option<String> = None;
         // 🔧 Gemini 3 思维签名：工具调用场景下必须回传
         let mut current_thought_signature: Option<String> = None;
+        let mut current_response_reasoning_item: Option<Value> = None;
 
         for msg in history {
             if msg.role == "assistant" && msg.tool_call.is_some() {
@@ -2573,14 +3797,30 @@ impl LLMManager {
                     // 🔧 多轮边界检测：如果遇到新的 reasoning_content（包括空字符串），
                     // 且已经有待处理的工具调用，则先刷新当前组
                     let has_new_reasoning = msg.thinking_content.is_some();
+                    let response_reasoning_item = msg
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("openai_responses_reasoning_item"))
+                        .filter(|item| {
+                            item.get("type").and_then(Value::as_str) == Some("reasoning")
+                        })
+                        .cloned();
+                    let has_new_response_reasoning = response_reasoning_item.is_some()
+                        && current_response_reasoning_item.as_ref()
+                            != response_reasoning_item.as_ref();
 
-                    if has_new_reasoning && !pending_tool_calls.is_empty() {
+                    if (has_new_reasoning || has_new_response_reasoning)
+                        && !pending_tool_calls.is_empty()
+                    {
                         // 刷新当前组（这是前一轮的工具调用）
                         result.push(MergedChatMessage::MergedToolCalls {
                             tool_calls: std::mem::take(&mut pending_tool_calls),
-                            content: String::new(),
+                            content: std::mem::take(&mut current_content),
                             thinking_content: std::mem::take(&mut current_thinking_content),
                             thought_signature: std::mem::take(&mut current_thought_signature),
+                            response_reasoning_item: std::mem::take(
+                                &mut current_response_reasoning_item,
+                            ),
                         });
                         for tr in std::mem::take(&mut pending_tool_results) {
                             result.push(MergedChatMessage::Regular(tr));
@@ -2594,6 +3834,10 @@ impl LLMManager {
                     // 收集工具调用
                     pending_tool_calls.push(tc.clone());
 
+                    if current_content.is_empty() && !msg.content.is_empty() {
+                        current_content = msg.content.clone();
+                    }
+
                     // 保留当前轮次的思维链（只保留第一个出现的字段，空字符串也必须回传）
                     if current_thinking_content.is_none() && has_new_reasoning {
                         current_thinking_content = msg.thinking_content.clone();
@@ -2601,6 +3845,9 @@ impl LLMManager {
                     // 保留当前轮次的思维签名（只保留第一个非空的）
                     if current_thought_signature.is_none() {
                         current_thought_signature = msg.thought_signature.clone();
+                    }
+                    if current_response_reasoning_item.is_none() {
+                        current_response_reasoning_item = response_reasoning_item;
                     }
                 }
             } else if msg.role == "tool" {
@@ -2611,9 +3858,12 @@ impl LLMManager {
                 if !pending_tool_calls.is_empty() {
                     result.push(MergedChatMessage::MergedToolCalls {
                         tool_calls: std::mem::take(&mut pending_tool_calls),
-                        content: String::new(),
+                        content: std::mem::take(&mut current_content),
                         thinking_content: std::mem::take(&mut current_thinking_content),
                         thought_signature: std::mem::take(&mut current_thought_signature),
+                        response_reasoning_item: std::mem::take(
+                            &mut current_response_reasoning_item,
+                        ),
                     });
                     for tr in std::mem::take(&mut pending_tool_results) {
                         result.push(MergedChatMessage::Regular(tr));
@@ -2627,9 +3877,10 @@ impl LLMManager {
         if !pending_tool_calls.is_empty() {
             result.push(MergedChatMessage::MergedToolCalls {
                 tool_calls: pending_tool_calls,
-                content: String::new(),
+                content: current_content,
                 thinking_content: current_thinking_content,
                 thought_signature: current_thought_signature,
+                response_reasoning_item: current_response_reasoning_item,
             });
             for tr in pending_tool_results {
                 result.push(MergedChatMessage::Regular(tr));
@@ -2948,7 +4199,7 @@ impl LLMManager {
                         "reason": block_reason,
                         "details": prompt_feedback
                     });
-                    return Some(format!("Gemini安全阻断: {}", info.to_string()));
+                    return Some(format!("Gemini安全阻断: {}", info));
                 }
             }
         }
@@ -2962,7 +4213,7 @@ impl LLMManager {
                             "reason": fr,
                             "details": cand
                         });
-                        return Some(format!("Gemini安全阻断: {}", info.to_string()));
+                        return Some(format!("Gemini安全阻断: {}", info));
                     }
                 }
             }
@@ -3032,6 +4283,15 @@ impl LLMManager {
 
     async fn clear_cancel_channel(&self, stream_event: &str) {
         self.cancel_channels.lock().await.remove(stream_event);
+    }
+
+    /// Clear both cancellation mechanisms for a run that has definitively ended.
+    ///
+    /// Outer `select!` callers may drop the model2 future before its normal channel cleanup runs.
+    /// Run-scoped keys make this safe: no later attempt can legitimately reuse the same key.
+    pub(crate) async fn clear_cancel_artifacts(&self, stream_event: &str) {
+        self.cancel_channels.lock().await.remove(stream_event);
+        self.cancel_registry.lock().await.remove(stream_event);
     }
 
     /// 取消所有以某个前缀匹配的流事件（用于题目集分割按 session 级别取消）
@@ -3139,7 +4399,7 @@ impl LLMManager {
         // WebP: 52 49 46 46 ... 57 45 42 50 (RIFF...WEBP)
         else if image_data.len() >= 12
             && image_data.starts_with(&[0x52, 0x49, 0x46, 0x46])
-            && &image_data[8..12] == &[0x57, 0x45, 0x42, 0x50]
+            && image_data[8..12] == [0x57, 0x45, 0x42, 0x50]
         {
             "webp"
         }
@@ -3224,7 +4484,7 @@ impl LLMManager {
             .map_err(|e| AppError::database(format!("读取模型条目失败: {}", e)))?
             .unwrap_or_else(|| "[]".to_string());
 
-        let mut vendors: Vec<VendorConfig> = serde_json::from_str(&raw_vendors)
+        let mut vendors = deserialize_vendor_configs(&raw_vendors)
             .map_err(|e| AppError::configuration(format!("解析供应商配置失败: {}", e)))?;
         let mut profiles: Vec<ModelProfile> = serde_json::from_str(&raw_profiles)
             .map_err(|e| AppError::configuration(format!("解析模型条目失败: {}", e)))?;
@@ -3269,6 +4529,9 @@ impl LLMManager {
                     existing.notes = vendor.notes.clone();
                     existing.name = vendor.name.clone();
                     existing.website_url = vendor.website_url.clone();
+                    if vendor.auth_mode.is_some() {
+                        existing.auth_mode = vendor.auth_mode.clone();
+                    }
                     existing.is_builtin = true;
                     continue;
                 }
@@ -3276,33 +4539,43 @@ impl LLMManager {
                 vendors.push(vendor);
             }
         }
-        // 统一处理：内置供应商从安全存储读取真实 API key（与 vendor_configs_for_runtime 一致）
-        // 前端可直接在 password input 中显示密码点，而非仅显示"已配置"占位符。
+        // Renderer 只接收凭据存在性占位符。真实主/备用 key 始终留在 Rust 边界内，
+        // 运行时请求与模型发现通过 vendor_configs_for_runtime 读取。
         for vendor in &mut vendors {
             let is_builtin_vendor = vendor.is_builtin || vendor.id.starts_with("builtin-");
-            if !is_builtin_vendor {
-                continue;
-            }
-            let is_invalid = vendor.api_key.is_empty()
-                || vendor.api_key == "***"
-                || vendor.api_key.chars().all(|c| c == '*');
-            if is_invalid {
+            let mut has_api_key = !vendor.api_key.trim().is_empty()
+                && vendor.api_key != "***"
+                && !vendor.api_key.chars().all(|character| character == '*');
+            if is_builtin_vendor && !has_api_key {
                 let secret_key = format!("{}.api_key", vendor.id);
                 if let Ok(Some(key)) = self.db.get_secret(&secret_key) {
                     if !key.is_empty() {
-                        vendor.api_key = key;
+                        has_api_key = true;
                     }
                 }
                 // 兼容旧的 SiliconFlow 存储格式
-                if vendor.id == "builtin-siliconflow" && vendor.api_key.is_empty() {
+                if vendor.id == "builtin-siliconflow" && !has_api_key {
                     if let Ok(Some(sf_key)) = self.db.get_secret("siliconflow.api_key") {
                         if !sf_key.is_empty() {
-                            vendor.api_key = sf_key;
+                            has_api_key = true;
                         }
                     }
                 }
             }
-            vendor.is_builtin = true;
+            vendor.api_key = if has_api_key {
+                "***".to_string()
+            } else {
+                String::new()
+            };
+            vendor.api_keys = vec!["***".to_string(); vendor.api_keys.len()];
+            for (name, value) in &mut vendor.headers {
+                if is_sensitive_vendor_header(name) && !value.trim().is_empty() {
+                    *value = "***".to_string();
+                }
+            }
+            if is_builtin_vendor {
+                vendor.is_builtin = true;
+            }
         }
         Ok(vendors)
     }
@@ -3314,11 +4587,37 @@ impl LLMManager {
             .map_err(|e| AppError::database(format!("获取供应商配置失败: {}", e)))?
             .unwrap_or_else(|| "[]".to_string());
 
-        let mut vendors: Vec<VendorConfig> = serde_json::from_str(&raw)
+        let mut vendors = deserialize_vendor_configs(&raw)
             .map_err(|e| AppError::configuration(format!("解析供应商配置失败: {}", e)))?;
 
         // 容错处理：解密失败时清空 API 密钥而不是让整个配置加载失败
         for vendor in &mut vendors {
+            for (name, value) in &mut vendor.headers {
+                if !is_sensitive_vendor_header(name) {
+                    continue;
+                }
+                match self.decrypt_api_key_if_needed(value) {
+                    Ok(decrypted) => *value = decrypted,
+                    Err(error) => {
+                        tracing::warn!(
+                            "⚠️ 供应商 {} 的敏感请求头 {} 解密失败，将移除该请求头: {}",
+                            vendor.id,
+                            name,
+                            error
+                        );
+                        value.clear();
+                    }
+                }
+            }
+            vendor.headers.retain(|_, value| !value.is_empty());
+            // 🆕 Failover：备用 key 列表逐个解密，解密失败/空值的条目丢弃
+            vendor.api_keys = vendor
+                .api_keys
+                .iter()
+                .filter_map(|k| self.decrypt_api_key_if_needed(k).ok())
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .collect();
             match self.decrypt_api_key_if_needed(&vendor.api_key) {
                 Ok(decrypted) => {
                     // 迁移逻辑：如果是内置供应商且成功解密了 API key，迁移到安全存储
@@ -3364,7 +4663,10 @@ impl LLMManager {
         let mut vendors = self.read_user_vendor_configs().await?;
         if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
             for vendor in builtin_vendors {
-                if vendors.iter().any(|v| v.id == vendor.id) {
+                if let Some(existing) = vendors.iter_mut().find(|v| v.id == vendor.id) {
+                    if vendor.auth_mode.is_some() {
+                        existing.auth_mode = vendor.auth_mode.clone();
+                    }
                     continue;
                 }
                 vendors.push(vendor);
@@ -3406,26 +4708,165 @@ impl LLMManager {
         Ok(vendors)
     }
 
+    pub(crate) async fn vendor_config_for_runtime(&self, vendor_id: &str) -> Result<VendorConfig> {
+        self.vendor_configs_for_runtime()
+            .await?
+            .into_iter()
+            .find(|vendor| vendor.id == vendor_id)
+            .ok_or_else(|| AppError::configuration("供应商不存在或已被删除"))
+    }
+
     pub async fn save_vendor_configs(&self, configs: &[VendorConfig]) -> Result<()> {
         // 读取现有配置，用于保留未更新的 API key
-        let existing_vendors = self.read_user_vendor_configs().await.unwrap_or_default();
-        let existing_map: std::collections::HashMap<String, String> = existing_vendors
+        let mut existing_vendors = self.read_user_vendor_configs().await.unwrap_or_default();
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                if !existing_vendors
+                    .iter()
+                    .any(|existing| existing.id == vendor.id)
+                {
+                    existing_vendors.push(vendor);
+                }
+            }
+        }
+        let existing_map: std::collections::HashMap<String, VendorConfig> = existing_vendors
             .into_iter()
-            .map(|v| (v.id.clone(), v.api_key))
+            .map(|vendor| (vendor.id.clone(), vendor))
             .collect();
+
+        // 先完成跨配置校验，再触碰任何安全存储，避免列表后部校验失败时
+        // 前部内置供应商的密钥已经被部分更新。
+        for cfg in configs {
+            for (name, value) in &cfg.headers {
+                reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|_| AppError::validation(format!("无效的供应商请求头名称: {name}")))?;
+                reqwest::header::HeaderValue::from_str(value)
+                    .map_err(|_| AppError::validation("供应商请求头包含无效字符"))?;
+            }
+            let Some(existing) = existing_map.get(&cfg.id) else {
+                continue;
+            };
+            if api_origins_match(&existing.base_url, &cfg.base_url) {
+                continue;
+            }
+            let uses_no_auth = cfg
+                .auth_mode
+                .as_deref()
+                .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+            if !uses_no_auth {
+                if is_masked_secret(&cfg.api_key) {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入 API 密钥",
+                    ));
+                }
+                if cfg.api_keys.iter().any(|key| is_masked_secret(key)) {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入备用 API 密钥",
+                    ));
+                }
+            }
+            if cfg
+                .headers
+                .iter()
+                .any(|(name, value)| is_sensitive_vendor_header(name) && is_masked_secret(value))
+            {
+                return Err(AppError::validation(
+                    "修改供应商地址的主机、协议或端口时必须重新输入敏感请求头",
+                ));
+            }
+        }
 
         let mut sanitized = Vec::new();
         for cfg in configs {
             let mut clone = cfg.clone();
             normalize_vendor_protocol_config(&mut clone);
 
-            let trimmed = cfg.api_key.trim();
+            let existing = existing_map.get(&cfg.id);
+            let origin_changed =
+                existing.is_some_and(|vendor| !api_origins_match(&vendor.base_url, &cfg.base_url));
+            let uses_no_auth = cfg
+                .auth_mode
+                .as_deref()
+                .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+            let mut protected_headers = HashMap::new();
+            for (name, value) in &cfg.headers {
+                if !is_sensitive_vendor_header(name) {
+                    protected_headers.insert(name.clone(), value.clone());
+                    continue;
+                }
+                let trimmed = value.trim();
+                let keep_placeholder = trimmed == "***"
+                    || (!trimmed.is_empty() && trimmed.chars().all(|character| character == '*'));
+                if keep_placeholder && origin_changed {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入敏感请求头",
+                    ));
+                }
+                let effective_value = if keep_placeholder {
+                    existing
+                        .and_then(|vendor| vendor.headers.get(name))
+                        .map(String::as_str)
+                        .unwrap_or_default()
+                } else {
+                    trimmed
+                };
+                if !effective_value.is_empty() {
+                    protected_headers.insert(name.clone(), self.encrypt_api_key(effective_value)?);
+                }
+            }
+            clone.headers = protected_headers;
+
+            // Failover 备用 key 按位置合并：掩码保留对应旧值，明文替换对应项，
+            // 空行删除对应位置，缩短列表可删除尾部 key，清空列表则删除全部。
+            if uses_no_auth {
+                clone.api_keys.clear();
+            } else {
+                let existing_keys = existing
+                    .map(|vendor| vendor.api_keys.as_slice())
+                    .unwrap_or(&[]);
+                let mut keys_to_store = Vec::new();
+                for (index, submitted) in cfg.api_keys.iter().enumerate() {
+                    let submitted = submitted.trim();
+                    if submitted.is_empty() {
+                        continue;
+                    }
+                    let is_placeholder =
+                        submitted == "***" || submitted.chars().all(|character| character == '*');
+                    if is_placeholder {
+                        if origin_changed {
+                            return Err(AppError::validation(
+                                "修改供应商地址的主机、协议或端口时必须重新输入备用 API 密钥",
+                            ));
+                        }
+                        if let Some(existing_key) = existing_keys.get(index) {
+                            keys_to_store.push(existing_key.clone());
+                        }
+                    } else {
+                        keys_to_store.push(submitted.to_string());
+                    }
+                }
+                let mut encrypted_keys = Vec::new();
+                for key in keys_to_store {
+                    encrypted_keys.push(self.encrypt_api_key(&key)?);
+                }
+                clone.api_keys = encrypted_keys;
+            }
+
+            let trimmed = if uses_no_auth { "" } else { cfg.api_key.trim() };
             // “保留旧值”占位符：*** 或全 *（但不包含空字符串）
             // 空字符串应视为用户明确清空（而不是保留）。
             let keep_placeholder =
                 trimmed == "***" || (!trimmed.is_empty() && trimmed.chars().all(|c| c == '*'));
             // 内置供应商判断：兼容旧数据（is_builtin=false 但 id 以 builtin- 开头）
             let is_builtin_vendor = cfg.is_builtin || cfg.id.starts_with("builtin-");
+
+            if keep_placeholder {
+                if origin_changed {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入 API 密钥",
+                    ));
+                }
+            }
 
             if is_builtin_vendor {
                 // 内置供应商：API key 始终通过安全存储管理，vendor_configs 中不保存
@@ -3469,7 +4910,10 @@ impl LLMManager {
             } else {
                 // 非内置供应商：API key 加密存储到 vendor_configs
                 let effective_api_key = if keep_placeholder {
-                    existing_map.get(&cfg.id).cloned().unwrap_or_default()
+                    existing_map
+                        .get(&cfg.id)
+                        .map(|vendor| vendor.api_key.clone())
+                        .unwrap_or_default()
                 } else {
                     trimmed.to_string()
                 };
@@ -3690,11 +5134,12 @@ impl LLMManager {
         let profiles = self.model_profiles_for_runtime().await?;
         let vendor_map: HashMap<String, VendorConfig> =
             vendors.into_iter().map(|v| (v.id.clone(), v)).collect();
+        let codex_authenticated = self.openai_codex_auth.status().await.has_usable_session;
 
         let mut resolved = Vec::new();
         for profile in profiles {
             if let Some(vendor) = vendor_map.get(&profile.vendor_id) {
-                let merged = self.merge_vendor_profile(vendor, &profile)?;
+                let merged = self.merge_vendor_profile(vendor, &profile, codex_authenticated)?;
                 resolved.push(merged.runtime);
             } else {
                 warn!("[VendorModel] 找不到模型条目关联的供应商: {}", profile.id);
@@ -3708,8 +5153,15 @@ impl LLMManager {
         &self,
         vendor: &VendorConfig,
         profile: &ModelProfile,
+        codex_authenticated: bool,
     ) -> Result<ResolvedModelConfig> {
-        let api_key = if vendor.is_builtin {
+        let has_no_auth = vendor
+            .auth_mode
+            .as_deref()
+            .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+        let api_key = if has_no_auth {
+            String::new()
+        } else if vendor.is_builtin {
             vendor.api_key.trim().to_string()
         } else {
             self.decrypt_api_key_if_needed(&vendor.api_key)?
@@ -3718,7 +5170,11 @@ impl LLMManager {
         };
 
         let has_api_key =
-            !api_key.is_empty() && api_key != "***" && !api_key.chars().all(|c| c == '*');
+            (!api_key.is_empty() && api_key != "***" && !api_key.chars().all(|c| c == '*'))
+                || vendor.api_keys.iter().any(|key| !key.trim().is_empty());
+        let has_oauth_session = vendor.provider_type.eq_ignore_ascii_case("openai_codex")
+            && vendor.auth_mode.as_deref() == Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
+            && codex_authenticated;
 
         let provider_scope = profile
             .provider_scope
@@ -3726,6 +5182,12 @@ impl LLMManager {
             .or_else(|| Some(vendor.provider_type.clone()));
         let capability_overrides =
             Self::resolve_capability_overrides(&profile.model, provider_scope.as_deref());
+        let max_tokens_limit = match (profile.max_tokens_limit, vendor.max_tokens_limit) {
+            (Some(profile_limit), Some(vendor_limit)) => Some(profile_limit.min(vendor_limit)),
+            (Some(profile_limit), None) => Some(profile_limit),
+            (None, Some(vendor_limit)) => Some(vendor_limit),
+            (None, None) => None,
+        };
 
         let runtime = ApiConfig {
             id: profile.id.clone(),
@@ -3734,6 +5196,7 @@ impl LLMManager {
             vendor_name: Some(vendor.name.clone()),
             provider_type: Some(vendor.provider_type.clone()),
             provider_scope,
+            auth_mode: vendor.auth_mode.clone(),
             api_protocol: profile
                 .api_protocol
                 .clone()
@@ -3755,7 +5218,9 @@ impl LLMManager {
             is_reranker: profile.is_reranker,
             is_image_generation: profile.is_image_generation
                 || looks_like_image_generation_model_id(&profile.model),
-            enabled: profile.enabled && profile.status.to_lowercase() != "disabled" && has_api_key,
+            enabled: profile.enabled
+                && profile.status.to_lowercase() != "disabled"
+                && (has_api_key || has_no_auth || has_oauth_session),
             model_adapter: profile.model_adapter.clone(),
             max_output_tokens: profile.max_output_tokens,
             temperature: profile.temperature,
@@ -3767,6 +5232,7 @@ impl LLMManager {
             is_builtin: profile.is_builtin || vendor.is_builtin,
             is_read_only: vendor.is_read_only,
             reasoning_effort: profile.reasoning_effort.clone(),
+            reasoning_mode: profile.reasoning_mode.clone(),
             thinking_enabled: profile.thinking_enabled,
             thinking_budget: profile.thinking_budget,
             include_thoughts: profile.include_thoughts,
@@ -3785,8 +5251,8 @@ impl LLMManager {
             effort: profile.effort.clone(),
             verbosity: profile.verbosity.clone(),
             is_favorite: profile.is_favorite,
-            // 模型粒度自管理 max_tokens_limit，不从供应商继承
-            max_tokens_limit: profile.max_tokens_limit,
+            // 供应商是硬上限；模型可设置更低的局部上限，但不能放宽供应商限制。
+            max_tokens_limit,
             context_window: profile
                 .context_window
                 .or(capability_overrides.context_window),
@@ -3833,10 +5299,16 @@ impl LLMManager {
                     } else {
                         cfg.model_adapter.clone()
                     },
+                    auth_mode: cfg.auth_mode.clone(),
                     api_protocol: cfg.api_protocol.clone(),
                     supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
+                    api_keys: if cfg.api_key.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![cfg.api_key.clone()]
+                    },
                     headers: cfg.headers.clone().unwrap_or_default(),
                     rate_limit_per_minute: None,
                     default_timeout_ms: None,
@@ -3875,6 +5347,7 @@ impl LLMManager {
                 max_output_tokens: cfg.max_output_tokens,
                 temperature: cfg.temperature,
                 reasoning_effort: cfg.reasoning_effort.clone(),
+                reasoning_mode: cfg.reasoning_mode.clone(),
                 thinking_enabled: cfg.thinking_enabled,
                 thinking_budget: cfg.thinking_budget,
                 include_thoughts: cfg.include_thoughts,
@@ -3941,6 +5414,7 @@ impl LLMManager {
                     vendor_name: None,
                     provider_type: None,
                     provider_scope: None,
+                    auth_mode: None,
                     api_protocol: Some(resolve_preferred_protocol_for_provider(
                         None,
                         Some(default_model_adapter().as_str()),
@@ -3972,6 +5446,7 @@ impl LLMManager {
                     is_builtin: false,
                     is_read_only: false,
                     reasoning_effort: None,
+                    reasoning_mode: None,
                     thinking_enabled: false,
                     thinking_budget: None,
                     include_thoughts: false,
@@ -4003,6 +5478,7 @@ impl LLMManager {
                 vendor_name: None,
                 provider_type: None,
                 provider_scope: None,
+                auth_mode: None,
                 api_protocol: Some(resolve_preferred_protocol_for_provider(
                     None,
                     Some(default_model_adapter().as_str()),
@@ -4034,6 +5510,7 @@ impl LLMManager {
                 is_builtin: false,
                 is_read_only: false,
                 reasoning_effort: None,
+                reasoning_mode: None,
                 thinking_enabled: false,
                 thinking_budget: None,
                 include_thoughts: false,
@@ -4090,10 +5567,12 @@ impl LLMManager {
                         .filter(|name| !name.is_empty())
                         .unwrap_or_else(|| cfg.name.clone()),
                     provider_type,
+                    auth_mode: cfg.auth_mode.clone(),
                     api_protocol: cfg.api_protocol.clone(),
                     supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
+                    api_keys: Vec::new(),
                     headers: cfg.headers.clone().unwrap_or_default(),
                     rate_limit_per_minute: None,
                     default_timeout_ms: None,
@@ -4134,6 +5613,7 @@ impl LLMManager {
                 max_output_tokens: cfg.max_output_tokens,
                 temperature: cfg.temperature,
                 reasoning_effort: cfg.reasoning_effort.clone(),
+                reasoning_mode: cfg.reasoning_mode.clone(),
                 thinking_enabled: cfg.thinking_enabled,
                 thinking_budget: cfg.thinking_budget,
                 include_thoughts: cfg.include_thoughts,
@@ -4162,15 +5642,10 @@ impl LLMManager {
             .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
 
         let configs = self.get_api_configs().await?;
-        // 注意：已分配的模型即使 enabled=false 也允许使用
-        // enabled 仅影响模型选择器中的显示，不阻止已分配模型的调用
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == model2_id && !c.is_embedding && !c.is_reranker)
+        let config = routing::resolve_enabled_text_model(&configs, [model2_id.as_str()])
+            .cloned()
             .ok_or_else(|| {
-                AppError::configuration(
-                    "找不到有效的对话模型配置（禁止使用嵌入/重排序模型作为对话模型）",
-                )
+                AppError::configuration("找不到已启用的有效对话模型配置（禁止使用嵌入/重排序模型）")
             })?;
 
         Ok(config)
@@ -4181,17 +5656,17 @@ impl LLMManager {
     /// 回退链：memory_decision_model_config_id → model2_config_id
     pub async fn get_memory_decision_model_config(&self) -> Result<ApiConfig> {
         let assignments = self.get_model_assignments().await?;
-        let model_id = assignments
-            .memory_decision_model_config_id
-            .or(assignments.model2_config_id)
-            .ok_or_else(|| AppError::configuration("没有配置可用的记忆决策模型"))?;
-
         let configs = self.get_api_configs().await?;
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == model_id && !c.is_embedding && !c.is_reranker)
+        let candidate_ids = [
+            assignments.memory_decision_model_config_id.as_deref(),
+            assignments.model2_config_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten();
+        let config = routing::resolve_enabled_text_model(&configs, candidate_ids)
+            .cloned()
             .ok_or_else(|| {
-                AppError::configuration("找不到有效的记忆决策模型配置（禁止使用嵌入/重排序模型）")
+                AppError::configuration("没有已启用的有效记忆决策模型（禁止使用嵌入/重排序模型）")
             })?;
 
         Ok(config)
@@ -4202,18 +5677,18 @@ impl LLMManager {
     /// 回退链：chat_title_model_config_id → model2_config_id
     pub async fn get_chat_title_model_config(&self) -> Result<ApiConfig> {
         let assignments = self.get_model_assignments().await?;
-        let model_id = assignments
-            .chat_title_model_config_id
-            .or(assignments.model2_config_id)
-            .ok_or_else(|| AppError::configuration("没有配置可用的标题/标签生成模型"))?;
-
         let configs = self.get_api_configs().await?;
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == model_id && !c.is_embedding && !c.is_reranker)
+        let candidate_ids = [
+            assignments.chat_title_model_config_id.as_deref(),
+            assignments.model2_config_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten();
+        let config = routing::resolve_enabled_text_model(&configs, candidate_ids)
+            .cloned()
             .ok_or_else(|| {
                 AppError::configuration(
-                    "找不到有效的标题/标签生成模型配置（禁止使用嵌入/重排序模型）",
+                    "没有已启用的有效标题/标签生成模型（禁止使用嵌入/重排序模型）",
                 )
             })?;
 
@@ -4300,31 +5775,27 @@ impl LLMManager {
         &self,
         task_type: crate::ocr_adapters::OcrTaskType,
     ) -> Result<Vec<(ApiConfig, crate::ocr_adapters::OcrEngineType)>> {
-        use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType, OcrTaskType};
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrTaskType};
 
         let configs = self.get_api_configs().await?;
         let available = self.get_available_ocr_models().await;
-
-        let mut enabled_models: Vec<&OcrModelConfig> =
-            available.iter().filter(|m| m.enabled).collect();
-        enabled_models.sort_by_key(|m| m.priority);
-
-        let mut result = Vec::new();
-        for ocr_config in &enabled_models {
-            if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
-                if !config.is_multimodal {
-                    continue;
-                }
-                let engine = OcrEngineType::from_str(&ocr_config.engine_type);
-                let effective_engine =
-                    if OcrAdapterFactory::validate_model_for_engine(&config.model, engine) {
-                        engine
-                    } else {
-                        OcrAdapterFactory::infer_engine_from_model(&config.model)
-                    };
-                result.push((config.clone(), effective_engine));
-            }
-        }
+        let mut result: Vec<_> = build_ocr_runtime_candidates(
+            &available,
+            &configs,
+            task_type,
+            crate::ocr_adapters::system_ocr::is_platform_supported(),
+        )
+        .into_iter()
+        .filter_map(|candidate| match candidate {
+            OcrRuntimeCandidate::Remote {
+                config,
+                engine_type,
+            } => Some((config, engine_type)),
+            // This API intentionally exposes only HTTP/VLM configs. Free-text execution uses
+            // get_free_text_ocr_candidates_by_priority so SystemOcr remains a native candidate.
+            OcrRuntimeCandidate::SystemOcr => None,
+        })
+        .collect();
 
         if result.is_empty() {
             if let Ok(config) = self.get_ocr_model_config().await {
@@ -4363,6 +5834,81 @@ impl LLMManager {
         );
 
         Ok(result)
+    }
+
+    /// 获取 free-text OCR 的完整运行时候选，包括无需 ApiConfig 的系统原生 OCR。
+    pub(crate) async fn get_free_text_ocr_candidates_by_priority(
+        &self,
+    ) -> Result<Vec<OcrRuntimeCandidate>> {
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrTaskType};
+
+        let configs = self.get_api_configs().await?;
+        let available = self.get_available_ocr_models().await;
+        let mut result = build_ocr_runtime_candidates(
+            &available,
+            &configs,
+            OcrTaskType::FreeText,
+            crate::ocr_adapters::system_ocr::is_platform_supported(),
+        );
+
+        if result.is_empty() {
+            if let Ok(config) = self.get_ocr_model_config().await {
+                let engine_type = OcrAdapterFactory::infer_engine_from_model(&config.model);
+                result.push(OcrRuntimeCandidate::Remote {
+                    config,
+                    engine_type,
+                });
+            }
+        }
+        if result.is_empty() {
+            return Err(AppError::configuration(
+                "没有可用的 OCR 引擎配置，请在设置中添加 OCR 引擎",
+            ));
+        }
+
+        debug!(
+            "[OCR] FreeText 运行时候选: {}",
+            result
+                .iter()
+                .enumerate()
+                .map(|(index, candidate)| match candidate {
+                    OcrRuntimeCandidate::Remote {
+                        config,
+                        engine_type,
+                    } => format!(
+                        "#{} {}({})",
+                        index,
+                        engine_type.display_name(),
+                        config.model
+                    ),
+                    OcrRuntimeCandidate::SystemOcr => {
+                        format!(
+                            "#{} {}(native)",
+                            index,
+                            candidate.engine_type().display_name()
+                        )
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" → ")
+        );
+        Ok(result)
+    }
+
+    /// 只读检查 free-text OCR 是否真实可用。
+    ///
+    /// 不运行迁移、不补写设置。若有有序引擎列表则严格尊重其 enabled 状态；列表
+    /// 尚不存在时，受支持平台的 SystemOcr 作为兼容默认能力。
+    pub async fn inspect_free_text_ocr_available(&self) -> bool {
+        let available_models_json = self.db.get_setting("ocr.available_models").ok().flatten();
+        let legacy_engine = self.db.get_setting("ocr.engine_type").ok().flatten();
+        let configs = self.get_api_configs().await.unwrap_or_default();
+        inspect_free_text_ocr_available_from_settings(
+            available_models_json.as_deref(),
+            legacy_engine.as_deref(),
+            &configs,
+            crate::ocr_adapters::system_ocr::is_platform_supported(),
+        )
     }
 
     /// 获取所有已配置的 OCR 模型列表
@@ -4537,53 +6083,39 @@ impl LLMManager {
             );
         }
 
-        // 选择适配器
-        let provider_adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
-
-        let preq = provider_adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
+        let provider_adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
+        let mut preq = self
+            .prepare_provider_request(
+                provider_adapter.as_ref(),
+                &config,
                 &request_body,
+                None,
+                None,
+                &format!("{} 请求构建失败", engine_name),
             )
-            .map_err(|e| AppError::llm(format!("{} 请求构建失败: {}", engine_name, e)))?;
+            .await?;
 
         model2_pipeline::log_llm_request_audit(
             "OCR_ENGINE_TEST",
             &preq.url,
             &config.model,
-            &request_body,
+            &preq.body,
             None,
         );
 
-        // 发送请求
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
-            .build()
-            .map_err(|e| AppError::network(format!("创建 HTTP 客户端失败: {}", e)))?;
-
-        let mut header_map = reqwest::header::HeaderMap::new();
-        for (k, v) in preq.headers.iter() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            ) {
-                header_map.insert(name, val);
+        let timeout = std::time::Duration::from_secs(300);
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, Some(timeout))
+                .await?
+        } else {
+            let mut request_builder = self.client.post(&preq.url).timeout(timeout);
+            for (name, value) in &preq.headers {
+                request_builder = request_builder.header(name, value);
             }
-        }
-
-        let response = client
-            .post(&preq.url)
-            .headers(header_map)
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("{} 请求失败: {}", engine_name, e)))?;
+            request_builder.json(&preq.body).send().await.map_err(|e| {
+                AppError::network(format!("{} 请求失败: {}", engine_name, e.without_url()))
+            })?
+        };
 
         let status = response.status();
         if !status.is_success() {
@@ -4598,9 +6130,10 @@ impl LLMManager {
             .json()
             .await
             .map_err(|e| AppError::llm(format!("解析 {} 响应失败: {}", engine_name, e)))?;
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
 
         // 提取响应文本
-        let content = response_json
+        let content = openai_like_json
             .pointer("/choices/0/message/content")
             .and_then(|v| v.as_str())
             .unwrap_or("")
@@ -4793,11 +6326,9 @@ impl LLMManager {
             .ok_or_else(|| AppError::configuration("Anki制卡模型未配置"))?;
 
         let configs = self.get_api_configs().await?;
-        // 注意：已分配的模型即使 enabled=false 也允许使用
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == anki_model_id)
-            .ok_or_else(|| AppError::configuration("找不到有效的Anki制卡模型配置"))?;
+        let config = routing::resolve_enabled_text_model(&configs, [anki_model_id.as_str()])
+            .cloned()
+            .ok_or_else(|| AppError::configuration("找不到已启用的有效 Anki 制卡模型配置"))?;
 
         debug!(
             "找到 Anki 制卡模型配置: 模型={}, API地址={}",
@@ -4828,15 +6359,14 @@ impl LLMManager {
         presence_penalty: Option<f32>,
         max_output_tokens: Option<u32>,
     ) -> Result<(ApiConfig, bool)> {
-        // 如果有覆盖ID，使用覆盖配置
-        // 注意：覆盖模型即使 enabled=false 也允许使用（用于历史消息重试等场景）
+        // 如果有覆盖 ID，使用覆盖配置。override_id 本身不授予绕过 enabled 的权限；
+        // 如未来需要调用已禁用模型，必须提供独立且显式的授权参数。
         if let Some(ref override_id) = override_id {
             let configs = self.get_api_configs().await?;
-            let mut config = configs
-                .into_iter()
-                .find(|c| c.id == *override_id)
+            let mut config = routing::resolve_enabled_text_model(&configs, [override_id.as_str()])
+                .cloned()
                 .ok_or_else(|| {
-                    AppError::configuration(format!("找不到可用的模型配置: {}", override_id))
+                    AppError::configuration(format!("找不到已启用的有效模型配置: {}", override_id))
                 })?;
 
             // 应用参数覆盖
@@ -4858,42 +6388,65 @@ impl LLMManager {
         let assignments = self.get_model_assignments().await?;
         let configs = self.get_api_configs().await?;
 
-        let (model_id, enable_cot) = match task {
+        let (model_ids, enable_cot): (Vec<String>, bool) = match task {
             "default" => {
                 let model_id = assignments
                     .model2_config_id
                     .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
-                (model_id, true) // 默认启用CoT
+                (vec![model_id], true) // 默认启用CoT
             }
             "chat_title" | "tag_generation" => {
-                let model_id = assignments
-                    .chat_title_model_config_id
-                    .or(assignments.model2_config_id)
-                    .ok_or_else(|| AppError::configuration("没有配置可用的标题/标签生成模型"))?;
-                (model_id, false)
+                let model_ids = [
+                    assignments.chat_title_model_config_id,
+                    assignments.model2_config_id,
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+                if model_ids.is_empty() {
+                    return Err(AppError::configuration("没有配置可用的标题/标签生成模型"));
+                }
+                (model_ids, false)
             }
             "review" => {
                 let model_id = assignments
                     .review_analysis_model_config_id
                     .ok_or_else(|| AppError::configuration("未配置回顾分析模型"))?;
-                (model_id, true) // 回顾分析通常需要CoT
+                (vec![model_id], true) // 回顾分析通常需要CoT
             }
-            _ => {
-                return Err(AppError::configuration(format!(
-                    "不支持的任务类型: {}",
-                    task
-                )))
+            other => {
+                // 🆕 用途分模型路由（routing.rs）：compaction / memory_flush / utility 等
+                // 新用途可在 Failover 策略中配置专属（廉价）模型；未配置时回落 default 逻辑
+                let policy = self.get_failover_policy().await.unwrap_or_default();
+                if let Some(purpose_model_id) = routing::resolve_purpose_model_id(&policy, other) {
+                    let mut model_ids = vec![purpose_model_id];
+                    if let Some(default_id) = assignments.model2_config_id {
+                        model_ids.push(default_id);
+                    }
+                    (model_ids, false)
+                } else if routing::is_known_utility_purpose(other) {
+                    let model_id = assignments
+                        .model2_config_id
+                        .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
+                    (vec![model_id], false)
+                } else {
+                    return Err(AppError::configuration(format!(
+                        "不支持的任务类型: {}",
+                        task
+                    )));
+                }
             }
         };
 
-        // 注意：已分配的模型即使 enabled=false 也允许使用
-        // enabled 仅影响模型选择器中的显示，不阻止已分配模型的调用
-        let mut config = configs
-            .into_iter()
-            .find(|c| c.id == model_id)
-            .ok_or_else(|| {
-                AppError::configuration(format!("找不到可用的模型配置: {}", model_id))
-            })?;
+        let mut config =
+            routing::resolve_enabled_text_model(&configs, model_ids.iter().map(String::as_str))
+                .cloned()
+                .ok_or_else(|| {
+                    AppError::configuration(format!(
+                        "找不到已启用的有效模型配置，候选: {}",
+                        model_ids.join(", ")
+                    ))
+                })?;
 
         // 应用参数覆盖
         if let Some(temp) = temperature {
@@ -5119,7 +6672,7 @@ impl LLMManager {
                     .filter(|x| !x.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_default();
         let blacklist: Vec<String> = self
             .db
             .get_setting("mcp.tools.blacklist")
@@ -5131,7 +6684,7 @@ impl LLMManager {
                     .filter(|x| !x.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_default();
         let selected: Vec<String> = self
             .db
             .get_setting("session.selected_mcp_tools")
@@ -5143,7 +6696,7 @@ impl LLMManager {
                     .filter(|x| !x.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_default();
 
         let mcp_tools = self.get_frontend_mcp_tools_cached(window, cache_ttl).await;
         let mut included_count = 0usize;
@@ -5198,12 +6751,10 @@ impl LLMManager {
     ) -> Vec<FrontendMcpTool> {
         // 优先返回未过期缓存；若缓存为空则尝试强制刷新一次，避免"空缓存"导致长期不广告
         if let Some(cache) = self.mcp_tool_cache.read().await.as_ref() {
-            if !cache.is_expired() {
-                if !cache.tools.is_empty() {
-                    return cache.tools.clone();
-                }
-                // 缓存未过期但为空：尝试刷新一次
+            if !cache.is_expired() && !cache.tools.is_empty() {
+                return cache.tools.clone();
             }
+            // 缓存未过期但为空：尝试刷新一次
         }
         // 通过桥接请求工具
         let tools = match self
@@ -5273,7 +6824,7 @@ impl LLMManager {
         // 等待响应
         let waited = tokio_timeout(timeout, rx).await;
         // 清理监听器（不论成功失败）
-        let _ = window.unlisten(id);
+        window.unlisten(id);
         let val = match waited {
             Err(_) => return Err(anyhow::anyhow!("timeout waiting tools response")),
             Ok(Err(_)) => return Err(anyhow::anyhow!("bridge channel closed")),
@@ -5482,15 +7033,11 @@ impl LLMManager {
             match ch {
                 '{' => stack.push('{'),
                 '[' => stack.push('['),
-                '}' => {
-                    if stack.last() == Some(&'{') {
-                        stack.pop();
-                    }
+                '}' if stack.last() == Some(&'{') => {
+                    stack.pop();
                 }
-                ']' => {
-                    if stack.last() == Some(&'[') {
-                        stack.pop();
-                    }
+                ']' if stack.last() == Some(&'[') => {
+                    stack.pop();
                 }
                 _ => {}
             }
@@ -5729,19 +7276,31 @@ impl LLMManager {
 
         Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
-        // 发送请求
-        let response = self
-            .client
-            .post(format!(
-                "{}/chat/completions",
-                api_config.base_url.trim_end_matches('/')
-            ))
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("LLM 请求失败: {}", e)))?;
+        let adapter = build_provider_adapter(&api_config);
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &api_config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "题目解析请求构建失败",
+            )
+            .await?;
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client.post(&preq.url);
+            for (name, value) in &preq.headers {
+                request_builder = request_builder.header(name, value);
+            }
+            request_builder
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::network(format!("LLM 请求失败: {}", e.without_url())))?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -5757,8 +7316,10 @@ impl LLMManager {
             .await
             .map_err(|e| AppError::validation(format!("解析 LLM 响应失败: {}", e)))?;
 
+        let openai_like = normalize_nonstream_response_to_openai(&api_config, &response_json)?;
+
         // 提取响应内容
-        let content = response_json
+        let content = openai_like
             .get("choices")
             .and_then(|c| c.get(0))
             .and_then(|c| c.get("message"))
@@ -5816,18 +7377,30 @@ impl LLMManager {
 
         Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
-        let response = self
-            .client
-            .post(format!(
-                "{}/chat/completions",
-                api_config.base_url.trim_end_matches('/')
-            ))
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("LLM 流式请求失败: {}", e)))?;
+        let adapter = build_provider_adapter(&api_config);
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &api_config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "题目解析流式请求构建失败",
+            )
+            .await?;
+        let response =
+            if preq.is_codex() {
+                self.send_codex_stream_request_with_single_refresh(&mut preq, None)
+                    .await?
+            } else {
+                let mut request_builder = self.client.post(&preq.url);
+                for (name, value) in &preq.headers {
+                    request_builder = request_builder.header(name, value);
+                }
+                request_builder.json(&preq.body).send().await.map_err(|e| {
+                    AppError::network(format!("LLM 流式请求失败: {}", e.without_url()))
+                })?
+            };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -5840,16 +7413,7 @@ impl LLMManager {
 
         // 流式解析
         let mut stream = response.bytes_stream();
-        let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
-
-        // 根据 provider_type 选择适配器
-        let provider = api_config.provider_type.as_deref().unwrap_or("openai");
-        let adapter: Box<dyn crate::providers::ProviderAdapter> =
-            match provider.to_lowercase().as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            };
+        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
 
         let mut full_content = String::new();
         let mut all_questions: Vec<Value> = Vec::new();
@@ -5863,14 +7427,23 @@ impl LLMManager {
 
             let chunk = match next {
                 Ok(b) => b,
-                Err(e) => return Err(AppError::llm(format!("读取流式响应失败: {}", e))),
+                Err(e) => {
+                    // 已有部分内容时 break 到下方 utf8/sse flush，避免错误提前返回丢尾字节
+                    if !full_content.is_empty() {
+                        log::warn!(
+                            "[LLM] 流式读取错误但已有 {} 字符/{} 题，继续 flush: {}",
+                            full_content.len(),
+                            all_questions.len(),
+                            e
+                        );
+                        break;
+                    }
+                    return Err(AppError::llm(format!("读取流式响应失败: {}", e)));
+                }
             };
 
-            let text = String::from_utf8_lossy(&chunk);
-            let lines = sse_buffer.process_chunk(&text);
-
-            for line in lines {
-                if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+            for line in sse_buffer.process_bytes(&chunk) {
+                if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
                     stream_ended = true;
                     break;
                 }
@@ -5902,6 +7475,36 @@ impl LLMManager {
                 }
                 if stream_ended || aborted {
                     break;
+                }
+            }
+        }
+
+        // 处理自然关闭且没有空行分隔符的最后一个 SSE 事件。
+        if !aborted {
+            for remaining_line in sse_buffer.flush() {
+                if !remaining_line.trim().is_empty() {
+                    if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&remaining_line)
+                    {
+                        break;
+                    }
+                    let events = adapter.parse_stream(&remaining_line);
+                    for ev in events {
+                        if let crate::providers::StreamEvent::ContentChunk(s) = ev {
+                            full_content.push_str(&s);
+                            if let Some(questions) = json_parser.feed(&s) {
+                                for q in questions {
+                                    if !on_question(q.clone()) {
+                                        aborted = true;
+                                        break;
+                                    }
+                                    all_questions.push(q);
+                                }
+                            }
+                        }
+                        if aborted {
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -5960,18 +7563,31 @@ impl LLMManager {
 
         Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
-        let response = self
-            .client
-            .post(format!(
-                "{}/chat/completions",
-                api_config.base_url.trim_end_matches('/')
-            ))
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("LLM 请求失败: {}", e)))?;
+        let adapter = build_provider_adapter(&api_config);
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &api_config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "题目解析请求构建失败",
+            )
+            .await?;
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client.post(&preq.url);
+            for (name, value) in &preq.headers {
+                request_builder = request_builder.header(name, value);
+            }
+            request_builder
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::network(format!("LLM 请求失败: {}", e.without_url())))?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -5987,7 +7603,8 @@ impl LLMManager {
             .await
             .map_err(|e| AppError::validation(format!("解析 LLM 响应失败: {}", e)))?;
 
-        let content = response_json
+        let openai_like = normalize_nonstream_response_to_openai(&api_config, &response_json)?;
+        let content = openai_like
             .get("choices")
             .and_then(|c| c.get(0))
             .and_then(|c| c.get("message"))

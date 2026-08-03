@@ -10,7 +10,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { TreeStructure } from '@phosphor-icons/react';
 import { MindMapEmbed } from '@/features/mindmap/components/mindmap/MindMapEmbed';
 
@@ -106,13 +106,13 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
       detail: {
         id: mindmapId,
         type: 'mindmap',
-        title: title || '思维导图',
+        title: title || t('mindmapCitation.mindmap'),
       },
     }));
-  }, [mindmapId, title, onClick]);
+  }, [mindmapId, title, onClick, t]);
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       onClick={handleClick}
@@ -128,7 +128,7 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
     >
       <TreeStructure size={12} />
       <span className="truncate max-w-[120px]">{title || t('mindmapCitation.mindmap')}</span>
-    </NotionButton>
+    </DsButton>
   );
 };
 

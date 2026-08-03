@@ -23,8 +23,8 @@ vi.mock('@/utils/urlOpener', () => ({
   openUrl: vi.fn(),
 }));
 
-vi.mock('@/components/ui/NotionButton', () => ({
-  NotionButton: ({
+vi.mock('@/components/ui/DsButton', () => ({
+  DsButton: ({
     children,
     className,
     iconOnly,

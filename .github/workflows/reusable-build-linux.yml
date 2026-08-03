@@ -1,0 +1,175 @@
+# Linux 构建（reusable）
+#
+# release.yml / rebuild-release.yml / hotfix-linux-release.yml 共用的
+# 唯一 Linux 构建实现。调用方需 `secrets: inherit`。
+#
+# fail-closed：updater 签名密钥及密码缺失时立即
+# 失败 —— 否则会静默产出没有 .sig 的 AppImage, 到 publish 阶段才炸。
+
+name: Build Linux (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: '构建的 tag（如 v0.9.42）'
+        required: true
+        type: string
+      artifact_name:
+        description: '上传的 artifact 名称'
+        required: false
+        type: string
+        default: linux-x86_64
+
+permissions:
+  contents: read
+
+env:
+  # 固定工具版本（升级需显式改这里）
+  SENTRY_CLI_VERSION: '2.58.6'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      # ── updater 签名密钥预检（fail-closed, 在任何耗时步骤之前）──
+      - name: Preflight — require updater signing key (fail-closed)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          MISSING=""
+          for VAR in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -z "${!VAR}" ]; then
+              MISSING="${MISSING} ${VAR}"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Linux release build refuses to run without updater signing secrets (fail-closed)."
+            echo "::error::Missing secrets:${MISSING}"
+            echo "::error::Without them the AppImage updater archive would have no valid .sig and the release would be rejected at publish."
+            exit 1
+          fi
+          echo "✅ Updater signing secrets present"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Sentry CLI (pinned)
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
+
+      - name: Print build tool manifest
+        run: |
+          echo "=== Linux build tool manifest ==="
+          echo "node            : $(node --version)"
+          echo "npm             : $(npm --version)"
+          echo "rustc           : $(rustc --version)"
+          echo "cargo           : $(cargo --version)"
+          echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm,appimage -- --locked
+
+      - name: Upload native symbols to Sentry
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: bash scripts/upload-sentry-symbols.sh "src-tauri/target/x86_64-unknown-linux-gnu/release"
+
+      - name: Rename updater artifacts with arch suffix
+        run: |
+          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+          for f in "$BUNDLE_DIR"/*.AppImage.tar.gz; do
+            [ -f "$f" ] || continue
+            BASE=$(basename "$f" .AppImage.tar.gz | tr ' ' '.')
+            mv "$f" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz"
+            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz.sig"
+          done
+          echo "📦 Linux bundle artifacts:"
+          ls -la src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
+
+      # ── 更新器签名产物存在性校验（publish 前置防线）──
+      - name: Verify updater artifact and signature exist
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+          TAR_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz' ! -name '*.sig' | wc -l | tr -d ' ')
+          SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz.sig' | wc -l | tr -d ' ')
+          if [ "$TAR_COUNT" -ne 1 ] || [ "$SIG_COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly 1 updater archive + 1 .sig, got ${TAR_COUNT} archive(s) / ${SIG_COUNT} sig(s)"
+            ls -la "$BUNDLE_DIR" || true
+            exit 1
+          fi
+          echo "✅ Updater archive + signature present"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig

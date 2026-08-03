@@ -1,0 +1,202 @@
+/**
+ * automation.css — 定时任务工作区模块样式
+ *
+ * - .automation-card：卡片表面（用已定义 token --surface-elevated / --border-soft，
+ *   替代未定义的 --surface-raised，避免卡片透明）
+ *   变体：--highlight（primary 着色，运行中/临近执行）、--danger（destructive 着色，失败态）
+ * - .automation-collapse：内联展开/收起容器（CSS grid 0fr → 1fr，200ms 高度+透明度）
+ * - .automation-rise-in：轻量入场动效（150ms）
+ * - .automation-value-pop：概览统计卡数字变化过渡（200ms，值变化时 key 重挂载触发）
+ * - .automation-step：创建面板分步标头（数字徽标 + 标题）
+ * - .automation-timeline：运行历史时间线（行内状态点 + 行级竖向 rail）
+ * - .automation-item：任务卡片列表的单卡表面（hover 微抬升）
+ * - .automation-run-dot：任务卡「最近运行」迷你状态点
+ * 均在 prefers-reduced-motion: reduce 下降级为无动画。
+ */
+
+.automation-card {
+  background: var(--surface-elevated, hsl(var(--card)));
+  border: 1px solid var(--border-soft, hsl(var(--border)));
+  transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.automation-card--highlight {
+  border-color: hsl(var(--primary) / 0.35);
+  background: hsl(var(--primary) / 0.06);
+}
+
+/* 失败态统计卡：醒目但不聒噪的静态着色（不闪烁、不脉冲） */
+.automation-card--danger {
+  border-color: hsl(var(--destructive) / 0.3);
+  background: hsl(var(--destructive) / 0.05);
+}
+
+/* 内联展开容器：grid-template-rows 0fr → 1fr（内容自适应高度的纯 CSS 折叠） */
+.automation-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 200ms;
+  visibility: hidden;
+}
+
+.automation-collapse[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
+}
+
+.automation-collapse__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@keyframes automation-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.automation-rise-in {
+  animation: automation-rise-in 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 概览统计卡数字变化的轻量过渡（值变化时通过 key 重挂载触发） */
+@keyframes automation-value-pop {
+  from {
+    opacity: 0.35;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.automation-value-pop {
+  animation: automation-value-pop 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---------------------------------------------------------------------------
+ * 创建面板分步标头：数字徽标 + 标题 + 可选说明
+ * ------------------------------------------------------------------------- */
+.automation-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.automation-step__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+ * 运行历史时间线：每个 run 行画一段竖向 rail（分组标题行不画，形成分组间断），
+ * 行首状态点覆盖在 rail 之上（卡片底色描边圈出）
+ * ------------------------------------------------------------------------- */
+.automation-timeline > li:not([role='presentation'])::before {
+  content: '';
+  position: absolute;
+  left: 15.5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-soft, hsl(var(--border)));
+  pointer-events: none;
+}
+
+.automation-timeline__dot {
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  /* 圈出卡片底色，让点从 rail 上"浮"出来 */
+  box-shadow: 0 0 0 3px var(--surface-elevated, hsl(var(--card)));
+}
+
+@keyframes automation-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--surface-elevated, hsl(var(--card))),
+      0 0 0 3px hsl(var(--primary) / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--surface-elevated, hsl(var(--card))),
+      0 0 0 6px hsl(var(--primary) / 0);
+  }
+}
+
+.automation-timeline__dot--pulse {
+  animation: automation-dot-pulse 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * 任务卡片列表：单卡表面（复用 --surface-elevated/--border-soft token），
+ * hover 时边框着色 + 轻微抬升
+ * ------------------------------------------------------------------------- */
+.automation-item {
+  position: relative;
+  background: var(--surface-elevated, hsl(var(--card)));
+  border: 1px solid var(--border-soft, hsl(var(--border)));
+  transition: border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.automation-item:hover {
+  border-color: hsl(var(--primary) / 0.28);
+  box-shadow: 0 2px 10px hsl(var(--foreground) / 0.06);
+}
+
+.automation-item[data-expanded='true'] {
+  border-color: hsl(var(--primary) / 0.35);
+}
+
+/* 任务卡「最近运行」迷你状态点 */
+.automation-run-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .automation-card,
+  .automation-collapse,
+  .automation-collapse[data-open='true'],
+  .automation-item {
+    transition: none;
+  }
+
+  .automation-rise-in,
+  .automation-value-pop,
+  .automation-timeline__dot--pulse {
+    animation: none;
+  }
+}

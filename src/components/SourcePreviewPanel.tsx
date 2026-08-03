@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { X, Copy, ArrowSquareOut, FileText, Download } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from '../features/chat/components/renderers';
@@ -37,56 +37,14 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
   const { t } = useTranslation('common');
   const [copied, setCopied] = useState(false);
 
-  if (!isOpen || !source) return null;
-
-  const handleCopyContent = async () => {
-    try {
-      await copyTextToClipboard(source.chunk_text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      console.log('📋 [来源预览] 已复制内容到剪贴板');
-    } catch (e: unknown) {
-      console.warn('复制失败:', e);
-    }
-  };
-
-  const handleOpenInKnowledgeBase = () => {
-    if (onOpenInKnowledgeBase) {
-      onOpenInKnowledgeBase(source.document_id, source.file_name);
-    } else {
-      console.log('🔍 [来源预览] 在学习资源中打开:', source.file_name);
-      // 默认行为：尝试导航到学习资源页面
-      try {
-        window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', {
-          detail: { documentId: source.document_id, fileName: source.file_name }
-        }));
-      } catch {}
-    }
-  };
-
-  const handleDownload = async () => {
-    try {
-      const defaultName = `${source.file_name}_chunk_${source.chunk_index}.txt`;
-      await fileManager.saveTextFile({
-        title: defaultName,
-        defaultFileName: defaultName,
-        content: source.chunk_text,
-        filters: [{ name: 'Text', extensions: ['txt'] }],
-      });
-      console.log('💾 [来源预览] 已下载片段内容');
-    } catch (e: unknown) {
-      console.warn('下载失败:', e);
-    }
-  };
-
-  // 来源类型提示文案
+  // 来源类型提示文案（hooks 必须在任何 early return 之前调用）
   const variant = useMemo(() => {
-    if (source.source_type === 'memory') return 'info';
-    if (source.source_type === 'rag') return 'success';
-    if (source.source_type === 'web_search') return 'warning';
-    if (source.source_type === 'multimodal') return 'info';
+    if (source?.source_type === 'memory') return 'info';
+    if (source?.source_type === 'rag') return 'success';
+    if (source?.source_type === 'web_search') return 'warning';
+    if (source?.source_type === 'multimodal') return 'info';
     return 'muted';
-  }, [source.source_type]);
+  }, [source?.source_type]);
 
   const badgeStyles = useMemo(() => {
     switch (variant) {
@@ -146,6 +104,48 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
     }
   }, [variant]);
 
+  if (!isOpen || !source) return null;
+
+  const handleCopyContent = async () => {
+    try {
+      await copyTextToClipboard(source.chunk_text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      console.log('📋 [来源预览] 已复制内容到剪贴板');
+    } catch (e: unknown) {
+      console.warn('复制失败:', e);
+    }
+  };
+
+  const handleOpenInKnowledgeBase = () => {
+    if (onOpenInKnowledgeBase) {
+      onOpenInKnowledgeBase(source.document_id, source.file_name);
+    } else {
+      console.log('🔍 [来源预览] 在学习资源中打开:', source.file_name);
+      // 默认行为：尝试导航到学习资源页面
+      try {
+        window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', {
+          detail: { documentId: source.document_id, fileName: source.file_name }
+        }));
+      } catch {}
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      const defaultName = `${source.file_name}_chunk_${source.chunk_index}.txt`;
+      await fileManager.saveTextFile({
+        title: defaultName,
+        defaultFileName: defaultName,
+        content: source.chunk_text,
+        filters: [{ name: 'Text', extensions: ['txt'] }],
+      });
+      console.log('💾 [来源预览] 已下载片段内容');
+    } catch (e: unknown) {
+      console.warn('下载失败:', e);
+    }
+  };
+
   const copyButtonState = copied ? 'success' : 'idle';
 
   return (
@@ -167,7 +167,7 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
                   borderRadius: 999
                 }}
               >
-                {variant === 'info' ? t('source_preview.info') : variant === 'success' ? t('source_preview.kb_search') : variant === 'warning' ? t('source_preview.external_search') : t('source_preview.other')}
+                {variant === 'info' ? t('source_preview.graph_rag') : variant === 'success' ? t('source_preview.kb_search') : variant === 'warning' ? t('source_preview.external_search') : t('source_preview.other')}
               </span>
               <span className="text-sm text-[hsl(var(--muted-foreground))]">
                 {t('source_preview.confidence', { score: Math.round(source.score * 100) })}
@@ -175,9 +175,9 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
             </div>
           </div>
         </div>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)]" aria-label={t('source_preview.close')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)]" aria-label={t('source_preview.close')}>
           <X size={20} className="text-[hsl(var(--muted-foreground))]" />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 文件信息 */}
@@ -198,20 +198,20 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
       {/* 操作按钮 */}
       <div className="p-4 border-b border-[hsl(var(--border))]">
         <div className="flex gap-2 flex-wrap">
-          <NotionButton variant="ghost" size="sm" onClick={handleCopyContent} className={`!px-3 !py-2 text-sm !rounded-lg border ${copyButtonState === 'success' ? 'bg-[hsl(var(--success)/0.18)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] shadow-sm' : 'bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]'}`}>
+          <DsButton variant="ghost" size="sm" onClick={handleCopyContent} className={`!px-3 !py-2 text-sm !rounded-lg border ${copyButtonState === 'success' ? 'bg-[hsl(var(--success)/0.18)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] shadow-sm' : 'bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]'}`}>
             <Copy size={14} />
             {copied ? t('source_preview.copied') : t('source_preview.copy_chunk')}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton variant="ghost" size="sm" onClick={handleOpenInKnowledgeBase} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--info-bg))] text-[hsl(var(--info))] border-[hsl(var(--info)/0.4)] hover:brightness-95">
+          <DsButton variant="ghost" size="sm" onClick={handleOpenInKnowledgeBase} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--info-bg))] text-[hsl(var(--info))] border-[hsl(var(--info)/0.4)] hover:brightness-95">
             <ArrowSquareOut size={14} />
             {t('source_preview.open_in_kb')}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton variant="ghost" size="sm" onClick={handleDownload} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]">
+          <DsButton variant="ghost" size="sm" onClick={handleDownload} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]">
             <Download size={14} />
             {t('source_preview.download')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

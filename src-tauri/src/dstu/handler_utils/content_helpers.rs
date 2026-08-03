@@ -24,7 +24,7 @@ use crate::vfs::{
 };
 
 /// HIGH-R004修复: 最大内容大小限制 - 1MB (与handlers.rs保持一致)
-const MAX_CONTENT_SIZE: usize = 1 * 1024 * 1024; // 1MB
+const MAX_CONTENT_SIZE: usize = 1024 * 1024; // 1MB
 /// 作文会话内容上限（防止超长注入）
 const MAX_ESSAY_SESSION_CHARS: usize = 20000;
 /// 作文会话最多拼接轮次
@@ -685,7 +685,44 @@ fn update_mindmap_content(
     mindmap_id: &str,
     content: &str,
 ) -> Result<(), String> {
+    update_mindmap_content_with_occ(vfs_db, mindmap_id, content, None)
+}
+
+/// 更新知识导图内容（带乐观并发控制，供 dstu_update 命令使用）
+///
+/// ★ 2026-07（B1）：对齐 notes 分支的 OCC 做法——前端携带上次已知
+/// updatedAt 毫秒基线，先与当前 content_updated_at（内容锁，收藏/重命名
+/// 不推进）做毫秒比较，一致则把当前时间戳字符串作为原子乐观锁传入
+/// `VfsUpdateMindMapParams`（防止比较与写入之间的竞态窗口）。
+pub fn update_mindmap_content_with_occ(
+    vfs_db: &Arc<VfsDatabase>,
+    mindmap_id: &str,
+    content: &str,
+    expected_updated_at_ms: Option<i64>,
+) -> Result<(), String> {
     use crate::vfs::VfsUpdateMindMapParams;
+
+    let expected_updated_at: Option<String> = if let Some(expected_ms) = expected_updated_at_ms {
+        let current = VfsMindMapRepo::get_mindmap(vfs_db, mindmap_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Mindmap not found: {}", mindmap_id))?;
+        let current_ms = chrono::DateTime::parse_from_rfc3339(&current.content_updated_at)
+            .map(|dt| dt.timestamp_millis())
+            .unwrap_or(0);
+        if current_ms > expected_ms {
+            log::warn!(
+                "[DSTU::content_helpers] update_mindmap_content: CONFLICT - mindmap {} content updated elsewhere (expected_ms={}, current_ms={})",
+                mindmap_id, expected_ms, current_ms
+            );
+            return Err(format!(
+                "MINDMAP_UPDATE_CONFLICT: The mindmap has been updated elsewhere, please refresh. (expected={}, actual={})",
+                expected_ms, current_ms
+            ));
+        }
+        Some(current.content_updated_at)
+    } else {
+        None
+    };
 
     // 使用 VfsMindMapRepo::update_mindmap 更新内容（内部会校验结构与限制）
     let update_params = VfsUpdateMindMapParams {
@@ -695,7 +732,7 @@ fn update_mindmap_content(
         default_view: None,
         theme: None,
         settings: None,
-        expected_updated_at: None,
+        expected_updated_at,
         version_source: Some("manual".to_string()),
     };
 

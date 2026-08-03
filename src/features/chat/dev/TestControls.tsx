@@ -185,10 +185,10 @@ export const TestControls: React.FC<TestControlsProps> = ({
               className={cn(
                 'px-2 py-0.5 text-xs rounded-full',
                 sessionStatus === 'idle'
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                  ? 'bg-success/10 text-success'
                   : sessionStatus === 'streaming'
-                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                  ? 'bg-info/10 text-info'
+                  : 'bg-warning/10 text-warning'
               )}
             >
               {sessionStatus}
@@ -218,7 +218,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleSendTest}
               disabled={!canSend || loading}
               className={cn(
-                'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-2 min-h-8 text-xs rounded-md flex items-center gap-1.5',
                 'bg-primary text-primary-foreground',
                 'hover:bg-primary/90 transition-colors',
                 (!canSend || loading) && 'opacity-50 cursor-not-allowed'
@@ -231,7 +231,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleSendCustom}
               disabled={!canSend || loading}
               className={cn(
-                'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-2 min-h-8 text-xs rounded-md flex items-center gap-1.5',
                 'bg-secondary text-secondary-foreground',
                 'hover:bg-[var(--interactive-hover)] transition-colors',
                 (!canSend || loading) && 'opacity-50 cursor-not-allowed'

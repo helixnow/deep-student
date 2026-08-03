@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { StreamingMarkdownRenderer } from '../StreamingMarkdownRenderer';
+import { MessageSearchProvider } from '../../messageSearchContext';
 
 vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: (path: string) => `asset://mock${path}`,
@@ -19,6 +20,21 @@ describe('MarkdownRenderer bold compatibility', () => {
     render(<MarkdownRenderer content={'这是一篇关于**智谱 AI（Z.ai）Startup Program（创业扶持计划）**的微信公众号文章截图。'} />);
     const strong = screen.getByText('智谱 AI（Z.ai）Startup Program（创业扶持计划）');
     expect(strong.tagName.toLowerCase()).toBe('strong');
+  });
+
+  it('highlights every concrete search occurrence in rendered markdown', () => {
+    const { container } = render(
+      <MessageSearchProvider query="deepstudent">
+        <MarkdownRenderer content="查找 **DeepStudent**，然后再次提到 DeepStudent。" />
+      </MessageSearchProvider>,
+    );
+
+    const marks = container.querySelectorAll('[data-chat-search-match="true"]');
+    expect(marks).toHaveLength(2);
+    expect(Array.from(marks).map((mark) => mark.textContent)).toEqual([
+      'DeepStudent',
+      'DeepStudent',
+    ]);
   });
 
   it('applies the same fix in StreamingMarkdownRenderer path', () => {

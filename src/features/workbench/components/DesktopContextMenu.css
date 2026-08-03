@@ -1,0 +1,198 @@
+/**
+ * DesktopContextMenu / 桌面画布增强样式（O13 专属）
+ * ---------------------------------------------------------------------------
+ * - 全部类名带 wb-desk- 前缀（§1.2 冲突规避），不重定义 workbench.css 契约类；
+ * - 玻璃材质 / 阴影 / 时长全部引用 tokens（O1 单点），动画仅 transform/opacity；
+ * - z-index 引用 O1 z 刻度变量 --wb-z-desktop-menu（刻度表 9650：switcher 之上、modal 之下）
+ *   （高于 Dock zone(1000) / snap(8500)，低于 DevPanel(9990)——交 O20 统一校验）；
+ * - reduced-motion 与 minimal 材质档（--wb-anim-open-duration 归零）下动画自动失效。
+ */
+
+/* ==== 静态壁纸裁切层 =================================================== */
+
+.wb-wallpaper-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* 裁掉壁纸出血，避免露出壳层灰底形成「半屏裂缝」 */
+  overflow: hidden;
+  /* 独立合成层，降低与 Dock/玻璃窗 backdrop-filter 抢脏区的概率 */
+  isolation: isolate;
+}
+
+/* ==== 桌面右键菜单 ======================================================= */
+
+/* 点击拦截层：首次点击只用于收起菜单，不穿透到桌面元素（macOS 语义） */
+.wb-desk-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-desktop-menu, 9650);
+}
+
+.wb-desk-menu {
+  position: absolute;
+  z-index: var(--wb-z-desktop-menu, 9650);
+  min-width: 224px;
+  padding: 5px;
+  border-radius: var(--wb-menu-radius, 14px);
+  border: 1px solid var(--wb-glass-border);
+  background-color: var(--wb-glass-bg-strong);
+  -webkit-backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
+  backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
+  box-shadow: var(--wb-glass-edge), var(--wb-dock-shadow);
+  transform-origin: top left;
+  animation: wb-desk-menu-in var(--wb-anim-open-duration, 160ms)
+    var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  /* 不设 overflow:hidden——子菜单以嵌套面板飞出，不能被裁剪 */
+}
+
+/* 离场：~90ms 加速淡出（macOS 菜单消失近乎瞬时；data-phase 由组件编排挂） */
+.wb-desk-menu[data-phase='closing'] {
+  pointer-events: none;
+  animation: wb-kf-window-close var(--wb-motion-instant, 90ms)
+    var(--wb-ease-window-close, cubic-bezier(0.42, 0, 1, 1)) both;
+}
+
+/* 玻璃斜向光泽（折射感），叠在半透明底之上 */
+.wb-desk-menu::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--wb-glass-sheen);
+  pointer-events: none;
+}
+
+@keyframes wb-desk-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-desk-menu {
+    animation: none;
+  }
+}
+
+/* ==== 菜单项 ============================================================= */
+
+.wb-desk-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--text-primary, hsl(var(--foreground)));
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.wb-desk-menu-item:not(:disabled):hover,
+.wb-desk-menu-item:not(:disabled):focus,
+.wb-desk-menu-item[data-wb-desk-active='true']:not(:disabled) {
+  background: hsl(var(--primary) / 0.92);
+  color: hsl(var(--primary-foreground));
+  outline: none;
+}
+
+.wb-desk-menu-item:disabled {
+  opacity: 0.45;
+}
+
+/* 危险操作行（删除 / 清空回收站等）：红字，hover 反转为红底 */
+.wb-desk-menu-item--danger:not(:disabled) {
+  color: hsl(var(--destructive));
+}
+
+.wb-desk-menu-item--danger:not(:disabled):hover,
+.wb-desk-menu-item--danger:not(:disabled):focus,
+.wb-desk-menu-item--danger[data-wb-desk-active='true']:not(:disabled) {
+  background: hsl(var(--destructive) / 0.92);
+  color: hsl(var(--destructive-foreground));
+}
+
+/* 禁用项的图标再压一档，与文字形成同步弱化 */
+.wb-desk-menu-item:disabled .wb-desk-menu-item-icon {
+  opacity: 0.7;
+}
+
+/* 右缘快捷键提示：等宽数字 + 弱化色；hover 反色时跟随前景色 */
+.wb-desk-menu-item-shortcut {
+  flex: none;
+  margin-left: auto;
+  padding-left: 14px;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.wb-desk-menu-item:not(:disabled):hover .wb-desk-menu-item-shortcut,
+.wb-desk-menu-item:not(:disabled):focus .wb-desk-menu-item-shortcut,
+.wb-desk-menu-item[data-wb-desk-active='true']:not(:disabled) .wb-desk-menu-item-shortcut {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.wb-desk-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+}
+
+.wb-desk-menu-item-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 选中态对勾 / 子菜单箭头（右缘定宽槽位，保证对齐） */
+.wb-desk-menu-item-check,
+.wb-desk-menu-item-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex: none;
+  margin-left: auto;
+  opacity: 0.85;
+}
+
+.wb-desk-menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--wb-glass-border);
+}
+
+/* ==== 子菜单 ============================================================= */
+
+.wb-desk-menu-subwrap {
+  position: relative;
+}
+
+.wb-desk-menu-sub {
+  position: fixed;
+  z-index: calc(var(--wb-z-desktop-menu, 9650) + 1);
+  min-width: 176px;
+}
+
+.wb-desk-menu-sub--left {
+  transform-origin: top right;
+}

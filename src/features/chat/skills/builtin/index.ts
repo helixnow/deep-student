@@ -7,8 +7,10 @@
 import type { SkillDefinition } from '../types';
 import { SKILL_DEFAULT_PRIORITY } from '../types';
 import { deepScholarSkill } from './dstu-memory-orchestrator';
+import { skillInstallerSkill } from './skill-installer';
 
 export { deepScholarSkill, dstuMemoryOrchestratorSkill } from './dstu-memory-orchestrator';
+export { skillInstallerSkill } from './skill-installer';
 
 // ============================================================================
 // 内置 Skills 定义
@@ -137,14 +139,34 @@ export const chatAnkiSkill: SkillDefinition = {
   disableAutoInvoke: false,
   isBuiltin: true,
   skillType: 'composite',
-  dependencies: ['ask-user'],
-  relatedSkills: ['ask-user'],
+  dependencies: ['ask-user', 'learning-resource'],
+  relatedSkills: ['ask-user', 'learning-resource'],
   allowedTools: [
     'builtin-ask_user',
+    'builtin-resource_list',
+    'builtin-resource_search',
+    'builtin-chatanki_import_apkg',
     'builtin-chatanki_run',
     'builtin-chatanki_start',
     'builtin-chatanki_status',
     'builtin-chatanki_wait',
+    'builtin-chatanki_get_cards',
+    'builtin-chatanki_update_card',
+    'builtin-chatanki_batch_update_cards',
+    'builtin-chatanki_delete_card',
+    'builtin-chatanki_delete_cards',
+    'builtin-chatanki_add_cards',
+    'builtin-chatanki_enqueue_review',
+    'builtin-chatanki_review_stats',
+    'builtin-chatanki_undo_last_review',
+    'builtin-chatanki_set_suspended',
+    'builtin-chatanki_list_library_cards',
+    'builtin-chatanki_update_library_card',
+    'builtin-chatanki_enqueue_library_review',
+    'builtin-chatanki_set_library_suspended',
+    'builtin-chatanki_undo_library_last_review',
+    'builtin-chatanki_delete_library_card',
+    'builtin-chatanki_retemplate',
     'builtin-chatanki_control',
     'builtin-chatanki_export',
     'builtin-chatanki_sync',
@@ -153,6 +175,31 @@ export const chatAnkiSkill: SkillDefinition = {
     'builtin-chatanki_check_anki_connect',
   ],
   embeddedTools: [
+    {
+      name: 'builtin-chatanki_import_apkg',
+      description:
+        '导入已有 APKG 到当前聊天会话的卡片文档。resourceId（file_/att_/res_ 文件资源）或绝对 path 必须且只能提供一个；返回 documentId 与导入统计。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          resourceId: {
+            type: 'string',
+            minLength: 1,
+            description: '当前会话可访问的 APKG 文件资源 ID；支持 file_、att_ 以及映射到文件的 res_。',
+          },
+          path: {
+            type: 'string',
+            minLength: 1,
+            description: '本机 APKG 文件的绝对路径；不得传相对路径。',
+          },
+        },
+        oneOf: [
+          { required: ['resourceId'] },
+          { required: ['path'] },
+        ],
+        additionalProperties: false,
+      },
+    },
     {
       name: 'builtin-chatanki_run',
       description:
@@ -190,7 +237,8 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           templateId: {
             type: 'string',
-            description: '当 templateMode=single 时必传：单个模板 ID（来自 chatanki_list_templates）。',
+            description:
+              '当 templateMode=single 时优先传：单个模板 ID（来自 chatanki_list_templates）。single 模式下未传时，后端会自动使用用户设置的默认模板（default_template_id）；用户未设置默认模板或默认模板已删除则直接报错。',
           },
           templateIds: {
             type: 'array',
@@ -204,11 +252,20 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           maxCards: {
             type: 'integer',
-            description: '必需：卡片数量上限（"至多 N 张"，不是精确数量；系统硬上限 100，超过会被截断到 100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户明确指定数量时直接用用户的数字。',
+            minimum: 1,
+            maximum: 100,
+            description: '必需：本批卡片数量上限（"至多 N 张"，不是精确数量；取值 1~100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户目标超过 100 张时必须拆成多批，不得传入更大数字依赖系统截断。',
           },
           debug: { type: 'boolean', description: '可选：输出更多调试信息（路由决策/分块统计等）' },
         },
         required: ['goal', 'maxCards', 'templateMode'],
+        allOf: [
+          // templateMode=single 允许省略 templateId：后端优先使用用户默认模板设置。
+          {
+            if: { properties: { templateMode: { const: 'multiple' } }, required: ['templateMode'] },
+            then: { required: ['templateIds'] },
+          },
+        ],
       },
     },
     {
@@ -224,7 +281,8 @@ export const chatAnkiSkill: SkillDefinition = {
           noteType: { type: 'string', description: '可选：默认笔记类型' },
           templateId: {
             type: 'string',
-            description: '当 templateMode=single 时必传：单个模板 ID（来自 chatanki_list_templates）。',
+            description:
+              '当 templateMode=single 时优先传：单个模板 ID（来自 chatanki_list_templates）。single 模式下未传时，后端会自动使用用户设置的默认模板（default_template_id）；用户未设置默认模板或默认模板已删除则直接报错。',
           },
           templateIds: {
             type: 'array',
@@ -238,11 +296,20 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           maxCards: {
             type: 'integer',
-            description: '必需：卡片数量上限（"至多 N 张"，不是精确数量；系统硬上限 100，超过会被截断到 100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户明确指定数量时直接用用户的数字。',
+            minimum: 1,
+            maximum: 100,
+            description: '必需：本批卡片数量上限（"至多 N 张"，不是精确数量；取值 1~100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户目标超过 100 张时必须拆成多批，不得传入更大数字依赖系统截断。',
           },
           debug: { type: 'boolean', description: '可选：输出更多调试信息' },
         },
         required: ['goal', 'content', 'maxCards', 'templateMode'],
+        allOf: [
+          // templateMode=single 允许省略 templateId：后端优先使用用户默认模板设置。
+          {
+            if: { properties: { templateMode: { const: 'multiple' } }, required: ['templateMode'] },
+            then: { required: ['templateIds'] },
+          },
+        ],
       },
     },
     {
@@ -267,17 +334,21 @@ export const chatAnkiSkill: SkillDefinition = {
           ankiBlockId: {
             type: 'string',
             description:
-              '可选：anki_cards 预览块 ID（优先；来自 chatanki_run/chatanki_start 的返回；或直接使用最近的 anki_cards 块 id）',
+              '可选：anki_cards 预览块 ID；仅在 documentId 尚不可用时作为等待回退。与 documentId 同传时必须来自同一次 run/start。',
           },
           documentId: {
             type: 'string',
-            description: '可选：制卡任务的 documentId（来自 anki_cards 块 toolOutput 或 chatanki_wait 的返回）',
+            description: '可选：制卡任务的 documentId（稳定优先；来自 run/start、anki_cards 块 toolOutput 或 chatanki_wait 返回）',
           },
           timeoutMs: {
-            type: 'number',
-            description: '可选：等待超时时间（毫秒）。默认 30 分钟，最大 60 分钟。',
+            type: 'integer',
+            minimum: 0,
+            maximum: 3600000,
+            description:
+              '可选：等待超时时间（毫秒）。默认 5 分钟，最大 60 分钟。建议分轮轮询：单次 wait 返回 timeout 后在下一轮继续 wait 或改用 chatanki_status，不要一次 wait 占死整个回合。',
           },
         },
+        anyOf: [{ required: ['documentId'] }, { required: ['ankiBlockId'] }],
       },
     },
     {
@@ -291,6 +362,522 @@ export const chatAnkiSkill: SkillDefinition = {
           taskId: { type: 'string', description: '可选：任务 ID（高级用法，通常不需要）' },
         },
         required: ['action', 'documentId'],
+      },
+    },
+    {
+      name: 'builtin-chatanki_get_cards',
+      description:
+        '分页读回某次制卡任务的卡片全文，用于验收、定位和修改。单字段超过 2000 字符会截断并标记 truncated/truncatedFields（截断文本禁止作为整字段覆盖源）。返回含库中全部 live 卡（含因 maxCards 超限保留但未展示在预览块的卡），hiddenOverLimitCount 表示这类隐藏卡数量。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          documentId: { type: 'string', description: '制卡任务 documentId' },
+          page: { type: 'integer', minimum: 1, description: '页码，默认 1' },
+          pageSize: { type: 'integer', minimum: 1, maximum: 50, description: '每页数量，默认 20，最大 50' },
+          filter: {
+            type: 'string',
+            enum: ['all', 'error_only', 'edited_only'],
+            description: '筛选范围，默认 all',
+          },
+        },
+        required: ['documentId'],
+      },
+    },
+    {
+      name: 'builtin-chatanki_update_card',
+      description:
+        '按 cardId 修改一张卡。必须传 get_cards 返回的 expectedVersion；冲突时返回最新卡片供重试。截断防御：若目标字段超过 2000 字符截断限、且新值疑似基于 get_cards 的截断输出（整字段替换会毁掉超限部分），会返回 status=blocked / error=truncated_source_overwrite；只有确认要整字段覆盖时才显式传 allowTruncatedSource=true。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: { type: 'string', description: '卡片 ID' },
+          patch: {
+            type: 'object',
+            description: '要修改的字段子集，至少一个字段',
+            minProperties: 1,
+            properties: {
+              front: { type: 'string' },
+              back: { type: 'string' },
+              text: { type: 'string', description: 'Cloze 文本；传空字符串可清空' },
+              tags: { type: 'array', items: { type: 'string' } },
+              extraFields: { type: 'object', additionalProperties: { type: 'string' } },
+            },
+            additionalProperties: false,
+          },
+          expectedVersion: { type: 'string', description: 'get_cards 返回的 version' },
+          allowTruncatedSource: {
+            type: 'boolean',
+            description:
+              '可选（默认 false）：显式确认“新值可能基于截断输出，仍要整字段覆盖”。仅在无法取得字段全文且用户同意丢弃超限内容时使用。',
+          },
+        },
+        required: ['cardId', 'patch', 'expectedVersion'],
+      },
+    },
+    {
+      name: 'builtin-chatanki_batch_update_cards',
+      description:
+        '批量修改当前会话文档中的多张卡（1~100 张），单次调用替代 N 次 update_card。逐项使用与 update_card 相同的 CAS + patch 语义，返回逐卡成功/冲突报告；成功卡片汇总为一次预览块同步。一次修改超过 3 张前必须先用 ask_user 征得用户确认。同样受截断防御约束（allowTruncatedSource 对整批生效）。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          documentId: { type: 'string', description: '目标制卡任务 documentId；所有卡必须属于该文档' },
+          updates: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            description: '批量修改项；cardId 不得重复',
+            items: {
+              type: 'object',
+              properties: {
+                cardId: { type: 'string', description: '当前会话拥有的真实卡片 ID，来自 get_cards' },
+                expectedVersion: { type: 'string', description: '同一次 get_cards 返回的该卡 version' },
+                patch: {
+                  type: 'object',
+                  description: '要修改的字段子集，至少一个字段',
+                  minProperties: 1,
+                  properties: {
+                    front: { type: 'string' },
+                    back: { type: 'string' },
+                    text: { type: 'string', description: 'Cloze 文本；传空字符串可清空' },
+                    tags: { type: 'array', items: { type: 'string' } },
+                    extraFields: { type: 'object', additionalProperties: { type: 'string' } },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              required: ['cardId', 'expectedVersion', 'patch'],
+              additionalProperties: false,
+            },
+          },
+          allowTruncatedSource: {
+            type: 'boolean',
+            description: '可选（默认 false）：截断防御豁免，对整批生效；语义同 update_card。',
+          },
+        },
+        required: ['documentId', 'updates'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_delete_card',
+      description: '按 get_cards 返回的最新内容与复习版本删除一张归属当前会话的卡片；未入队时 expectedReviewVersion 显式传 null。一次删除超过 3 张前必须先征得用户确认。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: { type: 'string', description: '要删除的卡片 ID' },
+          expectedVersion: { type: 'string', description: '最近一次 get_cards 返回的 version' },
+          expectedReviewVersion: {
+            anyOf: [
+              { type: 'integer', minimum: 0 },
+              { enum: [null] },
+            ],
+            description: '最近一次 get_cards 返回的 reviewState.reviewVersion；reviewState=null 时显式传 null',
+          },
+        },
+        required: ['cardId', 'expectedVersion', 'expectedReviewVersion'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_delete_cards',
+      description:
+        '批量删除当前会话拥有的多张卡（1~100 张），单次调用替代 N 次 delete_card。逐卡执行与 delete_card 相同的双乐观锁校验（内容 version + 复习 reviewVersion，未入队时后者显式传 null），返回逐卡成功/冲突报告；所有卡必须属于同一文档。一次删除超过 3 张前必须先用 ask_user 征得用户确认。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cards: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            description: '待删除卡片；cardId 不得重复，且须来自最近一次 get_cards 的同一批快照',
+            items: {
+              type: 'object',
+              properties: {
+                cardId: { type: 'string', description: '要删除的卡片 ID' },
+                expectedVersion: { type: 'string', description: '最近一次 get_cards 返回的 version' },
+                expectedReviewVersion: {
+                  anyOf: [
+                    { type: 'integer', minimum: 0 },
+                    { enum: [null] },
+                  ],
+                  description:
+                    '最近一次 get_cards 返回的 reviewState.reviewVersion；reviewState=null 时显式传 null',
+                },
+              },
+              required: ['cardId', 'expectedVersion', 'expectedReviewVersion'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['cards'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_add_cards',
+      description: '向已有 documentId 补充少量卡片，无需整批重跑。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          documentId: { type: 'string', description: '目标制卡任务 documentId' },
+          cards: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: {
+              type: 'object',
+              properties: {
+                front: { type: 'string' },
+                back: { type: 'string' },
+                text: { type: 'string' },
+                tags: { type: 'array', items: { type: 'string' } },
+                extraFields: { type: 'object', additionalProperties: { type: 'string' } },
+                templateId: { type: 'string' },
+              },
+              anyOf: [
+                { required: ['front', 'back'] },
+                { required: ['text'] },
+              ],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['documentId', 'cards'],
+      },
+    },
+    {
+      name: 'builtin-chatanki_enqueue_review',
+      description:
+        '把已验收的卡片加入内置 FSRS 复习计划。可按当前会话的 documentId 整批入队，或按当前会话所属的 cardIds 精确入队；返回 enqueued/skipped。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          documentId: {
+            type: 'string',
+            description: '当前会话中的制卡任务 documentId；与 cardIds 二选一',
+          },
+          cardIds: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: { type: 'string' },
+            description: '当前会话所属的真实卡片 ID；与 documentId 二选一',
+          },
+        },
+        oneOf: [
+          { required: ['documentId'] },
+          { required: ['cardIds'] },
+        ],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_review_stats',
+      description:
+        '读取内置 FSRS 复习库的全局统计：total/due/new/learning/review/relearning/suspended/reviews_today。用于回答近期记忆与待复习情况；这是库级只读工具，不受单个聊天 documentId 限制。',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_undo_last_review',
+      description:
+        '撤销当前会话所拥有卡片的最后一次可撤销评分。必须先用 get_cards 读取最新 reviewState.reviewVersion 与 reviewState.latestReview.logId；冲突或不可撤销时不得盲目重试。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: {
+            type: 'string',
+            minLength: 1,
+            description: '当前会话所拥有的真实卡片 ID，来自 get_cards。',
+          },
+          expectedReviewVersion: {
+            type: 'integer',
+            minimum: 0,
+            description: '最近一次 get_cards 返回的 reviewState.reviewVersion。',
+          },
+          expectedLogId: {
+            type: 'string',
+            minLength: 1,
+            description: '同一次 get_cards 返回的 reviewState.latestReview.logId。',
+          },
+        },
+        required: ['cardId', 'expectedReviewVersion', 'expectedLogId'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_set_suspended',
+      description:
+        '暂停或恢复当前会话所拥有的一张已入队卡片。必须先用 get_cards 读取最新 reviewState.reviewVersion；只能响应用户明确意图，不能由 Agent 自行判断某张卡应被暂停。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: {
+            type: 'string',
+            minLength: 1,
+            description: '当前会话所拥有的真实卡片 ID，来自 get_cards。',
+          },
+          expectedReviewVersion: {
+            type: 'integer',
+            minimum: 0,
+            description: '最近一次 get_cards 返回的 reviewState.reviewVersion。',
+          },
+          suspended: {
+            type: 'boolean',
+            description: 'true=暂停，false=恢复。',
+          },
+        },
+        required: ['cardId', 'expectedReviewVersion', 'suspended'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_list_library_cards',
+      description:
+        '分页读取本机完整 Anki 卡片库，可跨 ChatV2 会话按内容、模板、调度状态和诊断状态筛选。返回内容 version、reviewState.reviewVersion 与来源定位；长字段按 2,000 字符截断并标记 truncated/truncatedFields。这是库级只读工具，Agent 不可评分。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          search: {
+            type: 'string',
+            minLength: 1,
+            description: '可选：搜索卡片正面、背面、Cloze 文本或标签。',
+          },
+          templateId: {
+            type: 'string',
+            minLength: 1,
+            description: '可选：只返回使用该模板的卡片。',
+          },
+          schedule: {
+            type: 'string',
+            enum: ['all', 'due', 'not_enqueued', 'suspended', 'enqueued'],
+            default: 'all',
+            description: '复习调度筛选，默认 all。',
+          },
+          filter: {
+            type: 'string',
+            enum: ['all', 'error_only'],
+            default: 'all',
+            description: '诊断卡筛选，默认 all。',
+          },
+          page: {
+            type: 'integer',
+            minimum: 1,
+            default: 1,
+            description: '页码，默认 1。',
+          },
+          pageSize: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 20,
+            default: 20,
+            description: '每页数量，默认及最大均为 20。',
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_update_library_card',
+      description:
+        '修改完整卡片库中的一张卡，不受当前聊天会话限制。必须先用 list_library_cards 定位真实 cardId，并传同一快照的内容 expectedVersion；冲突后重新读取，禁止覆盖新版本。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: {
+            type: 'string',
+            minLength: 1,
+            description: 'list_library_cards 返回的真实卡片 ID。',
+          },
+          expectedVersion: {
+            type: 'string',
+            minLength: 1,
+            description: '同一次 list_library_cards 返回的内容 version。',
+          },
+          patch: {
+            type: 'object',
+            minProperties: 1,
+            description: '要修改的字段子集，至少一个字段。',
+            properties: {
+              front: { type: 'string' },
+              back: { type: 'string' },
+              text: {
+                anyOf: [{ type: 'string' }, { enum: [null] }],
+                description: 'Cloze 文本；null 表示清除。',
+              },
+              tags: { type: 'array', items: { type: 'string' } },
+              extraFields: { type: 'object', additionalProperties: { type: 'string' } },
+            },
+            additionalProperties: false,
+          },
+        },
+        required: ['cardId', 'expectedVersion', 'patch'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_enqueue_library_review',
+      description:
+        '把完整卡片库中的 1 到 100 张卡加入内置 FSRS 复习计划。每张卡都必须携带 list_library_cards 返回的最新内容 version；整批原子校验，且只有用户明确同意后才能调用。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cards: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            uniqueItems: true,
+            description: '待入队卡片；cardId 不得重复。',
+            items: {
+              type: 'object',
+              properties: {
+                cardId: {
+                  type: 'string',
+                  minLength: 1,
+                  description: 'list_library_cards 返回的真实卡片 ID。',
+                },
+                expectedVersion: {
+                  type: 'string',
+                  minLength: 1,
+                  description: '同一次 list_library_cards 返回的内容 version。',
+                },
+              },
+              required: ['cardId', 'expectedVersion'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['cards'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_set_library_suspended',
+      description:
+        '暂停或恢复完整卡片库中的一张已入队卡片。必须使用 list_library_cards 最新 reviewState.reviewVersion，且只能响应用户对明确目标的明确意图。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: {
+            type: 'string',
+            minLength: 1,
+            description: 'list_library_cards 返回的真实卡片 ID。',
+          },
+          expectedReviewVersion: {
+            type: 'integer',
+            minimum: 0,
+            description: '同一次 list_library_cards 返回的 reviewState.reviewVersion。',
+          },
+          suspended: {
+            type: 'boolean',
+            description: 'true=暂停，false=恢复。',
+          },
+        },
+        required: ['cardId', 'expectedReviewVersion', 'suspended'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_undo_library_last_review',
+      description:
+        '撤销完整卡片库中一张卡的最后一次可撤销评分。必须使用 list_library_cards 同一份最新 reviewState 中的 reviewVersion 与 latestReview.logId，并确认 latestReview.undoable=true。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: {
+            type: 'string',
+            minLength: 1,
+            description: 'list_library_cards 返回的真实卡片 ID。',
+          },
+          expectedReviewVersion: {
+            type: 'integer',
+            minimum: 0,
+            description: '同一次 list_library_cards 返回的 reviewState.reviewVersion。',
+          },
+          expectedLogId: {
+            type: 'string',
+            minLength: 1,
+            description: '同一次 list_library_cards 返回的 reviewState.latestReview.logId。',
+          },
+        },
+        required: ['cardId', 'expectedReviewVersion', 'expectedLogId'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_delete_library_card',
+      description:
+        '从完整卡片库删除一张卡及其 FSRS 状态。必须同时携带最新内容 expectedVersion 和复习 expectedReviewVersion；未入队时显式传 null。目标不明确或批量删除超过 3 张前必须确认。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: {
+            type: 'string',
+            minLength: 1,
+            description: 'list_library_cards 返回的真实卡片 ID。',
+          },
+          expectedVersion: {
+            type: 'string',
+            minLength: 1,
+            description: '同一次 list_library_cards 返回的内容 version。',
+          },
+          expectedReviewVersion: {
+            anyOf: [{ type: 'integer', minimum: 0 }, { enum: [null] }],
+            description:
+              '已入队时传同一快照的 reviewState.reviewVersion；reviewState=null 时必须显式传 null。',
+          },
+        },
+        required: ['cardId', 'expectedVersion', 'expectedReviewVersion'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_retemplate',
+      description:
+        '把当前会话中的整批或指定卡片更换为目标模板。必须携带 get_cards 读到的每张卡版本；返回逐卡映射结果与 missingFields，缺失字段由后续 update_card 补齐。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          documentId: {
+            type: 'string',
+            minLength: 1,
+            description: '当前会话中的制卡任务 documentId；与 cardIds 二选一',
+          },
+          cardIds: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            uniqueItems: true,
+            items: { type: 'string', minLength: 1 },
+            description: '当前会话所属的真实卡片 ID；与 documentId 二选一',
+          },
+          targetTemplateId: {
+            type: 'string',
+            minLength: 1,
+            description: '目标模板 ID，来自 chatanki_list_templates',
+          },
+          strategy: {
+            type: 'string',
+            enum: ['map_only', 'fill_missing'],
+            description: 'map_only 只映射已有字段；fill_missing 额外返回缺失字段与源卡内容，但不会自动生成字段值',
+          },
+          expectedVersions: {
+            type: 'object',
+            minProperties: 1,
+            additionalProperties: { type: 'string', minLength: 1 },
+            description: 'cardId -> get_cards version；必须覆盖本次选择的每张卡',
+          },
+        },
+        required: ['targetTemplateId', 'strategy', 'expectedVersions'],
+        oneOf: [
+          { required: ['documentId'] },
+          { required: ['cardIds'] },
+        ],
+        additionalProperties: false,
       },
     },
     {
@@ -328,9 +915,12 @@ export const chatAnkiSkill: SkillDefinition = {
       inputSchema: {
         type: 'object',
         properties: {
-          category: { type: 'string', description: '可选：关键词/类别筛选（会在 name/description 中模糊匹配）' },
+          category: { type: 'string', description: '可选：在 ID、名称、描述和 note type 中模糊匹配' },
           activeOnly: { type: 'boolean', description: '是否只返回激活模板，默认 true' },
+          page: { type: 'integer', minimum: 1, default: 1, description: '页码，默认 1' },
+          pageSize: { type: 'integer', minimum: 1, maximum: 50, default: 20, description: '每页模板数，默认 20，最大 50' },
         },
+        additionalProperties: false,
       },
     },
     {
@@ -358,13 +948,28 @@ export const chatAnkiSkill: SkillDefinition = {
 
 你是 ChatAnki：目标是把任意格式的学习材料智能转换为结构化、可复习的知识卡片，并与 Anki 无缝衔接。
 
-## ⚡ 首要步骤：默认先做一次轻量确认（用户已明确时可跳过）
+## ⚡ 首要步骤：默认先做一次轻量确认
 
-在启动制卡前，默认优先用 \`builtin-ask_user\` 确认关键偏好（例如卡片数量、模板模式、输出风格/语言），再进入制卡流程。
+在启动制卡前，除下述小批量轻量例外外，先用 \`builtin-ask_user\` 确认关键偏好（例如卡片数量、模板模式、输出风格/语言），再进入制卡流程。
+
+唯一的小批量轻量例外：用户直接提供的 \`content\` **少于 800 字**、\`maxCards <= 10\`，且 \`maxCards\` / \`templateMode\` / 模板等必需参数都能从用户消息直接推断时，可跳过 \`builtin-ask_user\` 直接 run/start。该例外只省略启动前确认，仍必须执行 \`wait -> get_cards\` 的完整验收循环；参数有任何歧义时仍先 ask_user。
 
 ## 使用方式（强烈推荐）
 
-工具调用顺序（必须）：\`builtin-chatanki_run\`/\`builtin-chatanki_start\` -> \`builtin-chatanki_wait\` -> \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`
+工具调用顺序（必须，按输入类型选择一条）：
+- 新制卡：\`builtin-chatanki_run\`/\`builtin-chatanki_start\` -> \`builtin-chatanki_wait\` -> \`builtin-chatanki_get_cards\` 分页验收 -> 必要时修改并再次验收 -> 用户明确确认后才可调用 \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`。
+- 已有 APKG：\`builtin-chatanki_import_apkg\` -> 用返回的 \`documentId\` 调用 \`builtin-chatanki_get_cards\` 分页读回全部卡片 -> 必要时加工并再次验收。
+
+两条流程验收后都要向用户汇报并主动询问是否加入复习计划。只有用户同意后才调用 \`builtin-chatanki_enqueue_review\`；只有用户明确要求或确认后，才继续 \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`。
+
+## APKG 导入闭环（必须完整执行）
+
+1. 用户提供已上传 APKG 时，调用 \`builtin-chatanki_import_apkg\` 并传 \`resourceId\`；用户明确给出本机绝对路径时传 \`path\`。二者只能传一个，禁止猜测或拼接任意路径。
+2. 导入结果中的 \`documentId\` 是**当前聊天会话拥有的新文档**；后续只使用这个真实 ID，不得使用原 APKG 牌组名或临时 ID 替代。
+3. 立即调用 \`builtin-chatanki_get_cards\` 分页读回全部导入卡片，逐张检查事实、正反面、Cloze、必需字段、重复项及媒体缺失提示。
+   - 本应用导出的 APKG 会恢复原卡片 \`templateId\`，可直接再次导出；外部 APKG 没有该元数据时 \`templateId\` 为空，需按实际需求选择回退模板或执行换模板流程。
+4. 用 \`builtin-chatanki_update_card\`、\`builtin-chatanki_delete_card\`、\`builtin-chatanki_add_cards\` 或版本化换模板流程加工；删除前必须使用最近一次 \`get_cards\` 返回的同一卡片快照，传真实 \`cardId/version\` 及 \`reviewState.reviewVersion\`；未入队即 \`reviewState=null\` 时将 \`expectedReviewVersion\` 显式传 \`null\`。每次修改后再次 \`builtin-chatanki_get_cards\` 复核。
+5. 汇报 \`importedCards\`、\`importedTemplates\`、\`mediaSkipped\` 与实际修订结果。只有用户明确要求或确认后才用该 \`documentId\` 调用 \`builtin-chatanki_export\`；只有用户同意加入复习计划后才调用 \`builtin-chatanki_enqueue_review\`。
 
 1. 用户提供材料：
    - **优先**：上传文件（PDF/图片/截图/手写/Markdown 等）；
@@ -372,13 +977,37 @@ export const chatAnkiSkill: SkillDefinition = {
 2. 用一句话描述学习目标（例如：\`记忆名词解释\` / \`理解公式推导\` / \`拆解流程图\` / \`刷考点\`）。
 3. 调用 \`builtin-chatanki_run\`（文件/自动解析）或 \`builtin-chatanki_start\`（纯文本/Markdown）启动制卡。
 4. **下一轮再调用** \`builtin-chatanki_wait\`（不要与 run/start 在同一轮并发调用）等待完成/错误/超时：
-   - **优先**使用 run/start 的返回 \`ankiBlockId\`；
-   - 若同时可获得 \`documentId\`（来自 anki_cards 块 toolOutput 或 wait 返回），也可以一并传入用于定位；
-   - wait 完成后再进行导出/同步（避免 \`documentId\` 为空或卡片未齐）。
-5. 工具会生成一个 \`anki_cards\` 预览块：
+   - **优先**使用 run/start 返回的 \`documentId\`；
+   - 仅在 documentId 尚不可用时使用 \`ankiBlockId\`。同时传入时二者必须来自同一次 run/start，后端会拒绝不匹配的组合；
+   - wait 完成后先读回并验收；导出/同步还需用户明确要求或确认。
+5. wait 完成后，必须用 \`builtin-chatanki_get_cards\` 分页读回全部卡片并逐张自查：事实性错误、正反面颠倒、Cloze 挖空是否合理、必需字段缺失、偏离用户目标、重复卡。
+6. 发现问题时用 \`builtin-chatanki_update_card\`、\`builtin-chatanki_delete_card\`、\`builtin-chatanki_add_cards\` 修正；需要一次修改/删除多张卡时改用批量工具 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\`（单次调用替代 N 次单卡调用，逐卡返回成功/冲突）。删除前先从最近一次 \`get_cards\` 的同一卡片快照读取真实 \`cardId/version/reviewState\`，同时传入 \`expectedVersion\` 与显式 nullable \`expectedReviewVersion\`，再次调用 \`builtin-chatanki_get_cards\` 复核，直到验收通过。
+7. 向用户汇报：生成 N 张、自查修改 X 张、删除 Y 张、补充 Z 张，以及仍需用户判断的事项；随后主动询问用户是否把验收通过的卡片加入内置复习计划。
+8. 用户明确同意后，调用 \`builtin-chatanki_enqueue_review\`：整批使用 \`documentId\`，只入队部分卡片时使用 \`get_cards\` 返回的真实 \`cardIds\`。未得到同意不得自动入队。
+9. 工具会生成一个 \`anki_cards\` 预览块：
    - 生成期间会展示 **进度/分段状态**；
    - 也会提示 **AnkiConnect 是否可用**；
    - 用户可在 UI 里继续编辑、保存到库、导出 APKG 或通过 AnkiConnect 同步。
+
+## 完整卡片库（跨会话 library scope）
+
+- 六个 \`*_library_*\` 工具是**库级工具**：它们面向本机完整 Anki 卡片库，可读取和修改其他 ChatV2 会话创建的卡片，不受当前聊天的 \`documentId\` 所有权范围限制。只有用户明确询问“卡片库 / 以前的卡 / 到期卡 / 全部卡片”或要求操作库中既有卡片时才进入该流程；当前会话刚生成的卡仍优先使用 \`get_cards\` 与会话级写工具。
+- 先调用 \`builtin-chatanki_list_library_cards\` 定位目标。按 \`search/templateId/schedule/filter\` 缩小范围，并根据 \`total/page/pageSize\` 继续翻页；\`pageSize\` 最大 20。单字段超过 2,000 字符时返回 \`truncated=true\` 与 \`truncatedFields\`；不得把截断文本当作完整字段，也不得在没有完整替换内容时覆盖该字段。返回的 \`ratingAvailableToAgent=false\` 是硬边界，不是能力提示。
+- **内容 CAS 与复习 CAS 相互独立**：\`version\` 只保护卡片内容，\`reviewState.reviewVersion\` 只保护 FSRS 状态。所有库级写操作必须使用最近一次 \`list_library_cards\` 的同一张卡快照；任何 \`version_conflict\` / \`review_state_conflict\` 后都重新 list，禁止复用旧 token、盲目重试或覆盖新状态。
+- 修改内容：\`list_library_cards -> update_library_card(expectedVersion, patch) -> list_library_cards\`。一次修改超过 3 张库卡、覆盖用户已编辑内容，或目标不唯一时，必须先用 \`builtin-ask_user\` 汇总目标与改动并确认；用户已明确指定单张目标和具体改动时可直接执行。
+- 加入复习：只有用户明确同意后才调用 \`builtin-chatanki_enqueue_library_review\`，并为每张卡传同一轮 list 得到的 \`{cardId, expectedVersion}\`。不得把搜索命中自动全部入队，也不得使用旧版本或临时 ID。
+- 暂停/恢复或撤销：必须先 list 读取最新 \`reviewState\`。暂停/恢复传 \`expectedReviewVersion\`；撤销仅在 \`latestReview.undoable=true\` 时传同一快照的 \`expectedReviewVersion + expectedLogId\`。只有用户明确指定目标与动作才执行，歧义时先 ask_user。
+- 删除：先 list 获取同一快照的 \`expectedVersion\` 与 \`reviewState.reviewVersion\`；未入队即 \`reviewState=null\` 时，\`expectedReviewVersion\` 必须显式传 \`null\`。一次删除超过 3 张库卡必须先 ask_user；即使单张，目标或删除意图不明确时也必须确认。冲突后重新 list，不得换用会话级删除绕过 CAS。
+- **Agent 禁止评分**：库级流程同样严禁 Agent 选择 Again/Hard/Good/Easy，工具清单没有任何 rate/score 工具。Agent 只能读取统计与状态，并在用户明确要求时入队、编辑、暂停/恢复、撤销或删除；实际评分必须由用户在复习 UI 中完成。
+
+## 更换模板（必须完整走版本化流程）
+
+- 固定流程：\`builtin-chatanki_list_templates\` -> \`builtin-chatanki_get_cards\`（对完整选择分页读回，收集每张卡的 \`cardId -> version\`）-> \`builtin-chatanki_retemplate\`（先用 \`strategy=map_only\`）-> 检查返回的 \`missingFields\` -> 按卡逐一调用 \`builtin-chatanki_update_card\` 补齐 -> 再用 \`builtin-chatanki_get_cards\` 复核。
+- \`list_templates\` 返回 \`total/page/pageSize\`；目标模板未出现在当前页时必须继续翻页，不能把前 20 个结果当作完整模板库。
+- \`fill_missing\` **不会调用 LLM，也不会自动生成字段值**；它只报告 \`missingFields\` 和源卡内容，字段值必须由你判断后在后续 \`update_card\` 调用中写入。
+- Basic -> Cloze 前，必须先用 \`update_card\` 写入包含有效 \`{{cN::...}}\` 标记的 \`text\`，再调用 \`retemplate\`；没有合法 Cloze text 时不得强行更换。
+- 批量换模板会改变卡片外观，并可能覆盖字段映射。更换超过 3 张卡、覆盖用户已编辑卡片，或对整份 document 换模板前，必须先用 \`builtin-ask_user\` 明确确认。
+- 禁止使用过期 version。任何版本冲突后都必须重新调用 \`builtin-chatanki_get_cards\` 刷新完整选择，重建 \`expectedVersions\`，再决定是否重试；不得复用旧版本。
 
 ## 关键原则
 
@@ -386,10 +1015,22 @@ export const chatAnkiSkill: SkillDefinition = {
 - **自动路由**：不传 \`route\` 时由系统自动选择：\`simple_text\` / \`vlm_light\` / \`vlm_full\`。
 - **可覆盖路由**：当用户明确知道材料形态时，可传 \`route\` 强制走指定路线。
 - **禁止输出占位标签**：不要在回答正文输出 \`<anki_cards ... />\` 或任何“块标签”。预览块由系统事件自动渲染。
+- **观测后再修改**：用户说“第 N 张卡有问题”时，先用 \`builtin-chatanki_get_cards\` 定位真实 cardId/version，再调用 \`builtin-chatanki_update_card\`；除非用户明确要求，禁止整批重跑。
+- **删除使用双乐观锁**：调用 \`builtin-chatanki_delete_card\` 前必须重新用 \`builtin-chatanki_get_cards\` 取得同一卡片最新 \`cardId/version/reviewState\`，同时传 \`expectedVersion\` 与 \`expectedReviewVersion\`；未入队时后者显式传 \`null\`。任何 \`version_conflict\` / \`review_state_conflict\` 后都重新读取，不得复用旧 token。
+- **乐观锁冲突**：若写操作返回 \`error=version_conflict\`，必须重新调用 \`builtin-chatanki_get_cards\` 获取当前内容与新 version，保留用户最新编辑后再构造 patch/expectedVersions；不得盲目覆盖或复用旧版本。
+- **破坏性操作确认**：一次要删除或更换模板超过 3 张卡、整批重做、整份 document 换模板，或覆盖用户已编辑内容时，先用 \`builtin-ask_user\` 明确确认。该纪律同样适用于批量工具：\`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` 单次操作超过 3 张卡前必须先 ask_user 确认。
+- **批量工具优先**：同一文档内需要修改/删除多张卡时，优先一次 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\`（每项带各自的 \`expectedVersion\`，删除项还要带显式 nullable \`expectedReviewVersion\`），逐卡结果在 \`results\` 中返回；出现 conflict 的卡必须重新 \`get_cards\` 后重试，不得复用旧版本。
+- **截断防御（禁止用截断输出整字段覆盖）**：\`get_cards\` 的单字段超过 2000 字符会被截断（\`truncated=true\` + \`truncatedFields\`）。若某字段被截断，禁止把截断文本（或基于它的小改动）作为 patch 整字段回写——后端会返回 \`status=blocked\` / \`error=truncated_source_overwrite\`。此时应放弃整字段替换、只改未截断字段，或在用户明确同意丢弃超限内容后显式传 \`allowTruncatedSource=true\`。
+- **复习入队需同意**：制卡验收后应主动询问，但只有用户明确同意才调用 \`builtin-chatanki_enqueue_review\`；不得使用临时或合成 cardId。
+- **复习统计是库级只读**：用户问“最近记得怎么样”“今天还有多少”“复习进度”时，用 \`builtin-chatanki_review_stats\`，并根据 due/new/learning/review/relearning/suspended/reviews_today 给出简短建议。
+- **复习状态先读后写**：撤销评分或暂停/恢复前，重新调用 \`builtin-chatanki_get_cards\`，只使用同一条最新 \`reviewState\` 中的 \`reviewVersion\`、\`latestReview.logId\` 和 \`latestReview.undoable\`。\`reviewState=null\` 表示尚未入队，不能调用复习状态写工具。
+- **评分只属于用户**：Agent 严禁推断或代替用户选择 Again/Hard/Good/Easy，也不得把“撤销后重评”理解为自行评分；ChatAnki 工具清单不开放任何评分工具。只能在用户明确要求时撤销最后一次评分，或暂停/恢复一张卡。
+- **复习状态冲突不盲重试**：若返回 \`status=conflict\` / \`error=review_state_conflict\`，重新 \`get_cards\` 并向用户说明状态已经变化；若返回 \`status=blocked\`，报告原因与当前状态，不得伪装成功或改用其他写操作绕过。
+- **复习状态修改需明确意图**：用户明确说“撤销这张的上次评分”“暂停/恢复这张卡”即构成该单卡操作的确认；目标或动作有歧义时先用 \`builtin-ask_user\`，不得根据难度、正确率或卡片内容自行决定。
 
 ## 内容确认（重要 — 必须遵守）
 
-- **禁止在没有制卡内容时调用 chatanki_run/chatanki_start**。如果用户只说"帮我做卡片"但没有提供任何学习材料（没上传文件、没粘贴内容），你**必须先用 \`builtin-ask_user\` 询问用户补充材料**（例如“上传文件 / 粘贴文本 / 稍后提供”），**不要直接调用制卡工具**。
+- **禁止在没有制卡内容或明确内容来源时调用 chatanki_run/chatanki_start**。如果用户只说“帮我做卡片”但没有上传或粘贴材料，必须先用 \`builtin-ask_user\` 让用户选择“上传资料 / 粘贴文本 / 由 AI 按通用知识生成 / 稍后提供”。只有用户明确选择“由 AI 按通用知识生成”后，才可自行整理事实内容并启动制卡；在 goal 中注明内容来源为通用知识，不得伪装成用户材料。
 - 若用户已上传文档/图片等材料：调用 \`builtin-chatanki_run\` 时**必须基于这些上下文引用制卡**（保留并使用全部可用引用）；**禁止**把文档内容改写成你自己的概述后仅放进 \`content\` 作为替代。若需指定目标文件，传 \`resourceId\`（单个）或 \`resourceIds\`（多个）；\`content\` 仅可作补充说明，不可替代文档主体。**此场景不要先调用 \`attachment_list/attachment_read\` 作为前置步骤。**
 - 若你尝试了 \`attachment_list\` 但返回空或失败，而用户明确“已上传资料”：**必须立即改走资源库路径**（\`builtin-resource_list\`/\`builtin-resource_search\`/上下文引用），然后继续 \`chatanki_run\`；**禁止**直接要求用户重传文件。
 - 执行顺序要求（有“已上传资料”语义时）：优先尝试读取当前上下文引用；若为空，再调用 \`builtin-resource_search\` 主动找资源。**搜索 chatanki 素材时必须限制到直接文件类资源**（例如 file / image / textbook），不要把 folder / note / mindmap / exam / essay / translation 结果直接传给 \`chatanki_run\`。拿到结果后，必须先检查返回项的 \`type\` 与 \`chatankiCompatible\`，只把直接文件类结果的 \`id\` 或 \`chatankiTargetId\` 作为 \`resourceId\` / \`resourceIds\` 传入；若结果类型不匹配，应继续筛选或重新搜索。**不要因附件工具失败而中断制卡流程。**
@@ -401,23 +1042,32 @@ export const chatAnkiSkill: SkillDefinition = {
 
 - 当用户问“进度如何 / 生成了多少张卡”：用 \`builtin-chatanki_status\` 查询 documentId 的进度统计。
 - 当用户说“等一下 / 继续 / 好了吗”：用 \`builtin-chatanki_wait\` 等待后台任务结束（完成/错误/超时），并把结果摘要告诉用户。
-  - **优先**传 \`ankiBlockId\`；必要时也可传 \`documentId\`（若后端支持）。
-  - 找不到 \`ankiBlockId\` 时：从最近的 \`anki_cards\` 预览块取 \`blockId\`（该 blockId 即 \`ankiBlockId\`）；同时从该块的 toolOutput 中取 \`documentId\` 以便后续导出/同步。
-  - 若 wait 返回 \`status=timeout\`：不要直接判定失败。应继续 \`builtin-chatanki_wait\`（可延长 timeoutMs）或用 \`builtin-chatanki_status\` 查询 documentId 的分段统计，直到进入 completed/error/cancelled 终态。
-  - 若 wait 返回 \`status=not_found/invalid_args\`：说明缺少正确的 id（或 id 不存在）。请先定位到对应的 \`anki_cards\` 预览块并获取其 blockId/documentId，再重新 wait。
+  - **优先**传 \`documentId\`；仅当它尚不可用时，才从最近的 \`anki_cards\` 预览块取 \`blockId\` 作为 \`ankiBlockId\`。
+  - 若同时传入两个 ID，它们必须来自同一个预览块/同一次 run/start；不要把不同批次的 ID 混用。
+  - wait 默认只等 5 分钟（timeoutMs 上限 60 分钟）。**分轮轮询**：单次 wait 返回 \`status=timeout\` 不是失败，应在后续轮次继续 \`builtin-chatanki_wait\`（必要时显式延长 timeoutMs）或用 \`builtin-chatanki_status\` 查询 documentId 的分段统计，直到进入 completed/error/cancelled 终态；不要靠一次超长 wait 占死整个回合。
+  - 结果里的 \`usableCards\` 是可用卡（非诊断卡）数量：\`completed_with_errors\` 且 \`usableCards=0\` 等价于完全失败，禁止当作部分成功汇报。
+  - 结果里的 \`hiddenOverLimitCount\` > 0 表示有超出 maxCards 的卡保留在库中但未展示在预览块；\`warnings\` 里 \`text_truncated\` 的 \`droppedFiles\` 列出因 10MB 预算被丢弃的文件名，须如实告知用户哪些材料未参与制卡。
+  - 若 wait 返回 \`status=not_found/invalid_args\`：说明缺少正确的 id（或 id 不存在）。若找不到 \`ankiBlockId\`，请先定位到对应的 \`anki_cards\` 预览块并获取其 blockId/documentId，再重新 wait。
+  - 若 wait 返回 \`status=error\`：先调用 \`builtin-chatanki_get_cards\` 核对是否存在可用卡。没有可用卡且错误为不可重试的认证/额度问题时，禁止盲目 retry；用户已明确允许 AI 通用知识生成、目标不超过 10 张时，可用 \`builtin-chatanki_add_cards\` 进行一次备用补卡并再次 \`get_cards\` 验收。其他情况应报告根因并让用户选择调整模型或内容来源。
 - 当用户要暂停/恢复/取消：用 \`builtin-chatanki_control\`。
 - 当用户要导出：用 \`builtin-chatanki_export\`（APKG/JSON；\`documentId\` 来自 wait 返回或 \`anki_cards\` 块 toolOutput）。
 - 当用户要同步到 Anki：可先用 \`builtin-chatanki_check_anki_connect\` 检查 AnkiConnect 是否可用，再用 \`builtin-chatanki_sync\` 同步（\`documentId\` 来自 wait 返回或 \`anki_cards\` 块 toolOutput）。
-- 当用户想看模板/做预估：用 \`builtin-chatanki_list_templates\` / \`builtin-chatanki_analyze\`。
+- 当用户同意把卡片加入内置复习计划：用 \`builtin-chatanki_enqueue_review\`。优先按已验收的 \`documentId\` 整批入队；只入队选中卡时传真实 \`cardIds\`。
+- 当用户询问内置复习进度、今日到期量或近期记忆情况：用库级只读的 \`builtin-chatanki_review_stats\`。
+- 当用户明确要求撤销某张卡的最后一次评分：先 \`builtin-chatanki_get_cards\` 读取该卡最新 \`reviewState\`；仅在 \`latestReview.undoable=true\` 时，把同一快照的 \`reviewVersion\` 与 \`latestReview.logId\` 传给 \`builtin-chatanki_undo_last_review\`。
+- 当用户明确要求暂停或恢复某张已入队卡：先 \`builtin-chatanki_get_cards\` 读取最新 \`reviewState.reviewVersion\`，再调用 \`builtin-chatanki_set_suspended\`；Agent 不得自行决定暂停，也不得替用户评分。
+- 当用户想看模板/做预估：用 \`builtin-chatanki_list_templates\` / \`builtin-chatanki_analyze\`；需要更换模板时严格执行上面的版本化 \`list_templates -> get_cards -> retemplate(map_only) -> update_card -> get_cards\` 流程。
 ## 卡片数量（必须遵守）
 
 - \`maxCards\` 是**必传参数**，每次调用 \`chatanki_run\` / \`chatanki_start\` 都必须传入。
-- \`maxCards\` 的语义是**上限（至多 N 张）**，不是精确数量；实际张数由内容知识点密度决定。系统硬上限 100，传入更大的值会被截断到 100。
+- \`maxCards\` 的语义是**上限（至多 N 张）**，不是精确数量；实际张数由内容知识点密度决定。系统**单次硬上限是 100**，禁止传入大于 100 的值并依赖系统截断。
+- 用户目标超过 100 张时，必须执行**超大批量分批流程**：按资料的 \`resourceId\` / \`resourceIds\` 子集分成多次 \`chatanki_run\`（每批 \`maxCards <= 100\`） -> 每批分别 \`builtin-chatanki_wait\` -> 每批用 \`builtin-chatanki_get_cards\` 分页读回全部卡片并完成修正 -> 全部批次验收后汇总各批 documentId、生成数与修订数。
+- 超大批量时禁止一次塞入几十个 \`resourceIds\` 后不管，也禁止未经逐批 wait + 全量分页验收就直接汇报、导出或入队。
 - \`templateMode\` 是**必传参数**：
-  - \`single\`：必须传 \`templateId\`；
+  - \`single\`：优先传 \`templateId\`；未传时后端自动使用用户设置的默认模板（default_template_id），用户没有默认模板或默认模板已删除则报错——此时用 \`builtin-chatanki_list_templates\` 让用户选择；
   - \`multiple\`：必须传 \`templateIds\`（非空数组）；
   - \`all\`：使用全部已启用模板（无需 templateId/templateIds）。
-- 如果用户明确说了数量（如"帮我做 5 张"）：直接用用户的数字。
+- 如果用户明确说了不超过 100 的数量（如"帮我做 5 张"）：本批直接用用户的数字；明确目标超过 100 时不得原样传入，必须按上述流程分批。
 - 如果用户没说数量：你必须根据内容长度自行判断合理上限：
   - 一两句话 → 3~5 张
   - 一段话（100~500字）→ 5~15 张
@@ -425,7 +1075,7 @@ export const chatAnkiSkill: SkillDefinition = {
   - 超长文档（>2000字）→ 30~80 张
 - **词汇表/术语清单**（逐条条目型内容）：每条条目对应 1 张卡，\`maxCards\` 应设为"条目数 + 少量余量"（如 95 条 → 100），避免内容被截断。
 - **绝不允许**不传 \`maxCards\`。
-- 任务结束后若结果中 \`limitReached=true\`：说明生成已达 \`maxCards\` 上限提前收尾，这是**正常完成**而非取消/失败；如实告知用户"已按上限生成 N 张"，若用户想要更多可建议提高 maxCards 重新生成。
+- 任务结束后若结果中 \`limitReached=true\`：说明生成已达 \`maxCards\` 上限提前收尾，这是**正常完成**而非取消/失败；如实告知用户"已按上限生成 N 张"。当当前 \`maxCards < 100\` 时可在用户同意后提高；已达 100 仍需更多时，必须改用上述超大批量分批流程，不得整批盲目重跑。
 `,
 };
 
@@ -486,6 +1136,11 @@ export const literatureReviewSkill: SkillDefinition = {
     'builtin-memory_write_smart',
     'builtin-memory_write_batch',
     'builtin-memory_list',
+    'builtin-memory_batch_move',
+    'builtin-memory_add_relation',
+    'builtin-memory_remove_relation',
+    'builtin-memory_update_tags',
+    'builtin-memory_export_all',
   ],
   content: `# 文献综述助手
 
@@ -516,7 +1171,7 @@ export const literatureReviewSkill: SkillDefinition = {
 
 | 技能组 ID | 提供的工具 | 何时加载 |
 |-----------|------------|----------|
-| \`vfs-memory\` | builtin-memory_read, builtin-memory_write, builtin-memory_update_by_id, builtin-memory_delete, builtin-memory_write_smart, builtin-memory_write_batch, builtin-memory_list | 需要保存/检索用户的研究偏好和历史时 |
+| \`vfs-memory\` | builtin-memory_read/write/update/delete/list, builtin-memory_batch_move, builtin-memory_add_relation/remove_relation, builtin-memory_update_tags, builtin-memory_export_all | 需要检索、组织、关联或导出用户记忆时；写操作遵守 OCC，全量导出需 High 审批 |
 
 ## 📚 文献综述工作流
 
@@ -709,7 +1364,7 @@ export const researchModeSkill: SkillDefinition = {
   disableAutoInvoke: false,
   isBuiltin: true,
   skillType: 'composite',
-  relatedSkills: ['knowledge-retrieval', 'todo-tools', 'canvas-note', 'web-fetch', 'ask-user'],
+  relatedSkills: ['knowledge-retrieval', 'todo-tools', 'canvas-note', 'web-fetch', 'ask-user', 'vfs-memory'],
   allowedTools: [
     // knowledge-retrieval
     'builtin-unified_search',
@@ -731,6 +1386,19 @@ export const researchModeSkill: SkillDefinition = {
     'builtin-web_fetch',
     // ask-user
     'builtin-ask_user',
+    // vfs-memory (optional)
+    'builtin-memory_read',
+    'builtin-memory_write',
+    'builtin-memory_update_by_id',
+    'builtin-memory_delete',
+    'builtin-memory_write_smart',
+    'builtin-memory_write_batch',
+    'builtin-memory_list',
+    'builtin-memory_batch_move',
+    'builtin-memory_add_relation',
+    'builtin-memory_remove_relation',
+    'builtin-memory_update_tags',
+    'builtin-memory_export_all',
   ],
   content: `# 调研模式
 
@@ -759,7 +1427,7 @@ export const researchModeSkill: SkillDefinition = {
 
 | 技能组 ID | 提供的工具 | 何时加载 |
 |-----------|------------|----------|
-| \`vfs-memory\` | builtin-memory_read, builtin-memory_write, builtin-memory_update_by_id, builtin-memory_delete, builtin-memory_write_smart, builtin-memory_write_batch, builtin-memory_list | 需要检索/保存用户记忆时 |
+| \`vfs-memory\` | builtin-memory_read/write/update/delete/list, builtin-memory_batch_move, builtin-memory_add_relation/remove_relation, builtin-memory_update_tags, builtin-memory_export_all | 需要检索、保存、组织、关联或导出用户记忆时 |
 | \`web-fetch\` | builtin-web_fetch | 需要抓取完整网页内容时 |
 
 **注意**：技能组加载后，相应的工具才会可用。请在开始调研前确保已加载必需的技能组。
@@ -1043,6 +1711,7 @@ export const builtinSkills: SkillDefinition[] = [
   literatureReviewSkill,
   researchModeSkill,
   examAnalysisSkill,
+  skillInstallerSkill,
   // templateDesignerSkill 已迁移到 builtin-tools/template-designer.ts，通过渐进披露加载
 ];
 

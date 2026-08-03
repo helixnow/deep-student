@@ -68,17 +68,19 @@ describe('AppearanceTab theme mode settings', () => {
     const { container, setThemeMode, setThemePalette } = renderAppearanceTab({ themeMode: 'light', isSystemDark: true });
 
     expect(screen.getByText('外观 / 主题')).toBeInTheDocument();
-    expect(screen.getByText('使用浅色、深色，或匹配系统设置')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '浅色' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: '深色' })).toBeInTheDocument();
+    expect(screen.queryByText('自定义主题、字体、缩放和界面视觉风格。')).not.toBeInTheDocument();
+    expect(screen.queryByText('使用浅色、深色，或匹配系统设置')).not.toBeInTheDocument();
+    expect(screen.getByText('外观 / 主题').parentElement?.parentElement).toHaveClass('items-stretch', 'md:!items-center');
+    expect(screen.getByRole('radio', { name: '亮色' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '暗色' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: '系统默认' })).toBeInTheDocument();
 
     const segmentedGroup = screen.getByRole('radiogroup', { name: '选择主题模式' });
     expect(segmentedGroup.className).toContain('study-shell-segmented');
-    expect(screen.getByRole('radio', { name: '浅色' }).className).toContain('study-shell-segmented-button');
+    expect(screen.getByRole('radio', { name: '亮色' }).className).toContain('study-shell-segmented-button');
 
-    const selectedButton = screen.getByRole('radio', { name: '浅色' });
-    const unselectedButton = screen.getByRole('radio', { name: '深色' });
+    const selectedButton = screen.getByRole('radio', { name: '亮色' });
+    const unselectedButton = screen.getByRole('radio', { name: '暗色' });
 
     // Behavioural contracts only: selection state is advertised via aria-
     // checked + data-selected, and every option carries the shared primitive
@@ -91,7 +93,7 @@ describe('AppearanceTab theme mode settings', () => {
     expect(unselectedButton).toHaveAttribute('data-selected', 'false');
     expect(unselectedButton).toHaveAttribute('aria-checked', 'false');
 
-    fireEvent.click(screen.getByRole('radio', { name: '深色' }));
+    fireEvent.click(screen.getByRole('radio', { name: '暗色' }));
 
     expect(setThemeMode).toHaveBeenCalledWith('dark');
     expect(invokeMock).toHaveBeenCalledWith('save_setting', { key: 'theme', value: 'dark' });
@@ -104,9 +106,9 @@ describe('AppearanceTab theme mode settings', () => {
     expect(container.querySelector('[data-slot="theme-palette-preview-panel"]')).toBeNull();
     expect(container.querySelector('[data-slot="theme-palette-preview-action"]')).toBeNull();
 
-    // AccentPicker：8 个预设圆点 + 1 个自选圆点。
+    // AccentPicker：9 个预设圆点 + 1 个自选圆点。
     const accentDots = container.querySelectorAll('[data-slot="accent-dot"]');
-    expect(accentDots.length).toBe(8);
+    expect(accentDots.length).toBe(9);
     expect(container.querySelector('[data-slot="accent-dot-custom"]')).not.toBeNull();
 
     const accentGroup = screen.getByRole('radiogroup', { name: '强调色' });

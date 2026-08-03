@@ -52,6 +52,20 @@ function getLocalizedSkillName(skillId: string, t: (key: string, options?: { def
   return translatedName || skillId;
 }
 
+/**
+ * 🆕 从 agent.metadata 安全读取后端 register_agent 持久化的 profile id
+ * （metadata.agent_profile.id）。当前前端 agent 转换尚未回传该字段，
+ * 读不到时由调用方回退 skillId。
+ */
+function readAgentProfileId(metadata: Record<string, unknown> | undefined): string | undefined {
+  const profile = metadata?.agent_profile;
+  if (profile !== null && typeof profile === 'object' && !Array.isArray(profile)) {
+    const id = (profile as Record<string, unknown>).id;
+    if (typeof id === 'string' && id.length > 0) return id;
+  }
+  return undefined;
+}
+
 // ============================================================================
 // 类型定义
 // ============================================================================
@@ -89,11 +103,11 @@ interface AgentStatusIconProps {
 const AgentStatusIcon: React.FC<AgentStatusIconProps> = ({ status }) => {
   switch (status) {
     case 'running':
-      return <CircleNotch size={14} className="text-blue-500 animate-spin" />;
+      return <CircleNotch size={14} className="text-primary animate-spin" />;
     case 'completed':
-      return <CheckCircle size={14} className="text-green-500" />;
+      return <CheckCircle size={14} className="text-success" />;
     case 'failed':
-      return <XCircle className="w-3.5 h-3.5 text-red-500" />;
+      return <XCircle className="w-3.5 h-3.5 text-destructive" />;
     default: // idle
       return <Circle className="w-3.5 h-3.5 text-muted-foreground" />;
   }
@@ -120,7 +134,7 @@ const MessageTypeBadge: React.FC<MessageTypeBadgeProps> = ({ type }) => {
   const { t } = useTranslation('chatV2');
   const className = messageTypeClassNames[type];
   return (
-    <span className={cn('px-1.5 py-0.5 text-[10px] font-medium rounded', className)}>
+    <span className={cn('px-1.5 py-0.5 text-2xs font-medium rounded', className)}>
       {t(`workspace.messageType.${type}`)}
     </span>
   );
@@ -136,11 +150,13 @@ interface AgentItemProps {
 }
 
 const AgentItem: React.FC<AgentItemProps> = ({ agent, isCurrentUser }) => {
-  const { t } = useTranslation(['chatV2', 'skills']);
+  const { t } = useTranslation(['chatV2', 'skills', 'workspace']);
   const shortId = agent.sessionId.slice(-8);
   const skillName = agent.skillId 
     ? getLocalizedSkillName(agent.skillId, t) 
     : (agent.role === 'coordinator' ? '-' : t('chatV2:workspace.agent.worker'));
+  // 🆕 skill/profile 小标签：优先持久化的 profile id，回退 skillId，两者都无则不显示
+  const profileTag = readAgentProfileId(agent.metadata) ?? agent.skillId;
 
   return (
     <div
@@ -161,13 +177,28 @@ const AgentItem: React.FC<AgentItemProps> = ({ agent, isCurrentUser }) => {
               ? t('workspace.agent.coordinator')
               : skillName}
           </span>
+          {/* 🆕 skill/profile 小标签（紧凑 chip） */}
+          {profileTag && (
+            <span className="px-1 py-px rounded border border-border/60 text-2xs text-muted-foreground flex-shrink-0 max-w-[96px] truncate">
+              {profileTag}
+            </span>
+          )}
+          {/* 🆕 C12: inbox 待消费计数小徽标（琥珀色，>0 时显示） */}
+          {typeof agent.pendingInboxCount === 'number' && agent.pendingInboxCount > 0 && (
+            <span
+              className="px-1 py-px rounded border border-warning/40 bg-warning/10 text-2xs text-warning flex-shrink-0"
+              title={t('workspace:subagentEmbed.pendingInboxHint')}
+            >
+              {t('workspace:subagentEmbed.pendingInbox', { count: String(agent.pendingInboxCount) })}
+            </span>
+          )}
           {isCurrentUser && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               ({t('workspace.agent.you')})
             </span>
           )}
         </div>
-        <div className="text-[10px] text-muted-foreground truncate">
+        <div className="text-2xs text-muted-foreground truncate">
           ID: {shortId}
         </div>
       </div>
@@ -185,12 +216,16 @@ interface MessageItemProps {
 }
 
 const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
+  const { i18n } = useTranslation('chatV2');
   const shortSenderId = message.senderSessionId.slice(-6);
   const shortTargetId = message.targetSessionId?.slice(-6);
-  const time = new Date(message.createdAt).toLocaleTimeString(undefined, {
+  const time = new Date(message.createdAt).toLocaleTimeString(
+    i18n.resolvedLanguage ?? i18n.language,
+    {
     hour: '2-digit',
     minute: '2-digit',
-  });
+    },
+  );
 
   // 截断消息内容
   const truncatedContent = message.content.length > 50
@@ -200,9 +235,9 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
   return (
     <div className="flex flex-col gap-0.5 py-1 border-b border-border/50 last:border-0">
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground">{time}</span>
+        <span className="text-2xs text-muted-foreground">{time}</span>
         <MessageTypeBadge type={message.messageType} />
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {shortSenderId}
           {shortTargetId && ` → ${shortTargetId}`}
         </span>
@@ -223,7 +258,8 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   store,
 }) => {
   const status = block.status;
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isExpanded, setIsExpanded] = useState(true);
   const [showMessages, setShowMessages] = useState(false);
   const disclosureMotion = useDisclosureMotion();
@@ -335,9 +371,9 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   if (isHistoricalMode) {
     return (
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
-          <Clock size={16} className="text-blue-600 dark:text-blue-400" />
-          <span className="text-sm text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-2 p-3 bg-info/10 border-b border-info/30">
+          <Clock size={16} className="text-info" />
+          <span className="text-sm text-info">
             {t('workspace.status.historicalWorkspace')}
           </span>
         </div>
@@ -349,8 +385,8 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           {/* Agent 列表 */}
           {agents.length > 0 && (
             <div className="mt-2">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                {t('workspace.status.agents')} ({agents.length})
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                {t('workspace.status.agentsCount', { count: agents.length })}
               </div>
               <div className="space-y-0.5">
                 {agents.map((agent) => (
@@ -364,14 +400,14 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             </div>
           )}
           {snapshotCreatedAt && (
-            <div className="flex items-center gap-1 mt-2 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1 mt-2 text-2xs text-muted-foreground">
               <Clock size={12} />
               <span>
-                {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString()}
+                {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString(locale)}
               </span>
             </div>
           )}
-          <p className="text-[10px] text-muted-foreground mt-2">
+          <p className="text-2xs text-muted-foreground mt-2">
             ID: {blockWorkspaceId?.slice(-12)}
           </p>
         </div>
@@ -383,9 +419,9 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   if (isWorkspaceMismatch) {
     return (
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-          <Warning size={16} className="text-amber-600 dark:text-amber-400" />
-          <span className="text-sm text-amber-700 dark:text-amber-300">
+        <div className="flex items-center gap-2 p-3 bg-warning/10 border-b border-warning/30">
+          <Warning size={16} className="text-warning" />
+          <span className="text-sm text-warning">
             {t('workspace.status.workspaceSwitched')}
           </span>
         </div>
@@ -397,7 +433,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           <p className="text-xs text-muted-foreground">
             {t('workspace.status.historicalSnapshot')}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             ID: {blockWorkspaceId?.slice(-12)}
           </p>
         </div>
@@ -409,14 +445,23 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
     <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
       {/* 头部 */}
       <div
-        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={() => setIsExpanded(!isExpanded)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsExpanded(!isExpanded);
+          }
+        }}
       >
         <div className="flex items-center gap-2">
           <Buildings size={16} className="text-primary" />
           <span className="text-sm font-medium">{workspaceName}</span>
           {status === 'running' && (
-            <CircleNotch size={14} className="text-blue-500 animate-spin" />
+            <CircleNotch size={14} className="text-info animate-spin" />
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -454,8 +499,8 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           <motion.div {...disclosureMotion}>
             {/* Agent 列表 */}
             <div className="px-3 pb-2">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                {t('workspace.status.agents')} ({agents.length})
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                {t('workspace.status.agentsCount', { count: agents.length })}
               </div>
               <div className="space-y-0.5">
                 {agents.length === 0 ? (
@@ -478,16 +523,28 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             {recentMessages.length > 0 && (
               <div className="border-t border-border/50">
                 <div
-                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={showMessages}
+                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMessages(!showMessages);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMessages(!showMessages);
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-1.5">
                     <Chat size={14} className="text-muted-foreground" />
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                      {t('workspace.status.recentMessages')} ({recentMessages.length})
+                    <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
+                      {t('workspace.status.recentMessagesCount', {
+                        count: recentMessages.length,
+                      })}
                     </span>
                   </div>
                   {showMessages ? (
@@ -514,10 +571,10 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
 
             {/* 时间戳 */}
             {workspace?.createdAt && (
-              <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/50 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/50 text-2xs text-muted-foreground">
                 <Clock size={12} />
                 <span>
-                  {t('workspace.status.createdAt')}: {new Date(workspace.createdAt).toLocaleString()}
+                  {t('workspace.status.createdAt')}: {new Date(workspace.createdAt).toLocaleString(locale)}
                 </span>
               </div>
             )}

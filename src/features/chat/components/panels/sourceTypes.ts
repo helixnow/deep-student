@@ -31,7 +31,7 @@ export interface RagSourceInfo {
 // ============================================================================
 
 /** 多模态来源类型 */
-export type MultimodalSourceType = 'attachment' | 'exam' | 'textbook';
+export type MultimodalSourceType = 'attachment' | 'file' | 'image' | 'exam' | 'textbook';
 
 /** 多模态检索结果来源 */
 export type MultimodalRetrievalSource = 'multimodal_page' | 'text_chunk';
@@ -63,6 +63,25 @@ export interface MultimodalSourceInfo {
 // ============================================================================
 
 /**
+ * 引用契约类型（与 citationParser 的 `[类型-N]` 契约一致）
+ */
+export type SourceCitationType = 'rag' | 'memory' | 'web_search' | 'multimodal';
+
+/**
+ * 检索失败信息（由 adapter 从 error 状态的检索块提取）
+ */
+export interface SourceRetrievalError {
+  /** 失败的块 ID */
+  blockId: string;
+  /** 块类型（rag/memory/web_search/multimodal_rag/academic_search） */
+  blockType: string;
+  /** 归一化后的来源分组（rag/memory/web_search/multimodal） */
+  origin: string;
+  /** 错误描述（可选） */
+  message?: string;
+}
+
+/**
  * 单个来源项
  */
 export interface UnifiedSourceItem {
@@ -90,6 +109,24 @@ export interface UnifiedSourceItem {
   pageIndex?: number;
   /** 资源类型（textbook/attachment/exam 等） */
   resourceType?: string;
+  /**
+   * 引用契约类型（与 citation `[类型-N]` 契约一致）
+   * tool/graph 等无引用契约的来源为 undefined
+   */
+  citationType?: SourceCitationType;
+  /**
+   * 类型内序号（1-based，对应 citation `[类型-N]` 中的 N）
+   *
+   * 信任策略（与后端 Citation Ledger 契约一致）：
+   * - 后端提供 typeIndex/citationTag 时直接信任使用
+   * - 仅在缺失时由 sourceAdapter 按跨块全局顺序本地分配（防御式兼容旧数据）
+   */
+  typeIndex?: number;
+  /**
+   * 后端原始引用标记（如 `[知识库-2]`），由 Citation Ledger 生成。
+   * 存在时作为 typeIndex 的权威来源；仅作展示/解析用途，可缺失。
+   */
+  citationTag?: string;
   /** 多模态扩展信息（可选） */
   multimodal?: {
     /** 来源类型 */
@@ -126,4 +163,6 @@ export interface UnifiedSourceBundle {
   total: number;
   groups: UnifiedSourceGroup[];
   stage?: string;
+  /** 检索失败的块信息（可为空；用于面板内联错误态） */
+  errors?: SourceRetrievalError[];
 }

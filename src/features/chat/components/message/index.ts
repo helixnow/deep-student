@@ -1,8 +1,8 @@
 export { MessageActions } from './MessageActions';
-export { MessageAttachments } from './MessageAttachments';
 export { MessageInlineEdit } from './MessageInlineEdit';
+export { MessageTouchActionBar } from './MessageTouchActionBar';
 export { UserMessageBubble } from './UserMessageBubble';
 export type { MessageActionsProps } from './MessageActions';
-export type { MessageAttachmentsProps } from './MessageAttachments';
 export type { MessageInlineEditProps } from './MessageInlineEdit';
+export type { MessageTouchActionBarProps } from './MessageTouchActionBar';
 export type { UserMessageBubbleProps } from './UserMessageBubble';

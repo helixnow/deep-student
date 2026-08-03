@@ -87,4 +87,6 @@ export interface TreeCallbacks {
   onDelete?: (ids: string[]) => void;
   onCopy?: (ids: string[]) => void;
   onPaste?: (targetId: string) => void;
+  /** hover 行内「+」：在文件夹下新建子项 */
+  onCreateChild?: (folderId: string) => void;
 }

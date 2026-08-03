@@ -1,0 +1,107 @@
+/* 节点组件级样式（锚点 / 入场动画 / 编辑态细节）
+   不写入 mindmap.css，由 nodes/index.ts 统一引入。
+   视觉 token 对齐 --mm-* / --notes-*，动效尊重 prefers-reduced-motion。 */
+
+/* ============================================
+   连接锚点（Handle）：默认隐藏，hover / 选中淡入
+   Root 与 Branch 统一为同一视觉（对称小圆点）
+   ============================================ */
+
+.react-flow__handle.mm-node-handle {
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  min-height: 6px;
+  border-radius: 50%;
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border-strong, var(--mm-border));
+  opacity: 0;
+  transform-origin: center;
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+  /* 普通锚点默认不可连接（防误触 reparent），也不拦截节点拖拽 */
+  pointer-events: none;
+}
+
+.mm-root-node:hover .mm-node-handle,
+.mm-root-node.selected .mm-node-handle,
+.mm-branch-node:hover .mm-node-handle,
+.mm-branch-node.selected .mm-node-handle,
+.mindmap-node-underline:hover .mm-node-handle,
+.mindmap-node-underline.selected .mm-node-handle {
+  opacity: 1;
+}
+
+/* 编辑态收起锚点，减少视觉噪音 */
+.mm-root-node.editing .mm-node-handle,
+.mm-branch-node.editing .mm-node-handle,
+.mindmap-node-underline.editing .mm-node-handle {
+  opacity: 0;
+}
+
+/* 明确开启可连接的锚点（如未来 canvas 传入 handlesConnectable）恢复交互 */
+.react-flow__handle.mm-node-handle.mm-node-handle--connectable {
+  pointer-events: all;
+  cursor: crosshair;
+}
+
+/* ============================================
+   新节点入场：从父节点方向生长 + 淡入
+   .mm-node-spawn 由 useAnimatedNodes 短暂标注在 RF 节点包装层，
+   动画作用于内层节点根元素（包装层 transform 被 RF 用于定位，不可占用）
+   ============================================ */
+
+@keyframes mm-node-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.react-flow__node.mm-node-spawn .mm-root-node,
+.react-flow__node.mm-node-spawn .mm-branch-node,
+.react-flow__node.mm-node-spawn .mindmap-node-underline {
+  animation: mm-node-enter var(--notes-popup-enter-duration, 180ms)
+    var(--notes-popup-enter-easing, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+/* 生长起点朝向父节点一侧（transform-origin 常驻无副作用） */
+.mm-node-origin-left {
+  transform-origin: left center;
+}
+.mm-node-origin-right {
+  transform-origin: right center;
+}
+.mm-node-origin-top {
+  transform-origin: center top;
+}
+.mm-node-origin-bottom {
+  transform-origin: center bottom;
+}
+
+/* ============================================
+   NodeContent 细节：hover 高亮的柔和过渡
+   ============================================ */
+
+.mm-node-text {
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__handle.mm-node-handle {
+    transition: none;
+  }
+
+  .react-flow__node.mm-node-spawn .mm-root-node,
+  .react-flow__node.mm-node-spawn .mm-branch-node,
+  .react-flow__node.mm-node-spawn .mindmap-node-underline {
+    animation: none;
+  }
+
+  .mm-node-text {
+    transition: none;
+  }
+}

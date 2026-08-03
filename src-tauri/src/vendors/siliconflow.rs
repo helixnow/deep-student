@@ -94,6 +94,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
                     vendor_name: Some(entry.name.to_string()),
                     provider_type: Some("openai".to_string()),
                     provider_scope: Some("siliconflow".to_string()),
+                    auth_mode: None,
                     api_protocol: Some(
                         crate::llm_manager::resolve_preferred_protocol_for_provider(
                             Some("siliconflow"),
@@ -126,6 +127,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
                     is_builtin: true,
                     is_read_only: true,
                     reasoning_effort: None,
+                    reasoning_mode: None,
                     thinking_enabled: entry.is_reasoning,
                     thinking_budget: None,
                     include_thoughts: false,

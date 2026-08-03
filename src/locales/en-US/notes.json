@@ -117,7 +117,8 @@
     "share_success_title": "Share success",
     "share_success_message": "Resource path copied, you can send it to others",
     "share_failed_title": "Share failed",
-    "share_failed_message": "Failed to copy share link. Please check clipboard permissions."
+    "share_failed_message": "Failed to copy share link. Please check clipboard permissions.",
+    "delete_confirm_message": "Delete this resource? You can restore it from Trash."
   },
   "mistakeReferenceCard": {
     "title": "Mistake Reference",
@@ -276,7 +277,28 @@
     "prev": "Previous (Shift+Enter)",
     "next": "Next (Enter)",
     "showReplace": "Show replace",
-    "hideReplace": "Hide replace"
+    "hideReplace": "Hide replace",
+    "findLabel": "Find",
+    "panelLabel": "Find and replace",
+    "replaceLabel": "Replace with"
+  },
+  "editorV2": {
+    "use_regex": "Use regular expression",
+    "find_regex_placeholder": "Find (regex)…",
+    "find_invalid_regex": "Invalid regular expression",
+    "outline_expand": "Expand section",
+    "outline_collapse": "Collapse section",
+    "conflict_compare": "Compare",
+    "conflict_compare_hide": "Hide comparison",
+    "conflict_diff_title": "My version vs remote version",
+    "conflict_diff_legend": "+ mine · − remote",
+    "conflict_diff_identical": "Both versions are identical",
+    "conflict_diff_loading": "Loading remote version…",
+    "conflict_diff_load_failed": "Could not load the remote version",
+    "conflict_diff_retry": "Retry",
+    "tag_too_long": "Tags can be at most {{max}} characters",
+    "tag_invalid_chars": "Tags can't contain control characters",
+    "tags_limit_reached": "You can add up to {{max}} tags"
   },
   "mentions": {
     "loading": "Loading...",
@@ -290,6 +312,7 @@
     "no_insight": "No insights yet"
   },
   "toolbar": {
+    "ask_agent": "Ask Agent",
     "new_note": "New note",
     "new_folder": "New folder",
     "refresh": "Refresh",
@@ -337,7 +360,29 @@
     "editing_mode": "Editing Mode",
     "reading_mode_on": "Entered reading mode",
     "reading_mode_off": "Entered editing mode",
-    "find_replace": "Find & Replace"
+    "find_replace": "Find & Replace",
+    "note_templates": "Note templates",
+    "focus_mode": "Focus mode",
+    "exit_focus_mode": "Exit focus mode",
+    "label": "Formatting"
+  },
+  "templates": {
+    "lecture": "Lecture notes",
+    "mistake": "Mistake review",
+    "exam": "Exam review"
+  },
+  "blockMenu": {
+    "label": "Block actions",
+    "turnInto": "Turn into",
+    "paragraph": "Text",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "bulletList": "Bulleted list",
+    "orderedList": "Numbered list",
+    "quote": "Quote",
+    "duplicate": "Duplicate",
+    "delete": "Delete"
   },
   "search": {
     "placeholder": "Search notes...",
@@ -464,7 +509,11 @@
       "paste_failed": "Pasted image processing failed: {{error}}",
       "success": "Image inserted",
       "command_failed": "Slash image upload failed: {{error}}",
+      "too_large": "Image exceeds 10MB limit",
       "placeholder": "Click or drag to upload image",
+      "placeholder_touch": "Tap to upload image",
+      "upload_button": "Upload image",
+      "upload_button_inline": "Upload",
       "caption_placeholder": "Add image caption...",
       "inline_placeholder": "Paste image link or upload",
       "drop_overlay_title": "Drop to insert image",
@@ -472,13 +521,15 @@
     },
     "conflict_refreshed": "This note was modified elsewhere and has been refreshed to the latest version",
     "conflict_restore_mine": "Restore my version",
+    "conflict_keep_remote": "Keep remote version",
     "save_status": {
       "saved": "Saved",
       "saving": "Saving...",
       "saved_at": "Saved at {{time}}",
       "unsaved": "Unsaved",
       "save_failed": "Save failed",
-      "conflict": "Conflict detected, please review the latest version",
+      "conflict": "Conflict detected — refreshed to latest (use “Restore my version” in the notification)",
+      "retry": "Retry",
       "auto_save": "Auto save"
     },
     "placeholder": {
@@ -539,7 +590,13 @@
       "caption": "Caption",
       "caption_placeholder": "Add a caption...",
       "click_to_edit": "Click to edit...",
-      "reset": "Reset"
+      "reset": "Reset",
+      "load_failed": "Failed to load image",
+      "lightbox_label": "Image preview",
+      "lightbox_alt": "Preview image",
+      "lightbox_close": "Close",
+      "lightbox_original": "Original size",
+      "lightbox_fit": "Fit to screen"
     },
     "slash": {
       "link_title_prompt": "Link title",
@@ -627,7 +684,19 @@
     },
     "ai_stop": "Stop generating",
     "portaled_to_canvas": "Editor is open in canvas",
-    "portaled_hint": "Edit this note in the canvas"
+    "portaled_hint": "Edit this note in the canvas",
+    "deleted_with_unsaved_changes": "The resource was deleted. Unsaved content remains in this window; copy it before closing.",
+    "link": {
+      "href_required": "Enter a link URL first"
+    }
+  },
+  "crepe": {
+    "link": {
+      "href_required": "Enter a link URL first"
+    },
+    "image": {
+      "load_failed": "Failed to load image"
+    }
   },
   "tree": {
     "root": "My notes",
@@ -816,6 +885,9 @@
     "success": "Export successful",
     "success_desc": "Exported {{count}} notes to: {{path}}",
     "failed": "Export failed",
+    "no_active_resource": "No open resource. Open a note or file first, then export.",
+    "not_available_all": "“Export all notes” is not available yet. Use Export Current Note, or export a single item from the sidebar menu.",
+    "fallback_current": "Export all is not available yet — exporting the current open resource instead.",
     "select_format": "Select format",
     "format": {
       "label": "Export format",
@@ -851,7 +923,8 @@
     "actions": {
       "export": "Export",
       "exporting": "Exporting…"
-    }
+    },
+    "all_notes_hint": "All notes and their attachments will be exported"
   },
   "dialogs": {
     "close": "Close",
@@ -967,8 +1040,9 @@
   },
   "context": {
     "open": "Open",
-    "outline": "OUTLINE",
-    "select_hint": "Select a note to view context",
+    "properties": "Properties",
+    "outline": "Outline",
+    "select_hint": "Select a note to view properties",
     "typography_title": "Typography",
     "typography_description": "Adjust size, line height, and font",
     "typography_default": "Default",
@@ -976,10 +1050,12 @@
     "created": "Created",
     "updated": "Updated",
     "tags": "Tags",
+    "tags_empty_hint": "Add tags to organize",
     "add_tag": "Add tag",
     "tag_add_failed": "Failed to add tag",
     "tag_remove_failed": "Failed to remove tag",
-    "no_headings": "No headings",
+    "no_headings": "No headings yet",
+    "outline_empty_hint": "Use # or the toolbar to add headings",
     "outgoing": "OUTGOING LINKS",
     "no_outgoing": "No outgoing links",
     "assets": "ATTACHMENTS",
@@ -995,7 +1071,8 @@
     "load_failed": "Failed to load links: {{message}}",
     "retry": "Retry",
     "truncated_outgoing": "Showing first 200 outgoing links",
-    "truncated_external": "Showing first 200 external links"
+    "truncated_external": "Showing first 200 external links",
+    "tag_remove": "Remove tag"
   },
   "outlineMindmap": {
     "empty": "Nothing here yet",
@@ -1141,7 +1218,9 @@
     "export_single_failed": "Export failed: {{error}}",
     "export_single_mobile_hint": "On mobile we will use the default export directory. Please check it in your file manager later.",
     "exporting_single": "Exporting current note...",
-    "export_filter_name": "Markdown Note Export"
+    "export_filter_name": "Markdown Note Export",
+    "confirm_rename": "Confirm rename",
+    "cancel_rename": "Cancel rename"
   },
   "slashMenu": {
     "textGroup": {
@@ -1167,8 +1246,59 @@
       "image": "Image",
       "codeBlock": "Code Block",
       "table": "Table",
-      "math": "Math"
+      "math": "Math",
+      "callout": "Callout"
     }
+  },
+  "callout": {
+    "type": {
+      "note": "Note",
+      "tip": "Tip",
+      "warning": "Warning",
+      "danger": "Danger",
+      "info": "Info"
+    },
+    "cycleType": "Change callout type"
+  },
+  "wikilink": {
+    "create": "Create \"{{title}}\"",
+    "empty": "No matching notes"
+  },
+  "wikilinkV2": {
+    "createConfirm": "Create new note \"{{title}}\"?",
+    "createConfirmAction": "Create",
+    "createConfirmCancel": "Cancel",
+    "imageResetZoom": "Reset zoom",
+    "imageViewerHint": "Scroll to zoom · Drag to pan · Double-click to reset",
+    "previewRetry": "Retry",
+    "recentGroup": "Recently used",
+    "allGroup": "All"
+  },
+  "mention": {
+    "loading": "Searching…",
+    "empty": "No matching notes"
+  },
+  "toggle": {
+    "arrowLabel": "Expand or collapse",
+    "titlePlaceholder": "Untitled",
+    "slashLabel": "Toggle",
+    "slashDescription": "Collapsible title and body"
+  },
+  "mobileToolbar": {
+    "label": "Mobile editor toolbar",
+    "slash": "Block menu",
+    "outdent": "Decrease indent",
+    "indent": "Increase indent",
+    "bold": "Bold",
+    "italic": "Italic",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "bulletList": "Bullet list",
+    "taskList": "Task list",
+    "image": "Image",
+    "undo": "Undo",
+    "redo": "Redo"
   },
   "menu": {
     "page_actions": "Page Actions",
@@ -1367,5 +1497,12 @@
   },
   "tips": {
     "versionHistory": "Version history is available in the Notes panel"
+  },
+  "ai": {
+    "continue_not_available": "AI continuation is unavailable. Use the chat panel to start an edit."
+  },
+  "a11y": {
+    "close": "Close",
+    "clear": "Clear"
   }
 }

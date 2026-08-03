@@ -9,7 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import {
   CaretLeft,
@@ -65,18 +65,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
   const mode = useStore(store, (s) => s.mode);
   const modeState = useStore(store, (s) => s.modeState as unknown as TextbookModeState | null);
 
-  // 如果不是 textbook 模式或没有 modeState，不渲染
-  if (!modeState || mode !== 'textbook') {
-    return null;
-  }
-
-  const {
-    loadingStatus,
-    loadingError,
-    currentPage,
-    totalPages,
-    pages,
-  } = modeState;
+  // hooks 必须在 early return 之前，因此这里用可选值兜底
+  const currentPage = modeState?.currentPage ?? 1;
+  const totalPages = modeState?.totalPages ?? 0;
+  const pages = modeState?.pages ?? [];
 
   // 获取当前页数据
   const currentPageData = useMemo(
@@ -97,8 +89,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         const pageNum = parseInt(inputPage, 10);
-        if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
-          setCurrentPage(store.getState(), pageNum);
+        if (!isNaN(pageNum) && totalPages > 0) {
+          // 超界输入钳制到首/末页，而不是静默忽略（用户输入 999 期望跳到末页）
+          const clamped = Math.min(Math.max(pageNum, 1), totalPages);
+          setCurrentPage(store.getState(), clamped);
           setInputPage('');
         }
       }
@@ -110,6 +104,13 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
   const handleRetry = useCallback(() => {
     reloadTextbook(store.getState()).catch(console.error);
   }, [store]);
+
+  // 如果不是 textbook 模式或没有 modeState，不渲染
+  if (!modeState || mode !== 'textbook') {
+    return null;
+  }
+
+  const { loadingStatus, loadingError } = modeState;
 
   // 加载中状态
   if (loadingStatus === 'loading') {
@@ -147,10 +148,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             {loadingError || t('textbook.loadError')}
           </span>
         </div>
-        <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10">
           <ArrowClockwise size={12} />
           {t('textbook.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -215,12 +216,15 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
           <div className="flex items-center gap-1 px-2">
             <Input
               type="text"
+              inputMode="numeric"
               value={inputPage}
               onChange={handlePageInput}
               onKeyDown={handlePageJump}
               placeholder={String(currentPage)}
               className={cn(
                 'w-10 h-6 text-center text-sm rounded',
+                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大，页码位数多时加宽
+                '[@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:w-14',
                 'bg-muted/50 border border-border/50',
                 'focus:outline-none focus:ring-1 focus:ring-primary',
                 'placeholder:text-foreground'
@@ -250,10 +254,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
         </div>
 
         {/* 右侧：缩略图切换 */}
-        <NotionButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn(isThumbExpanded && 'bg-muted/50 text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn(isThumbExpanded && 'bg-muted/50 text-foreground')}>
           <Image size={12} />
           {t('textbook.preview')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 缩略图预览区域 */}
@@ -305,7 +309,7 @@ const NavigationButton: React.FC<NavigationButtonProps> = ({
   children,
 }) => {
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="icon"
       iconOnly
@@ -313,9 +317,10 @@ const NavigationButton: React.FC<NavigationButtonProps> = ({
       disabled={disabled}
       aria-label={title}
       title={title}
-      className="!w-7 !h-7"
+      // 触屏（<lg）放大到 36px 触控目标；相邻按钮密排，不用伪元素外扩避免互相重叠
+      className="!w-9 !h-9 lg:!w-7 lg:!h-7"
     >
       {children}
-    </NotionButton>
+    </DsButton>
   );
 };

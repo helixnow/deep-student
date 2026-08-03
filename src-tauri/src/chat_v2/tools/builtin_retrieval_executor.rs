@@ -1,13 +1,20 @@
 //! 内置检索工具执行器
 //!
 //! ★ 2026-01 简化：VFS RAG 作为唯一知识检索方案（支持多模态）
+//! ★ 2026-07 SOTA 改造：
+//! - `rag_search` / `multimodal_search` / `unified_search` 统一走规划检索路径
+//!   （`execute_planned_search` → `VfsUnifiedRetriever`）
+//! - `unified_search` 并入用户记忆检索（保底槽位 + 跨源去重），citationTag 使用 `[记忆-N]`
+//! - emit_end payload 与 tool_output 共用同一份 numbered sources（citationTag/typeIndex 契约）
+//! - 分数阈值（绝对 + 相对，保底 top1）与 snippet 字符预算控制
+//! - rerank 失败不再静默回退：失败信息汇入 routeFailures
 //!
-//! 执行五个内置检索工具：
+//! 执行的内置工具：
 //! - `builtin-rag_search` - 知识检索（统一使用 VFS RAG）
 //! - `builtin-multimodal_search` - 多模态检索（图片/PDF 页面）
-//! - `builtin-unified_search` - 统一检索（同时搜索文本和多模态内容）
-//! - `builtin-memory_search` - 用户记忆检索（独立实现）
+//! - `builtin-unified_search` - 统一检索（知识库文本 + 多模态 + 用户记忆）
 //! - `builtin-web_search` - 网络搜索
+//! - `builtin-memory_search` - 已废弃存根（由 MemoryToolExecutor 处理）
 //!
 //! ## 设计说明
 //! 该执行器将预调用模式的检索工具转换为 LLM 可主动调用的 MCP 工具。
@@ -18,27 +25,49 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::arg_utils::{ensure_localized_error, with_localized_message};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{SourceInfo, ToolCall, ToolResultInfo};
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
-use crate::vfs::VfsResourceRepo;
 
 /// 内置工具命名空间前缀
 /// 🔧 使用 'builtin-' 而非 'builtin:' 以兼容 DeepSeek/OpenAI API 的工具名称限制
 /// API 要求工具名称符合正则 ^[a-zA-Z0-9_-]+$，不允许冒号
 pub const BUILTIN_NAMESPACE: &str = "builtin-";
 
-/// RAG 检索最小分数阈值
+/// RAG 检索最小分数阈值（仅对量纲可比的 reranker 相关度生效）
 const RETRIEVAL_MIN_SCORE: f32 = 0.3;
-/// RAG 检索相对分数阈值（相对于最高分）
+/// RAG 检索相对分数阈值（相对于最高分，对任意量纲适用）
 const RETRIEVAL_RELATIVE_THRESHOLD: f32 = 0.5;
 const DEFAULT_RAG_TOP_K: u32 = 10;
+/// 工具 JSON 中单条 snippet 的最大字符数（与 prompt_builder 的单条来源上限一致）
+const MAX_SNIPPET_CHARS_PER_SOURCE: usize = 1500;
+/// 工具 JSON 中所有 snippet 的总字符预算（与 prompt_builder 的 RAG 总预算一致）
+const MAX_SNIPPET_TOTAL_CHARS: usize = 6000;
+/// 统一检索中记忆来源的保底槽位数（防止记忆被知识库结果挤出 top_k）
+const MEMORY_RESERVED_SLOTS: usize = 3;
+
+fn localized_retrieval_failure(error: impl Into<String>) -> String {
+    ensure_localized_error(
+        error,
+        "RETRIEVAL_OPERATION_FAILED",
+        "chat.tools.retrieval.error",
+        "检索操作失败",
+        "The retrieval operation failed.",
+    )
+}
 
 // ============================================================================
 // 内置检索工具执行器
 // ============================================================================
+
+/// 缓存的 Lance 存储（按 VfsDatabase 实例区分）
+struct CachedLanceStore {
+    vfs_db_ptr: usize,
+    store: std::sync::Arc<crate::vfs::VfsLanceStore>,
+}
 
 /// 内置检索工具执行器
 ///
@@ -47,320 +76,53 @@ const DEFAULT_RAG_TOP_K: u32 = 10;
 /// 处理以 `builtin-` 开头的检索工具：
 /// - `builtin-rag_search` - 知识检索（统一使用 VFS RAG）
 /// - `builtin-multimodal_search` - 多模态检索（图片/PDF 页面）
-/// - `builtin-unified_search` - 统一检索（同时搜索文本和多模态内容）
-/// - `builtin-memory_search` - 用户记忆检索（独立实现）
+/// - `builtin-unified_search` - 统一检索（知识库文本 + 多模态 + 用户记忆）
 /// - `builtin-web_search` - 网络搜索
 ///
 /// ## 与预调用模式的区别
 /// - 预调用模式：在 LLM 调用前自动执行，结果注入到系统提示
 /// - 工具调用模式：LLM 主动决定何时调用，结果作为工具输出返回
-pub struct BuiltinRetrievalExecutor;
+pub struct BuiltinRetrievalExecutor {
+    /// P2-7：按 VfsDatabase 实例缓存 VfsLanceStore，复用 Lance 连接与表状态，
+    /// 避免每次检索重建连接（仅在 ExecutionContext 未注入 vfs_lance_store 时生效）。
+    lance_store_cache: std::sync::Mutex<Option<CachedLanceStore>>,
+}
 
 impl BuiltinRetrievalExecutor {
     /// 创建新的内置检索工具执行器
     pub fn new() -> Self {
-        Self
+        Self {
+            lance_store_cache: std::sync::Mutex::new(None),
+        }
     }
 
-    /// 执行 VFS RAG 知识检索（统一方案）
-    async fn execute_vfs_rag(
+    /// 获取（或复用）VFS Lance 存储：优先使用 ctx 注入的实例，其次执行器级缓存
+    fn lance_store_for(
         &self,
-        call: &ToolCall,
         ctx: &ExecutionContext,
-    ) -> Result<Value, String> {
-        use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
-        use crate::vfs::lance_store::VfsLanceStore;
-        use crate::vfs::repos::{VfsBlobRepo, VfsResourceRepo, MODALITY_TEXT};
-        use std::collections::HashMap;
-
-        // 🆕 取消检查：在执行前检查是否已取消
-        if ctx.is_cancelled() {
-            return Err("VFS RAG search cancelled before start".to_string());
+    ) -> Result<std::sync::Arc<crate::vfs::VfsLanceStore>, String> {
+        if let Some(store) = ctx.vfs_lance_store.clone() {
+            return Ok(store);
         }
-
-        // 解析参数
-        let query = call
-            .arguments
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'query' parameter")?;
-        let folder_ids: Option<Vec<String>> = call
-            .arguments
-            .get("folder_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        // 🆕 精确到特定资源的过滤
-        let resource_ids: Option<Vec<String>> = call
-            .arguments
-            .get("resource_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        let resource_types: Option<Vec<String>> = call
-            .arguments
-            .get("resource_types")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        let top_k = call
-            .arguments
-            .get("top_k")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u32)
-            .or(ctx.rag_top_k)
-            .unwrap_or(DEFAULT_RAG_TOP_K);
-        let max_per_resource = call
-            .arguments
-            .get("max_per_resource")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
-        let enable_reranking = call
-            .arguments
-            .get("enable_reranking")
-            .and_then(|v| v.as_bool())
-            .or(ctx.rag_enable_reranking)
-            .unwrap_or(true);
-
-        // 发射 start 事件
-        ctx.emitter.emit_start(
-            event_types::RAG,
-            &ctx.message_id,
-            Some(&ctx.block_id),
-            Some(json!({
-                "query": query,
-                "folder_ids": folder_ids,
-                "resource_ids": resource_ids,
-                "resource_types": resource_types,
-                "max_per_resource": max_per_resource,
-                "source": "vfs_rag"
-            })),
-            None,
-        );
-
-        let start_time = Instant::now();
-
-        // 获取 VFS 数据库
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-
-        // 创建 Lance 存储
-        let lance_store = std::sync::Arc::new(
-            VfsLanceStore::new(std::sync::Arc::clone(vfs_db))
-                .map_err(|e| format!("Failed to create Lance store: {}", e))?,
-        );
-
-        // 获取 LLM 管理器
-        let llm_manager = ctx
-            .llm_manager
-            .as_ref()
-            .ok_or("LLM manager not available")?;
-
-        // 创建搜索服务
-        let search_service = VfsFullSearchService::new(
-            std::sync::Arc::clone(vfs_db),
-            lance_store,
-            std::sync::Arc::clone(llm_manager),
-        );
-
-        // 构建搜索参数
-        let params = VfsSearchParams {
-            query: query.to_string(),
-            folder_ids,
-            resource_ids,
-            resource_types,
-            modality: MODALITY_TEXT.to_string(),
-            top_k,
-        };
-
-        // 🆕 取消检查：在执行检索前检查
-        if ctx.is_cancelled() {
-            return Err("VFS RAG search cancelled before search".to_string());
-        }
-
-        // 执行检索（支持取消）
-        // ★ 2026-02-10 修复：使用跨维度搜索，与 vfs_rag_search Tauri handler 保持一致
-        // 普通搜索 search_with_resource_info 只搜索当前默认嵌入模型的维度，
-        // 如果默认模型维度（如 768d）与索引维度（如 1024d）不一致，会返回 0 条结果。
-        // 跨维度搜索遍历所有有数据的维度，确保能命中已索引的内容。
-        let result = if let Some(cancel_token) = ctx.cancellation_token() {
-            tokio::select! {
-                res = search_service.search_cross_dimension_with_resource_info(query, &params, enable_reranking) => res,
-                _ = cancel_token.cancelled() => {
-                    log::info!("[BuiltinRetrievalExecutor] VFS RAG search cancelled");
-                    return Err("VFS RAG search cancelled during execution".to_string());
-                }
-            }
-        } else {
-            search_service
-                .search_cross_dimension_with_resource_info(query, &params, enable_reranking)
-                .await
-        };
-
-        let duration = start_time.elapsed().as_millis() as u64;
-
-        match result {
-            Ok(vfs_results) => {
-                // 🆕 per-document 去重过滤
-                let filtered_results = if max_per_resource > 0 {
-                    let mut resource_count: HashMap<String, usize> = HashMap::new();
-                    vfs_results
-                        .into_iter()
-                        .filter(|r| {
-                            let count = resource_count.entry(r.resource_id.clone()).or_insert(0);
-                            if *count < max_per_resource {
-                                *count += 1;
-                                true
-                            } else {
-                                false
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    vfs_results
-                };
-
-                // 转换为 SourceInfo 格式，并获取图片 URL
-                let mut sources: Vec<SourceInfo> = Vec::new();
-                for r in filtered_results {
-                    // 🔧 修复：优先使用 external_hash 获取 blob 文件路径；inline 图片转 data URL
-                    let image_url = VfsResourceRepo::get_resource(vfs_db, &r.resource_id)
-                        .ok()
-                        .flatten()
-                        .and_then(|res| {
-                            use crate::vfs::types::VfsResourceType;
-                            let mime_type = res.metadata.as_ref().and_then(|m| m.mime_type.clone());
-                            if res.resource_type == VfsResourceType::Image {
-                                if let Some(hash) = res.external_hash.as_ref() {
-                                    VfsBlobRepo::get_blob_path(vfs_db, hash)
-                                        .ok()
-                                        .flatten()
-                                        .map(|p| p.to_string_lossy().to_string())
-                                } else if let Some(base64) = res.data.as_deref() {
-                                    let mime = mime_type.as_deref().unwrap_or("image/png");
-                                    Some(format!("data:{};base64,{}", mime, base64))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                // 非图片资源：尝试从 extra 字段获取缩略图 URL
-                                res.metadata.as_ref().and_then(|m| {
-                                    m.extra.as_ref().and_then(|e| {
-                                        e.get("thumbnailUrl")
-                                            .and_then(|v| v.as_str().map(String::from))
-                                    })
-                                })
-                            }
-                        });
-
-                    // 构建图片引用标记（如果有图片 URL）
-                    let image_citation = image_url.as_ref().map(|url| {
-                        format!(
-                            "![{}]({})",
-                            r.resource_title.as_deref().unwrap_or("图片"),
-                            url
-                        )
-                    });
-
-                    sources.push(SourceInfo {
-                        title: r.resource_title,
-                        url: image_url.clone(),
-                        snippet: Some(r.chunk_text),
-                        score: Some(r.score as f32),
-                        metadata: Some(json!({
-                            "resourceId": r.resource_id,
-                            "sourceId": r.source_id,
-                            "resourceType": r.resource_type,
-                            "chunkIndex": r.chunk_index,
-                            "embeddingId": r.embedding_id,
-                            "pageIndex": r.page_index,
-                            "sourceType": "vfs_rag",
-                            "imageUrl": image_url,
-                            "imageCitation": image_citation,
-                        })),
-                    });
-                }
-
-                // 发射 end 事件
-                ctx.emitter.emit_end(
-                    event_types::RAG,
-                    &ctx.block_id,
-                    Some(json!({
-                        "sources": sources,
-                        "durationMs": duration,
-                        "source": "vfs_rag",
-                    })),
-                    None,
-                );
-
-                log::debug!(
-                    "[BuiltinRetrievalExecutor] VFS RAG search completed: {} sources in {}ms",
-                    sources.len(),
-                    duration
-                );
-
-                // 构建带编号的来源列表，便于 LLM 引用
-                let numbered_sources: Vec<Value> = sources
-                    .iter()
-                    .enumerate()
-                    .map(|(i, s)| {
-                        let meta = s.metadata.as_ref();
-                        let image_url = meta
-                            .and_then(|m| m.get("imageUrl"))
-                            .and_then(|v| v.as_str());
-                        let image_citation = meta
-                            .and_then(|m| m.get("imageCitation"))
-                            .and_then(|v| v.as_str());
-                        let page_index = meta
-                            .and_then(|m| m.get("pageIndex"))
-                            .and_then(|v| v.as_i64());
-                        let resource_id = meta
-                            .and_then(|m| m.get("resourceId"))
-                            .and_then(|v| v.as_str());
-                        let source_id = meta
-                            .and_then(|m| m.get("sourceId"))
-                            .and_then(|v| v.as_str());
-
-                        json!({
-                            "index": i + 1,
-                            "citationTag": format!("[知识库-{}]", i + 1),
-                            "title": s.title,
-                            "url": s.url,
-                            "snippet": s.snippet,
-                            "score": s.score,
-                            "imageUrl": image_url,
-                            "imageCitation": image_citation,
-                            "pageIndex": page_index,
-                            "resourceId": resource_id,
-                            "sourceId": source_id,
-                        })
-                    })
-                    .collect();
-
-                Ok(json!({
-                    "success": true,
-                    "sources": numbered_sources,
-                    "count": sources.len(),
-                    "durationMs": duration,
-                    "source": "vfs_rag",
-                    "citationGuide": "引用方式：[知识库-N] 显示角标，[知识库-N:图片] 渲染对应 PDF 页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。禁止输出 URL 或 Markdown 图片语法。"
-                }))
-            }
-            Err(e) => {
-                let error_msg = e.to_string();
-                ctx.emitter
-                    .emit_error(event_types::RAG, &ctx.block_id, &error_msg, None);
-                Err(error_msg)
+        let vfs_db_ptr = std::sync::Arc::as_ptr(vfs_db) as usize;
+        let mut cache = self
+            .lance_store_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(cached) = cache.as_ref() {
+            if cached.vfs_db_ptr == vfs_db_ptr {
+                return Ok(std::sync::Arc::clone(&cached.store));
             }
         }
+        let store = crate::vfs::VfsLanceStore::new(std::sync::Arc::clone(vfs_db))
+            .map(std::sync::Arc::new)
+            .map_err(|error| format!("Failed to create Lance store: {}", error))?;
+        *cache = Some(CachedLanceStore {
+            vfs_db_ptr,
+            store: std::sync::Arc::clone(&store),
+        });
+        Ok(store)
     }
 
     /// 兼容存根：memory_search 已迁移至 builtin-memory_search（由 MemoryToolExecutor 处理）
@@ -371,964 +133,465 @@ impl BuiltinRetrievalExecutor {
     ) -> Result<Value, String> {
         log::warn!("[BuiltinRetrievalExecutor] memory_search is deprecated, use builtin-memory_search instead");
 
+        let deprecation = with_localized_message(
+            json!({ "deprecated": true }),
+            "chat.tools.retrieval.memory_search_deprecated",
+            json!({ "replacementTool": "builtin-memory_search" }),
+            "请使用 builtin-memory_search 工具（由 MemoryToolExecutor 处理）",
+            "Use builtin-memory_search instead; it is handled by MemoryToolExecutor.",
+        );
         ctx.emitter.emit_end(
             event_types::MEMORY,
             &ctx.block_id,
-            Some(json!({
-                "deprecated": true,
-                "message": "请使用 builtin-memory_search 工具（由 MemoryToolExecutor 处理）"
-            })),
+            Some(deprecation.clone()),
             None,
         );
 
-        Ok(json!({
-            "success": false,
-            "deprecated": true,
-            "error": "memory_search 已废弃，请使用 builtin-memory_search 工具"
-        }))
+        let mut result = deprecation;
+        result["success"] = json!(false);
+        result["errorCode"] = json!("RETRIEVAL_TOOL_DEPRECATED");
+        result["error"] = result["message"].clone();
+        Ok(result)
     }
 
-    /// 执行多模态检索（图片/PDF 页面）
-    ///
-    /// ★ 2026-01 VFS 多模态统一管理：使用 VfsMultimodalService
-    /// - 数据存储在 `vfs_emb_multimodal_{dim}` 表
-    /// - 通过 `vfs_multimodal_index` Tauri 命令索引
-    /// - 通过 `vfs_multimodal_search` Tauri 命令检索
-    async fn execute_multimodal_search(
-        &self,
-        call: &ToolCall,
-        ctx: &ExecutionContext,
-    ) -> Result<Value, String> {
-        use crate::vfs::lance_store::VfsLanceStore;
-        use crate::vfs::multimodal_service::VfsMultimodalService;
-        use crate::vfs::repos::VfsBlobRepo;
-        use std::collections::HashMap;
-
-        // 🆕 取消检查：在执行前检查是否已取消
-        if ctx.is_cancelled() {
-            return Err("Multimodal search cancelled before start".to_string());
-        }
-
-        // 解析参数
-        let query = call
-            .arguments
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'query' parameter")?;
-        let folder_ids: Option<Vec<String>> = call
-            .arguments
-            .get("folder_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        // 🔧 批判性检查修复：解析 resource_ids 参数
-        let resource_ids: Option<Vec<String>> = call
-            .arguments
-            .get("resource_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        let resource_types: Option<Vec<String>> = call
-            .arguments
-            .get("resource_types")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        let top_k = call
-            .arguments
-            .get("top_k")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(DEFAULT_RAG_TOP_K as u64) as usize;
-        // 🔧 批判性检查修复：解析 max_per_resource 参数
-        let max_per_resource = call
-            .arguments
-            .get("max_per_resource")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
-
-        // 发射 start 事件
-        ctx.emitter.emit_start(
-            event_types::MULTIMODAL_RAG,
-            &ctx.message_id,
-            Some(&ctx.block_id),
-            Some(json!({
-                "query": query,
-                "folder_ids": folder_ids,
-                "resource_ids": resource_ids,
-                "max_per_resource": max_per_resource,
-                "source": "multimodal_search"
-            })),
-            None,
-        );
-
-        let start_time = Instant::now();
-
-        // 获取必要的上下文
-        let llm_manager = ctx
-            .llm_manager
-            .as_ref()
-            .ok_or("LLM manager not available")?;
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-
-        // 检查多模态 RAG 是否配置
-        if !llm_manager.is_multimodal_rag_configured().await {
-            let error_msg = "未配置多模态嵌入模型，请在设置中配置 VL Embedding 模型";
-            ctx.emitter
-                .emit_error(event_types::MULTIMODAL_RAG, &ctx.block_id, error_msg, None);
-            return Err(error_msg.to_string());
-        }
-
-        // 创建 VFS Lance Store
-        let lance_store = std::sync::Arc::new(
-            VfsLanceStore::new(std::sync::Arc::clone(vfs_db))
-                .map_err(|e| format!("Failed to create VFS Lance store: {}", e))?,
-        );
-
-        // 创建 VFS 多模态服务
-        let service = VfsMultimodalService::new(
-            std::sync::Arc::clone(vfs_db),
-            std::sync::Arc::clone(llm_manager),
-            lance_store,
-        );
-
-        // 🆕 取消检查：在执行检索前检查
-        if ctx.is_cancelled() {
-            return Err("Multimodal search cancelled before search".to_string());
-        }
-
-        // 执行检索（支持取消）
-        let result = if let Some(cancel_token) = ctx.cancellation_token() {
-            tokio::select! {
-                res = service.search_full(
-                    query,
-                    top_k,
-                    folder_ids.as_deref(),
-                    resource_ids.as_deref(),
-                    resource_types.as_deref(),
-                ) => res,
-                _ = cancel_token.cancelled() => {
-                    log::info!("[BuiltinRetrievalExecutor] Multimodal search cancelled");
-                    return Err("Multimodal search cancelled during execution".to_string());
-                }
-            }
-        } else {
-            service
-                .search_full(
-                    query,
-                    top_k,
-                    folder_ids.as_deref(),
-                    resource_ids.as_deref(),
-                    resource_types.as_deref(),
-                )
-                .await
-        };
-
-        let duration = start_time.elapsed().as_millis() as u64;
-
-        match result {
-            Ok(results) => {
-                // 🔧 批判性检查修复：per-document 去重过滤
-                let filtered_results = if max_per_resource > 0 {
-                    let mut resource_count: HashMap<String, usize> = HashMap::new();
-                    results
-                        .into_iter()
-                        .filter(|r| {
-                            let count = resource_count.entry(r.resource_id.clone()).or_insert(0);
-                            if *count < max_per_resource {
-                                *count += 1;
-                                true
-                            } else {
-                                false
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    results
-                };
-
-                // 转换为 SourceInfo 格式，并获取实际的图片文件路径
-                let mut sources: Vec<SourceInfo> = Vec::new();
-                for r in &filtered_results {
-                    let page_display = r.page_index + 1;
-
-                    // 🔧 修复：通过 blob_hash 获取实际的图片文件路径
-                    let image_url = r.blob_hash.as_ref().and_then(|hash| {
-                        VfsBlobRepo::get_blob_path(vfs_db, hash)
-                            .ok()
-                            .flatten()
-                            .map(|p| p.to_string_lossy().to_string())
-                    });
-
-                    // 构建图片引用标记
-                    let image_citation = image_url
-                        .as_ref()
-                        .map(|url| format!("![Page {}]({})", page_display, url));
-
-                    // ★ 2026-01-26: 通过 resource_id 获取 source_id（DSTU 格式 ID）
-                    let source_id = VfsResourceRepo::get_resource(vfs_db, &r.resource_id)
-                        .ok()
-                        .flatten()
-                        .and_then(|res| res.source_id);
-
-                    sources.push(SourceInfo {
-                        title: Some(format!("Page {} - {}", page_display, r.resource_type)),
-                        url: image_url.clone(),
-                        snippet: r.text_content.clone(),
-                        score: Some(r.score),
-                        metadata: Some(json!({
-                            "resourceType": r.resource_type,
-                            "resourceId": r.resource_id,
-                            "sourceId": source_id,
-                            "pageIndex": r.page_index,
-                            "blobHash": r.blob_hash,
-                            "folderId": r.folder_id,
-                            "imageUrl": image_url,
-                            "imageCitation": image_citation,
-                        })),
-                    });
-                }
-
-                // 发射 end 事件
-                ctx.emitter.emit_end(
-                    event_types::MULTIMODAL_RAG,
-                    &ctx.block_id,
-                    Some(json!({
-                        "sources": sources,
-                        "durationMs": duration,
-                        "source": "multimodal_search",
-                    })),
-                    None,
-                );
-
-                log::debug!(
-                    "[BuiltinRetrievalExecutor] VFS Multimodal search completed: {} sources in {}ms",
-                    sources.len(),
-                    duration
-                );
-
-                // 构建带编号的来源列表，便于 LLM 引用
-                let numbered_sources: Vec<Value> = sources
-                    .iter()
-                    .enumerate()
-                    .map(|(i, s)| {
-                        let meta = s.metadata.as_ref();
-                        let image_url = meta
-                            .and_then(|m| m.get("imageUrl"))
-                            .and_then(|v| v.as_str());
-                        let image_citation = meta
-                            .and_then(|m| m.get("imageCitation"))
-                            .and_then(|v| v.as_str());
-                        let page_index = meta
-                            .and_then(|m| m.get("pageIndex"))
-                            .and_then(|v| v.as_i64());
-                        let resource_id = meta
-                            .and_then(|m| m.get("resourceId"))
-                            .and_then(|v| v.as_str());
-                        let source_id = meta
-                            .and_then(|m| m.get("sourceId"))
-                            .and_then(|v| v.as_str());
-
-                        json!({
-                            "index": i + 1,
-                            "citationTag": format!("[图片-{}]", i + 1),
-                            "title": s.title,
-                            "url": s.url,
-                            "snippet": s.snippet,
-                            "score": s.score,
-                            "imageUrl": image_url,
-                            "imageCitation": image_citation,
-                            "pageIndex": page_index,
-                            "resourceId": resource_id,
-                            "sourceId": source_id,
-                        })
-                    })
-                    .collect();
-
-                Ok(json!({
-                    "success": true,
-                    "sources": numbered_sources,
-                    "count": sources.len(),
-                    "durationMs": duration,
-                    "source": "multimodal_search",
-                    "citationGuide": "引用方式：[图片-N] 显示角标，[图片-N:图片] 渲染对应页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。禁止输出 URL 或 Markdown 图片语法。"
-                }))
-            }
-            Err(e) => {
-                let error_msg = e.to_string();
-                ctx.emitter.emit_error(
-                    event_types::MULTIMODAL_RAG,
-                    &ctx.block_id,
-                    &error_msg,
-                    None,
-                );
-                Err(error_msg)
-            }
-        }
-    }
-
-    /// 执行统一检索（同时搜索文本和多模态内容）
+    /// 执行规划检索（rag_search / multimodal_search / unified_search 统一入口）
     ///
     /// ★ 2026-01 VFS 统一管理：
     /// - VFS 文本搜索：`vfs_emb_text_{dim}` 表
     /// - VFS 多模态搜索：`vfs_emb_multimodal_{dim}` 表
-    async fn execute_unified_search(
+    ///
+    /// ★ 2026-07 SOTA 改造：
+    /// - unified_search 并入用户记忆路由（受 memory 开关控制，失败隔离进 routeFailures）
+    /// - emit_end payload 与 tool_output 共用同一份 numbered sources
+    /// - 阈值过滤 + snippet 字符预算 + rerank 失败上报
+    async fn execute_planned_search(
         &self,
         call: &ToolCall,
         ctx: &ExecutionContext,
+        tool_name: &str,
     ) -> Result<Value, String> {
         use crate::memory::service::MemoryService;
-        use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
-        use crate::vfs::lance_store::VfsLanceStore;
-        use crate::vfs::multimodal_service::VfsMultimodalService;
-        use crate::vfs::repos::{VfsBlobRepo, MODALITY_TEXT};
+        use crate::vfs::retrieval_planner::QueryModality;
+        use crate::vfs::{UnifiedRetrievalRequest, VfsUnifiedRetriever};
         use std::collections::HashMap;
 
-        // 🆕 取消检查：在执行前检查是否已取消
         if ctx.is_cancelled() {
-            return Err("Unified search cancelled before start".to_string());
+            return Err("Unified retrieval cancelled before start".to_string());
         }
 
-        // 解析参数
-        let query = call
-            .arguments
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing 'query' parameter")?;
-        let folder_ids: Option<Vec<String>> = call
-            .arguments
-            .get("folder_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        // 🔧 批判性检查修复：解析 resource_ids 参数
-        let resource_ids: Option<Vec<String>> = call
-            .arguments
-            .get("resource_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
-        let resource_types: Option<Vec<String>> = call
-            .arguments
-            .get("resource_types")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
+        let string_arg = |names: &[&str]| {
+            names.iter().find_map(|name| {
+                call.arguments
+                    .get(*name)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+            })
+        };
+        let vec_arg = |names: &[&str]| {
+            names.iter().find_map(|name| {
+                call.arguments
+                    .get(*name)
+                    .and_then(Value::as_array)
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                    })
+            })
+        };
+        let query_text = string_arg(&["queryText", "query_text", "query"]);
+        let query_image_base64 = string_arg(&["queryImageBase64", "query_image_base64"]);
+        let query_image_media_type = string_arg(&["queryImageMediaType", "query_image_media_type"]);
+        let query_modality = match string_arg(&["queryMode", "query_mode"])
+            .as_deref()
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("text") => QueryModality::Text,
+            Some("image") => QueryModality::Image,
+            Some("mixed") => QueryModality::Mixed,
+            Some(other) => return Err(format!("Unsupported queryMode: {}", other)),
+            None if query_text.is_some() && query_image_base64.is_some() => QueryModality::Mixed,
+            None if query_image_base64.is_some() => QueryModality::Image,
+            None => QueryModality::Text,
+        };
+        let folder_ids = vec_arg(&["folder_ids", "folderIds"]);
+        let resource_ids = vec_arg(&["resource_ids", "resourceIds"]);
+        let resource_types = vec_arg(&["resource_types", "resourceTypes"]);
+        // P2-8：top_k 上限与前端 schema 对齐（builtinMcpServer.ts）：
+        // rag_search/multimodal_search 声明 maximum=100，unified_search 声明 maximum=30。
+        let top_k_cap = if tool_name == "unified_search" {
+            30
+        } else {
+            100
+        };
         let top_k = call
             .arguments
             .get("top_k")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(DEFAULT_RAG_TOP_K as u64) as usize;
-        // 🔧 批判性检查修复：解析 max_per_resource 参数
+            .or_else(|| call.arguments.get("topK"))
+            .and_then(Value::as_u64)
+            .map(|value| value as usize)
+            .or(ctx.rag_top_k.map(|value| value as usize))
+            .unwrap_or(DEFAULT_RAG_TOP_K as usize)
+            .clamp(1, top_k_cap);
         let max_per_resource = call
             .arguments
             .get("max_per_resource")
-            .and_then(|v| v.as_u64())
+            .or_else(|| call.arguments.get("maxPerResource"))
+            .and_then(Value::as_u64)
             .unwrap_or(0) as usize;
-        let _enable_reranking = call
+        let enable_reranking = call
             .arguments
             .get("enable_reranking")
-            .and_then(|v| v.as_bool())
+            .or_else(|| call.arguments.get("enableReranking"))
+            .and_then(Value::as_bool)
+            .or(ctx.rag_enable_reranking)
             .unwrap_or(true);
 
-        // 发射 start 事件
         ctx.emitter.emit_start(
             event_types::RAG,
             &ctx.message_id,
             Some(&ctx.block_id),
             Some(json!({
-                "query": query,
-                "folder_ids": folder_ids,
-                "resource_ids": resource_ids,
-                "resource_types": resource_types,
-                "max_per_resource": max_per_resource,
-                "source": "unified_search"
+                "query": query_text,
+                "queryMode": query_modality,
+                "hasQueryImage": query_image_base64.is_some(),
+                "folderIds": folder_ids,
+                "resourceIds": resource_ids,
+                "resourceTypes": resource_types,
+                "source": tool_name,
             })),
             None,
         );
 
-        let start_time = Instant::now();
-        let mut all_sources: Vec<SourceInfo> = Vec::new();
-        // ★ 2026-05 hybrid RAG：将文本与多模态分别收集到独立池，
-        //   稍后用 RRF 融合 + VL-Reranker 精排，最后再与记忆合并。
-        let mut kb_text_pool: Vec<SourceInfo> = Vec::new();
-        let mut kb_mm_pool: Vec<SourceInfo> = Vec::new();
-
-        // 获取必要的上下文
+        let started = Instant::now();
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
         let llm_manager = ctx
             .llm_manager
             .as_ref()
             .ok_or("LLM manager not available")?;
-
-        // ========== 0. 预计算 query embedding（全局复用） ==========
-        if ctx.is_cancelled() {
-            return Err("Unified search cancelled before text search".to_string());
-        }
-
-        let lance_store = ctx
-            .vfs_lance_store
-            .clone()
-            .map(Ok)
-            .unwrap_or_else(|| {
-                VfsLanceStore::new(std::sync::Arc::clone(vfs_db)).map(std::sync::Arc::new)
-            })
-            .map_err(|e| format!("Failed to create Lance store: {}", e))?;
-
-        let search_service = VfsFullSearchService::new(
+        let lance_store = self.lance_store_for(ctx)?;
+        let retriever = VfsUnifiedRetriever::new(
             std::sync::Arc::clone(vfs_db),
             std::sync::Arc::clone(&lance_store),
             std::sync::Arc::clone(llm_manager),
         );
-
-        let shared_embedding = search_service
-            .generate_query_embedding(query)
-            .await
-            .map_err(|e| format!("Failed to generate query embedding: {}", e))?;
-
-        // ========== 1. VFS 文本搜索（复用 shared_embedding） ==========
-        let text_params = VfsSearchParams {
-            query: query.to_string(),
-            folder_ids: folder_ids.clone(),
-            resource_ids: resource_ids.clone(),
-            resource_types: resource_types.clone(),
-            modality: MODALITY_TEXT.to_string(),
-            top_k: top_k as u32,
+        let request = UnifiedRetrievalRequest {
+            query_text: query_text.clone(),
+            query_image_base64: query_image_base64.clone(),
+            query_image_media_type: query_image_media_type.clone(),
+            query_modality,
+            top_k,
+            folder_ids,
+            resource_ids,
+            resource_types,
         };
 
-        let text_result = if let Some(cancel_token) = ctx.cancellation_token() {
-            tokio::select! {
-                res = search_service.search_with_embedding(query, &shared_embedding, &text_params, false) => res.ok(),
-                _ = cancel_token.cancelled() => {
-                    log::info!("[BuiltinRetrievalExecutor] Unified search cancelled during text search");
-                    return Err("Unified search cancelled during text search".to_string());
-                }
-            }
-        } else {
-            search_service
-                .search_with_embedding(query, &shared_embedding, &text_params, false)
-                .await
-                .ok()
-        };
-
-        // 获取记忆文件夹下所有资源 ID 集合，从文本搜索结果中排除（源头去重）。
-        // 这比事后跨源去重更可靠：不依赖 sourceId/title 匹配。
-        let memory_resource_ids: std::collections::HashSet<String> = {
-            let memory_service = MemoryService::new(
-                std::sync::Arc::clone(vfs_db),
-                std::sync::Arc::clone(&lance_store),
-                std::sync::Arc::clone(llm_manager),
-            );
-            memory_service
-                .get_root_folder_id()
-                .ok()
-                .flatten()
-                .and_then(|root_id| {
-                    use crate::vfs::repos::folder_repo::VfsFolderRepo;
-                    let folder_ids =
-                        VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
-                    if folder_ids.is_empty() {
-                        return None;
-                    }
-                    let conn = vfs_db.get_conn_safe().ok()?;
-                    let placeholders = vec!["?"; folder_ids.len()].join(", ");
-                    let sql = format!(
-                        "SELECT DISTINCT n.resource_id FROM notes n \
-                         JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id \
-                         WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL",
-                        placeholders
-                    );
-                    let mut stmt = conn.prepare(&sql).ok()?;
-                    let params_vals: Vec<rusqlite::types::Value> = folder_ids
-                        .into_iter()
-                        .map(rusqlite::types::Value::from)
-                        .collect();
-                    let rows = stmt
-                        .query_map(rusqlite::params_from_iter(params_vals), |row| {
-                            row.get::<_, String>(0)
-                        })
-                        .ok()?;
-                    Some(rows.filter_map(|r| r.ok()).collect())
-                })
-                .unwrap_or_default()
-        };
-
-        if let Some(vfs_results) = text_result {
-            let text_sources: Vec<SourceInfo> = vfs_results
-                .into_iter()
-                .filter(|r| {
-                    if memory_resource_ids.is_empty() {
-                        return true;
-                    }
-                    !memory_resource_ids.contains(&r.resource_id)
-                })
-                .map(|r| SourceInfo {
-                    title: r.resource_title,
-                    url: None,
-                    snippet: Some(r.chunk_text),
-                    score: Some(r.score as f32),
-                    metadata: Some(json!({
-                        "resourceId": r.resource_id,
-                        "sourceId": r.source_id,
-                        "resourceType": r.resource_type,
-                        "chunkIndex": r.chunk_index,
-                        "embeddingId": r.embedding_id,
-                        "sourceType": "text_search",
-                    })),
-                })
-                .collect();
-            kb_text_pool.extend(text_sources);
-        }
-
-        // ========== 2. VFS 多模态搜索（如果配置了） ==========
-        // 🆕 取消检查：在多模态搜索前检查
-        if ctx.is_cancelled() {
-            return Err("Unified search cancelled before multimodal search".to_string());
-        }
-
-        if llm_manager.is_multimodal_rag_configured().await {
-            // 创建 VFS 多模态服务
-            let mm_service = VfsMultimodalService::new(
-                std::sync::Arc::clone(vfs_db),
-                std::sync::Arc::clone(llm_manager),
-                std::sync::Arc::clone(&lance_store),
-            );
-
-            // 🔧 批判性检查修复：传递 resource_ids 参数
-            // 多模态搜索（支持取消）
-            let mm_result = if let Some(cancel_token) = ctx.cancellation_token() {
+        let response = if planned_search_scope(tool_name) == PlannedSearchScope::MultimodalOnly {
+            if let Some(cancel_token) = ctx.cancellation_token() {
                 tokio::select! {
-                    res = mm_service.search_full(
-                        query,
-                        top_k,
-                        folder_ids.as_deref(),
-                        resource_ids.as_deref(),
-                        resource_types.as_deref(),
-                    ) => res.ok(),
+                    result = retriever.search_multimodal(request) => result,
                     _ = cancel_token.cancelled() => {
-                        log::info!("[BuiltinRetrievalExecutor] Unified search cancelled during multimodal search");
-                        return Err("Unified search cancelled during multimodal search".to_string());
+                        return Err("Multimodal retrieval cancelled during execution".to_string());
                     }
                 }
             } else {
-                mm_service
-                    .search_full(
-                        query,
-                        top_k,
-                        folder_ids.as_deref(),
-                        resource_ids.as_deref(),
-                        resource_types.as_deref(),
-                    )
-                    .await
-                    .ok()
-            };
-
-            if let Some(mm_results) = mm_result {
-                // 🔧 修复：为多模态结果获取实际的图片文件路径
-                for r in &mm_results {
-                    let page_display = r.page_index + 1;
-
-                    // 通过 blob_hash 获取实际的图片文件路径
-                    let image_url = r.blob_hash.as_ref().and_then(|hash| {
-                        VfsBlobRepo::get_blob_path(vfs_db, hash)
-                            .ok()
-                            .flatten()
-                            .map(|p| p.to_string_lossy().to_string())
-                    });
-
-                    // 构建图片引用标记
-                    let image_citation = image_url
-                        .as_ref()
-                        .map(|url| format!("![Page {}]({})", page_display, url));
-
-                    // ★ 2026-01-26: 通过 resource_id 获取 source_id（DSTU 格式 ID）
-                    let source_id = VfsResourceRepo::get_resource(vfs_db, &r.resource_id)
-                        .ok()
-                        .flatten()
-                        .and_then(|res| res.source_id);
-
-                    kb_mm_pool.push(SourceInfo {
-                        title: Some(format!("Page {} - {}", page_display, r.resource_type)),
-                        url: image_url.clone(),
-                        snippet: r.text_content.clone(),
-                        score: Some(r.score),
-                        metadata: Some(json!({
-                            "resourceType": r.resource_type,
-                            "resourceId": r.resource_id,
-                            "sourceId": source_id,
-                            "pageIndex": r.page_index,
-                            "blobHash": r.blob_hash,
-                            "folderId": r.folder_id,
-                            "sourceType": "multimodal_search",
-                            "imageUrl": image_url,
-                            "imageCitation": image_citation,
-                        })),
-                    });
+                retriever.search_multimodal(request).await
+            }
+        } else {
+            if let Some(cancel_token) = ctx.cancellation_token() {
+                tokio::select! {
+                    result = retriever.search(request) => result,
+                    _ = cancel_token.cancelled() => {
+                        return Err("Unified retrieval cancelled during execution".to_string());
+                    }
                 }
+            } else {
+                retriever.search(request).await
             }
         }
+        .map_err(|error| error.to_string())?;
 
-        // ========== 2.6 hybrid RAG：RRF 融合 + VL-Reranker 跨模态精排 ==========
-        // 业界最佳实践（2025-2026）：
-        //   1. 双路独立召回（已完成）
-        //   2. RRF（Reciprocal Rank Fusion，k=60）合并不同向量空间结果
-        //      —— 基于 rank 而非分数，天然解决跨模态分数不可比问题
-        //   3. 统一跨模态 reranker（VL-Reranker）对融合结果精排
-        //      —— Qwen3-VL-Reranker 同时支持纯文本和图文输入
-        //
-        // 配置开关：tool 参数 `enable_reranking`（默认 true）
-        let kb_text_count = kb_text_pool.len();
-        let kb_mm_count = kb_mm_pool.len();
-        let fused_kb: Vec<SourceInfo> = if kb_text_count == 0 && kb_mm_count == 0 {
-            Vec::new()
-        } else {
-            // RRF 融合（top_k * 3 作为融合候选数，给精排留余量）
-            let merge_top_k = (top_k * 3).max(top_k).max(20);
-            let mut input_lists: Vec<Vec<SourceInfo>> = Vec::with_capacity(2);
-            if !kb_text_pool.is_empty() {
-                input_lists.push(kb_text_pool);
-            }
-            if !kb_mm_pool.is_empty() {
-                input_lists.push(kb_mm_pool);
-            }
-            let fused = rrf_fuse_sources(input_lists, merge_top_k);
-            log::debug!(
-                "[hybrid-rag] RRF 融合: text={} mm={} -> {} 候选",
-                kb_text_count,
-                kb_mm_count,
-                fused.len()
-            );
-
-            // VL-Reranker 跨模态精排（如果配置且未禁用）
-            if _enable_reranking && !fused.is_empty() {
-                if ctx.is_cancelled() {
-                    return Err("Unified search cancelled before reranking".to_string());
+        let mut route_failures = response.result.failures.clone();
+        // 🆕 SOTA：统一层（unified_retriever）正在引入 rerank 注入点与
+        // normalized_score 字段。此处以序列化视图防御式消费：若 fused hit 携带
+        // normalizedScore/rerankScore（0..1 量纲）则优先作为展示分数，否则回退 RRF。
+        let total_hits = response.result.hits.len();
+        let mut normalized_hits = 0usize;
+        let mut sources: Vec<SourceInfo> = response
+            .result
+            .hits
+            .into_iter()
+            .map(|fused| {
+                let fused_value = serde_json::to_value(&fused).unwrap_or(Value::Null);
+                let normalized_score = ["normalizedScore", "rerankScore"]
+                    .iter()
+                    .find_map(|key| fused_value.get(*key))
+                    .and_then(Value::as_f64);
+                if normalized_score.is_some() {
+                    normalized_hits += 1;
                 }
-                if let Some(cancel_token) = ctx.cancellation_token() {
-                    tokio::select! {
-                        reranked = vl_rerank_sources(query, fused, top_k, llm_manager, vfs_db) => reranked,
-                        _ = cancel_token.cancelled() => {
-                            log::info!("[hybrid-rag] Unified search cancelled during reranking");
-                            return Err("Unified search cancelled during reranking".to_string());
-                        }
-                    }
+                let hit = fused.hit;
+                let source_type = if hit.blob_hash.is_some()
+                    || fused.provenance.iter().any(|provenance| {
+                        matches!(
+                            provenance.route_kind,
+                            crate::vfs::retrieval_planner::RetrievalRouteKind::MultimodalImage
+                                | crate::vfs::retrieval_planner::RetrievalRouteKind::MultimodalText
+                        )
+                    }) {
+                    "multimodal_search"
                 } else {
-                    vl_rerank_sources(query, fused, top_k, llm_manager, vfs_db).await
+                    "text_search"
+                };
+                let image_citation = hit.image_url.as_ref().map(|url| {
+                    format!(
+                        "![Page {}]({})",
+                        hit.identity.page_index.unwrap_or(0) + 1,
+                        url
+                    )
+                });
+                SourceInfo {
+                    title: hit.title,
+                    url: hit.image_url.clone(),
+                    snippet: Some(hit.text),
+                    score: Some(normalized_score.unwrap_or(fused.rrf_score) as f32),
+                    // 视觉上下文接口约定：多模态命中必须保证 blobHash/pageIndex 完整，
+                    // 下游 context_compiler 依赖这两个字段决定是否把页图注入 LLM。
+                    metadata: Some(json!({
+                        "resourceType": hit.resource_type,
+                        "resourceId": hit.identity.resource_id,
+                        "sourceId": hit.source_id,
+                        "chunkIndex": hit.identity.chunk_index,
+                        "pageIndex": hit.identity.page_index,
+                        "blobHash": hit.blob_hash,
+                        "folderId": hit.folder_id,
+                        "sourceType": source_type,
+                        "imageUrl": hit.image_url,
+                        "imageCitation": image_citation,
+                        "rrfScore": fused.rrf_score,
+                        "normalizedScore": normalized_score,
+                        "retrievalProvenance": fused.provenance,
+                    })),
                 }
-            } else {
-                let mut out = fused;
-                out.truncate(top_k);
-                out
-            }
-        };
-        all_sources.extend(fused_kb);
+            })
+            .collect();
+        // 统一层已给出归一化分数（0..1）时，绝对阈值也可安全应用
+        let upstream_scores_normalized = total_hits > 0 && normalized_hits == total_hits;
 
-        // ========== 2.5 用户记忆搜索 ==========
-        // 🆕 取消检查：在记忆搜索前检查
-        if ctx.is_cancelled() {
-            return Err("Unified search cancelled before memory search".to_string());
-        }
-
-        // 记忆搜索（复用 shared_embedding，忽略错误，不影响主流程）
-        {
-            let memory_service = MemoryService::new(
+        // ========== 记忆路由准备（P0-1）：仅 unified_search 且 memory 开关开启 ==========
+        let include_memory =
+            tool_name == "unified_search" && ctx.memory_enabled && query_text.is_some();
+        let memory_service = if include_memory {
+            Some(MemoryService::new(
                 std::sync::Arc::clone(vfs_db),
                 std::sync::Arc::clone(&lance_store),
                 std::sync::Arc::clone(llm_manager),
-            );
-
-            let memory_top_k = (top_k / 2).max(3).min(10);
-
-            let memory_result = if let Some(cancel_token) = ctx.cancellation_token() {
-                tokio::select! {
-                    res = memory_service.search_with_embedding(query, &shared_embedding, memory_top_k) => {
-                        res.map_err(|e| {
-                            log::warn!("[BuiltinRetrievalExecutor] Unified memory search failed: {}", e);
-                            e
-                        }).ok()
-                    },
-                    _ = cancel_token.cancelled() => {
-                        log::info!("[BuiltinRetrievalExecutor] Unified search cancelled during memory search");
-                        None
-                    }
-                }
-            } else {
-                memory_service
-                    .search_with_embedding(query, &shared_embedding, memory_top_k)
-                    .await
-                    .map_err(|e| {
-                        log::warn!(
-                            "[BuiltinRetrievalExecutor] Unified memory search failed: {}",
-                            e
-                        );
-                        e
-                    })
-                    .ok()
-            };
-
-            if let Some(memory_results) = memory_result {
-                let memory_count = memory_results.len();
-
-                let compressor =
-                    crate::memory::MemoryCompressor::new(std::sync::Arc::clone(llm_manager));
-                let compressed = compressor.compress(query, &memory_results).await;
-
-                for r in compressed {
-                    all_sources.push(SourceInfo {
-                        title: Some(r.note_title),
-                        url: None,
-                        snippet: Some(r.chunk_text),
-                        score: Some(r.score),
-                        metadata: Some(json!({
-                            "sourceType": "memory",
-                            "noteId": r.note_id,
-                            "folderPath": r.folder_path,
-                        })),
-                    });
-                }
-                log::debug!(
-                    "[BuiltinRetrievalExecutor] Memory search in unified: {} results (compressed)",
-                    memory_count
-                );
-            }
-        }
-
-        // ========== 3. 合并、排序、截断（保底记忆槽位） ==========
-        // ★ 修复记忆淹没问题：
-        //   - 问题1：VFS 文本搜索未排除记忆文件夹，同一条记忆可能重复出现
-        //   - 问题2：纯分数排序导致记忆条目被大量知识库内容挤出 top_k
-        //   - 问题3：独立归一化的分数不可直接比较
-        // 方案：分区合并 + 保底槽位 + 跨源去重
-
-        let score_cmp = |a: &SourceInfo, b: &SourceInfo| {
-            b.score
-                .unwrap_or(0.0)
-                .partial_cmp(&a.score.unwrap_or(0.0))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        };
-
-        // 3a. 分区：记忆 vs 知识库/多模态
-        let (mut memory_sources, mut kb_sources): (Vec<_>, Vec<_>) =
-            all_sources.into_iter().partition(|s| {
-                s.metadata
-                    .as_ref()
-                    .and_then(|m| m.get("sourceType"))
-                    .and_then(|v| v.as_str())
-                    == Some("memory")
-            });
-
-        // 3b. 跨源去重：从知识库结果中移除与记忆重复的 VFS 笔记
-        //     记忆笔记同时被索引在 VFS 中，Step 1 可能返回同一条记忆作为 text_search 结果。
-        //     优先使用 noteId 精确匹配，回退到标题匹配。
-        if !memory_sources.is_empty() {
-            let memory_note_ids: std::collections::HashSet<String> = memory_sources
-                .iter()
-                .filter_map(|s| {
-                    s.metadata
-                        .as_ref()
-                        .and_then(|m| m.get("noteId"))
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                })
-                .collect();
-            let memory_titles: std::collections::HashSet<String> = memory_sources
-                .iter()
-                .filter_map(|s| s.title.clone())
-                .collect();
-
-            let before_dedup = kb_sources.len();
-            kb_sources.retain(|s| {
-                let meta = s.metadata.as_ref();
-                let is_note = meta
-                    .and_then(|m| m.get("resourceType"))
-                    .and_then(|v| v.as_str())
-                    == Some("note");
-                if !is_note {
-                    return true;
-                }
-                let source_id = meta
-                    .and_then(|m| m.get("sourceId"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if !source_id.is_empty() && memory_note_ids.contains(source_id) {
-                    return false;
-                }
-                !s.title
-                    .as_ref()
-                    .map_or(false, |t| memory_titles.contains(t))
-            });
-            let deduped = before_dedup - kb_sources.len();
-            if deduped > 0 {
-                log::debug!(
-                    "[BuiltinRetrievalExecutor] Deduped {} memory notes from KB results (noteId+title match)",
-                    deduped
-                );
-            }
-        }
-
-        // 3c. 各自按分数排序
-        memory_sources.sort_by(&score_cmp);
-        kb_sources.sort_by(&score_cmp);
-
-        // 3d. 保底记忆槽位：保证至少 min(记忆数, 3) 条记忆出现在最终结果中
-        //     如果知识库结果不足以填满剩余槽位，回补给记忆
-        const MEMORY_RESERVED_SLOTS: usize = 3;
-        let memory_reserved = memory_sources.len().min(MEMORY_RESERVED_SLOTS).min(top_k);
-        let kb_slots = top_k.saturating_sub(memory_reserved);
-        let kb_actual = kb_sources.len().min(kb_slots);
-        // 回补：KB 未填满的槽位还给记忆
-        let memory_actual = (memory_reserved + kb_slots.saturating_sub(kb_actual))
-            .min(memory_sources.len())
-            .min(top_k);
-
-        let mut final_sources = Vec::with_capacity(top_k);
-        final_sources.extend(memory_sources.into_iter().take(memory_actual));
-        final_sources.extend(kb_sources.into_iter().take(kb_slots));
-
-        // 最终按分数排序（保持一致的输出顺序）
-        final_sources.sort_by(&score_cmp);
-        let all_sources = final_sources;
-
-        // 🔧 per-document 去重过滤
-        // ★ 记忆结果无 resourceId（只有 noteId），跳过 per_resource 限制
-        //   记忆已在 MemoryService::search 中做了 note_id 去重
-        let all_sources = if max_per_resource > 0 {
-            let mut resource_count: HashMap<String, usize> = HashMap::new();
-            all_sources
-                .into_iter()
-                .filter(|s| {
-                    let source_type = s
-                        .metadata
-                        .as_ref()
-                        .and_then(|m| m.get("sourceType"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    if source_type == "memory" {
-                        return true; // 记忆结果不参与 per_resource 去重
-                    }
-                    let resource_id = s
-                        .metadata
-                        .as_ref()
-                        .and_then(|m| m.get("resourceId"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let count = resource_count.entry(resource_id.to_string()).or_insert(0);
-                    if *count < max_per_resource {
-                        *count += 1;
-                        true
-                    } else {
-                        false
-                    }
-                })
-                .collect::<Vec<_>>()
+            ))
         } else {
-            all_sources
+            None
         };
 
-        let duration = start_time.elapsed().as_millis() as u64;
+        // 源头去重：记忆笔记同时被 VFS 文本索引覆盖，先从知识库结果中排除，
+        // 避免同一条记忆以 [知识库-N] 与 [记忆-N] 双重身份出现。
+        if let Some(memory_service) = memory_service.as_ref() {
+            let memory_resource_ids = memory_note_resource_ids(vfs_db, memory_service);
+            if !memory_resource_ids.is_empty() {
+                sources.retain(|source| {
+                    !source
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("resourceId"))
+                        .and_then(Value::as_str)
+                        .is_some_and(|resource_id| memory_resource_ids.contains(resource_id))
+                });
+            }
+        }
 
-        // 发射 end 事件
+        // ========== rerank（P2-9：失败信息汇入 routeFailures，不再静默） ==========
+        let rerank_requested = enable_reranking && !sources.is_empty();
+        let mut rerank_applied = false;
+        if rerank_requested {
+            let (rerank_kind, outcome) = match select_reranker_kind(query_modality, &sources) {
+                PlannedRerankerKind::Text => {
+                    let outcome = if let Some(query) = query_text.as_deref() {
+                        text_rerank_sources(query, sources, top_k, llm_manager).await
+                    } else {
+                        RerankOutcome::skipped(sources, top_k)
+                    };
+                    ("text", outcome)
+                }
+                PlannedRerankerKind::Multimodal => (
+                    "multimodal",
+                    vl_rerank_sources_with_query(
+                        query_text.as_deref(),
+                        query_image_base64.as_deref(),
+                        query_image_media_type.as_deref(),
+                        sources,
+                        top_k,
+                        llm_manager,
+                        vfs_db,
+                    )
+                    .await,
+                ),
+            };
+            sources = outcome.sources;
+            rerank_applied = outcome.applied;
+            if let Some(error) = outcome.failure {
+                route_failures.push(crate::vfs::retrieval_planner::RetrievalRouteFailure {
+                    route_id: format!("rerank:{}", rerank_kind),
+                    profile_id: None,
+                    dimension: None,
+                    error,
+                    timed_out: false,
+                    query_derivation: None,
+                });
+            }
+        } else {
+            sources.truncate(top_k);
+        }
+
+        // ========== 分数阈值过滤（P1-4）：绝对 + 相对，保底 top1 ==========
+        // RRF 分数（~1/60 量级）与 reranker 相关度（0..1）量纲不同：
+        // 绝对阈值仅在 rerank 生效或统一层给出归一化分数时应用，
+        // 相对阈值对任意量纲均适用。
+        let absolute_min = if rerank_applied || upstream_scores_normalized {
+            Some(RETRIEVAL_MIN_SCORE)
+        } else {
+            None
+        };
+        sources = apply_score_thresholds(sources, absolute_min, RETRIEVAL_RELATIVE_THRESHOLD);
+
+        if max_per_resource > 0 {
+            let mut counts: HashMap<String, usize> = HashMap::new();
+            sources.retain(|source| {
+                let resource_id = source
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("resourceId"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let count = counts.entry(resource_id.to_string()).or_default();
+                let keep = *count < max_per_resource;
+                *count += usize::from(keep);
+                keep
+            });
+        }
+
+        // ========== 记忆检索 + 保底槽位合并（P0-1） ==========
+        // 记忆路由失败被隔离进 routeFailures，绝不影响知识库结果。
+        if let Some(memory_service) = memory_service.as_ref() {
+            let query = query_text.as_deref().unwrap_or_default();
+            let (mut memory_sources, memory_failure) =
+                retrieve_memory_sources(memory_service, llm_manager, query, top_k, ctx).await;
+            if let Some(failure) = memory_failure {
+                route_failures.push(failure);
+            }
+            if !memory_sources.is_empty() {
+                dedup_kb_against_memory(&mut sources, &memory_sources);
+                // 保底槽位：保证至少 min(记忆数, MEMORY_RESERVED_SLOTS) 条记忆进入结果；
+                // 知识库未填满的槽位回补给记忆。
+                let memory_reserved = memory_sources.len().min(MEMORY_RESERVED_SLOTS).min(top_k);
+                let kb_slots = top_k.saturating_sub(memory_reserved);
+                let kb_actual = sources.len().min(kb_slots);
+                let memory_actual = (memory_reserved + kb_slots.saturating_sub(kb_actual))
+                    .min(memory_sources.len())
+                    .min(top_k);
+                sources.truncate(kb_actual);
+                memory_sources.truncate(memory_actual);
+                sources.extend(memory_sources);
+            }
+        }
+
+        // ========== 统一输出（P0-3）：emit_end 与 tool_output 共用同一份 sources ==========
+        // citationTag/typeIndex 按类型独立计数（`[类型-N]` 契约，前端按此解析）。
+        // 🆕 P0：编号由回复级 Citation Ledger 分配——同一次助手回复内的多次工具调用
+        // 对同一来源恒定复用同一编号，前端可直接信任 citationTag/typeIndex 不再重排。
+        let ledger = crate::chat_v2::context::citation_ledger_for_reply(
+            &ctx.session_id,
+            &ctx.message_id,
+            ctx.variant_id.as_deref(),
+        );
+        let numbered_sources = {
+            let mut ledger = ledger
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Value::Array(build_numbered_sources(&sources, &mut ledger))
+        };
+        let duration = started.elapsed().as_millis() as u64;
+        let route_failures_value = serde_json::to_value(&route_failures).unwrap_or(Value::Null);
+        let plan_value = serde_json::to_value(&response.plan).unwrap_or(Value::Null);
+        let capability_value =
+            serde_json::to_value(&response.capability_snapshot).unwrap_or(Value::Null);
+        let rerank_value = json!({
+            "requested": rerank_requested,
+            "applied": rerank_applied,
+        });
+
+        // P0-2 决策：多模态检索不再使用独立的 multimodal_rag 事件（前端 handler 死路径），
+        // 统一发 `rag` 事件，payload 以 source（工具名）+ queryMode 区分检索形态。
         ctx.emitter.emit_end(
             event_types::RAG,
             &ctx.block_id,
             Some(json!({
-                "sources": all_sources,
+                "sources": numbered_sources.clone(),
+                "count": sources.len(),
                 "durationMs": duration,
-                "source": "unified_search",
+                "source": tool_name,
+                "queryMode": query_modality,
+                "routeFailures": route_failures_value.clone(),
+                "rerank": rerank_value.clone(),
+                "retrievalPlan": plan_value.clone(),
+                "capabilitySnapshot": capability_value.clone(),
             })),
             None,
         );
 
         log::debug!(
-            "[BuiltinRetrievalExecutor] Unified search completed: {} sources in {}ms",
-            all_sources.len(),
-            duration
+            "[BuiltinRetrievalExecutor] Planned search '{}' completed: {} sources in {}ms (rerank_applied={})",
+            tool_name,
+            sources.len(),
+            duration,
+            rerank_applied
         );
 
-        // 构建带编号的来源列表，便于 LLM 引用
-        let mut citation_counters: HashMap<&'static str, usize> = HashMap::new();
-        let mut numbered_sources: Vec<Value> = Vec::with_capacity(all_sources.len());
-        for (i, s) in all_sources.iter().enumerate() {
-            let meta = s.metadata.as_ref();
-            // 根据来源类型选择引用标记
-            let source_type = meta
-                .and_then(|m| m.get("sourceType"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("text_search");
-            let citation_prefix = citation_prefix_for_source_type(source_type);
-            let citation_group = citation_group_for_source_type(source_type);
-            let citation_index = {
-                let entry = citation_counters.entry(citation_group).or_insert(0);
-                *entry += 1;
-                *entry
-            };
-            let image_url = meta
-                .and_then(|m| m.get("imageUrl"))
-                .and_then(|v| v.as_str());
-            let image_citation = meta
-                .and_then(|m| m.get("imageCitation"))
-                .and_then(|v| v.as_str());
-            let page_index = meta
-                .and_then(|m| m.get("pageIndex"))
-                .and_then(|v| v.as_i64());
-            let resource_id = meta
-                .and_then(|m| m.get("resourceId"))
-                .and_then(|v| v.as_str());
-            let source_id = meta
-                .and_then(|m| m.get("sourceId"))
-                .and_then(|v| v.as_str());
-            let note_id = meta.and_then(|m| m.get("noteId")).and_then(|v| v.as_str());
-            let folder_path = meta
-                .and_then(|m| m.get("folderPath"))
-                .and_then(|v| v.as_str());
-            let read_resource_id = preferred_read_resource_id(resource_id, source_id);
-
-            numbered_sources.push(json!({
-                "index": i + 1,
-                "citationTag": format!("[{}-{}]", citation_prefix, citation_index),
-                "typeIndex": citation_index,
-                "title": s.title,
-                "url": s.url,
-                "snippet": s.snippet,
-                "score": s.score,
-                "imageUrl": image_url,
-                "imageCitation": image_citation,
-                "pageIndex": page_index,
-                "resourceId": resource_id,
-                "sourceId": source_id,
-                "readResourceId": read_resource_id,
-                // 兼容前端 sourceAdapter：统一输出来源类型与记忆字段
-                "source_type": source_type,
-                "note_id": note_id,
-                "folder_path": folder_path,
-            }));
-        }
-
-        Ok(json!({
-            "success": true,
-            "sources": numbered_sources,
-            "count": all_sources.len(),
-            "durationMs": duration,
-            "source": "unified_search",
-            "citationGuide": "引用方式：[知识库-N]/[图片-N]/[记忆-N]（N 为同类来源编号）显示角标，[知识库-N:图片]/[图片-N:图片] 渲染对应页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。需要读取完整文档时优先使用 readResourceId 调用 builtin-resource_read。禁止输出 URL 或 Markdown 图片语法。"
-        }))
+        // 🆕 citationGuide 精简：编号在本次回复内全局一致（跨多次检索复用），
+        // 引用紧跟被支撑的句子；禁止 URL/路径/Markdown 图片。
+        let (guide_zh, guide_en, source_types) = if include_memory {
+            (
+                "在被支撑句子后紧跟 [知识库-N]/[图片-N]/[记忆-N]（编号本次回复内全局一致，重复检索到的同一来源编号不变）。页面图片用 [知识库-N:图片]/[图片-N:图片]。读全文用 readResourceId→builtin-resource_read，读完整记忆用 noteId→builtin-memory_read（压缩摘要条目 noteId 为 null，改用 sourceNoteIds 中的真实 ID）。禁止输出 URL、文件路径或 Markdown 图片。",
+                "Append [知识库-N], [图片-N], or [记忆-N] right after each supported claim; N is stable across searches within this reply. Use [知识库-N:图片]/[图片-N:图片] to render page images. Read full docs via readResourceId with builtin-resource_read; full memories via noteId with builtin-memory_read (compressed memory entries have a null noteId; use the real IDs in sourceNoteIds instead). Never output URLs, file paths, or Markdown images.",
+                json!(["knowledge", "image", "memory"]),
+            )
+        } else {
+            (
+                "在被支撑句子后紧跟 [知识库-N]/[图片-N]（编号本次回复内全局一致，重复检索到的同一来源编号不变）。页面图片用 [知识库-N:图片]/[图片-N:图片]。读全文用 readResourceId→builtin-resource_read。禁止输出 URL、文件路径或 Markdown 图片。",
+                "Append [知识库-N] or [图片-N] right after each supported claim; N is stable across searches within this reply. Use [知识库-N:图片]/[图片-N:图片] to render page images. Read full docs via readResourceId with builtin-resource_read. Never output URLs, file paths, or Markdown images.",
+                json!(["knowledge", "image"]),
+            )
+        };
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "sources": numbered_sources,
+                "count": sources.len(),
+                "durationMs": duration,
+                "source": tool_name,
+                "routeFailures": route_failures_value,
+                "rerank": rerank_value,
+                "retrievalPlan": plan_value,
+                "capabilitySnapshot": capability_value,
+                "citationGuide": format!("{guide_zh} / {guide_en}"),
+            }),
+            "chat.tools.retrieval.unified_citation_guide",
+            json!({ "sourceTypes": source_types }),
+            guide_zh,
+            guide_en,
+        ))
     }
 
     /// 执行网络搜索
@@ -1448,12 +711,33 @@ impl BuiltinRetrievalExecutor {
                 })
                 .collect();
 
+            // 构建带编号的来源列表，便于 LLM 引用
+            // P0-3：emit_end payload 与 tool_output 共用同一份 numbered sources
+            let numbered_sources: Vec<Value> = sources
+                .iter()
+                .enumerate()
+                .map(|(i, s)| {
+                    json!({
+                        "index": i + 1,
+                        "citationTag": format!("[搜索-{}]", i + 1),
+                        "typeIndex": i + 1,
+                        "title": s.title,
+                        "url": s.url,
+                        "snippet": s.snippet,
+                        "score": s.score,
+                        "source_type": "web_search",
+                    })
+                })
+                .collect();
+            let numbered_sources = Value::Array(numbered_sources);
+
             // 发射 end 事件
             ctx.emitter.emit_end(
                 event_types::WEB_SEARCH,
                 &ctx.block_id,
                 Some(json!({
-                    "sources": sources,
+                    "sources": numbered_sources.clone(),
+                    "count": sources.len(),
                     "durationMs": duration,
                 })),
                 None,
@@ -1465,29 +749,21 @@ impl BuiltinRetrievalExecutor {
                 duration
             );
 
-            // 构建带编号的来源列表，便于 LLM 引用
-            let numbered_sources: Vec<Value> = sources
-                .iter()
-                .enumerate()
-                .map(|(i, s)| {
-                    json!({
-                        "index": i + 1,
-                        "citationTag": format!("[搜索-{}]", i + 1),
-                        "title": s.title,
-                        "url": s.url,
-                        "snippet": s.snippet,
-                        "score": s.score,
-                    })
-                })
-                .collect();
-
-            Ok(json!({
-                "success": true,
-                "sources": numbered_sources,
-                "count": sources.len(),
-                "durationMs": duration,
-                "citationGuide": "回答时请使用 [搜索-N] 格式引用对应来源，如 [搜索-1]、[搜索-2] 等。引用标记应紧跟在引用内容之后。"
-            }))
+            let guide_zh = "回答时请使用 [搜索-N] 格式引用对应来源，如 [搜索-1]、[搜索-2] 等。引用标记应紧跟在引用内容之后。";
+            let guide_en = "Cite each matching source as [搜索-N], such as [搜索-1] or [搜索-2], immediately after the supported claim.";
+            Ok(with_localized_message(
+                json!({
+                    "success": true,
+                    "sources": numbered_sources,
+                    "count": sources.len(),
+                    "durationMs": duration,
+                    "citationGuide": format!("{guide_zh} / {guide_en}"),
+                }),
+                "chat.tools.retrieval.web_citation_guide",
+                json!({ "sourceType": "web" }),
+                guide_zh,
+                guide_en,
+            ))
         } else {
             let error_msg = result
                 .error
@@ -1544,7 +820,7 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
         // 检索工具的 execute_* 方法内部会发射对应的 emit_start 事件
 
         let result = if should_route_to_unified_search(tool_name) {
-            self.execute_unified_search(call, ctx).await
+            self.execute_planned_search(call, ctx, tool_name).await
         } else {
             match tool_name {
                 "memory_search" => self.execute_memory(call, ctx).await,
@@ -1575,6 +851,7 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
                 Ok(result)
             }
             Err(e) => {
+                let e = localized_retrieval_failure(e);
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
@@ -1596,6 +873,11 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
         ToolSensitivity::Low
     }
 
+    fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
+        // 各类检索（rag/multimodal/unified/web_search）均为纯只读，可并行 + 自动重试
+        ToolConcurrency::ReadOnly
+    }
+
     fn name(&self) -> &'static str {
         "BuiltinRetrievalExecutor"
     }
@@ -1605,42 +887,374 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
 // 辅助函数
 // ============================================================================
 
-/// 过滤检索结果
+/// 双重分数阈值过滤（P1-4）
 ///
-/// 应用双重阈值过滤：
-/// 1. 绝对阈值：分数必须大于 min_score
-/// 2. 相对阈值：分数必须大于最高分 * relative_threshold
-fn filter_retrieval_results(
+/// 1. 绝对阈值 `min_score`：仅在分数量纲可比时传入（如 reranker 相关度 0..1）；
+///    RRF 分数（~1/60 量级）不适用绝对阈值，调用方传 None。
+/// 2. 相对阈值：分数须 ≥ 最高分 × `relative_threshold`（对任意量纲适用）。
+///
+/// 输入按分数降序排列；无分数的条目保留；至少保留排名最高的一条（保底 top1）。
+fn apply_score_thresholds(
     sources: Vec<SourceInfo>,
-    min_score: f32,
+    min_score: Option<f32>,
     relative_threshold: f32,
-    max_results: usize,
 ) -> Vec<SourceInfo> {
-    if sources.is_empty() {
+    if sources.len() <= 1 {
         return sources;
     }
-
-    // 找出最高分
     let max_score = sources
         .iter()
-        .filter_map(|s| s.score)
-        .fold(0.0f32, |a, b| a.max(b));
-
-    // 计算相对阈值
+        .filter_map(|source| source.score)
+        .fold(f32::MIN, f32::max);
+    if !max_score.is_finite() || max_score <= 0.0 {
+        return sources;
+    }
     let relative_min = max_score * relative_threshold;
 
-    // 过滤并截断
-    sources
-        .into_iter()
-        .filter(|s| {
-            if let Some(score) = s.score {
-                score >= min_score && score >= relative_min
-            } else {
-                true // 无分数的保留
+    let mut fallback_top: Option<SourceInfo> = None;
+    let mut filtered: Vec<SourceInfo> = Vec::with_capacity(sources.len());
+    for (rank, source) in sources.into_iter().enumerate() {
+        let keep = source.score.map_or(true, |score| {
+            score >= relative_min && min_score.map_or(true, |min| score >= min)
+        });
+        if keep {
+            filtered.push(source);
+        } else if rank == 0 {
+            fallback_top = Some(source);
+        }
+    }
+    if filtered.is_empty() {
+        return fallback_top.into_iter().collect();
+    }
+    filtered
+}
+
+/// 按字符预算截断 snippet，返回（截断后的文本, 实际占用的字符数）
+fn truncate_snippet_chars(text: &str, max_chars: usize) -> (String, usize) {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return (text.to_string(), total);
+    }
+    if max_chars == 0 {
+        return (String::new(), 0);
+    }
+    let mut truncated: String = text.chars().take(max_chars.saturating_sub(1)).collect();
+    truncated.push('…');
+    (truncated, max_chars)
+}
+
+/// 来源身份键：Citation Ledger「同源同号」的判定依据。
+///
+/// 与 `CitationLedger::assign` 的契约一致（见 chat_v2/context.rs）：
+/// - 知识库（rag）：resource + chunk（`res:{id}|c:{chunk}`）
+/// - 多模态（multimodal）：resource + page，回退 blob_hash + page
+/// - 记忆（memory）：noteId（`note:{id}`）
+/// - 兜底：URL → 标题 → snippet，保证任意来源都有稳定身份
+fn citation_identity(source: &SourceInfo, group: &str) -> String {
+    let metadata = source.metadata.as_ref();
+    let meta_str = |key: &str| {
+        metadata
+            .and_then(|value| value.get(key))
+            .and_then(Value::as_str)
+    };
+    let meta_key = |key: &str| {
+        metadata
+            .and_then(|value| value.get(key))
+            .filter(|value| !value.is_null())
+            .map(|value| value.to_string())
+            .unwrap_or_default()
+    };
+    match group {
+        "memory" => {
+            if let Some(note_id) = meta_str("noteId") {
+                return format!("note:{}", note_id);
             }
+        }
+        "multimodal" => {
+            let page = meta_key("pageIndex");
+            if let Some(resource_id) = meta_str("resourceId").filter(|id| !id.is_empty()) {
+                return format!("res:{}|p:{}", resource_id, page);
+            }
+            if let Some(blob_hash) = meta_str("blobHash").filter(|hash| !hash.is_empty()) {
+                return format!("blob:{}|p:{}", blob_hash, page);
+            }
+        }
+        _ => {
+            if let Some(resource_id) = meta_str("resourceId").filter(|id| !id.is_empty()) {
+                return format!("res:{}|c:{}", resource_id, meta_key("chunkIndex"));
+            }
+            if let Some(source_id) = meta_str("sourceId").filter(|id| !id.is_empty()) {
+                return format!("src:{}|c:{}", source_id, meta_key("chunkIndex"));
+            }
+        }
+    }
+    if let Some(url) = source.url.as_deref().filter(|url| !url.is_empty()) {
+        return format!("url:{}", url);
+    }
+    if let Some(title) = source.title.as_deref().filter(|title| !title.is_empty()) {
+        return format!("title:{}", title);
+    }
+    format!("snippet:{}", source.snippet.as_deref().unwrap_or_default())
+}
+
+/// 构建带引用标记的来源列表（emit_end payload 与 tool_output 共用的唯一 sources 形状）
+///
+/// - citationTag/typeIndex 由回复级 Citation Ledger 分配：同一次助手回复内的多次
+///   工具调用对同一来源恒定复用同一编号（`[类型-N]` 契约，前端直接信任不重排）
+/// - snippet 应用单条与总量字符预算（P1-5），避免低价值长文本挤占上下文
+/// - 平铺 blob_hash/note_id/folder_path 等字段，兼容前端 sourceAdapter
+fn build_numbered_sources(
+    sources: &[SourceInfo],
+    ledger: &mut crate::chat_v2::context::CitationLedger,
+) -> Vec<Value> {
+    let mut snippet_budget = MAX_SNIPPET_TOTAL_CHARS;
+    let mut numbered = Vec::with_capacity(sources.len());
+    for (index, source) in sources.iter().enumerate() {
+        let metadata = source.metadata.as_ref();
+        let source_type = metadata
+            .and_then(|value| value.get("sourceType"))
+            .and_then(Value::as_str)
+            .unwrap_or("text_search");
+        let citation_prefix = citation_prefix_for_source_type(source_type);
+        let citation_group = citation_group_for_source_type(source_type);
+        let identity = citation_identity(source, citation_group);
+        let citation_index = ledger.assign(citation_group, &identity).type_index;
+        let snippet = source.snippet.as_deref().map(|snippet| {
+            let allowance = MAX_SNIPPET_CHARS_PER_SOURCE.min(snippet_budget);
+            let (text, used) = truncate_snippet_chars(snippet, allowance);
+            snippet_budget = snippet_budget.saturating_sub(used);
+            text
+        });
+        let resource_id = metadata
+            .and_then(|value| value.get("resourceId"))
+            .and_then(Value::as_str);
+        let source_id = metadata
+            .and_then(|value| value.get("sourceId"))
+            .and_then(Value::as_str);
+        let note_id = metadata
+            .and_then(|value| value.get("noteId"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        numbered.push(json!({
+            "index": index + 1,
+            "citationTag": format!("[{}-{}]", citation_prefix, citation_index),
+            "typeIndex": citation_index,
+            "title": source.title,
+            "url": source.url,
+            "snippet": snippet,
+            "score": source.score,
+            "imageUrl": metadata.and_then(|value| value.get("imageUrl")),
+            "imageCitation": metadata.and_then(|value| value.get("imageCitation")),
+            "pageIndex": metadata.and_then(|value| value.get("pageIndex")),
+            "chunkIndex": metadata.and_then(|value| value.get("chunkIndex")),
+            "resourceId": resource_id,
+            "resourceType": metadata.and_then(|value| value.get("resourceType")),
+            "sourceId": source_id,
+            "readResourceId": preferred_read_resource_id(resource_id, source_id),
+            "source_type": source_type,
+            "blob_hash": metadata.and_then(|value| value.get("blobHash")),
+            "retrievalProvenance": metadata.and_then(|value| value.get("retrievalProvenance")),
+            // 记忆来源字段（兼容前端 sourceAdapter 与 builtin-memory_read 的 noteId 入参）
+            // 压缩摘要条目 noteId 为 null，真实成员 ID 见 sourceNoteIds（可逐个 memory_read）
+            "noteId": note_id.clone(),
+            "note_id": note_id,
+            "sourceNoteIds": metadata.and_then(|value| value.get("sourceNoteIds")),
+            "folder_path": metadata.and_then(|value| value.get("folderPath")),
+        }));
+    }
+    numbered
+}
+
+/// 记忆文件夹下所有已索引笔记的 VFS resource_id 集合
+///
+/// 记忆笔记同时被 VFS 文本索引覆盖，unified_search 在源头把它们从
+/// 知识库结果中排除。这比事后跨源去重更可靠：不依赖 sourceId/title 匹配。
+fn memory_note_resource_ids(
+    vfs_db: &std::sync::Arc<crate::vfs::database::VfsDatabase>,
+    memory_service: &crate::memory::service::MemoryService,
+) -> std::collections::HashSet<String> {
+    memory_service
+        .get_root_folder_id()
+        .ok()
+        .flatten()
+        .and_then(|root_id| {
+            use crate::vfs::repos::folder_repo::VfsFolderRepo;
+            let folder_ids = VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
+            if folder_ids.is_empty() {
+                return None;
+            }
+            let conn = vfs_db.get_conn_safe().ok()?;
+            let placeholders = vec!["?"; folder_ids.len()].join(", ");
+            let sql = format!(
+                "SELECT DISTINCT n.resource_id FROM notes n \
+                 JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id \
+                 WHERE fi.folder_id IN ({}) AND n.deleted_at IS NULL",
+                placeholders
+            );
+            let mut stmt = conn.prepare(&sql).ok()?;
+            let params_vals: Vec<rusqlite::types::Value> = folder_ids
+                .into_iter()
+                .map(rusqlite::types::Value::from)
+                .collect();
+            let rows = stmt
+                .query_map(rusqlite::params_from_iter(params_vals), |row| {
+                    row.get::<_, String>(0)
+                })
+                .ok()?;
+            Some(rows.filter_map(|row| row.ok()).collect())
         })
-        .take(max_results)
-        .collect()
+        .unwrap_or_default()
+}
+
+/// 统一检索的记忆路由（P0-1）
+///
+/// - 结果经 MemoryCompressor 压缩（低于阈值时跳过压缩）
+/// - 失败被隔离为 RetrievalRouteFailure 汇入 routeFailures，绝不影响知识库结果
+/// - 取消时静默返回空结果（不作为失败上报）
+///
+/// 使用信号说明（调查结论，2026-07）：`[记忆-N]` 的编号由后端 CitationLedger
+/// 分配，但"模型最终回复里实际引用了哪几号"只在前端渲染层可见——后端不解析
+/// 最终回复文本，管线内没有廉价挂点。引用级 `_used` 强化需要前端回传 citation
+/// 使用情况，当前未实现（不为此新建前后端通信通道）。读取级强化已覆盖：
+/// LLM 按 noteId / 压缩摘要的 sourceNoteIds 调 builtin-memory_read 时，
+/// memory_executor 会异步记 `_used` 强使用信号。
+async fn retrieve_memory_sources(
+    memory_service: &crate::memory::service::MemoryService,
+    llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
+    query: &str,
+    top_k: usize,
+    ctx: &ExecutionContext,
+) -> (
+    Vec<SourceInfo>,
+    Option<crate::vfs::retrieval_planner::RetrievalRouteFailure>,
+) {
+    let memory_top_k = (top_k / 2).max(3).min(10);
+    let result = if let Some(cancel_token) = ctx.cancellation_token() {
+        tokio::select! {
+            result = memory_service.search(query, memory_top_k) => result,
+            _ = cancel_token.cancelled() => {
+                log::info!("[BuiltinRetrievalExecutor] memory route cancelled during unified search");
+                return (Vec::new(), None);
+            }
+        }
+    } else {
+        memory_service.search(query, memory_top_k).await
+    };
+    match result {
+        Ok(results) => {
+            let memory_count = results.len();
+            let compressor =
+                crate::memory::MemoryCompressor::new(std::sync::Arc::clone(llm_manager));
+            let compressed = compressor.compress(query, &results).await;
+            let sources = compressed
+                .into_iter()
+                .map(|result| {
+                    // 压缩摘要没有单一真实 noteId（置 null），改经 sourceNoteIds
+                    // 暴露压缩前所有成员的真实 ID，供 memory_read 溯源
+                    let mut metadata = json!({
+                        "sourceType": "memory",
+                        "noteId": result.note_id,
+                        "folderPath": result.folder_path,
+                    });
+                    if !result.source_note_ids.is_empty() {
+                        metadata["sourceNoteIds"] = json!(result.source_note_ids);
+                    }
+                    SourceInfo {
+                        title: Some(result.note_title),
+                        url: None,
+                        snippet: Some(result.chunk_text),
+                        score: Some(result.score),
+                        metadata: Some(metadata),
+                    }
+                })
+                .collect();
+            log::debug!(
+                "[BuiltinRetrievalExecutor] Memory route in unified search: {} results (compressed)",
+                memory_count
+            );
+            (sources, None)
+        }
+        Err(error) => {
+            log::warn!(
+                "[BuiltinRetrievalExecutor] Unified memory route failed: {}",
+                error
+            );
+            (
+                Vec::new(),
+                Some(crate::vfs::retrieval_planner::RetrievalRouteFailure {
+                    route_id: "memory:unified".to_string(),
+                    profile_id: None,
+                    dimension: None,
+                    error: error.to_string(),
+                    timed_out: false,
+                    query_derivation: None,
+                }),
+            )
+        }
+    }
+}
+
+/// 二次跨源去重：按 noteId / 标题移除仍以 note 形式混入知识库结果的记忆条目
+/// （源头 resource_id 排除失败时的兜底）
+fn dedup_kb_against_memory(kb_sources: &mut Vec<SourceInfo>, memory_sources: &[SourceInfo]) {
+    use std::collections::HashSet;
+
+    let mut memory_note_ids: HashSet<&str> = memory_sources
+        .iter()
+        .filter_map(|source| {
+            source
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("noteId"))
+                .and_then(Value::as_str)
+        })
+        .collect();
+    // 压缩摘要条目 noteId 为 null，其成员真实 ID 在 sourceNoteIds 中，一并纳入去重
+    for source in memory_sources {
+        let Some(ids) = source
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("sourceNoteIds"))
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
+        memory_note_ids.extend(ids.iter().filter_map(Value::as_str));
+    }
+    let memory_titles: HashSet<&str> = memory_sources
+        .iter()
+        .filter_map(|source| source.title.as_deref())
+        .collect();
+
+    let before_dedup = kb_sources.len();
+    kb_sources.retain(|source| {
+        let metadata = source.metadata.as_ref();
+        let is_note = metadata
+            .and_then(|value| value.get("resourceType"))
+            .and_then(Value::as_str)
+            == Some("note");
+        if !is_note {
+            return true;
+        }
+        let source_id = metadata
+            .and_then(|value| value.get("sourceId"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !source_id.is_empty() && memory_note_ids.contains(source_id) {
+            return false;
+        }
+        !source
+            .title
+            .as_deref()
+            .is_some_and(|title| memory_titles.contains(title))
+    });
+    let deduped = before_dedup - kb_sources.len();
+    if deduped > 0 {
+        log::debug!(
+            "[BuiltinRetrievalExecutor] Deduped {} memory notes from KB results (noteId+title match)",
+            deduped
+        );
+    }
 }
 
 fn should_route_to_unified_search(tool_name: &str) -> bool {
@@ -1648,6 +1262,20 @@ fn should_route_to_unified_search(tool_name: &str) -> bool {
         tool_name,
         "rag_search" | "multimodal_search" | "unified_search"
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlannedSearchScope {
+    Unified,
+    MultimodalOnly,
+}
+
+fn planned_search_scope(tool_name: &str) -> PlannedSearchScope {
+    if tool_name == "multimodal_search" {
+        PlannedSearchScope::MultimodalOnly
+    } else {
+        PlannedSearchScope::Unified
+    }
 }
 
 fn citation_prefix_for_source_type(source_type: &str) -> &'static str {
@@ -1715,145 +1343,218 @@ fn preferred_read_resource_id<'a>(
 }
 
 // ============================================================================
-// Hybrid RAG 融合工具：RRF + VL-Reranker
+// Rerank：文本 Reranker / VL-Reranker（P2-9：失败不再静默）
 // ============================================================================
 
-/// RRF (Reciprocal Rank Fusion) 算法常数
+/// rerank 结果：候选列表 + 是否实际生效 + 失败原因
 ///
-/// 取值 60 是业界标准（来自 Cormack et al. 2009 原始论文）。
-/// k 值越大，对 rank 差异越不敏感；越小则前排名权重越高。
-const RRF_K: f32 = 60.0;
-
-/// 计算 SourceInfo 的去重键
-///
-/// 用于跨源去重：同一 (resourceId, pageIndex) 的文本块和页面图片视为同一文档。
-/// 退化策略：
-/// - 同时有 resourceId + pageIndex：`{resourceId}:p{pageIndex}`
-/// - 仅有 resourceId：`{resourceId}`
-/// - 都没有：使用 title 作为兜底
-fn dedup_key_for_source(s: &SourceInfo) -> String {
-    let meta = s.metadata.as_ref();
-    let resource_id = meta
-        .and_then(|m| m.get("resourceId"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let page_index = meta
-        .and_then(|m| m.get("pageIndex"))
-        .and_then(|v| v.as_i64());
-
-    if !resource_id.is_empty() {
-        if let Some(pi) = page_index {
-            return format!("{}:p{}", resource_id, pi);
-        }
-        return resource_id.to_string();
-    }
-
-    s.title
-        .clone()
-        .unwrap_or_else(|| s.snippet.clone().unwrap_or_else(|| "<unknown>".to_string()))
+/// - `applied=false, failure=None`：正常降级（未配置 reranker / 无可 rerank 的查询）
+/// - `applied=false, failure=Some`：rerank 失败回退 RRF 排序，失败信息汇入 routeFailures
+struct RerankOutcome {
+    sources: Vec<SourceInfo>,
+    applied: bool,
+    failure: Option<String>,
 }
 
-/// 使用 RRF 算法融合多路召回结果
-///
-/// ## 参数
-/// - `result_lists`: 每路召回的有序结果列表（按相关性降序）
-/// - `top_k`: 融合后保留的最大数量
-///
-/// ## 返回
-/// 按 RRF 分数降序排列的融合结果。每个结果的 `score` 字段被覆盖为 RRF 分数。
-///
-/// ## 算法
-/// 对每个文档 d，RRF 分数 = Σ 1 / (k + rank_i(d))，其中 rank_i 为 d 在第 i 路结果中的排名（1-based）。
-/// 不出现在某路结果中的文档不贡献该路分数。
-fn rrf_fuse_sources(result_lists: Vec<Vec<SourceInfo>>, top_k: usize) -> Vec<SourceInfo> {
-    if result_lists.is_empty() {
-        return Vec::new();
-    }
-    if result_lists.len() == 1 {
-        let mut single = result_lists.into_iter().next().unwrap();
-        single.truncate(top_k);
-        return single;
-    }
-
-    use std::collections::HashMap;
-    let mut rrf_scores: HashMap<String, f32> = HashMap::new();
-    let mut doc_map: HashMap<String, SourceInfo> = HashMap::new();
-
-    for results in result_lists {
-        for (rank, source) in results.into_iter().enumerate() {
-            let key = dedup_key_for_source(&source);
-            let rrf = 1.0 / (RRF_K + rank as f32 + 1.0);
-            *rrf_scores.entry(key.clone()).or_insert(0.0) += rrf;
-
-            // 保留分数更高的版本作为代表（用于展示原始 snippet/title 等）
-            doc_map
-                .entry(key)
-                .and_modify(|existing| {
-                    if source.score.unwrap_or(0.0) > existing.score.unwrap_or(0.0) {
-                        *existing = source.clone();
-                    }
-                })
-                .or_insert(source);
+impl RerankOutcome {
+    fn skipped(mut sources: Vec<SourceInfo>, top_k: usize) -> Self {
+        sources.truncate(top_k);
+        Self {
+            sources,
+            applied: false,
+            failure: None,
         }
     }
 
-    let mut sorted: Vec<(String, f32)> = rrf_scores.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    fn fallback(mut sources: Vec<SourceInfo>, top_k: usize, failure: impl Into<String>) -> Self {
+        sources.truncate(top_k);
+        Self {
+            sources,
+            applied: false,
+            failure: Some(failure.into()),
+        }
+    }
 
-    sorted
-        .into_iter()
-        .take(top_k)
-        .filter_map(|(k, rrf)| {
-            doc_map.remove(&k).map(|mut s| {
-                // 用 RRF 分数覆盖原始分数，保证后续排序一致
-                s.score = Some(rrf);
-                s
-            })
-        })
-        .collect()
+    fn applied(sources: Vec<SourceInfo>) -> Self {
+        Self {
+            sources,
+            applied: true,
+            failure: None,
+        }
+    }
 }
 
-/// 使用 VL-Reranker 对融合后的候选集做跨模态精排
-///
-/// ## 参数
-/// - `query`: 查询文本（图片查询暂不支持，未来可扩展）
-/// - `candidates`: RRF 融合后的候选列表
-/// - `top_k`: 最终返回数量
-/// - `llm_manager`: LLM 管理器（用于调用 VL-Reranker API）
-/// - `vfs_db`: VFS 数据库（用于加载图片 Blob）
-///
-/// ## 返回
-/// 重排序后的结果。如果 VL-Reranker 未配置或调用失败，返回原始候选（截断到 top_k）。
-///
-/// ## 实现说明
-/// - 文本类候选：仅传入 snippet 文本
-/// - 多模态类候选（有 blobHash）：加载图片 Base64 + snippet 一起送入
-/// - 失败时降级为原始排序，不阻断检索流程
-async fn vl_rerank_sources(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlannedRerankerKind {
+    Text,
+    Multimodal,
+}
+
+fn select_reranker_kind(
+    query_modality: crate::vfs::retrieval_planner::QueryModality,
+    candidates: &[SourceInfo],
+) -> PlannedRerankerKind {
+    let has_multimodal_candidate = candidates.iter().any(|candidate| {
+        let metadata = candidate.metadata.as_ref();
+        metadata
+            .and_then(|value| value.get("blobHash"))
+            .is_some_and(|value| !value.is_null())
+            || metadata
+                .and_then(|value| value.get("sourceType"))
+                .and_then(Value::as_str)
+                == Some("multimodal_search")
+    });
+    if query_modality.has_image() || has_multimodal_candidate {
+        PlannedRerankerKind::Multimodal
+    } else {
+        PlannedRerankerKind::Text
+    }
+}
+
+async fn text_rerank_sources(
     query: &str,
     candidates: Vec<SourceInfo>,
     top_k: usize,
     llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
+) -> RerankOutcome {
+    if candidates.is_empty() {
+        return RerankOutcome::skipped(candidates, top_k);
+    }
+    let config = match llm_manager.get_reranker_model_config().await {
+        Ok(config) if config.enabled && config.is_reranker && !config.is_multimodal => config,
+        Ok(_) => {
+            log::warn!("[hybrid-rag] Text reranker assignment has incompatible capabilities");
+            return RerankOutcome::fallback(
+                candidates,
+                top_k,
+                "text reranker assignment has incompatible capabilities",
+            );
+        }
+        // 未配置 reranker 属于正常降级，不作为失败上报
+        Err(_) => return RerankOutcome::skipped(candidates, top_k),
+    };
+    let chunks = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, candidate)| crate::models::RetrievedChunk {
+            chunk: crate::models::DocumentChunk {
+                id: format!("rerank-source-{}", index),
+                document_id: candidate
+                    .metadata
+                    .as_ref()
+                    .and_then(|value| value.get("resourceId"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                chunk_index: candidate
+                    .metadata
+                    .as_ref()
+                    .and_then(|value| value.get("chunkIndex"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(index as u64) as usize,
+                text: candidate.snippet.clone().unwrap_or_default(),
+                metadata: std::collections::HashMap::new(),
+            },
+            score: candidate.score.unwrap_or_default(),
+        })
+        .collect();
+    match llm_manager
+        .call_reranker_api(query.to_string(), chunks, &config.id)
+        .await
+    {
+        Ok(results) => {
+            let mut reranked = Vec::with_capacity(top_k.min(results.len()));
+            for result in results.into_iter().take(top_k) {
+                let Some(index) = result
+                    .chunk
+                    .id
+                    .strip_prefix("rerank-source-")
+                    .and_then(|value| value.parse::<usize>().ok())
+                else {
+                    continue;
+                };
+                if let Some(mut source) = candidates.get(index).cloned() {
+                    source.score = Some(result.score);
+                    reranked.push(source);
+                }
+            }
+            if reranked.is_empty() {
+                RerankOutcome::fallback(
+                    candidates,
+                    top_k,
+                    "text reranker returned no usable results",
+                )
+            } else {
+                RerankOutcome::applied(reranked)
+            }
+        }
+        Err(error) => {
+            log::warn!(
+                "[hybrid-rag] Text reranker failed, retaining RRF: {}",
+                error
+            );
+            RerankOutcome::fallback(
+                candidates,
+                top_k,
+                format!("text reranker failed: {}", error),
+            )
+        }
+    }
+}
+
+/// 使用 VL-Reranker 对候选集做跨模态精排
+///
+/// ## 实现说明
+/// - 文本类候选：仅传入 snippet 文本
+/// - 多模态类候选（有 blobHash）：加载图片 Base64 + snippet 一起送入
+/// - 失败时降级为原始（RRF）排序，失败信息通过 RerankOutcome 上报，不阻断检索流程
+async fn vl_rerank_sources_with_query(
+    query_text: Option<&str>,
+    query_image_base64: Option<&str>,
+    query_image_media_type: Option<&str>,
+    candidates: Vec<SourceInfo>,
+    top_k: usize,
+    llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
     vfs_db: &std::sync::Arc<crate::vfs::database::VfsDatabase>,
-) -> Vec<SourceInfo> {
+) -> RerankOutcome {
     use crate::multimodal::types::MultimodalInput;
     use crate::vfs::repos::VfsBlobRepo;
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
     if candidates.is_empty() {
-        return Vec::new();
+        return RerankOutcome::skipped(candidates, top_k);
     }
 
-    // 检查 VL-Reranker 是否已配置
-    if !llm_manager.is_multimodal_reranking_configured().await {
-        log::debug!("[hybrid-rag] VL-Reranker 未配置，跳过精排");
-        let mut out = candidates;
-        out.truncate(top_k);
-        return out;
-    }
+    let _config = match llm_manager.get_vl_reranker_model_config().await {
+        Ok(config) if config.enabled && config.is_reranker && config.is_multimodal => config,
+        Ok(_) => {
+            log::warn!("[hybrid-rag] VL reranker assignment has incompatible capabilities");
+            return RerankOutcome::fallback(
+                candidates,
+                top_k,
+                "VL reranker assignment has incompatible capabilities",
+            );
+        }
+        // 未配置 VL reranker 属于正常降级，不作为失败上报
+        Err(_) => return RerankOutcome::skipped(candidates, top_k),
+    };
 
     // 构造 query 输入
-    let query_input = MultimodalInput::text(query);
+    let query_input = match (
+        query_text.filter(|value| !value.trim().is_empty()),
+        query_image_base64.filter(|value| !value.trim().is_empty()),
+    ) {
+        (Some(text), Some(image)) => MultimodalInput::text_and_image(
+            text,
+            image,
+            query_image_media_type.unwrap_or("image/png"),
+        ),
+        (None, Some(image)) => {
+            MultimodalInput::image_base64(image, query_image_media_type.unwrap_or("image/png"))
+        }
+        (Some(text), None) => MultimodalInput::text(text),
+        (None, None) => return RerankOutcome::skipped(candidates, top_k),
+    };
 
     // 构造文档输入：有图片则加载，否则用文本
     let mut doc_inputs: Vec<MultimodalInput> = Vec::with_capacity(candidates.len());
@@ -1923,13 +1624,15 @@ async fn vl_rerank_sources(
                 doc_inputs.len(),
                 reranked.len()
             );
-            reranked
+            if reranked.is_empty() {
+                RerankOutcome::fallback(candidates, top_k, "VL reranker returned no usable results")
+            } else {
+                RerankOutcome::applied(reranked)
+            }
         }
         Err(e) => {
             log::warn!("[hybrid-rag] VL-Reranker 调用失败，降级为 RRF 排序: {}", e);
-            let mut out = candidates;
-            out.truncate(top_k);
-            out
+            RerankOutcome::fallback(candidates, top_k, format!("VL reranker failed: {}", e))
         }
     }
 }
@@ -1941,6 +1644,59 @@ async fn vl_rerank_sources(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn source_with_score(title: &str, score: f32) -> SourceInfo {
+        SourceInfo {
+            title: Some(title.to_string()),
+            url: None,
+            snippet: Some(format!("Content of {}", title)),
+            score: Some(score),
+            metadata: None,
+        }
+    }
+
+    fn kb_source(title: &str) -> SourceInfo {
+        SourceInfo {
+            title: Some(title.to_string()),
+            url: None,
+            snippet: Some("kb text".to_string()),
+            score: Some(0.8),
+            metadata: Some(json!({
+                "sourceType": "text_search",
+                "resourceType": "note",
+                "resourceId": "res_kb",
+                "sourceId": format!("note_{}", title),
+            })),
+        }
+    }
+
+    fn mm_source(title: &str) -> SourceInfo {
+        SourceInfo {
+            title: Some(title.to_string()),
+            url: None,
+            snippet: Some("page text".to_string()),
+            score: Some(0.7),
+            metadata: Some(json!({
+                "sourceType": "multimodal_search",
+                "pageIndex": 0,
+                "blobHash": "hash123",
+            })),
+        }
+    }
+
+    fn memory_source(title: &str, note_id: &str) -> SourceInfo {
+        SourceInfo {
+            title: Some(title.to_string()),
+            url: None,
+            snippet: Some("memory text".to_string()),
+            score: Some(0.9),
+            metadata: Some(json!({
+                "sourceType": "memory",
+                "noteId": note_id,
+                "folderPath": "偏好",
+            })),
+        }
+    }
 
     #[test]
     fn test_can_handle() {
@@ -1978,37 +1734,116 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_retrieval_results() {
+    fn score_thresholds_filter_low_scores_with_absolute_min() {
         let sources = vec![
-            SourceInfo {
-                title: Some("Doc1".to_string()),
-                url: None,
-                snippet: Some("Content 1".to_string()),
-                score: Some(0.9),
-                metadata: None,
-            },
-            SourceInfo {
-                title: Some("Doc2".to_string()),
-                url: None,
-                snippet: Some("Content 2".to_string()),
-                score: Some(0.5),
-                metadata: None,
-            },
-            SourceInfo {
-                title: Some("Doc3".to_string()),
-                url: None,
-                snippet: Some("Content 3".to_string()),
-                score: Some(0.2), // 低于绝对阈值
-                metadata: None,
-            },
+            source_with_score("Doc1", 0.9),
+            source_with_score("Doc2", 0.5),
+            source_with_score("Doc3", 0.2), // 低于绝对阈值与相对阈值
         ];
-
-        let filtered = filter_retrieval_results(sources, 0.3, 0.5, 10);
-
-        // Doc3 应该被过滤掉（分数 0.2 < 0.3）
+        let filtered = apply_score_thresholds(sources, Some(0.3), 0.5);
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered[0].title, Some("Doc1".to_string()));
         assert_eq!(filtered[1].title, Some("Doc2".to_string()));
+    }
+
+    #[test]
+    fn score_thresholds_keep_top1_when_all_below_absolute_min() {
+        let sources = vec![
+            source_with_score("Doc1", 0.2),
+            source_with_score("Doc2", 0.1),
+        ];
+        let filtered = apply_score_thresholds(sources, Some(0.3), 0.5);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].title, Some("Doc1".to_string()));
+    }
+
+    #[test]
+    fn score_thresholds_apply_relative_only_for_rrf_scale() {
+        // RRF 量级分数：不传绝对阈值，仅相对阈值生效
+        let sources = vec![
+            source_with_score("Doc1", 0.032),
+            source_with_score("Doc2", 0.016), // == max * 0.5，保留
+            source_with_score("Doc3", 0.010), // < max * 0.5，过滤
+        ];
+        let filtered = apply_score_thresholds(sources, None, 0.5);
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[test]
+    fn snippet_truncation_respects_budget() {
+        let (text, used) = truncate_snippet_chars("abcdef", 4);
+        assert_eq!(used, 4);
+        assert_eq!(text, "abc…");
+
+        let (text, used) = truncate_snippet_chars("abc", 10);
+        assert_eq!(used, 3);
+        assert_eq!(text, "abc");
+
+        let (text, used) = truncate_snippet_chars("abc", 0);
+        assert_eq!(used, 0);
+        assert_eq!(text, "");
+    }
+
+    #[test]
+    fn numbered_sources_use_type_local_citation_indexes() {
+        let sources = vec![
+            kb_source("DocA"),
+            mm_source("Page 1"),
+            kb_source("DocB"),
+            memory_source("用户偏好", "note_mem_1"),
+        ];
+        let mut ledger = crate::chat_v2::context::CitationLedger::new();
+        let numbered = build_numbered_sources(&sources, &mut ledger);
+        assert_eq!(numbered[0]["citationTag"], "[知识库-1]");
+        assert_eq!(numbered[0]["typeIndex"], 1);
+        assert_eq!(numbered[1]["citationTag"], "[图片-1]");
+        assert_eq!(numbered[2]["citationTag"], "[知识库-2]");
+        assert_eq!(numbered[2]["typeIndex"], 2);
+        assert_eq!(numbered[3]["citationTag"], "[记忆-1]");
+        assert_eq!(numbered[3]["note_id"], "note_mem_1");
+        assert_eq!(numbered[3]["noteId"], "note_mem_1");
+        // 全局 index 保持连续
+        assert_eq!(numbered[3]["index"], 4);
+    }
+
+    #[test]
+    fn numbered_sources_expose_multimodal_fields_for_frontend_adapter() {
+        let mut ledger = crate::chat_v2::context::CitationLedger::new();
+        let numbered = build_numbered_sources(&[mm_source("Page 1")], &mut ledger);
+        assert_eq!(numbered[0]["source_type"], "multimodal_search");
+        assert_eq!(numbered[0]["blob_hash"], "hash123");
+        assert_eq!(numbered[0]["pageIndex"], 0);
+    }
+
+    #[test]
+    fn dedup_removes_memory_notes_from_kb_results() {
+        let memory = vec![memory_source("用户偏好", "note_DocA")];
+        let mut kb = vec![kb_source("DocA"), kb_source("DocB")];
+        // kb_source 的 sourceId 为 note_{title}，DocA 与记忆 noteId 相同 → 被去重
+        dedup_kb_against_memory(&mut kb, &memory);
+        assert_eq!(kb.len(), 1);
+        assert_eq!(kb[0].title, Some("DocB".to_string()));
+    }
+
+    #[test]
+    fn dedup_uses_source_note_ids_for_compressed_memory_entries() {
+        // 压缩摘要条目：noteId 为 null，成员真实 ID 在 sourceNoteIds 中
+        let memory = vec![SourceInfo {
+            title: Some("用户记忆摘要".to_string()),
+            url: None,
+            snippet: Some("compressed summary".to_string()),
+            score: Some(0.9),
+            metadata: Some(json!({
+                "sourceType": "memory",
+                "noteId": Value::Null,
+                "sourceNoteIds": ["note_DocA", "note_DocB"],
+                "folderPath": "",
+            })),
+        }];
+        let mut kb = vec![kb_source("DocA"), kb_source("DocC")];
+        dedup_kb_against_memory(&mut kb, &memory);
+        assert_eq!(kb.len(), 1);
+        assert_eq!(kb[0].title, Some("DocC".to_string()));
     }
 
     #[test]
@@ -2018,6 +1853,32 @@ mod tests {
         assert!(should_route_to_unified_search("unified_search"));
         assert!(!should_route_to_unified_search("web_search"));
         assert!(!should_route_to_unified_search("memory_search"));
+    }
+
+    #[test]
+    fn multimodal_search_uses_dedicated_me_only_scope() {
+        assert_eq!(
+            planned_search_scope("multimodal_search"),
+            PlannedSearchScope::MultimodalOnly
+        );
+        assert_eq!(
+            planned_search_scope("rag_search"),
+            PlannedSearchScope::Unified
+        );
+        assert_eq!(
+            planned_search_scope("unified_search"),
+            PlannedSearchScope::Unified
+        );
+    }
+
+    #[test]
+    fn executor_failure_boundary_localizes_retrieval_errors() {
+        let error: Value =
+            serde_json::from_str(&localized_retrieval_failure("未配置多模态嵌入模型"))
+                .expect("localized retrieval error");
+        assert_eq!(error["code"], "RETRIEVAL_OPERATION_FAILED");
+        assert_eq!(error["messageKey"], "chat.tools.retrieval.error");
+        assert!(error["messageFallback"]["en-US"].is_string());
     }
 
     #[test]
@@ -2035,6 +1896,38 @@ mod tests {
             "multimodal"
         );
         assert_eq!(citation_group_for_source_type("memory"), "memory");
+    }
+
+    #[test]
+    fn reranker_selection_tracks_query_and_candidate_modality() {
+        use crate::vfs::retrieval_planner::QueryModality;
+
+        let text_source = SourceInfo {
+            title: None,
+            url: None,
+            snippet: Some("text".to_string()),
+            score: Some(0.1),
+            metadata: Some(json!({ "sourceType": "text_search" })),
+        };
+        assert_eq!(
+            select_reranker_kind(QueryModality::Text, &[text_source.clone()]),
+            PlannedRerankerKind::Text
+        );
+        assert_eq!(
+            select_reranker_kind(QueryModality::Image, &[text_source]),
+            PlannedRerankerKind::Multimodal
+        );
+        let multimodal_source = SourceInfo {
+            title: None,
+            url: None,
+            snippet: Some("image page".to_string()),
+            score: Some(0.1),
+            metadata: Some(json!({ "sourceType": "multimodal_search" })),
+        };
+        assert_eq!(
+            select_reranker_kind(QueryModality::Text, &[multimodal_source]),
+            PlannedRerankerKind::Multimodal
+        );
     }
 
     #[test]

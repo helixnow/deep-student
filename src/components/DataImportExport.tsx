@@ -4,29 +4,30 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { TauriAPI, BackupTier } from '../utils/tauriApi';
 import { DataGovernanceApi } from '../api/dataGovernance';
 import { fileManager, extractFileName } from '../utils/fileManager';
-import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
+import { useMobileHeader } from '@/components/layout';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   Upload, DownloadSimple, Warning, Trash, HardDrive, Clock, ArrowsClockwise,
   FileZip, X, FloppyDisk, FileText, ChartBar, BookOpen, Brain, Database,
   Crosshair, TrendUp, Tag, Pulse, Lightning, WarningCircle, ArrowUpRight,
-  ArrowDownRight, SpinnerGap, Play, ArrowCounterClockwise, Image, Info, Cloud, Flask,
-  CheckCircle, XCircle, Square
+  ArrowDownRight, SpinnerGap, Image, Info, Cloud
 } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/shad/Card';
 import { Alert, AlertDescription } from './ui/shad/Alert';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { Checkbox } from './ui/shad/Checkbox';
 import {
-  NotionDialog,
-  NotionDialogHeader,
-  NotionDialogTitle,
-  NotionDialogDescription,
-  NotionDialogBody,
-  NotionDialogFooter,
-} from './ui/NotionDialog';
+  DsDialog,
+  DsDialogHeader,
+  DsDialogTitle,
+  DsDialogDescription,
+  DsDialogBody,
+  DsDialogFooter,
+} from './ui/DsDialog';
 import { Badge } from './ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from './ui/shad/Tabs';
 import { Input } from './ui/shad/Input';
@@ -38,8 +39,8 @@ import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { ChatV2StatsSection } from './ChatV2StatsSection';
 import { LlmUsageStatsSection } from './llm-usage/LlmUsageStatsSection';
+import { DataChartsPanel } from './stats/DataChartsPanel';
 import { useChatV2Stats } from '../hooks/useChatV2Stats';
-import { LearningHeatmap } from './LearningHeatmap';
 import { Progress as ShadProgress } from './ui/shad/Progress';
 import { useShallow } from 'zustand/react/shallow';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -62,22 +63,6 @@ import {
 } from 'recharts';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
-// Notion 风格设计系统 - 使用 CSS 变量，支持亮暗模式
-const DESIGN = {
-  // 图表颜色使用柔和的色调
-  chart: [
-    'hsl(var(--primary))',
-    'hsl(var(--primary) / 0.8)',
-    'hsl(var(--primary) / 0.6)',
-    'hsl(var(--primary) / 0.4)',
-    'hsl(217 91% 60%)',
-    'hsl(142 76% 36%)',
-    'hsl(199 89% 48%)',
-    'hsl(262 83% 58%)'
-  ]
-};
-
-
 const DATA_CENTER_ICON_CONTAINER_CLASS = 'flex h-8 w-8 items-center justify-center rounded-md bg-muted';
 const DATA_CENTER_ICON_CLASS = 'h-5 w-5 text-primary transition-colors';
 const DATA_CENTER_ICON_SM_CLASS = 'h-4 w-4 text-primary transition-colors';
@@ -90,6 +75,24 @@ interface DataImportExportProps {
   mode?: 'all' | 'stats' | 'manage';
 }
 
+const DataManagementContent: React.FC<{
+  embedded: boolean;
+  children: React.ReactNode;
+}> = ({ embedded, children }) => {
+  if (embedded) {
+    return <div className="data-management-content embedded">{children}</div>;
+  }
+
+  return (
+    <CustomScrollArea
+      className="data-management-content"
+      viewportClassName="data-management-viewport"
+    >
+      {children}
+    </CustomScrollArea>
+  );
+};
+
 
 interface GovernanceBackupInfo {
   backup_id: string;
@@ -97,6 +100,8 @@ interface GovernanceBackupInfo {
   size: number;
   created_at: string;
   is_auto_backup: boolean;
+  recovery_kind: 'disaster_recovery' | 'partial_archive';
+  restorable: boolean;
 }
 
 // 备份列表项组件
@@ -124,16 +129,22 @@ const BackupListItem: React.FC<{
   return (
     <div
       className={cn(
-        'group flex items-center justify-between rounded-lg border border-transparent bg-transparent p-4 transition-colors',
+        // flex-wrap：400px 窄屏下长备份名 + 两个操作按钮挤不进一行时换行，避免按钮被推出可视区
+        'group flex flex-wrap items-center justify-between gap-2 rounded-lg border border-transparent bg-transparent p-4 transition-colors',
         'hover:bg-[var(--interactive-hover)]'
       )}
     >
-      <div className="flex-1">
+      <div className="min-w-0 flex-1 basis-52">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-sm text-foreground">{backup.display_name}</span>
+          <span className="break-all font-mono text-sm text-foreground">{backup.display_name}</span>
           {backup.is_auto_backup && (
             <Badge variant="secondary" className="text-xs">
               {t('data:backup_list.auto_badge')}
+            </Badge>
+          )}
+          {backup.recovery_kind === 'partial_archive' && (
+            <Badge variant="outline" className="text-xs">
+              {t('data:governance.partial_archive', { defaultValue: 'Partial archive' })}
             </Badge>
           )}
         </div>
@@ -145,34 +156,44 @@ const BackupListItem: React.FC<{
           <span>{formatFileSize(backup.size)}</span>
         </div>
       </div>
-      <div className="flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* ★ 2026-07-08（移动端审计 D-5 / P0）：恢复/保存按钮原为 hover 显现，
+          触屏没有 hover —— 备份恢复入口完全不可达。<md 常显，桌面保持 hover 交互。 */}
+      <div className="flex gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
         {onSave && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onSave(backup.backup_id)}
             title={t('data:backup_list.save_button')}
-            className="h-9 px-3"
+            className="h-11 px-3 md:h-9"
           >
             <FloppyDisk className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
             {t('data:backup_list.save_button')}
-          </NotionButton>
+          </DsButton>
         )}
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => onRestore(backup.backup_id)}
-          className="h-9 px-3"
+          disabled={!backup.restorable}
+          title={
+            backup.restorable
+              ? undefined
+              : t('data:governance.partial_archive_not_restorable', {
+                  defaultValue: 'Partial archives cannot replace the data slot',
+                })
+          }
+          className="h-11 px-3 md:h-9"
         >
           <DownloadSimple className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
           {t('data:backup_list.restore_button')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );
 };
 
-// Notion 风格统计卡片组件 - 简洁扁平
+// 简洁风格统计卡片组件 - 简洁
 const StatCard = ({
   title,
   value,
@@ -241,9 +262,31 @@ const StatCard = ({
 
 export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, embedded = false, mode = 'all' }) => {
   const { t } = useTranslation(['data', 'common']);
-  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
+  const { isSmallScreen } = useBreakpoint();
+
+  // 供 useMobileHeader rightActions 调用（handleExport 在下方定义）
+  const handleExportRef = useRef<() => void>(() => {});
+
+  // D-1: 移动端顶栏标题（data-management 视图直挂本组件）
+  // 移动端设计哲学：页内不再渲染桌面 HeaderTemplate，导出操作收进统一顶栏
+  useMobileHeader('data-management', {
+    title: t('common:navigation.data_management'),
+    rightActions: (
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={t('common:header.export')}
+        onClick={() => handleExportRef.current()}
+      >
+        <DownloadSimple size={18} />
+      </DsButton>
+    ),
+  }, [t]);
+  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
+      requireMaintenanceRestart: state.requireMaintenanceRestart,
       exitMaintenanceMode: state.exitMaintenanceMode,
     }))
   );
@@ -327,19 +370,6 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   const [slotInfo, setSlotInfo] = useState<{ active_slot: string; inactive_slot: string; pending_slot?: string; active_dir: string; inactive_dir: string; } | null>(null);
   const countdownTimerRef = React.useRef<number | null>(null);
 
-  // 备份系统测试状态
-  const [backupTestRunning, setBackupTestRunning] = useState(false);
-  const [backupTestResult, setBackupTestResult] = useState<{
-    status: 'idle' | 'running' | 'success' | 'failed';
-    currentStep: string;
-    progress: number;
-    logs: string[];
-    error?: string;
-    integrityScore?: number;
-    duration?: number;
-  }>({ status: 'idle', currentStep: '', progress: 0, logs: [] });
-  const backupTestAbortRef = useRef(false);
-
   const clearCountdownTimer = useCallback(() => {
     if (countdownTimerRef.current !== null) {
       window.clearInterval(countdownTimerRef.current);
@@ -408,8 +438,10 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   const mapUiTiersToGovernance = useCallback((tiers: BackupTier[]): Array<'core' | 'important' | 'rebuildable' | 'large_assets'> => {
     const mapped = new Set<'core' | 'important' | 'rebuildable' | 'large_assets'>(['core']);
     for (const tier of tiers) {
-      if (tier === 'core_config_chat' || tier === 'vfs_full') {
+      if (tier === 'core_config_chat') {
         mapped.add('core');
+      } else if (tier === 'vfs_full') {
+        mapped.add('important');
       } else if (tier === 'rebuildable') {
         mapped.add('rebuildable');
       } else if (tier === 'large_files') {
@@ -599,6 +631,10 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           size: item.size,
           created_at: item.created_at,
           is_auto_backup: backupId.startsWith('auto-backup-'),
+          recovery_kind:
+            item.recovery_kind ??
+            (item.backup_type === 'full' ? 'disaster_recovery' : 'partial_archive'),
+          restorable: item.restorable ?? item.backup_type === 'full',
         } satisfies GovernanceBackupInfo;
       });
       normalized.sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -673,7 +709,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           progress: 0,
           phase: 'queued',
           status: 'cancelled',
-          message: t('common:cancelled', '已取消'),
+          message: t('common:cancelled'),
         });
         return;
       }
@@ -715,11 +751,10 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         status: 'queued',
       });
 
-      const { listen } = await import('@tauri-apps/api/event');
-      const unlisten = await listen<BackupJobEventPayload>('backup-job-progress', (event) => {
-        const p = event?.payload as BackupJobEventPayload;
-        if (!p || getEventJobId(p) !== jobId || p.kind !== 'export') return;
-
+      // ★ 2026-07-08（审计 29-P1-1）：第二阶段改用 waitForJobTerminal（事件 + 1s 轮询 + 超时三保险）。
+      // 旧实现"先启动任务再注册 listen"存在竞态：小备份的终态事件可能在监听注册前发出，
+      // 之后再无事件到达，isExporting 与维护模式永久卡死，用户只能重启应用。
+      const updateExportJobFromPayload = (p: BackupJobEventPayload) => {
         setExportJob({
           jobId,
           progress: p.progress ?? 0,
@@ -732,44 +767,27 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           processedItems: p.processedItems ?? p.processed_items,
           totalItems: p.totalItems ?? p.total_items,
         });
-
-        if (p.status === 'completed') {
-          if (p.result?.success === false) {
-            const errMsg = p.result?.error || p.message || t('data:errors.export_fallback');
-            debugLog.error(t('export_failed'), errMsg);
-            showGlobalNotification('warning', `${t('export_failed')}: ${errMsg}`);
-            setExportError(errMsg);
-            finalizeExport(jobId, { status: 'failed', message: errMsg });
-            return;
-          }
-          const resolvedPath =
-            p.result?.resolvedPath ||
-            p.result?.resolved_path ||
-            p.result?.outputPath ||
-            p.result?.output_path;
-          if (resolvedPath) {
-            showGlobalNotification('success', `${t('export_success')}
-${resolvedPath}`);
-          } else {
-            showGlobalNotification('success', t('export_success'));
-          }
-          loadBackupList();
-          finalizeExport(jobId, { status: 'completed', message: t('data:console.export_success') });
-          window.setTimeout(() => {
-            setExportJob(current => (current && current.jobId === jobId && current.status === 'completed' ? null : current));
-          }, 1200);
-        } else if (p.status === 'failed' || p.status === 'cancelled') {
-          const errMsg = p.result?.error || p.message || t('data:errors.export_fallback');
-          debugLog.error(t('export_failed'), errMsg);
-          showGlobalNotification('error', `${t('export_failed')}: ${errMsg}`);
-          setExportError(errMsg);
-          finalizeExport(jobId, { status: p.status, message: errMsg });
-        }
-      });
-
-      exportListenerRef.current = () => {
-        (unlisten as unknown as () => void)();
       };
+
+      const finalPayload = await waitForJobTerminal(jobId, 'export', 600000, updateExportJobFromPayload);
+      // waitForJobTerminal 仅在成功完成时 resolve；failed/cancelled/completed-with-issues 会 reject 进入下方 catch
+      updateExportJobFromPayload(finalPayload);
+      const resolvedPath =
+        finalPayload.result?.resolvedPath ||
+        finalPayload.result?.resolved_path ||
+        finalPayload.result?.outputPath ||
+        finalPayload.result?.output_path;
+      if (resolvedPath) {
+        showGlobalNotification('success', `${t('export_success')}
+${resolvedPath}`);
+      } else {
+        showGlobalNotification('success', t('export_success'));
+      }
+      loadBackupList();
+      finalizeExport(jobId, { status: 'completed', message: t('data:console.export_success') });
+      window.setTimeout(() => {
+        setExportJob(current => (current && current.jobId === jobId && current.status === 'completed' ? null : current));
+      }, 1200);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       debugLog.error(t('export_failed'), error);
@@ -780,6 +798,7 @@ ${resolvedPath}`);
       exitMaintenanceMode();
     }
   };
+  handleExportRef.current = handleExport;
 
   // 手动备份（仅创建治理系统备份，不导出 ZIP）
   const handleAutoBackup = async () => {
@@ -821,6 +840,7 @@ ${resolvedPath}`);
     setIsExporting(true);
     setRestoreProgress(null);
     enterMaintenanceMode(t('data:governance.maintenance_restore'));
+    let restoreRequiresRestart = false;
     try {
       const spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(backupId);
       if (!spaceCheck.has_enough_space) {
@@ -835,6 +855,8 @@ ${resolvedPath}`);
       const restoreResult = await waitForJobTerminal(restoreJob.job_id, 'import', 600000, handleRestoreProgress);
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
+        restoreRequiresRestart = true;
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
         showGlobalNotification('warning', t('data:governance.restore_restart_required'));
       }
     } catch (error) {
@@ -843,7 +865,9 @@ ${resolvedPath}`);
     } finally {
       setIsExporting(false);
       setRestoreProgress(null);
-      exitMaintenanceMode();
+      if (!restoreRequiresRestart) {
+        exitMaintenanceMode();
+      }
     }
   };
 
@@ -853,6 +877,7 @@ ${resolvedPath}`);
   const handleImportZipBackup = async () => {
     setIsExporting(true);
     let maintenanceModeEntered = false;
+    let restoreRequiresRestart = false;
     try {
       const zipPath = await fileManager.pickSingleFile({
         title: t('data:dialogs.select_zip_title'),
@@ -925,6 +950,8 @@ ${resolvedPath}`);
 
       showGlobalNotification('success', t('data:restore_complete'));
       if (restoreResult.result?.requires_restart || restoreResult.result?.requiresRestart) {
+        restoreRequiresRestart = true;
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
         showGlobalNotification('warning', t('data:governance.restore_restart_required'));
       }
       await loadBackupList();
@@ -936,7 +963,7 @@ ${resolvedPath}`);
     } finally {
       setIsExporting(false);
       setRestoreProgress(null);
-      if (maintenanceModeEntered) {
+      if (maintenanceModeEntered && !restoreRequiresRestart) {
         exitMaintenanceMode();
       }
     }
@@ -1074,7 +1101,7 @@ ${resolvedPath}`);
 
     const monthlyTrend = Array.isArray((statsData.enhanced as any).monthly_trend)
       ? (statsData.enhanced as any).monthly_trend.map((item: any) => ({
-          month: typeof item?.month === 'string' ? item.month : '未知',
+          month: typeof item?.month === 'string' ? item.month : t('common:unknown'),
           count: Number(item?.count ?? 0) || 0,
         }))
       : [];
@@ -1137,66 +1164,45 @@ ${resolvedPath}`);
       
       const mobile = isMobileRuntime();
 
-      // 显示详细的删除结果
-      if (result.includes('成功删除')) {
-        showGlobalNotification(
-          'success',
-          mobile
-            ? t('data:clear_data.success_mobile')
-            : t('data:clear_data.success_desktop')
-        );
-      } else if (result.includes('没有找到')) {
-        showGlobalNotification('warning', t('data:clear_data.no_files'));
-        return;
-      } else {
-        showGlobalNotification(
-          'success',
-          mobile
-            ? t('data:clear_data.complete_mobile')
-            : t('data:clear_data.complete_desktop')
-        );
-      }
+      // 后端这里只持久化 purge marker；物理删除在完整进程重启的最早启动阶段执行。
+      showGlobalNotification(
+        'success',
+        mobile
+          ? t('data:clear_data.scheduled_mobile')
+          : t('data:clear_data.scheduled_desktop'),
+      );
 
       if (mobile) {
-        try {
-          const report = await TauriAPI.purgeActiveDataDirNow();
-          debugLog.log('🧹 移动端即时清理报告:', report);
-          if (report && report.trim().length > 0) {
-            showGlobalNotification('info', report.trim());
-          }
-        } catch (error) {
-          const purgeError = getErrorMessage(error);
-          debugLog.warn('移动端即时清理失败:', purgeError);
-          showGlobalNotification('warning', `移动端清理目录失败: ${purgeError}`);
-        }
-
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
-        return;
-      }
-
-      // 重启应用以确保所有缓存和状态都被重置
-      try {
+        // WebView reload 不会重建 Rust 侧 SQLite 连接池。必须完整重启进程，
+        // 让启动阶段在任何数据库打开前消费 purge marker。
         setTimeout(async () => {
           try {
             await TauriAPI.restartApp();
-            // 如果是开发模式，restartApp 不会真正重启，需要手动刷新页面
-            if (import.meta.env.DEV) {
-              debugLog.log('🔧 开发模式：执行页面刷新');
-              window.location.reload();
-            }
           } catch (error) {
-            debugLog.error('重启应用失败，回退到页面刷新:', error);
-            window.location.reload();
+            const restartError = getErrorMessage(error);
+            debugLog.warn('移动端自动重启失败，请用户手动完全退出:', restartError);
+            showGlobalNotification(
+              'warning',
+              t('data:clear_data.restart_failed', { error: restartError }),
+            );
           }
         }, 3000);
-      } catch (error) {
-        debugLog.error('延时执行失败:', error);
-        setTimeout(() => {
-          window.location.reload();
-        }, 3000);
+        return;
       }
+
+      // WebView reload 无法消费 purge marker；自动重启失败时必须要求用户完整退出。
+      setTimeout(async () => {
+        try {
+          await TauriAPI.restartApp();
+        } catch (error) {
+          const restartError = getErrorMessage(error);
+          debugLog.error('重启应用失败，请用户完整退出后重开:', restartError);
+          showGlobalNotification(
+            'warning',
+            t('data:clear_data.restart_failed', { error: restartError }),
+          );
+        }
+      }, 3000);
     } catch (error) {
       debugLog.error('清空数据失败:', error);
       showGlobalNotification('error', t('data:clear_data.error'));
@@ -1225,325 +1231,6 @@ ${resolvedPath}`);
       showGlobalNotification('error', t('data:integrity.failed', { error: errorMessage }));
     }
   };
-
-  // 运行备份系统全自动测试
-  const runBackupSystemTest = useCallback(async () => {
-    if (backupTestRunning) return;
-
-    backupTestAbortRef.current = false;
-    setBackupTestRunning(true);
-    const startTime = Date.now();
-    const logs: string[] = [];
-
-    const addLog = (msg: string) => {
-      const time = new Date().toLocaleTimeString(undefined, { hour12: false });
-      logs.push(`[${time}] ${msg}`);
-      setBackupTestResult(prev => ({ ...prev, logs: [...logs] }));
-      debugLog.log(`[BackupTest] ${msg}`);
-    };
-
-    const updateProgress = (step: string, progress: number) => {
-      setBackupTestResult(prev => ({ ...prev, currentStep: step, progress }));
-    };
-
-    // 等待备份任务完成的辅助函数
-    const waitForBackupJob = async (jobId: string, kind: 'export' | 'import'): Promise<{ success: boolean; outputPath?: string; error?: string }> => {
-      const { listen } = await import('@tauri-apps/api/event');
-
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          unlisten();
-          reject(new Error(`${kind} 任务超时 (60秒)`));
-        }, 60000);
-
-        type BackupJobEvent = {
-          jobId?: string;
-          job_id?: string;
-          kind: 'export' | 'import';
-          status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
-          phase: string;
-          progress: number;
-          message?: string;
-          result?: { success: boolean; outputPath?: string; resolvedPath?: string; output_path?: string; resolved_path?: string; error?: string; stats?: Record<string, unknown> };
-        };
-
-        let unlisten: () => void;
-        listen<BackupJobEvent>('backup-job-progress', (event) => {
-          const p = event?.payload;
-          const eventJobId = p?.jobId || p?.job_id;
-          if (!p || eventJobId !== jobId) return;
-
-          addLog(`  → [${kind}] ${p.phase}: ${p.progress.toFixed(0)}% ${p.message || ''}`);
-
-          if (p.status === 'completed') {
-            clearTimeout(timeout);
-            unlisten();
-            if (p.result?.success === false) {
-              resolve({ success: false, error: p.result?.error || `${kind} 校验失败` });
-              return;
-            }
-            const outputPath = p.result?.resolvedPath || p.result?.resolved_path || p.result?.outputPath || p.result?.output_path;
-            resolve({ success: true, outputPath });
-          } else if (p.status === 'failed' || p.status === 'cancelled') {
-            clearTimeout(timeout);
-            unlisten();
-            resolve({ success: false, error: p.result?.error || p.message || `${kind} 失败` });
-          }
-        }).then(fn => { unlisten = fn; });
-      });
-    };
-
-    try {
-      setBackupTestResult({ status: 'running', currentStep: '准备中', progress: 0, logs: [] });
-      addLog('🚀 开始全自动备份系统测试（完整版）');
-      addLog('═══════════════════════════════════════════════════════');
-      addLog('核心原则: 测试流程与生产流程 100% 一致');
-      addLog('  → 使用 data_governance_backup_tiered 创建备份');
-      addLog('  → 使用 data_governance_export_zip / import_zip / restore_backup 进行恢复验证');
-      addLog('  → 测试插槽 C/D 用于构造边界样本，不影响主数据');
-      addLog('═══════════════════════════════════════════════════════');
-
-      // ============================================================
-      // Phase 1: 准备测试环境
-      // ============================================================
-      updateProgress('准备测试环境', 5);
-      addLog('');
-      addLog('📦 Phase 1: 准备测试环境');
-      addLog('清空测试插槽 C 和 D...');
-      await TauriAPI.clearTestSlots();
-      const slotInfo = await TauriAPI.getTestSlotInfo();
-      addLog(`✅ 测试插槽已准备: C=${slotInfo.slot_c_dir.split('/').pop()}, D=${slotInfo.slot_d_dir.split('/').pop()}`);
-
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
-
-      // ============================================================
-      // Phase 2: 创建核心测试数据
-      // ============================================================
-      updateProgress('创建核心测试数据', 10);
-      addLog('');
-      addLog('📦 Phase 2: 创建核心测试数据');
-
-      // 2.1 创建 SQLite WAL 模式数据库
-      addLog('2.1 创建 SQLite WAL 模式数据库...');
-      const dbResult = await invoke<{ path: string; row_count: number; wal_mode: boolean }>('create_test_database_in_slot', {
-        slotDir: slotInfo.slot_c_dir,
-        rowCount: 100,
-        enableWal: true
-      });
-      addLog(`  ✅ 数据库: ${dbResult.row_count} 行, WAL=${dbResult.wal_mode}`);
-
-      // 2.2 创建基本测试文件
-      addLog('2.2 创建基本测试文件 (图片 + JSON)...');
-      const filesResult = await invoke<{ directory: string; file_count: number; total_size: number }>('create_test_files_in_slot', {
-        slotDir: slotInfo.slot_c_dir,
-        fileCount: 20,
-        includeImages: true,
-        includeJson: true
-      });
-      addLog(`  ✅ 基本文件: ${filesResult.file_count} 个, ${(filesResult.total_size / 1024).toFixed(1)} KB`);
-
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
-
-      // ============================================================
-      // Phase 3: 创建边缘场景测试数据
-      // ============================================================
-      updateProgress('创建边缘场景数据', 20);
-      addLog('');
-      addLog('📦 Phase 3: 创建边缘场景测试数据');
-
-      const edgeCaseResult = await invoke<{
-        directory: string;
-        file_count: number;
-        total_size: number;
-        scenarios: string[];
-      }>('create_edge_case_test_files', { slotDir: slotInfo.slot_c_dir });
-
-      addLog(`  ✅ 边缘场景: ${edgeCaseResult.file_count} 个文件, ${(edgeCaseResult.total_size / 1024 / 1024).toFixed(2)} MB`);
-      for (const scenario of edgeCaseResult.scenarios) {
-        addLog(`    → ${scenario}`);
-      }
-
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
-
-      // ============================================================
-      // Phase 4: 符号链接测试（仅 Unix）
-      // ============================================================
-      updateProgress('创建符号链接测试', 25);
-      addLog('');
-      addLog('📦 Phase 4: 符号链接安全测试');
-
-      try {
-        const symlinkResult = await invoke<string>('create_symlink_test', { slotDir: slotInfo.slot_c_dir });
-        addLog(`  ✅ ${symlinkResult}`);
-        addLog('  → 备份时应跳过符号链接，验证安全防护');
-      } catch (e) {
-        addLog(`  ⚠️ 符号链接测试跳过: ${e}`);
-      }
-
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
-
-      // ============================================================
-      // Phase 5: 执行备份（数据治理命令链路）
-      // ============================================================
-      updateProgress('执行备份 (data_governance)', 35);
-      addLog('');
-      addLog('📦 Phase 5: 执行备份 (data_governance_backup_tiered)');
-      addLog('  → 创建治理备份并等待任务完成');
-
-      const backupJob = await DataGovernanceApi.backupTiered(mapUiTiersToGovernance(exportBackupTiers));
-      addLog(`  → 备份任务启动: job_id=${backupJob.job_id.slice(0, 8)}...`);
-
-      const backupResult = await waitForBackupJob(backupJob.job_id, 'export');
-      if (!backupResult.success) {
-        throw new Error(`备份失败: ${backupResult.error}`);
-      }
-
-      const backupStats = (backupResult as { result?: { stats?: Record<string, unknown> } }).result?.stats;
-      const backupId =
-        backupStats && typeof backupStats.backup_id === 'string'
-          ? backupStats.backup_id
-          : null;
-      if (!backupId) {
-        throw new Error('备份完成但未返回 backup_id');
-      }
-      addLog(`  ✅ 备份完成: ${backupId}`);
-
-      const exportZipJob = await DataGovernanceApi.exportZip(backupId);
-      addLog(`  → ZIP 导出任务启动: job_id=${exportZipJob.job_id.slice(0, 8)}...`);
-
-      const exportZipResult = await waitForBackupJob(exportZipJob.job_id, 'export');
-      if (!exportZipResult.success) {
-        throw new Error(`ZIP 导出失败: ${exportZipResult.error}`);
-      }
-
-      const backupPath = exportZipResult.outputPath;
-      if (!backupPath) {
-        throw new Error('ZIP 导出完成但未返回路径');
-      }
-      addLog(`  ✅ ZIP 导出完成: ${backupPath.split('/').slice(-2).join('/')}`);
-
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
-
-      // ============================================================
-      // Phase 6: 执行导入与恢复（数据治理命令链路）
-      // ============================================================
-      updateProgress('执行导入与恢复 (data_governance)', 55);
-      addLog('');
-      addLog('📦 Phase 6: 执行导入与恢复 (data_governance_import_zip + restore_backup)');
-
-      const importJob = await DataGovernanceApi.importZip(backupPath);
-      addLog(`  → 导入任务启动: job_id=${importJob.job_id.slice(0, 8)}...`);
-
-      const importResultJob = await waitForBackupJob(importJob.job_id, 'import');
-      if (!importResultJob.success) {
-        throw new Error(`导入失败: ${importResultJob.error}`);
-      }
-
-      const importedStats = (importResultJob as { result?: { stats?: Record<string, unknown> } }).result?.stats;
-      const importedBackupId =
-        importedStats && typeof importedStats.backup_id === 'string'
-          ? importedStats.backup_id
-          : null;
-      if (!importedBackupId) {
-        throw new Error('导入完成但未返回 backup_id');
-      }
-
-      const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
-      addLog(`  → 恢复任务启动: job_id=${restoreJob.job_id.slice(0, 8)}...`);
-
-      const restoreResult = await waitForBackupJob(restoreJob.job_id, 'import');
-      if (!restoreResult.success) {
-        throw new Error(`恢复失败: ${restoreResult.error}`);
-      }
-      addLog('  ✅ 恢复完成');
-
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
-
-      // ============================================================
-      // Phase 7: 验证导入备份可校验
-      // ============================================================
-      updateProgress('验证导入备份', 75);
-      addLog('');
-      addLog('📦 Phase 7: 验证导入备份完整性');
-
-      const verifyResult = await DataGovernanceApi.verifyBackup(importedBackupId);
-      const integrityScore = verifyResult.is_valid ? 100 : 0;
-      addLog(`  校验结果: ${verifyResult.is_valid ? '通过' : '失败'}`);
-      addLog(`  数据库校验项: ${verifyResult.databases_verified.length}`);
-
-      if (!verifyResult.is_valid) {
-        const reason = verifyResult.errors.join('; ') || '未知错误';
-        throw new Error(`导入备份校验失败: ${reason}`);
-      }
-
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
-
-      // ============================================================
-      // Phase 8: 清理测试环境
-      // ============================================================
-      updateProgress('清理环境', 95);
-      addLog('');
-      addLog('📦 Phase 8: 清理测试环境');
-      await invoke('clear_test_slot', { slotName: 'slotC' });
-      await invoke('clear_test_slot', { slotName: 'slotD' });
-      addLog('  ✅ 测试环境清理完成');
-
-      // ============================================================
-      // 测试完成
-      // ============================================================
-      const duration = Date.now() - startTime;
-      updateProgress('完成', 100);
-      addLog('');
-      addLog('═══════════════════════════════════════════════════════');
-      addLog('🎉 全部测试通过！');
-      addLog(`  总耗时: ${(duration / 1000).toFixed(2)} 秒`);
-      addLog(`  数据完整性: ${integrityScore.toFixed(1)}%`);
-      addLog(`  测试场景: ${edgeCaseResult.scenarios.length + 2} 个`);
-      addLog('═══════════════════════════════════════════════════════');
-
-      setBackupTestResult(prev => ({
-        ...prev,
-        status: 'success',
-        integrityScore,
-        duration
-      }));
-
-      showGlobalNotification('success', t('data:backup_test.success', { score: integrityScore.toFixed(1) }));
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      addLog('');
-      addLog(`❌ 测试失败: ${errorMessage}`);
-
-      // 尝试清理
-      try {
-        await TauriAPI.clearTestSlots();
-        addLog('已清理测试环境');
-      } catch (cleanupError) {
-        addLog(`⚠️ 清理失败: ${cleanupError}`);
-      }
-
-      setBackupTestResult(prev => ({
-        ...prev,
-        status: 'failed',
-        error: errorMessage,
-        duration: Date.now() - startTime
-      }));
-
-      showGlobalNotification('error', t('data:backup_test.failed', { error: errorMessage }));
-    } finally {
-      setBackupTestRunning(false);
-    }
-  }, [backupTestRunning]);
-
-  const stopBackupTest = useCallback(() => {
-    backupTestAbortRef.current = true;
-    showGlobalNotification('warning', t('data:backup_test.stopping'));
-  }, []);
-
-  const resetBackupTest = useCallback(() => {
-    setBackupTestResult({ status: 'idle', currentStep: '', progress: 0, logs: [] });
-  }, []);
 
   // 处理确认文本输入
   const handleConfirmTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1590,11 +1277,23 @@ ${resolvedPath}`);
           }
           .data-management-content {
             flex: 1;
-            overflow-y: auto;
-            padding: 1rem 2rem 2rem 2rem;
             min-height: 0;
           }
-          .data-management-container.embedded .data-management-content {
+          .data-management-viewport {
+            padding: 1rem 2rem 2rem;
+          }
+          @media (max-width: 767.98px) {
+            /* ★ 2026-07-08 移动端审计：视图层已被 56px 统一顶栏 + 安全区约束，
+               calc(100vh - 40px) 假设的是桌面 40px 标题栏，移动端会向下溢出
+               ~16px+安全区导致底部内容被裁切；改跟随父容器高度。 */
+            .data-management-container {
+              height: 100%;
+            }
+            .data-management-viewport {
+              padding: 1rem 1rem calc(2rem + var(--mobile-safe-area-bottom, 0px)) 1rem;
+            }
+          }
+          .data-management-content.embedded {
             overflow: visible;
             padding: 0;
           }
@@ -1602,36 +1301,11 @@ ${resolvedPath}`);
             max-width: 80rem;
             margin: 0 auto;
           }
-          
-          /* 自定义滚动条样式 */
-          .backup-list-container::-webkit-scrollbar {
-            width: 8px;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-track {
-            background: #f1f5f9;
-            border-radius: 4px;
-            margin: 4px 0;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 4px;
-            margin: 2px 0;
-            border: 1px solid #f1f5f9;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-corner {
-            background: #f1f5f9;
-          }
         `}
       </style>
       <div className={`data-management-container ${embedded ? 'embedded' : ''}`}>
-        {!embedded && (
+        {/* 移动端：标题与导出统一走顶栏（useMobileHeader），不渲染桌面 HeaderTemplate，避免双标题 */}
+        {!embedded && !isSmallScreen && (
           <HeaderTemplate
             icon={FileZip}
             title={t('data:header.title')}
@@ -1643,37 +1317,25 @@ ${resolvedPath}`);
 />
         )}
         
-        <div className="data-management-content">
+        <DataManagementContent embedded={embedded}>
           <div className="data-management-inner">
         
         {/* 数据统计部分 - 放在最上方 */}
         {(mode === 'all' || mode === 'stats') && (
           mode === 'stats' ? (
-            // stats 模式：使用 SettingSection 包裹，与其他设置标签页保持一致
+            // stats 模式：macOS System Settings 风格分组面板
             <SettingSection 
               title={t('data:statistics_section_title')} 
               description={t('data:statistics_section_subtitle')}
               className="overflow-visible"
               hideHeader
             >
-              {/* 左右两栏：会话统计 | LLM 统计 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-                <ChatV2StatsSection statsOnly />
-                <LlmUsageStatsSection statsOnly days={30} />
-              </div>
-
-              {/* 学习热力图 */}
-              <div className="mb-10 p-1">
-                <LearningHeatmap months={12} showStats={false} showLegend={true} />
-              </div>
-
-              {/* LLM 图表 */}
-              <LlmUsageStatsSection chartsOnly days={30} sessionTrends={chatStats.dailyActivity} />
+              <DataChartsPanel />
             </SettingSection>
           ) : (
             // all 模式：使用原有的标题样式
             <div className="mb-8">
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground mb-1">{t('data:statistics_section_title')}</h2>
                   <p className="text-sm text-muted-foreground">{t('data:statistics_section_subtitle')}</p>
@@ -1682,9 +1344,9 @@ ${resolvedPath}`);
                   <Badge variant="outline" className={`border-transparent ring-1 ring-border/40 ${isRefreshing ? 'text-primary bg-primary/10' : 'text-muted-foreground bg-muted/50'}`}>
                     {t('data:auto_refresh_label')} {isRefreshing ? t('data:auto_refresh_in_progress') : t('data:auto_refresh_interval')}
                   </Badge>
-                  <NotionButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1">
+                  <DsButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1">
                     <DownloadSimple className={DATA_CENTER_ICON_SM_CLASS} /> {t('data:export_stats_button')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
               {/* Chat V2 统计部分 - 2026-01: 错题系统已废弃，只显示 Chat V2 统计 */}
@@ -1747,9 +1409,9 @@ ${resolvedPath}`);
             </div>
           </CardContent>
             <CardFooter>
-              <NotionButton variant="ghost" size="sm" onClick={handleExport} disabled={isExporting}>
+              <DsButton variant="ghost" size="sm" onClick={handleExport} disabled={isExporting}>
                 {isExporting ? t('data:actions.exporting') : t('data:actions.export_button')}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
             {(exportJob || exportError) && (
               <CardContent className="pt-0 pb-4 space-y-3">
@@ -1794,14 +1456,14 @@ ${resolvedPath}`);
                   <Alert variant="destructive" className="py-2">
                     <AlertDescription className="text-xs">
                       {exportError}
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
-                        className="ml-2 h-6 px-2 text-xs"
+                        className="ml-2 h-6 px-2 text-xs [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
                         onClick={handleExport}
                       >
                         {t('data:actions.retry_button')}
-                      </NotionButton>
+                      </DsButton>
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1819,13 +1481,13 @@ ${resolvedPath}`);
               <CardDescription>{t('data:actions.import_description')}</CardDescription>
             </CardHeader>
             <CardFooter>
-              <NotionButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
+              <DsButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
                 {isExporting && restoreProgress ? (
                   <><SpinnerGap size={16} className="mr-1.5 animate-spin" />{t('data:governance.restore_in_progress')}</>
                 ) : (
                   t('data:actions.import_button')
                 )}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
             {restoreProgress && (
               <CardContent className="pt-0 pb-4 space-y-2">
@@ -1855,18 +1517,17 @@ ${resolvedPath}`);
               </CardDescription>
             </CardHeader>
             <CardFooter>
-              <NotionButton 
+              <DsButton 
                 variant="ghost" 
                 size="sm" 
                 onClick={() => {
                   // 触发父组件的导入对话对话框
-                  const event = new CustomEvent('DSTU_OPEN_IMPORT_CONVERSATION');
-                  window.dispatchEvent(event);
+                  dispatchAppEvent(APP_EVENTS.OPEN_IMPORT_CONVERSATION);
                 }}
               >
                 <Upload size={16} className="mr-1.5" />
                 {t('chat_host:actions.import_chat')}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
           </Card>
 
@@ -1883,120 +1544,27 @@ ${resolvedPath}`);
               </CardDescription>
             </CardHeader>
             <CardFooter>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const event = new CustomEvent('DSTU_OPEN_CLOUD_STORAGE_SETTINGS');
-                  window.dispatchEvent(event);
+                  dispatchAppEvent(APP_EVENTS.OPEN_CLOUD_STORAGE_SETTINGS);
                 }}
               >
                 <Cloud size={16} className="mr-1.5" />
                 {t('common:actions.open')}
-              </NotionButton>
+              </DsButton>
             </CardFooter>
           </Card>
 
-          {/* 备份系统测试 */}
-          <Card className="overflow-hidden md:col-span-2">
-            <CardHeader>
-              <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
-                {backupTestRunning ? (
-                  <SpinnerGap className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
-                ) : backupTestResult.status === 'success' ? (
-                          <CheckCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-success')} />
-                        ) : backupTestResult.status === 'failed' ? (
-                          <XCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-destructive')} />
-                ) : (
-                  <Flask className={DATA_CENTER_ICON_CLASS} />
-                )}
-              </div>
-              <CardTitle className="text-base">{t('data:backup_test.title')}</CardTitle>
-              <CardDescription>
-                {t('data:backup_test.description')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {/* 测试进度 */}
-              {backupTestResult.status === 'running' && (
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{backupTestResult.currentStep}</span>
-                    <span className="font-medium">{backupTestResult.progress}%</span>
-                  </div>
-                  <ShadProgress value={backupTestResult.progress} />
-                </div>
-              )}
-
-              {/* 测试结果 */}
-              {backupTestResult.status === 'success' && (
-                  <Alert className="mb-4 border-success/30 bg-success/10">
-                    <CheckCircle size={16} className="text-success" />
-                    <AlertDescription className="text-success">
-                    {t('data:backup_test.result_passed', { score: backupTestResult.integrityScore?.toFixed(1), duration: ((backupTestResult.duration || 0) / 1000).toFixed(2) })}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {backupTestResult.status === 'failed' && (
-                <Alert variant="destructive" className="mb-4">
-                  <XCircle size={16} />
-                  <AlertDescription>
-                    {t('data:backup_test.result_failed_detail', { error: backupTestResult.error })}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* 日志展示 */}
-              {backupTestResult.logs.length > 0 && (
-                <CustomScrollArea className="rounded-lg bg-muted/50 max-h-[200px] font-mono text-xs" viewportClassName="p-3 space-y-1">
-                  {backupTestResult.logs.map((log, i) => (
-                    <div key={i} className={cn(
-                      log.includes('✅') ? 'text-success' :
-                      log.includes('❌') ? 'text-destructive' :
-                      log.includes('⚠️') ? 'text-warning' :
-                      log.includes('🚀') || log.includes('🎉') ? 'text-primary' :
-                      'text-muted-foreground'
-                    )}>
-                      {log}
-                    </div>
-                  ))}
-                </CustomScrollArea>
-              )}
-            </CardContent>
-            <CardFooter className="flex gap-2">
-              {backupTestRunning ? (
-                <NotionButton variant="danger" size="sm" onClick={stopBackupTest}>
-                  <Square size={16} className="mr-1.5" />
-                  {t('data:backup_test.stop_button')}
-                </NotionButton>
-              ) : (
-                <>
-                    <NotionButton
-                      variant="default"
-                      size="sm"
-                      onClick={runBackupSystemTest}
-                    >
-                    <Play size={16} className="mr-1.5" />
-                    {t('data:backup_test.run_button')}
-                  </NotionButton>
-                  {backupTestResult.status !== 'idle' && (
-                    <NotionButton variant="ghost" size="sm" onClick={resetBackupTest}>
-                      <ArrowCounterClockwise size={16} className="mr-1.5" />
-                      {t('data:backup_test.reset_button')}
-                    </NotionButton>
-                  )}
-                </>
-              )}
-            </CardFooter>
-          </Card>
         </div>
 
         {/* Tabs */}
         <div className="mb-8 rounded-2xl border border-transparent ring-1 ring-border/40 bg-card shadow-sm">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="w-full">
             <div className="border-b border-border/60 px-4 py-3">
-              <TabsList className="h-9 gap-2 rounded-lg bg-muted/40 p-1">
+              {/* 窄屏（尤其英文长标签）4 个 Tab 挤不下：允许横向滚动而非溢出裁切 */}
+              <TabsList className="scrollbar-none h-9 max-w-full gap-2 overflow-x-auto rounded-lg bg-muted/40 p-1">
                 <TabsTrigger value="backup" className="flex-1 text-sm">
                   {t('data:backup_management')}
                 </TabsTrigger>
@@ -2020,12 +1588,16 @@ ${resolvedPath}`);
                       <HardDrive className={DATA_CENTER_ICON_SM_CLASS} />
                       <span>{t('data:backup_list.total_count', { count: backupList.length })}</span>
                     </div>
-                    <NotionButton onClick={handleAutoBackup} disabled={isExporting}>
+                    <DsButton onClick={handleAutoBackup} disabled={isExporting}>
                       {isExporting ? t('data:backup_list.backup_in_progress') : t('data:auto_backup')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
 
-                  <CustomScrollArea className="backup-list-container flex max-h-[300px] flex-col gap-2" viewportClassName="pb-1 pr-2 pt-1">
+                  <CustomScrollArea
+                    className="backup-list-container max-h-[300px]"
+                    viewportClassName="space-y-2 pb-1 pr-2 pt-1"
+                    fullHeight={false}
+                  >
                     {isLoadingBackups ? (
                       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border/60 px-4 py-8 text-sm text-muted-foreground">
                         <ArrowsClockwise className={cn(DATA_CENTER_ICON_LG_CLASS, 'animate-spin')} />
@@ -2105,11 +1677,11 @@ ${resolvedPath}`);
                       <div className="mt-4 text-sm text-muted-foreground">{t('data:data_space.loading')}</div>
                     )}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <NotionButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto">
+                      <DsButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto">
                         <ArrowsClockwise className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:data_space.refresh_button')}
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         className="sm:w-auto"
                         onClick={async () => {
                           try {
@@ -2123,7 +1695,7 @@ ${resolvedPath}`);
                         }}
                       >
                         {t('data:data_space.switch_button')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </div>
 
@@ -2133,19 +1705,19 @@ ${resolvedPath}`);
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
                       </p>
-                      <NotionButton variant="default" onClick={handleRunIntegrityCheck} className="mt-4">
+                      <DsButton variant="default" onClick={handleRunIntegrityCheck} className="mt-4">
                         <FileText className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:integrity.run_button')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
 
                     <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
                       <h3 className="text-base font-medium text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
-                      <NotionButton variant="danger" onClick={handleClearAllData} className="mt-4">
+                      <DsButton variant="danger" onClick={handleClearAllData} className="mt-4">
                         <Trash className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:clear_section.button')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </div>
                 </div>
@@ -2157,58 +1729,58 @@ ${resolvedPath}`);
         )}
 
       </div>
-    </div>
+        </DataManagementContent>
 
         {/* 清空数据确认对话框 */}
-        <NotionDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog} maxWidth="max-w-md" closeOnOverlay={false} showClose={false}>
+        <DsDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog} maxWidth="max-w-md" closeOnOverlay={false} showClose={false}>
             {clearDataStep === 0 && (
               <>
-                <NotionDialogHeader>
-                  <NotionDialogTitle className="flex items-center gap-3">
+                <DsDialogHeader>
+                  <DsDialogTitle className="flex items-center gap-3">
                     <Warning className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step0_title')}
-                  </NotionDialogTitle>
-                  <NotionDialogDescription>
+                  </DsDialogTitle>
+                  <DsDialogDescription>
                     {t('data:clear_dialog.step0_desc_prefix')}<strong>{t('data:clear_dialog.step0_desc_bold')}</strong>{'\n'}{t('data:clear_dialog.step0_desc_items').split('\n').map((line, i) => (<span key={i}><br />{line}</span>))}
                     <br />
                     <strong>{t('data:clear_dialog.step0_desc_warning')}</strong>{'\u3001'}{t('data:clear_dialog.step0_desc_advice')}
-                  </NotionDialogDescription>
-                </NotionDialogHeader>
-                <NotionDialogFooter>
-                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</NotionButton>
-                  <NotionButton variant="danger" size="sm" onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</NotionButton>
-                </NotionDialogFooter>
+                  </DsDialogDescription>
+                </DsDialogHeader>
+                <DsDialogFooter>
+                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step0_cancel')}</DsButton>
+                  <DsButton variant="danger" size="sm" onClick={handleNextStep}>{t('data:clear_dialog.step0_confirm')}</DsButton>
+                </DsDialogFooter>
               </>
             )}
 
             {clearDataStep === 1 && (
               <>
-                <NotionDialogHeader>
-                  <NotionDialogTitle className="flex items-center gap-3">
+                <DsDialogHeader>
+                  <DsDialogTitle className="flex items-center gap-3">
                     <Clock className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step1_title')}
-                  </NotionDialogTitle>
-                  <NotionDialogDescription>
+                  </DsDialogTitle>
+                  <DsDialogDescription>
                     {t('data:clear_dialog.step1_wait')} <strong className="text-base">{countdown}</strong> {t('data:clear_dialog.step1_seconds')}
                     <br />{t('data:clear_dialog.step1_hint')}
-                  </NotionDialogDescription>
-                </NotionDialogHeader>
-                <NotionDialogFooter>
-                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</NotionButton>
-                </NotionDialogFooter>
+                  </DsDialogDescription>
+                </DsDialogHeader>
+                <DsDialogFooter>
+                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step1_cancel')}</DsButton>
+                </DsDialogFooter>
               </>
             )}
 
             {clearDataStep === 2 && (
               <>
-                <NotionDialogHeader>
-                  <NotionDialogTitle className="flex items-center gap-3">
+                <DsDialogHeader>
+                  <DsDialogTitle className="flex items-center gap-3">
                     <Trash className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step2_title')}
-                  </NotionDialogTitle>
-                  <NotionDialogDescription>{t('data:clear_dialog.step2_description')}</NotionDialogDescription>
-                </NotionDialogHeader>
-                <NotionDialogBody>
+                  </DsDialogTitle>
+                  <DsDialogDescription>{t('data:clear_dialog.step2_description')}</DsDialogDescription>
+                </DsDialogHeader>
+                <DsDialogBody>
                   <p className="text-base font-semibold text-foreground bg-muted p-3 rounded-md text-center mb-4">
                     {t('data:clear_dialog.step2_confirm_text')}
                   </p>
@@ -2218,16 +1790,16 @@ ${resolvedPath}`);
                     onChange={handleConfirmTextChange}
                     placeholder={t('data:clear_dialog.step2_placeholder')}
 />
-                </NotionDialogBody>
-                <NotionDialogFooter>
-                  <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</NotionButton>
-                  <NotionButton variant="danger" size="sm" onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
+                </DsDialogBody>
+                <DsDialogFooter>
+                  <DsButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</DsButton>
+                  <DsButton variant="danger" size="sm" onClick={handleNextStep} disabled={confirmText !== t('data:clear_dialog.step2_confirm_text')}>
                     {t('data:clear_dialog.step2_confirm_button')}
-                  </NotionButton>
-                </NotionDialogFooter>
+                  </DsButton>
+                </DsDialogFooter>
               </>
             )}
-        </NotionDialog>
+        </DsDialog>
       </div>
     </>
   );

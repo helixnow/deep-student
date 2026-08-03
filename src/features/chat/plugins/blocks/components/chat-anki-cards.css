@@ -1,0 +1,179 @@
+/**
+ * ChatAnki 制卡块 — 流式生成 / 卡片预览 / 就地编辑的动效与视觉支持。
+ *
+ * 前缀约定：canki-*（Chat ANKI），避免与全局 ui-* 动效类冲突。
+ * 全部颜色走设计 token（hsl(var(--xxx))），暗色模式自动适配；
+ * 文件末尾统一做 prefers-reduced-motion 降级。
+ */
+
+/* ============ 卡片逐张滑入（stagger 通过 --canki-stagger 注入） ============ */
+
+@keyframes canki-kf-card-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+    scale: 0.985;
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+.canki-card-enter {
+  animation: canki-kf-card-in 240ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+  animation-delay: var(--canki-stagger, 0ms);
+}
+
+/* ============ 卡片删除退出（高度塌缩 + 淡出） ============ */
+
+@keyframes canki-kf-card-out {
+  from {
+    opacity: 1;
+    max-height: 640px;
+  }
+
+  to {
+    opacity: 0;
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    translate: 0 -4px;
+    scale: 0.98;
+  }
+}
+
+.canki-card-exit {
+  overflow: hidden;
+  pointer-events: none;
+  animation: canki-kf-card-out 200ms ease-in forwards;
+}
+
+/* ============ 生成中骨架占位（shimmer） ============ */
+
+@keyframes canki-kf-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.canki-skeleton {
+  position: relative;
+}
+
+.canki-shimmer {
+  background: linear-gradient(
+    100deg,
+    hsl(var(--muted) / 0.5) 40%,
+    hsl(var(--muted) / 0.95) 50%,
+    hsl(var(--muted) / 0.5) 60%
+  );
+  background-size: 200% 100%;
+  animation: canki-kf-shimmer 1.6s linear infinite;
+}
+
+/* ============ 正/反面 3D 翻面 ============ */
+
+.canki-flip-wrap {
+  perspective: 900px;
+}
+
+.canki-flip-face {
+  transform-style: preserve-3d;
+  transition: transform 150ms ease-in, opacity 150ms ease-in;
+}
+
+.canki-flip-out {
+  transform: rotateY(88deg);
+  opacity: 0.4;
+}
+
+@keyframes canki-kf-flip-in {
+  from {
+    transform: rotateY(-88deg);
+    opacity: 0.4;
+  }
+
+  to {
+    transform: rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+.canki-flip-in {
+  animation: canki-kf-flip-in 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Cloze 挖空高亮 ============ */
+
+.canki-cloze {
+  border-radius: 4px;
+  padding: 0 3px;
+  background: hsl(var(--primary) / 0.14);
+  color: hsl(var(--primary));
+  font-weight: 500;
+}
+
+.canki-cloze-hidden {
+  background: hsl(var(--muted) / 0.9);
+  color: hsl(var(--muted-foreground));
+  letter-spacing: 0.05em;
+}
+
+/* ============ 删除撤销条：倒计时进度线 ============ */
+
+@keyframes canki-kf-undo-shrink {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
+.canki-undo-progress {
+  animation-name: canki-kf-undo-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* ============ reduced motion 降级 ============ */
+
+@media (prefers-reduced-motion: reduce) {
+  .canki-card-enter,
+  .canki-flip-in {
+    animation: none;
+  }
+
+  /* 删除退出动画降级：立即隐藏（JS 侧在 reduce 下也会跳过动画延迟） */
+  .canki-card-exit {
+    animation: none;
+    opacity: 0;
+  }
+
+  .canki-shimmer {
+    animation: none;
+    background: hsl(var(--muted) / 0.6);
+  }
+
+  .canki-flip-face {
+    transition: none;
+  }
+
+  .canki-flip-out {
+    transform: none;
+    opacity: 1;
+  }
+
+  .canki-undo-progress {
+    animation: none;
+    width: 100%;
+  }
+}

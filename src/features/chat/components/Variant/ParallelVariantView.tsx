@@ -7,14 +7,17 @@
  * 每个变体卡片内部渲染与单变体完全一致（使用 BlockRenderer 统一渲染所有块）
  */
 
-import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useStore } from 'zustand';
 import i18n from 'i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import './ParallelVariantView.css';
 import {
   Copy,
@@ -33,7 +36,6 @@ import {
   AppMenuTrigger,
   AppMenuContent,
   AppMenuItem,
-  AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
 import { BlockRendererWithStore } from '../BlockRenderer';
 import { TokenUsageDisplay } from '../TokenUsageDisplay';
@@ -83,6 +85,14 @@ export interface ParallelVariantViewProps {
   onContinue?: () => void;
   /** 🆕 会话分支回调 */
   onBranchSession?: () => Promise<void>;
+  /** ★ 中-8：存为笔记（移动端消息级操作栏溢出菜单） */
+  onSaveAsNote?: () => Promise<void> | void;
+  /** ★ 中-8：导出 Markdown（移动端消息级操作栏溢出菜单） */
+  onExportMarkdown?: () => Promise<void> | void;
+  /** ★ 中-8：消息时间戳（操作栏尾部展示） */
+  messageTimestamp?: number;
+  /** ★ 中-8：多变体聚合 Token 用量（操作栏尾部展示） */
+  aggregatedUsage?: Variant['usage'];
   /** 是否隐藏底部消息级操作栏（由父级自行渲染） */
   hideMessageLevelActions?: boolean;
   /** 🚀 P0修复：移除 isBlockStreaming，块状态由 BlockRendererWithStore 内部订阅 */
@@ -95,12 +105,18 @@ export interface ParallelVariantViewProps {
 // ============================================================================
 
 /**
+ * hasSources 选择器复用的单元素数组：hasSourcesInBlocks 只接受数组，
+ * 逐块判断时复用同一容器避免每 flush 每卡片分配中间数组（同步使用，用后清引用）
+ */
+const singleBlockScratch: Block[] = [undefined as unknown as Block];
+
+/**
  * 默认的模型名称显示函数
  * 从 modelId 提取具体的模型名称，而不仅仅是供应商名称
  * 例如："Qwen/Qwen3-8B" -> "Qwen3-8B"
  */
 function defaultGetModelDisplayName(modelId: string): string {
-  if (!modelId) return i18n.t('chatV2:variant.unknownModel', 'Unknown Model');
+  if (!modelId) return i18n.t('chatV2:variant.unknownModel');
   
   // 从 modelId 提取具体模型名称
   // 例如："Qwen/Qwen3-8B" -> "Qwen3-8B"
@@ -145,16 +161,19 @@ interface VariantCardProps {
   isMobile?: boolean;
   /** 变体索引（用于移动端滚动定位） */
   variantIndex?: number;
-  onSwitch?: () => void;
-  onCancel?: () => Promise<void>;
-  onRetry?: () => Promise<void>;
-  onDelete?: () => Promise<void>;
+  /** 🚀 性能：以下回调按 variantId 调用且引用稳定，配合 React.memo 避免并行流式时互相拖累重渲染 */
+  onSwitch?: (variantId: string) => void;
+  onCancel?: (variantId: string) => Promise<void>;
+  onRetry?: (variantId: string) => Promise<void>;
+  onDelete?: (variantId: string) => Promise<void>;
+  /** 滚动到指定索引的卡片（引用稳定） */
+  scrollToVariant?: (index: number) => void;
   isBlockStreaming?: (blockId: string) => boolean;
   /** 🔧 继续执行回调（工具限制节点使用） */
   onContinue?: () => void;
 }
 
-const VariantCard: React.FC<VariantCardProps> = ({
+const VariantCardImpl: React.FC<VariantCardProps> = ({
   store,
   messageId,
   variant,
@@ -170,16 +189,29 @@ const VariantCard: React.FC<VariantCardProps> = ({
   onCancel,
   onRetry,
   onDelete,
+  scrollToVariant,
   onContinue,
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
   const [isOperating, setIsOperating] = useState(false);
+  const [iconLoadFailed, setIconLoadFailed] = useState(false);
+
+  // P1-5: 复制反馈定时器卸载时清理，避免卸载后 setState
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const isStreaming = variant.status === 'streaming';
   const canCancel = variant.status === 'streaming' || variant.status === 'pending';
   const canRetry = variant.status === 'error' || variant.status === 'cancelled';
   const canDelete = !isLastVariant && variant.status !== 'streaming';
+
+  // 图标地址变化时重置加载失败状态
+  useEffect(() => {
+    setIconLoadFailed(false);
+  }, [modelIcon]);
 
   // 🚀 P0修复：即时获取 blocks 用于操作回调（不订阅，避免不必要的重渲染）
   const getBlocks = useCallback((): Block[] => {
@@ -189,14 +221,34 @@ const VariantCard: React.FC<VariantCardProps> = ({
       .filter((b): b is Block => b !== undefined);
   }, [store, blockIds]);
 
-  // 检查是否有来源（与单变体一致）- 使用即时获取
-  const [hasSources, setHasSources] = useState(false);
-  
-  // 当 blockIds 变化时更新 hasSources
-  React.useEffect(() => {
-    const blocks = getBlocks();
-    setHasSources(hasSourcesInBlocks(blocks));
-  }, [blockIds, getBlocks]);
+  // 检查是否有来源（与单变体一致）
+  // 订阅 Store 计算布尔值：流式过程中 citations 到达时也能及时显示来源面板
+  // （选择器只返回 boolean，Object.is 相等时不会触发重渲染）
+  // 🚀 选择器在流式期间每次 flush 都重跑：改为 for-of 免分配逐块扫描，
+  // 并在判定为 true 后用 ref 短路后续扫描——来源只增不减；即便极端情况下
+  // 检索块从 pending 落空，SourcePanelV2 自身也会渲染为 null，不会误显示。
+  // blockIds 换引用（如变体块列表变化）时重置短路缓存，保守重扫。
+  const hasSourcesLatchRef = useRef<{ ids: string[]; value: boolean }>({ ids: blockIds, value: false });
+  if (hasSourcesLatchRef.current.ids !== blockIds) {
+    hasSourcesLatchRef.current = { ids: blockIds, value: false };
+  }
+  const hasSources = useStore(store, (s) => {
+    const latch = hasSourcesLatchRef.current;
+    if (latch.value) return true;
+    let found = false;
+    for (const id of latch.ids) {
+      const block = s.blocks.get(id);
+      if (!block) continue;
+      singleBlockScratch[0] = block;
+      if (hasSourcesInBlocks(singleBlockScratch)) {
+        found = true;
+        break;
+      }
+    }
+    singleBlockScratch[0] = undefined as unknown as Block;
+    if (found) latch.value = true;
+    return found;
+  });
 
   // 🚀 P0修复：复制内容时即时获取 blocks
   const handleCopy = useCallback(async () => {
@@ -207,55 +259,66 @@ const VariantCard: React.FC<VariantCardProps> = ({
     try {
       await copyTextToClipboard(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      showGlobalNotification('success', t('messageItem.actions.copySuccess', '已复制'));
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
+      showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[VariantCard] Copy failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed', '复制失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
     }
   }, [getBlocks, copied, t]);
+
+  // 切换（仅非激活卡片可切换）
+  const handleSwitch = useCallback(() => {
+    if (!onSwitch || isActive) return;
+    if (typeof variantIndex === 'number') {
+      scrollToVariant?.(variantIndex);
+    }
+    onSwitch(variant.id);
+  }, [onSwitch, isActive, scrollToVariant, variantIndex, variant.id]);
+  const canSwitch = !!onSwitch && !isActive;
 
   // 取消
   const handleCancel = useCallback(async () => {
     if (!onCancel || isOperating) return;
     setIsOperating(true);
     try {
-      await onCancel();
+      await onCancel(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Cancel failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('variant.cancelFailed', '取消失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('variant.cancelFailed'));
     } finally {
       setIsOperating(false);
     }
-  }, [onCancel, isOperating, t]);
+  }, [onCancel, isOperating, variant.id, t]);
 
   // 重试
   const handleRetry = useCallback(async () => {
     if (!onRetry || isOperating) return;
     setIsOperating(true);
     try {
-      await onRetry();
+      await onRetry(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Retry failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('variant.retryFailed', '重试失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('variant.retryFailed'));
     } finally {
       setIsOperating(false);
     }
-  }, [onRetry, isOperating, t]);
+  }, [onRetry, isOperating, variant.id, t]);
 
   // 删除
   const handleDelete = useCallback(async () => {
     if (!onDelete || isOperating) return;
     setIsOperating(true);
     try {
-      await onDelete();
+      await onDelete(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Delete failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('variant.deleteFailed', '删除失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('variant.deleteFailed'));
     } finally {
       setIsOperating(false);
     }
-  }, [onDelete, isOperating, t]);
+  }, [onDelete, isOperating, variant.id, t]);
 
   return (
     <div
@@ -266,25 +329,38 @@ const VariantCard: React.FC<VariantCardProps> = ({
           ? 'border-primary/50 shadow-sm'
           : 'border-border hover:border-border/80',
         isStreaming && 'border-primary/30',
-        // 移动端：固定宽度 + snap 对齐；桌面端：flex-1 自适应填满容器
+        // 移动端：固定宽度 + snap 对齐 + 高度上限（长内容由内部 CustomScrollArea 滚动，
+        // 避免卡片撑满整页把横向 snap 滚动淹没）；桌面端：flex-1 自适应填满容器
         isMobile
-          ? 'w-[85vw] min-w-[280px] max-w-[320px] shrink-0 snap-start'
+          ? 'w-[85vw] min-w-[280px] max-w-[320px] max-h-[60vh] shrink-0 snap-start'
           : 'flex-1 min-w-[200px]'
       )}
       data-variant-index={variantIndex}
-      onClick={onSwitch}
-      role={onSwitch ? 'button' : undefined}
-      tabIndex={onSwitch ? 0 : undefined}
+      onClick={canSwitch ? handleSwitch : undefined}
+      onKeyDown={
+        canSwitch
+          ? (e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSwitch();
+              }
+            }
+          : undefined
+      }
+      role={canSwitch ? 'button' : undefined}
+      tabIndex={canSwitch ? 0 : undefined}
     >
       {/* 头部：模型信息 + 时间戳 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <div className="flex items-center gap-2.5">
-          {/* 模型图标 - 使用 ProviderIcon 自动识别供应商并显示对应图标 */}
-          {modelIcon ? (
+          {/* 模型图标 - 使用 ProviderIcon 自动识别供应商并显示对应图标；自定义图标加载失败时降级 */}
+          {modelIcon && !iconLoadFailed ? (
             <img
               src={modelIcon}
               alt={modelName}
               className="w-7 h-7 rounded-full object-cover"
+              onError={() => setIconLoadFailed(true)}
             />
           ) : (
             <ProviderIcon
@@ -309,7 +385,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
       </div>
 
       {/* 🚀 P0修复：使用与单变体一致的分组渲染逻辑（ActivityTimeline + BlockRenderer） */}
-      <div className="flex-1 px-4 py-3 min-h-[100px] overflow-y-auto">
+      <CustomScrollArea className="min-h-[100px] flex-1" viewportClassName="px-4 py-3">
         {blockIds.length > 0 ? (
           <div className="space-y-2">
             {(() => {
@@ -392,25 +468,27 @@ const VariantCard: React.FC<VariantCardProps> = ({
         ) : isStreaming ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
-            <span>{t('variant.streaming', '生成中...')}</span>
+            <span>{t('variant.streaming')}</span>
           </div>
         ) : variant.status === 'error' ? (
           <p className="text-sm text-destructive">
-            {variant.error || t('variant.error', '生成失败')}
+            {variant.error || t('variant.error')}
           </p>
         ) : variant.status === 'pending' ? (
           <p className="text-sm text-muted-foreground">
-            {t('variant.pending', '等待中...')}
+            {t('variant.pending')}
           </p>
         ) : null}
-      </div>
+      </CustomScrollArea>
 
       {/* 🚀 P0修复：来源面板不传 blocks，让它自己订阅 */}
+      {/* P0-3: 按当前变体的 blockIds 过滤，避免把其他变体的来源串进本卡片 */}
       {hasSources && (
         <div className="px-4 pb-3">
           <SourcePanelV2
             store={store}
             messageId={messageId}
+            blockIds={blockIds}
             className="text-left"
           />
         </div>
@@ -421,41 +499,41 @@ const VariantCard: React.FC<VariantCardProps> = ({
         {/* 操作按钮 */}
         <div className="flex items-center gap-0.5">
           {/* 复制 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
-            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
-          </NotionButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+            {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
+          </DsButton>
 
           {/* 重试（可重试状态） */}
           {canRetry && onRetry && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry', '重试')} title={t('variant.retry', '重试')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry')} title={t('variant.retry')}>
               <ArrowCounterClockwise size={16} className={cn(isOperating && 'animate-spin')} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 取消（流式中） */}
           {canCancel && onCancel && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel', '取消')} title={t('variant.cancel', '取消')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel')} title={t('variant.cancel')}>
               <Square size={16} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 删除（非最后一个） */}
           {canDelete && onDelete && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete', '删除')} title={t('variant.delete', '删除')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete')} title={t('variant.delete')}>
               <Trash size={16} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 更多操作菜单 */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label="more">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions')} title={t('variant.actions')}>
                 <DotsThree size={16} />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
               <AppMenuItem onClick={handleCopy} icon={<Copy size={16} />}>
-                {t('messageItem.actions.copy', '复制')}
+                {t('messageItem.actions.copy')}
               </AppMenuItem>
               {canRetry && onRetry && (
                 <AppMenuItem
@@ -463,7 +541,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
                   disabled={isOperating}
                   icon={<ArrowCounterClockwise size={16} />}
                 >
-                  {t('variant.retry', '重试')}
+                  {t('variant.retry')}
                 </AppMenuItem>
               )}
               {canDelete && onDelete && (
@@ -473,7 +551,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
                   destructive
                   icon={<Trash size={16} />}
                 >
-                  {t('variant.delete', '删除')}
+                  {t('variant.delete')}
                 </AppMenuItem>
               )}
             </AppMenuContent>
@@ -489,6 +567,13 @@ const VariantCard: React.FC<VariantCardProps> = ({
   );
 };
 
+/**
+ * 🚀 性能：memo 边界——并行流式时，某个变体的更新只重渲染它自己的卡片。
+ * Store 对变体做不可变更新（未变更的 variant 对象保持引用），
+ * 配合上方引用稳定的按 id 回调，其余卡片全部命中 memo。
+ */
+const VariantCard = React.memo(VariantCardImpl);
+
 // ============================================================================
 // 子组件：消息级操作栏
 // ============================================================================
@@ -500,6 +585,11 @@ interface MessageLevelActionsProps {
   onDeleteMessage?: () => Promise<void>;
   onCopy?: () => Promise<void>;
   onBranchSession?: () => Promise<void>;
+  /** ★ 中-8：次要动作（溢出菜单）与元信息展示 */
+  onSaveAsNote?: () => Promise<void> | void;
+  onExportMarkdown?: () => Promise<void> | void;
+  timestamp?: number;
+  usage?: Variant['usage'];
 }
 
 const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
@@ -509,11 +599,22 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   onDeleteMessage,
   onCopy,
   onBranchSession,
+  onSaveAsNote,
+  onExportMarkdown,
+  timestamp,
+  usage,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isRetryingAll, setIsRetryingAll] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // P1-5: 复制反馈定时器卸载时清理，避免卸载后 setState
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
 
   // 检查是否有正在流式的变体
   const hasStreamingVariant = variants.some(
@@ -555,7 +656,8 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
     try {
       await onCopy();
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch (error: unknown) {
       console.error('[MessageLevelActions] Copy failed:', error);
     }
@@ -574,42 +676,50 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
     }
   }, [onBranchSession, isBranching, isLocked]);
 
+  // ≥768 触屏平板无 hover：coarse 指针下操作栏常显，否则消息级操作不可达
+  // （与 MessageItem footer 的 coarse 指针契约一致）
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+
   // 如果没有任何操作可用，不显示操作栏
-  if (!onRetryAll && !onDeleteMessage && !onCopy && !onBranchSession) {
+  if (!onRetryAll && !onDeleteMessage && !onCopy && !onBranchSession && !onSaveAsNote && !onExportMarkdown) {
     return null;
   }
 
+  const hasOverflowActions = Boolean(onSaveAsNote || onExportMarkdown);
+
   return (
-    <div className="mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity max-w-thread mx-auto">
+    <div className={isCoarsePointer
+      ? 'mt-3 max-w-thread mx-auto'
+      : 'mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity max-w-thread mx-auto'}>
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
-            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
-          </NotionButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+            {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
+          </DsButton>
         )}
 
         {/* 会话分支按钮 */}
         {onBranchSession && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch', '从此处分支')} title={t('messageItem.actions.branch', '从此处分支')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch')} title={t('messageItem.actions.branch')}>
             <GitBranch size={16} className={cn(isBranching && 'animate-pulse')} />
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 全部重试按钮 */}
         {onRetryAll && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll', '全部重试')} title={t('variant.retryAll', '全部重试')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll')} title={t('variant.retryAll')}>
             <ArrowCounterClockwise size={16} className={cn(isRetryingAll && 'animate-spin')} />
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 删除消息按钮（带确认） */}
         {onDeleteMessage && (
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete', '删除')} title={t('messageItem.actions.delete', '删除')}>
+              <DsButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
                 <Trash size={16} className={cn(isDeleting && 'animate-pulse')} />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={180}>
               <AppMenuItem
@@ -618,11 +728,52 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
                 destructive
                 icon={<Trash size={16} />}
               >
-                {t('variant.deleteMessage', '删除整个消息')}
+                {t('variant.deleteMessage')}
               </AppMenuItem>
             </AppMenuContent>
           </AppMenu>
         )}
+
+        {/* ★ 中-8：次要动作溢出菜单（存为笔记 / 导出 Markdown），
+            移动端多变体消息不再缺失这些消息级动作 */}
+        {hasOverflowActions && (
+          <AppMenu>
+            <AppMenuTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('common:more')}
+                title={t('common:more')}
+              >
+                <DotsThree size={16} />
+              </DsButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="start" width={180}>
+              {onSaveAsNote && (
+                <AppMenuItem onClick={() => void onSaveAsNote()}>
+                  {t('messageItem.actions.saveAsNote')}
+                </AppMenuItem>
+              )}
+              {onExportMarkdown && (
+                <AppMenuItem onClick={() => void onExportMarkdown()}>
+                  {t('messageItem.actions.exportMarkdown')}
+                </AppMenuItem>
+              )}
+            </AppMenuContent>
+          </AppMenu>
+        )}
+
+        {/* ★ 中-8：时间戳 + 聚合 Token 用量（对齐单变体消息 footer 的元信息） */}
+        {timestamp && (
+          <span
+            className="ml-1 select-none text-2xs text-muted-foreground/70"
+            title={new Date(timestamp).toLocaleString(locale)}
+          >
+            {new Date(timestamp).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+        {usage && <TokenUsageDisplay usage={usage} compact />}
       </div>
     </div>
   );
@@ -658,6 +809,10 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
   isLocked = false,
   onContinue,
   onBranchSession,
+  onSaveAsNote,
+  onExportMarkdown,
+  messageTimestamp,
+  aggregatedUsage,
   hideMessageLevelActions = false,
   className,
 }) => {
@@ -736,7 +891,9 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
         return (
           <div className="flex items-center justify-center gap-2 mb-3">
             {/* 左箭头 */}
+            {/* eslint-disable-next-line ds-components/no-native-button -- 24px 紧凑视觉 + 伪元素扩大触控区的导航箭头，共享按钮组件 的 icon 尺寸体系不适配 */}
             <button
+              type="button"
               onClick={() => {
                 if (hasPrev) {
                   scrollToVariant(activeIndex - 1);
@@ -745,22 +902,24 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               }}
               disabled={!hasPrev}
               className={cn(
-                'p-1 rounded-md transition-colors',
+                // 视觉 24px，透明伪元素扩大触控命中区至 ~44px
+                'p-1 rounded-md transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
                 hasPrev
                   ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
-              aria-label="Previous variant"
+              aria-label={t('variant.switchToVariant', { index: Math.max(1, activeIndex)})}
+              title={t('variant.switchToVariant', { index: Math.max(1, activeIndex)})}
             >
               <CaretLeft size={16} />
             </button>
 
-            {/* 指示器圆点 */}
-            <div className="flex items-center gap-2">
+            {/* 指示器圆点（★ 低-10：加大间距 + 扩横向命中区，圆点更易点中） */}
+            <div className="flex items-center gap-4">
               {variants.map((variant, index) => {
                 const isActive = variant.id === activeVariantId;
                 return (
-                  <NotionButton
+                  <DsButton
                     key={variant.id}
                     variant="ghost"
                     size="icon"
@@ -773,18 +932,24 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                     }}
                     className={cn(
                       '!rounded-full flex-shrink-0 !p-0',
+                      // P1-9: 圆点视觉 10px，用透明伪元素扩大命中区（纵向 ≥40px；
+                      // ★ 低-10：gap 提到 16px 后横向可外扩到 ±8px 而不压相邻点，横向命中约 26px）
+                      'relative after:absolute after:content-[\'\'] after:-inset-x-2 after:-inset-y-4',
                       isActive
                         ? 'variant-indicator-dot-active bg-primary'
-                        : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-[var(--interactive-hover)]-foreground/50'
+                        : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
                     )}
-                    aria-label={t('variant.switchToVariant', { index: index + 1, defaultValue: `Switch to variant ${index + 1}` })}
+                    aria-current={isActive ? 'true' : undefined}
+                    aria-label={t('variant.switchToVariant', { index: index + 1})}
                   />
                 );
               })}
             </div>
 
             {/* 右箭头 */}
+            {/* eslint-disable-next-line ds-components/no-native-button -- 24px 紧凑视觉 + 伪元素扩大触控区的导航箭头，共享按钮组件 的 icon 尺寸体系不适配 */}
             <button
+              type="button"
               onClick={() => {
                 if (hasNext) {
                   scrollToVariant(activeIndex + 1);
@@ -793,12 +958,14 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               }}
               disabled={!hasNext}
               className={cn(
-                'p-1 rounded-md transition-colors',
+                // 视觉 24px，透明伪元素扩大触控命中区至 ~44px
+                'p-1 rounded-md transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
                 hasNext
                   ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
-              aria-label="Next variant"
+              aria-label={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2)})}
+              title={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2)})}
             >
               <CaretRight size={16} />
             </button>
@@ -807,21 +974,21 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
       })()}
 
       {/* 变体卡片容器 */}
-      <div
-        ref={scrollContainerRef}
+      <CustomScrollArea
+        viewportRef={scrollContainerRef}
+        orientation="horizontal"
+        fullHeight={false}
         className={cn(
-          'flex gap-4 pb-2',
-          // 移动端：横向滚动 + snap 对齐；桌面端：不溢出，卡片均分宽度
-          isSmallScreen
-            ? 'overflow-x-auto scrollbar-hide snap-x snap-mandatory -mx-4 px-4'
-            : 'w-full'
+          'w-full',
+          isSmallScreen && '-mx-4'
         )}
-        style={{
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-        } as React.CSSProperties}
+        viewportClassName={cn(
+          'flex gap-4 pb-2',
+          // 移动端保留 snap 对齐；桌面端变体较多时由同一横向 viewport 承载。
+          isSmallScreen && 'snap-x snap-mandatory px-4'
+        )}
       >
-        {/* 🚀 P0修复：传递 blockIds 而非 blocks */}
+        {/* 🚀 P0修复：传递 blockIds 而非 blocks；按 id 回调直接透传，保持引用稳定以命中 VariantCard 的 memo */}
         {variants.map((variant, index) => {
           const isActive = variant.id === activeVariantId;
 
@@ -839,28 +1006,16 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               isLastVariant={isLastVariant}
               isMobile={isSmallScreen}
               variantIndex={index}
-              onSwitch={
-                onSwitchVariant && !isActive
-                  ? () => {
-                      scrollToVariant(index);
-                      onSwitchVariant(variant.id);
-                    }
-                  : undefined
-              }
-              onCancel={
-                onCancelVariant ? () => onCancelVariant(variant.id) : undefined
-              }
-              onRetry={
-                onRetryVariant ? () => onRetryVariant(variant.id) : undefined
-              }
-              onDelete={
-                onDeleteVariant ? () => onDeleteVariant(variant.id) : undefined
-              }
+              onSwitch={onSwitchVariant}
+              onCancel={onCancelVariant}
+              onRetry={onRetryVariant}
+              onDelete={onDeleteVariant}
+              scrollToVariant={scrollToVariant}
               onContinue={onContinue}
             />
           );
         })}
-      </div>
+      </CustomScrollArea>
 
       {/* 🆕 消息级操作栏：全部重试 + 删除消息 */}
       {!hideMessageLevelActions && (
@@ -871,6 +1026,10 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
           onDeleteMessage={onDeleteMessage}
           onCopy={onCopy}
           onBranchSession={onBranchSession}
+          onSaveAsNote={onSaveAsNote}
+          onExportMarkdown={onExportMarkdown}
+          timestamp={messageTimestamp}
+          usage={aggregatedUsage}
         />
       )}
     </div>

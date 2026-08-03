@@ -15,12 +15,14 @@ export default defineConfig({
     ],
     css: false, // 禁用CSS处理避免选择器问题
     silent: true, // 降低日志噪音与内存占用，避免大规模 console 输出导致 runner 不稳定
-    // 🔧 稳定性：Node 22 + threads(tinypool) 偶发 "Channel closed" 崩溃
-    // 使用 forks 单进程池通常更稳定（代价是启动更慢，但更可预期）
+    // 🔧 稳定性：Node 22 + threads(tinypool) 偶发 "Channel closed" 崩溃 → 用 forks 池规避。
+    // ⚠️ 不要再开 singleFork：单进程串行会让 jsdom 内存跨文件累积，
+    // 大批量文件跑到中途触发 V8 GC 抖动近似死锁（本地与 CI 分片 4 均复现过）。
+    // 多进程并行 + 堆上限兜底，内存有界且显著更快。
     pool: 'forks',
     poolOptions: {
       forks: {
-        singleFork: true,
+        execArgv: ['--max-old-space-size=4096'],
       },
     },
   },

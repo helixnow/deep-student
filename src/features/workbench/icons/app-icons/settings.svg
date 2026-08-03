@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="st_body" x1="70" x2="70" y1="24" y2="132" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#2BB3A3" offset="0"/>
+    <stop stop-color="#14607E" offset=".55"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
+  </linearGradient>
+  <g fill="url(#st_body)">
+    <rect x="62.5" y="30" width="15" height="96" rx="7.5"/>
+    <rect x="62.5" y="30" width="15" height="96" rx="7.5" transform="rotate(45 70 78)"/>
+    <rect x="62.5" y="30" width="15" height="96" rx="7.5" transform="rotate(90 70 78)"/>
+    <rect x="62.5" y="30" width="15" height="96" rx="7.5" transform="rotate(135 70 78)"/>
+    <circle cx="70" cy="78" r="36"/>
+  </g>
+  <circle cx="70" cy="78" r="19" fill="#EAF7F6"/>
+  <circle cx="70" cy="78" r="8.5" fill="#1D3F6E"/>
+  <linearGradient id="st_mini" x1="119" x2="119" y1="14" y2="52" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <g fill="url(#st_mini)">
+    <rect x="115" y="15" width="8" height="36" rx="4"/>
+    <rect x="115" y="15" width="8" height="36" rx="4" transform="rotate(60 119 33)"/>
+    <rect x="115" y="15" width="8" height="36" rx="4" transform="rotate(120 119 33)"/>
+    <circle cx="119" cy="33" r="12"/>
+  </g>
+  <circle cx="119" cy="33" r="5" fill="#FFF4E4"/>
+</svg>

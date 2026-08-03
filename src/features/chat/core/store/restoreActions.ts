@@ -1,8 +1,13 @@
 import type { Block, BlockType, BlockStatus } from '../types/block';
-import type { Message } from '../types/message';
-import type { ChatStore, LoadSessionResponseType } from '../types';
+import type { Message, ReplaySkillPayloadSnapshot } from '../types/message';
+import type {
+  ChatStore,
+  LoadSessionResponseType,
+  SessionRestoreBaseline,
+} from '../types';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
+import { COMPOSER_PANEL_KEYS } from '../types/common';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionSwitchPerf } from '../../debug/sessionSwitchPerf';
@@ -11,7 +16,17 @@ import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
 import { skillDefaults } from '../../skills/skillDefaults';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
-import { showOperationLockNotification } from './createChatStore';
+import {
+  isWorkbenchToolName,
+  markWorkbenchBlockRestored,
+  remapWorkbenchBlockType,
+} from '@/features/chat/utils/workbenchBlockRemap';
+import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
+import {
+  browserToolsSkill,
+  builtinToolSkills,
+} from '../../skills/builtin-tools';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -38,6 +53,319 @@ function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string' && item.length > 0)
     : [];
+}
+
+const CURRENT_BUILTIN_TOOL_NAMES = new Set([
+  'load_skills',
+  ...[...builtinToolSkills, browserToolsSkill].flatMap((skill) =>
+    (skill.embeddedTools ?? []).map((tool) =>
+      tool.name.replace(/^builtin[-:]/, '').replace(/^mcp_/, ''),
+    ),
+  ),
+]);
+const CURRENT_BUILTIN_SKILL_IDS = new Set([
+  ...builtinToolSkills.map((skill) => skill.id),
+  browserToolsSkill.id,
+]);
+
+function normalizeHistoricalToolName(toolName: string): string {
+  return toolName
+    .replace(/^builtin[-:]/, '')
+    .replace(/^mcp_/, '')
+    .replace(/^mcp\.tools\./, '');
+}
+
+function getReplayRuntimeSnapshots(
+  message?: LoadSessionResponseType['messages'][number],
+): ReplaySkillPayloadSnapshot[] {
+  if (!message) return [];
+  const snapshots = [
+    message._meta?.skillRuntimeBefore,
+    message._meta?.skillRuntimeAfter,
+    ...(message.variants ?? []).flatMap((variant) => [
+      variant.meta?.skillRuntimeBefore,
+      variant.meta?.skillRuntimeAfter,
+    ]),
+  ];
+  return snapshots.filter((snapshot): snapshot is ReplaySkillPayloadSnapshot => !!snapshot);
+}
+
+/**
+ * Very old sessions persisted trusted local tools with the generic `mcp_`
+ * prefix. Remap only when replay metadata proves that the tool came from a
+ * local schema/built-in skill, and fail closed if any matching external schema
+ * carries a serverId. A matching name by itself is deliberately insufficient.
+ */
+function remapLegacyBuiltinToolName(
+  toolName: string | undefined,
+  message?: LoadSessionResponseType['messages'][number],
+): string | undefined {
+  if (!toolName?.startsWith('mcp_')) return toolName;
+
+  const shortName = normalizeHistoricalToolName(toolName);
+  if (!CURRENT_BUILTIN_TOOL_NAMES.has(shortName)) return toolName;
+
+  const snapshots = getReplayRuntimeSnapshots(message);
+  const hasExternalSource = snapshots.some((snapshot) =>
+    (snapshot.mcpToolSchemas ?? []).some((schema) =>
+      normalizeHistoricalToolName(schema.name) === shortName
+      && schema.serverId !== undefined,
+    ),
+  );
+  if (hasExternalSource) return toolName;
+
+  const hasTrustedLocalSchema = snapshots.some((snapshot) =>
+    (snapshot.mcpToolSchemas ?? []).some((schema) =>
+      normalizeHistoricalToolName(schema.name) === shortName
+      && schema.serverId === undefined,
+    ),
+  );
+  const hasBuiltinSkillEvidence = snapshots.some((snapshot) =>
+    Object.entries(snapshot.skillEmbeddedTools ?? {}).some(([skillId, tools]) =>
+      CURRENT_BUILTIN_SKILL_IDS.has(skillId)
+      && tools.some((tool) => normalizeHistoricalToolName(tool.name) === shortName),
+    ),
+  );
+
+  return hasTrustedLocalSchema || hasBuiltinSkillEvidence
+    ? `builtin-${shortName}`
+    : toolName;
+}
+
+/**
+ * 后端块 → 前端 Block（restoreFromBackend / prependHistoryFromBackend 共用）
+ *
+ * ACR R2-05：旧库可能把 workbench_* 存成 mcp_tool；恢复时按 toolName remap 为
+ * workbench_ops。DB 不存 toolCallId；桥侧 runId 现为 block.id，故 workbench 块用
+ * id 回填 toolCallId，便于与 presence/账本候选对齐（账本本身不跨重启）。
+ */
+function convertBackendBlock(
+  blk: LoadSessionResponseType['blocks'][number],
+  message?: LoadSessionResponseType['messages'][number],
+): Block {
+  const toolName = remapLegacyBuiltinToolName(blk.toolName, message);
+  const type = remapWorkbenchBlockType(blk.type, toolName) as BlockType;
+  const isWorkbench = type === 'workbench_ops' || isWorkbenchToolName(toolName);
+  if (isWorkbench) markWorkbenchBlockRestored(blk.id);
+  return {
+    id: blk.id,
+    messageId: blk.messageId,
+    type,
+    status: blk.status as BlockStatus,
+    content: blk.content,
+    toolName,
+    toolInput: blk.toolInput as Record<string, unknown> | undefined,
+    toolOutput: blk.toolOutput,
+    citations: blk.citations,
+    error: blk.error,
+    startedAt: blk.startedAt,
+    endedAt: blk.endedAt,
+    // 🔧 P3修复：恢复 firstChunkAt 用于排序（保持思维链交替顺序）
+    firstChunkAt: blk.firstChunkAt,
+    ...(isWorkbench ? { toolCallId: blk.id } : {}),
+  };
+}
+
+/** 后端消息 → 前端 Message（restoreFromBackend / prependHistoryFromBackend 共用） */
+function convertBackendMessage(msg: LoadSessionResponseType['messages'][number]): Message {
+  return {
+    id: msg.id,
+    role: msg.role,
+    blockIds: msg.blockIds, // 直接使用后端返回的 blockIds
+    timestamp: msg.timestamp,
+    persistentStableId: msg.persistentStableId,
+    // 🔧 P0 分支模型补齐：后端已返回 parentId/supersedes，此前恢复时被丢弃，
+    // 导致分支血缘在刷新/切换会话后不可见。前端只读透传。
+    parentId: msg.parentId,
+    supersedes: msg.supersedes,
+    attachments: msg.attachments,
+    // 🔧 修复：后端 serde(rename = "_meta") 序列化，字段名是 _meta
+    // 🆕 统一用户消息处理：确保 contextSnapshot 被正确恢复
+    _meta: msg._meta
+      ? {
+          modelId: msg._meta.modelId,
+          // 🔒 审计修复: 添加 modelDisplayName 恢复（原代码遗漏此字段，
+          // 导致恢复后消息显示模型 ID 而非用户友好名称）
+          modelDisplayName: msg._meta.modelDisplayName,
+          chatParams: msg._meta.chatParams,
+          usage: msg._meta.usage,
+          contextSnapshot: msg._meta.contextSnapshot,
+          skillSnapshotBefore: msg._meta.skillSnapshotBefore,
+          skillSnapshotAfter: msg._meta.skillSnapshotAfter,
+          skillRuntimeBefore: msg._meta.skillRuntimeBefore,
+          skillRuntimeAfter: msg._meta.skillRuntimeAfter,
+          replaySource: msg._meta.replaySource,
+        }
+      : undefined,
+    // 🔧 变体字段恢复
+    activeVariantId: msg.activeVariantId,
+    variants: msg.variants,
+    sharedContext: msg.sharedContext,
+  };
+}
+
+/**
+ * Insert backend-only IDs around IDs that already exist in the live order.
+ * Live-only IDs retain their relative order. With no shared anchor, backend
+ * IDs are treated as the persisted prefix and live IDs as newer additions.
+ */
+function mergeAnchoredReferenceOrder(
+  currentOrder: readonly string[],
+  backendOrder: readonly string[],
+): string[] {
+  const dedupedCurrent = Array.from(new Set(currentOrder));
+  const currentPosition = new Map(dedupedCurrent.map((id, index) => [id, index]));
+  const seenBackend = new Set<string>();
+  const responseOrder = backendOrder.filter((id) => {
+    if (seenBackend.has(id)) return false;
+    seenBackend.add(id);
+    return true;
+  });
+  const missingIds = responseOrder.filter((id) => !currentPosition.has(id));
+  if (missingIds.length === 0) return dedupedCurrent;
+
+  const hasSharedAnchor = responseOrder.some((id) => currentPosition.has(id));
+  if (!hasSharedAnchor) {
+    return [...missingIds, ...dedupedCurrent];
+  }
+
+  const nextAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  let nextAnchor: number | undefined;
+  for (let index = responseOrder.length - 1; index >= 0; index--) {
+    nextAnchorPositions[index] = nextAnchor;
+    const position = currentPosition.get(responseOrder[index]);
+    if (position !== undefined) nextAnchor = position;
+  }
+
+  const previousAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  let previousAnchor: number | undefined;
+  for (let index = 0; index < responseOrder.length; index++) {
+    previousAnchorPositions[index] = previousAnchor;
+    const position = currentPosition.get(responseOrder[index]);
+    if (position !== undefined) previousAnchor = position;
+  }
+
+  const buckets = new Map<number, string[]>();
+  for (let index = 0; index < responseOrder.length; index++) {
+    const id = responseOrder[index];
+    if (currentPosition.has(id)) continue;
+    const gap = nextAnchorPositions[index]
+      ?? (previousAnchorPositions[index] !== undefined
+        ? previousAnchorPositions[index]! + 1
+        : 0);
+    const bucket = buckets.get(gap);
+    if (bucket) bucket.push(id);
+    else buckets.set(gap, [id]);
+  }
+
+  const merged: string[] = [];
+  for (let gap = 0; gap <= dedupedCurrent.length; gap++) {
+    const bucket = buckets.get(gap);
+    if (bucket) merged.push(...bucket);
+    if (gap < dedupedCurrent.length) merged.push(dedupedCurrent[gap]);
+  }
+  return merged;
+}
+
+function hasSameIdOrder(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function mergeExistingMessageReferences(
+  currentMessage: Message,
+  backendMessage: LoadSessionResponseType['messages'][number],
+  availableBlockIds: ReadonlySet<string>,
+): Message {
+  const backendBlockIds = backendMessage.blockIds.filter((id) => availableBlockIds.has(id));
+  const blockIds = mergeAnchoredReferenceOrder(currentMessage.blockIds, backendBlockIds);
+
+  const currentVariants = currentMessage.variants ?? [];
+  const backendVariants = backendMessage.variants ?? [];
+  if (backendVariants.length === 0) {
+    return hasSameIdOrder(blockIds, currentMessage.blockIds)
+      ? currentMessage
+      : { ...currentMessage, blockIds };
+  }
+
+  const currentVariantById = new Map(currentVariants.map((variant) => [variant.id, variant]));
+  const mergedVariantById = new Map(currentVariantById);
+  for (const backendVariant of backendVariants) {
+    const currentVariant = currentVariantById.get(backendVariant.id);
+    const filteredBackendBlockIds = backendVariant.blockIds.filter((id) => availableBlockIds.has(id));
+    if (currentVariant) {
+      mergedVariantById.set(backendVariant.id, {
+        ...backendVariant,
+        ...currentVariant,
+        blockIds: mergeAnchoredReferenceOrder(currentVariant.blockIds, filteredBackendBlockIds),
+      });
+    } else {
+      mergedVariantById.set(backendVariant.id, {
+        ...backendVariant,
+        blockIds: filteredBackendBlockIds,
+      });
+    }
+  }
+
+  const variantOrder = mergeAnchoredReferenceOrder(
+    currentVariants.map((variant) => variant.id),
+    backendVariants.map((variant) => variant.id),
+  );
+  const variants = variantOrder
+    .map((id) => mergedVariantById.get(id))
+    .filter((variant): variant is NonNullable<(typeof currentVariants)[number]> => !!variant);
+
+  const variantsUnchanged =
+    variants.length === currentVariants.length
+    && variants.every((variant, index) => {
+      const currentVariant = currentVariants[index];
+      return currentVariant === variant
+        || (
+          currentVariant.id === variant.id
+          && hasSameIdOrder(currentVariant.blockIds, variant.blockIds)
+          && currentVariant.status === variant.status
+          && currentVariant.error === variant.error
+        );
+    });
+
+  if (hasSameIdOrder(blockIds, currentMessage.blockIds) && variantsUnchanged) {
+    return currentMessage;
+  }
+
+  return {
+    ...currentMessage,
+    blockIds,
+    variants,
+  };
+}
+
+function shouldRestoreMissingMessage(
+  message: LoadSessionResponseType['messages'][number],
+  baseline?: SessionRestoreBaseline,
+): boolean {
+  if (!baseline) return true;
+  if (baseline.messageIds.has(message.id)) return false;
+  if (
+    baseline.oldestMessageTimestamp !== undefined
+    && message.timestamp >= baseline.oldestMessageTimestamp
+  ) {
+    // Full-history completion is expected to add messages before the loaded
+    // tail. A same/newer missing row was removed locally or created by a stale
+    // backend snapshot and must not be resurrected.
+    return false;
+  }
+  return true;
+}
+
+function hasIdentitySetChanged(
+  currentIds: Iterable<string>,
+  baselineIds: ReadonlySet<string>,
+): boolean {
+  const currentSet = currentIds instanceof Set ? currentIds : new Set(currentIds);
+  if (currentSet.size !== baselineIds.size) return true;
+  for (const id of currentSet) {
+    if (!baselineIds.has(id)) return true;
+  }
+  return false;
 }
 
 function filterSkillInstructionRefsWhenStructuredStateExists(
@@ -92,14 +420,233 @@ function getRestoredLoadedSkillIds(state?: LoadSessionResponseType['state']): st
   }
 }
 
+/**
+ * Merge missing backend messages without assuming they all predate the current
+ * window. Backend neighbours provide stable anchors; timestamps place messages
+ * among local-only entries inside those bounds.
+ */
+export function mergeHistoryMessageOrder(
+  currentOrder: string[],
+  currentMessages: ReadonlyMap<string, Message>,
+  backendMessages: LoadSessionResponseType['messages'],
+): string[] {
+  const messageById = new Map<string, Pick<Message, 'timestamp'>>();
+  for (const [id, message] of currentMessages) {
+    messageById.set(id, message);
+  }
+  for (const message of backendMessages) {
+    messageById.set(message.id, message);
+  }
+
+  const seenResponseIds = new Set<string>();
+  const responseOrder = backendMessages
+    .map((message, index) => ({ message, index }))
+    .sort((a, b) => a.message.timestamp - b.message.timestamp || a.index - b.index)
+    .map(({ message }) => message.id)
+    .filter((id) => {
+      if (seenResponseIds.has(id)) return false;
+      seenResponseIds.add(id);
+      return true;
+    });
+  const currentPosition = new Map(currentOrder.map((id, index) => [id, index]));
+
+  // Precompute response neighbours that already exist in the live order. This
+  // makes anchor lookup O(1) for every missing message.
+  const previousAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  const nextAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  let anchorPosition: number | undefined;
+  for (let index = 0; index < responseOrder.length; index++) {
+    previousAnchorPositions[index] = anchorPosition;
+    const currentIndex = currentPosition.get(responseOrder[index]);
+    if (currentIndex !== undefined) anchorPosition = currentIndex;
+  }
+  anchorPosition = undefined;
+  for (let index = responseOrder.length - 1; index >= 0; index--) {
+    nextAnchorPositions[index] = anchorPosition;
+    const currentIndex = currentPosition.get(responseOrder[index]);
+    if (currentIndex !== undefined) anchorPosition = currentIndex;
+  }
+
+  let currentOrderIsChronological = true;
+  let previousTimestamp = Number.NEGATIVE_INFINITY;
+  for (const messageId of currentOrder) {
+    const timestamp = messageById.get(messageId)?.timestamp;
+    if (timestamp === undefined) continue;
+    if (timestamp < previousTimestamp) {
+      currentOrderIsChronological = false;
+      break;
+    }
+    previousTimestamp = timestamp;
+  }
+
+  const gapBuckets = new Map<number, string[]>();
+  for (let responseIndex = 0; responseIndex < responseOrder.length; responseIndex++) {
+    const messageId = responseOrder[responseIndex];
+    if (currentPosition.has(messageId)) continue;
+
+    const previousAnchor = previousAnchorPositions[responseIndex];
+    const nextAnchor = nextAnchorPositions[responseIndex];
+    let lowerBound = previousAnchor !== undefined ? previousAnchor + 1 : 0;
+    let upperBound = nextAnchor ?? currentOrder.length;
+    if (upperBound < lowerBound) {
+      lowerBound = 0;
+      upperBound = currentOrder.length;
+    }
+
+    let gap: number;
+    if (currentOrderIsChronological) {
+      const timestamp = messageById.get(messageId)?.timestamp ?? Number.POSITIVE_INFINITY;
+      let low = lowerBound;
+      let high = upperBound;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        const candidateTimestamp =
+          messageById.get(currentOrder[middle])?.timestamp ?? Number.POSITIVE_INFINITY;
+        if (candidateTimestamp <= timestamp) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      gap = low;
+    } else {
+      // Corrupt/legacy timestamp order: preserve the live order and use the
+      // nearest backend neighbour as the deterministic insertion anchor.
+      gap = nextAnchor ?? (previousAnchor !== undefined ? previousAnchor + 1 : currentOrder.length);
+    }
+
+    const bucket = gapBuckets.get(gap);
+    if (bucket) bucket.push(messageId);
+    else gapBuckets.set(gap, [messageId]);
+  }
+
+  if (gapBuckets.size === 0) return currentOrder;
+
+  const merged: string[] = [];
+  for (let gap = 0; gap <= currentOrder.length; gap++) {
+    const bucket = gapBuckets.get(gap);
+    if (bucket) merged.push(...bucket);
+    if (gap < currentOrder.length) merged.push(currentOrder[gap]);
+  }
+  return merged;
+}
+
 export function createRestoreActions(
   set: SetState,
   getState: GetState,
 ) {
+  // 🔧 P1 修复（2026-07-08 审阅 20 P1-3）：恢复代际计数器（每 store 实例一份闭包）。
+  // restoreFromBackend 的异步恢复链跨多次网络级 await，期间用户可能编辑上下文引用
+  // 或再次触发 loadSession；每次 set 前用代际 + sessionId 双重校验丢弃过期写回。
+  let restoreGeneration = 0;
+
   return {
-        restoreFromBackend: (response: LoadSessionResponseType): void => {
+        /**
+         * 尾部分块加载第二阶段：把全量响应中的缺失历史合并到正确位置。
+         * 只补 messageMap/messageOrder/blocks，不触碰运行时状态。
+         */
+        prependHistoryFromBackend: (
+          response: LoadSessionResponseType,
+          baseline?: SessionRestoreBaseline,
+        ): void => {
+          const current = getState();
+          // 会话已切换或数据未就绪时丢弃（补齐请求可能晚于切换返回）
+          if (current.sessionId !== response.session.id || !current.isDataLoaded) {
+            return;
+          }
+
+          const missingMessages = response.messages.filter(
+            (msg) => !current.messageMap.has(msg.id) && shouldRestoreMissingMessage(msg, baseline),
+          );
+          const retainedMessageIds = new Set(current.messageMap.keys());
+          for (const message of missingMessages) retainedMessageIds.add(message.id);
+
+          // Blocks belonging to a message that was deleted while the request
+          // was in flight are excluded with that message. A block that existed
+          // at request start but is now gone is also treated as an intentional
+          // live deletion and is not resurrected.
+          let blocksChanged = false;
+          const messageMap = new Map(current.messageMap);
+          const blocksMap = new Map(current.blocks);
+          const backendMessageById = new Map(
+            response.messages.map((message) => [message.id, message]),
+          );
+          for (const blk of response.blocks) {
+            if (blocksMap.has(blk.id)) continue;
+            if (!retainedMessageIds.has(blk.messageId)) continue;
+            if (baseline?.blockIds.has(blk.id)) continue;
+            blocksMap.set(blk.id, convertBackendBlock(blk, backendMessageById.get(blk.messageId)));
+            blocksChanged = true;
+          }
+
+          const availableBlockIds = new Set(blocksMap.keys());
+          let messagesChanged = false;
+          for (const msg of response.messages) {
+            const currentMessage = messageMap.get(msg.id);
+            if (!currentMessage) {
+              if (!retainedMessageIds.has(msg.id)) continue;
+              const converted = convertBackendMessage(msg);
+              messageMap.set(msg.id, {
+                ...converted,
+                blockIds: converted.blockIds.filter((id) => availableBlockIds.has(id)),
+                variants: converted.variants?.map((variant) => ({
+                  ...variant,
+                  blockIds: variant.blockIds.filter((id) => availableBlockIds.has(id)),
+                })),
+              });
+              messagesChanged = true;
+              continue;
+            }
+
+            const mergedMessage = mergeExistingMessageReferences(
+              currentMessage,
+              msg,
+              availableBlockIds,
+            );
+            if (mergedMessage !== currentMessage) {
+              messageMap.set(msg.id, mergedMessage);
+              messagesChanged = true;
+            }
+          }
+
+          const retainedBackendMessages = response.messages.filter((msg) => retainedMessageIds.has(msg.id));
+          const messageOrder = mergeHistoryMessageOrder(
+            current.messageOrder,
+            messageMap,
+            retainedBackendMessages,
+          );
+          const orderChanged = !hasSameIdOrder(messageOrder, current.messageOrder);
+          if (
+            !messagesChanged
+            && !blocksChanged
+            && !orderChanged
+          ) {
+            return;
+          }
+
+          set({
+            messageMap,
+            messageOrder,
+            blocks: blocksMap,
+          });
+
+          console.log(
+            '[ChatStore] Merged history from backend:',
+            response.session.id,
+            `+${missingMessages.length} messages`
+          );
+        },
+        restoreFromBackend: (
+          response: LoadSessionResponseType,
+          baseline?: SessionRestoreBaseline,
+        ): void => {
           const { session, messages, blocks, state } = response;
           const t0 = performance.now();
+
+          // 🔧 P1: 递增恢复代际；后续异步链的每次写回前校验代际与会话未变
+          const thisRestoreGeneration = ++restoreGeneration;
+          const isRestoreStale = (): boolean =>
+            restoreGeneration !== thisRestoreGeneration || getState().sessionId !== session.id;
 
           // 1. 按 timestamp 排序消息（确保消息顺序正确）
           const tSortStart = performance.now();
@@ -115,24 +662,9 @@ export function createRestoreActions(
           // 2. 转换块数据（先处理，后面可能需要添加从 sources 恢复的块）
           const tBlockMapStart = performance.now();
           const blocksMap = new Map<string, Block>();
+          const backendMessageById = new Map(messages.map((message) => [message.id, message]));
           for (const blk of blocks) {
-            const block: Block = {
-              id: blk.id,
-              messageId: blk.messageId,
-              type: blk.type as BlockType,
-              status: blk.status as BlockStatus,
-              content: blk.content,
-              toolName: blk.toolName,
-              toolInput: blk.toolInput as Record<string, unknown> | undefined,
-              toolOutput: blk.toolOutput,
-              citations: blk.citations,
-              error: blk.error,
-              startedAt: blk.startedAt,
-              endedAt: blk.endedAt,
-              // 🔧 P3修复：恢复 firstChunkAt 用于排序（保持思维链交替顺序）
-              firstChunkAt: blk.firstChunkAt,
-            };
-            blocksMap.set(blk.id, block);
+            blocksMap.set(blk.id, convertBackendBlock(blk, backendMessageById.get(blk.messageId)));
           }
           const tBlockMapEnd = performance.now();
           sessionSwitchPerf.mark('set_data_end', {
@@ -149,37 +681,7 @@ export function createRestoreActions(
           const messageOrder: string[] = [];
 
           for (const msg of sortedMessages) {
-            const message: Message = {
-              id: msg.id,
-              role: msg.role,
-              blockIds: msg.blockIds, // 直接使用后端返回的 blockIds
-              timestamp: msg.timestamp,
-              persistentStableId: msg.persistentStableId,
-              attachments: msg.attachments,
-              // 🔧 修复：后端 serde(rename = "_meta") 序列化，字段名是 _meta
-              // 🆕 统一用户消息处理：确保 contextSnapshot 被正确恢复
-              _meta: msg._meta
-                ? {
-                    modelId: msg._meta.modelId,
-                    // 🔒 审计修复: 添加 modelDisplayName 恢复（原代码遗漏此字段，
-                    // 导致恢复后消息显示模型 ID 而非用户友好名称）
-                    modelDisplayName: msg._meta.modelDisplayName,
-                    chatParams: msg._meta.chatParams,
-                    usage: msg._meta.usage,
-                    contextSnapshot: msg._meta.contextSnapshot,
-                    skillSnapshotBefore: msg._meta.skillSnapshotBefore,
-                    skillSnapshotAfter: msg._meta.skillSnapshotAfter,
-                    skillRuntimeBefore: msg._meta.skillRuntimeBefore,
-                    skillRuntimeAfter: msg._meta.skillRuntimeAfter,
-                    replaySource: msg._meta.replaySource,
-                  }
-                : undefined,
-              // 🔧 变体字段恢复
-              activeVariantId: msg.activeVariantId,
-              variants: msg.variants,
-              sharedContext: msg.sharedContext,
-            };
-            messageMap.set(msg.id, message);
+            messageMap.set(msg.id, convertBackendMessage(msg));
             messageOrder.push(msg.id);
           }
           const tMsgMapEnd = performance.now();
@@ -196,7 +698,15 @@ export function createRestoreActions(
             ...(state?.chatParams ?? {}),
           };
           const features = new Map(Object.entries(state?.features ?? {}));
-          const panelStates = state?.panelStates ?? createDefaultPanelStates();
+          // 只接收当前已知的面板 key，过滤旧持久化数据中已下线的幽灵面板
+          // （'rag'/'search'/'learn' 等），避免恢复出无渲染路径的 true 状态
+          const persistedPanelStates = (state?.panelStates ?? {}) as Record<string, unknown>;
+          const panelStates = createDefaultPanelStates();
+          COMPOSER_PANEL_KEYS.forEach((panel) => {
+            if (typeof persistedPanelStates[panel] === 'boolean') {
+              panelStates[panel] = persistedPanelStates[panel] as boolean;
+            }
+          });
           const modeState = state?.modeState ?? null;
           const inputValue = state?.inputValue ?? '';
 
@@ -585,6 +1095,106 @@ export function createRestoreActions(
               .map((block) => block.id)
           );
 
+          // Listener registration and initial load deliberately run in
+          // parallel. If a stream (or an edit/delete) advanced the live Store
+          // while the backend snapshot was in flight, merge the snapshot into
+          // that live state instead of replacing it with idle/null and losing
+          // already received chunks.
+          const liveState = getState();
+          const liveStateAdvanced = !!baseline && (
+            liveState.sessionStatus !== baseline.sessionStatus
+            || liveState.currentStreamingMessageId !== baseline.currentStreamingMessageId
+            || hasIdentitySetChanged(liveState.messageMap.keys(), baseline.messageIds)
+            || hasIdentitySetChanged(liveState.blocks.keys(), baseline.blockIds)
+          );
+
+          let finalMessageMap = messageMap;
+          let finalMessageOrder = messageOrder;
+          let finalBlocksMap = blocksMap;
+          let finalSessionStatus: ChatStore['sessionStatus'] = 'idle';
+          let finalCurrentStreamingMessageId: string | null = null;
+          let finalActiveBlockIds = restoredActiveBlockIds;
+          let finalStreamingVariantIds = new Set<string>();
+
+          if (liveStateAdvanced) {
+            finalBlocksMap = new Map(liveState.blocks);
+            const retainedMessageIds = new Set(liveState.messageMap.keys());
+            for (const backendMessage of sortedMessages) {
+              if (
+                liveState.messageMap.has(backendMessage.id)
+                || shouldRestoreMissingMessage(backendMessage, baseline)
+              ) {
+                retainedMessageIds.add(backendMessage.id);
+              }
+            }
+            for (const backendBlock of blocks) {
+              if (finalBlocksMap.has(backendBlock.id)) continue;
+              if (!retainedMessageIds.has(backendBlock.messageId)) continue;
+              if (baseline?.blockIds.has(backendBlock.id)) continue;
+              finalBlocksMap.set(
+                backendBlock.id,
+                convertBackendBlock(
+                  backendBlock,
+                  backendMessageById.get(backendBlock.messageId),
+                ),
+              );
+            }
+
+            const availableBlockIds = new Set(finalBlocksMap.keys());
+            finalMessageMap = new Map(liveState.messageMap);
+            for (const backendMessage of sortedMessages) {
+              const existingMessage = finalMessageMap.get(backendMessage.id);
+              if (existingMessage) {
+                finalMessageMap.set(
+                  backendMessage.id,
+                  mergeExistingMessageReferences(
+                    existingMessage,
+                    backendMessage,
+                    availableBlockIds,
+                  ),
+                );
+              } else if (retainedMessageIds.has(backendMessage.id)) {
+                const converted = convertBackendMessage(backendMessage);
+                finalMessageMap.set(backendMessage.id, {
+                  ...converted,
+                  blockIds: converted.blockIds.filter((id) => availableBlockIds.has(id)),
+                  variants: converted.variants?.map((variant) => ({
+                    ...variant,
+                    blockIds: variant.blockIds.filter((id) => availableBlockIds.has(id)),
+                  })),
+                });
+              }
+            }
+            const retainedBackendMessages = sortedMessages.filter((message) => retainedMessageIds.has(message.id));
+            finalMessageOrder = mergeHistoryMessageOrder(
+              liveState.messageOrder,
+              finalMessageMap,
+              retainedBackendMessages,
+            );
+            finalSessionStatus = liveState.sessionStatus;
+            finalCurrentStreamingMessageId = liveState.currentStreamingMessageId;
+            finalActiveBlockIds = new Set([
+              ...restoredActiveBlockIds,
+              ...liveState.activeBlockIds,
+            ]);
+            finalStreamingVariantIds = new Set(liveState.streamingVariantIds);
+          }
+
+          // 🔧 P1 内存泄漏修复：恢复会话会直接置空 attachments，先释放 blob: 预览 URL
+          revokeAttachmentBlobUrls(getState().attachments);
+          const shouldResetTransientRuntimes =
+            session.id !== liveState.sessionId
+            || (!liveStateAdvanced && !liveState.pendingBlockingInteraction);
+          if (shouldResetTransientRuntimes) {
+            resetTransientRuntimes(getState().setPendingApproval);
+          }
+
+          // liveState 已前进（例如发送后清空了输入框）时保留当前 composer，
+          // 避免后端快照里尚未刷掉的旧草稿把已发送正文写回输入框。
+          const resolvedInputValue = liveStateAdvanced
+            ? liveState.inputValue
+            : inputValue;
+
           set({
             sessionId: session.id,
             mode: session.mode,
@@ -592,18 +1202,34 @@ export function createRestoreActions(
             description: '', // 文档 28 改造：description 由后端事件更新，恢复时初始化为空
             groupId: session.groupId ?? null,
             sessionMetadata: session.metadata ?? null,
-            sessionStatus: 'idle',
+            authorityMode: (() => {
+              const meta = session.metadata as Record<string, unknown> | null | undefined;
+              const raw = meta?.authorityMode ?? meta?.authority_mode;
+              return raw === 'ask' || raw === 'plan' || raw === 'craft' ? raw : 'craft';
+            })(),
+            permissionPreset: (() => {
+              const meta = session.metadata as Record<string, unknown> | null | undefined;
+              const raw = meta?.permissionPreset ?? meta?.permission_preset;
+              return raw === 'cautious'
+                || raw === 'relaxed'
+                || raw === 'full_access'
+                || raw === 'danger_full_access'
+                ? raw
+                : 'relaxed';
+            })(),
+            authorityAskBlockedHint: false,
+            sessionStatus: finalSessionStatus,
             isDataLoaded: true,
-            messageMap,
-            messageOrder,
-            blocks: blocksMap,
-            currentStreamingMessageId: null,
-            activeBlockIds: restoredActiveBlockIds,
-            streamingVariantIds: new Set(),
+            messageMap: finalMessageMap,
+            messageOrder: finalMessageOrder,
+            blocks: finalBlocksMap,
+            currentStreamingMessageId: finalCurrentStreamingMessageId,
+            activeBlockIds: finalActiveBlockIds,
+            streamingVariantIds: finalStreamingVariantIds,
             chatParams,
             features,
             modeState,
-            inputValue,
+            inputValue: resolvedInputValue,
             attachments: [],
             panelStates,
             pendingContextRefs,
@@ -611,6 +1237,12 @@ export function createRestoreActions(
             // 从安全解析的结果恢复（支持多选）
             activeSkillIds: restoredActiveSkillIds,
             skillStateJson: state?.skillStateJson ?? null,
+            ...(shouldResetTransientRuntimes
+              ? {
+                  pendingBlockingInteraction: null,
+                  pendingApprovalRequest: null,
+                }
+              : {}),
           });
 
           // 📊 细粒度打点：set 结束
@@ -631,6 +1263,12 @@ export function createRestoreActions(
           // 合并原有的三条竞态路径为单一 queueMicrotask
           queueMicrotask(async () => {
             try {
+              // 🔧 P1: 恢复链入口守卫——会话已切换或新一轮 restore 已开始时整体放弃
+              if (isRestoreStale()) {
+                console.log('[ChatStore] Skip unified restore chain: session/generation changed');
+                return;
+              }
+
               // === Step 0: 注入分组关联来源（pinned resources） ===
               const currentGroupId = getState().groupId;
               if (currentGroupId) {
@@ -643,10 +1281,12 @@ export function createRestoreActions(
                     const { resourceStoreApi } = await import('../../resources');
                     const refsResult = await getResourceRefsV2(pinnedIds);
                     if (refsResult.ok && refsResult.value.refs.length > 0) {
-                      const currentRefs = getState().pendingContextRefs;
-                      const newRefs = [...currentRefs];
-                      // Build a set of existing resourceIds for fast dedup
-                      const existingResourceIds = new Set(currentRefs.map((r) => r.resourceId));
+                      // 🔧 P1: 只收集"待新增"的 pinned refs，写回时基于最新 state 做增量合并，
+                      // 避免逐个 await 期间用户新增的引用被快照整体覆盖丢弃
+                      const pinnedRefsToAdd: import('../../context/types').ContextRef[] = [];
+                      const seenResourceIds = new Set(
+                        getState().pendingContextRefs.map((r) => r.resourceId)
+                      );
                       for (const vfsRef of refsResult.value.refs) {
                         try {
                           const resourceResult = await resourceStoreApi.createOrReuse({
@@ -656,30 +1296,45 @@ export function createRestoreActions(
                             metadata: { name: vfsRef.name, title: vfsRef.name },
                           });
                           // Skip if same resourceId already in refs (exact content match via hash)
-                          if (existingResourceIds.has(resourceResult.resourceId)) continue;
-                          existingResourceIds.add(resourceResult.resourceId);
+                          if (seenResourceIds.has(resourceResult.resourceId)) continue;
+                          seenResourceIds.add(resourceResult.resourceId);
 
-                          const contextRef: import('../../context/types').ContextRef = {
+                          pinnedRefsToAdd.push({
                             resourceId: resourceResult.resourceId,
                             hash: resourceResult.hash,
                             typeId: vfsRef.type,
                             isSticky: true,
                             displayName: vfsRef.name,
-                          };
-                          newRefs.push(contextRef);
+                          });
                         } catch (refErr) {
                           console.warn('[ChatStore] Failed to create pinned resource ref:', vfsRef.sourceId, refErr);
                         }
                       }
-                      if (newRefs.length > currentRefs.length) {
-                        set({ pendingContextRefs: newRefs, pendingContextRefsDirty: false });
-                        console.log('[ChatStore] Injected group pinned resources:', newRefs.length - currentRefs.length);
+                      if (pinnedRefsToAdd.length > 0 && !isRestoreStale()) {
+                        // 基于写回时刻的最新 refs 增量合并；不复位 pendingContextRefsDirty，
+                        // 避免破坏 editAndResend 三态语义（用户在恢复窗口内的编辑保持 dirty）
+                        const latestRefs = getState().pendingContextRefs;
+                        const latestIds = new Set(latestRefs.map((r) => r.resourceId));
+                        const mergedRefs = [
+                          ...latestRefs,
+                          ...pinnedRefsToAdd.filter((r) => !latestIds.has(r.resourceId)),
+                        ];
+                        if (mergedRefs.length > latestRefs.length) {
+                          set({ pendingContextRefs: mergedRefs });
+                          console.log('[ChatStore] Injected group pinned resources:', mergedRefs.length - latestRefs.length);
+                        }
                       }
                     }
                   }
                 } catch (groupErr) {
                   console.warn('[ChatStore] Failed to inject group pinned resources:', groupErr);
                 }
+              }
+
+              // 🔧 P1: Step 0 可能耗时较长，进入后续步骤前再次校验
+              if (isRestoreStale()) {
+                console.log('[ChatStore] Abort unified restore chain after Step 0: session/generation changed');
+                return;
               }
 
               // === Step 1: 兼容恢复 — 如果 activeSkillIdsJson 为空但存在 legacy skill refs，从 refs 推断 ===
@@ -701,7 +1356,7 @@ export function createRestoreActions(
                     // 否则从资源元数据推断
                     try {
                       const resource = await resourceStoreApi.get(skillRef.resourceId);
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
                       const skillId = (resource?.metadata as any)?.skillId as string | undefined;
                       if (skillId && !inferredIds.includes(skillId)) {
                         inferredIds.push(skillId);
@@ -710,7 +1365,7 @@ export function createRestoreActions(
                       console.warn('[ChatStore] Failed to infer skill from ref:', e);
                     }
                   }
-                  if (inferredIds.length > 0) {
+                  if (inferredIds.length > 0 && !isRestoreStale()) {
                     set({ activeSkillIds: inferredIds } as Partial<ChatStoreState>);
                     console.log('[ChatStore] Inferred activeSkillIds from orphan refs:', inferredIds);
                   }
@@ -722,42 +1377,47 @@ export function createRestoreActions(
               const currentRefsForValidation = getState().pendingContextRefs;
               if (currentRefsForValidation.length > 0) {
                 const { resourceStoreApi } = await import('../../resources');
-                const validRefs: import('../../context/types').ContextRef[] = [];
                 const invalidRefs: string[] = [];
 
                 for (const ref of currentRefsForValidation) {
                   try {
                     const exists = await resourceStoreApi.exists(ref.resourceId);
-                    if (exists) {
-                      validRefs.push(ref);
-                    } else {
+                    if (!exists) {
                       invalidRefs.push(ref.resourceId);
                     }
                   } catch {
                     // 验证失败时保留引用（宁可多保留，避免丢失用户数据）
-                    validRefs.push(ref);
                   }
                 }
 
-                if (invalidRefs.length > 0) {
-                  console.warn('[ChatStore] Removing invalid refs:', invalidRefs.length);
-                  set({ pendingContextRefs: validRefs, pendingContextRefsDirty: false });
-                  showGlobalNotification('warning', i18n.t('chatV2:chat.context_invalid_removed', { count: invalidRefs.length }));
+                if (invalidRefs.length > 0 && !isRestoreStale()) {
+                  // 🔧 P1: 写回时基于最新 state 只剔除已确认无效的引用，
+                  // 保留验证窗口期内用户新增的引用；不强制复位 dirty
+                  const invalidIdSet = new Set(invalidRefs);
+                  const latestRefs = getState().pendingContextRefs;
+                  const filteredRefs = latestRefs.filter((ref) => !invalidIdSet.has(ref.resourceId));
+                  if (filteredRefs.length !== latestRefs.length) {
+                    console.warn('[ChatStore] Removing invalid refs:', latestRefs.length - filteredRefs.length);
+                    set({ pendingContextRefs: filteredRefs });
+                    showGlobalNotification('warning', i18n.t('chatV2:chat.context_invalid_removed', { count: latestRefs.length - filteredRefs.length }));
+                  }
                 }
               }
 
               // 🔧 修复：会话恢复完成后修复 skill 状态一致性
               // repairSkillState 从 hasActiveSkill getter 中提取，避免 getter 副作用
-              getState().repairSkillState();
+              if (!isRestoreStale()) {
+                getState().repairSkillState();
+              }
             } catch (e) {
               console.error('[ChatStore] Failed during unified session restore:', e);
             }
           });
 
           // 🔧 Canvas 笔记引用恢复：始终发射事件以确保会话切换时状态正确同步
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           const canvasNoteId = (modeState as any)?.canvasNoteId as string | undefined;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           const canvasNoteHistory = (modeState as any)?.canvasNoteHistory as string[] | undefined;
           
           // 始终发射事件，即使没有 Canvas 状态（用于清理上一个会话的状态）
@@ -777,6 +1437,9 @@ export function createRestoreActions(
           if (restoredLoadedSkillIds.length > 0) {
             queueMicrotask(async () => {
               try {
+                // 🔧 P1: 会话/代际守卫（syncLoadedSkillsFromBackend 按 session.id 隔离，
+                // 此守卫避免为已切走的会话做无谓的等待与重试订阅）
+                if (isRestoreStale()) return;
                 // 等待 skillRegistry 初始化完成（带超时保护）
                 const { skillRegistry } = await import('../../skills/registry');
                 if (!skillRegistry.isInitialized()) {

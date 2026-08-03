@@ -14,7 +14,7 @@ import {
   UnifiedSidebarFooter,
   useUnifiedSidebar,
 } from '@/components/ui/unified-sidebar';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Lightning, Globe, FolderOpen, Package, Pencil, Trash, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
@@ -160,7 +160,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
             }
 
             return (
-              <NotionButton
+              <DsButton
                 key={tab.id}
                 variant="ghost" size="sm"
                 onClick={() => setLocationFilter(tab.id)}
@@ -179,7 +179,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                 )}>
                   {count}
                 </span>
-              </NotionButton>
+              </DsButton>
             );
           })}
         </div>
@@ -191,14 +191,14 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
         isEmpty={filteredSkills.length === 0}
         emptyIcon={Lightning}
         emptyTitle={searchQuery
-          ? t('skills:selector.noResults', '未找到匹配的技能')
-          : t('skills:selector.empty', '暂无可用技能')
+          ? t('skills:selector.noResults')
+          : t('skills:selector.empty')
         }
         emptyDescription={!searchQuery
-          ? t('skills:selector.emptyHint', '点击"新建"按钮创建第一个技能')
+          ? t('skills:selector.emptyHint')
           : undefined
         }
-        emptyActionText={!searchQuery ? t('skills:management.create', '新建技能') : undefined}
+        emptyActionText={!searchQuery ? t('skills:management.create') : undefined}
         onEmptyAction={onCreateSkill}
       >
         {filteredSkills.map(skill => {
@@ -289,10 +289,10 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
 
   // 位置过滤标签
   const locationTabs = useMemo(() => [
-    { id: 'all' as LocationFilter, label: t('skills:location.all', '全部'), icon: <Lightning size={12} /> },
-    { id: 'global' as LocationFilter, label: t('skills:location.global', '全局'), icon: <Globe size={12} /> },
-    { id: 'project' as LocationFilter, label: t('skills:location.project', '项目'), icon: <FolderOpen size={12} /> },
-    { id: 'builtin' as LocationFilter, label: t('skills:location.builtin', '内置'), icon: <Package size={12} /> },
+    { id: 'all' as LocationFilter, label: t('skills:location.all'), icon: <Lightning size={12} /> },
+    { id: 'global' as LocationFilter, label: t('skills:location.global'), icon: <Globe size={12} /> },
+    { id: 'project' as LocationFilter, label: t('skills:location.project'), icon: <FolderOpen size={12} /> },
+    { id: 'builtin' as LocationFilter, label: t('skills:location.builtin'), icon: <Package size={12} /> },
   ], [t]);
 
   // 位置统计
@@ -330,12 +330,12 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
       onClose={onClose}
     >
       <UnifiedSidebarHeader
-        title={t('skills:management.title', '技能管理')}
+        title={t('skills:management.title')}
         icon={Lightning}
         showSearch
-        searchPlaceholder={t('skills:selector.searchPlaceholder', '搜索技能...')}
+        searchPlaceholder={t('skills:selector.searchPlaceholder')}
         showCreate
-        createTitle={t('skills:management.create', '新建技能')}
+        createTitle={t('skills:management.create')}
         onCreateClick={onCreateSkill}
         showCollapse
         showRefresh={!!onRefresh}
@@ -362,15 +362,15 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
       <UnifiedSidebarFooter>
         <div className="grid grid-cols-3 gap-2 text-[11px]">
           <div className="flex flex-col">
-            <span className="text-muted-foreground">{t('skills:location.global', '全局')}</span>
+            <span className="text-muted-foreground">{t('skills:location.global')}</span>
             <span className="font-semibold">{skillSummary?.global ?? locationCounts.global}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-muted-foreground">{t('skills:location.project', '项目')}</span>
+            <span className="text-muted-foreground">{t('skills:location.project')}</span>
             <span className="font-semibold">{skillSummary?.project ?? locationCounts.project}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-muted-foreground">{t('skills:management.default_enabled', '默认')}</span>
+            <span className="text-muted-foreground">{t('skills:management.default_enabled')}</span>
             <span className="font-semibold text-primary">{defaultSkillIds.length}</span>
           </div>
         </div>

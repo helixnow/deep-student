@@ -8,6 +8,10 @@ import type { Block, BlockStatus, BlockType } from '../core/types/block';
 import type { AttachmentMeta, MessageMeta, SourceInfo } from '../core/types/message';
 import type { ChatParams, PanelStates, TokenUsage } from '../core/types/common';
 import type { SendContextRef, ContentBlock } from '../resources/types';
+import {
+  isWorkbenchToolName,
+  remapWorkbenchBlockType,
+} from '@/features/chat/utils/workbenchBlockRemap';
 
 // ============================================================================
 // 发送选项 - 与后端 SendOptions 对齐
@@ -39,6 +43,11 @@ export interface SendOptions {
   groupName?: string;
   /** 当前课题绑定的资源 ID（DSTU sourceId 或 VFS resourceId） */
   groupPinnedResourceIds?: string[];
+  /**
+   * 课题首选 runtime root id（workspace / authorized_*）。
+   * 后端以 DB 课题字段为准；前端透传仅作可观测/兜底辅助，不可信任覆盖未校验 id。
+   */
+  groupDefaultRuntimeRootId?: string | null;
 
   // RAG 选项
   ragEnabled?: boolean;
@@ -53,9 +62,9 @@ export interface SendOptions {
   multimodalRagEnabled?: boolean;
   /** 多模态检索数量（Top-K），默认 10 */
   multimodalTopK?: number;
-  /** 多模态检索启用精排 */
+  /** 多模态检索启用精排（UI 入口：RagPanel 多模态区；未显式设置时跟随 ragEnableReranking） */
   multimodalEnableReranking?: boolean;
-  /** 多模态检索知识库 ID 过滤 */
+  /** 多模态检索知识库 ID 过滤（暂无前端选择入口，预留给库级过滤 UI） */
   multimodalLibraryIds?: string[];
 
   // 工具选项
@@ -128,9 +137,6 @@ export interface SendOptions {
   /** 当前会话激活的 Skill IDs */
   activeSkillIds?: string[];
 
-  /** 当前启用 Skills 声明允许使用的工具 ID */
-  skillAllowedTools?: string[];
-
   /** Skill 内容（SKILL.md 内容） */
   skillContents?: Record<string, string>;
   /** Historical skill contents for replay/regenerate */
@@ -144,8 +150,10 @@ export interface SendOptions {
     description?: string;
     inputSchema?: unknown;
   }>>;
-  /** 关闭工具白名单检查 */
-  disableToolWhitelist?: boolean;
+  /** Runtime admission failures keyed by skill id (content/schema free). */
+  skillAdmissionErrors?: Record<string, string>;
+  /** Skill package roots exposed to local runtime as read-only skill:<id> roots */
+  skillPackageRoots?: Record<string, string>;
   /** 图片压缩质量策略 */
   visionQuality?: string;
 }
@@ -258,7 +266,9 @@ export type SessionEventType =
   | 'save_complete'
   | 'save_error'
   | 'summary_updated'
-  | 'variant_deleted';
+  | 'variant_deleted'
+  | 'compaction_failed'
+  | 'context_trimmed';
 
 /**
  * 会话级事件 Payload
@@ -273,6 +283,9 @@ export interface SessionEventPayload {
 
   /** 关联的消息 ID */
   messageId?: string;
+
+  /** 后端为每次会话流注册分配的单调递增代次。 */
+  streamGeneration?: number;
 
   /** 模型标识符（stream_start 事件携带，用于前端显示） */
   modelId?: string;
@@ -318,6 +331,13 @@ export interface SessionEventPayload {
 
   /** 新的激活变体 ID（variant_deleted 事件携带） */
   newActiveVariantId?: string;
+
+  /**
+   * 事件附加数据（camelCase 序列化）：
+   * - compaction_failed: `{ reason: string }`
+   * - context_trimmed: `{ droppedMessages: number, estimatedDroppedTokens?: number }`
+   */
+  payload?: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -472,6 +492,35 @@ export interface RetryMessageResult {
 }
 
 // ============================================================================
+// 会话分支结果 - 与后端 chat_v2_branch_session 返回的 ChatSession 对齐
+// ============================================================================
+
+/**
+ * 会话分支操作的返回结果（后端 ChatSession 的前端只读投影）
+ *
+ * 由 TauriAdapter.branchSession / store.branchSession 返回，
+ * UI 拿到 newSessionId 后自行导航到新会话。
+ */
+export interface BranchSessionResult {
+  /** 新分支会话 ID（sess_xxx） */
+  id: string;
+  /** 会话模式 */
+  mode: string;
+  /** 会话标题（后端通常复制源会话标题） */
+  title?: string;
+  /** 会话简介 */
+  description?: string;
+  /** 分组 ID */
+  groupId?: string;
+  /** 创建时间（ISO 8601） */
+  createdAt?: string;
+  /** 更新时间（ISO 8601） */
+  updatedAt?: string;
+  /** 扩展元数据 */
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================================================
 // 创建会话请求
 // ============================================================================
 
@@ -490,12 +539,17 @@ export interface CreateSessionRequest {
 
 /**
  * 将 BackendBlock 转换为前端 Block 类型
+ *
+ * ACR R2-05：恢复路径与 restoreActions 一致——workbench_* 纠正为 workbench_ops，
+ * 并用 block.id 回填 toolCallId（桥 runId 现为 block_id；账本不跨重启）。
  */
 export function convertBackendBlock(b: BackendBlock): Block {
+  const type = remapWorkbenchBlockType(b.type, b.toolName) as BlockType;
+  const isWorkbench = type === 'workbench_ops' || isWorkbenchToolName(b.toolName);
   return {
     id: b.id,
     messageId: b.messageId,
-    type: b.type as BlockType,
+    type,
     status: b.status as BlockStatus,
     content: b.content,
     toolName: b.toolName,
@@ -506,5 +560,6 @@ export function convertBackendBlock(b: BackendBlock): Block {
     startedAt: b.startedAt,
     endedAt: b.endedAt,
     firstChunkAt: b.firstChunkAt,
+    ...(isWorkbench ? { toolCallId: b.id } : {}),
   };
 }

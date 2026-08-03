@@ -1,25 +1,31 @@
 import React, { useMemo, useEffect, useCallback, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ImageBroken } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import katex, { KatexOptions } from 'katex';
-import 'katex/contrib/mhchem';
-import { renderToStaticMarkup } from 'react-dom/server';
+// ★ 加载性能：katex 改为懒加载（lazyKatex），不再静态导入进 chat chunk；
+// KatexOptions 仅作类型使用，type-only import 不引入运行时代码
+import type { KatexOptions } from 'katex';
+import { getLoadedKatex, ensureKatexLoaded, scheduleKatexIdlePrefetch } from './lazyKatex';
 import { CodeBlock } from './CodeBlock';
 import { TableBlockShell } from '../ui/TableBlockShell';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { sanitizeDanglingMarkdown } from './sanitizeDanglingMarkdown';
 import { openUrl } from '@/utils/urlOpener';
-import { makeCitationRemarkPlugin, CITATION_PLACEHOLDER_STYLES } from '../../utils/citationRemarkPlugin';
-import { CitationBadge } from '../../plugins/blocks/components/CitationPopover';
+import { makeCitationRemarkPlugin, ensureCitationPlaceholderStyles } from '../../utils/citationRemarkPlugin';
+import { CitationBadgeWithPopover } from '../../plugins/blocks/components/CitationPopover';
 import { MindmapCitationCard } from '../MindmapCitationCard';
 import { QbankCitationBadge } from '../QbankCitationBadge';
 
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { getPdfPageImageDataUrl } from '@/api/vfsRagApi';
+import { useMessageSearchContext } from '../messageSearchContext';
+import { rehypeSearchHighlights } from './rehypeSearchHighlights';
 
 // 🔧 P18 优化：PDF 页面图片缓存（避免重复请求）
 const pdfPageImageCache = new Map<string, string>();
@@ -87,7 +93,16 @@ const markdownSanitizeSchema = {
       'className',
       'class',
     ],
+    // 不确定性高亮（rendererUtils.makeUncertaintyHighlightPlugin）产出的 <mark>：
+    // 只放行受控 class 与 title（tooltip），不放行任意 style
+    mark: [
+      ['className', 'uncertainty-mark'],
+      ['className', 'chat-search-match'],
+      'dataChatSearchMatch',
+    ],
   },
+  // defaultSchema 不含 mark，缺了它整个高亮节点会被消毒器拆掉
+  tagNames: [...(defaultSchema.tagNames || []), 'mark'],
 };
 
 function getCachedPdfPageImage(resourceId: string, pageIndex: number): string | undefined {
@@ -220,6 +235,46 @@ const AsyncCitationImage: React.FC<{
   );
 };
 
+/**
+ * 正文图片：加载失败时显示内联 broken 占位（图标 + alt/提示文案），
+ * 替代原先的 display:none 静默消失——读者能感知"这里本应有图"。
+ */
+const MarkdownImage: React.FC<{
+  src?: string;
+  alt?: string;
+  [key: string]: unknown;
+}> = ({ src, alt, ...props }) => {
+  const { t } = useTranslation('chatV2');
+  const [failed, setFailed] = useState(false);
+
+  // src 变化（如流式补全 URL）时重置失败态，给新地址一次加载机会
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (failed || !src) {
+    return (
+      <span className="markdown-img-fallback" role="img" aria-label={alt || t('renderer.imageLoadFailed')}>
+        <ImageBroken size={14} aria-hidden="true" />
+        <span>{alt || t('renderer.imageLoadFailed')}</span>
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt || 'image'}
+      style={{ maxWidth: '100%', height: 'auto', borderRadius: '8px' }}
+      onError={() => {
+        console.warn('[MarkdownRenderer] Image load failed:', src);
+        setFailed(true);
+      }}
+      {...props}
+    />
+  );
+};
+
 // 东亚文字检测：连续 2+ 个 CJK 表意文字 / 日文假名 / 韩文时视为自然语言而非数学
 const CJK_CONSECUTIVE_RE = /[\u3040-\u9fff\uac00-\ud7af]{2,}/;
 const CJK_CHAR_CLASS = '\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af';
@@ -253,10 +308,16 @@ const fixCjkAdjacentBoldSyntaxSafely = (content: string): string => {
 };
 
 // 预处理函数：处理LaTeX和空行
+//
+// ★ 性能：本函数在流式期间对活跃块每次 flush（32ms）重跑一次。
+// 每个正则 pass 都是对全文的一次扫描；下方为各 pass 增加了 O(n) 的
+// includes() 触发探测——绝大多数内容不含对应语法（\( / $ / bmatrix / 反引号），
+// 单次廉价扫描即可跳过整个「扫描 + 回调 + 重建字符串」流程。
 const preprocessContent = (content: string, isStreaming = false): string => {
   if (!content) return '';
 
-  let processedContent = content;
+  // 行尾统一为 \n，确保后续按行的正则在 CRLF 输入下行为一致
+  let processedContent = content.includes('\r') ? content.replace(/\r\n/g, '\n') : content;
 
   // 流式期间自动闭合未配对的 markdown 标记（**bold / [link / `` ` `` 等）
   // 仅处理 markdown 半边，不动数学（$...$ / \begin{}），后者由 remark-math 优雅降级
@@ -270,64 +331,83 @@ const preprocessContent = (content: string, isStreaming = false): string => {
   // 需要预先转换为 $...$ / $$...$$ 以确保 KaTeX 正确渲染。
   // 跳过代码块内部的内容以避免误转换。
   const codeBlockPlaceholders: string[] = [];
-  processedContent = processedContent.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
-    codeBlockPlaceholders.push(match);
-    return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
-  });
-  processedContent = fixCjkAdjacentBoldSyntaxSafely(processedContent);
-  processedContent = processedContent.replace(
-    /(?<!\\)\\\((.+?)(?<!\\)\\\)/g,
-    (match, math) => {
-      if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
-      return `$${math}$`;
-    },
-  );
-  processedContent = processedContent.replace(
-    /(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g,
-    (match, math) => {
-      if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
-      return `$$${math}$$`;
-    },
-  );
+  if (processedContent.includes('`')) {
+    processedContent = processedContent.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
+      codeBlockPlaceholders.push(match);
+      return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
+    });
+  }
+  // CJK 紧邻加粗修复：仅在存在加粗语法时逐行处理
+  if (processedContent.includes('**') || processedContent.includes('__')) {
+    processedContent = fixCjkAdjacentBoldSyntaxSafely(processedContent);
+  }
+  const hasBackslash = processedContent.includes('\\');
+  if (hasBackslash && processedContent.includes('\\(')) {
+    processedContent = processedContent.replace(
+      /(?<!\\)\\\((.+?)(?<!\\)\\\)/g,
+      (match, math) => {
+        if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
+        return `$${math}$`;
+      },
+    );
+  }
+  if (hasBackslash && processedContent.includes('\\[')) {
+    processedContent = processedContent.replace(
+      /(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g,
+      (match, math) => {
+        if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
+        return `$$${math}$$`;
+      },
+    );
+  }
 
-  // 保护已有的 $$...$$ 和 $...$ 数学块，避免兜底正则误改块内圆括号
+  // 裸 LaTeX 圆括号兜底仅在内容可能含数学（\ 命令或 _{ ^{ 上下标）时才需要
+  const mayContainBareLatex =
+    processedContent.includes('\\') || /[_^]\{/.test(processedContent);
   const mathBlockPlaceholders: string[] = [];
-  processedContent = processedContent.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g, (match) => {
-    mathBlockPlaceholders.push(match);
-    return `\x00MB${mathBlockPlaceholders.length - 1}\x00`;
-  });
+  if (mayContainBareLatex) {
+    // 保护已有的 $$...$$ 和 $...$ 数学块，避免兜底正则误改块内圆括号
+    if (processedContent.includes('$')) {
+      processedContent = processedContent.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g, (match) => {
+        mathBlockPlaceholders.push(match);
+        return `\x00MB${mathBlockPlaceholders.length - 1}\x00`;
+      });
+    }
 
-  // 兜底：检测普通圆括号包裹的裸 LaTeX 公式，如 (\lambda = \frac{h}{p})，
-  // 转换为 $\lambda = \frac{h}{p}$。仅在内容含已知数学命令或上下标时触发。
-  const BARE_LATEX_MATH_RE = /\\(?:frac|sqrt|sum|int|prod|lim|lambda|gamma|alpha|beta|theta|pi|sigma|omega|delta|epsilon|varepsilon|mu|nu|rho|tau|phi|varphi|psi|chi|eta|zeta|kappa|xi|infty|partial|nabla|cdot|times|approx|equiv|vec|hat|bar|tilde|overline|mathrm|mathbb|text|Gamma|Delta|Theta|Lambda|Sigma|Phi|Psi|Omega|hbar|ell|[lg]eq?|neq?|pm|mp|div|sim|propto|binom)\b/;
-  processedContent = processedContent.replace(
-    /(?<!\$)\(([^)]{1,300})\)(?!\$)/g,
-    (match, inner: string) => {
-      if (!BARE_LATEX_MATH_RE.test(inner) && !/[_^]\{/.test(inner)) return match;
-      if (CJK_CONSECUTIVE_RE.test(inner)) return match;
-      return `$${inner}$`;
-    },
-  );
+    // 兜底：检测普通圆括号包裹的裸 LaTeX 公式，如 (\lambda = \frac{h}{p})，
+    // 转换为 $\lambda = \frac{h}{p}$。仅在内容含已知数学命令或上下标时触发。
+    const BARE_LATEX_MATH_RE = /\\(?:frac|sqrt|sum|int|prod|lim|lambda|gamma|alpha|beta|theta|pi|sigma|omega|delta|epsilon|varepsilon|mu|nu|rho|tau|phi|varphi|psi|chi|eta|zeta|kappa|xi|infty|partial|nabla|cdot|times|approx|equiv|vec|hat|bar|tilde|overline|mathrm|mathbb|text|Gamma|Delta|Theta|Lambda|Sigma|Phi|Psi|Omega|hbar|ell|[lg]eq?|neq?|pm|mp|div|sim|propto|binom)\b/;
+    processedContent = processedContent.replace(
+      /(?<!\$)\(([^)]{1,300})\)(?!\$)/g,
+      (match, inner: string) => {
+        if (!BARE_LATEX_MATH_RE.test(inner) && !/[_^]\{/.test(inner)) return match;
+        if (CJK_CONSECUTIVE_RE.test(inner)) return match;
+        return `$${inner}$`;
+      },
+    );
 
-  // 还原数学块占位符
-  processedContent = processedContent.replace(/\x00MB(\d+)\x00/g, (_m, idx) => mathBlockPlaceholders[Number(idx)]);
-
-  processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
+    // 还原数学块占位符（占位符有意使用 NUL 字节避免与正文冲突）
+    if (mathBlockPlaceholders.length > 0) {
+      // eslint-disable-next-line no-control-regex
+      processedContent = processedContent.replace(/\x00MB(\d+)\x00/g, (_m, idx) => mathBlockPlaceholders[Number(idx)]);
+    }
+  }
 
   // 专门处理 bmatrix 环境
-  processedContent = processedContent.replace(/\\begin{bmatrix}(.*?)\\end{bmatrix}/gs, (match, matrixContent) => {
-    // 移除每行末尾 \\ 之前和之后的空格
-    let cleanedMatrix = matrixContent.replace(/\s*\\\\\s*/g, ' \\\\ ');
-    // 移除 & 周围的空格
-    cleanedMatrix = cleanedMatrix.replace(/\s*&\s*/g, '&');
-    // 移除行首和行尾的空格
-    cleanedMatrix = cleanedMatrix.split(' \\\\ ').map((row: string) => row.trim()).join(' \\\\ ');
-    return `\\begin{bmatrix}${cleanedMatrix}\\end{bmatrix}`;
-  });
+  if (processedContent.includes('\\begin{bmatrix}')) {
+    processedContent = processedContent.replace(/\\begin{bmatrix}(.*?)\\end{bmatrix}/gs, (match, matrixContent) => {
+      // 移除每行末尾 \\ 之前和之后的空格
+      let cleanedMatrix = matrixContent.replace(/\s*\\\\\s*/g, ' \\\\ ');
+      // 移除 & 周围的空格
+      cleanedMatrix = cleanedMatrix.replace(/\s*&\s*/g, '&');
+      // 移除行首和行尾的空格
+      cleanedMatrix = cleanedMatrix.split(' \\\\ ').map((row: string) => row.trim()).join(' \\\\ ');
+      return `\\begin{bmatrix}${cleanedMatrix}\\end{bmatrix}`;
+    });
+  }
 
   // 处理空行：将多个连续的空行减少为最多一个空行
   processedContent = processedContent
-    .replace(/\r\n/g, '\n')
     .replace(/[ \t]+$/gm, '')
     .replace(/^\s*\d+\.\s*$/gm, '')
     .replace(/(\d+\.\s*[^\n]*\n)\n+(?=\d+\.)/g, '$1\n')
@@ -337,10 +417,19 @@ const preprocessContent = (content: string, isStreaming = false): string => {
     .replace(/^\n+/, '')
     .replace(/\n+$/, '');
 
+  // 代码块最后还原：确保上方的空行折叠 / 列表修补 / bmatrix 清理
+  // 不会改写代码块内部内容（否则复制按钮拿到的代码与原文不一致）
+  if (codeBlockPlaceholders.length > 0) {
+    // eslint-disable-next-line no-control-regex
+    processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
+  }
+
   // 若存在未闭合的 ```，自动补一个结尾
-  const fenceCount = (processedContent.match(/```/g) || []).length;
-  if (fenceCount % 2 === 1) {
-    processedContent += '\n```';
+  if (processedContent.includes('```')) {
+    const fenceCount = (processedContent.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) {
+      processedContent += '\n```';
+    }
   }
 
   return processedContent;
@@ -371,6 +460,88 @@ function setCachedKatex(latex: string, displayMode: boolean, html: string): void
   }
   katexHtmlCache.set(`${displayMode ? 'b' : 'i'}|${latex}`, html);
 }
+
+/**
+ * LazyMath：katex 懒加载下的数学节点渲染。
+ * - 缓存命中：直接输出 HTML（0 成本，不依赖 katex 模块）
+ * - katex 已加载：同步渲染并写缓存
+ * - katex 未加载：先渲染原文降级（与流式期间未闭合公式的表现一致），
+ *   触发加载并在完成后重渲染接管
+ */
+const MathScrollShell: React.FC<{ displayMode: boolean; children: React.ReactNode }> = ({
+  displayMode,
+  children,
+}) => displayMode ? (
+  <ScrollArea orientation="horizontal" className="math-scroll-area">
+    {children}
+  </ScrollArea>
+) : (
+  <>{children}</>
+);
+
+const LazyMath: React.FC<{
+  latex: string;
+  displayMode: boolean;
+  options: KatexOptions;
+}> = ({ latex, displayMode, options }) => {
+  const cached = getCachedKatex(latex, displayMode);
+  const katex = getLoadedKatex();
+  const [, forceRender] = useState(0);
+
+  const needsLoad = cached === undefined && !katex;
+  useEffect(() => {
+    if (!needsLoad) return;
+    let cancelled = false;
+    ensureKatexLoaded()
+      .then(() => {
+        if (!cancelled) forceRender((n) => n + 1);
+      })
+      .catch((error) => {
+        console.error('[MarkdownRenderer] KaTeX lazy load failed:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsLoad]);
+
+  if (cached !== undefined) {
+    return (
+      <MathScrollShell displayMode={displayMode}>
+        <span dangerouslySetInnerHTML={{ __html: cached }} />
+      </MathScrollShell>
+    );
+  }
+
+  if (!katex) {
+    // 加载中降级：显示原文（KaTeX 到位后自动补渲）
+    return (
+      <MathScrollShell displayMode={displayMode}>
+        <span className="katex-loading" style={{ display: displayMode ? 'block' : 'inline' }}>
+          {latex}
+        </span>
+      </MathScrollShell>
+    );
+  }
+
+  try {
+    const html = katex.renderToString(latex, { ...options, displayMode });
+    setCachedKatex(latex, displayMode, html);
+    return (
+      <MathScrollShell displayMode={displayMode}>
+        <span dangerouslySetInnerHTML={{ __html: html }} />
+      </MathScrollShell>
+    );
+  } catch (error: unknown) {
+    console.error('[MarkdownRenderer] KaTeX render failed:', error, 'latex=', latex);
+    return (
+      <MathScrollShell displayMode={displayMode}>
+        <span className="katex-error" style={{ display: displayMode ? 'block' : 'inline' }}>
+          {latex}
+        </span>
+      </MathScrollShell>
+    );
+  }
+};
 
 const disableIndentedCodePlugin = function disableIndentedCodePlugin(this: any) {
   const Parser = this?.Parser;
@@ -457,25 +628,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   resolveCitationImage,
 }) => {
   const shouldEnableCitations = enableCitations ?? !!(onCitationClick || resolveCitationImage);
+  const { query: searchQuery } = useMessageSearchContext();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // 🚀 性能优化：按需加载 KaTeX CSS
+  // 🚀 性能优化：按需加载 KaTeX CSS；JS 模块空闲期预取（避免首条公式原文闪烁）
   useEffect(() => {
     ensureKatexStyles();
+    scheduleKatexIdlePrefetch();
   }, []);
 
-  // 🆕 注入引用徽章样式（支持热更新）
+  // 注入引用徽章样式（P2-7：幂等注入，多实例共用同一 <style>，支持热更新）
   useEffect(() => {
-    const styleId = 'citation-badge-styles';
-    let style = document.getElementById(styleId) as HTMLStyleElement | null;
-    if (!style) {
-      style = document.createElement('style');
-      style.id = styleId;
-      document.head.appendChild(style);
-    }
-    if (style.textContent !== CITATION_PLACEHOLDER_STYLES) {
-      style.textContent = CITATION_PLACEHOLDER_STYLES;
-    }
-  }, [CITATION_PLACEHOLDER_STYLES]);
+    ensureCitationPlaceholderStyles();
+  }, []);
 
   // 🆕 引用标记点击处理
   const handleCitationClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
@@ -536,16 +700,19 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   const processedContent = useMemo(() => preprocessContent(content, isStreaming), [content, isStreaming]);
 
   useEffect(() => {
+    // 流式期间跳过：这是纯调试日志，热路径上每个 token 都做一次
+    // querySelectorAll 全树扫描会白白消耗主线程时间
+    if (isStreaming) return;
     const container = containerRef.current;
     if (!container) return;
     const pdfRefs = Array.from(container.querySelectorAll('[data-pdf-ref="true"]')) as HTMLElement[];
     if (pdfRefs.length > 0) {
-      console.log('[MarkdownRenderer] pdf-ref nodes found:', pdfRefs.length, pdfRefs.map((el) => ({
+      console.warn('[MarkdownRenderer] pdf-ref nodes found:', pdfRefs.length, pdfRefs.map((el) => ({
         sourceId: el.dataset.pdfSource,
         page: el.dataset.pdfPage,
       })));
     }
-  }, [processedContent]);
+  }, [processedContent, isStreaming]);
 
   const remarkPlugins = useMemo(() => {
     const base: any[] = [
@@ -560,6 +727,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     }
     return [...base, ...(extraRemarkPlugins || [])];
   }, [extraRemarkPlugins, shouldEnableCitations]);
+
+  const rehypePlugins = useMemo(() => {
+    const plugins: any[] = [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]];
+    if (searchQuery.trim()) {
+      plugins.push([rehypeSearchHighlights, { query: searchQuery }]);
+    }
+    return plugins;
+  }, [searchQuery]);
 
   const katexOptions: KatexOptions = useMemo(() => ({
     throwOnError: false,
@@ -578,41 +753,20 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   const renderMath = (value: string, displayMode: boolean) => {
     const latex = value?.trim() ?? '';
     if (!latex) return null;
-
-    // 🔧 性能优化：先查模块级缓存，命中则跳过 KaTeX 解析（流式重渲染场景常见）
-    const cached = getCachedKatex(latex, displayMode);
-    if (cached !== undefined) {
-      return <span dangerouslySetInnerHTML={{ __html: cached }} />;
-    }
-
-    try {
-      const html = katex.renderToString(latex, { ...katexOptions, displayMode });
-      setCachedKatex(latex, displayMode, html);
-      return (
-        <span dangerouslySetInnerHTML={{ __html: html }} />
-      );
-    } catch (error: unknown) {
-      console.error('[MarkdownRenderer] KaTeX render failed:', error, 'latex=', latex);
-      return (
-        <span className="katex-error" style={{ display: displayMode ? 'block' : 'inline' }}>
-          {latex}
-        </span>
-      );
-    }
+    // 缓存查询/懒加载/错误降级统一在 LazyMath 内处理
+    return <LazyMath latex={latex} displayMode={displayMode} options={katexOptions} />;
   };
 
   return (
     <div ref={containerRef} className={`markdown-content ${className}`.trim()} onClick={handleCitationClick}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
+        rehypePlugins={rehypePlugins}
         components={{
-          h1: ({ children, ...props }: any) => <h1 {...props}>{children}</h1>,
-          h2: ({ children, ...props }: any) => <h2 {...props}>{children}</h2>,
-          h3: ({ children, ...props }: any) => <h3 {...props}>{children}</h3>,
-          h4: ({ children, ...props }: any) => <h4 {...props}>{children}</h4>,
-          h5: ({ children, ...props }: any) => <h5 {...props}>{children}</h5>,
-          h6: ({ children, ...props }: any) => <h6 {...props}>{children}</h6>,
+          // 注意：react-markdown v9+ 会把 HAST `node` 传给自定义组件，
+          // 自定义组件展开 {...props} 前必须先把 node 解构掉，
+          // 否则 node 对象会作为未知属性写到 DOM 上（React dev 警告 + 无效属性）。
+          // h1-h6 / blockquote / li / strong / em 等纯透传覆盖已移除，交给默认渲染。
           // @ts-expect-error - remark-math plugin provides math/inlineMath components not in react-markdown types
           math: ({ value }: { value?: string }) => renderMath(String(value ?? ''), true),
           inlineMath: ({ value }: { value?: string }) => renderMath(String(value ?? ''), false),
@@ -624,8 +778,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             const codeContent = String((codeElement as any)?.props?.children ?? '').replace(/\n$/, '');
 
             // 若 pre>code 被标记为 math 样式（如 "math math-display" 或 "math math-inline"），直接用 KaTeX 渲染
+            // (?![\w-]) 边界：避免 language-latex-src / language-mathml 之类前缀语言被误判为数学
             const cls = typeof className === 'string' ? className : '';
-            const isMathLike = /(?:^|\s)(math|math-display|math-inline)(?:\s|$)/i.test(cls) || /language-(math|latex)/i.test(cls);
+            const isMathLike = /(?:^|\s)(math|math-display|math-inline)(?:\s|$)/i.test(cls) || /language-(math|latex)(?![\w-])/i.test(cls);
             if (isMathLike) {
               const display = /math-display/i.test(cls) || (!/math-inline/i.test(cls));
               return renderMath(codeContent, display);
@@ -638,11 +793,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             );
           },
           // 自定义 code：区分内联与块级，但块级不再额外包裹一层 pre
-          code: ({ inline, className, children, ...props }: any) => {
+          code: ({ inline, className, children, node: _node, ...props }: any) => {
             const codeContent = String(children).replace(/\n$/, '');
             
             // 1) 明确标记为 math/latex 的代码块，强制转 KaTeX
-            const isMathBlock = typeof className === 'string' && /language-(math|latex)/i.test(className);
+            // (?![\w-]) 边界：language-mathematica 等真实语言不应被误转
+            const isMathBlock = typeof className === 'string' && /language-(math|latex)(?![\w-])/i.test(className);
             if (isMathBlock) {
               return renderMath(codeContent, inline === false);
             }
@@ -666,23 +822,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           table: ({ children }) => (
             <TableBlockShell>{children}</TableBlockShell>
           ),
-          // 🔧 修复：自定义图片渲染，支持本地文件路径转换为 asset:// URL
-          img: ({ src, alt, ...props }: any) => {
-            const finalSrc = resolveImageSrc(src);
-            return (
-              <img
-                src={finalSrc}
-                alt={alt || 'image'}
-                style={{ maxWidth: '100%', height: 'auto', borderRadius: '8px' }}
-                onError={(e) => {
-                  console.warn('[MarkdownRenderer] Image load failed:', finalSrc);
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-                {...props}
-              />
-            );
-          },
-          p: ({ children, ...props }: any) => {
+          // 🔧 修复：自定义图片渲染，支持本地文件路径转换为 asset:// URL；
+          // 加载失败时显示内联 broken 占位（非静默隐藏）
+          img: ({ src, alt, node: _node, ...props }: any) => (
+            <MarkdownImage src={resolveImageSrc(src)} alt={alt} {...props} />
+          ),
+          p: ({ children, node: _node, ...props }: any) => {
             const childArray = React.Children.toArray(children);
             const hasMindmapCard = childArray.some((child) =>
               React.isValidElement(child) && child.type === MindmapCitationCard
@@ -692,11 +837,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             }
             return <p {...props}>{children}</p>;
           },
-          blockquote: ({ children, ...props }: any) => (
-            <blockquote {...props}>{children}</blockquote>
-          ),
-          li: ({ children, ...props }: any) => <li {...props}>{children}</li>,
-          span: ({ children, ...props }: any) => {
+          span: ({ children, node: _node, ...props }: any) => {
             // 处理思维导图引用 - 渲染完整的 ReactFlow 预览
             const isMindmapCitation = props['data-mindmap-citation'] === 'true';
             if (isMindmapCitation) {
@@ -739,9 +880,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             const citationIndex = Number(props['data-citation-index'] || 0);
             // 🔧 P37: 只有显式使用 [知识库-1:图片] 格式时才渲染图片
             const showImage = props['data-citation-show-image'] === 'true';
-            const handleBadgeClick = (e: React.MouseEvent) => {
-              e.preventDefault();
-              e.stopPropagation();
+            const handleBadgeNavigate = () => {
               if (citationType && citationIndex > 0 && onCitationClick) {
                 onCitationClick(citationType, citationIndex);
               }
@@ -770,9 +909,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                   data-citation-type={citationType}
                   data-citation-index={citationIndex}
                 >
-                  <CitationBadge
-                    index={Math.max(citationIndex - 1, 0)}
-                    onClick={handleBadgeClick}
+                  <CitationBadgeWithPopover
+                    citationType={citationType}
+                    citationIndex={citationIndex}
+                    onNavigate={handleBadgeNavigate}
                   />
                   <AsyncCitationImage
                     imageInfo={imageInfo}
@@ -783,16 +923,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               );
             }
             
-            // 无图片时直接返回 CitationBadge（不再套外层 span）
+            // 无图片时直接返回带 hover 预览的徽章（不再套外层 span）
+            // 来源数据经 CitationSourceContext resolve（content.tsx 提供）
             return (
-              <CitationBadge
-                index={Math.max(citationIndex - 1, 0)}
-                onClick={handleBadgeClick}
+              <CitationBadgeWithPopover
+                citationType={citationType}
+                citationIndex={citationIndex}
+                onNavigate={handleBadgeNavigate}
               />
             );
           },
           // 自定义链接处理，跨平台兼容
-          a: ({ href, children, ...props }: any) => {
+          a: ({ href, children, node: _node, ...props }: any) => {
             const handleClick = async (e: React.MouseEvent) => {
               e.preventDefault();
               if (!href) return;
@@ -817,8 +959,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               </a>
             );
           },
-          strong: ({ children, ...props }: any) => <strong {...props}>{children}</strong>,
-          em: ({ children, ...props }: any) => <em {...props}>{children}</em>,
         }}
       >
         {processedContent}
@@ -827,23 +967,5 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   );
 });
 
-type RenderMarkdownStaticOptions = {
-  enableMath?: boolean;
-};
-
-export const renderMarkdownStatic = (
-  content: string,
-  _options: RenderMarkdownStaticOptions = {},
-): string => {
-  try {
-    return renderToStaticMarkup(
-      <MarkdownRenderer
-        content={content}
-        isStreaming={false}
-      />
-    );
-  } catch (error: unknown) {
-    console.error('[MarkdownRenderer] renderMarkdownStatic failed:', error);
-    return content ?? '';
-  }
-};
+// renderMarkdownStatic 已移除（无消费方）：它是文件内唯一的 react-dom/server
+// 依赖，删除后 renderToStaticMarkup 不再被打进 chat chunk。

@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "quick-assistant",
+  "description": "Least-privilege capability for the quick learning assistant window",
+  "windows": ["quick-assistant"],
+  "platforms": ["linux", "macOS", "windows"],
+  "permissions": [
+    "allow-quick-assistant-commands",
+    "allow-renderer-logging",
+    "core:default",
+    "core:event:default",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-always-on-top",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
+  ]
+}

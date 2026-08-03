@@ -1,12 +1,9 @@
 // ==================== 资产备份相关命令 ====================
 
-use std::path::PathBuf;
-use std::time::Instant;
-use tauri::Manager;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
-use super::backup::{AssetBackupConfig, AssetType, AssetTypeStats, BackupManager};
-use crate::backup_common::BACKUP_GLOBAL_LIMITER;
+use super::backup::{AssetType, AssetTypeStats, BackupManager};
+use crate::backup_common::{DataGovernanceOperationGuard, DataGovernanceOperationKind};
 
 use super::commands_backup::{
     ensure_existing_path_within_backup_dir, get_active_data_dir, get_app_data_dir, get_backup_dir,
@@ -118,147 +115,14 @@ pub struct AssetTypeInfo {
 /// - `RestoreResultResponse`: 恢复结果
 #[tauri::command]
 pub async fn data_governance_restore_with_assets(
-    app: tauri::AppHandle,
-    backup_id: String,
-    restore_assets: Option<bool>,
+    _app: tauri::AppHandle,
+    _backup_id: String,
+    _restore_assets: Option<bool>,
 ) -> Result<RestoreResultResponse, String> {
-    let validated_backup_id = validate_backup_id(&backup_id)?;
-    let restore_assets = restore_assets.unwrap_or(false);
-    info!(
-        "[data_governance] 开始恢复备份（含资产）: id={}, restore_assets={}",
-        validated_backup_id, restore_assets
-    );
-
-    let start = Instant::now();
-    let app_data_dir = get_app_data_dir(&app)?;
-    let backup_dir = get_backup_dir(&app_data_dir);
-
-    if !backup_dir.exists() {
-        return Err("备份目录不存在。请前往「设置 > 数据治理 > 备份」检查备份目录配置".to_string());
-    }
-
-    // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
-
-    // 创建备份管理器
-    let mut manager = BackupManager::new(backup_dir.clone());
-    manager.set_app_data_dir(app_data_dir.clone());
-    manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
-
-    // 获取备份清单
-    let manifests = manager.list_backups().map_err(|e| {
-        error!("[data_governance] 获取备份列表失败: {}", e);
-        format!("获取备份列表失败: {}", e)
-    })?;
-
-    let manifest = manifests
-        .iter()
-        .find(|m| m.backup_id == validated_backup_id)
-        .ok_or_else(|| format!("备份不存在: {}", validated_backup_id))?;
-
-    let manifest_dir = backup_dir.join(&manifest.backup_id);
-    ensure_existing_path_within_backup_dir(&manifest_dir, &backup_dir)?;
-
-    // 恢复到非活跃插槽，避免 Windows OS error 32（活跃插槽文件被连接池持有）
-    let (inactive_dir, inactive_slot) = match crate::data_space::get_data_space_manager() {
-        Some(mgr) => {
-            let slot = mgr.inactive_slot();
-            let dir = mgr.slot_dir(slot);
-            info!(
-                "[data_governance] 恢复目标: 非活跃插槽 {} ({})",
-                slot.name(),
-                dir.display()
-            );
-            (dir, Some(slot))
-        }
-        None => {
-            let dir = app_data_dir.join("slots").join("slotB");
-            warn!("[data_governance] DataSpaceManager 未初始化，回退到 slotB");
-            (dir, None)
-        }
-    };
-
-    // 磁盘空间预检查
-    {
-        let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
-        let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-        let required = (db_size + asset_size).saturating_mul(2);
-        match crate::backup_common::get_available_disk_space(&app_data_dir) {
-            Ok(available) if available < required => {
-                return Err(format!(
-                    "磁盘空间不足：需要 {:.1} MB，仅剩 {:.1} MB。请清理存储空间后重试",
-                    required as f64 / 1024.0 / 1024.0,
-                    available as f64 / 1024.0 / 1024.0
-                ));
-            }
-            Err(e) => {
-                warn!("[data_governance] 磁盘空间检查失败（继续恢复）: {}", e);
-            }
-            _ => {}
-        }
-    }
-
-    // 执行恢复到非活跃插槽（不需要维护模式，不涉及活跃文件）
-    //
-    // F5 说明（已知差异，刻意保持）：本路径**不恢复加密密钥**（.master_key/.secure）。
-    // 密钥是全局的（位于 app_data_dir，非插槽内）——在此处恢复会立即作用于**活跃**插槽的
-    // 解密，且需要主恢复路径（commands_restore.rs）同款的 .pre_restore 快照 + 回滚保护
-    // （见 F2），否则跨设备恢复一旦失败/放弃会让旧密文永久无法解密。因此跨设备恢复请走
-    // 主恢复路径（data_governance_restore）。本命令前端当前未使用；补齐密钥恢复的方案见
-    // docs/6.13/status/agent-7-status.md F5 条目。
-    let result = manager.restore_with_assets_to_dir(manifest, restore_assets, &inactive_dir);
-    let duration_ms = start.elapsed().as_millis() as u64;
-
-    match result {
-        Ok(restored_assets) => {
-            let databases_restored: Vec<String> = manifest
-                .files
-                .iter()
-                .filter_map(|f| f.database_id.clone())
-                .collect();
-
-            info!(
-                "[data_governance] 恢复成功: id={}, databases={:?}, assets={}, duration={}ms, target={}",
-                validated_backup_id, databases_restored, restored_assets, duration_ms, inactive_dir.display()
-            );
-
-            // 标记下次重启时切换到恢复目标插槽
-            if let Some(slot) = inactive_slot {
-                if let Some(mgr) = crate::data_space::get_data_space_manager() {
-                    if let Err(e) = mgr.mark_pending_switch(slot) {
-                        error!("[data_governance] 标记插槽切换失败: {}，恢复的数据在 {} 中，需手动切换", e, inactive_dir.display());
-                    } else {
-                        info!("[data_governance] 已标记下次重启切换到 {}", slot.name());
-                    }
-                }
-            }
-
-            Ok(RestoreResultResponse {
-                success: true,
-                backup_id: backup_id.clone(),
-                duration_ms,
-                databases_restored,
-                pre_restore_backup_path: Some(inactive_dir.to_string_lossy().to_string()),
-                error_message: None,
-                assets_restored: if restore_assets {
-                    Some(restored_assets)
-                } else {
-                    None
-                },
-            })
-        }
-        Err(e) => {
-            error!("[data_governance] 恢复失败: {}", e);
-            Err(format!(
-                "恢复备份失败: {}。请前往「设置 > 数据治理」查看备份状态或重试",
-                e
-            ))
-        }
-    }
+    Err(
+        "该旧恢复入口已停用，因为它无法保证完整快照校验和原子槽切换。请调用 data_governance_restore_backup。"
+            .to_string(),
+    )
 }
 
 /// 验证备份完整性（含资产）
@@ -293,11 +157,10 @@ pub async fn data_governance_verify_backup_with_assets(
     manager.set_app_data_dir(app_data_dir.clone());
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Verify, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     // 获取备份列表并查找指定的备份
     let manifests = manager

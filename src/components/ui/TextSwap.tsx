@@ -87,7 +87,7 @@ export const TextSwap: React.FC<TextSwapProps> = ({ text, className, as = 'span'
       node.classList.add('is-enter-start');
 
       // 强制 reflow，让下一次类移除产生 transition
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+
       void node.offsetHeight;
 
       // Phase 3：新文字进入

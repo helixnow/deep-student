@@ -2,10 +2,10 @@
  * LLM 使用统计组件
  *
  * 嵌入式组件，用于在数据统计页面中显示 LLM API 调用统计
- * 遵循 Notion 风格设计：极简、大留白、精致排版
+ * 遵循 简洁风格设计：极简、大留白、精致排版
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   AreaChart,
   Area,
@@ -30,20 +30,31 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
 import { Skeleton } from '../ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { LlmUsageApi, UsageSummary, UsageTrendPoint, ModelSummary, CallerTypeSummary } from '../../api/llmUsageApi';
 import { useTranslation } from 'react-i18next';
 
-// Notion 风格色板 (低饱和度，优雅)
+// 主题自适应单色阶梯色板：跟随 --primary 主题色，暗色/浅色模式自动适配
 const CHART_COLORS = [
   'hsl(var(--primary))',
-  'hsl(210, 20%, 60%)', // 灰蓝
-  'hsl(25, 20%, 60%)',  // 暖褐
-  'hsl(160, 20%, 50%)', // 灰绿
-  'hsl(340, 30%, 65%)', // 柔粉
-  'hsl(270, 20%, 60%)', // 灰紫
-  'hsl(40, 40%, 60%)',  // 暖黄
+  'hsl(var(--primary) / 0.72)',
+  'hsl(var(--primary) / 0.52)',
+  'hsl(var(--primary) / 0.38)',
+  'hsl(var(--primary) / 0.26)',
+  'hsl(var(--primary) / 0.16)',
 ];
+
+// 图表卡片统一容器样式
+const CHART_CARD_CLASS = 'rounded-xl bg-card ring-1 ring-border/40 shadow-sm p-5';
+
+const TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
+  background: 'hsl(var(--popover))',
+  border: '1px solid hsl(var(--border) / 0.5)',
+  borderRadius: '8px',
+  fontSize: '12px',
+  boxShadow: '0 8px 24px -6px hsl(var(--foreground) / 0.12)',
+  padding: '8px 12px',
+};
 
 // 调用方显示名称映射（通过 i18n）
 const getCallerDisplayName = (callerType: string, t: (key: string) => string): string => {
@@ -70,6 +81,12 @@ const formatModelName = (modelId: string, t: (key: string) => string): string =>
   }
   
   return modelId;
+};
+
+const formatCompactNumber = (num: number): string => {
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
+  return num.toString();
 };
 
 const formatPercentage = (numerator: number, denominator: number): string | null => {
@@ -171,9 +188,9 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
 
   if (tokenData.length === 0) {
     return (
-      <div>
+      <div className={CHART_CARD_CLASS}>
         <div className="flex items-center gap-2 mb-4">
-        <TrendUp size={16} className="text-muted-foreground/70" />
+          <TrendUp size={16} className="text-muted-foreground/70" />
           <h3 className="font-medium text-sm text-foreground/80">{t('activity_trend')}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
@@ -184,31 +201,32 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
   }
 
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-6 pl-1">
+    <div className={CHART_CARD_CLASS}>
+      <div className="flex items-center gap-2 mb-5">
         <TrendUp size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('activity_trend')}</h3>
       </div>
-      <div className="w-full h-[220px]">
+      <div className="w-full h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={combinedData} margin={{ top: 10, right: 40, left: -20, bottom: 0 }}>
+          <AreaChart data={combinedData} margin={{ top: 10, right: 0, left: -16, bottom: 0 }}>
             <defs>
               <linearGradient id="tokenTrendGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.1} />
-                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.22} />
+                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
               </linearGradient>
               <linearGradient id="sessionTrendGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(160, 60%, 50%)" stopOpacity={0.1} />
-                <stop offset="95%" stopColor="hsl(160, 60%, 50%)" stopOpacity={0} />
+                <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.16} />
+                <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.02} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.35} />
             <XAxis
               dataKey="timeLabel"
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10, opacity: 0.8 }}
               axisLine={false}
               tickLine={false}
               dy={10}
+              minTickGap={24}
 />
             {/* 左侧 Y 轴：Token 数 */}
             <YAxis
@@ -216,33 +234,24 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10, opacity: 0.8 }}
               axisLine={false}
               tickLine={false}
+              allowDecimals={false}
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
 />
-            {/* 右侧 Y 轴：会话数 */}
+            {/* 右侧 Y 轴：会话数（整数刻度，避免 0.25 / 0.5 这类小数） */}
             <YAxis
               yAxisId="sessions"
               orientation="right"
-              tick={{ fill: 'hsl(160, 60%, 50%)', fontSize: 10, opacity: 0.8 }}
+              width={36}
+              tick={{ fill: 'hsl(var(--success))', fontSize: 10, opacity: 0.85 }}
               axisLine={false}
               tickLine={false}
+              allowDecimals={false}
 />
             <Tooltip
-              contentStyle={{
-                background: 'hsl(var(--popover))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '6px',
-                fontSize: '12px',
-                boxShadow: '0 4px 6px -1px hsl(var(--foreground) / 0.1), 0 2px 4px -2px hsl(var(--foreground) / 0.1)',
-                padding: '8px 12px',
-              }}
+              contentStyle={TOOLTIP_CONTENT_STYLE}
               labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '4px', fontSize: '10px' }}
               itemStyle={{ fontWeight: 500 }}
-              formatter={(value: number, name: string) => {
-                if (name === 'Tokens') {
-                  return [value.toLocaleString(), t('summary.totalTokens')];
-                }
-                return [value, t('trends.title')];
-              }}
+              formatter={(value: number, name: string) => [value.toLocaleString(), name]}
               cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '3 3', opacity: 0.3 }}
 />
             <Legend
@@ -250,7 +259,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               align="right"
               iconType="circle"
               iconSize={8}
-              wrapperStyle={{ fontSize: '11px', paddingBottom: '8px' }}
+              wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }}
               formatter={(value) => <span className="text-muted-foreground/80">{value}</span>}
 />
             <Area
@@ -259,21 +268,21 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               dataKey="totalTokens"
               name="Tokens"
               stroke="hsl(var(--primary))"
-              strokeWidth={1.5}
+              strokeWidth={2}
               fill="url(#tokenTrendGradient)"
               activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(var(--primary))' }}
-              isAnimationActive={false}
+              animationDuration={700}
 />
             <Area
               yAxisId="sessions"
               type="monotone"
               dataKey="sessions"
               name={t('sessions')}
-              stroke="hsl(160, 60%, 50%)"
-              strokeWidth={1.5}
+              stroke="hsl(var(--success))"
+              strokeWidth={2}
               fill="url(#sessionTrendGradient)"
-              activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(160, 60%, 50%)' }}
-              isAnimationActive={false}
+              activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(var(--success))' }}
+              animationDuration={700}
 />
           </AreaChart>
         </ResponsiveContainer>
@@ -283,21 +292,37 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
 };
 
 // ============================================================================
-// 模型分布（饼图）
+// DonutChart - 通用环形图（中心数值 + 交互高亮 + 图例联动）
 // ============================================================================
 
-interface ModelDistributionProps {
-  data: ModelSummary[];
+interface DonutDatum {
+  name: string;
+  value: number;
+  percent: string | null;
+  fill: string;
 }
 
-const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
+interface DonutChartProps {
+  icon: React.ReactNode;
+  title: string;
+  data: DonutDatum[];
+  /** 中心默认展示的副标签，如"累计请求" */
+  centerLabel: string;
+}
+
+const DonutChart: React.FC<DonutChartProps> = ({ icon, title, data, centerLabel }) => {
   const { t } = useTranslation('llm_usage');
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  const active = activeIndex !== null ? data[activeIndex] : null;
+
   if (data.length === 0) {
     return (
-      <div>
+      <div className={CHART_CARD_CLASS}>
         <div className="flex items-center gap-2 mb-4">
-          <Cpu size={16} className="text-muted-foreground/70" />
-          <h3 className="font-medium text-sm text-foreground/80">{t('model_distribution')}</h3>
+          <span className="text-muted-foreground/70">{icon}</span>
+          <h3 className="font-medium text-sm text-foreground/80">{title}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
           {t('no_data')}
@@ -306,94 +331,82 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
     );
   }
 
-  // 合并相同显示名称的模型数据
-  const mergedData = new Map<string, { value: number; originalIds: string[] }>();
-  data.forEach((m) => {
-    const displayName = formatModelName(m.modelId, t);
-    const existing = mergedData.get(displayName);
-    if (existing) {
-      existing.value += Number(m.requestCount);
-      existing.originalIds.push(m.modelId);
-    } else {
-      mergedData.set(displayName, {
-        value: Number(m.requestCount),
-        originalIds: [m.modelId],
-      });
-    }
-  });
-
-  const total = Array.from(mergedData.values()).reduce((sum, item) => sum + item.value, 0);
-  const pieData = Array.from(mergedData.entries())
-    .sort((a, b) => b[1].value - a[1].value)
-    .slice(0, 6)
-    .map(([name, item], i) => ({
-      name,
-      value: item.value,
-      percent: formatPercentage(item.value, total),
-      fill: CHART_COLORS[i % CHART_COLORS.length],
-    }));
-
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-6 pl-1">
-        <Cpu size={16} className="text-muted-foreground/70" />
-        <h3 className="font-medium text-sm text-foreground/80">{t('model_distribution')}</h3>
+    <div className={CHART_CARD_CLASS}>
+      <div className="flex items-center gap-2 mb-5">
+        <span className="text-muted-foreground/70">{icon}</span>
+        <h3 className="font-medium text-sm text-foreground/80">{title}</h3>
       </div>
-      <div className="flex items-center">
-        {/* 饼图 */}
-        <div className="flex-1 h-[220px]">
+      {/* 小屏纵向堆叠（环形图在上、图例在下），≥sm 恢复左右布局 */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+        {/* 环形图 + 中心数值 */}
+        <div className="relative h-[220px] w-full min-w-0 sm:flex-1" onMouseLeave={() => setActiveIndex(null)}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={pieData}
+                data={data}
                 cx="50%"
                 cy="50%"
-                innerRadius={50}
-                outerRadius={70}
-                paddingAngle={4}
+                innerRadius={58}
+                outerRadius={82}
+                paddingAngle={3}
                 dataKey="value"
                 strokeWidth={0}
-                cornerRadius={3}
-                isAnimationActive={false}
+                cornerRadius={4}
+                animationDuration={600}
+                onMouseEnter={(_, index) => setActiveIndex(index)}
+                onMouseLeave={() => setActiveIndex(null)}
+                onClick={(_, index) =>
+                  setActiveIndex((current) => (current === index ? null : index))
+                }
               >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.fill}
+                    opacity={activeIndex === null || activeIndex === index ? 1 : 0.35}
+                    style={{ transition: 'opacity 0.2s ease', outline: 'none' }}
+/>
                 ))}
               </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: 'hsl(var(--popover))',
-                  border: '1px solid var(--border)',
-                  borderColor: 'hsl(var(--border) / 0.4)',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                  padding: '8px 12px',
-                }}
-                labelStyle={{ display: 'none' }}
-                itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 500 }}
-                formatter={(value: number, name: string) => [
-                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
-                  name
-                ]}
-/>
             </PieChart>
           </ResponsiveContainer>
+          {/* 中心数值：默认显示总量，hover 扇区时显示该项 */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-10 text-center">
+            <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums leading-none">
+              {formatCompactNumber(active ? active.value : total)}
+            </span>
+            <span className="text-[11px] text-muted-foreground mt-1.5 max-w-full truncate">
+              {active ? `${active.name} · ${active.percent ?? '-'}%` : centerLabel}
+            </span>
+          </div>
         </div>
-        {/* 图例 */}
-        <div className="w-32 flex flex-col justify-center gap-3 pr-2">
-          {pieData.map((item, i) => (
-            <div key={i} className="flex flex-col gap-0.5">
-               <div className="flex items-center gap-2">
+        {/* 图例：色点 + 名称 + 右对齐百分比，hover/点按联动高亮 */}
+        <div className="flex w-full shrink-0 flex-col justify-center gap-1 sm:w-40">
+          {data.map((item, i) => (
+            <div
+              key={i}
+              className={cn(
+                'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 cursor-default transition-colors',
+                '[@media(pointer:coarse)]:min-h-[2.5rem]',
+                activeIndex === i && 'bg-muted/50'
+              )}
+              onMouseEnter={() => setActiveIndex(i)}
+              onMouseLeave={() => setActiveIndex(null)}
+              onClick={() => setActiveIndex((current) => (current === i ? null : i))}
+            >
+              <div className="flex items-center gap-2 min-w-0">
                 <div
-                  className="w-2 h-2 rounded-full shrink-0 opacity-80"
+                  className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: item.fill }}
 />
-                <span className="text-xs font-medium text-foreground/80 truncate" title={item.name}>
+                <span className="text-xs text-foreground/80 truncate" title={item.name}>
                   {item.name}
                 </span>
               </div>
-              <span className="text-[10px] text-muted-foreground pl-4">{item.percent ? `${item.percent}%` : '-'}</span>
+              <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                {item.percent ? `${item.percent}%` : '-'}
+              </span>
             </div>
           ))}
         </div>
@@ -403,104 +416,64 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
 };
 
 // ============================================================================
-// 调用方分布（饼图）
+// 模型分布 / 模块分布 数据整形
 // ============================================================================
 
-interface CallerDistributionProps {
-  data: CallerTypeSummary[];
-}
-
-const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
+const ModelDistribution: React.FC<{ data: ModelSummary[] }> = ({ data }) => {
   const { t } = useTranslation('llm_usage');
-  if (data.length === 0) {
-    return (
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <Pulse size={16} className="text-muted-foreground/70" />
-          <h3 className="font-medium text-sm text-foreground/80">{t('module_stats')}</h3>
-        </div>
-        <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
-          {t('no_data')}
-        </div>
-      </div>
-    );
-  }
 
-  // 计算总量和百分比
-  const total = data.reduce((sum, c) => sum + Number(c.requestCount), 0);
-  const pieData = data.map((c, i) => ({
-    name: c.displayName || getCallerDisplayName(c.callerType, t),
-    value: Number(c.requestCount),
-    percent: formatPercentage(Number(c.requestCount), total),
-    fill: CHART_COLORS[i % CHART_COLORS.length],
-  }));
+  const pieData = useMemo<DonutDatum[]>(() => {
+    // 合并相同显示名称的模型数据
+    const mergedData = new Map<string, number>();
+    data.forEach((m) => {
+      const displayName = formatModelName(m.modelId, t);
+      mergedData.set(displayName, (mergedData.get(displayName) ?? 0) + Number(m.requestCount));
+    });
+
+    const total = Array.from(mergedData.values()).reduce((sum, v) => sum + v, 0);
+    return Array.from(mergedData.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, value], i) => ({
+        name,
+        value,
+        percent: formatPercentage(value, total),
+        fill: CHART_COLORS[i % CHART_COLORS.length],
+      }));
+  }, [data, t]);
 
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-6 pl-1">
-        <Pulse size={16} className="text-muted-foreground/70" />
-        <h3 className="font-medium text-sm text-foreground/80">{t('module_stats')}</h3>
-      </div>
-      <div className="flex items-center">
-        {/* 饼图 */}
-        <div className="flex-1 h-[220px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={50}
-                outerRadius={70}
-                paddingAngle={4}
-                dataKey="value"
-                strokeWidth={0}
-                cornerRadius={3}
-                isAnimationActive={false}
-              >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: 'hsl(var(--popover))',
-                  border: '1px solid var(--border)',
-                  borderColor: 'hsl(var(--border) / 0.4)',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                  padding: '8px 12px',
-                }}
-                labelStyle={{ display: 'none' }}
-                itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 500 }}
-                formatter={(value: number, name: string) => [
-                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
-                  name
-                ]}
+    <DonutChart
+      icon={<Cpu size={16} />}
+      title={t('model_distribution')}
+      data={pieData}
+      centerLabel={t('summary.cumulativeRequests')}
 />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        {/* 图例 */}
-        <div className="w-32 flex flex-col justify-center gap-3 pr-2">
-          {pieData.map((item, i) => (
-            <div key={i} className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-2 h-2 rounded-full shrink-0 opacity-80"
-                  style={{ backgroundColor: item.fill }}
+  );
+};
+
+const CallerDistribution: React.FC<{ data: CallerTypeSummary[] }> = ({ data }) => {
+  const { t } = useTranslation('llm_usage');
+
+  const pieData = useMemo<DonutDatum[]>(() => {
+    const total = data.reduce((sum, c) => sum + Number(c.requestCount), 0);
+    return [...data]
+      .sort((a, b) => Number(b.requestCount) - Number(a.requestCount))
+      .map((c, i) => ({
+        name: c.displayName || getCallerDisplayName(c.callerType, t),
+        value: Number(c.requestCount),
+        percent: formatPercentage(Number(c.requestCount), total),
+        fill: CHART_COLORS[i % CHART_COLORS.length],
+      }));
+  }, [data, t]);
+
+  return (
+    <DonutChart
+      icon={<Pulse size={16} />}
+      title={t('module_stats')}
+      data={pieData}
+      centerLabel={t('summary.cumulativeRequests')}
 />
-                <span className="text-xs font-medium text-foreground/80 truncate" title={item.name}>
-                  {item.name}
-                </span>
-              </div>
-               <span className="text-[10px] text-muted-foreground pl-4">{item.percent ? `${item.percent}%` : '-'}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 };
 
@@ -565,11 +538,7 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     loadData();
   }, [loadData]);
 
-  const formatNumber = (num: number): string => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
-    return num.toString();
-  };
+  const formatNumber = formatCompactNumber;
 
   const formatDuration = (ms: number | undefined): string => {
     if (!ms) return '-';
@@ -601,10 +570,10 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     return (
       <div className={cn('w-full', className)}>
         <div className="flex items-center justify-end mb-4">
-          <NotionButton variant="ghost" size="sm" onClick={loadData}>
+          <DsButton variant="ghost" size="sm" onClick={loadData}>
             <ArrowsClockwise size={14} className="mr-2" />
             {t('actions.retry')}
-          </NotionButton>
+          </DsButton>
         </div>
         <div className="py-12 text-center">
           <p className="text-muted-foreground text-sm">{t('no_data_or_load_failed')}</p>
@@ -624,9 +593,9 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {/* 刷新按钮 */}
       {!statsOnly && (
         <div className="flex justify-end mb-4">
-          <NotionButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
+          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
             <ArrowsClockwise size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -663,22 +632,14 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
         </div>
       )}
 
-      {/* 图表区域 */}
+      {/* 图表区域：趋势图通栏，两个分布图并排 */}
       {!statsOnly && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="min-h-[280px]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="lg:col-span-2">
             <CombinedTrend tokenData={trends} sessionData={sessionTrends} />
           </div>
-          <div className="min-h-[280px]">
-            <ModelDistribution data={byModel} />
-          </div>
-          
-          {/* 单独一行显示模块分布，如果有数据 */}
-          {byCaller.length > 0 && (
-             <div className="lg:col-span-2 min-h-[280px]">
-               <CallerDistribution data={byCaller} />
-             </div>
-          )}
+          <ModelDistribution data={byModel} />
+          {byCaller.length > 0 && <CallerDistribution data={byCaller} />}
         </div>
       )}
     </div>

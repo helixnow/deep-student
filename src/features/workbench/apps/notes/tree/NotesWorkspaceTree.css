@@ -1,0 +1,476 @@
+/* Notes Workspace Tree — visual tokens aligned with NotesWorkspaceApp.css (.notes-tree-*) */
+
+.nwt-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.nwt-tree {
+  position: relative;
+  padding: 1px 6px 12px;
+  outline: none;
+}
+
+.nwt-root {
+  width: calc(100% - 12px);
+  height: 26px;
+  margin: 5px 6px 2px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  cursor: default;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.nwt-root:hover,
+.nwt-root[data-selected='true'],
+.nwt-root[data-drop-inside='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / 14%);
+}
+
+.nwt-root:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+/* 树行对齐对话标准 nav-row；树形内容保留 13px/30px 密度档（最小妥协） */
+.nwt-row {
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: var(--notes-radius-row, 6px);
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+  position: relative;
+  user-select: none;
+  box-sizing: border-box;
+  transition: background-color var(--notes-hover-transition);
+}
+
+.nwt-link-drag {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--notes-radius-row, 6px);
+  color: hsl(var(--muted-foreground));
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--notes-hover-transition), background-color var(--notes-hover-transition);
+}
+
+.nwt-row:hover .nwt-link-drag,
+.nwt-row:focus-within .nwt-link-drag {
+  opacity: 1;
+}
+
+.nwt-link-drag:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
+  color: hsl(var(--accent-foreground));
+}
+
+.nwt-row:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.nwt-row[data-active='true'],
+.nwt-row[data-selected='true'] {
+  background: var(--interactive-selected, hsl(var(--accent)));
+  font-weight: 500;
+}
+
+/* 拖放目标保留主色调提示（与选中态区分）；inside 用主色内描边框出整行 */
+.nwt-row[data-drop-inside='true'] {
+  background: hsl(var(--primary) / 14%);
+  box-shadow: inset 0 0 0 1.5px hsl(var(--primary) / 55%);
+  transition:
+    background-color var(--notes-hover-transition),
+    box-shadow var(--notes-hover-transition);
+}
+
+/* 无效落点（拖到自身/自身后代）：灰化提示，不给主色反馈 */
+.nwt-row[data-drop-invalid='true'] {
+  background: hsl(var(--muted-foreground) / 8%);
+  box-shadow: none;
+}
+
+/* 选中态再 hover 时略加深，避免与普通 hover 无法区分 */
+.nwt-row[data-selected='true']:hover {
+  background: color-mix(in hsl, var(--interactive-selected, hsl(var(--accent))) 80%, hsl(var(--foreground)) 8%);
+}
+
+/* 选中的文件夹行提亮为前景色，保证选中态可读性 */
+.nwt-row--folder[data-selected='true'] {
+  color: hsl(var(--foreground));
+}
+
+.nwt-row:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.nwt-row[data-dragging='true'] {
+  opacity: 0.45;
+}
+
+.nwt-row--folder {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.nwt-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.nwt-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  transition: transform 150ms ease;
+  transform: rotate(0deg);
+}
+
+.nwt-caret:hover {
+  color: hsl(var(--foreground));
+}
+
+.nwt-caret.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.nwt-caret-spacer {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.nwt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.nwt-favorite {
+  flex-shrink: 0;
+  color: hsl(var(--warning, 38 92% 50%));
+}
+
+.nwt-rename-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.nwt-rename-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid hsl(var(--ring));
+  border-radius: 4px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  /* 与 .notes-search 聚焦态一致的 1px ring 光晕 */
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.nwt-rename-input[aria-invalid='true'] {
+  border-color: hsl(var(--destructive));
+  box-shadow: 0 0 0 1px hsl(var(--destructive) / 55%);
+}
+
+/* 重命名输入下方的内联提示（超限红字 / 接近上限字符计数）。
+   行高固定 30px，提示以行内浮出呈现，不挤压树布局 */
+.nwt-rename-hint {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  padding: 2px 7px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control, 6px);
+  background: hsl(var(--popover, var(--background)));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: var(--notes-popover-shadow, 0 4px 12px hsl(var(--shadow-base, 0 0% 0%) / 0.12));
+  pointer-events: none;
+}
+
+.nwt-rename-hint[data-tone='error'] {
+  color: hsl(var(--destructive));
+}
+
+.nwt-drop-indicator {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: hsl(var(--primary));
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 1px;
+  box-shadow: 0 0 4px hsl(var(--primary) / 50%);
+  transition:
+    top 150ms var(--dropdown-ease, ease),
+    left 150ms var(--dropdown-ease, ease);
+}
+
+.nwt-drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 0 2px hsl(var(--primary) / 50%);
+}
+
+/* 无效落点：指示线灰化并去掉主色发光 */
+.nwt-drop-indicator[data-invalid='true'] {
+  background: hsl(var(--muted-foreground) / 45%);
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+.nwt-drop-indicator[data-invalid='true']::before {
+  background: hsl(var(--muted-foreground) / 45%);
+  box-shadow: none;
+}
+
+.nwt-drag-overlay {
+  padding: 0 10px;
+  height: 28px;
+  max-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--notes-radius-row);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  box-shadow: var(--notes-popover-shadow);
+  font-size: 13px;
+  pointer-events: none;
+  opacity: 0.96;
+}
+
+.nwt-drag-overlay[data-invalid='true'] {
+  opacity: 0.55;
+}
+
+.nwt-drag-overlay-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 多选拖拽数量徽标 */
+.nwt-drag-overlay-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.nwt-context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup);
+  background: hsl(var(--popover, var(--background)));
+  color: hsl(var(--popover-foreground, var(--foreground)));
+  box-shadow: var(--notes-popover-shadow);
+  animation: nwt-popup-enter var(--notes-popup-enter-duration) var(--notes-popup-enter-easing);
+}
+
+@keyframes nwt-popup-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.nwt-context-menu-item {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+  transition: background-color var(--notes-hover-transition);
+}
+
+.nwt-context-menu-item:hover,
+.nwt-context-menu-item:focus-visible {
+  background: var(--interactive-hover, hsl(var(--accent)));
+  outline: none;
+}
+
+.nwt-context-menu-item.is-danger {
+  color: hsl(var(--destructive, 0 72% 51%));
+}
+
+.nwt-context-menu-item:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.nwt-context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: hsl(var(--border));
+}
+
+/* 展开/新载入的行做一次性淡入下滑（140ms，一次性、非循环动画） */
+@media (prefers-reduced-motion: no-preference) {
+  .nwt-row {
+    animation: nwt-row-reveal 140ms ease-out;
+  }
+}
+
+@keyframes nwt-row-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nwt-caret {
+    transition: none;
+  }
+
+  .nwt-drop-indicator {
+    transition: none;
+  }
+
+  .nwt-root,
+  .nwt-row,
+  .nwt-row[data-drop-inside='true'],
+  .nwt-link-drag,
+  .nwt-row-more,
+  .nwt-context-menu-item {
+    transition: none;
+  }
+
+  .nwt-context-menu {
+    animation: none;
+  }
+}
+.nwt-row-more,
+.nwt-link-drag {
+  opacity: 0;
+  flex: 0 0 auto;
+}
+
+.nwt-row:hover .nwt-row-more,
+.nwt-row:hover .nwt-link-drag,
+.nwt-row:focus-within .nwt-row-more,
+.nwt-row:focus-within .nwt-link-drag {
+  opacity: 1;
+}
+
+.nwt-row-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--notes-radius-row, 6px);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition);
+}
+
+.nwt-row-more:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+/* 触屏（仿 FavoritesSection .nfs-unfavorite）：hover 不可达，行内按钮常显并放大触控目标 */
+@media (pointer: coarse) {
+  .nwt-row-more,
+  .nwt-link-drag {
+    opacity: 1;
+    width: 36px;
+    height: 36px;
+  }
+
+  .nwt-link-drag {
+    flex: 0 0 36px;
+  }
+}

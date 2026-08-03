@@ -3,7 +3,8 @@
     "name": "Deep Student",
     "title": "Deep Student",
     "description": "AI驱动的智能学习助手",
-    "version": "版本"
+    "version": "版本",
+    "default_header": "新对话"
   },
   "contextMenu": {
     "cut": "剪切",
@@ -129,7 +130,9 @@
     "expandAll": "展开全部",
     "scrollLeft": "向左滚动",
     "scrollRight": "向右滚动",
-    "clear_all": "清空全部"
+    "clear_all": "清空全部",
+    "backToHome": "返回主页",
+    "dismiss": "忽略"
   },
   "labels": {
     "optional": "选填",
@@ -151,7 +154,8 @@
   "card3DPreview": {
     "errorRenderingCard": "渲染卡片出错",
     "noCardsToPreview": "暂无可预览的卡片",
-    "flipCard": "翻转卡片"
+    "flipCard": "翻转卡片",
+    "instructions": "← → 或 A/D：切换 • F：翻面 • 空格或 P：播放/暂停 • 1-9：跳转 • Home/End：首/末张"
   },
   "copy": "复制",
   "copied": "已复制到剪贴板",
@@ -237,6 +241,8 @@
     "calling_tool": "调用工具"
   },
   "notifications": {
+    "repeated": "重复 {{count}} 次",
+    "copy_error": "复制错误信息",
     "batch": {
       "success": "{{operation}}成功完成，处理了 {{success}} 项",
       "failed": "{{operation}}失败，{{failed}} 项处理失败",
@@ -282,6 +288,7 @@
   "confirm_empty_trash": "确认清空回收站？此操作不可恢复",
   "confirm_delete_permanently": "确认彻底删除该笔记？此操作不可恢复",
   "loading": "加载中...",
+  "refreshing": "正在刷新",
   "empty": "暂无数据",
   "untitled": "未命名",
   "comingSoon": "即将推出",
@@ -298,6 +305,7 @@
   "page": "页",
   "prev": "上一页",
   "next": "下一页",
+  "cancelled": "已取消",
   "cancel": "取消",
   "confirm": "确定",
   "confirmMessages": {
@@ -1137,9 +1145,11 @@
     "pdf_reader": "PDF 阅读器",
     "sandbox_workbench": "沙箱工作台",
     "todo": "待办",
-    "tree_test": "Tree Test",
     "crepe_demo": "Crepe Demo",
-    "chat_v2_test": "Chat V2 Test"
+    "chat_v2_test": "Chat V2 Test",
+    "toggle_sidebar": "切换边栏",
+    "resize_sidebar": "调整边栏宽度",
+    "llm_playground": "LLM Playground"
   },
   "time": {
     "now": "刚刚",
@@ -1506,6 +1516,12 @@
     "adapter_grok_desc": "Grok 系列，grok-3-mini 支持 reasoning_effort",
     "adapter_minimax": "MiniMax",
     "adapter_minimax_desc": "MiniMax 系列，支持 reasoning_split 参数",
+    "adapter_mimo": "小米 MiMo",
+    "adapter_mimo_desc": "MiMo 系列，支持 thinking.type 与 reasoning_content",
+    "adapter_ernie": "百度文心 ERNIE",
+    "adapter_ernie_desc": "ERNIE 5.x / X1.1（千帆 v2），兼容 reasoning_content",
+    "adapter_mistral": "Mistral",
+    "adapter_mistral_desc": "Mistral Large/Medium/Small，支持 reasoning_effort",
     "openai_o1_series": "OpenAI o1 系列",
     "claude_3_5_sonnet": "Claude 3.5 Sonnet",
     "add_config": "新增 API 配置",
@@ -1949,7 +1965,7 @@
       "table": "表格",
       "math": "公式"
     },
-    "notionMenu": {
+    "blockMenu": {
       "groups": {
         "assistant": "助手",
         "suggested": "建议",
@@ -2246,7 +2262,8 @@
         },
         "pageLabel": "第 {{page}} 页",
         "viewOriginal": "查看原图",
-        "noThumbnail": "无缩略图"
+        "noThumbnail": "无缩略图",
+        "noSnippet": "暂无文本摘要"
       }
     },
     "multimodal": {
@@ -2260,7 +2277,7 @@
       "indexError": "索引失败，请重试",
       "rebuildError": "重建索引失败，请重试",
       "indexTooltip": "将此资源的内容索引到多模态知识库，支持图文混合检索",
-      "indexResultTooltip": "索引 {{pages}} 页，跳过 {{skipped}} 页，耗时 {{duration}}s"
+      "indexResultTooltip": "已索引 {{pages}} 页，失败 {{failed}} 页 · 向量维度 {{dimension}}"
     },
     "edit_save_failed": "消息编辑保存失败，请重试",
     "thinking": {
@@ -2348,7 +2365,8 @@
       "save_failed": "保存AnkiConnect设置失败",
       "unavailable": "AnkiConnect 不可用",
       "connection_success": "连接正常：已获取 {{deckCount}} 个牌组，{{modelCount}} 个笔记类型",
-      "connection_failed": "AnkiConnect 连接失败，请确认已启动 Anki 且安装插件 2055492159"
+      "connection_failed": "AnkiConnect 连接失败，请确认已启动 Anki 且安装插件 2055492159",
+      "test_connection_short": "测试连接"
     },
     "error_pdf_format_incompatible": "PDF file format is incompatible",
     "console_anki_connect_connection_failed": "AnkiConnect connection failed:",
@@ -3309,9 +3327,11 @@
       "viewport_transform_samples": "存在 viewport transform 样本：{{count}}",
       "edge_dimming_samples": "存在边透明度降低样本：{{count}}"
     },
-    "search_events_placeholder": "搜索事件/内容"
+    "search_events_placeholder": "搜索事件/内容",
+    "expand": "展开"
   },
   "window_controls": {
+    "drag": "拖动窗口",
     "minimize": "最小化",
     "maximize": "最大化",
     "restore": "还原",
@@ -3324,8 +3344,10 @@
   },
   "mobile_header": {
     "back": "返回",
+    "forward": "前进",
     "open_menu": "打开菜单",
     "open_sidebar": "展开侧边栏",
+    "open_session_settings": "打开当前会话设置",
     "menu": "菜单"
   },
   "sidebar": {
@@ -3338,6 +3360,7 @@
   "header": {
     "refreshing_text": "实时数据",
     "refresh": "刷新",
+    "update": "检查更新",
     "export": "导出"
   },
   "tag_tree": {
@@ -3429,6 +3452,23 @@
       "confirm_hint": "请在 {{seconds}} 秒内再次执行以确认该操作。",
       "prompt_unsupported": "当前环境不支持输入弹窗，请改用其他输入方式。"
     }
+  },
+  "welcome_onboarding": {
+    "title": "欢迎使用 DeepStudent",
+    "subtitle": "本地优先的 AI 学习工作台，数据保存在你自己的设备上。",
+    "language_label": "界面语言 / Language",
+    "lang_zh": "简体中文",
+    "lang_en": "English",
+    "feature_hub_title": "学习资料库",
+    "feature_hub_desc": "导入 PDF、教材与笔记，统一管理你的学习材料。",
+    "feature_chat_title": "AI 对话与解题",
+    "feature_chat_desc": "多模型对话、题目分析、知识库检索一站完成。",
+    "feature_anki_title": "制卡与复习",
+    "feature_anki_desc": "AI 生成 Anki 卡片，内置间隔重复复习闭环。",
+    "ai_setup_title": "连接一个 AI 服务后即可开始",
+    "ai_setup_desc": "支持 SiliconFlow 一键配置全部模型，也可接入 OpenAI、Claude、Gemini、Ollama 等任意兼容服务。",
+    "cta_configure": "去配置 AI 服务",
+    "cta_skip": "先随便看看"
   },
   "onboarding": {
     "analysis_intro": "点击左侧的【学习工作台】图标进入首页，这里汇集题目分析的全部功能。建议先用示例题体验完整流程，并记得保存结果。",
@@ -3538,10 +3578,20 @@
   "maintenance": {
     "banner_title": "维护模式",
     "banner_description": "系统正在进行维护操作，部分功能暂时受限。",
+    "partial_degradation_title": "部分数据功能需要处理",
+    "partial_degradation_description": "受影响组件：{{components}}。其他数据和功能仍可正常使用。",
+    "component_unavailable": "暂不可用",
+    "component_unavailable_description": "该功能的数据组件未能安全完成升级，因此已单独暂停。",
+    "blocked_by_dependency": "依赖组件 {{dependency}} 当前不可用。",
+    "other_features_available": "其他未受影响的功能仍可继续使用",
+    "chat_unavailable": "聊天数据暂时无法打开",
+    "recovery_required": "部分数据服务仍处于安全锁定状态。请重启应用完成恢复后再编辑数据。",
     "blocked_chat_send": "维护模式下无法发送消息，请稍后再试。",
     "blocked_note_save": "维护模式下无法保存笔记，请稍后再试。",
     "blocked_file_upload": "维护模式下无法上传文件，请稍后再试。",
-    "go_to_data_governance": "查看详情"
+    "go_to_data_governance": "查看详情",
+    "restart_now": "立即重启",
+    "restart_failed": "无法重启应用"
   },
   "aiContentLabel": {
     "label": "AI 生成",
@@ -3550,7 +3600,6 @@
     "ariaLabel": "AI 生成内容"
   },
   "aiDisclaimer": {
-    "chatHint": "AI 生成的内容可能存在错误，请注意甄别",
     "cardHint": "AI 生成的卡片内容可能存在错误，请核实后使用"
   },
   "legal": {
@@ -3695,13 +3744,19 @@
     "show_details": "查看错误详情",
     "hide_details": "隐藏详情",
     "copy_error": "复制错误日志",
-    "copied": "已复制"
+    "copied": "已复制",
+    "export_diagnostics": "导出诊断包",
+    "exporting_diagnostics": "正在导出…",
+    "diagnostics_exported": "诊断包已导出",
+    "diagnostics_partial": "诊断包已导出，但有 {{count}} 个文件未包含",
+    "diagnostics_failed": "诊断包导出失败"
   },
   "frontend_errors": {
     "window_error": "窗口错误",
     "unhandled_promise_rejection": "未处理的 Promise 拒绝"
   },
   "search_engines": {
+    "bing_rss": "Bing RSS（免费）",
     "zhipu": "智谱 AI 搜索",
     "bocha": "博查 AI 搜索",
     "unnamed_mcp": "未命名MCP项"
@@ -3890,5 +3945,42 @@
   "model_selector": {
     "total_model_count": "共 {{count}} 个模型",
     "cached": "已缓存"
+  },
+  "question_bank": {
+    "source_images": "原始导入图片",
+    "crop_hint": "在图片上拖拽选取区域，点击「裁剪并添加」将选区添加为题目配图",
+    "no_source_images": "该题目集没有原始导入图片",
+    "crop_selected": "已选择裁剪区域",
+    "drag_to_crop": "拖拽选取裁剪区域",
+    "clear_selection": "清除",
+    "crop_and_add": "裁剪并添加",
+    "crop_success": "图片裁剪成功",
+    "crop_failed": "裁剪失败: {{error}}"
+  },
+  "a11y": {
+    "close": "关闭",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存",
+    "cancel": "取消",
+    "search": "搜索",
+    "home": "首页",
+    "back": "返回",
+    "next": "下一步",
+    "prev": "上一个",
+    "previous": "上一个",
+    "open": "打开",
+    "refresh": "刷新",
+    "menu": "菜单",
+    "settings": "设置"
+  },
+  "workflow": {
+    "progress": {
+      "processing": "流程进行中",
+      "stage_done": "阶段已完成",
+      "stage_active": "阶段执行中",
+      "stage_pending": "阶段待执行",
+      "percentage": "{{value}}%"
+    }
   }
 }

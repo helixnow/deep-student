@@ -15,6 +15,8 @@ const group: SessionGroup = {
   defaultSkillIds: [],
   pinnedResourceIds: [],
   workspaceId: undefined,
+  defaultRuntimeRootId: undefined,
+  preferredProjectRootPath: undefined,
   sortOrder: 0,
   persistStatus: 'active',
   createdAt: '2026-04-06T00:00:00.000Z',
@@ -58,28 +60,18 @@ function renderHarness() {
 }
 
 describe('SessionGroupActions', () => {
-  it('keeps the ellipsis menu hidden until the group row is hovered/focused, while keeping the new-session icon visible', () => {
+  it('keeps group quick actions hidden until the group row is hovered/focused', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
     const quickAction = source.match(/const quickAction = \([\s\S]*?\n\s*\);/m)?.[0] ?? '';
 
-    // Container itself should no longer be hidden.
-    expect(source).toContain('<div className="flex items-center gap-0.5">');
-    expect(source).not.toContain('className="flex items-center gap-0.5 opacity-0');
-
-    // Only the menu trigger stays hover/focus/menu-open visible.
-    expect(quickAction).toContain('className="opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"');
-    expect(quickAction).toMatch(/opacity-0[\s\S]*?<\/div>\s*<CommonTooltip/);
+    expect(quickAction).toContain('className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"');
   });
 
   it('uses the study compose icon for grouped new session quick actions', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
     const newSessionButton = source.match(
-      /aria-label=\{newSessionInGroupLabel\}[\s\S]*?<\/NotionButton>/
+      /aria-label=\{newSessionInGroupLabel\}[\s\S]*?<\/DsButton>/
     )?.[0] ?? '';
-    const sortableGroupItemSource = readFileSync(
-      resolve(process.cwd(), 'src/features/chat/components/SortableGroupItem.tsx'),
-      'utf-8'
-    );
 
     expect(source).toContain("import { CommonTooltip } from '@/components/shared/CommonTooltip';");
     expect(source).toContain('const newSessionInGroupLabel = labels.newSessionInGroup.replace(/\\{\\{\\s*groupName\\s*\\}\\}/g, group.name);');
@@ -88,9 +80,14 @@ describe('SessionGroupActions', () => {
     expect(newSessionButton).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
     expect(newSessionButton).not.toContain('<Plus className="w-3.5 h-3.5" />');
     expect(newSessionButton).not.toContain('title={labels.newSession}');
-    expect(sortableGroupItemSource).toContain("newSessionInGroup: t('page.newSessionInGroup', {");
-    expect(sortableGroupItemSource).toContain('groupName: group.name');
-    expect(sortableGroupItemSource).toContain("defaultValue: '在 {{groupName}} 中新建会话'");
+  });
+
+  it('keeps quick-action hover states transparent and color-only', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
+
+    expect(source).toContain('hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)]');
+    expect(source).toContain('active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]');
+    expect(source).toContain('!rounded-none');
   });
 
   it('uses the group-aware new session label for accessibility without native title', () => {

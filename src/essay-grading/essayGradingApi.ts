@@ -10,7 +10,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { getErrorMessage } from '../utils/errorUtils';
+import { getErrorDetails, getErrorMessage } from '../utils/errorUtils';
 import i18n from '../i18n';
 
 // ======================== 类型定义 ========================
@@ -49,6 +49,38 @@ export interface GradingSessionListItem {
   total_rounds: number;
   latest_input_preview: string | null;
   latest_score: number | null;
+}
+
+/**
+ * 会话列表项（对齐后端 VfsEssaySession 的序列化输出）
+ *
+ * 注意与 GradingSessionListItem 的差异：
+ * - latest_score 在后端为 None 时整个字段被跳过（skip_serializing_if），故为可选
+ * - 无 latest_input_preview 字段（后端列表命令不提供预览）
+ */
+export interface GradingSessionSummary {
+  id: string;
+  title: string;
+  /** 作文类型（后端始终序列化为字符串，缺省为空串） */
+  essay_type: string;
+  /** 学段（后端始终序列化为字符串，缺省为空串） */
+  grade_level: string;
+  custom_prompt: string | null;
+  total_rounds: number;
+  /** 最新分数（后端无分数时字段缺失） */
+  latest_score?: number | null;
+  is_favorite: boolean;
+  created_at: string;
+  updated_at: string;
+  /** 软删除时间（回收站；正常列表中字段缺失） */
+  deleted_at?: string;
+}
+
+export interface ListSessionsParams {
+  offset?: number;
+  limit?: number;
+  /** 搜索关键词（后端按标题/文体/年级做大小写不敏感的包含匹配） */
+  query?: string;
 }
 
 // ======================== API 函数 ========================
@@ -118,6 +150,24 @@ export async function deleteSession(sessionId: string): Promise<number> {
     return await invoke<number>('essay_grading_delete_session', { sessionId });
   } catch (error: unknown) {
     throw new Error(i18n.t('essay_grading:api_errors.delete_session_failed', { error: getErrorMessage(error) }));
+  }
+}
+
+/**
+ * 获取会话列表（分页）
+ *
+ * 后端命令：essay_grading_list_sessions（offset/limit/query）
+ * query 非空时后端按标题/文体/年级做大小写不敏感的包含匹配，过滤后再分页。
+ */
+export async function listSessions(params: ListSessionsParams = {}): Promise<GradingSessionSummary[]> {
+  try {
+    return await invoke<GradingSessionSummary[]>('essay_grading_list_sessions', {
+      offset: params.offset ?? null,
+      limit: params.limit ?? null,
+      query: params.query ?? null,
+    });
+  } catch (error: unknown) {
+    throw new Error(i18n.t('essay_grading:api_errors.list_sessions_failed', { error: getErrorMessage(error) }));
   }
 }
 
@@ -406,6 +456,111 @@ export async function getModels(): Promise<ModelInfo[]> {
   }
 }
 
+// ======================== 错误分类 ========================
+
+/** 批改错误类别 */
+export type GradingErrorKind =
+  | 'api_key_missing'
+  | 'auth'
+  | 'rate_limit'
+  | 'network'
+  | 'timeout'
+  | 'model_not_found'
+  | 'unknown';
+
+export interface GradingErrorClassification {
+  kind: GradingErrorKind;
+  /** 是否建议向用户展示"重试"入口（配置类错误需先修改设置，重试无意义） */
+  retryable: boolean;
+  /** UI 友好的 i18n 消息 key（essay_grading namespace） */
+  messageKey: string;
+  /** 原始（脱敏后）错误消息，供诊断展示 */
+  rawMessage: string;
+}
+
+const API_KEY_PATTERNS = /api[\s_-]?key|api\s*密钥|密钥未|密钥不能为空|no api key|missing key|unauthorized|invalid[\s_-]?key|401/i;
+const RATE_LIMIT_PATTERNS = /rate[\s_-]?limit|too many requests|quota\s?(exceeded|limit)|insufficient[\s_-]?quota|429|限流|限速|请求过于频繁|配额(不足|已用完|超限)|额度不足/i;
+const AUTH_PATTERNS = /forbidden|permission denied|access denied|403|无权限|权限不足|鉴权失败|认证失败|账户被(禁用|封禁)/i;
+const NETWORK_PATTERNS = /network|timed?\s?out|timeout|connection|connect|dns|socket|unreachable|fetch failed|网络|连接|超时|离线|offline/i;
+const MODEL_NOT_FOUND_PATTERNS = /model.*(not.?found|does not exist|not exist|unavailable|invalid)|(not.?found|invalid).*model|模型不存在|模型未找到|找不到模型|模型配置(不存在|无效)|未找到模型配置|404/i;
+
+/**
+ * 将 essay_grading_stream 等命令 reject 的 AppError（或任意错误）
+ * 分类为 UI 友好的可重试标记与 i18n 消息 key。
+ *
+ * 后端 AppError 序列化形如 { error_type: "LLM"|"Network"|..., message, details }，
+ * 优先使用 error_type，再按消息文本模式匹配兜底。
+ */
+export function classifyGradingError(error: unknown): GradingErrorClassification {
+  const rawMessage = getErrorMessage(error);
+  const details = getErrorDetails(error);
+  const haystack = [rawMessage, details.detail ?? '', details.code ?? ''].join(' ');
+
+  const errorType = error && typeof error === 'object' && typeof (error as Record<string, unknown>).error_type === 'string'
+    ? ((error as Record<string, unknown>).error_type as string)
+    : null;
+
+  if (API_KEY_PATTERNS.test(haystack)) {
+    return {
+      kind: 'api_key_missing',
+      retryable: false,
+      messageKey: 'essay_grading:errors.api_key_missing',
+      rawMessage,
+    };
+  }
+
+  if (RATE_LIMIT_PATTERNS.test(haystack)) {
+    return {
+      kind: 'rate_limit',
+      retryable: true,
+      messageKey: 'essay_grading:data_layer.errors.rate_limited',
+      rawMessage,
+    };
+  }
+
+  if (AUTH_PATTERNS.test(haystack)) {
+    return {
+      kind: 'auth',
+      retryable: false,
+      messageKey: 'essay_grading:data_layer.errors.auth_failed',
+      rawMessage,
+    };
+  }
+
+  if (errorType === 'Network' || NETWORK_PATTERNS.test(haystack)) {
+    return {
+      kind: 'network',
+      retryable: true,
+      messageKey: 'essay_grading:errors.network_error',
+      rawMessage,
+    };
+  }
+
+  if (MODEL_NOT_FOUND_PATTERNS.test(haystack)) {
+    return {
+      kind: 'model_not_found',
+      retryable: false,
+      messageKey: 'essay_grading:errors.model_not_found',
+      rawMessage,
+    };
+  }
+
+  return {
+    kind: 'unknown',
+    retryable: true,
+    messageKey: 'essay_grading:errors.grading_failed',
+    rawMessage,
+  };
+}
+
+/**
+ * 便捷函数：直接返回本地化后的 UI 错误消息。
+ */
+export function getGradingErrorDisplayMessage(error: unknown): string {
+  const { messageKey, rawMessage } = classifyGradingError(error);
+  return i18n.t(messageKey, { defaultValue: rawMessage });
+}
+
 // ======================== 导出 API 对象 ========================
 
 export const EssayGradingAPI = {
@@ -413,6 +568,7 @@ export const EssayGradingAPI = {
   getSession,
   updateSession,
   deleteSession,
+  listSessions,
   toggleFavorite,
   getRounds,
   getRound,

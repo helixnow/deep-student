@@ -100,6 +100,8 @@ export const CHATV2_LOGS_CLEARED = 'CHATV2_LOGS_CLEARED';
 // =============================================================================
 
 interface ChatV2LogConfig {
+  /** 日志系统总开关（关闭时 logChatV2 为零分配 no-op，生产环境默认关闭） */
+  enabled: boolean;
   /** 是否输出到控制台（生产环境可关闭） */
   consoleEnabled: boolean;
   /** 仅记录这些严重级别以上的日志到控制台 */
@@ -119,6 +121,7 @@ const SEVERITY_PRIORITY: Record<ChatV2LogSeverity, number> = {
 
 /** 默认配置 */
 const DEFAULT_CONFIG: ChatV2LogConfig = {
+  enabled: import.meta.env.DEV, // 开发模式默认开启，生产模式默认关闭（可通过 configureChatV2Logger 运行时打开）
   consoleEnabled: import.meta.env.DEV, // 开发模式默认开启，生产模式默认关闭
   consoleMinSeverity: 'info',
   storageEnabled: true,
@@ -150,6 +153,13 @@ export function getChatV2LogConfig(): ChatV2LogConfig {
 }
 
 /**
+ * 日志系统是否启用（供高频调用点在构造日志数据前短路，避免无谓分配）
+ */
+export function isChatV2LoggingEnabled(): boolean {
+  return logConfig.enabled;
+}
+
+/**
  * 检查是否应该输出到控制台
  */
 function shouldLogToConsole(severity: ChatV2LogSeverity): boolean {
@@ -176,6 +186,10 @@ export function logChatV2(
     variantId?: string;
   }
 ): void {
+  // 🚀 性能：总开关关闭时（生产环境默认）零分配直接返回，
+  // 避免多变体流式期间每 chunk 的对象分配 + 同步 DOM 事件派发
+  if (!logConfig.enabled) return;
+
   const entry: ChatV2LogEntry = {
     id: `cv2-${++LOG_ID_COUNTER}`,
     timestamp: new Date().toISOString(),
@@ -393,6 +407,8 @@ function injectChatV2Debug() {
     configure: configureChatV2Logger,
     getConfig: getChatV2LogConfig,
     // 便捷方法
+    enable: () => configureChatV2Logger({ enabled: true }),
+    disable: () => configureChatV2Logger({ enabled: false }),
     enableConsole: () => configureChatV2Logger({ consoleEnabled: true }),
     disableConsole: () => configureChatV2Logger({ consoleEnabled: false }),
     setMinSeverity: (severity: ChatV2LogSeverity) => 

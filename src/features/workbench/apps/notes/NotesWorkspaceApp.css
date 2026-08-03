@@ -1,0 +1,1188 @@
+.notes-workspace {
+  --notes-statusbar-height: 22px;
+
+  position: absolute;
+  inset: 0;
+  display: block;
+  /* 结构容器用 clip：禁止 WebKit reveal-selection 把整个工作区滚位移 */
+  overflow: clip;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: 13px/1.4 var(--font-family);
+  letter-spacing: 0;
+}
+
+/*
+ * ANTI-REGRESSION：壳层拖/缩时 useDragRenderPause 挂上 data-wb-render-paused。
+ * 只命中宿主与已知的循环/入场动画节点，禁止 `host *` 通配
+ * （platformPerformanceConfig.test 锁定；全子树样式匹配会在起拖时卡一下）。
+ */
+.notes-workspace[data-wb-render-paused] {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* animation-play-state 不下沉到后代：逐个点名本文件内的动画节点 */
+.notes-workspace[data-wb-render-paused] .notes-tree-loading i,
+.notes-workspace[data-wb-render-paused] .notes-tab-state,
+.notes-workspace[data-wb-render-paused] .notes-document-host,
+.notes-workspace[data-wb-render-paused] .notes-mindmap-loading i {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* 拖/缩：根旗即可停宿主动画，不依赖延后的 per-host attr */
+:root[data-wb-dragging] .notes-workspace,
+:root[data-wb-settling] .notes-workspace {
+  animation-play-state: paused;
+}
+
+.notes-workspace[data-focus-mode="true"] [data-notes-explorer],
+.notes-workspace[data-focus-mode="true"] .notes-backlinks-panel,
+.notes-workspace[data-focus-mode="true"] .notes-statusbar,
+.notes-workspace[data-focus-mode="true"] .wb-sys-aside,
+.notes-workspace[data-focus-mode="true"] .wb-sys-drawer-handle {
+  display: none !important;
+}
+
+.notes-workspace[data-focus-mode="true"] .wb-sys-split,
+.notes-workspace[data-focus-mode="true"] .notes-main-content {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.notes-crepe-shell[data-focus-mode="true"] .notes-editor-header-section,
+.notes-crepe-shell[data-focus-mode="true"] .notes-editor-header {
+  display: none;
+}
+
+/* 玻璃模糊走 workbench 材质 token（禁止自写 blur：材质分档与跟手期关 blur
+ * 纪律由 token 层统一管理；见 styles/workbench.css 文件头契约） */
+.notes-focus-exit {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 24;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background) / 0.88);
+  color: hsl(var(--muted-foreground));
+  backdrop-filter: var(--wb-glass-blur, none);
+}
+
+.notes-icon-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: pointer;
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-icon-button:hover,
+.notes-icon-button[data-active='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.notes-icon-button:focus-visible {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-explorer {
+  position: relative;
+  z-index: 4;
+  min-height: 0;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: clip;
+  background: color-mix(in hsl, hsl(var(--muted)) 34%, hsl(var(--background)) 66%);
+}
+
+.notes-explorer header {
+  height: 38px;
+  padding: 0 7px 0 12px;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  container-type: inline-size;
+}
+
+/* 标题在按钮组挤压下截断而非撑破一行 */
+.notes-explorer header > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 按钮组约 250px；标题放不下完整文字时整个隐藏，避免残留孤立省略号 */
+@container (max-width: 286px) {
+  .notes-explorer header > span {
+    display: none;
+  }
+}
+
+.notes-explorer header > div {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.notes-explorer header .notes-icon-button {
+  width: 25px;
+  height: 25px;
+}
+
+.notes-search {
+  height: 30px;
+  margin: 0 8px 6px;
+  padding: 0 7px;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: var(--notes-radius-control);
+  /* 玻璃面搜索框：低透明墨色 inset，不用实色灰底 */
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+  transition: border-color var(--notes-hover-transition), box-shadow var(--notes-hover-transition);
+}
+
+.notes-search:focus-within {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.notes-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.notes-search .notes-icon-button {
+  width: 20px;
+  height: 20px;
+}
+
+.notes-explorer-tag-filter {
+  margin: 0 8px 6px;
+  flex: 0 0 auto;
+  max-height: 88px;
+  min-height: 0;
+}
+
+.notes-explorer .nfs-favorites {
+  flex: 0 0 auto;
+  border-bottom: 1px solid hsl(var(--border) / 70%);
+}
+
+.notes-tree-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.notes-tree-root {
+  width: calc(100% - 12px);
+  height: 26px;
+  margin: 5px 6px 2px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  cursor: default;
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-tree-root:hover,
+.notes-tree-root[data-selected='true'],
+.notes-tree-root[data-drop-target='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / 14%);
+}
+
+.notes-tree-root:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.notes-tree {
+  flex: 1;
+  padding: 1px 6px 12px;
+}
+
+/* 树行对齐对话标准的行配方；树形内容保留 13px/30px 密度档（最小妥协） */
+.notes-tree-row {
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: var(--shell-nav-row-radius, 14px);
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-tree-row:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.notes-tree-row[data-active='true'],
+.notes-tree-row[data-selected='true'] {
+  background: var(--interactive-selected, hsl(var(--accent)));
+}
+
+/* 拖放目标保留主色调提示（与选中态区分） */
+.notes-tree-row[data-drop-target='true'] {
+  background: hsl(var(--primary) / 14%);
+}
+
+.notes-tree-row:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.notes-tree-row[data-active='true'] {
+  font-weight: 500;
+}
+
+.notes-tree-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tree-folder {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.notes-tree-folder .is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.notes-tree-message {
+  min-height: 120px;
+  padding: 28px 12px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 9px;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+}
+
+.notes-tree-message button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-tree-message button:hover {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+}
+
+.notes-tree-message button:focus-visible {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-tree-loading {
+  padding: 8px 6px;
+  display: grid;
+  gap: 5px;
+}
+
+.notes-tree-loading i {
+  width: 76%;
+  height: 23px;
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--muted) / 64%);
+  animation: notes-loading-pulse 900ms ease-in-out infinite alternate;
+}
+
+.notes-tree-loading i:nth-child(2) { width: 58%; }
+.notes-tree-loading i:nth-child(3) { width: 84%; }
+.notes-tree-loading i:nth-child(4) { width: 66%; }
+
+/* 导图 pane 懒加载占位（xyflow chunk 拉取期间）：同款脉冲条，居中轻量呈现 */
+.notes-mindmap-loading {
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+}
+
+.notes-mindmap-loading i {
+  width: min(220px, 56%);
+  height: 14px;
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--muted) / 64%);
+  animation: notes-loading-pulse 900ms ease-in-out infinite alternate;
+}
+
+.notes-mindmap-loading i:nth-child(2) { width: min(160px, 42%); }
+.notes-mindmap-loading i:nth-child(3) { width: min(190px, 48%); }
+
+.notes-workspace-main {
+  position: relative;
+  height: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) var(--notes-statusbar-height);
+}
+
+.notes-main-content {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: clip;
+}
+
+.notes-main-content[data-backlinks-open='true'] {
+  grid-template-columns: minmax(0, 1fr) clamp(220px, 26vw, 320px);
+}
+
+.notes-main-content[data-backlinks-overlay='true'][data-backlinks-open='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.notes-main-content[data-backlinks-overlay='true'] .notes-backlinks-panel {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(320px, calc(100% - 12px));
+  box-shadow: -8px 0 24px hsl(var(--shadow-base) / 0.14);
+}
+
+.notes-panes {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+}
+
+.notes-pane-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+}
+
+.notes-pane-resize {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 6px;
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+  background: hsl(var(--border) / 62%);
+  transition: background-color var(--notes-hover-transition);
+}
+
+.notes-pane-resize::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+}
+
+/* 触屏：6px 视觉拖拽条命中区过窄，伪元素横向外扩到 ~22px（compact 竖排改纵向外扩），
+   并常显加深底色作视觉指示（hover 不可达） */
+@media (pointer: coarse) {
+  .notes-pane-resize::after {
+    inset: 0 -8px;
+  }
+
+  .notes-pane-resize {
+    background: hsl(var(--border) / 88%);
+  }
+}
+
+.notes-pane-resize:hover,
+.notes-pane-resize[data-resize-handle-state='drag'] {
+  background: hsl(var(--primary) / 48%);
+}
+
+.notes-pane-resize:focus-visible {
+  background: hsl(var(--primary) / 48%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-workspace-pane {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  background: hsl(var(--background));
+}
+
+.notes-tabstrip {
+  min-width: 0;
+  height: 40px;
+  display: flex;
+  align-items: end;
+  overflow-x: auto;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 30%);
+}
+
+.notes-titlebar-tabs {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+
+  /* Keep a reliable titlebar drag target after the final tab. */
+  padding-right: 78px;
+  display: flex;
+  align-items: stretch;
+  pointer-events: none;
+}
+
+.notes-titlebar-tabs .notes-tabstrip {
+  height: 100%;
+  flex: 1;
+  border-bottom: 0;
+  background: transparent;
+  pointer-events: none;
+  align-items: stretch;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+}
+
+.notes-tabs-overflow {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+}
+
+.notes-tabs-overflow-menu {
+  position: fixed;
+  z-index: 2200;
+  width: min(280px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 64px));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 10px 28px hsl(var(--shadow-base) / 0.2);
+}
+
+.notes-tabs-overflow-menu-viewport {
+  padding: 4px;
+}
+
+.notes-tabs-overflow-menu button {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notes-tabs-overflow-menu button:hover,
+.notes-tabs-overflow-menu button[data-active='true'] {
+  background: hsl(var(--accent));
+}
+
+.notes-tabs-overflow-menu button:focus-visible {
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.notes-tabs-overflow-menu button span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 溢出菜单行内的固定针 / 未保存圆点：右侧对齐，复用 tab 语义 */
+.notes-tabs-overflow-menu button .notes-tab-pin,
+.notes-tabs-overflow-menu button .notes-tab-state {
+  flex: 0 0 auto;
+}
+
+.notes-tabs-overflow-menu button[data-save-state='saving'] .notes-tab-state {
+  animation: notes-saving-pulse 900ms ease-in-out infinite alternate;
+}
+
+.notes-titlebar-tabs .notes-tab {
+  height: 100%;
+  pointer-events: auto;
+}
+
+.notes-titlebar-tabs .notes-tab[data-active='true'] {
+  height: 100%;
+}
+
+.notes-tab {
+  position: relative;
+  height: 36px;
+  width: 180px;
+  min-width: 104px;
+  max-width: 200px;
+  flex: 1 1 180px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 22%);
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-tab:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent) / 60%);
+}
+
+.notes-tab[data-active='true'] {
+  height: 40px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+}
+
+.notes-tab[data-right-split='true'] {
+  box-shadow: inset 0 -2px hsl(var(--primary) / 72%);
+}
+
+.notes-tab[data-drop-position]::after {
+  position: absolute;
+  z-index: 2;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  /* 保留 1px：tab 投放指示条为细竖线，非行/控件/浮层圆角语言 */
+  border-radius: 1px;
+  content: '';
+  background: hsl(var(--primary));
+  pointer-events: none;
+}
+
+.notes-tab[data-drop-position='before']::after {
+  left: 0;
+}
+
+.notes-tab[data-drop-position='after']::after {
+  right: 0;
+}
+
+.notes-tab > button:first-child {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 3px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.notes-tab > button:first-child:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.notes-tab > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tab-pin {
+  flex: 0 0 auto;
+  color: hsl(var(--primary));
+  opacity: 0.72;
+}
+
+.notes-tab-state {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  /* 保留 50%：保存状态圆点，非行/控件/浮层圆角语言 */
+  border-radius: 50%;
+  background: currentcolor;
+  /* 出现时弹性放大：脏标记（●）从无到有的瞬间可感知 */
+  animation: notes-dirty-pop 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.notes-tab[data-save-state='saving'] .notes-tab-state {
+  animation: notes-saving-pulse 900ms ease-in-out infinite alternate;
+}
+
+.notes-tab .notes-icon-button {
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+  opacity: 0;
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-tab:hover .notes-icon-button, .notes-tab[data-active='true'] .notes-icon-button {
+  opacity: 1;
+}
+
+.notes-tab:focus-within .notes-icon-button {
+  opacity: 1;
+}
+
+.notes-pane-content, .notes-document-host {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: clip;
+}
+
+.notes-document-host:not([hidden]) {
+  animation: notes-tab-crossfade var(--notes-tab-transition-duration, 150ms) ease-out;
+}
+
+.notes-document-host[hidden] {
+  display: none;
+}
+
+.notes-empty-pane {
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-statusbar {
+  min-width: 0;
+  height: var(--notes-statusbar-height);
+  padding: 0 9px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 26%);
+  font-size: 11px;
+}
+
+.notes-statusbar button,
+.notes-statusbar [role='button'] {
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-statusbar button:focus-visible,
+.notes-statusbar [role='button']:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-statusbar span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-statusbar span:last-child {
+  padding-left: 16px;
+  flex: 0 1 auto;
+  text-align: right;
+}
+
+.notes-split-indicator {
+  display: none;
+}
+
+.notes-context-menu {
+  position: fixed;
+  z-index: 50;
+  width: 148px;
+  padding: 4px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup);
+  background: hsl(var(--popover));
+  box-shadow: var(--notes-popover-shadow);
+  transform-origin: top left;
+  animation: notes-surface-enter var(--notes-popup-enter-duration, 150ms)
+    var(--notes-popup-enter-easing, var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)));
+}
+
+.notes-context-menu button {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--notes-radius-row);
+  color: hsl(var(--popover-foreground));
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-context-menu button:hover {
+  background: hsl(var(--accent));
+}
+
+.notes-context-menu button:focus-visible {
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-context-menu button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.notes-context-menu button.is-danger {
+  color: hsl(var(--destructive));
+}
+
+.notes-tab-context-menu {
+  width: 184px;
+}
+
+.notes-tab-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.notes-context-menu-separator {
+  height: 1px;
+  margin: 4px;
+  background: hsl(var(--border));
+}
+
+/* ============================================================================
+   资源管理器行内表面（新建文件夹输入行 / 删除确认条，非模态，无 scrim）
+   入场统一走共享 .ui-rise-in（150ms + var(--dropdown-ease)，自带 reduced-motion 降级）
+   ============================================================================ */
+
+.notes-inline-create {
+  margin: 0 8px 6px;
+  flex: 0 0 auto;
+  display: grid;
+  gap: 4px;
+}
+
+.notes-inline-create-row {
+  height: 30px;
+  padding: 0 7px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid hsl(var(--ring));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--background));
+  box-shadow: 0 0 0 1px hsl(var(--ring) / 35%);
+}
+
+.notes-inline-create-row input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+}
+
+.notes-inline-confirm {
+  margin: 0 8px 6px;
+  padding: 8px 10px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid hsl(var(--destructive) / 35%);
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--destructive) / 8%);
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--foreground));
+}
+
+.notes-inline-confirm-copy {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.notes-inline-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.notes-inline-confirm-actions button {
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition);
+}
+
+.notes-inline-confirm-actions button:hover {
+  background: hsl(var(--accent));
+}
+
+.notes-inline-confirm-actions button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-inline-confirm-actions button.is-danger {
+  border-color: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  background: hsl(var(--destructive));
+}
+
+/* 危险主按钮 hover：整体加深而非退回 accent（对齐 NotesTrashDialog 确认条） */
+.notes-inline-confirm-actions button.is-danger:hover {
+  border-color: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+  background: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+}
+
+.notes-inline-error {
+  margin: 0;
+  color: hsl(var(--destructive));
+  font-size: 12px;
+}
+
+/* 名称输入接近上限（>450 字符）时的字符计数；到达 500 上限转警示色 */
+.notes-inline-counter {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.notes-inline-counter[data-at-limit='true'] {
+  color: hsl(var(--destructive));
+}
+
+.notes-trash-dialog {
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-trash-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.notes-trash-dialog-header h2 {
+  margin-bottom: 12px;
+}
+
+.notes-trash-list {
+  min-height: 0;
+  max-height: min(420px, 55vh);
+  border-top: 1px solid hsl(var(--border));
+}
+
+.notes-trash-item {
+  min-height: 36px;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid hsl(var(--border) / 65%);
+  transition: background-color var(--notes-hover-transition), color var(--notes-hover-transition), border-color var(--notes-hover-transition), opacity var(--notes-hover-transition);
+}
+
+.notes-trash-item > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-trash-item .notes-icon-button {
+  flex: 0 0 auto;
+}
+
+@keyframes notes-saving-pulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@keyframes notes-dirty-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes notes-loading-pulse {
+  from { opacity: 0.45; }
+  to { opacity: 0.9; }
+}
+
+@keyframes notes-surface-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes notes-scrim-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes notes-tab-crossfade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.notes-workspace[data-compact='true'] .notes-main-content[data-backlinks-open='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.notes-workspace[data-compact='true'] .notes-main-content .notes-backlinks-panel {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(320px, calc(100% - 12px));
+  box-shadow: -8px 0 24px hsl(var(--shadow-base) / 0.14);
+}
+
+.notes-workspace[data-compact='true'] .notes-pane-resize {
+  flex-basis: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 6px;
+  min-height: 6px;
+  cursor: row-resize;
+}
+
+/* compact 竖排时拖拽条为横条，命中区改纵向外扩 */
+@media (pointer: coarse) {
+  .notes-workspace[data-compact='true'] .notes-pane-resize::after {
+    inset: -8px 0;
+  }
+}
+
+.notes-workspace[data-compact='true'] .notes-statusbar span:first-child {
+  display: none;
+}
+
+.notes-workspace[data-compact='true'] .notes-statusbar {
+  justify-content: flex-end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-icon-button,
+  .notes-search,
+  .notes-tree-root,
+  .notes-tree-row,
+  .notes-tree-message button,
+  .notes-pane-resize,
+  .notes-tab,
+  .notes-tab .notes-icon-button,
+  .notes-statusbar button,
+  .notes-statusbar [role='button'],
+  .notes-context-menu button,
+  .notes-resource-dialog input,
+  .notes-resource-dialog button,
+  .notes-trash-item,
+  .notes-workspace[data-compact='true'] .notes-explorer {
+    transition-duration: 0.01ms;
+  }
+
+  .notes-explorer {
+    transition: none;
+  }
+
+  .notes-tab-state,
+  .notes-tree-loading i,
+  .notes-context-menu,
+  .notes-dialog-scrim,
+  .notes-resource-dialog,
+  .notes-document-host:not([hidden]) {
+    animation: none;
+  }
+
+  .notes-titlebar-tabs .notes-tabstrip {
+    scroll-behavior: auto;
+  }
+
+  .notes-files-subscreen {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   窄窗「文件」全屏内联子屏（P0-5 去抽屉化）
+   ============================================================================ */
+
+.notes-files-subscreen {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--background));
+  animation: notes-files-subscreen-enter var(--notes-popup-enter-duration, 150ms)
+    cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.notes-files-subscreen-header {
+  min-height: 48px;
+  padding: 0 12px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+}
+
+/* 顶栏返回：≥44px 触控目标 */
+.notes-files-subscreen-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--notes-radius-control, 6px);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--notes-hover-transition, var(--notes-hover-transition)),
+    color var(--notes-hover-transition, var(--notes-hover-transition));
+}
+
+.notes-files-subscreen-back:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.notes-files-subscreen-back:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-files-subscreen-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.9);
+}
+
+.notes-files-subscreen-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+.notes-files-subscreen-body .notes-explorer {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 子屏内树行 / 收藏行放大到触控目标（行高 ≥44px） */
+.notes-files-subscreen .notes-tree-row,
+.notes-files-subscreen .rct-tree-item-button {
+  min-height: 44px;
+}
+
+@keyframes notes-files-subscreen-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

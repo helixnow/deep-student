@@ -5,7 +5,7 @@
  * 影响编程滚动（scrollTo/scrollIntoView 等），对用户滚轮无效。
  *
  * 本 hook 拦截鼠标滚轮事件，把 deltaY 累加到一个目标 scrollTop，再用
- * rAF 把当前 scrollTop 缓动逼近目标，从而获得 Notion / VSCode 那种顺滑感。
+ * rAF 把当前 scrollTop 缓动逼近目标，从而获得  VSCode 那种顺滑感。
  *
  * 设计要点：
  * 1. 仅拦截"鼠标滚轮"，不动触控板。
@@ -128,14 +128,60 @@ export function useSmoothWheel(
       rafId = requestAnimationFrame(tick);
     };
 
+    // ★ 性能：overflowY 计算样式缓存。wheel 事件是高频路径（触控板可达
+    // 每秒上百个事件），逐节点 getComputedStyle 会在 passive:false 监听里
+    // 同步强制样式计算。聊天内嵌套滚动容器（代码块/思维链面板）的
+    // overflow 样式是静态的，用 WeakMap 缓存一次即可；scrollTop/scrollHeight
+    // 属于动态值仍每次实读
+    const overflowYCache = new WeakMap<HTMLElement, string>();
+    const getOverflowY = (node: HTMLElement): string => {
+      let value = overflowYCache.get(node);
+      if (value === undefined) {
+        value = getComputedStyle(node).overflowY;
+        overflowYCache.set(node, value);
+      }
+      return value;
+    };
+
+    // 事件目标到 viewport 之间若存在还能朝滚动方向继续滚的嵌套滚动容器
+    // （思维链/来源面板、可滚动代码块等），滚轮应交给它原生消费；
+    // capture + preventDefault 拦截会让嵌套容器永远滚不动
+    const hasNestedScrollableTarget = (e: WheelEvent, viewport: HTMLElement): boolean => {
+      let node: Element | null = e.target instanceof Element ? e.target : null;
+      while (node && node !== viewport && node !== hostElement) {
+        if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight + 1) {
+          const overflowY = getOverflowY(node);
+          if (overflowY === 'auto' || overflowY === 'scroll') {
+            const canScrollUp = e.deltaY < 0 && node.scrollTop > 0;
+            const canScrollDown =
+              e.deltaY > 0 && node.scrollTop + node.clientHeight < node.scrollHeight - 1;
+            if (canScrollUp || canScrollDown) return true;
+          }
+        }
+        node = node.parentElement;
+      }
+      return false;
+    };
+
     const onWheel = (e: WheelEvent) => {
       // 横滚不处理，让浏览器自己来
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+
+      // ★ 性能：触控板向下滚（阅读时最高频路径）本 hook 从头到尾不做任何事，
+      // 提前零成本放行，跳过 DOM 遍历 / layout 读取
+      const mouseWheel = isMouseWheel(e);
+      const scrollingUp = e.deltaY < 0;
+      if (!mouseWheel && !scrollingUp) return;
+
       const el = resolveScrollEl();
       if (!el) return;
       const max = el.scrollHeight - el.clientHeight;
       if (max <= 0) return;
-      if (!isMouseWheel(e)) return; // 触控板：放行原生
+      if (hasNestedScrollableTarget(e, el)) return; // 嵌套滚动容器优先原生消费
+      // 向上滚意图必须在"触控板放行"之前上报：流式吸底期间若不第一时间
+      // 释放跟随，吸底 rAF 每帧写回底部，触控板的小步原生滚动永远逃不出去
+      if (scrollingUp) optsRef.current.onUserScrollUp?.();
+      if (!mouseWheel) return; // 触控板：放行原生
 
       // 边界放行（允许父级 overscroll / 软弹回）
       if (
@@ -157,7 +203,6 @@ export function useSmoothWheel(
       if (target < 0) target = 0;
       if (target > max) target = max;
 
-      if (e.deltaY < 0) optsRef.current.onUserScrollUp?.();
       if (!rafId) rafId = requestAnimationFrame(tick);
     };
 

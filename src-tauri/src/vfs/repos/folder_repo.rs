@@ -955,6 +955,8 @@ impl VfsFolderRepo {
             });
         }
 
+        Self::mark_item_indexes_pending_with_conn(conn, item_id)?;
+
         debug!(
             "[VFS::FolderRepo] Moved item {} ({}) to folder {:?}",
             item_id, item_type, new_folder_id
@@ -1038,6 +1040,12 @@ impl VfsFolderRepo {
 
                 let affected = conn.execute(&sql, params.as_slice())?;
                 total_affected += affected;
+
+                if affected > 0 {
+                    for item_id in chunk {
+                        Self::mark_item_indexes_pending_with_conn(conn, item_id)?;
+                    }
+                }
             }
         }
 
@@ -1117,6 +1125,91 @@ impl VfsFolderRepo {
         debug!(
             "[VFS::FolderRepo] Updated folder: {} (cached_path cleared for subtree)",
             folder.id
+        );
+        Ok(())
+    }
+
+    /// Rename only the title of an active folder if the caller's observed
+    /// version is still current.
+    ///
+    /// This is intentionally narrower than `update_folder`: a rename must not
+    /// write back a stale parent, icon, color, expansion state, or sort order
+    /// that was read before another folder mutation completed.
+    pub fn rename_folder_if_version(
+        db: &VfsDatabase,
+        folder_id: &str,
+        title: &str,
+        expected_updated_at: i64,
+    ) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        Self::rename_folder_if_version_with_conn(&conn, folder_id, title, expected_updated_at)
+    }
+
+    /// Rename an active folder with optimistic concurrency control using an
+    /// existing connection.
+    pub fn rename_folder_if_version_with_conn(
+        conn: &Connection,
+        folder_id: &str,
+        title: &str,
+        expected_updated_at: i64,
+    ) -> VfsResult<()> {
+        // Advance the version even when two updates share a millisecond so a
+        // stale caller cannot accidentally match after a successful rename.
+        let now = chrono::Utc::now()
+            .timestamp_millis()
+            .max(expected_updated_at.saturating_add(1));
+        let affected = conn.execute(
+            r#"
+            UPDATE folders
+            SET title = ?1, updated_at = ?2
+            WHERE id = ?3 AND deleted_at IS NULL AND updated_at = ?4
+            "#,
+            params![title, now, folder_id, expected_updated_at],
+        )?;
+
+        if affected == 0 {
+            let exists: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM folders WHERE id = ?1 AND deleted_at IS NULL)",
+                params![folder_id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Err(VfsError::FolderNotFound {
+                    folder_id: folder_id.to_string(),
+                });
+            }
+            return Err(VfsError::Conflict {
+                key: "folders.conflict".to_string(),
+                message: format!(
+                    "Folder {} changed before the rename could be applied",
+                    folder_id
+                ),
+            });
+        }
+
+        // A title contributes to every descendant virtual path, so invalidate
+        // both cache representations after the conditional write succeeds.
+        let folder_ids = Self::get_folder_ids_recursive_with_conn(conn, folder_id)?;
+        if !folder_ids.is_empty() {
+            execute_update_in_batches(
+                conn,
+                &folder_ids,
+                "UPDATE folder_items SET cached_path = NULL WHERE folder_id IN ({})",
+            )?;
+            if let Err(e) =
+                VfsPathCacheRepo::invalidate_by_folders_batch_with_conn(conn, &folder_ids)
+            {
+                warn!(
+                    "[VFS::FolderRepo] Failed to invalidate path_cache after rename for {} folders: {}",
+                    folder_ids.len(),
+                    e
+                );
+            }
+        }
+
+        debug!(
+            "[VFS::FolderRepo] Renamed folder {} with optimistic concurrency control",
+            folder_id
         );
         Ok(())
     }
@@ -1268,6 +1361,22 @@ impl VfsFolderRepo {
             }
 
             let folder_ids = Self::get_folder_ids_for_purge_with_conn(conn, folder_id)?;
+            for descendant_id in &folder_ids {
+                let is_trashed: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM folders WHERE id = ?1 AND deleted_at IS NOT NULL)",
+                    params![descendant_id],
+                    |row| row.get(0),
+                )?;
+                if !is_trashed {
+                    return Err(VfsError::Conflict {
+                        key: "folders.purge_conflict".to_string(),
+                        message: format!(
+                            "Folder {} was restored before its parent folder could be purged",
+                            descendant_id
+                        ),
+                    });
+                }
+            }
             Self::purge_folder_tree_resources_with_conn(conn, blobs_dir, &folder_ids)?;
 
             conn.execute("DELETE FROM folders WHERE id = ?1", params![folder_id])?;
@@ -1629,6 +1738,50 @@ impl VfsFolderRepo {
                 continue;
             }
 
+            // Folder soft-delete only tombstones folder_items, not entity rows.
+            // Refuse purge when the membership was restored in-place, or when the
+            // resource still has an active membership outside this purge set.
+            match canonical_item_type.as_str() {
+                "note" | "file" | "image" | "exam" | "translation" | "essay" | "mindmap" => {}
+                other => {
+                    warn!(
+                        "[VFS::FolderRepo] Skipping unsupported folder item during purge: type={}, id={}",
+                        other, item.item_id
+                    );
+                    continue;
+                }
+            }
+            let link_trashed: bool = conn.query_row(
+                "SELECT deleted_at IS NOT NULL FROM folder_items WHERE id = ?1",
+                params![&item.id],
+                |row| row.get(0),
+            )?;
+            let folder_id_set: HashSet<&str> = folder_ids.iter().map(String::as_str).collect();
+            let mut live_memberships = conn.prepare(
+                "SELECT folder_id FROM folder_items
+                 WHERE item_id = ?1 AND deleted_at IS NULL",
+            )?;
+            let has_external_live_membership = live_memberships
+                .query_map(params![&item.item_id], |row| {
+                    row.get::<_, Option<String>>(0)
+                })?
+                .map(|folder_id| folder_id.map_err(VfsError::from))
+                .collect::<VfsResult<Vec<_>>>()?
+                .into_iter()
+                .any(|folder_id| match folder_id.as_deref() {
+                    None => true,
+                    Some(id) => !folder_id_set.contains(id),
+                });
+            if !link_trashed || has_external_live_membership {
+                return Err(VfsError::Conflict {
+                    key: "folders.purge_conflict".to_string(),
+                    message: format!(
+                        "Resource {}:{} was restored before its parent folder could be purged",
+                        canonical_item_type, item.item_id
+                    ),
+                });
+            }
+
             match canonical_item_type.as_str() {
                 "note" => VfsNoteRepo::purge_note_with_conn(conn, &item.item_id)?,
                 // ★ 2026-06-12（第二轮审阅）："image" 与 "file" 同存 files 表。
@@ -1642,12 +1795,7 @@ impl VfsFolderRepo {
                 }
                 "essay" => VfsEssayRepo::purge_essay_with_conn(conn, &item.item_id)?,
                 "mindmap" => VfsMindMapRepo::purge_mindmap_with_conn(conn, &item.item_id)?,
-                other => {
-                    warn!(
-                        "[VFS::FolderRepo] Skipping unsupported folder item during purge: type={}, id={}",
-                        other, item.item_id
-                    );
-                }
+                _ => unreachable!("unsupported item types are skipped above"),
             }
         }
 
@@ -2552,7 +2700,7 @@ impl VfsFolderRepo {
         }
 
         // 按 sort_order 排序
-        nodes.sort_by(|a, b| a.folder.sort_order.cmp(&b.folder.sort_order));
+        nodes.sort_by_key(|a| a.folder.sort_order);
 
         Ok(nodes)
     }
@@ -2604,7 +2752,7 @@ impl VfsFolderRepo {
         }
 
         // 按 sort_order 排序
-        nodes.sort_by(|a, b| a.folder.sort_order.cmp(&b.folder.sort_order));
+        nodes.sort_by_key(|a| a.folder.sort_order);
 
         Ok(nodes)
     }
@@ -2742,10 +2890,69 @@ impl VfsFolderRepo {
             )?;
         }
 
+        Self::mark_item_indexes_pending_with_conn(conn, item_id)?;
+
         debug!(
             "[VFS::FolderRepo] Moved item {} to folder {:?} (cached_path cleared)",
             item_id, new_folder_id
         );
+        Ok(())
+    }
+
+    /// Folder scope is denormalized into Lance rows. Moving an item therefore
+    /// invalidates the local derived index even when its content hash is unchanged.
+    fn mark_item_indexes_pending_with_conn(conn: &Connection, item_id: &str) -> VfsResult<()> {
+        conn.execute(
+            r#"UPDATE resources SET
+                   index_state = CASE
+                       WHEN index_state = 'disabled' THEN 'disabled'
+                       ELSE 'pending'
+                   END,
+                   index_hash = CASE
+                       WHEN index_state = 'disabled' THEN index_hash
+                       ELSE NULL
+                   END,
+                   index_error = CASE
+                       WHEN index_state = 'disabled' THEN index_error
+                       ELSE NULL
+                   END,
+                   indexed_at = CASE
+                       WHEN index_state = 'disabled' THEN indexed_at
+                       ELSE NULL
+                   END,
+                   index_retry_count = CASE
+                       WHEN index_state = 'disabled' THEN index_retry_count ELSE 0
+                   END,
+                   index_next_retry_at = CASE
+                       WHEN index_state = 'disabled' THEN index_next_retry_at ELSE 0
+                   END,
+                   mm_index_state = CASE
+                       WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+                           THEN mm_index_state
+                       ELSE 'pending'
+                   END,
+                   mm_index_error = CASE
+                       WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+                           THEN mm_index_error
+                       ELSE NULL
+                   END,
+                   mm_indexed_at = CASE
+                       WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+                           THEN mm_indexed_at
+                       ELSE NULL
+                   END,
+                   mm_index_retry_count = CASE
+                       WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+                           THEN mm_index_retry_count ELSE 0
+                   END,
+                   mm_index_next_retry_at = CASE
+                       WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+                           THEN mm_index_next_retry_at ELSE 0
+                   END,
+                   updated_at = ?2
+               WHERE id = ?1 OR source_id = ?1"#,
+            params![item_id, chrono::Utc::now().timestamp_millis()],
+        )?;
         Ok(())
     }
 }
@@ -2964,6 +3171,61 @@ mod tests {
     }
 
     #[test]
+    fn moving_item_marks_enabled_vector_routes_pending() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().expect("Failed to get db connection");
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            r#"INSERT INTO resources (
+                   id, hash, type, source_id, storage_mode, ref_count,
+                   index_state, index_hash, index_error, indexed_at,
+                   mm_index_state, mm_index_error, mm_indexed_at,
+                   created_at, updated_at
+               ) VALUES (
+                   'res_move', 'hash_move', 'note', 'note_move', 'inline', 0,
+                   'indexed', 'hash_move', 'old text error', ?1,
+                   'indexed', 'old mm error', ?1,
+                   ?1, ?1
+               )"#,
+            params![now],
+        )
+        .expect("Failed to seed resource");
+        drop(conn);
+
+        let source = VfsFolder::new("source".to_string(), None, None, None);
+        let target = VfsFolder::new("target".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &source).expect("Failed to create source folder");
+        VfsFolderRepo::create_folder(&db, &target).expect("Failed to create target folder");
+        VfsFolderRepo::add_item_to_folder(
+            &db,
+            &VfsFolderItem::new(
+                Some(source.id.clone()),
+                "note".to_string(),
+                "note_move".to_string(),
+            ),
+        )
+        .expect("Failed to seed folder item");
+
+        VfsFolderRepo::move_item_by_item_id(&db, "note", "note_move", Some(&target.id))
+            .expect("Failed to move item");
+
+        let conn = db.get_conn_safe().expect("Failed to get db connection");
+        let state: (String, Option<String>, Option<String>, String, Option<String>, Option<i64>) =
+            conn.query_row(
+                "SELECT index_state, index_hash, index_error, mm_index_state, mm_index_error, mm_indexed_at FROM resources WHERE id = 'res_move'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+            )
+            .expect("Failed to read resource state");
+        assert_eq!(state.0, "pending");
+        assert!(state.1.is_none());
+        assert!(state.2.is_none());
+        assert_eq!(state.3, "pending");
+        assert!(state.4.is_none());
+        assert!(state.5.is_none());
+    }
+
+    #[test]
     fn test_list_items_by_folder_handles_text_created_at() {
         let (_temp_dir, db) = setup_test_db();
         let conn = db.get_conn_safe().expect("Failed to get db connection");
@@ -3121,6 +3383,9 @@ mod tests {
             .unwrap();
         }
 
+        // purge_folder is the empty-trash path: soft-delete first so membership
+        // tombstones exist, then permanently remove the folder tree + image blob.
+        VfsFolderRepo::delete_folder(&db, &folder.id).expect("soft delete folder");
         VfsFolderRepo::purge_folder(&db, &folder.id).expect("purge folder");
 
         let conn = db.get_conn_safe().unwrap();
@@ -3131,7 +3396,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(remaining_files, 0, "image file row must be purged with folder");
+        assert_eq!(
+            remaining_files, 0,
+            "image file row must be purged with folder"
+        );
 
         let blob_rc: Option<i32> = conn
             .query_row(

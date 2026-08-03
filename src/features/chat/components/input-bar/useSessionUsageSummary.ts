@@ -15,11 +15,19 @@ export function useSessionUsageSummary(
 ): SessionUsageSummary | null {
   const [summary, setSummary] = useState<SessionUsageSummary | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSessionIdRef = useRef(sessionId);
 
   useEffect(() => {
     if (!sessionId) {
+      lastSessionIdRef.current = sessionId;
       setSummary(null);
       return;
+    }
+
+    // 会话切换时立即清空旧会话的累计值，避免在延迟查询窗口内显示串话数据
+    if (lastSessionIdRef.current !== sessionId) {
+      lastSessionIdRef.current = sessionId;
+      setSummary(null);
     }
 
     let cancelled = false;

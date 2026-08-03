@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { Check, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -196,7 +196,7 @@ export function AppSelect({
   return (
     <AppMenu onOpenChange={onOpenChange}>
       <AppMenuTrigger asChild>
-        <NotionButton
+        <DsButton
           variant="ghost"
           disabled={disabled}
           aria-haspopup="listbox"
@@ -220,7 +220,7 @@ export function AppSelect({
             </span>
           </span>
           <CaretDown size={16} className="shrink-0 opacity-50" />
-        </NotionButton>
+        </DsButton>
       </AppMenuTrigger>
 
       <AppMenuContent align={align} width={width} maxHeight={360} className={popoverClassName} style={popoverStyle}>

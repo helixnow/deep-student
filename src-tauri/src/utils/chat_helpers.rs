@@ -116,8 +116,8 @@ fn emit_unified_sources(window: &Window, stream_event: &str, stage: &str, source
     }
 
     let normalized_groups: Vec<Value> = groups
-        .into_iter()
-        .map(|(_, value)| {
+        .into_values()
+        .map(|value| {
             if let Value::Object(mut obj) = value {
                 let count = if let Some(items_value) = obj.get_mut("items") {
                     if let Some(items) = items_value.as_array_mut() {
@@ -249,7 +249,7 @@ pub fn build_review_context(
 ///
 /// 返回：合并的图片总数
 pub fn merge_images_into_user_message(
-    history: &mut Vec<ChatMessage>,
+    history: &mut [ChatMessage],
     imgs_base64: &[String],
     pin_imgs: Option<&[String]>,
 ) -> usize {

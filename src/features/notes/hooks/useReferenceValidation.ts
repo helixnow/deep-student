@@ -397,7 +397,7 @@ export function useReferenceValidation(): UseReferenceValidationReturn {
       const valid = await validateReference(refId, refNode);
       
       if (!valid) {
-        throw new Error(i18next.t('notes:reference.invalid_cannot_refresh', 'Reference is invalid, cannot refresh title'));
+        throw new Error(i18next.t('notes:reference.invalid_cannot_refresh'));
       }
 
       // 2. 获取最新内容

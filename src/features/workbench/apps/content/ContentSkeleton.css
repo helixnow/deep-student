@@ -1,0 +1,327 @@
+/**
+ * ContentSkeleton（O17）— wb-content- 前缀独占，不触碰 workbench.css 契约类。
+ *
+ * 动效纪律（§1.5）：仅 opacity（入场淡入 / 就绪淡出 / 骨架脉冲）+ 静态 transform 定位；
+ * 曲线引用 O1 tokens（--wb-ease / --wb-ease-out，带字面量兜底）；
+ * prefers-reduced-motion 与 minimal 材质档下动画归零、静态呈现。
+ *
+ * 结构：根层（覆盖窗口内容区，负责就绪淡出）> 画布层（负责延迟淡入 + 变体布局）。
+ * 根层不带背景，画布层承载不透明底——快速加载（<120ms）时骨架等效从未出现。
+ */
+
+.wb-content-skeleton {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-content-overlay, 120);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 260ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-content-skeleton[data-phase='fading'] {
+  opacity: 0;
+}
+
+/* 画布层：不透明底 + 延迟淡入（快速加载不闪骨架） */
+.wb-content-skeleton__canvas {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-window-bg, hsl(var(--background)));
+  opacity: 0;
+  animation: wb-content-skeleton-in 200ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) 120ms forwards;
+}
+
+@keyframes wb-content-skeleton-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* ==== 骨架基元：底色 + 错峰 opacity 脉冲（与 O16 chat 骨架同语言） ==== */
+.wb-content-skeleton__bone {
+  border-radius: 0.5rem;
+  background: hsl(var(--muted, 220 14% 92%) / 0.9);
+  /* backwards：错峰 delay 期间保持 0% 关键帧 opacity，避免逐根从 1 瞬跳到脉冲起点 */
+  /* ease-in-out：呼吸对称，避免单向 ease-out 在峰值处速度不连续的 tick 感 */
+  animation: wb-content-skeleton-pulse 1.7s ease-in-out infinite backwards;
+  animation-delay: calc(var(--wb-content-bone-i, 0) * 80ms);
+}
+
+@keyframes wb-content-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.95;
+  }
+}
+
+/* 暗色：muted 底在深色卡面上过于含蓄，略抬一档保证骨架可辨 */
+:root.dark .wb-content-skeleton__bone {
+  background: hsl(var(--muted, 220 14% 18%));
+}
+
+/* ==== 通用块 ======================================================== */
+
+/* 顶部工具条骨架（PDF / 图片查看器共用） */
+.wb-content-skeleton__toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid hsl(var(--border, 220 13% 88%) / 0.55);
+}
+
+.wb-content-skeleton__chip {
+  height: 1.75rem;
+  width: 1.75rem;
+  border-radius: 0.5rem;
+}
+
+.wb-content-skeleton__chip--wide {
+  width: 5.5rem;
+  border-radius: 9999px;
+}
+
+.wb-content-skeleton__chip--end {
+  margin-left: auto;
+}
+
+.wb-content-skeleton__line {
+  height: 0.875rem;
+  border-radius: 0.375rem;
+  width: 100%;
+}
+
+.wb-content-skeleton__line--w94 { width: 94%; }
+.wb-content-skeleton__line--w88 { width: 88%; }
+.wb-content-skeleton__line--w75 { width: 75%; }
+.wb-content-skeleton__line--w62 { width: 62%; }
+.wb-content-skeleton__line--w40 { width: 40%; }
+.wb-content-skeleton__line--w25 { width: 25%; }
+
+/* ==== 变体：pdf（textbook / exam，页卡骨架） ========================= */
+.wb-content-skeleton__pages {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1rem 0;
+  overflow: hidden;
+}
+
+/* 页卡本身是布局容器（非 bone）：纸面 + 边框 + 内部文本行骨架 */
+.wb-content-skeleton__page {
+  width: min(76%, 26rem);
+  flex-shrink: 0;
+  aspect-ratio: 3 / 4;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border, 220 13% 88%) / 0.7);
+  background: hsl(var(--card, 0 0% 100%));
+  box-shadow: 0 2px 10px hsl(var(--shadow-base, 0 0% 0%) / 0.05);
+  padding: 1.25rem 1.375rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* 暗色：纸面阴影加深一档，与暗色窗口阴影层级一致 */
+:root.dark .wb-content-skeleton__page {
+  box-shadow: 0 2px 10px hsl(var(--shadow-base, 0 0% 0%) / 0.28);
+}
+
+/* 第二页只露出顶部一截，暗示可滚动的页流 */
+.wb-content-skeleton__page--peek {
+  aspect-ratio: auto;
+  height: 5.5rem;
+  overflow: hidden;
+}
+
+/* ==== 变体：text（note / translation / essay，文本编辑骨架） ========= */
+.wb-content-skeleton__doc {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 44rem;
+  margin-inline: auto;
+  padding: 2.25rem clamp(1.25rem, 6%, 2.5rem) 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  overflow: hidden;
+}
+
+.wb-content-skeleton__title {
+  height: 1.875rem;
+  width: 46%;
+  border-radius: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+.wb-content-skeleton__gap {
+  height: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ==== 变体：image（模糊占位渐显） ==================================== */
+.wb-content-skeleton__image-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 模糊占位：静态 blur 的柔和色斑（filter 不参与动画，仅 opacity 脉冲） */
+.wb-content-skeleton__image-blob {
+  position: absolute;
+  inset: -12%;
+  filter: blur(32px);
+  background:
+    radial-gradient(42% 38% at 30% 34%, hsl(var(--primary, 222 60% 55%) / 0.16) 0%, transparent 100%),
+    radial-gradient(46% 42% at 72% 62%, hsl(var(--muted-foreground, 220 9% 46%) / 0.14) 0%, transparent 100%),
+    radial-gradient(60% 52% at 52% 46%, hsl(var(--muted, 220 14% 92%) / 0.85) 0%, transparent 100%);
+  animation: wb-content-skeleton-pulse 2.2s ease-in-out infinite;
+}
+
+/* 取景框剪影：让占位读得出「这里是一张图」 */
+.wb-content-skeleton__image-frame {
+  position: relative;
+  width: min(58%, 22rem);
+  aspect-ratio: 4 / 3;
+  border-radius: 0.75rem;
+}
+
+.wb-content-skeleton__image-frame::after {
+  content: '';
+  position: absolute;
+  left: 12%;
+  bottom: 14%;
+  width: 34%;
+  height: 34%;
+  border-radius: 0.375rem;
+  /* 山形剪影：两块旋转方块拼出的极简 landscape 图标（静态 transform） */
+  background: hsl(var(--background, 0 0% 100%) / 0.65);
+  transform: rotate(45deg);
+}
+
+/* ==== 变体：generic（file，通用文档骨架） ============================ */
+.wb-content-skeleton__file {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.875rem;
+  padding: 1.5rem;
+}
+
+.wb-content-skeleton__file-icon {
+  width: 4rem;
+  height: 5rem;
+  border-radius: 0.625rem;
+}
+
+.wb-content-skeleton__file-name {
+  height: 1rem;
+  width: 11rem;
+  border-radius: 0.375rem;
+}
+
+.wb-content-skeleton__file-meta {
+  height: 0.75rem;
+  width: 7rem;
+  border-radius: 0.375rem;
+}
+
+/* ==== 变体：mindmap（画布骨架：中心节点 + 分支） ===================== */
+.wb-content-skeleton__map {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-content-skeleton__map-node {
+  position: absolute;
+  height: 2.125rem;
+  width: 7.5rem;
+  border-radius: 9999px;
+}
+
+.wb-content-skeleton__map-node--root {
+  top: 50%;
+  left: 50%;
+  width: 9rem;
+  height: 2.5rem;
+  transform: translate(-50%, -50%);
+}
+
+.wb-content-skeleton__map-node--n1 { top: 22%; left: 16%; }
+.wb-content-skeleton__map-node--n2 { top: 18%; right: 14%; width: 6.25rem; }
+.wb-content-skeleton__map-node--n3 { bottom: 20%; left: 14%; width: 6.75rem; }
+.wb-content-skeleton__map-node--n4 { bottom: 24%; right: 16%; }
+
+/* 连接线：细长骨架条，静态 rotate 摆出放射状 */
+.wb-content-skeleton__map-edge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 2px;
+  width: 24%;
+  border-radius: 9999px;
+  transform-origin: 0 50%;
+}
+
+.wb-content-skeleton__map-edge--e1 { transform: rotate(-152deg); }
+.wb-content-skeleton__map-edge--e2 { transform: rotate(-28deg); }
+.wb-content-skeleton__map-edge--e3 { transform: rotate(152deg); }
+.wb-content-skeleton__map-edge--e4 { transform: rotate(28deg); }
+
+/* ==== 降级：reduced-motion / minimal 材质档 → 静态、无过渡 =========== */
+@media (prefers-reduced-motion: reduce) {
+  .wb-content-skeleton {
+    transition: none;
+  }
+
+  .wb-content-skeleton__canvas {
+    animation: none;
+    opacity: 1;
+  }
+
+  .wb-content-skeleton__bone,
+  .wb-content-skeleton__image-blob {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-content-skeleton {
+  transition: none;
+}
+
+:root[data-wb-material='minimal'] .wb-content-skeleton__canvas {
+  animation: none;
+  opacity: 1;
+}
+
+:root[data-wb-material='minimal'] .wb-content-skeleton__bone,
+:root[data-wb-material='minimal'] .wb-content-skeleton__image-blob {
+  animation: none;
+  opacity: 0.6;
+}

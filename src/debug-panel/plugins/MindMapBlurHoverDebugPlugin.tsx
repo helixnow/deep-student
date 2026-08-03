@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, Pause, Play, Trash } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { debugLog } from '../debugMasterSwitch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -161,7 +161,7 @@ export default function MindMapBlurHoverDebugPlugin({ isActive }: DebugPanelPlug
       </div>
 
       <div className="flex items-center gap-2 mb-3">
-        <NotionButton
+        <DsButton
           variant={enabled ? 'warning' : 'success'}
           onClick={() => setEnabled(prev => !prev)}
           className="h-8 px-3"
@@ -170,15 +170,15 @@ export default function MindMapBlurHoverDebugPlugin({ isActive }: DebugPanelPlug
           {enabled
             ? t('debug_panel.mindmap_blur_monitor.pause')
             : t('debug_panel.mindmap_blur_monitor.resume')}
-        </NotionButton>
-        <NotionButton variant="ghost" onClick={() => setSamples([])} className="h-8 px-3">
+        </DsButton>
+        <DsButton variant="ghost" onClick={() => setSamples([])} className="h-8 px-3">
           <Trash size={16} className="mr-1" />
           {t('debug_panel.mindmap_blur_monitor.clear')}
-        </NotionButton>
-        <NotionButton variant="primary" onClick={() => void copyLogs()} className="h-8 px-3" disabled={samples.length === 0}>
+        </DsButton>
+        <DsButton variant="primary" onClick={() => void copyLogs()} className="h-8 px-3" disabled={samples.length === 0}>
           <Copy size={16} className="mr-1" />
           {t('debug_panel.mindmap_blur_monitor.copy')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] p-3 mb-3 text-xs space-y-1">

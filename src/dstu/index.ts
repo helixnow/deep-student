@@ -237,6 +237,12 @@ export {
   folderApi,
   type FolderApiType,
 } from './api/folderApi';
+export {
+  DSTU_FOLDER_CHANGE_EVENT,
+  emitDstuFolderChange,
+  type DstuFolderChangeDetail,
+  type DstuFolderChangeKind,
+} from './folderEvents';
 
 // ── 回收站 API ──
 

@@ -138,6 +138,8 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
       autoSet('modelB', setModelB, modelB, 1);
       autoSet('modelC', setModelC, modelC, 2);
     }).catch(console.error);
+    // 有意豁免 modelA/modelB/modelC/saved 依赖：仅在激活时加载一次模型列表并恢复默认选择。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActivated]);
 
   useEffect(() => { logScrollRef.current?.scrollTo({ top: logScrollRef.current.scrollHeight }); }, [liveLogs]);

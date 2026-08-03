@@ -17,7 +17,8 @@ import {
   CaretDoubleDown,
 } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { AppSelect } from '@/components/ui/app-menu';
@@ -129,7 +130,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           </div>
           <p className="text-sm text-destructive/80 pl-6">{loadError}</p>
           <div className="pl-6 pt-1">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={onRefresh}
@@ -138,7 +139,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
             >
               <ArrowClockwise size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.retry')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -176,13 +177,17 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           width={130}
         />
 
-        <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 w-8 p-0 shrink-0" aria-label={t('common:actions.refresh')}>
+        <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 w-8 p-0 shrink-0" aria-label={t('common:actions.refresh')}>
           <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 日志列表 */}
-      <div className="rounded-lg border border-border/40 overflow-x-auto">
+      <CustomScrollArea
+        orientation="horizontal"
+        fullHeight={false}
+        className="rounded-lg border border-border/40"
+      >
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-border/40">
@@ -229,7 +234,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
             )}
           </TableBody>
         </Table>
-      </div>
+      </CustomScrollArea>
 
       {/* 分页信息和加载更多 */}
       {logs.length > 0 && (
@@ -244,7 +249,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
               : t('data:governance.audit_showing_count', { count: logs.length })}
           </span>
           {hasMore && onLoadMore && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={onLoadMore}
@@ -257,7 +262,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
                 <CaretDoubleDown size={14} className="mr-1.5" />
               )}
               {t('data:governance.audit_load_more')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

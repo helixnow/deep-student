@@ -26,11 +26,10 @@ interface Props {
  * - 自身只订阅 queue 相关状态，避免与 InputBar 主体的 selector 冲突。
  */
 export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSteer }) => {
+  // 仅订阅 queuedMessages：inputValue / attachments / sessionStatus 只在点击时才需要，
+  // 通过 store.getState() 即时读取，避免每次按键都重渲染整个队列堆叠
   const {
     queuedMessages,
-    inputValue,
-    attachments,
-    sessionStatus,
     removeQueued,
     swapQueueWithDraft,
     recallToDraft,
@@ -44,9 +43,6 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
     store,
     useShallow((s) => ({
       queuedMessages: s.queuedMessages ?? EMPTY_QUEUE,
-      inputValue: s.inputValue,
-      attachments: s.attachments,
-      sessionStatus: s.sessionStatus,
       removeQueued: s.removeQueued,
       swapQueueWithDraft: s.swapQueueWithDraft,
       recallToDraft: s.recallToDraft,
@@ -60,17 +56,18 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
   );
 
   const handleClick = useCallback((id: string) => {
-    const draftEmpty = !inputValue.trim() && attachments.length === 0;
+    const state = store.getState();
+    const draftEmpty = !state.inputValue.trim() && state.attachments.length === 0;
     if (draftEmpty) recallToDraft(id);
     else swapQueueWithDraft(id);
-  }, [inputValue, attachments, recallToDraft, swapQueueWithDraft]);
+  }, [store, recallToDraft, swapQueueWithDraft]);
 
   const handleSteer = useCallback(async (id: string) => {
     // Mark as steered first so the flag survives the promote → dequeue chain
     // and propagates to the resulting user message's _meta.steered.
     markSteered?.(id);
     promoteQueued(id);
-    if (sessionStatus === 'streaming') {
+    if (store.getState().sessionStatus === 'streaming') {
       try {
         await abortStream();
         // Idle-transition subscription will fire maybeDequeue.
@@ -81,7 +78,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
       // Already idle: no transition will fire, so trigger dequeue explicitly.
       void maybeDequeue?.();
     }
-  }, [markSteered, promoteQueued, abortStream, sessionStatus, maybeDequeue]);
+  }, [markSteered, promoteQueued, abortStream, store, maybeDequeue]);
 
   if (queuedMessages.length === 0) return null;
 

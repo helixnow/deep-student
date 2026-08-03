@@ -1,46 +1,30 @@
-import { useSyncExternalStore } from "react";
-
 /**
- * Subscribes to `<html data-theme>` mutations and returns the matching
- * OverlayScrollbars theme class name. Theme color itself is bridged via
- * CSS variables in theme-colors.css (`--os-handle-bg` → `var(--scrollbar-thumb)`),
- * so this hook only flips the class — colors transition instantly via CSS.
+ * Project-owned OverlayScrollbars theme.
  *
- * Moved from study-ui into the main app so DeepStudent no longer depends on
- * the `@study-ui` alias for its scroll primitive.
+ * The class is intentionally independent of OverlayScrollbars' built-in
+ * light/dark themes. Semantic tokens in theme-colors.css react to the root
+ * theme, so changing the class at runtime would create a second visual
+ * contract and can briefly expose the library defaults during a theme switch.
  */
-export type ScrollbarThemeClass = "os-theme-dark" | "os-theme-light";
+export const SCROLLBAR_THEME_CLASS = "os-theme-deep-student" as const;
 
-/** @internal — exported only for tests; do not import from app code. */
-export function subscribeHtmlThemeChange(listener: () => void): () => void {
-  if (typeof document === "undefined") {
-    return () => {};
-  }
-  const observer = new MutationObserver(listener);
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"],
-  });
-  return () => observer.disconnect();
+export type ScrollbarThemeClass = typeof SCROLLBAR_THEME_CLASS;
+
+/** @internal — retained for compatibility; the project theme is now static. */
+export function subscribeHtmlThemeChange(_listener: () => void): () => void {
+  return () => {};
 }
 
-/** @internal — exported only for tests; do not import from app code. */
+/** @internal — compatibility export for source-contract tests. */
 export function getHtmlTheme(): ScrollbarThemeClass {
-  if (typeof document === "undefined") return "os-theme-light";
-  return document.documentElement.dataset.theme === "dark"
-    ? "os-theme-dark"
-    : "os-theme-light";
+  return SCROLLBAR_THEME_CLASS;
 }
 
-/** @internal — exported only for tests; do not import from app code. */
+/** @internal — compatibility export for SSR source-contract tests. */
 export function getHtmlThemeServerSnapshot(): ScrollbarThemeClass {
-  return "os-theme-light";
+  return SCROLLBAR_THEME_CLASS;
 }
 
 export function useScrollbarTheme(): ScrollbarThemeClass {
-  return useSyncExternalStore(
-    subscribeHtmlThemeChange,
-    getHtmlTheme,
-    getHtmlThemeServerSnapshot,
-  );
+  return SCROLLBAR_THEME_CLASS;
 }

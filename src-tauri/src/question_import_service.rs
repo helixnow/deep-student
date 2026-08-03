@@ -16,8 +16,12 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read};
-use std::sync::{Arc, LazyLock};
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc, LazyLock,
+};
 use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 
 /// 匹配 `<<IMG:N` 标记中的图片索引（每题调用，预编译）
 static IMG_INDEX_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<<IMG:(\d+)").unwrap());
@@ -107,10 +111,15 @@ pub enum QuestionImportProgress {
         session_id: String,
         name: String,
         total_questions: usize,
-        /// VLM 直提中途失败但已保存部分题时为 true（"可能缺题"），前端据此提示用户。
-        /// 其余完成路径均为 false；serde 默认 false 以兼容旧前端反序列化。
+        /// 导入过程"可能缺题"时为 true：VLM 直提中途失败但已保存部分题，
+        /// 或流式导入中存在写库失败的题目。前端据此提示用户。
+        /// serde 默认 false 以兼容旧前端反序列化。
         #[serde(default)]
         partial: bool,
+        /// 解析成功但写库失败的题目数（P1 修复：失败不再静默计入 total_questions）。
+        /// serde 默认 0 以兼容旧前端反序列化。
+        #[serde(default)]
+        failed_count: usize,
     },
     /// 导入失败
     Failed {
@@ -118,6 +127,62 @@ pub enum QuestionImportProgress {
         error: String,
         total_parsed: usize,
     },
+}
+
+/// Cancellation state for a streaming question-bank import.
+///
+/// A plain cancellation token is not enough here: a cancel request can race a
+/// completed import while the command is still cleaning up its registration.
+/// The terminal state ensures that exactly one side wins, so callers never
+/// report a successful cancellation after the import has already completed.
+pub struct QuestionImportCancellation {
+    token: CancellationToken,
+    // 0 = running, 1 = cancellation accepted, 2 = import completed
+    state: AtomicU8,
+}
+
+impl Default for QuestionImportCancellation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl QuestionImportCancellation {
+    pub fn new() -> Self {
+        Self {
+            token: CancellationToken::new(),
+            state: AtomicU8::new(0),
+        }
+    }
+
+    /// Returns true only when this request transitioned the import from
+    /// running to cancelling. Completion and a prior cancellation both win
+    /// the race over later requests.
+    pub fn request_cancel(&self) -> bool {
+        if self
+            .state
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            self.token.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn token(&self) -> CancellationToken {
+        self.token.clone()
+    }
+
+    /// Marks a normal import return as complete. Returns false when an
+    /// accepted cancellation won first, in which case the caller must discard
+    /// any racey successful result and report cancellation instead.
+    pub fn finish_or_cancelled(&self) -> bool {
+        self.state
+            .compare_exchange(0, 2, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
 }
 
 /// 导入请求参数（兼容现有 commands.rs 接口）
@@ -154,7 +219,9 @@ pub struct PdfTextInspection {
 /// 管线阶段标识（用于断点续导的状态机）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ImportStage {
+    #[default]
     Rasterized,
     VlmAnalyzing,
     VlmCompleted,
@@ -169,12 +236,6 @@ pub enum ImportStage {
     // DOCX VLM 直提路径阶段
     DocxVlmDirect,
     DocxVlmDirectDone,
-}
-
-impl Default for ImportStage {
-    fn default() -> Self {
-        Self::Rasterized
-    }
 }
 
 /// 断点续导状态（分阶段 checkpoint 状态机）
@@ -513,6 +574,7 @@ impl QuestionImportService {
                         name: qbank_name.clone(),
                         total_questions: already_saved,
                         partial: false,
+                        failed_count: 0,
                     });
                 }
                 return Ok(ImportResult {
@@ -565,7 +627,7 @@ impl QuestionImportService {
                 });
             }
 
-            let (total_saved, vlm_partial) = self
+            let (total_saved, vlm_partial, save_failed) = self
                 .run_vlm_direct_extraction(
                     vfs_db,
                     session_id,
@@ -592,7 +654,8 @@ impl QuestionImportService {
                     session_id: session_id.to_string(),
                     name: qbank_name.clone(),
                     total_questions: total_saved,
-                    partial: vlm_partial,
+                    partial: vlm_partial || save_failed > 0,
+                    failed_count: save_failed,
                 });
             }
             return Ok(ImportResult {
@@ -675,6 +738,8 @@ impl QuestionImportService {
             .unwrap_or(0);
 
             let mut all_questions: Vec<Value> = Vec::new();
+            // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
+            let mut total_save_failed: usize = 0;
 
             for (chunk_idx, chunk) in chunks.iter().enumerate() {
                 if chunk_idx < chunks_start {
@@ -708,6 +773,8 @@ impl QuestionImportService {
 
                             if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                                 log::warn!("[QuestionImport] 保存题目失败: {}", e);
+                                total_save_failed += 1;
+                                return true;
                             }
 
                             total_parsed += 1;
@@ -751,6 +818,12 @@ impl QuestionImportService {
             if total_parsed == 0 {
                 let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
                 let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
+                if total_save_failed > 0 {
+                    return Err(AppError::database(format!(
+                        "解析到 {} 道题目但全部写入失败",
+                        total_save_failed
+                    )));
+                }
                 return Err(AppError::validation("未能提取到题目"));
             }
 
@@ -768,7 +841,8 @@ impl QuestionImportService {
                     session_id: session_id.to_string(),
                     name: qbank_name.clone(),
                     total_questions: total_parsed,
-                    partial: false,
+                    partial: total_save_failed > 0,
+                    failed_count: total_save_failed,
                 });
             }
 
@@ -979,7 +1053,7 @@ impl QuestionImportService {
     ) -> Result<Vec<PageSlice>, AppError> {
         let format = request.format.as_str();
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::RenderingPages {
                 current: 0,
                 total: 1,
@@ -1006,7 +1080,7 @@ impl QuestionImportService {
             .await
             .map_err(|e| AppError::internal(format!("渲染任务调度失败: {}", e)))??;
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::RenderingPages {
                 current: result.pages.len(),
                 total: result.pages.len(),
@@ -1196,7 +1270,7 @@ impl QuestionImportService {
         }
 
         // ===== Stage 2: VLM 流式提取 → 逐题保存 =====
-        let (total_saved, vlm_partial) = self
+        let (total_saved, vlm_partial, save_failed) = self
             .run_vlm_direct_extraction(
                 vfs_db,
                 &session_id,
@@ -1226,7 +1300,8 @@ impl QuestionImportService {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
                 total_questions: total_saved,
-                partial: vlm_partial,
+                partial: vlm_partial || save_failed > 0,
+                failed_count: save_failed,
             });
         }
 
@@ -1260,13 +1335,15 @@ impl QuestionImportService {
         checkpoint: &mut ImportCheckpointState,
         skip_count: usize,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
-    ) -> Result<(usize, bool), AppError> {
+    ) -> Result<(usize, bool, usize), AppError> {
         let vlm_service = VlmGroundingService::new(Arc::clone(&self.llm_manager));
 
         let mut total_saved = skip_count;
         // ★ #6(round2): VLM 中途失败但已保存部分题时置 true，向上层/前端传达"可能缺题"
         let mut vlm_partial = false;
         let mut vlm_question_index: usize = 0;
+        // P1 修复：单题写库失败单独计数，向上层透出而非静默跳过
+        let mut save_failed: usize = 0;
 
         // 恢复时按内容去重：位置跳过(skip_count)假设两轮 VLM 输出完全一致，
         // 但首轮的空题/写库失败不计入已保存数、且 VLM 输出顺序可能漂移，
@@ -1366,6 +1443,7 @@ impl QuestionImportService {
                         vlm_question_index,
                         e
                     );
+                    save_failed += 1;
                     return true; // 跳过失败的题目，继续处理
                 }
 
@@ -1421,17 +1499,22 @@ impl QuestionImportService {
         save_checkpoint(vfs_db, session_id, checkpoint);
 
         if total_saved == 0 {
+            let error_msg = if save_failed > 0 {
+                format!("VLM 提取到 {} 道题目但全部写入失败", save_failed)
+            } else {
+                "VLM 未能提取到任何题目".to_string()
+            };
             if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.to_string()),
-                    error: "VLM 未能提取到任何题目".to_string(),
+                    error: error_msg.clone(),
                     total_parsed: 0,
                 });
             }
-            return Err(AppError::validation("VLM 未能提取到任何题目"));
+            return Err(AppError::validation(error_msg));
         }
 
-        Ok((total_saved, vlm_partial))
+        Ok((total_saved, vlm_partial, save_failed))
     }
 
     /// [DEPRECATED] DOCX 原生导入路径 — text+marker 方案，已被 import_docx_via_vlm 取代
@@ -1451,7 +1534,7 @@ impl QuestionImportService {
             request.content.len()
         );
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "decoding".to_string(),
                 message: "正在解码文档...".to_string(),
@@ -1469,7 +1552,7 @@ impl QuestionImportService {
             docx_bytes.len()
         );
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "extracting".to_string(),
                 message: "正在提取文本和图片...".to_string(),
@@ -1503,7 +1586,7 @@ impl QuestionImportService {
                 continue;
             }
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Preprocessing {
                     stage: "storing_images".to_string(),
                     message: format!("正在存储图片 {}/{}...", idx + 1, total_to_store),
@@ -1523,7 +1606,7 @@ impl QuestionImportService {
         }
 
         // ===== 创建会话 =====
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "creating_session".to_string(),
                 message: "正在创建导入会话...".to_string(),
@@ -1604,7 +1687,7 @@ impl QuestionImportService {
         };
         save_checkpoint(vfs_db, &session_id, &checkpoint);
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::SessionCreated {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
@@ -1653,7 +1736,7 @@ impl QuestionImportService {
                     let entry = &image_map[idx];
 
                     // 通知前端 VLM 进度
-                    if let Some(ref tx) = progress_tx {
+                    if let Some(tx) = progress_tx {
                         let _ = tx.send(QuestionImportProgress::OcrImageCompleted {
                             image_index: idx,
                             total_images,
@@ -1705,7 +1788,7 @@ impl QuestionImportService {
                     save_checkpoint(vfs_db, session_id, checkpoint);
                 }
 
-                if let Some(ref tx) = progress_tx {
+                if let Some(tx) = progress_tx {
                     let _ = tx.send(QuestionImportProgress::OcrPhaseCompleted {
                         total_images,
                         total_chars: checkpoint
@@ -1761,13 +1844,15 @@ impl QuestionImportService {
 
         let mut question_text_offsets: Vec<(usize, usize)> = Vec::new();
         let mut chunk_char_offset: usize = chunks.iter().take(chunks_start).map(|c| c.len()).sum();
+        // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
+        let mut total_save_failed: usize = 0;
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             if chunk_idx < chunks_start {
                 continue;
             }
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkStart {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -1828,12 +1913,18 @@ impl QuestionImportService {
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                             log::warn!("[QuestionImport] 保存题目失败: {}", e);
+                            total_save_failed += 1;
+                            // 回收为该题预留的文本偏移，避免孤儿图片关联到不存在的题
+                            if has_images {
+                                question_text_offsets.pop();
+                            }
+                            return true;
                         }
 
                         total_parsed += 1;
                         questions_in_chunk += 1;
 
-                        if let Some(ref tx) = progress_tx {
+                        if let Some(tx) = progress_tx {
                             let _ = tx.send(QuestionImportProgress::QuestionParsed {
                                 question: q.clone(),
                                 question_index: total_parsed - 1,
@@ -1856,7 +1947,7 @@ impl QuestionImportService {
             checkpoint.chunks_completed = chunk_idx + 1;
             save_checkpoint(vfs_db, session_id, checkpoint);
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkCompleted {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -1881,14 +1972,19 @@ impl QuestionImportService {
         if total_parsed == 0 {
             let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
             let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
-            if let Some(ref tx) = progress_tx {
+            let error_msg = if total_save_failed > 0 {
+                format!("解析到 {} 道题目但全部写入失败", total_save_failed)
+            } else {
+                "未能提取到题目".to_string()
+            };
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.to_string()),
-                    error: "未能提取到题目".to_string(),
+                    error: error_msg.clone(),
                     total_parsed: 0,
                 });
             }
-            return Err(AppError::validation("未能提取到题目"));
+            return Err(AppError::validation(error_msg));
         }
 
         let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
@@ -1898,12 +1994,13 @@ impl QuestionImportService {
             log::warn!("[QuestionImport] 统计刷新失败: {}", e);
         }
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Completed {
                 session_id: session_id.to_string(),
                 name: qbank_name.clone(),
                 total_questions: total_parsed,
-                partial: false,
+                partial: total_save_failed > 0,
+                failed_count: total_save_failed,
             });
         }
 
@@ -2029,7 +2126,7 @@ impl QuestionImportService {
         request: &ImportRequest,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
     ) -> Result<ImportResult, AppError> {
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "decoding".to_string(),
                 message: "正在解析文档内容...".to_string(),
@@ -2051,7 +2148,7 @@ impl QuestionImportService {
             return Err(AppError::validation("文档内容为空"));
         }
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "chunking".to_string(),
                 message: format!(
@@ -2147,7 +2244,7 @@ impl QuestionImportService {
         };
         save_checkpoint(vfs_db, &session_id, &checkpoint);
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::SessionCreated {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
@@ -2158,9 +2255,11 @@ impl QuestionImportService {
         // 逐块 LLM 解析
         let mut all_questions: Vec<Value> = Vec::new();
         let mut total_parsed = 0;
+        // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
+        let mut total_save_failed: usize = 0;
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkStart {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -2187,12 +2286,14 @@ impl QuestionImportService {
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                             log::warn!("[QuestionImport] 保存题目失败: {}", e);
+                            total_save_failed += 1;
+                            return true;
                         }
 
                         total_parsed += 1;
                         questions_in_chunk += 1;
 
-                        if let Some(ref tx) = progress_tx {
+                        if let Some(tx) = progress_tx {
                             let _ = tx.send(QuestionImportProgress::QuestionParsed {
                                 question: q.clone(),
                                 question_index: total_parsed - 1,
@@ -2218,7 +2319,7 @@ impl QuestionImportService {
             checkpoint.chunks_completed = chunk_idx + 1;
             save_checkpoint(vfs_db, &session_id, &checkpoint);
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkCompleted {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -2230,14 +2331,19 @@ impl QuestionImportService {
 
         if total_parsed == 0 {
             let _ = VfsExamRepo::update_status(vfs_db, &session_id, "completed");
-            if let Some(ref tx) = progress_tx {
+            let error_msg = if total_save_failed > 0 {
+                format!("解析到 {} 道题目但全部写入失败", total_save_failed)
+            } else {
+                "未能提取到题目".to_string()
+            };
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.clone()),
-                    error: "未能提取到题目".to_string(),
+                    error: error_msg.clone(),
                     total_parsed: 0,
                 });
             }
-            return Err(AppError::validation("未能提取到题目"));
+            return Err(AppError::validation(error_msg));
         }
 
         rebuild_preview_from_questions(vfs_db, &session_id);
@@ -2249,12 +2355,13 @@ impl QuestionImportService {
             log::warn!("[QuestionImport] 统计刷新失败: {}", e);
         }
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Completed {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
                 total_questions: total_parsed,
-                partial: false,
+                partial: total_save_failed > 0,
+                failed_count: total_save_failed,
             });
         }
 
@@ -2445,6 +2552,7 @@ impl QuestionImportService {
                         name: qbank_name.to_string(),
                         total_questions: total_saved,
                         partial: false,
+                        failed_count: 0,
                     });
                 }
 
@@ -2742,32 +2850,38 @@ fn json_to_question_params(
         }
     }
 
-    let question_type = q
-        .get("question_type")
-        .and_then(|v| v.as_str())
-        .and_then(|t| match t.to_lowercase().as_str() {
-            "single_choice" | "单选" | "单选题" => {
-                Some(crate::vfs::repos::QuestionType::SingleChoice)
-            }
-            "multiple_choice" | "多选" | "多选题" => {
-                Some(crate::vfs::repos::QuestionType::MultipleChoice)
-            }
-            "indefinite_choice" | "不定项" => {
-                Some(crate::vfs::repos::QuestionType::IndefiniteChoice)
-            }
-            "fill_blank" | "填空" | "填空题" => {
-                Some(crate::vfs::repos::QuestionType::FillBlank)
-            }
-            "short_answer" | "简答" | "简答题" => {
-                Some(crate::vfs::repos::QuestionType::ShortAnswer)
-            }
-            "essay" | "论述" | "论述题" => Some(crate::vfs::repos::QuestionType::Essay),
-            "calculation" | "计算" | "计算题" => {
-                Some(crate::vfs::repos::QuestionType::Calculation)
-            }
-            "proof" | "证明" | "证明题" => Some(crate::vfs::repos::QuestionType::Proof),
-            _ => Some(crate::vfs::repos::QuestionType::Other),
-        });
+    let question_type =
+        q.get("question_type")
+            .and_then(|v| v.as_str())
+            .map(|t| match t.to_lowercase().as_str() {
+                "single_choice" | "单选" | "单选题" => {
+                    crate::vfs::repos::QuestionType::SingleChoice
+                }
+                "multiple_choice" | "多选" | "多选题" => {
+                    crate::vfs::repos::QuestionType::MultipleChoice
+                }
+                "indefinite_choice" | "不定项" => {
+                    crate::vfs::repos::QuestionType::IndefiniteChoice
+                }
+                "fill_blank" | "填空" | "填空题" => crate::vfs::repos::QuestionType::FillBlank,
+                "short_answer" | "简答" | "简答题" => {
+                    crate::vfs::repos::QuestionType::ShortAnswer
+                }
+                "essay" | "论述" | "论述题" => crate::vfs::repos::QuestionType::Essay,
+                "calculation" | "计算" | "计算题" => {
+                    crate::vfs::repos::QuestionType::Calculation
+                }
+                "proof" | "证明" | "证明题" => crate::vfs::repos::QuestionType::Proof,
+                "true_false" | "判断" | "判断题" | "judgment" => {
+                    crate::vfs::repos::QuestionType::TrueFalse
+                }
+                "matching" | "匹配" | "匹配题" | "连线" | "连线题" => {
+                    crate::vfs::repos::QuestionType::Matching
+                }
+                "ordering" | "排序" | "排序题" => crate::vfs::repos::QuestionType::Ordering,
+                "numeric" | "数值" | "数值题" => crate::vfs::repos::QuestionType::Numeric,
+                _ => crate::vfs::repos::QuestionType::Other,
+            });
 
     let difficulty = q.get("difficulty").and_then(|v| v.as_str()).and_then(|d| {
         match d.to_lowercase().as_str() {
@@ -2784,6 +2898,10 @@ fn json_to_question_params(
             .filter_map(|t| t.as_str().map(String::from))
             .collect()
     });
+
+    // 新题型契约：JSON 里携带的 structured_data 对象原样透传（matching/ordering/
+    // numeric 缺少它无法自动判分）；非对象值丢弃，避免把 "null"/字符串写进列。
+    let structured_data = q.get("structured_data").filter(|v| v.is_object()).cloned();
 
     CreateQuestionParams {
         exam_id: exam_id.to_string(),
@@ -2803,6 +2921,7 @@ fn json_to_question_params(
         source_ref: None,
         images: None,
         parent_id: None,
+        structured_data,
     }
 }
 
@@ -3010,10 +3129,7 @@ fn extract_marker_positions(enriched_text: &str) -> Vec<(usize, usize)> {
 /// 2. 将换行符替换为空格，防止 segment_document 在标记 `<<IMG:N:[...]>>` 内部断开
 /// 3. 截断到 max_chars 防止单个标记过大
 fn sanitize_vlm_description(desc: &str, max_chars: usize) -> String {
-    let escaped = desc
-        .replace(">>", "> >")
-        .replace('\n', " ")
-        .replace('\r', " ");
+    let escaped = desc.replace(">>", "> >").replace(['\n', '\r'], " ");
     if escaped.chars().count() <= max_chars {
         escaped
     } else {
@@ -3425,6 +3541,92 @@ pub struct CsvImportResult {
     pub errors: Vec<CsvImportError>,
     pub exam_id: String,
     pub total_rows: usize,
+    /// 用户请求取消时为 true。已写入的行保留，剩余行不会继续处理。
+    #[serde(default)]
+    pub cancelled: bool,
+}
+
+const CSV_IMPORT_ACTIVE: u8 = 0;
+const CSV_IMPORT_CANCELLED: u8 = 1;
+const CSV_IMPORT_COMPLETED: u8 = 2;
+
+/// Coordinates a CSV import's terminal state with a cancellation request.
+///
+/// `request_cancel` and `finish_or_cancelled` race through a compare-and-swap
+/// rather than independent loads. This means a cancellation is accepted only
+/// while the import is still active, and an accepted cancellation cannot later
+/// be reported as a successful completion.
+#[derive(Debug)]
+pub struct CsvImportCancellation {
+    state: AtomicU8,
+}
+
+impl Default for CsvImportCancellation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CsvImportCancellation {
+    pub fn new() -> Self {
+        Self {
+            state: AtomicU8::new(CSV_IMPORT_ACTIVE),
+        }
+    }
+
+    pub fn request_cancel(&self) -> bool {
+        self.state
+            .compare_exchange(
+                CSV_IMPORT_ACTIVE,
+                CSV_IMPORT_CANCELLED,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.state.load(Ordering::Acquire) == CSV_IMPORT_CANCELLED
+    }
+
+    /// Marks a successful import terminally complete. Returns `true` when a
+    /// cancellation request won the race and the caller must report Cancelled.
+    fn finish_or_cancelled(&self) -> bool {
+        match self.state.compare_exchange(
+            CSV_IMPORT_ACTIVE,
+            CSV_IMPORT_COMPLETED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => false,
+            Err(CSV_IMPORT_CANCELLED) => true,
+            Err(CSV_IMPORT_COMPLETED) => false,
+            Err(state) => {
+                debug_assert!(false, "unknown CSV import cancellation state: {state}");
+                false
+            }
+        }
+    }
+}
+
+/// Finalizes an in-flight token on every return path, including validation and
+/// I/O errors. A late cancel then correctly reports that the import has ended.
+struct CsvImportCompletionGuard<'a> {
+    cancellation: Option<&'a CsvImportCancellation>,
+}
+
+impl<'a> CsvImportCompletionGuard<'a> {
+    fn new(cancellation: Option<&'a CsvImportCancellation>) -> Self {
+        Self { cancellation }
+    }
+}
+
+impl Drop for CsvImportCompletionGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(cancellation) = self.cancellation {
+            let _ = cancellation.finish_or_cancelled();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3451,6 +3653,7 @@ pub enum CsvImportProgress {
         exam_id: String,
     },
     Completed(CsvImportResult),
+    Cancelled(CsvImportResult),
     Failed {
         error: String,
         exam_id: String,
@@ -3517,34 +3720,201 @@ impl CsvImportService {
         vfs_db: &VfsDatabase,
         request: &CsvImportRequest,
         progress_tx: Option<UnboundedSender<CsvImportProgress>>,
+        cancellation: Option<Arc<CsvImportCancellation>>,
     ) -> Result<CsvImportResult, AppError> {
         log::info!(
             "[CsvImport] 开始导入: {} -> exam_id={}",
             request.file_path,
             request.exam_id
         );
+        let _completion_guard = CsvImportCompletionGuard::new(cancellation.as_deref());
 
-        let (content, encoding) = Self::read_file_with_encoding(&request.file_path)?;
+        if Self::is_cancelled(cancellation.as_deref()) {
+            return Ok(Self::cancelled_result(
+                request.exam_id.clone(),
+                0,
+                0,
+                0,
+                0,
+                Vec::new(),
+                progress_tx.as_ref(),
+            ));
+        }
+
+        let (content, encoding) = match Self::read_file_with_encoding(&request.file_path) {
+            Ok(result) => result,
+            Err(error) => {
+                if Self::finish_or_cancelled(cancellation.as_deref()) {
+                    return Ok(Self::cancelled_result(
+                        request.exam_id.clone(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        Vec::new(),
+                        progress_tx.as_ref(),
+                    ));
+                }
+                return Err(error);
+            }
+        };
         log::info!("[CsvImport] 编码: {}", encoding);
+
+        if Self::is_cancelled(cancellation.as_deref()) {
+            return Ok(Self::cancelled_result(
+                request.exam_id.clone(),
+                0,
+                0,
+                0,
+                0,
+                Vec::new(),
+                progress_tx.as_ref(),
+            ));
+        }
 
         let mut reader = csv::ReaderBuilder::new()
             .flexible(true)
             .has_headers(true)
             .from_reader(content.as_bytes());
 
-        let headers: Vec<String> = reader
-            .headers()
-            .map_err(|e| AppError::validation(format!("读取 CSV 表头失败: {}", e)))?
-            .iter()
-            .map(|h| h.to_string())
-            .collect();
+        let headers: Vec<String> = match reader.headers() {
+            Ok(headers) => headers.iter().map(|header| header.to_string()).collect(),
+            Err(error) => {
+                if Self::finish_or_cancelled(cancellation.as_deref()) {
+                    return Ok(Self::cancelled_result(
+                        request.exam_id.clone(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        Vec::new(),
+                        progress_tx.as_ref(),
+                    ));
+                }
+                return Err(AppError::validation(format!(
+                    "读取 CSV 表头失败: {}",
+                    error
+                )));
+            }
+        };
 
-        Self::validate_field_mapping(&headers, &request.field_mapping)?;
-        let exam_id = Self::ensure_exam_exists(vfs_db, request)?;
-        let mut existing_hashes = Self::get_existing_content_hashes(vfs_db, &exam_id)?;
+        if let Err(error) = Self::validate_field_mapping(&headers, &request.field_mapping) {
+            if Self::finish_or_cancelled(cancellation.as_deref()) {
+                return Ok(Self::cancelled_result(
+                    request.exam_id.clone(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    Vec::new(),
+                    progress_tx.as_ref(),
+                ));
+            }
+            return Err(error);
+        }
 
-        let records: Vec<_> = reader.records().collect();
+        // Keep total-row progress while allowing a cancellation to stop a large
+        // CSV during parsing instead of waiting for `collect()` to finish.
+        let mut records = Vec::new();
+        for record in reader.records() {
+            if Self::is_cancelled(cancellation.as_deref()) {
+                return Ok(Self::cancelled_result(
+                    request.exam_id.clone(),
+                    records.len(),
+                    0,
+                    0,
+                    0,
+                    Vec::new(),
+                    progress_tx.as_ref(),
+                ));
+            }
+            records.push(record);
+        }
         let total_rows = records.len();
+
+        // 在创建题目集或写入任意一行前处理已到达的取消请求，避免取消一个尚未开始的
+        // 导入仍产生空题目集。
+        if Self::is_cancelled(cancellation.as_deref()) {
+            return Ok(Self::cancelled_result(
+                request.exam_id.clone(),
+                total_rows,
+                0,
+                0,
+                0,
+                Vec::new(),
+                progress_tx.as_ref(),
+            ));
+        }
+
+        let (exam_id, created_exam) = match Self::ensure_exam_exists(vfs_db, request) {
+            Ok(result) => result,
+            Err(error) => {
+                if Self::finish_or_cancelled(cancellation.as_deref()) {
+                    return Ok(Self::cancelled_result(
+                        request.exam_id.clone(),
+                        total_rows,
+                        0,
+                        0,
+                        0,
+                        Vec::new(),
+                        progress_tx.as_ref(),
+                    ));
+                }
+                return Err(error);
+            }
+        };
+        if Self::is_cancelled(cancellation.as_deref()) {
+            if created_exam {
+                Self::discard_new_empty_exam(vfs_db, &exam_id);
+            }
+            return Ok(Self::cancelled_result(
+                request.exam_id.clone(),
+                total_rows,
+                0,
+                0,
+                0,
+                Vec::new(),
+                progress_tx.as_ref(),
+            ));
+        }
+        let mut existing_hashes = match Self::get_existing_content_hashes(vfs_db, &exam_id) {
+            Ok(hashes) => hashes,
+            Err(error) => {
+                if Self::finish_or_cancelled(cancellation.as_deref()) {
+                    if created_exam {
+                        Self::discard_new_empty_exam(vfs_db, &exam_id);
+                    }
+                    return Ok(Self::cancelled_result(
+                        exam_id,
+                        total_rows,
+                        0,
+                        0,
+                        0,
+                        Vec::new(),
+                        progress_tx.as_ref(),
+                    ));
+                }
+                if created_exam {
+                    Self::discard_new_empty_exam(vfs_db, &exam_id);
+                }
+                return Err(error);
+            }
+        };
+
+        if Self::is_cancelled(cancellation.as_deref()) {
+            if created_exam {
+                Self::discard_new_empty_exam(vfs_db, &exam_id);
+            }
+            return Ok(Self::cancelled_result(
+                request.exam_id.clone(),
+                total_rows,
+                0,
+                0,
+                0,
+                Vec::new(),
+                progress_tx.as_ref(),
+            ));
+        }
 
         if let Some(ref tx) = progress_tx {
             let _ = tx.send(CsvImportProgress::Started {
@@ -3560,6 +3930,27 @@ impl CsvImportService {
         let mut errors = Vec::new();
 
         for (idx, result) in records.into_iter().enumerate() {
+            // 取消在单行的数据库写入之间生效。这样不会回滚已完成的行，但能保证
+            // 取消确认后不再开始后续写入。
+            if Self::is_cancelled(cancellation.as_deref()) {
+                if created_exam {
+                    Self::discard_new_empty_exam(vfs_db, &exam_id);
+                }
+                if success_count > 0 || skipped_count > 0 || failed_count > 0 {
+                    if let Err(e) = VfsQuestionRepo::refresh_stats(vfs_db, &exam_id) {
+                        log::warn!("[CsvImport] 取消后刷新统计失败: {}", e);
+                    }
+                }
+                return Ok(Self::cancelled_result(
+                    exam_id,
+                    total_rows,
+                    success_count,
+                    skipped_count,
+                    failed_count,
+                    errors,
+                    progress_tx.as_ref(),
+                ));
+            }
             let row_num = idx + 2;
             match result {
                 Ok(record) => {
@@ -3610,6 +4001,29 @@ impl CsvImportService {
             }
         }
 
+        // This compare-and-swap is the terminal linearization point. A cancel
+        // request either wins here and receives Cancelled, or loses and is told
+        // that the import has already completed.
+        if Self::finish_or_cancelled(cancellation.as_deref()) {
+            if created_exam {
+                Self::discard_new_empty_exam(vfs_db, &exam_id);
+            }
+            if success_count > 0 || skipped_count > 0 || failed_count > 0 {
+                if let Err(e) = VfsQuestionRepo::refresh_stats(vfs_db, &exam_id) {
+                    log::warn!("[CsvImport] 取消后刷新统计失败: {}", e);
+                }
+            }
+            return Ok(Self::cancelled_result(
+                exam_id,
+                total_rows,
+                success_count,
+                skipped_count,
+                failed_count,
+                errors,
+                progress_tx.as_ref(),
+            ));
+        }
+
         if let Err(e) = VfsQuestionRepo::refresh_stats(vfs_db, &exam_id) {
             log::warn!("[CsvImport] 统计刷新失败: {}", e);
         }
@@ -3621,6 +4035,7 @@ impl CsvImportService {
             errors,
             exam_id,
             total_rows,
+            cancelled: false,
         };
 
         if let Some(ref tx) = progress_tx {
@@ -3628,6 +4043,40 @@ impl CsvImportService {
         }
 
         Ok(result)
+    }
+
+    fn is_cancelled(cancellation: Option<&CsvImportCancellation>) -> bool {
+        cancellation.is_some_and(CsvImportCancellation::is_cancelled)
+    }
+
+    fn finish_or_cancelled(cancellation: Option<&CsvImportCancellation>) -> bool {
+        cancellation.is_some_and(CsvImportCancellation::finish_or_cancelled)
+    }
+
+    fn cancelled_result(
+        exam_id: String,
+        total_rows: usize,
+        success_count: usize,
+        skipped_count: usize,
+        failed_count: usize,
+        errors: Vec<CsvImportError>,
+        progress_tx: Option<&UnboundedSender<CsvImportProgress>>,
+    ) -> CsvImportResult {
+        let result = CsvImportResult {
+            success_count,
+            skipped_count,
+            failed_count,
+            errors,
+            exam_id,
+            total_rows,
+            cancelled: true,
+        };
+
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(CsvImportProgress::Cancelled(result.clone()));
+        }
+
+        result
     }
 
     fn validate_file_path(path: &str) -> Result<(), AppError> {
@@ -3679,10 +4128,7 @@ impl CsvImportService {
             }
         }
         for target_field in field_mapping.values() {
-            if !CSV_IMPORT_TARGET_FIELDS
-                .iter()
-                .any(|allowed| *allowed == target_field.as_str())
-            {
+            if !CSV_IMPORT_TARGET_FIELDS.contains(&target_field.as_str()) {
                 return Err(AppError::validation(format!(
                     "不支持的目标字段 '{}', 仅支持: {}",
                     target_field,
@@ -3702,12 +4148,53 @@ impl CsvImportService {
         Ok(())
     }
 
+    fn discard_new_empty_exam(vfs_db: &VfsDatabase, exam_id: &str) {
+        use rusqlite::params;
+
+        let conn = match vfs_db.get_conn_safe() {
+            Ok(conn) => conn,
+            Err(error) => {
+                log::warn!(
+                    "[CsvImport] 取消后检查新建题目集失败 ({}): {}",
+                    exam_id,
+                    error
+                );
+                return;
+            }
+        };
+        let question_count = match conn.query_row(
+            "SELECT COUNT(*) FROM questions WHERE exam_id = ?1 AND deleted_at IS NULL",
+            params![exam_id],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(count) => count,
+            Err(error) => {
+                log::warn!(
+                    "[CsvImport] 取消后检查新建题目集失败 ({}): {}",
+                    exam_id,
+                    error
+                );
+                return;
+            }
+        };
+        if question_count > 0 {
+            return;
+        }
+        if let Err(error) = VfsExamRepo::purge_exam_sheet(vfs_db, exam_id) {
+            log::warn!(
+                "[CsvImport] 取消后清理新建空题目集失败 ({}): {}",
+                exam_id,
+                error
+            );
+        }
+    }
+
     fn ensure_exam_exists(
         vfs_db: &VfsDatabase,
         request: &CsvImportRequest,
-    ) -> Result<String, AppError> {
+    ) -> Result<(String, bool), AppError> {
         if let Ok(Some(_)) = VfsExamRepo::get_exam_sheet(vfs_db, &request.exam_id) {
-            return Ok(request.exam_id.clone());
+            return Ok((request.exam_id.clone(), false));
         }
 
         let exam_name = request.exam_name.clone().unwrap_or_else(|| {
@@ -3749,9 +4236,11 @@ impl CsvImportService {
             folder_id: request.folder_id.clone(),
         };
 
-        VfsExamRepo::create_exam_sheet(vfs_db, params)
+        // P1 修复：create_exam_sheet 内部会用 generate_id() 生成新 ID（request.exam_id 仅作 temp_id），
+        // 必须返回实际生成的 ID，否则后续题目会挂到不存在的 exam_id 下成为孤儿数据。
+        let exam_sheet = VfsExamRepo::create_exam_sheet(vfs_db, params)
             .map_err(|e| AppError::database(format!("创建题目集失败: {}", e)))?;
-        Ok(request.exam_id.clone())
+        Ok((exam_sheet.id, true))
     }
 
     fn get_existing_content_hashes(
@@ -3888,6 +4377,7 @@ impl CsvImportService {
             source_ref: Some("csv".to_string()),
             images: parsed_images,
             parent_id: None,
+            structured_data: None,
         }
     }
 
@@ -4010,6 +4500,14 @@ impl CsvImportService {
                 Some(crate::vfs::repos::QuestionType::Calculation)
             }
             "proof" | "证明" | "证明题" => Some(crate::vfs::repos::QuestionType::Proof),
+            "true_false" | "判断" | "判断题" | "judgment" => {
+                Some(crate::vfs::repos::QuestionType::TrueFalse)
+            }
+            "matching" | "匹配" | "匹配题" | "连线" | "连线题" => {
+                Some(crate::vfs::repos::QuestionType::Matching)
+            }
+            "ordering" | "排序" | "排序题" => Some(crate::vfs::repos::QuestionType::Ordering),
+            "numeric" | "数值" | "数值题" => Some(crate::vfs::repos::QuestionType::Numeric),
             _ => Some(crate::vfs::repos::QuestionType::Other),
         }
     }
@@ -4069,4 +4567,61 @@ enum CsvRowResult {
     Success,
     Skipped,
     Updated,
+}
+
+#[cfg(test)]
+mod csv_import_tests {
+    use super::{CsvDuplicateStrategy, CsvImportCancellation, CsvImportRequest, CsvImportService};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    #[test]
+    fn cancelled_csv_import_does_not_create_questions_or_an_empty_exam() {
+        let (temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let csv_path = temp_dir.path().join("cancelled.csv");
+        std::fs::write(&csv_path, "question\nfirst row\nsecond row\n").expect("write CSV fixture");
+
+        let request = CsvImportRequest {
+            file_path: csv_path.to_string_lossy().into_owned(),
+            exam_id: "exam_cancelled_before_write".to_string(),
+            field_mapping: HashMap::from([("question".to_string(), "content".to_string())]),
+            duplicate_strategy: CsvDuplicateStrategy::Skip,
+            folder_id: None,
+            exam_name: Some("Cancelled import".to_string()),
+        };
+        let cancellation = Arc::new(CsvImportCancellation::new());
+        assert!(cancellation.request_cancel());
+
+        let result = CsvImportService::import_csv(&db, &request, None, Some(cancellation))
+            .expect("cancelled import returns its partial result");
+
+        assert!(result.cancelled);
+        assert_eq!(result.success_count, 0);
+        let conn = db.get_conn_safe().expect("get VFS connection");
+        let question_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM questions", [], |row| row.get(0))
+            .expect("count questions");
+        let exam_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM exam_sheets", [], |row| row.get(0))
+            .expect("count exams");
+        assert_eq!(
+            question_count, 0,
+            "no rows may be written after cancellation"
+        );
+        assert_eq!(exam_count, 0, "cancellation must not create an empty exam");
+    }
+
+    #[test]
+    fn cancellation_and_completion_have_a_single_terminal_winner() {
+        let cancelled_first = CsvImportCancellation::new();
+        assert!(cancelled_first.request_cancel());
+        assert!(cancelled_first.finish_or_cancelled());
+
+        let completed_first = CsvImportCancellation::new();
+        assert!(!completed_first.finish_or_cancelled());
+        assert!(
+            !completed_first.request_cancel(),
+            "a completed import must not accept a late cancellation"
+        );
+    }
 }

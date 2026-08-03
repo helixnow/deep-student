@@ -1,12 +1,3 @@
-.notes-tabs-scroll {
-  /* 隐藏滚动条（不影响滚动） */
-  -ms-overflow-style: none; /* IE/Edge */
-  scrollbar-width: none; /* Firefox */
-}
-.notes-tabs-scroll::-webkit-scrollbar {
-  display: none; /* WebKit */
-}
-
 .notes-tabs-scroll-btn {
   position: absolute;
   top: 50%; /* 与标签中轴对齐 */
@@ -21,10 +12,21 @@
   background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 9999px;
-  box-shadow: 0 1px 2px hsl(var(--shadow-base) / 0.06);
+  box-shadow: var(--shadow-content-subtle, 0 1px 3px hsl(var(--shadow-base) / 0.05));
   opacity: 1; /* 完全不透明 */
   pointer-events: auto;
+  transition: color var(--notes-hover-transition, 120ms ease), background-color var(--notes-hover-transition, 120ms ease);
 }
 .notes-tabs-scroll-btn.left-0 { left: 4px; }
 .notes-tabs-scroll-btn.right-0 { right: 4px; }
-.notes-tabs-scroll-btn:hover { color: hsl(var(--foreground)); }
+.notes-tabs-scroll-btn:hover {
+  color: hsl(var(--foreground));
+  /* 悬浮按钮需保持不透明底：把 --interactive-hover 的 10% foreground 预混进 background */
+  background: color-mix(in hsl, hsl(var(--foreground)) 8%, hsl(var(--background)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-tabs-scroll-btn {
+    transition: none;
+  }
+}

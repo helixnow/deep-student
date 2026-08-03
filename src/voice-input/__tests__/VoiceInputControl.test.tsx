@@ -7,7 +7,8 @@ import { VoiceInputControl } from '../VoiceInputControl';
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => undefined },
   useTranslation: () => ({
-    t: (_key: string, fallback?: string) => fallback || _key,
+    t: (key: string, fallback?: string) =>
+      key === 'inputBar.voiceInput.button' ? 'Voice input' : fallback || key,
   }),
 }));
 

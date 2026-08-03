@@ -1,0 +1,20 @@
+/**
+ * SandboxAppWindow.css（O18）— 沙箱工作台窗口化边界样式
+ * ---------------------------------------------------------------------------
+ * wb-sandbox- 前缀隔离。
+ */
+
+/*
+ * iframe 焦点守卫：非焦点窗口时覆盖内容区。
+ * 透明、无视觉；pointerdown 落在宿主 DOM 上冒泡到 WindowShell 完成聚焦，
+ * 聚焦后组件卸载守卫，后续交互直达 iframe。
+ */
+.wb-sandbox-focus-guard {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: transparent;
+  cursor: default;
+  /* 明确接收指针事件（父层拖拽期间壳会整体 pointer-events:none，不冲突） */
+  pointer-events: auto;
+}

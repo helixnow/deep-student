@@ -10,6 +10,11 @@
     "emptyGroup": "暂无对话"
   },
   "theme": "主题",
+  "mobile_drawer": {
+    "section_app": "应用",
+    "section_chat": "会话",
+    "section_learning": "学习资源"
+  },
   "navigation": {
     "batch": "批量分析",
     "textbook_library": "教材库",
@@ -32,7 +37,13 @@
     "learning_hub": "学习资源",
     "extensions": "扩展功能",
     "chat_v2": "新会话",
-    "skills_management": "技能管理"
+    "skills_management": "技能管理",
+    "todo": "待办",
+    "ui_lab": "样式调试",
+    "command_palette": "搜索与命令",
+    "workbench_mode": "学习桌面",
+    "show_workbench_mode": "显示学习桌面",
+    "hide_workbench_mode": "隐藏学习桌面"
   },
   "aria": {
     "sidebar_navigation": "主导航",
@@ -52,11 +63,25 @@
     "create_conversation": "新建对话",
     "expand_group_sessions": "展开显示",
     "collapse_group_sessions": "折叠显示",
-    "rename_session": "重命名会话"
+    "rename_session": "重命名会话",
+    "delete_session": "删除会话"
   },
   "rename": {
     "title": "重命名对话",
     "label": "对话名称"
+  },
+  "delete": {
+    "confirm_hint": "永久删除？不可恢复"
+  },
+  "search": {
+    "placeholder": "搜索会话...",
+    "clear": "清除搜索",
+    "no_results": "未找到匹配的会话"
+  },
+  "update": {
+    "short": "更新",
+    "available": "有可用更新",
+    "downloading": "下载中..."
   },
   "expand": "展开侧边栏",
   "collapse": "收起侧边栏",

@@ -1,34 +1,25 @@
-/**
- * 模板渲染卡片预览组件
- *
- * 使用 TemplateRenderService 生成 HTML，通过 ShadowDomPreview 安全渲染。
- * 支持正面/背面切换，点击翻转。
- *
- * 适用场景：
- * - ChatAnki 卡片块中的折叠态预览
- * - ChatAnki 卡片块中的展开态只读预览
- */
-
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { cn } from '@/utils/cn';
+import { ClozeText } from './AnkiClozeText';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
-import { TemplateRenderService } from '@/services/templateRenderService';
-import { ShadowDomPreview } from '@/components/ShadowDomPreview';
+import './chat-anki-cards.css';
 
 interface RenderedAnkiCardProps {
   card: AnkiCard;
   template: CustomAnkiTemplate;
-  /** 是否允许点击翻转 */
   flippable?: boolean;
-  /** 紧凑模式（去除 ShadowDOM 容器边距） */
   compact?: boolean;
   className?: string;
-  onClick?: (e: React.MouseEvent) => void;
+  onClick?: (event: React.MouseEvent) => void;
 }
 
-/**
- * 渲染单张 Anki 卡片，使用模板的 HTML/CSS
- */
+/** 翻面动画时序：150ms 转出 + 200ms 转入（与 chat-anki-cards.css 保持一致） */
+const FLIP_OUT_MS = 150;
+const FLIP_IN_MS = 200;
+
 export const RenderedAnkiCard: React.FC<RenderedAnkiCardProps> = ({
   card,
   template,
@@ -39,119 +30,109 @@ export const RenderedAnkiCard: React.FC<RenderedAnkiCardProps> = ({
 }) => {
   const { t } = useTranslation('anki');
   const [showBack, setShowBack] = useState(false);
+  const [flipPhase, setFlipPhase] = useState<'idle' | 'out' | 'in'>('idle');
+  const flipTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
-  const rendered = useMemo(() => {
-    try {
-      return TemplateRenderService.renderCard(card, template);
-    } catch (err: unknown) {
-      console.error('[RenderedAnkiCard] Render failed:', err);
-      return null;
+  useEffect(() => {
+    const timers = flipTimersRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.length = 0;
+    };
+  }, []);
+
+  const flip = useCallback(() => {
+    if (!flippable) return;
+    if (prefersReducedMotion) {
+      setShowBack((previous) => !previous);
+      return;
     }
-  }, [card, template]);
-
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (flippable) {
-        e.stopPropagation();
-        setShowBack((prev) => !prev);
-      }
-      onClick?.(e);
-    },
-    [flippable, onClick]
-  );
-
-  // 渲染失败时回退到纯文本（带提示）
-  if (!rendered) {
-    const front = card.front ?? card.fields?.Front ?? '';
-    const back = card.back ?? card.fields?.Back ?? '';
-    return (
-      <div
-        className={[
-          'p-3 border rounded-lg bg-card',
-          flippable ? 'cursor-pointer' : '',
-          className,
-        ].filter(Boolean).join(' ')}
-        onClick={handleClick}
-      >
-        <div className="text-[10px] text-amber-600/70 mb-1">⚠ {t('chatV2.noContent')}</div>
-        <div className="text-sm font-medium">{showBack ? back : front}</div>
-      </div>
+    // 动画进行中忽略重复触发，避免中途换面造成闪烁
+    if (flipPhase !== 'idle') return;
+    setFlipPhase('out');
+    flipTimersRef.current.push(
+      setTimeout(() => {
+        setShowBack((previous) => !previous);
+        setFlipPhase('in');
+        flipTimersRef.current.push(
+          setTimeout(() => setFlipPhase('idle'), FLIP_IN_MS),
+        );
+      }, FLIP_OUT_MS),
     );
-  }
+  }, [flippable, prefersReducedMotion, flipPhase]);
 
-  const htmlContent = showBack ? rendered.back : rendered.front;
-  const isEmpty = !htmlContent || htmlContent.trim() === '';
+  const handleClick = useCallback((event: React.MouseEvent) => {
+    if (flippable) {
+      event.stopPropagation();
+      flip();
+    }
+    onClick?.(event);
+  }, [flip, flippable, onClick]);
 
-  // 渲染为空 HTML 时显示纯文本回退
-  if (isEmpty) {
-    const front = card.front ?? card.fields?.Front ?? '';
-    const back = card.back ?? card.fields?.Back ?? '';
-    const fallbackText = showBack ? back : front;
-    return (
-      <div
-        className={[
-          'p-3 border rounded-lg bg-card',
-          flippable ? 'cursor-pointer' : '',
-          className,
-        ].filter(Boolean).join(' ')}
-        onClick={handleClick}
-      >
-        {fallbackText ? (
-          <div className="text-sm font-medium">{fallbackText}</div>
-        ) : (
-          <div className="text-sm text-muted-foreground italic">{t('chatV2.noContent')}</div>
-        )}
-        {flippable && (
-          <div className="text-[10px] text-muted-foreground/60 text-right mt-1">
-            {showBack ? t('chatV2.front') : t('chatV2.back')} ↩
-          </div>
-        )}
-      </div>
-    );
-  }
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (!flippable || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    flip();
+  }, [flip, flippable]);
 
+  const side = showBack ? 'back' : 'front';
   return (
     <div
-      className={[
-        'relative overflow-hidden rounded-lg border bg-card transition-all',
-        flippable ? 'cursor-pointer' : '',
+      className={cn(
+        'canki-flip-wrap relative overflow-hidden rounded-lg border bg-card transition-colors',
+        flippable && 'cursor-pointer hover:border-primary/35 active:bg-muted/30',
         className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      )}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role={flippable ? 'button' : undefined}
+      tabIndex={flippable ? 0 : undefined}
+      aria-label={flippable
+        ? t(showBack ? 'chatBlock.flipToFront' : 'chatBlock.flipToBack')
+        : undefined}
     >
-      <ShadowDomPreview
-        htmlContent={htmlContent}
-        cssContent={template.css_style || ''}
-        compact={compact}
-        fidelity="anki"
-      />
-      {/* 翻转提示 */}
-      {flippable && (
-        <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground/60 select-none pointer-events-none">
+      <div
+        className={cn(
+          'canki-flip-face',
+          flipPhase === 'out' && 'canki-flip-out',
+          flipPhase === 'in' && 'canki-flip-in',
+        )}
+      >
+        <AnkiTemplateCardFace
+          card={card}
+          template={template}
+          side={side}
+          compact={compact}
+          className="min-h-[7rem]"
+          emptyText={t('chatV2.noContent')}
+        />
+      </div>
+      {flippable ? (
+        <div className="pointer-events-none absolute bottom-1 right-2 select-none text-2xs text-muted-foreground/60 transition-opacity">
           {showBack ? t('chatV2.front') : t('chatV2.back')} ↩
         </div>
-      )}
+      ) : null}
     </div>
   );
 };
 
-/**
- * 纯文本卡片预览（无模板时的回退组件）
- */
 export const PlainAnkiCard: React.FC<{
   card: AnkiCard;
   className?: string;
-  onClick?: (e: React.MouseEvent) => void;
+  onClick?: (event: React.MouseEvent) => void;
 }> = ({ card, className, onClick }) => {
   const front = card.front ?? card.fields?.Front ?? '';
   const back = card.back ?? card.fields?.Back ?? '';
-
   return (
     <div className={className} onClick={onClick}>
-      <div className="text-sm font-medium truncate">{front}</div>
-      <div className="text-xs text-muted-foreground truncate mt-1">{back}</div>
+      <div className="truncate text-sm font-medium">
+        <ClozeText text={front} revealed={false} />
+      </div>
+      <div className="mt-1 truncate text-xs text-muted-foreground">
+        <ClozeText text={back} revealed />
+      </div>
     </div>
   );
 };

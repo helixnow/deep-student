@@ -12,6 +12,10 @@ export interface ViewLayerRendererProps {
   extraClass?: string;
   extraStyle?: React.CSSProperties;
   errorBoundaryName?: string;
+  /** Keep the view visible as a non-interactive backdrop while settings is open. */
+  isBackdrop?: boolean;
+  /** Avoid replaying the page-enter animation when a sheet returns to this view. */
+  suppressEnterAnimation?: boolean;
 }
 
 export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
@@ -22,6 +26,8 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   extraClass,
   extraStyle,
   errorBoundaryName,
+  isBackdrop = false,
+  suppressEnterAnimation = false,
 }: ViewLayerRendererProps) {
   if (!visitedViews.has(view)) {
     return null;
@@ -37,6 +43,8 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
       {children}
     </ErrorBoundary>
   ) : children;
+  const isActive = currentView === view;
+  const isVisible = isActive || isBackdrop;
 
   return (
     <div
@@ -44,7 +52,14 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
       className={cn(
         'page-container desktop-shell-view-layer absolute inset-0 flex flex-col',
         extraClass,
-        currentView === view ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
+        // 入场动画类仅挂在激活层：非激活时移除，再次激活时重新挂上即可重播一次
+        // CSS animation（样式见 shared/styles/app.css 的 .desktop-shell-content-enter）。
+        // 离场层不做动画，visibility:hidden 同帧生效是刻意行为。
+        isActive
+          ? `${suppressEnterAnimation ? '' : 'desktop-shell-content-enter'} opacity-100 z-10 pointer-events-auto`
+          : isBackdrop
+          ? 'opacity-100 z-0 pointer-events-none'
+          : 'opacity-0 z-0 pointer-events-none'
       )}
       style={{
         position: 'absolute',
@@ -53,7 +68,7 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
         bottom: 0,
         left: 0,
         ...extraStyle,
-        ...(currentView !== view ? {
+        ...(!isVisible ? {
           visibility: 'hidden' as const,
           contentVisibility: 'hidden',
         } : {})
@@ -67,6 +82,9 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   const prevActive = prev.currentView === prev.view;
   const nextActive = next.currentView === next.view;
   if (prevActive !== nextActive) return false;
+
+  if (prev.isBackdrop !== next.isBackdrop) return false;
+  if (prev.suppressEnterAnimation !== next.suppressEnterAnimation) return false;
 
   const prevVisited = prev.visitedViews.has(prev.view);
   const nextVisited = next.visitedViews.has(next.view);

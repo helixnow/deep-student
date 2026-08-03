@@ -1,0 +1,813 @@
+/**
+ * PomodoroAppWindow.css — 番茄钟投射窗（控制坞自绘改版 → 视图内联化）
+ * ---------------------------------------------------------------------------
+ * wb-sys-pomo- 前缀隔离。模式语义色对齐全局映射（沉浸模式/全局药丸同款）：
+ * 专注=primary / 短休=success / 长休=info / 空闲=muted。
+ *
+ * 结构：主视图（Hero 计时盘 → 今日条 → 传输控制坞）⇄ 子视图（设置/统计），
+ * 同层视图切换：transform/opacity 过渡 320ms cubic-bezier(0.22,1,0.36,1)。
+ * 装饰动画仅 transform/opacity；进度环 stroke-dashoffset 的 1s linear
+ * 过渡属状态过渡（对齐 legacy 进度条 width 过渡），已在进度文件向 O20 备案。
+ */
+
+.wb-sys-pomo {
+  position: relative;
+  --wb-sys-pomo-accent: hsl(var(--muted-foreground) / 0.5);
+  /* 视图切换出口曲线（overshoot-免疫的 easeOutQuint 近似） */
+  --wb-sys-pomo-view-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --wb-sys-pomo-view-ms: 320ms;
+  background: var(--wb-window-bg, hsl(var(--background)));
+}
+
+.wb-sys-pomo[data-mode='work'] {
+  --wb-sys-pomo-accent: hsl(var(--primary));
+}
+
+.wb-sys-pomo[data-mode='short_break'] {
+  --wb-sys-pomo-accent: hsl(var(--success));
+}
+
+.wb-sys-pomo[data-mode='long_break'] {
+  --wb-sys-pomo-accent: hsl(var(--info));
+}
+
+/* 模式氛围晕染：运行/暂停时给 Hero 一层淡淡的模式色环境光 */
+.wb-sys-pomo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    130% 60% at 50% 30%,
+    color-mix(in hsl, var(--wb-sys-pomo-accent) 10%, transparent 90%) 0%,
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity 500ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo[data-status='running']::before,
+.wb-sys-pomo[data-status='paused']::before {
+  opacity: 1;
+}
+
+/* ==== 视图切换（主视图 ⇄ 设置/统计，同层非模态） ======================= */
+
+/*
+ * 主视图：常驻挂载。子视图前台时向左轻移 + 淡出，过渡结束后 visibility
+ * 收尾（0s 延迟到过渡末端），把它从焦点/辅助树上摘掉（配合 aria-hidden）。
+ */
+.wb-sys-pomo-view-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  /* 回主视图：visibility 立即可见，transform/opacity 走过渡 */
+  transition:
+    transform var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    opacity var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    visibility 0s;
+}
+
+.wb-sys-pomo:not([data-view='main']) .wb-sys-pomo-view-main {
+  transform: translateX(-18px) scale(0.985);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  /* 离场：visibility 延迟到过渡末端再隐藏（焦点/辅助树同步摘除） */
+  transition:
+    transform var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    opacity var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    visibility 0s linear var(--wb-sys-pomo-view-ms);
+}
+
+/* ==== Hero 区 ========================================================= */
+
+.wb-sys-pomo-hero-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.wb-sys-pomo-hero-viewport {
+  overscroll-behavior: contain;
+}
+
+.wb-sys-pomo-hero {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 22px 20px;
+}
+
+/* 短窗：纵向节奏收紧，把空间还给控制坞 */
+.wb-sys-pomo[data-wb-sys-h='short'] .wb-sys-pomo-hero {
+  gap: 10px;
+  padding: 14px 20px;
+}
+
+/* ==== 徽章行 ========================================================== */
+
+.wb-sys-pomo-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.wb-sys-pomo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.wb-sys-pomo-chip-mode {
+  color: var(--wb-sys-pomo-accent);
+  background: color-mix(in hsl, var(--wb-sys-pomo-accent) 12%, transparent 88%);
+  border: 1px solid color-mix(in hsl, var(--wb-sys-pomo-accent) 22%, transparent 78%);
+}
+
+.wb-sys-pomo-chip-paused {
+  color: hsl(var(--muted-foreground));
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
+  border: 1px solid color-mix(in hsl, hsl(var(--muted-foreground)) 18%, transparent 82%);
+}
+
+.wb-sys-pomo-chip-strict {
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border: 1px dashed color-mix(in hsl, hsl(var(--muted-foreground)) 30%, transparent 70%);
+}
+
+/* ==== 计时盘 ========================================================== */
+
+.wb-sys-pomo-dial-wrap {
+  position: relative;
+  width: 216px;
+  height: 216px;
+  flex-shrink: 0;
+}
+
+/* 窄窗（默认 380 宽即 compact）：盘面小一档，徽章/任务行不被挤出 */
+.wb-sys-pomo[data-wb-sys-size='compact'] .wb-sys-pomo-dial-wrap {
+  width: 200px;
+  height: 200px;
+}
+
+/* 宽窗：盘面放大，撑起大窗留白 */
+.wb-sys-pomo[data-wb-sys-size='wide'] .wb-sys-pomo-dial-wrap {
+  width: 236px;
+  height: 236px;
+}
+
+/* 短窗：盘面收缩，保证控制坞完整可见（优先级高于宽度档） */
+.wb-sys-pomo[data-wb-sys-h='short'] .wb-sys-pomo-dial-wrap {
+  width: 156px;
+  height: 156px;
+}
+
+.wb-sys-pomo-dial {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.wb-sys-pomo-track {
+  fill: none;
+  stroke: color-mix(in hsl, hsl(var(--border)) 66%, transparent 34%);
+  stroke-width: 9;
+}
+
+.wb-sys-pomo-progress {
+  fill: none;
+  stroke: var(--wb-sys-pomo-accent);
+  stroke-width: 9;
+  stroke-linecap: round;
+  /* 12 点方向起针 */
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  /* 秒级更新间的平滑衔接（状态过渡，非装饰动画） */
+  transition: stroke-dashoffset 1s linear;
+}
+
+.wb-sys-pomo[data-status='paused'] .wb-sys-pomo-progress {
+  opacity: 0.55;
+}
+
+.wb-sys-pomo[data-mode='idle'] .wb-sys-pomo-progress {
+  opacity: 0;
+}
+
+/* ---- 运行呼吸光晕（transform/opacity only） ---- */
+
+.wb-sys-pomo-glow {
+  position: absolute;
+  inset: -14%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in hsl, var(--wb-sys-pomo-accent) 26%, transparent 74%) 0%,
+    transparent 68%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
+  opacity: 0.2;
+  animation: wb-sys-pomo-breathe 4.2s ease-in-out infinite;
+}
+
+/*
+ * 挂起呼吸：isVisible=false 或拖窗 renderThrottleMs>0 时组件写 data-anim='off'。
+ * ANTI-REGRESSION：拖窗期间必须停 glow，避免与壳层跟手抢合成层。
+ */
+.wb-sys-pomo[data-anim='off'] .wb-sys-pomo-glow {
+  animation-play-state: paused;
+}
+
+/* hint 未刷新时仍靠根旗停呼吸（起拖默认同步挂 data-wb-dragging） */
+:root[data-wb-dragging] .wb-sys-pomo .wb-sys-pomo-glow,
+:root[data-wb-settling] .wb-sys-pomo .wb-sys-pomo-glow {
+  animation-play-state: paused;
+}
+
+@keyframes wb-sys-pomo-breathe {
+  0%,
+  100% {
+    opacity: 0.13;
+    transform: scale(0.985);
+  }
+  50% {
+    opacity: 0.26;
+    transform: scale(1.025);
+  }
+}
+
+/* ---- 完成瞬间环闪光（一次性，transform/opacity only） ---- */
+
+.wb-sys-pomo-flash {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  border: 3px solid var(--wb-sys-pomo-accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wb-sys-pomo[data-flash='true'] .wb-sys-pomo-flash {
+  animation: wb-sys-pomo-flash 720ms var(--wb-sys-pomo-view-ease) both;
+}
+
+@keyframes wb-sys-pomo-flash {
+  0% {
+    opacity: 0.75;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.14);
+  }
+}
+
+/* ==== 中央读数 ======================================================== */
+
+.wb-sys-pomo-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 22px;
+  text-align: center;
+}
+
+.wb-sys-pomo-time {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 44px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: hsl(var(--foreground));
+  transition: opacity 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo[data-wb-sys-size='compact'] .wb-sys-pomo-time {
+  font-size: 40px;
+}
+
+.wb-sys-pomo[data-wb-sys-size='wide'] .wb-sys-pomo-time {
+  font-size: 48px;
+}
+
+.wb-sys-pomo[data-wb-sys-h='short'] .wb-sys-pomo-time {
+  font-size: 30px;
+}
+
+.wb-sys-pomo[data-status='paused'] .wb-sys-pomo-time {
+  opacity: 0.55;
+}
+
+.wb-sys-pomo[data-mode='idle'] .wb-sys-pomo-time {
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-sys-pomo-sub {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==== 任务徽章 ======================================================== */
+
+.wb-sys-pomo-task {
+  max-width: min(320px, 86%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: hsl(var(--foreground) / 0.85);
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 80%, transparent 20%);
+}
+
+/* ==== 长休息周期圆点 =================================================== */
+
+.wb-sys-pomo-cycles {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 8px;
+}
+
+.wb-sys-pomo-cycle {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 22%, transparent 78%);
+  transition: background-color 240ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo-cycle[data-filled='true'] {
+  background: var(--wb-sys-pomo-accent);
+}
+
+/* 当前进行中的那颗：细环 + 呼吸（仅动画开启档） */
+.wb-sys-pomo-cycle[data-current='true'] {
+  background: transparent;
+  box-shadow: 0 0 0 1.5px var(--wb-sys-pomo-accent);
+}
+
+.wb-sys-pomo[data-anim='on'] .wb-sys-pomo-cycle[data-current='true'] {
+  animation: wb-sys-pomo-breathe 4.2s ease-in-out infinite;
+}
+
+/* ==== 控制坞 ========================================================== */
+
+.wb-sys-pomo-dock {
+  position: relative;
+  flex-shrink: 0;
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 62%, transparent 38%);
+  background: color-mix(in hsl, hsl(var(--card)) 50%, transparent 50%);
+}
+
+/* ---- 今日条（数字展示区不可点 + 独立统计按钮） ---- */
+
+.wb-sys-pomo-today {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px 7px 12px;
+}
+
+.wb-sys-pomo-today-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-sys-pomo-today-flame {
+  flex-shrink: 0;
+  color: hsl(var(--warning));
+}
+
+.wb-sys-pomo-today-flame.is-goal {
+  color: hsl(var(--success));
+}
+
+.wb-sys-pomo-today-text strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-sys-pomo-today-text strong span {
+  font-weight: 400;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-sys-pomo-today-goalbar {
+  display: inline-flex;
+  width: 48px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--border)) 80%, transparent 20%);
+}
+
+.wb-sys-pomo-today-goalbar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  transition: width 400ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo-today-goalbar-fill.is-goal {
+  background: hsl(var(--success));
+}
+
+.wb-sys-pomo-today-goal-done {
+  font-weight: 500;
+  color: hsl(var(--success));
+}
+
+/* 连续达标 streak（暖色轻强调，与 Todo 面板 streak 同语义色） */
+.wb-sys-pomo-today-streak {
+  font-weight: 500;
+  color: hsl(var(--warning));
+  white-space: nowrap;
+}
+
+.wb-sys-pomo-today-meta {
+  white-space: nowrap;
+}
+
+.wb-sys-pomo-today-meta.is-dim {
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+/* 明确的「统计」入口按钮（替代原整行可点，降低误触） */
+.wb-sys-pomo-today-stats {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+  line-height: 16px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo-today-stats:hover {
+  color: hsl(var(--foreground));
+  background: var(--interactive-hover, rgba(0, 0, 0, 0.06));
+}
+
+.wb-sys-pomo-today-stats:focus-visible {
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline-offset: 1px;
+}
+
+/* ---- 传输控制行 ---- */
+
+.wb-sys-pomo-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 12px;
+}
+
+.wb-sys-pomo-controls-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wb-sys-pomo-controls-side.is-right {
+  justify-content: flex-end;
+}
+
+.wb-sys-pomo-controls-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 主按钮定宽：开始专注/暂停/继续 切换时不挤压两侧图标 */
+.wb-sys-pomo-play {
+  min-width: 108px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+/* 放弃确认（内联二次确认）：占据停止按钮位，轻入场 */
+.wb-sys-pomo-stop-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  animation: wb-sys-pomo-view-in 200ms var(--wb-sys-pomo-view-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-sys-pomo-stop-confirm {
+    animation: none;
+  }
+}
+
+.wb-sys-pomo-controls-strict {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 108px;
+  justify-content: center;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--radius-shell-control, 8px);
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  border: 1px dashed color-mix(in hsl, hsl(var(--muted-foreground)) 30%, transparent 70%);
+  user-select: none;
+}
+
+/* ==== 子视图（设置 / 统计，同层切换非模态） ============================ */
+
+/*
+ * 与主视图同层的兄弟视图：挂载即从右侧滑入（keyframes 进场），
+ * data-active 翻 false 时按 transition 滑出（父级过渡结束后再卸载）。
+ */
+.wb-sys-pomo-view-sub {
+  position: absolute;
+  inset: 0;
+  /* 窗内局部层级锚定 --wb-z-window-content（恒低于标题栏 10） */
+  z-index: calc(var(--wb-z-window-content, 0) + 8);
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-window-bg, hsl(var(--background)));
+  transition:
+    transform var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    opacity var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease),
+    visibility 0s linear var(--wb-sys-pomo-view-ms);
+}
+
+.wb-sys-pomo-view-sub[data-active='true'] {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+  animation: wb-sys-pomo-view-in var(--wb-sys-pomo-view-ms) var(--wb-sys-pomo-view-ease) both;
+}
+
+.wb-sys-pomo-view-sub[data-active='false'] {
+  transform: translateX(22px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@keyframes wb-sys-pomo-view-in {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 面板自身可编程聚焦（tabIndex=-1），不画默认外框 */
+.wb-sys-pomo-view-sub:focus {
+  outline: none;
+}
+
+.wb-sys-pomo-view-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 8px 8px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+}
+
+.wb-sys-pomo-view-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color 150ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo-view-back:hover {
+  color: hsl(var(--foreground));
+  background: var(--interactive-hover, rgba(0, 0, 0, 0.08));
+}
+
+.wb-sys-pomo-view-back:focus-visible {
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline-offset: 1px;
+}
+
+/* 触屏：返回按钮（24px）与「统计」入口（11px + 3px padding）放大触控目标 */
+@media (pointer: coarse) {
+  .wb-sys-pomo-view-back {
+    width: 40px;
+    height: 40px;
+  }
+
+  .wb-sys-pomo-today-stats {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  /* 传输控制行：28px（!h-7）图标钮 / 32px 主钮统一放大到 ≥40px 命中区。
+     !important 对冲 Tailwind !h-7/!w-7；特异性 (0,1,1) 高于工具类 */
+  .wb-sys-pomo-controls button {
+    height: auto !important;
+    min-height: 40px !important;
+    min-width: 40px !important;
+  }
+}
+
+.wb-sys-pomo-view-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.wb-sys-pomo-view-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.wb-sys-pomo-view-body-viewport {
+  /* 子视图滚到边缘不把滚动链传给底下的主视图 */
+  overscroll-behavior: contain;
+}
+
+.wb-sys-pomo-view-body-content {
+  padding: 2px 14px 16px;
+}
+
+/* ==== 设置面板行件 ====================================================== */
+
+.wb-sys-pomo-set {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 8px;
+}
+
+.wb-sys-pomo-set-section {
+  margin: 14px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-sys-pomo-set-row {
+  padding: 6px 0 2px;
+}
+
+.wb-sys-pomo-set-rowhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wb-sys-pomo-set-label {
+  font-size: 12px;
+  color: hsl(var(--foreground) / 0.9);
+}
+
+.wb-sys-pomo-set-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.wb-sys-pomo-set-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  padding: 3px 0;
+}
+
+/* ==== 动效降级 ======================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
+    animation: none;
+    opacity: 0.16;
+  }
+
+  .wb-sys-pomo-progress {
+    transition: none;
+  }
+
+  .wb-sys-pomo::before,
+  .wb-sys-pomo-cycle,
+  .wb-sys-pomo-today-stats,
+  .wb-sys-pomo-today-goalbar-fill,
+  .wb-sys-pomo-view-back {
+    transition-duration: 0ms;
+  }
+
+  .wb-sys-pomo[data-anim='on'] .wb-sys-pomo-cycle[data-current='true'] {
+    animation: none;
+  }
+
+  .wb-sys-pomo[data-flash='true'] .wb-sys-pomo-flash {
+    animation: none;
+  }
+
+  /* 视图切换即时完成：过渡/动画/visibility 延迟全部经由该变量归零 */
+  .wb-sys-pomo {
+    --wb-sys-pomo-view-ms: 0ms;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
+  animation: none;
+  opacity: 0.16;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo-progress {
+  transition: none;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo::before,
+:root[data-wb-material='minimal'] .wb-sys-pomo-cycle,
+:root[data-wb-material='minimal'] .wb-sys-pomo-today-stats,
+:root[data-wb-material='minimal'] .wb-sys-pomo-today-goalbar-fill,
+:root[data-wb-material='minimal'] .wb-sys-pomo-view-back {
+  transition-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo[data-anim='on'] .wb-sys-pomo-cycle[data-current='true'] {
+  animation: none;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo[data-flash='true'] .wb-sys-pomo-flash {
+  animation: none;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo {
+  --wb-sys-pomo-view-ms: 0ms;
+}

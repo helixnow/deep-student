@@ -6,7 +6,8 @@
  *
  * 功能：
  * 1. 从 store.modeState 订阅 AnalysisModeState
- * 2. 实现图片点击预览（触发 chat-v2:preview-image 事件）
+ * 2. 实现图片点击预览（组件内直接挂载 InlineImageViewer，
+ *    修复历史 bug：原实现派发 chat-v2:preview-image 事件但全库无监听方）
  * 3. 实现学习笔记变更（通过 store.updateModeState）
  * 4. 渲染 OcrResultCard 纯展示组件
  *
@@ -14,6 +15,9 @@
  * - 遵循 SSOT 原则，所有状态从 Store 订阅
  * - 使用细粒度选择器避免不必要重渲染
  * - 正确处理组件生命周期（卸载时清理）
+ *
+ * ⚠️ 挂载状态：组件已就绪但尚未接入消息流；建议挂载点为 analysis 模式的
+ * 消息块渲染（消息分区）或 ChatContainer（主容器分区），见 E-changes.md。
  */
 
 import { useCallback, useState, useRef, useEffect } from 'react';
@@ -21,6 +25,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from 'react-i18next';
 import { OcrResultCard } from './OcrResultCard';
+import { InlineImageViewer } from '../InlineImageViewer';
 import type { ChatStore } from '../../core/types';
 import type { AnalysisModeState, OcrMeta } from '../../plugins/modes/analysis';
 
@@ -50,48 +55,6 @@ export interface OcrResultCardV2Props {
  *
  * 本组件直接使用 AnalysisModeState 类型
  */
-
-// ============================================================================
-// 事件名称常量（导出供外部监听使用）
-// ============================================================================
-
-/**
- * 图片预览事件名称
- *
- * 事件 detail 结构: { images: string[], index: number }
- *
- * @example
- * // 在容器组件中监听此事件
- * useEffect(() => {
- *   const handler = (e: CustomEvent<{ images: string[], index: number }>) => {
- *     openImagePreview(e.detail.images, e.detail.index);
- *   };
- *   window.addEventListener(PREVIEW_IMAGE_EVENT, handler as EventListener);
- *   return () => window.removeEventListener(PREVIEW_IMAGE_EVENT, handler as EventListener);
- * }, []);
- */
-export const PREVIEW_IMAGE_EVENT = 'chat-v2:preview-image';
-
-/** 图片预览事件 detail 类型 */
-export interface PreviewImageEventDetail {
-  images: string[];
-  index: number;
-}
-
-// ============================================================================
-// 图片预览事件触发
-// ============================================================================
-
-/**
- * 触发图片预览事件
- */
-function dispatchPreviewImageEvent(images: string[], index: number): void {
-  const event = new CustomEvent(PREVIEW_IMAGE_EVENT, {
-    detail: { images, index },
-    bubbles: true,
-  });
-  window.dispatchEvent(event);
-}
 
 // ============================================================================
 // 稳定引用常量（避免重渲染）
@@ -164,16 +127,30 @@ export const OcrResultCardV2: React.FC<OcrResultCardV2Props> = ({
     setLocalNote(note);
   }, [note]);
 
-  // ========== 图片点击处理（Hooks 必须在条件返回之前） ==========
+  // ========== 图片点击预览（Hooks 必须在条件返回之前） ==========
+
+  // 组件内直接持有预览索引并渲染 InlineImageViewer，
+  // 取代原来"派发事件等外部监听"的断链实现（B3）
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const handleImageClick = useCallback(
     (index: number) => {
       if (images && images.length > 0) {
-        dispatchPreviewImageEvent(images, index);
+        setPreviewIndex(Math.min(Math.max(index, 0), images.length - 1));
       }
     },
     [images]
   );
+
+  const handlePreviewClose = useCallback(() => setPreviewIndex(null), []);
+  const handlePreviewNext = useCallback(() => {
+    setPreviewIndex((prev) =>
+      prev === null ? prev : Math.min(prev + 1, images.length - 1)
+    );
+  }, [images.length]);
+  const handlePreviewPrev = useCallback(() => {
+    setPreviewIndex((prev) => (prev === null ? prev : Math.max(prev - 1, 0)));
+  }, []);
 
   // 🔧 保存当前笔记内容的 ref（用于卸载时保存）
   // 初始值使用 Store 中的 note，避免空字符串覆盖已有数据
@@ -270,21 +247,32 @@ export const OcrResultCardV2: React.FC<OcrResultCardV2Props> = ({
   // ========== 渲染 ==========
 
   return (
-    <OcrResultCard
-      ocrText={ocrText}
-      tags={tags}
-      mistakeType={mistakeType}
-      images={images}
-      onImageClick={handleImageClick}
-      tagActions={tagActions}
-      actions={actions}
-      summary={summary}
-      note={localNote}
-      onNoteChange={handleNoteChange}
-      isSavingNote={isSaving}
-      noteError={saveError || noteError}
-      noteDisabled={ocrStatus !== 'success'}
-    />
+    <>
+      <OcrResultCard
+        ocrText={ocrText}
+        tags={tags}
+        mistakeType={mistakeType}
+        images={images}
+        onImageClick={handleImageClick}
+        tagActions={tagActions}
+        actions={actions}
+        summary={summary}
+        note={localNote}
+        onNoteChange={handleNoteChange}
+        isSavingNote={isSaving}
+        noteError={saveError || noteError}
+        noteDisabled={ocrStatus !== 'success'}
+      />
+      {/* 图片预览：复用统一的 InlineImageViewer（媒体类查看器保留全屏形态） */}
+      <InlineImageViewer
+        images={images}
+        currentIndex={previewIndex ?? 0}
+        isOpen={previewIndex !== null && images.length > 0}
+        onClose={handlePreviewClose}
+        onNext={previewIndex !== null && previewIndex < images.length - 1 ? handlePreviewNext : undefined}
+        onPrev={previewIndex !== null && previewIndex > 0 ? handlePreviewPrev : undefined}
+      />
+    </>
   );
 };
 

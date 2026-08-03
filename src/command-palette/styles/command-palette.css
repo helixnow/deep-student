@@ -3,28 +3,21 @@
  * 支持亮色/暗色主题
  */
 
-/* ==================== 遮罩层 ==================== */
+/* ==================== 点击层（非遮罩） ==================== */
 
+/*
+ * 不加灰色压暗/全页模糊——Spotlight 语义：面板靠自身投影与背景分离，
+ * 本元素保留仅用于点空白关闭与居中布局。
+ */
 .command-palette-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--z-modal);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding-top: 15vh;
-  background-color: hsl(var(--shadow-base) / 0.5);
-  backdrop-filter: blur(4px);
-  animation: command-palette-fade-in 150ms ease-out;
-}
-
-@keyframes command-palette-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  background: transparent;
 }
 
 /* ==================== 容器 ==================== */
@@ -177,6 +170,8 @@
 
 .command-palette-list {
   padding: 8px;
+  /* 列表滚到边界后不把滚动链传给背景页面（触屏防穿透） */
+  overscroll-behavior: contain;
 }
 
 /* ==================== 分组 ==================== */
@@ -352,7 +347,7 @@
   min-width: 20px;
   height: 20px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
   color: hsl(var(--muted-foreground));
   background-color: hsl(var(--background));
@@ -361,10 +356,6 @@
 }
 
 /* ==================== 暗色模式增强 ==================== */
-
-.dark .command-palette-backdrop {
-  background-color: hsl(var(--shadow-base) / 0.7);
-}
 
 .dark .command-palette-container {
   box-shadow: 
@@ -378,25 +369,120 @@
 
 /* ==================== 响应式适配 ==================== */
 
-@media (max-width: 639.98px) {
+/* ★ 2026-07 移动端内联化：<768 从「居中浮层」切换为「全屏内联子屏」形态——
+   背景实色占满 viewport、顶栏（返回 + 搜索）、结果列表全高滚动、safe-area 兼容。
+   软键盘弹出时由 JS 写入 --cp-viewport-height（visualViewport.height）驱动容器收缩，
+   替代旧 max-height:55vh 方案（vh 不随软键盘收缩，底部结果易被裁切）。
+   断点用 range 语法 (width < 768px)：与 JS 侧 !(min-width:768px) 精确互补，
+   避免 767.x 小数视口宽（显示缩放/分屏）下与移动壳判定分叉。 */
+@media (width < 768px) {
   .command-palette-backdrop {
-    padding-top: 10vh;
+    padding-top: 0;
+    align-items: stretch;
+    justify-content: stretch;
+    /* 全屏形态没有「点空白关闭」语义，遮罩退化为实色画布 */
+    background: hsl(var(--background));
   }
 
   .command-palette-container {
+    display: flex;
+    flex-direction: column;
     max-width: none;
-    margin: 0 8px;
-    border-radius: 16px;
+    margin: 0;
+    height: var(--cp-viewport-height, 100dvh);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: hsl(var(--background));
+    /* Android 上 env() 不可用，真实值由 platform.ts 注入 --android-safe-area-*
+       （与 app/shell/mobileShell.ts 的兜底链一致；容器 portal 到 body，
+       不能用只定义在 app-shell 上的 --mobile-safe-area-*） */
+    padding-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px));
+    padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    /* 横屏刘海/圆角屏：全屏形态左右同样需要避让安全区 */
+    padding-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px));
+    padding-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px));
+    animation: command-palette-page-in 180ms ease-out;
+  }
+
+  .command-palette-search {
+    flex-shrink: 0;
+    padding: 10px 12px;
+  }
+
+  .command-palette-input {
+    height: 40px;
+    line-height: 40px;
+    font-size: 15px;
+  }
+
+  /* 结果列表占满剩余高度并独立滚动 */
+  .command-palette-scroll-area {
+    flex: 1;
+    min-height: 0;
   }
 
   .command-palette-scroll-area .command-palette-list {
-    max-height: 50vh;
+    height: 100%;
+    max-height: none;
   }
 
   .command-palette-footer {
     flex-wrap: wrap;
     gap: 8px;
   }
+
+  /* ★ 2026-07-20（R11）：窄屏结果项改上下两行（名称 / 描述），
+     否则文件路径、会话摘要与命令名同行争抢 ~300px 行宽，
+     描述几乎必被省略号吞掉。max-width 保证列向布局下省略号仍生效。 */
+  .command-palette-item-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .command-palette-item-name,
+  .command-palette-item-description {
+    max-width: 100%;
+  }
+}
+
+@keyframes command-palette-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-palette-container {
+    animation: none;
+  }
+}
+
+/* 移动端顶栏返回按钮（全屏内联子屏的返回入口，触控 ≥44px） */
+.command-palette-back-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-left: -4px;
+  color: hsl(var(--foreground));
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.command-palette-back-btn:active {
+  background-color: hsl(var(--muted));
 }
 
 /* ==================== 触屏适配 ==================== */
@@ -406,14 +492,23 @@
   /* 收藏按钮默认依赖 hover 显现,触屏上永远不可见 → 常显 */
   .command-palette-item-favorite {
     opacity: 1;
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
   }
 
+  /* 顶栏操作触控目标 ≥44px */
   .command-palette-mode-btn,
-  .command-palette-close-btn {
-    width: 36px;
-    height: 36px;
+  .command-palette-close-btn,
+  .command-palette-back-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* ★ 2026-07-08 移动端审计：结果项触控行高 ≥44px */
+  .command-palette-item {
+    min-height: 44px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 
   /* 键盘快捷键提示(↑↓/Enter/Esc)对触屏无意义,隐藏以释放纵向空间 */

@@ -2,7 +2,7 @@
 
 [简体中文](./README_CN.md) | **English**
 
-<img src="./public/deepstudent-logo-dark.svg" alt="DeepStudent" width="200" />
+<img src="./public/deepstudent-logo.svg" alt="DeepStudent" width="200" />
 
 
 ### An open-source, local-first AI learning workbench
@@ -11,7 +11,7 @@
 
 Study materials, note-taking, mind maps, quizzes, translation, and flashcard review — all in one unified learning workbench.
 
-> Think of it as: **NotebookLM + Notion + XMind + Quizlet + DeepL**
+> Think of it as: **research notebook + knowledge workspace + mind mapping + practice + translation**
 > but they all share the same learning data and workflow.
 
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
@@ -36,45 +36,47 @@ Study materials, note-taking, mind maps, quizzes, translation, and flashcard rev
 ## Why DeepStudent
 
 Learning workflows are spread across too many tools — read here, take notes there, build mind maps elsewhere, review in yet another app.
-PDF readers, XMind, translation apps, Notion, LMS platforms, arXiv, Anki, DeepSeek/ChatGPT… every tool is its own silo. Once your learning data is scattered, you spend more energy shuttling between tools than actually learning.
+PDF readers, mind-mapping tools, translation apps, note-taking tools, LMS platforms, arXiv, flashcard apps, AI assistants… every tool is its own silo. Once your learning data is scattered, you spend more energy shuttling between tools than actually learning.
 
 DeepStudent's answer: **give AI native read-write access to all your learning data.** One sentence from you, and it generates a mind map from your textbook, creates questions from your materials, turns key points into flashcards, searches and downloads papers, or researches the web and writes conclusions into your notes — all without leaving the workbench.
 
 ---
 
-## Understand It Through Products You Know
+## What You Get
 
-| Capability | **DeepStudent** | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian |
-|---|:---:|:---:|:---:|:---:|:---:|
-| AI Q&A over materials | **✓ 9 providers** | ✓ Gemini only | ✓ multi-model | ✓ multi-agent | △ Notion AI |
-| Cross-platform out-of-box | **✓ Win/Mac/Linux/Android** | ✓ all platforms | △ Docker | △ Docker | ✓ all platforms |
-| Smart memory system | **✓ AI-driven persistent** | ✗ | ✗ | △ session memory | ✗ |
-| Note-taking system | **✓ rich text+tags+AI** | △ simple notes | △ AI notes | △ notebook | ✓ core feature |
-| AI-generated mind maps | **✓** | ✓ | ✗ | △ visualization | ✗ |
-| AI quiz + practice modes | **✓** | ✓ | ✗ | ✓ exam-style | ✗ |
-| Flashcards + SRS | **✓ Anki ecosystem** | △ no SRS | ✗ | ✗ | ✗ |
-| Translation + close reading | **✓ 7 domain presets** | ✗ | ✗ | ✓ PDF translation | ✗ |
-| Cross-module data flow | **✓** | △ | △ | △ | △ |
+| Capability | DeepStudent |
+|---|---|
+| AI Q&A over materials | ✓ 12 providers |
+| Cross-platform out-of-box | ✓ Win/Mac/Linux/Android |
+| Smart memory system | ✓ AI-driven persistent |
+| Note-taking system | ✓ rich text + tags + AI |
+| AI-generated mind maps | ✓ |
+| AI quiz + practice modes | ✓ |
+| Flashcards + SRS | ✓ APKG / FSRS |
+| Translation + close reading | ✓ 7 domain presets |
+| Cross-module data flow | ✓ unified data layer |
 
-> **The core difference isn't "more features" — it's the unified data layer.**
+> **The core idea isn't "more features" — it's the unified data layer.**
 > The same material can be read, queried, turned into a mind map, used to generate quizzes, made into flashcards, researched, and written back — no data shuttling between apps.
 
 <details>
-<summary><b>📊 More comparison dimensions (infrastructure · ecosystem · collaboration)</b></summary>
+<summary><b>📊 More dimensions (infrastructure · ecosystem · collaboration)</b></summary>
 
-| Capability | **DeepStudent** | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Local-first storage | **✓** | ✗ cloud | ✓ Docker | ✓ Docker | △ |
-| Cloud sync | **△ experimental** | ✓ native | ✗ | ✗ | ✓ |
-| Open source / self-host | **✓ AGPL-3.0** | ✗ | ✓ | ✓ AGPL-3.0 | ✗ |
-| Unified data layer (VFS) | **✓** | ✗ | ✗ | ✗ | ✗ |
-| Auto-index on import | **✓ incl. OCR** | ✓ | ✓ | ✓ | △ |
-| Mind map ↔ outline mode | **✓** | ✗ | ✗ | ✗ | △ |
-| Deep research + papers | **✓ multi-engine+arXiv** | △ Discover | ✗ | ✓ | ✗ |
-| AI essay correction | **✓ multi-scenario** | ✗ | ✗ | ✗ | △ Notion AI |
-| MCP ecosystem / skills | **✓ native+presets** | ✗ | ✗ | ✓ MCP registry | ✗ |
-| Real-time collaboration | **✗** | △ sharing | ✗ | ✗ | ✓ |
-| Community & ecosystem | **△ new project** | ✓ | △ new project | △ new project | ✓ rich plugins |
+| Capability | DeepStudent |
+|---|---|
+| Local-first storage | ✓ |
+| Cloud sync | △ experimental (backup-style, not real-time collab) |
+| Open source / self-host | ✓ AGPL-3.0 |
+| Unified data layer (VFS) | ✓ |
+| Auto-index on import | ✓ incl. OCR |
+| Mind map ↔ outline mode | ✓ |
+| Deep research + papers | ✓ multi-engine + arXiv |
+| AI essay correction | ✓ multi-scenario |
+| MCP ecosystem / skills | ✓ native + presets<sup>1</sup> |
+| Real-time collaboration | ✗ |
+| Community & ecosystem | △ new project |
+
+<sup>1</sup> agent browser automation: Windows + macOS only（Linux has WebKitGTK eval bridge code, but Agent tool surface remains closed）
 
 </details>
 
@@ -90,6 +92,8 @@ Study around your materials, not just general chat.
 - Reference panel for injecting knowledge base notes or textbooks into context, with real-time token estimation
 - Deep reasoning mode (chain-of-thought), showing the full thinking process
 - Multi-tab sessions & session branching — explore different approaches
+- Authority modes Ask / Plan / Craft (default Craft): read-only · plan-then-approve · execute with tool approvals
+- Learning desktop (OS / Workbench mode): multi-window study shell around chat and resources
 - Multi-model comparison (experimental): side-by-side answers from multiple models
 - Session grouping, group-level System Prompt, default skill configuration
 - Sub-agent execution (experimental): automatic task decomposition, background completion
@@ -149,7 +153,7 @@ Turn textbooks and exam papers into practice-ready question banks.
 - Daily practice, timed practice, mock exams with auto-grading
 - Question history view — review past practice sessions and track progress over time
 - AI deep analysis of knowledge points and problem-solving approaches
-- Mastery tracking by knowledge point to pinpoint weak areas
+- Mastery tracking by knowledge point (feeds weak-point profile & bounded FSRS review bias)
 
 <details>
 <summary>📸 View Screenshots</summary>
@@ -205,7 +209,7 @@ Translation as part of your learning chain.
 
 - Full-text translation with synchronized left-right scrolling
 - Paragraph-level bilingual comparison, ideal for close reading
-- Domain presets: academic / technical / literary / legal / medical
+- 7 domain presets: general / academic / technical / literary / legal / medical / casual
 - Custom prompts and terminology preferences
 
 <details>
@@ -295,11 +299,12 @@ Inspired by [mem0](https://github.com/mem0ai/mem0) and [memU](https://github.com
 An extensible workbench, not a closed feature set.
 
 - Skills load AI capabilities on demand — tools only loaded when activated, saving tokens
-- 26 built-in skills (6 scenario skills + 20 tool groups): Cards · Research · Paper · Tutor · Literature Review · Exam Analysis · Mind Map · Q-Bank · Memory · Session Manager · Office Suite · Todo · Canvas Notes · Image Generation · Web Fetch · Subagent Workspace, and more
+- 40+ built-in skills/tool groups: Cards · Research · Paper · Tutor · Literature Review · Exam Analysis · Mind Map · Q-Bank · Memory · Session Manager · Office Suite · Todo · Canvas Notes · Image Generation · Web Fetch · Subagent Workspace, and more
+- community skill marketplace skill marketplace: browse / verify / install community skills with risk scan
 - Three-tier loading (Built-in → Global → Project-level), custom skills via SKILL.md
-- MCP protocol compatible, connecting external tools like Arxiv, Context7
-- 9 pre-configured model providers, plus any OpenAI-compatible endpoint
-- Adapted for Gemini 3, GPT-5.2 Pro, GLM-5, DeepSeek V4, Seed 2.0, Kimi K2.5, and more
+- MCP protocol compatible (OAuth for supported presets), connecting external tools like Arxiv, Context7
+- 12 built-in provider templates (incl. Gemini), plus custom multi-protocol endpoints (Anthropic / Grok / Ollama, etc.)
+- Adapted for Gemini 3, GPT-5.5 / GPT-5.2 Pro, GLM-5, DeepSeek V4, Seed 2.0, Kimi K2.5, and more
 
 <details>
 <summary>📸 View Screenshots</summary>
@@ -315,10 +320,10 @@ An extensible workbench, not a closed feature set.
 Your learning data stays under your control.
 
 - All data stored locally (SQLite + LanceDB + Blob)
-- Full backup & recovery, data import/export
+- Full ZIP backup & recovery (incremental backup retired), data import/export
 - AES-256-GCM encryption for sensitive data, dual-slot A/B switching
 - Audit logs for full traceability
-- Cloud sync (experimental): S3-compatible storage & WebDAV
+- Cloud sync (experimental): backup-style sync via S3-compatible storage & WebDAV; FTP backend experimental; not real-time collaboration
 
 </details>
 
@@ -338,7 +343,7 @@ Download the latest version from [GitHub Releases](https://github.com/helixnow/d
 | Linux | `.deb` / `.AppImage` | x86_64 / arm64 |
 | Android | `.apk` | arm64 |
 
-> iOS can be built locally via Xcode. See [Build Configuration Guide](./docs/BUILD-CONFIG.md).
+> iOS: local source build only via Xcode (no App Store package). See [Build Configuration Guide](./docs/BUILD-CONFIG.md).
 
 ### Getting Started
 
@@ -373,7 +378,7 @@ DeepStudent
 ├── Unified Data Layer: VFS + SQLite metadata + LanceDB vector index + Blob file storage
 ├── Workflow Layer: chat / research / mind map / question sets / translation / essay / memory
 ├── Extension Layer: Skills / MCP / multi-search engines / custom model providers
-└── Interface Layer: Desktop (macOS · Windows) & Mobile (Android · iOS)
+└── Interface Layer: Desktop (macOS · Windows · Linux) & Mobile (Android; iOS source-build only)
 ```
 
 <details>
@@ -382,7 +387,7 @@ DeepStudent
 ```
 DeepStudent
 ├── src/                    # React Frontend
-│   ├── features/           #   Feature modules (14: chat / learning-hub / mindmap / notes / pdf / practice / settings / todo / voice-input, etc.)
+│   ├── features/           #   Feature modules (19: chat / learning-hub / mindmap / notes / pdf / practice / settings / todo / workbench / voice-input, etc.)
 │   │   └── chat/           #     Chat V2 Conversation Engine
 │   │       ├── core/       #       Store / Types / Registries
 │   │       ├── skills/     #       Skill System (builtin / builtin-tools / loader)
@@ -404,14 +409,14 @@ DeepStudent
 ├── src-tauri/              # Tauri / Rust Backend
 │   └── src/
 │       ├── chat_v2/        #   Chat Pipeline & Tool Executor
-│       ├── llm_manager/    #   Multi-Model Management & Adaptation (9 built-in providers)
+│       ├── llm_manager/    #   Multi-Model Management & Adaptation (12 built-in providers)
 │       ├── vfs/            #   Virtual File System & Vectorized Indexing
 │       ├── dstu/           #   DSTU Resource Protocol Backend
 │       ├── tools/          #   Web Search Engine Adapters (7 engines)
 │       ├── memory/         #   Smart Memory (self-evolving profile / 3-layer arch / LLM decision)
 │       ├── mcp/            #   MCP Protocol Implementation
 │       ├── translation/    #   Translation Pipeline Backend
-│       ├── cloud_storage/  #   Cloud Sync (S3 / WebDAV)
+│       ├── cloud_storage/  #   Cloud Sync (S3 / WebDAV; FTP experimental)
 │       ├── data_governance/ #  Backup, Audit, Migration
 │       ├── essay_grading/  #   Essay Grading Backend
 │       ├── qbank_grading/  #   Question Bank AI Grading
@@ -434,7 +439,7 @@ DeepStudent
 |------|----------|
 | **Frontend Framework** | React 18 + TypeScript 5.6 + Vite 6 |
 | **UI Components** | Tailwind CSS 3 + Radix UI + Phosphor Icons |
-| **Desktop / Mobile** | Tauri 2 (Rust) — macOS · Windows · Android · iOS |
+| **Desktop / Mobile** | Tauri 2 (Rust) — macOS · Windows · Linux · Android · iOS |
 | **Data Storage** | SQLite (Rusqlite) + LanceDB (Vector Search) + Local Blob |
 | **State Management** | Zustand 5 + Immer |
 | **Editors** | Milkdown (Markdown) + CodeMirror (Code) |
@@ -461,8 +466,7 @@ git clone https://github.com/helixnow/deep-student.git
 cd deep-student
 
 npm ci
-npm run dev
-npm run dev:tauri
+npm run tauri dev
 ```
 
 For more build and packaging info, see [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md)
@@ -473,8 +477,8 @@ For more build and packaging info, see [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md)
 
 | Document | Description |
 |------|------|
-| [Quick Start](https://deepstudent.cn/docs/) | 5-minute getting started guide |
-| [User Guide](https://deepstudent.cn/docs/) | Complete feature documentation |
+| [Quick Start](./docs/user-guide/01-快速上手.md) | 10-minute getting started guide (Chinese, [online version](https://deepstudent.cn/docs/)) |
+| [User Guide](./docs/user-guide/README.md) | Complete feature documentation for desktop & mobile (Chinese, [online version](https://deepstudent.cn/docs/)) |
 | [Build Configuration](./docs/BUILD-CONFIG.md) | Cross-platform build & packaging |
 | [Changelog](./CHANGELOG.md) | Version change history |
 | [Security Policy](./.github/SECURITY.md) | Vulnerability reporting process |

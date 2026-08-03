@@ -3,7 +3,11 @@
 //! 从 llm_manager.rs 拆分的流式和非流式对话管线
 
 use crate::models::{AppError, ChatMessage, StandardModel2Output, StreamChunk};
-use crate::providers::ProviderAdapter;
+use crate::openai_codex::{
+    build_codex_request_headers, codex_sse_to_responses_json, prepare_codex_responses_body,
+    CodexRequestAuth,
+};
+use crate::providers::{ProviderAdapter, ProviderRequest};
 use crate::reasoning_policy::{
     get_passback_policy, requires_reasoning_passback, should_passback_plain_assistant_reasoning,
     ReasoningPassbackPolicy,
@@ -12,16 +16,19 @@ use crate::utils::chat_timing;
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
 use rand::Rng;
+use reqwest::header::{
+    HeaderName, HeaderValue, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, TRANSFER_ENCODING,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, Manager, Window};
 use url::Url;
 use uuid::Uuid;
 
 use super::{
-    adapters::get_adapter, build_provider_adapter, normalize_nonstream_response_to_openai, parser,
-    should_use_openai_responses_for_config, ApiConfig, ImagePayload, LLMManager, MergedChatMessage,
-    Result,
+    build_provider_adapter, normalize_nonstream_response_to_openai, parser,
+    request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
+    ImagePayload, LLMManager, MergedChatMessage, Result, AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 
 /// 流式请求的单请求超时上限（秒）
@@ -32,6 +39,327 @@ use super::{
 /// 真正的「挂起」防护由 Pipeline 层空闲超时（600s 无数据）负责。
 /// 非流式调用不受影响，仍走客户端默认 300s。
 const STREAMING_REQUEST_TIMEOUT_SECS: u64 = 7_200;
+
+/// 流式响应空闲超时（秒）：连接保持但持续无数据到达时主动结束流。
+///
+/// 🔧 P1-3 修复：此前取消信号只在 `stream.next()` 返回 chunk 后才被检查，
+/// 服务端停滞（上游挂起/代理黑洞）时 next() 一直阻塞，用户取消无效且请求
+/// 可挂起至 STREAMING_REQUEST_TIMEOUT_SECS（2 小时）。现在流循环用 select
+/// 同时等待「数据 / 取消信号 / 轮询计时」，并以本常量作为空闲上限
+/// （与 chat_v2 Pipeline 层的 600s 空闲超时对齐，覆盖其余旧调用方）。
+const STREAMING_IDLE_TIMEOUT_SECS: u64 = 600;
+const CODEX_ERROR_RESPONSE_BODY_LIMIT_BYTES: usize = 256 * 1024;
+const CODEX_NONSTREAM_SSE_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Debug, Default)]
+struct RequestBudgetTrim {
+    removed_messages: usize,
+    tokens_before: usize,
+    tokens_after: usize,
+}
+
+fn effective_request_input_limit(
+    config: &ApiConfig,
+    override_limit: Option<usize>,
+) -> Option<usize> {
+    let window = config.context_window.unwrap_or(32_768);
+    let requested = if config.max_output_tokens > 0 {
+        config.max_output_tokens
+    } else {
+        8_192
+    };
+    let max_output = config
+        .max_tokens_limit
+        .filter(|limit| *limit > 0)
+        .map(|limit| requested.min(limit))
+        .unwrap_or(requested);
+    let provider_limit = Some(window.saturating_sub(max_output) as usize);
+    match (override_limit, provider_limit) {
+        (Some(override_limit), Some(provider_limit)) => Some(override_limit.min(provider_limit)),
+        (Some(limit), None) | (None, Some(limit)) => Some(limit),
+        (None, None) => None,
+    }
+}
+
+fn request_message_text(message: &Value) -> String {
+    match message.get("content") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|part| {
+                part.get("text")
+                    .and_then(Value::as_str)
+                    .or_else(|| part.get("content").and_then(Value::as_str))
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+fn is_pinned_request_message(message: &Value) -> bool {
+    if message.get("role").and_then(Value::as_str) == Some("system") {
+        return true;
+    }
+    let text = request_message_text(message);
+    text.contains("<compacted_context>")
+        || text.contains("<skill_instructions")
+        || text.contains("<request_context>")
+}
+
+fn removable_request_turns(messages: &[Value]) -> Vec<(usize, usize)> {
+    let starts: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            (message.get("role").and_then(Value::as_str) == Some("user")).then_some(index)
+        })
+        .collect();
+    starts
+        .iter()
+        .enumerate()
+        .filter_map(|(position, start)| {
+            if is_pinned_request_message(&messages[*start]) {
+                return None;
+            }
+            Some((
+                *start,
+                starts.get(position + 1).copied().unwrap_or(messages.len()),
+            ))
+        })
+        .collect()
+}
+
+fn redact_image_payloads_for_budget(value: &mut Value) -> usize {
+    match value {
+        Value::String(text) => {
+            if text.trim_start().starts_with("data:image/") {
+                *text = "[image payload]".to_string();
+                1
+            } else {
+                0
+            }
+        }
+        Value::Array(items) => items.iter_mut().map(redact_image_payloads_for_budget).sum(),
+        Value::Object(object) => {
+            let has_inline_image = object
+                .get("media_type")
+                .or_else(|| object.get("mime_type"))
+                .or_else(|| object.get("mimeType"))
+                .and_then(Value::as_str)
+                .is_some_and(|mime| mime.starts_with("image/"));
+            let mut images = 0;
+            if has_inline_image {
+                if let Some(Value::String(data)) = object.get_mut("data") {
+                    if !data.is_empty() {
+                        *data = "[image payload]".to_string();
+                        images += 1;
+                    }
+                }
+            }
+            images
+                + object
+                    .values_mut()
+                    .map(redact_image_payloads_for_budget)
+                    .sum::<usize>()
+        }
+        _ => 0,
+    }
+}
+
+fn enforce_request_input_budget(
+    request_body: &mut Value,
+    max_input_tokens: Option<usize>,
+) -> Result<RequestBudgetTrim> {
+    let Some(max_input_tokens) = max_input_tokens else {
+        return Ok(RequestBudgetTrim::default());
+    };
+    if max_input_tokens == 0 {
+        return Err(AppError::llm(
+            "model context window leaves no usable input budget",
+        ));
+    }
+    let estimate = |body: &Value| {
+        let mut text_only = body.clone();
+        let image_count = redact_image_payloads_for_budget(&mut text_only);
+        let serialized = text_only.to_string();
+        let heuristic = crate::utils::token_budget::estimate_tokens(&serialized);
+        let text_floor = serialized.len() / 4;
+        // 无统一分辨率元数据时按每张 8K token 做保守预留；关键是不能把
+        // Base64 字节逐字符当文本 token，否则普通图片会被虚高数十倍。
+        heuristic.max(text_floor) + image_count * 8_192
+    };
+    let tokens_before = estimate(request_body);
+    let mut stats = RequestBudgetTrim {
+        tokens_before,
+        tokens_after: tokens_before,
+        ..Default::default()
+    };
+    while stats.tokens_after > max_input_tokens {
+        let ranges = request_body
+            .get("messages")
+            .and_then(Value::as_array)
+            .map(|messages| removable_request_turns(messages))
+            .unwrap_or_default();
+        if ranges.len() <= 2 {
+            break;
+        }
+        let (start, end) = ranges[0];
+        let Some(messages) = request_body
+            .get_mut("messages")
+            .and_then(Value::as_array_mut)
+        else {
+            break;
+        };
+        stats.removed_messages += end.saturating_sub(start);
+        messages.drain(start..end);
+        stats.tokens_after = estimate(request_body);
+    }
+    if stats.tokens_after > max_input_tokens {
+        return Err(AppError::llm(format!(
+            "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={}; reduce the current attachment/tool payload or choose a larger-context model",
+            stats.tokens_after, max_input_tokens, stats.removed_messages
+        )));
+    }
+    Ok(stats)
+}
+
+fn chat_messages_require_multimodal(messages: &[ChatMessage]) -> bool {
+    messages.iter().any(|message| {
+        message
+            .image_paths
+            .as_ref()
+            .is_some_and(|images| !images.is_empty())
+            || message
+                .image_base64
+                .as_ref()
+                .is_some_and(|images| !images.is_empty())
+            || message.multimodal_content.as_ref().is_some_and(|parts| {
+                parts.iter().any(|part| {
+                    matches!(part, crate::models::MultimodalContentPart::ImageUrl { .. })
+                })
+            })
+    })
+}
+
+async fn await_visual_observation_or_cancel<T, F>(
+    cancellation_token: tokio_util::sync::CancellationToken,
+    future: F,
+) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    tokio::select! {
+        biased;
+        _ = cancellation_token.cancelled() => Err(AppError::llm("visual observation cancelled")),
+        result = future => result,
+    }
+}
+
+fn ensure_model_accepts_message_modalities(
+    config: &ApiConfig,
+    messages: &[ChatMessage],
+) -> Result<()> {
+    if chat_messages_require_multimodal(messages) && !config.is_multimodal {
+        return Err(AppError::configuration(format!(
+            "当前请求包含图片，但模型配置 {} 不支持多模态输入",
+            config.id
+        )));
+    }
+    Ok(())
+}
+
+fn provider_stream_failure_message(
+    value: &Value,
+    requires_explicit_completion: bool,
+    is_codex: bool,
+) -> String {
+    let terminal_reason = value.get("reason").and_then(Value::as_str);
+    let detail_reason = value
+        .pointer("/details/reason")
+        .and_then(Value::as_str)
+        .or_else(|| value.pointer("/details/code").and_then(Value::as_str));
+    let prefix = if is_codex {
+        "OpenAI Codex 回复未完整结束"
+    } else if requires_explicit_completion {
+        "OpenAI Responses 回复未完整结束"
+    } else {
+        "模型回复未完整结束"
+    };
+
+    match detail_reason.or(terminal_reason) {
+        Some("max_output_tokens" | "max_tokens") => {
+            format!("{prefix}（达到模型输出上限）；已保留已生成内容，可重试或发送“继续”")
+        }
+        Some("response.cancelled" | "response.canceled" | "cancelled" | "canceled") => {
+            format!("{prefix}（上游取消）；已保留已生成内容，可重试")
+        }
+        Some("content_filter" | "safety") => {
+            format!("{prefix}（内容安全策略中止）；已保留已生成内容")
+        }
+        Some(reason) if reason.starts_with("response.incomplete") => {
+            format!("{prefix}；已保留已生成内容，可重试或发送“继续”")
+        }
+        _ => format!("{prefix}；已保留已生成内容，可重试"),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ResponsesStreamInterruption {
+    IdleTimeout,
+    ReadError,
+    MissingTerminal,
+}
+
+fn responses_stream_interruption_message(
+    interruption: ResponsesStreamInterruption,
+    is_codex: bool,
+) -> String {
+    let provider = if is_codex {
+        "OpenAI Codex"
+    } else {
+        "LLM provider"
+    };
+    match interruption {
+        ResponsesStreamInterruption::IdleTimeout => {
+            format!("{provider} 回复流长时间无数据，已保留已生成内容，可重试")
+        }
+        ResponsesStreamInterruption::ReadError => {
+            format!("{provider} 回复流读取中断；已保留已生成内容，可重试")
+        }
+        ResponsesStreamInterruption::MissingTerminal => {
+            format!("{provider} 回复流提前结束，未收到完整结束标记；已保留已生成内容，可重试")
+        }
+    }
+}
+
+fn validate_stream_termination(
+    require_terminal_success: bool,
+    terminal_success: bool,
+    terminal_failure: Option<&str>,
+    is_codex: bool,
+) -> Result<()> {
+    if let Some(failure) = terminal_failure {
+        return Err(AppError::llm(failure));
+    }
+    if require_terminal_success && !terminal_success {
+        return Err(AppError::llm(responses_stream_interruption_message(
+            ResponsesStreamInterruption::MissingTerminal,
+            is_codex,
+        )));
+    }
+    Ok(())
+}
+
+fn process_sse_stream_input(
+    buffer: &mut crate::utils::sse_buffer::SseEventBuffer,
+    chunk: Option<&[u8]>,
+) -> Vec<String> {
+    match chunk {
+        Some(chunk) => buffer.process_bytes(chunk),
+        None => buffer.flush(),
+    }
+}
 
 #[inline]
 fn is_qwen_config(config: &ApiConfig) -> bool {
@@ -57,9 +385,14 @@ fn remove_thinking_fields_for_tool_compat(body: &mut Value) {
 /// 某些供应商会为请求层 max_tokens 设置上限，超出会返回 400 错误
 #[inline]
 fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
+    let requested = if max_output_tokens > 0 {
+        max_output_tokens
+    } else {
+        8_192
+    };
     match max_tokens_limit {
-        Some(limit) => max_output_tokens.min(limit),
-        None => max_output_tokens,
+        Some(limit) if limit > 0 => requested.min(limit),
+        None | Some(_) => requested,
     }
 }
 
@@ -79,11 +412,35 @@ fn is_mimo_config(config: &ApiConfig) -> bool {
         || config.model.to_lowercase().starts_with("mimo-v")
 }
 
+fn is_mistral_config(config: &ApiConfig) -> bool {
+    let model = config.model.to_lowercase();
+    let model_slug = model.rsplit('/').next().unwrap_or(&model);
+    config
+        .provider_scope
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("mistral"))
+        || config
+            .provider_type
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("mistral"))
+        || config.model_adapter.eq_ignore_ascii_case("mistral")
+        || config.base_url.to_lowercase().contains("mistral.ai")
+        || model_slug.starts_with("mistral-")
+        || model_slug.starts_with("magistral-")
+}
+
 fn apply_generation_token_limit(body: &mut Value, config: &ApiConfig, max_tokens: u32) {
     if is_mimo_config(config) {
         body["max_completion_tokens"] = json!(max_tokens);
         if let Some(map) = body.as_object_mut() {
             map.remove("max_tokens");
+        }
+    } else if is_mistral_config(config) {
+        // Mistral Chat Completions（含 Medium 3.5 / Small 4 reasoning）仍使用
+        // max_tokens；不能因 is_reasoning=true 套用 OpenAI 的 completion 字段。
+        body["max_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_completion_tokens");
         }
     } else if config.is_reasoning {
         body["max_completion_tokens"] = json!(max_tokens);
@@ -191,9 +548,41 @@ pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde
         body,
         crate::debug_log_service::DebugFilterLevel::Standard,
     );
+    redact_provider_state_and_data_urls(&mut sanitized);
     redact_user_profile_blocks_in_value(&mut sanitized);
     redact_skill_instruction_blocks_in_value(&mut sanitized);
     sanitized
+}
+
+fn redact_provider_state_and_data_urls(value: &mut serde_json::Value) {
+    match value {
+        Value::String(text) if text.starts_with("data:") && text.contains(";base64,") => {
+            let base64_len = text
+                .find(',')
+                .map(|index| text.len() - index - 1)
+                .unwrap_or(0);
+            *text = format!(
+                "[base64 data: ~{}KB, {} chars]",
+                base64_len * 3 / 4 / 1024,
+                base64_len
+            );
+        }
+        Value::Array(items) => {
+            for item in items {
+                redact_provider_state_and_data_urls(item);
+            }
+        }
+        Value::Object(map) => {
+            for (key, item) in map {
+                if matches!(key.as_str(), "encrypted_content" | "encryptedContent") {
+                    *item = Value::String("[REDACTED]".to_string());
+                } else {
+                    redact_provider_state_and_data_urls(item);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// 🔒 URL 脱敏：Gemini 等供应商把 API key 放在 query 参数（?key=AIza...），
@@ -331,7 +720,80 @@ fn redact_skill_instruction_blocks_in_text(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::llm_manager::ApiConfig;
+    use hyper::service::{make_service_fn, service_fn};
+    use hyper::{Body, Request, Response};
     use serde_json::json;
+    use std::convert::Infallible;
+
+    struct DropNotice(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for DropNotice {
+        fn drop(&mut self) {
+            if let Some(sender) = self.0.take() {
+                let _ = sender.send(());
+            }
+        }
+    }
+
+    fn message_with_modal_fields(
+        image_paths: Option<Vec<String>>,
+        image_base64: Option<Vec<String>>,
+        multimodal_content: Option<Vec<crate::models::MultimodalContentPart>>,
+    ) -> ChatMessage {
+        serde_json::from_value(json!({
+            "role": "user",
+            "content": "question",
+            "timestamp": chrono::Utc::now(),
+            "image_paths": image_paths,
+            "image_base64": image_base64,
+            "multimodal_content": multimodal_content,
+        }))
+        .expect("valid chat message")
+    }
+
+    #[test]
+    fn modality_detection_covers_all_supported_image_fields() {
+        let text = message_with_modal_fields(None, None, None);
+        assert!(!chat_messages_require_multimodal(&[text]));
+
+        let path = message_with_modal_fields(Some(vec!["image.png".to_string()]), None, None);
+        assert!(chat_messages_require_multimodal(&[path]));
+
+        let base64 = message_with_modal_fields(None, Some(vec!["bytes".to_string()]), None);
+        assert!(chat_messages_require_multimodal(&[base64]));
+
+        let interleaved = message_with_modal_fields(
+            None,
+            None,
+            Some(vec![crate::models::MultimodalContentPart::image(
+                "image/png",
+                "bytes",
+            )]),
+        );
+        assert!(chat_messages_require_multimodal(&[interleaved]));
+    }
+
+    #[tokio::test]
+    async fn visual_observation_cancellation_drops_the_provider_future() {
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let cancellation_for_task = cancellation.clone();
+        let (drop_tx, drop_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            await_visual_observation_or_cancel(cancellation_for_task, async move {
+                let _drop_notice = DropNotice(Some(drop_tx));
+                std::future::pending::<Result<()>>().await
+            })
+            .await
+        });
+        tokio::task::yield_now().await;
+        cancellation.cancel();
+        let error = task.await.unwrap().expect_err("cancellation must win");
+        assert!(error.message.contains("cancelled"));
+        tokio::time::timeout(std::time::Duration::from_millis(100), drop_rx)
+            .await
+            .expect("provider future must be dropped")
+            .expect("drop signal sender must complete");
+    }
 
     #[test]
     fn test_redact_user_profile_blocks_in_text() {
@@ -339,6 +801,23 @@ mod tests {
         let redacted = redact_user_profile_blocks_in_text(input);
         assert!(redacted.contains("<user_profile>[REDACTED]</user_profile>"));
         assert!(!redacted.contains("secret"));
+    }
+
+    #[test]
+    fn chat_v2_run_scope_recovers_session_and_generation() {
+        let event = format!(
+            "chat_v2_event_sess_123_var_variant_456_run_deadbeef{}73",
+            crate::llm_manager::CHAT_V2_STREAM_GENERATION_MARKER
+        );
+        assert_eq!(
+            chat_v2_session_scope_and_generation(&event),
+            Some(("sess_123", Some(73)))
+        );
+        assert_eq!(
+            chat_v2_session_scope_and_generation("chat_v2_event_legacy_session"),
+            Some(("legacy_session", None))
+        );
+        assert!(chat_v2_session_scope_and_generation("other_event").is_none());
     }
 
     #[test]
@@ -357,9 +836,80 @@ mod tests {
         // 大小写与变体参数名
         let mixed = "https://x.example/api?API_KEY=abc&access_token=tok&foo=bar";
         let s = sanitize_url_for_log(mixed);
-        assert!(!s.contains("abc"));
-        assert!(!s.contains("tok"));
+        assert!(!s.contains("API_KEY=abc"));
+        assert!(!s.contains("access_token=tok"));
+        assert!(s.contains("API_KEY=[REDACTED]"));
+        assert!(s.contains("access_token=[REDACTED]"));
         assert!(s.contains("foo=bar"));
+    }
+
+    #[test]
+    fn responses_eof_without_trailing_newline_keeps_terminal_events() {
+        use crate::providers::{OpenAIResponsesAdapter, StreamEvent};
+
+        let mut buffer = crate::utils::sse_buffer::SseEventBuffer::new();
+        let terminal = concat!(
+            "data: {\"type\":\"response.completed\",\"response\":{",
+            "\"output\":[",
+            "{\"type\":\"reasoning\",\"id\":\"rs_1\",\"encrypted_content\":\"opaque\",\"summary\":[]},",
+            "{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"lookup\",\"arguments\":\"{}\"}",
+            "],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}}"
+        );
+
+        assert!(process_sse_stream_input(&mut buffer, Some(terminal.as_bytes())).is_empty());
+        let blocks = process_sse_stream_input(&mut buffer, None);
+        assert_eq!(blocks.len(), 1);
+
+        let adapter = OpenAIResponsesAdapter::new();
+        let events = adapter.parse_stream(&blocks[0]);
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::ResponseReasoningItem(item) if item["id"] == json!("rs_1"))));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::ToolCall(call) if call["function"]["name"] == json!("lookup"))));
+        assert!(events.iter().any(
+            |event| matches!(event, StreamEvent::Usage(usage) if usage["input_tokens"] == json!(1))
+        ));
+        assert!(matches!(events.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn codex_stream_requires_an_explicit_terminal_success() {
+        let error = validate_stream_termination(true, false, None, true)
+            .expect_err("Codex EOF without a terminal event must fail");
+        assert!(error.to_string().contains("OpenAI Codex"));
+        assert!(error.to_string().contains("未收到完整结束标记"));
+
+        validate_stream_termination(true, true, None, true)
+            .expect("an explicit terminal success should pass");
+    }
+
+    #[test]
+    fn openai_responses_api_key_stream_requires_an_explicit_terminal_success() {
+        let error = validate_stream_termination(true, false, None, false)
+            .expect_err("Responses EOF without a terminal event must fail");
+        assert!(error.to_string().contains("OpenAI Responses"));
+        assert!(!error.to_string().contains("OpenAI Codex"));
+    }
+
+    #[test]
+    fn provider_incomplete_reason_takes_precedence_over_terminal_success() {
+        let message = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.incomplete",
+                "details": { "reason": "max_output_tokens" }
+            }),
+            true,
+            true,
+        );
+        assert!(message.contains("输出上限"));
+        assert!(message.contains("继续"));
+
+        let error = validate_stream_termination(true, true, Some(&message), true)
+            .expect_err("a provider failure must not be hidden by Done");
+        assert!(error.to_string().contains("输出上限"));
     }
 
     #[test]
@@ -400,6 +950,24 @@ mod tests {
     }
 
     #[test]
+    fn audit_sanitizer_redacts_responses_images_and_encrypted_reasoning() {
+        let body = json!({
+            "input": [{
+                "role": "user",
+                "content": [{"type": "input_image", "image_url": "data:image/png;base64,c2VjcmV0"}]
+            }],
+            "include": ["reasoning.encrypted_content"],
+            "encrypted_content": "provider-secret-state"
+        });
+
+        let sanitized = sanitize_request_body_for_audit(&body).to_string();
+        assert!(!sanitized.contains("c2VjcmV0"));
+        assert!(!sanitized.contains("provider-secret-state"));
+        assert!(sanitized.contains("base64 data"));
+        assert!(sanitized.contains("[REDACTED]"));
+    }
+
+    #[test]
     fn test_should_use_openai_responses_for_declared_openai_compatible_responses_support() {
         let config = ApiConfig {
             model_adapter: "general".to_string(),
@@ -411,6 +979,7 @@ mod tests {
         };
 
         assert!(should_use_openai_responses_for_config(&config));
+        assert!(build_provider_adapter(&config).requires_explicit_stream_completion());
     }
 
     #[test]
@@ -440,6 +1009,144 @@ mod tests {
         };
 
         assert!(should_use_openai_responses_for_config(&config));
+        assert!(build_provider_adapter(&config).requires_explicit_stream_completion());
+    }
+
+    #[test]
+    fn codex_oauth_transport_requires_explicit_auth_mode() {
+        let mut config = ApiConfig {
+            provider_type: Some("openai_codex".to_string()),
+            auth_mode: Some(AUTH_MODE_OPENAI_CODEX_OAUTH.to_string()),
+            api_protocol: Some("openai_responses".to_string()),
+            base_url: "https://chatgpt.com/backend-api/codex".to_string(),
+            model: "gpt-5.4".to_string(),
+            ..Default::default()
+        };
+
+        assert!(LLMManager::is_openai_codex_oauth(&config));
+        assert!(should_use_openai_responses_for_config(&config));
+
+        config.auth_mode = None;
+        assert!(!LLMManager::is_openai_codex_oauth(&config));
+    }
+
+    #[test]
+    fn configured_headers_reach_prepared_request_without_overriding_transport_headers() {
+        let mut configured = HashMap::new();
+        configured.insert("X-Proxy-Group".to_string(), "codex-pool".to_string());
+        configured.insert("authorization".to_string(), "Bearer wrong".to_string());
+        configured.insert("CONTENT-TYPE".to_string(), "text/plain".to_string());
+        configured.insert("bad header".to_string(), "ignored".to_string());
+
+        let mut prepared = PreparedProviderRequest::from_provider(ProviderRequest {
+            url: "https://proxy.example.com/v1/responses".to_string(),
+            headers: vec![
+                (
+                    "Authorization".to_string(),
+                    "Bearer adapter-key".to_string(),
+                ),
+                ("Content-Type".to_string(), "application/json".to_string()),
+            ],
+            body: json!({}),
+        });
+        merge_configured_provider_headers(&mut prepared, Some(&configured));
+
+        let header = |name: &str| {
+            prepared
+                .headers
+                .iter()
+                .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+                .map(|(_, value)| value.as_str())
+        };
+        assert_eq!(header("x-proxy-group"), Some("codex-pool"));
+        assert_eq!(header("authorization"), Some("Bearer adapter-key"));
+        assert_eq!(header("content-type"), Some("application/json"));
+        assert!(header("bad header").is_none());
+    }
+
+    #[tokio::test]
+    async fn codex_transport_bridges_sse_and_maps_usage_limit_404() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = hyper::Server::from_tcp(listener)
+            .unwrap()
+            .serve(make_service_fn(|_| async {
+                Ok::<_, Infallible>(service_fn(|request: Request<Body>| async move {
+                    let response = match request.uri().path() {
+                        "/sse" => Response::builder()
+                            .status(200)
+                            .header("content-type", "text/event-stream; charset=utf-8")
+                            .body(Body::from(concat!(
+                                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"fixture\"}\n\n",
+                                "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_fixture\",\"status\":\"completed\",\"output\":[],\"usage\":{\"total_tokens\":7}}}\n\n",
+                            )))
+                            .unwrap(),
+                        "/limit" => Response::builder()
+                            .status(404)
+                            .header("content-type", "application/json")
+                            .body(Body::from(
+                                r#"{"error":{"code":"usage_limit_reached","message":"quota exhausted"}}"#,
+                            ))
+                            .unwrap(),
+                        "/oversized" => Response::builder()
+                            .status(400)
+                            .body(Body::from("123456789"))
+                            .unwrap(),
+                        _ => Response::builder()
+                            .status(404)
+                            .body(Body::from(r#"{"error":{"code":"not_found"}}"#))
+                            .unwrap(),
+                    };
+                    Ok::<_, Infallible>(response)
+                }))
+            }));
+        let server_task = tokio::spawn(server);
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(format!("http://{address}/sse"))
+            .send()
+            .await
+            .unwrap();
+        let bridged = bridge_codex_nonstream_response(response).await.unwrap();
+        assert_eq!(
+            bridged.headers()[CONTENT_TYPE],
+            "application/json; charset=utf-8"
+        );
+        let bridged: Value = bridged.json().await.unwrap();
+        assert_eq!(bridged["id"], "resp_fixture");
+        assert_eq!(bridged["output"][0]["content"][0]["text"], "fixture");
+        assert_eq!(bridged["usage"]["total_tokens"], 7);
+
+        let response = client
+            .get(format!("http://{address}/limit"))
+            .send()
+            .await
+            .unwrap();
+        let mapped = normalize_codex_error_response(response).await.unwrap();
+        assert_eq!(mapped.status(), reqwest::StatusCode::TOO_MANY_REQUESTS);
+        let mapped_body = mapped.text().await.unwrap();
+        assert!(mapped_body.contains("usage_limit_reached"));
+        assert!(!mapped_body.contains("quota exhausted"));
+
+        let response = client
+            .get(format!("http://{address}/missing"))
+            .send()
+            .await
+            .unwrap();
+        let untouched = normalize_codex_error_response(response).await.unwrap();
+        assert_eq!(untouched.status(), reqwest::StatusCode::NOT_FOUND);
+
+        let response = client
+            .get(format!("http://{address}/oversized"))
+            .send()
+            .await
+            .unwrap();
+        assert!(read_codex_response_body_limited(response, 8, "测试响应")
+            .await
+            .is_err());
+        server_task.abort();
     }
 
     #[test]
@@ -570,6 +1277,109 @@ mod tests {
     }
 
     #[test]
+    fn test_runtime_reasoning_disable_clears_saved_and_stale_depth() {
+        let mut config = ApiConfig {
+            reasoning_effort: Some("high".to_string()),
+            thinking_budget: Some(8192),
+            ..Default::default()
+        };
+
+        apply_runtime_reasoning_overrides(
+            &mut config,
+            Some(false),
+            Some("max".to_string()),
+            Some(32768),
+        );
+
+        assert_eq!(config.enable_thinking, Some(false));
+        assert_eq!(config.reasoning_effort, None);
+        assert_eq!(config.thinking_budget, None);
+    }
+
+    #[test]
+    fn test_runtime_reasoning_disable_uses_none_for_openai_protocols() {
+        for (provider_type, api_protocol) in [
+            ("custom", "openai_chat_completions"),
+            ("azure", "openai_responses"),
+        ] {
+            let mut config = ApiConfig {
+                provider_type: Some(provider_type.to_string()),
+                api_protocol: Some(api_protocol.to_string()),
+                model_adapter: "general".to_string(),
+                model: "gpt-5.5".to_string(),
+                supports_reasoning: true,
+                is_reasoning: true,
+                reasoning_effort: Some("high".to_string()),
+                thinking_budget: Some(8192),
+                ..Default::default()
+            };
+
+            apply_runtime_reasoning_overrides(&mut config, Some(false), None, None);
+
+            assert_eq!(config.enable_thinking, Some(false));
+            assert_eq!(config.reasoning_effort.as_deref(), Some("none"));
+            assert_eq!(config.thinking_budget, None);
+
+            let mut body = json!({"temperature": 0.7, "top_p": 0.9});
+            LLMManager::apply_reasoning_config(&mut body, &config, Some(false));
+            assert_eq!(body.get("reasoning_effort"), Some(&json!("none")));
+            assert!(body.get("enable_thinking").is_none());
+        }
+    }
+
+    #[test]
+    fn test_runtime_reasoning_disable_is_ignored_for_forced_openai_models() {
+        for (provider_type, model) in [
+            ("openai_codex", "gpt-5.5"),
+            ("openai", "gpt-5-pro"),
+            ("custom", "gpt-5"),
+            ("custom", "gpt-oss-120b"),
+        ] {
+            let mut config = ApiConfig {
+                provider_type: Some(provider_type.to_string()),
+                api_protocol: Some("openai_responses".to_string()),
+                model: model.to_string(),
+                reasoning_effort: Some("high".to_string()),
+                thinking_budget: Some(8192),
+                ..Default::default()
+            };
+
+            apply_runtime_reasoning_overrides(&mut config, Some(false), None, None);
+
+            assert_eq!(config.enable_thinking, Some(true), "model={model}");
+            assert_eq!(
+                config.reasoning_effort.as_deref(),
+                Some("high"),
+                "model={model}"
+            );
+            assert_eq!(config.thinking_budget, Some(8192), "model={model}");
+        }
+    }
+
+    #[test]
+    fn test_runtime_reasoning_disable_is_not_forced_by_non_openai_pro_suffix() {
+        for (provider_type, api_protocol, model) in [
+            ("deepseek", None, "deepseek-v4-pro"),
+            ("mimo", Some("openai_chat_completions"), "mimo-v2.5-pro"),
+        ] {
+            let mut config = ApiConfig {
+                provider_type: Some(provider_type.to_string()),
+                api_protocol: api_protocol.map(str::to_string),
+                model: model.to_string(),
+                reasoning_effort: Some("high".to_string()),
+                thinking_budget: Some(8192),
+                ..Default::default()
+            };
+
+            apply_runtime_reasoning_overrides(&mut config, Some(false), None, None);
+
+            assert_eq!(config.enable_thinking, Some(false), "model={model}");
+            assert_eq!(config.reasoning_effort, None, "model={model}");
+            assert_eq!(config.thinking_budget, None, "model={model}");
+        }
+    }
+
+    #[test]
     fn mimo_reasoning_generation_params_use_completion_tokens_and_sampling() {
         let config = ApiConfig {
             model: "mimo-v2.5-pro".to_string(),
@@ -658,6 +1468,68 @@ fn apply_runtime_reasoning_overrides(
     reasoning_effort_override: Option<String>,
     thinking_budget_override: Option<i32>,
 ) {
+    if enable_thinking_override == Some(false) {
+        // Runtime off must win over both profile defaults and stale UI depth values.
+        // Sending `disabled` together with a positive effort/budget is ambiguous and
+        // several compatible gateways choose the depth field, silently re-enabling reasoning.
+        let provider_type = config.provider_type.as_deref().unwrap_or_default();
+        let provider_scope = config.provider_scope.as_deref().unwrap_or_default();
+        let protocol = config.api_protocol.as_deref().unwrap_or_default();
+        let has_explicit_openai_protocol =
+            matches!(protocol, "openai_chat_completions" | "openai_responses");
+        let is_codex = provider_type.eq_ignore_ascii_case("openai_codex")
+            || provider_scope.eq_ignore_ascii_case("openai_codex");
+        let model = config.model.to_lowercase();
+        let is_openai_o_family = ["o1", "o3", "o4"].iter().any(|family| {
+            model == *family
+                || model.starts_with(&format!("{family}-"))
+                || model.ends_with(&format!("/{family}"))
+                || model.contains(&format!("/{family}-"))
+        });
+        let is_openai_reasoning_model = (model.contains("gpt-5") && !model.contains("gpt-5-chat"))
+            || model.contains("codex")
+            || model.contains("gpt-oss")
+            || is_openai_o_family;
+        // Legacy profiles may not persist api_protocol. An empty protocol is only
+        // treated as OpenAI-compatible when the provider/model identifies that
+        // contract; an arbitrary `-pro` model must not become forced reasoning.
+        let is_openai_protocol = has_explicit_openai_protocol
+            || (protocol.is_empty() && (is_codex || is_openai_reasoning_model));
+        let modern_gpt5_supports_none = [
+            "gpt-5.1", "gpt-5.2", "gpt-5.3", "gpt-5.4", "gpt-5.5", "gpt-5.6",
+        ]
+        .iter()
+        .any(|prefix| model.contains(prefix))
+            && !model.contains("-pro")
+            && !model.contains("codex")
+            && !model.contains("-chat");
+        let initial_gpt5 = (model == "gpt-5"
+            || model.ends_with("/gpt-5")
+            || model.contains("gpt-5-mini")
+            || model.contains("gpt-5-nano"))
+            && !model.contains("gpt-5.");
+        let forced_openai_reasoning = (is_codex || is_openai_reasoning_model)
+            && (is_codex
+                || model.contains("codex")
+                || model.contains("-pro")
+                || model.contains("gpt-oss")
+                || initial_gpt5
+                || is_openai_o_family);
+
+        if is_openai_protocol && forced_openai_reasoning {
+            config.enable_thinking = Some(true);
+            return;
+        }
+
+        config.enable_thinking = Some(false);
+        config.reasoning_effort = if is_openai_protocol && modern_gpt5_supports_none {
+            Some("none".to_string())
+        } else {
+            None
+        };
+        config.thinking_budget = None;
+        return;
+    }
     if let Some(enable) = enable_thinking_override {
         config.enable_thinking = Some(enable);
     }
@@ -669,7 +1541,7 @@ fn apply_runtime_reasoning_overrides(
     }
 }
 
-/// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
+/// 输出 debug 级审计日志 + 可选文件持久化（用于无 window 的非流式路径）
 pub(crate) fn log_llm_request_audit(
     tag: &str,
     url: &str,
@@ -681,7 +1553,7 @@ pub(crate) fn log_llm_request_audit(
     // 🔒 URL 含 query 密钥（如 Gemini ?key=...）时脱敏后再进日志/落盘
     let url = sanitize_url_for_log(url);
     match serde_json::to_string_pretty(&sanitized) {
-        Ok(pretty) => info!(
+        Ok(pretty) => debug!(
             "[LLM_AUDIT:{}] model={} url={}\n{}",
             tag, model, url, pretty
         ),
@@ -707,7 +1579,7 @@ pub(crate) struct DebugPersistConfig {
 
 /// ★ 审计日志 + 前端推送 + 可选文件持久化
 ///
-/// 1. 输出 info 级别审计日志（始终 standard 级别）
+/// 1. 输出 debug 级别审计日志（始终 standard 级别）
 /// 2. 如果 stream_event 以 `chat_v2_event_` 开头，推送给前端
 /// 3. 如果 persist_config 存在（Some），将脱敏请求体写入 JSON 文件
 pub(crate) fn log_and_emit_llm_request(
@@ -726,7 +1598,7 @@ pub(crate) fn log_and_emit_llm_request(
 
     // 1. 审计日志（始终 standard 级别，避免泄漏 base64）
     match serde_json::to_string_pretty(&sanitized) {
-        Ok(pretty) => info!(
+        Ok(pretty) => debug!(
             "[LLM_AUDIT:{}] model={} url={}\n{}",
             tag, model, url, pretty
         ),
@@ -784,7 +1656,451 @@ impl Default for RawPromptOptions {
     }
 }
 
+struct CodexPreparedAuth {
+    auth: CodexRequestAuth,
+    session_id: String,
+}
+
+pub(crate) struct PreparedProviderRequest {
+    pub(crate) url: String,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: Value,
+    codex: Option<CodexPreparedAuth>,
+}
+
+impl PreparedProviderRequest {
+    fn from_provider(request: ProviderRequest) -> Self {
+        Self {
+            url: request.url,
+            headers: request.headers,
+            body: request.body,
+            codex: None,
+        }
+    }
+
+    pub(crate) fn is_codex(&self) -> bool {
+        self.codex.is_some()
+    }
+}
+
+fn append_provider_header_if_absent(
+    headers: &mut Vec<(String, String)>,
+    name: &str,
+    value: &str,
+    source: &str,
+    warn_on_conflict: bool,
+) {
+    let Ok(parsed_name) = HeaderName::from_bytes(name.as_bytes()) else {
+        warn!(
+            "[LLM Headers] Ignoring invalid {} header name: {}",
+            source, name
+        );
+        return;
+    };
+    if HeaderValue::from_str(value).is_err() {
+        warn!(
+            "[LLM Headers] Ignoring invalid value for {} header: {}",
+            source,
+            parsed_name.as_str()
+        );
+        return;
+    }
+
+    if headers
+        .iter()
+        .any(|(existing, _)| existing.eq_ignore_ascii_case(parsed_name.as_str()))
+    {
+        if warn_on_conflict {
+            warn!(
+                "[LLM Headers] Ignoring configured {} because the provider transport owns it",
+                parsed_name.as_str()
+            );
+        }
+        return;
+    }
+
+    headers.push((parsed_name.as_str().to_string(), value.to_string()));
+}
+
+fn merge_configured_provider_headers(
+    request: &mut PreparedProviderRequest,
+    configured_headers: Option<&HashMap<String, String>>,
+) {
+    let Some(configured_headers) = configured_headers else {
+        return;
+    };
+    for (name, value) in configured_headers {
+        // Adapter/OAuth transport headers win case-insensitively. Custom headers
+        // are additive, so X-* routing metadata works without replacing auth or MIME.
+        append_provider_header_if_absent(
+            &mut request.headers,
+            name,
+            value,
+            "vendor-configured",
+            true,
+        );
+    }
+}
+
+fn chat_v2_session_scope_and_generation(stream_event: &str) -> Option<(&str, Option<u64>)> {
+    let raw_scope = stream_event.strip_prefix("chat_v2_event_")?;
+    let (scope_without_generation, stream_generation) =
+        match raw_scope.rsplit_once(super::CHAT_V2_STREAM_GENERATION_MARKER) {
+            Some((scope, raw_generation)) => {
+                let generation = raw_generation.parse::<u64>().ok()?;
+                (scope, Some(generation))
+            }
+            None => (raw_scope, None),
+        };
+    let session_id = scope_without_generation
+        .rsplit_once("_var_")
+        .map(|(session, _)| session)
+        .unwrap_or(scope_without_generation);
+    Some((session_id, stream_generation))
+}
+
+fn rebuild_codex_response(
+    status: reqwest::StatusCode,
+    version: reqwest::Version,
+    mut headers: reqwest::header::HeaderMap,
+    body: String,
+    force_json_content_type: bool,
+) -> Result<reqwest::Response> {
+    headers.remove(CONTENT_LENGTH);
+    headers.remove(CONTENT_ENCODING);
+    headers.remove(TRANSFER_ENCODING);
+    if force_json_content_type {
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_static("application/json; charset=utf-8"),
+        );
+    }
+
+    let mut builder = hyper::Response::builder().status(status).version(version);
+    let response_headers = builder
+        .headers_mut()
+        .ok_or_else(|| AppError::llm("无法重建 OpenAI Codex 响应头"))?;
+    *response_headers = headers;
+    let response = builder
+        .body(body)
+        .map_err(|_| AppError::llm("无法重建 OpenAI Codex 响应"))?;
+    Ok(reqwest::Response::from(response))
+}
+
+fn is_codex_usage_limit_body(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    lower.contains("usage_limit_reached")
+        || lower.contains("usage_not_included")
+        || lower.contains("rate_limit_exceeded")
+        || lower.contains("usage limit")
+}
+
+fn sanitize_codex_error_code(value: &str) -> Option<String> {
+    let code: String = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+        .take(64)
+        .collect();
+    (!code.is_empty()).then_some(code)
+}
+
+fn codex_error_code(body: &str, status: reqwest::StatusCode) -> String {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .as_ref()
+        .and_then(|value| {
+            value
+                .pointer("/error/code")
+                .and_then(Value::as_str)
+                .or_else(|| value.get("error").and_then(Value::as_str))
+                .or_else(|| value.get("code").and_then(Value::as_str))
+                .or_else(|| value.pointer("/detail/code").and_then(Value::as_str))
+        })
+        .and_then(sanitize_codex_error_code)
+        .or_else(|| {
+            let lower = body.to_ascii_lowercase();
+            [
+                "usage_limit_reached",
+                "usage_not_included",
+                "rate_limit_exceeded",
+            ]
+            .into_iter()
+            .find(|code| lower.contains(code))
+            .map(ToOwned::to_owned)
+        })
+        .unwrap_or_else(|| format!("http_{}", status.as_u16()))
+}
+
+async fn read_codex_response_body_limited(
+    response: reqwest::Response,
+    limit: usize,
+    context: &'static str,
+) -> Result<Vec<u8>> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > limit as u64)
+    {
+        return Err(AppError::llm(format!("OpenAI Codex {context}超过大小限制")));
+    }
+
+    let capacity = response
+        .content_length()
+        .and_then(|length| usize::try_from(length).ok())
+        .unwrap_or_default()
+        .min(limit);
+    let mut body = Vec::with_capacity(capacity);
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| {
+            warn!(
+                "[OpenAI Codex OAuth] failed to read {context}: {}",
+                error.without_url()
+            );
+            AppError::llm(format!("读取 OpenAI Codex {context}失败"))
+        })?;
+        if body.len().saturating_add(chunk.len()) > limit {
+            return Err(AppError::llm(format!("OpenAI Codex {context}超过大小限制")));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+async fn normalize_codex_error_response(response: reqwest::Response) -> Result<reqwest::Response> {
+    if response.status().is_success() {
+        return Ok(response);
+    }
+
+    let status = response.status();
+    let version = response.version();
+    let headers = response.headers().clone();
+    let body = read_codex_response_body_limited(
+        response,
+        CODEX_ERROR_RESPONSE_BODY_LIMIT_BYTES,
+        "错误响应",
+    )
+    .await?;
+    let body = String::from_utf8_lossy(&body);
+    let code = codex_error_code(&body, status);
+    let mapped_status =
+        if status == reqwest::StatusCode::NOT_FOUND && is_codex_usage_limit_body(&body) {
+            reqwest::StatusCode::TOO_MANY_REQUESTS
+        } else {
+            status
+        };
+    let safe_body = json!({
+        "error": {
+            "code": code,
+            "message": "OpenAI Codex request failed"
+        }
+    })
+    .to_string();
+    rebuild_codex_response(mapped_status, version, headers, safe_body, true)
+}
+
+async fn bridge_codex_nonstream_response(response: reqwest::Response) -> Result<reqwest::Response> {
+    let is_event_stream = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("text/event-stream"))
+        });
+    if !response.status().is_success() || !is_event_stream {
+        return Ok(response);
+    }
+
+    let status = response.status();
+    let version = response.version();
+    let headers = response.headers().clone();
+    let sse = read_codex_response_body_limited(
+        response,
+        CODEX_NONSTREAM_SSE_BODY_LIMIT_BYTES,
+        "SSE 响应",
+    )
+    .await?;
+    let sse =
+        String::from_utf8(sse).map_err(|_| AppError::llm("OpenAI Codex SSE 响应不是有效 UTF-8"))?;
+    let canonical = codex_sse_to_responses_json(&sse).map_err(|error| {
+        warn!("[OpenAI Codex OAuth] failed to bridge SSE response: {error}");
+        AppError::llm("OpenAI Codex 响应流不完整或格式无效")
+    })?;
+    let body = serde_json::to_string(&canonical)
+        .map_err(|_| AppError::llm("无法序列化 OpenAI Codex 响应"))?;
+    rebuild_codex_response(status, version, headers, body, true)
+}
+
 impl LLMManager {
+    fn is_openai_codex_oauth(config: &ApiConfig) -> bool {
+        config.auth_mode.as_deref() == Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
+    }
+
+    fn codex_error(context: &str, error: impl std::fmt::Display) -> AppError {
+        warn!("[OpenAI Codex OAuth] {}: {}", context, error);
+        AppError::configuration(format!(
+            "OpenAI Codex 登录状态不可用（{}），请在模型设置中重新登录",
+            context
+        ))
+    }
+
+    fn install_codex_headers(
+        request: &mut PreparedProviderRequest,
+        auth: &CodexRequestAuth,
+        session_id: &str,
+    ) -> Result<()> {
+        let prior_headers = std::mem::take(&mut request.headers);
+        let headers = build_codex_request_headers(auth, session_id)
+            .map_err(|error| Self::codex_error("构建请求头", error))?;
+        request.headers = headers
+            .iter()
+            .map(|(name, value)| {
+                value
+                    .to_str()
+                    .map(|value| (name.as_str().to_string(), value.to_string()))
+                    .map_err(|_| Self::codex_error("编码请求头", "invalid header value"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for (name, value) in prior_headers {
+            // OAuth-generated headers retain precedence. Additive custom headers
+            // survive both the initial installation and a later 401 refresh.
+            append_provider_header_if_absent(
+                &mut request.headers,
+                &name,
+                &value,
+                "pre-existing",
+                false,
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn prepare_provider_request(
+        &self,
+        adapter: &dyn ProviderAdapter,
+        config: &ApiConfig,
+        request_body: &Value,
+        api_key_override: Option<&str>,
+        session_id: Option<&str>,
+        build_error_context: &str,
+    ) -> Result<PreparedProviderRequest> {
+        let api_key = api_key_override.unwrap_or(config.api_key.as_str());
+        let provider_request = adapter
+            .build_request(&config.base_url, api_key, &config.model, request_body)
+            .map_err(|error| Self::provider_error(build_error_context, error))?;
+        let mut prepared = PreparedProviderRequest::from_provider(provider_request);
+        merge_configured_provider_headers(&mut prepared, config.headers.as_ref());
+
+        if !Self::is_openai_codex_oauth(config) {
+            return Ok(prepared);
+        }
+        if !should_use_openai_responses_for_config(config) {
+            return Err(AppError::configuration(
+                "OpenAI Codex OAuth 仅支持 OpenAI Responses 协议",
+            ));
+        }
+
+        let auth = self
+            .openai_codex_auth
+            .request_auth(false)
+            .await
+            .map_err(|error| Self::codex_error("获取访问凭据", error))?;
+        let session_id = session_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        prepared.url = self.openai_codex_auth.responses_endpoint().to_string();
+        prepared.body = prepare_codex_responses_body(&prepared.body)
+            .map_err(|error| Self::codex_error("准备 Responses 请求", error))?;
+        if let Some(body) = prepared.body.as_object_mut() {
+            body.entry("prompt_cache_key".to_string())
+                .or_insert_with(|| Value::String(session_id.clone()));
+        }
+        Self::install_codex_headers(&mut prepared, &auth, &session_id)?;
+        prepared.codex = Some(CodexPreparedAuth { auth, session_id });
+        Ok(prepared)
+    }
+
+    async fn refresh_codex_request_after_unauthorized(
+        &self,
+        request: &mut PreparedProviderRequest,
+    ) -> Result<()> {
+        let (generation, session_id) = request
+            .codex
+            .as_ref()
+            .map(|codex| (codex.auth.generation(), codex.session_id.clone()))
+            .ok_or_else(|| AppError::configuration("OpenAI Codex 请求缺少 OAuth 上下文"))?;
+        let auth = self
+            .openai_codex_auth
+            .refresh_after_unauthorized(generation)
+            .await
+            .map_err(|error| Self::codex_error("刷新访问凭据", error))?;
+        Self::install_codex_headers(request, &auth, &session_id)?;
+        request.codex = Some(CodexPreparedAuth { auth, session_id });
+        Ok(())
+    }
+
+    pub(crate) async fn send_codex_request_with_single_refresh(
+        &self,
+        request: &mut PreparedProviderRequest,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<reqwest::Response> {
+        let response = self
+            .send_codex_stream_request_with_single_refresh(request, timeout)
+            .await?;
+        bridge_codex_nonstream_response(response).await
+    }
+
+    pub(crate) async fn send_codex_stream_request_with_single_refresh(
+        &self,
+        request: &mut PreparedProviderRequest,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<reqwest::Response> {
+        debug_assert!(request.is_codex());
+        let mut refreshed = false;
+        loop {
+            let mut builder = self.client.post(&request.url);
+            if let Some(timeout) = timeout {
+                builder = builder.timeout(timeout);
+            }
+            for (name, value) in &request.headers {
+                builder = builder.header(name, value);
+            }
+            let response = builder.json(&request.body).send().await.map_err(|error| {
+                AppError::network(format!("OpenAI Codex 请求失败: {}", error.without_url()))
+            })?;
+            let response = normalize_codex_error_response(response).await?;
+
+            match response.status().as_u16() {
+                401 if !refreshed => {
+                    self.refresh_codex_request_after_unauthorized(request)
+                        .await?;
+                    refreshed = true;
+                }
+                401 => {
+                    let rejected_generation = request
+                        .codex
+                        .as_ref()
+                        .map(|codex| codex.auth.generation())
+                        .ok_or_else(|| {
+                            AppError::configuration("OpenAI Codex 请求缺少 OAuth 上下文")
+                        })?;
+                    self.openai_codex_auth
+                        .mark_reauthentication_required(rejected_generation)
+                        .await;
+                    return Err(AppError::configuration(
+                        "OpenAI Codex 授权已失效，请在模型设置中重新登录",
+                    ));
+                }
+                403 => return Err(AppError::configuration("OpenAI Codex 账号无权执行此请求")),
+                _ => return Ok(response),
+            }
+        }
+    }
+
     /// 从 DB 读取 debug 持久化配置
     fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
         let enabled = self
@@ -797,10 +2113,11 @@ impl LLMManager {
         if !enabled {
             return None;
         }
+        let log_root = crate::get_global_app_handle()
+            .and_then(|app| app.path().app_log_dir().ok())
+            .unwrap_or_else(|| self.file_manager.get_app_data_dir().join("logs"));
         Some(DebugPersistConfig {
-            log_dir: crate::debug_log_service::ensure_debug_log_dir(
-                self.file_manager.get_app_data_dir(),
-            ),
+            log_dir: crate::debug_log_service::ensure_debug_log_dir(&log_root),
         })
     }
 
@@ -819,34 +2136,29 @@ impl LLMManager {
             return;
         };
 
-        let Some(raw_session_scope) = stream_event.strip_prefix("chat_v2_event_") else {
+        let Some((session_id, stream_generation)) =
+            chat_v2_session_scope_and_generation(stream_event)
+        else {
             return;
         };
-
-        // 多变体流的 stream_event 形如 `chat_v2_event_{session_id}_{variant_id}`。
-        // reconnect 是会话级事件，前端监听的是 `chat_v2_session_{session_id}`，
-        // 因此这里需要剥掉尾部的 `_var_xxx` 变体后缀。
-        let session_id = raw_session_scope
-            .rsplit_once("_var_")
-            .map(|(sid, _)| sid)
-            .unwrap_or(raw_session_scope);
 
         let session_channel = format!("chat_v2_session_{}", session_id);
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        let _ = window.emit(
-            &session_channel,
-            &json!({
-                "sessionId": session_id,
-                "eventType": "stream_reconnect",
-                "messageId": mid,
-                "retryAttempt": retry_attempt,
-                "retryMax": retry_max,
-                "timestamp": now_ms,
-            }),
-        );
+        let mut payload = json!({
+            "sessionId": session_id,
+            "eventType": "stream_reconnect",
+            "messageId": mid,
+            "retryAttempt": retry_attempt,
+            "retryMax": retry_max,
+            "timestamp": now_ms,
+        });
+        if let Some(generation) = stream_generation {
+            payload["streamGeneration"] = json!(generation);
+        }
+        let _ = window.emit(&session_channel, &payload);
     }
 
     fn compute_retry_delay(min_delay_ms: u64, max_delay_ms: u64) -> u64 {
@@ -856,7 +2168,31 @@ impl LLMManager {
         rand::thread_rng().gen_range(min_delay_ms..=max_delay_ms)
     }
 
+    /// 可取消等待：睡眠期间每 500ms 轮询取消 registry，被取消时返回 true。
+    ///
+    /// 🔧 P1-3 修复：429/5xx 重试等待期间此前完全不响应取消信号。
+    async fn sleep_checking_cancel(&self, stream_event: &str, wait_ms: u64) -> bool {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait_ms);
+        loop {
+            if self.take_cancellation_if_any(stream_event).await {
+                return true;
+            }
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            let remaining = (deadline - now).as_millis() as u64;
+            tokio::time::sleep(std::time::Duration::from_millis(remaining.min(500))).await;
+        }
+    }
+
     // 统一AI接口层 - 模型二（核心解析/对话）- 流式版本
+    //
+    // 🆕 Failover 包装层（routing.rs）：模型选择后按策略驱动
+    // 「主模型 → 同 provider key 轮换（含冷却）→ fallback 模型」的尝试序列。
+    // 流式出口属于对话主链路：用户显式选择的模型（model_override_id）是严格的，
+    // 仅当用户开启 auto_degrade_chat 才允许模型级降级；key 轮换不受此限制。
+    #[allow(clippy::too_many_arguments)]
     pub async fn call_unified_model_2_stream(
         &self,
         context: &HashMap<String, Value>,
@@ -870,7 +2206,7 @@ impl LLMManager {
         message_id: Option<&str>,
         _trace_id: Option<&str>,
         disable_tools: bool,
-        _max_input_tokens_override: Option<usize>,
+        max_input_tokens_override: Option<usize>,
         model_override_id: Option<String>,
         temp_override: Option<f32>,
         system_prompt_override: Option<String>,
@@ -886,19 +2222,13 @@ impl LLMManager {
             subject, enable_chain_of_thought, model_override_id
         );
 
-        // 记录开始时间和统计信息
-        let _start_instant = std::time::Instant::now();
-        let mut request_bytes = 0usize;
-        let _response_bytes = 0usize;
-        let _chunk_count = 0usize;
-
         // 获取模型配置（支持 override），根据任务上下文路由
         let task_key = match task_context {
             Some(tc) if tc.contains("review") => "review",
             Some(tc) if tc == "tag_generation" => "tag_generation",
             _ => "default",
         };
-        let (mut config, _cot_by_model) = self
+        let (primary_config, _cot_by_model) = self
             .select_model_for(
                 task_key,
                 model_override_id.clone(),
@@ -909,12 +2239,99 @@ impl LLMManager {
                 max_output_tokens_override,
             )
             .await?;
-        apply_runtime_reasoning_overrides(
-            &mut config,
-            Some(enable_thinking),
-            reasoning_effort_override,
-            thinking_budget_override,
+
+        // 能力约束来自本次输入，而不是主模型自身能力：纯文本请求可以降级到
+        // 文本模型；只有实际携带图片等多模态内容时才强制多模态候选。
+        let required_is_multimodal = Some(chat_messages_require_multimodal(chat_history));
+
+        let run = routing::FailoverRun {
+            task: task_key.to_string(),
+            scenario: routing::FailoverScenario::ChatMain,
+            user_pinned: model_override_id.is_some(),
+            window: Some(window.clone()),
+            // 建立阶段的 429/5xx 退避重试由本函数内部循环完成
+            attempts_handle_429_internally: true,
+            required_is_multimodal,
+            param_overrides: routing::ParamOverrides {
+                temperature: temp_override,
+                top_p: top_p_override,
+                frequency_penalty: frequency_penalty_override,
+                presence_penalty: presence_penalty_override,
+                max_output_tokens: max_output_tokens_override,
+            },
+        };
+        let result = self
+            .run_with_failover(run, primary_config, |mut cfg, establish_retries| {
+                // fallback 模型需应用与主模型相同的运行期推理覆盖
+                apply_runtime_reasoning_overrides(
+                    &mut cfg,
+                    Some(enable_thinking),
+                    reasoning_effort_override.clone(),
+                    thinking_budget_override,
+                );
+                self.call_unified_model_2_stream_with_config(
+                    cfg,
+                    establish_retries,
+                    context,
+                    chat_history,
+                    subject,
+                    enable_chain_of_thought,
+                    enable_thinking,
+                    task_context,
+                    window.clone(),
+                    stream_event,
+                    message_id,
+                    _trace_id,
+                    disable_tools,
+                    max_input_tokens_override,
+                    system_prompt_override.clone(),
+                )
+            })
+            .await;
+        // 单次尝试可能在建连或状态码处理阶段提前返回；统一清理可避免取消
+        // sender/registry 在最终失败后滞留。
+        self.clear_cancel_artifacts(stream_event).await;
+        result
+    }
+
+    /// 流式统一出口的单次尝试：用已解析的 config 完成「建立 + 流式读取」。
+    ///
+    /// 🆕 Failover：模型选择/参数覆盖上移到 `call_unified_model_2_stream` 包装层。
+    /// `establish_max_retries` 控制建立阶段（429/5xx）的内部重试次数——
+    /// 存在 fallback 候选时收紧为 1，尽快让位给 key 轮换/模型切换；
+    /// 流一旦建立，后续中断不做续传（错误不打 establish 标记，不触发 failover）。
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn call_unified_model_2_stream_with_config(
+        &self,
+        resolved_config: ApiConfig,
+        establish_max_retries: u32,
+        context: &HashMap<String, Value>,
+        chat_history: &[ChatMessage],
+        subject: &str,
+        enable_chain_of_thought: bool,
+        enable_thinking: bool,
+        task_context: Option<&str>,
+        window: Window,
+        stream_event: &str,
+        message_id: Option<&str>,
+        _trace_id: Option<&str>,
+        disable_tools: bool,
+        max_input_tokens_override: Option<usize>,
+        system_prompt_override: Option<String>,
+    ) -> Result<StandardModel2Output> {
+        debug!(
+            "[model2_stream] 单次尝试: model={}, establish_max_retries={}",
+            resolved_config.model, establish_max_retries
         );
+
+        // 记录开始时间和统计信息
+        let _start_instant = std::time::Instant::now();
+        let mut request_bytes = 0usize;
+        let _response_bytes = 0usize;
+        let _chunk_count = 0usize;
+
+        let config = resolved_config;
+        ensure_model_accepts_message_modalities(&config, chat_history)?;
 
         // P1修复：图片上下文严格控制 - 图片由消息级字段提供，禁用会话级回退
         let images_used_source = "per_message_only".to_string();
@@ -970,7 +2387,7 @@ impl LLMManager {
         let merged_history = Self::merge_consecutive_tool_calls(&chat_history);
 
         // 添加聊天历史（逐条处理用户图片与工具调用消息的标准化）
-        for (_index, merged_msg) in merged_history.iter().enumerate() {
+        for merged_msg in merged_history.iter() {
             match merged_msg {
                 // 🔧 P1修复：处理合并的工具调用消息
                 // 🔧 Anthropic 最佳实践：必须保留 thinking_content
@@ -979,6 +2396,7 @@ impl LLMManager {
                     content,
                     thinking_content,
                     thought_signature,
+                    response_reasoning_item,
                 } => {
                     // 生成 tool_calls 数组
                     let tool_calls_arr: Vec<_> = tool_calls
@@ -995,11 +2413,13 @@ impl LLMManager {
                         })
                         .collect();
 
-                    // 🔧 辅助闭包：将 thought_signature 注入到 assistant 消息中
-                    // Gemini 3 要求在包含 functionCall 的 model content 中回传 thoughtSignature
-                    let inject_thought_signature = |msg: &mut Value| {
+                    // Provider-owned continuation state must travel with the assistant tool call.
+                    let inject_provider_state = |msg: &mut Value| {
                         if let Some(ref sig) = thought_signature {
                             msg["thought_signature"] = json!(sig);
+                        }
+                        if let Some(item) = response_reasoning_item {
+                            msg["response_reasoning_item"] = item.clone();
                         }
                     };
 
@@ -1009,11 +2429,7 @@ impl LLMManager {
                         .as_ref()
                         .map(|s| !s.is_empty())
                         .unwrap_or(false);
-                    let adapter = get_adapter(
-                        config.provider_type.as_deref(),
-                        config.provider_scope.as_deref(),
-                        &config.model_adapter,
-                    );
+                    let adapter = request_adapter_for_config(&config);
 
                     // 尝试使用适配器的自定义格式
                     let tool_calls_json: Vec<Value> = tool_calls_arr.clone();
@@ -1025,7 +2441,7 @@ impl LLMManager {
                                 "role": "assistant",
                                 "content": formatted_content
                             });
-                            inject_thought_signature(&mut msg);
+                            inject_provider_state(&mut msg);
                             messages.push(msg);
 
                             debug!(
@@ -1051,7 +2467,7 @@ impl LLMManager {
                                 );
                             }
 
-                            inject_thought_signature(&mut assistant_msg);
+                            inject_provider_state(&mut assistant_msg);
                             messages.push(assistant_msg);
 
                             debug!(
@@ -1066,7 +2482,7 @@ impl LLMManager {
                                 "content": content,
                                 "tool_calls": tool_calls_arr
                             });
-                            inject_thought_signature(&mut msg);
+                            inject_provider_state(&mut msg);
                             messages.push(msg);
 
                             debug!(
@@ -1090,7 +2506,7 @@ impl LLMManager {
                             );
                         }
 
-                        inject_thought_signature(&mut assistant_msg);
+                        inject_provider_state(&mut assistant_msg);
                         messages.push(assistant_msg);
 
                         debug!(
@@ -1105,7 +2521,7 @@ impl LLMManager {
                             "content": content,
                             "tool_calls": tool_calls_arr
                         });
-                        inject_thought_signature(&mut msg);
+                        inject_provider_state(&mut msg);
                         messages.push(msg);
 
                         debug!(
@@ -1232,11 +2648,7 @@ impl LLMManager {
                             .as_ref()
                             .map(|s| !s.is_empty())
                             .unwrap_or(false);
-                        let adapter = get_adapter(
-                            config.provider_type.as_deref(),
-                            config.provider_scope.as_deref(),
-                            &config.model_adapter,
-                        );
+                        let adapter = request_adapter_for_config(&config);
 
                         if has_thinking && adapter.requires_thinking_in_history(&config) {
                             // 适配器要求在历史消息中保留 thinking 块
@@ -1555,9 +2967,7 @@ impl LLMManager {
                         llm_manager: None, // fallback 场景不需要重排器
                     };
 
-                    if let Some(last_user_msg) =
-                        chat_history.iter().filter(|m| m.role == "user").last()
-                    {
+                    if let Some(last_user_msg) = chat_history.iter().rfind(|m| m.role == "user") {
                         let memory_enabled_effective = memory_enabled_from_context.unwrap_or(true);
                         if memory_enabled_effective {
                             let _ = window.emit(
@@ -1669,6 +3079,27 @@ impl LLMManager {
         // 简化：不再在此处估算输入token
 
         apply_generation_params(&mut request_body, &config);
+        let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
+        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
+        if budget_trim.removed_messages > 0 {
+            warn!(
+                "[model2_stream] final input guard removed {} message(s): {} -> {} tokens (limit={:?})",
+                budget_trim.removed_messages,
+                budget_trim.tokens_before,
+                budget_trim.tokens_after,
+                input_limit
+            );
+            let _ = window.emit(
+                "chat_v2_context_budget_trimmed",
+                json!({
+                    "messageId": message_id,
+                    "removedMessages": budget_trim.removed_messages,
+                    "tokensBefore": budget_trim.tokens_before,
+                    "tokensAfter": budget_trim.tokens_after,
+                    "limit": input_limit,
+                }),
+            );
+        }
         if !config.is_reasoning && enable_chain_of_thought {
             warn!(
                 "前端为非推理模型 {} 请求了思维链。通常这由Prompt控制，而非特定API参数。",
@@ -1691,7 +3122,7 @@ impl LLMManager {
                                 tc.get("function")
                                     .and_then(|f| f.get("name"))
                                     .and_then(|n| n.as_str())
-                                    .map_or(false, |name| name == "load_skills")
+                                    == Some("load_skills")
                             })
                         })
                 })
@@ -1720,16 +3151,50 @@ impl LLMManager {
         let request_bytes = request_json_str.len();
         let start_instant = std::time::Instant::now();
 
+        let request_id = Uuid::new_v4().to_string();
+        // 在建连前注册取消通道；若取消发生在注册前，registry 会在这里接住。
+        let cancel_rx = self.register_cancel_channel(stream_event).await;
+        if self.take_cancellation_if_any(stream_event).await {
+            self.clear_cancel_channel(stream_event).await;
+            return Err(AppError::llm("请求已被用户取消"));
+        }
+        let codex_session_id = chat_v2_session_scope_and_generation(stream_event)
+            .map(|(session_id, _)| session_id)
+            .or(message_id)
+            .unwrap_or(request_id.as_str());
+
+        // 工具与 thinking 互斥必须在 provider request 构建前处理；发送后再改
+        // request_body 不会影响线上请求。
+        if request_body.get("tools").is_some() {
+            let request_adapter = request_adapter_for_config(&config);
+            if request_body.as_object().is_some_and(|body| {
+                request_adapter.should_disable_thinking_for_tools(&config, body)
+            }) {
+                remove_thinking_fields_for_tool_compat(&mut request_body);
+                debug!(
+                    "[LLMManager] Adapter {} disabled thinking for tool calls",
+                    request_adapter.id()
+                );
+            }
+        }
+
         // Provider 适配：构建请求
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
-        let preq = adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
+        // The actual adapter is authoritative. This covers OpenAI API keys and
+        // compatible gateways explicitly configured for the Responses protocol,
+        // not only the Codex OAuth transport.
+        let require_terminal_success = adapter.requires_explicit_stream_completion();
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
                 &request_body,
+                None,
+                Some(codex_session_id),
+                "对话请求构建失败",
             )
-            .map_err(|e| Self::provider_error("对话请求构建失败", e))?;
+            .await?;
+        let is_codex = preq.is_codex();
 
         // ★ 使用 preq.body（适配器转换后的实际请求体）而非 request_body（转换前），
         // 确保 Anthropic/Gemini 等非 OpenAI 提供商的预览与实际发送内容一致
@@ -1746,7 +3211,6 @@ impl LLMManager {
         );
 
         // 发出开始事件
-        let request_id = Uuid::new_v4().to_string();
         if let Err(e) = window.emit(
             &format!("{}_start", stream_event),
             &json!({
@@ -1759,51 +3223,109 @@ impl LLMManager {
         }
 
         // ERR-01 修复：HTTP 错误码区分处理与指数退避重试
-        const MAX_RETRIES: u32 = 5;
+        // 🆕 Failover：重试上限由包装层传入（无 fallback 候选时保持旧值 5，
+        // 有候选时收紧为 1，尽快让位给 key 轮换/模型切换）
+        let max_retries = establish_max_retries;
         const MIN_RETRY_DELAY_MS: u64 = 4000;
         const MAX_RETRY_DELAY_MS: u64 = 5000;
         let mut retry_count = 0u32;
+        let mut codex_unauthorized_refreshed = false;
 
         let response = loop {
             // 每次重试都需要重新构建 request_builder（因为 send() 会消耗它）
-            let mut request_builder = self.client
+            let mut request_builder = self
+                .client
                 .post(&preq.url)
                 // 🔧 F2 修复：流式请求覆盖客户端默认 300s 总超时（见 STREAMING_REQUEST_TIMEOUT_SECS 注释）
-                .timeout(std::time::Duration::from_secs(STREAMING_REQUEST_TIMEOUT_SECS))
-                .header("Accept", "text/event-stream, application/json, text/plain, */*")
-                .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
-                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                // Connection 头由 reqwest 自动管理：HTTP/1.1 使用 keep-alive，HTTP/2 使用多路复用
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                .timeout(std::time::Duration::from_secs(
+                    STREAMING_REQUEST_TIMEOUT_SECS,
+                ));
+            if !preq.is_codex() {
+                request_builder = request_builder
+                    .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                    .header("Accept-Encoding", "identity")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+            }
             for (k, v) in &preq.headers {
                 request_builder = request_builder.header(k.clone(), v.clone());
             }
-            if let Ok(parsed_url) = Url::parse(&config.base_url) {
-                if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
-                    && parsed_url.host_str().is_some()
-                {
-                    let origin_val = format!(
-                        "{}://{}",
-                        parsed_url.scheme(),
-                        parsed_url.host_str().unwrap_or_default()
-                    );
-                    let referer_val = format!(
-                        "{}://{}/",
-                        parsed_url.scheme(),
-                        parsed_url.host_str().unwrap_or_default()
-                    );
-                    request_builder = request_builder
-                        .header("Origin", origin_val)
-                        .header("Referer", referer_val);
+            if !preq.is_codex() {
+                if let Ok(parsed_url) = Url::parse(&config.base_url) {
+                    if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
+                        && parsed_url.host_str().is_some()
+                    {
+                        let origin_val = format!(
+                            "{}://{}",
+                            parsed_url.scheme(),
+                            parsed_url.host_str().unwrap_or_default()
+                        );
+                        let referer_val = format!(
+                            "{}://{}/",
+                            parsed_url.scheme(),
+                            parsed_url.host_str().unwrap_or_default()
+                        );
+                        request_builder = request_builder
+                            .header("Origin", origin_val)
+                            .header("Referer", referer_val);
+                    }
                 }
             }
 
-            let resp = request_builder
-                .json(&preq.body)
-                .send()
-                .await
-                // 🔒 without_url：reqwest 错误 Display 含完整 URL（Gemini 等 query 带 key），脱敏后再进错误消息
-                .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
+            let mut establish_cancel_rx = cancel_rx.clone();
+            let send_result = tokio::select! {
+                response = request_builder.json(&preq.body).send() => response,
+                changed = establish_cancel_rx.changed() => {
+                    if changed.is_ok() && *establish_cancel_rx.borrow() {
+                        let _ = window.emit(
+                            &format!("{}_cancelled", stream_event),
+                            &json!({
+                                "id": request_id,
+                                "reason": "user_cancelled_during_connect"
+                            }),
+                        );
+                        self.clear_cancel_channel(stream_event).await;
+                        return Err(AppError::llm("请求已被用户取消"));
+                    }
+                    continue;
+                }
+            };
+            let resp = match send_result {
+                Ok(response) => response,
+                Err(error) if retry_count < max_retries => {
+                    retry_count += 1;
+                    let wait_ms = Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS);
+                    warn!(
+                        "[模型二API] 建连失败，等待 {}ms 后重试 ({}/{}): {}",
+                        wait_ms,
+                        retry_count,
+                        max_retries,
+                        error.without_url()
+                    );
+                    Self::emit_inner_retry_progress(
+                        &window,
+                        stream_event,
+                        message_id,
+                        retry_count,
+                        max_retries,
+                    );
+                    if self.sleep_checking_cancel(stream_event, wait_ms).await {
+                        return Err(AppError::llm("请求已被用户取消"));
+                    }
+                    continue;
+                }
+                Err(error) => {
+                    return Err(routing::tag_establish_failure(
+                        AppError::network(format!("模型二API请求失败: {}", error.without_url())),
+                        None,
+                    ));
+                }
+            };
+            let resp = if preq.is_codex() {
+                normalize_codex_error_response(resp).await?
+            } else {
+                resp
+            };
 
             if resp.status().is_success() {
                 break resp;
@@ -1813,6 +3335,30 @@ impl LLMManager {
             let status_code = status.as_u16();
 
             match status_code {
+                401 if preq.is_codex() && !codex_unauthorized_refreshed => {
+                    self.refresh_codex_request_after_unauthorized(&mut preq)
+                        .await?;
+                    codex_unauthorized_refreshed = true;
+                    continue;
+                }
+                401 if preq.is_codex() => {
+                    let rejected_generation = preq
+                        .codex
+                        .as_ref()
+                        .map(|codex| codex.auth.generation())
+                        .ok_or_else(|| {
+                            AppError::configuration("OpenAI Codex 请求缺少 OAuth 上下文")
+                        })?;
+                    self.openai_codex_auth
+                        .mark_reauthentication_required(rejected_generation)
+                        .await;
+                    return Err(AppError::configuration(
+                        "OpenAI Codex 授权已失效，请在模型设置中重新登录",
+                    ));
+                }
+                403 if preq.is_codex() => {
+                    return Err(AppError::configuration("OpenAI Codex 账号无权执行此请求"));
+                }
                 // 429 Rate Limit：使用指数退避重试
                 429 => {
                     // 尝试解析 Retry-After 头
@@ -1822,77 +3368,101 @@ impl LLMManager {
                         .and_then(|v| v.to_str().ok())
                         .and_then(|s| s.parse::<u64>().ok());
 
-                    let base_wait_ms = retry_after.map(|s| s * 1000).unwrap_or_else(|| {
+                    // 🔧 Retry-After clamp 到 120s：防止异常服务端返回超大值导致管线长时间 sleep
+                    let wait_ms = retry_after.map(|s| s.min(120) * 1000).unwrap_or_else(|| {
                         Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS)
                     });
-                    let wait_ms = if retry_after.is_some() {
-                        base_wait_ms
-                    } else {
-                        base_wait_ms
-                    };
 
-                    if retry_count < MAX_RETRIES {
+                    if retry_count < max_retries {
                         retry_count += 1;
                         warn!(
                             "[模型二API] 遇到速率限制(429)，等待 {}ms 后重试 ({}/{})",
-                            wait_ms, retry_count, MAX_RETRIES
+                            wait_ms, retry_count, max_retries
                         );
                         Self::emit_inner_retry_progress(
                             &window,
                             stream_event,
                             message_id,
                             retry_count,
-                            MAX_RETRIES,
+                            max_retries,
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
+                        if self.sleep_checking_cancel(stream_event, wait_ms).await {
+                            info!("[模型二API] 429 重试等待期间收到取消信号，中止请求");
+                            return Err(AppError::llm("请求已被用户取消"));
+                        }
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
                         let error_msg = format!(
                             "模型二API请求失败: 速率限制(429)，已重试{}次仍失败 - {}",
-                            MAX_RETRIES, error_text
+                            max_retries, error_text
                         );
                         error!("{}", error_msg);
-                        return Err(AppError::llm(error_msg));
+                        // 🆕 打标：429 → key 进冷却并轮换，耗尽后按策略切换 fallback 模型
+                        return Err(routing::tag_establish_failure(
+                            AppError::llm(error_msg),
+                            Some(429),
+                        ));
                     }
                 }
-                // 401/403 认证错误：直接返回明确错误
-                401 | 403 => {
+                // 401 明确表示凭据无效；仅在此情况下轮换 key。
+                401 => {
                     let error_text = resp.text().await.unwrap_or_default();
                     let error_msg = format!(
-                        "模型二API认证失败: API Key 无效或已过期 (HTTP {}) - {}",
-                        status_code, error_text
+                        "模型二API认证失败: API Key 无效或已过期 (HTTP 401) - {}",
+                        error_text
                     );
                     error!("{}", error_msg);
-                    return Err(AppError::configuration(error_msg));
+                    // 🆕 打标：鉴权失败只允许同 provider 内换 key，不允许换模型
+                    return Err(routing::tag_establish_failure(
+                        AppError::configuration(error_msg),
+                        Some(status_code),
+                    ));
+                }
+                // 403 通常是模型/组织/地区/策略权限，不能默认归因于 key 失效。
+                403 => {
+                    let error_text = resp.text().await.unwrap_or_default();
+                    let error_msg = format!("模型二API访问被拒绝 (HTTP 403) - {}", error_text);
+                    error!("{}", error_msg);
+                    return Err(routing::tag_establish_failure(
+                        AppError::llm(error_msg),
+                        Some(status_code),
+                    ));
                 }
                 // 5xx 服务端错误：可重试
                 500..=599 => {
-                    if retry_count < MAX_RETRIES {
+                    if retry_count < max_retries {
                         retry_count += 1;
                         let wait_ms =
                             Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS);
                         warn!(
                             "[模型二API] 服务端错误({})，等待 {}ms 后重试 ({}/{})",
-                            status_code, wait_ms, retry_count, MAX_RETRIES
+                            status_code, wait_ms, retry_count, max_retries
                         );
                         Self::emit_inner_retry_progress(
                             &window,
                             stream_event,
                             message_id,
                             retry_count,
-                            MAX_RETRIES,
+                            max_retries,
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
+                        if self.sleep_checking_cancel(stream_event, wait_ms).await {
+                            info!("[模型二API] 5xx 重试等待期间收到取消信号，中止请求");
+                            return Err(AppError::llm("请求已被用户取消"));
+                        }
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
                         let error_msg = format!(
                             "模型二API服务端错误: HTTP {} - 已重试{}次仍失败 - {}",
-                            status_code, MAX_RETRIES, error_text
+                            status_code, max_retries, error_text
                         );
                         error!("{}", error_msg);
-                        return Err(AppError::llm(error_msg));
+                        // 🆕 打标：5xx → 可重试瞬态错误，允许 key 轮换与模型降级
+                        return Err(routing::tag_establish_failure(
+                            AppError::llm(error_msg),
+                            Some(status_code),
+                        ));
                     }
                 }
                 // 其他错误：直接返回
@@ -1901,7 +3471,11 @@ impl LLMManager {
                     let error_msg =
                         format!("模型二API请求失败: HTTP {} - {}", status_code, error_text);
                     error!("模型二API请求失败: {}", error_msg);
-                    return Err(AppError::llm(error_msg));
+                    // 🆕 打标：400/404 等参数类错误 → 不可重试，立即失败
+                    return Err(routing::tag_establish_failure(
+                        AppError::llm(error_msg),
+                        Some(status_code),
+                    ));
                 }
             }
         };
@@ -1922,15 +3496,10 @@ impl LLMManager {
             std::collections::HashMap::new(); // index -> (id, name, accumulated_args)
 
         let mut stream_ended = false;
-        // 初始化SSE行缓冲器
-        let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
-        // Proactively clear any stale cancel flags from previous runs for this stream_event
-        // This avoids immediately cancelling a brand-new stream due to a leftover registry flag
-        let _ = self.take_cancellation_if_any(stream_event).await;
-
-        // Register cancel channel for this stream_event
-        let cancel_rx = self.register_cancel_channel(stream_event).await;
-
+        let mut terminal_success = false;
+        let mut terminal_failure: Option<String> = None;
+        // 按完整 SSE 事件缓冲，保留 event: + data: 关联并安全处理跨 chunk UTF-8。
+        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         debug!(
             "{}[流式请求] 开始处理，请求ID: {}, 事件名: {}",
             chat_timing::format_elapsed_prefix(stream_event),
@@ -1945,18 +3514,7 @@ impl LLMManager {
             config.base_url,
             config.model
         );
-        // P1修复：生命周期对齐 - 发送start和id事件
-        if let Err(e) = window.emit(
-            &format!("{}_start", stream_event),
-            &json!({
-                "id": stream_event,
-                "model": config.model,
-                "request_bytes": request_bytes
-            }),
-        ) {
-            warn!("发送开始事件失败: {}", e);
-        }
-
+        // start 已在 HTTP 建连前发送；此处仅补发稳定的 request id。
         if let Err(e) = window.emit(
             &format!("{}_id", stream_event),
             &json!({
@@ -1967,11 +3525,9 @@ impl LLMManager {
         ) {
             warn!("发送ID事件失败: {}", e);
         }
-        // 用量日志：开始（使用 FileManager 的 app_data_dir）
-        {
-            let dir = self.file_manager.get_app_data_dir().to_path_buf();
-            let logger = crate::debug_logger::DebugLogger::new(dir);
-            let _ = logger
+        // 用量日志：开始（复用全局记录器，由周期任务可靠刷盘）
+        if let Some(logger) = crate::debug_logger::get_global_logger() {
+            logger
                 .log_llm_usage(
                     "start",
                     &config.name,
@@ -1987,7 +3543,72 @@ impl LLMManager {
                 .await;
         }
         let mut was_cancelled = false;
-        while let Some(chunk_result) = stream.next().await {
+        // 🔧 P1-3 修复：select 同时等待「数据 / 取消信号 / 轮询计时」，
+        // 流停滞时取消可即时生效，空闲超过 STREAMING_IDLE_TIMEOUT_SECS 主动结束流
+        let idle_timeout = std::time::Duration::from_secs(STREAMING_IDLE_TIMEOUT_SECS);
+        let mut last_activity = tokio::time::Instant::now();
+        let mut cancel_rx_wait = cancel_rx.clone();
+        // sender 被清理后 changed() 立即返回 Err，用标志关闭该分支避免 busy loop
+        let mut cancel_channel_open = true;
+        loop {
+            enum StreamWait<T> {
+                Chunk(T),
+                Ended,
+                CancelSignal,
+                Tick,
+            }
+            let waited = tokio::select! {
+                biased;
+                changed = cancel_rx_wait.changed(), if cancel_channel_open => {
+                    match changed {
+                        Ok(()) => {
+                            if *cancel_rx_wait.borrow() {
+                                StreamWait::CancelSignal
+                            } else {
+                                StreamWait::Tick
+                            }
+                        }
+                        Err(_) => {
+                            cancel_channel_open = false;
+                            StreamWait::Tick
+                        }
+                    }
+                }
+                item = stream.next() => match item {
+                    Some(r) => StreamWait::Chunk(r),
+                    None => StreamWait::Ended,
+                },
+                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => StreamWait::Tick,
+            };
+
+            let (maybe_chunk, upstream_ended) = match waited {
+                // Route EOF through the same event dispatch as ordinary chunks.
+                // The empty chunk only supplies the already-inferred stream item type;
+                // buffered bytes are drained with `flush` in the Ok branch below.
+                StreamWait::Ended => (Some(Ok(Default::default())), true),
+                StreamWait::Chunk(r) => {
+                    last_activity = tokio::time::Instant::now();
+                    (Some(r), false)
+                }
+                StreamWait::CancelSignal => (None, false),
+                StreamWait::Tick => {
+                    if last_activity.elapsed() >= idle_timeout {
+                        warn!(
+                            "{}[Stream Loop] 空闲超时（{}s 无数据），主动结束流: {}",
+                            chat_timing::format_elapsed_prefix(stream_event),
+                            STREAMING_IDLE_TIMEOUT_SECS,
+                            stream_event
+                        );
+                        terminal_failure = Some(responses_stream_interruption_message(
+                            ResponsesStreamInterruption::IdleTimeout,
+                            is_codex,
+                        ));
+                        break;
+                    }
+                    (None, false)
+                }
+            };
+
             // Hard cancel check (best-effort): proactively drain registry then check channel
             let registry_cancelled = self.take_cancellation_if_any(stream_event).await;
             let cancel_flag = *cancel_rx.borrow();
@@ -2024,19 +3645,24 @@ impl LLMManager {
                 debug!("[Cancel] 流循环已中断，退出 while 循环");
                 break;
             }
+            // 非数据轮次（取消信号已在上方处理 / Tick 未超时）继续等待
+            let Some(chunk_result) = maybe_chunk else {
+                continue;
+            };
             match chunk_result {
                 Ok(chunk) => {
-                    response_bytes += chunk.len();
-                    let chunk_str = String::from_utf8_lossy(&chunk);
-
-                    // 使用SSE缓冲器处理chunk，获取完整的行
-                    let complete_lines = sse_buffer.process_chunk(&chunk_str);
-                    for line in complete_lines {
+                    let complete_blocks = if upstream_ended {
+                        process_sse_stream_input(&mut sse_buffer, None)
+                    } else {
+                        response_bytes += chunk.len();
+                        process_sse_stream_input(&mut sse_buffer, Some(chunk.as_ref()))
+                    };
+                    for line in complete_blocks {
                         // 使用适配器解析流事件（包括[DONE]标记）
                         let events = adapter.parse_stream(&line);
 
                         // 检查是否是结束标记（保留为后备机制）
-                        if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+                        if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
                             debug!(
                                 "{}检测到SSE结束标记: [DONE]",
                                 chat_timing::format_elapsed_prefix(stream_event)
@@ -2047,6 +3673,7 @@ impl LLMManager {
                                     "{}适配器未生成Done事件，手动添加",
                                     chat_timing::format_elapsed_prefix(stream_event)
                                 );
+                                terminal_success = true;
                                 stream_ended = true;
                                 break;
                             }
@@ -2092,6 +3719,11 @@ impl LLMManager {
                                         &reasoning_chunk,
                                     ) {
                                         warn!("发送思维链块失败: {}", e);
+                                    }
+                                }
+                                crate::providers::StreamEvent::ResponseReasoningItem(item) => {
+                                    if let Some(h) = self.get_hook(stream_event).await {
+                                        h.on_response_reasoning_item(&item);
                                     }
                                 }
                                 crate::providers::StreamEvent::ThoughtSignature(signature) => {
@@ -2240,6 +3872,12 @@ impl LLMManager {
                                     }
                                 }
                                 crate::providers::StreamEvent::SafetyBlocked(safety_info) => {
+                                    terminal_failure = Some(provider_stream_failure_message(
+                                        &safety_info,
+                                        require_terminal_success,
+                                        is_codex,
+                                    ));
+                                    stream_ended = true;
                                     // emit safety_blocked 事件
                                     if let Err(e) = window.emit(
                                         &format!("{}_safety_blocked", stream_event),
@@ -2250,10 +3888,9 @@ impl LLMManager {
                                     // 同时发送通用错误事件
                                     // 🔧 区分供应商错误（provider_error）与安全阻断，避免
                                     // 把配额不足/参数错误等误报为"安全策略阻断"
-                                    let is_provider_error = safety_info
-                                        .get("type")
-                                        .and_then(|v| v.as_str())
-                                        == Some("provider_error");
+                                    let is_provider_error =
+                                        safety_info.get("type").and_then(|v| v.as_str())
+                                            == Some("provider_error");
                                     let error_event = if is_provider_error {
                                         json!({
                                             "type": "provider_error",
@@ -2274,6 +3911,7 @@ impl LLMManager {
                                     }
                                 }
                                 crate::providers::StreamEvent::Done => {
+                                    terminal_success = true;
                                     stream_ended = true;
 
                                     // 完成待聚合的工具调用（只在有工具调用时输出简洁日志）
@@ -2359,10 +3997,10 @@ impl LLMManager {
                         reasoning_content.len()
                     );
 
-                    // 如果已经有内容，不把这当作完全失败
+                    // 已有内容时保留正文，但 Codex 不能把传输中断静默记为成功。
                     if !full_content.is_empty() || !reasoning_content.is_empty() {
                         warn!(
-                            "{}部分内容已接收，标记为部分成功",
+                            "{}部分内容已接收，标记为可恢复的中断",
                             chat_timing::format_elapsed_prefix(stream_event)
                         );
                         // F15：流中途出错但已有部分内容时，过去静默按“部分成功”截断。
@@ -2380,6 +4018,10 @@ impl LLMManager {
                         if let Err(emit_err) = window.emit(&truncated_event, &truncated_payload) {
                             warn!("发送截断警示事件失败: {}", emit_err);
                         }
+                        terminal_failure = Some(responses_stream_interruption_message(
+                            ResponsesStreamInterruption::ReadError,
+                            is_codex,
+                        ));
                         break;
                     } else {
                         error!(
@@ -2405,83 +4047,33 @@ impl LLMManager {
                 }
             }
 
+            if upstream_ended
+                && require_terminal_success
+                && !terminal_success
+                && terminal_failure.is_none()
+            {
+                terminal_failure = Some(responses_stream_interruption_message(
+                    ResponsesStreamInterruption::MissingTerminal,
+                    is_codex,
+                ));
+            }
+
             // 如果流已结束，退出循环
-            if stream_ended {
+            if stream_ended || upstream_ended {
                 break;
             }
         }
 
-        // 处理SSE缓冲器中剩余的不完整行（P1修复：STREAM-3）
-        if let Some(remaining_line) = sse_buffer.flush() {
-            if !remaining_line.trim().is_empty() {
-                debug!(
-                    "{}处理SSE缓冲器中的剩余数据: {} 字符",
-                    chat_timing::format_elapsed_prefix(stream_event),
-                    remaining_line.len()
-                );
-                // 使用适配器解析剩余的行
-                let events = adapter.parse_stream(&remaining_line);
-                for event in events {
-                    match event {
-                        crate::providers::StreamEvent::ContentChunk(content) => {
-                            full_content.push_str(&content);
-                            chunk_counter += 1;
-
-                            let stream_chunk = StreamChunk {
-                                content: content.clone(),
-                                is_complete: false,
-                                chunk_id: format!("{}_chunk_{}", request_id, chunk_counter),
-                            };
-
-                            if let Some(h) = self.get_hook(stream_event).await {
-                                h.on_content_chunk(&content);
-                            } else if let Err(e) = window.emit(stream_event, &stream_chunk) {
-                                warn!("发送剩余内容块失败: {}", e);
-                            }
-                        }
-                        crate::providers::StreamEvent::ReasoningChunk(reasoning) => {
-                            reasoning_content.push_str(&reasoning);
-
-                            let reasoning_chunk = StreamChunk {
-                                content: reasoning.clone(),
-                                is_complete: false,
-                                chunk_id: format!(
-                                    "{}_reasoning_chunk_{}",
-                                    request_id, chunk_counter
-                                ),
-                            };
-
-                            if let Some(h) = self.get_hook(stream_event).await {
-                                h.on_reasoning_chunk(&reasoning);
-                            } else if let Err(e) = window
-                                .emit(&format!("{}_reasoning", stream_event), &reasoning_chunk)
-                            {
-                                warn!("发送剩余思维链块失败: {}", e);
-                            }
-                        }
-                        _ => { /* 忽略其他事件类型（Done/ToolCall/Usage等已在主循环处理） */
-                        }
-                    }
-                }
-            }
-        }
-
-        // 运行时互斥修正：某些模型使用函数调用时需要关闭 thinking 字段。
-        // 这里统一覆盖 custom_tools 和普通工具注入两条路径，避免适配逻辑漏跑。
-        if request_body.get("tools").is_some() {
-            let adapter = get_adapter(
-                config.provider_type.as_deref(),
-                config.provider_scope.as_deref(),
-                &config.model_adapter,
-            );
-            if let Some(body_map) = request_body.as_object() {
-                if adapter.should_disable_thinking_for_tools(&config, body_map) {
-                    remove_thinking_fields_for_tool_compat(&mut request_body);
-                    debug!(
-                        "[LLMManager] Adapter {} disabled thinking for tool calls",
-                        adapter.id()
-                    );
-                }
+        if !was_cancelled {
+            if let Err(error) = validate_stream_termination(
+                require_terminal_success,
+                terminal_success,
+                terminal_failure.as_deref(),
+                is_codex,
+            ) {
+                self.clear_cancel_channel(stream_event).await;
+                pending_tool_calls.clear();
+                return Err(error);
             }
         }
 
@@ -2720,12 +4312,10 @@ impl LLMManager {
             None
         };
 
-        // 用量日志：结束（脱敏写入，使用 FileManager）
+        // 用量日志：结束（脱敏写入全局记录器）
         {
             let approx_tokens_out = crate::utils::token_budget::estimate_tokens(&full_content);
             let dur = start_instant.elapsed().as_millis();
-            let dir = self.file_manager.get_app_data_dir().to_path_buf();
-            let logger = crate::debug_logger::DebugLogger::new(dir);
 
             // 从 API 返回的 usage 数据中提取实际 token 数量
             let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
@@ -2735,20 +4325,22 @@ impl LLMManager {
                     (request_bytes / 4).max(1),
                 );
 
-            let _ = logger
-                .log_llm_usage(
-                    "end",
-                    &config.name,
-                    &config.model,
-                    &config.model_adapter,
-                    request_bytes,
-                    response_bytes,
-                    actual_prompt_tokens as usize,
-                    actual_completion_tokens as usize,
-                    Some(dur),
-                    None,
-                )
-                .await;
+            if let Some(logger) = crate::debug_logger::get_global_logger() {
+                logger
+                    .log_llm_usage(
+                        "end",
+                        &config.name,
+                        &config.model,
+                        &config.model_adapter,
+                        request_bytes,
+                        response_bytes,
+                        actual_prompt_tokens as usize,
+                        actual_completion_tokens as usize,
+                        Some(dur),
+                        None,
+                    )
+                    .await;
+            }
 
             // 🔧 修复 Token 双重计费：单变体 Chat V2（task_context="chat_v2"）的用量
             // 由 chat_v2/pipeline/tool_loop.rs 在每轮结束后统一记录到 llm_usage_logs
@@ -2796,28 +4388,71 @@ impl LLMManager {
         task_context: Option<&str>,
         max_input_tokens_override: Option<usize>,
     ) -> Result<StandardModel2Output> {
-        info!(
-            "调用统一模型二接口: 科目={}, 思维链={}, 图片数量={}",
-            subject,
-            enable_chain_of_thought,
-            image_paths.as_ref().map(|p| p.len()).unwrap_or(0)
-        );
-
-        let _max_input_tokens_override = max_input_tokens_override;
-
         // 获取模型配置
         // Model Router: choose model by task_context when possible
-        let (config, _enable_cot) = {
-            let task = match task_context {
-                Some(tc) if tc.contains("planner") => "review",
-                // 🚀 修复：添加tag_generation的路由支持
-                Some(tc) if tc == "tag_generation" || tc.contains("tag") => "tag_generation",
-                _ => "default",
-            };
-            self.select_model_for(task, None, None, None, None, None, None)
-                .await
-                .unwrap_or((self.get_model2_config().await?, true))
+        let task = match task_context {
+            Some(tc) if tc.contains("planner") => "review",
+            // 🚀 修复：添加tag_generation的路由支持
+            Some(tc) if tc == "tag_generation" || tc.contains("tag") => "tag_generation",
+            _ => "default",
         };
+        let (config, _enable_cot) = self
+            .select_model_for(task, None, None, None, None, None, None)
+            .await
+            .unwrap_or((self.get_model2_config().await?, true));
+
+        // 🆕 Failover 包装层（routing.rs）：非流式出口属于后台/工具型任务，
+        // 允许 key 轮换与模型降级（无 window 上下文，仅日志通知）
+        let run = routing::FailoverRun {
+            task: task.to_string(),
+            scenario: routing::FailoverScenario::BackgroundTask,
+            user_pinned: false,
+            window: None,
+            attempts_handle_429_internally: false,
+            required_is_multimodal: (chat_messages_require_multimodal(chat_history)
+                || image_paths
+                    .as_ref()
+                    .is_some_and(|images| !images.is_empty()))
+            .then_some(true),
+            param_overrides: routing::ParamOverrides::default(),
+        };
+        let image_paths_ref = &image_paths;
+        self.run_with_failover(run, config, |cfg, _establish_retries| {
+            self.call_unified_model_2_with_config(
+                cfg,
+                context,
+                chat_history,
+                subject,
+                enable_chain_of_thought,
+                image_paths_ref.clone(),
+                task_context,
+                max_input_tokens_override,
+            )
+        })
+        .await
+    }
+
+    /// 非流式统一出口的单次尝试（Failover 由 `call_unified_model_2` 包装层驱动）
+    #[allow(clippy::too_many_arguments)]
+    async fn call_unified_model_2_with_config(
+        &self,
+        config: ApiConfig,
+        context: &HashMap<String, Value>,
+        chat_history: &[ChatMessage],
+        subject: &str,
+        enable_chain_of_thought: bool,
+        image_paths: Option<Vec<String>>,
+        task_context: Option<&str>,
+        max_input_tokens_override: Option<usize>,
+    ) -> Result<StandardModel2Output> {
+        ensure_model_accepts_message_modalities(&config, chat_history)?;
+        info!(
+            "调用统一模型二接口: 科目={}, 思维链={}, 图片数量={}, model={}",
+            subject,
+            enable_chain_of_thought,
+            image_paths.as_ref().map(|p| p.len()).unwrap_or(0),
+            config.model
+        );
 
         // 处理图片（如果模型支持多模态且提供了图片）
         // 移除会话级图片回退，不再从 image_paths 读取
@@ -2862,7 +4497,7 @@ impl LLMManager {
         // 对于推理模型，系统消息需要合并到用户消息中
         if config.is_reasoning {
             // 推理模型不支持系统消息，需要将系统提示合并到用户消息中
-            let combined_content = format!("{}", system_content);
+            let combined_content = system_content.to_string();
 
             if config.is_multimodal && images_base64.is_some() && chat_history.is_empty() {
                 let mut content = vec![json!({
@@ -2902,11 +4537,34 @@ impl LLMManager {
             // 后续严禁再注入"伪 system 文本"或提示
         }
 
-        // 添加聊天历史（包含每条 user 的 image_base64 多模态 parts 构建）
+        // 添加聊天历史（优先保留图文交替的 multimodal_content）
         // 🔧 C3修复：补充 tool_call/tool_result 处理（之前完全丢弃工具调用信息）
         for msg in chat_history {
             if msg.role == "user" {
                 if config.is_multimodal
+                    && msg
+                        .multimodal_content
+                        .as_ref()
+                        .is_some_and(|parts| !parts.is_empty())
+                {
+                    let parts = msg.multimodal_content.as_ref().expect("checked above");
+                    let content = parts
+                        .iter()
+                        .map(|part| match part {
+                            crate::models::MultimodalContentPart::Text { text } => {
+                                json!({"type": "text", "text": text})
+                            }
+                            crate::models::MultimodalContentPart::ImageUrl {
+                                media_type,
+                                base64,
+                            } => json!({
+                                "type": "image_url",
+                                "image_url": {"url": format!("data:{};base64,{}", media_type, base64)}
+                            }),
+                        })
+                        .collect::<Vec<_>>();
+                    messages.push(json!({"role": "user", "content": content}));
+                } else if config.is_multimodal
                     && msg
                         .image_base64
                         .as_ref()
@@ -2980,17 +4638,30 @@ impl LLMManager {
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
         apply_generation_params(&mut request_body, &config);
+        let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
+        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
+        if budget_trim.removed_messages > 0 {
+            warn!(
+                "[model2_non_stream] final input guard removed {} message(s): {} -> {} tokens (limit={:?})",
+                budget_trim.removed_messages,
+                budget_trim.tokens_before,
+                budget_trim.tokens_after,
+                input_limit
+            );
+        }
 
         // 使用 ProviderAdapter 构建请求，确保 Gemini 模型走转换后的URL/Headers/Body
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
-        let preq = adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
                 &request_body,
+                None,
+                None,
+                "聊天请求构建失败",
             )
-            .map_err(|e| Self::provider_error("聊天请求构建失败", e))?;
+            .await?;
 
         let debug_persist = self.build_debug_persist_config();
         log_llm_request_audit(
@@ -3001,41 +4672,52 @@ impl LLMManager {
             debug_persist.as_ref(),
         );
 
-        let mut request_builder = self.client
-            .post(&preq.url)
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
-            .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        for (k, v) in preq.headers {
-            request_builder = request_builder.header(k, v);
-        }
-
-        if let Ok(parsed_url) = Url::parse(&config.base_url) {
-            if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
-                && parsed_url.host_str().is_some()
-            {
-                let origin_val = format!(
-                    "{}://{}",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                let referer_val = format!(
-                    "{}://{}/",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                request_builder = request_builder
-                    .header("Origin", origin_val)
-                    .header("Referer", referer_val);
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client
+                .post(&preq.url)
+                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+            for (k, v) in &preq.headers {
+                request_builder = request_builder.header(k, v);
             }
-        }
 
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
+            if let Ok(parsed_url) = Url::parse(&config.base_url) {
+                if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
+                    && parsed_url.host_str().is_some()
+                {
+                    let origin_val = format!(
+                        "{}://{}",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    let referer_val = format!(
+                        "{}://{}/",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    request_builder = request_builder
+                        .header("Origin", origin_val)
+                        .header("Referer", referer_val);
+                }
+            }
+
+            request_builder
+                .json(&preq.body)
+                .send()
+                .await
+                // 🆕 建立阶段网络层失败：打标供 Failover 分类
+                .map_err(|e| {
+                    routing::tag_establish_failure(
+                        AppError::network(format!("模型二API请求失败: {}", e.without_url())),
+                        None,
+                    )
+                })?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -3043,7 +4725,11 @@ impl LLMManager {
             let error_msg = format!("模型二API请求失败: {} - {}", status, error_text);
             // 非流式版本没有 stream_event/window 上下文，这里仅返回错误
             error!("模型二API请求失败(非流式): {}", error_msg);
-            return Err(AppError::llm(error_msg));
+            // 🆕 打标 HTTP 状态码：429/5xx 可轮换重试，401/403 仅换 key，400 直接失败
+            return Err(routing::tag_establish_failure(
+                AppError::llm(error_msg),
+                Some(status.as_u16()),
+            ));
         }
 
         let response_text = response
@@ -3138,6 +4824,85 @@ impl LLMManager {
         let (config, _) = self
             .select_model_for("chat_title", None, Some(0.1), None, None, None, None)
             .await?;
+
+        // 🆕 Failover 包装层（routing.rs）：标题/标签生成是典型后台任务，
+        // 允许 key 轮换与模型降级（chat_title 用途可在策略中配独立 fallback 链）
+        let run = routing::FailoverRun {
+            task: "chat_title".to_string(),
+            scenario: routing::FailoverScenario::BackgroundTask,
+            user_pinned: false,
+            window: None,
+            attempts_handle_429_internally: false,
+            required_is_multimodal: None,
+            param_overrides: routing::ParamOverrides {
+                temperature: Some(0.1),
+                ..Default::default()
+            },
+        };
+        let metadata_value = self
+            .run_with_failover(run, config, |cfg, _establish_retries| {
+                self.generate_chat_metadata_attempt(cfg, &system_prompt, &prompt_body)
+            })
+            .await?;
+
+        let mut title = metadata_value
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| normalized_question.chars().take(20).collect());
+        if title.is_empty() {
+            title = normalized_question.chars().take(20).collect();
+        }
+
+        let summary = metadata_value
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .and_then(|s| {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            });
+
+        let tags: Vec<String> = metadata_value
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| item.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .take(3)
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_else(Vec::new);
+
+        let attributes = metadata_value.get("attributes").and_then(|v| {
+            if v.is_object() {
+                Some(v.clone())
+            } else {
+                None
+            }
+        });
+
+        Ok(crate::models::ChatMetadata {
+            title,
+            summary,
+            tags,
+            attributes,
+            note: None,
+        })
+    }
+
+    /// 聊天元数据（标题/标签）生成的单次尝试（Failover 由 `generate_chat_metadata` 驱动）
+    async fn generate_chat_metadata_attempt(
+        &self,
+        config: ApiConfig,
+        system_prompt: &str,
+        prompt_body: &str,
+    ) -> Result<Value> {
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
 
         let request_body = json!({
@@ -3152,14 +4917,16 @@ impl LLMManager {
 
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = adapter
-            .build_request(
-                config.base_url.trim_end_matches('/'),
-                &api_key,
-                &config.model,
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
                 &request_body,
+                Some(&api_key),
+                None,
+                "生成聊天元数据请求构建失败",
             )
-            .map_err(|e| Self::provider_error("生成聊天元数据请求构建失败", e))?;
+            .await?;
 
         log_llm_request_audit(
             "METADATA",
@@ -3169,44 +4936,56 @@ impl LLMManager {
             self.build_debug_persist_config().as_ref(),
         );
 
-        let mut request_builder = self.client.post(&preq.url);
-        for (key, value) in preq.headers.iter() {
-            request_builder = request_builder.header(key, value);
-        }
-
-        if let Ok(parsed_url) = Url::parse(&config.base_url) {
-            if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
-                && parsed_url.host_str().is_some()
-            {
-                let origin_val = format!(
-                    "{}://{}",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                let referer_val = format!(
-                    "{}://{}/",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                request_builder = request_builder
-                    .header("Origin", origin_val)
-                    .header("Referer", referer_val);
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client.post(&preq.url);
+            for (key, value) in &preq.headers {
+                request_builder = request_builder.header(key, value);
             }
-        }
 
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("聊天元数据生成请求失败: {}", e.without_url())))?;
+            if let Ok(parsed_url) = Url::parse(&config.base_url) {
+                if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
+                    && parsed_url.host_str().is_some()
+                {
+                    let origin_val = format!(
+                        "{}://{}",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    let referer_val = format!(
+                        "{}://{}/",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    request_builder = request_builder
+                        .header("Origin", origin_val)
+                        .header("Referer", referer_val);
+                }
+            }
+
+            request_builder
+                .json(&preq.body)
+                .send()
+                .await
+                // 🆕 建立阶段网络层失败：打标供 Failover 分类
+                .map_err(|e| {
+                    routing::tag_establish_failure(
+                        AppError::network(format!("聊天元数据生成请求失败: {}", e.without_url())),
+                        None,
+                    )
+                })?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
             let error_body = response.text().await.unwrap_or_default();
-            return Err(AppError::llm(format!(
-                "聊天元数据生成失败: {} - {}",
-                status, error_body
-            )));
+            // 🆕 打标 HTTP 状态码供 Failover 分类
+            return Err(routing::tag_establish_failure(
+                AppError::llm(format!("聊天元数据生成失败: {} - {}", status, error_body)),
+                Some(status.as_u16()),
+            ));
         }
 
         let response_text = response
@@ -3255,59 +5034,8 @@ impl LLMManager {
         let json_block = extract_json_block(content)
             .ok_or_else(|| AppError::llm("未能从聊天元数据响应中提取JSON"))?;
 
-        let metadata_value: Value = serde_json::from_str(&json_block)
-            .map_err(|e| AppError::llm(format!("解析聊天元数据JSON失败: {}", e)))?;
-
-        let mut title = metadata_value
-            .get("title")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|| normalized_question.chars().take(20).collect());
-        if title.is_empty() {
-            title = normalized_question.chars().take(20).collect();
-        }
-
-        let summary = metadata_value
-            .get("summary")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            })
-            .flatten();
-
-        let tags: Vec<String> = metadata_value
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item.as_str())
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .take(3)
-                    .collect::<Vec<String>>()
-            })
-            .unwrap_or_else(Vec::new);
-
-        let attributes = metadata_value.get("attributes").and_then(|v| {
-            if v.is_object() {
-                Some(v.clone())
-            } else {
-                None
-            }
-        });
-
-        Ok(crate::models::ChatMetadata {
-            title,
-            summary,
-            tags,
-            attributes,
-            note: None,
-        })
+        serde_json::from_str(&json_block)
+            .map_err(|e| AppError::llm(format!("解析聊天元数据JSON失败: {}", e)))
     }
 
     pub async fn test_connection(&self, api_key: &str, base_url: &str) -> Result<bool> {
@@ -3380,7 +5108,7 @@ impl LLMManager {
         let timeout_duration = std::time::Duration::from_secs(15);
         let request_future = self
             .client
-            .post(&format!("{}/embeddings", base_url))
+            .post(format!("{}/embeddings", base_url))
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .header(
@@ -3436,7 +5164,7 @@ impl LLMManager {
         let timeout_duration = std::time::Duration::from_secs(15);
         let request_future = self
             .client
-            .post(&format!("{}/rerank", base_url))
+            .post(format!("{}/rerank", base_url))
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .header(
@@ -3668,8 +5396,14 @@ impl LLMManager {
         caller_type: crate::llm_usage::CallerType,
     ) -> Result<StandardModel2Output> {
         let config = self.get_model2_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, image_payloads, caller_type)
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            image_payloads,
+            caller_type,
+            "utility",
+        )
+        .await
     }
 
     /// 🆕 P1: 使用指定 config_id（或显示名称）对应的 ApiConfig 发起 raw prompt 调用
@@ -3709,6 +5443,99 @@ impl LLMManager {
             None,
             RawPromptOptions { force_json: false },
             crate::llm_usage::CallerType::ChatV2,
+            "compaction",
+        )
+        .await
+    }
+
+    /// Execute an image-aware raw prompt against one exact, enabled multimodal chat config.
+    ///
+    /// Unlike background utility routing this method intentionally does not fail over to a
+    /// different model. ChatV2 uses it to create a visual observation for a frozen text-model
+    /// turn; silently changing the observer after the turn starts would invalidate the persisted
+    /// capability snapshot.
+    pub async fn call_raw_prompt_with_config_id_and_images(
+        &self,
+        config_id: &str,
+        user_prompt: &str,
+        image_payloads: Vec<ImagePayload>,
+        caller_type: crate::llm_usage::CallerType,
+    ) -> Result<StandardModel2Output> {
+        self.call_raw_prompt_with_config_id_and_images_inner(
+            config_id,
+            user_prompt,
+            image_payloads,
+            caller_type,
+        )
+        .await
+    }
+
+    /// Cancellation-aware Chat compiler entrypoint. The exact provider request is owned by this
+    /// future, so dropping it or cancelling the token also drops the in-flight HTTP future.
+    pub(crate) async fn call_raw_prompt_with_config_id_and_images_cancellable(
+        &self,
+        config_id: &str,
+        user_prompt: &str,
+        image_payloads: Vec<ImagePayload>,
+        caller_type: crate::llm_usage::CallerType,
+        cancellation_token: tokio_util::sync::CancellationToken,
+    ) -> Result<StandardModel2Output> {
+        await_visual_observation_or_cancel(
+            cancellation_token,
+            self.call_raw_prompt_with_config_id_and_images_inner(
+                config_id,
+                user_prompt,
+                image_payloads,
+                caller_type,
+            ),
+        )
+        .await
+    }
+
+    async fn call_raw_prompt_with_config_id_and_images_inner(
+        &self,
+        config_id: &str,
+        user_prompt: &str,
+        image_payloads: Vec<ImagePayload>,
+        caller_type: crate::llm_usage::CallerType,
+    ) -> Result<StandardModel2Output> {
+        if image_payloads.is_empty() {
+            return Err(AppError::configuration(
+                "多模态 raw prompt 至少需要一张图片",
+            ));
+        }
+
+        let configs = self.get_api_configs().await?;
+        let config = configs
+            .into_iter()
+            .find(|c| c.id == config_id || c.model == config_id)
+            .ok_or_else(|| {
+                AppError::configuration(format!("找不到指定的多模态模型配置: {}", config_id))
+            })?;
+
+        if !config.enabled {
+            return Err(AppError::configuration(format!(
+                "指定的多模态模型已禁用: {}",
+                config_id
+            )));
+        }
+        if !config.is_multimodal
+            || config.is_embedding
+            || config.is_reranker
+            || config.is_image_generation
+        {
+            return Err(AppError::configuration(format!(
+                "指定配置不是可用于视觉理解的多模态语言模型: {}",
+                config_id
+            )));
+        }
+
+        self.call_raw_prompt_attempt(
+            config,
+            user_prompt,
+            Some(image_payloads),
+            RawPromptOptions { force_json: false },
+            caller_type,
         )
         .await
     }
@@ -3724,6 +5551,7 @@ impl LLMManager {
             user_prompt,
             None,
             crate::llm_usage::CallerType::Memory,
+            "memory_decision",
         )
         .await
     }
@@ -3739,6 +5567,7 @@ impl LLMManager {
             user_prompt,
             None,
             crate::llm_usage::CallerType::ChatV2,
+            "chat_title",
         )
         .await
     }
@@ -3750,6 +5579,7 @@ impl LLMManager {
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
         caller_type: crate::llm_usage::CallerType,
+        task: &str,
     ) -> Result<StandardModel2Output> {
         // 旧入口保留默认行为：GPT 启用 JSON 严格模式
         self.call_raw_prompt_with_config_opts(
@@ -3758,12 +5588,16 @@ impl LLMManager {
             image_payloads,
             RawPromptOptions { force_json: true },
             caller_type,
+            task,
         )
         .await
     }
 
     /// 带选项的 raw prompt 调用。`force_json=false` 供 compaction 等需要 Markdown
     /// 输出的调用方使用（CR-R2-01 修复）。
+    ///
+    /// 🆕 Failover 包装层（routing.rs）：raw prompt 出口均为后台/工具型任务
+    /// （标题、压缩、记忆决策、utility），允许 key 轮换与模型降级。
     async fn call_raw_prompt_with_config_opts(
         &self,
         config: ApiConfig,
@@ -3771,7 +5605,53 @@ impl LLMManager {
         image_payloads: Option<Vec<ImagePayload>>,
         opts: RawPromptOptions,
         caller_type: crate::llm_usage::CallerType,
+        task: &str,
     ) -> Result<StandardModel2Output> {
+        let run = routing::FailoverRun {
+            task: task.to_string(),
+            scenario: routing::FailoverScenario::BackgroundTask,
+            user_pinned: false,
+            window: None,
+            attempts_handle_429_internally: false,
+            required_is_multimodal: image_payloads
+                .as_ref()
+                .is_some_and(|images| !images.is_empty())
+                .then_some(true),
+            param_overrides: routing::ParamOverrides::default(),
+        };
+        let image_payloads_ref = &image_payloads;
+        self.run_with_failover(run, config, |cfg, _establish_retries| {
+            self.call_raw_prompt_attempt(
+                cfg,
+                user_prompt,
+                image_payloads_ref.clone(),
+                opts,
+                caller_type.clone(),
+            )
+        })
+        .await
+    }
+
+    /// raw prompt 的单次尝试（Failover 由 `call_raw_prompt_with_config_opts` 驱动）
+    async fn call_raw_prompt_attempt(
+        &self,
+        config: ApiConfig,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+        opts: RawPromptOptions,
+        caller_type: crate::llm_usage::CallerType,
+    ) -> Result<StandardModel2Output> {
+        if image_payloads
+            .as_ref()
+            .is_some_and(|images| !images.is_empty())
+            && !config.is_multimodal
+        {
+            return Err(AppError::configuration(format!(
+                "当前请求包含图片，但模型配置 {} 不支持多模态输入",
+                config.id
+            )));
+        }
+
         // 构造最简消息，仅包含用户指令
         let mut content_parts = vec![json!({
             "type": "text",
@@ -3796,12 +5676,6 @@ impl LLMManager {
                     }));
                     attached_payloads.push(payload);
                 }
-            } else if !images.is_empty() {
-                warn!(
-                    "当前模型({})未标记为多模态，忽略 {} 张图片",
-                    config.model,
-                    images.len()
-                );
             }
         }
 
@@ -3851,14 +5725,16 @@ impl LLMManager {
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
-        let preq = adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
                 &request_body,
+                None,
+                None,
+                "RAW prompt 请求构建失败",
             )
-            .map_err(|e| Self::provider_error("RAW prompt 请求构建失败", e))?;
+            .await?;
 
         log_llm_request_audit(
             "RAW_PROMPT",
@@ -3868,52 +5744,67 @@ impl LLMManager {
             self.build_debug_persist_config().as_ref(),
         );
 
-        let mut request_builder = self.client
-            .post(&preq.url)
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
-            .header("Accept-Encoding", "identity")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        for (k, v) in preq.headers {
-            request_builder = request_builder.header(k, v);
-        }
-
-        // 设置 Origin/Referer 头（与其它调用保持一致）
-        if let Ok(parsed_url) = Url::parse(&config.base_url) {
-            if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
-                && parsed_url.host_str().is_some()
-            {
-                let origin_val = format!(
-                    "{}://{}",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                let referer_val = format!(
-                    "{}://{}/",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                request_builder = request_builder
-                    .header("Origin", origin_val)
-                    .header("Referer", referer_val);
-            }
-        }
-
         // 5. 发送请求
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())))?;
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client
+                .post(&preq.url)
+                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                .header("Accept-Encoding", "identity")
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+            for (k, v) in &preq.headers {
+                request_builder = request_builder.header(k, v);
+            }
+
+            // 设置 Origin/Referer 头（与其它调用保持一致）
+            if let Ok(parsed_url) = Url::parse(&config.base_url) {
+                if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
+                    && parsed_url.host_str().is_some()
+                {
+                    let origin_val = format!(
+                        "{}://{}",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    let referer_val = format!(
+                        "{}://{}/",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    request_builder = request_builder
+                        .header("Origin", origin_val)
+                        .header("Referer", referer_val);
+                }
+            }
+
+            request_builder
+                .json(&preq.body)
+                .send()
+                .await
+                // 🆕 建立阶段网络层失败：打标供 Failover 分类
+                .map_err(|e| {
+                    routing::tag_establish_failure(
+                        AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())),
+                        None,
+                    )
+                })?
+        };
 
         // 6. 检查响应状态
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::llm(format!(
-                "RAW_PROMPT API请求失败: {} - {}",
-                status, error_text
-            )));
+            // 🆕 打标 HTTP 状态码供 Failover 分类
+            return Err(routing::tag_establish_failure(
+                AppError::llm(format!(
+                    "RAW_PROMPT API请求失败: {} - {}",
+                    status, error_text
+                )),
+                Some(status.as_u16()),
+            ));
         }
 
         // 7. 解析响应
@@ -3934,9 +5825,10 @@ impl LLMManager {
             AppError::llm(err_msg)
         })?;
 
-        // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
-            if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
+        // All non-streaming protocols converge on the OpenAI chat-shaped response used below.
+        // This also converts canonical Responses JSON produced by the Codex SSE bridge.
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)
+            .inspect_err(|error| {
                 crate::llm_usage::record_llm_usage(
                     caller_type.clone(),
                     &config.model,
@@ -3947,55 +5839,9 @@ impl LLMManager {
                     None,
                     None,
                     false,
-                    Some(safety_msg.clone()),
+                    Some(error.to_string()),
                 );
-                return Err(AppError::llm(safety_msg));
-            }
-            match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                Ok(v) => v,
-                Err(e) => {
-                    let err_msg = format!("Gemini响应转换失败: {}", e);
-                    crate::llm_usage::record_llm_usage(
-                        caller_type.clone(),
-                        &config.model,
-                        0,
-                        0,
-                        None,
-                        None,
-                        None,
-                        None,
-                        false,
-                        Some(err_msg.clone()),
-                    );
-                    return Err(AppError::llm(err_msg));
-                }
-            }
-        } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            match crate::providers::convert_anthropic_response_to_openai(
-                &response_json,
-                &config.model,
-            ) {
-                Some(v) => v,
-                None => {
-                    let err_msg = "解析Anthropic响应失败".to_string();
-                    crate::llm_usage::record_llm_usage(
-                        caller_type.clone(),
-                        &config.model,
-                        0,
-                        0,
-                        None,
-                        None,
-                        None,
-                        None,
-                        false,
-                        Some(err_msg.clone()),
-                    );
-                    return Err(AppError::llm(err_msg));
-                }
-            }
-        } else {
-            response_json.clone()
-        };
+            })?;
 
         let assistant_message = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
@@ -4143,14 +5989,16 @@ impl LLMManager {
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
-        let preq = adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
                 &request_body,
+                None,
+                None,
+                "OCR RAW prompt 请求构建失败",
             )
-            .map_err(|e| Self::provider_error("OCR RAW prompt 请求构建失败", e))?;
+            .await?;
 
         log_llm_request_audit(
             "OCR_RAW",
@@ -4160,22 +6008,23 @@ impl LLMManager {
             self.build_debug_persist_config().as_ref(),
         );
 
-        let mut request_builder = self
-            .client
-            .post(&preq.url)
-            .header("Accept", "application/json")
-            .header("Accept-Encoding", "identity");
-
-        for (k, v) in preq.headers {
-            request_builder = request_builder.header(k, v);
-        }
-
         // 5. 发送请求
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("OCR_MODEL API请求失败: {}", e.without_url())))?;
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self
+                .client
+                .post(&preq.url)
+                .header("Accept", "application/json")
+                .header("Accept-Encoding", "identity");
+            for (k, v) in &preq.headers {
+                request_builder = request_builder.header(k, v);
+            }
+            request_builder.json(&preq.body).send().await.map_err(|e| {
+                AppError::network(format!("OCR_MODEL API请求失败: {}", e.without_url()))
+            })?
+        };
 
         // 6. 检查响应状态
         if !response.status().is_success() {
@@ -4193,21 +6042,7 @@ impl LLMManager {
             .await
             .map_err(|e| AppError::llm(format!("解析OCR_MODEL响应失败: {}", e)))?;
 
-        // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
-            if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
-                return Err(AppError::llm(safety_msg));
-            }
-            match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                Ok(v) => v,
-                Err(e) => return Err(AppError::llm(format!("Gemini响应转换失败: {}", e))),
-            }
-        } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model)
-                .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()))?
-        } else {
-            response_json.clone()
-        };
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
 
         let assistant_message = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
@@ -4260,9 +6095,16 @@ impl LLMManager {
 
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = adapter
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| Self::provider_error("OCR请求构建失败", e))?;
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "OCR请求构建失败",
+            )
+            .await?;
 
         log_llm_request_audit(
             "OCR_PAGES",
@@ -4272,24 +6114,28 @@ impl LLMManager {
             self.build_debug_persist_config().as_ref(),
         );
 
-        let mut header_map = reqwest::header::HeaderMap::new();
-        for (k, v) in preq.headers.iter() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            ) {
-                header_map.insert(name, val);
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut header_map = reqwest::header::HeaderMap::new();
+            for (k, v) in &preq.headers {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(v),
+                ) {
+                    header_map.insert(name, val);
+                }
             }
-        }
 
-        let response = self
-            .client
-            .post(&preq.url)
-            .headers(header_map)
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::llm(format!("OCR请求失败: {}", e.without_url())))?;
+            self.client
+                .post(&preq.url)
+                .headers(header_map)
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::llm(format!("OCR请求失败: {}", e.without_url())))?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -4312,7 +6158,8 @@ impl LLMManager {
             ))
         })?;
 
-        response_json["choices"][0]["message"]["content"]
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
+        openai_like_json["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| AppError::llm("OCR模型返回内容为空"))
             .map(|s| s.to_string())
@@ -4459,7 +6306,7 @@ impl LLMManager {
                 "基于这道题目，请回答学生的问题。\n\n【重要】公式格式要求（KaTeX 兼容）:\n1. 行内 $...$、块级 $$...$$；确保成对闭合。\n2. 分数用 \\frac{{分子}}{{分母}}；禁止 \\over/\\atop/\\choose。\n3. \\sqrt{{...}} 不得省略花括号。\n4. 中文文本放 \\text{{...}}。\n5. 仅用 KaTeX 支持指令。".to_string()
             }
             "anki_generation" => {
-                "请根据以下学习内容，生成适合制作Anki卡片的问题和答案对。每张卡片应测试一个单一的概念。请以JSON数组格式返回结果，每个对象必须包含 \"front\" (字符串), \"back\" (字符串), \"tags\" (字符串数组) 三个字段。".to_string()
+                "请根据以下学习内容，生成适合制作Anki卡片的问题和答案对。每张卡片应测试一个单一的概念。卡片内容（front/back/tags）的语言必须与学习材料一致：英文材料生成英文卡片，中文材料生成中文卡片，不要翻译。请以JSON数组格式返回结果，每个对象必须包含 \"front\" (字符串), \"back\" (字符串), \"tags\" (字符串数组) 三个字段。".to_string()
             }
             _ => {
                 "请根据提供的题目信息，详细解答问题。".to_string()
@@ -4525,14 +6372,16 @@ impl LLMManager {
 
         // 5. 通过 ProviderAdapter 发送HTTP请求（支持 Gemini 中转）
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
-        let preq = adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
                 &request_body,
+                None,
+                None,
+                "Anki 制卡请求构建失败",
             )
-            .map_err(|e| Self::provider_error("Anki 制卡请求构建失败", e))?;
+            .await?;
 
         log_llm_request_audit(
             "ANKI_CARD",
@@ -4542,48 +6391,53 @@ impl LLMManager {
             self.build_debug_persist_config().as_ref(),
         );
 
-        let mut request_builder = self.client
-            .post(&preq.url)
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
-            .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        for (k, v) in preq.headers {
-            request_builder = request_builder.header(k, v);
-        }
-
-        if let Ok(parsed_url) = Url::parse(&config.base_url) {
-            if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
-                && parsed_url.host_str().is_some()
-            {
-                let origin_val = format!(
-                    "{}://{}",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                let referer_val = format!(
-                    "{}://{}/",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                request_builder = request_builder
-                    .header("Origin", origin_val)
-                    .header("Referer", referer_val);
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client
+                .post(&preq.url)
+                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+            for (k, v) in &preq.headers {
+                request_builder = request_builder.header(k, v);
             }
-        }
 
-        let response = request_builder.json(&preq.body).send().await.map_err(|e| {
-            let cause = e.to_string();
-            let e = e.without_url();
-            let error_msg = if cause.contains("timed out") {
-                format!("Anki制卡API请求超时: {}", e)
-            } else if cause.contains("connect") {
-                format!("无法连接到 Anki 制卡 API 服务器: {}", e)
-            } else {
-                format!("Anki制卡API请求失败: {}", e)
-            };
-            AppError::network(error_msg)
-        })?;
+            if let Ok(parsed_url) = Url::parse(&config.base_url) {
+                if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
+                    && parsed_url.host_str().is_some()
+                {
+                    let origin_val = format!(
+                        "{}://{}",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    let referer_val = format!(
+                        "{}://{}/",
+                        parsed_url.scheme(),
+                        parsed_url.host_str().unwrap_or_default()
+                    );
+                    request_builder = request_builder
+                        .header("Origin", origin_val)
+                        .header("Referer", referer_val);
+                }
+            }
+
+            request_builder.json(&preq.body).send().await.map_err(|e| {
+                let cause = e.to_string();
+                let e = e.without_url();
+                let error_msg = if cause.contains("timed out") {
+                    format!("Anki制卡API请求超时: {}", e)
+                } else if cause.contains("connect") {
+                    format!("无法连接到 Anki 制卡 API 服务器: {}", e)
+                } else {
+                    format!("Anki制卡API请求失败: {}", e)
+                };
+                AppError::network(error_msg)
+            })?
+        };
 
         // 6. 处理HTTP响应
         if !response.status().is_success() {
@@ -4600,22 +6454,7 @@ impl LLMManager {
             .await
             .map_err(|e| AppError::llm(format!("解析 Anki 制卡响应失败: {}", e)))?;
 
-        // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
-            // 非流式：先检测安全阻断
-            if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
-                return Err(AppError::llm(safety_msg));
-            }
-            match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                Ok(v) => v,
-                Err(e) => return Err(AppError::llm(format!("Gemini响应转换失败: {}", e))),
-            }
-        } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model)
-                .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()))?
-        } else {
-            response_json.clone()
-        };
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
 
         // 7. 提取AI生成的内容
         let content_str = openai_like_json["choices"][0]["message"]["content"]

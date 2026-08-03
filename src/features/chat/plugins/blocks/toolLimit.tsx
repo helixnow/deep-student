@@ -7,10 +7,10 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { Warning, Play, CircleNotch } from '@phosphor-icons/react';
+import { Warning, Play, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -26,9 +26,10 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
  * 3. 🆕 提供"继续执行"按钮，点击后在同一消息内继续执行
  */
 const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming, onContinue }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const content = block.content || '';
   const [isContinuing, setIsContinuing] = useState(false);
+  const [continueError, setContinueError] = useState<string | null>(null);
 
   // 🔧 竞态修复：同时检查本地 isContinuing 和 store 的 isStreaming，双重保护
   const isDisabled = isContinuing || !!isStreaming;
@@ -39,12 +40,21 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
   // 🆕 处理继续执行
   const handleContinue = useCallback(async () => {
     if (isDisabled || !onContinue) return;
-    
+
     setIsContinuing(true);
+    setContinueError(null);
     try {
       await onContinue();
     } catch (error: unknown) {
       console.error('[ToolLimitBlock] Continue failed:', error);
+      // 🔧 P3-4：继续执行失败要给用户可见的内联错误，而非仅 console
+      const detail =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : '';
+      setContinueError(detail);
     } finally {
       setIsContinuing(false);
     }
@@ -53,20 +63,20 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
   return (
     <div
       className={cn(
-        'rounded-lg border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 p-4',
+        'rounded-lg border border-warning/30 bg-warning/10 p-4',
         'shadow-sm'
       )}
     >
       {/* 标题 */}
       <div className="flex items-center gap-2 mb-3">
-        <Warning size={20} className="text-amber-600 dark:text-amber-400" />
-        <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+        <Warning size={20} className="text-warning" />
+        <span className="text-sm font-medium text-warning">
           {t('chatV2:tool_limit.title')}
         </span>
       </div>
 
       {/* 内容 */}
-      <div className="text-sm text-amber-900/80 dark:text-amber-100/80 space-y-2">
+      <div className="text-sm text-warning/80 space-y-2">
         {paragraphs.map((paragraph, index) => {
           // 检查是否是列表项
           if (paragraph.includes('•')) {
@@ -76,9 +86,9 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
                 {items.map((item, itemIndex) => (
                   <li
                     key={itemIndex}
-                    className="flex items-start gap-2 text-amber-800/90 dark:text-amber-200/90"
+                    className="flex items-start gap-2 text-warning/90"
                   >
-                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span className="text-warning mt-0.5">•</span>
                     <span>{item.replace(/^[•\s]+/, '')}</span>
                   </li>
                 ))}
@@ -93,19 +103,30 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         })}
       </div>
 
+      {/* 🆕 继续执行失败的内联错误 */}
+      {continueError !== null && (
+        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs">
+          <WarningCircle size={14} className="mt-0.5 flex-shrink-0 text-destructive" />
+          <span className="min-w-0 flex-1 break-words text-destructive">
+            {t('chatV2:tool_limit.continueFailed')}
+            {continueError && <span className="ml-1 text-destructive/80">{continueError}</span>}
+          </span>
+        </div>
+      )}
+
       {/* 🆕 继续执行按钮 + 快捷操作提示 */}
-      <div className="mt-4 pt-3 border-t border-amber-300/30 dark:border-amber-700/30 flex items-center justify-between">
-        <p className="text-xs text-amber-600 dark:text-amber-400">
+      <div className="mt-4 pt-3 border-t border-warning/30 flex items-center justify-between">
+        <p className="text-xs text-warning">
           {t('chatV2:tool_limit.hint')}
         </p>
         
         {onContinue && (
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={handleContinue}
             disabled={isDisabled}
-            className="bg-amber-500 hover:bg-amber-600 text-white"
+            className="bg-warning hover:bg-warning/90 text-white"
           >
             {isDisabled ? (
               <>
@@ -118,7 +139,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
                 {t('chatV2:tool_limit.continue')}
               </>
             )}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>

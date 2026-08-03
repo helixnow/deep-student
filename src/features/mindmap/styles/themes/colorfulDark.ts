@@ -1,9 +1,12 @@
 import type { IStyleTheme } from '../../registry/types';
+import { COLORFUL_DARK_PALETTE } from './palettes';
 
 /**
  * 彩色主题 - 暗色变体
  *
- * 保持彩色渐变、阴影等装饰性风格，将底色适配暗色模式。
+ * 根节点渐变与亮色 colorful 同走 --brand-gradient（暗色下 primary 族自动变浅），
+ * 结构底色适配暗色模式全局 token。
+ * 结构参数（fontSize / padding / borderRadius / 边宽）与 colorful 亮色严格镜像。
  */
 export const colorfulDarkTheme: IStyleTheme = {
   id: 'colorful-dark',
@@ -11,26 +14,26 @@ export const colorfulDarkTheme: IStyleTheme = {
   hidden: true,
   node: {
     root: {
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      foreground: '#FFFFFF',
+      background: 'var(--brand-gradient)',
+      foreground: 'hsl(var(--primary-foreground))',
       border: 'transparent',
       borderRadius: 8,
       fontSize: 18,
       fontWeight: '600',
       padding: '12px 24px',
-      shadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+      shadow: '0 4px 15px hsl(var(--primary) / 0.4)',
     },
     branch: {
-      background: '#2D3748',
-      foreground: 'rgba(255, 255, 255, 0.9)',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
+      background: 'hsl(var(--muted))',
+      foreground: 'hsl(var(--foreground) / 0.9)',
+      border: '1px solid hsl(var(--foreground) / 0.1)',
       borderRadius: 6,
       fontSize: 14,
       padding: '8px 14px',
     },
     leaf: {
       background: 'transparent',
-      foreground: 'rgba(255, 255, 255, 0.8)',
+      foreground: 'hsl(var(--foreground) / 0.8)',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 13,
@@ -39,19 +42,11 @@ export const colorfulDarkTheme: IStyleTheme = {
   },
   edge: {
     type: 'bezier',
-    stroke: 'rgba(255, 255, 255, 0.18)',
+    stroke: 'hsl(var(--foreground) / 0.18)',
     strokeWidth: 2,
   },
-  palette: [
-    '#F56565', // Red
-    '#ED8936', // Orange
-    '#ECC94B', // Yellow
-    '#48BB78', // Green
-    '#4299E1', // Blue
-    '#9F7AEA', // Purple
-    '#ED64A6', // Pink
-  ],
+  palette: COLORFUL_DARK_PALETTE,
   canvas: {
-    background: '#1A202C',
+    background: 'var(--mm-bg)',
   },
 };

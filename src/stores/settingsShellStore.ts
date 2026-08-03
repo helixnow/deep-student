@@ -17,6 +17,7 @@ interface SettingsShellState {
 
 const DATA_GOVERNANCE_TABS: ReadonlySet<string> = new Set([
   'overview',
+  'recovery',
   'archive',
   'backup',
   'sync',
@@ -33,11 +34,15 @@ const SETTINGS_TAB_MAPPING: Record<string, string> = {
   app: 'general',
   general: 'general',
   appearance: 'appearance',
+  automation: 'automation',
+  automations: 'automation',
   api: 'apis',
   apis: 'apis',
   search: 'search',
   models: 'models',
   mcp: 'mcp',
+  plugins: 'plugins',
+  plugin: 'plugins',
   statistics: 'statistics',
   data: 'data-governance',
   'data-governance': 'data-governance',

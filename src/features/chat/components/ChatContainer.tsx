@@ -12,36 +12,35 @@
 // 确保 Chat V2 初始化（样式 + 插件注册）
 import '../init';
 
-import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import type { StoreApi } from 'zustand';
+import type { ChatStore } from '../core/types';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, Info } from '@phosphor-icons/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Info } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { MessageList } from './MessageList';
 import { InputBarV2 } from './input-bar';
-import { ChatErrorBoundary } from './ChatErrorBoundary';
+import { ChatErrorBoundary, ErrorFallback } from './ChatErrorBoundary';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 // 🔧 严重修复：使用 useConnectedSession 确保后端连接
 import { useConnectedSession } from '../hooks/useConnectedSession';
-import { useSessionStatus } from '../hooks/useChatStore';
 // 🔧 多变体支持：获取可用模型列表
 import { useAvailableModels } from '../hooks/useAvailableModels';
 // 🆕 Canvas 上下文引用管理 - 白板功能已移除
 import { modeRegistry } from '../registry';
 // 🗑️ Anki 面板已从 Chat V2 移除
 // 🔧 TextbookContext 已废弃，教材功能通过 DSTU + Learning Hub 实现
-// 🆕 工作区状态恢复
-import { useWorkspaceStore } from '../workspace/workspaceStore';
 // 🆕 2026-01-20: 工作区状态恢复
 import { useWorkspaceRestore } from '../workspace/hooks';
 import { AgentTaskPanel } from './AgentTaskPanel';
 import { groupCache } from '../core/store/groupCache';
+import { isStoreSubagentSession } from '../core/subagentSession';
 // ★ 图谱模块已废弃 - GraphSelectDialog 已移除
 // import { GraphSelectDialog } from '@/components/graph-manager/GraphSelectDialog';
 // 🆕 工具审批卡片（文档 29 P1-3）- 已移至 InputBarV2 内部渲染
-// 🆕 AI 内容免责提示（合规）
 
 // ============================================================================
 // Props 定义
@@ -66,6 +65,60 @@ export interface ChatContainerProps {
 // 组件实现
 // ============================================================================
 
+// 冷启动骨架屏。定义在组件外：若在 ChatContainer 内部定义，每次渲染都会生成
+// 新的组件类型，导致骨架子树整体 remount、animate-pulse 动画反复重启
+const ChatSkeleton: React.FC = () => (
+  <ThreadContentShell
+    data-slot="chat-loading-shell"
+    className="flex h-full flex-col px-4 py-4 md:px-8"
+  >
+    <div className="flex h-full flex-col animate-pulse">
+      {/* 模拟消息列表 */}
+      <div data-slot="chat-loading-messages" className="flex-1 space-y-4">
+        {/* 用户消息骨架 */}
+        <div className="flex justify-end">
+          <div className="h-16 w-2/3 rounded-lg bg-muted" />
+        </div>
+        {/* 助手消息骨架 */}
+        <div className="flex justify-start gap-3">
+          <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-full rounded bg-muted" />
+            <div className="h-4 w-3/4 rounded bg-muted" />
+            <div className="h-4 w-1/2 rounded bg-muted" />
+          </div>
+        </div>
+        {/* 用户消息骨架 */}
+        <div className="flex justify-end">
+          <div className="h-12 w-1/2 rounded-lg bg-muted" />
+        </div>
+        {/* 助手消息骨架 */}
+        <div className="flex justify-start gap-3">
+          <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-full rounded bg-muted" />
+            <div className="h-4 w-2/3 rounded bg-muted" />
+          </div>
+        </div>
+      </div>
+      {/* 输入框骨架 */}
+      <div data-slot="chat-loading-composer" className="mt-4">
+        <div className="chat-loading-shell__composer-panel rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--shell-inspector-panel)] p-3 shadow-[var(--shadow-shell-soft)]">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-muted" />
+            <div className="h-8 w-24 rounded-full bg-muted" />
+            <div className="h-8 w-8 rounded-full bg-muted" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-4 w-5/6 rounded bg-muted" />
+            <div className="h-4 w-2/5 rounded bg-muted" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </ThreadContentShell>
+);
+
 /**
  * ChatContainer 主容器组件
  *
@@ -86,7 +139,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const mobileLayout = useMobileLayoutSafe();
-  const isMobile = mobileLayout?.isMobile ?? (typeof window !== 'undefined' && window.innerWidth < 768);
+  // MobileLayoutProvider 缺失时回退到 useBreakpoint（订阅 resize，
+  // 避免只读一次 window.innerWidth 导致空态布局分支在窗口变化后粘死）
+  const { isSmallScreen } = useBreakpoint();
+  const isMobile = mobileLayout?.isMobile ?? isSmallScreen;
 
   // ★ 文梣28清理：移除 currentSubject，记忆提取功能内部获取 subject
 
@@ -96,17 +152,42 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 2. TauriAdapter 被设置并开始监听后端事件
   // 3. 发送消息、中断流式等操作能正常工作
   const {
-    store,
+    store: targetStore,
     isReady: adapterReady,
     error: adapterError,
   } = useConnectedSession(sessionId, { preload: true });
 
-  // 获取会话状态
-  const sessionStatus = useSessionStatus(store);
-  
-  // 🚀 性能优化：直接从 Store 读取 isDataLoaded
-  // 即使 adapter 未就绪，只要数据已加载就可以渲染消息列表
-  const isDataLoaded = useStore(store, (s) => s.isDataLoaded);
+  const targetDataLoaded = useStore(targetStore, (s) => s.isDataLoaded);
+  const targetCanRender = targetDataLoaded || adapterReady;
+
+  // 切换至未加载会话时保留上一会话画面，避免空白等待（LRU 命中则 targetCanRender 为 true，不走此路径）
+  const lastRenderableRef = useRef<{ sessionId: string; store: StoreApi<ChatStore> } | null>(null);
+  if (targetCanRender) {
+    lastRenderableRef.current = { sessionId, store: targetStore };
+  }
+
+  const isSwitchingToUnloaded =
+    !targetCanRender
+    && lastRenderableRef.current !== null
+    && lastRenderableRef.current.sessionId !== sessionId;
+  const isColdStart = !targetCanRender && lastRenderableRef.current === null;
+
+  const store = targetCanRender
+    ? targetStore
+    : (lastRenderableRef.current?.store ?? targetStore);
+
+  // 子代理会话只读：按当前展示的 store 判定。切换到未加载会话时仍展示旧
+  // store，不能用目标 prop sessionId 提前隐藏其输入栏或错误显示只读提示。
+  const displayedSessionId = useStore(store, (s) => s.sessionId);
+  const displayedMode = useStore(store, (s) => s.mode);
+  const displayedSessionMetadata = useStore(store, (s) => s.sessionMetadata);
+  const isSubagentSession = isStoreSubagentSession({
+    sessionId: displayedSessionId,
+    mode: displayedMode,
+    sessionMetadata: displayedSessionMetadata,
+  });
+  const effectiveShowInputBar = showInputBar && !isSubagentSession;
+
   const messageCount = useStore(store, (s) => s.messageOrder.length);
   const sessionGroupId = useStore(store, (s) => s.groupId);
   const resolvedEmptyStateGroupName = emptyStateGroupName ?? (
@@ -115,28 +196,32 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       : null
   );
 
-  // 🚀 防闪动优化：只有加载超过 500ms 才显示骨架屏
-  const isActuallyLoading = !isDataLoaded && !adapterReady;
-  const [showSkeleton, setShowSkeleton] = useState(false);
-  
-  useEffect(() => {
-    if (isActuallyLoading) {
-      // 加载开始，延迟 500ms 后显示骨架屏
-      const timer = setTimeout(() => {
-        setShowSkeleton(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      // 加载完成，立即隐藏骨架屏
-      setShowSkeleton(false);
-    }
-  }, [isActuallyLoading]);
+  // 仅冷启动（无任何可展示会话）时显示骨架屏；切换中保留旧画面
+  const isActuallyLoading = isColdStart;
 
-  // 🆕 阻塞交互请求
-  const pendingApprovalRequest = useStore(store, (s) => s.pendingBlockingInteraction);
+  // 会话切换轻入场：不 remount MessageList，仅重播包裹层 animation。
+  // 以展示 store 为基准（而非 sessionId）：切到未缓存会话时旧画面继续显示，
+  // 直到数据就绪 store 才切换——此刻才是新内容真正落地、应播入场的时机
+  const threadShellRef = useRef<HTMLDivElement>(null);
+  const prevDisplayStoreRef = useRef(store);
+  useEffect(() => {
+    if (prevDisplayStoreRef.current === store) return;
+    prevDisplayStoreRef.current = store;
+    const el = threadShellRef.current;
+    if (!el) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    el.classList.remove('chat-thread-enter');
+    void el.offsetHeight;
+    el.classList.add('chat-thread-enter');
+  }, [store]);
+
+  // 🆕 阻塞交互请求（审批卡片）已移至 InputBarV2 内部订阅渲染，
+  // 此处不再订阅 pendingBlockingInteraction，避免整个容器随之重渲染
 
   // 🔧 P1修复：使用响应式订阅获取模式，而非直接调用 getState()
-  const mode = useStore(store, (s) => s.mode);
+  const mode = displayedMode;
   // 使用 getResolved 获取合并了继承链的完整插件
   const modePlugin = useMemo(() => modeRegistry.getResolved(mode), [mode]);
 
@@ -159,142 +244,61 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 🆕 Canvas 上下文引用管理 - 白板功能已移除
   // useCanvasContextRef({ store });
 
-
-  // 创建骨架屏组件
-  const ChatSkeleton = () => (
-    <ThreadContentShell
-      data-slot="chat-loading-shell"
-      className="flex h-full flex-col px-4 py-4 md:px-8"
-    >
-      <div className="flex h-full flex-col animate-pulse">
-        {/* 模拟消息列表 */}
-        <div data-slot="chat-loading-messages" className="flex-1 space-y-4">
-          {/* 用户消息骨架 */}
-          <div className="flex justify-end">
-            <div className="h-16 w-2/3 rounded-lg bg-muted" />
-          </div>
-          {/* 助手消息骨架 */}
-          <div className="flex justify-start gap-3">
-            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-full rounded bg-muted" />
-              <div className="h-4 w-3/4 rounded bg-muted" />
-              <div className="h-4 w-1/2 rounded bg-muted" />
-            </div>
-          </div>
-          {/* 用户消息骨架 */}
-          <div className="flex justify-end">
-            <div className="h-12 w-1/2 rounded-lg bg-muted" />
-          </div>
-          {/* 助手消息骨架 */}
-          <div className="flex justify-start gap-3">
-            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-full rounded bg-muted" />
-              <div className="h-4 w-2/3 rounded bg-muted" />
-            </div>
-          </div>
-        </div>
-        {/* 输入框骨架 */}
-        <div data-slot="chat-loading-composer" className="mt-4">
-          <div className="chat-loading-shell__composer-panel rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--shell-inspector-panel)] p-3 shadow-[var(--shadow-shell-soft)]">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-muted" />
-              <div className="h-8 w-24 rounded-full bg-muted" />
-              <div className="h-8 w-8 rounded-full bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <div className="h-4 w-5/6 rounded bg-muted" />
-              <div className="h-4 w-2/5 rounded bg-muted" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </ThreadContentShell>
-  );
-
   // 🚀 性能优化：不再等待 adapterReady
   // 只要 store 存在，就可以渲染消息列表和输入框
   // adapter 未就绪时，只是无法发送消息，但可以查看历史记录
-  //
-  // 🚀 防闪动优化：只有加载超过 500ms 才显示骨架屏
-  // 如果加载很快（< 500ms），不显示任何加载指示器，避免闪动
-  if (isActuallyLoading && showSkeleton) {
+  if (isActuallyLoading) {
     return (
-      <div className={cn('flex flex-col h-full', className)}>
+      <div className={cn('flex flex-col h-full chat-loading-shell-defer', className)}>
         <ChatSkeleton />
       </div>
     );
   }
-  
-  // 加载中但未超过 500ms，显示空白而非骨架屏
-  if (isActuallyLoading) {
-    return (
-      <div className={cn('flex flex-col h-full', className)} />
-    );
-  }
 
-  // 适配器初始化错误
+  // 适配器初始化错误 —— 与错误边界 fallback 共用同一套错误视觉（ErrorFallback）
   if (adapterError) {
     return (
-      <div className={cn(
-        'flex flex-col items-center justify-center h-full p-4',
-        'text-center',
-        className
-      )}>
-        <div className="text-destructive mb-4">
-          <svg
-            className="w-12 h-12 mx-auto mb-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
-          <p className="text-sm font-medium">{t('error.loadFailed')}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {adapterError}
-          </p>
-        </div>
+      <div className={cn('flex flex-col h-full', className)}>
+        <ErrorFallback
+          title={t('error.loadFailed')}
+          error={adapterError}
+        />
       </div>
     );
   }
 
-  const shouldUseEmptyComposerLayout = showInputBar && (forceEmptyPreview || messageCount === 0);
+  const shouldUseEmptyComposerLayout = effectiveShowInputBar && (forceEmptyPreview || messageCount === 0);
   const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
   const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
-  const shouldShowDisclaimer = showInputBar && messageCount > 0;
 
   const renderMessageList = ({
     className: messageListSlotClassName,
     compact = false,
-    showBottomFade = true,
   }: {
     className?: string;
     compact?: boolean;
-    showBottomFade?: boolean;
   } = {}) => (
+    // 不按 sessionId remount：MessageList 内部随 store 切换重置；入场动画由 threadShellRef 重播
     <div
+      ref={threadShellRef}
       className={cn(
-        compact ? 'relative overflow-visible' : 'flex-1 overflow-hidden relative',
-        messageListSlotClassName
+        'chat-thread-enter relative',
+        compact ? 'relative overflow-visible' : 'min-h-0 flex-1 overflow-hidden relative',
+        messageListSlotClassName,
+        isSwitchingToUnloaded && 'pointer-events-none'
       )}
     >
+      {isSwitchingToUnloaded ? (
+        // 纯色蒙层（不用 backdrop-blur：大面积 backdrop-filter 在弱机上掉帧）
+        <div
+          aria-hidden
+          className="absolute inset-0 z-20 bg-[color:var(--shell-workspace-panel)]/60"
+        />
+      ) : null}
       <MessageList
-        key={sessionId}
         store={store}
         emptyStateGroupName={resolvedEmptyStateGroupName}
         forceEmptyPreview={forceEmptyPreview}
-      />
-      <div
-        aria-hidden="true"
-        className="scroll-fade scroll-fade--bottom"
-        style={{ '--scroll-fade-surface': 'var(--shell-workspace-panel)' } as React.CSSProperties}
       />
     </div>
   );
@@ -305,31 +309,23 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     </div>
   ) : null;
 
-  const renderDisclaimer = (className?: string) => shouldShowDisclaimer ? (
-    <div className={cn('text-center px-4 py-1', className)}>
-      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
-        <Info size={12} className="h-3 w-3" />
-        {t('common:aiDisclaimer.chatHint')}
-      </span>
-    </div>
-  ) : null;
-
   const renderInputBar = (
     className?: string,
     motionState: 'empty' | 'docked' = 'docked',
     autoFocusOnMount = false
-  ) => showInputBar ? (
+  ) => effectiveShowInputBar ? (
     <div
       className={cn(
         'chat-composer-motion-frame',
         motionState === 'empty'
           ? 'chat-composer-motion-frame--empty'
-          : 'chat-composer-motion-frame--docked'
+          : 'chat-composer-motion-frame--docked',
+        isSwitchingToUnloaded && 'pointer-events-none opacity-50'
       )}
     >
       <div className="w-full">
         <InputBarV2
-          store={store}
+          store={targetCanRender ? targetStore : store}
           textbookOpen={textbookOpen}
           onTextbookToggle={onTextbookToggle}
           availableModels={availableModels}
@@ -338,14 +334,23 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         />
       </div>
     </div>
+  ) : isSubagentSession && showInputBar ? (
+    // 子代理会话打开为整页时：以只读提示替代输入栏
+    <div className="flex-shrink-0 px-4 py-2 text-center">
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60 select-none">
+        <Info size={12} className="h-3 w-3" />
+        {t('chatV2:subagentSession.readOnlyNotice')}
+      </span>
+    </div>
   ) : null;
 
   return (
-    <ChatErrorBoundary>
+    // resetKey：切换会话自动走出错误态并 remount 子树；重试逻辑内建于边界（mountCycle remount）
+    <ChatErrorBoundary resetKey={sessionId}>
     <div
       className={cn(
         'chat-v2',
-        'flex flex-col h-full',
+        'flex flex-col h-full min-h-0',
         'bg-[color:var(--shell-workspace-panel)]',
         'relative',
         'overflow-hidden',
@@ -365,27 +370,21 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             {renderMessageList({
               className: 'chat-empty-composer-layout__message-list',
               compact: true,
-              showBottomFade: false,
             })}
             {renderFooter('chat-empty-composer-layout__footer')}
-            {renderDisclaimer('chat-empty-composer-layout__disclaimer')}
             <AgentTaskPanel store={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
           </ThreadContentShell>
         </div>
       ) : (
         <>
-          {/* 消息列表 - 与输入框布局完全分离 */}
-          {/* 🚀 性能优化：使用 key={sessionId} 强制重新挂载组件 */}
+          {/* 消息列表 - 与输入框布局完全分离；切换会话不 remount，由 MessageList 随 store 更新 */}
           {renderMessageList()}
 
           {/* 模式插件 Footer */}
           {renderFooter()}
 
           {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
-
-          {/* AI 内容免责提示（合规要求） */}
-          {renderDisclaimer()}
 
           {/* Agent todo panel — 贴在输入栏上方 */}
           <AgentTaskPanel store={store} />
@@ -395,14 +394,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         </>
       )}
 
-      {/* 🗑️ Anki 面板已从 Chat V2 移除 */}
-
-      {/* 记忆提取对话框 */}
-      {(
-        <>
-          {/* ★ 图谱模块已废弃 - GraphSelectDialog 已移除 */}
-        </>
-      )}
     </div>
     </ChatErrorBoundary>
   );

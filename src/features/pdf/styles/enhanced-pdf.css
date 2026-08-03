@@ -5,9 +5,15 @@
 
 .ds-pdf-viewer {
   position: relative;
+  min-height: 0;
   background: transparent;
   color: hsl(var(--foreground));
   container-type: inline-size;
+  /* 布局派生变量：底栏高度 / 进度细线高度 / 底部手势安全区。
+     浮层避让统一从这里推导，不再散落魔数（64/112px）。 */
+  --ds-pdf-toolbar-h: 36px;
+  --ds-pdf-progress-h: 3px;
+  --ds-pdf-safe-bottom: max(var(--mobile-safe-area-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 
 /* 自定义加载样式 */
@@ -143,8 +149,9 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  height: 36px;
-  padding: 0 8px;
+  /* 高度 = 内容高 + 底部手势安全区（教材嵌入路径同样生效） */
+  height: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-safe-bottom));
+  padding: 0 8px var(--ds-pdf-safe-bottom);
   background: hsl(var(--card));
   border-top: 1px solid hsl(var(--border) / 0.5);
   flex-shrink: 0;
@@ -154,6 +161,25 @@
 
 .ds-pdf__toolbar--bottom {
   order: 999;
+  transition: height .2s ease, opacity .2s ease, padding .2s ease;
+}
+
+/* 轻点内容区隐藏 chrome：底栏折叠让位给正文，进度细线保持常显 */
+.ds-pdf-viewer.chrome-hidden .ds-pdf__toolbar--bottom {
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__toolbar--bottom {
+    transition: none;
+  }
 }
 
 .ds-pdf__toolbar-left,
@@ -182,11 +208,14 @@
   right: 0;
   min-width: 180px;
   padding: 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-shell-control, 12px);
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
   box-shadow: 0 4px 16px hsl(var(--ring) / 0.12);
   z-index: 200;
+  /* 横屏矮视口下菜单项超出可视高度时内部滚动（对齐缩放菜单做法） */
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
 }
 
 .ds-more-dropdown--up {
@@ -211,7 +240,7 @@
 }
 
 .ds-more-item:hover {
-  background: hsl(var(--accent));
+  background: var(--interactive-hover, hsl(var(--accent)));
   color: hsl(var(--accent-foreground));
 }
 
@@ -260,7 +289,7 @@
 
 .ds-btn:hover:not(:disabled) {
   color: hsl(var(--foreground));
-  background: hsl(var(--muted) / .5);
+  background: var(--interactive-hover, hsl(var(--muted) / .5));
 }
 
 .ds-btn:disabled {
@@ -292,20 +321,28 @@
 }
 
 .ds-input {
-  width: 40px;
+  width: 44px;
   height: 24px;
   padding: 0 4px;
   border-radius: 6px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border) / 0.7);
   background: hsl(var(--muted) / .3);
   color: hsl(var(--foreground));
   text-align: center;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.ds-input:hover {
+  border-color: hsl(var(--border));
+  background: hsl(var(--muted) / .5);
 }
 
 .ds-input:focus {
   outline: none;
   border-color: hsl(var(--ring));
+  background: hsl(var(--background));
   box-shadow: 0 0 0 1px hsl(var(--ring));
 }
 
@@ -344,12 +381,17 @@
   bottom: 100%;
   margin-bottom: 4px;
   min-width: 120px;
-  padding: 4px;
-  border-radius: 8px;
+  max-height: min(52vh, 420px);
+  border-radius: var(--radius-shell-control, 12px);
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
   box-shadow: 0 4px 12px hsl(var(--ring) / 0.1);
   z-index: 100;
+}
+
+.ds-zoom-dropdown-viewport {
+  max-height: inherit;
+  padding: 4px;
 }
 
 .ds-zoom-option {
@@ -358,15 +400,17 @@
   padding: 8px 12px;
   text-align: left;
   font-size: 13px;
+  white-space: nowrap;
   border: none;
   background: transparent;
   color: hsl(var(--popover-foreground));
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: calc(var(--radius-shell-control, 12px) - 6px);
+  transition: background 150ms ease, color 150ms ease;
 }
 
 .ds-zoom-option:hover {
-  background: hsl(var(--accent));
+  background: var(--interactive-hover, hsl(var(--accent)));
   color: hsl(var(--accent-foreground));
 }
 
@@ -390,18 +434,14 @@
 
 .ds-search-input {
   flex: 1;
+  /* 允许在窄屏被压缩，避免命中计数/按钮把搜索栏挤出横向溢出 */
+  min-width: 0;
   height: 32px;
   padding: 0 12px;
   border-radius: 8px;
   border: 1px solid hsl(var(--border));
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-}
-
-.ds-search-input:focus {
-  outline: none;
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 1px hsl(var(--ring));
 }
 
 .ds-search-info {
@@ -421,6 +461,7 @@
 .ds-pdf__main {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -430,10 +471,43 @@
 
 .ds-pdf__sidebar {
   width: 200px;
-  background: hsl(var(--card));
-  border-right: 1px solid hsl(var(--border));
-  overflow-y: auto;
+  min-height: 0;
+  /* 对话标准 token：透明面 + 右缘软分隔线（阅读器内部面板保留 200px 层级宽度） */
+  background: transparent;
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+  overflow: hidden;
   flex-shrink: 0;
+}
+
+/* 桌面端：侧栏常挂，开合走宽度过渡（内容面板保持固定宽度避免挤压重排） */
+@media (min-width: 640px) {
+  .ds-pdf__sidebar {
+    width: 0;
+    border-right-color: transparent;
+    overflow: hidden;
+    transition:
+      width var(--page-slide-dur, 200ms) var(--ease-shell, cubic-bezier(0.25, 0.1, 0.25, 1)),
+      border-right-color var(--page-slide-dur, 200ms) var(--ease-shell, cubic-bezier(0.25, 0.1, 0.25, 1));
+  }
+
+  .ds-pdf__sidebar--open {
+    width: 200px;
+    border-right-color: var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+  }
+
+  .ds-pdf__outline,
+  .ds-pdf__thumbnails-panel {
+    width: 200px;
+  }
+}
+
+/* 大纲跳转失败的轻提示 */
+.ds-outline-tip {
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--destructive));
+  border-bottom: 1px solid hsl(var(--border) / 0.4);
 }
 
 
@@ -463,13 +537,17 @@
   padding: 8px 0;
 }
 
+/* 目录行对齐对话标准 nav-row token（二级面板保留 200px 宽度层级） */
 .ds-outline-item {
   display: block;
-  width: 100%;
-  padding: 8px 12px;
+  width: calc(100% - 8px);
+  min-height: 32px;
+  margin: 0 4px;
+  padding: 6px 10px;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   border: none;
+  border-radius: var(--shell-nav-row-radius, 14px);
   background: transparent;
   color: hsl(var(--foreground));
   cursor: pointer;
@@ -480,7 +558,13 @@
 }
 
 .ds-outline-item:hover {
-  background: hsl(var(--accent));
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.ds-outline-item:focus-visible,
+.ds-outline-item[aria-current='true'],
+.ds-outline-item.active {
+  background: var(--interactive-selected, hsl(var(--accent)));
 }
 
 /* 缩略图面板 */
@@ -517,7 +601,8 @@
 
 .ds-thumbnail-item.active {
   border-color: hsl(var(--primary));
-  background: hsl(var(--primary) / .1);
+  background: hsl(var(--primary) / .08);
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.35);
 }
 
 .ds-thumbnail-item canvas,
@@ -565,7 +650,8 @@
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   box-shadow: 0 4px 12px hsl(var(--ring) / 0.15);
-  z-index: 1000;
+  /* 消费全局层级 token（fallback 保持旧值）；z-index 全局统一待全局代理处理 */
+  z-index: var(--z-popover, 1000);
 }
 
 .ds-highlight-color {
@@ -588,9 +674,26 @@
 
 .ds-pdf__progress-bar {
   position: relative;
-  height: 3px;
+  height: var(--ds-pdf-progress-h);
   background: hsl(var(--muted));
   flex-shrink: 0;
+  cursor: pointer;
+  /* 拖动跳页由 pointer 事件接管，禁掉浏览器手势 */
+  touch-action: none;
+}
+
+/* 扩大命中范围（视觉细线不变）：细线难以精确点按/拖动 */
+.ds-pdf__progress-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  bottom: -4px;
+}
+
+.ds-pdf__progress-bar.scrubbing .ds-pdf__progress-fill {
+  transition: none;
 }
 
 .ds-pdf__progress-fill {
@@ -608,41 +711,23 @@
   background: hsl(var(--background));
   padding: 0 4px;
   border-radius: 4px;
+  pointer-events: none;
+}
+
+.ds-pdf__progress-bar.scrubbing .ds-pdf__progress-text {
+  color: hsl(var(--primary));
+  font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================================
-   批注指示器
+   批注（原右下角 FAB 指示器已收入底部工具栏按钮）
    ============================================================================ */
-
-.ds-pdf__highlights-indicator {
-  position: fixed;
-  right: 16px;
-  bottom: 60px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  background: hsl(var(--popover));
-  border: 1px solid hsl(var(--border));
-  border-radius: 20px;
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-  box-shadow: 0 2px 8px hsl(var(--ring) / 0.1);
-  z-index: 50;
-  cursor: pointer;
-  transition: background .15s ease, transform .15s ease;
-}
-
-.ds-pdf__highlights-indicator:hover {
-  background: hsl(var(--accent));
-  transform: scale(1.05);
-}
 
 /* 高亮覆盖层 */
 .ds-pdf__highlight-layer {
   position: absolute;
-  top: 0;
-  left: 0;
+  /* 铺满页面 wrapper：v2 高亮使用百分比坐标，需要非零尺寸的定位容器 */
+  inset: 0;
   pointer-events: none;
   z-index: 5;
 }
@@ -660,11 +745,11 @@
   opacity: 0.5;
 }
 
-/* 批注列表面板 */
+/* 批注列表面板（避让距离由底栏高度/进度线/safe-area 派生） */
 .ds-pdf__highlights-panel {
   position: fixed;
   right: 16px;
-  bottom: 100px;
+  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 12px);
   width: 280px;
   max-height: 400px;
   background: hsl(var(--popover));
@@ -679,7 +764,10 @@
 
 .ds-highlights-list {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+}
+
+.ds-highlights-list-viewport {
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -726,7 +814,7 @@
 }
 
 .ds-highlight-meta {
-  font-size: 10px;
+  font-size: 11px;
   color: hsl(var(--muted-foreground));
   margin-top: 4px;
 }
@@ -806,6 +894,44 @@
   border-radius: 4px;
 }
 
+/* ACR 4.0（A7）：agent gotoPage 跳页后目标页高亮渐隐演出（只动 opacity） */
+.ds-pdf__page-wrapper--agent-focus::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 3px hsl(var(--primary) / 0.75),
+    inset 0 0 24px hsl(var(--primary) / 0.18);
+  opacity: 0;
+  animation: ds-pdf-agent-focus-fade 900ms ease-out forwards;
+}
+
+@keyframes ds-pdf-agent-focus-fade {
+  0% { opacity: 1; }
+  35% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* reduced-motion：无动画的静态短高亮（由 JS 定时移除类名结束） */
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__page-wrapper--agent-focus::after {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* forced-colors：系统高亮色描边，去掉半透明投影 */
+@media (forced-colors: active) {
+  .ds-pdf__page-wrapper--agent-focus::after {
+    box-shadow: none;
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+}
+
 /* 暗色模式下页面背景 */
 .ds-pdf-viewer.dark-mode .ds-pdf__page-wrapper {
   box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.3);
@@ -874,6 +1000,47 @@
   font-weight: 300;
 }
 
+/* 页面渲染中的 shimmer 骨架（react-pdf Page loading 占位） */
+.ds-pdf__page-shimmer {
+  border-radius: 4px;
+  background:
+    linear-gradient(
+      100deg,
+      hsl(var(--muted) / 0.25) 40%,
+      hsl(var(--muted) / 0.55) 50%,
+      hsl(var(--muted) / 0.25) 60%
+    );
+  background-size: 200% 100%;
+  animation: ds-pdf-shimmer 1.4s ease-in-out infinite;
+}
+
+.ds-pdf__content.dark-reading .ds-pdf__page-shimmer {
+  background:
+    linear-gradient(
+      100deg,
+      hsl(220 13% 16%) 40%,
+      hsl(220 13% 22%) 50%,
+      hsl(220 13% 16%) 60%
+    );
+  background-size: 200% 100%;
+}
+
+@keyframes ds-pdf-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__page-shimmer {
+    animation: none;
+    background: hsl(var(--muted) / 0.3);
+  }
+}
+
 /* ============================================================================
    加载中和错误状态
    ============================================================================ */
@@ -903,6 +1070,28 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__loading-spinner {
+    animation-duration: 2.5s;
+  }
+}
+
+/* 文档加载进度条（onLoadProgress，url 源可拿到 total 时显示） */
+.ds-pdf__load-progress {
+  width: min(240px, 60%);
+  height: 4px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  overflow: hidden;
+}
+
+.ds-pdf__load-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: hsl(var(--primary));
+  transition: width 150ms ease;
+}
+
 .ds-pdf__error {
   display: flex;
   flex-direction: column;
@@ -911,6 +1100,73 @@
   height: 100%;
   gap: 12px;
   color: hsl(var(--destructive));
+}
+
+/* ============================================================================
+   密码 PDF 内联解锁表单（居中内联，非模态）
+   ============================================================================ */
+
+.ds-pdf__password {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: auto;
+  padding: 32px 28px;
+  max-width: 320px;
+  text-align: center;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--card));
+}
+
+.ds-pdf__password-icon {
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 4px;
+}
+
+.ds-pdf__password-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__password-desc {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 8px;
+}
+
+.ds-pdf__password-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+}
+
+.ds-pdf__password-input:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.ds-pdf__password-input[aria-invalid='true'] {
+  border-color: hsl(var(--destructive) / 0.6);
+}
+
+.ds-pdf__password-error {
+  font-size: 12px;
+  color: hsl(var(--destructive));
+}
+
+.ds-pdf__password-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 /* ============================================================================
@@ -923,6 +1179,26 @@
 
 .ds-search-highlight.current {
   background-color: hsl(var(--primary) / 0.6) !important;
+}
+
+/* 页内搜索命中（customTextRenderer 注入的 <mark>）。
+   文本层文字本身透明，mark 仅提供底色；当前命中用更强的强调色 + 描边。 */
+.ds-pdf__page-wrapper .react-pdf__Page__textContent mark.ds-search-mark {
+  background-color: hsl(var(--primary) / 0.28);
+  color: transparent;
+  padding: 0;
+  border-radius: 2px;
+}
+
+.ds-pdf__page-wrapper .react-pdf__Page__textContent mark.ds-search-mark--current {
+  background-color: hsl(var(--primary) / 0.55);
+  outline: 1.5px solid hsl(var(--primary));
+  outline-offset: 0.5px;
+}
+
+/* 暗色阅读模式下页面底色变深，加大命中底色不透明度保持可辨识 */
+.ds-pdf__content.dark-reading mark.ds-search-mark {
+  background-color: hsl(var(--primary) / 0.45);
 }
 
 /* ============================================================================
@@ -981,12 +1257,14 @@
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 9999;
+  z-index: var(--z-modal);
   background: hsl(var(--background));
 }
 
 .ds-pdf-viewer.fullscreen .ds-pdf__content {
-  height: calc(100vh - 60px);
+  /* 从工具栏/进度条/safe-area token 派生（原 60px 魔数在移动端 48px 工具栏
+     + 刘海屏 safe-area 下会算错可视高度）；dvh 跟随移动端动态视口 */
+  height: calc(100dvh - var(--ds-pdf-toolbar-h) - var(--ds-pdf-progress-h) - var(--ds-pdf-safe-bottom));
 }
 
 .ds-pdf-viewer.fullscreen .ds-pdf__toolbar {
@@ -1018,21 +1296,8 @@
 
 /* 响应式：紧凑模式由 JS ResizeObserver 控制，无需 flex-wrap */
 @media (max-width: 639.98px) {
-  /* 侧边栏默认隐藏 */
-  .ds-pdf__sidebar {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 100;
-    box-shadow: 2px 0 8px hsl(var(--shadow-base) / 0.1);
-    transform: translateX(-100%);
-    transition: transform .2s ease;
-  }
-
-  .ds-pdf__sidebar.visible {
-    transform: translateX(0);
-  }
+  /* ≤640 侧滑 overlay 侧栏已移除：目录/缩略图改为 .ds-pdf__mobile-panel
+     全屏内联子屏（见下方「移动端内联子屏」段），TSX 在小屏不再渲染 .ds-pdf__sidebar */
 
   /* 页面选择按钮紧凑化 */
   .ds-pdf__select-btn {
@@ -1083,11 +1348,11 @@
   margin-left: 2px;
 }
 
-/* 书签列表面板 */
+/* 书签列表面板（避让距离由底栏高度/进度线/safe-area 派生） */
 .ds-pdf__bookmarks-panel {
   position: fixed;
   right: 16px;
-  bottom: 60px;
+  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 12px);
   width: 300px;
   max-height: 450px;
   background: hsl(var(--popover));
@@ -1102,7 +1367,10 @@
 
 .ds-bookmarks-list {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+}
+
+.ds-bookmarks-list-viewport {
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1240,19 +1508,379 @@
   color: hsl(var(--destructive));
 }
 
-/* 移动端响应式 */
-@media (max-width: 639.98px) {
+/* ≤640 书签列表已改为全屏内联子屏，浮动面板规则不再需要；
+   徽章不再额外缩小（9px 不可读，保持基础 10px 下限） */
+
+/* ============================================================================
+   移动端（<768，与 App shell isSmallScreen 对齐）
+   ★ 2026-07-08 移动端审计：固定浮层避让底部工具栏与手势安全区
+   ============================================================================ */
+
+@media (max-width: 767.98px) {
+  /* 浮动面板（640–767.98 区间仍使用）：收窄并贴边；
+     底部避让已由基础规则从 --ds-pdf-toolbar-h / safe-area 派生；
+     dvh 跟随移动端动态视口（地址栏/键盘收放） */
+  .ds-pdf__highlights-panel,
   .ds-pdf__bookmarks-panel {
     right: 8px;
-    bottom: 50px;
     width: calc(100vw - 16px);
     max-width: 320px;
-    max-height: 350px;
+    max-height: 50dvh;
   }
 
-  .ds-bookmark-count {
-    font-size: 9px;
-    min-width: 14px;
-    height: 14px;
+  /* 目录/缩略图侧栏：640–767.98 区间加宽（≤640 已改为全屏内联子屏）。
+     宽度规则只作用于打开态，避免覆盖收起态的 width: 0。 */
+  .ds-pdf__sidebar--open {
+    width: min(280px, 82vw);
+  }
+
+  .ds-pdf__sidebar--open .ds-pdf__outline,
+  .ds-pdf__sidebar--open .ds-pdf__thumbnails-panel {
+    width: min(280px, 82vw);
+  }
+}
+
+/* ============================================================================
+   触屏适配（pointer: coarse）
+   ★ 2026-07-08 移动端审计：hover-only 操作常显 + 触控目标放大
+   桌面鼠标环境不受影响
+   ============================================================================ */
+
+@media (pointer: coarse) {
+  /* 工具栏按钮 26px → 44px 触控目标（窄屏溢出由下方横向滚动兜底） */
+  .ds-btn {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .ds-btn-sm {
+    min-width: 40px;
+    height: 40px;
+  }
+
+  /* 底栏高度变量提升到根：工具栏自身与浮层避让共用同一来源 */
+  .ds-pdf-viewer {
+    --ds-pdf-toolbar-h: 48px;
+  }
+
+  /* 触屏下进度条略增高，便于拖动跳页 */
+  .ds-pdf__progress-bar {
+    height: 6px;
+  }
+
+  /* 细进度条命中区向上扩到约 44px（向下少扩，避免遮住底栏按钮顶部） */
+  .ds-pdf__progress-bar::before {
+    top: -18px;
+    bottom: -4px;
+  }
+
+  .ds-input {
+    width: 50px;
+    height: 40px;
+    /* iOS 聚焦输入框 <16px 会触发页面自动放大 */
+    font-size: 16px;
+  }
+
+  /* 搜索输入框同理：≥44px 触控高度 + 16px 防 iOS 聚焦缩放 */
+  .ds-search-input {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .ds-zoom-option,
+  .ds-more-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  .ds-outline-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  /* 高亮颜色选择器放大 */
+  .ds-highlight-color {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥40px） */
+  .ds-highlight-delete {
+    opacity: 1;
+    width: 40px;
+    height: 40px;
+  }
+
+  .ds-bookmark-actions {
+    opacity: 1;
+  }
+
+  .ds-bookmark-action-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* 「选择此页」按钮依赖 hover 显现，触屏常显 */
+  .ds-pdf__page-overlay {
+    opacity: 1;
+  }
+}
+
+/* ============================================================================
+   触屏窄宽（360–480）底部工具栏溢出兜底
+   核心控件（缩放/页码）在 44px 触控目标下合计约 400px，360px 屏必然溢出。
+   同 app.css .modern-viewer-toolbar 的 N-6 方案：横向滚动 + 首尾 auto margin
+   （空间充足时等分居中，溢出时退化为可完整滚动到达两端）。
+   ============================================================================ */
+
+@media (pointer: coarse) and (max-width: 479.98px) {
+  .ds-pdf__toolbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .ds-pdf__toolbar > :first-child {
+    margin-left: auto;
+  }
+
+  .ds-pdf__toolbar > :last-child {
+    margin-right: auto;
+  }
+
+  /* 滚动容器内中间组不再收缩，交给横向滚动 */
+  .ds-pdf__toolbar-center {
+    flex-shrink: 0;
+  }
+
+  /* 上拉菜单改以 .ds-pdf-viewer 为定位基准：
+     否则作为横向滚动容器的后代会被 overflow 裁切。
+     （包含块在滚动容器之外的 absolute 后代不受其 overflow 裁切） */
+  .ds-pdf__toolbar-more,
+  .ds-zoom-menu {
+    position: static;
+  }
+
+  .ds-more-dropdown--up,
+  .ds-zoom-dropdown--up {
+    bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 4px);
+    margin-bottom: 0;
+  }
+
+  .ds-more-dropdown--up {
+    right: 8px;
+  }
+
+  .ds-zoom-dropdown--up {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* ============================================================================
+   移动端内联子屏（≤640：目录/缩略图/书签/批注列表共用）
+   占满 viewer 容器（absolute inset-0），顶栏返回 + 标题/分段，非模态非抽屉
+   ============================================================================ */
+
+.ds-pdf__mobile-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--background));
+  animation: ds-pdf-panel-in .16s ease;
+}
+
+@keyframes ds-pdf-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ds-pdf__mobile-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 8px;
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  flex-shrink: 0;
+}
+
+.ds-pdf__mobile-panel-title {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 头部右侧占位，让居中的标题/分段与左侧返回按钮平衡 */
+.ds-pdf__mobile-panel-spacer {
+  width: 40px;
+  flex-shrink: 0;
+}
+
+/* 目录/缩略图分段切换 */
+.ds-pdf__mobile-panel-tabs {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px;
+  margin: 0 auto;
+  max-width: 260px;
+  border-radius: 10px;
+  background: hsl(var(--muted) / 0.5);
+}
+
+.ds-pdf__mobile-panel-tab {
+  flex: 1;
+  min-height: 34px;
+  padding: 6px 14px;
+  font-size: 13px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+  white-space: nowrap;
+}
+
+.ds-pdf__mobile-panel-tab.active {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 3px hsl(var(--ring) / 0.12);
+}
+
+/* 子屏内列表区占满剩余高度 */
+.ds-pdf__mobile-panel .ds-outline-content,
+.ds-pdf__mobile-panel .ds-thumbnails-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.ds-pdf__mobile-panel .ds-highlights-list,
+.ds-pdf__mobile-panel .ds-bookmarks-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.ds-pdf__mobile-panel .ds-highlights-list-viewport,
+.ds-pdf__mobile-panel .ds-bookmarks-list-viewport {
+  padding: 8px 12px calc(8px + var(--ds-pdf-safe-bottom));
+}
+
+/* 触控行高 ≥44px */
+.ds-pdf__mobile-panel .ds-outline-item {
+  min-height: 44px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  font-size: 15px;
+}
+
+.ds-pdf__mobile-panel .ds-bookmark-item,
+.ds-pdf__mobile-panel .ds-highlight-item {
+  min-height: 44px;
+}
+
+.ds-pdf__mobile-panel .ds-thumbnails-content-viewport {
+  padding: 12px 16px calc(12px + var(--ds-pdf-safe-bottom));
+  display: block;
+}
+
+.ds-pdf__mobile-panel .ds-outline-content-viewport {
+  padding-bottom: calc(8px + var(--ds-pdf-safe-bottom));
+}
+
+/* 缩略图网格：全宽 3 列 */
+.ds-thumbnails-grid-row {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.ds-thumbnails-grid-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-thumbnails-grid-cell .ds-thumbnail-item {
+  height: 100%;
+}
+
+/* ============================================================================
+   移动端划词选色条（viewer 容器内 absolute bottom，非 fixed body 层）
+   ============================================================================ */
+
+.ds-pdf__highlight-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 8px 24px hsl(var(--ring) / 0.12);
+}
+
+/* chrome 隐藏时选色条贴底（保留 safe-area） */
+.ds-pdf-viewer.chrome-hidden .ds-pdf__highlight-bar {
+  bottom: calc(var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
+}
+
+.ds-pdf__highlight-bar-label {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+/* 高亮操作条中的原文摘录（单行截断） */
+.ds-pdf__highlight-bar-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-pdf__highlight-bar .ds-highlight-color {
+  width: 36px;
+  height: 36px;
+}
+
+/* ============================================================================
+   Reduced motion（置于文件末尾，覆盖上方所有 media 块内的过渡声明）
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__sidebar,
+  .ds-pdf__progress-fill,
+  .ds-thumbnail-item,
+  .ds-outline-item,
+  .ds-pdf__mobile-panel-tab {
+    transition: none;
+  }
+
+  .ds-pdf__mobile-panel {
+    animation: none;
   }
 }

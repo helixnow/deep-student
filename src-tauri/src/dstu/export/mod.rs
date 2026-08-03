@@ -275,7 +275,7 @@ impl ExportRegistry {
 #[tauri::command]
 pub async fn dstu_export_formats(
     path: String,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<String>, String> {
     log::info!("[DSTU::export] dstu_export_formats: path={}", path);
 
@@ -283,6 +283,11 @@ pub async fn dstu_export_formats(
     let _ = extract_resource_info(&path).map_err(|e| e.to_string())?;
 
     let node_type = infer_node_type_from_path(&path)?;
+
+    // ★ 文件夹：批量打包导出（遍历子资源打 ZIP）
+    if node_type == DstuNodeType::Folder {
+        return Ok(vec![ExportFormat::Zip.as_str().to_string()]);
+    }
 
     let registry = ExportRegistry::new();
     let formats = registry
@@ -319,6 +324,16 @@ pub async fn dstu_export(
     let id_owned = id.to_string();
 
     let payload = tokio::task::spawn_blocking(move || {
+        // ★ 文件夹：批量打包导出（遍历子资源，复用既有单资源 Original 导出）
+        if node_type == DstuNodeType::Folder {
+            if export_format != ExportFormat::Zip {
+                return Err(DstuError::NotSupported(format!(
+                    "文件夹仅支持 zip 格式导出，收到: {}",
+                    export_format.as_str()
+                )));
+            }
+            return export_folder_zip(&registry, &vfs_db_inner, &id_owned);
+        }
         registry.export(&vfs_db_inner, node_type, &id_owned, export_format)
     })
     .await
@@ -326,6 +341,236 @@ pub async fn dstu_export(
     .map_err(|e| e.to_string())?;
 
     Ok(DstuExportResult::from(payload))
+}
+
+// ============================================================================
+// 文件夹 ZIP 批量导出
+// ============================================================================
+
+/// 文件夹递归深度上限（防环/防深层嵌套失控）
+const FOLDER_EXPORT_MAX_DEPTH: usize = 16;
+/// 单次文件夹导出的资源数量上限
+const FOLDER_EXPORT_MAX_ENTRIES: usize = 2_000;
+
+/// 从资源 ID 前缀推断节点类型（与 infer_node_type_from_path 同一规则）
+fn infer_node_type_from_id(id: &str) -> Option<DstuNodeType> {
+    if id.starts_with("note_") {
+        Some(DstuNodeType::Note)
+    } else if id.starts_with("tb_") {
+        Some(DstuNodeType::Textbook)
+    } else if id.starts_with("exam_") {
+        Some(DstuNodeType::Exam)
+    } else if id.starts_with("tr_") {
+        Some(DstuNodeType::Translation)
+    } else if id.starts_with("essay_") {
+        Some(DstuNodeType::Essay)
+    } else if id.starts_with("img_") {
+        Some(DstuNodeType::Image)
+    } else if id.starts_with("file_") || id.starts_with("att_") {
+        Some(DstuNodeType::File)
+    } else if id.starts_with("mm_") {
+        Some(DstuNodeType::MindMap)
+    } else {
+        None
+    }
+}
+
+/// ZIP 内条目名去重（同名追加 _N 序号）
+fn dedup_zip_entry_name(used: &mut std::collections::HashSet<String>, name: &str) -> String {
+    if used.insert(name.to_string()) {
+        return name.to_string();
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() => {
+            (stem.to_string(), Some(ext.to_string()))
+        }
+        _ => (name.to_string(), None),
+    };
+    for attempt in 1..1000 {
+        let candidate = match &ext {
+            Some(e) => format!("{}_{}.{}", stem, attempt, e),
+            None => format!("{}_{}", stem, attempt),
+        };
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    format!("{}_{}", stem, chrono::Utc::now().timestamp_millis())
+}
+
+/// 递归收集文件夹下所有资源（相对目录前缀 + 资源 ID）
+fn collect_folder_resources(
+    vfs_db: &Arc<VfsDatabase>,
+    folder_id: &str,
+    prefix: &str,
+    depth: usize,
+    out: &mut Vec<(String, String)>,
+) -> Result<(), DstuError> {
+    use crate::vfs::VfsFolderRepo;
+
+    if depth > FOLDER_EXPORT_MAX_DEPTH {
+        return Ok(());
+    }
+    if out.len() >= FOLDER_EXPORT_MAX_ENTRIES {
+        return Ok(());
+    }
+
+    let items = VfsFolderRepo::list_items_by_folder(vfs_db, Some(folder_id))
+        .map_err(|e| DstuError::Internal(format!("读取文件夹内容失败: {}", e)))?;
+    for item in items {
+        if out.len() >= FOLDER_EXPORT_MAX_ENTRIES {
+            break;
+        }
+        out.push((prefix.to_string(), item.item_id));
+    }
+
+    let subfolders = VfsFolderRepo::list_folders_by_parent(vfs_db, Some(folder_id))
+        .map_err(|e| DstuError::Internal(format!("读取子文件夹失败: {}", e)))?;
+    for folder in subfolders {
+        let sub_prefix = format!("{}{}/", prefix, sanitize_filename(&folder.title));
+        collect_folder_resources(vfs_db, &folder.id, &sub_prefix, depth + 1, out)?;
+    }
+
+    Ok(())
+}
+
+/// ★ 文件夹批量导出：遍历子资源逐个按 Original 导出并打包为 ZIP
+///
+/// - 子文件夹递归打包为 ZIP 内目录结构；
+/// - 单个资源导出失败不阻塞整体，失败原因写入 ZIP 内的「导出说明.txt」。
+fn export_folder_zip(
+    registry: &ExportRegistry,
+    vfs_db: &Arc<VfsDatabase>,
+    folder_id: &str,
+) -> Result<ExportPayload, DstuError> {
+    use crate::vfs::VfsFolderRepo;
+    use std::io::Write;
+
+    let folder = VfsFolderRepo::get_folder(vfs_db, folder_id)
+        .map_err(|e| DstuError::Internal(format!("获取文件夹失败: {}", e)))?
+        .ok_or_else(|| DstuError::not_found(folder_id))?;
+
+    let mut resources: Vec<(String, String)> = Vec::new();
+    collect_folder_resources(vfs_db, folder_id, "", 0, &mut resources)?;
+
+    if resources.is_empty() {
+        return Err(DstuError::NotSupported(format!(
+            "文件夹「{}」内没有可导出的资源",
+            folder.title
+        )));
+    }
+
+    let temp_path = std::env::temp_dir().join(format!(
+        "dstu_folder_export_{}_{}.zip",
+        folder_id,
+        chrono::Utc::now().timestamp_millis()
+    ));
+    let zip_file = std::fs::File::create(&temp_path)
+        .map_err(|e| DstuError::Internal(format!("创建导出临时文件失败: {}", e)))?;
+    let mut writer = zip::ZipWriter::new(zip_file);
+    let options = zip::write::FileOptions::default();
+
+    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut exported_count = 0usize;
+
+    for (prefix, resource_id) in &resources {
+        let Some(node_type) = infer_node_type_from_id(resource_id) else {
+            skipped.push(format!("{}: 无法识别的资源类型", resource_id));
+            continue;
+        };
+
+        // 优先原始格式；不支持时回退该资源支持的第一个格式（如笔记的 markdown）
+        let formats = registry.supported_formats(node_type);
+        let format = if formats.contains(&ExportFormat::Original) {
+            ExportFormat::Original
+        } else if let Some(first) = formats.first() {
+            *first
+        } else {
+            skipped.push(format!("{}: 该资源类型不支持导出", resource_id));
+            continue;
+        };
+
+        match registry.export(vfs_db, node_type, resource_id, format) {
+            Ok(payload) => {
+                let (data_result, suggested) = match payload {
+                    ExportPayload::Text {
+                        content,
+                        suggested_filename,
+                        ..
+                    } => (Ok(content.into_bytes()), suggested_filename),
+                    ExportPayload::Binary {
+                        data,
+                        suggested_filename,
+                        ..
+                    } => (Ok(data), suggested_filename),
+                    ExportPayload::FilePath {
+                        temp_path,
+                        suggested_filename,
+                        ..
+                    } => (
+                        std::fs::read(&temp_path).map_err(|e| format!("读取源文件失败: {}", e)),
+                        suggested_filename,
+                    ),
+                };
+                match data_result {
+                    Ok(data) => {
+                        let entry_name = dedup_zip_entry_name(
+                            &mut used_names,
+                            &format!("{}{}", prefix, sanitize_filename(&suggested)),
+                        );
+                        if let Err(e) = writer
+                            .start_file(entry_name.as_str(), options)
+                            .map_err(|e| e.to_string())
+                            .and_then(|_| writer.write_all(&data).map_err(|e| e.to_string()))
+                        {
+                            skipped.push(format!("{}: 写入 ZIP 失败 ({})", suggested, e));
+                        } else {
+                            exported_count += 1;
+                        }
+                    }
+                    Err(e) => skipped.push(format!("{}: {}", suggested, e)),
+                }
+            }
+            Err(e) => skipped.push(format!("{}: {}", resource_id, e)),
+        }
+    }
+
+    if !skipped.is_empty() {
+        let note = format!(
+            "以下 {} 个资源未包含在导出包中：\n{}\n",
+            skipped.len(),
+            skipped.join("\n")
+        );
+        let entry_name = dedup_zip_entry_name(&mut used_names, "导出说明.txt");
+        let _ = writer
+            .start_file(entry_name.as_str(), options)
+            .and_then(|_| {
+                writer
+                    .write_all(note.as_bytes())
+                    .map_err(zip::result::ZipError::Io)
+            });
+    }
+
+    writer
+        .finish()
+        .map_err(|e| DstuError::Internal(format!("完成 ZIP 写入失败: {}", e)))?;
+
+    if exported_count == 0 {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(DstuError::NotSupported(format!(
+            "文件夹「{}」内没有成功导出的资源：{}",
+            folder.title,
+            skipped.join("; ")
+        )));
+    }
+
+    let filename = sanitize_filename(&format!("{}.zip", folder.title));
+    Ok(ExportPayload::FilePath {
+        temp_path,
+        suggested_filename: filename,
+        mime_type: "application/zip".to_string(),
+    })
 }
 
 // ============================================================================

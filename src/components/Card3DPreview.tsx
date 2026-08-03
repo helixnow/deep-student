@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo, CSSProperties } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import React, { useState, useRef, useEffect, CSSProperties } from 'react';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
+import { Pause, Play, ArrowsClockwise, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { AnkiCard, AnkiCardTemplate, CustomAnkiTemplate } from '../types';
 import { TemplateRenderService } from '../services/templateRenderService';
 import { ShadowDomPreview } from './ShadowDomPreview'; // 导入新的 ShadowDomPreview 组件
+import { buildCardFaceCss, useDocumentDarkMode } from './anki/utils/cardFaceStyles';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import './Card3DPreview.css';
 
@@ -31,6 +33,10 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [maxCardHeight, setMaxCardHeight] = useState<number>(0);
   const heightRef = useRef<number>(0);
+  // 卡面 CSS 走 buildCardFaceCss：辅助样式 + overflow 归一化 + 暗色兜底
+  const darkMode = useDocumentDarkMode();
+  // ≤3 张卡时不做 3D 叠放，直接平铺内联卡（点击翻面）
+  const isFlatLayout = cards.length > 0 && cards.length <= 3;
 
   const extractQuestion = (card: AnkiCard): string => {
     const fields = (card.fields ?? {}) as Record<string, unknown>;
@@ -167,7 +173,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
 
   // Auto-play functionality
   useEffect(() => {
-    if (isAutoPlay && cards.length > 1) {
+    if (isAutoPlay && !isFlatLayout && cards.length > 1) {
       autoPlayRef.current = setInterval(() => {
         setCurrentIndex((prev) => (prev + 1) % cards.length);
       }, 3000);
@@ -177,10 +183,11 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
     return () => {
       if (autoPlayRef.current) clearInterval(autoPlayRef.current);
     };
-  }, [isAutoPlay, cards.length]);
+  }, [isAutoPlay, isFlatLayout, cards.length]);
 
-  // 简化的高度计算：依赖自然高度流动
+  // 简化的高度计算：依赖自然高度流动（平铺模式高度自然流动，无需测量）
   useEffect(() => {
+    if (isFlatLayout) return;
     const readCssPx = (el: HTMLElement, varName: string, fallback: number) => {
       const value = getComputedStyle(el).getPropertyValue(varName).trim();
       const parsed = Number.parseFloat(value);
@@ -245,22 +252,24 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       });
     }
     
-    // 初始计算
-    setTimeout(calculateHeight, 100);
-    
+    // 初始计算（保存句柄，卸载时清理，避免 setTimeout 泄漏到已卸载组件）
+    const initialTimer = window.setTimeout(calculateHeight, 100);
+
     // 监听 ShadowDom 内容载入（用于图片/字体延迟导致的高度变化）
     const handleShadowContentLoaded = () => calculateHeight();
-    containerRef.current?.addEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
+    const containerEl = containerRef.current;
+    containerEl?.addEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
 
     // 监听窗口尺寸变化
     window.addEventListener('resize', calculateHeight);
     
     return () => {
+      window.clearTimeout(initialTimer);
       window.removeEventListener('resize', calculateHeight);
-      containerRef.current?.removeEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
+      containerEl?.removeEventListener('shadowContentLoaded', handleShadowContentLoaded as EventListener);
       resizeObserver.disconnect();
     };
-  }, [cards, currentIndex, template, templateMap]);
+  }, [cards, currentIndex, template, templateMap, isFlatLayout]);
 
   /**
    * 根据卡片的 template_id 解析出对应的模板对象
@@ -387,15 +396,19 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       case '6':
       case '7':
       case '8':
-      case '9':
+      case '9': {
         e.preventDefault();
         const num = parseInt(e.key);
         if (num <= cards.length) {
           setCurrentIndex(num - 1);
         }
         break;
+      }
     }
   };
+
+  // 滑动只切卡；记录最近一次滑动时间，抑制随后的合成 click 误触翻面
+  const lastSwipeAtRef = useRef(0);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.touches[0].clientX);
@@ -406,16 +419,24 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
     const diff = touchStart - touchEnd;
     
     if (Math.abs(diff) > 50) {
+      lastSwipeAtRef.current = Date.now();
       if (diff > 0) handleNext();
       else handlePrevious();
     }
   };
 
+  /** 横向滑动切卡的最小 deltaX 阈值（触控板轻微斜向滚动不触发） */
+  const WHEEL_SWITCH_THRESHOLD = 12;
+
   const handleWheel = (e: React.WheelEvent) => {
-    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      if (e.deltaX > 0) handleNext();
-      else handlePrevious();
-    }
+    // 收紧滚轮劫持：仅当指针悬停在卡面区域且横向意图明显时才切卡，
+    // 避免消息列表的正常纵向/惯性滚动被误吞。
+    const target = e.target as HTMLElement | null;
+    if (!target?.closest?.('.card-3d')) return;
+    const absX = Math.abs(e.deltaX);
+    if (absX <= Math.abs(e.deltaY) || absX < WHEEL_SWITCH_THRESHOLD) return;
+    if (e.deltaX > 0) handleNext();
+    else handlePrevious();
   };
 
   const getCardTransform = (index: number): CSSProperties => {
@@ -456,6 +477,51 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
     );
   }
 
+  // ≤3 张卡：平铺内联卡样式（无 3D 叠放/导航/自动播放），点击翻面
+  if (isFlatLayout) {
+    return (
+      <div className="card-3d-preview-container card-3d-preview-flat" ref={containerRef}>
+        <div className="card-3d-flat-list">
+          {cards.map((card, index) => {
+            const cardTemplate = resolveTemplate(card);
+            const flipped = flippedCards.has(index);
+            return (
+              <div
+                key={card.id ?? `flat-${index}`}
+                className={`card-3d-flat-item${flipped ? ' card-3d-flat-flipped' : ''}`}
+                role="button"
+                tabIndex={0}
+                title={t('card3DPreview.flipCard')}
+                onClick={() => {
+                  if (onCardClick) onCardClick(card, index);
+                  else {
+                    setFlippedCards((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(index)) next.delete(index);
+                      else next.add(index);
+                      return next;
+                    });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return;
+                  e.preventDefault();
+                  (e.currentTarget as HTMLElement).click();
+                }}
+              >
+                <ShadowDomPreview
+                  htmlContent={flipped ? renderCardBack(card) : renderCardFront(card)}
+                  cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode })}
+                  fidelity="anki"
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
       className="card-3d-preview-container"
@@ -467,12 +533,12 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       onTouchEnd={handleTouchEnd}
     >
       <div className="card-3d-controls">
-        <NotionButton variant="ghost" size="sm" className="control-btn" onClick={() => setIsAutoPlay(!isAutoPlay)} title={isAutoPlay ? "Pause" : "Play"}>
-          {isAutoPlay ? '⏸' : '▶'}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`} onClick={handleFlipCurrent} title={t('card3DPreview.flipCard')}>
-          🔄
-        </NotionButton>
+        <DsButton variant="ghost" size="sm" className="control-btn" onClick={() => setIsAutoPlay(!isAutoPlay)} title={isAutoPlay ? "Pause" : "Play"}>
+          {isAutoPlay ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
+        </DsButton>
+        <DsButton variant="ghost" size="sm" className={`control-btn${flippedCards.has(currentIndex) ? ' control-btn-active' : ''}`} onClick={handleFlipCurrent} title={t('card3DPreview.flipCard')}>
+          <ArrowsClockwise size={16} />
+        </DsButton>
         <div className="card-counter">
           {currentIndex + 1} / {cards.length}
         </div>
@@ -496,7 +562,18 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
               className={`card-3d${flippedCards.has(index) ? ' card-3d-flipped' : ''}`}
               data-card-index={index}
               style={getCardTransform(index)}
-              onClick={() => onCardClick && onCardClick(card, index)}
+              onClick={() => {
+                // 刚发生过滑动切卡时抑制合成 click，避免误触翻面
+                if (Date.now() - lastSwipeAtRef.current < 350) return;
+                // 触屏语义：点旁边的卡 → 切换到该卡；点中心卡 → 翻面
+                //（外部传入 onCardClick 时保留原有点击回调优先级，避免破坏调用方契约）
+                if (index !== currentIndex) {
+                  setCurrentIndex(index);
+                  return;
+                }
+                if (onCardClick) onCardClick(card, index);
+                else handleFlipCurrent();
+              }}
             >
               <div className="card-3d-inner">
                 <div className="card-3d-face card-3d-front">
@@ -504,7 +581,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
                     {isNearViewport && (
                       <ShadowDomPreview
                         htmlContent={renderCardFront(card)}
-                        cssContent={(cardTemplate as any)?.css_style || ''}
+                        cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode })}
                         fidelity="anki"
                       />
                     )}
@@ -515,7 +592,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
                     {isNearViewport && (
                       <ShadowDomPreview
                         htmlContent={renderCardBack(card)}
-                        cssContent={(cardTemplate as any)?.css_style || ''}
+                        cssContent={buildCardFaceCss((cardTemplate as { css_style?: string } | undefined)?.css_style, { darkMode })}
                         fidelity="anki"
                       />
                     )}
@@ -530,12 +607,12 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       </div>
 
       <div className="card-3d-navigation">
-        <NotionButton variant="ghost" size="sm" className="nav-btn nav-prev" onClick={handlePrevious} disabled={cards.length <= 1}>
-          ‹
-        </NotionButton>
-        <div className="nav-dots">
+        <DsButton variant="ghost" size="sm" className="nav-btn nav-prev" onClick={handlePrevious} disabled={cards.length <= 1}>
+          <CaretLeft size={18} />
+        </DsButton>
+        <div className="nav-dots scrollbar-none">
           {cards.map((_, index) => (
-            <NotionButton
+            <DsButton
               key={index}
               variant="ghost" size="icon" iconOnly
               className={`nav-dot ${index === currentIndex ? 'active' : ''}`}
@@ -544,13 +621,13 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
             />
           ))}
         </div>
-        <NotionButton variant="ghost" size="sm" className="nav-btn nav-next" onClick={handleNext} disabled={cards.length <= 1}>
-          ›
-        </NotionButton>
+        <DsButton variant="ghost" size="sm" className="nav-btn nav-next" onClick={handleNext} disabled={cards.length <= 1}>
+          <CaretRight size={18} />
+        </DsButton>
       </div>
 
       <div className="card-3d-instructions">
-        <p>← → or A/D: Navigate • F: Flip • Space or P: Play/Pause • 1-9: Jump to card • Home/End: First/Last</p>
+        <p>{t('card3DPreview.instructions')}</p>
       </div>
     </div>
   );

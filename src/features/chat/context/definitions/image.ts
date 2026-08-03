@@ -44,6 +44,33 @@ function getMediaType(mimeType?: string): string {
 }
 
 /**
+ * 判断是否为 SVG（MIME 或文件名后缀）
+ */
+function isSvgImage(mediaType: string, name: string): boolean {
+  return mediaType === 'image/svg+xml' || name.toLowerCase().endsWith('.svg');
+}
+
+/**
+ * Base64 → UTF-8 文本（SVG 源码提取用），失败返回 null
+ */
+function decodeBase64Utf8(base64: string): string | null {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch (error) {
+    console.warn('[ImageDef] Failed to decode SVG base64:', error);
+    return null;
+  }
+}
+
+/** SVG 源码注入上限（与文件文本注入 100KB 截断一致） */
+const MAX_SVG_TEXT_LENGTH = 100 * 1024;
+
+/**
  * 图片类型定义
  */
 export const imageDefinition: ContextTypeDefinition = {
@@ -73,33 +100,50 @@ export const imageDefinition: ContextTypeDefinition = {
       // ★ 图片注入模式处理
       const imageModes = injectModes?.image;
       
-      // 确定要注入的内容类型
-      // ★ 2026-02-13 修复：纯文本模型不注入 image 块，强制回退到 OCR 文本
-      // 空数组视为未设置，使用默认值（默认注入图片）
+      // 注入模式是源内容契约，不随当前模型能力变化。TM 也保留原图，交给
+      // Rust context compiler 选择辅助 MM、OCR 或无视觉降级。
+      // ★ P0 契约（2026-07）：ContextRef 创建时已显式写入 injectModes，
+      // 此处缺省分支仅覆盖历史数据；缺省值与 UI 默认对齐
+      // （DEFAULT_IMAGE_INJECT_MODES = ['image']：仅原图，不含 OCR）。
       const hasImageModes = imageModes && imageModes.length > 0;
       const isMultimodal = options?.isMultimodal !== false;
-      // ★ 与后端 SSOT resolve_image_inject_modes 对齐：
-      //   默认最大化 (image + ocr)；非多模态模型自动降级移除 image。
-      const includeImage = isMultimodal
-        ? (hasImageModes ? imageModes.includes('image') : true)
-        : false; // 纯文本模型：绝不注入 image 块
-      const includeOcr = !isMultimodal
-        ? true // 纯文本模型：始终注入 OCR 文本作为回退
-        : (hasImageModes ? imageModes.includes('ocr') : true); // ★ P0-1 修复：默认注入 OCR（与后端 SSOT 对齐）
+      const includeImage = hasImageModes ? imageModes.includes('image') : true;
+      const includeOcr = hasImageModes ? imageModes.includes('ocr') : false;
       
       const blocks: ContentBlock[] = [];
       const name = (resolved.metadata as ImageMetadata | undefined)?.name || resolved.name || 'image';
 
       console.debug('[ImageDef]', resolved.sourceId, { isMultimodal, includeImage, includeOcr, contentLen: resolved.content?.length ?? 0 });
 
-      // 1. 图片模式：注入原始图片（仅多模态模型）
+      // 1. 图片模式：保留原始图片，由后端按本轮模型能力编译
       if (includeImage) {
         const content = resolved.content || '';
         const { base64, mediaType: extractedMediaType } = extractImagePayload(content);
         if (base64) {
           const resolvedMimeType = (resolved.metadata as ImageMetadata | undefined)?.mimeType;
           const mediaType = extractedMediaType || getMediaType(resolvedMimeType);
-          blocks.push(createImageBlock(mediaType, base64));
+          if (isSvgImage(mediaType, name)) {
+            // ★ SVG 分流：不再作为 image block 直发（provider 普遍拒收
+            // media_type=image/svg+xml），改为解码 XML 源码按文本注入。
+            // 前端 chip 的图片预览走 previewUrl，不受此分流影响。
+            const svgText = decodeBase64Utf8(base64);
+            if (svgText && svgText.trim()) {
+              const clipped = svgText.length > MAX_SVG_TEXT_LENGTH
+                ? svgText.substring(0, MAX_SVG_TEXT_LENGTH)
+                : svgText;
+              blocks.push(createXmlTextBlock('svg_source', clipped, { name, type: 'image/svg+xml' }));
+              if (clipped.length < svgText.length) {
+                blocks.push(createTextBlock('[Note: SVG source truncated to the first 100KB.]'));
+              }
+            } else {
+              console.warn('[ImageDef] SVG decode failed, injecting placeholder:', resolved.sourceId);
+              blocks.push(createTextBlock(
+                `<image name="${name}" type="image/svg+xml">[SVG 源码解码失败，无法注入内容，仅提供文件名。]</image>`
+              ));
+            }
+          } else {
+            blocks.push(createImageBlock(mediaType, base64));
+          }
         } else {
           console.warn('[ImageDef] Image mode but invalid base64:', resolved.sourceId);
         }

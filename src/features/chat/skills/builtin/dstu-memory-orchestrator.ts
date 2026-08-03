@@ -29,12 +29,22 @@ export const deepScholarSkill: SkillDefinition = {
     'builtin-unified_search',
     'builtin-web_search',
     // vfs-memory
+    'builtin-memory_search',
     'builtin-memory_read',
+    'builtin-memory_write',
     'builtin-memory_update_by_id',
     'builtin-memory_delete',
     'builtin-memory_write_smart',
     'builtin-memory_write_batch',
     'builtin-memory_list',
+    'builtin-memory_batch_move',
+    'builtin-memory_add_relation',
+    'builtin-memory_remove_relation',
+    'builtin-memory_update_tags',
+    'builtin-memory_export_all',
+    // learner-profile
+    'builtin-learner_profile_get',
+    'builtin-learner_profile_update',
     // ask-user
     'builtin-ask_user',
     // learning-resource (auto-loaded)
@@ -251,6 +261,11 @@ fact 类型禁止存入：学科知识、定理公式、题目内容、解题过
 **严禁在未查询 note_id 的情况下盲目更新记忆。**
 
 ### 目录归档
+
+整理已有记忆时，先用 \`builtin-memory_read\` 取得最新 \`updated_at\`，再用
+\`builtin-memory_batch_move\` / \`builtin-memory_update_tags\` / 关联工具执行 OCC 写入。
+用户要求全量导出时使用 High 敏感度的 \`builtin-memory_export_all\`，按页继续，
+不得绕过审批或把截断内容当作完整导出。
 
 **fact 类型：**
 - 偏好类 → \`偏好/...\`（格式偏好、风格偏好、负面偏好等）

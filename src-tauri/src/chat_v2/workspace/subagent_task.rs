@@ -11,18 +11,14 @@ use super::database::WorkspaceDatabase;
 /// 子代理任务状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SubagentTaskStatus {
+    #[default]
     Pending,
     Running,
     Completed,
     Failed,
     Cancelled,
-}
-
-impl Default for SubagentTaskStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 /// 子代理任务数据
@@ -103,6 +99,37 @@ impl SubagentTaskManager {
         Self { db }
     }
 
+    /// 全部状态（用于从 [`Self::is_valid_transition`] 推导合法前驱列表）
+    const ALL_STATUSES: [SubagentTaskStatus; 5] = [
+        SubagentTaskStatus::Pending,
+        SubagentTaskStatus::Running,
+        SubagentTaskStatus::Completed,
+        SubagentTaskStatus::Failed,
+        SubagentTaskStatus::Cancelled,
+    ];
+
+    /// 状态的数据库字符串表示
+    fn status_to_str(status: &SubagentTaskStatus) -> &'static str {
+        match status {
+            SubagentTaskStatus::Pending => "pending",
+            SubagentTaskStatus::Running => "running",
+            SubagentTaskStatus::Completed => "completed",
+            SubagentTaskStatus::Failed => "failed",
+            SubagentTaskStatus::Cancelled => "cancelled",
+        }
+    }
+
+    /// 目标状态的合法前驱列表（含同状态幂等），渲染为 SQL IN 子句内容。
+    /// 值全部来自可信常量 [`Self::status_to_str`]，可安全内插 SQL。
+    fn allowed_predecessors_sql(to: &SubagentTaskStatus) -> String {
+        Self::ALL_STATUSES
+            .iter()
+            .filter(|from| Self::is_valid_transition(from, to))
+            .map(|s| format!("'{}'", Self::status_to_str(s)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     /// 校验任务状态机转换是否合法。
     ///
     /// 规则：
@@ -159,7 +186,9 @@ impl SubagentTaskManager {
 
     /// 更新任务状态
     ///
-    /// 在写入前会从数据库读取当前状态并通过 [`Self::is_valid_transition`] 校验，
+    /// 转换以**单条原子 UPDATE** 完成：`WHERE id = ? AND status IN (合法前驱列表)`，
+    /// 前驱列表由 [`Self::is_valid_transition`] 推导。`changes() == 0` 表示当前状态
+    /// 不是合法前驱（或任务不存在），返回错误。消除了旧实现"读-判-写"的竞态窗口，
     /// 防止终止状态被反向覆盖或非法跨阶段跳转。
     pub fn update_status(
         &self,
@@ -172,21 +201,52 @@ impl SubagentTaskManager {
             .get_connection()
             .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
 
-        let current_status_str: String = conn
-            .query_row(
-                "SELECT status FROM subagent_task WHERE id = ?1",
-                [task_id],
-                |row| row.get::<_, String>(0),
-            )
-            .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    SubagentTaskError::NotFound(task_id.to_string())
-                }
-                other => SubagentTaskError::Database(other.to_string()),
-            })?;
-        let current_status = Self::parse_status(&current_status_str);
+        let now = Utc::now().to_rfc3339();
+        let status_str = Self::status_to_str(&status);
+        let allowed_from = Self::allowed_predecessors_sql(&status);
 
-        if !Self::is_valid_transition(&current_status, &status) {
+        let changes = match status {
+            SubagentTaskStatus::Running => conn.execute(
+                &format!(
+                    "UPDATE subagent_task SET status = ?1, started_at = COALESCE(started_at, ?2), completed_at = NULL \
+                     WHERE id = ?3 AND status IN ({allowed_from})"
+                ),
+                rusqlite::params![status_str, now, task_id],
+            ),
+            SubagentTaskStatus::Completed
+            | SubagentTaskStatus::Failed
+            | SubagentTaskStatus::Cancelled => conn.execute(
+                &format!(
+                    "UPDATE subagent_task SET status = ?1, completed_at = ?2, result_summary = ?3 \
+                     WHERE id = ?4 AND status IN ({allowed_from})"
+                ),
+                rusqlite::params![status_str, now, result_summary, task_id],
+            ),
+            SubagentTaskStatus::Pending => conn.execute(
+                &format!(
+                    "UPDATE subagent_task SET status = ?1, started_at = NULL, completed_at = NULL, result_summary = NULL \
+                     WHERE id = ?2 AND status IN ({allowed_from})"
+                ),
+                rusqlite::params![status_str, task_id],
+            ),
+        }
+        .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        if changes == 0 {
+            // 未命中行：区分"任务不存在"与"非法转换"（此读仅用于错误报告，best-effort）
+            let current_status_str: String = conn
+                .query_row(
+                    "SELECT status FROM subagent_task WHERE id = ?1",
+                    [task_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        SubagentTaskError::NotFound(task_id.to_string())
+                    }
+                    other => SubagentTaskError::Database(other.to_string()),
+                })?;
+            let current_status = Self::parse_status(&current_status_str);
             log::warn!(
                 "[SubagentTaskManager] Rejected invalid transition for task {}: {:?} -> {:?}",
                 task_id,
@@ -200,32 +260,6 @@ impl SubagentTaskManager {
             });
         }
 
-        let now = Utc::now().to_rfc3339();
-        let status_str = format!("{:?}", status).to_lowercase();
-
-        match status {
-            SubagentTaskStatus::Running => {
-                conn.execute(
-                    "UPDATE subagent_task SET status = ?1, started_at = COALESCE(started_at, ?2), completed_at = NULL WHERE id = ?3",
-                    rusqlite::params![status_str, now, task_id],
-                ).map_err(|e| SubagentTaskError::Database(e.to_string()))?;
-            }
-            SubagentTaskStatus::Completed
-            | SubagentTaskStatus::Failed
-            | SubagentTaskStatus::Cancelled => {
-                conn.execute(
-                    "UPDATE subagent_task SET status = ?1, completed_at = ?2, result_summary = ?3 WHERE id = ?4",
-                    rusqlite::params![status_str, now, result_summary, task_id],
-                ).map_err(|e| SubagentTaskError::Database(e.to_string()))?;
-            }
-            SubagentTaskStatus::Pending => {
-                conn.execute(
-                    "UPDATE subagent_task SET status = ?1, started_at = NULL, completed_at = NULL, result_summary = NULL WHERE id = ?2",
-                    rusqlite::params![status_str, task_id],
-                ).map_err(|e| SubagentTaskError::Database(e.to_string()))?;
-            }
-        }
-
         log::info!(
             "[SubagentTaskManager] Updated task status: id={}, status={:?}",
             task_id,
@@ -236,19 +270,11 @@ impl SubagentTaskManager {
     }
 
     /// 标记任务开始执行
+    ///
+    /// 委托原子转换路径：终态任务会被拒绝；`started_at` 用 COALESCE 保留首次值
+    /// （重试再次进入 Running 不会覆盖任务真实开始时间）。
     pub fn mark_running(&self, task_id: &str) -> Result<(), SubagentTaskError> {
-        let conn = self
-            .db
-            .get_connection()
-            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
-
-        conn.execute(
-            "UPDATE subagent_task SET status = 'running', started_at = ?1 WHERE id = ?2",
-            rusqlite::params![Utc::now().to_rfc3339(), task_id],
-        )
-        .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
-
-        Ok(())
+        self.update_status(task_id, SubagentTaskStatus::Running, None)
     }
 
     /// 标记任务完成
@@ -349,10 +375,8 @@ impl SubagentTaskManager {
             .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
 
         let mut result = Vec::new();
-        for task in tasks {
-            if let Ok(t) = task {
-                result.push(t);
-            }
+        for t in tasks.flatten() {
+            result.push(t);
         }
 
         log::info!(
@@ -360,6 +384,53 @@ impl SubagentTaskManager {
             result.len()
         );
         Ok(result)
+    }
+
+    /// 列出最近的任务（不限状态，按创建时间倒序）
+    ///
+    /// 供 `workspace_query(query_type="tasks")` 使用：主代理异步派发
+    /// （`subagent_call` wait=false）后据此轮询子代理任务状态与结果摘要。
+    pub fn list_recent_tasks(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<SubagentTaskData>, SubagentTaskError> {
+        let conn = self
+            .db
+            .get_connection()
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, workspace_id, agent_session_id, skill_id, initial_task, \
+             status, created_at, started_at, completed_at, result_summary \
+             FROM subagent_task ORDER BY created_at DESC LIMIT ?1",
+            )
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        let tasks = stmt
+            .query_map([limit as i64], |row| {
+                Ok(SubagentTaskData {
+                    id: row.get(0)?,
+                    workspace_id: row.get(1)?,
+                    agent_session_id: row.get(2)?,
+                    skill_id: row.get(3)?,
+                    initial_task: row.get(4)?,
+                    status: Self::parse_status(&row.get::<_, String>(5)?),
+                    created_at: parse_db_utc_datetime(row.get::<_, String>(6)?, "created_at")?,
+                    started_at: row
+                        .get::<_, Option<String>>(7)?
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                    completed_at: row
+                        .get::<_, Option<String>>(8)?
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&Utc)),
+                    result_summary: row.get(9)?,
+                })
+            })
+            .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
+
+        Ok(tasks.flatten().collect())
     }
 
     /// 获取代理的当前任务
@@ -625,5 +696,95 @@ mod tests {
             .update_status("missing_task", SubagentTaskStatus::Running, None)
             .expect_err("not found");
         assert!(matches!(err, SubagentTaskError::NotFound(_)));
+    }
+
+    #[test]
+    fn mark_running_rejected_on_terminal_task() {
+        let (_dir, manager) = setup_manager();
+
+        // Completed 终态：mark_running 必须被拒绝且状态不被覆盖
+        let task = make_task(&manager);
+        manager.mark_running(&task.id).expect("running");
+        manager
+            .update_status(&task.id, SubagentTaskStatus::Completed, Some("done"))
+            .expect("completed");
+        let err = manager
+            .mark_running(&task.id)
+            .expect_err("terminal task must reject mark_running");
+        assert!(matches!(err, SubagentTaskError::InvalidTransition { .. }));
+        let after = manager.get_task(&task.id).unwrap().unwrap();
+        assert_eq!(after.status, SubagentTaskStatus::Completed);
+        assert_eq!(after.result_summary.as_deref(), Some("done"));
+
+        // Cancelled 终态同样拒绝
+        let task2 = make_task(&manager);
+        manager
+            .update_status(
+                &task2.id,
+                SubagentTaskStatus::Cancelled,
+                Some("user cancelled"),
+            )
+            .expect("cancelled");
+        let err2 = manager
+            .mark_running(&task2.id)
+            .expect_err("cancelled task must reject mark_running");
+        assert!(matches!(err2, SubagentTaskError::InvalidTransition { .. }));
+        let after2 = manager.get_task(&task2.id).unwrap().unwrap();
+        assert_eq!(after2.status, SubagentTaskStatus::Cancelled);
+    }
+
+    #[test]
+    fn mark_running_preserves_first_started_at() {
+        let (_dir, manager) = setup_manager();
+        let task = make_task(&manager);
+
+        manager.mark_running(&task.id).expect("first running");
+        let first_started_at = manager
+            .get_task(&task.id)
+            .unwrap()
+            .unwrap()
+            .started_at
+            .expect("started_at set");
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        manager.mark_running(&task.id).expect("idempotent running");
+        let second_started_at = manager
+            .get_task(&task.id)
+            .unwrap()
+            .unwrap()
+            .started_at
+            .expect("started_at still set");
+
+        assert_eq!(
+            first_started_at, second_started_at,
+            "started_at must not be overwritten by repeated mark_running"
+        );
+    }
+
+    #[test]
+    fn cancelled_task_excluded_from_restore() {
+        let (_dir, manager) = setup_manager();
+
+        let task_pending = make_task(&manager);
+        let task_running = make_task(&manager);
+        manager.mark_running(&task_running.id).expect("running");
+        let task_cancelled = make_task(&manager);
+        manager.mark_running(&task_cancelled.id).expect("running");
+        manager
+            .update_status(
+                &task_cancelled.id,
+                SubagentTaskStatus::Cancelled,
+                Some("user cancelled"),
+            )
+            .expect("cancelled");
+
+        let to_restore = manager.get_tasks_to_restore().expect("restore list");
+        let ids: Vec<&str> = to_restore.iter().map(|t| t.id.as_str()).collect();
+        assert!(ids.contains(&task_pending.id.as_str()), "pending restored");
+        assert!(ids.contains(&task_running.id.as_str()), "running restored");
+        assert!(
+            !ids.contains(&task_cancelled.id.as_str()),
+            "cancelled task must not be restored"
+        );
     }
 }

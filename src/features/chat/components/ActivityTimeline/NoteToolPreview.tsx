@@ -8,7 +8,8 @@
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -27,7 +28,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { StreamingMarkdownRenderer } from '../renderers';
-import { humanizeToolName } from '@/features/chat/utils/toolDisplayName';
+import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
 
@@ -97,7 +98,9 @@ function getToolType(toolName: string): NoteToolType {
 // 组件实现
 // ============================================================================
 
-export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
+// React.memo：时间线流式更新时，父组件每个 chunk 重渲染一次；
+// 本组件全部 props 为原始值或来自 block 的稳定引用，浅比较即可跳过未变化的节点
+export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
   toolName,
   status,
   isStreaming = false,
@@ -137,14 +140,14 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
   // 获取工具显示名称
   const toolDisplayName = useMemo(() => {
     switch (toolType) {
-      case 'note_read': return t('timeline.noteTool.read', '读取笔记');
-      case 'note_append': return t('timeline.noteTool.append', '追加内容');
-      case 'note_replace': return t('timeline.noteTool.replace', '替换内容');
-      case 'note_set': return t('timeline.noteTool.set', '设置内容');
-      case 'note_create': return t('timeline.noteTool.create', '创建笔记');
-      case 'note_list': return t('timeline.noteTool.list', '列出笔记');
-      case 'note_search': return t('timeline.noteTool.search', '搜索笔记');
-      default: return humanizeToolName(toolName);
+      case 'note_read': return t('timeline.noteTool.read');
+      case 'note_append': return t('timeline.noteTool.append');
+      case 'note_replace': return t('timeline.noteTool.replace');
+      case 'note_set': return t('timeline.noteTool.set');
+      case 'note_create': return t('timeline.noteTool.create');
+      case 'note_list': return t('timeline.noteTool.list');
+      case 'note_search': return t('timeline.noteTool.searchNotes');
+      default: return getReadableToolName(toolName, t);
     }
   }, [toolType, toolName, t]);
 
@@ -153,7 +156,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
     if (isRunning) {
       return {
         icon: CircleNotch,
-        text: t('timeline.noteTool.running', '执行中...'),
+        text: t('timeline.noteTool.running'),
         color: 'text-primary',
         spin: true,
       };
@@ -161,7 +164,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
     if (isError) {
       return {
         icon: WarningCircle,
-        text: t('timeline.noteTool.failed', '执行失败'),
+        text: t('timeline.noteTool.failed'),
         color: 'text-destructive',
         spin: false,
       };
@@ -176,11 +179,11 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
     }
     return {
       icon: null,
-      text: t('timeline.noteTool.pending', '等待执行'),
+      text: t('timeline.noteTool.pending'),
       color: 'text-muted-foreground',
       spin: false,
     };
-  }, [isRunning, isError, isSuccess, durationMs, t, ToolIcon]);
+  }, [isRunning, isError, isSuccess, t]);
 
   const durationText = useMemo(() => {
     if (!isSuccess) return '';
@@ -198,6 +201,14 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
   // 是否有预览内容
   const hasPreview = !!(output?.beforePreview || output?.afterPreview || output?.content || output?.addedContent);
 
+  // 是否有可展开的内容（预览 / 错误信息 / 操作统计）；否则点击头部展开的是空面板
+  const hasStats = isSuccess && !!output && (
+    output.appendedCount !== undefined ||
+    output.replaceCount !== undefined ||
+    output.wordCount !== undefined
+  );
+  const hasExpandableContent = hasPreview || hasStats || !!(isError && error);
+
   // 渲染 diff 视图
   const renderDiffView = () => {
     if (!output) return null;
@@ -209,11 +220,11 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       return (
         <div className="space-y-2">
           <div className="text-xs text-muted-foreground font-medium">
-            {t('timeline.noteTool.readContent', '读取的内容')}
+            {t('timeline.noteTool.readContent')}
           </div>
-          <div className="p-3 rounded-md bg-muted/50 border border-border max-h-48 overflow-auto">
+          <CustomScrollArea fullHeight={false} className="max-h-48 rounded-md bg-muted/50 border border-border" viewportClassName="max-h-48 p-3">
             <StreamingMarkdownRenderer content={content} isStreaming={false} />
-          </div>
+          </CustomScrollArea>
         </div>
       );
     }
@@ -223,22 +234,22 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       return (
         <div className="space-y-3">
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-medium">
+            <div className="flex items-center gap-1.5 text-xs text-success font-medium">
               <FilePlus size={12} />
-              {t('timeline.noteTool.addedContent', '追加的内容')}
+              {t('timeline.noteTool.addedContent')}
             </div>
-            <div className="p-3 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 max-h-32 overflow-auto">
+            <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-success/10 border border-success/30" viewportClassName="max-h-32 p-3">
               <StreamingMarkdownRenderer content={addedContent} isStreaming={false} />
-            </div>
+            </CustomScrollArea>
           </div>
           {afterPreview && (
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground font-medium">
-                {t('timeline.noteTool.afterContent', '操作后内容')}
+                {t('timeline.noteTool.afterContent')}
               </div>
-              <div className="p-3 rounded-md bg-muted/50 border border-border max-h-32 overflow-auto">
+              <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-muted/50 border border-border" viewportClassName="max-h-32 p-3">
                 <StreamingMarkdownRenderer content={afterPreview} isStreaming={false} />
-              </div>
+              </CustomScrollArea>
             </div>
           )}
         </div>
@@ -250,34 +261,35 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       return (
         <div className="space-y-3">
           {searchPattern && (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground">{t('timeline.noteTool.search', '查找')}:</span>
-              <code className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 font-mono">
+            // 窄屏适配：长搜索/替换串允许换行，code 内部长 token 强制断行避免撑破容器
+            <div className="flex flex-wrap items-start gap-2 text-xs">
+              <span className="text-muted-foreground">{t('timeline.noteTool.search')}:</span>
+              <code className="min-w-0 max-w-full break-all px-1.5 py-0.5 rounded bg-danger/10 text-danger font-mono">
                 {searchPattern}
               </code>
               <span className="text-muted-foreground">→</span>
-              <code className="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 font-mono">
-                {replaceWith || t('timeline.noteTool.emptyString', '(空)')}
+              <code className="min-w-0 max-w-full break-all px-1.5 py-0.5 rounded bg-success/10 text-success font-mono">
+                {replaceWith || t('timeline.noteTool.emptyString')}
               </code>
             </div>
           )}
           {beforePreview && afterPreview && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="space-y-1">
-                <div className="text-xs text-red-600 dark:text-red-400 font-medium">
-                  {t('timeline.noteTool.before', '修改前')}
+                <div className="text-xs text-danger font-medium">
+                  {t('timeline.noteTool.before')}
                 </div>
-                <div className="p-2 rounded-md bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 max-h-32 overflow-auto text-xs">
+                <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-danger/10 border border-danger/30 text-xs" viewportClassName="max-h-32 p-2">
                   <StreamingMarkdownRenderer content={beforePreview} isStreaming={false} />
-                </div>
+                </CustomScrollArea>
               </div>
               <div className="space-y-1">
-                <div className="text-xs text-green-600 dark:text-green-400 font-medium">
-                  {t('timeline.noteTool.after', '修改后')}
+                <div className="text-xs text-success font-medium">
+                  {t('timeline.noteTool.after')}
                 </div>
-                <div className="p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 max-h-32 overflow-auto text-xs">
+                <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-success/10 border border-success/30 text-xs" viewportClassName="max-h-32 p-2">
                   <StreamingMarkdownRenderer content={afterPreview} isStreaming={false} />
-                </div>
+                </CustomScrollArea>
               </div>
             </div>
           )}
@@ -288,22 +300,22 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
     // note_set: 显示设置前后对比
     if (toolType === 'note_set' && (beforePreview || afterPreview)) {
       return (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="space-y-1">
-            <div className="text-xs text-red-600 dark:text-red-400 font-medium">
-              {t('timeline.noteTool.before', '修改前')}
+            <div className="text-xs text-danger font-medium">
+              {t('timeline.noteTool.before')}
             </div>
-            <div className="p-2 rounded-md bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 max-h-32 overflow-auto text-xs">
-              <StreamingMarkdownRenderer content={beforePreview || t('timeline.noteTool.empty', '(空)')} isStreaming={false} />
-            </div>
+            <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-danger/10 border border-danger/30 text-xs" viewportClassName="max-h-32 p-2">
+              <StreamingMarkdownRenderer content={beforePreview || t('timeline.noteTool.empty')} isStreaming={false} />
+            </CustomScrollArea>
           </div>
           <div className="space-y-1">
-            <div className="text-xs text-green-600 dark:text-green-400 font-medium">
-              {t('timeline.noteTool.after', '修改后')}
+            <div className="text-xs text-success font-medium">
+              {t('timeline.noteTool.after')}
             </div>
-            <div className="p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 max-h-32 overflow-auto text-xs">
-              <StreamingMarkdownRenderer content={afterPreview || t('timeline.noteTool.empty', '(空)')} isStreaming={false} />
-            </div>
+            <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-success/10 border border-success/30 text-xs" viewportClassName="max-h-32 p-2">
+              <StreamingMarkdownRenderer content={afterPreview || t('timeline.noteTool.empty')} isStreaming={false} />
+            </CustomScrollArea>
           </div>
         </div>
       );
@@ -315,13 +327,15 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
   return (
     <div className={cn('rounded-lg border border-border bg-card/50', className)}>
       {/* 头部 */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={hasExpandableContent ? () => setIsExpanded(!isExpanded) : undefined}
+        aria-expanded={hasExpandableContent ? isExpanded : undefined}
         className={cn(
           'w-full !justify-between gap-2 !px-3 !py-2',
           'text-left !rounded-t-lg !rounded-b-none',
+          !hasExpandableContent && 'cursor-default',
           isExpanded && 'border-b border-border'
         )}
       >
@@ -374,20 +388,20 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
                 }
               }}
               className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10"
-              title={t('timeline.noteTool.openNote', '在学习资源中打开')}
+              title={t('timeline.noteTool.openNote')}
             >
               <ArrowSquareOut size={14} className="text-muted-foreground hover:text-foreground" />
             </span>
           )}
-          {hasPreview && (
+          {hasExpandableContent && (
             isExpanded ? <CaretDown size={14} /> : <CaretRight size={14} />
           )}
         </div>
-      </NotionButton>
+      </DsButton>
 
       {/* 展开内容 */}
       <AnimatePresence initial={false}>
-        {isExpanded && (
+        {isExpanded && hasExpandableContent && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -407,24 +421,24 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
               {/* 视图切换（仅在有 before/after 时显示） */}
               {output?.beforePreview && output?.afterPreview && toolType !== 'note_read' && (
                 <div className="flex items-center gap-1 p-0.5 rounded-md bg-muted/50 w-fit">
-                  <NotionButton
+                  <DsButton
                     variant={viewMode === 'diff' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setViewMode('diff')}
                     className={cn(viewMode === 'diff' && 'shadow-sm')}
                   >
                     <ArrowsLeftRight size={12} />
-                    {t('timeline.noteTool.diffView', '对比')}
-                  </NotionButton>
-                  <NotionButton
+                    {t('timeline.noteTool.diffView')}
+                  </DsButton>
+                  <DsButton
                     variant={viewMode === 'preview' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setViewMode('preview')}
                     className={cn(viewMode === 'preview' && 'shadow-sm')}
                   >
                     <Eye size={12} />
-                    {t('timeline.noteTool.previewView', '预览')}
-                  </NotionButton>
+                    {t('timeline.noteTool.previewView')}
+                  </DsButton>
                 </div>
               )}
 
@@ -433,9 +447,9 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
 
               {/* 预览视图（仅显示 after） */}
               {viewMode === 'preview' && output?.afterPreview && (
-                <div className="p-3 rounded-md bg-muted/50 border border-border max-h-64 overflow-auto">
+                <CustomScrollArea fullHeight={false} className="max-h-64 rounded-md bg-muted/50 border border-border" viewportClassName="max-h-64 p-3">
                   <StreamingMarkdownRenderer content={output.afterPreview} isStreaming={false} />
-                </div>
+                </CustomScrollArea>
               )}
 
               {/* 操作统计 */}
@@ -458,6 +472,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       </AnimatePresence>
     </div>
   );
-};
+});
+NoteToolPreview.displayName = 'NoteToolPreview';
 
 export default NoteToolPreview;

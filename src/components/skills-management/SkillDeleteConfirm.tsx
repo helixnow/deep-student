@@ -5,7 +5,8 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash, Warning } from '@phosphor-icons/react';
-import { NotionAlertDialog } from '../ui/NotionDialog';
+import { DsAlertDialog } from '../ui/DsDialog';
+import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
@@ -44,26 +45,30 @@ export const SkillDeleteConfirm: React.FC<SkillDeleteConfirmProps> = ({
       onOpenChange(false);
     } catch (error) {
       console.error('[SkillDeleteConfirm] 删除失败:', error);
+      // 操作闭环：删除失败必须有可见反馈（成功通知由 onConfirm 内部发出）
+      showGlobalNotification(
+        'error',
+        t('skills:management.delete_failed'),
+        String(error),
+      );
     } finally {
       setIsDeleting(false);
     }
-  }, [onConfirm, onOpenChange]);
+  }, [onConfirm, onOpenChange, t]);
 
   if (!skill) return null;
 
   return (
-    <NotionAlertDialog
+    <DsAlertDialog
       open={open}
       onOpenChange={onOpenChange}
       icon={<Warning size={20} className="text-destructive" />}
-      title={t('skills:management.delete', '删除技能')}
-      description={t(
-        'skills:management.delete_confirm',
-        '确定要删除技能「{{name}}」吗？此操作不可恢复。',
+      title={t('skills:management.delete')}
+      description={t('skills:management.delete_confirm',
         { name: getLocalizedSkillName(skill.id, skill.name, t) }
       )}
-      confirmText={isDeleting ? t('common:actions.deleting', '删除中...') : t('common:actions.delete', '删除')}
-      cancelText={t('common:actions.cancel', '取消')}
+      confirmText={isDeleting ? t('common:actions.deleting') : t('common:actions.delete')}
+      cancelText={t('common:actions.cancel')}
       confirmVariant="danger"
       loading={isDeleting}
       disabled={isDeleting}
@@ -81,7 +86,7 @@ export const SkillDeleteConfirm: React.FC<SkillDeleteConfirmProps> = ({
           </p>
         )}
       </div>
-    </NotionAlertDialog>
+    </DsAlertDialog>
   );
 };
 

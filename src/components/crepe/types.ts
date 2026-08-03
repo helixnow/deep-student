@@ -4,11 +4,26 @@
  */
 
 import type { Crepe } from '@milkdown/crepe';
+import type { AgentHighlightMeta } from './plugins/agentHighlight';
+import type { CrepePluginsOptions } from './plugins';
 
 export type CrepeSelectionSnapshot = {
   from: number;
   to: number;
 };
+
+export type CrepeAgentInsertResult = {
+  from: number;
+  to: number;
+  cursor: number;
+};
+
+export type CrepeFullDocumentReplaceOptions = {
+  /** Full-document OCC precondition. The write must be rejected if it no longer matches. */
+  expectedMarkdown: string;
+};
+
+export type { AgentHighlightMeta };
 
 /**
  * Crepe 编辑器对外暴露的 API
@@ -18,11 +33,35 @@ export interface CrepeEditorApi {
   getMarkdown: () => string;
   
   /** 设置 Markdown 内容（会替换当前内容） */
-  setMarkdown: (markdown: string) => void;
+  setMarkdown: (markdown: string) => boolean;
+
+  /** Full persisted document, which may be larger than the editor's loaded line window. */
+  getFullMarkdown?: () => string;
+
+  /** Whether getMarkdown() currently represents only a visible prefix of the document. */
+  isDocumentWindowed?: () => boolean;
+
+  /**
+   * Replace and persist the complete document under an OCC precondition. Workbench note
+   * hosts provide this so ACR never treats a loaded prefix as the entire note.
+   */
+  replaceFullMarkdown?: (
+    markdown: string,
+    options: CrepeFullDocumentReplaceOptions,
+  ) => Promise<boolean>;
 
   captureSelection?: () => CrepeSelectionSnapshot | null;
 
   restoreSelection?: (snapshot: CrepeSelectionSnapshot | null) => void;
+
+  /** 编辑器 DOM 当前是否真实持有焦点；selection 快照本身不代表用户仍在编辑。 */
+  hasFocus?: () => boolean;
+
+  /**
+   * 等待当前编辑内容持久化。Workbench ACR 会在返回 completed 前调用；
+   * 基础 Crepe 可不实现，由承载笔记保存队列的上层注入。
+   */
+  flushPendingSave?: () => Promise<void>;
   
   /** 聚焦编辑器 */
   focus: () => void;
@@ -33,8 +72,18 @@ export interface CrepeEditorApi {
   /** 设置只读状态 */
   setReadonly: (readonly: boolean) => void;
   
-  /** 滚动到指定标题 */
-  scrollToHeading: (text: string, level: number, normalizedText?: string) => void;
+  /**
+   * 滚动到指定标题。
+   * @param matchesHeading 可选的精确匹配谓词（接收文档中标题的原始文本）；
+   * 提供时优先于内置的 lowercase/trim 相等比较，供调用方注入
+   * 全半角/中文标点等更强的规范化规则。未命中时仍回退内置模糊匹配。
+   */
+  scrollToHeading: (
+    text: string,
+    level: number,
+    normalizedText?: string,
+    matchesHeading?: (docHeadingText: string) => boolean
+  ) => void;
   
   /** 获取底层 Crepe 实例（高级用法） */
   getCrepe: () => Crepe | null;
@@ -42,11 +91,44 @@ export interface CrepeEditorApi {
   /** 销毁编辑器 */
   destroy: () => Promise<void>;
   
-  /** 
+  /**
    * 在光标位置插入文本
    * @param text 要插入的文本
    */
   insertAtCursor: (text: string) => void;
+
+  /**
+   * ACR agent 在指定文档位置插入文本（不抢焦点、不进用户 undo）— R1-12
+   * @returns 实际插入区间；编辑器未就绪或写入失败返回 null
+   */
+  agentInsert: (text: string, pos: number) => CrepeAgentInsertResult | null;
+
+  /**
+   * 在块边界插入并解析 Markdown，保留列表、标题、公式等文档结构。
+   * 失败时返回 null，调用方可降级为纯文本插入。
+   */
+  agentInsertMarkdown?: (markdown: string, pos: number) => CrepeAgentInsertResult | null;
+
+  /**
+   * ACR agent 透传 agentHighlight 插件 meta（caret / fadeRun / clearAll 等）
+   */
+  agentSignal: (meta: AgentHighlightMeta) => void;
+
+  /**
+   * ACR 4.0：破坏类直改（note_replace/note_set）后的变更区域演出。
+   * 依据新旧 markdown 的首个差异定位段落：滚动到该处并做一次 agent-flash
+   * 渐隐高亮；无法定位时退化为整个内容区一次轻微 opacity 脉冲。
+   * 返回是否执行了演出（两文一致或编辑器未就绪时 false）。
+   */
+  agentFlashChange?: (previousMarkdown: string, nextMarkdown: string) => boolean;
+
+  /** 文档可插入末尾位置（doc.content.size） */
+  getDocEndPos: () => number;
+
+  /**
+   * 按标题文本定位插入点（标题节点之后）；未找到返回 null
+   */
+  resolveHeadingPos: (heading: string) => number | null;
   
   /**
    * 用前后标记包裹选中文本，如果没有选中则插入标记并将光标置于中间
@@ -110,6 +192,12 @@ export interface CrepeEditorApi {
   
   /** 插入表格 */
   insertTable: () => void;
+
+  /**
+   * 📱 在当前选区所属顶层块打开块操作菜单（Turn into / 复制 / 删除等）。
+   * 触屏无 hover 块句柄，由移动端工具条的「块操作」入口调用；可选以兼容旧实现。
+   */
+  openBlockMenuAtSelection?: () => void;
 }
 
 /**
@@ -145,6 +233,12 @@ export interface CrepeEditorProps {
   
   /** 笔记 ID（用于图片资产管理） */
   noteId?: string;
+
+  /**
+   * 扩展插件配置（传给 applyCrepePlugins）。
+   * 宿主可覆盖 wikilink.resolve / getNotes、mention.searchNotes 等。
+   */
+  plugins?: CrepePluginsOptions;
 }
 
 /**

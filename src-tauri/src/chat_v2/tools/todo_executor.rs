@@ -24,7 +24,6 @@ use serde_json::{json, Value};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::database::ChatV2Database;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 // ============================================================================
@@ -49,8 +48,10 @@ pub mod tool_names {
 /// 任务步骤状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TodoStatus {
     /// 待处理
+    #[default]
     Pending,
     /// 执行中
     Running,
@@ -60,12 +61,6 @@ pub enum TodoStatus {
     Failed,
     /// 已跳过
     Skipped,
-}
-
-impl Default for TodoStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 impl std::fmt::Display for TodoStatus {
@@ -135,7 +130,7 @@ impl TodoList {
         Self {
             id: format!(
                 "todo_{}",
-                uuid::Uuid::new_v4().to_string().replace("-", "")[..8].to_string()
+                &uuid::Uuid::new_v4().to_string().replace("-", "")[..8]
             ),
             title,
             steps,
@@ -582,7 +577,7 @@ impl TodoListExecutor {
         let is_all_done = todo_list.is_all_done();
         let completed = todo_list.completed_count();
         let total = todo_list.total_count();
-        let next_step = todo_list.next_pending().map(|s| s.clone());
+        let next_step = todo_list.next_pending().cloned();
         // 🔧 P6修复：返回完整的 steps 数组，供前端显示当时的状态
         let steps_snapshot = todo_list.steps.clone();
         let title = todo_list.title.clone();

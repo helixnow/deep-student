@@ -1,0 +1,347 @@
+# macOS 构建（reusable）
+#
+# release.yml / rebuild-release.yml 共用的唯一 macOS 构建实现。
+# 调用方需 `secrets: inherit`。
+#
+# 审查 F4 修复：APPLE_* 签名/公证 secrets 此前只写在 release.yml 头部注释里，
+# 从未传入构建环境 —— Tauri 只从 env 读取这些配置，导致产物一直是 ad-hoc
+# 签名、未公证。现已显式注入。
+#
+# 生产签名链（fail-closed）：
+#   1. Preflight 校验全部生产 secrets（缺失 ⇒ 立即失败并列出缺失项，
+#      绝不静默产出 ad-hoc 签名/未公证产物）
+#   2. 导入 Developer ID Application 证书到独立临时 keychain
+#   3. tauri build：codesign（APPLE_SIGNING_IDENTITY）+ notarytool 公证
+#      + staple（APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID）
+#   4. 构建后强制验证：codesign --verify --strict、xcrun stapler validate、
+#      spctl --assess（Gatekeeper 通过才算构建成功）
+#   5. 无论成败清理临时 keychain
+#
+# 需要的生产 secrets：
+#   APPLE_CERTIFICATE_BASE64（Developer ID Application .p12 的 base64）
+#   APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY
+#   APPLE_ID / APPLE_PASSWORD（app-specific password）/ APPLE_TEAM_ID
+#   TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD（updater 签名）
+
+name: Build macOS (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: '构建的 tag（如 v0.9.42）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # 固定工具版本（升级需显式改这里）
+  SENTRY_CLI_VERSION: '2.58.6'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      # ── 生产签名 secrets 预检（fail-closed, 在任何耗时步骤之前）──
+      - name: Preflight — require production signing secrets (fail-closed)
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          MISSING=""
+          for VAR in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD \
+                     APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID \
+                     TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -z "${!VAR}" ]; then
+              MISSING="${MISSING} ${VAR}"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::macOS release build refuses to run without production signing secrets (fail-closed)."
+            echo "::error::Missing secrets:${MISSING}"
+            echo "::error::Configure them in repository/organization secrets. Unsigned builds are only allowed via local scripts (e.g. scripts/build_all.sh with DS_ALLOW_UNSIGNED=1)."
+            exit 1
+          fi
+          echo "✅ All required macOS production signing secrets are present"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Sentry CLI (pinned)
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
+
+      - name: Print build tool manifest
+        run: |
+          echo "=== macOS build tool manifest (target: ${{ matrix.target }}) ==="
+          echo "node            : $(node --version)"
+          echo "npm             : $(npm --version)"
+          echo "rustc           : $(rustc --version)"
+          echo "cargo           : $(cargo --version)"
+          echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
+          echo "xcode           : $(xcodebuild -version | tr '\n' ' ')"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      # ── 导入 Developer ID 证书到独立临时 keychain ──
+      # 不污染 login keychain；keychain 密码为一次性随机值；构建结束
+      # (无论成败) 由 post 步骤删除。
+      - name: Import Apple signing certificate
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/deepstudent-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+          CERT_PATH="$RUNNER_TEMP/apple-signing-cert.p12"
+
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 -d > "$CERT_PATH"
+          if [ ! -s "$CERT_PATH" ]; then
+            echo "::error::APPLE_CERTIFICATE_BASE64 decoded to an empty file"
+            exit 1
+          fi
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          rm -f "$CERT_PATH"
+
+          # 证书必须真实可用于 codesign, 且与声明的 identity 匹配
+          if ! security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+              | grep -F "$APPLE_SIGNING_IDENTITY"; then
+            echo "::error::Imported certificate does not match APPLE_SIGNING_IDENTITY ('${APPLE_SIGNING_IDENTITY}')"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+            exit 1
+          fi
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "✅ Developer ID certificate imported into temporary keychain"
+
+      - name: Prepare target-specific pdfium
+        run: |
+          TARGET="${{ matrix.target }}"
+          if [[ -x "scripts/prepare-pdfium-macos.sh" ]]; then
+            bash scripts/prepare-pdfium-macos.sh "$TARGET"
+            exit 0
+          fi
+
+          echo "[warn] scripts/prepare-pdfium-macos.sh not found, falling back to legacy prepare flow."
+          if [[ ! -x "scripts/download-pdfium.sh" ]]; then
+            echo "[warn] scripts/download-pdfium.sh not found, skip pdfium prepare."
+            exit 0
+          fi
+
+          case "$TARGET" in
+            aarch64-apple-darwin)
+              rm -f src-tauri/resources/pdfium/libpdfium.dylib
+              bash scripts/download-pdfium.sh macos-arm64
+              ;;
+            x86_64-apple-darwin)
+              rm -f src-tauri/resources/pdfium/libpdfium.dylib
+              bash scripts/download-pdfium.sh macos-x64
+              ;;
+            *)
+              echo "::error::Unsupported macOS target: $TARGET"
+              exit 1
+              ;;
+          esac
+
+      - name: Build Tauri app (codesign + notarize + staple)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # macOS 代码签名 + notarytool 公证 + staple（Preflight 已保证
+          # secrets 全部就绪; 证书已导入临时 keychain）
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx tauri build --target ${{ matrix.target }} -- --locked
+
+      # ── 签名/公证结果强制验证（fail-closed）──
+      # codesign --verify --strict + stapler validate + spctl --assess:
+      # 任何一项不通过, 产物一律不允许进入 publish。
+      - name: Verify codesign / notarization / staple / Gatekeeper
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          TARGET="${{ matrix.target }}"
+          BUNDLE_DIR="src-tauri/target/${TARGET}/release/bundle"
+
+          APP_DIR=$(find "$BUNDLE_DIR/macos" -maxdepth 1 -type d -name '*.app' | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "::error::No .app bundle found under $BUNDLE_DIR/macos"
+            exit 1
+          fi
+          echo "🔍 Verifying: $APP_DIR"
+
+          echo "── codesign --verify --deep --strict ──"
+          codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+
+          echo "── signing authority must be Developer ID (not ad-hoc) ──"
+          AUTHORITY=$(codesign -dv --verbose=4 "$APP_DIR" 2>&1 | grep '^Authority=' | head -1 || true)
+          echo "  $AUTHORITY"
+          if ! codesign -dv --verbose=4 "$APP_DIR" 2>&1 | grep -q 'Authority=Developer ID Application'; then
+            echo "::error::.app is not signed with a Developer ID Application certificate (ad-hoc or wrong identity)"
+            exit 1
+          fi
+
+          echo "── stapler validate (notarization ticket must be attached) ──"
+          xcrun stapler validate "$APP_DIR"
+
+          echo "── spctl --assess (Gatekeeper) ──"
+          spctl --assess --type execute --verbose=2 "$APP_DIR"
+
+          # DMG: 必须由 Developer ID 签名（公证票随内部已 staple 的 .app）
+          DMG=$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -name '*.dmg' | head -n 1)
+          if [ -z "$DMG" ]; then
+            echo "::error::No .dmg found under $BUNDLE_DIR/dmg"
+            exit 1
+          fi
+          echo "🔍 Verifying DMG signature: $DMG"
+          codesign --verify --verbose=2 "$DMG"
+
+          echo "✅ codesign + notarization + staple + Gatekeeper checks all passed"
+
+      # ── 更新器签名产物存在性校验（publish 前置防线）──
+      - name: Verify updater artifact and signature exist
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          TAR_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app.tar.gz' ! -name '*.sig' | wc -l | tr -d ' ')
+          SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app.tar.gz.sig' | wc -l | tr -d ' ')
+          if [ "$TAR_COUNT" -ne 1 ] || [ "$SIG_COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly 1 updater archive + 1 .sig, got ${TAR_COUNT} archive(s) / ${SIG_COUNT} sig(s)"
+            ls -la "$BUNDLE_DIR" || true
+            exit 1
+          fi
+          echo "✅ Updater archive + signature present"
+
+      - name: Upload native symbols to Sentry
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: bash scripts/upload-sentry-symbols.sh "src-tauri/target/${{ matrix.target }}/release"
+
+      - name: Verify bundled pdfium architecture
+        run: |
+          TARGET="${{ matrix.target }}"
+          if [[ -x "scripts/verify-macos-pdfium-bundle.sh" ]]; then
+            bash scripts/verify-macos-pdfium-bundle.sh "$TARGET"
+            exit 0
+          fi
+
+          echo "[warn] scripts/verify-macos-pdfium-bundle.sh not found, falling back to legacy verify flow."
+          APP_DIR=$(find "src-tauri/target/$TARGET/release/bundle/macos" -maxdepth 1 -type d -name '*.app' | head -n 1)
+          if [[ -z "$APP_DIR" ]]; then
+            echo "[warn] No .app found for $TARGET, skip verify."
+            exit 0
+          fi
+          LIB="$APP_DIR/Contents/Resources/libpdfium.dylib"
+          if [[ ! -f "$LIB" ]]; then
+            echo "[warn] Bundled libpdfium.dylib missing, skip verify."
+            exit 0
+          fi
+          ARCH_INFO=$(lipo -info "$LIB" 2>/dev/null || true)
+          case "$TARGET" in
+            aarch64-apple-darwin)
+              [[ "$ARCH_INFO" == *"arm64"* ]] || { echo "::error::Bundled libpdfium missing arm64: $ARCH_INFO"; exit 1; }
+              ;;
+            x86_64-apple-darwin)
+              [[ "$ARCH_INFO" == *"x86_64"* ]] || { echo "::error::Bundled libpdfium missing x86_64: $ARCH_INFO"; exit 1; }
+              ;;
+          esac
+          echo "Verified bundled pdfium: $ARCH_INFO"
+
+      - name: Rename updater artifacts with arch suffix
+        run: |
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
+          for f in "$BUNDLE_DIR"/*.app.tar.gz; do
+            [ -f "$f" ] || continue
+            BASE=$(basename "$f" .app.tar.gz | tr ' ' '.')
+            mv "$f" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz"
+            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz.sig"
+          done
+          echo "📦 Renamed updater artifacts:"
+          ls -la "$BUNDLE_DIR"/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-${{ matrix.target }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      # 无论成败都清理临时 keychain, 不让证书残留在 runner 上
+      - name: Cleanup signing keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+            echo "🧹 Temporary signing keychain removed"
+          fi

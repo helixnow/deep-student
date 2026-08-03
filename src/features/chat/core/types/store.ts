@@ -17,7 +17,7 @@ import type {
   createDefaultPanelStates,
 } from './common';
 import type { ContextRef } from '../../context/types';
-import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
+import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import type { QueuedMessage } from './queue';
 
 // 重新导出共享类型
@@ -158,11 +158,134 @@ export interface LoadSessionResponseType {
   messages: BackendMessageForRestore[];
   blocks: BackendBlockForRestore[];
   state?: SessionStateForRestore;
+  /** 会话消息总数；仅尾部分块加载时返回（undefined 表示 messages 已是全量） */
+  totalMessageCount?: number;
+}
+
+/**
+ * Snapshot captured immediately before an asynchronous session/history load.
+ *
+ * The backend response is not a transaction with subsequent frontend edits.
+ * These IDs let restore code distinguish genuinely unloaded history from an
+ * item that existed when the request started and was deleted while it was in
+ * flight.
+ */
+export interface SessionRestoreBaseline {
+  messageIds: ReadonlySet<string>;
+  blockIds: ReadonlySet<string>;
+  oldestMessageTimestamp?: number;
+  sessionStatus: SessionStatus;
+  currentStreamingMessageId: string | null;
 }
 
 // ============================================================================
 // Blocking Interaction 类型
 // ============================================================================
+
+export interface ShellRuntimeApprovalScope {
+  kind: 'shell';
+  toolSource?: string;
+  toolName?: string;
+  rootId: string;
+  cwd: string;
+  commandPrefix: string;
+  commandHash: string;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  networkAllowed?: boolean;
+  hasShellOperators?: boolean;
+  usesScriptRunner?: boolean;
+  firstToken?: string | null;
+  rootPath?: string;
+  rootAccess?: 'read_only' | 'read_write' | string;
+  rootSessionScoped?: boolean;
+  rootBinding?: string;
+  readableRoots?: string[];
+  sandboxBackend?: string;
+  shellKind?: string;
+  outputEncoding?: string;
+  executionLocation?: 'local_device' | 'external_mcp' | string;
+  sandboxEnforced?: boolean;
+  inheritEnv?: boolean;
+  inheritedEnvKeys?: string[];
+  explicitEnvKeys?: string[];
+  containsPotentialSecret?: boolean;
+  rememberDisabled?: boolean;
+}
+
+export interface SkillInstallRuntimeApprovalScope {
+  kind: 'skill_install';
+  toolSource?: string;
+  toolName?: string;
+  sourceSummary?: string;
+  expectedSha256Prefix?: string;
+  declaredRiskLevel?: 'low' | 'medium' | 'high' | string;
+  skillId?: string;
+  overwriteExisting?: boolean;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+export interface SkillWorkshopRuntimeApprovalScope {
+  kind: 'skill_workshop';
+  toolSource?: string;
+  toolName?: string;
+  sourceSummary?: string;
+  expectedSha256Prefix?: string;
+  skillId?: string;
+  overwriteExisting?: boolean;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+/** skill_remove / skill_trust_request（技能生命周期治理，never-remember） */
+export interface SkillLifecycleRuntimeApprovalScope {
+  kind: 'skill_lifecycle';
+  toolSource?: string;
+  toolName?: string;
+  /** skill_remove：目标目录摘要；skill_trust_request：申请理由摘要 */
+  sourceSummary?: string;
+  /** skill_trust_request：inspect 现扫整包 SHA-256 前 12 位 */
+  expectedSha256Prefix?: string;
+  /** skill_trust_request：agent 声明的扫描风险等级 */
+  declaredRiskLevel?: 'low' | 'medium' | 'high' | string;
+  skillId?: string;
+  /** 生命周期工具不覆盖已有目录；保留字段仅为审批卡渲染联合类型对齐 */
+  overwriteExisting?: boolean;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+/** custom_agent_apply / custom_agent_remove（自定义子代理 persona 治理，never-remember） */
+export interface CustomAgentRuntimeApprovalScope {
+  kind: 'custom_agent';
+  toolSource?: string;
+  toolName?: string;
+  /** apply：propose 返回的变更摘要（新旧字节数/首行标题）；remove：目标文件摘要 */
+  sourceSummary?: string;
+  /** apply：审阅内容 SHA-256 前 12 位 */
+  expectedSha256Prefix?: string;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+/** mcp_server_update / mcp_server_remove（MCP server 配置治理，never-remember） */
+export interface McpManageRuntimeApprovalScope {
+  kind: 'mcp_manage';
+  toolSource?: string;
+  toolName?: string;
+  /** update：server + 变更字段名列表；remove：server + transport 摘要 */
+  sourceSummary?: string;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+export type RuntimeApprovalScope =
+  | ShellRuntimeApprovalScope
+  | SkillInstallRuntimeApprovalScope
+  | SkillWorkshopRuntimeApprovalScope
+  | SkillLifecycleRuntimeApprovalScope
+  | CustomAgentRuntimeApprovalScope
+  | McpManageRuntimeApprovalScope;
 
 export interface ToolApprovalBlockingInteraction {
   kind: 'tool_approval';
@@ -170,10 +293,12 @@ export interface ToolApprovalBlockingInteraction {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
+  permissionPreset?: PermissionPreset;
   description: string;
   timeoutSeconds: number;
   resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
   resolvedReason?: string;
+  runtimeScope?: RuntimeApprovalScope;
 }
 
 export interface AskUserBlockingInteraction {
@@ -195,10 +320,30 @@ export interface ToolLimitBlockingInteraction {
   onContinue: (() => Promise<void>) | null;
 }
 
+/** Plan mode batch confirmation (distinct from tool_approval). */
+export interface PlanGateBlockingInteraction {
+  kind: 'plan_gate';
+  planId: string;
+  toolCallId: string;
+  toolName: string;
+  summary: string;
+  timeoutSeconds: number;
+  arguments?: Record<string, unknown>;
+  resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
+}
+
 export type BlockingInteraction =
   | ToolApprovalBlockingInteraction
   | AskUserBlockingInteraction
-  | ToolLimitBlockingInteraction;
+  | ToolLimitBlockingInteraction
+  | PlanGateBlockingInteraction;
+
+export type AuthorityMode = 'ask' | 'plan' | 'craft';
+export type PermissionPreset =
+  | 'cautious'
+  | 'relaxed'
+  | 'full_access'
+  | 'danger_full_access';
 
 // ============================================================================
 // ChatStore 类型定义
@@ -228,6 +373,16 @@ export interface ChatStore {
 
   /** 会话元数据 */
   sessionMetadata: Record<string, unknown> | null;
+
+  /**
+   * Ask / Plan / Craft session authority mode (SSOT from backend metadata).
+   * Defaults to craft for legacy sessions.
+   */
+  authorityMode: AuthorityMode;
+  permissionPreset: PermissionPreset;
+
+  /** Hint: last Ask-mode write was blocked — show switch-to-Plan CTA */
+  authorityAskBlockedHint: boolean;
 
   /** 会话状态 */
   sessionStatus: SessionStatus;
@@ -315,6 +470,7 @@ export interface ChatStore {
     toolName: string;
     arguments: Record<string, unknown>;
     sensitivity: 'low' | 'medium' | 'high';
+    permissionPreset?: PermissionPreset;
     description: string;
     timeoutSeconds: number;
     resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
@@ -445,6 +601,28 @@ export interface ChatStore {
   /** 自动出队下一项（满足 canDequeue 时执行） */
   maybeDequeue(): Promise<void>;
 
+  /**
+   * 🔧 P0 定时器竞态修复（内部清理接口）：
+   * 取消队列出队 breather timer（永久禁用后续出队）。
+   * 由 disposeRuntimeTimers 统一调用，UI 不应直接使用。
+   */
+  cancelDequeueBreather(): void;
+
+  /**
+   * 🔧 P0 定时器竞态修复（内部清理接口）：
+   * 取消 deleteMessage 操作锁看门狗 timer。
+   * 由 disposeRuntimeTimers 统一调用，UI 不应直接使用。
+   */
+  cancelLockWatchdog(): void;
+
+  /**
+   * 🔧 P0 定时器竞态修复：运行时定时器统一清理。
+   * SessionManager destroy / LRU 淘汰在摘除 store 前调用。
+   * 声明为可选：既有测试的 Partial mock 不强制实现；
+   * createChatStore 创建的 store 总是提供实现。
+   */
+  disposeRuntimeTimers?(): void;
+
   // ========== 块 Actions ==========
 
   /** 创建块，返回 blockId */
@@ -568,6 +746,26 @@ export interface ChatStore {
   /** 清除阻塞交互 */
   clearBlockingInteraction(): void;
 
+  /** Persist Ask/Plan/Craft mode via backend */
+  setAuthorityMode(mode: AuthorityMode): Promise<void>;
+  setPermissionPreset(preset: PermissionPreset): Promise<void>;
+
+  /** Apply plan_gate start payload from backend events */
+  handlePlanGateRequest(payload: {
+    planId: string;
+    toolCallId: string;
+    toolName: string;
+    summary: string;
+    timeoutSeconds: number;
+    arguments?: Record<string, unknown>;
+  }): void;
+
+  /** Clear / resolve plan_gate blocking interaction */
+  clearPlanGate(): void;
+
+  /** Mark Ask-mode write refusal for UI CTA */
+  setAuthorityAskBlockedHint(show: boolean): void;
+
   // ========== 🆕 上下文引用 Actions ==========
 
   /**
@@ -657,8 +855,6 @@ export interface ChatStore {
     id: string;
     name: string;
     description: string;
-    /** 🆕 P1-B: allowedTools 用于工具可见性过滤 */
-    allowedTools?: string[];
   }>>;
 
   // ========== 🆕 工具审批 Actions（文档 29 P1-3） ==========
@@ -755,6 +951,18 @@ export interface ChatStore {
   ): void;
 
   /**
+   * 注入系统唤醒逻辑。唤醒内容只供本轮模型消费，不创建用户历史消息。
+   */
+  setWakeSessionCallback(
+    callback: ((content: string, assistantMessageId: string) => Promise<void>) | null
+  ): void;
+
+  /**
+   * 启动一个由系统事件触发的 ephemeral 用户回合。
+   */
+  wakeSession(content: string): Promise<void>;
+
+  /**
    * 设置中断流式回调函数
    * 由 TauriAdapter 调用，注入实际的后端取消逻辑
    * @param callback 中断回调
@@ -807,8 +1015,45 @@ export interface ChatStore {
     callback: ((settings: { title?: string }) => Promise<void>) | null
   ): void;
 
+  /**
+   * 🆕 P0 分支模型：从当前会话分支出新会话
+   *
+   * 以 upToMessageId（含）为截断点复制历史到新会话（后端事务执行）。
+   * 优先走 TauriAdapter 注入的回调；回调未注入时（如适配器尚未 setup）
+   * 直接 invoke `chat_v2_branch_session` 兜底。
+   *
+   * 声明为可选方法：既有测试用 Partial mock 构造 store，不强制其实现。
+   * createChatStore 创建的 store 总是提供该实现。
+   *
+   * @param upToMessageId 分支截断点消息 ID
+   * @returns 新分支会话（含 id，供 UI 导航）
+   */
+  branchSession?(upToMessageId: string): Promise<BranchSessionResult>;
+
+  /**
+   * 🆕 P0 分支模型：设置分支回调函数（TauriAdapter 注入）
+   * @param callback 分支回调，参数为 upToMessageId
+   */
+  setBranchSessionCallback?(
+    callback: ((upToMessageId: string) => Promise<BranchSessionResult>) | null
+  ): void;
+
   /** 从后端响应恢复状态（适配器调用） */
-  restoreFromBackend(response: LoadSessionResponseType): void;
+  restoreFromBackend(
+    response: LoadSessionResponseType,
+    baseline?: SessionRestoreBaseline,
+  ): void;
+
+  /**
+   * 将全量响应中的更早历史消息合并到已恢复的会话头部（适配器调用）
+   *
+   * 用于尾部分块加载的第二阶段：只补齐 messageMap/messageOrder/blocks，
+   * 不触碰运行时状态（输入草稿、流式状态、技能等）。
+   */
+  prependHistoryFromBackend(
+    response: LoadSessionResponseType,
+    baseline?: SessionRestoreBaseline,
+  ): void;
 
   // ========== 辅助方法（O(1) 查找） ==========
 

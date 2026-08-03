@@ -1,31 +1,31 @@
 {
   "heatmap": {
     "title": "学习热力图",
-    "loading": "加载中...",
+    "loading": "加载学习数据...",
     "error": "加载失败：{{error}}",
     "retry": "重试",
     "refresh": "刷新",
     "totalActivities": "共 {{count}} 次学习活动",
     "noActivity": "无活动记录",
     "stats": {
-      "totalActivities": "总活动次数",
+      "totalActivities": "总活动",
       "activeDays": "活跃天数",
-      "maxDaily": "单日最高"
+      "maxDaily": "单日峰值"
     },
     "legend": {
       "less": "少",
       "more": "多"
     },
     "details": {
-      "chatSessions": "对话会话：{{count}} 次",
-      "chatMessages": "发送消息：{{count}} 条",
-      "notesEdited": "编辑笔记：{{count}} 篇",
-      "textbooksOpened": "打开教材：{{count}} 次",
-      "examsCreated": "整卷识别：{{count}} 份",
-      "translationsCreated": "翻译：{{count}} 次",
-      "essaysCreated": "作文批改：{{count}} 篇",
-      "ankiCardsCreated": "创建卡片：{{count}} 张",
-      "questionsAnswered": "做题：{{count}} 道"
+      "chatSessions": "会话",
+      "chatMessages": "消息",
+      "notesEdited": "笔记",
+      "textbooksOpened": "阅读",
+      "examsCreated": "测验",
+      "translationsCreated": "翻译",
+      "essaysCreated": "作文",
+      "ankiCardsCreated": "卡片",
+      "questionsAnswered": "做题"
     }
   },
   "calendar": {
@@ -56,6 +56,7 @@
     "correctRate": "正确率",
     "questionUnit": "{{count}} 题",
     "noRecord": "暂无学习记录",
+    "emptyHint": "开始做题后，这里会记录你的每日学习活跃度",
     "legendLess": "少",
     "legendMore": "多"
   },
@@ -64,6 +65,7 @@
     "today": "今日",
     "week": "本周",
     "month": "本月",
+    "quarter": "近90天",
     "all": "全部",
     "questionCount": "做题数",
     "correctCount": "正确数",
@@ -89,6 +91,47 @@
     "itemDetail": "{{total}} 题 · 已掌握 {{mastered}} 题",
     "noData": "暂无知识点数据",
     "noDataHint": "完成更多题目后，将展示知识点掌握情况",
-    "refreshData": "刷新数据"
+    "refreshData": "刷新数据",
+    "topHint": "雷达图展示前 {{shown}} 个知识点，其余 {{rest}} 个见下方列表"
+  },
+  "overview": {
+    "total": "总题数",
+    "masteryRate": "掌握率",
+    "streak": "连续天数",
+    "todayDone": "今日完成",
+    "daySuffix": "天",
+    "questionSuffix": "题"
+  },
+  "questionTypes": {
+    "single_choice": "单选题",
+    "multiple_choice": "多选题",
+    "indefinite_choice": "不定项",
+    "true_false": "判断题",
+    "fill_blank": "填空题",
+    "matching": "匹配题",
+    "ordering": "排序题",
+    "numeric": "数值题",
+    "short_answer": "简答题",
+    "calculation": "计算题",
+    "proof": "证明题",
+    "essay": "论述题",
+    "other": "其他"
+  },
+  "typeBreakdown": {
+    "title": "题型分布与正确率",
+    "typeCount": "{{count}} 种题型",
+    "partialHint": "统计基于已加载的题目，加载更多题目后会更完整",
+    "questionUnit": "{{count}} 题",
+    "noAttempt": "未作答"
+  },
+  "historyView": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "filterAll": "全部",
+    "filterAnswers": "答题记录",
+    "filterWrongOnly": "仅错题",
+    "loadMore": "加载更多",
+    "recordCount": "{{count}} 条",
+    "noFilterResult": "当前筛选下没有记录"
   }
 }

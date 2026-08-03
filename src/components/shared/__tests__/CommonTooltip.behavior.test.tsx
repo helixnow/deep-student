@@ -61,6 +61,35 @@ describe('CommonTooltip', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
+  it('keeps the tooltip mounted during its short exit transition, then unmounts it', () => {
+    vi.useFakeTimers();
+
+    render(
+      <CommonTooltip content="退出动画" delay={0}>
+        <button type="button">提示</button>
+      </CommonTooltip>
+    );
+
+    const trigger = screen.getByRole('button', { name: '提示' });
+    fireEvent.mouseEnter(trigger);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('退出动画');
+
+    fireEvent.mouseLeave(trigger);
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(document.querySelector('[role="tooltip"]')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(49);
+    });
+    expect(document.querySelector('[role="tooltip"]')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(document.querySelector('[role="tooltip"]')).not.toBeInTheDocument();
+  });
+
   it('dismisses a visible tooltip when its trigger is activated', () => {
     render(
       <CommonTooltip content="更多操作" delay={0}>

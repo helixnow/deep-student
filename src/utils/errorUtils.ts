@@ -3,7 +3,20 @@
  * 解决前端显示 [object Object] 的问题
  */
 
-import { t } from './i18n';
+import i18n from '../i18n';
+
+export interface StructuredErrorDetails {
+  code?: string;
+  message?: string;
+  detail?: string;
+  hint?: string;
+  messageKey?: string;
+}
+
+export interface UserFacingErrorOptions {
+  includeDetails?: boolean;
+  includeHint?: boolean;
+}
 
 /**
  * 将任意错误对象转换为可读的错误消息字符串
@@ -11,54 +24,151 @@ import { t } from './i18n';
  * @returns 格式化的错误消息
  */
 export const getErrorMessage = (error: unknown): string => {
-  // 标准 Error 对象（Tauri invoke 失败时会把后端 JSON 字符串包装在 Error.message 中）
-  if (error instanceof Error) {
-    const extracted = extractStructuredErrorMessage(error.message);
-    return sanitizeErrorMessage(extracted ?? error.message);
+  const details = getErrorDetails(error);
+  if (details.message || details.detail || details.code) {
+    return sanitizeErrorMessage(details.message ?? details.detail ?? details.code ?? '');
   }
-  
-  // 字符串错误
-  if (typeof error === 'string') {
-    return extractStructuredErrorMessage(error) ?? error;
+
+  if (error === null || error === undefined) {
+    return i18n.t('common:utils.errors.unknown_error_occurred', {
+      defaultValue: 'An unknown error occurred',
+    });
   }
-  
-  // Tauri 错误对象检查
-  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
-    const message = (error as { message: string }).message;
-    return sanitizeErrorMessage(extractStructuredErrorMessage(message) ?? message);
-  }
-  
-  // 尝试 JSON 序列化
+
   try {
     const stringified = JSON.stringify(error);
-    if (stringified === '{}' && Object.keys(error as object).length === 0) {
-      return t('utils.errors.unknown_error_occurred');
+    if (!stringified || stringified === '{}') {
+      return i18n.t('common:utils.errors.unknown_error_occurred', {
+        defaultValue: 'An unknown error occurred',
+      });
     }
     return sanitizeErrorMessage(stringified);
   } catch {
-    return t('utils.errors.unserializable_error');
+    return i18n.t('common:utils.errors.unserializable_error', {
+      defaultValue: 'An unserializable error occurred',
+    });
   }
 };
 
 /**
- * 解析后端结构化错误字符串（例如 {"code":"X","message":"..."}）
+ * 提取后端结构化错误详情。
+ * Tauri invoke 失败通常把 JSON 放在 Error.message 中，部分命令则直接返回错误对象。
  */
-function extractStructuredErrorMessage(raw: string): string | null {
+export const getErrorDetails = (error: unknown): StructuredErrorDetails => {
+  const raw = error instanceof Error
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : undefined;
+
+  if (raw) {
+    const parsed = parseStructuredError(raw);
+    if (parsed) return parsed;
+    return { message: raw };
+  }
+
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const nested = typeof record.error === 'string'
+      ? parseStructuredError(record.error)
+      : record.error && typeof record.error === 'object'
+        ? getErrorDetails(record.error)
+        : undefined;
+    const message = typeof record.message === 'string' ? record.message : undefined;
+    const detail = typeof record.detail === 'string' ? record.detail : undefined;
+    const code = typeof record.code === 'string'
+      ? record.code
+      : typeof record.errorCode === 'string'
+        ? record.errorCode
+        : undefined;
+    const hint = typeof record.hint === 'string' ? record.hint : undefined;
+    const messageKey = typeof record.message_key === 'string'
+      ? record.message_key
+      : typeof record.messageKey === 'string'
+        ? record.messageKey
+        : undefined;
+
+    return {
+      code: code ?? nested?.code,
+      message: message ?? nested?.message,
+      detail: detail ?? nested?.detail,
+      hint: hint ?? nested?.hint,
+      messageKey: messageKey ?? nested?.messageKey,
+    };
+  }
+
+  return {};
+};
+
+function parseStructuredError(raw: string): StructuredErrorDetails | null {
   const text = raw.trim();
   if (!text.startsWith('{') || !text.endsWith('}')) return null;
+
   try {
-    const parsed = JSON.parse(text) as { code?: unknown; message?: unknown };
-    if (typeof parsed.message === 'string' && parsed.message.trim()) {
-      return parsed.message;
-    }
-    if (typeof parsed.code === 'string' && parsed.code.trim()) {
-      return parsed.code;
-    }
-    return null;
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    const nested = parsed.error && typeof parsed.error === 'object'
+      ? parsed.error as Record<string, unknown>
+      : undefined;
+    const message = typeof parsed.message === 'string'
+      ? parsed.message
+      : typeof parsed.detail === 'string'
+        ? parsed.detail
+        : typeof parsed.error === 'string'
+          ? parsed.error
+          : undefined;
+    const code = typeof parsed.code === 'string'
+      ? parsed.code
+      : typeof parsed.errorCode === 'string'
+        ? parsed.errorCode
+        : undefined;
+    const hint = typeof parsed.hint === 'string' ? parsed.hint : undefined;
+    const messageKey = typeof parsed.message_key === 'string'
+      ? parsed.message_key
+      : typeof parsed.messageKey === 'string'
+        ? parsed.messageKey
+        : undefined;
+
+    const details: StructuredErrorDetails = {
+      code: code ?? (typeof nested?.code === 'string' ? nested.code : undefined),
+      message: message ?? (typeof nested?.message === 'string' ? nested.message : undefined),
+      detail: typeof parsed.detail === 'string' ? parsed.detail : undefined,
+      hint,
+      messageKey,
+    };
+    return Object.values(details).some((value) => Boolean(value?.trim())) ? details : null;
   } catch {
     return null;
   }
 }
+
+/**
+ * 将错误转换为稳定的当前语言前缀，并保留可用的后端诊断信息。
+ */
+export const formatUserFacingError = (
+  error: unknown,
+  prefixKey: string,
+  fallbackPrefix: string,
+  options: UserFacingErrorOptions = {},
+): string => {
+  const { includeDetails = true, includeHint = true } = options;
+  const prefix = i18n.t(prefixKey, { defaultValue: fallbackPrefix });
+  if (!includeDetails) return prefix;
+
+  const details = getErrorDetails(error);
+  const rawMessage = getErrorMessage(error);
+  const translatedMessage = details.messageKey
+    ? i18n.t(details.messageKey, { defaultValue: '' })
+    : '';
+  const diagnosticParts = [
+    details.code ? `[${details.code}]` : '',
+    translatedMessage && translatedMessage !== details.message ? translatedMessage : '',
+    rawMessage,
+    includeHint && details.hint && details.hint !== rawMessage ? details.hint : '',
+  ].filter(Boolean);
+  const diagnostic = [...new Set(diagnosticParts)].join(' | ');
+
+  return diagnostic ? `${prefix}: ${diagnostic}` : prefix;
+};
 
 /**
  * 格式化错误消息，添加前缀

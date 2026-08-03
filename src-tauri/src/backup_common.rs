@@ -5,13 +5,18 @@
 //! - SHA256计算: 用于文件完整性校验
 //! - 安全防护: ZIP炸弹检测、符号链接防护
 
+use chrono::{DateTime, Utc};
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::{BufReader, Read};
-use std::path::Path;
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::RwLock;
+use tokio::sync::OwnedSemaphorePermit;
+use uuid::Uuid;
 
 use crate::models::AppError;
 type Result<T> = std::result::Result<T, AppError>;
@@ -69,6 +74,223 @@ pub const RESILIENT_RETRY_DELAY_MS: u64 = 150;
 pub static BACKUP_GLOBAL_LIMITER: LazyLock<Arc<tokio::sync::Semaphore>> =
     LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(1)));
 
+/// 会改变数据治理状态的操作类型。
+///
+/// 该类型是 additive 的运行账本字段；旧前端不读取它也不影响现有命令。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataGovernanceOperationKind {
+    Backup,
+    AutoBackup,
+    Verify,
+    ZipExport,
+    ZipImport,
+    Restore,
+    Sync,
+    DeletePropagation,
+    Prune,
+}
+
+/// 当前持有全局数据治理操作租约的任务。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataGovernanceOperationSnapshot {
+    pub operation_id: String,
+    pub kind: DataGovernanceOperationKind,
+    pub started_at: DateTime<Utc>,
+    pub process_id: u32,
+}
+
+static CURRENT_DATA_GOVERNANCE_OPERATION: LazyLock<
+    RwLock<Option<DataGovernanceOperationSnapshot>>,
+> = LazyLock::new(|| RwLock::new(None));
+
+/// 全局数据治理操作的 RAII 租约。
+///
+/// 统一保存 operation id 和 holder 元数据，避免命令在已经发出“preparing”
+/// 事件后才发现锁冲突。同进程由 semaphore 串行化，槽位外 advisory lock
+/// 负责阻止两个进程同时写不同 active slot 或远端根。
+pub struct DataGovernanceOperationGuard {
+    operation_id: String,
+    _process_lock: ProcessOperationLock,
+    _permit: OwnedSemaphorePermit,
+}
+
+#[derive(Debug)]
+struct ProcessOperationLock {
+    file: File,
+}
+
+impl Drop for ProcessOperationLock {
+    fn drop(&mut self) {
+        if let Err(error) = self.file.unlock() {
+            tracing::warn!(
+                "[DataGovernance] 释放跨进程操作锁失败（进程退出仍会由 OS 回收）: {}",
+                error
+            );
+        }
+    }
+}
+
+impl DataGovernanceOperationGuard {
+    /// 等待并取得全局操作租约。
+    pub async fn acquire(
+        kind: DataGovernanceOperationKind,
+        operation_id: Option<String>,
+    ) -> Result<Self> {
+        let permit = BACKUP_GLOBAL_LIMITER
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| AppError::validation("数据治理操作协调器已关闭".to_string()))?;
+        Self::from_permit(kind, operation_id, permit)
+    }
+
+    /// 立即尝试取得全局操作租约；被占用时返回明确的 blocked 错误。
+    pub fn try_acquire(
+        kind: DataGovernanceOperationKind,
+        operation_id: Option<String>,
+    ) -> Result<Self> {
+        let permit = BACKUP_GLOBAL_LIMITER
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                let holder = current_data_governance_operation()
+                    .map(|current| {
+                        format!(
+                            "（当前 {:?}，operation_id={}）",
+                            current.kind, current.operation_id
+                        )
+                    })
+                    .unwrap_or_default();
+                AppError::validation(format!("已有数据治理操作正在运行{holder}"))
+            })?;
+        Self::from_permit(kind, operation_id, permit)
+    }
+
+    fn from_permit(
+        kind: DataGovernanceOperationKind,
+        operation_id: Option<String>,
+        permit: OwnedSemaphorePermit,
+    ) -> Result<Self> {
+        let operation_id = operation_id
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let snapshot = DataGovernanceOperationSnapshot {
+            operation_id: operation_id.clone(),
+            kind,
+            started_at: Utc::now(),
+            process_id: std::process::id(),
+        };
+        let process_lock = acquire_process_operation_lock(&snapshot)?;
+        *CURRENT_DATA_GOVERNANCE_OPERATION
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(snapshot);
+        Ok(Self {
+            operation_id,
+            _process_lock: process_lock,
+            _permit: permit,
+        })
+    }
+
+    pub fn operation_id(&self) -> &str {
+        &self.operation_id
+    }
+}
+
+impl Drop for DataGovernanceOperationGuard {
+    fn drop(&mut self) {
+        let mut current = CURRENT_DATA_GOVERNANCE_OPERATION
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if current
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.operation_id == self.operation_id)
+        {
+            *current = None;
+        }
+    }
+}
+
+fn process_operation_lock_path() -> PathBuf {
+    crate::data_space::get_data_space_manager()
+        .map(|manager| {
+            manager
+                .base_dir()
+                .join("recovery")
+                .join(".data-governance-operation.lock")
+        })
+        .unwrap_or_else(|| std::env::temp_dir().join("deep-student-data-governance.lock"))
+}
+
+fn acquire_process_operation_lock(
+    snapshot: &DataGovernanceOperationSnapshot,
+) -> Result<ProcessOperationLock> {
+    let path = process_operation_lock_path();
+    acquire_process_operation_lock_at(&path, snapshot)
+}
+
+fn acquire_process_operation_lock_at(
+    path: &Path,
+    snapshot: &DataGovernanceOperationSnapshot,
+) -> Result<ProcessOperationLock> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            AppError::file_system(format!(
+                "创建数据治理跨进程锁目录失败 {:?}: {}",
+                parent, error
+            ))
+        })?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| {
+            AppError::file_system(format!("打开数据治理跨进程锁失败 {:?}: {}", path, error))
+        })?;
+
+    if let Err(error) = file.try_lock_exclusive() {
+        let mut holder = String::new();
+        let _ = file.seek(SeekFrom::Start(0));
+        let _ = file.read_to_string(&mut holder);
+        let holder = holder.trim();
+        let detail = if holder.is_empty() {
+            String::new()
+        } else {
+            format!("（holder={}）", holder)
+        };
+        return Err(AppError::validation(format!(
+            "另一个客户端进程正在执行数据治理操作{}: {}",
+            detail, error
+        )));
+    }
+
+    let encoded = serde_json::to_vec(snapshot)
+        .map_err(|error| AppError::internal(format!("序列化数据治理操作账本失败: {}", error)))?;
+    file.set_len(0).map_err(|error| {
+        AppError::file_system(format!("清空数据治理操作锁账本失败 {:?}: {}", path, error))
+    })?;
+    file.seek(SeekFrom::Start(0)).map_err(|error| {
+        AppError::file_system(format!("定位数据治理操作锁账本失败 {:?}: {}", path, error))
+    })?;
+    file.write_all(&encoded).map_err(|error| {
+        AppError::file_system(format!("写入数据治理操作锁账本失败 {:?}: {}", path, error))
+    })?;
+    file.sync_data().map_err(|error| {
+        AppError::file_system(format!("同步数据治理操作锁账本失败 {:?}: {}", path, error))
+    })?;
+    Ok(ProcessOperationLock { file })
+}
+
+/// 返回当前操作账本快照；状态查询不需要持有全局操作锁。
+pub fn current_data_governance_operation() -> Option<DataGovernanceOperationSnapshot> {
+    CURRENT_DATA_GOVERNANCE_OPERATION
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
 /// 计算文件的SHA256哈希值
 ///
 /// 使用8KB缓冲区分块读取，适合处理大文件而不会占用过多内存
@@ -120,6 +342,131 @@ pub fn calculate_bytes_hash(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     format!("{:x}", hasher.finalize())
+}
+
+// ============================================================================
+// 备份产物敏感材料剥离
+// ============================================================================
+
+const BACKUP_CRYPTO_SECRET_PATHS: [&str; 4] = ["crypto", ".secure", ".master_key", ".key_seed"];
+
+/// 判断备份根目录下的相对路径是否属于不应进入未加密 ZIP 的密钥材料。
+///
+/// 只匹配顶层条目及其后代，避免误伤资产目录中碰巧同名的普通文件。
+pub(crate) fn is_crypto_secret_backup_relative_path(relative_path: &Path) -> bool {
+    let Some(first_component) = relative_path.components().next() else {
+        return false;
+    };
+    let std::path::Component::Normal(first_component) = first_component else {
+        return false;
+    };
+    let first_component = first_component.to_string_lossy();
+    BACKUP_CRYPTO_SECRET_PATHS
+        .iter()
+        .any(|name| first_component.eq_ignore_ascii_case(name))
+}
+
+/// 从备份目录中剥离加密密钥材料（审阅 15-backup-dataspace P1-1）。
+///
+/// `backup_crypto_keys` 会把明文主密钥 `.master_key` 与 `.secure/`
+/// 目录（密钥种子 `.key_seed` + 加密凭据 `*.enc`）复制进备份目录的
+/// `crypto/` 子目录；而备份 ZIP 导出没有任何加密，自动备份还可能写到
+/// 网盘同步目录——拿到 ZIP 即同时获得密文与解密密钥。
+///
+/// 在把备份目录打包为**未加密 ZIP** 之前调用本函数，删除以下敏感条目：
+/// - `crypto/` 子目录（整体）
+/// - 备份根目录下可能存在的散落 `.master_key` / `.key_seed` / `.secure`
+///
+/// 取舍：剥离后该 ZIP 恢复到新设备时无法自动解密历史 API 凭据
+/// （`restore_crypto_keys` 对缺失 `crypto/` 的备份按"旧版备份"跳过、
+/// 不会报错），用户需重新输入 API Key——相比密钥随明文 ZIP 泄露，
+/// 这是可接受的代价。
+///
+/// 返回删除的条目数。任何删除或删除后验证失败都会中止导出，避免在
+/// 未加密 ZIP 中意外保留密钥材料。
+pub fn strip_crypto_secrets_from_backup_dir(backup_dir: &Path) -> Result<usize> {
+    strip_crypto_secrets_from_backup_dir_with(backup_dir, remove_sensitive_entry)
+}
+
+fn remove_sensitive_entry(path: &Path, metadata: &fs::Metadata) -> std::io::Result<()> {
+    if metadata.file_type().is_symlink() {
+        #[cfg(windows)]
+        {
+            if path.is_dir() {
+                return fs::remove_dir(path);
+            }
+        }
+        return fs::remove_file(path);
+    }
+
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+fn strip_crypto_secrets_from_backup_dir_with<F>(backup_dir: &Path, mut remover: F) -> Result<usize>
+where
+    F: FnMut(&Path, &fs::Metadata) -> std::io::Result<()>,
+{
+    let backup_metadata = fs::symlink_metadata(backup_dir)
+        .map_err(|e| AppError::file_system(format!("检查备份目录失败 {:?}: {}", backup_dir, e)))?;
+    if backup_metadata.file_type().is_symlink() || !backup_metadata.is_dir() {
+        return Err(AppError::file_system(format!(
+            "备份目录必须是普通目录，不能是文件或符号链接: {:?}",
+            backup_dir
+        )));
+    }
+
+    let mut sensitive_paths = Vec::new();
+    for entry in fs::read_dir(backup_dir).map_err(|e| {
+        AppError::file_system(format!("扫描备份敏感条目失败 {:?}: {}", backup_dir, e))
+    })? {
+        let entry = entry.map_err(|e| {
+            AppError::file_system(format!("读取备份敏感条目失败 {:?}: {}", backup_dir, e))
+        })?;
+        if is_crypto_secret_backup_relative_path(Path::new(&entry.file_name())) {
+            sensitive_paths.push(entry.path());
+        }
+    }
+    sensitive_paths.sort();
+    let mut removed = 0usize;
+
+    for path in &sensitive_paths {
+        let metadata = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(AppError::file_system(format!(
+                    "检查备份敏感条目失败 {:?}: {}",
+                    path, e
+                )))
+            }
+        };
+
+        remover(path, &metadata).map_err(|e| {
+            AppError::file_system(format!("剥离备份敏感条目失败 {:?}: {}", path, e))
+        })?;
+        tracing::info!("[BackupCommon] 已从备份产物剥离敏感条目: {:?}", path);
+        removed += 1;
+    }
+
+    for entry in fs::read_dir(backup_dir).map_err(|e| {
+        AppError::file_system(format!("验证备份敏感条目失败 {:?}: {}", backup_dir, e))
+    })? {
+        let entry = entry.map_err(|e| {
+            AppError::file_system(format!("读取备份验证条目失败 {:?}: {}", backup_dir, e))
+        })?;
+        if is_crypto_secret_backup_relative_path(Path::new(&entry.file_name())) {
+            return Err(AppError::file_system(format!(
+                "备份敏感条目删除后仍然存在: {:?}",
+                entry.path()
+            )));
+        }
+    }
+
+    Ok(removed)
 }
 
 // ============================================================================
@@ -562,7 +909,13 @@ fn get_disk_space_wmic_fallback(path: &Path) -> Option<u64> {
 /// 需要额外 20% 安全余量
 pub fn check_disk_space(path: &Path, required_bytes: u64) -> Result<()> {
     let available = get_available_disk_space(path)?;
-    let required_with_margin = (required_bytes as f64 * 1.2) as u64; // 20% 安全余量
+    let safety_margin = required_bytes
+        .checked_add(4)
+        .map(|value| value / 5)
+        .ok_or_else(|| AppError::validation("磁盘空间预算溢出".to_string()))?;
+    let required_with_margin = required_bytes
+        .checked_add(safety_margin)
+        .ok_or_else(|| AppError::validation("磁盘空间预算溢出".to_string()))?;
 
     if available < required_with_margin {
         return Err(AppError::validation(format!(
@@ -618,7 +971,9 @@ fn copy_directory_recursive_safe(src: &Path, dst: &Path) -> Result<u64> {
     let entries = fs::read_dir(src)
         .map_err(|e| AppError::file_system(format!("读取目录失败 {:?}: {}", src, e)))?;
 
-    for entry in entries.filter_map(log_and_skip_entry_err) {
+    for entry in entries {
+        let entry =
+            entry.map_err(|e| AppError::file_system(format!("读取目录项失败 {:?}: {}", src, e)))?;
         let path = entry.path();
         let file_name = entry.file_name();
         let dest_path = dst.join(&file_name);
@@ -661,6 +1016,32 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::{NamedTempFile, TempDir};
+
+    #[test]
+    fn process_operation_lock_blocks_a_second_holder() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("operation.lock");
+        let first_snapshot = DataGovernanceOperationSnapshot {
+            operation_id: "first".to_string(),
+            kind: DataGovernanceOperationKind::Backup,
+            started_at: Utc::now(),
+            process_id: std::process::id(),
+        };
+        let second_snapshot = DataGovernanceOperationSnapshot {
+            operation_id: "second".to_string(),
+            kind: DataGovernanceOperationKind::Restore,
+            started_at: Utc::now(),
+            process_id: std::process::id(),
+        };
+
+        let first = acquire_process_operation_lock_at(&path, &first_snapshot).unwrap();
+        let error = acquire_process_operation_lock_at(&path, &second_snapshot).unwrap_err();
+        assert!(error.to_string().contains("另一个客户端进程"));
+        assert!(error.to_string().contains("\"operation_id\":\"first\""));
+
+        drop(first);
+        acquire_process_operation_lock_at(&path, &second_snapshot).unwrap();
+    }
 
     // ================================================================
     // calculate_file_hash 测试
@@ -705,6 +1086,123 @@ mod tests {
             hash,
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         );
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_removes_all_sensitive_entries() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(backup_dir.path().join("crypto/.secure")).unwrap();
+        std::fs::create_dir_all(backup_dir.path().join(".secure")).unwrap();
+        std::fs::write(backup_dir.path().join("crypto/.master_key"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join(".secure/credential.enc"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join(".master_key"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join(".key_seed"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join("manifest.json"), b"{}").unwrap();
+
+        let removed = strip_crypto_secrets_from_backup_dir(backup_dir.path()).unwrap();
+
+        assert_eq!(removed, 4);
+        for name in ["crypto", ".secure", ".master_key", ".key_seed"] {
+            assert!(
+                std::fs::symlink_metadata(backup_dir.path().join(name)).is_err(),
+                "sensitive entry should be absent: {name}"
+            );
+        }
+        assert!(backup_dir.path().join("manifest.json").is_file());
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_fails_closed_on_removal_error() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(backup_dir.path().join("crypto")).unwrap();
+
+        let result =
+            strip_crypto_secrets_from_backup_dir_with(backup_dir.path(), |_path, _metadata| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "forced removal failure",
+                ))
+            });
+
+        assert!(result.is_err());
+        assert!(backup_dir.path().join("crypto").is_dir());
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_fails_closed_when_entry_remains() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::write(backup_dir.path().join(".master_key"), b"secret").unwrap();
+
+        let result =
+            strip_crypto_secrets_from_backup_dir_with(backup_dir.path(), |_path, _metadata| Ok(()));
+
+        assert!(result.is_err());
+        assert!(backup_dir.path().join(".master_key").is_file());
+    }
+
+    #[test]
+    fn test_crypto_secret_relative_path_matching_is_component_scoped() {
+        for path in [
+            "crypto",
+            "crypto/.secure/.key_seed",
+            ".secure/credential.enc",
+            ".master_key",
+            ".key_seed",
+        ] {
+            assert!(is_crypto_secret_backup_relative_path(Path::new(path)));
+        }
+        for path in [
+            "crypto-not-secret/file.bin",
+            "assets/crypto/file.bin",
+            "assets/.master_key",
+        ] {
+            assert!(!is_crypto_secret_backup_relative_path(Path::new(path)));
+        }
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_matches_ascii_case_variants() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(backup_dir.path().join("CRYPTO")).unwrap();
+        std::fs::write(backup_dir.path().join("CRYPTO/key.bin"), b"secret").unwrap();
+
+        let removed = strip_crypto_secrets_from_backup_dir(backup_dir.path()).unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(std::fs::symlink_metadata(backup_dir.path().join("CRYPTO")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_strip_crypto_secrets_removes_symlink_without_touching_target() {
+        let backup_dir = TempDir::new().unwrap();
+        let target_dir = TempDir::new().unwrap();
+        std::fs::write(target_dir.path().join("keep.txt"), b"keep").unwrap();
+        std::os::unix::fs::symlink(target_dir.path(), backup_dir.path().join(".secure")).unwrap();
+
+        let removed = strip_crypto_secrets_from_backup_dir(backup_dir.path()).unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            std::fs::symlink_metadata(backup_dir.path().join(".secure")).is_err(),
+            "the sensitive symlink itself must be removed"
+        );
+        assert!(target_dir.path().join("keep.txt").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_strip_crypto_secrets_rejects_symlinked_backup_root() {
+        let parent = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        std::fs::create_dir_all(target.path().join("crypto")).unwrap();
+        let linked_root = parent.path().join("linked-backup");
+        std::os::unix::fs::symlink(target.path(), &linked_root).unwrap();
+
+        let result = strip_crypto_secrets_from_backup_dir(&linked_root);
+
+        assert!(result.is_err());
+        assert!(target.path().join("crypto").is_dir());
     }
 
     // ================================================================

@@ -1,5 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
@@ -183,7 +184,11 @@ const prepareContent = (content: string, streaming: boolean): PrepareResult => {
     return { content: '', meta: { hasPartialMath: false, touchedMarkdown: false } };
   }
   const normalized = stripUiPlaceholderTags(baseNormalize(content));
-  const markdownResult = sanitizeDanglingMarkdown(normalized);
+  // 悬垂标记补全只应发生在流式期间；对已完成内容补尾会把
+  // 正文里合法的单个 `*` / `_`（如 "3 * 4"）改写成带多余闭合符的文本。
+  const markdownResult = streaming
+    ? sanitizeDanglingMarkdown(normalized)
+    : { text: normalized, touched: false };
   const mathResult = sanitizeDanglingMath(markdownResult.text, streaming);
   return {
     content: mathResult.text,
@@ -217,6 +222,9 @@ const parseChainOfThought = (content: string) => {
 };
 
 const preprocessStreaming = (content: string, streaming: boolean) => prepareContent(content, streaming);
+
+// 模块级空数组：稳定引用，避免每次渲染的新 [] 击穿 MarkdownRenderer 的 memo
+const EMPTY_REMARK_PLUGINS: any[] = [];
 
 export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = memo(({
   content,
@@ -260,7 +268,7 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
           {parsed.thinkingContent && (
             <div className="chain-of-thought">
               <div className="chain-header">
-                <span className="chain-icon">🧠</span>
+                <span className="chain-icon" aria-hidden="true"><Brain size={15} weight="duotone" /></span>
                 <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
               </div>
               <div className="thinking-content">
@@ -289,7 +297,7 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
                 content={parsed.mainContent}
                 isStreaming={isStreaming}
                 onLinkClick={onLinkClick}
-                extraRemarkPlugins={(!isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0) ? [makeUncertaintyHighlightPlugin(parsed.mainContent, stableHighlightSpans, t('renderer.uncertain'))] : []}
+                extraRemarkPlugins={(!isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0) ? [makeUncertaintyHighlightPlugin(parsed.mainContent, stableHighlightSpans, t('renderer.uncertain'))] : EMPTY_REMARK_PLUGINS}
               />
             ) : (
               renderedContent

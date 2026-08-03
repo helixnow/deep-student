@@ -27,7 +27,7 @@ import {
   Download,
   ArrowsLeftRight,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
@@ -48,6 +48,7 @@ import {
 import { loadStoredCloudStorageConfigWithCredentials } from '@/utils/cloudStorageApi';
 import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import {
+  DataGovernanceApi,
   listenSyncProgress,
   runSyncWithProgress,
 } from '@/api/dataGovernance';
@@ -214,28 +215,38 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       if (!useGlobalSyncStore.getState().beginSync('sync-settings')) {
         showGlobalNotification(
           'warning',
-          t('data:governance.sync_already_running', '另一个同步任务正在进行中，请稍后再试')
+          t('data:governance.sync_already_running')
         );
         return;
       }
 
-      setSyncProgress({
-        phase: 'preparing',
-        percent: 0,
-        current: 0,
-        total: 0,
-        current_item: null,
-        speed_bytes_per_sec: null,
-        eta_seconds: null,
-        error: null,
-      });
-
-      // 设置进度监听
-      const unlisten = await listenSyncProgress({
-        onProgress: (progress) => setSyncProgress(progress),
-      });
-
+      let unlisten: (() => void) | null = null;
       try {
+        setSyncProgress({
+          phase: 'preparing',
+          percent: 0,
+          current: 0,
+          total: 0,
+          current_item: null,
+          speed_bytes_per_sec: null,
+          eta_seconds: null,
+          error: null,
+        });
+
+        if (direction !== 'upload') {
+          const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
+          if (gap.has_gap) {
+            throw new Error(t('data:governance.sync_prune_gap_warning', {
+              since: gap.since_version,
+              minAvail: gap.min_available_version ?? 0,
+            }));
+          }
+        }
+
+        unlisten = await listenSyncProgress({
+          onProgress: (progress) => setSyncProgress(progress),
+        });
+
         const result = await runSyncWithProgress(direction, cloudConfig, syncStrategy);
         setSyncProgress(null);
 
@@ -250,8 +261,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
         const message = result.error_message ??
           t('data:governance.sync_partial_with_skipped', {
-            count: result.skipped_changes ?? 0,
-            defaultValue: `同步完成，但有 ${result.skipped_changes ?? 0} 条变更被跳过。`,
+            skipped: result.skipped_changes ?? 0,
           });
 
         if (result.success) {
@@ -271,7 +281,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         );
       } finally {
         useGlobalSyncStore.getState().endSync();
-        unlisten();
+        unlisten?.();
       }
     },
     [getSyncStatus, syncStrategy, t]
@@ -318,7 +328,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                 {t('data:sync_settings.sync_status')}
               </CardTitle>
             </div>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={handleRefresh}
@@ -329,7 +339,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               ) : (
                 <ArrowClockwise className="h-4 w-4" />
               )}
-            </NotionButton>
+            </DsButton>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -453,7 +463,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
           {/* 同步按钮组 */}
           <div className="flex items-center gap-3">
-            <NotionButton
+            <DsButton
               variant="outline"
               onClick={() => handleSync('upload')}
               disabled={isSyncing}
@@ -461,8 +471,8 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             >
               <Upload className="h-4 w-4 mr-2" />
               {t('data:sync_settings.upload')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="outline"
               onClick={() => handleSync('download')}
               disabled={isSyncing}
@@ -470,15 +480,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             >
               <Download className="h-4 w-4 mr-2" />
               {t('data:sync_settings.download')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               onClick={() => handleSync('bidirectional')}
               disabled={isSyncing}
               className="flex-1"
             >
               <ArrowsLeftRight className="h-4 w-4 mr-2" />
               {t('data:sync_settings.bidirectional')}
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* 同步进度显示 */}
@@ -573,13 +583,13 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                       conflicts.database_conflicts.length + conflicts.record_conflicts.length,
                   })}
                 </span>
-                <NotionButton
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={() => setShowConflictDialog(true)}
                 >
                   {t('data:sync_settings.view_conflicts')}
-                </NotionButton>
+                </DsButton>
               </AlertDescription>
             </Alert>
           ) : lastResult?.success ? (
@@ -597,16 +607,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <Warning className="h-4 w-4" />
               <AlertDescription className="flex items-center justify-between">
                 <span>{error}</span>
-                <NotionButton variant="ghost" size="sm" onClick={clearError}>
+                <DsButton variant="ghost" size="sm" onClick={clearError}>
                   {t('common:actions.dismiss')}
-                </NotionButton>
+                </DsButton>
               </AlertDescription>
             </Alert>
           )}
 
           {/* 操作按钮 */}
           <div className="flex items-center gap-3">
-            <NotionButton
+            <DsButton
               variant="outline"
               onClick={handleDetectConflicts}
               disabled={isDetecting}
@@ -623,16 +633,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   {t('data:sync_settings.detect_conflicts')}
                 </>
               )}
-            </NotionButton>
+            </DsButton>
             {conflicts?.has_conflicts && (
-              <NotionButton
+              <DsButton
                 onClick={() => setShowConflictDialog(true)}
                 disabled={isResolving}
                 className="flex-1"
               >
                 <Lightning className="h-4 w-4 mr-2" />
                 {t('data:sync_settings.resolve_conflicts')}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
 

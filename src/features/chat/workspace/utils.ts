@@ -18,8 +18,8 @@ export function getAgentDisplayName(
 ): string {
   if (!agent) return fallbackId || '';
   if (agent.role === 'coordinator') {
-    return t('chatV2:workspace.agent.coordinator', '协调者');
+    return t('chatV2:workspace.agent.coordinator');
   }
-  const workerFallback = t('chatV2:workspace.agent.worker', 'Worker');
+  const workerFallback = t('chatV2:workspace.agent.worker');
   return getLocalizedSkillName(agent.skillId, t, workerFallback) || workerFallback;
 }

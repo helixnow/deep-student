@@ -1,9 +1,10 @@
+import '../styles/mcp-preset-oauth.css';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { DsButton } from '@/components/ui/DsButton';
+import { DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import UnifiedModal from '@/components/UnifiedModal';
 import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
@@ -18,12 +19,16 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert'
 import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
-import { DEFAULT_STDIO_ARGS, DEFAULT_STDIO_ARGS_PLACEHOLDER, CHAT_STREAM_SETTINGS_EVENT } from './constants';
+import {
+  DEFAULT_STDIO_ARGS_PLACEHOLDER,
+  resolveSettingsStdioFraming,
+} from './constants';
 import { Info as InfoIcon, Plus, Trash, X, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useUnifiedErrorHandler } from '@/components/UnifiedErrorHandler';
 import { TauriAPI } from '@/utils/tauriApi';
+import { isAndroid } from '@/utils/platform';
 import type { UseMcpEditorSectionDeps, McpToolConfig } from './hookDepsTypes';
 
 interface McpTestResult {
@@ -48,6 +53,141 @@ interface McpPreviewResource {
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const invoke = isTauri ? tauriInvoke : null;
+
+/** MCP OAuth 登录 / 重新授权 / 注销 */
+function McpOAuthControls({
+  serverId,
+  resourceUrl,
+  hasApiKey,
+  t,
+  onAuthorized,
+  onRevoked,
+}: {
+  serverId: string;
+  resourceUrl: string;
+  hasApiKey: boolean;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+  onAuthorized?: () => void;
+  onRevoked?: () => void;
+}) {
+  const [authorized, setAuthorized] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const refreshStatus = useCallback(async () => {
+    if (!invoke || !serverId || !resourceUrl.trim()) return;
+    try {
+      const status = await invoke<{ authorized: boolean }>('get_mcp_oauth_status', {
+        serverId,
+        resourceUrl: resourceUrl.trim(),
+      });
+      setAuthorized(Boolean(status?.authorized));
+    } catch {
+      setAuthorized(false);
+    }
+  }, [serverId, resourceUrl]);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
+
+  const startOauth = useCallback(async () => {
+    if (!invoke) {
+      showGlobalNotification('error', t('settings:mcp.oauth.desktop_only'));
+      return;
+    }
+    if (!resourceUrl.trim()) {
+      showGlobalNotification('error', t('settings:mcp.oauth.missing_url'));
+      return;
+    }
+    if (hasApiKey) {
+      showGlobalNotification('info', t('settings:mcp.oauth.clear_api_key_first'));
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('start_mcp_oauth', {
+        serverId,
+        resourceUrl: resourceUrl.trim(),
+        clientId: null,
+        clientSecret: null,
+        scopes: [],
+      });
+      showGlobalNotification('success', t('settings:mcp.oauth.login_success'));
+      onAuthorized?.();
+      await refreshStatus();
+    } catch (e) {
+      showGlobalNotification('error', getErrorMessage(e) || t('settings:mcp.oauth.login_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }, [serverId, resourceUrl, hasApiKey, refreshStatus, t, onAuthorized]);
+
+  const revokeOauth = useCallback(async () => {
+    if (!invoke || !serverId) return;
+    setBusy(true);
+    try {
+      await invoke('revoke_mcp_oauth', { serverId });
+      showGlobalNotification('success', t('settings:mcp.oauth.logout_success'));
+      setAuthorized(false);
+      onRevoked?.();
+    } catch (e) {
+      showGlobalNotification('error', getErrorMessage(e) || t('settings:mcp.oauth.logout_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }, [serverId, t, onRevoked]);
+
+  const cancelOauth = useCallback(async () => {
+    if (!invoke || !serverId) return;
+    try {
+      await invoke('cancel_mcp_oauth', { serverId });
+      showGlobalNotification('info', t('settings:mcp.oauth.cancelled'));
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  }, [serverId, t]);
+
+  return (
+    <div className="mcp-oauth-controls rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-medium text-foreground">{t('settings:mcp.oauth.title')}</div>
+          <div className="text-xs text-muted-foreground">
+            {authorized
+              ? t('settings:mcp.oauth.status_authorized')
+              : t('settings:mcp.oauth.status_none')}
+          </div>
+        </div>
+        <span className={cn(
+          'w-2 h-2 rounded-full flex-shrink-0',
+          authorized ? 'bg-green-500' : 'bg-muted-foreground/40',
+        )} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <DsButton
+          size="sm"
+          variant="primary"
+          disabled={busy || hasApiKey || !resourceUrl.trim()}
+          onClick={() => void startOauth()}
+        >
+          {authorized ? t('settings:mcp.oauth.reauth') : t('settings:mcp.oauth.login')}
+        </DsButton>
+        {busy && (
+          <DsButton size="sm" variant="default" onClick={() => void cancelOauth()}>
+            {t('settings:mcp.oauth.cancel')}
+          </DsButton>
+        )}
+        {authorized && (
+          <DsButton size="sm" variant="default" disabled={busy} onClick={() => void revokeOauth()}>
+            {t('settings:mcp.oauth.logout')}
+          </DsButton>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const { config, setConfig, isSmallScreen, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo } = deps;
@@ -85,7 +225,14 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       headers?: Record<string, string>;
       // 旧版兼容字段
       endpoint?: string; 
-      apiKey?: string; 
+      apiKey?: string;
+      oauth?: {
+        client_id: string;
+        auth_url: string;
+        token_url: string;
+        redirect_uri: string;
+        scopes: string[];
+      };
       serverId?: string; 
       region?: string; 
       hosted?: boolean; 
@@ -96,7 +243,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       namespace?: string;
     };
     error?: string | null;
-  }>({ open: false, index: null, mode: 'json', jsonInput: '', draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [...DEFAULT_STDIO_ARGS], env: {}, cwd: '', framing: 'content_length' }, error: null });
+  }>({ open: false, index: null, mode: 'json', jsonInput: '', draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [], env: {}, cwd: '', framing: 'jsonl' }, error: null });
   // MCP 全局策略模态（白/黑名单等）
   const [mcpPolicyModal, setMcpPolicyModal] = useState<{ open: boolean; advertiseAll: boolean; whitelist: string; blacklist: string; timeoutMs: number; rateLimit: number; cacheMax: number; cacheTtlMs: number }>({
     open: false,
@@ -170,9 +317,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         <span>{label}</span>
         <Popover>
           <PopoverTrigger asChild>
-            <NotionButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground">
+            <DsButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground">
               <InfoIcon size={16} />
-            </NotionButton>
+            </DsButton>
           </PopoverTrigger>
           <PopoverContent align="start" className="max-w-sm text-xs leading-relaxed">
             {description}
@@ -242,14 +389,39 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     return idx > 0 ? raw.slice(idx + 1) : raw;
   }, []);
 
+  // agent 侧修改 mcp.tools.list（propose/update/set_enabled/remove）后，
+  // 经 chat_v2://settings_changed → systemSettingsChanged 同步刷新设置页服务器列表，
+  // 不必重开设置页。value 缺失（如 mcpReloaded 广播）时回读一次 setting。
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ settingKey?: string; value?: unknown }>)?.detail;
+      if (detail?.settingKey !== 'mcp.tools.list') return;
+      void (async () => {
+        try {
+          const raw = typeof detail.value === 'string'
+            ? detail.value
+            : (invoke ? await invoke<string | null>('get_setting', { key: 'mcp.tools.list' }) : null);
+          const parsed = (() => {
+            try { return raw ? JSON.parse(raw) : []; } catch { return null; }
+          })();
+          if (Array.isArray(parsed)) {
+            setConfig(prev => ({ ...prev, mcpTools: parsed }));
+          }
+        } catch (e) {
+          console.warn('[Settings] 同步外部 MCP 配置变更失败:', e);
+        }
+      })();
+    };
+    window.addEventListener('systemSettingsChanged', handler);
+    return () => window.removeEventListener('systemSettingsChanged', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setConfig]);
+
   // ★ 2026-01-15: 导师模式已迁移到 Skills 系统，相关状态和处理函数已删除
   // ★ 2026-01-19: Irec 模块已废弃，相关预设加载/保存逻辑已删除
 
-  const emitChatStreamSettingsUpdate = useCallback((payload: { timeoutMs?: number | null; autoCancel?: boolean }) => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(CHAT_STREAM_SETTINGS_EVENT, { detail: payload }));
-    }
-  }, []);
+  // ★ 2026-07: CHAT_STREAM_SETTINGS_EVENT 广播已删除——全仓无监听者，
+  // 聊天流超时设置改为 Rust 端每次请求时从 settings 读取，无需前端事件通知。
   const resolveServerId = (tool: McpToolConfig, idx: number): string => {
     const transport = (tool?.transportType || 'sse') as string;
     const directId = tool?.id || tool?.name;
@@ -357,6 +529,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         name: newServer.name || t('common:new_mcp_server'),
         transportType: newServer.transportType || 'sse',
         ...newServer,
+        // 后端 stdio 门禁要求 enabled == true；新增条目默认启用
+        enabled: newServer.enabled ?? true,
       };
 
       // 处理传输类型特定的字段
@@ -429,9 +603,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           normalizedArgs = pieces;
         }
       }
-      if (!normalizedArgs || normalizedArgs.length === 0) {
-        normalizedArgs = [...DEFAULT_STDIO_ARGS];
-      }
+      // 空 args 保持为空：仅 UI placeholder 提示，不隐式注入默认 filesystem args
     }
 
     setMcpToolModal({
@@ -456,7 +628,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         mcpServers: tool.mcpServers as Record<string, unknown> | undefined,
         namespace: (tool['namespace'] as string) || '',
         cwd: (tool['cwd'] as string) || '',
-        framing: typeof tool['framing'] === 'string' && tool['framing'].toLowerCase() === 'jsonl' ? 'jsonl' : 'content_length',
+        // 已存显式 CL 保留；缺省/未知 → jsonl（不迁移存量显式值）
+        framing: resolveSettingsStdioFraming(
+          typeof tool['framing'] === 'string' ? tool['framing'] : null,
+        ),
       },
       error: null,
     });
@@ -504,11 +679,16 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
       // 合并更新数据，但清理非标准字段（如 mcpServers 残留）
       const { mcpServers: _discardMcpServers, ...cleanUpdatedData } = updatedData;
+      const enabledChanged =
+        typeof cleanUpdatedData.enabled === 'boolean' &&
+        cleanUpdatedData.enabled !== (existing.enabled ?? true);
 
       const updated = {
         ...existing,
         ...cleanUpdatedData,
         id: existing.id || updatedData.id || `mcp_${Date.now()}`,
+        // 编辑保留原 enabled；存量条目缺省视为启用（兼容无该字段的历史数据）
+        enabled: cleanUpdatedData.enabled ?? existing.enabled ?? true,
       };
 
       // 处理传输类型特定的字段
@@ -527,6 +707,15 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(currentList) });
       }
       setConfig(prev => ({ ...prev, mcpTools: currentList }));
+      if (enabledChanged) {
+        // 启停切换需要重建前端连接（停用 → 断开；启用 → 建连），
+        // 交给 main.tsx 的 systemSettingsChanged → bootstrapMcpFromSettings 统一处理
+        try {
+          window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { mcpChanged: true } }));
+        } catch {
+          // 事件派发失败不影响保存结果
+        }
+      }
       try {
         await refreshSnapshots({ reload: true });
       } catch (e) {
@@ -535,8 +724,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       }
       showGlobalNotification('success', t('common:mcp_tool_saved'));
 
-      // 编辑保存后自动运行一次连通性测试以刷新工具列表
-      handleTestServer(updated).catch(() => { /* 静默处理测试失败 */ });
+      // 编辑保存后自动运行一次连通性测试以刷新工具列表（已停用的 server 不再拉起测试）
+      if (updated.enabled !== false) {
+        handleTestServer(updated).catch(() => { /* 静默处理测试失败 */ });
+      }
 
       return true;
     } catch (error) {
@@ -614,11 +805,12 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           : typeof argsSource === 'string'
             ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
             : [];
-        server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-        server.framing = draft.framing || 'content_length';
+        server.args = normalizedArgs;
+        server.framing = resolveSettingsStdioFraming(draft.framing);
         if (draft.cwd) server.cwd = draft.cwd;
       }
       if (draft.apiKey) server.apiKey = draft.apiKey;
+      else if (draft.oauth) server.oauth = draft.oauth;
       if (draft.namespace) server.namespace = draft.namespace;
       if (draft.env && Object.keys(draft.env).length > 0) server.env = draft.env;
       config.mcpServers[name] = server;
@@ -815,11 +1007,19 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
               : typeof argsSource === 'string'
                 ? argsSource.split(',').map(segment => segment.trim()).filter(Boolean)
                 : [];
-            if (!Array.isArray(normalizedDraft.args) || normalizedDraft.args.length === 0) {
-              normalizedDraft.args = [...DEFAULT_STDIO_ARGS];
-            }
+            normalizedDraft.framing = resolveSettingsStdioFraming(
+              typeof draft.framing === 'string' ? draft.framing : null,
+            );
           }
           toolToSave = normalizedDraft as McpToolConfig;
+        }
+
+        // 后端 stdio 门禁要求 enabled == true：新增默认启用；编辑保留原值（存量缺省视为启用）
+        if (typeof toolToSave.enabled !== 'boolean') {
+          const priorEnabled = mcpToolModal.index != null
+            ? (config.mcpTools || [])[mcpToolModal.index]?.enabled
+            : undefined;
+          toolToSave.enabled = priorEnabled ?? true;
         }
 
         const nextList = [...(config.mcpTools || [])];
@@ -851,15 +1051,15 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       }
     };
 
-    const modalContentClassName = 'flex w-[min(96vw,960px)] max-h-[85vh] flex-col overflow-hidden p-0';
+    const modalContentClassName = 'flex h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 w-[min(96vw,960px)] flex-col overflow-hidden p-0';
 
     return (
       <UnifiedModal isOpen={true} onClose={handleClose} closeOnOverlayClick={false} contentClassName={modalContentClassName}>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <NotionDialogHeader>
-            <NotionDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</NotionDialogTitle>
-            <NotionDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint')}</NotionDialogDescription>
-          </NotionDialogHeader>
+          <DsDialogHeader>
+            <DsDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</DsDialogTitle>
+            <DsDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint')}</DsDialogDescription>
+          </DsDialogHeader>
           <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="mt-1.5 flex flex-1 flex-col justify-start px-3 pb-0 min-h-0">
             <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
             <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
@@ -868,11 +1068,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             <div className="mt-1.5 flex-1 overflow-hidden min-h-0">
           <TabsContent value="form" className="h-full min-h-0 data-[state=inactive]:hidden">
             <CustomScrollArea
-              className="h-full"
+              className="h-full min-h-0"
               viewportClassName="pr-2"
               trackOffsetTop={8}
               trackOffsetBottom={8}
-              viewportProps={{ style: { maxHeight: 'calc(85vh - 180px)' } }}
             >
             <div className="space-y-2">
             <div className="grid gap-3 md:grid-cols-2">
@@ -943,8 +1142,32 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                     showLabel={t('common:securePassword.showPassword')}
                     hideLabel={t('common:securePassword.hidePassword')}
                   />
+                  <p className="text-xs text-muted-foreground">{t('settings:mcp.oauth.api_key_priority_hint')}</p>
                 </div>
               </div>
+            )}
+
+            {!isAndroid() && (transport === 'sse' || transport === 'streamable_http') && (
+              <McpOAuthControls
+                serverId={draft.id}
+                resourceUrl={draft.endpoint || draft.fetch?.url || ''}
+                hasApiKey={Boolean((draft.apiKey || '').trim())}
+                t={t}
+                onAuthorized={() => {
+                  updateDraft({
+                    oauth: {
+                      client_id: '',
+                      auth_url: '',
+                      token_url: '',
+                      redirect_uri: 'http://127.0.0.1/auth/callback',
+                      scopes: [],
+                    },
+                  });
+                }}
+                onRevoked={() => {
+                  updateDraft({ oauth: undefined });
+                }}
+              />
             )}
 
             {transport === 'stdio' && (
@@ -982,7 +1205,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                     {renderInfoPopover(t('settings:mcp_descriptions.framing_label'), t('settings:mcp_descriptions.framing_hint'))}
                   </div>
                   <AppSelect
-                    value={draft.framing || 'content_length'}
+                    value={resolveSettingsStdioFraming(draft.framing)}
                     onValueChange={value => updateDraft({ framing: value as 'jsonl' | 'content_length' })}
                     options={[
                       { value: 'jsonl', label: t('settings:mcp.framing.json_lines') },
@@ -1004,7 +1227,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.env_title')}</span>
-                <NotionButton variant="ghost" size="sm" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</NotionButton>
+                <DsButton variant="ghost" size="sm" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</DsButton>
               </div>
               <div className="space-y-2">
                 {envEntries.length === 0 && (
@@ -1023,9 +1246,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       onChange={e => handleEnvValueChange(key, e.target.value)}
                       placeholder={t('settings:placeholders.env_value')}
                     />
-                    <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)}>
+                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)}>
                       <Trash size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 ))}
               </div>
@@ -1037,7 +1260,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   <div className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.connection_test_title')}</div>
                   <p className="mt-1 text-xs text-muted-foreground">{t('settings:mcp_descriptions.connection_test_desc')}</p>
                 </div>
-                <NotionButton variant="ghost" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</NotionButton>
+                <DsButton variant="ghost" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
               </div>
             </div>
             </div>
@@ -1068,10 +1291,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             </Alert>
           )}
 
-          <NotionDialogFooter>
-            <NotionButton variant="ghost" size="sm" onClick={handleClose}>{t('common:actions.cancel')}</NotionButton>
-            <NotionButton size="sm" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</NotionButton>
-          </NotionDialogFooter>
+          <DsDialogFooter>
+            <DsButton variant="ghost" size="sm" onClick={handleClose}>{t('common:actions.cancel')}</DsButton>
+            <DsButton size="sm" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
+          </DsDialogFooter>
         </div>
       </UnifiedModal>
     );
@@ -1082,7 +1305,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     if (!mcpToolModal.open) {
       return (
         <div className="h-full flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">{t('settings:mcp_descriptions.select_tool_to_edit')}</p>
+          <p className="text-sm">{t('settings:sections.select_tool_to_edit')}</p>
         </div>
       );
     }
@@ -1127,11 +1350,12 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             : typeof argsSource === 'string'
               ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
               : [];
-          server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-          server.framing = draft.framing || 'content_length';
+          server.args = normalizedArgs;
+          server.framing = resolveSettingsStdioFraming(draft.framing);
           if (draft.cwd) server.cwd = draft.cwd;
         }
         if (draft.apiKey) server.apiKey = draft.apiKey;
+        else if (draft.oauth) server.oauth = draft.oauth;
         if (draft.namespace) server.namespace = draft.namespace;
         if (draft.env && Object.keys(draft.env).length > 0) server.env = draft.env;
         config.mcpServers[name] = server;
@@ -1163,13 +1387,22 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
               };
               if (serverConfig?.namespace) toolToSave['namespace'] = serverConfig.namespace;
               if (serverConfig?.cwd) toolToSave['cwd'] = serverConfig.cwd;
-              if (serverConfig?.framing) toolToSave['framing'] = serverConfig.framing;
+              if (serverConfig?.framing != null) {
+                toolToSave['framing'] = resolveSettingsStdioFraming(String(serverConfig.framing));
+              } else if (transport === 'stdio' || toolToSave.transportType === 'stdio') {
+                toolToSave['framing'] = 'jsonl';
+              }
             } else {
               toolToSave = {
                 id: draft.id || `mcp_${Date.now()}`,
                 name: (jsonConfig.name as string) || draft.name || t('common:unnamed_mcp_tool'),
                 ...jsonConfig,
               } as McpToolConfig;
+              if (toolToSave.transportType === 'stdio' || toolToSave.command) {
+                toolToSave['framing'] = resolveSettingsStdioFraming(
+                  typeof toolToSave['framing'] === 'string' ? String(toolToSave['framing']) : null,
+                );
+              }
             }
           } catch (err) {
             setMcpToolModal(prev => ({ ...prev, error: t('settings:mcp_errors.json_format_error') + (err as Error).message }));
@@ -1187,16 +1420,25 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             name: draft.name,
             transportType: transport,
             command: transport === 'stdio' ? draft.command : undefined,
-            args: transport === 'stdio' ? (normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS]) : undefined,
+            args: transport === 'stdio' ? normalizedArgs : undefined,
             env: draft.env,
             url: transport === 'websocket' ? draft.url : undefined,
             endpoint: (transport === 'sse' || transport === 'streamable_http') ? (draft.endpoint || draft.fetch?.url) : undefined,
             fetch: (transport === 'sse' || transport === 'streamable_http') ? { type: transport, url: draft.endpoint || draft.fetch?.url || '' } : undefined,
             apiKey: draft.apiKey,
+            oauth: draft.apiKey ? undefined : draft.oauth,
             namespace: draft.namespace,
             cwd: draft.cwd,
-            framing: draft.framing,
+            framing: transport === 'stdio' ? resolveSettingsStdioFraming(draft.framing) : draft.framing,
           };
+        }
+
+        // 后端 stdio 门禁要求 enabled == true：新增默认启用；编辑保留原值（存量缺省视为启用）
+        if (typeof toolToSave.enabled !== 'boolean') {
+          const priorEnabled = mcpToolModal.index != null
+            ? (config.mcpTools || [])[mcpToolModal.index]?.enabled
+            : undefined;
+          toolToSave.enabled = priorEnabled ?? true;
         }
 
         const nextList = [...(config.mcpTools || [])];
@@ -1231,25 +1473,20 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
     return (
       <div
-        className="h-full flex flex-col bg-background"
+        className="flex h-full min-h-0 flex-col bg-background [&_input]:min-h-11"
         style={{
           paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-semibold">{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t('settings:mcp_descriptions.tool_modal_hint')}</p>
-        </div>
-
-        <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="flex-1 flex flex-col min-h-0 px-4 pt-3">
-          <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
-            <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
-            <TabsTrigger value="json" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">JSON</TabsTrigger>
+        <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="flex-1 flex flex-col min-h-0 px-4 pt-4">
+          <TabsList className="grid h-auto min-h-11 w-full flex-shrink-0 grid-cols-2 rounded-lg bg-muted p-1">
+            <TabsTrigger value="form" className="min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
+            <TabsTrigger value="json" className="min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm">JSON</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-hidden min-h-0 mt-3">
             <TabsContent value="form" className="h-full min-h-0 data-[state=inactive]:hidden">
-              <CustomScrollArea className="h-full" viewportClassName="pr-2">
+              <CustomScrollArea className="h-full min-h-0" viewportClassName="pr-2">
                 <div className="space-y-4 pb-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">{t('settings:placeholders.server_name')} *</label>
@@ -1278,6 +1515,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       ]}
                       variant="outline"
                       size="sm"
+                      className="min-h-11"
                     />
                   </div>
 
@@ -1304,7 +1542,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                           value={draft.apiKey || ''}
                           onChange={e => updateDraft({ apiKey: e.target.value })}
                           placeholder={t('settings:placeholders.api_key')}
-                          inputClassName="font-mono"
+                          inputClassName="min-h-11 font-mono"
                           revealed={showMcpApiKey}
                           canReveal={(draft.apiKey || '').trim().length > 0}
                           onToggle={() => setShowMcpApiKey(v => !v)}
@@ -1349,7 +1587,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   <div className="space-y-2">
                     <label className="text-sm font-medium">{t('settings:mcp_descriptions.env_label')}</label>
                     {envEntries.map(([key, value], idx) => (
-                      <div key={idx} className="flex gap-2">
+                      <div key={idx} className="flex min-w-0 flex-col gap-2 sm:flex-row">
                         <Input
                           value={key}
                           onChange={e => {
@@ -1359,17 +1597,18 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                             updateDraft({ env: newEnv });
                           }}
                           placeholder={t('settings:placeholders.env_key')}
-                          className="flex-1"
+                          className="min-w-0 flex-1"
                         />
                         <Input
                           value={value}
                           onChange={e => updateDraft({ env: { ...draft.env, [key]: e.target.value } })}
                           placeholder={t('settings:placeholders.env_value')}
-                          className="flex-1"
+                          className="min-w-0 flex-1"
                         />
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           iconOnly size="sm"
+                          className="self-end max-sm:!h-11 max-sm:!w-11 sm:self-auto"
                           onClick={() => {
                             const newEnv = { ...draft.env };
                             delete newEnv[key];
@@ -1377,24 +1616,25 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                           }}
                         >
                           <X className="h-4 w-4" />
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     ))}
-                    <NotionButton
+                    <DsButton
                       variant="default"
                       size="sm"
                       onClick={() => updateDraft({ env: { ...draft.env, '': '' } })}
+                      className="min-h-11 sm:min-h-0"
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       {t('settings:mcp_descriptions.add_env')}
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               </CustomScrollArea>
             </TabsContent>
 
             <TabsContent value="json" className="h-full min-h-0 data-[state=inactive]:hidden">
-              <div className="h-full flex flex-col">
+              <div className="flex h-full min-h-0 flex-col">
                 <UnifiedCodeEditor
                   value={mcpToolModal.jsonInput}
                   onChange={(value) => setMcpToolModal(prev => ({ ...prev, jsonInput: value }))}
@@ -1417,9 +1657,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           </Alert>
         )}
 
-        <div className="flex gap-2 px-4 py-3 border-t border-border flex-shrink-0">
-          <NotionButton variant="ghost" onClick={handleClose} className="flex-1">{t('common:actions.cancel')}</NotionButton>
-          <NotionButton onClick={handleSubmit} className="flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</NotionButton>
+        <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
+          <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
+          <DsButton onClick={handleSubmit} className="min-h-11 flex-1">{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
         </div>
       </div>
     );
@@ -1430,7 +1670,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     if (!mcpPolicyModal.open) {
       return (
         <div className="h-full flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">{t('settings:mcp_descriptions.select_policy_to_edit')}</p>
+          <p className="text-sm">{t('settings:sections.select_policy_to_edit')}</p>
         </div>
       );
     }
@@ -1475,17 +1715,12 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
     return (
       <div
-        className="h-full flex flex-col bg-background"
+        className="flex h-full min-h-0 flex-col bg-background [&_input]:min-h-11"
         style={{
           paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-semibold">{t('settings:mcp_descriptions.policy_title')}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t('settings:mcp_descriptions.policy_subtitle')}</p>
-        </div>
-
-        <CustomScrollArea className="flex-1" viewportClassName="px-4 py-4">
+        <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-4 py-4">
           <div className="space-y-4">
             {/* 广告所有工具 */}
             <div className="flex items-center gap-2">
@@ -1495,7 +1730,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                 onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: checked === true }))}
               />
               <label htmlFor="advertiseAll" className="text-sm font-medium cursor-pointer">
-                {t('settings:mcp_descriptions.advertise_all')}
+                {t('settings:sections.advertise_all')}
               </label>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -1524,8 +1759,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
               />
             </div>
 
-            {/* 性能参数 */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 性能参数（<sm 单列，避免 400px 标签换行挤压） */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">{t('settings:mcp_descriptions.timeout_label')}</label>
                 <Input
@@ -1578,9 +1813,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           </div>
         </CustomScrollArea>
 
-        <div className="flex gap-2 px-4 py-3 border-t border-border flex-shrink-0">
-          <NotionButton variant="ghost" onClick={handleClose} className="flex-1">{t('common:actions.cancel')}</NotionButton>
-          <NotionButton onClick={handleSave} className="flex-1">{t('common:actions.save')}</NotionButton>
+        <div className="flex flex-shrink-0 gap-2 border-t border-border px-4 py-3">
+          <DsButton variant="ghost" onClick={handleClose} className="min-h-11 flex-1">{t('common:actions.cancel')}</DsButton>
+          <DsButton onClick={handleSave} className="min-h-11 flex-1">{t('common:actions.save')}</DsButton>
         </div>
       </div>
     );
@@ -1821,9 +2056,11 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     }
   };
 
-  const handleClosePreview = () => {
+  // 必须保持引用稳定：Settings.tsx 的 dismissRightPanel → handleMobileSettingsBack →
+  // useMobileHeader deps 依赖此函数，若每次渲染新建会导致顶栏配置 effect 无限重跑
+  const handleClosePreview = useCallback(() => {
     setMcpPreview({ open: false, loading: false, tools: [], prompts: [], resources: [] });
-  };
+  }, []);
 
   const mcpServers = normalizedMcpServers;
   const serverStatusMap = useMemo(() => {
@@ -1874,5 +2111,5 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const latestPrompts = useMemo(() => mcpCachedDetails.prompts.items.slice(0, 5), [mcpCachedDetails.prompts.items]);
   const latestResources = useMemo(() => mcpCachedDetails.resources.items.slice(0, 5), [mcpCachedDetails.resources.items]);
 
-  return { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, emitChatStreamSettingsUpdate, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry };
+  return { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry };
 }

@@ -9,7 +9,11 @@ describe('windowed markdown source contracts', () => {
   it('keeps Learning Hub windowing frontend-only and passes visible content to Crepe', () => {
     const source = read('src/features/learning-hub/apps/views/NoteContentView.tsx');
 
-    expect(source).toContain('dstu.getContent(node.path)');
+    const nodeReadIndex = source.indexOf('const nodeResult = await dstu.get(path)');
+    const contentReadIndex = source.indexOf('const contentResult = await dstu.getContent(path)');
+    expect(source).toContain('readOccSafeNoteSnapshot');
+    expect(nodeReadIndex).toBeGreaterThanOrEqual(0);
+    expect(contentReadIndex).toBeGreaterThan(nodeReadIndex);
     expect(source).not.toMatch(/getContentRange|get_content_range|streamContent|rangeStart|rangeEnd/);
     expect(source).toContain('initialContent={visibleContent}');
     expect(source).toContain('composeWindowedSave');

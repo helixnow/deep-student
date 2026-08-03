@@ -77,6 +77,20 @@ fn get_memory_service(
     MemoryService::new(vfs_db.clone(), lance_store.clone(), llm_manager.clone())
 }
 
+/// ★ 写/删路径统一广播 `memory://changed`，保持打开中的记忆视图与后端同步。
+/// 载荷契约与 chat_v2 memory_executor 一致（source 区分触发方）。
+fn emit_memory_changed(app: &tauri::AppHandle, action: &str, note_ids: &[String]) {
+    use tauri::Emitter;
+    let payload = serde_json::json!({
+        "source": "user",
+        "action": action,
+        "entityIds": note_ids,
+    });
+    if let Err(error) = app.emit("memory://changed", payload) {
+        warn!("[Memory] Failed to emit memory://changed: {}", error);
+    }
+}
+
 fn parse_memory_type(memory_type: Option<&str>) -> Result<super::service::MemoryType, String> {
     match memory_type.map(|s| s.trim().to_lowercase()) {
         Some(s) if s == "fact" => Ok(super::service::MemoryType::Fact),
@@ -266,10 +280,14 @@ pub async fn memory_write(
     title: String,
     content: String,
     mode: Option<String>,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<MemoryWriteOutput, String> {
+    if title.trim().is_empty() && content.trim().is_empty() {
+        return Err("标题与内容不能同时为空".to_string());
+    }
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     let write_mode = mode
         .map(|m| WriteMode::from_str(&m))
@@ -311,6 +329,7 @@ pub async fn memory_write(
     );
 
     service.spawn_post_write_maintenance();
+    emit_memory_changed(&app, "write", std::slice::from_ref(&result.note_id));
 
     Ok(result)
 }
@@ -346,6 +365,7 @@ pub async fn memory_get_tree(
 pub async fn memory_add_relation(
     note_id_a: String,
     note_id_b: String,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -353,7 +373,9 @@ pub async fn memory_add_relation(
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     service
         .add_relation(&note_id_a, &note_id_b)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_memory_changed(&app, "add_relation", &[note_id_a, note_id_b]);
+    Ok(())
 }
 
 /// 移除记忆关联（双向）
@@ -361,6 +383,7 @@ pub async fn memory_add_relation(
 pub async fn memory_remove_relation(
     note_id_a: String,
     note_id_b: String,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -368,7 +391,9 @@ pub async fn memory_remove_relation(
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     service
         .remove_relation(&note_id_a, &note_id_b)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_memory_changed(&app, "remove_relation", &[note_id_a, note_id_b]);
+    Ok(())
 }
 
 /// 获取关联记忆 ID 列表
@@ -388,6 +413,7 @@ pub async fn memory_get_related(
 pub async fn memory_update_tags(
     note_id: String,
     tags: Vec<String>,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -395,7 +421,45 @@ pub async fn memory_update_tags(
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     service
         .update_tags(&note_id, tags)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_memory_changed(&app, "update_tags", std::slice::from_ref(&note_id));
+    Ok(())
+}
+
+/// 恢复过时记忆：摘除 `_stale` 标记（UI"恢复"按钮）。返回是否实际发生了恢复。
+#[tauri::command]
+pub async fn memory_restore_stale(
+    note_id: String,
+    app: tauri::AppHandle,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<bool, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let restored = service.restore_stale(&note_id).map_err(|e| e.to_string())?;
+    if restored {
+        emit_memory_changed(&app, "restore_stale", std::slice::from_ref(&note_id));
+    }
+    Ok(restored)
+}
+
+/// 恢复已归档记忆：摘除 `_archived` 并重建索引（UI"恢复"按钮）。返回是否实际发生了恢复。
+#[tauri::command]
+pub async fn memory_restore_archived(
+    note_id: String,
+    app: tauri::AppHandle,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    lance_store: State<'_, Arc<VfsLanceStore>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<bool, String> {
+    let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
+    let restored = service
+        .restore_archived(&note_id)
+        .map_err(|e| e.to_string())?;
+    if restored {
+        emit_memory_changed(&app, "restore_archived", std::slice::from_ref(&note_id));
+    }
+    Ok(restored)
 }
 
 /// 获取记忆标签
@@ -414,6 +478,7 @@ pub async fn memory_get_tags(
 #[tauri::command]
 pub async fn memory_batch_delete(
     note_ids: Vec<String>,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -423,10 +488,14 @@ pub async fn memory_batch_delete(
     let mut succeeded = 0usize;
     let mut failed = 0usize;
     let mut errors: Vec<String> = Vec::new();
+    let mut deleted_ids: Vec<String> = Vec::new();
 
     for note_id in &note_ids {
         match service.delete(note_id).await {
-            Ok(()) => succeeded += 1,
+            Ok(()) => {
+                succeeded += 1;
+                deleted_ids.push(note_id.clone());
+            }
             Err(e) => {
                 failed += 1;
                 if errors.len() < 5 {
@@ -438,6 +507,7 @@ pub async fn memory_batch_delete(
 
     if succeeded > 0 {
         service.spawn_post_write_maintenance();
+        emit_memory_changed(&app, "batch_delete", &deleted_ids);
     }
 
     Ok(BatchOperationResult {
@@ -453,6 +523,7 @@ pub async fn memory_batch_delete(
 pub async fn memory_batch_move(
     note_ids: Vec<String>,
     target_folder_path: String,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -462,10 +533,14 @@ pub async fn memory_batch_move(
     let mut succeeded = 0usize;
     let mut failed = 0usize;
     let mut errors: Vec<String> = Vec::new();
+    let mut moved_ids: Vec<String> = Vec::new();
 
     for note_id in &note_ids {
         match service.move_to_folder(note_id, &target_folder_path) {
-            Ok(()) => succeeded += 1,
+            Ok(()) => {
+                succeeded += 1;
+                moved_ids.push(note_id.clone());
+            }
             Err(e) => {
                 failed += 1;
                 if errors.len() < 5 {
@@ -473,6 +548,10 @@ pub async fn memory_batch_move(
                 }
             }
         }
+    }
+
+    if succeeded > 0 {
+        emit_memory_changed(&app, "batch_move", &moved_ids);
     }
 
     Ok(BatchOperationResult {
@@ -488,6 +567,7 @@ pub async fn memory_batch_move(
 pub async fn memory_move_to_folder(
     note_id: String,
     target_folder_path: String,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -495,7 +575,9 @@ pub async fn memory_move_to_folder(
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     service
         .move_to_folder(&note_id, &target_folder_path)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_memory_changed(&app, "move", std::slice::from_ref(&note_id));
+    Ok(())
 }
 
 // ★ 修复风险2：按 note_id 更新记忆
@@ -504,6 +586,7 @@ pub async fn memory_update_by_id(
     note_id: String,
     title: Option<String>,
     content: Option<String>,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -522,6 +605,7 @@ pub async fn memory_update_by_id(
     );
 
     service.spawn_post_write_maintenance();
+    emit_memory_changed(&app, "update", std::slice::from_ref(&result.note_id));
 
     Ok(result)
 }
@@ -530,6 +614,7 @@ pub async fn memory_update_by_id(
 #[tauri::command]
 pub async fn memory_delete(
     note_id: String,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -537,6 +622,7 @@ pub async fn memory_delete(
     let service = get_memory_service(&vfs_db, &lance_store, &llm_manager);
     service.delete(&note_id).await.map_err(|e| e.to_string())?;
     service.spawn_post_write_maintenance();
+    emit_memory_changed(&app, "delete", std::slice::from_ref(&note_id));
     Ok(())
 }
 
@@ -680,6 +766,7 @@ pub async fn memory_write_smart(
     memory_type: Option<String>,
     memory_purpose: Option<String>,
     idempotency_key: Option<String>,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -709,7 +796,17 @@ pub async fn memory_write_smart(
         .map_err(|e| e.to_string())?;
 
     if result.event != "NONE" && result.event != "FILTERED" {
+        // ★ 智能写入同样需要即时索引，保证 write-then-search SLA（此前缺失）
+        if let Some(resource_id) = &result.resource_id {
+            trigger_immediate_index(
+                Arc::clone(vfs_db.inner()),
+                Arc::clone(llm_manager.inner()),
+                Arc::clone(lance_store.inner()),
+                resource_id.clone(),
+            );
+        }
         service.spawn_post_write_maintenance();
+        emit_memory_changed(&app, "write_smart", std::slice::from_ref(&result.note_id));
     }
 
     Ok(result)
@@ -721,10 +818,19 @@ pub async fn memory_write_batch(
     default_folder_path: Option<String>,
     default_memory_type: Option<String>,
     default_memory_purpose: Option<String>,
+    app: tauri::AppHandle,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<VfsLanceStore>>,
     llm_manager: State<'_, Arc<LLMManager>>,
 ) -> Result<MemoryBatchWriteOutput, String> {
+    const MAX_BATCH_ITEMS: usize = 200;
+    if items.len() > MAX_BATCH_ITEMS {
+        return Err(format!(
+            "批量写入一次最多 {} 条（收到 {} 条）",
+            MAX_BATCH_ITEMS,
+            items.len()
+        ));
+    }
     if items.is_empty() {
         return Ok(MemoryBatchWriteOutput {
             total: 0,
@@ -815,6 +921,14 @@ pub async fn memory_write_batch(
             );
         }
         service.spawn_post_write_maintenance();
+        let written_note_ids: Vec<String> = results
+            .iter()
+            .filter(|r| r.output.event != "NONE" && r.output.event != "FILTERED")
+            .map(|r| r.output.note_id.clone())
+            .collect();
+        if !written_note_ids.is_empty() {
+            emit_memory_changed(&app, "write_batch", &written_note_ids);
+        }
     }
 
     let succeeded = added + updated;

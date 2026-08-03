@@ -9,7 +9,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, CaretDown, MagnifyingGlass, Prohibit, Star, Cube } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -192,7 +192,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
         groupMap.set(groupKey, []);
         groups.push({
           key: groupKey,
-          name: model.vendorName || model.providerName || model.providerType || t('chat_host:model_panel.unknown_vendor', 'Unknown vendor'),
+          name: model.vendorName || model.providerName || model.providerType || t('chat_host:model_panel.unknown_vendor'),
           models: groupMap.get(groupKey)!,
         });
       }
@@ -215,14 +215,14 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
   );
 
   const hasModels = filteredModels.length > 0 || allowEmpty;
-  const defaultEmptyLabel = emptyLabel || t('settings:select_options.none', '无');
+  const defaultEmptyLabel = emptyLabel || t('settings:select_options.none');
 
   // 渲染空选项
   const renderEmptyOption = () => {
     if (!allowEmpty) return null;
 
     return (
-      <NotionButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
+      <DsButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
         <div className="flex items-center gap-2">
            <div className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground group-hover:text-foreground">
              <Prohibit size={14} />
@@ -230,7 +230,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
            <span className="text-sm">{defaultEmptyLabel}</span>
         </div>
         {isEmptySelected && <Check size={14} className="text-primary" />}
-      </NotionButton>
+      </DsButton>
     );
   };
 
@@ -246,7 +246,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
       : 'text-destructive/80';
 
     return (
-      <NotionButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-[var(--interactive-hover)]', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
+      <DsButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-[var(--interactive-hover)]', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {/* 供应商图标 */}
           <div className="flex-shrink-0">
@@ -270,7 +270,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                {option.isFavorite && <Star size={12} className="text-amber-500 fill-amber-500 flex-shrink-0" />}
                {option.isDisabled && (
                  <span className={cn('text-[10px] px-1 rounded flex-shrink-0', disabledToneClass)}>
-                   {option.disabledLabel || t('common:disabled', 'Disabled')}
+                   {option.disabledLabel || t('common:disabled')}
                  </span>
                )}
              </div>
@@ -297,7 +297,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                {option.is_default && (
                   <>
                     <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                   <span className="text-green-600/80 dark:text-green-400/80">{t('common:default', 'Default')}</span>
+                   <span className="text-green-600/80 dark:text-green-400/80">{t('common:default')}</span>
                   </>
                )}
              </div>
@@ -310,7 +310,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
         </div>
 
         {isSelected && <Check size={14} className="text-primary flex-shrink-0 ml-2" />}
-      </NotionButton>
+      </DsButton>
     );
   };
 
@@ -318,9 +318,9 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
   const triggerDisplayText = useMemo(() => {
     if (isEmptySelected) {
       if (allowEmpty) return defaultEmptyLabel;
-      return placeholder || t('chat_host:model_panel.select', '选择模型');
+      return placeholder || t('chat_host:model_panel.select');
     }
-    if (!selectedModel) return placeholder || t('chat_host:model_panel.select', '选择模型');
+    if (!selectedModel) return placeholder || t('chat_host:model_panel.select');
 
     // full 模式显示更详细的信息
     if (variant === 'full') {
@@ -343,7 +343,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     if (variant === 'full') {
       // 全宽选择器样式（类似 SelectTrigger）
       return (
-        <NotionButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-[var(--interactive-hover)] disabled:cursor-not-allowed disabled:opacity-50', className)}>
+        <DsButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-[var(--interactive-hover)] disabled:cursor-not-allowed disabled:opacity-50', className)}>
           <span className="flex-1 min-w-0 pr-2 text-left text-sm truncate">
             {isEmptySelected && !allowEmpty ? (
               <span className="text-muted-foreground">{triggerDisplayText}</span>
@@ -352,13 +352,13 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
             )}
           </span>
           <CaretDown size={14} className="shrink-0 opacity-40" />
-        </NotionButton>
+        </DsButton>
       );
     }
 
     // 紧凑按钮样式（默认）
     return (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         disabled={disabled}
@@ -370,7 +370,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
         {triggerIcon}
         <span className="truncate max-w-[200px]">{triggerDisplayText}</span>
         <CaretDown size={14} className="shrink-0 opacity-50" />
-      </NotionButton>
+      </DsButton>
     );
   };
 
@@ -395,9 +395,10 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
           <div className="relative mb-1.5 px-0.5 pt-0.5">
             <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
+              type="search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={t('chat_host:model_panel.search_placeholder', '搜索...')}
+              placeholder={t('chat_host:model_panel.search_placeholder')}
               className="h-7 text-xs pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
               disabled={disabled}
 />
@@ -425,6 +426,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                  >
                    <div
                      data-testid="model-selector-vendor-group-header"
+                     data-wb-blur-surface
                      className="sticky top-0 z-[1] mx-0.5 mb-1 flex items-center justify-between rounded-md bg-popover/95 px-2 py-1 text-[10px] font-semibold text-muted-foreground shadow-[0_1px_0_hsl(var(--border)/0.35)] backdrop-blur-sm"
                    >
                      <span className="min-w-0 truncate">{group.name}</span>
@@ -441,8 +443,8 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                <div className="px-2 py-8 text-xs text-muted-foreground text-center flex flex-col items-center gap-2">
                  <Cube size={32} className="text-muted-foreground/20" />
                  {searchTerm
-                   ? t('chat_host:model_panel.no_matches', '无匹配结果')
-                   : t('chat_host:model_panel.empty', '暂无可用模型')}
+                   ? t('chat_host:model_panel.no_matches')
+                   : t('chat_host:model_panel.empty')}
                </div>
              )}
           </CustomScrollArea>

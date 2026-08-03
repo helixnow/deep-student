@@ -19,7 +19,6 @@
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use tracing::{debug, info, warn};
 
 use crate::question_sync_service::QuestionSyncService;
@@ -53,6 +52,14 @@ pub enum QuestionType {
     Essay,
     Calculation,
     Proof,
+    /// 判断题：answer 为 "true"|"false"，不使用 structured_data
+    TrueFalse,
+    /// 匹配/连线题：structured_data.pairs 为标准答案
+    Matching,
+    /// 排序题：structured_data.correct_order 为标准答案
+    Ordering,
+    /// 数值题：structured_data 携带 answer_value/tolerance/unit/tolerance_mode
+    Numeric,
     #[default]
     Other,
 }
@@ -68,20 +75,36 @@ impl QuestionType {
             QuestionType::Essay => "essay",
             QuestionType::Calculation => "calculation",
             QuestionType::Proof => "proof",
+            QuestionType::TrueFalse => "true_false",
+            QuestionType::Matching => "matching",
+            QuestionType::Ordering => "ordering",
+            QuestionType::Numeric => "numeric",
             QuestionType::Other => "other",
         }
     }
 
     pub fn from_str(s: &str) -> Self {
-        match s {
-            "single_choice" => QuestionType::SingleChoice,
-            "multiple_choice" => QuestionType::MultipleChoice,
-            "indefinite_choice" => QuestionType::IndefiniteChoice,
-            "fill_blank" => QuestionType::FillBlank,
-            "short_answer" => QuestionType::ShortAnswer,
+        // 宽松归一化：DB 内始终是 snake_case，但 mock exam / paper 配置里的题型键
+        // 可能来自前端 Debug 格式（"SingleChoice"）或 camelCase。去掉分隔符并统一
+        // 小写后再匹配，避免这些入口被静默映射为 Other。
+        let compact: String = s
+            .chars()
+            .filter(|c| *c != '_' && *c != '-' && !c.is_whitespace())
+            .collect::<String>()
+            .to_lowercase();
+        match compact.as_str() {
+            "singlechoice" => QuestionType::SingleChoice,
+            "multiplechoice" => QuestionType::MultipleChoice,
+            "indefinitechoice" => QuestionType::IndefiniteChoice,
+            "fillblank" => QuestionType::FillBlank,
+            "shortanswer" => QuestionType::ShortAnswer,
             "essay" => QuestionType::Essay,
             "calculation" => QuestionType::Calculation,
             "proof" => QuestionType::Proof,
+            "truefalse" => QuestionType::TrueFalse,
+            "matching" => QuestionType::Matching,
+            "ordering" => QuestionType::Ordering,
+            "numeric" => QuestionType::Numeric,
             _ => QuestionType::Other,
         }
     }
@@ -214,6 +237,10 @@ pub struct Question {
     pub options: Option<Vec<QuestionOption>>,
     pub answer: Option<String>,
     pub explanation: Option<String>,
+    /// 结构化题目数据（新题型契约）。DB 中以 JSON 文本存储于 questions.structured_data。
+    /// 各题型 schema 见迁移 V20260807__question_structured_data.sql 头注释。
+    #[serde(default)]
+    pub structured_data: Option<serde_json::Value>,
     pub question_type: QuestionType,
     pub difficulty: Option<Difficulty>,
     pub tags: Vec<String>,
@@ -345,6 +372,9 @@ pub struct CreateQuestionParams {
     pub options: Option<Vec<QuestionOption>>,
     pub answer: Option<String>,
     pub explanation: Option<String>,
+    /// 结构化题目数据（JSON），按题型契约存储；None 时不写入
+    #[serde(default)]
+    pub structured_data: Option<serde_json::Value>,
     pub question_type: Option<QuestionType>,
     pub difficulty: Option<Difficulty>,
     pub tags: Option<Vec<String>>,
@@ -362,6 +392,13 @@ pub struct UpdateQuestionParams {
     pub options: Option<Vec<QuestionOption>>,
     pub answer: Option<String>,
     pub explanation: Option<String>,
+    /// 结构化题目数据。None = 不更新；Some(Value::Null) = 清空该列
+    /// （JSON 载荷传 null 会被 serde 解析为 None，前端如需清空请传 JSON null 字面量
+    /// 的包装对象，或由 Rust 调用方显式传 Some(Value::Null)）。
+    /// 例外：question_type 切换到不使用 structured_data 的题型且本字段为 None 时，
+    /// 更新会自动把该列清为 NULL（见 should_clear_stale_structured_data）。
+    #[serde(default)]
+    pub structured_data: Option<serde_json::Value>,
     pub question_type: Option<QuestionType>,
     pub difficulty: Option<Difficulty>,
     pub tags: Option<Vec<String>>,
@@ -372,6 +409,32 @@ pub struct UpdateQuestionParams {
     pub is_favorite: Option<bool>,
     pub is_bookmarked: Option<bool>,
     pub images: Option<Vec<QuestionImage>>,
+    /// ACR R2-01：可选乐观锁基线；None 时保持旧行为（兼容存量调用）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_updated_at: Option<String>,
+}
+
+impl UpdateQuestionParams {
+    /// 题型切换后是否需要清空残留的 structured_data。
+    ///
+    /// 前端传 JSON null 会被 serde 解析为 None（=不更新），因此把 matching
+    /// 等结构化题型改成简答题时旧 {left,right,pairs} 会永远残留在 DB。规则：
+    /// 显式指定了新题型（question_type 为 Some）、新题型不使用 structured_data
+    /// （非 fill_blank/matching/ordering/numeric）、且本次未显式携带
+    /// structured_data 时，更新需把该列清为 NULL。question_type 为 None 的
+    /// 普通更新（如只改难度）绝不触发清空。
+    pub fn should_clear_stale_structured_data(&self) -> bool {
+        match (&self.question_type, &self.structured_data) {
+            (Some(next_type), None) => !matches!(
+                next_type,
+                QuestionType::FillBlank
+                    | QuestionType::Matching
+                    | QuestionType::Ordering
+                    | QuestionType::Numeric
+            ),
+            _ => false,
+        }
+    }
 }
 
 /// 历史记录
@@ -416,29 +479,16 @@ impl VfsQuestionRepo {
 
     /// 转义 FTS5 搜索词中的特殊字符
     ///
-    /// FTS5 使用以下特殊字符：
-    /// - 双引号 (") 用于短语搜索
-    /// - 星号 (*) 用于前缀搜索
-    /// - 括号 () 用于分组
-    /// - AND, OR, NOT 作为布尔运算符
-    /// - 连字符 (-) 用于排除
-    /// - 冒号 (:) 用于列限定
-    fn escape_fts5_query(keyword: &str) -> Cow<'_, str> {
-        // 检查是否需要转义
-        let needs_escape = keyword
-            .chars()
-            .any(|c| matches!(c, '"' | '*' | '(' | ')' | '-' | ':' | '^' | '+' | '~'))
-            || keyword.contains("AND")
-            || keyword.contains("OR")
-            || keyword.contains("NOT");
-
-        if !needs_escape {
-            return Cow::Borrowed(keyword);
-        }
-
-        // 用双引号包围整个搜索词，并转义内部的双引号
-        let escaped = keyword.replace('"', "\"\"");
-        Cow::Owned(format!("\"{}\"", escaped))
+    /// FTS5 查询语法中裸词只允许字母数字等有限字符，`"` `*` `(` `)` `-` `:` `^`
+    /// `+` `~` `.` `?` `'` `/` 以及 AND/OR/NOT 关键字都会改变语义或直接导致
+    /// `MATCH` 语法错误。黑名单式检测无法穷举，因此这里无条件按空白分词并对
+    /// 每个词加双引号（词内 `"` 双写转义），词间保持 FTS5 隐式 AND 语义。
+    fn escape_fts5_query(keyword: &str) -> String {
+        keyword
+            .split_whitespace()
+            .map(|token| format!("\"{}\"", token.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// 验证并清理搜索关键词
@@ -604,6 +654,25 @@ impl VfsQuestionRepo {
             }
         }
 
+        // 标签筛选（与 list_questions 口径一致；此前 FTS 搜索静默忽略 tags 筛选）
+        if let Some(tags) = &filters.base.tags {
+            if !tags.is_empty() {
+                let placeholders: Vec<String> = tags
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", param_idx + i))
+                    .collect();
+                where_clauses.push(format!(
+                    "EXISTS (SELECT 1 FROM json_each(q.tags) WHERE value IN ({}))",
+                    placeholders.join(", ")
+                ));
+                for tag in tags {
+                    params_vec.push(Box::new(tag.to_string()));
+                }
+                param_idx += tags.len();
+            }
+        }
+
         // 收藏筛选
         if let Some(is_fav) = filters.base.is_favorite {
             where_clauses.push(format!("q.is_favorite = ?{}", param_idx));
@@ -639,12 +708,18 @@ impl VfsQuestionRepo {
             param_idx, where_clause
         );
 
-        // DRY: 复用已构建的 params_vec（添加 FTS keyword 前缀），避免 3 次重复构建
+        // DRY: 复用已构建的 params_vec 构建逻辑，避免 count/query 两次重复构建。
+        //
+        // ⚠️ 绑定顺序契约：rusqlite 按切片位置绑定（params[i] → ?i+1），而 WHERE
+        // 子句里的筛选占位符是 ?1..?N、MATCH 占位符是 ?{N+1}（最大编号）。因此
+        // keyword 必须放在参数列表**末尾**——此前 keyword 被放在开头，导致
+        // `q.exam_id = ?1` 实际绑定到了转义后的搜索词、MATCH 绑定到最后一个筛选值，
+        // 任何带筛选条件的 FTS 搜索都会返回错误结果。
         let build_fts_params = |keyword: &str,
                                 filters: &QuestionSearchFilters,
                                 exam_id: Option<&str>|
          -> Vec<Box<dyn rusqlite::ToSql>> {
-            let mut p: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(keyword.to_string())];
+            let mut p: Vec<Box<dyn rusqlite::ToSql>> = vec![];
             if let Some(eid) = exam_id {
                 p.push(Box::new(eid.to_string()));
             }
@@ -663,21 +738,27 @@ impl VfsQuestionRepo {
                     p.push(Box::new(t.as_str().to_string()));
                 }
             }
+            if let Some(tags) = &filters.base.tags {
+                for tag in tags {
+                    p.push(Box::new(tag.to_string()));
+                }
+            }
             if let Some(is_fav) = filters.base.is_favorite {
                 p.push(Box::new(if is_fav { 1 } else { 0 }));
             }
             if let Some(is_bm) = filters.base.is_bookmarked {
                 p.push(Box::new(if is_bm { 1 } else { 0 }));
             }
+            p.push(Box::new(keyword.to_string()));
             p
         };
 
         let count_params_vec = build_fts_params(&escaped_keyword, filters, exam_id);
         let count_refs: Vec<&dyn rusqlite::ToSql> =
             count_params_vec.iter().map(|p| p.as_ref()).collect();
-        let total: i64 = conn
-            .query_row(&count_sql, count_refs.as_slice(), |row| row.get(0))
-            .unwrap_or(0);
+        // 转义后不会再出现 MATCH 语法错误，此处的失败是真实数据库错误，应当上抛
+        // 而不是静默返回 0（否则前端会把查询故障误显示为"无结果"）。
+        let total: i64 = conn.query_row(&count_sql, count_refs.as_slice(), |row| row.get(0))?;
 
         // 8. 查询数据（带高亮和相关性分数）
         let query_sql = format!(
@@ -688,7 +769,7 @@ impl VfsQuestionRepo {
                 q.status, q.user_answer, q.is_correct, q.attempt_count, q.correct_count,
                 q.last_attempt_at, q.user_note, q.is_favorite, q.is_bookmarked,
                 q.source_type, q.source_ref, q.images_json, q.parent_id, q.created_at, q.updated_at,
-                q.ai_feedback, q.ai_score, q.ai_graded_at,
+                q.ai_feedback, q.ai_score, q.ai_graded_at, q.structured_data,
                 highlight(questions_fts, 0, '<mark>', '</mark>') as hl_content,
                 highlight(questions_fts, 1, '<mark>', '</mark>') as hl_answer,
                 highlight(questions_fts, 2, '<mark>', '</mark>') as hl_explanation,
@@ -719,11 +800,11 @@ impl VfsQuestionRepo {
             // 解析基础 Question 字段
             let question = Self::row_to_question(row)?;
 
-            // 解析高亮和分数字段（索引 29-32，ai_feedback/ai_score/ai_graded_at 在 26-28）
-            let hl_content: Option<String> = row.get(29)?;
-            let hl_answer: Option<String> = row.get(30)?;
-            let hl_explanation: Option<String> = row.get(31)?;
-            let relevance: f64 = row.get(32)?;
+            // 解析高亮和分数字段（索引 30-33；structured_data 在 29）
+            let hl_content: Option<String> = row.get(30)?;
+            let hl_answer: Option<String> = row.get(31)?;
+            let hl_explanation: Option<String> = row.get(32)?;
+            let relevance: f64 = row.get(33)?;
 
             Ok(QuestionSearchResult {
                 question,
@@ -797,6 +878,69 @@ impl VfsQuestionRepo {
             }
         }
 
+        // 难度筛选（与 FTS5 路径保持一致，避免回退搜索忽略筛选条件）
+        if let Some(difficulties) = &filters.base.difficulty {
+            if !difficulties.is_empty() {
+                let placeholders: Vec<String> = difficulties
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", param_idx + i))
+                    .collect();
+                conditions.push(format!("difficulty IN ({})", placeholders.join(", ")));
+                for d in difficulties {
+                    params_vec.push(Box::new(d.as_str().to_string()));
+                }
+                param_idx += difficulties.len();
+            }
+        }
+
+        // 题型筛选
+        if let Some(types) = &filters.base.question_type {
+            if !types.is_empty() {
+                let placeholders: Vec<String> = types
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", param_idx + i))
+                    .collect();
+                conditions.push(format!("question_type IN ({})", placeholders.join(", ")));
+                for t in types {
+                    params_vec.push(Box::new(t.as_str().to_string()));
+                }
+                param_idx += types.len();
+            }
+        }
+
+        // 标签筛选（与 FTS5 路径口径一致）
+        if let Some(tags) = &filters.base.tags {
+            if !tags.is_empty() {
+                let placeholders: Vec<String> = tags
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", param_idx + i))
+                    .collect();
+                conditions.push(format!(
+                    "EXISTS (SELECT 1 FROM json_each(questions.tags) WHERE value IN ({}))",
+                    placeholders.join(", ")
+                ));
+                for tag in tags {
+                    params_vec.push(Box::new(tag.to_string()));
+                }
+                param_idx += tags.len();
+            }
+        }
+
+        // 收藏/书签筛选
+        if let Some(is_fav) = filters.base.is_favorite {
+            conditions.push(format!("is_favorite = ?{}", param_idx));
+            params_vec.push(Box::new(if is_fav { 1 } else { 0 }));
+            param_idx += 1;
+        }
+        if let Some(is_bm) = filters.base.is_bookmarked {
+            conditions.push(format!("is_bookmarked = ?{}", param_idx));
+            params_vec.push(Box::new(if is_bm { 1 } else { 0 }));
+            param_idx += 1;
+        }
+
         let where_clause = conditions.join(" AND ");
 
         // 查询总数
@@ -813,7 +957,7 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at
+                   ai_feedback, ai_score, ai_graded_at, structured_data
             FROM questions
             WHERE {}
             ORDER BY created_at ASC, id ASC
@@ -862,35 +1006,58 @@ impl VfsQuestionRepo {
     }
 
     /// 重建 FTS5 索引（使用现有连接）
+    ///
+    /// DELETE + INSERT 包在同一 SAVEPOINT 中：任一步失败都回滚，
+    /// 避免中断后留下"已清空但未重建"的空索引。
     pub fn rebuild_fts_index_with_conn(conn: &Connection) -> VfsResult<u64> {
         info!("[VFS::QuestionRepo] Rebuilding FTS5 index...");
 
-        // 1. 清空 FTS 表
-        conn.execute("DELETE FROM questions_fts", [])?;
+        conn.execute_batch("SAVEPOINT qbank_rebuild_fts")?;
 
-        // 2. 重新插入所有数据
-        let count = conn.execute(
-            r#"
-            INSERT INTO questions_fts(rowid, content, answer, explanation, tags)
-            SELECT rowid, content, COALESCE(answer, ''), COALESCE(explanation, ''), COALESCE(tags, '[]')
-            FROM questions
-            WHERE deleted_at IS NULL
-            "#,
-            [],
-        )?;
+        let rebuild_result = (|| -> VfsResult<u64> {
+            // 1. 清空 FTS 表
+            conn.execute("DELETE FROM questions_fts", [])?;
 
-        // 3. 优化 FTS 表
-        conn.execute(
-            "INSERT INTO questions_fts(questions_fts) VALUES('optimize')",
-            [],
-        )?;
+            // 2. 重新插入所有数据
+            let count = conn.execute(
+                r#"
+                INSERT INTO questions_fts(rowid, content, answer, explanation, tags)
+                SELECT rowid, content, COALESCE(answer, ''), COALESCE(explanation, ''), COALESCE(tags, '[]')
+                FROM questions
+                WHERE deleted_at IS NULL
+                "#,
+                [],
+            )?;
 
-        info!(
-            "[VFS::QuestionRepo] FTS5 index rebuilt, {} records indexed",
-            count
-        );
+            // 3. 优化 FTS 表
+            conn.execute(
+                "INSERT INTO questions_fts(questions_fts) VALUES('optimize')",
+                [],
+            )?;
 
-        Ok(count as u64)
+            Ok(count as u64)
+        })();
+
+        match rebuild_result {
+            Ok(count) => {
+                conn.execute_batch("RELEASE SAVEPOINT qbank_rebuild_fts")?;
+                info!(
+                    "[VFS::QuestionRepo] FTS5 index rebuilt, {} records indexed",
+                    count
+                );
+                Ok(count)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT qbank_rebuild_fts; RELEASE SAVEPOINT qbank_rebuild_fts;",
+                );
+                warn!(
+                    "[VFS::QuestionRepo] FTS5 rebuild failed, rolled back: {}",
+                    e
+                );
+                Err(e)
+            }
+        }
     }
 
     // ========================================================================
@@ -1001,7 +1168,8 @@ impl VfsQuestionRepo {
             .unwrap_or(false);
 
         if let Some(search) = &filters.search {
-            if !search.is_empty() {
+            // 纯空白搜索词会生成空 MATCH 表达式（FTS5 语法错误），直接跳过搜索条件
+            if !search.trim().is_empty() {
                 if use_fts5 {
                     // FTS5 搜索：通过 rowid 关联
                     let sanitized =
@@ -1011,7 +1179,7 @@ impl VfsQuestionRepo {
                         "rowid IN (SELECT rowid FROM questions_fts WHERE questions_fts MATCH ?{})",
                         param_idx
                     ));
-                    params_vec.push(Box::new(escaped.into_owned()));
+                    params_vec.push(Box::new(escaped));
                     param_idx += 1;
                 } else {
                     // 回退到 LIKE 搜索（搜索 content, answer, explanation, tags）
@@ -1058,7 +1226,7 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at
+                   ai_feedback, ai_score, ai_graded_at, structured_data
             FROM questions
             WHERE {}
             ORDER BY created_at ASC, id ASC
@@ -1320,7 +1488,7 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at
+                   ai_feedback, ai_score, ai_graded_at, structured_data
             FROM questions
             WHERE {}
             ORDER BY RANDOM()
@@ -1379,7 +1547,7 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at
+                   ai_feedback, ai_score, ai_graded_at, structured_data
             FROM questions
             WHERE id = ?1 AND deleted_at IS NULL
             "#,
@@ -1415,7 +1583,7 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at
+                   ai_feedback, ai_score, ai_graded_at, structured_data
             FROM questions
             WHERE exam_id = ?1 AND card_id = ?2 AND deleted_at IS NULL
             "#,
@@ -1426,6 +1594,53 @@ impl VfsQuestionRepo {
             .optional()?;
 
         Ok(question)
+    }
+
+    /// 按 ID 批量获取题目（单次 IN 查询，替代逐题 get_question 的 N+1）
+    ///
+    /// 返回顺序不保证与入参一致；未找到（含已删除）的 ID 会被跳过。
+    pub fn get_questions_by_ids(db: &VfsDatabase, ids: &[String]) -> VfsResult<Vec<Question>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_questions_by_ids_with_conn(&conn, ids)
+    }
+
+    /// 按 ID 批量获取题目（使用现有连接）
+    pub fn get_questions_by_ids_with_conn(
+        conn: &Connection,
+        ids: &[String],
+    ) -> VfsResult<Vec<Question>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // 分块避免超过 SQLite 绑定参数上限
+        const CHUNK_SIZE: usize = 500;
+        let mut questions = Vec::with_capacity(ids.len());
+
+        for chunk in ids.chunks(CHUNK_SIZE) {
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+            let sql = format!(
+                r#"
+                SELECT id, exam_id, card_id, question_label, content, options_json,
+                       answer, explanation, question_type, difficulty, tags,
+                       status, user_answer, is_correct, attempt_count, correct_count,
+                       last_attempt_at, user_note, is_favorite, is_bookmarked,
+                       source_type, source_ref, images_json, parent_id, created_at, updated_at,
+                       ai_feedback, ai_score, ai_graded_at, structured_data
+                FROM questions
+                WHERE id IN ({}) AND deleted_at IS NULL
+                "#,
+                placeholders.join(", ")
+            );
+
+            let params_refs: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_question)?;
+            questions.extend(rows.filter_map(log_and_skip_err));
+        }
+
+        Ok(questions)
     }
 
     // ========================================================================
@@ -1468,15 +1683,23 @@ impl VfsQuestionRepo {
             .as_ref()
             .map(|imgs| serde_json::to_string(imgs).unwrap_or_else(|_| "[]".to_string()))
             .unwrap_or_else(|| "[]".to_string());
+        // Value::Null 视为未提供，避免列里存 "null" 字符串
+        let structured_data_json = params
+            .structured_data
+            .as_ref()
+            .filter(|v| !v.is_null())
+            .map(|v| v.to_string());
 
         conn.execute(
             r#"
             INSERT INTO questions (
                 id, exam_id, card_id, question_label, content, options_json,
                 answer, explanation, question_type, difficulty, tags,
-                status, source_type, source_ref, images_json, parent_id, created_at, updated_at
+                status, source_type, source_ref, images_json, parent_id, created_at, updated_at,
+                structured_data
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
+                ?19
             )
             "#,
             params![
@@ -1498,6 +1721,7 @@ impl VfsQuestionRepo {
                 params.parent_id,
                 now,
                 now,
+                structured_data_json,
             ],
         )?;
 
@@ -1664,19 +1888,71 @@ impl VfsQuestionRepo {
             ));
             param_idx += 1;
         }
+        // Some(Value::Null) 显式清空该列（存 NULL 而非 "null" 文本）；
+        // 题型切换到不使用 structured_data 的类型且未显式携带时，同样清为 NULL，
+        // 避免 matching→short_answer 等切换后旧结构化数据永久残留
+        let structured_update: Option<Option<String>> =
+            if let Some(structured_data) = &params.structured_data {
+                Some(if structured_data.is_null() {
+                    None
+                } else {
+                    Some(structured_data.to_string())
+                })
+            } else if params.should_clear_stale_structured_data() {
+                Some(None)
+            } else {
+                None
+            };
+        if let Some(value) = structured_update {
+            set_clauses.push(format!("structured_data = ?{}", param_idx));
+            param_values.push(Box::new(value));
+            param_idx += 1;
+        }
 
-        let sql = format!(
-            "UPDATE questions SET {} WHERE id = ?{} AND deleted_at IS NULL",
-            set_clauses.join(", "),
-            param_idx
-        );
+        let question_id_param = param_idx;
         param_values.push(Box::new(question_id.to_string()));
+        param_idx += 1;
+
+        let expected_updated_at = params
+            .expected_updated_at
+            .as_deref()
+            .filter(|expected| !expected.is_empty());
+        let occ_predicate = if let Some(expected) = expected_updated_at {
+            let predicate = format!(" AND updated_at = ?{}", param_idx);
+            param_values.push(Box::new(expected.to_string()));
+            predicate
+        } else {
+            String::new()
+        };
+
+        // The optimistic-lock comparison is part of the write itself. A separate
+        // SELECT pre-check leaves a race window in which another writer can win
+        // between validation and UPDATE.
+        let sql = format!(
+            "UPDATE questions SET {} WHERE id = ?{} AND deleted_at IS NULL{}",
+            set_clauses.join(", "),
+            question_id_param,
+            occ_predicate
+        );
 
         let params_refs: Vec<&dyn rusqlite::ToSql> =
             param_values.iter().map(|p| p.as_ref()).collect();
         let affected = conn.execute(&sql, params_refs.as_slice())?;
 
         if affected == 0 {
+            if let (Some(expected), Some(current)) = (
+                expected_updated_at,
+                Self::get_question_with_conn(conn, question_id)?,
+            ) {
+                warn!(
+                    "[VFS::QuestionRepo] Optimistic lock conflict for question {}: expected updated_at='{}', actual='{}'",
+                    question_id, expected, current.updated_at
+                );
+                return Err(VfsError::Other(format!(
+                    "QBANK_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                    expected, current.updated_at
+                )));
+            }
             return Err(VfsError::NotFound {
                 resource_type: "question".to_string(),
                 id: question_id.to_string(),
@@ -1809,6 +2085,42 @@ impl VfsQuestionRepo {
 
         info!(
             "[VFS::QuestionRepo] Soft deleted question id={}",
+            question_id
+        );
+        Ok(())
+    }
+
+    /// Soft-delete one question while atomically checking its optimistic-lock baseline.
+    ///
+    /// Callers that delete more than one question should wrap repeated calls in a single
+    /// transaction so a conflict leaves the whole batch untouched.
+    pub fn delete_question_if_version_with_conn(
+        conn: &Connection,
+        question_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let affected = conn.execute(
+            "UPDATE questions SET deleted_at = ?1, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NULL AND updated_at = ?3",
+            params![now, question_id, expected_updated_at],
+        )?;
+
+        if affected == 0 {
+            if let Some(current) = Self::get_question_with_conn(conn, question_id)? {
+                return Err(VfsError::Other(format!(
+                    "QBANK_CONFLICT: question_id={}, expected_updated_at={}, actual_updated_at={}",
+                    question_id, expected_updated_at, current.updated_at
+                )));
+            }
+            return Err(VfsError::NotFound {
+                resource_type: "question".to_string(),
+                id: question_id.to_string(),
+            });
+        }
+
+        info!(
+            "[VFS::QuestionRepo] OCC soft deleted question id={}",
             question_id
         );
         Ok(())
@@ -2027,16 +2339,18 @@ impl VfsQuestionRepo {
         let now = chrono::Utc::now().to_rfc3339();
 
         // 计算各项统计
+        // COALESCE：exam 下没有任何题目时 SUM(...) 为 NULL，直接 row.get::<i32>
+        // 会报 InvalidColumnType，导致"删空题目集后刷新统计必失败"。
         let stats: (i32, i32, i32, i32, i32, i32, i32) = conn.query_row(
             r#"
             SELECT
                 COUNT(*) as total,
-                SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_count,
-                SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
-                SUM(CASE WHEN status = 'mastered' THEN 1 ELSE 0 END) as mastered,
-                SUM(CASE WHEN status = 'review' THEN 1 ELSE 0 END) as review,
-                SUM(attempt_count) as total_attempts,
-                SUM(correct_count) as total_correct
+                COALESCE(SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END), 0) as new_count,
+                COALESCE(SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) as in_progress,
+                COALESCE(SUM(CASE WHEN status = 'mastered' THEN 1 ELSE 0 END), 0) as mastered,
+                COALESCE(SUM(CASE WHEN status = 'review' THEN 1 ELSE 0 END), 0) as review,
+                COALESCE(SUM(attempt_count), 0) as total_attempts,
+                COALESCE(SUM(correct_count), 0) as total_correct
             FROM questions
             WHERE exam_id = ?1 AND deleted_at IS NULL
             "#,
@@ -2048,8 +2362,8 @@ impl VfsQuestionRepo {
                     row.get::<_, i32>(2)?,
                     row.get::<_, i32>(3)?,
                     row.get::<_, i32>(4)?,
-                    row.get::<_, i32>(5).unwrap_or(0),
-                    row.get::<_, i32>(6).unwrap_or(0),
+                    row.get::<_, i32>(5)?,
+                    row.get::<_, i32>(6)?,
                 ))
             },
         )?;
@@ -2364,6 +2678,19 @@ impl VfsQuestionRepo {
 
         let ai_score: Option<i32> = row.get(27)?;
 
+        let structured_data_json: Option<String> = row.get(29)?;
+        let structured_data: Option<serde_json::Value> =
+            structured_data_json
+                .as_ref()
+                .and_then(|s| match serde_json::from_str(s) {
+                    Ok(serde_json::Value::Null) => None,
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        log::warn!("[VFS::QuestionRepo] Failed to parse structured_data: {}", e);
+                        None
+                    }
+                });
+
         Ok(Question {
             id: row.get(0)?,
             exam_id: row.get(1)?,
@@ -2373,6 +2700,7 @@ impl VfsQuestionRepo {
             options,
             answer: row.get(6)?,
             explanation: row.get(7)?,
+            structured_data,
             question_type,
             difficulty,
             tags,
@@ -2395,5 +2723,191 @@ impl VfsQuestionRepo {
             ai_score,
             ai_graded_at: row.get(28)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_fts5_query_quotes_every_token() {
+        // 普通词也统一加引号（与裸词匹配语义等价）
+        assert_eq!(VfsQuestionRepo::escape_fts5_query("hello"), "\"hello\"");
+        // 多词保持隐式 AND
+        assert_eq!(
+            VfsQuestionRepo::escape_fts5_query("foo bar"),
+            "\"foo\" \"bar\""
+        );
+        // FTS5 特殊字符不再产生语法错误
+        assert_eq!(
+            VfsQuestionRepo::escape_fts5_query("C++ 是什么?"),
+            "\"C++\" \"是什么?\""
+        );
+        assert_eq!(VfsQuestionRepo::escape_fts5_query("a.b"), "\"a.b\"");
+        assert_eq!(VfsQuestionRepo::escape_fts5_query("NOT"), "\"NOT\"");
+        // 内部双引号双写转义："hi" → """hi"""
+        assert_eq!(
+            VfsQuestionRepo::escape_fts5_query(r#"say "hi""#),
+            r#""say" """hi""""#
+        );
+    }
+
+    #[test]
+    fn sanitize_search_keyword_trims_and_limits() {
+        assert_eq!(
+            VfsQuestionRepo::sanitize_search_keyword("  abc  "),
+            Some("abc".to_string())
+        );
+        assert_eq!(VfsQuestionRepo::sanitize_search_keyword("   "), None);
+        let long: String = "字".repeat(MAX_SEARCH_KEYWORD_LENGTH + 50);
+        let sanitized = VfsQuestionRepo::sanitize_search_keyword(&long).unwrap();
+        assert_eq!(sanitized.chars().count(), MAX_SEARCH_KEYWORD_LENGTH);
+    }
+
+    fn create_test_question(db: &VfsDatabase, id: &str) -> Question {
+        let conn = db.get_conn_safe().expect("open migrated VFS test database");
+        conn.execute(
+            "INSERT INTO exam_sheets (
+                id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
+             ) VALUES (?1, 'OCC test', 'completed', ?2, '{}', '{}', ?3, ?3)",
+            params![
+                format!("exam-{id}"),
+                format!("temp-{id}"),
+                "2020-01-01T00:00:00Z"
+            ],
+        )
+        .expect("insert parent exam");
+        drop(conn);
+
+        let question = VfsQuestionRepo::create_question(
+            db,
+            &CreateQuestionParams {
+                exam_id: format!("exam-{id}"),
+                card_id: None,
+                question_label: None,
+                content: "original".to_string(),
+                options: None,
+                answer: None,
+                explanation: None,
+                structured_data: None,
+                question_type: None,
+                difficulty: None,
+                tags: None,
+                source_type: None,
+                source_ref: None,
+                images: None,
+                parent_id: None,
+            },
+        )
+        .expect("create question");
+
+        let conn = db.get_conn_safe().expect("reopen VFS test database");
+        conn.execute(
+            "UPDATE questions SET updated_at = '2020-01-01T00:00:00Z' WHERE id = ?1",
+            params![question.id],
+        )
+        .expect("set deterministic OCC baseline");
+        VfsQuestionRepo::get_question_with_conn(&conn, &question.id)
+            .expect("load question")
+            .expect("question should exist")
+    }
+
+    #[test]
+    fn update_question_occ_is_atomic_and_rejects_stale_writes() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let question = create_test_question(&db, "atomic");
+        let baseline = question.updated_at.clone();
+
+        let first = VfsQuestionRepo::update_question(
+            &db,
+            &question.id,
+            &UpdateQuestionParams {
+                content: Some("newer content".to_string()),
+                expected_updated_at: Some(baseline.clone()),
+                ..Default::default()
+            },
+        )
+        .expect("matching OCC baseline should update");
+        assert_eq!(first.content, "newer content");
+        assert_ne!(first.updated_at, baseline);
+
+        let stale_error = VfsQuestionRepo::update_question(
+            &db,
+            &question.id,
+            &UpdateQuestionParams {
+                content: Some("stale overwrite".to_string()),
+                expected_updated_at: Some(baseline),
+                ..Default::default()
+            },
+        )
+        .expect_err("stale OCC baseline must conflict");
+        assert!(stale_error.to_string().contains("QBANK_CONFLICT"));
+        assert!(stale_error
+            .to_string()
+            .contains(&format!("actual_updated_at={}", first.updated_at)));
+
+        let persisted = VfsQuestionRepo::get_question(&db, &question.id)
+            .expect("reload question")
+            .expect("question should remain live");
+        assert_eq!(persisted.content, "newer content");
+        assert_eq!(persisted.updated_at, first.updated_at);
+    }
+
+    #[test]
+    fn concurrent_question_updates_allow_exactly_one_occ_winner() {
+        use std::sync::{Arc, Barrier};
+
+        let (temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let question = create_test_question(&db, "concurrent");
+        let db_path = temp_dir.path().join("databases").join("vfs.db");
+        let barrier = Arc::new(Barrier::new(2));
+
+        let handles: Vec<_> = ["writer-a", "writer-b"]
+            .into_iter()
+            .map(|content| {
+                let db_path = db_path.clone();
+                let question_id = question.id.clone();
+                let expected = question.updated_at.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let conn = Connection::open(db_path).expect("open concurrent VFS connection");
+                    conn.busy_timeout(std::time::Duration::from_secs(5))
+                        .expect("configure SQLite busy timeout");
+                    barrier.wait();
+                    VfsQuestionRepo::update_question_with_conn(
+                        &conn,
+                        &question_id,
+                        &UpdateQuestionParams {
+                            content: Some(content.to_string()),
+                            expected_updated_at: Some(expected),
+                            ..Default::default()
+                        },
+                    )
+                    .map(|updated| updated.content)
+                    .map_err(|error| error.to_string())
+                })
+            })
+            .collect();
+
+        let outcomes: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("join concurrent writer"))
+            .collect();
+        assert_eq!(outcomes.iter().filter(|outcome| outcome.is_ok()).count(), 1);
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| outcome
+                    .as_ref()
+                    .is_err_and(|error| error.contains("QBANK_CONFLICT")))
+                .count(),
+            1
+        );
+
+        let persisted = VfsQuestionRepo::get_question(&db, &question.id)
+            .expect("reload concurrent question")
+            .expect("concurrent question should exist");
+        assert!(persisted.content == "writer-a" || persisted.content == "writer-b");
     }
 }

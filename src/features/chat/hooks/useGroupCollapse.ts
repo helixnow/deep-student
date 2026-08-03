@@ -1,20 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 const STORAGE_KEY = 'chat-v2-group-collapsed';
 
-export function useGroupCollapse() {
-  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        setCollapsedMap(JSON.parse(raw));
+function readStoredCollapsedMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, boolean>;
       }
-    } catch {
-      // ignore storage errors
     }
-  }, []);
+  } catch {
+    // ignore storage errors
+  }
+  return {};
+}
+
+export function useGroupCollapse() {
+  // 惰性初始化：直接从 localStorage 读取，避免挂载后异步覆盖（首帧闪烁 +
+  // 覆盖掉挂载早期 expandGroup 写入的状态）
+  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(readStoredCollapsedMap);
 
   const toggleGroupCollapse = useCallback((groupId: string) => {
     setCollapsedMap((prev) => {

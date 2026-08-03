@@ -11,13 +11,19 @@ import { cn } from '@/lib/utils';
 import { BlockingApprovalBar } from './BlockingApprovalBar';
 import { BlockingAskUserBar } from './BlockingAskUserBar';
 import { BlockingToolLimitBar } from './BlockingToolLimitBar';
+import { PlanGateCard } from '../PlanGateCard';
 
 interface BlockingInteractionBarProps {
   interaction: BlockingInteraction;
   sessionId: string;
+  restoreFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
-function renderContent(interaction: BlockingInteraction, sessionId: string) {
+function renderContent(
+  interaction: BlockingInteraction,
+  sessionId: string,
+  restoreFocusRef?: React.RefObject<HTMLElement | null>,
+) {
   switch (interaction.kind) {
     case 'tool_approval':
       return <BlockingApprovalBar interaction={interaction} sessionId={sessionId} />;
@@ -25,18 +31,33 @@ function renderContent(interaction: BlockingInteraction, sessionId: string) {
       return <BlockingAskUserBar interaction={interaction} />;
     case 'tool_limit':
       return <BlockingToolLimitBar interaction={interaction} />;
+    case 'plan_gate':
+      return (
+        <PlanGateCard
+          sessionId={sessionId}
+          request={{
+            planId: interaction.planId,
+            toolCallId: interaction.toolCallId,
+            toolName: interaction.toolName,
+            summary: interaction.summary,
+            timeoutSeconds: interaction.timeoutSeconds,
+            arguments: interaction.arguments,
+          }}
+          restoreFocusRef={restoreFocusRef}
+        />
+      );
     default:
       return null;
   }
 }
 
-export const BlockingInteractionBar: React.FC<BlockingInteractionBarProps> = React.memo(({ interaction, sessionId }) => {
+export const BlockingInteractionBar: React.FC<BlockingInteractionBarProps> = React.memo(({ interaction, sessionId, restoreFocusRef }) => {
   return (
     <div className={cn(
-      'animate-in fade-in slide-in-from-bottom-2 duration-150',
+      'ui-rise-in',
       'py-1'
     )}>
-      {renderContent(interaction, sessionId)}
+      {renderContent(interaction, sessionId, restoreFocusRef)}
     </div>
   );
 });

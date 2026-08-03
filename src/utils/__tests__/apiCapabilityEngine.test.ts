@@ -136,6 +136,114 @@ describe('apiCapabilityEngine NVIDIA model inference', () => {
   });
 });
 
+describe('apiCapabilityEngine 2026-07 model refresh', () => {
+  it('treats Claude Fable 5 as a multimodal adaptive-thinking model', () => {
+    const caps = inferApiCapabilities({ id: 'claude-fable-5' });
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+  });
+
+  it('treats Claude Sonnet 5 and Opus 4.8 as vision + thinking capable', () => {
+    const sonnet = inferApiCapabilities({ id: 'claude-sonnet-5' });
+    expect(sonnet.vision).toBe(true);
+    expect(sonnet.supportsThinkingTokens).toBe(true);
+
+    const opus = inferApiCapabilities({ id: 'claude-opus-4-8' });
+    expect(opus.vision).toBe(true);
+    expect(opus.supportsThinkingTokens).toBe(true);
+  });
+
+  it('treats Grok 4.3 as reasoning-effort capable with 1M context', () => {
+    const caps = inferApiCapabilities({ id: 'grok-4.3' });
+    expect(caps.reasoning).toBe(true);
+    expect(caps.vision).toBe(true);
+    expect(caps.supportsReasoningEffort).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
+  it.each([
+    'grok-4.10-non-reasoning',
+    'gpt-5.1-chat-latest',
+    'vision-o3cr-model',
+  ])('does not infer OpenAI reasoning effort from incidental family substrings: %s', (model) => {
+    expect(inferApiCapabilities({ id: model }).supportsReasoningEffort).toBe(false);
+  });
+
+  it.each([
+    'mistral-medium-latest',
+    'mistral-medium-3-5',
+    'mistral-small-latest',
+    'mistral-small-4',
+  ])('treats %s as reasoning-effort capable', (model) => {
+    const caps = inferApiCapabilities({ id: model });
+
+    expect(caps.supportsReasoningEffort).toBe(true);
+  });
+
+  it('keeps qwen3.7-max text-only but thinking-capable with 1M context', () => {
+    const caps = inferApiCapabilities({ id: 'qwen3.7-max' });
+    expect(caps.vision).toBe(false);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
+  it('treats qwen3.7-plus snapshot ids as multimodal thinking models', () => {
+    const caps = inferApiCapabilities({ id: 'qwen3.7-plus-2026-05-26' });
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
+  it('treats Kimi K2.6 as multimodal and K2.7-code as forced-thinking coding model', () => {
+    const k26 = inferApiCapabilities({ id: 'kimi-k2.6' });
+    expect(k26.vision).toBe(true);
+    expect(k26.supportsThinkingTokens).toBe(true);
+
+    const k27 = inferApiCapabilities({ id: 'kimi-k2.7-code' });
+    expect(k27.vision).toBe(false);
+    expect(k27.supportsThinkingTokens).toBe(true);
+    expect(k27.functionCalling).toBe(true);
+  });
+
+  it('treats doubao-seed-2.1 snapshots as multimodal thinking models', () => {
+    const caps = inferApiCapabilities({ id: 'doubao-seed-2-1-pro-260628' });
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+    expect(caps.contextWindow).toBe(256_000);
+  });
+
+  it('treats MiniMax M3 as a 1M-context thinking model', () => {
+    const caps = inferApiCapabilities({ id: 'minimax-m3' });
+    expect(caps.supportsThinkingTokens).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
+  it('treats ERNIE X1.1 as a reasoning model with thinking output', () => {
+    const caps = inferApiCapabilities({ id: 'ernie-x1.1' });
+    expect(caps.reasoning).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+  });
+
+  it('treats GLM-5.2 as reasoning + tools capable', () => {
+    const caps = inferApiCapabilities({ id: 'glm-5.2' });
+    expect(caps.reasoning).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+    expect(caps.vision).toBe(false);
+  });
+
+  it('no longer resolves retired hunyuan-2.0 entries from the registry', () => {
+    expect(findModelRecordById('hunyuan-2.0-think')).toBeUndefined();
+    expect(findModelRecordById('hunyuan-2.0-instruct')).toBeUndefined();
+  });
+});
+
 describe('apiCapabilityEngine Xiaomi MiMo model inference', () => {
   it('recognizes MiMo V2.5 Pro as a reasoning-capable tool model with 1M context', () => {
     const caps = inferApiCapabilities({

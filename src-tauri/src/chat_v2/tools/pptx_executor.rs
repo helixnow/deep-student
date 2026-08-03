@@ -16,9 +16,9 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
+use super::office_output::{deliver_office_bytes, OfficeOperation};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::document_parser::DocumentParser;
 
@@ -327,40 +327,23 @@ impl PptxToolExecutor {
                 .map_err(|e| format!("PPTX 生成任务异常: {}", e))?
                 .map_err(|e| format!("PPTX 重新生成失败: {}", e))?;
 
-        // 保存到 VFS
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-        use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
-
-        let blob = VfsBlobRepo::store_blob(
-            vfs_db,
+        let mut output = deliver_office_bytes(
+            ctx,
+            &call.arguments,
             &new_bytes,
-            Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-            Some("pptx"),
-        )
-        .map_err(|e| format!("VFS Blob 存储失败: {}", e))?;
-
-        let vfs_file = VfsFileRepo::create_file_in_folder(
-            vfs_db,
-            &blob.hash,
+            "pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             file_name,
-            new_bytes.len() as i64,
-            "document",
-            Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-            Some(&blob.hash),
             None,
-            None,
-        )
-        .map_err(|e| format!("VFS 文件创建失败: {}", e))?;
-
-        Ok(json!({
-            "success": true,
-            "source_resource_id": resource_id,
-            "new_file_id": vfs_file.id,
-            "file_name": file_name,
-            "file_size": new_bytes.len(),
-            "replacements_made": total_count,
-            "message": format!("已完成 {} 处替换，保存为「{}」", total_count, file_name),
-        }))
+            OfficeOperation::ReplaceText,
+            Some(resource_id),
+        )?;
+        output["replacements_made"] = json!(total_count);
+        output["message"] = json!(format!(
+            "已完成 {} 处替换，保存为「{}」",
+            total_count, file_name
+        ));
+        Ok(output)
     }
 
     /// 从 JSON spec 生成 PPTX 文件并保存到 VFS
@@ -391,39 +374,23 @@ impl PptxToolExecutor {
 
         let file_size = pptx_bytes.len();
 
-        // 保存到 VFS
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-        use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
-
-        let blob = VfsBlobRepo::store_blob(
-            vfs_db,
+        let mut output = deliver_office_bytes(
+            ctx,
+            &call.arguments,
             &pptx_bytes,
-            Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-            Some("pptx"),
-        )
-        .map_err(|e| format!("VFS Blob 存储失败: {}", e))?;
-
-        let vfs_file = VfsFileRepo::create_file_in_folder(
-            vfs_db,
-            &blob.hash,
+            "pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             file_name,
-            file_size as i64,
-            "document",
-            Some("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-            Some(&blob.hash),
-            None,
             folder_id,
-        )
-        .map_err(|e| format!("VFS 文件创建失败: {}", e))?;
-
-        Ok(json!({
-            "success": true,
-            "file_id": vfs_file.id,
-            "file_name": file_name,
-            "file_size": file_size,
-            "format": "pptx",
-            "message": format!("已生成 PPTX 文件「{}」({}KB)", file_name, file_size / 1024),
-        }))
+            OfficeOperation::Create,
+            None,
+        )?;
+        output["message"] = json!(format!(
+            "已生成 PPTX 文件「{}」({}KB)",
+            file_name,
+            file_size / 1024
+        ));
+        Ok(output)
     }
 
     /// 从 VFS 加载文件字节
@@ -581,6 +548,18 @@ impl ToolExecutor for PptxToolExecutor {
             | "pptx_to_spec" => ToolSensitivity::Low,
             "pptx_create" | "pptx_replace_text" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        match strip_tool_namespace(tool_name) {
+            // 只读子集：结构化读取/表格提取/元数据，可并行 + 自动重试
+            // （pptx_to_spec 会生成新 spec 产物，不视为纯只读）
+            "pptx_read_structured" | "pptx_extract_tables" | "pptx_get_metadata" => {
+                ToolConcurrency::ReadOnly
+            }
+            // create/replace_text/to_spec 等有副作用，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 

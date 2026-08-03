@@ -49,11 +49,12 @@ export type {
  * | textbook    | 25     | 教材 ★      |
  * | image       | 30     | 图片        |
  * | file        | 30     | 文件附件    |
+ * | mindmap     | 26     | 知识导图 ★  |
  * | retrieval   | 50     | 检索结果    |
  * | folder      | 100    | 文件夹 ★    |
  * | translation | -      | 翻译        |
  */
-export type ResourceType = 'image' | 'file' | 'note' | 'card' | 'exam' | 'essay' | 'textbook' | 'retrieval' | 'folder' | 'translation';
+export type ResourceType = 'image' | 'file' | 'note' | 'card' | 'exam' | 'essay' | 'textbook' | 'mindmap' | 'retrieval' | 'folder' | 'translation';
 
 /**
  * 资源元数据

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <rect x="40" y="24" width="82" height="102" rx="8" fill="#DFEFED" stroke="#A6C4CB" stroke-width="3"/>
+  <path d="M116 34v86M110 30v94" stroke="#B9DEDA" stroke-width="3" stroke-linecap="round"/>
+  <linearGradient id="tb_cover" x1="70" x2="70" y1="16" y2="130" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#2BB3A3" offset="0"/>
+    <stop stop-color="#14607E" offset=".62"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
+  </linearGradient>
+  <path d="M40 16h62a10 10 0 0 1 10 10v98a10 10 0 0 1-10 10H40a12 12 0 0 1-12-12V28a12 12 0 0 1 12-12z" fill="url(#tb_cover)"/>
+  <linearGradient id="tb_spine" x1="35" x2="35" y1="16" y2="134" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#1A4A70" offset="0"/>
+    <stop stop-color="#16325A" offset="1"/>
+  </linearGradient>
+  <path d="M40 16h4v118h-4a12 12 0 0 1-12-12V28a12 12 0 0 1 12-12z" fill="url(#tb_spine)"/>
+  <linearGradient id="tb_mark" x1="88" x2="88" y1="16" y2="58" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <path d="M78 16h20v42l-10-10-10 10V16z" fill="url(#tb_mark)"/>
+  <rect x="54" y="86" width="40" height="7" rx="3.5" fill="#fff" opacity=".9"/>
+  <rect x="54" y="100" width="28" height="7" rx="3.5" fill="#fff" opacity=".55"/>
+</svg>

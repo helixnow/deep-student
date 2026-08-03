@@ -1,15 +1,18 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use tauri::Emitter;
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::arg_utils::with_localized_message;
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::memory::{MemoryOpSource, MemoryOpType, MemoryService, MemoryType, OpTimer, WriteMode};
+use crate::vfs::error::VfsError;
 use crate::vfs::lance_store::VfsLanceStore;
 
 pub const MEMORY_SEARCH: &str = "builtin-memory_search";
@@ -20,8 +23,32 @@ pub const MEMORY_UPDATE_BY_ID: &str = "builtin-memory_update_by_id";
 pub const MEMORY_DELETE: &str = "builtin-memory_delete";
 pub const MEMORY_WRITE_SMART: &str = "builtin-memory_write_smart";
 pub const MEMORY_WRITE_BATCH: &str = "builtin-memory_write_batch";
+pub const MEMORY_BATCH_MOVE: &str = "builtin-memory_batch_move";
+pub const MEMORY_ADD_RELATION: &str = "builtin-memory_add_relation";
+pub const MEMORY_REMOVE_RELATION: &str = "builtin-memory_remove_relation";
+pub const MEMORY_UPDATE_TAGS: &str = "builtin-memory_update_tags";
+pub const MEMORY_LOG_ACTIVITY: &str = "builtin-memory_log_activity";
+pub const MEMORY_EXPORT_ALL: &str = "builtin-memory_export_all";
+pub const LEARNER_PROFILE_GET: &str = "builtin-learner_profile_get";
+pub const LEARNER_PROFILE_UPDATE: &str = "builtin-learner_profile_update";
+
+const MEMORY_BATCH_LIMIT: usize = 20;
+const MEMORY_LIST_PAGE_SIZE: usize = 20;
+const MEMORY_EXPORT_PAGE_SIZE: usize = 20;
+const MEMORY_EXPORT_CONTENT_CHARS: usize = 2_000;
+const MEMORY_TAG_LIMIT: usize = 50;
+const MEMORY_TAG_CHARS: usize = 200;
+const MEMORY_FOLDER_PATH_CHARS: usize = 1_000;
+/// memory_log_activity 单条活动文本上限（日志条目应是一句话概括）
+const MEMORY_LOG_ACTIVITY_MAX_CHARS: usize = 80;
 
 pub struct MemoryToolExecutor;
+
+impl Default for MemoryToolExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl MemoryToolExecutor {
     pub fn new() -> Self {
@@ -41,6 +68,14 @@ impl MemoryToolExecutor {
                 | "memory_delete"
                 | "memory_write_smart"
                 | "memory_write_batch"
+                | "memory_batch_move"
+                | "memory_add_relation"
+                | "memory_remove_relation"
+                | "memory_update_tags"
+                | "memory_log_activity"
+                | "memory_export_all"
+                | "learner_profile_get"
+                | "learner_profile_update"
         )
     }
 
@@ -64,6 +99,352 @@ impl MemoryToolExecutor {
         }
     }
 
+    fn invalid_args(field: &str, zh_cn: impl Into<String>, en_us: impl Into<String>) -> String {
+        with_localized_message(
+            json!({
+                "code": "MEMORY_INVALID_ARGS",
+                "field": field,
+                "retryable": false,
+            }),
+            "chat.tools.memory.invalid_args",
+            json!({ "field": field }),
+            zh_cn,
+            en_us,
+        )
+        .to_string()
+    }
+
+    fn required_string(args: &Value, key: &str) -> Result<String, String> {
+        args.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| {
+                Self::invalid_args(
+                    key,
+                    format!("缺少必需参数 {key}"),
+                    format!("Required parameter {key} is missing."),
+                )
+            })
+    }
+
+    fn required_string_allow_empty(args: &Value, key: &str) -> Result<String, String> {
+        args.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .map(str::to_string)
+            .ok_or_else(|| {
+                Self::invalid_args(
+                    key,
+                    format!("参数 {key} 必须是字符串"),
+                    format!("Parameter {key} must be a string."),
+                )
+            })
+    }
+
+    fn parse_batch_move_args(args: &Value) -> Result<Vec<(String, String)>, String> {
+        let values = args
+            .get("note_ids")
+            .or_else(|| args.get("noteIds"))
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                Self::invalid_args(
+                    "note_ids",
+                    "note_ids 必须是数组",
+                    "note_ids must be an array.",
+                )
+            })?;
+        if values.is_empty() || values.len() > MEMORY_BATCH_LIMIT {
+            return Err(Self::invalid_args(
+                "note_ids",
+                format!("note_ids 必须包含 1 至 {MEMORY_BATCH_LIMIT} 个记忆 ID"),
+                format!("note_ids must contain 1 to {MEMORY_BATCH_LIMIT} memory IDs."),
+            ));
+        }
+
+        let mut seen = HashSet::with_capacity(values.len());
+        let mut note_ids = Vec::with_capacity(values.len());
+        for value in values {
+            let note_id = value.as_str().map(str::trim).filter(|id| !id.is_empty());
+            let Some(note_id) = note_id else {
+                return Err(Self::invalid_args(
+                    "note_ids",
+                    "note_ids 只能包含非空字符串",
+                    "note_ids may only contain non-empty strings.",
+                ));
+            };
+            if !seen.insert(note_id.to_string()) {
+                return Err(Self::invalid_args(
+                    "note_ids",
+                    format!("note_ids 包含重复 ID: {note_id}"),
+                    format!("note_ids contains a duplicate ID: {note_id}."),
+                ));
+            }
+            note_ids.push(note_id.to_string());
+        }
+
+        let version_map = args
+            .get("expected_updated_at_by_id")
+            .or_else(|| args.get("expectedUpdatedAtById"))
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                Self::invalid_args(
+                    "expected_updated_at_by_id",
+                    "批量移动前必须提供每条记忆的 expected_updated_at",
+                    "Every memory must have an expected_updated_at before a batch move.",
+                )
+            })?;
+        if version_map.len() != note_ids.len() {
+            return Err(Self::invalid_args(
+                "expected_updated_at_by_id",
+                "版本映射必须与 note_ids 完全一致",
+                "The version map must contain exactly the IDs in note_ids.",
+            ));
+        }
+
+        note_ids
+            .into_iter()
+            .map(|note_id| {
+                let version = version_map
+                    .get(&note_id)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        Self::invalid_args(
+                            "expected_updated_at_by_id",
+                            format!("缺少 {note_id} 的 expected_updated_at"),
+                            format!("expected_updated_at is missing for {note_id}."),
+                        )
+                    })?;
+                Ok((note_id, version.to_string()))
+            })
+            .collect()
+    }
+
+    fn parse_tags(args: &Value) -> Result<Vec<String>, String> {
+        let values = args.get("tags").and_then(Value::as_array).ok_or_else(|| {
+            Self::invalid_args("tags", "tags 必须是数组", "tags must be an array.")
+        })?;
+        if values.len() > MEMORY_TAG_LIMIT {
+            return Err(Self::invalid_args(
+                "tags",
+                format!("tags 最多允许 {MEMORY_TAG_LIMIT} 项"),
+                format!("tags may contain at most {MEMORY_TAG_LIMIT} entries."),
+            ));
+        }
+        let mut seen = HashSet::with_capacity(values.len());
+        let mut tags = Vec::with_capacity(values.len());
+        for value in values {
+            let tag = value.as_str().map(str::trim).filter(|tag| !tag.is_empty());
+            let Some(tag) = tag else {
+                return Err(Self::invalid_args(
+                    "tags",
+                    "tags 只能包含非空字符串",
+                    "tags may only contain non-empty strings.",
+                ));
+            };
+            if tag.chars().count() > MEMORY_TAG_CHARS {
+                return Err(Self::invalid_args(
+                    "tags",
+                    format!("单个标签最多允许 {MEMORY_TAG_CHARS} 个字符"),
+                    format!("Each tag may contain at most {MEMORY_TAG_CHARS} characters."),
+                ));
+            }
+            if seen.insert(tag.to_string()) {
+                tags.push(tag.to_string());
+            }
+        }
+        Ok(tags)
+    }
+
+    fn export_pagination(args: &Value) -> Result<(u32, u32, u32), String> {
+        let page = args.get("page").and_then(Value::as_u64).unwrap_or(1);
+        let page_size = args
+            .get("page_size")
+            .or_else(|| args.get("pageSize"))
+            .and_then(Value::as_u64)
+            .unwrap_or(MEMORY_EXPORT_PAGE_SIZE as u64);
+        if page == 0 || !(1..=MEMORY_EXPORT_PAGE_SIZE as u64).contains(&page_size) {
+            return Err(Self::invalid_args(
+                "page",
+                format!("page 必须从 1 开始，page_size 必须在 1 至 {MEMORY_EXPORT_PAGE_SIZE} 之间"),
+                format!(
+                    "page must start at 1 and page_size must be between 1 and {MEMORY_EXPORT_PAGE_SIZE}."
+                ),
+            ));
+        }
+        let page = u32::try_from(page)
+            .map_err(|_| Self::invalid_args("page", "page 超出范围", "page is out of range."))?;
+        let page_size = u32::try_from(page_size).map_err(|_| {
+            Self::invalid_args(
+                "page_size",
+                "page_size 超出范围",
+                "page_size is out of range.",
+            )
+        })?;
+        let offset = page
+            .checked_sub(1)
+            .and_then(|value| value.checked_mul(page_size))
+            .ok_or_else(|| {
+                Self::invalid_args("page", "分页参数超出范围", "Pagination is out of range.")
+            })?;
+        Ok((page, page_size, offset))
+    }
+
+    fn list_pagination(args: &Value) -> Result<(u32, u32), String> {
+        let limit = args
+            .get("limit")
+            .and_then(Value::as_u64)
+            .unwrap_or(MEMORY_LIST_PAGE_SIZE as u64);
+        if !(1..=MEMORY_LIST_PAGE_SIZE as u64).contains(&limit) {
+            return Err(Self::invalid_args(
+                "limit",
+                format!("limit 必须在 1 至 {MEMORY_LIST_PAGE_SIZE} 之间"),
+                format!("limit must be between 1 and {MEMORY_LIST_PAGE_SIZE}."),
+            ));
+        }
+        let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0);
+        let limit = u32::try_from(limit)
+            .map_err(|_| Self::invalid_args("limit", "limit 超出范围", "limit is out of range."))?;
+        let offset = u32::try_from(offset).map_err(|_| {
+            Self::invalid_args("offset", "offset 超出范围", "offset is out of range.")
+        })?;
+        Ok((limit, offset))
+    }
+
+    fn truncate_export_content(content: &str) -> (String, bool) {
+        let mut chars = content.chars();
+        let bounded = chars
+            .by_ref()
+            .take(MEMORY_EXPORT_CONTENT_CHARS)
+            .collect::<String>();
+        (bounded, chars.next().is_some())
+    }
+
+    fn export_page(
+        service: &MemoryService,
+        page_size: u32,
+        offset: u32,
+    ) -> Result<(Vec<Value>, bool), VfsError> {
+        let mut listed = service.list(None, page_size + 1, offset)?;
+        let has_more = listed.len() > page_size as usize;
+        if has_more {
+            listed.pop();
+        }
+        let mut items = Vec::with_capacity(listed.len());
+        for item in listed {
+            let Some((note, content)) = service.read(&item.id)? else {
+                continue;
+            };
+            let (content, content_truncated) = Self::truncate_export_content(&content);
+            items.push(json!({
+                "note_id": note.id,
+                "title": note.title,
+                "content": content,
+                "content_truncated": content_truncated,
+                "folder_path": service.get_note_relative_folder_path(&note.id)?,
+                "tags": note.tags,
+                "memory_type": item.memory_type,
+                "memory_purpose": item.memory_purpose,
+                "updated_at": note.updated_at,
+            }));
+        }
+        Ok((items, has_more))
+    }
+
+    fn current_note_state(service: &MemoryService, note_id: &str) -> Value {
+        match service.read(note_id) {
+            Ok(Some((note, content))) => {
+                let (content, content_truncated) = Self::truncate_export_content(&content);
+                let folder_path = service
+                    .get_note_relative_folder_path(note_id)
+                    .unwrap_or_default();
+                json!({
+                    "note_id": note.id,
+                    "title": note.title,
+                    "content": content,
+                    "content_truncated": content_truncated,
+                    "folder_path": folder_path,
+                    "tags": note.tags,
+                    "updated_at": note.updated_at,
+                })
+            }
+            _ => Value::Null,
+        }
+    }
+
+    fn service_error(
+        service: &MemoryService,
+        action: &str,
+        note_ids: &[String],
+        error: VfsError,
+    ) -> String {
+        let current: Vec<Value> = note_ids
+            .iter()
+            .map(|note_id| Self::current_note_state(service, note_id))
+            .collect();
+        match error {
+            VfsError::Conflict { .. } => with_localized_message(
+                json!({
+                    "code": "MEMORY_CONFLICT",
+                    "action": action,
+                    "current": current,
+                    "retryable": false,
+                    "hint": "重新读取记忆并使用返回的 updated_at；不要盲目重试 / Read the memories again and use their returned updated_at values; do not retry blindly.",
+                }),
+                "chat.tools.memory.conflict",
+                json!({ "action": action }),
+                "记忆已被其他操作更新，请读取当前值后再重试",
+                "The memory changed elsewhere. Read its current value before retrying.",
+            )
+            .to_string(),
+            VfsError::NotFound { .. } => with_localized_message(
+                json!({
+                    "code": "MEMORY_NOT_FOUND",
+                    "action": action,
+                    "current": current,
+                    "retryable": false,
+                }),
+                "chat.tools.memory.not_found",
+                json!({ "action": action }),
+                "未找到指定记忆，或该笔记不在记忆根目录内",
+                "The requested memory was not found or is outside the memory root.",
+            )
+            .to_string(),
+            other => with_localized_message(
+                json!({
+                    "code": "MEMORY_OPERATION_FAILED",
+                    "action": action,
+                    "details": other.to_string(),
+                    "retryable": false,
+                }),
+                "chat.tools.memory.operation_failed",
+                json!({ "action": action }),
+                "记忆操作失败",
+                "The memory operation failed.",
+            )
+            .to_string(),
+        }
+    }
+
+    fn emit_memory_changed(ctx: &ExecutionContext, action: &str, note_ids: &[String]) {
+        // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai"）
+        let payload = json!({
+            "source": "agent",
+            "action": action,
+            "entityIds": note_ids,
+            "runId": ctx.run_id(),
+        });
+        if let Err(error) = ctx.window_ref().emit("memory://changed", payload) {
+            log::debug!(
+                "[MemoryToolExecutor] Failed to emit memory://changed: {}",
+                error
+            );
+        }
+    }
+
     fn get_service(&self, ctx: &ExecutionContext) -> Result<MemoryService, String> {
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
         let llm_manager = ctx
@@ -71,9 +452,12 @@ impl MemoryToolExecutor {
             .as_ref()
             .ok_or("LLM manager not available")?;
 
+        // 依次尝试：ctx 注入的实例 → app 托管单例（保留连接/表状态缓存）→
+        // 按需新建（启动降级或 headless 测试时的最终兜底）。
         let lance_store = ctx
             .vfs_lance_store
             .clone()
+            .or_else(|| crate::chat_v2::pipeline::managed_vfs_lance_store_for(vfs_db))
             .map(Ok)
             .unwrap_or_else(|| VfsLanceStore::new(vfs_db.clone()).map(Arc::new))
             .map_err(|e| format!("Failed to create lance store: {}", e))?;
@@ -223,13 +607,48 @@ impl MemoryToolExecutor {
         };
 
         match result {
-            Some((note, content)) => Ok(json!({
-                "found": true,
-                "note_id": note.id,
-                "title": note.title,
-                "content": content,
-                "updated_at": note.updated_at
-            })),
+            Some((note, content)) => {
+                // 使用信号分层（读取强化）：memory_read 是 LLM 主动读取单条记忆
+                // 全文的强使用信号（远强于"被检索返回"的曝光）。异步记 `_used`
+                // 计数并刷新 `_last_hit`，不阻塞读取返回；失败在 service 内只 warn。
+                // 系统笔记（`__` 前缀，如 __user_profile__/__cat_*）不参与
+                // 使用统计与进化判据，跳过。
+                if !note.title.starts_with("__") {
+                    let svc_for_usage = service.clone();
+                    let used_id = note.id.clone();
+                    tokio::task::spawn_blocking(move || svc_for_usage.record_used(&[used_id]));
+                }
+                let folder_path = service
+                    .get_note_relative_folder_path(&note.id)
+                    .map_err(|error| error.to_string())?;
+                let related_note_ids: Vec<String> = note
+                    .tags
+                    .iter()
+                    .filter_map(|tag| tag.strip_prefix("_ref:").map(str::to_string))
+                    .collect();
+                // _ref 悬挂治理：过滤指向已删除笔记的引用，避免 LLM 拿到
+                // 必然 NotFound 的关联 ID（覆盖所有历史删除路径）
+                let related_note_ids = match service.filter_alive_note_ids(&related_note_ids) {
+                    Ok(alive) => alive,
+                    Err(error) => {
+                        log::warn!(
+                            "[MemoryToolExecutor] Failed to filter dangling _ref targets: {}",
+                            error
+                        );
+                        related_note_ids
+                    }
+                };
+                Ok(json!({
+                    "found": true,
+                    "note_id": note.id,
+                    "title": note.title,
+                    "content": content,
+                    "folder_path": folder_path,
+                    "tags": note.tags,
+                    "related_note_ids": related_note_ids,
+                    "updated_at": note.updated_at
+                }))
+            }
             None => Ok(json!({
                 "found": false,
                 "note_id": note_id
@@ -440,26 +859,18 @@ impl MemoryToolExecutor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let limit = call
-            .arguments
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u32)
-            .unwrap_or(100);
-        let offset = call
-            .arguments
-            .get("offset")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u32)
-            .unwrap_or(0);
+        let (limit, offset) = Self::list_pagination(&call.arguments)?;
+        let probe_limit = limit.saturating_add(1);
 
         // 🆕 取消支持：使用 spawn_blocking + tokio::select! 监听取消信号
         let list_task = {
             let service = service.clone();
-            tokio::task::spawn_blocking(move || service.list(folder.as_deref(), limit, offset))
+            tokio::task::spawn_blocking(move || {
+                service.list(folder.as_deref(), probe_limit, offset)
+            })
         };
 
-        let items = if let Some(cancel_token) = ctx.cancellation_token() {
+        let mut items = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
                 res = list_task => res.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?,
                 _ = cancel_token.cancelled() => {
@@ -473,10 +884,20 @@ impl MemoryToolExecutor {
                 .map_err(|e| e.to_string())?
                 .map_err(|e| e.to_string())?
         };
+        let has_more = items.len() > limit as usize;
+        if has_more {
+            items.truncate(limit as usize);
+        }
+        let count = items.len();
+        let next_offset = has_more.then(|| offset.saturating_add(count as u32));
 
         Ok(json!({
             "items": items,
-            "count": items.len()
+            "count": count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": has_more,
+            "next_offset": next_offset,
         }))
     }
 
@@ -905,6 +1326,690 @@ impl MemoryToolExecutor {
             "results": results,
         }))
     }
+
+    async fn execute_batch_move(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err(Self::invalid_args(
+                "cancellation",
+                "批量移动在开始前已取消",
+                "The batch move was cancelled before it started.",
+            ));
+        }
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+        let expected_versions = Self::parse_batch_move_args(&call.arguments)?;
+        let target_folder_path =
+            Self::required_string_allow_empty(&call.arguments, "target_folder_path")?;
+        if target_folder_path.chars().count() > MEMORY_FOLDER_PATH_CHARS {
+            return Err(Self::invalid_args(
+                "target_folder_path",
+                format!("目标文件夹路径最多允许 {MEMORY_FOLDER_PATH_CHARS} 个字符"),
+                format!(
+                    "target_folder_path may contain at most {MEMORY_FOLDER_PATH_CHARS} characters."
+                ),
+            ));
+        }
+        let session_id = ctx.session_id.clone();
+        let cancel_token = ctx.cancellation_token().cloned();
+        let service_for_task = service.clone();
+        let target_for_task = target_folder_path.clone();
+
+        let outcome = tokio::task::spawn_blocking(move || {
+            let total = expected_versions.len();
+            let mut succeeded_ids = Vec::new();
+            let mut results = Vec::with_capacity(total);
+            let mut undo = Vec::new();
+            let mut cancelled = false;
+
+            for (note_id, expected_updated_at) in expected_versions {
+                if cancel_token
+                    .as_ref()
+                    .map(|token| token.is_cancelled())
+                    .unwrap_or(false)
+                {
+                    cancelled = true;
+                    break;
+                }
+                match service_for_task.move_to_folder_with_occ(
+                    &note_id,
+                    &expected_updated_at,
+                    &target_for_task,
+                    MemoryOpSource::ToolCall,
+                    Some(&session_id),
+                ) {
+                    Ok((updated, previous_folder_path)) => {
+                        let undo_versions =
+                            HashMap::from([(note_id.clone(), updated.updated_at.clone())]);
+                        succeeded_ids.push(note_id.clone());
+                        undo.push(json!({
+                            "tool": MEMORY_BATCH_MOVE,
+                            "note_ids": [note_id.clone()],
+                            "target_folder_path": previous_folder_path.clone(),
+                            "expected_updated_at_by_id": undo_versions,
+                        }));
+                        results.push(json!({
+                            "success": true,
+                            "note_id": note_id,
+                            "previous_folder_path": previous_folder_path,
+                            "folder_path": target_for_task.clone(),
+                            "updated_at": updated.updated_at,
+                        }));
+                    }
+                    Err(error) => {
+                        let structured = Self::service_error(
+                            &service_for_task,
+                            "batch_move",
+                            std::slice::from_ref(&note_id),
+                            error,
+                        );
+                        let error_value = serde_json::from_str::<Value>(&structured)
+                            .unwrap_or_else(|_| json!({ "message": structured }));
+                        results.push(json!({
+                            "success": false,
+                            "note_id": note_id,
+                            "error": error_value,
+                        }));
+                    }
+                }
+            }
+
+            let failed = results
+                .iter()
+                .filter(|item| item["success"].as_bool() == Some(false))
+                .count();
+            (total, succeeded_ids, failed, cancelled, results, undo)
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+
+        let (total, succeeded_ids, failed, cancelled, results, undo) = outcome;
+        if !succeeded_ids.is_empty() {
+            Self::emit_memory_changed(ctx, "batch_move", &succeeded_ids);
+            service.spawn_post_write_maintenance();
+        }
+        let succeeded = succeeded_ids.len();
+        let processed = results.len();
+        let remaining = total.saturating_sub(processed);
+        Ok(with_localized_message(
+            json!({
+                "success": failed == 0 && !cancelled && succeeded == total,
+                "total": total,
+                "processed": processed,
+                "remaining": remaining,
+                "succeeded": succeeded,
+                "failed": failed,
+                "cancelled": cancelled,
+                "target_folder_path": target_folder_path,
+                "results": results,
+                "reversible": succeeded > 0,
+                "undo": undo,
+            }),
+            "chat.tools.memory.batch_move_completed",
+            json!({ "succeeded": succeeded, "failed": failed, "total": total }),
+            format!("批量移动完成：成功 {succeeded} 条，失败 {failed} 条"),
+            format!("Batch move completed: {succeeded} succeeded and {failed} failed."),
+        ))
+    }
+
+    async fn execute_relation(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        add: bool,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err(Self::invalid_args(
+                "cancellation",
+                "关联操作在开始前已取消",
+                "The relation operation was cancelled before it started.",
+            ));
+        }
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+        let note_id_a = Self::required_string(&call.arguments, "note_id_a")?;
+        let note_id_b = Self::required_string(&call.arguments, "note_id_b")?;
+        if note_id_a == note_id_b {
+            return Err(Self::invalid_args(
+                "note_id_b",
+                "关联的两个记忆 ID 必须不同",
+                "The two relation endpoints must be different.",
+            ));
+        }
+        let expected_updated_at_a =
+            Self::required_string(&call.arguments, "expected_updated_at_a")?;
+        let expected_updated_at_b =
+            Self::required_string(&call.arguments, "expected_updated_at_b")?;
+        let service_for_task = service.clone();
+        let session_id = ctx.session_id.clone();
+        let task_note_id_a = note_id_a.clone();
+        let task_note_id_b = note_id_b.clone();
+        let action = if add {
+            "add_relation"
+        } else {
+            "remove_relation"
+        };
+
+        let operation = tokio::task::spawn_blocking(move || {
+            if add {
+                service_for_task.add_relation_with_occ(
+                    &task_note_id_a,
+                    &expected_updated_at_a,
+                    &task_note_id_b,
+                    &expected_updated_at_b,
+                    MemoryOpSource::ToolCall,
+                    Some(&session_id),
+                )
+            } else {
+                service_for_task.remove_relation_with_occ(
+                    &task_note_id_a,
+                    &expected_updated_at_a,
+                    &task_note_id_b,
+                    &expected_updated_at_b,
+                    MemoryOpSource::ToolCall,
+                    Some(&session_id),
+                )
+            }
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+
+        let (note_a, note_b, changed) = operation.map_err(|error| {
+            Self::service_error(
+                &service,
+                action,
+                &[note_id_a.clone(), note_id_b.clone()],
+                error,
+            )
+        })?;
+        if changed {
+            Self::emit_memory_changed(ctx, action, &[note_id_a.clone(), note_id_b.clone()]);
+        }
+        let related_a: Vec<String> = note_a
+            .tags
+            .iter()
+            .filter_map(|tag| tag.strip_prefix("_ref:").map(str::to_string))
+            .collect();
+        let related_b: Vec<String> = note_b
+            .tags
+            .iter()
+            .filter_map(|tag| tag.strip_prefix("_ref:").map(str::to_string))
+            .collect();
+        let inverse_tool = if add {
+            MEMORY_REMOVE_RELATION
+        } else {
+            MEMORY_ADD_RELATION
+        };
+        let note_a_id = note_a.id.clone();
+        let note_b_id = note_b.id.clone();
+        let note_a_updated_at = note_a.updated_at.clone();
+        let note_b_updated_at = note_b.updated_at.clone();
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "changed": changed,
+                "note_a": {
+                    "note_id": note_a_id,
+                    "updated_at": note_a_updated_at,
+                    "related_note_ids": related_a,
+                },
+                "note_b": {
+                    "note_id": note_b_id,
+                    "updated_at": note_b_updated_at,
+                    "related_note_ids": related_b,
+                },
+                "reversible": changed,
+                "undo": if changed {
+                    json!({
+                        "tool": inverse_tool,
+                        "note_id_a": note_id_a,
+                        "note_id_b": note_id_b,
+                        "expected_updated_at_a": note_a_updated_at,
+                        "expected_updated_at_b": note_b_updated_at,
+                    })
+                } else {
+                    Value::Null
+                },
+            }),
+            if add {
+                "chat.tools.memory.relation_added"
+            } else {
+                "chat.tools.memory.relation_removed"
+            },
+            json!({ "changed": changed }),
+            if add {
+                "记忆关联已添加"
+            } else {
+                "记忆关联已移除"
+            },
+            if add {
+                "The memory relation was added."
+            } else {
+                "The memory relation was removed."
+            },
+        ))
+    }
+
+    /// stale 复活支撑：在 update_tags 写入完成的基础上，用其返回的新版本做
+    /// 第二次 OCC 写，仅摘除 `_stale`，其余系统标签原样保留。
+    /// 标签不参与内容索引，无需 mark_pending；单独写一条审计便于追溯复活操作。
+    fn remove_stale_tag(
+        service: &MemoryService,
+        note: &crate::vfs::types::VfsNote,
+        ctx: &ExecutionContext,
+    ) -> Result<crate::vfs::types::VfsNote, VfsError> {
+        // 与 service 的 restore_stale/restore_archived 同口径：连带摘除陈旧的
+        // `_last_hit:`/`_last_injected:` 时间戳，防止 evolution 下一周期依据
+        // 残留旧信号立即重新降级（计龄回退到本次写入刷新的 updated_at）。
+        let tags: Vec<String> = note
+            .tags
+            .iter()
+            .filter(|tag| {
+                tag.as_str() != "_stale"
+                    && !tag.starts_with("_last_hit:")
+                    && !tag.starts_with("_last_injected:")
+            })
+            .cloned()
+            .collect();
+        let updated = crate::vfs::repos::note_repo::VfsNoteRepo::update_note(
+            service.vfs_db_ref(),
+            &note.id,
+            crate::vfs::types::VfsUpdateNoteParams {
+                tags: Some(tags),
+                expected_updated_at: Some(note.updated_at.clone()),
+                ..Default::default()
+            },
+        )?;
+        service
+            .audit_logger()
+            .log(&crate::memory::audit_log::MemoryAuditEntry {
+                source: MemoryOpSource::ToolCall,
+                operation: MemoryOpType::UpdateTags,
+                success: true,
+                note_id: Some(note.id.clone()),
+                title: None,
+                content_preview: None,
+                folder: None,
+                event: None,
+                confidence: None,
+                reason: Some("移除 _stale 标记（用户确认记忆仍然有效）".to_string()),
+                session_id: Some(ctx.session_id.clone()),
+                duration_ms: None,
+                extra_json: None,
+            });
+        Ok(updated)
+    }
+
+    async fn execute_update_tags(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err(Self::invalid_args(
+                "cancellation",
+                "标签更新在开始前已取消",
+                "The tag update was cancelled before it started.",
+            ));
+        }
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+        let note_id = Self::required_string(&call.arguments, "note_id")?;
+        let expected_updated_at = Self::required_string(&call.arguments, "expected_updated_at")?;
+        let tags = Self::parse_tags(&call.arguments)?;
+        // stale 复活通道：用户表示某记忆仍然有效时，允许摘除 `_stale`
+        // （且仅 `_stale`——`_type:`/`_purpose:`/`_hits:` 等系统标签仍受保护）
+        let remove_stale = call
+            .arguments
+            .get("remove_stale")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let service_for_task = service.clone();
+        let task_note_id = note_id.clone();
+        let session_id = ctx.session_id.clone();
+
+        let operation = tokio::task::spawn_blocking(move || {
+            service_for_task.update_tags_with_occ(
+                &task_note_id,
+                &expected_updated_at,
+                tags,
+                MemoryOpSource::ToolCall,
+                Some(&session_id),
+            )
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+        let (previous, mut updated) = operation.map_err(|error| {
+            Self::service_error(
+                &service,
+                "update_tags",
+                std::slice::from_ref(&note_id),
+                error,
+            )
+        })?;
+        let mut stale_removed = false;
+        if remove_stale && updated.tags.iter().any(|tag| tag == "_stale") {
+            updated = Self::remove_stale_tag(&service, &updated, ctx).map_err(|error| {
+                Self::service_error(
+                    &service,
+                    "update_tags",
+                    std::slice::from_ref(&note_id),
+                    error,
+                )
+            })?;
+            stale_removed = true;
+        }
+        Self::emit_memory_changed(ctx, "update_tags", std::slice::from_ref(&note_id));
+        let previous_user_tags: Vec<String> = previous
+            .tags
+            .iter()
+            .filter(|tag| !tag.starts_with('_'))
+            .cloned()
+            .collect();
+        let user_tags: Vec<String> = updated
+            .tags
+            .iter()
+            .filter(|tag| !tag.starts_with('_'))
+            .cloned()
+            .collect();
+        let updated_id = updated.id.clone();
+        let updated_at = updated.updated_at.clone();
+
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "note_id": note_id,
+                "tags": updated.tags,
+                "user_tags": user_tags,
+                "system_tags_preserved": true,
+                "stale_removed": stale_removed,
+                "updated_at": updated_at,
+                "reversible": true,
+                "undo": {
+                    "tool": MEMORY_UPDATE_TAGS,
+                    "note_id": updated_id,
+                    "tags": previous_user_tags,
+                    "expected_updated_at": updated_at,
+                },
+            }),
+            "chat.tools.memory.tags_updated",
+            json!({ "noteId": updated_id }),
+            "记忆标签已更新",
+            "The memory tags were updated.",
+        ))
+    }
+
+    /// 记录一条"今天做了什么"的学习活动到每日学习日志（J6：日志→画像闭环的手动供给方）
+    ///
+    /// 复用 daily_log::append_entry：同日去重、`- [HH:MM]` 前缀、4000 字上限丢弃最旧行。
+    /// 自动提取关闭时，LLM 可经此工具维持日志供给，供晋升管道蒸馏进学习者画像。
+    async fn execute_log_activity(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err(Self::invalid_args(
+                "cancellation",
+                "学习活动记录在开始前已取消",
+                "The activity logging was cancelled before it started.",
+            ));
+        }
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+        let activity = Self::required_string(&call.arguments, "activity")?;
+        if activity.chars().count() > MEMORY_LOG_ACTIVITY_MAX_CHARS {
+            return Err(Self::invalid_args(
+                "activity",
+                format!(
+                    "activity 最多允许 {MEMORY_LOG_ACTIVITY_MAX_CHARS} 个字符（一句话概括即可）"
+                ),
+                format!("activity may contain at most {MEMORY_LOG_ACTIVITY_MAX_CHARS} characters."),
+            ));
+        }
+
+        let service_for_task = service.clone();
+        let task_activity = activity.clone();
+        let outcome = tokio::task::spawn_blocking(move || {
+            crate::memory::daily_log::append_entry(&service_for_task, &task_activity)
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| Self::service_error(&service, "log_activity", &[], error))?;
+
+        let appended = outcome.appended;
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "appended": appended,
+                "note_id": outcome.note_id,
+                "date": crate::memory::daily_log::today_local_date(),
+                "reason": outcome.reason,
+            }),
+            if appended {
+                "chat.tools.memory.activity_logged"
+            } else {
+                "chat.tools.memory.activity_skipped"
+            },
+            json!({ "appended": appended }),
+            if appended {
+                "学习活动已记入今日学习日志"
+            } else {
+                "该学习活动今日已有相同记录，已跳过"
+            },
+            if appended {
+                "The activity was appended to today's study log."
+            } else {
+                "Today's log already contains this activity; skipped."
+            },
+        ))
+    }
+
+    async fn execute_export_all(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err(Self::invalid_args(
+                "cancellation",
+                "记忆导出在开始前已取消",
+                "The memory export was cancelled before it started.",
+            ));
+        }
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+        let (page, page_size, offset) = Self::export_pagination(&call.arguments)?;
+        let service_for_task = service.clone();
+        let export = tokio::task::spawn_blocking(move || {
+            Self::export_page(&service_for_task, page_size, offset)
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+        let (items, has_more) =
+            export.map_err(|error| Self::service_error(&service, "export_all", &[], error))?;
+        let returned = items.len();
+        let any_truncated = items
+            .iter()
+            .any(|item| item["content_truncated"].as_bool() == Some(true));
+        let next_page = has_more.then(|| page.checked_add(1)).flatten();
+
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "items": items,
+                "page": page,
+                "page_size": page_size,
+                "returned": returned,
+                "has_more": has_more,
+                "next_page": next_page,
+                "truncated": any_truncated,
+                "content_limit_chars": MEMORY_EXPORT_CONTENT_CHARS,
+            }),
+            "chat.tools.memory.export_page_ready",
+            json!({ "page": page, "returned": returned, "hasMore": has_more }),
+            format!("记忆导出第 {page} 页已生成，共 {returned} 条"),
+            format!("Memory export page {page} is ready with {returned} items."),
+        ))
+    }
+
+    /// 读取学习者画像（结构化 JSON + 渲染后的 Markdown）
+    async fn execute_learner_profile_get(
+        &self,
+        _call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err("Learner profile get cancelled before start".to_string());
+        }
+
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+
+        let load_task = {
+            let service = service.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::memory::learner_profile::load_profile(&service)
+            })
+        };
+        let profile = load_task
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
+        match profile {
+            Some(profile) => Ok(json!({
+                "found": true,
+                "version": profile.version,
+                "updated_at": profile.updated_at,
+                "profile": serde_json::to_value(&profile).unwrap_or(Value::Null),
+                "rendered_markdown": profile.render_markdown(),
+            })),
+            None => Ok(json!({
+                "found": false,
+                "hint": "学习者画像尚未建立。可通过 learner_profile_update 写入首批内容，或等待系统从每日学习日志自动晋升。"
+            })),
+        }
+    }
+
+    /// 结构化 merge 更新学习者画像（非整体覆盖）
+    ///
+    /// 超过 4000 字符硬上限时拒绝写入并要求精炼——画像是"策展层"，不是日志。
+    async fn execute_learner_profile_update(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        use crate::memory::learner_profile::{
+            self, LearnerProfileUpdate, LEARNER_PROFILE_MAX_CHARS,
+        };
+
+        if ctx.is_cancelled() {
+            return Err("Learner profile update cancelled before start".to_string());
+        }
+
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+
+        let update: LearnerProfileUpdate = serde_json::from_value(call.arguments.clone())
+            .map_err(|e| format!("Invalid learner_profile_update arguments: {}", e))?;
+        if update.is_empty() {
+            return Ok(json!({
+                "success": false,
+                "error": "更新内容为空：请至少提供 weak_points_add / preferences / goals_add / recent_status 之一。"
+            }));
+        }
+
+        // 敏感信息过滤（与其他记忆写路径一致）
+        let update_json = serde_json::to_string(&update).unwrap_or_default();
+        if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(
+            &update_json,
+        ) {
+            return Ok(json!({
+                "success": false,
+                "error": "更新内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。"
+            }));
+        }
+
+        let session_id = ctx.session_id.clone();
+        let cancel_token = ctx.cancellation_token().cloned();
+        let update_task = {
+            let service = service.clone();
+            tokio::task::spawn_blocking(move || -> Result<Value, String> {
+                let outcome = match learner_profile::apply_profile_update(
+                    &service,
+                    &update,
+                    MemoryOpSource::ToolCall,
+                    Some(&session_id),
+                    "learner_profile_update 工具更新",
+                    learner_profile::ProfileLimitPolicy::Reject,
+                    || {
+                        cancel_token
+                            .as_ref()
+                            .map(|token| token.is_cancelled())
+                            .unwrap_or(false)
+                    },
+                ) {
+                    Ok(outcome) => outcome,
+                    Err(crate::vfs::error::VfsError::InvalidArgument { param, reason })
+                        if param == "profile" =>
+                    {
+                        let rendered_chars = reason
+                            .strip_prefix("合并后画像 ")
+                            .and_then(|rest| rest.split_once(" 字符"))
+                            .and_then(|(count, _)| count.parse::<usize>().ok())
+                            .unwrap_or(LEARNER_PROFILE_MAX_CHARS.saturating_add(1));
+                        return Ok(json!({
+                            "success": false,
+                            "error": format!(
+                                "{} 画像是策展层而非日志：请精炼本次更新（减少条目、缩短描述），或先用 weak_points_remove/goals_remove 清理过时内容。",
+                                reason
+                            ),
+                            "rendered_chars": rendered_chars,
+                            "max_chars": LEARNER_PROFILE_MAX_CHARS,
+                        }));
+                    }
+                    Err(error) => return Err(error.to_string()),
+                };
+
+                Ok(json!({
+                    "success": true,
+                    "changed": outcome.changed,
+                    "version": outcome.profile.version,
+                    "rendered_chars": outcome.profile.rendered_char_count(),
+                    "reason": if outcome.changed {
+                        "画像已更新"
+                    } else {
+                        "更新与当前画像一致，无变更"
+                    },
+                }))
+            })
+        };
+
+        // Do not drop a running spawn_blocking JoinHandle on cancellation: a
+        // detached task could otherwise commit after the tool already
+        // reported "cancelled". The blocking CAS loop checks cancellation
+        // immediately before its commit point, and a completed commit is
+        // always returned as success.
+        update_task.await.map_err(|e| e.to_string())?
+    }
 }
 
 impl MemoryToolExecutor {
@@ -971,6 +2076,14 @@ impl ToolExecutor for MemoryToolExecutor {
             "memory_delete" => self.execute_delete(call, ctx).await,
             "memory_write_smart" => self.execute_write_smart(call, ctx).await,
             "memory_write_batch" => self.execute_write_batch(call, ctx).await,
+            "memory_batch_move" => self.execute_batch_move(call, ctx).await,
+            "memory_add_relation" => self.execute_relation(call, ctx, true).await,
+            "memory_remove_relation" => self.execute_relation(call, ctx, false).await,
+            "memory_update_tags" => self.execute_update_tags(call, ctx).await,
+            "memory_log_activity" => self.execute_log_activity(call, ctx).await,
+            "memory_export_all" => self.execute_export_all(call, ctx).await,
+            "learner_profile_get" => self.execute_learner_profile_get(call, ctx).await,
+            "learner_profile_update" => self.execute_learner_profile_update(call, ctx).await,
             _ => Err(format!("Unknown memory tool: {}", call.name)),
         };
 
@@ -1008,8 +2121,35 @@ impl ToolExecutor for MemoryToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
-            "memory_delete" => ToolSensitivity::Medium, // 删除操作需要更高敏感度
+            "memory_export_all" => ToolSensitivity::High,
+            "memory_batch_move"
+            | "memory_add_relation"
+            | "memory_remove_relation"
+            | "memory_update_tags"
+            | "memory_log_activity"
+            | "memory_write"
+            | "memory_write_smart"
+            | "memory_write_batch"
+            | "memory_update_by_id" => ToolSensitivity::Medium,
+            // Memory deletion uses VFS soft-delete and remains recoverable via
+            // the VFS trash/restore path. There is no Agent restore tool, and
+            // cleaned incoming relation tags are not recreated automatically.
+            "memory_delete" => ToolSensitivity::Medium,
+            // 学习者画像随每次会话注入 system prompt，读写均为 Medium
+            "learner_profile_get" | "learner_profile_update" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        let stripped = strip_tool_namespace(tool_name);
+        match stripped {
+            // 读类工具：纯只读记忆查询，可并行 + 自动重试
+            "memory_search" | "memory_read" | "memory_list" | "memory_export_all" => {
+                ToolConcurrency::ReadOnly
+            }
+            // write/update/delete/write_smart/write_batch 为写操作，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 
@@ -1020,11 +2160,166 @@ impl ToolExecutor for MemoryToolExecutor {
 
 #[cfg(test)]
 mod tests {
-    use super::MemoryToolExecutor;
+    use serde_json::{json, Value};
+
+    use super::{
+        MemoryToolExecutor, MEMORY_BATCH_LIMIT, MEMORY_EXPORT_CONTENT_CHARS,
+        MEMORY_EXPORT_PAGE_SIZE, MEMORY_LIST_PAGE_SIZE,
+    };
+    use crate::chat_v2::tools::executor::{ToolConcurrency, ToolExecutor, ToolSensitivity};
 
     #[test]
     fn test_needs_root_bootstrap() {
         assert!(MemoryToolExecutor::needs_root_bootstrap(None));
         assert!(!MemoryToolExecutor::needs_root_bootstrap(Some("folder-1")));
+    }
+
+    #[test]
+    fn phase9_memory_tools_have_explicit_sensitivity_and_concurrency() {
+        let executor = MemoryToolExecutor::new();
+        for tool in [
+            "builtin-memory_batch_move",
+            "builtin-memory_add_relation",
+            "builtin-memory_remove_relation",
+            "builtin-memory_update_tags",
+            "builtin-memory_log_activity",
+            "builtin-memory_write",
+            "builtin-memory_write_smart",
+            "builtin-memory_write_batch",
+            "builtin-memory_update_by_id",
+        ] {
+            assert!(executor.can_handle(tool), "executor must handle {tool}");
+            assert_eq!(executor.sensitivity_level(tool), ToolSensitivity::Medium);
+            assert_eq!(executor.concurrency_class(tool), ToolConcurrency::Serial);
+        }
+        assert!(executor.can_handle("builtin-memory_export_all"));
+        assert_eq!(
+            executor.sensitivity_level("builtin-memory_export_all"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.concurrency_class("builtin-memory_export_all"),
+            ToolConcurrency::ReadOnly
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-memory_delete"),
+            ToolSensitivity::Medium,
+            "memory_delete is a recoverable VFS soft-delete, not a purge"
+        );
+        assert_eq!(
+            executor.concurrency_class("builtin-memory_delete"),
+            ToolConcurrency::Serial
+        );
+    }
+
+    #[test]
+    fn batch_move_parser_requires_complete_occ_map_and_enforces_limit() {
+        let note_ids: Vec<String> = (0..MEMORY_BATCH_LIMIT)
+            .map(|index| format!("note-{index}"))
+            .collect();
+        let versions = note_ids
+            .iter()
+            .map(|id| (id.clone(), json!(format!("version-{id}"))))
+            .collect::<serde_json::Map<String, Value>>();
+        let parsed = MemoryToolExecutor::parse_batch_move_args(&json!({
+            "note_ids": note_ids,
+            "expected_updated_at_by_id": versions,
+        }))
+        .expect("complete OCC map should parse");
+        assert_eq!(parsed.len(), MEMORY_BATCH_LIMIT);
+
+        let missing = MemoryToolExecutor::parse_batch_move_args(&json!({
+            "note_ids": ["note-a", "note-b"],
+            "expected_updated_at_by_id": {"note-a": "v1"},
+        }))
+        .expect_err("missing OCC entry must fail");
+        assert!(missing.contains("MEMORY_INVALID_ARGS"));
+
+        let too_many: Vec<String> = (0..=MEMORY_BATCH_LIMIT)
+            .map(|index| format!("note-{index}"))
+            .collect();
+        let too_many_error = MemoryToolExecutor::parse_batch_move_args(&json!({
+            "note_ids": too_many,
+            "expected_updated_at_by_id": {},
+        }))
+        .expect_err("more than 20 IDs must fail before execution");
+        assert!(too_many_error.contains("MEMORY_INVALID_ARGS"));
+    }
+
+    #[test]
+    fn export_pagination_and_content_are_bounded() {
+        assert_eq!(
+            MemoryToolExecutor::export_pagination(&json!({})).expect("defaults"),
+            (1, MEMORY_EXPORT_PAGE_SIZE as u32, 0)
+        );
+        let invalid = MemoryToolExecutor::export_pagination(&json!({
+            "page": 1,
+            "page_size": MEMORY_EXPORT_PAGE_SIZE + 1,
+        }))
+        .expect_err("oversized export page must fail");
+        assert!(invalid.contains("MEMORY_INVALID_ARGS"));
+
+        let content = "学".repeat(MEMORY_EXPORT_CONTENT_CHARS + 1);
+        let (bounded, truncated) = MemoryToolExecutor::truncate_export_content(&content);
+        assert!(truncated);
+        assert_eq!(bounded.chars().count(), MEMORY_EXPORT_CONTENT_CHARS);
+    }
+
+    #[test]
+    fn list_pagination_matches_global_read_limit() {
+        assert_eq!(
+            MemoryToolExecutor::list_pagination(&json!({})).expect("defaults"),
+            (MEMORY_LIST_PAGE_SIZE as u32, 0)
+        );
+        let oversized = MemoryToolExecutor::list_pagination(&json!({
+            "limit": MEMORY_LIST_PAGE_SIZE + 1,
+        }))
+        .expect_err("oversized list page must fail");
+        assert!(oversized.contains("MEMORY_INVALID_ARGS"));
+    }
+
+    #[test]
+    fn export_page_returns_real_memory_content_and_has_more() {
+        let (_temp_dir, _vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        service
+            .write_typed(
+                None,
+                "Export first",
+                &"A".repeat(MEMORY_EXPORT_CONTENT_CHARS + 1),
+                crate::memory::WriteMode::Create,
+                crate::memory::MemoryType::Study,
+                None,
+            )
+            .expect("create first export memory");
+        service
+            .write(
+                Some("Study"),
+                "Export second",
+                "second content",
+                crate::memory::WriteMode::Create,
+            )
+            .expect("create second export memory");
+
+        let (items, has_more) = MemoryToolExecutor::export_page(&service, 1, 0)
+            .expect("export first page from real VFS data");
+        assert_eq!(items.len(), 1);
+        assert!(has_more);
+        assert!(items[0]["note_id"].as_str().is_some());
+        assert!(items[0]["updated_at"].as_str().is_some());
+        assert!(items[0]["content"].as_str().is_some());
+        assert!(items[0]["content_truncated"].is_boolean());
+    }
+
+    #[test]
+    fn tags_are_trimmed_deduplicated_and_bounded() {
+        assert_eq!(
+            MemoryToolExecutor::parse_tags(&json!({
+                "tags": [" exam ", "exam", "focus"]
+            }))
+            .expect("valid tags"),
+            vec!["exam", "focus"]
+        );
+        let oversized = "x".repeat(super::MEMORY_TAG_CHARS + 1);
+        assert!(MemoryToolExecutor::parse_tags(&json!({ "tags": [oversized] })).is_err());
     }
 }

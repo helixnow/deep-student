@@ -120,6 +120,7 @@ src-tauri/.target-local/
 
 # Temporary files
 /tmp/
+.tmp/
 temp_*/
 *_temp/
 temp_apkg/
@@ -257,6 +258,8 @@ design/
 output/
 
 # Development notes
+/docs/dev/*-20??-??-??.md
+/test-results/
 note/
 
 # AI tool artifacts
@@ -278,7 +281,34 @@ src-tauri/.codex_appcast.xml
 mcp-feedback-enhanced/
 # 根目录调试数据库副本
 /deep-student.db
+/dev.db
 # 本机参考代码副本（不入库）
 deep-agent-ref/
 # MCP 反馈工具会话接力文档（本机生成，不入库）
 .feed/
+
+# Workbench polish local artifacts (dev logs / check outputs / MSVC misdrops)
+tsc-out.txt
+vitest-contract-out.txt
+o13-test-out.txt
+.tsc-baseline-*.txt
+dev-server*.log
+tauri-dev*.log
+tc_agent*.log
+src-tauri/NONE
+
+# 内部规划/评审/设计过程文档（不入库）
+.parallel-notes/
+.planning/
+.roundtable/
+docs/reviews/
+docs/prompts/
+docs/superpowers/
+docs/cloud-sync-compatibility-analysis-*.md
+docs/cloud-sync-remediation-plan.md
+docs/FABLE_SOTA_GOAL.md
+docs/DEEPSEEK-V4-V32-RELEASE-NOTES.md
+docs/vfs-vector-knowledge-base-hardening.md
+docs/design-tokens-and-color-semantics.md
+dstu-test/docs/*
+!dstu-test/docs/README.md

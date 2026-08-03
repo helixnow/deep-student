@@ -16,6 +16,9 @@ describe('ModernSidebar session indicators', () => {
     const rightSlotBranch = modernSidebarSource.match(
       /rightSlot=\{isSessionStreaming \? \([\s\S]*?\) : \(\s*<span className="ml-1 shrink-0 text-\[11px\]/
     )?.[0] ?? '';
+    const archiveActionBranch = modernSidebarSource.match(
+      /\{!collapsed && !isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply && \([\s\S]*?<CommonTooltip content=\{isConfirmingArchive/
+    )?.[0] ?? '';
 
     expect(modernSidebarSource).toContain('useSessionSidebarIndicators');
     expect(modernSidebarSource).toContain('blockingSessionIds');
@@ -31,9 +34,11 @@ describe('ModernSidebar session indicators', () => {
     expect(rightSlotBranch.indexOf('hasBlockingInteraction ?')).toBeLessThan(
       rightSlotBranch.indexOf('hasUnreadAssistantReply ?')
     );
-    expect(rightSlotBranch.indexOf('hasUnreadAssistantReply ?')).toBeLessThan(
-      rightSlotBranch.indexOf('isHovered ?')
+    expect(archiveActionBranch).toContain(
+      '!isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply'
     );
+    expect(modernSidebarSource).toContain('group-hover/thread-row:opacity-0');
+    expect(modernSidebarSource).toContain('group-hover/thread-row:opacity-100');
   });
 
   it('renders the blocking indicator as a compact continue badge', () => {

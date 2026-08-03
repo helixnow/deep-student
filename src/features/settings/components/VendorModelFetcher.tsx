@@ -5,47 +5,25 @@
  * 让用户选择并批量添加模型到供应商配置中。
  */
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretUp, Check, Clock, DownloadSimple, MagnifyingGlass, Plus, Spinner, Stack } from '@phosphor-icons/react';
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
 import { groupByModelFamily } from './modelFamily';
+import { fetchModelsFromVendor } from './vendorModelService';
+import type { FetchedModel } from './vendorModelService';
 import type { VendorConfig } from '@/types';
 
-const GEMINI_PROVIDER = 'gemini';
-
-/** 检查供应商是否支持模型列表获取 — 所有有 baseUrl 的供应商均可尝试（默认 OpenAI 兼容） */
-export function supportsModelFetching(_providerType?: string | null): boolean {
-  return true;
-}
-
-/** OpenAI 兼容 API 返回的模型对象 */
-interface OpenAIModelItem {
-  id: string;
-  object?: string;
-  created?: number;
-  owned_by?: string;
-}
-
-/** Gemini API 返回的模型对象 */
-interface GeminiModelItem {
-  name: string;
-  displayName?: string;
-  description?: string;
-  supportedGenerationMethods?: string[];
-}
-
-/** 统一的模型项 */
-interface FetchedModel {
-  id: string;
-  label: string;
+/** Codex OAuth requires a native authenticated transport, not the generic API-key fetcher. */
+export function supportsModelFetching(providerType?: string | null): boolean {
+  return providerType?.trim().toLowerCase() !== 'openai_codex';
 }
 
 interface VendorModelFetcherProps {
@@ -53,8 +31,8 @@ interface VendorModelFetcherProps {
   existingModelIds: string[];
   onAddModels: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
   /**
-   * 'card' (default): 内嵌卡片样式（圆角边框 + bg-muted/10 外壳，列表 max-h-60）。
-   * 'dialog': 由外层 Dialog 提供边框/背景，组件移除外壳并放宽列表高度至 max-h-[60vh]。
+   * 'card' (default): 内嵌卡片样式（圆角边框 + bg-muted/10 外壳，列表高 15rem）。
+   * 'dialog': 由外层 Dialog 提供边框/背景，列表填满弹窗剩余高度。
    */
   embedded?: 'card' | 'dialog';
 }
@@ -78,70 +56,16 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   const cacheKey = `vendor_models.${vendor.id}`;
   const cacheTimeKey = `vendor_models_time.${vendor.id}`;
 
-  // 对于内置供应商，vendor.apiKey 是掩码 "***"，需要从安全存储读取真实密钥
-  const [resolvedApiKey, setResolvedApiKey] = useState<string | null>(null);
-  const resolvingRef = useRef(false);
-
-  const isBuiltinVendor = vendor.isBuiltin || vendor.id.startsWith('builtin-');
-
-  useEffect(() => {
-    let cancelled = false;
-    const resolve = async () => {
-      if (isBuiltinVendor) {
-        // 内置供应商：从安全存储读取真实 API key
-        if (resolvingRef.current) return;
-        resolvingRef.current = true;
-        try {
-          // 标准格式：{vendor_id}.api_key
-          let key = await TauriAPI.getSetting(`${vendor.id}.api_key`);
-          // 兼容 SiliconFlow 旧格式
-          if (!key && vendor.id === 'builtin-siliconflow') {
-            key = await TauriAPI.getSetting('siliconflow.api_key');
-          }
-          // 回退：Tauri 存储为空时，检查 vendor.apiKey（handleSaveVendorApiKey 临时存入）
-          if (!key) {
-            const raw = vendor.apiKey?.trim();
-            if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-              key = raw;
-            }
-          }
-          if (!cancelled) {
-            setResolvedApiKey(key && key.trim() ? key.trim() : null);
-          }
-        } catch {
-          // 异常时回退到 vendor.apiKey
-          if (!cancelled) {
-            const raw = vendor.apiKey?.trim();
-            if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-              setResolvedApiKey(raw);
-            } else {
-              setResolvedApiKey(null);
-            }
-          }
-        } finally {
-          resolvingRef.current = false;
-        }
-      } else if (vendor.noApiKey) {
-        // 无需 Key 的供应商：允许无 Key 请求
-        if (!cancelled) setResolvedApiKey('');
-      } else {
-        // 非内置供应商：vendor.apiKey 是明文
-        const raw = vendor.apiKey?.trim();
-        if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-          setResolvedApiKey(raw);
-        } else {
-          setResolvedApiKey(null);
-        }
-      }
-    };
-    void resolve();
-    return () => { cancelled = true; };
-  }, [vendor.id, vendor.apiKey, isBuiltinVendor]);
-
-  const hasApiKey = resolvedApiKey !== null || !!vendor.noApiKey;
+  const usesNoApiKey = vendor.authMode === 'none' || vendor.noApiKey === true;
+  const rawApiKey = vendor.apiKey?.trim() ?? '';
+  const fallbackApiKey = [rawApiKey, ...(vendor.apiKeys ?? [])]
+    .map(key => key.trim())
+    .find(key => key && key !== '***' && !key.split('').every(character => character === '*')) ?? '';
+  // Tauri 运行时只会收到掩码；真实凭据由 Rust 命令在受信边界内解析。
+  const hasApiKey = usesNoApiKey
+    || Boolean(rawApiKey)
+    || Boolean(vendor.apiKeys?.some(key => key.trim()));
   const hasBaseUrl = !!(vendor.baseUrl && vendor.baseUrl.trim());
-
-  const isGemini = (vendor.providerType ?? '').toLowerCase() === GEMINI_PROVIDER;
 
   // 缓存：加载
   const loadCache = useCallback(async (): Promise<boolean> => {
@@ -202,93 +126,6 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     setIsFromCache(false);
   }, [vendor.id]);
 
-  const isStreamChannelError = (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    return message.includes('fetch_read_body') && message.includes('streamChannel');
-  };
-
-  /** 获取 OpenAI 兼容 API 的模型列表 */
-  const fetchOpenAICompatible = async (doFetch: typeof fetch): Promise<FetchedModel[]> => {
-    const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
-    const headers: Record<string, string> = {};
-    if (resolvedApiKey) {
-      headers['Authorization'] = `Bearer ${resolvedApiKey}`;
-    }
-    const response = await doFetch(`${baseUrl}/models`, {
-      method: 'GET',
-      headers,
-    });
-    if (!response.ok) {
-      let detail: string;
-      try { detail = JSON.stringify(await response.json()); } catch { detail = response.statusText || `HTTP ${response.status}`; }
-      throw new Error(`${response.status}: ${detail}`);
-    }
-    let body: { data?: OpenAIModelItem[] };
-    try {
-      body = await response.json();
-    } catch (err: unknown) {
-      if (isStreamChannelError(err)) {
-        throw new Error('TAURI_HTTP_READ_BODY_FAILED');
-      }
-      throw err;
-    }
-    if (!body?.data || !Array.isArray(body.data)) {
-      throw new Error(t('settings:vendor_model_fetcher.invalid_response'));
-    }
-    return body.data
-      .filter((m: OpenAIModelItem) =>
-        // 排除音频/视频/图片生成模型
-        !m.id.includes('tts') &&
-        !m.id.includes('whisper') &&
-        !m.id.includes('video') &&
-        !m.id.includes('kolors') &&
-        !m.id.includes('flux') &&
-        !m.id.includes('dall-e') &&
-        !m.id.includes('audio')
-      )
-      .map((m: OpenAIModelItem) => ({ id: m.id, label: m.id }))
-      .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
-  };
-
-  /** 获取 Google Gemini API 的模型列表 */
-  const fetchGemini = async (doFetch: typeof fetch): Promise<FetchedModel[]> => {
-    const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
-    const url = resolvedApiKey
-      ? `${baseUrl}/v1beta/models?key=${resolvedApiKey}&pageSize=100`
-      : `${baseUrl}/v1beta/models?pageSize=100`;
-    const response = await doFetch(url, {
-      method: 'GET',
-    });
-    if (!response.ok) {
-      let detail: string;
-      try { detail = JSON.stringify(await response.json()); } catch { detail = response.statusText || `HTTP ${response.status}`; }
-      throw new Error(`${response.status}: ${detail}`);
-    }
-    let body: { models?: GeminiModelItem[] };
-    try {
-      body = await response.json();
-    } catch (err: unknown) {
-      if (isStreamChannelError(err)) {
-        throw new Error('TAURI_HTTP_READ_BODY_FAILED');
-      }
-      throw err;
-    }
-    if (!body?.models || !Array.isArray(body.models)) {
-      throw new Error(t('settings:vendor_model_fetcher.invalid_response'));
-    }
-    return body.models
-      .filter((m: GeminiModelItem) =>
-        // 只保留支持文本生成的模型
-        m.supportedGenerationMethods?.includes('generateContent')
-      )
-      .map((m: GeminiModelItem) => {
-        // Gemini name 格式: "models/gemini-2.5-pro" → 取 "gemini-2.5-pro"
-        const modelId = m.name.replace(/^models\//, '');
-        return { id: modelId, label: m.displayName || modelId };
-      })
-      .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
-  };
-
   const fetchModels = useCallback(async (forceRefresh = false) => {
     if (!hasBaseUrl) {
       showGlobalNotification('warning', t('settings:vendor_model_fetcher.need_base_url'));
@@ -309,17 +146,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     setIsFromCache(false);
 
     try {
-      const fetcher = isGemini ? fetchGemini : fetchOpenAICompatible;
-      let result: FetchedModel[];
-      try {
-        result = await fetcher(tauriFetch as typeof fetch);
-      } catch (err: unknown) {
-        if (isStreamChannelError(err) || (err instanceof Error && err.message === 'TAURI_HTTP_READ_BODY_FAILED')) {
-          result = await fetcher(fetch);
-        } else {
-          throw err;
-        }
-      }
+      const result = await fetchModelsFromVendor(vendor, fallbackApiKey);
 
       // 原子替换：仅在拿到新数据后整体替换，保持已添加项的视觉连续性
       setModels(result);
@@ -331,7 +158,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [hasApiKey, hasBaseUrl, isGemini, loadCache, saveCache, t, vendor.id, resolvedApiKey, vendor.baseUrl]);
+  }, [fallbackApiKey, hasApiKey, hasBaseUrl, loadCache, saveCache, t, vendor]);
 
   // 过滤 + 分组
   const existingSet = useMemo(() => new Set(existingModelIds.map(id => id.toLowerCase())), [existingModelIds]);
@@ -395,7 +222,9 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     <div
       className={cn(
         'overflow-hidden',
-        embedded === 'card' && 'rounded-lg border border-border/50 bg-muted/10'
+        embedded === 'card'
+          ? 'rounded-lg border border-border/50 bg-muted/10'
+          : 'flex h-full min-h-0 flex-col'
       )}
     >
       {/* 头部：搜索框 + 获取按钮 */}
@@ -403,17 +232,18 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
         <div className="relative flex-1 min-w-0">
           <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
+            type="search"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder={models.length > 0
               ? t('settings:vendor_model_fetcher.search_placeholder')
-              : t('settings:vendor_model_fetcher.search_placeholder_empty', { defaultValue: '\u83b7\u53d6\u6a21\u578b\u5217\u8868\u540e\u53ef\u641c\u7d22...' })
+              : t('settings:vendor_model_fetcher.search_placeholder_empty')
             }
             className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
             disabled={models.length === 0}
           />
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => fetchModels(true)}
@@ -422,7 +252,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
         >
           {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 模型列表 */}
@@ -431,16 +261,16 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           {/* 工具栏：计数 + 全部添加 */}
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/20 bg-muted/20">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Stack className="h-3 w-3" aria-hidden="true" />
                 {t('settings:vendor_model_fetcher.model_count', { count: models.length })}
               </span>
               {lastFetchTime && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
                   {formatTime(lastFetchTime)}
                   {isFromCache && (
-                    <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">
+                    <Badge variant="outline" className="text-2xs px-1 py-0 leading-tight">
                       {t('settings:vendor_model_fetcher.cached')}
                     </Badge>
                   )}
@@ -448,25 +278,27 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
               )}
             </div>
             {newModels.length > 0 && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleAddAll}
                 disabled={addingAll}
-                className="text-[11px] h-6 px-2"
+                className="text-xs h-6 px-2"
               >
                 {addingAll ? <Spinner className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-                {t('settings:vendor_model_fetcher.add_all_new', { defaultValue: '\u5168\u90e8\u6dfb\u52a0 ({{count}})', count: newModels.length })}
-              </NotionButton>
+                {t('settings:vendor_model_fetcher.add_all_new', { count: newModels.length })}
+              </DsButton>
             )}
           </div>
 
-          {/* 列表：使用原生 overflow，避免 OverlayScrollbars 在 max-height（无固定 height）父级下高度解析失败导致不滚动。 */}
-          <div
+          {/* 卡片给明确高度；Dialog 通过完整 flex/min-h-0 链获得可收缩视口。 */}
+          <CustomScrollArea
             className={cn(
-              'overflow-y-auto overscroll-contain',
-              embedded === 'dialog' ? 'max-h-[60vh]' : 'max-h-60'
+              embedded === 'dialog' ? 'min-h-0 flex-1' : 'h-60'
             )}
+            viewportClassName="overscroll-contain"
+            trackOffsetTop={4}
+            trackOffsetBottom={4}
           >
             <div className="py-1">
               {/* 可添加的模型 - 按家族分组 */}
@@ -475,7 +307,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                   <div
                     className={cn(
                       'sticky top-0 z-[1] flex items-baseline gap-1.5',
-                      'px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70',
+                      'px-3 py-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground/70',
                       'bg-background',
                       'border-b border-border/30'
                     )}
@@ -520,7 +352,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                     aria-controls="vendor-model-fetcher-existing-list"
                     className={cn(
                       'flex items-center justify-between w-full gap-2 px-3 py-1.5',
-                      'text-[10px] uppercase tracking-wider text-muted-foreground/60',
+                      'text-2xs uppercase tracking-wider text-muted-foreground/60',
                       'hover:text-muted-foreground hover:bg-[var(--interactive-hover)]',
                       'transition-colors'
                     )}
@@ -571,14 +403,14 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 </div>
               )}
             </div>
-          </div>
+          </CustomScrollArea>
         </>
       ) : !loading ? (
         /* 空状态：未获取 */
         <div className="px-3 py-6 text-center text-xs text-muted-foreground">
           {hasApiKey && hasBaseUrl
-            ? t('settings:vendor_model_fetcher.click_fetch', { defaultValue: '\u70b9\u51fb\u4e0a\u65b9\u6309\u94ae\u83b7\u53d6\u53ef\u7528\u6a21\u578b\u5217\u8868' })
-            : t('settings:vendor_model_fetcher.need_config', { defaultValue: '\u8bf7\u5148\u914d\u7f6e\u63a5\u53e3\u5730\u5740\u548c API Key' })
+            ? t('settings:vendor_model_fetcher.click_fetch')
+            : t('settings:vendor_model_fetcher.need_config')
           }
         </div>
       ) : null}

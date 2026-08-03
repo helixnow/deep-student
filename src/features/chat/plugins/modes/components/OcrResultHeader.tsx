@@ -9,7 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   CaretDown,
   CaretRight,
@@ -54,18 +54,6 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
   const mode = useStore(store, (s) => s.mode);
   const modeState = useStore(store, (s) => s.modeState as unknown as AnalysisModeState | null);
 
-  // 如果不是 analysis 模式或没有 modeState，不渲染
-  if (!modeState || mode !== 'analysis') {
-    return null;
-  }
-
-  const { ocrStatus, ocrMeta, ocrError } = modeState;
-
-  // 只在 success 或 error 状态时显示结果
-  if (ocrStatus !== 'success' && ocrStatus !== 'error') {
-    return null;
-  }
-
   const toggleExpanded = useCallback(() => {
     setIsExpanded((prev) => !prev);
   }, []);
@@ -81,6 +69,18 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
     }
   }, [store]);
 
+  // 如果不是 analysis 模式或没有 modeState，不渲染
+  if (!modeState || mode !== 'analysis') {
+    return null;
+  }
+
+  const { ocrStatus, ocrMeta, ocrError } = modeState;
+
+  // 只在 success 或 error 状态时显示结果
+  if (ocrStatus !== 'success' && ocrStatus !== 'error') {
+    return null;
+  }
+
   return (
     <div
       className={cn(
@@ -92,7 +92,7 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
       )}
     >
       {/* 折叠头部 */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
@@ -124,13 +124,13 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
         ) : (
           <div className="flex items-center gap-2 ml-auto">
             <WarningCircle size={16} className="text-destructive" />
-            <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="text-primary hover:bg-primary/10">
+            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="text-primary hover:bg-primary/10">
               <ArrowClockwise size={12} />
               {t('analysis.ocrResult.retry')}
-            </NotionButton>
+            </DsButton>
           </div>
         )}
-      </NotionButton>
+      </DsButton>
 
       {/* 内容区域 */}
       {isExpanded && (

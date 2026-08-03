@@ -3,12 +3,27 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { SandboxWorkbenchPage } from '@/features/sandbox/pages/SandboxWorkbenchPage';
-import { useSandboxWorkbenchStore } from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import {
+  LEGACY_SANDBOX_OWNER_KEY,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
+
+vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: () => undefined },
+  useTranslation: () => ({
+    t: (key: string) => ({
+      'sandbox.refresh': '刷新',
+      'sandbox.closeInspector': '收起检查器',
+      'sandbox.source': '来源',
+      'sandbox.stats': '统计',
+    }[key] ?? key),
+  }),
+}));
 
 describe('SandboxWorkbenchPage layout', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: false,
+      matches: true,
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -20,8 +35,11 @@ describe('SandboxWorkbenchPage layout', () => {
 
     useSandboxWorkbenchStore.setState({
       activeSession: null,
+      isOpen: false,
       viewportPreset: 'desktop',
       inspectorOpen: false,
+      ownerStates: {},
+      activeOwnerKey: LEGACY_SANDBOX_OWNER_KEY,
     });
   });
 
@@ -32,8 +50,8 @@ describe('SandboxWorkbenchPage layout', () => {
       language: 'html',
       title: 'HTML Preview',
       content: '<div>hello</div>',
-    });
-    useSandboxWorkbenchStore.setState({ inspectorOpen: true });
+    }, LEGACY_SANDBOX_OWNER_KEY);
+    useSandboxWorkbenchStore.getState().setInspectorOpen(true, LEGACY_SANDBOX_OWNER_KEY);
 
     render(<SandboxWorkbenchPage />);
 

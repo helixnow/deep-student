@@ -10,7 +10,8 @@
 //! - `builtin-template_update`：更新已有模板（乐观锁）
 //! - `builtin-template_fork`：从已有模板分叉
 //! - `builtin-template_preview`：预览模板渲染
-//! - `builtin-template_delete`：删除用户自定义模板（不可删除内置模板）
+//! - `builtin-template_delete`：删除模板（自定义模板物理删除；内置模板停用 + 墓碑，与 UI 删除规则一致）
+//! - `builtin-template_set_default`：设置默认制卡模板
 
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -25,7 +26,6 @@ use super::chatanki_executor::{
 };
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{CreateTemplateRequest, FieldExtractionRule, UpdateTemplateRequest};
 
@@ -42,6 +42,7 @@ const TEMPLATE_TOOLS: &[&str] = &[
     "template_fork",
     "template_preview",
     "template_delete",
+    "template_set_default",
 ];
 
 // ============================================================================
@@ -137,6 +138,13 @@ struct TemplateDeleteArgs {
     template_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TemplateSetDefaultArgs {
+    #[serde(alias = "template_id")]
+    template_id: String,
+}
+
 // ============================================================================
 // 辅助函数
 // ============================================================================
@@ -158,6 +166,12 @@ fn value_type_label(v: &Value) -> &'static str {
 // ============================================================================
 
 pub struct TemplateDesignerExecutor;
+
+impl Default for TemplateDesignerExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl TemplateDesignerExecutor {
     pub fn new() -> Self {
@@ -680,9 +694,28 @@ impl TemplateDesignerExecutor {
             ));
         }
 
+        // Cloze 模板必须含 {{cloze:字段}} 占位符，否则 Anki 无法生成填空卡片。
+        // 注意：此逻辑与 commands.rs::validate_template_request 的同名检查保持同源
+        // （该函数归属另一模块、无法抽公共函数，此处复制逻辑并注明；两处需同步维护）。
+        if req.note_type.to_ascii_lowercase().contains("cloze")
+            && !req.front_template.contains("{{cloze:")
+        {
+            errors.push(format!(
+                "Cloze 模板「{}」的正面模板缺少 {{{{cloze:字段}}}} 占位符，Anki 无法生成填空卡片。请在 frontTemplate 中加入 {{{{cloze:Text}}}} 之类的占位符",
+                req.name
+            ));
+        }
+
         // warnings
         if req.description.trim().is_empty() {
             warnings.push("description 为空，建议补充模板描述以便检索".to_string());
+        }
+        // {{FrontSide}} 仅在背面模板有意义，正面使用会渲染为空
+        if req.front_template.contains("{{FrontSide}}") {
+            warnings.push(
+                "frontTemplate 中使用了 {{FrontSide}}：该占位符仅在背面模板生效，正面会渲染为空"
+                    .to_string(),
+            );
         }
         if req.css_style.trim().is_empty() {
             warnings.push("cssStyle 为空，将使用默认样式".to_string());
@@ -1118,6 +1151,18 @@ impl TemplateDesignerExecutor {
 
         match db.update_custom_template(&args.template_id, &update_req) {
             Ok(()) => {
+                // AI 修改内置模板同样打 user_modified 标记（与 UI 路径一致）：
+                // 内置模板版本升级导入将跳过该模板，避免用户/AI 的修改被静默覆盖
+                if existing.is_built_in {
+                    if let Err(e) = db.mark_template_user_modified(&args.template_id) {
+                        log::warn!(
+                            "[TemplateDesignerExecutor] mark user_modified failed: id={}, err={}",
+                            args.template_id,
+                            e
+                        );
+                    }
+                }
+
                 // 读取更新后的模板
                 let after = db
                     .get_custom_template_by_id(&args.template_id)
@@ -1301,64 +1346,72 @@ impl TemplateDesignerExecutor {
         };
 
         // 获取模板（优先 templateId，其次 template draft）
-        let (front_tmpl, back_tmpl, css_style, fields, used_template_id) = if let Some(ref tid) =
-            args.template_id
-        {
-            let db = match Self::get_db(ctx) {
-                Ok(db) => db,
-                Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
-            };
-            match db.get_custom_template_by_id(tid) {
-                Ok(Some(t)) => (
-                    t.front_template.clone(),
-                    t.back_template.clone(),
-                    t.css_style.clone(),
-                    t.fields.clone(),
-                    Some(tid.clone()),
-                ),
-                Ok(None) => {
-                    let msg = format!("模板 '{}' 不存在。请使用 template_list 查看可用模板", tid);
-                    return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+        let (front_tmpl, back_tmpl, css_style, fields, used_template_id, preview_data_json) =
+            if let Some(ref tid) = args.template_id {
+                let db = match Self::get_db(ctx) {
+                    Ok(db) => db,
+                    Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
+                };
+                match db.get_custom_template_by_id(tid) {
+                    Ok(Some(t)) => (
+                        t.front_template.clone(),
+                        t.back_template.clone(),
+                        t.css_style.clone(),
+                        t.fields.clone(),
+                        Some(tid.clone()),
+                        t.preview_data_json.clone(),
+                    ),
+                    Ok(None) => {
+                        let msg =
+                            format!("模板 '{}' 不存在。请使用 template_list 查看可用模板", tid);
+                        return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+                    }
+                    Err(e) => {
+                        let msg = format!("查询模板失败: {}", e);
+                        return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+                    }
                 }
-                Err(e) => {
-                    let msg = format!("查询模板失败: {}", e);
-                    return Ok(Self::emit_failure(call, ctx, &msg, start_time));
-                }
-            }
-        } else if let Some(ref draft_raw) = args.template {
-            let draft = match Self::normalize_template_value(draft_raw) {
-                Ok(v) => v,
-                Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
+            } else if let Some(ref draft_raw) = args.template {
+                let draft = match Self::normalize_template_value(draft_raw) {
+                    Ok(v) => v,
+                    Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
+                };
+                let front = draft
+                    .get("frontTemplate")
+                    .or_else(|| draft.get("front_template"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let back = draft
+                    .get("backTemplate")
+                    .or_else(|| draft.get("back_template"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let css = draft
+                    .get("cssStyle")
+                    .or_else(|| draft.get("css_style"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let fields = match Self::extract_fields(&draft, false) {
+                    Ok(f) => f,
+                    Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
+                };
+                let preview_data_json =
+                    match Self::extract_opt_str(&draft, "previewDataJson", "preview_data_json") {
+                        Ok(v) => v,
+                        Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
+                    };
+                (front, back, css, fields, None, preview_data_json)
+            } else {
+                let msg = "请提供 templateId 或 template 草稿用于预览".to_string();
+                return Ok(Self::emit_failure(call, ctx, &msg, start_time));
             };
-            let front = draft
-                .get("frontTemplate")
-                .or_else(|| draft.get("front_template"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let back = draft
-                .get("backTemplate")
-                .or_else(|| draft.get("back_template"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let css = draft
-                .get("cssStyle")
-                .or_else(|| draft.get("css_style"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let fields = match Self::extract_fields(&draft, false) {
-                Ok(f) => f,
-                Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
-            };
-            (front, back, css, fields, None)
-        } else {
-            let msg = "请提供 templateId 或 template 草稿用于预览".to_string();
-            return Ok(Self::emit_failure(call, ctx, &msg, start_time));
-        };
 
-        // 直接传原始模板数据 + sampleData 给前端，由前端用 renderCardPreview 做真实渲染
+        // 直接传原始模板数据 + sampleData 给前端，由前端用统一渲染引擎做真实渲染。
+        // previewDataJson 为模板库存示例数据：sampleData 缺失时前端以它兜底，
+        // 避免多字段模板按 templateId 预览时一片空白。
         let output_for_display = json!({
             "_templateVisual": true,
             "frontTemplate": front_tmpl,
@@ -1367,6 +1420,7 @@ impl TemplateDesignerExecutor {
             "fields": fields,
             "usedTemplateId": used_template_id,
             "sampleData": args.sample_data,
+            "previewDataJson": preview_data_json,
         });
         // 精简摘要：回传给 LLM（预览是纯粹给用户看的，LLM 不需要渲染数据）
         let output_for_model = json!({
@@ -1424,20 +1478,53 @@ impl TemplateDesignerExecutor {
             }
         };
 
-        // 2. 禁止删除内置模板
-        if template.is_built_in {
-            let msg = format!(
-                "不能删除内置模板「{}」(ID: {})。如需修改内置模板，请先使用 builtin-template_fork 创建副本。",
-                template.name, args.template_id
-            );
-            return Ok(Self::emit_failure(call, ctx, &msg, start_time));
-        }
-
-        // 3. 记录模板名称用于确认消息
+        // 2. 记录模板名称用于确认消息
         let template_name = template.name.clone();
         let template_id = args.template_id.clone();
 
-        // 4. 执行删除
+        // 3. 统计仍引用该模板的存量卡片数（失败不阻断删除，仅缺提示信息）
+        let referencing_cards = db
+            .count_anki_cards_referencing_template(&args.template_id)
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "[TemplateDesignerExecutor] count referencing cards failed: id={}, err={}",
+                    args.template_id,
+                    e
+                );
+                0
+            });
+
+        // 4. 内置模板：与 UI 删除路径统一（bug F4）——不物理删除，
+        //    改为停用 + user_deleted 墓碑，模板 ID 稳定且升级导入不会复活它。
+        if template.is_built_in {
+            if let Err(e) = db.soft_delete_builtin_template(&args.template_id) {
+                let msg = format!("停用内置模板失败: {}", e);
+                return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+            }
+
+            log::info!(
+                "[TemplateDesignerExecutor] Soft-deleted builtin template: id={}, name={}",
+                template_id,
+                template_name
+            );
+
+            let output = json!({
+                "success": true,
+                "deleted": false,
+                "deactivated": true,
+                "isBuiltIn": true,
+                "templateId": template_id,
+                "templateName": template_name,
+                "referencingCards": referencing_cards,
+                "message": format!(
+                    "内置模板「{}」已停用（内置模板不可物理删除，已有 {} 张卡片引用不受影响；后续版本升级不会重新启用它）。",
+                    template_name, referencing_cards
+                ),
+            });
+            return Ok(Self::emit_success(call, ctx, output, start_time));
+        }
+
+        // 5. 自定义模板：物理删除
         if let Err(e) = db.delete_custom_template(&args.template_id) {
             let msg = format!("删除模板失败: {}", e);
             return Ok(Self::emit_failure(call, ctx, &msg, start_time));
@@ -1452,9 +1539,80 @@ impl TemplateDesignerExecutor {
         let output = json!({
             "success": true,
             "deleted": true,
+            "deactivated": false,
+            "isBuiltIn": false,
             "templateId": template_id,
             "templateName": template_name,
+            "referencingCards": referencing_cards,
             "message": format!("模板「{}」已成功删除。", template_name),
+        });
+
+        Ok(Self::emit_success(call, ctx, output, start_time))
+    }
+
+    // ------------------------------------------------------------------
+    // template_set_default
+    // ------------------------------------------------------------------
+
+    async fn execute_set_default(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args: TemplateSetDefaultArgs = match serde_json::from_value(call.arguments.clone()) {
+            Ok(a) => a,
+            Err(e) => {
+                let msg = format!("参数解析失败: {}。请提供 templateId (string) 参数。", e);
+                return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+            }
+        };
+
+        let db = match Self::get_db(ctx) {
+            Ok(db) => db,
+            Err(e) => return Ok(Self::emit_failure(call, ctx, &e, start_time)),
+        };
+
+        // 校验模板存在且可用
+        let template = match db.get_custom_template_by_id(&args.template_id) {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                let msg = format!(
+                    "模板 '{}' 不存在。请使用 template_list 查看可用模板",
+                    args.template_id
+                );
+                return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+            }
+            Err(e) => {
+                let msg = format!("查询模板失败: {}", e);
+                return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+            }
+        };
+
+        if !template.is_active {
+            let msg = format!(
+                "模板「{}」当前为停用状态，不能设为默认模板。请先将其激活",
+                template.name
+            );
+            return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+        }
+
+        if let Err(e) = db.set_default_template(&args.template_id) {
+            let msg = format!("设置默认模板失败: {}", e);
+            return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+        }
+
+        log::info!(
+            "[TemplateDesignerExecutor] Set default template: id={}, name={}",
+            args.template_id,
+            template.name
+        );
+
+        let output = json!({
+            "success": true,
+            "templateId": args.template_id,
+            "templateName": template.name,
+            "message": format!("已将「{}」设为默认制卡模板。", template.name),
         });
 
         Ok(Self::emit_success(call, ctx, output, start_time))
@@ -1499,6 +1657,7 @@ impl ToolExecutor for TemplateDesignerExecutor {
             "template_fork" => self.execute_fork(call, ctx, start_time).await,
             "template_preview" => self.execute_preview(call, ctx, start_time).await,
             "template_delete" => self.execute_delete(call, ctx, start_time).await,
+            "template_set_default" => self.execute_set_default(call, ctx, start_time).await,
             _ => Err(format!(
                 "Unsupported template designer tool: {}",
                 stripped_name
@@ -1508,7 +1667,13 @@ impl ToolExecutor for TemplateDesignerExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match strip_tool_namespace(tool_name) {
-            "template_delete" => ToolSensitivity::Medium,
+            // A custom template is physically deleted. Built-in templates are
+            // only deactivated, but approval happens before the DB lookup, so
+            // the mixed operation must fail closed at the irreversible level.
+            "template_delete" => ToolSensitivity::High,
+            "template_create" | "template_fork" | "template_update" | "template_set_default" => {
+                ToolSensitivity::Medium
+            }
             _ => ToolSensitivity::Low,
         }
     }
@@ -1541,6 +1706,7 @@ mod tests {
         assert!(executor.can_handle("builtin-template_update"));
         assert!(executor.can_handle("builtin-template_fork"));
         assert!(executor.can_handle("builtin-template_preview"));
+        assert!(executor.can_handle("builtin-template_set_default"));
     }
 
     #[test]
@@ -1843,19 +2009,92 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_create"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_update"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_fork"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("builtin-template_delete"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-template_set_default"),
             ToolSensitivity::Medium
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // validate 增强：Cloze / {{FrontSide}}
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_validate_cloze_without_placeholder_fails() {
+        let mut rules = HashMap::new();
+        rules.insert("Text".to_string(), make_rule("文本", true));
+
+        let req = CreateTemplateRequest {
+            name: "Cloze Test".to_string(),
+            description: "d".to_string(),
+            author: None,
+            version: None,
+            preview_front: "p".to_string(),
+            preview_back: "p".to_string(),
+            note_type: "Cloze".to_string(),
+            fields: vec!["Text".to_string()],
+            generation_prompt: "gen".to_string(),
+            front_template: "{{Text}}".to_string(),
+            back_template: "{{Text}}".to_string(),
+            css_style: ".card {}".to_string(),
+            field_extraction_rules: rules,
+            preview_data_json: None,
+            is_active: None,
+            is_built_in: None,
+        };
+
+        let (errors, _) = TemplateDesignerExecutor::validate_template_internal(&req);
+        assert!(
+            errors.iter().any(|e| e.contains("cloze")),
+            "Cloze 模板缺少 {{{{cloze:}}}} 占位符应报错: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_validate_frontside_on_front_warns() {
+        let mut rules = HashMap::new();
+        rules.insert("Front".to_string(), make_rule("正面", true));
+
+        let req = CreateTemplateRequest {
+            name: "FrontSide Test".to_string(),
+            description: "d".to_string(),
+            author: None,
+            version: None,
+            preview_front: "p".to_string(),
+            preview_back: "p".to_string(),
+            note_type: "Basic".to_string(),
+            fields: vec!["Front".to_string()],
+            generation_prompt: "gen".to_string(),
+            front_template: "{{FrontSide}} {{Front}}".to_string(),
+            back_template: "{{Front}}".to_string(),
+            css_style: ".card {}".to_string(),
+            field_extraction_rules: rules,
+            preview_data_json: None,
+            is_active: None,
+            is_built_in: None,
+        };
+
+        let (errors, warnings) = TemplateDesignerExecutor::validate_template_internal(&req);
+        assert!(errors.is_empty(), "不应产生错误: {:?}", errors);
+        assert!(
+            warnings.iter().any(|w| w.contains("FrontSide")),
+            "正面使用 FrontSide 应给出警告: {:?}",
+            warnings
         );
     }
 

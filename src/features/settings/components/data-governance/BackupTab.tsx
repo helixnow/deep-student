@@ -29,12 +29,13 @@ import {
   FileArrowDown,
 } from '@phosphor-icons/react';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { AppSelect } from '@/components/ui/app-menu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { NotionAlertDialog, NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { DsAlertDialog, DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -57,6 +58,9 @@ import { getBackupConfig, setBackupConfig } from '@/api/dataGovernance';
 import { Input } from '@/components/ui/shad/Input';
 
 export type BackupJobOperation = 'backup' | 'tiered_backup' | 'zip_export' | 'zip_import' | 'restore';
+
+const isRestorableBackup = (backup: BackupInfoResponse): boolean =>
+  backup.restorable ?? backup.backup_type === 'full';
 
 /** 备份验证状态 */
 export type BackupVerificationStatus = 'verified' | 'unverified' | 'failed' | 'verifying';
@@ -90,7 +94,6 @@ export interface BackupTabProps {
   // 恢复完成后重启对话框
   showRestartDialog?: boolean;
   onRestartNow?: () => void;
-  onRestartLater?: () => void;
   // 导入完成后提示恢复对话框
   showRestorePromptDialog?: boolean;
   onRestoreNow?: () => void;
@@ -182,7 +185,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   onResumeJob,
   showRestartDialog,
   onRestartNow,
-  onRestartLater,
   showRestorePromptDialog,
   onRestoreNow,
   onRestoreLater,
@@ -199,15 +201,21 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   const [backupConfig, setBackupConfigState] = useState<BackupConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
+  const [configLoadError, setConfigLoadError] = useState<string | null>(null);
+  const configLoadAttemptedRef = useRef(false);
 
   // 加载备份配置
-  const loadBackupConfig = useCallback(async () => {
+  const loadBackupConfig = useCallback(async (force = false) => {
+    if (configLoadAttemptedRef.current && !force) return;
+    configLoadAttemptedRef.current = true;
     setConfigLoading(true);
+    setConfigLoadError(null);
     try {
       const config = await getBackupConfig();
       setBackupConfigState(config);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      setConfigLoadError(message);
       showGlobalNotification(
         'error',
         message,
@@ -220,10 +228,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
   // 进入页面时加载配置
   useEffect(() => {
-    if (!backupConfig && !configLoading) {
+    if (!backupConfig && !configLoading && !configLoadError) {
       loadBackupConfig();
     }
-  }, [backupConfig, configLoading, loadBackupConfig]);
+  }, [backupConfig, configLoadError, configLoading, loadBackupConfig]);
 
   // 保存备份配置
   const saveBackupConfig = useCallback(async (config: BackupConfig) => {
@@ -291,7 +299,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         pendingConfigRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   /** 备份层级选项 */
@@ -312,6 +320,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     { value: 'workspaces' as AssetType, label: t('settings:data_governance.asset_types.workspaces'), icon: <Folder className="h-4 w-4" /> },
     { value: 'audio' as AssetType, label: t('settings:data_governance.asset_types.audio'), icon: <FileAudio className="h-4 w-4" /> },
     { value: 'videos' as AssetType, label: t('settings:data_governance.asset_types.videos'), icon: <FileVideo className="h-4 w-4" /> },
+    { value: 'textbooks' as AssetType, label: t('settings:data_governance.asset_types.textbooks'), icon: <Folder className="h-4 w-4" /> },
+    { value: 'pdf_ocr_sessions' as AssetType, label: t('settings:data_governance.asset_types.pdf_ocr_sessions'), icon: <FileText className="h-4 w-4" /> },
   ], [t]);
   const [actionType, setActionType] = useState<'delete' | 'restore' | 'export' | null>(null);
   // 分层备份状态
@@ -395,10 +405,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               <span className="text-muted-foreground">
                 {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {job.phase} ({Math.round(job.progress)}%)
               </span>
-              <NotionButton size="sm" onClick={() => onResumeJob?.(job.job_id)}>
+              <DsButton size="sm" onClick={() => onResumeJob?.(job.job_id)}>
                 <Play className="h-3 w-3 mr-1" />
                 {t('data:governance.resume')}
-              </NotionButton>
+              </DsButton>
             </div>
           ))}
         </div>
@@ -424,7 +434,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               )}
             </div>
             {backupProgress.cancellable && onCancelBackup && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={onCancelBackup}
@@ -432,7 +442,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               >
                 <XCircle className="h-4 w-4 mr-1" />
                 {t('common:cancel')}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
 
@@ -596,7 +606,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               disabled={loading || isBackupRunning}
             />
           </div>
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={handleBackupAndExport}
@@ -609,8 +619,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               <Archive className="h-4 w-4 mr-2" />
             )}
             {t('data:governance.export_backup')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="default"
             size="sm"
             onClick={onImportZip}
@@ -619,11 +629,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           >
             <Upload className="h-4 w-4 mr-1.5" />
             {t('data:governance.import_button')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9">
+          </DsButton>
+          <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9">
             <ArrowClockwise size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
             {t('common:actions.refresh')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -640,6 +650,20 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
             <CircleNotch size={16} className="animate-spin" />
             {t('common:status.loading')}
+          </div>
+        ) : configLoadError ? (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+            <div className="min-w-0 text-sm text-destructive">
+              {t('data:governance.backup_config_load_failed')}: {configLoadError}
+            </div>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => void loadBackupConfig(true)}
+            >
+              <ArrowClockwise size={14} className="mr-1.5" />
+              {t('common:actions.retry')}
+            </DsButton>
           </div>
         ) : backupConfig ? (
           <div className="space-y-5">
@@ -728,23 +752,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               </div>
             </div>
 
-            {/* 精简备份模式 */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-sm font-medium text-foreground">
-                  {t('data:governance.slim_backup')}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('data:governance.slim_backup_desc')}
-                </p>
-              </div>
-              <Switch
-                checked={backupConfig.slimBackup}
-                onCheckedChange={(checked) => updateConfigField('slimBackup', checked)}
-                disabled={configSaving}
-              />
-            </div>
-
             {/* 保存指示器 */}
             {configSaving && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -769,7 +776,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </p>
         </div>
 
-        <div className="rounded-lg border border-border/40 overflow-x-auto">
+        <CustomScrollArea
+          orientation="horizontal"
+          fullHeight={false}
+          className="rounded-lg border border-border/40"
+        >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
@@ -788,10 +799,30 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     {formatTimestamp(backup.created_at)}
                   </TableCell>
                   <TableCell className="py-3">
-                    <Badge variant={backup.backup_type === 'full' ? 'default' : 'secondary'} className="rounded-sm font-normal whitespace-nowrap">
-                      {backup.backup_type === 'full'
+                    <Badge
+                      variant={
+                        backup.backup_type === 'full'
+                          ? 'default'
+                          : backup.backup_type === 'incremental'
+                            ? 'destructive'
+                            : 'secondary'
+                      }
+                      className="rounded-sm font-normal whitespace-nowrap"
+                      title={
+                        backup.backup_type === 'incremental'
+                          ? t('data:governance.incremental_legacy_unsupported')
+                          : undefined
+                      }
+                    >
+                      {backup.recovery_kind === 'partial_archive'
+                        ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
+                        : backup.backup_type === 'full'
                         ? t('data:governance.full')
-                        : t('data:governance.incremental')}
+                        : backup.backup_type === 'incremental'
+                        ? t('data:governance.incremental_legacy_unsupported')
+                        : backup.backup_type === 'partial_overlay'
+                        ? t('data:governance.partial_overlay')
+                        : t('data:governance.legacy_unknown')}
                     </Badge>
                   </TableCell>
                   <TableCell className="py-3 font-mono text-xs whitespace-nowrap">{formatBytes(backup.size)}</TableCell>
@@ -838,7 +869,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   </TableCell>
                   <TableCell className="text-right py-3">
                     <div className="flex justify-end gap-1">
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0"
@@ -848,8 +879,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         aria-label={t('data:governance.verify')}
                       >
                         <Shield className="h-3.5 w-3.5" />
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0"
@@ -862,8 +893,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         aria-label={t('data:governance.export_zip')}
                       >
                         <FileArrowDown size={14} />
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0"
@@ -875,16 +906,29 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                             );
                             return;
                           }
+                          if (!isRestorableBackup(backup)) {
+                            showGlobalNotification(
+                              'warning',
+                              t('data:governance.restore_non_full_not_supported')
+                            );
+                            return;
+                          }
                           setSelectedBackup(backup.path);
                           setActionType('restore');
                         }}
                         disabled={isBackupRunning}
-                        title={t('data:governance.restore')}
+                        title={
+                          isRestorableBackup(backup)
+                            ? t('data:governance.restore')
+                            : t('data:governance.partial_archive_not_restorable', {
+                                defaultValue: 'Partial archives cannot replace the data slot',
+                              })
+                        }
                         aria-label={t('data:governance.restore')}
                       >
                         <ArrowCounterClockwise size={14} />
-                      </NotionButton>
-                      <NotionButton
+                      </DsButton>
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -897,7 +941,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         aria-label={t('common:actions.delete')}
                       >
                         <Trash size={14} />
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -918,11 +962,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               )}
             </TableBody>
           </Table>
-        </div>
+        </CustomScrollArea>
       </div>
 
       {/* 确认对话框 */}
-      <NotionAlertDialog
+      <DsAlertDialog
         open={selectedBackup !== null && actionType !== null}
         onOpenChange={() => {
           setSelectedBackup(null);
@@ -957,65 +1001,62 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       />
 
       {/* Task 3: 恢复完成后重启提示对话框 */}
-      <NotionDialog open={showRestartDialog} onOpenChange={(open) => { if (!open) onRestartLater?.(); }}>
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+      <DsDialog open={showRestartDialog} onOpenChange={() => undefined}>
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <CheckCircle size={20} className="text-green-500" />
             {t('data:governance.restore_complete_title')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
+          </DsDialogTitle>
+          <DsDialogDescription>
             <p>{t('data:governance.restore_complete_desc')}</p>
             <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogFooter>
-          <NotionButton variant="ghost" size="sm" onClick={onRestartLater}>
-            {t('data:governance.restart_later')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={onRestartNow}>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogFooter>
+          <DsButton variant="primary" size="sm" onClick={onRestartNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restart_now')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
+          </DsButton>
+        </DsDialogFooter>
+      </DsDialog>
 
       {/* 导入完成后提示恢复对话框 */}
-      <NotionDialog open={showRestorePromptDialog} onOpenChange={(open) => { if (!open) onRestoreLater?.(); }}>
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+      <DsDialog open={showRestorePromptDialog} onOpenChange={(open) => { if (!open) onRestoreLater?.(); }}>
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <Archive className="h-5 w-5 text-primary" />
-            {t('data:governance.import_complete_title', '备份导入完成')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
-            <p>{t('data:governance.import_complete_desc', '备份文件已成功导入。是否立即恢复此备份？恢复将替换当前所有数据。')}</p>
+            {t('data:governance.import_complete_title')}
+          </DsDialogTitle>
+          <DsDialogDescription>
+            <p>{t('data:governance.import_complete_desc')}</p>
             <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogFooter>
-          <NotionButton variant="ghost" size="sm" onClick={onRestoreLater}>
-            {t('data:governance.restore_later', '稍后恢复')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={onRestoreNow}>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogFooter>
+          <DsButton variant="ghost" size="sm" onClick={onRestoreLater}>
+            {t('data:governance.restore_later')}
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={onRestoreNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
-            {t('data:governance.restore_now', '立即恢复')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
+            {t('data:governance.restore_now')}
+          </DsButton>
+        </DsDialogFooter>
+      </DsDialog>
 
       {/* Task 4: 备份验证结果详细对话框 */}
-      <NotionDialog open={showVerifyDialog} onOpenChange={(open) => { if (!open) onCloseVerifyDialog?.(); }} maxWidth="max-w-md">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+      <DsDialog open={showVerifyDialog} onOpenChange={(open) => { if (!open) onCloseVerifyDialog?.(); }} maxWidth="max-w-md">
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
             {t('data:governance.verify_result_title')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
+          </DsDialogTitle>
+          <DsDialogDescription>
             {verifyResult?.is_valid
               ? t('data:governance.verify_result_passed')
               : t('data:governance.verify_result_failed')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody overlayScroll>
 
           {verifyResult && (
             <div className="space-y-3">
@@ -1117,13 +1158,13 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </div>
           )}
 
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton variant="default" size="sm" onClick={onCloseVerifyDialog}>
+        </DsDialogBody>
+        <DsDialogFooter>
+          <DsButton variant="default" size="sm" onClick={onCloseVerifyDialog}>
             {t('common:actions.close')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
+          </DsButton>
+        </DsDialogFooter>
+      </DsDialog>
     </div>
   );
 };

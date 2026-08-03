@@ -195,7 +195,7 @@ function generateFingerprint(
  */
 function extractErrorPattern(errorMessage: string): string {
   // 提取关键错误信息（去除动态内容）
-  let pattern = errorMessage
+  const pattern = errorMessage
     .replace(/\d+/g, 'N') // 替换数字
     .replace(/['"]]/g, '') // 移除引号
     .replace(/\s+/g, '_') // 替换空格

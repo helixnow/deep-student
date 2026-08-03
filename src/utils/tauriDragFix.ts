@@ -87,11 +87,10 @@ export const disableWebDrag = () => {
  * React Hook: 在组件中启用网页拖拽
  */
 export const useTauriDragFix = () => {
-  if (typeof window === 'undefined') return;
-  
   React.useEffect(() => {
+    if (typeof window === 'undefined') return;
     enableWebDrag();
-    
+
     return () => {
       // 组件卸载时可选择是否恢复
       // disableWebDrag();

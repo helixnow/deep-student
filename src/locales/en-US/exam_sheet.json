@@ -182,7 +182,14 @@
     "noSession": "No exam session specified",
     "loadFailed": "Failed to load exam session",
     "sessionNotFound": "Exam session not found",
-    "deprecatedPanel": "This entry is deprecated. Please access question set recognition through the Learning Hub."
+    "deprecatedPanel": "This entry is deprecated. Please access question set recognition through the Learning Hub.",
+    "delete_question_failed": "Failed to delete the question. Please try again.",
+    "loadQuestionsFailed": "Failed to load questions",
+    "manual_grade_failed": "Failed to sync grading. Please try again manually.",
+    "note_update_unavailable": "Notes cannot be saved in the current mode.",
+    "save_note_failed": "Failed to save note",
+    "submit_failed": "Failed to submit answer. Please try again.",
+    "toggle_favorite_failed": "Favorite operation failed. Please try again."
   },
   "viewMode": {
     "edit": "Edit",
@@ -198,6 +205,7 @@
       "new": "New",
       "correctRate": "Accuracy",
       "noData": "No statistics available",
+      "noDataHint": "Practice a few questions and your progress and accuracy stats will show up here",
       "progress": "Learning Progress",
       "accuracy": "Accuracy",
       "excellent": "Excellent",
@@ -253,21 +261,7 @@
     "reviewCount": "{{count}} to review",
     "selectTag": "Select Tag",
     "inputAnswer": "Enter your answer...",
-    "import": {
-      "button": "Import",
-      "title": "Import Question Bank",
-      "description": "Supports JSON and TXT/Markdown formats",
-      "name": "Question Bank Name",
-      "namePlaceholder": "Enter name (optional)",
-      "file": "Upload File",
-      "selectFile": "Select File",
-      "supportedFormats": "Supports .json, .txt, .md",
-      "content": "Content",
-      "showExample": "Show format example",
-      "import": "Import",
-      "importing": "Importing...",
-      "success": "Import successful!"
-    },
+    "import": "Import",
     "export": {
       "title": "Export Questions",
       "description": "Export {{count}} questions to file",
@@ -305,7 +299,8 @@
         "is_favorite": "Favorite",
         "user_note": "Notes",
         "created_at": "Created At",
-        "updated_at": "Updated At"
+        "updated_at": "Updated At",
+        "images": "Linked images"
       },
       "encodingDesc": {
         "utf8": "Universal encoding, recommended",
@@ -343,13 +338,22 @@
         "status": "Status",
         "attempts": "Attempts",
         "correctCount": "Correct Count"
-      }
+      },
+      "columnsPreview": "Column preview",
+      "savedTo": "Saved to",
+      "openFolder": "Reveal in folder",
+      "openFolderFailed": "Failed to reveal in folder",
+      "done": "Done",
+      "exportedCount": "Exported {{count}} questions",
+      "fieldsHint": "Click to toggle exported fields; content is required"
     },
     "search": "Search questions...",
     "empty": "No questions",
     "label": "Label",
     "content": "Question",
     "attempts": "Attempts",
+    "manage": "Manage",
+    "paginationInfo": "{{total}} items",
     "edit": {
       "title": "Edit Question",
       "content": "Question Content",
@@ -381,7 +385,10 @@
         "calculation": "Calculation",
         "proof": "Proof",
         "other": "Other"
-      }
+      },
+      "discardDescription": "Discard Description",
+      "optionsAnswerHint": "Click a letter to set as answer",
+      "moreOptional": "Explanation & note (optional)"
     },
     "create": {
       "title": "Create Question",
@@ -389,6 +396,30 @@
       "submit": "Create Question",
       "missingExamId": "Missing exam ID",
       "contentRequired": "Question content is required"
+    },
+    "actionUnavailable": "Action Unavailable",
+    "confirmDelete": "Confirm Delete",
+    "confirmDeleteBatch": "Confirm Delete Batch {{count}}",
+    "confirmDeleteSingle": "Confirm Delete Single",
+    "confirmReset": "Confirm Reset",
+    "confirmResetBatch": "Confirm Reset Batch {{count}}",
+    "confirmResetSingle": "Confirm Reset Single",
+    "favoriteUpdateFailed": "Favorite Update Failed",
+    "favoriteUpdated": "Favorite Updated",
+    "favorites": {
+      "browse": "Browse",
+      "empty": "Empty",
+      "hint": "Hint",
+      "loadFailed": "Load Failed",
+      "title": "Title",
+      "toggleFailed": "Toggle Failed",
+      "truncated": "Truncated {{count}} {{total}}"
+    },
+    "history": {
+      "description": "Description",
+      "empty": "Empty",
+      "emptyHint": "Records are created automatically as you answer and edit questions",
+      "title": "Title"
     }
   },
   "csv": {
@@ -399,6 +430,8 @@
     "select_file_failed": "Failed to select file",
     "drop_or_click": "Drop CSV file here or click to select",
     "supported_formats": "Supports UTF-8 and GBK encoding",
+    "format_hint": "The CSV must include a header row; Chinese and English column names are both supported",
+    "format_example": "content,options,answer,explanation,tags",
     "drag_not_supported": "Please click the button to select CSV file",
     "preview_failed": "Failed to preview CSV: {{error}}",
     "file_info": "{{rows}} rows, {{cols}} columns, encoding: {{encoding}}",
@@ -408,6 +441,7 @@
     "select_field": "Select field...",
     "no_mapping": "No mapping",
     "suggested": "Suggested",
+    "required": "Required",
     "mapping_valid": "Field mapping is valid, ready to import",
     "mapping_required": "Please map at least the \"Content\" field",
     "data_preview": "Data preview (first {{count}} rows)",
@@ -441,7 +475,19 @@
     "error_row": "Row {{row}}: {{message}}",
     "import_failed_generic": "Import failed",
     "csv_file_fallback": "CSV File",
-    "drop_csv_here": "Release to upload CSV file"
+    "drop_csv_here": "Release to upload CSV file",
+    "cancelling_import": "Cancelling...",
+    "import_cancel_failed": "Failed to cancel the import. Please try again.",
+    "import_cancel_unavailable": "The import has finished and cannot be cancelled.",
+    "import_cancelled_before_start": "Import cancelled before any data was written.",
+    "import_in_progress_close_blocked": "Import is in progress. Cancel it before closing this window.",
+    "mapping_duplicate": "Duplicate mappings found. Each target field can be mapped only once.",
+    "result_success": "Imported",
+    "result_skipped": "Skipped",
+    "result_failed": "Failed",
+    "error_details_count": "Error details ({{count}} total)",
+    "error_row_label": "Row {{row}}",
+    "error_more": "{{count}} more errors not shown"
   },
   "image": {
     "alt_card": "Question card",
@@ -458,6 +504,7 @@
   },
   "uploader": {
     "session_name_default": "Full Sheet Recognition",
+    "image_import_name": "Image Import",
     "drop_or_click": "Click or drop files here",
     "take_photo": "Take photo",
     "supported_formats_all": "Images (PNG/JPG/WebP/HEIC) or Documents (DOCX/XLSX/XLS/PDF/TXT/MD)",
@@ -472,6 +519,11 @@
     "reading_document": "Reading document...",
     "parsing_document": "Parsing document...",
     "processing": "Processing...",
+    "cancel_import": "Cancel Import",
+    "cancelling_import": "Cancelling...",
+    "import_cancelled": "Import cancelled. Completed content is retained.",
+    "cancel_unavailable": "The import has already ended and cannot be cancelled.",
+    "cancel_failed": "Could not cancel the import. Please try again.",
     "start_recognize": "Start Recognition",
     "parse_document": "Parse Document",
     "done": "Done",
@@ -497,8 +549,6 @@
     "no_content": "(No content)",
     "options_count": "{{count}} options",
     "answer_prefix": "Answer: {{answer}}",
-    "tip_image": "Images will be processed through OCR",
-    "tip_document": "Documents will be parsed then AI recognizes question structure",
     "file_type_image": "image",
     "file_type_document": "document",
     "import_failed_prefix": "Import failed: {{error}}",
@@ -518,17 +568,56 @@
     "filter_excluded_count": "{{count}} excluded",
     "filter_hint": "Expand to deselect questions you don't need to import (e.g. already mastered)",
     "filter_delete_failed": "Failed to delete excluded questions",
-    "view_questions_filtered": "Confirm Import {{count}} Questions"
+    "view_questions_filtered": "Confirm Import {{count}} Questions",
+    "extracting_figures": "Extracting figures {{current}} {{total}}",
+    "preprocessing": "Preprocessing",
+    "rendering_pages": "Rendering pages {{current}} {{total}}",
+    "structuring_questions": "Structuring questions {{current}} {{total}}",
+    "pdf_quality_title": "PDF text layer quality is low ({{count}} valid characters)",
+    "pdf_quality_description": "Use the extracted text directly, or enable OCR for recognition.",
+    "pdf_quality_empty_preview": "(No preview text)",
+    "pdf_use_extracted_text": "Use extracted text only",
+    "pdf_enable_ocr": "Enable OCR",
+    "header_title": "OCR Import",
+    "header_desc": "Upload images or documents. AI will recognize the questions and add them to this set.",
+    "steps": {
+      "select": "Select files",
+      "processing": "AI parsing",
+      "summary": "Confirm import"
+    },
+    "manual_create_link": "No files? Create a question manually",
+    "tips_combined": "Images are recognized via OCR; document text is parsed and structured by AI",
+    "drop_active": "Release to add files",
+    "page_status_label": "Per-page recognition status",
+    "page_n": "Page {{page}}",
+    "cancel_confirm_hint": "Cancel this import? Parsed questions will be kept.",
+    "cancel_confirm_yes": "Yes, cancel",
+    "cancel_confirm_no": "Keep importing",
+    "resume_failed": "Failed to resume import: {{error}}",
+    "phases": {
+      "preparing": "Prepare",
+      "recognizing": "Recognize",
+      "parsing": "Parse",
+      "done": "Done"
+    }
   },
   "questionTypes": {
     "single_choice": "Single Choice",
     "multiple_choice": "Multiple Choice",
     "indefinite_choice": "Indefinite Choice",
+    "true_false": "True / False",
     "fill_blank": "Fill in Blank",
+    "matching": "Matching",
+    "ordering": "Ordering",
+    "numeric": "Numeric",
     "short_answer": "Short Answer",
     "essay": "Essay",
     "calculation": "Calculation",
     "proof": "Proof",
     "other": "Other"
+  },
+  "editor": {
+    "discardDraftDescription": "Discard Draft Description",
+    "discardDraftTitle": "Discard Draft Title"
   }
 }

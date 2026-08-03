@@ -15,6 +15,8 @@ import type {
   SkillLocation,
   ToolSchema,
   SkillType,
+  SkillRequires,
+  JsonSchemaProperty,
 } from './types';
 import { validateSkillMetadata, SKILL_DEFAULT_PRIORITY } from './types';
 
@@ -27,19 +29,29 @@ const LOG_PREFIX = '[SkillParser]';
 /** Frontmatter 分隔符 */
 const FRONTMATTER_DELIMITER = '---';
 
-/** 最大 frontmatter 长度（防止解析过大的文件头） */
-const MAX_FRONTMATTER_LENGTH = 4096;
+/** 最大 frontmatter 长度（容纳合法 embeddedTools，同时限制 YAML 解析成本） */
+const MAX_FRONTMATTER_LENGTH = 64 * 1024;
 
 const KNOWN_FRONTMATTER_KEYS = new Set([
   'name',
   'description',
   'version',
   'author',
+  'license',
+  'homepage',
+  'tags',
+  'compatibility',
   'priority',
   'allowed-tools',
   'allowedTools',
   'tools',
   'disableAutoInvoke',
+  'disable-model-invocation',
+  'disableModelInvocation',
+  'user-invocable',
+  'userInvocable',
+  'argument-hint',
+  'argumentHint',
   'embedded-tools',
   'embeddedTools',
   'skill-type',
@@ -47,6 +59,9 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
   'related-skills',
   'relatedSkills',
   'dependencies',
+  'requires',
+  'manifest-version',
+  'manifestVersion',
 ]);
 
 // ============================================================================
@@ -59,27 +74,46 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
  * @param content 文件完整内容
  * @returns [frontmatter, content] 或 null（无 frontmatter）
  */
-function splitFrontmatter(content: string): [string, string] | null {
+interface FrontmatterBounds {
+  start: number;
+  end: number;
+  contentStart: number;
+}
+
+function findFrontmatterBounds(content: string): { trimmed: string; bounds: FrontmatterBounds } | null {
   const trimmed = content.trimStart();
 
-  // 检查是否以 --- 开头
-  if (!trimmed.startsWith(FRONTMATTER_DELIMITER)) {
+  // Delimiters may have surrounding horizontal whitespace, but no other
+  // content. In particular, "---suffix" must never terminate frontmatter.
+  const opening = /^---[ \t]*(?:\r?\n|$)/.exec(trimmed);
+  if (!opening) {
     return null;
   }
 
-  // 找到第二个 ---
-  const firstDelimiterEnd = FRONTMATTER_DELIMITER.length;
-  const secondDelimiterStart = trimmed.indexOf(
-    `\n${FRONTMATTER_DELIMITER}`,
-    firstDelimiterEnd
-  );
-
-  if (secondDelimiterStart === -1) {
+  const closingPattern = /^---[ \t]*\r?$/gm;
+  closingPattern.lastIndex = opening[0].length;
+  const closing = closingPattern.exec(trimmed);
+  if (!closing) {
     return null;
   }
+
+  return {
+    trimmed,
+    bounds: {
+      start: opening[0].length,
+      end: closing.index,
+      contentStart: closingPattern.lastIndex,
+    },
+  };
+}
+
+function splitFrontmatter(content: string): [string, string] | null {
+  const located = findFrontmatterBounds(content);
+  if (!located) return null;
+  const { trimmed, bounds } = located;
 
   // 提取 frontmatter（不含分隔符）
-  const frontmatter = trimmed.slice(firstDelimiterEnd, secondDelimiterStart).trim();
+  const frontmatter = trimmed.slice(bounds.start, bounds.end).trim();
 
   // 检查长度限制 — 超出则拒绝解析
   if (frontmatter.length > MAX_FRONTMATTER_LENGTH) {
@@ -87,8 +121,7 @@ function splitFrontmatter(content: string): [string, string] | null {
   }
 
   // 提取内容（第二个 --- 之后）
-  const contentStart = secondDelimiterStart + FRONTMATTER_DELIMITER.length + 1;
-  const markdownContent = trimmed.slice(contentStart).trim();
+  const markdownContent = trimmed.slice(bounds.contentStart).trim();
 
   return [frontmatter, markdownContent];
 }
@@ -144,6 +177,31 @@ function coerceStringField(value: unknown): string | undefined {
 }
 
 /**
+ * 将布尔字段安全转换
+ *
+ * 支持 YAML bool 与字符串 `"true"` / `"false"`。
+ */
+function coerceBooleanField(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
+/**
+ * 解析 disableAutoInvoke，并合并 Anthropic `disable-model-invocation`
+ *
+ * 两者同时存在时取更保守值（任一为 true → true）。
+ */
+function parseDisableAutoInvoke(rawMetadata: Record<string, unknown>): boolean {
+  const native = coerceBooleanField(rawMetadata.disableAutoInvoke);
+  const anthropic = coerceBooleanField(
+    rawMetadata['disable-model-invocation'] ?? rawMetadata.disableModelInvocation
+  );
+  return native === true || anthropic === true;
+}
+
+/**
  * 将数组字段安全转换为字符串数组
  *
  * 支持两种输入格式：
@@ -151,10 +209,13 @@ function coerceStringField(value: unknown): string | undefined {
  * - 逗号分隔字符串：`"a, b, c"` → `['a', 'b', 'c']`
  */
 function coerceStringArrayField(value: unknown): string[] | undefined {
-  // 支持逗号分隔的字符串（如 YAML 中写 `allowedTools: "Read, Write"`）
+  // 支持：
+  // - YAML 数组：`[a, b]`
+  // - 逗号分隔：`"Read, Write"`
+  // - Agent Skills 空格分隔：`allowed-tools: Read Bash`
   if (typeof value === 'string') {
     const parts = value
-      .split(',')
+      .split(/[,\s]+/)
       .map((s) => s.trim())
       .filter(Boolean);
     return parts.length > 0 ? parts : undefined;
@@ -247,12 +308,53 @@ function parseEmbeddedTools(value: unknown, warnings: string[]): ToolSchema[] | 
         type: 'object',
         properties: inputSchema.properties as Record<string, unknown>,
         required: Array.isArray(inputSchema.required) ? inputSchema.required as string[] : undefined,
-        additionalProperties: inputSchema.additionalProperties as boolean | undefined,
+        additionalProperties: inputSchema.additionalProperties as
+          | boolean
+          | JsonSchemaProperty
+          | undefined,
+        anyOf: Array.isArray(inputSchema.anyOf)
+          ? inputSchema.anyOf as JsonSchemaProperty[]
+          : undefined,
+        oneOf: Array.isArray(inputSchema.oneOf)
+          ? inputSchema.oneOf as JsonSchemaProperty[]
+          : undefined,
       },
     } as ToolSchema);
   }
 
   return tools.length > 0 ? tools : undefined;
+}
+
+function parseRequiresMap(value: unknown): SkillRequires | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const bins = coerceStringArrayField(record.bins);
+  const env = coerceStringArrayField(record.env);
+  const pythonPackages =
+    coerceStringArrayField(record.python_packages) ??
+    coerceStringArrayField(record.pythonPackages);
+  if (!bins && !env && !pythonPackages) {
+    return undefined;
+  }
+  const result: SkillRequires = {};
+  if (bins) result.bins = bins;
+  if (env) result.env = env;
+  if (pythonPackages) result.pythonPackages = pythonPackages;
+  return result;
+}
+
+function parseRequiresField(
+  requiresRaw: unknown,
+  metadataRaw?: unknown,
+): SkillRequires | undefined {
+  const topLevel = parseRequiresMap(requiresRaw);
+  if (topLevel) return topLevel;
+  if (!metadataRaw || typeof metadataRaw !== 'object') return undefined;
+  const openclaw = (metadataRaw as Record<string, unknown>).openclaw;
+  if (!openclaw || typeof openclaw !== 'object') return undefined;
+  return parseRequiresMap((openclaw as Record<string, unknown>).requires);
 }
 
 // ============================================================================
@@ -281,19 +383,15 @@ export function parseSkillFile(
 
   if (!split) {
     // 区分"无 frontmatter"和"frontmatter 过长"两种情况
-    const trimmed = content.trimStart();
-    if (trimmed.startsWith(FRONTMATTER_DELIMITER)) {
-      const firstEnd = FRONTMATTER_DELIMITER.length;
-      const secondStart = trimmed.indexOf(`\n${FRONTMATTER_DELIMITER}`, firstEnd);
-      if (secondStart !== -1) {
-        const fm = trimmed.slice(firstEnd, secondStart).trim();
-        if (fm.length > MAX_FRONTMATTER_LENGTH) {
-          return {
-            success: false,
-            error: i18n.t('skills:parser.frontmatterTooLong'),
-            warnings,
-          };
-        }
+    const located = findFrontmatterBounds(content);
+    if (located) {
+      const fm = located.trimmed.slice(located.bounds.start, located.bounds.end).trim();
+      if (fm.length > MAX_FRONTMATTER_LENGTH) {
+        return {
+          success: false,
+          error: i18n.t('skills:parser.frontmatterTooLong'),
+          warnings,
+        };
       }
     }
     return {
@@ -330,6 +428,15 @@ export function parseSkillFile(
   const relatedSkillsRaw = rawMetadata['related-skills'] ?? rawMetadata.relatedSkills;
   // 支持 dependencies 字段
   const dependenciesRaw = rawMetadata.dependencies;
+  const requiresRaw = rawMetadata.requires;
+  const metadataRaw = rawMetadata.metadata;
+  const manifestVersionRaw = rawMetadata['manifest-version'] ?? rawMetadata.manifestVersion;
+
+  const userInvocableRaw = coerceBooleanField(
+    rawMetadata['user-invocable'] ?? rawMetadata.userInvocable
+  );
+  const argumentHintRaw =
+    rawMetadata['argument-hint'] ?? rawMetadata.argumentHint;
 
   const metadata: Partial<SkillMetadata> = {
     id: skillId,
@@ -337,14 +444,22 @@ export function parseSkillFile(
     description: coerceStringField(rawMetadata.description),
     version: coerceStringField(rawMetadata.version),
     author: coerceStringField(rawMetadata.author),
+    license: coerceStringField(rawMetadata.license),
+    homepage: coerceStringField(rawMetadata.homepage),
+    tags: coerceStringArrayField(rawMetadata.tags),
+    compatibility: coerceStringField(rawMetadata.compatibility),
     priority: typeof rawMetadata.priority === 'number' ? rawMetadata.priority : undefined,
     allowedTools: coerceStringArrayField(allowedToolsRaw),
     tools: coerceStringArrayField(toolsRaw), // 向后兼容
-    disableAutoInvoke: rawMetadata.disableAutoInvoke === true || rawMetadata.disableAutoInvoke === 'true',
+    disableAutoInvoke: parseDisableAutoInvoke(rawMetadata),
+    userInvocable: userInvocableRaw,
+    argumentHint: coerceStringField(argumentHintRaw),
     embeddedTools: parseEmbeddedTools(embeddedToolsRaw, warnings),
     skillType: parseSkillType(skillTypeRaw),
     relatedSkills: coerceStringArrayField(relatedSkillsRaw),
     dependencies: coerceStringArrayField(dependenciesRaw),
+    requires: parseRequiresField(requiresRaw, metadataRaw),
+    manifestVersion: coerceStringField(manifestVersionRaw),
   };
 
   // 4. 验证元数据
@@ -373,14 +488,22 @@ export function parseSkillFile(
     description: metadata.description!,
     version: metadata.version,
     author: metadata.author,
+    license: metadata.license,
+    homepage: metadata.homepage,
+    tags: metadata.tags,
+    compatibility: metadata.compatibility,
     priority: metadata.priority ?? SKILL_DEFAULT_PRIORITY,
     allowedTools: metadata.allowedTools,
     tools: metadata.tools, // 向后兼容
     disableAutoInvoke: metadata.disableAutoInvoke ?? false,
+    userInvocable: metadata.userInvocable,
+    argumentHint: metadata.argumentHint,
     embeddedTools: metadata.embeddedTools, // 渐进披露架构核心字段
     skillType: metadata.skillType ?? 'standalone', // 默认独立型
     relatedSkills: metadata.relatedSkills,
     dependencies: metadata.dependencies,
+    requires: metadata.requires,
+    manifestVersion: metadata.manifestVersion,
     content: markdownContent,
     sourcePath,
     location,
@@ -453,6 +576,9 @@ export function extractSkillMetadata(
     const relatedSkillsRaw = raw['related-skills'] ?? raw.relatedSkills;
     // 支持 dependencies
     const dependenciesRaw = raw.dependencies;
+    const requiresRaw = raw.requires;
+    const metadataRaw = raw.metadata;
+    const manifestVersionRaw = raw['manifest-version'] ?? raw.manifestVersion;
 
     return {
       id: skillId,
@@ -460,14 +586,22 @@ export function extractSkillMetadata(
       description: raw.description,
       version: coerceStringField(raw.version),
       author: coerceStringField(raw.author),
+      license: coerceStringField(raw.license),
+      homepage: coerceStringField(raw.homepage),
+      tags: coerceStringArrayField(raw.tags),
+      compatibility: coerceStringField(raw.compatibility),
       priority: (typeof raw.priority === 'number' ? raw.priority : undefined) ?? SKILL_DEFAULT_PRIORITY,
       allowedTools,
       tools: coerceStringArrayField(raw.tools), // 向后兼容
-      disableAutoInvoke: raw.disableAutoInvoke === true,
+      disableAutoInvoke: parseDisableAutoInvoke(raw),
+      userInvocable: coerceBooleanField(raw['user-invocable'] ?? raw.userInvocable),
+      argumentHint: coerceStringField(raw['argument-hint'] ?? raw.argumentHint),
       embeddedTools,
       skillType: parseSkillType(skillTypeRaw),
       relatedSkills: coerceStringArrayField(relatedSkillsRaw),
       dependencies: coerceStringArrayField(dependenciesRaw),
+      requires: parseRequiresField(requiresRaw, metadataRaw),
+      manifestVersion: coerceStringField(manifestVersionRaw),
     };
   } catch (e: unknown) {
     console.warn(`[SkillParser]`, i18n.t('skills:parser.extractMetadataFailed', { skillId }), e);
@@ -531,6 +665,16 @@ export function serializeSkillToMarkdown(
   frontmatter.description = metadata.description;
   setIfDefined(frontmatter, 'version', metadata.version);
   setIfDefined(frontmatter, 'author', metadata.author);
+  setIfDefined(frontmatter, 'license', metadata.license);
+  setIfDefined(frontmatter, 'homepage', metadata.homepage);
+  setIfDefined(frontmatter, 'compatibility', metadata.compatibility);
+
+  if (metadata.tags && metadata.tags.length > 0) {
+    frontmatter.tags = metadata.tags;
+  } else {
+    delete frontmatter.tags;
+  }
+
   if (metadata.priority !== undefined && metadata.priority !== SKILL_DEFAULT_PRIORITY) {
     frontmatter.priority = metadata.priority;
   } else {
@@ -546,11 +690,31 @@ export function serializeSkillToMarkdown(
     delete frontmatter.tools;
   }
 
+  // disableAutoInvoke 为 Deep Student 一等字段；Anthropic 的 disable-model-invocation
+  // 在解析期已合并进来，序列化时写回原生字段并清理 kebab/camel 别名，避免重复。
   if (metadata.disableAutoInvoke) {
     frontmatter.disableAutoInvoke = true;
   } else {
     delete frontmatter.disableAutoInvoke;
   }
+  delete frontmatter['disable-model-invocation'];
+  delete frontmatter.disableModelInvocation;
+
+  if (metadata.userInvocable === false) {
+    frontmatter['user-invocable'] = false;
+  } else if (metadata.userInvocable === true) {
+    frontmatter['user-invocable'] = true;
+  } else {
+    delete frontmatter['user-invocable'];
+  }
+  delete frontmatter.userInvocable;
+
+  if (metadata.argumentHint) {
+    frontmatter['argument-hint'] = metadata.argumentHint;
+  } else {
+    delete frontmatter['argument-hint'];
+  }
+  delete frontmatter.argumentHint;
 
   if (metadata.skillType && metadata.skillType !== 'standalone') {
     frontmatter['skill-type'] = metadata.skillType;
@@ -570,6 +734,30 @@ export function serializeSkillToMarkdown(
     frontmatter.dependencies = metadata.dependencies;
   } else {
     delete frontmatter.dependencies;
+  }
+
+  if (
+    metadata.requires &&
+    (metadata.requires.bins?.length ||
+      metadata.requires.env?.length ||
+      metadata.requires.pythonPackages?.length)
+  ) {
+    frontmatter.requires = {
+      ...(metadata.requires.bins?.length ? { bins: metadata.requires.bins } : {}),
+      ...(metadata.requires.env?.length ? { env: metadata.requires.env } : {}),
+      ...(metadata.requires.pythonPackages?.length
+        ? { python_packages: metadata.requires.pythonPackages }
+        : {}),
+    };
+  } else {
+    delete frontmatter.requires;
+  }
+
+  if (metadata.manifestVersion) {
+    frontmatter['manifest-version'] = metadata.manifestVersion;
+  } else {
+    delete frontmatter['manifest-version'];
+    delete frontmatter.manifestVersion;
   }
 
   if (metadata.embeddedTools && metadata.embeddedTools.length > 0) {

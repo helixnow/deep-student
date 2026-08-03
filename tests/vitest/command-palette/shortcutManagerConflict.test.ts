@@ -17,6 +17,7 @@ import type { Command, DependencyResolver } from '@/command-palette/registry/typ
 const createDeps = (): DependencyResolver => ({
   navigate: () => {},
   getCurrentView: () => 'chat-v2',
+  getFocusedWorkbenchAppTypeId: () => null,
   t: ((key: string) => key) as unknown as TFunction,
   showNotification: () => {},
   toggleTheme: () => {},

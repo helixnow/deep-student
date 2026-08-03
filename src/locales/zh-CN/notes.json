@@ -117,7 +117,8 @@
     "share_success_title": "分享成功",
     "share_success_message": "已复制资源路径，可发送给其他人",
     "share_failed_title": "分享失败",
-    "share_failed_message": "复制分享链接失败，请检查剪贴板权限"
+    "share_failed_message": "复制分享链接失败，请检查剪贴板权限",
+    "delete_confirm_message": "确定要删除此资源吗？删除后可在回收站恢复。"
   },
   "mistakeReferenceCard": {
     "title": "错题引用",
@@ -249,7 +250,28 @@
     "prev": "上一个 (Shift+Enter)",
     "next": "下一个 (Enter)",
     "showReplace": "展开替换",
-    "hideReplace": "收起替换"
+    "hideReplace": "收起替换",
+    "findLabel": "查找",
+    "panelLabel": "查找和替换",
+    "replaceLabel": "替换为"
+  },
+  "editorV2": {
+    "use_regex": "使用正则表达式",
+    "find_regex_placeholder": "查找（正则）…",
+    "find_invalid_regex": "无效正则表达式",
+    "outline_expand": "展开分组",
+    "outline_collapse": "折叠分组",
+    "conflict_compare": "对比",
+    "conflict_compare_hide": "收起对比",
+    "conflict_diff_title": "我的版本 vs 远端版本",
+    "conflict_diff_legend": "+ 我的版本 · − 远端版本",
+    "conflict_diff_identical": "两个版本内容一致",
+    "conflict_diff_loading": "正在加载远端版本…",
+    "conflict_diff_load_failed": "无法加载远端版本",
+    "conflict_diff_retry": "重试",
+    "tag_too_long": "单个标签最多 {{max}} 个字符",
+    "tag_invalid_chars": "标签不能包含控制字符",
+    "tags_limit_reached": "最多添加 {{max}} 个标签"
   },
   "mentions": {
     "loading": "正在加载…",
@@ -263,6 +285,7 @@
     "irec_prefix": "@灵感"
   },
   "toolbar": {
+    "ask_agent": "询问 Agent",
     "new_note": "新建笔记",
     "new_folder": "新建文件夹",
     "refresh": "刷新",
@@ -310,7 +333,29 @@
     "editing_mode": "编辑模式",
     "reading_mode_on": "已进入阅读模式",
     "reading_mode_off": "已进入编辑模式",
-    "find_replace": "查找替换"
+    "find_replace": "查找替换",
+    "note_templates": "笔记模板",
+    "focus_mode": "专注模式",
+    "exit_focus_mode": "退出专注模式",
+    "label": "格式化"
+  },
+  "templates": {
+    "lecture": "听课笔记",
+    "mistake": "错题复盘",
+    "exam": "应试整理"
+  },
+  "blockMenu": {
+    "label": "块操作",
+    "turnInto": "转换为",
+    "paragraph": "正文",
+    "heading1": "一级标题",
+    "heading2": "二级标题",
+    "heading3": "三级标题",
+    "bulletList": "无序列表",
+    "orderedList": "有序列表",
+    "quote": "引用",
+    "duplicate": "复制块",
+    "delete": "删除块"
   },
   "search": {
     "placeholder": "搜索笔记...",
@@ -391,7 +436,11 @@
       "paste_failed": "粘贴图片处理失败：{{error}}",
       "command_failed": "Slash 指令插入图片失败：{{error}}",
       "success": "图片已插入",
+      "too_large": "图片超过 10MB 限制",
       "placeholder": "点击或拖拽上传图片",
+      "placeholder_touch": "点击上传图片",
+      "upload_button": "上传图片",
+      "upload_button_inline": "上传",
       "caption_placeholder": "添加图片说明...",
       "inline_placeholder": "粘贴图片链接或上传",
       "drop_overlay_title": "释放以插入图片",
@@ -399,13 +448,15 @@
     },
     "conflict_refreshed": "笔记已在其他位置被修改，已刷新为最新版本",
     "conflict_restore_mine": "恢复我的版本",
+    "conflict_keep_remote": "保留远端版本",
     "save_status": {
       "saved": "已保存",
       "saving": "保存中...",
       "saved_at": "已保存于 {{time}}",
       "unsaved": "未保存",
       "save_failed": "保存失败",
-      "conflict": "检测到冲突，请检查最新内容",
+      "conflict": "检测到冲突，已刷新为最新版本（见通知中的「恢复我的版本」）",
+      "retry": "重试",
       "auto_save": "自动保存"
     },
     "placeholder": {
@@ -465,7 +516,13 @@
       "caption": "图片说明",
       "caption_placeholder": "添加图片说明...",
       "click_to_edit": "点击编辑...",
-      "reset": "重置"
+      "reset": "重置",
+      "load_failed": "图片加载失败",
+      "lightbox_label": "图片预览",
+      "lightbox_alt": "预览图片",
+      "lightbox_close": "关闭",
+      "lightbox_original": "原尺寸",
+      "lightbox_fit": "适应屏幕"
     },
     "slash": {
       "link_title_prompt": "链接标题",
@@ -553,7 +610,19 @@
     },
     "ai_stop": "停止续写",
     "portaled_to_canvas": "编辑器已在白板中打开",
-    "portaled_hint": "在白板中编辑此笔记"
+    "portaled_hint": "在白板中编辑此笔记",
+    "deleted_with_unsaved_changes": "资源已被删除；窗口保留未保存内容，请复制内容后再关闭。",
+    "link": {
+      "href_required": "请先输入链接地址"
+    }
+  },
+  "crepe": {
+    "link": {
+      "href_required": "请先输入链接地址"
+    },
+    "image": {
+      "load_failed": "图片加载失败"
+    }
   },
   "find": {
     "placeholder": "查找…"
@@ -745,6 +814,9 @@
     "success": "导出成功",
     "success_desc": "已导出 {{count}} 条笔记到：{{path}}",
     "failed": "导出失败",
+    "no_active_resource": "没有打开的资源，请先打开要导出的笔记或文件。",
+    "not_available_all": "“导出全部笔记”尚未接入。请用「导出当前笔记」，或从侧栏右键菜单导出单个资源。",
+    "fallback_current": "全部导出尚未接入，已改为导出当前打开的资源。",
     "select_format": "选择格式",
     "format": {
       "label": "导出格式",
@@ -780,7 +852,8 @@
     "actions": {
       "export": "导出",
       "exporting": "正在导出…"
-    }
+    },
+    "all_notes_hint": "将导出所有笔记及其附件"
   },
   "dialogs": {
     "close": "关闭",
@@ -956,20 +1029,23 @@
   },
   "context": {
     "open": "打开",
+    "properties": "属性",
     "outline": "大纲",
     "outgoing": "外链",
-    "select_hint": "选择笔记以查看上下文",
+    "select_hint": "选择笔记以查看属性",
     "typography_title": "排版样式",
     "typography_description": "调整字号、行距和字体",
     "typography_default": "默认",
     "typography_markdown_hint": "Markdown 编辑器使用默认样式，不支持富文本格式（字体、字号等）。",
-    "created": "创建时间",
-    "updated": "更新时间",
+    "created": "创建",
+    "updated": "更新",
     "tags": "标签",
+    "tags_empty_hint": "添加标签以便整理",
     "add_tag": "添加标签",
     "tag_add_failed": "添加标签失败",
     "tag_remove_failed": "删除标签失败",
     "no_headings": "暂无标题",
+    "outline_empty_hint": "用 # 或工具栏添加标题",
     "assets": "附件",
     "no_assets": "暂无附件",
     "no_outgoing": "暂无外链",
@@ -984,7 +1060,8 @@
     "load_failed": "加载链接失败：{{message}}",
     "retry": "重试",
     "truncated_outgoing": "已截断显示前 200 条出链",
-    "truncated_external": "已截断显示前 200 条外链"
+    "truncated_external": "已截断显示前 200 条外链",
+    "tag_remove": "Remove tag"
   },
   "outlineMindmap": {
     "empty": "空空如也",
@@ -1130,7 +1207,9 @@
     "export_single_failed": "导出失败：{{error}}",
     "export_single_mobile_hint": "移动端将使用默认导出目录，请稍后在文件管理器中查看。",
     "exporting_single": "正在导出当前笔记…",
-    "export_filter_name": "Markdown 笔记导出"
+    "export_filter_name": "Markdown 笔记导出",
+    "confirm_rename": "确认重命名",
+    "cancel_rename": "取消重命名"
   },
   "slashMenu": {
     "textGroup": {
@@ -1156,8 +1235,59 @@
       "image": "图片",
       "codeBlock": "代码块",
       "table": "表格",
-      "math": "数学公式"
+      "math": "数学公式",
+      "callout": "高亮块"
     }
+  },
+  "callout": {
+    "type": {
+      "note": "笔记",
+      "tip": "提示",
+      "warning": "警告",
+      "danger": "危险",
+      "info": "信息"
+    },
+    "cycleType": "切换 Callout 类型"
+  },
+  "wikilink": {
+    "create": "创建 \"{{title}}\"",
+    "empty": "无匹配笔记"
+  },
+  "wikilinkV2": {
+    "createConfirm": "创建新笔记「{{title}}」？",
+    "createConfirmAction": "创建",
+    "createConfirmCancel": "取消",
+    "imageResetZoom": "重置缩放",
+    "imageViewerHint": "滚轮缩放 · 拖拽平移 · 双击复位",
+    "previewRetry": "重试",
+    "recentGroup": "最近使用",
+    "allGroup": "全部"
+  },
+  "mention": {
+    "loading": "搜索中…",
+    "empty": "无匹配笔记"
+  },
+  "toggle": {
+    "arrowLabel": "展开或折叠",
+    "titlePlaceholder": "无标题",
+    "slashLabel": "折叠块",
+    "slashDescription": "可折叠的标题与内容"
+  },
+  "mobileToolbar": {
+    "label": "移动端编辑工具条",
+    "slash": "块菜单",
+    "outdent": "减少缩进",
+    "indent": "增加缩进",
+    "bold": "粗体",
+    "italic": "斜体",
+    "heading1": "一级标题",
+    "heading2": "二级标题",
+    "heading3": "三级标题",
+    "bulletList": "无序列表",
+    "taskList": "任务列表",
+    "image": "图片",
+    "undo": "撤销",
+    "redo": "重做"
   },
   "versions": {
     "title": "版本历史",
@@ -1366,5 +1496,12 @@
   },
   "tips": {
     "versionHistory": "版本历史可在笔记面板中查看和回滚"
+  },
+  "ai": {
+    "continue_not_available": "AI 续写命令暂不可用，请使用聊天面板发起编辑。"
+  },
+  "a11y": {
+    "close": "关闭",
+    "clear": "清除"
   }
 }

@@ -17,14 +17,14 @@ import i18n from 'i18next';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
-import { isModelMultimodalAsync } from '@/features/chat/hooks/useAvailableModels';
 import {
-  areAttachmentInjectModesReady,
-  downgradeInjectModesForNonMultimodal,
   getMissingInjectModesForAttachment,
+  getMediaTypeForAttachment,
   hasAnySelectedInjectModeReady,
+  resolveExplicitInjectModes,
 } from './injectModeUtils';
 import { resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
+import { clearComposerDraft } from './composerDraftStorage';
 // ============================================================================
 // InputBar 选项
 // ============================================================================
@@ -60,6 +60,9 @@ export function useInputBarV2(
   // 使用 ref 保持回调的最新引用，避免闭包陈旧问题
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  // 发送重入保护：sendMessage 在真正落库/入队前有多个 await（readiness、模型能力查询），
+  // 期间快速连按 Enter / 连点发送会并发进入，队列模式下会把同一内容重复入队
+  const sendInFlightRef = useRef(false);
   // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较
   const {
     inputValue,
@@ -108,6 +111,17 @@ export function useInputBarV2(
 
   // 发送消息
   const sendMessage = useCallback(async () => {
+    if (sendInFlightRef.current) {
+      return;
+    }
+    sendInFlightRef.current = true;
+    try {
+      await sendMessageInner();
+    } finally {
+      sendInFlightRef.current = false;
+    }
+
+    async function sendMessageInner() {
     // 🆕 维护模式检查：阻止发送消息
     if (useSystemStatusStore.getState().maintenanceMode) {
       showGlobalNotification('warning', i18n.t('common:maintenance.blocked_chat_send', '维护模式下无法发送消息，请稍后再试。'));
@@ -117,16 +131,28 @@ export function useInputBarV2(
     const state = store.getState();
 
     // 守卫检查
+    // ★ B5 修复：所有 early-return 路径统一给出可见反馈（与注入模式守卫一致），
+    // 竞态下用户点发送不再「无声失败」
     // 队列模式：sessionStatus 为 streaming 时也允许（会走 enqueue 分支）
     const willEnqueue = state.sessionStatus !== 'idle';
     if (willEnqueue) {
       // 队列守卫：必须启用且未满
       if (!queueEnabled || (state.queuedMessages?.length ?? 0) >= QUEUE_HARD_CAP) {
         console.warn('[useInputBarV2] Cannot enqueue: queue disabled or full');
+        showGlobalNotification(
+          'warning',
+          !queueEnabled
+            ? i18n.t('chatV2:inputBar.sendGuard.streaming')
+            : i18n.t('chatV2:queue.fullTooltip')
+        );
         return;
       }
     } else if (!state.canSend()) {
       console.warn('[useInputBarV2] Cannot send: guard check failed');
+      showGlobalNotification(
+        'warning',
+        i18n.t('chatV2:inputBar.sendGuard.notReady')
+      );
       return;
     }
 
@@ -134,7 +160,7 @@ export function useInputBarV2(
 
     const readiness = await resolveChatReadiness();
     if (!readiness.ok) {
-      showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready', '当前会话尚未就绪'));
+      showGlobalNotification('warning', readiness.message || i18n.t('chatV2:readiness.not_ready'));
       if (readiness.cta === 'OPEN_SETTINGS_MODELS') {
         triggerOpenSettingsModels();
       }
@@ -147,7 +173,7 @@ export function useInputBarV2(
     }
 
     const currentAttachments = state.attachments;
-    let effectiveAttachments = currentAttachments;
+    const effectiveAttachments = currentAttachments;
     
     // ========== 多变体支持（chips 模式） ==========
     const content = rawContent; // 输入内容已是纯文本（不含 @模型）
@@ -231,81 +257,15 @@ export function useInputBarV2(
     };
 
     const getMissingModesLabel = (attachment: AttachmentMeta, missingModes: string[]): string => {
-      const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
-      const mediaTypeKey = isPdf ? 'pdf' : 'image';
+      const mediaTypeKey = getMediaTypeForAttachment(attachment) === 'pdf' ? 'pdf' : 'image';
       const modeLabels = missingModes.map((mode) => i18n.t(`chatV2:injectMode.${mediaTypeKey}.${mode}`, {
         defaultValue: mode,
       }));
-      return modeLabels.join(i18n.t('chatV2:inputBar.modeSeparator', { defaultValue: '、' }));
+      return modeLabels.join(i18n.t('chatV2:inputBar.modeSeparator'));
     };
 
-    // 非多模态模型下，自动将图片注入模式回退为文本/OCR，避免发送后图片被模型忽略。
-    const selectedModelIds = selectedModels && selectedModels.length > 0
-      ? (selectedModels.length >= 2 && multiModelSelectEnabled
-          ? selectedModels.map(m => m.id)
-          : [selectedModels[selectedModels.length - 1].id])
-      : (state.chatParams.modelId ? [state.chatParams.modelId] : []);
-
-    let hasNonMultimodalTarget = false;
-    let hasMultimodalTarget = false;
-    if (selectedModelIds.length > 0) {
-      const capabilities = await Promise.all(
-        selectedModelIds.map(async (id) => ({ id, isMultimodal: await isModelMultimodalAsync(id) }))
-      );
-      hasNonMultimodalTarget = capabilities.some(c => !c.isMultimodal);
-      hasMultimodalTarget = capabilities.some(c => c.isMultimodal);
-    }
-
-    const shouldDowngradeForTextOnlyTargets = hasNonMultimodalTarget && !hasMultimodalTarget;
-
-    if (shouldDowngradeForTextOnlyTargets) {
-      let adjustedCount = 0;
-      let unresolvedCount = 0;
-      effectiveAttachments = currentAttachments.map((attachment) => {
-        const injectModes = downgradeInjectModesForNonMultimodal(attachment);
-        if (!injectModes) {
-          return attachment;
-        }
-
-        const nextAttachment: AttachmentMeta = { ...attachment, injectModes };
-        const status = getAttachmentStatus(attachment);
-        if (!areAttachmentInjectModesReady(nextAttachment, status)) {
-          unresolvedCount += 1;
-          return attachment;
-        }
-
-        adjustedCount += 1;
-        state.updateAttachment(attachment.id, { injectModes });
-        if (attachment.resourceId) {
-          state.updateContextRefInjectModes(attachment.resourceId, {
-            image: injectModes.image,
-            pdf: injectModes.pdf,
-          });
-        }
-        return nextAttachment;
-      });
-
-      if (adjustedCount > 0) {
-        showGlobalNotification(
-          'warning',
-          i18n.t('chatV2:inputBar.nonMultimodalImageFallback', {
-            count: adjustedCount,
-            defaultValue: '当前模型不支持图片输入，已自动切换为文本/OCR 模式。可切换到支持多模态的模型后再启用图片模式。',
-          })
-        );
-      }
-
-      if (unresolvedCount > 0) {
-        showGlobalNotification(
-          'warning',
-          i18n.t('chatV2:inputBar.nonMultimodalImageFallbackUnavailable', {
-            count: unresolvedCount,
-            defaultValue: '当前模型不支持图片输入，且有附件尚未准备好可用的文本/OCR模式。请切换到多模态模型，或等待 OCR 完成后重试。',
-          })
-        );
-        return;
-      }
-    }
+    // 源附件的注入选择不随 TM/MM 切换而改写。Rust context compiler 会为每个
+    // 目标模型分别选择原图直读、辅助 MM 观察、OCR 或无视觉文本降级。
 
     // 检查是否有附件正在上传
     const hasUploadingAttachments = effectiveAttachments.some(
@@ -313,13 +273,16 @@ export function useInputBarV2(
     );
     if (hasUploadingAttachments) {
       console.warn('[useInputBarV2] Cannot send: attachments still uploading');
+      showGlobalNotification(
+        'warning',
+        i18n.t('chatV2:inputBar.attachmentsUploading')
+      );
       return;
     }
 
     const blockingModeAttachment = effectiveAttachments.find((attachment) => {
-      const isMedia = attachment.mimeType === 'application/pdf'
-        || attachment.name.toLowerCase().endsWith('.pdf')
-        || attachment.mimeType?.startsWith('image/');
+      // SSOT 媒体识别：MIME OR 扩展名（含空 mime 的图片文件）
+      const isMedia = getMediaTypeForAttachment(attachment) !== null;
       if (!isMedia) {
         return false;
       }
@@ -339,17 +302,28 @@ export function useInputBarV2(
         i18n.t('chatV2:inputBar.attachmentNotReady', {
           name: blockingModeAttachment.name,
           modes: missingLabel || missingModes.join(', '),
-          defaultValue: `附件未就绪：${blockingModeAttachment.name}`,
         })
       );
       return;
     }
 
+    // ★ P2：error 附件不再静默剔除——发送前明确列出被排除的文件名
+    const errorAttachments = effectiveAttachments.filter((a) => a.status === 'error');
+    if (errorAttachments.length > 0) {
+      const separator = i18n.t('chatV2:inputBar.modeSeparator');
+      const names = errorAttachments.map((a) => a.name).join(separator);
+      showGlobalNotification(
+        'warning',
+        i18n.t('chatV2:inputBar.errorAttachmentsExcluded', {
+          count: errorAttachments.length,
+          names,
+        })
+      );
+    }
+
     // 只发送 ready 状态，或 processing 但所选模式已就绪的附件。
     const readyAttachments = effectiveAttachments.filter((attachment) => {
-      const isMedia = attachment.mimeType === 'application/pdf'
-        || attachment.name.toLowerCase().endsWith('.pdf')
-        || attachment.mimeType?.startsWith('image/');
+      const isMedia = getMediaTypeForAttachment(attachment) !== null;
 
       if (!isMedia) {
         return attachment.status === 'ready';
@@ -378,8 +352,20 @@ export function useInputBarV2(
     // 内容检查
     if (!finalContent && allAttachments.length === 0) {
       console.warn('[useInputBarV2] Cannot send: no content');
+      showGlobalNotification(
+        'warning',
+        i18n.t('common:messages.error.empty_input', '请输入内容')
+      );
       return;
     }
+
+    // 正文已拷贝到 finalContent。先清草稿 + 乐观清空输入框：
+    // 1) 避免异步 prep 期间 debounce 又把正文写回 sessionStorage
+    // 2) 首条消息 empty→docked remount 时不会把已发送内容恢复进输入框
+    // sendMessageWithIds 仍会再清一次（attachments / sticky refs），此处只提前清文本。
+    const previousInput = state.inputValue;
+    clearComposerDraft(state.sessionId);
+    state.setInputValue('');
 
     try {
       // 路由：streaming 时入队，idle 时直发
@@ -388,11 +374,9 @@ export function useInputBarV2(
         // 但保留 pendingContextRefs 不清除 —— 用户还在为后续消息组合上下文。
         const nonStickyRefs = state.pendingContextRefs.filter((r) => r.isSticky !== true);
         state.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
-        // 清空输入框和附件（与直发路径行为一致），但保留 pendingContextRefs
-        state.setInputValue('');
         state.clearAttachments();
       } else {
-        // 直发：sendMessage 内部已清空 inputValue/attachments/contextRefs（保留 sticky）
+        // 直发：sendMessage 内部会再清空 attachments/contextRefs（保留 sticky）
         await state.sendMessage(finalContent, allAttachments);
       }
 
@@ -409,7 +393,13 @@ export function useInputBarV2(
       }
     } catch (error: unknown) {
       console.error('[useInputBarV2] Send message failed:', error);
+      // 本地回合尚未提交时恢复正文，便于重试；已 commit 则保持空输入
+      const latest = store.getState();
+      if (latest.sessionStatus === 'idle' && !latest.inputValue.trim() && previousInput) {
+        latest.setInputValue(previousInput);
+      }
       throw error;
+    }
     }
   }, [store, queueEnabled]);
 
@@ -440,41 +430,40 @@ export function useInputBarV2(
   );
 
   // 更新附件（原地更新，避免闪烁）
-  // ★ 如果更新包含 injectModes，同时更新对应的 ContextRef
-  // ★ 如果更新包含 resourceId（上传完成），同步附件的 injectModes 到 ContextRef
+  // ★ P0 契约（注入模式 SSOT）：附件与其 ContextRef 的 injectModes 必须始终一致，
+  //   且 ContextRef 上永远显式携带（后端缺省逻辑不触发）。三条同步路径：
+  //   1) updates.injectModes —— 用户在选择器中变更模式；
+  //   2) updates.resourceId —— 上传完成建立 ContextRef 关联；
+  //   3) 附件缺省 —— 兜底补写 UI 默认模式（PDF=['text'] / 图片=['image']）。
   const updateAttachment = useCallback(
     (attachmentId: string, updates: Partial<AttachmentMeta>) => {
+      store.getState().updateAttachment(attachmentId, updates);
+
+      // 统一读取更新后的最新状态（旧实现读更新前快照，附件刚创建时会漏同步）
       const state = store.getState();
-      state.updateAttachment(attachmentId, updates);
-      
-      // ★ 如果更新包含 injectModes，同时更新对应的 ContextRef
-      if (updates.injectModes !== undefined) {
-        // 找到对应的附件以获取 resourceId
-        const attachment = state.attachments.find(a => a.id === attachmentId);
-        if (attachment?.resourceId) {
-          // 将 AttachmentInjectModes 转换为 ResourceInjectModes
-          const resourceInjectModes = updates.injectModes ? {
-            image: updates.injectModes.image,
-            pdf: updates.injectModes.pdf,
-          } : undefined;
-          state.updateContextRefInjectModes(attachment.resourceId, resourceInjectModes);
-        }
+      const attachment = state.attachments.find(a => a.id === attachmentId);
+      if (!attachment) return;
+
+      const modesTouched = updates.injectModes !== undefined;
+      const refLinked = updates.resourceId !== undefined;
+      if (!modesTouched && !refLinked) return;
+
+      const resourceId = updates.resourceId ?? attachment.resourceId;
+      if (!resourceId) return;
+
+      // 显式解析生效模式：用户已选则用之，否则补 UI 默认（不允许 undefined 落到后端）
+      const effectiveModes = resolveExplicitInjectModes(attachment);
+      if (!effectiveModes) return; // 非 PDF/图片附件无注入模式概念
+
+      // 附件本体缺省时回填，保持 SSOT 一致（避免 UI 读默认、快照读 undefined 的分裂）
+      if (!attachment.injectModes) {
+        state.updateAttachment(attachmentId, { injectModes: effectiveModes });
       }
-      
-      // ★ 如果更新包含 resourceId（上传完成），同步附件的 injectModes 到 ContextRef
-      // 这处理了用户在上传完成前修改 injectModes 的情况
-      if (updates.resourceId !== undefined) {
-        // 获取更新后的附件状态
-        const updatedState = store.getState();
-        const updatedAttachment = updatedState.attachments.find(a => a.id === attachmentId);
-        if (updatedAttachment?.injectModes) {
-          const resourceInjectModes = {
-            image: updatedAttachment.injectModes.image,
-            pdf: updatedAttachment.injectModes.pdf,
-          };
-          updatedState.updateContextRefInjectModes(updates.resourceId, resourceInjectModes);
-        }
-      }
+
+      state.updateContextRefInjectModes(resourceId, {
+        image: effectiveModes.image,
+        pdf: effectiveModes.pdf,
+      });
     },
     [store]
   );

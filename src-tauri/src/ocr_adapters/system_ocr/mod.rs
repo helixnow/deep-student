@@ -22,6 +22,12 @@ use async_trait::async_trait;
 /// 仅支持 FreeOcr 模式（纯文本输出），不支持 Grounding/公式/表格等高级功能。
 pub struct SystemOcrAdapter;
 
+impl Default for SystemOcrAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SystemOcrAdapter {
     pub fn new() -> Self {
         Self
@@ -43,7 +49,7 @@ pub async fn perform_system_ocr(image_data: &[u8]) -> Result<String, OcrError> {
 fn perform_system_ocr_blocking(image_data: &[u8]) -> Result<String, OcrError> {
     #[cfg(target_os = "macos")]
     {
-        return macos::recognize_text_blocking(image_data);
+        macos::recognize_text_blocking(image_data)
     }
 
     #[cfg(windows)]

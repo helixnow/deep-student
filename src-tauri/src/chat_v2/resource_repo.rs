@@ -1,6 +1,19 @@
-//! ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)。
-//! 此模块操作 chat_v2.db 中的 resources 表，已被 vfs/repos/resource_repo.rs 替代。
-//! 计划在下一次大版本中移除。参见 P1-#9 审计发现。
+//! ⚠️⚠️⚠️ DEPRECATED — 禁止新增调用 ⚠️⚠️⚠️
+//!
+//! ## Deprecation inventory
+//! - **owner**: platform-chat
+//! - **removed**: `resource_*` Tauri 命令 / `resource_handlers.rs`（2026-07-20，零前端 invoke）
+//! - **remove target**: vNext（可删 chat_v2.db `resources` 表只读路径后整模块移除）
+//! - **replacement**: `crate::vfs::repos::VfsResourceRepo` / `vfs_*` 命令
+//!
+//! 资源存储的真源（source of truth）已迁移到 VFS (vfs.db)。
+//! 此模块操作 chat_v2.db 中的旧 resources 表；`resource_handlers` 已注销后本仓库
+//! 暂无生产调用方，仅保留以兼容历史 chat_v2.db 行与迁移/审计路径。
+//!
+//! ## 新代码指引
+//! - 读写资源请使用 `crate::vfs::repos::VfsResourceRepo` / `VfsFileRepo` / `VfsBlobRepo`。
+//! - 不要在任何新功能中 import 本模块的 `ResourceRepo`。
+//! - 若需要新的资源字段/查询，请加在 VFS 侧仓库并走 vfs migrations。
 //!
 //! ---
 //!
@@ -71,6 +84,11 @@ impl ResourceRepo {
     }
 
     /// 创建或复用资源（使用现有连接）
+    ///
+    /// 🔧 P0 修复：原实现「先 find_by_hash 再 INSERT」存在 TOCTOU 竞态——
+    /// 两个连接并发写入同一内容时，后到的 INSERT 会撞 `UNIQUE(hash)` 直接报错。
+    /// 现改为 `INSERT ... ON CONFLICT(hash) DO NOTHING` + 冲突后回读，
+    /// 无论并发顺序如何都能拿到同一条资源，且不依赖外层事务。
     pub fn create_or_reuse_with_conn(
         conn: &Connection,
         params: CreateResourceParams,
@@ -79,10 +97,8 @@ impl ResourceRepo {
         let hash = Self::calculate_hash(params.data.as_bytes());
         debug!("[ResourceRepo] Calculated hash: {}", &hash[..16]);
 
-        // 2. 查询是否存在
-        let existing = Self::find_by_hash_with_conn(conn, &hash)?;
-
-        if let Some(resource) = existing {
+        // 2. 快路径：已存在则直接复用（避免为重复内容白白生成 id / 序列化 metadata）
+        if let Some(resource) = Self::find_by_hash_with_conn(conn, &hash)? {
             debug!(
                 "[ResourceRepo] Found existing resource by hash: {}",
                 resource.id
@@ -94,12 +110,12 @@ impl ResourceRepo {
             });
         }
 
-        // 3. 创建新资源
+        // 3. 原子插入：并发同 hash 时 ON CONFLICT DO NOTHING 保证恰好一方插入成功
         let resource_id = Self::generate_id();
         let metadata_json = params
             .metadata
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let created_at = Utc::now().timestamp_millis();
 
@@ -108,10 +124,11 @@ impl ResourceRepo {
         // 不可引用；updated_at 由 V20260523 补充（TEXT，无默认值），需要在
         // INSERT 时显式写入毫秒时间戳，否则同步冲突解析拿到 NULL 无法比较
         // 新旧（sync 的 parse_flexible_timestamp 支持纯数字毫秒串）。
-        conn.execute(
+        let inserted = conn.execute(
             r#"
             INSERT INTO resources (id, hash, type, source_id, data, metadata_json, ref_count, created_at, updated_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)
+            ON CONFLICT(hash) DO NOTHING
             "#,
             params![
                 resource_id,
@@ -124,6 +141,25 @@ impl ResourceRepo {
                 created_at.to_string(),
             ],
         )?;
+
+        if inserted == 0 {
+            // 竞态输家：另一连接在快路径检查之后插入了同 hash 的资源，回读复用
+            let resource = Self::find_by_hash_with_conn(conn, &hash)?.ok_or_else(|| {
+                ChatV2Error::Database(format!(
+                    "resources upsert race: hash {} conflicted but row not found",
+                    &hash[..16.min(hash.len())]
+                ))
+            })?;
+            debug!(
+                "[ResourceRepo] Lost insert race, reusing existing resource: {}",
+                resource.id
+            );
+            return Ok(CreateResourceResult {
+                resource_id: resource.id,
+                hash: resource.hash,
+                is_new: false,
+            });
+        }
 
         info!("[ResourceRepo] Created new resource: {}", resource_id);
 
@@ -297,14 +333,33 @@ impl ResourceRepo {
     }
 
     /// 批量增加引用计数（使用现有连接）
+    ///
+    /// 🔧 P1 修复：原实现循环单条 UPDATE 且无事务，中途失败会留下「部分 +1」。
+    /// 现用 SAVEPOINT 包裹（可嵌套在外层事务中），失败整体回滚；
+    /// 并复用同一条预编译语句，避免逐条重新解析 SQL。
+    /// 保留逐 id 语义：同一 id 出现 N 次即 +N（与调用方引用次数一致）。
     pub fn increment_refs_with_conn(
         conn: &Connection,
         resource_ids: &[String],
     ) -> ChatV2Result<()> {
-        for resource_id in resource_ids {
-            Self::increment_ref_with_conn(conn, resource_id)?;
+        if resource_ids.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        Self::with_savepoint(conn, "resource_incr_refs", |conn| {
+            let mut stmt =
+                conn.prepare("UPDATE resources SET ref_count = ref_count + 1 WHERE id = ?1")?;
+            for resource_id in resource_ids {
+                let rows_affected = stmt.execute(params![resource_id])?;
+                if rows_affected == 0 {
+                    warn!(
+                        "[ResourceRepo] Resource not found for increment_ref: {}",
+                        resource_id
+                    );
+                    return Err(ChatV2Error::ResourceNotFound(resource_id.to_string()));
+                }
+            }
+            Ok(())
+        })
     }
 
     /// 批量减少引用计数
@@ -314,14 +369,54 @@ impl ResourceRepo {
     }
 
     /// 批量减少引用计数（使用现有连接）
+    ///
+    /// 🔧 P1 修复：SAVEPOINT 保证原子性（单条失败整体回滚，不留部分 -1）。
+    /// 单条语义与 decrement_ref 一致：不存在或已为 0 时幂等跳过。
     pub fn decrement_refs_with_conn(
         conn: &Connection,
         resource_ids: &[String],
     ) -> ChatV2Result<()> {
-        for resource_id in resource_ids {
-            Self::decrement_ref_with_conn(conn, resource_id)?;
+        if resource_ids.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        Self::with_savepoint(conn, "resource_decr_refs", |conn| {
+            let mut stmt = conn.prepare(
+                "UPDATE resources SET ref_count = ref_count - 1 WHERE id = ?1 AND ref_count > 0",
+            )?;
+            for resource_id in resource_ids {
+                let rows_affected = stmt.execute(params![resource_id])?;
+                if rows_affected == 0 {
+                    warn!(
+                        "[ResourceRepo] Resource not found or ref_count already 0: {}",
+                        resource_id
+                    );
+                    // 与 decrement_ref 一致：幂等处理，不报错
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// SAVEPOINT 包裹执行：可安全嵌套于外层事务；失败时回滚到保存点。
+    fn with_savepoint<T>(
+        conn: &Connection,
+        name: &str,
+        f: impl FnOnce(&Connection) -> ChatV2Result<T>,
+    ) -> ChatV2Result<T> {
+        conn.execute_batch(&format!("SAVEPOINT {}", name))?;
+        match f(conn) {
+            Ok(value) => {
+                conn.execute_batch(&format!("RELEASE SAVEPOINT {}", name))?;
+                Ok(value)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch(&format!(
+                    "ROLLBACK TO SAVEPOINT {0}; RELEASE SAVEPOINT {0}",
+                    name
+                ));
+                Err(e)
+            }
+        }
     }
 
     // ========================================================================
@@ -652,6 +747,84 @@ mod tests {
 
         assert_eq!(found.id, created.resource_id);
         assert_eq!(found.hash, expected_hash);
+    }
+
+    #[test]
+    fn test_increment_refs_atomic_rollback() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let params = CreateResourceParams {
+            resource_type: ResourceType::Note,
+            data: "batch ref test".to_string(),
+            source_id: None,
+            metadata: None,
+        };
+        let created =
+            ResourceRepo::create_or_reuse(&db, params).expect("Failed to create resource");
+
+        // 批量中含不存在的 id：应整体失败，且已存在资源的 ref_count 不残留 +1
+        let ids = vec![created.resource_id.clone(), "res_missing".to_string()];
+        let result = ResourceRepo::increment_refs(&db, &ids);
+        assert!(result.is_err(), "missing resource should fail the batch");
+
+        let resource = ResourceRepo::get_resource(&db, &created.resource_id, &created.hash)
+            .expect("Failed to get resource")
+            .expect("Resource not found");
+        assert_eq!(
+            resource.ref_count, 0,
+            "partial increment must be rolled back"
+        );
+
+        // 全部存在时正常生效
+        ResourceRepo::increment_refs(&db, &[created.resource_id.clone()])
+            .expect("Failed to increment refs");
+        let resource = ResourceRepo::get_resource(&db, &created.resource_id, &created.hash)
+            .expect("Failed to get resource")
+            .expect("Resource not found");
+        assert_eq!(resource.ref_count, 1);
+    }
+
+    #[test]
+    fn test_create_or_reuse_conflict_insert_reuses_existing() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().expect("conn");
+
+        // 模拟并发竞态：另一连接已插入同 hash 的资源（绕过快路径检查）
+        let data = "raced content".to_string();
+        let hash = ResourceRepo::calculate_hash(data.as_bytes());
+        conn.execute(
+            "INSERT INTO resources (id, hash, type, source_id, data, metadata_json, ref_count, created_at, updated_at)
+             VALUES ('res_winner', ?1, 'note', NULL, ?2, NULL, 0, 1, '1')",
+            params![hash, data],
+        )
+        .expect("seed winner row");
+
+        // ON CONFLICT DO NOTHING 路径：直接执行 upsert SQL 验证不报错且不覆盖
+        let inserted = conn
+            .execute(
+                r#"
+                INSERT INTO resources (id, hash, type, source_id, data, metadata_json, ref_count, created_at, updated_at)
+                VALUES ('res_loser', ?1, 'note', NULL, ?2, NULL, 0, 2, '2')
+                ON CONFLICT(hash) DO NOTHING
+                "#,
+                params![hash, data],
+            )
+            .expect("conflicting insert must not error");
+        assert_eq!(inserted, 0, "conflicting insert should be a no-op");
+
+        // create_or_reuse 复用已有行
+        let result = ResourceRepo::create_or_reuse_with_conn(
+            &conn,
+            CreateResourceParams {
+                resource_type: ResourceType::Note,
+                data,
+                source_id: None,
+                metadata: None,
+            },
+        )
+        .expect("create_or_reuse should reuse existing");
+        assert!(!result.is_new);
+        assert_eq!(result.resource_id, "res_winner");
     }
 
     #[test]

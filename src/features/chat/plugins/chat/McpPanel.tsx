@@ -12,7 +12,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { Wrench, HardDrives, WarningCircle, Lock, Gear, ArrowClockwise } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer, BUILTIN_NAMESPACE } from '@/mcp/builtinMcpServer';
@@ -152,7 +152,9 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
     if (id.startsWith('mcp_')) {
       const suffix = id.substring(4);
       if (/^\d+$/.test(suffix)) {
-        return `MCP ${t('analysis:input_bar.mcp.server')} #${suffix.slice(-4)}`;
+        return t('chatV2:inputBar.plusMenu.mcpServerGeneratedName', {
+          suffix: suffix.slice(-4),
+        });
       }
       return suffix;
     }
@@ -174,7 +176,9 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
 
     const displayTools = server.tools.slice(0, 3).map((tool) => {
       const fullName = isBuiltin ? `${BUILTIN_NAMESPACE}${tool.name}` : tool.name;
-      return getReadableToolName(fullName, t);
+      return getReadableToolName(fullName, t, isBuiltin
+        ? { source: 'builtin' }
+        : { source: 'external', providerName: displayName });
     });
     const remainingCount = server.tools.length - 3;
 
@@ -206,7 +210,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           {isBuiltin ? (
             <span
               className={cn(
-                'shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px]',
+                'shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs',
                 'border border-[color:var(--button-primary-border)]',
                 'bg-[color:var(--button-primary-surface)]',
                 'text-[color:var(--button-primary-foreground)]'
@@ -225,23 +229,24 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           ) : null}
         </span>
         {isConnected && server.tools.length > 0 ? (
-          <span className="mt-0.5 flex items-center gap-1 overflow-hidden text-[10px] text-[color:var(--composer-panel-muted-foreground)]">
+          <span className="mt-0.5 flex items-center gap-1 overflow-hidden text-2xs text-[color:var(--composer-panel-muted-foreground)]">
+            {/* 允许工具名收缩省略，避免窄屏被生硬裁半 */}
             {displayTools.map((name, idx) => (
-              <span key={idx} className="shrink-0">{name}</span>
+              <span key={idx} className="min-w-0 truncate">{name}</span>
             ))}
             {remainingCount > 0 ? (
               <span className="shrink-0 opacity-70">+{remainingCount}</span>
             ) : null}
           </span>
         ) : (
-          <span className="mt-0.5 block text-[10px] text-[color:var(--composer-panel-muted-foreground)]">
+          <span className="mt-0.5 block text-2xs text-[color:var(--composer-panel-muted-foreground)]">
             {isConnected
               ? t('analysis:input_bar.mcp.no_tools')
               : t('common:status.disconnected')}
           </span>
         )}
         {isBuiltin ? (
-          <span className="mt-0.5 flex items-center gap-0.5 text-[9px] text-[color:var(--composer-panel-muted-foreground)] opacity-80">
+          <span className="mt-0.5 flex items-center gap-0.5 text-2xs text-[color:var(--composer-panel-muted-foreground)] opacity-80">
             <Gear size={8} />
             {t('analysis:input_bar.mcp.builtin_hint')}
           </span>
@@ -251,7 +256,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
   };
 
   const headerActions = (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="icon"
       iconOnly
@@ -262,21 +267,20 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
       className={cn(loading && 'animate-spin')}
     >
       <ArrowClockwise size={16} />
-    </NotionButton>
+    </DsButton>
   );
 
   return (
     <ComposerPanel.Root fillHeight className="overflow-hidden">
-      {!isMobile && (
-        <ComposerPanel.Header
-          icon={Wrench}
-          title={t('analysis:input_bar.mcp.title')}
-          count={selectedMcpServers.length}
-          actions={headerActions}
-          onClose={onClose}
-          closeAriaLabel={t('common:actions.cancel')}
-        />
-      )}
+      {/* 📱 移动端也渲染 Header：提供可见的关闭按钮（契约：面板须可见关闭 + 返回键），与 SkillSelector 对齐 */}
+      <ComposerPanel.Header
+        icon={Wrench}
+        title={t('analysis:input_bar.mcp.title')}
+        count={selectedMcpServers.length}
+        actions={headerActions}
+        onClose={onClose}
+        closeAriaLabel={t('common:actions.cancel')}
+      />
 
       <ComposerPanel.Search
         value={searchTerm}
@@ -308,7 +312,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
         </div>
       </CustomScrollArea>
 
-      <p className="shrink-0 text-[10px] text-[color:var(--composer-panel-muted-foreground)]">
+      <p className="shrink-0 text-2xs text-[color:var(--composer-panel-muted-foreground)]">
         {t('analysis:input_bar.mcp.select_tools')}
       </p>
     </ComposerPanel.Root>

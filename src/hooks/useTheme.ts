@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useEventRegistry } from './useEventRegistry';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -20,6 +21,7 @@ export type ThemePalette =
   | 'green'      // 森林绿
   | 'orange'     // 日落橙
   | 'pink'       // 玫瑰粉
+  | 'bright-pink' // 明亮粉
   | 'teal'       // 青碧色
   | 'muted'      // 柔和色调
   | 'paper'      // 纸纹质感
@@ -27,7 +29,7 @@ export type ThemePalette =
 
 /** 预设调色板（不含 custom） */
 export const PRESET_PALETTES: ThemePalette[] = [
-  'default', 'purple', 'green', 'orange', 'pink', 'teal', 'muted', 'paper'
+  'default', 'purple', 'green', 'orange', 'pink', 'bright-pink', 'teal', 'muted', 'paper'
 ];
 
 /** 所有调色板 */
@@ -55,6 +57,7 @@ export const PALETTE_PREVIEW_COLORS: Record<string, string> = {
   green: '#2b7352',
   orange: '#9f5014',
   pink: '#9d2a59',
+  'bright-pink': '#fb7299',
   teal: '#247078',
   muted: '#445a7e',
   paper: '#473c37',
@@ -65,9 +68,9 @@ export const PALETTE_PREVIEW_COLORS: Record<string, string> = {
 function hexToHsl(hex: string): [number, number, number] {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return [217, 91, 40];
-  let r = parseInt(result[1], 16) / 255;
-  let g = parseInt(result[2], 16) / 255;
-  let b = parseInt(result[3], 16) / 255;
+  const r = parseInt(result[1], 16) / 255;
+  const g = parseInt(result[2], 16) / 255;
+  const b = parseInt(result[3], 16) / 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   let h = 0, s = 0;
   const l = (max + min) / 2;
@@ -190,6 +193,39 @@ const isValidPalette = (value: unknown): value is ThemePalette =>
 
 const DARK_CLASS = 'dark';
 
+const THEME_TRANSITION_CLASS = 'theme-transitioning';
+const THEME_TRANSITION_FALLBACK_MS = 220;
+
+let themeTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 读取 CSS 变量中的主题过渡时长（毫秒），解析失败时使用兜底值 */
+const readThemeTransitionDurationMs = (root: HTMLElement): number => {
+  const raw = getComputedStyle(root).getPropertyValue('--theme-transition-dur').trim();
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return THEME_TRANSITION_FALLBACK_MS;
+  // 兼容 "220ms" 与 "0.22s" 两种写法
+  return raw.endsWith('ms') ? parsed : raw.endsWith('s') ? parsed * 1000 : parsed;
+};
+
+/**
+ * 亮暗切换瞬间在 <html> 上挂临时 class（样式见 src/shared/styles/app.css），
+ * 让全局颜色属性短暂平滑过渡；过渡结束后移除，避免常驻 transition 拖慢其他交互。
+ * prefers-reduced-motion 下直接跳过。
+ */
+const runThemeSwitchTransition = (root: HTMLElement) => {
+  if (typeof window === 'undefined') return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  root.classList.add(THEME_TRANSITION_CLASS);
+  if (themeTransitionTimer !== null) {
+    clearTimeout(themeTransitionTimer);
+  }
+  themeTransitionTimer = setTimeout(() => {
+    root.classList.remove(THEME_TRANSITION_CLASS);
+    themeTransitionTimer = null;
+  }, readThemeTransitionDurationMs(root) + 50);
+};
+
 /**
  * 应用主题到 DOM
  * 只设置属性和类名，颜色由 CSS 规则匹配
@@ -197,6 +233,13 @@ const DARK_CLASS = 'dark';
  */
 const applyThemeToDom = (isDark: boolean, palette: ThemePalette, customColor?: string) => {
   const root = document.documentElement;
+
+  // 仅在初始化完成后（data-theme 已存在）且亮暗真正翻转时播放全局颜色过渡，
+  // 避免应用启动首次应用主题时出现无意义的整屏过渡
+  const previousTheme = root.getAttribute('data-theme');
+  if (previousTheme !== null && (previousTheme === 'dark') !== isDark) {
+    runThemeSwitchTransition(root);
+  }
 
   root.setAttribute('data-theme', isDark ? 'dark' : 'light');
   root.setAttribute('data-theme-palette', palette);
@@ -253,24 +296,45 @@ export const useTheme = () => {
       setThemeState(prev => ({ ...prev, isSystemDark: e.matches }));
     };
 
-    mediaQuery.addEventListener?.('change', handler) ?? mediaQuery.addListener?.(handler);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handler);
+    } else {
+      mediaQuery.addListener?.(handler);
+    }
     return () => {
-      mediaQuery.removeEventListener?.('change', handler) ?? mediaQuery.removeListener?.(handler);
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', handler);
+      } else {
+        mediaQuery.removeListener?.(handler);
+      }
     };
   }, []);
 
-  useEffect(() => {
-    const handleThemeModeChanged = (event: Event) => {
-      const mode = (event as CustomEvent<{ mode?: ThemeMode }>).detail?.mode;
-      if (mode !== 'light' && mode !== 'dark' && mode !== 'auto') return;
-      setThemeState(prev => ({ ...prev, mode }));
-    };
-
-    window.addEventListener('dstu-theme-mode-changed', handleThemeModeChanged as EventListener);
-    return () => {
-      window.removeEventListener('dstu-theme-mode-changed', handleThemeModeChanged as EventListener);
-    };
+  const handleThemeModeChanged = useCallback((event: Event) => {
+    const mode = (event as CustomEvent<{ mode?: ThemeMode }>).detail?.mode;
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'auto') return;
+    setThemeState(prev => ({ ...prev, mode }));
   }, []);
+
+  const handleThemePaletteChanged = useCallback((event: Event) => {
+    const detail = (event as CustomEvent<{ palette?: string; customColor?: string }>).detail;
+    const palette = detail?.palette;
+    if (!isValidPalette(palette ?? null)) return;
+    setThemeState(prev => ({
+      ...prev,
+      palette: palette as ThemePalette,
+      // custom 调色板需要同时同步色号，避免其他实例用旧色号重新覆盖 DOM 变量
+      customColor: typeof detail?.customColor === 'string' ? detail.customColor : prev.customColor,
+    }));
+  }, []);
+
+  useEventRegistry(
+    [
+      { target: 'window', type: 'dstu-theme-mode-changed', listener: handleThemeModeChanged },
+      { target: 'window', type: 'dstu-theme-palette-changed', listener: handleThemePaletteChanged },
+    ],
+    [handleThemeModeChanged, handleThemePaletteChanged],
+  );
 
   useEffect(() => {
     applyThemeToDom(resolvedIsDark, themeState.palette, themeState.customColor);
@@ -283,6 +347,8 @@ export const useTheme = () => {
       return { ...prev, mode };
     });
     try { localStorage.setItem(STORAGE_KEYS.mode, mode); } catch {}
+    // 广播给其他 useTheme 实例（每个实例持有独立 state，仅靠 DOM 副作用会失同步）
+    window.dispatchEvent(new CustomEvent('dstu-theme-mode-changed', { detail: { mode } }));
   }, []);
 
   const setThemePalette = useCallback((palette: ThemePalette) => {
@@ -292,6 +358,7 @@ export const useTheme = () => {
       return { ...prev, palette };
     });
     try { localStorage.setItem(STORAGE_KEYS.palette, palette); } catch {}
+    window.dispatchEvent(new CustomEvent('dstu-theme-palette-changed', { detail: { palette } }));
   }, []);
 
   const setCustomColor = useCallback((color: string) => {
@@ -305,6 +372,9 @@ export const useTheme = () => {
       localStorage.setItem(STORAGE_KEYS.customColor, color);
       localStorage.setItem(STORAGE_KEYS.palette, 'custom');
     } catch {}
+    window.dispatchEvent(
+      new CustomEvent('dstu-theme-palette-changed', { detail: { palette: 'custom', customColor: color } }),
+    );
   }, []);
 
   const toggleDarkMode = useCallback(() => {

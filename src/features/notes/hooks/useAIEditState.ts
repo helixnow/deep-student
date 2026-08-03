@@ -6,6 +6,8 @@ export type CanvasEditOperation = 'append' | 'replace' | 'set';
 export interface CanvasAIEditRequest {
   requestId: string;
   noteId: string;
+  /** Workbench-local requests may target one exact editor window. */
+  targetWindowId?: string;
   operation: CanvasEditOperation;
   content?: string;
   search?: string;
@@ -46,15 +48,29 @@ export interface AIEditState {
   replaceCount?: number;
 }
 
+export interface AIEditAcceptPayload {
+  proposedContent: string;
+  result: CanvasAIEditResult;
+  /** diff 展示所基于的原文（供调用方检测等待期间的用户编辑） */
+  originalContent: string;
+  /** 原始请求（供调用方按最新全文重算建议） */
+  request: CanvasAIEditRequest;
+}
+
 export interface UseAIEditStateReturn {
   state: AIEditState;
   startEdit: (request: CanvasAIEditRequest, originalContent: string) => CanvasAIEditResult | null;
-  accept: () => { proposedContent: string; result: CanvasAIEditResult } | null;
+  accept: (options?: { clear?: boolean }) => AIEditAcceptPayload | null;
   reject: () => CanvasAIEditResult | null;
   clear: () => void;
 }
 
-function computeProposedContent(
+/**
+ * 由请求与给定原文推导建议后的全文。
+ * 导出给 useCanvasAIEditHandler：内联 diff 下编辑器保持可编辑，
+ * Accept 时可按最新全文重算，避免回滚等待期间的用户编辑。
+ */
+export function computeProposedContent(
   request: CanvasAIEditRequest,
   originalContent: string
 ): { content: string; replaceCount?: number; error?: string } {
@@ -109,6 +125,10 @@ function computeProposedContent(
         replaceCount = parts.length - 1;
         newContent = parts.join(replaceWith);
       }
+
+      if (replaceCount === 0) {
+        return { content: originalContent, error: '未找到要替换的内容' };
+      }
       
       return { content: newContent, replaceCount };
     }
@@ -159,7 +179,12 @@ function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function computeDiffLines(original: string, proposed: string): DiffLine[] {
+/**
+ * 行级 diff 计算（`diff` 库 diffLines 的薄封装）。
+ * 导出复用：AI 编辑 diff 面板之外，保存冲突「对比」（NotesCrepeEditor）
+ * 也用它比较「远端版本 → 我的版本」，避免复制实现。
+ */
+export function computeDiffLines(original: string, proposed: string): DiffLine[] {
   const changes = Diff.diffLines(original, proposed);
   const result: DiffLine[] = [];
   let oldLineNum = 1;
@@ -244,7 +269,7 @@ export function useAIEditState(): UseAIEditStateReturn {
     return null;
   }, []);
 
-  const accept = useCallback((): { proposedContent: string; result: CanvasAIEditResult } | null => {
+  const accept = useCallback((options?: { clear?: boolean }): AIEditAcceptPayload | null => {
     const current = stateRef.current;
     if (!current.isActive || !current.request) {
       return null;
@@ -276,12 +301,16 @@ export function useAIEditState(): UseAIEditStateReturn {
     };
     
     const proposedContent = current.proposedContent;
+    const originalContent = current.originalContent;
+    const request = current.request;
     
-    setState(initialState);
+    if (options?.clear !== false) {
+      setState(initialState);
+    }
     
     console.log('[useAIEditState] Accepted edit:', result.requestId);
     
-    return { proposedContent, result };
+    return { proposedContent, result, originalContent, request };
   }, []);
 
   const reject = useCallback((): CanvasAIEditResult | null => {

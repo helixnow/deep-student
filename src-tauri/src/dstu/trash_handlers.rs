@@ -15,46 +15,12 @@ use crate::vfs::repos::{
 };
 
 use super::error::DstuError;
-use super::handler_utils::{emit_watch_event, parse_timestamp};
+use super::handler_utils::{emit_watch_event, parse_timestamp, purge_resource_by_type_if_trashed};
 use super::types::{DstuNode, DstuNodeType, DstuWatchEvent};
 
 // ============================================================================
 // 向量索引清理辅助函数
 // ============================================================================
-
-/// ★ P1 防护：检查资源是否已在回收站（deleted_at IS NOT NULL）
-///
-/// 防止对活跃资源执行永久删除，确保软删除/硬删除的操作隔离。
-/// 返回 true 表示资源已软删除（可以 purge），false 表示资源仍活跃或不存在。
-pub(crate) fn is_resource_in_trash(db: &VfsDatabase, item_type: &str, item_id: &str) -> bool {
-    let conn = match db.get_conn_safe() {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-    let sql = match item_type {
-        "note" => "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
-        "textbook" | "image" | "file" => {
-            "SELECT COUNT(*) FROM files WHERE id = ?1 AND deleted_at IS NOT NULL"
-        }
-        "exam" => "SELECT COUNT(*) FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL",
-        "translation" => {
-            "SELECT COUNT(*) FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL"
-        }
-        "essay" => {
-            if item_id.starts_with("essay_session_") {
-                "SELECT COUNT(*) FROM essay_sessions WHERE id = ?1 AND deleted_at IS NOT NULL"
-            } else {
-                "SELECT COUNT(*) FROM essays WHERE id = ?1 AND deleted_at IS NOT NULL"
-            }
-        }
-        "folder" => "SELECT COUNT(*) FROM folders WHERE id = ?1 AND deleted_at IS NOT NULL",
-        "mindmap" => "SELECT COUNT(*) FROM mindmaps WHERE id = ?1 AND deleted_at IS NOT NULL",
-        _ => return false,
-    };
-    conn.query_row(sql, params![item_id], |row| row.get::<_, i64>(0))
-        .map(|count| count > 0)
-        .unwrap_or(false)
-}
 
 /// 根据类型和 ID 查找 resource_id（用于向量索引清理）
 ///
@@ -275,6 +241,17 @@ pub async fn dstu_list_trash(
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
 
+    list_trash_with_db(db.inner(), limit, offset)
+}
+
+/// Window-independent production core used by the Tauri command and Agent
+/// executor. All resource repositories and global pagination semantics remain
+/// identical to the desktop path.
+pub(crate) fn list_trash_with_db(
+    db: &VfsDatabase,
+    limit: u32,
+    offset: u32,
+) -> Result<Vec<DstuNode>, DstuError> {
     info!(
         "[DSTU::trash] dstu_list_trash: limit={}, offset={}",
         limit, offset
@@ -283,7 +260,7 @@ pub async fn dstu_list_trash(
     let mut nodes: Vec<DstuNode> = Vec::new();
 
     // 1. 获取已删除的文件夹
-    let deleted_folders = match VfsFolderRepo::list_deleted_folders(&db, limit + offset, 0) {
+    let deleted_folders = match VfsFolderRepo::list_deleted_folders(db, limit + offset, 0) {
         Ok(folders) => folders,
         Err(e) => {
             error!(
@@ -305,7 +282,7 @@ pub async fn dstu_list_trash(
     }
 
     // 2. 获取已删除的笔记
-    let deleted_notes = match VfsNoteRepo::list_deleted_notes(&db, limit + offset, 0) {
+    let deleted_notes = match VfsNoteRepo::list_deleted_notes(db, limit + offset, 0) {
         Ok(notes) => notes,
         Err(e) => {
             error!(
@@ -330,7 +307,7 @@ pub async fn dstu_list_trash(
     }
 
     // 3. 获取已删除的教材
-    let deleted_textbooks = match VfsTextbookRepo::list_deleted_textbooks(&db, limit + offset, 0) {
+    let deleted_textbooks = match VfsTextbookRepo::list_deleted_textbooks(db, limit + offset, 0) {
         Ok(textbooks) => textbooks,
         Err(e) => {
             error!(
@@ -359,7 +336,7 @@ pub async fn dstu_list_trash(
     }
 
     // 4. 获取已删除的题目集
-    let deleted_exams = match VfsExamRepo::list_deleted_exams(&db, limit + offset, 0) {
+    let deleted_exams = match VfsExamRepo::list_deleted_exams(db, limit + offset, 0) {
         Ok(exams) => exams,
         Err(e) => {
             error!(
@@ -388,7 +365,7 @@ pub async fn dstu_list_trash(
     // 5. 获取已删除的翻译
     {
         let deleted_translations =
-            match VfsTranslationRepo::list_deleted_translations(&db, limit + offset, 0) {
+            match VfsTranslationRepo::list_deleted_translations(db, limit + offset, 0) {
                 Ok(translations) => translations,
                 Err(e) => {
                     error!(
@@ -422,7 +399,7 @@ pub async fn dstu_list_trash(
     }
 
     // 6. 获取已删除的作文会话（Learning Hub 使用 essay_session_* 作为“作文资源”）
-    let deleted_sessions = match VfsEssayRepo::list_deleted_sessions(&db, limit + offset, 0) {
+    let deleted_sessions = match VfsEssayRepo::list_deleted_sessions(db, limit + offset, 0) {
         Ok(sessions) => sessions,
         Err(e) => {
             error!(
@@ -448,7 +425,7 @@ pub async fn dstu_list_trash(
 
     // 注意：禁止旧 essay 轮次（essay_*）的向后兼容，只支持 essay_session
 
-    let deleted_files = match VfsFileRepo::list_deleted_files(&db, (limit + offset) as u32, 0u32) {
+    let deleted_files = match VfsFileRepo::list_deleted_files(db, limit + offset, 0) {
         Ok(files) => files,
         Err(e) => {
             error!(
@@ -479,7 +456,7 @@ pub async fn dstu_list_trash(
     }
 
     // 7. 获取已删除的知识导图
-    let deleted_mindmaps = match VfsMindMapRepo::list_deleted_mindmaps(&db, limit + offset, 0) {
+    let deleted_mindmaps = match VfsMindMapRepo::list_deleted_mindmaps(db, limit + offset, 0) {
         Ok(mindmaps) => mindmaps,
         Err(e) => {
             error!(
@@ -509,7 +486,7 @@ pub async fn dstu_list_trash(
     }
 
     // 全局按删除时间降序排序（updated_at 在软删除时被更新为删除时间）
-    nodes.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    nodes.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
     // 应用全局分页
     let start = offset as usize;
@@ -740,18 +717,6 @@ pub async fn dstu_permanently_delete(
         id, item_type
     );
 
-    // ★ P1 防护：验证资源已在回收站，防止对活跃资源执行永久删除
-    if !is_resource_in_trash(&db, &item_type, &id) {
-        warn!(
-            "[DSTU::trash] dstu_permanently_delete: REJECTED - resource not in trash, type={}, id={}",
-            item_type, id
-        );
-        return Err(DstuError::VfsError(format!(
-            "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
-            id, item_type
-        )));
-    }
-
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
     // ★ P1 修复：essay_session 需要收集子 essays 的 resource_ids
     let resource_id = lookup_resource_id(&db, &item_type, &id);
@@ -773,30 +738,9 @@ pub async fn dstu_permanently_delete(
             Vec::new()
         };
 
-    // 统一使用 purge 方法进行永久删除
-    let result = match item_type.as_str() {
-        "folder" => VfsFolderRepo::purge_folder(&db, &id),
-        "note" => VfsNoteRepo::purge_note(&db, &id),
-        "textbook" => VfsTextbookRepo::purge_textbook(&db, &id),
-        "exam" => VfsExamRepo::purge_exam_sheet(&db, &id),
-        "translation" => VfsTranslationRepo::purge_translation(&db, &id),
-        "essay" => {
-            // 只支持 essay_session，禁止旧 essay 轮次的向后兼容
-            VfsEssayRepo::purge_session(&db, &id).map(|_| ())
-        }
-        "image" | "file" => VfsFileRepo::purge_file(&db, &id),
-        "mindmap" => VfsMindMapRepo::purge_mindmap(&db, &id),
-        _ => {
-            warn!(
-                "[DSTU::trash] Unknown item type for permanent delete: {}",
-                item_type
-            );
-            return Err(DstuError::InvalidPath(format!(
-                "Unknown item type: {}",
-                item_type
-            )));
-        }
-    };
+    // The trash predicate and destructive statements share one writer transaction. This
+    // prevents a concurrent restore from turning a stale preflight check into a hard delete.
+    let result = purge_resource_by_type_if_trashed(db.inner(), &item_type, &id);
 
     match result {
         Ok(()) => {
@@ -847,7 +791,7 @@ pub async fn dstu_permanently_delete(
                 "[DSTU::trash] dstu_permanently_delete: FAILED - type={}, id={}, error={}",
                 item_type, id, e
             );
-            Err(DstuError::VfsError(e.to_string()))
+            Err(DstuError::VfsError(e))
         }
     }
 }

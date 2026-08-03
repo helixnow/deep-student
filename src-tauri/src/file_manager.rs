@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{Cursor, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use tokio::fs as async_fs;
 // use tokio::io::AsyncWriteExt; // Removed unused import
 use crate::models::AppError;
@@ -854,6 +854,56 @@ impl FileManager {
         Ok(metadata.len())
     }
 
+    /// ★ 审阅 14 P1-1：校验 subject / note_id 不含路径分隔符、`..`、绝对路径或盘符。
+    fn validate_note_asset_path_segment(label: &str, value: &str) -> Result<()> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::validation(format!("{} 不能为空", label)));
+        }
+        if trimmed.contains('/') || trimmed.contains('\\') {
+            return Err(AppError::validation(format!(
+                "{} 不允许包含路径分隔符",
+                label
+            )));
+        }
+        if trimmed == ".." || trimmed == "." {
+            return Err(AppError::validation(format!("{} 非法", label)));
+        }
+        let as_path = Path::new(trimmed);
+        if as_path.is_absolute()
+            || as_path.components().any(|c| {
+                matches!(
+                    c,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            return Err(AppError::validation(format!("{} 含非法路径成分", label)));
+        }
+        // Windows 盘符（即使无分隔符，如 "C:"）
+        if trimmed.len() >= 2 && trimmed.as_bytes().get(1) == Some(&b':') {
+            return Err(AppError::validation(format!("{} 含盘符前缀", label)));
+        }
+        Ok(())
+    }
+
+    fn portable_relative_path(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
+    /// ★ 审阅 14 P1-1：解析 notes_assets/<subject>/<note_id>，并确认位于 notes_assets 子树内。
+    fn resolve_note_assets_dir(&self, subject: &str, note_id: &str) -> Result<PathBuf> {
+        Self::validate_note_asset_path_segment("subject", subject)?;
+        Self::validate_note_asset_path_segment("note_id", note_id)?;
+        let writable_dir = self.get_writable_app_data_dir();
+        let notes_assets_root = writable_dir.join("notes_assets");
+        let dir = notes_assets_root.join(subject).join(note_id);
+        if !dir.starts_with(&notes_assets_root) {
+            return Err(AppError::validation("拒绝访问：笔记资源路径越界"));
+        }
+        Ok(dir)
+    }
+
     /// 保存笔记资源（图片等）：返回(绝对路径, 相对路径)
     pub fn save_note_asset_from_base64(
         &self,
@@ -863,10 +913,7 @@ impl FileManager {
         default_ext: &str,
     ) -> Result<(String, String)> {
         let writable_dir = self.get_writable_app_data_dir();
-        let dir = writable_dir
-            .join("notes_assets")
-            .join(subject)
-            .join(note_id);
+        let dir = self.resolve_note_assets_dir(subject, note_id)?;
         fs::create_dir_all(&dir)
             .map_err(|e| AppError::file_system(format!("创建资源目录失败: {}", e)))?;
 
@@ -899,9 +946,8 @@ impl FileManager {
         let abs_str = abs.to_string_lossy().to_string();
         let rel_str = abs
             .strip_prefix(&writable_dir)
-            .unwrap_or(&abs)
-            .to_string_lossy()
-            .to_string();
+            .map(Self::portable_relative_path)
+            .unwrap_or_else(|_| Self::portable_relative_path(&abs));
         Ok((abs_str, rel_str))
     }
 
@@ -987,10 +1033,7 @@ impl FileManager {
     /// 列出笔记资源（返回相对路径）
     pub fn list_note_assets(&self, subject: &str, note_id: &str) -> Result<Vec<(String, String)>> {
         let writable_dir = self.get_writable_app_data_dir();
-        let dir = writable_dir
-            .join("notes_assets")
-            .join(subject)
-            .join(note_id);
+        let dir = self.resolve_note_assets_dir(subject, note_id)?;
 
         debug!("[list_note_assets] writable_dir: {:?}", writable_dir);
         debug!("[list_note_assets] dir: {:?}", dir);
@@ -1062,15 +1105,29 @@ impl FileManager {
 
     /// 删除笔记资源目录（用于笔记删除时清理）
     pub fn delete_note_assets_dir(&self, subject: &str, note_id: &str) -> Result<()> {
-        let dir = self
-            .get_writable_app_data_dir()
-            .join("notes_assets")
-            .join(subject)
-            .join(note_id);
-        if dir.exists() {
-            fs::remove_dir_all(&dir)
-                .map_err(|e| AppError::file_system(format!("删除资源目录失败: {}", e)))?;
+        let dir = self.resolve_note_assets_dir(subject, note_id)?;
+        if !dir.exists() {
+            return Ok(());
         }
+
+        // ★ 审阅 14 P1-1：canonicalize + starts_with，防止 remove_dir_all 越界
+        let writable_dir = self.get_writable_app_data_dir();
+        let notes_assets_root = writable_dir.join("notes_assets");
+        fs::create_dir_all(&notes_assets_root)
+            .map_err(|e| AppError::file_system(format!("确保 notes_assets 目录失败: {}", e)))?;
+        let base_dir = fs::canonicalize(&notes_assets_root)
+            .map_err(|e| AppError::file_system(format!("解析 notes_assets 根失败: {}", e)))?;
+        let canonical_dir = fs::canonicalize(&dir)
+            .map_err(|e| AppError::file_system(format!("解析资源目录失败: {}", e)))?;
+        if !canonical_dir.starts_with(&base_dir) {
+            return Err(AppError::validation("拒绝删除：资源目录路径越界"));
+        }
+        if !canonical_dir.is_dir() {
+            return Err(AppError::validation("拒绝删除：目标不是目录"));
+        }
+
+        fs::remove_dir_all(&canonical_dir)
+            .map_err(|e| AppError::file_system(format!("删除资源目录失败: {}", e)))?;
         Ok(())
     }
 
@@ -1166,7 +1223,7 @@ impl FileManager {
                     return Ok(mime_type.to_string());
                 }
             }
-            return Err(AppError::validation("无效的Data URL格式"));
+            Err(AppError::validation("无效的Data URL格式"))
         } else {
             // 如果不是Data URL，尝试从文件头部识别
             self.detect_image_type_from_content(base64_data)
@@ -1372,4 +1429,39 @@ pub struct StorageInfo {
     pub formatted_backups: String,
     pub formatted_cache: String,
     pub formatted_other: String,
+}
+
+#[cfg(test)]
+mod note_asset_path_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_traversal_subject_and_note_id() {
+        assert!(FileManager::validate_note_asset_path_segment("subject", "..").is_err());
+        assert!(FileManager::validate_note_asset_path_segment("subject", "../x").is_err());
+        assert!(FileManager::validate_note_asset_path_segment("note_id", "a/b").is_err());
+        assert!(FileManager::validate_note_asset_path_segment("note_id", "a\\b").is_err());
+        assert!(FileManager::validate_note_asset_path_segment("subject", "C:").is_err());
+        assert!(FileManager::validate_note_asset_path_segment("subject", "/abs").is_err());
+    }
+
+    #[test]
+    fn accepts_plain_segments() {
+        assert!(FileManager::validate_note_asset_path_segment("subject", "math").is_ok());
+        assert!(FileManager::validate_note_asset_path_segment(
+            "note_id",
+            "550e8400-e29b-41d4-a716-446655440000"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn serializes_relative_asset_paths_with_forward_slashes() {
+        let path = Path::new(r"notes_assets\_global\note-1\image.png");
+
+        assert_eq!(
+            FileManager::portable_relative_path(path),
+            "notes_assets/_global/note-1/image.png"
+        );
+    }
 }

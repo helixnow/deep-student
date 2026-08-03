@@ -3,8 +3,8 @@ import React, { useState } from 'react';
 // AppearanceTab usage so the style-lab preview reflects what users actually see.
 import { Monitor, Moon, Sun } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
-// eslint-disable-next-line no-restricted-imports -- Style lab intentionally compares the legacy shad Button path against the target NotionButton path.
+import { DsButton } from '@/components/ui/DsButton';
+// eslint-disable-next-line no-restricted-imports -- Style lab intentionally compares the legacy shad Button path against the target DsButton path.
 import { Button as ShadButton } from '@/components/ui/shad/Button';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -26,9 +26,9 @@ import {
   TooltipProvider as ShadTooltipProvider,
   TooltipTrigger as ShadTooltipTrigger,
 } from '@/components/ui/shad/Tooltip';
-// eslint-disable-next-line no-restricted-imports
+
 import { Popover as ShadPopover, PopoverTrigger as ShadPopoverTrigger, PopoverContent as ShadPopoverContent } from '@/components/ui/shad/Popover';
-// eslint-disable-next-line no-restricted-imports
+
 import {
   Dialog as ShadDialog,
   DialogTrigger as ShadDialogTrigger,
@@ -38,7 +38,7 @@ import {
   DialogDescription as ShadDialogDescription,
   DialogFooter as ShadDialogFooter,
 } from '@/components/ui/shad/Dialog';
-// eslint-disable-next-line no-restricted-imports
+
 import {
   Sheet as ShadSheet,
   SheetTrigger as ShadSheetTrigger,
@@ -48,7 +48,7 @@ import {
   SheetDescription as ShadSheetDescription,
   SheetFooter as ShadSheetFooter,
 } from '@/components/ui/shad/Sheet';
-import { NotionDialog } from '@/components/ui/NotionDialog';
+import { DsDialog } from '@/components/ui/DsDialog';
 import {
   showGlobalNotification,
   type GlobalNotificationBorderTone,
@@ -79,11 +79,11 @@ const PROGRESS_OPTIONS: ProgressOption[] = [
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 const BUTTON_VARIANTS = [
-  { label: 'Primary', notionVariant: 'primary', shadVariant: 'default' },
-  { label: 'Default', notionVariant: 'default', shadVariant: 'secondary' },
-  { label: 'Ghost', notionVariant: 'ghost', shadVariant: 'ghost' },
-  { label: 'Outline', notionVariant: 'outline', shadVariant: 'outline' },
-  { label: 'Danger', notionVariant: 'danger', shadVariant: 'destructive' },
+  { label: 'Primary', cardVariant: 'primary', shadVariant: 'default' },
+  { label: 'Default', cardVariant: 'default', shadVariant: 'secondary' },
+  { label: 'Ghost', cardVariant: 'ghost', shadVariant: 'ghost' },
+  { label: 'Outline', cardVariant: 'outline', shadVariant: 'outline' },
+  { label: 'Danger', cardVariant: 'danger', shadVariant: 'destructive' },
 ] as const;
 
 function ButtonCompareSection() {
@@ -118,7 +118,7 @@ function ButtonCompareSection() {
           <thead>
             <tr className="border-b border-[color:var(--border-soft)]">
               <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">Variant</th>
-              <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">NotionButton (目标)</th>
+              <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">DsButton (目标)</th>
               <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">shad Button (遗留)</th>
               <th className="text-left py-2 text-[color:var(--text-muted)] font-medium">原生 button</th>
             </tr>
@@ -128,9 +128,9 @@ function ButtonCompareSection() {
               <tr key={v.label} className="border-b border-[color:var(--border-soft)]">
                 <td className="py-3 pr-4 text-[color:var(--text-secondary)]">{v.label}</td>
                 <td className="py-3 pr-4">
-                  <NotionButton variant={v.notionVariant as any} size={size} disabled={disabled}>
+                  <DsButton variant={v.cardVariant as any} size={size} disabled={disabled}>
                     {v.label}
-                  </NotionButton>
+                  </DsButton>
                 </td>
                 <td className="py-3 pr-4">
                   <ShadButton variant={v.shadVariant as any} size={shadSize} disabled={disabled}>
@@ -153,7 +153,7 @@ function ButtonCompareSection() {
       </div>
 
       <p className="text-[11px] text-[color:var(--text-muted)]">
-        迁移建议：业务按钮优先消费 NotionButton；缺能力时回 buttonPrimitiveContract 补齐。
+        迁移建议：业务按钮优先消费 DsButton；缺能力时回 buttonPrimitiveContract 补齐。
       </p>
     </div>
   );
@@ -436,7 +436,7 @@ function TooltipCompareSection() {
         <div className="text-center space-y-2">
           <p className="text-[11px] text-[color:var(--text-muted)]">CommonTooltip (目标)</p>
           <CommonTooltip content="这是 CommonTooltip" position={position} theme={theme}>
-            <NotionButton variant="outline" size="sm">Hover me</NotionButton>
+            <DsButton variant="outline" size="sm">Hover me</DsButton>
           </CommonTooltip>
         </div>
 
@@ -445,7 +445,7 @@ function TooltipCompareSection() {
           <ShadTooltipProvider>
             <ShadTooltip>
               <ShadTooltipTrigger asChild>
-                <NotionButton variant="outline" size="sm">Hover me</NotionButton>
+                <DsButton variant="outline" size="sm">Hover me</DsButton>
               </ShadTooltipTrigger>
               <ShadTooltipContent side={position === 'left' ? 'left' : position === 'right' ? 'right' : position === 'bottom' ? 'bottom' : 'top'}>
                 这是 shad Tooltip
@@ -456,7 +456,7 @@ function TooltipCompareSection() {
 
         <div className="text-center space-y-2">
           <p className="text-[11px] text-[color:var(--text-muted)]">原生 title (对照)</p>
-          <NotionButton variant="outline" size="sm" title="这是原生 title">Hover me</NotionButton>
+          <DsButton variant="outline" size="sm" title="这是原生 title">Hover me</DsButton>
         </div>
       </div>
     </div>
@@ -569,14 +569,14 @@ function ToastCompareSection() {
 
       <div className="flex items-center gap-2 flex-wrap">
         {TOAST_SAMPLES.map(sample => (
-          <NotionButton
+          <DsButton
             key={sample.label}
             variant="outline"
             size="sm"
             onClick={() => fireToast(sample)}
           >
             触发 {sample.label}
-          </NotionButton>
+          </DsButton>
         ))}
       </div>
     </div>
@@ -589,7 +589,7 @@ type SheetSide = 'top' | 'right' | 'bottom' | 'left';
 
 function PopupCompareSection() {
   const [sheetSide, setSheetSide] = useState<SheetSide>('right');
-  const [notionDialogOpen, setNotionDialogOpen] = useState(false);
+  const [cardDialogOpen, setDsDialogOpen] = useState(false);
 
   return (
     <div className="space-y-8">
@@ -620,7 +620,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadPopover>
                     <ShadPopoverTrigger asChild>
-                      <NotionButton variant="outline" size="sm">打开 Popover</NotionButton>
+                      <DsButton variant="outline" size="sm">打开 Popover</DsButton>
                     </ShadPopoverTrigger>
                     <ShadPopoverContent align="start" sideOffset={8}>
                       <div className="space-y-2 p-2">
@@ -642,7 +642,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadPopover>
                     <ShadPopoverTrigger asChild>
-                      <NotionButton variant="outline" size="sm">日期筛选</NotionButton>
+                      <DsButton variant="outline" size="sm">日期筛选</DsButton>
                     </ShadPopoverTrigger>
                     <ShadPopoverContent align="start" sideOffset={8} className="w-56">
                       <div className="space-y-2 p-2">
@@ -688,7 +688,7 @@ function PopupCompareSection() {
               <tr className="border-b border-[color:var(--border-soft)]">
                 <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">实现</th>
                 <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">shad Dialog (遗留)</th>
-                <th className="text-left py-2 text-[color:var(--text-muted)] font-medium">NotionDialog (目标)</th>
+                <th className="text-left py-2 text-[color:var(--text-muted)] font-medium">DsDialog (目标)</th>
               </tr>
             </thead>
             <tbody>
@@ -698,7 +698,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadDialog>
                     <ShadDialogTrigger asChild>
-                      <NotionButton variant="outline" size="sm">shad Dialog</NotionButton>
+                      <DsButton variant="outline" size="sm">shad Dialog</DsButton>
                     </ShadDialogTrigger>
                     <ShadDialogContent>
                       <ShadDialogHeader>
@@ -709,24 +709,24 @@ function PopupCompareSection() {
                         内容区域示例。shad Dialog 基于自定义 portal 实现，使用 framer-motion 动画。
                       </p>
                       <ShadDialogFooter>
-                        <NotionButton variant="ghost" size="sm">取消</NotionButton>
-                        <NotionButton variant="primary" size="sm">确认</NotionButton>
+                        <DsButton variant="ghost" size="sm">取消</DsButton>
+                        <DsButton variant="primary" size="sm">确认</DsButton>
                       </ShadDialogFooter>
                     </ShadDialogContent>
                   </ShadDialog>
                 </td>
                 <td className="py-3 pr-4 align-top">
-                  <NotionButton variant="outline" size="sm" onClick={() => setNotionDialogOpen(true)}>
-                    NotionDialog
-                  </NotionButton>
-                  <NotionDialog
-                    open={notionDialogOpen}
-                    onOpenChange={setNotionDialogOpen}
+                  <DsButton variant="outline" size="sm" onClick={() => setDsDialogOpen(true)}>
+                    DsDialog
+                  </DsButton>
+                  <DsDialog
+                    open={cardDialogOpen}
+                    onOpenChange={setDsDialogOpen}
                   >
                     <p className="text-sm text-[color:var(--text-secondary)]">
-                      内容区域示例。NotionDialog 是目标设计系统的模态框，封装了 portal + 动画 + 可滚动内容区。
+                      内容区域示例。DsDialog 是目标设计系统的模态框，封装了 portal + 动画 + 可滚动内容区。
                     </p>
-                  </NotionDialog>
+                  </DsDialog>
                 </td>
               </tr>
             </tbody>
@@ -773,7 +773,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadSheet>
                     <ShadSheetTrigger asChild>
-                      <NotionButton variant="outline" size="sm">打开 Sheet ({sheetSide})</NotionButton>
+                      <DsButton variant="outline" size="sm">打开 Sheet ({sheetSide})</DsButton>
                     </ShadSheetTrigger>
                     <ShadSheetContent side={sheetSide}>
                       <ShadSheetHeader>
@@ -787,7 +787,7 @@ function PopupCompareSection() {
                         <p className="mt-2">基于 Radix Dialog 原语实现，支持四方向滑入动画。</p>
                       </div>
                       <ShadSheetFooter>
-                        <NotionButton variant="primary" size="sm">完成</NotionButton>
+                        <DsButton variant="primary" size="sm">完成</DsButton>
                       </ShadSheetFooter>
                     </ShadSheetContent>
                   </ShadSheet>
@@ -804,7 +804,7 @@ function PopupCompareSection() {
       {/* 迁移建议 */}
       <ul className="text-[11px] text-[color:var(--text-muted)] space-y-1 list-disc pl-4">
         <li>Popover：业务代码统一使用 shad Popover；无 Radix 遗留，点击触发 + portal 定位 + 碰撞检测。</li>
-        <li>Dialog：新代码优先消费 NotionDialog（封装了 header/body/footer 和可滚动内容区）；shad Dialog 保留用于需精细控制 content 的场景。</li>
+        <li>Dialog：新代码优先消费 DsDialog（封装了 header/body/footer 和可滚动内容区）；shad Dialog 保留用于需精细控制 content 的场景。</li>
         <li>Sheet：统一使用 shad Sheet；无遗留路径，四方向滑出 + Radix 原语。</li>
         <li>三者共享 <code>OverlayCoordinator</code> 避免 z-index 冲突；弹窗嵌套时由 coordinator 统一管理层级。</li>
       </ul>

@@ -21,7 +21,9 @@
     "rag_models": "RAG 与知识库",
     "search_engines": "搜索引擎配置",
     "appearance": "界面外观",
-    "voice_input": "语音输入"
+    "voice_input": "语音输入",
+    "search_engines_list": "搜索引擎列表",
+    "global_search_settings": "全局搜索配置"
   },
   "voice_input": {
     "title": "听写",
@@ -169,6 +171,7 @@
       "subtitle": "配置您的AI模型接口连接与基础信息",
       "protocol_label": "OpenAI 协议",
       "protocol_hint": "这里明确选择 OpenAI Chat 还是 OpenAI Responses；供应商仅提供默认值。",
+      "responses_unavailable": "请先在供应商配置中启用 OpenAI Responses，再为模型选择该协议。",
       "protocols": {
         "openai_chat_completions": {
           "label": "OpenAI Chat",
@@ -207,6 +210,7 @@
           "medium": "中",
           "high": "高"
         },
+        "verbosity_label": "详细程度",
         "enable_thinking": "Enable Thinking 模式",
         "enable_thinking_hint": "向 API 发送 enable_thinking 标志，部分模型支持。",
         "thinking_disabled_hint": "当前模型未标记支持思维链参数，已自动禁用。",
@@ -217,6 +221,8 @@
         "note": "系统会自动将这些设置映射到对应平台（OpenAI reasoning.effort、Claude thinking、Gemini thinkingBudget/include_thoughts）。"
       },
       "fields": {
+        "api_key": "API 密钥",
+        "model_adapter": "模型适配器",
         "thinking_budget": "thinking_budget",
         "thinking_budget_placeholder": "例如 4096",
         "thinking_budget_hint": "提示：Anthropic (Claude) 模型最小值为 1024；其他推理模型（如 Gemini）支持更小的值（如 256）",
@@ -237,8 +243,14 @@
         "context_window": "上下文窗口大小",
         "context_window_placeholder": "留空则使用自动推断值",
         "context_window_hint": "模型的上下文窗口大小（tokens）。留空将根据模型名称自动推断。当前推断值：",
-        "context_window_auto_inferred": "自动推断"
+        "context_window_auto_inferred": "自动推断",
+        "repetition_penalty": "重复惩罚",
+        "repetition_penalty_placeholder": "Qwen: >1.0，Doubao: >0",
+        "repetition_penalty_hint": "Qwen/Doubao 模型：降低重复 token 的概率",
+        "reasoning_split": "MiniMax 思考内容拆分",
+        "reasoning_split_hint": "将思考内容单独写入 reasoning_details 字段"
       },
+      "connection_info": "连接信息",
       "min_p_hint": "提示：min_p 对 Gemini 不生效",
       "anthropic": {
         "title": "启用 Claude Extended Thinking",
@@ -261,6 +273,8 @@
         "enable_thinking": "启用思维模式",
         "enable_thinking_hint": "启用后模型会输出 reasoning_content 思考过程",
         "v31_warning": "DeepSeek V3.1 使用工具时会自动禁用思维模式",
+        "v32_depth_hint": "DeepSeek V3.2 会将深度预设映射为 SiliconFlow thinking_budget。",
+        "reasoning_effort_hint": "DeepSeek V4 支持 high 或 max 推理强度。",
         "depth": {
           "low": "低",
           "medium": "中",
@@ -315,6 +329,21 @@
         "reasoning_split_hint": "将思维内容分离到 reasoning_details 字段",
         "no_enable_thinking": "MiniMax API 不支持 enable_thinking 参数"
       },
+      "mimo": {
+        "title": "小米 MiMo",
+        "description": "使用 thinking.type，并在思维模式下返回 reasoning_content。",
+        "enable_thinking": "思维模式",
+        "enable_thinking_hint": "映射为 thinking.type 的 enabled / disabled。",
+        "preserve_reasoning": "保留推理内容",
+        "preserve_reasoning_hint": "在多轮工具对话中保留返回的 reasoning_content。"
+      },
+      "mistral": {
+        "title": "Mistral"
+      },
+      "ernie": {
+        "title": "文心一言 ERNIE"
+      },
+      "model_adapter": "模型适配器",
       "capabilities": {
         "title": "模型能力",
         "description": "勾选下方选项以标记模型的能力与适用场景",
@@ -370,11 +399,13 @@
     "api_key_saving": "正在保存…",
     "api_key_placeholder": "输入 API 密钥",
     "api_key_manual_save_hint": "粘贴或输入后，点击保存",
+    "save_api_key": "保存 API 密钥",
     "api_key_save_failed": "保存 API 密钥失败",
     "api_key_cleared": "API 密钥已清除",
     "api_key_clear_failed": "清除 API 密钥失败",
     "api_key_securely_stored": "已安全保存，下次无需重新输入",
     "api_key_unsaved": "有未保存的更改",
+    "api_key_pasted_ready": "已粘贴，保存后才会使用",
     "clear_api_key": "清除",
     "clear_api_key_confirm": "确认清除",
     "clear_api_key_title": "清除 API 密钥",
@@ -387,6 +418,10 @@
     "notes": "备注",
     "siliconflow_hint": "SiliconFlow 快速配置与一键分配",
     "model_list_title": "模型列表",
+    "no_api_key_short": "未配置 API 密钥",
+    "api_key_configured_short": "已配置 API 密钥",
+    "connection_not_configured": "未配置连接",
+    "no_api_key_hint": "添加 API 密钥后才能启用此提供商。",
     "model_list_desc": "共 {{count}} 个模型",
     "model_empty": "该供应商暂未创建模型",
     "create_vendor_cta": "创建供应商后即可集中管理 API 凭据与模型参数",
@@ -404,7 +439,79 @@
     "select_model_to_edit": "选择要编辑的模型",
     "reorder_failed": "重新排序失败",
     "api_key_configured": "API Key 已配置",
-    "fetch_models_button": "获取模型列表"
+    "fetch_models_button": "获取模型列表",
+    "codex_oauth": {
+      "title": "ChatGPT 账号",
+      "status": {
+        "checking": "检查中",
+        "signed_out": "未登录",
+        "pending_browser": "等待浏览器登录",
+        "pending_device_code": "等待设备码确认",
+        "signed_in": "已登录",
+        "reauth_required": "需要重新登录"
+      },
+      "plans": {
+        "free": "免费版",
+        "plus": "Plus",
+        "pro": "Pro",
+        "team": "团队版",
+        "business": "商业版",
+        "enterprise": "企业版",
+        "edu": "教育版"
+      },
+      "signed_out_description": "登录 ChatGPT，使用账号套餐内的 Codex 额度。",
+      "pending_description": "请在浏览器中完成登录。",
+      "reauth_description": "ChatGPT 会话已失效，需要重新登录。",
+      "checking": "正在检查账号状态…",
+      "sign_in_browser": "使用浏览器登录",
+      "sign_in_device": "使用设备码登录",
+      "sign_in_again": "重新登录",
+      "cancel_sign_in": "取消登录",
+      "sign_out": "退出登录",
+      "remove_account": "移除账号",
+      "retry": "重试",
+      "refresh_usage": "刷新额度",
+      "device_code": "一次性代码",
+      "copy_code": "复制代码",
+      "code_copied": "代码已复制",
+      "reopen_sign_in": "重新打开登录页面",
+      "open_verification": "打开验证页面",
+      "expires_at": "登录请求将于 {{time}} 失效",
+      "usage_title": "Codex 额度",
+      "usage_empty": "暂时无法获取额度信息。",
+      "primary_window": "主要额度窗口",
+      "secondary_window": "次要额度窗口",
+      "usage_percent": "已使用 {{percent}}%",
+      "usage_unknown": "暂时无法获取用量",
+      "window_minutes": "{{count}} 分钟窗口",
+      "window_hours": "{{count}} 小时窗口",
+      "window_days": "{{count}} 天窗口",
+      "window_weeks": "{{count}} 周窗口",
+      "resets_at": "{{time}} 重置",
+      "operation_failed": "无法更新 Codex 账号状态，请重试。",
+      "errors": {
+        "login_busy": "另一个登录流程正在进行中，请等待或先取消。",
+        "callback_bind_failed": "无法在本机启动浏览器登录回调，请改用设备码登录。",
+        "network": "无法连接 OpenAI，请检查网络后重试。",
+        "authorization_denied": "授权未完成，请重新发起登录。",
+        "credential_store": "安全凭据存储不可用，请重启应用后重试。",
+        "security": "无法验证登录响应，请重新发起登录。",
+        "reauthentication": "ChatGPT 会话已变更或过期，请重新登录。"
+      }
+    },
+    "no_api_key_needed_short": "无 Key",
+    "no_api_key_required_hint": "无需 API Key，保存后将自动获取模型列表",
+    "balance_title": "账户余额",
+    "balance_loading": "正在查询余额",
+    "balance_refresh": "刷新余额",
+    "balance_remaining": "剩余",
+    "balance_no_key": "未配置 API 密钥",
+    "balance_unauthorized": "API 密钥无效，请检查后重试",
+    "balance_fetch_failed": "余额查询失败",
+    "balance_just_now": "刚刚",
+    "balance_minutes_ago": "{{count}}分钟前",
+    "balance_hours_ago": "{{count}}小时前",
+    "balance_days_ago": "{{count}}天前"
   },
   "vendor_model_fetcher": {
     "fetch_button": "获取模型列表",
@@ -431,7 +538,11 @@
     "add_success": "成功添加 {{count}} 个模型",
     "add_failed": "添加模型失败: {{error}}",
     "dialog_title": "从 API 获取可用模型",
-    "dialog_description": "{{vendor}}：选择要添加到模型列表的项"
+    "dialog_description": "{{vendor}}：选择要添加到模型列表的项",
+    "search_placeholder_empty": "获取模型列表后即可搜索...",
+    "add_all_new": "全部添加 ({{count}})",
+    "click_fetch": "点击上方按钮获取可用模型列表",
+    "need_config": "请先配置接口地址和 API Key"
   },
   "vendor_modal": {
     "title_new": "添加供应商",
@@ -450,6 +561,7 @@
     },
     "providers": {
       "openai": "OpenAI",
+      "openai_codex": "OpenAI Codex",
       "anthropic": "Anthropic",
       "google": "Google",
       "general": "通用适配器",
@@ -462,12 +574,22 @@
       "moonshot": "Moonshot",
       "nvidia": "NVIDIA",
       "mimo": "小米 MiMo",
+      "grok": "xAI (Grok)",
+      "ernie": "百度文心",
+      "mistral": "Mistral",
+      "openrouter": "OpenRouter",
       "ollama": "Ollama",
       "custom": "自定义"
     },
     "base_url_label": "接口地址",
+    "max_tokens_limit_label": "最大输出 Token 上限",
+    "timeout_ms_label": "发现/测试超时（毫秒）",
+    "optional_placeholder": "可选",
     "api_key_label": "API 密钥",
     "api_key_placeholder_keep_or_update": "留空保持不变，或输入新密钥",
+    "backup_api_keys_label": "备用 API 密钥",
+    "backup_api_keys_placeholder": "每行输入一个 API 密钥",
+    "backup_api_keys_hint": "按顺序用于故障切换；掩码行保留原密钥，删除中间密钥时请将对应行留空。",
     "notes_label": "备注",
     "notes_placeholder": "可选：添加备注信息",
     "headers_label": "自定义请求头",
@@ -478,7 +600,9 @@
     "headers_parse_error": "请求头格式错误，请输入有效的 JSON",
     "clear_api_key": "清除 API Key",
     "clear_api_key_title": "清除 API 密钥",
-    "clear_api_key_warning": "清除后需要重新输入 API 密钥才能使用此供应商"
+    "clear_api_key_warning": "清除后需要重新输入 API 密钥才能使用此供应商",
+    "no_api_key_label": "无需 API Key",
+    "no_api_key_desc": "适用于自搭建后端（Ollama / vLLM / llama.cpp 等）"
   },
   "features": {
     "title": "功能设置",
@@ -516,7 +640,7 @@
     "thinking_auto_collapse_description": "思维链输出完成后自动折叠，保持对话界面更简洁。",
     "accent_label": "强调色",
     "accent_hint": "只调整按钮、链接和选中态的颜色。背景、卡片和文本保持稳定。",
-    "system_default": "系统默认",
+    "system_default": "系统",
     "system_default_hint": "匹配系统外观设置",
     "system_status": "当前系统：{{mode}}",
     "modes": {
@@ -530,6 +654,7 @@
       "green": "林影绿",
       "orange": "琥珀橙",
       "pink": "胭脂红",
+      "bright-pink": "明亮粉",
       "teal": "青岩蓝",
       "muted": "石墨",
       "paper": "陶棕",
@@ -539,6 +664,24 @@
       "current": "当前：{{mode}}主题",
       "auto_follow": "（跟随系统{{system}}设置）",
       "accent": "强调色：{{accent}}"
+    },
+    "sidebar_translucent_title": "侧边栏半透明",
+    "sidebar_translucent_description": "开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。"
+  },
+  "appearance": {
+    "theme": {
+      "title": "主题",
+      "description": "切换应用主题。"
+    },
+    "font": {
+      "title": "字体",
+      "size_label": "字体大小",
+      "heading_label": "标题字体",
+      "body_label": "正文字体"
+    },
+    "sidebar": {
+      "title": "侧边栏",
+      "position": "侧边栏位置"
     }
   },
   "zoom": {
@@ -618,31 +761,320 @@
     "data_governance": "数据治理",
     "general": "常规",
     "appearance": "外观",
+    "automation": "自动化",
     "app": "应用设置",
     "theme": "主题设置",
     "params": "参数调整",
     "shortcuts": "快捷键",
-    "about": "关于"
+    "about": "关于",
+    "plugins": "插件"
+  },
+  "mobile_groups": {
+    "0": "模型",
+    "1": "通用",
+    "2": "工具与搜索",
+    "3": "数据",
+    "4": "其他"
+  },
+  "mobile_descriptions": {
+    "apis": "配置模型接口与密钥",
+    "models": "分配各功能使用的模型",
+    "general": "语言、权限与听写",
+    "appearance": "主题、字体与界面",
+    "automation": "定时任务与后台运行",
+    "mcp": "连接外部工具与服务",
+    "search": "配置联网搜索引擎",
+    "plugins": "管理已安装的扩展",
+    "statistics": "查看学习与使用数据",
+    "data_governance": "备份、恢复与数据管理",
+    "params": "调整模型生成参数",
+    "shortcuts": "自定义键盘操作",
+    "about": "版本信息与开源致谢"
+  },
+  "automation": {
+    "title": "自动化",
+    "description": "管理已创建的定时提醒和无人值守 Agent 任务。",
+    "capacity": "{{count}} / {{max}}",
+    "loading": "正在加载自动化",
+    "saving": "正在保存",
+    "never": "尚未运行",
+    "paused": "已暂停",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "heartbeat": "心跳",
+    "prompt_empty": "无任务说明",
+    "last_run": "上次运行",
+    "next_run": "下次运行",
+    "last_run_relative": "上次运行：{{time}}",
+    "next_run_relative": "下次运行：{{time}}",
+    "starting_soon": "即将开始",
+    "row_updated_elsewhere": "任务已在别处更新，已刷新",
+    "background": {
+      "title": "后台运行",
+      "description": "关闭窗口后应用驻留后台，定时任务照常触发；显式退出应用或关机会停止任务，重新打开后按补偿策略恢复。",
+      "active_hint": "后台调度运行中 · 下次触发：{{time}}",
+      "active_hint_idle": "后台调度运行中，暂无待触发的任务",
+      "paused_hint": "后台运行已关闭，窗口关闭后定时任务不会触发",
+      "confirm_hint": "关闭后台运行？窗口关闭后所有定时任务（含心跳）将不再触发，直到重新开启。",
+      "confirm": "关闭后台运行"
+    },
+    "action_type": {
+      "notify": "通知 + 待办",
+      "agent_turn": "Agent 任务"
+    },
+    "kind": {
+      "daily": "每日",
+      "weekdays": "工作日",
+      "weekly": "每周",
+      "monthly": "每月",
+      "interval": "按间隔",
+      "once": "仅一次"
+    },
+    "schedule": {
+      "daily": "每天 {{time}}",
+      "weekdays": "工作日 {{time}}",
+      "weekly": "每周{{weekday}} {{time}}",
+      "monthly": "每月 {{day}} 日 {{time}}",
+      "interval": "每 {{count}} 分钟",
+      "once": "{{date}} {{time}} 运行一次",
+      "timezone": " · {{timezone}}"
+    },
+    "catch_up": {
+      "run_once": "恢复后补跑一次",
+      "catch_up_all": "逐次补跑错过的时点",
+      "skip": "跳过错过的时点"
+    },
+    "session_mode": {
+      "isolated": "每次独立会话",
+      "named": "连续复用会话"
+    },
+    "weekdays": {
+      "0": "日",
+      "1": "一",
+      "2": "二",
+      "3": "三",
+      "4": "四",
+      "5": "五",
+      "6": "六"
+    },
+    "actions": {
+      "refresh": "刷新自动化",
+      "retry": "重试",
+      "toggle": "启用或停用「{{name}}」",
+      "run_now": "立即运行「{{name}}」",
+      "run_now_short": "立即运行",
+      "edit": "编辑「{{name}}」",
+      "edit_short": "编辑",
+      "delete": "删除「{{name}}」",
+      "delete_short": "删除"
+    },
+    "empty": {
+      "title": "还没有自动化",
+      "description": "当前没有已创建的定时任务。",
+      "cta": "创建第一个定时任务"
+    },
+    "create": {
+      "button": "新建任务",
+      "title": "新建定时任务",
+      "description": "设置任务内容、调度和失败恢复策略后创建。",
+      "submit": "创建",
+      "capacity_full": "已达上限（{{max}} 个），请先删除或停用现有任务"
+    },
+    "edit": {
+      "title": "编辑「{{name}}」",
+      "description": "更改任务、调度、Agent 会话和失败恢复策略。",
+      "name": "名称",
+      "action_type": "动作",
+      "schedule_kind": "调度方式",
+      "weekday": "星期",
+      "day_of_month": "每月日期",
+      "time": "时间",
+      "timezone": "时区",
+      "interval_minutes": "间隔分钟数",
+      "catch_up_policy": "错过执行",
+      "session_mode": "Agent 会话",
+      "model_id": "模型配置 ID",
+      "default_model": "使用默认模型",
+      "agent_prompt": "Agent 提示词",
+      "agent_prompt_fallback": "留空时使用任务说明",
+      "max_retries": "失败重试次数",
+      "retry_backoff_seconds": "重试退避（秒）",
+      "timeout_seconds": "超时（秒）",
+      "prompt": "任务说明",
+      "advanced": "高级选项"
+    },
+    "delete": {
+      "title": "删除自动化？",
+      "description": "「{{name}}」将被永久删除，后续不再触发且无法恢复。",
+      "confirm": "永久删除",
+      "inline_confirm": "确认删除？该任务的运行历史将一并删除",
+      "heartbeat_blocked": "系统心跳任务不可删除，可停用"
+    },
+    "notices": {
+      "created": "已创建「{{name}}」。",
+      "enabled": "已启用「{{name}}」。",
+      "disabled": "已停用「{{name}}」。",
+      "started": "「{{name}}」已开始运行。",
+      "updated": "已更新「{{name}}」。",
+      "deleted": "已删除「{{name}}」。",
+      "background_enabled": "已开启后台运行。",
+      "background_disabled": "已关闭后台运行。"
+    },
+    "errors": {
+      "desktop_only": "自动化管理需要 Deep Student 桌面应用。",
+      "invalid_response": "自动化列表返回了无效数据。",
+      "version_conflict": "该自动化在编辑期间已发生变化，现已刷新为最新版本。请确认后重新编辑。",
+      "name_required": "名称不能为空。",
+      "name_too_long": "名称不能超过 100 个字符。",
+      "prompt_required": "任务说明不能为空。",
+      "prompt_too_long": "任务说明不能超过 4000 个字符。",
+      "invalid_time": "请输入有效的 24 小时制时间。",
+      "date_required": "一次性任务需要选择运行日期。",
+      "invalid_timezone": "请输入有效的 IANA 时区，例如 Asia/Shanghai。",
+      "invalid_day_of_month": "每月日期必须是 1 到 31 之间的整数。",
+      "invalid_interval": "间隔必须是 5 到 1440 之间的整数分钟。",
+      "invalid_retries": "失败重试次数必须是 0 到 10 之间的整数。",
+      "invalid_backoff": "重试退避必须是 5 到 86400 之间的整数秒。",
+      "invalid_timeout": "超时必须是 30 到 3600 之间的整数秒。"
+    }
+  },
+  "subagentProfiles": {
+    "title": "子代理档案",
+    "description": "管理可用的子代理档案：内建三型开箱即用，自定义档案可直接在此新建和编辑，保存后立即生效。",
+    "loading": "正在加载子代理档案",
+    "loading_file": "正在读取档案内容…",
+    "builtin_badge": "内建",
+    "custom_badge": "自定义",
+    "invalid_badge": "无效",
+    "inactive_badge": "未生效",
+    "invalid_hint": "该文件定义不完整或不合法，运行时会被跳过。点击编辑修复。",
+    "model": "模型：{{model}}",
+    "tool_count": "工具数：{{count}}",
+    "modified_at": "修改于 {{time}}",
+    "builtin_names": {
+      "default": "通用",
+      "worker": "执行者",
+      "explorer": "调研者"
+    },
+    "actions": {
+      "refresh": "刷新档案列表",
+      "retry": "重试",
+      "open_dir": "打开档案目录",
+      "create": "新建档案",
+      "edit": "编辑档案 {{name}}",
+      "edit_short": "编辑",
+      "delete": "删除档案 {{name}}",
+      "delete_short": "删除"
+    },
+    "form": {
+      "create_title": "新建自定义档案",
+      "create_description": "填写档案信息，保存后即可在委派子代理时使用（档案 id = 名称）。",
+      "create_submit": "创建",
+      "name": "名称（id）",
+      "name_placeholder": "my-researcher",
+      "name_hint": "仅小写字母、数字和连字符；同时用作文件名。",
+      "base": "基础档案",
+      "base_hint": "沿用所选内建档案的安全工具边界；自定义档案不能修改沙箱、审批、网络或上下文继承策略。",
+      "description": "简介",
+      "description_placeholder": "网络调研并输出要点",
+      "model": "模型（可选）",
+      "model_placeholder": "留空则使用默认模型",
+      "model_hint": "填写精确的已启用模型配置 ID；运行时不会静默回退到其他本地或云模型。",
+      "instructions": "指令（系统提示词）",
+      "instructions_placeholder": "你是一个调研子代理。给出结论时必须附来源链接。",
+      "instructions_hint": "留空则沿用基础档案的默认指令。",
+      "advanced": "高级字段",
+      "advanced_hint": "支持 reasoning_effort、tools、skills；skills 会按创建时内容快照注入。permissions / context_inheritance 暂不支持并会被拒绝。",
+      "raw_title": "文件内容",
+      "raw_hint": "该文件无法结构化解析，以原始文本方式编辑（需包含闭合的 --- frontmatter 与合法 name）。"
+    },
+    "delete": {
+      "inline_confirm": "删除后立即生效且无法恢复，确认删除该档案？",
+      "confirm": "确认删除"
+    },
+    "notices": {
+      "created": "档案「{{name}}」已创建",
+      "updated": "档案「{{name}}」已保存",
+      "deleted": "已删除 {{fileName}}"
+    },
+    "empty": {
+      "title": "还没有自定义档案",
+      "description": "新建一个自定义档案，为子代理定制指令、模型和工具。",
+      "cta": "新建档案"
+    },
+    "errors": {
+      "desktop_only": "子代理档案管理需要 Deep Student 桌面应用。",
+      "reveal_failed": "无法打开档案目录，请检查目录是否存在。",
+      "name_required": "请填写档案名称",
+      "name_invalid": "名称仅允许小写字母、数字和连字符（不超过 64 个字符）",
+      "name_builtin_conflict": "名称不能与内建档案（default / worker / explorer）相同",
+      "content_required": "文件内容不能为空",
+      "file_exists": "同名档案文件已存在，请换一个名称",
+      "not_found": "档案文件不存在，可能已被删除，请刷新列表",
+      "unsupported_runtime_field": "字段 {{field}} 暂不受运行时支持；为避免静默忽略，不能保存。",
+      "reasoning_effort_invalid": "reasoning_effort 仅支持 minimal / low / medium / high / xhigh",
+      "model_catalog_unavailable": "模型目录暂时不可用；档案已保存，但运行时仍会要求精确模型且不会回退。"
+    }
   },
   "sidebar": {
     "search_placeholder": "搜索设置...",
     "no_results": "未找到匹配的设置",
     "expand": "展开",
-    "collapse": "收起"
+    "collapse": "收起",
+    "back_to_home": "返回首页",
+    "navigation_label": "设置导航"
   },
   "language": {
     "title": "语言设置",
     "description": "选择您的首选语言",
     "switch_language": "切换语言",
     "chinese": "中文",
-    "english": "English"
+    "english": "English",
+    "select_label": "选择语言"
   },
   "system_notification": {
     "title": "系统通知",
-    "desc": "番茄钟、待办提醒、制卡等任务的系统通知策略。「仅后台」表示应用在前台时不打扰。",
+    "desc": "番茄钟、待办提醒、制卡与后台自动化的系统通知策略。「仅后台」表示应用在前台时不打扰；「从不」对后台任务同样生效。",
     "background": "仅后台",
     "always": "总是",
     "never": "从不"
+  },
+  "system_authorization": {
+    "title": "系统授权",
+    "description": "管理 Deep Student 在电脑上运行所需的系统权限。只在实际使用相关功能时申请。",
+    "request": "去授权",
+    "open_settings": "打开设置",
+    "refresh": "刷新状态",
+    "status": {
+      "checking": "检测中",
+      "granted": "已授权",
+      "not_requested": "未授权",
+      "denied": "已拒绝",
+      "unavailable": "不可用",
+      "unknown": "待确认"
+    },
+    "notifications": {
+      "title": "系统通知",
+      "description": "允许番茄钟、待办提醒和后台自动化在需要时发送系统通知。",
+      "denied_hint": "系统通知权限已被拒绝，请在系统设置中允许 Deep Student 发送通知。"
+    },
+    "microphone": {
+      "title": "麦克风",
+      "description": "允许语音输入在你主动开始听写时采集音频。",
+      "denied_hint": "麦克风权限已被拒绝，请在系统设置中允许 Deep Student 使用麦克风。"
+    },
+    "files": {
+      "title": "文件与目录",
+      "description": "AI 只访问你明确选择的目录，不需要完全磁盘访问权限。",
+      "status": "按需授权",
+      "manage": "管理目录"
+    },
+    "keychain": {
+      "title": "系统钥匙串保护",
+      "description": "把凭据加密根密钥托管到系统钥匙串（macOS Keychain）。默认关闭：密钥保存在应用私有目录的受限文件中，不会触发系统授权弹窗。",
+      "enabled_notice": "已开启：根密钥已迁入系统钥匙串。后续访问可能出现系统授权弹窗，建议选择\u201c始终允许\u201d。",
+      "disabled_notice": "已关闭：根密钥已回迁为本地受限文件，不再触发系统授权弹窗。"
+    }
   },
   "debug": {
     "description": "用于调试全局流式会话与事件"
@@ -729,7 +1161,12 @@
       "threshold_suffix": " 字符"
     },
     "reset_success": "设置已重置为默认值",
-    "tip": "OCR 会使用配置的 OCR 模型进行文字识别。对于多页 PDF，会逐页进行识别并支持断点续传。"
+    "tip": "OCR 会使用配置的 OCR 模型进行文字识别。对于多页 PDF，会逐页进行识别并支持断点续传。",
+    "offline": "离线",
+    "thinking_label": "VLM 深度推理",
+    "thinking_desc": "关闭可显著降低 OCR / 题目集导入延迟",
+    "thinking_on": "推理已开启",
+    "thinking_off": "推理已关闭"
   },
   "buttons": {
     "save": "保存",
@@ -755,6 +1192,13 @@
       "description": "DeepStudent 依托以下成熟的开源生态快速发展，感谢所有社区长期的维护与创新。",
       "openDialog": "查看致谢名单",
       "closeDialog": "关闭",
+      "projectLicense": "项目许可证",
+      "thirdPartyLicense": "第三方许可证",
+      "projectLicenseDescription": "DeepStudent 使用的 GNU Affero 通用公共许可证全文。",
+      "thirdPartyLicenseDescription": "随 DeepStudent 分发的组件许可证与版权归属声明。",
+      "backToAcknowledgements": "返回致谢名单",
+      "loadingLicenses": "正在加载许可证...",
+      "licenseLoadError": "无法加载许可证文本。",
       "expand": "展开 {{category}}",
       "collapse": "收起 {{category}}",
       "categories": {
@@ -804,6 +1248,21 @@
       "description": "预览项目中使用的自定义 UI 组件。",
       "app_menu": "现代化菜单",
       "app_menu_desc": "现代化下拉菜单/右键菜单通用组件"
+    }
+  },
+  "diagnostics": {
+    "title": "诊断与反馈",
+    "export": {
+      "title": "导出诊断包",
+      "description": "将当前日志和旧版本遗留日志脱敏后汇总为 ZIP，不会包含数据库和用户文档。",
+      "mobile_unsupported": "当前版本暂不支持移动端分享；启用错误报告后仍会自动记录故障。",
+      "action": "导出 ZIP",
+      "success": "诊断包已导出（{{count}} 个文件）",
+      "partial": "已导出 {{count}} 个文件，另有 {{skipped}} 个文件未能包含"
+    },
+    "include_debug": {
+      "title": "包含详细 AI 请求日志",
+      "description": "默认关闭；其中可能包含学习内容，分享前请检查 ZIP。"
     }
   },
   "developer": {
@@ -1037,6 +1496,8 @@
     "chat_title_model_hint": "用于生成聊天标题与智能标签提取，建议使用理解能力强且速度快的模型。若不设置，将默认使用对话模型。",
     "memory_decision_model_label": "记忆决策模型",
     "memory_decision_model_hint": "用于智能写入记忆时判断去重/更新/追加，建议使用快速轻量的模型。若不设置，将默认使用功能增强模型。",
+    "compaction_model_label": "上下文压缩模型",
+    "compaction_model_hint": "长对话接近上下文上限时，用于生成锚定摘要（压缩）的专用模型，建议选择便宜且长上下文的模型。若不设置，将默认使用当前对话模型。",
     "batch_create_success": "成功创建 {{count}} 个API配置",
     "batch_create_failed": "批量创建API配置失败",
     "auto_assign_success": "一键分配完成，模型分配已自动应用",
@@ -1087,6 +1548,7 @@
     "test_all_success": "体检完成：成功 {{success}}/{{configured}}",
     "engine_options": {
       "none": "无（不使用）",
+      "bing_rss": "Bing RSS（免费）",
       "google_cse": "Google CSE",
       "serpapi": "SerpAPI（Google）",
       "tavily": "Tavily",
@@ -1095,6 +1557,7 @@
       "zhipu": "智谱 AI（国产）",
       "bocha": "博查 AI（国产）"
     },
+    "bing_rss_name": "Bing RSS（免费）",
     "zhipu_name": "智谱 AI 搜索",
     "zhipu_key_label": "智谱 API Key",
     "zhipu_key_desc": "智谱 AI 开放平台 API 密钥",
@@ -1197,9 +1660,8 @@
     "create_failed": "维度创建失败",
     "dimension_exists": "该维度已存在",
     "dimension_exists_hint": "此维度已存在",
-    "delete_dimension_title": "删除嵌入维度",
-    "delete_dimension_description": "确定要删除维度 {{dimension}} 吗？该维度包含 {{count}} 条数据。",
-    "delete_warning": "此操作将删除该维度下的所有 {{count}} 条向量数据，且不可恢复！",
+    "delete_confirm_inline": "将删除维度 {{dimension}} 及其 {{count}} 条向量记录，此操作不可恢复",
+    "delete_confirm_button": "确认删除",
     "delete_success": "维度已删除，共清理 {{count}} 条数据",
     "delete_failed": "删除维度失败",
     "stats_dimensions": "维度数",
@@ -1214,7 +1676,9 @@
     "set_default_success": "已设置为默认{{type}}嵌入维度",
     "set_default_failed": "设置默认维度失败",
     "bind_model_first": "请先为此维度分配模型",
-    "preset_dimensions": "常用维度"
+    "preset_dimensions": "常用维度",
+    "preset_dimension_success": "默认嵌入维度 {{dimension}} 已创建并生效",
+    "preset_dimension_failed": "嵌入维度 {{dimension}} 配置失败，请在「嵌入维度管理」中手动创建并设为默认"
   },
   "mcp": {
     "title": "MCP工具协议",
@@ -1265,7 +1729,25 @@
     "backend_disabled_hint": "后端 MCP 功能未启用，请在 Cargo.toml 中开启 mcp 特性后重试。",
     "load_config_failed": "加载配置失败: {{error}}",
     "save_model_assignment_failed": "保存模型分配失败: {{error}}",
-    "vendor_not_found": "未找到供应商"
+    "vendor_not_found": "未找到供应商",
+    "oauth": {
+      "title": "OAuth 授权",
+      "login": "使用 OAuth 登录",
+      "reauth": "重新授权",
+      "logout": "注销",
+      "cancel": "取消授权",
+      "status_authorized": "已授权（令牌已安全存储）",
+      "status_none": "未授权",
+      "login_success": "OAuth 授权完成",
+      "login_failed": "OAuth 授权失败",
+      "logout_success": "已注销 OAuth 会话",
+      "logout_failed": "注销 OAuth 会话失败",
+      "cancelled": "已取消授权",
+      "desktop_only": "OAuth 浏览器登录仅在桌面端可用",
+      "missing_url": "请先填写 MCP 端点 URL 再授权",
+      "clear_api_key_first": "请先清空 API Key —— API Key 优先于 OAuth",
+      "api_key_priority_hint": "若已填写 API Key，将优先于 OAuth Bearer 令牌使用。"
+    }
   },
   "notifications": {
     "config_save_success": "配置保存成功",
@@ -1433,6 +1915,7 @@
     "translation_saved": "翻译模型配置已保存",
     "voice_input_asr_saved": "语音输入 ASR 模型配置已保存",
     "image_generation_saved": "生图模型配置已保存",
+    "compaction_model_saved": "上下文压缩模型配置已保存",
     "qbank_ai_grading_saved": "题库AI批改模型配置已保存",
     "translation_save_failed": "保存翻译模型配置失败: {{error}}",
     "learning_mode_saved": "学习模式偏好已更新",
@@ -1484,7 +1967,12 @@
     "not_configured": "未配置",
     "testing": "测试中…",
     "test_availability": "测试可用性",
-    "in_development": "开发中"
+    "in_development": "开发中",
+    "offline": "离线",
+    "thinking_label": "思考模式",
+    "thinking_desc": "模型支持时允许 OCR 使用更长的推理过程。",
+    "thinking_on": "开启",
+    "thinking_off": "关闭"
   },
   "descriptions": {
     "model1_desc": "已废弃：OCR 使用专用引擎（DeepSeek-OCR / PaddleOCR-VL-1.5）",
@@ -1499,7 +1987,15 @@
     "qbank_ai_grading_desc": "用于题库中的 AI 评判与 AI 解析。若未配置，将回退使用\"对话模型\"。",
     "voice_input_asr_desc": "用于输入层语音转文字。这里会展示所有具备 ASR 能力的模型，暂不支持的提供方会标记为“即将支持”；转写成功后只插入文本，不会自动发送。",
     "image_generation_desc": "用于 Chat V2 内置生图工具。请选择支持 OpenAI 兼容 /images/generations 的模型，生成结果会保存到 VFS。",
-    "vl_reranker_desc": "用于对多模态 RAG 检索结果进行重排序，提高图文混合检索的相关性（可选配置）"
+    "vl_reranker_desc": "用于对多模态 RAG 检索结果进行重排序，提高图文混合检索的相关性（可选配置）",
+    "bing_rss_desc": "无需 API Key 的内置基础搜索源。公共端点可能限流，适合作为 Best Effort 默认源。",
+    "google_cse_desc": "Google 自定义搜索引擎 API，提供准确全面的网页搜索。",
+    "serpapi_desc": "封装 Google、Bing 等多个引擎的聚合搜索 API。",
+    "tavily_desc": "专为大语言模型打造的检索优化型搜索引擎。",
+    "brave_desc": "注重隐私的独立网页搜索引擎。",
+    "searxng_desc": "免费开源、聚合多个搜索源的元搜索引擎。",
+    "zhipu_desc": "智谱提供的国产化互联网搜索聚合服务。",
+    "bocha_desc": "专注于中文资料索引的轻量级检索服务。"
   },
   "common_labels": {
     "no_data": "暂无数据",
@@ -1694,7 +2190,11 @@
     "api_config_desc": "管理可用模型服务及其密钥、能力标记",
     "mcp_section_desc": "管理 MCP 服务器、工具缓存与连接状态",
     "semantic_fts_desc": "开启后，先用 FTS 快速筛选候选，再做语义相似度；默认开启。",
-    "timeout_desc": "搜索请求的超时时间（毫秒），避免长时间等待影响用户体验"
+    "timeout_desc": "搜索请求的超时时间（毫秒），避免长时间等待影响用户体验",
+    "select_tool_to_edit": "请选择要编辑的工具",
+    "select_policy_to_edit": "请选择要编辑的策略",
+    "policy_title": "MCP 工具权限",
+    "advertise_all": "公开全部工具"
   },
   "advanced_search": {
     "reranker": {
@@ -1734,10 +2234,13 @@
       "rate_limit_per_minute": "每分钟限流",
       "cache_ttl_seconds": "缓存保留时长 (秒)",
       "cache_max_entries": "缓存最大条目",
+      "strategy_title": "策略配置",
+      "strategy_hint": "未配置时回退到 default 策略。",
       "save_button": "保存策略配置",
       "names": {
         "default": "默认策略",
         "bing": "Bing",
+        "bing_rss": "Bing RSS（免费）",
         "google_cse": "Google CSE",
         "serpapi": "SerpAPI",
         "tavily": "Tavily",
@@ -1747,6 +2250,7 @@
       "descriptions": {
         "default": "全部引擎的基线策略",
         "bing": "微软 Bing 搜索",
+        "bing_rss": "无需 API Key 的 Bing RSS 基础搜索",
         "google_cse": "Google Custom Search",
         "serpapi": "SerpAPI 聚合搜索",
         "tavily": "Tavily 聚焦研究",
@@ -1913,22 +2417,176 @@
     "latest_prompts": "最新 Prompts",
     "latest_resources": "最新 Resources",
     "none": "暂无",
-    "prompts_resources_section": "Prompts & Resources"
+    "prompts_resources_section": "Prompts & Resources",
+    "toggle_enabled": "启用或停用服务器 {{name}}",
+    "disabled_badge": "已停用"
   },
   "tool_permissions": {
     "title": "工具权限管理",
-    "bypass_badge": "免审批",
-    "global_bypass_title": "全局免审批模式",
-    "global_bypass_desc": "开启后所有工具直接执行，不再弹出审批确认框。适合信任环境下的流畅使用体验。",
-    "bypass_enabled": "已开启全局免审批模式",
-    "bypass_disabled": "已关闭全局免审批模式",
+    "bypass_badge": "简化审批",
+    "global_bypass_title": "信任环境快速模式",
+    "global_bypass_desc": "减少常规工具的审批确认。文件写入、命令执行、权限提升等受保护操作仍会遵循精确授权和安全边界。",
+    "bypass_enable_confirm": "为 {{count}} 个已注册工具开启信任环境快速模式吗？常规审批会减少，但受保护操作仍会强制执行安全边界。",
+    "bypass_enabled": "已开启信任环境快速模式",
+    "bypass_disabled": "已关闭信任环境快速模式",
+    "runtime_roots_title": "运行时根目录",
+    "runtime_roots_desc": "本地文件工具会被限制在这些根目录内。工作区默认只读；仅在你显式授权后才允许写入，生成产物写入按会话隔离的应用数据目录。",
+    "runtime_roots_empty": "当前环境暂未提供运行时根目录信息。",
+    "runtime_root_session_scoped": "会话隔离",
+    "runtime_root_read_only": "只读",
+    "runtime_root_read_write": "读写",
+    "runtime_root_configured": "已配置",
+    "runtime_root_not_configured": "未配置",
+    "runtime_root_not_configured_hint": "当前回退到应用自身的运行目录，建议明确选择你的学习资料所在文件夹。",
+    "runtime_root_configure_now": "立即设置",
+    "runtime_roots_authorized_empty_hint": "授权文件夹后，AI 才能读取其中的文件，并在运行本地命令时把它作为工作目录。",
+    "runtime_root_path_placeholder": "输入要授权的本地文件夹路径...",
+    "runtime_root_browse": "浏览...",
+    "runtime_root_browse_title": "选择要授权的本地文件夹",
+    "runtime_root_kind": {
+      "workspace": "工作区",
+      "authorized": "授权目录",
+      "skill_package": "技能包",
+      "artifact": "产物",
+      "temp": "临时"
+    },
+    "runtime_root_set_workspace": "设为工作区",
+    "runtime_root_workspace_access": "工作区访问权限",
+    "runtime_root_workspace_write_warning": "读写授权允许 AI 在此工作区创建、修改、移动和删除文件。文件变更工具会生成可审计、可回滚的变更记录；终端命令被限制在选定工作目录并强制记录文件变化。",
+    "runtime_root_workspace_set": "已更新工作区根目录",
+    "runtime_root_workspace_set_failed": "更新工作区根目录失败",
+    "runtime_root_workspace_reset": "重置工作区根目录",
+    "runtime_root_workspace_reset_done": "已重置工作区根目录",
+    "runtime_root_workspace_reset_failed": "重置工作区根目录失败",
+    "runtime_root_add": "授权文件夹",
+    "runtime_root_added": "已授权运行时文件夹",
+    "runtime_root_add_failed": "授权运行时文件夹失败",
+    "runtime_root_risk_broad": "「{{folder}}」是常用个人文件目录，授权后 AI 可以读取其中的所有文件。建议改选更具体的子文件夹；确认无误请再点一次「确认授权」。",
+    "runtime_root_risk_critical": "你正在授权整个磁盘或用户主目录（{{path}}），AI 将可以读取其中的所有文件。强烈建议改选更具体的子文件夹；确认风险请再点一次「确认授权」。",
+    "runtime_root_confirm_add": "确认授权",
+    "runtime_root_reselect": "重新选择",
+    "runtime_root_remove": "撤销文件夹授权",
+    "runtime_root_removed": "已撤销运行时文件夹授权",
+    "runtime_root_remove_failed": "撤销运行时文件夹失败",
+    "shell_rules": {
+      "title": "终端命令规则",
+      "desc": "集中管理本地终端命令。禁止规则始终优先，其次询问，最后才评估允许规则；规则仅做字面匹配，不支持通配符或正则表达式。",
+      "add": "添加规则",
+      "add_title": "添加命令规则",
+      "edit_title": "编辑命令规则",
+      "default_title": "未匹配命令的默认策略",
+      "default_desc": "建议保持“询问”，只为明确且重复使用的命令添加例外。",
+      "default_allow_warning": "默认允许会减少确认，但只对本地且经判定为安全只读的调用生效。确认要设为允许吗？",
+      "safety_boundary": "允许规则只对本地、安全且只读的调用生效。为防止 PATH 劫持和程序参数启动子进程，只有受信任的 Shell 内建命令或显式系统绝对路径可免确认；Git、rg、危险参数、链式命令、重定向、脚本解释器和外部 MCP 命令仍会询问。禁止规则始终优先。",
+      "action_allow": "允许",
+      "action_ask": "询问",
+      "action_deny": "禁止",
+      "match_exact": "精确命令",
+      "match_prefix": "命令前缀",
+      "match_executable": "可执行文件",
+      "effect_label": "规则效果",
+      "match_label": "匹配类型",
+      "placeholder_exact": "例如：/bin/ls -la",
+      "placeholder_prefix": "例如：/bin/ls",
+      "placeholder_executable": "例如：/bin/ls",
+      "pattern_label": "命令匹配内容",
+      "note_label": "规则备注",
+      "help_exact": "匹配完整命令及参数，范围最窄。",
+      "help_prefix": "按字面命令前缀匹配；前缀越短，覆盖范围越大。",
+      "help_executable": "只匹配可执行文件身份，不含参数；允许规则可能覆盖该程序的所有子命令。",
+      "note_placeholder": "备注（可选），例如使用场景或规则负责人",
+      "error_required": "命令内容不能为空。",
+      "error_wildcards_not_supported": "不支持 *、?、[] 或 {} 等通配写法，请输入明确的字面规则。",
+      "error_compound_not_supported": "规则不能包含管道、重定向、换行或命令连接符，请拆成单条命令。",
+      "error_executable_only": "可执行文件规则不能包含参数；需要参数时请使用精确命令或命令前缀。",
+      "error_duplicate": "已有相同匹配规则，请直接编辑现有规则。",
+      "broad_allow_warning": "这是宽泛或可执行任意脚本的允许规则，可能覆盖大量命令。系统安全边界仍会生效；确认风险后再保存。",
+      "broad_badge": "宽泛允许",
+      "confirm_allow": "确认允许",
+      "saved": "终端命令规则已更新",
+      "save_failed": "保存终端命令规则失败",
+      "empty": "尚未添加终端命令规则",
+      "empty_hint": "未匹配命令将使用上方默认策略。",
+      "search": "搜索命令或备注...",
+      "all_effects": "全部效果",
+      "all_matches": "全部匹配类型",
+      "no_matches": "没有符合当前筛选条件的规则",
+      "toggle_rule": "启用或停用规则 {{pattern}}",
+      "preview_title": "规则命中预览",
+      "preview_placeholder": "输入命令，例如 /bin/ls -la",
+      "preview_matched": "命中：{{pattern}}",
+      "preview_default": "使用默认策略",
+      "preview_hint": "预览只解释名单匹配；允许结果仍需通过后端的只读、安全和本地执行检查。",
+      "select_visible": "选择当前结果",
+      "select_rule": "选择规则 {{pattern}}",
+      "selected_count": "已选择 {{count}} 条",
+      "bulk_enable": "启用",
+      "bulk_disable": "停用",
+      "bulk_delete": "删除",
+      "bulk_delete_confirm": "确定删除选中的 {{count}} 条终端命令规则吗？",
+      "delete_confirm": "确定删除终端命令规则「{{pattern}}」吗？",
+      "relax_confirm": "此操作会停用或删除 {{count}} 条询问/禁止规则，可能扩大终端访问范围。确定继续吗？"
+    },
     "per_tool_title": "单工具等级覆盖",
     "per_tool_desc": "为具体工具单独设置敏感等级。未设置的工具使用系统默认等级。点击已激活的等级可恢复默认。",
+    "policy_overview_title": "工具策略概览",
+    "policy_overview_desc": "按能力域统一管理工具等级；只有例外项才需要进入高级管理逐个调整。",
+    "summary_tools": "已注册工具",
+    "summary_sources": "工具来源",
+    "summary_overrides": "策略已配置",
+    "group_summary": "{{count}} 个工具 · {{overridden}} 个覆盖",
+    "group_by": "策略分组",
+    "group_by_domain": "能力域",
+    "group_by_source": "来源",
+    "group_updated": "分组策略已更新",
+    "bulk_level_label": "批量设置工具等级",
+    "group_level_label": "设置 {{group}} 分组等级",
+    "bulk_low_confirm": "将选中的 {{count}} 个工具设为低敏感吗？常规审批会减少，但受保护操作仍不会被绕过。",
+    "group_low_confirm": "将该分组内的 {{count}} 个工具设为低敏感吗？常规审批会减少，但受保护操作仍不会被绕过。",
+    "dynamic_risk_hint": "这里设置的是基础敏感等级。系统仍会根据每次调用的参数动态提高风险，受保护操作不会被快速模式或低敏感等级绕过。",
+    "capability_files": "文件与工作区",
+    "capability_web": "网络与搜索",
+    "capability_knowledge": "知识与记忆",
+    "capability_learning": "学习与复习",
+    "capability_automation": "命令与自动化",
+    "capability_data": "数据与同步",
+    "capability_communication": "会话与通知",
+    "capability_other": "其他能力",
+    "advanced_title": "高级单工具管理",
+    "filters_title": "筛选工具",
+    "filtered_count": "{{count}} 个结果",
+    "search_placeholder": "搜索工具名称、说明或来源...",
+    "source_filter": "按来源筛选",
+    "source_all": "全部来源",
+    "level_filter": "按等级筛选",
+    "level_all": "全部等级",
+    "level_default": "默认",
+    "override_filter": "按覆盖状态筛选",
+    "override_all": "全部状态",
+    "override_only": "仅看覆盖",
+    "inherited_only": "仅看继承",
+    "status_overridden": "已覆盖",
+    "status_inherited": "继承默认",
+    "status_source": "继承来源策略",
+    "status_domain": "继承能力域策略",
+    "status_global": "继承快速模式",
+    "status_default": "继承系统默认",
+    "select_visible": "选择当前结果",
+    "select_tool": "选择工具 {{name}}",
+    "selected_count": "已选择 {{count}} 个工具",
+    "clear_selection": "取消选择",
+    "no_matching_tools": "没有符合当前筛选条件的工具",
+    "reset_group_to_default": "整组恢复系统默认",
+    "set_group_to_low": "整组设为低敏感",
+    "set_group_to_medium": "整组设为中敏感",
+    "set_group_to_high": "整组设为高敏感",
+    "bulk_updated": "已更新 {{count}} 个工具",
+    "bulk_partial_failed": "已更新 {{success}}/{{total}} 个工具，其余项目更新失败",
     "no_tools": "暂无已注册的工具",
     "level_low": "低",
     "level_medium": "中",
     "level_high": "高",
-    "set_to_low": "设为低敏感（跳过审批）",
+    "set_to_low": "设为低敏感（减少常规审批，受保护操作除外）",
     "set_to_medium": "设为中敏感（需要审批）",
     "set_to_high": "设为高敏感（必须审批）",
     "reset_to_default": "恢复默认等级",
@@ -1977,7 +2635,26 @@
     "memoryEnabled": "启用",
     "memoryEnabledDesc": "开启后 AI 会自动提取并调用关于你的信息来个性化对话体验。关闭后不再提取、检索或注入用户记忆。",
     "memoryEnabledToast": "记忆功能已开启",
-    "memoryDisabledToast": "记忆功能已关闭"
+    "memoryDisabledToast": "记忆功能已关闭",
+    "autoSubfoldersUpdated": "自动子文件夹设置已更新",
+    "defaultCategoryUpdated": "默认记忆分类已更新",
+    "autoSubfolders": "自动创建子文件夹",
+    "autoSubfoldersDesc": "写入记忆时，自动按分类路径创建子文件夹。",
+    "defaultCategory": "默认分类",
+    "defaultCategoryDesc": "未指定分类时记忆存入的默认子文件夹。",
+    "autoExtractFrequency": "自动提取频率",
+    "autoExtractFrequencyDesc": "对话结束后自动提取记忆的频率",
+    "autoExtractFrequencyUpdated": "自动提取频率已更新",
+    "freqOff": "关闭",
+    "freqBalanced": "平衡",
+    "freqAggressive": "积极",
+    "freqOffDesc": "仅关闭对话后的自动提取；已有记忆的整理、衰减与画像更新仍会照常运行。",
+    "freqBalancedDesc": "每轮对话后自动提取记忆，内容不足 10 个字符时跳过。",
+    "freqAggressiveDesc": "更积极地提取（内容满 4 个字符即触发），分类刷新与记忆整理也更频繁。",
+    "categoryGeneral": "通用",
+    "categoryPreference": "偏好",
+    "categoryExperience": "经历",
+    "loadError": "记忆设置加载失败"
   },
   "data_governance": {
     "backup_tiers": {
@@ -1998,7 +2675,9 @@
       "subjects": "学科资源",
       "workspaces": "工作空间",
       "audio": "音频",
-      "videos": "视频"
+      "videos": "视频",
+      "textbooks": "教材",
+      "pdf_ocr_sessions": "PDF/OCR 会话文件"
     },
     "backup_in_progress": "备份进行中...",
     "export_in_progress": "导出进行中...",
@@ -2084,9 +2763,59 @@
     "already_exists": "该服务器已存在",
     "free_label": "免费",
     "requires_api_key": "需要 API Key",
+    "api_key_required": "该预置需要 API Key（或启用 OAuth）",
     "community": "社区",
+    "official": "官方",
     "category_documentation": "文档",
-    "context7_desc": "获取任意库的最新文档和代码示例，支持 1000+ 主流框架，无需 API Key"
+    "category_search": "搜索",
+    "category_knowledge": "知识",
+    "category_scraping": "抓取 / Fetch",
+    "category_devops": "开发运维",
+    "risk_label": "风险等级",
+    "risk_low": "低",
+    "risk_medium": "中",
+    "risk_high": "高",
+    "data_scope_label": "数据范围",
+    "network_egress_label": "是否出网",
+    "network_egress_yes": "是 — 会访问远程服务",
+    "network_egress_no": "否",
+    "get_api_key": "获取 API Key / Token",
+    "permission_title": "权限说明 — {{name}}",
+    "confirm_install": "确认安装",
+    "enable_oauth_install": "以 OAuth 方式安装（安装后浏览器授权；与 API Key 互斥）",
+    "context7_desc": "获取任意库的最新文档和代码示例，支持 1000+ 主流框架，无需 API Key",
+    "exa_desc": "Exa 神经搜索 / 代码搜索（托管 MCP；免费额度，可选 API Key 提升限额）",
+    "wikipedia_desc": "通过 Pipeworx 网关访问维基百科 / Wikimedia（无需鉴权）",
+    "firecrawl_desc": "抓取、爬取与搜索实时网页（无 Key 免费档；API Key 或 OAuth 解锁完整工具）",
+    "cloudflare_docs_desc": "检索 Cloudflare 开发者文档（连接时可 OAuth）",
+    "tavily_desc": "Tavily 实时搜索、抽取、地图与爬取（API Key 或 OAuth）",
+    "huggingface_desc": "Hugging Face Hub 模型、数据集、论文与 Spaces（Token 或 OAuth）",
+    "github_desc": "GitHub 官方远程 MCP — 仓库、Issue、PR（当前建议 PAT；可 OAuth）",
+    "hints": {
+      "exa_key": "可选 Exa API Key",
+      "firecrawl_key": "可选 Firecrawl API Key（fc-…）",
+      "tavily_key": "Tavily API Key",
+      "huggingface_token": "Hugging Face Access Token（hf_…）",
+      "github_pat": "GitHub Personal Access Token"
+    },
+    "permissions": {
+      "context7_scope": "读取 Context7 上的公开库文档；不访问你的本地文件。",
+      "context7_notes": "查询会发往 mcp.context7.com。",
+      "exa_scope": "通过 Exa 执行网页/代码搜索；搜索词会发送给 Exa。",
+      "exa_notes": "可选 API Key 可提高限额。基础使用无需 OAuth。",
+      "wikipedia_scope": "经第三方网关获取维基百科 / Wikimedia 内容。",
+      "wikipedia_notes": "社区托管远程端点，可能有速率限制。",
+      "firecrawl_scope": "按你的请求抓取任意公开 URL。",
+      "firecrawl_notes": "无 Key 档有速率限制。生产环境建议 API Key 或 OAuth。",
+      "cloudflare_docs_scope": "仅读取 Cloudflare 公开文档（不含你的账户 API）。",
+      "cloudflare_docs_notes": "首次连接时远程服务可能提示 OAuth。",
+      "tavily_scope": "经 Tavily 云进行网页搜索与 URL 抽取/地图/爬取。",
+      "tavily_notes": "支持 Header/URL 中的 API Key，或兼容客户端的 OAuth。",
+      "huggingface_scope": "搜索 Hub 模型/数据集/论文，并可能调用你启用的 Gradio Spaces。",
+      "huggingface_notes": "私有资源需要 Token 或 OAuth（?login）；公开搜索可能无需鉴权。",
+      "github_scope": "访问你的 PAT/OAuth 范围所允许的 GitHub 数据（仓库、Issue、PR 等）。",
+      "github_notes": "高风险：请妥善保管令牌。宿主 OAuth 支持因客户端而异；当前推荐 PAT。"
+    }
   },
   "gradingMode": {
     "backToSettings": "返回设置",
@@ -2156,5 +2885,139 @@
     "available": "可用",
     "unavailable": "不可用",
     "untested": "未检测"
+  },
+  "study_ui_descriptions": {
+    "general": "管理语言、交互习惯、输入方式和个人偏好。",
+    "appearance": "自定义主题、字体、缩放和界面视觉风格。"
+  },
+  "about": {
+    "update": {
+      "checking": "检查中...",
+      "check": "检查更新",
+      "channel": "更新渠道",
+      "channelExpDesc": "接收实验版更新，可能包含未充分测试的功能",
+      "channelStableDesc": "仅接收经过验证的稳定版更新",
+      "channelStable": "稳定版",
+      "channelExp": "实验版",
+      "frequency": "自动检查更新",
+      "frequencyNoRemindDesc": "已关闭自动更新提醒，点击重新开启",
+      "frequencyNeverDesc": "不会自动检查更新，可手动检查",
+      "frequencyDaysDesc": "每 {{days}} 天自动检查一次",
+      "frequencyLaunchDesc": "每次启动时自动检查",
+      "frequencyReEnable": "重新开启",
+      "freqEveryLaunch": "每次启动",
+      "freqEveryNDays": "每 N 天",
+      "freqNever": "永不",
+      "upToDate": "已是最新版本",
+      "available": "发现新版本",
+      "mirrorDownload": "镜像下载",
+      "githubDownload": "GitHub 下载",
+      "downloading": "下载中...",
+      "install": "下载更新",
+      "error": {
+        "check": "检查更新失败",
+        "download": "下载失败",
+        "install": "安装失败",
+        "unavailable": "更新已不可用，请稍后重试",
+        "relaunch": "更新已安装，请手动重启应用以完成更新"
+      },
+      "dialog": {
+        "title": "有可用新版本",
+        "skipVersion": "跳过版本",
+        "ignore": "忽略",
+        "update": "更新",
+        "neverRemind": "不再提醒",
+        "neverRemindConfirm": "确定不再提醒？可在设置中重新开启",
+        "confirm": "确定",
+        "cancel": "取消"
+      }
+    }
+  },
+  "siliconflow_ocr": {
+    "paddle_ocr_vl_15": "免费开源 OCR 1.5 版，支持 109 种语言，精度达 94.5%",
+    "paddle_ocr_vl": "免费开源 OCR 旧版，支持坐标输出，作为 1.5 版的备用",
+    "deepseek_ocr": "专业 OCR 模型，支持坐标定位",
+    "glm4v_ocr": "智谱 106B MoE 多模态模型，支持坐标定位，题目集导入自动优先使用",
+    "generic_vlm": "通用多模态模型，适合简单文档识别（备用）"
+  },
+  "a11y": {
+    "close": "关闭",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存"
+  },
+  "quick_assistant": {
+    "title": "快速学习",
+    "description": "在其他应用中捕获内容、快速处理并沉淀到学习系统。",
+    "enabled": "启用系统快捷小窗",
+    "enabled_description": "使用 {{shortcut}} 随时呼出快速学习。",
+    "clipboard": "呼出时读取剪贴板",
+    "clipboard_description": "仅在本机读取，用于识别当前复制的题目、段落或公式。",
+    "background": "关闭主窗口后继续运行",
+    "background_description": "主窗口关闭时隐藏到后台，使系统快捷键仍可呼出小窗。",
+    "preview": "预览快速学习",
+    "preview_description": "打开小窗，检查剪贴板捕获、搜索、复习和学习状态。",
+    "open": "打开小窗"
+  },
+  "search_engine": {
+    "title": "搜索引擎"
+  },
+  "statistics": {
+    "learning_time": "学习时长",
+    "chat_stats": "对话统计",
+    "heatmap": "活跃热力图"
+  },
+  "params": {
+    "temperature": "温度",
+    "top_p": "Top P"
+  },
+  "plugins": {
+    "title": "插件与集成",
+    "description": "管理桌面端通道插件（目前支持微信 iLink Bot）。移动端不可用。",
+    "empty": "暂无可用插件",
+    "configure": "配置",
+    "back_to_list": "返回列表",
+    "saved": "插件配置已保存",
+    "connection_title": "连接",
+    "reply_title": "回复设置",
+    "enable_switch": "自动回复",
+    "pause": "已暂停自动回复",
+    "resume": "已开启自动回复",
+    "bind_first_hint": "请先在「配置」中扫码绑定微信，绑定后才能启用",
+    "binding_hint": "使用微信扫描二维码，确认后即可将此设备绑定为 ClawBot。",
+    "scan_qr": "扫码绑定",
+    "cancel_scan": "取消扫码",
+    "qr_loading": "正在生成二维码…",
+    "qr_status": {
+      "wait": "请使用微信扫描二维码",
+      "scaned": "已扫码，请在手机上确认",
+      "confirmed": "绑定成功",
+      "expired": "二维码已过期，正在刷新…"
+    },
+    "unbound": "未绑定",
+    "bound_running_hint": "仅扫码绑定的微信用户可以触发回复。关闭开关可随时暂停。",
+    "account_id": "Bot ID",
+    "user_id": "授权用户",
+    "rebind": "重新绑定",
+    "rebind_confirm_title": "重新绑定微信？",
+    "rebind_confirm_desc": "当前机器人将停止运行并清除绑定。之后页面会回到初始状态，可重新扫码绑定。",
+    "ready_to_rebind": "已停止并解除绑定，可以重新扫码",
+    "model": "回复模型",
+    "model_desc": "未选择时回退到模型分配中的「对话模型」。",
+    "model_fallback": "回退到对话模型",
+    "rate_limit": "每分钟消息上限",
+    "rate_limit_desc": "按联系人限频，超出将提示「发送过快」。",
+    "system_prompt": "系统提示词（可选）",
+    "system_prompt_placeholder": "自定义助手人设与回复风格…",
+    "activity": "最近活动",
+    "states": {
+      "stopped": "已停止",
+      "starting": "启动中",
+      "waiting_login": "等待扫码",
+      "running": "运行中",
+      "stopping": "停止中",
+      "error": "错误"
+    },
+    "mobile_hidden": "插件功能仅在桌面端可用"
   }
 }

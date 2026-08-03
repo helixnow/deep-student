@@ -1,77 +1,18 @@
 /**
  * 索引维护组件
  * 
- * 从 Settings.tsx 拆分：全局索引维护、Lance 向量表优化
+ * 从 Settings.tsx 拆分：Lance 向量表优化
  */
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleNotch, Lightning, Chat, Database, Question, FolderOpen } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { TauriAPI } from '@/utils/tauriApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-
-// 格式化时间
-const formatTime = (timestamp: number): string => {
-  const date = new Date(timestamp);
-  return date.toLocaleString(undefined, {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-// 全局索引维护按钮组（带上限与 loading）
-export const GlobalIndexMaintenance: React.FC = () => {
-  const { t } = useTranslation('settings');
-  const [running, setRunning] = React.useState(false);
-  const [statusText, setStatusText] = React.useState('');
-
-  const handleMaintain = async () => {
-    setRunning(true);
-    try {
-      const parts: string[] = [];
-      const rebuilt = await TauriAPI.rebuildChatFts();
-      parts.push(rebuilt > 0 ? t('settings:global_index.success_rebuild_fts', { count: rebuilt }) : t('settings:global_index.no_missing'));
-      const filled = await TauriAPI.backfillUserMessageEmbeddings({});
-      parts.push(filled > 0 ? t('settings:global_index.success_backfill', { count: filled }) : t('settings:global_index.no_missing'));
-      const summary = parts.join(' / ');
-      showGlobalNotification('success', summary);
-      setStatusText(`${t('settings:global_index.last_run', { time: formatTime(Date.now()) })} · ${summary}`);
-    } catch (error: unknown) {
-      const errorMessage = getErrorMessage(error);
-      showGlobalNotification('error', t('settings:global_index.failed_maintain', { error: errorMessage }));
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-3 rounded-md border bg-muted/60 px-3 py-3">
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-foreground">{t('settings:global_index.section_hint')}</span>
-        <span className="text-xs text-muted-foreground">{t('settings:global_index.section_desc')}</span>
-      </div>
-      {statusText && (
-        <div className="rounded-md bg-background/60 px-3 py-2 text-xs text-muted-foreground">{statusText}</div>
-      )}
-      <NotionButton variant="default" disabled={running} onClick={handleMaintain} className="w-full md:w-auto">
-        {running ? (
-          <>
-            <CircleNotch size={16} className="mr-2 animate-spin" />
-            {t('settings:global_index.maintaining')}
-          </>
-        ) : (
-          t('settings:global_index.maintain_all')
-        )}
-      </NotionButton>
-    </div>
-  );
-};
 
 // Lance 向量表优化面板
 export const LanceOptimizationPanel: React.FC = () => {
@@ -169,14 +110,14 @@ export const LanceOptimizationPanel: React.FC = () => {
             {t('lance_optimization.description')}
           </p>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setShowInfo(!showInfo)}
           className="h-8"
         >
           <Question size={14} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 信息面板 */}
@@ -227,7 +168,7 @@ export const LanceOptimizationPanel: React.FC = () => {
 
       {/* 优化按钮组 */}
       <div className="grid grid-cols-2 gap-3">
-        <NotionButton
+        <DsButton
           variant="ghost"
           disabled={optimizing.chat}
           onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
@@ -239,9 +180,9 @@ export const LanceOptimizationPanel: React.FC = () => {
             <Chat size={16} />
           )}
           <span className="text-xs">{t('lance_optimization.chat_table')}</span>
-        </NotionButton>
+        </DsButton>
 
-        <NotionButton
+        <DsButton
           variant="ghost"
           disabled={optimizing.vfs}
           onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
@@ -253,11 +194,11 @@ export const LanceOptimizationPanel: React.FC = () => {
             <FolderOpen size={16} />
           )}
           <span className="text-xs">{t('lance_optimization.vfs_table')}</span>
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 一键优化所有表 */}
-      <NotionButton
+      <DsButton
         variant="default"
         disabled={Object.values(optimizing).some(v => v)}
         onClick={optimizeAll}
@@ -274,7 +215,7 @@ export const LanceOptimizationPanel: React.FC = () => {
             {t('lance_optimization.optimize_all')}
           </>
         )}
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };

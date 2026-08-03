@@ -1,3 +1,13 @@
+//! 多 Agent 协作 workspace 的领域类型
+//!
+//! ## ⚠️ 术语区分（防误改）
+//! 这里的 `Workspace` 指「**多 Agent 协作 workspace**」：多个 agent 会话
+//! 共享消息路由、文档与收件箱的逻辑协作空间（见 `workspace/coordinator.rs`）。
+//!
+//! 与 `chat_v2/runtime_roots.rs` 中的 "workspace root" **不是同一概念**：
+//! 那边指磁盘上的**文件系统工作目录**（agent 工具被授权读写的根路径）。
+//! 修改任一侧时不要把两者的类型或语义混用。
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,16 +19,12 @@ pub type DocumentId = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum WorkspaceStatus {
+    #[default]
     Active,
     Completed,
     Archived,
-}
-
-impl Default for WorkspaceStatus {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,30 +61,26 @@ impl Workspace {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AgentRole {
     Coordinator,
+    #[default]
     Worker,
-}
-
-impl Default for AgentRole {
-    fn default() -> Self {
-        Self::Worker
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AgentStatus {
+    #[default]
     Idle,
+    Queued,
     Running,
     Completed,
     Failed,
-}
-
-impl Default for AgentStatus {
-    fn default() -> Self {
-        Self::Idle
-    }
+    Cancelled,
+    Interrupted,
+    Closed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,16 +126,12 @@ pub enum MessageType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MessageStatus {
+    #[default]
     Pending,
     Delivered,
     Processed,
-}
-
-impl Default for MessageStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,16 +181,12 @@ impl WorkspaceMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum InboxStatus {
+    #[default]
     Unread,
     Read,
     Processed,
-}
-
-impl Default for InboxStatus {
-    fn default() -> Self {
-        Self::Unread
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

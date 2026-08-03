@@ -29,8 +29,10 @@ export type WorkMode = 'canvas' | 'fullscreen';
  * 视图模式
  * - list: 列表视图（复用 DndFileTree）
  * - grid: 图标/网格视图
+ * - columns: Finder 分栏视图（仅桌面全屏宿主使用；与 stores/finderStore 的
+ *   ViewMode 保持一致，分栏 UI 落地前由 FinderFileList 回退为 grid 渲染）
  */
-export type ViewMode = 'list' | 'grid';
+export type ViewMode = 'list' | 'grid' | 'columns';
 
 /**
  * 数据视图
@@ -72,7 +74,7 @@ export interface ResourceListItem {
   /** 资源类型 */
   type: ResourceType;
   /** 预览类型 */
-  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'audio' | 'video' | 'mindmap';
+  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'mindmap';
   /** 缩略图 URL（可选，用于 Grid 视图） */
   thumbnail?: string;
   /** 内容预览（用于笔记的 Markdown 预览，仅前 200 字符） */
@@ -136,8 +138,22 @@ export interface LearningHubSidebarProps {
   hideToolbarAndNav?: boolean;
   /** ★ 桌面端将快捷入口渲染到外层 Shell 侧栏 */
   quickAccessPortalTarget?: HTMLElement | null;
+  /** ★ Workbench 资源库窗口：将 Finder 工具栏挂到原生窗口标题栏插槽 */
+  toolbarPortalTarget?: HTMLElement | null;
+  /** 工具栏所在标题栏类型：普通模式使用全局 shell，OS 模式使用独立窗口 */
+  toolbarPortalMode?: 'shell' | 'window';
   /** ★ 高亮标记的资源 ID（如分组已关联的资源，显示勾选状态） */
   highlightedIds?: Set<string>;
+  /** ★ LH-HOST：宿主标识（canvas / files / page…）；Step1 仅透传，不改 store 分桶 */
+  hostId?: string;
+  /** ★ LH-HOST：会话是否活跃；false 时跳过 path→refresh */
+  sessionActive?: boolean;
+  /**
+   * 是否启用 learningHub:* 命令事件（create-folder / focus-search）。
+   * 未传时回退到 `useViewVisibility('learning-hub')`；
+   * Workbench Files 窗应传 `isActive`，避免与 legacy LH 双监听。
+   */
+  commandsEnabled?: boolean;
 }
 
 /**
@@ -318,6 +334,10 @@ export const VIEW_MODE_CONFIG: Record<
     labelKey: 'learningHub:viewMode.grid',
     icon: 'Grid3X3',
   },
+  columns: {
+    labelKey: 'learningHub:viewMode.columns',
+    icon: 'Columns',
+  },
 };
 
 // ============================================================================
@@ -362,6 +382,26 @@ export function itemTypeToPreviewType(itemType: FolderItemType): ResourceListIte
 }
 
 /**
+ * 文本预览可识别的扩展名（用于 file 资源兜底推断）。
+ * ★ 2026-07-19（B6）：补充常见代码扩展名与 tsv——这类文件的 MIME 常被标为
+ * application/octet-stream，此前不在列表中会被误判为"无法预览"。
+ */
+const TEXT_PREVIEW_EXTENSIONS = new Set([
+  // 纯文本 / 文档
+  'txt', 'md', 'markdown', 'html', 'htm', 'csv', 'tsv', 'json', 'xml', 'rtf',
+  'log', 'tex',
+  // 后端可提取文本的老格式电子表格
+  'xls', 'xlsb', 'ods',
+  // 配置 / 数据
+  'jsonc', 'jsonl', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg', 'env', 'properties',
+  // 代码
+  'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'css', 'scss', 'less',
+  'py', 'rs', 'go', 'java', 'kt', 'kts', 'c', 'h', 'cpp', 'hpp', 'cc', 'cxx', 'hh', 'cs',
+  'sql', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'rb', 'php', 'swift', 'lua',
+  'vue', 'svelte', 'graphql', 'diff', 'patch', 'dockerfile', 'makefile',
+]);
+
+/**
  * 从文件名推断预览类型（用于 file 资源兜底）
  */
 export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem['previewType'] {
@@ -377,8 +417,9 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
   if (ext === 'docx') return 'docx';
   if (ext === 'xlsx') return 'xlsx';
   if (ext === 'pptx') return 'pptx';
+  if (ext === 'epub') return 'epub';
 
-  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'epub', 'xls', 'xlsb', 'ods'].includes(ext)) {
+  if (TEXT_PREVIEW_EXTENSIONS.has(ext)) {
     return 'text';
   }
 
@@ -421,6 +462,7 @@ const VALID_PREVIEW_TYPES: Set<ResourceListItem['previewType']> = new Set([
   'docx',
   'xlsx',
   'pptx',
+  'epub',
   'text',
   'audio',
   'video',

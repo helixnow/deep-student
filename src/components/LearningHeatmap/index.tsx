@@ -1,21 +1,21 @@
 /**
- * 学习热力图组件
- * 
- * 类似 GitHub 贡献图的学习活动可视化组件
- * 
- * 2026-02: Notion 风格 UI/UX 优化
- * - 极简配色
- * - 精致边框
+ * 学习热力图组件 — 完全自绘实现（不依赖 @uiw/react-heat-map）
+ *
+ * 2026-07 重做：对齐 macOS 原生质感
+ * - CSS Grid 自绘单元格，颜色直接走 hsl(var(--primary) / alpha)，主题切换零 JS
+ * - 单例毛玻璃 tooltip（事件委托），替代逐格包裹的 CommonTooltip
+ * - 细腻的 hover 缩放 / 今日光环 / 骨架屏
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
-import HeatMap from '@uiw/react-heat-map';
-import { CommonTooltip } from '../shared/CommonTooltip';
+import React, { useMemo, useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { useLearningHeatmap, type LearningActivity } from '../../hooks/useLearningHeatmap';
-import { CircleNotch, ArrowsClockwise, TrendUp, Calendar, Lightning, Pulse } from '@phosphor-icons/react';
+import { ArrowsClockwise, TrendUp, Calendar, Lightning, Pulse } from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
+import { CustomScrollArea } from '../custom-scroll-area';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import './LearningHeatmap.css';
 
 // ============================================================================
@@ -27,54 +27,46 @@ export interface LearningHeatmapProps {
   className?: string;
   showLegend?: boolean;
   showStats?: boolean;
+  /** 隐藏内部标题（由外层分组容器提供标题时使用） */
+  hideTitle?: boolean;
 }
 
 // ============================================================================
-// 颜色工具 - 从 CSS 变量计算主题感知颜色
-// HeatMap 组件不支持 hsl(var(...)) 语法，需通过 getComputedStyle 解析
+// 布局常量
 // ============================================================================
 
-/** 读取 CSS 自定义属性并转换为 hsl() 字符串（逗号格式，兼容 SVG） */
-function resolveHsl(varName: string): string {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  if (!raw) return '';
-  const [h, s, l] = raw.split(/\s+/);
-  return `hsl(${h}, ${s}, ${l})`;
-}
-
-function resolveHsla(varName: string, alpha: number): string {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-  if (!raw) return '';
-  const [h, s, l] = raw.split(/\s+/);
-  return `hsla(${h}, ${s}, ${l}, ${alpha})`;
-}
-
-/** 根据当前主题生成热力图颜色 */
-function computeHeatmapThemeColors() {
-  const empty = resolveHsl('--secondary');
-  return {
-    panelColors: [
-      empty,
-      resolveHsla('--primary', 0.25),
-      resolveHsla('--primary', 0.5),
-      resolveHsla('--primary', 0.75),
-      resolveHsl('--primary'),
-    ],
-    textColor: resolveHsl('--muted-foreground'),
-  };
-}
+const CELL = 11;
+const GAP = 3;
+/** 📱 触屏：11px 格子无法点准，coarse 指针下放大格子/间距 */
+const CELL_COARSE = 15;
+const GAP_COARSE = 4;
+/** 月份标签行高度 */
+const MONTH_ROW_H = 18;
+/** tooltip 半宽，用于水平方向 clamp（防止贴视口边缘被裁） */
+const TOOLTIP_HALF_W = 110;
 
 // ============================================================================
-// 工具函数
+// 日期工具（全部本地时区，避免 ISO 字符串按 UTC 解析漂移一天）
 // ============================================================================
 
-function formatDate(dateStr: string, locale: string): string {
-  const date = new Date(dateStr);
-  const localeMap: Record<string, string> = {
-    'zh-CN': 'zh-CN',
-    'en-US': 'en-US',
-  };
-  return date.toLocaleDateString(localeMap[locale] || 'en-US', {
+function toDateKey(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** 后端返回 "YYYY-MM-DD"；宽容处理斜杠 / 不补零的变体 */
+function normalizeDateKey(raw: string): string {
+  const parts = raw.split(/[-/]/).map(Number);
+  if (parts.length < 3 || parts.some(p => !Number.isFinite(p) || p <= 0)) return raw;
+  const [y, m, d] = parts;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function formatDate(dateKey: string, locale: string): string {
+  const date = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString(locale || 'en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -83,70 +75,145 @@ function formatDate(dateStr: string, locale: string): string {
 }
 
 // ============================================================================
-// 子组件
+// 网格模型：周日为每列首行（与 GitHub 一致），列 = 周
 // ============================================================================
 
-interface TooltipContentProps {
-  activity: LearningActivity;
+interface GridModel {
+  /** weeks[weekIndex][dayOfWeek] */
+  weeks: Date[][];
+  /** 每月第一天所在的周列索引 */
+  monthMarks: Array<{ weekIndex: number; month: number }>;
+  today: Date;
 }
 
-function TooltipContent({ activity }: TooltipContentProps) {
+function buildGrid(months: number): GridModel {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const start = new Date(today);
+  start.setMonth(start.getMonth() - months);
+  start.setDate(start.getDate() - start.getDay()); // 回退到周日对齐
+
+  const weeks: Date[][] = [];
+  const monthMarks: Array<{ weekIndex: number; month: number }> = [];
+  const cursor = new Date(start);
+
+  while (cursor <= today) {
+    const week: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      week.push(new Date(cursor));
+      if (cursor.getDate() === 1 && cursor <= today) {
+        monthMarks.push({ weekIndex: weeks.length, month: cursor.getMonth() });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  return { weeks, monthMarks, today };
+}
+
+// ============================================================================
+// Tooltip
+// ============================================================================
+
+interface HoverState {
+  dateKey: string;
+  activity: LearningActivity | null;
+  /** 视口坐标（tooltip 走 portal + fixed，避免被滚动容器裁剪） */
+  left: number;
+  top: number;
+  placement: 'above' | 'below';
+}
+
+const DETAIL_KEYS = [
+  'chatSessions',
+  'chatMessages',
+  'notesEdited',
+  'textbooksOpened',
+  'examsCreated',
+  'translationsCreated',
+  'essaysCreated',
+  'ankiCardsCreated',
+  'questionsAnswered',
+] as const;
+
+function HeatmapTooltip({ hover }: { hover: HoverState }) {
   const { t, i18n } = useTranslation('stats');
-  const { details, date, count } = activity;
-  const locale = i18n.language || 'en-US';
-  
-  return (
-    <div className="flex flex-col gap-2 p-1 min-w-[180px]">
-      <div className="flex items-center justify-between pb-2 border-b border-border/50 mb-1">
-        <span className="text-xs font-semibold opacity-90">{formatDate(date, locale)}</span>
-        <span className="text-xs font-mono bg-foreground/10 px-1.5 py-0.5 rounded">{count}</span>
+  const { activity, dateKey } = hover;
+  const count = activity?.count ?? 0;
+
+  return createPortal(
+    <div
+      className={cn('lh-tooltip', hover.placement === 'below' && 'lh-tooltip-below')}
+      style={{ left: hover.left, top: hover.top }}
+      role="tooltip"
+    >
+      <div className="lh-tooltip-header">
+        <span className="lh-tooltip-date">{formatDate(dateKey, i18n.language)}</span>
+        {count > 0 && <span className="lh-tooltip-badge">{count}</span>}
       </div>
-      
-      {count > 0 ? (
-        <div className="flex flex-col gap-1.5 text-xs opacity-90">
-          {details.chatSessions > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.chatSessions', '会话')}</span> <span className="opacity-70">{details.chatSessions}</span></div>
+      {count > 0 && activity ? (
+        <div className="lh-tooltip-details">
+          {DETAIL_KEYS.map(key =>
+            activity.details[key] > 0 ? (
+              <div key={key} className="lh-tooltip-row">
+                <span>{t(`heatmap.details.${key}`)}</span>
+                <span className="lh-tooltip-value">{activity.details[key]}</span>
+              </div>
+            ) : null
           )}
-          {details.chatMessages > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.chatMessages', '消息')}</span> <span className="opacity-70">{details.chatMessages}</span></div>
-          )}
-          {details.notesEdited > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.notesEdited', '笔记')}</span> <span className="opacity-70">{details.notesEdited}</span></div>
-          )}
-          {details.textbooksOpened > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.textbooksOpened', '阅读')}</span> <span className="opacity-70">{details.textbooksOpened}</span></div>
-          )}
-          {details.examsCreated > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.examsCreated', '测验')}</span> <span className="opacity-70">{details.examsCreated}</span></div>
-          )}
-           {/* 其他详情省略，避免过长 */}
         </div>
       ) : (
-        <div className="text-xs opacity-60 italic py-1">{t('heatmap.noActivity')}</div>
+        <div className="lh-tooltip-empty">{t('heatmap.noActivity')}</div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
+
+// ============================================================================
+// 统计卡片
+// ============================================================================
 
 interface StatsCardProps {
   icon: React.ReactNode;
   label: string;
   value: number | string;
-  index: number;
 }
 
-function StatsCard({ icon, label, value, index }: StatsCardProps) {
+function StatsCard({ icon, label, value }: StatsCardProps) {
   return (
-    <div 
-      className="flex flex-col gap-1 p-3 rounded-md hover:bg-[var(--interactive-hover)] transition-colors"
-      style={{ animationDelay: `${index * 100}ms` }}
-    >
+    <div className="flex flex-col gap-1 p-3 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
       <div className="flex items-center gap-2 text-muted-foreground">
         <span className="opacity-70">{icon}</span>
         <span className="text-xs font-medium">{label}</span>
       </div>
-      <div className="text-2xl font-semibold tracking-tight text-foreground font-mono tabular-nums">
+      <div className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
         {typeof value === 'number' ? value.toLocaleString() : value}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 骨架屏 — 用同规格网格做呼吸占位，避免加载完成后布局跳动
+// ============================================================================
+
+function HeatmapSkeleton({ weeksCount, cell, gap }: { weeksCount: number; cell: number; gap: number }) {
+  return (
+    <div className="lh-skeleton" style={{ paddingTop: MONTH_ROW_H }}>
+      <div
+        className="lh-grid"
+        style={{
+          gridTemplateRows: `repeat(7, ${cell}px)`,
+          gridAutoColumns: `${cell}px`,
+          gap,
+        }}
+      >
+        {Array.from({ length: weeksCount * 7 }, (_, i) => (
+          <div key={i} className="lh-cell lh-cell-skeleton" style={{ animationDelay: `${(i % 28) * 30}ms` }} />
+        ))}
       </div>
     </div>
   );
@@ -161,11 +228,11 @@ export function LearningHeatmap({
   className = '',
   showLegend = true,
   showStats = true,
+  hideTitle = false,
 }: LearningHeatmapProps) {
   const { t } = useTranslation('stats');
   const {
     data,
-    heatmapData,
     loading,
     error,
     totalActivities,
@@ -173,191 +240,233 @@ export function LearningHeatmap({
     maxCount,
     refresh,
   } = useLearningHeatmap(months);
-  
-  // Theme-aware colors computed from CSS custom properties
-  const [cssColors, setCssColors] = useState<string[]>(['#f4f4f5', '#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8']);
-  const [themeTextColor, setThemeTextColor] = useState('#71717a');
 
-  // 监听主题变化并从 CSS 变量计算颜色
-  useEffect(() => {
-    const updateColors = () => {
-      
-      // 从 CSS 自定义属性计算主题感知颜色
-      const colors = computeHeatmapThemeColors();
-      setCssColors(colors.panelColors);
-      setThemeTextColor(colors.textColor);
-    };
-    
-    updateColors();
-    
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === 'class') {
-          updateColors();
-        }
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<HoverState | null>(null);
+
+  // 📱 触屏：格子/间距放大便于点按；tooltip 改为点击显示（无 hover）
+  const isCoarse = useMediaQuery('(pointer: coarse)');
+  const cell = isCoarse ? CELL_COARSE : CELL;
+  const gap = isCoarse ? GAP_COARSE : GAP;
+  const step = cell + gap;
+
+  const grid = useMemo(() => buildGrid(months), [months]);
+  const todayKey = toDateKey(grid.today);
+
+  // 日期 → 活动索引
+  const byDate = useMemo(() => {
+    const map = new Map<string, LearningActivity>();
+    for (const item of data) map.set(normalizeDateKey(item.date), item);
+    return map;
+  }, [data]);
+
+  /** 色阶：0 = 空，1-4 按当日活动量相对峰值分档 */
+  const levelOf = useCallback(
+    (count: number) => {
+      if (count <= 0 || maxCount <= 0) return 0;
+      return Math.min(4, Math.max(1, Math.ceil((count / maxCount) * 4)));
+    },
+    [maxCount]
+  );
+
+  const contentWidth = grid.weeks.length * step - gap;
+
+  // 初始滚动到最新日期
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && !loading) el.scrollLeft = el.scrollWidth;
+  }, [loading, contentWidth]);
+
+  /** 按单元格定位单例 tooltip（视口坐标 + portal，不受滚动容器裁剪） */
+  const showTooltipFor = useCallback(
+    (target: HTMLElement, dateKey: string) => {
+      const rect = target.getBoundingClientRect();
+      const rawLeft = rect.left + rect.width / 2;
+      const left = Math.min(
+        Math.max(rawLeft, TOOLTIP_HALF_W + 8),
+        window.innerWidth - TOOLTIP_HALF_W - 8
+      );
+      // 贴近视口顶部时翻转到下方
+      const placement: HoverState['placement'] = rect.top < 180 ? 'below' : 'above';
+      setHover({
+        dateKey,
+        activity: byDate.get(dateKey) ?? null,
+        left,
+        top: placement === 'above' ? rect.top - 8 : rect.bottom + 8,
+        placement,
       });
-    });
-    
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-    
-    return () => observer.disconnect();
-  }, []);
+    },
+    [byDate]
+  );
 
-  // 计算开始日期
-  const startDate = useMemo(() => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - months);
-    return date;
-  }, [months]);
+  // 事件委托：hover 单元格显示 tooltip（触屏无 hover，改走下方 click 切换，避免 tap 合成 mouseover 与 click 互相打架）
+  const handleGridOver = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isCoarse) return;
+      const target = e.target as HTMLElement;
+      const dateKey = target.dataset?.date;
+      if (!dateKey) return;
+      showTooltipFor(target, dateKey);
+    },
+    [isCoarse, showTooltipFor]
+  );
 
-  // 计算热力图实际像素宽度，确保 SVG 不被内部裁剪
-  const heatmapWidth = useMemo(() => {
-    const rectW = 10;
-    const spaceW = 2;
-    const weekLabelWidth = 35;
-    const endDate = new Date();
-    const diffMs = endDate.getTime() - startDate.getTime();
-    const numWeeks = Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000)) + 2;
-    return weekLabelWidth + numWeeks * (rectW + spaceW);
-  }, [startDate]);
+  const clearHover = useCallback(() => setHover(null), []);
 
-  // 根据日期获取活动详情
-  const getActivityByDate = (date: string): LearningActivity | undefined => {
-    return data.find(item => item.date === date);
-  };
+  // 📱 触屏：点格子显示 tooltip，再点同格或空白处关闭
+  const handleGridClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isCoarse) return;
+      const target = e.target as HTMLElement;
+      const dateKey = target.dataset?.date;
+      if (!dateKey || hover?.dateKey === dateKey) {
+        setHover(null);
+        return;
+      }
+      showTooltipFor(target, dateKey);
+    },
+    [isCoarse, hover?.dateKey, showTooltipFor]
+  );
 
-  if (loading) {
-    return (
-      <div className={cn("py-12 flex flex-col items-center justify-center text-muted-foreground/50", className)}>
-        <CircleNotch className="animate-spin mb-2" size={20} />
-        <span className="text-xs font-medium">{t('heatmap.loading', '加载学习数据...')}</span>
-      </div>
-    );
-  }
+  // 触屏下点击网格外任意处关闭 tooltip
+  useEffect(() => {
+    if (!hover || !isCoarse) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('.lh-grid') || target?.closest?.('.lh-tooltip')) return;
+      setHover(null);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
+  }, [hover, isCoarse]);
+
+  const weekLabels: Array<string | null> = [
+    null, t('calendar.weekMon'), null, t('calendar.weekWed'), null, t('calendar.weekFri'), null,
+  ];
 
   if (error) {
     return (
-      <div className={cn("py-8 flex flex-col items-center justify-center text-muted-foreground/50", className)}>
+      <div className={cn('py-8 flex flex-col items-center justify-center text-muted-foreground/50', className)}>
         <span className="text-xs mb-3">{t('heatmap.error', { error })}</span>
-        <NotionButton variant="ghost" size="sm" onClick={refresh} className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-[var(--interactive-hover)]">
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={refresh}
+          className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-[var(--interactive-hover)]"
+        >
           <ArrowsClockwise size={12} />
-          {t('heatmap.retry', '重试')}
-        </NotionButton>
+          {t('heatmap.retry')}
+        </DsButton>
       </div>
     );
   }
 
   return (
-    <div className={cn("flex flex-col", className)}>
+    <div className={cn('flex flex-col', className)}>
       {/* 标题 */}
-      <div className="flex items-center gap-2 mb-4 pl-1">
-        <Pulse size={16} className="text-muted-foreground/70" />
-        <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
-      </div>
+      {!hideTitle && (
+        <div className="flex items-center gap-2 mb-4 pl-1">
+          <Pulse size={16} className="text-muted-foreground/70" />
+          <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
+        </div>
+      )}
 
       {/* 统计卡片 */}
-      {showStats && (
+      {showStats && !loading && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-          <StatsCard
-            icon={<TrendUp size={16} />}
-            label={t('heatmap.stats.totalActivities', '总活动')}
-            value={totalActivities}
-            index={0}
-/>
-          <StatsCard
-            icon={<Calendar size={16} />}
-            label={t('heatmap.stats.activeDays', '活跃天数')}
-            value={activeDays}
-            index={1}
-/>
-          <StatsCard
-            icon={<Lightning size={16} />}
-            label={t('heatmap.stats.maxDaily', '单日峰值')}
-            value={maxCount}
-            index={2}
-/>
-          <StatsCard
-            icon={<Calendar size={16} />}
-            label={t('heatmap.stats.activeDays', '活跃天数')}
-            value={activeDays}
-            index={1}
-/>
-          <StatsCard
-            icon={<Lightning size={16} />}
-            label={t('heatmap.stats.maxDaily', '单日峰值')}
-            value={maxCount}
-            index={2}
-/>
+          <StatsCard icon={<TrendUp size={16} />} label={t('heatmap.stats.totalActivities')} value={totalActivities} />
+          <StatsCard icon={<Calendar size={16} />} label={t('heatmap.stats.activeDays')} value={activeDays} />
+          <StatsCard icon={<Lightning size={16} />} label={t('heatmap.stats.maxDaily')} value={maxCount} />
         </div>
       )}
 
-      {/* 热力图容器 — overflow-hidden + direction:rtl 保留最新日期，截断最旧 */}
-      <div
-        className="w-full overflow-hidden pb-2"
-        style={{ direction: 'rtl' }}
-      >
-        <div style={{ minWidth: heatmapWidth, direction: 'ltr' }}>
-          <HeatMap
-            value={heatmapData}
-            width={heatmapWidth}
-            startDate={startDate}
-            style={{ 
-              color: themeTextColor,
-              backgroundColor: 'transparent',
-            }}
-            panelColors={cssColors}
-            rectSize={10}
-            space={2}
-            rectProps={{
-              rx: 1.5, // 微圆角
-            }}
-            legendCellSize={0} // 隐藏默认图例
-            weekLabels={['', t('calendar.weekMon'), '', t('calendar.weekWed'), '', t('calendar.weekFri'), '']}
-            monthLabels={Array.from({ length: 12 }, (_, i) => t(`calendar.month${i + 1}`))}
-            monthPlacement="top"
-            rectRender={(props, data) => {
-              const dateStr = data.date;
-              const activity = getActivityByDate(dateStr);
-
-              return (
-                <CommonTooltip
-                  content={activity ? <TooltipContent activity={activity} /> : null}
-                  position="top"
-                  showArrow={false}
-                  offset={10}
-                  maxWidth={280}
-                >
-                  <rect
-                    {...props}
-                    className="transition-all duration-200 hover:opacity-80 cursor-pointer"
-/>
-                </CommonTooltip>
-              );
-            }}
-/>
+      {/* 热力图主体：左侧固定星期标签 + 右侧可横滚网格 */}
+      <div className="flex items-start gap-2 min-w-0">
+        {/* 星期标签（不随内容滚动） */}
+        <div
+          className="lh-week-labels shrink-0 flex flex-col"
+          style={{ paddingTop: MONTH_ROW_H, gap }}
+          aria-hidden="true"
+        >
+          {weekLabels.map((label, i) => (
+            <div key={i} style={{ height: cell, lineHeight: `${cell}px` }}>
+              {label ?? ''}
+            </div>
+          ))}
         </div>
+
+        <CustomScrollArea
+          viewportRef={scrollRef}
+          viewportProps={{ onScroll: clearHover }}
+          className="lh-scroll min-w-0 flex-1"
+          viewportClassName="pb-1.5"
+          orientation="horizontal"
+        >
+          {loading ? (
+            <HeatmapSkeleton weeksCount={grid.weeks.length} cell={cell} gap={gap} />
+          ) : (
+            <div className="lh-content relative w-max" style={{ width: contentWidth }}>
+              {/* 月份标签 */}
+              <div className="lh-month-labels" style={{ height: MONTH_ROW_H }} aria-hidden="true">
+                {grid.monthMarks.map(({ weekIndex, month }) => (
+                  <span key={`${weekIndex}-${month}`} style={{ left: weekIndex * step }}>
+                    {t(`calendar.month${month + 1}`)}
+                  </span>
+                ))}
+              </div>
+
+              {/* 网格 */}
+              <div
+                className="lh-grid"
+                style={{
+                  gridTemplateRows: `repeat(7, ${cell}px)`,
+                  gridAutoColumns: `${cell}px`,
+                  gap,
+                }}
+                onMouseOver={handleGridOver}
+                onMouseLeave={clearHover}
+                onClick={handleGridClick}
+                role="img"
+                aria-label={t('heatmap.totalActivities', { count: totalActivities })}
+              >
+                {grid.weeks.map(week =>
+                  week.map(day => {
+                    if (day > grid.today) {
+                      return <div key={day.getTime()} className="lh-cell lh-cell-future" />;
+                    }
+                    const dateKey = toDateKey(day);
+                    const count = byDate.get(dateKey)?.count ?? 0;
+                    return (
+                      <div
+                        key={dateKey}
+                        className={cn('lh-cell', dateKey === todayKey && 'is-today')}
+                        data-level={levelOf(count)}
+                        data-date={dateKey}
+                      />
+                    );
+                  })
+                )}
+              </div>
+
+              {/* 单例 tooltip */}
+              {hover && <HeatmapTooltip hover={hover} />}
+            </div>
+          )}
+        </CustomScrollArea>
       </div>
 
-      {/* 自定义图例 */}
-      {showLegend && (
-        <div className="flex items-center justify-end gap-2 mt-2 px-1">
-          <span className="text-[10px] text-muted-foreground/60">{t('heatmap.legend.less', 'Less')}</span>
-          <div className="flex gap-1">
-            {cssColors.map((color, index) => (
-              <div
-                key={index}
-                className="w-2.5 h-2.5 rounded-[1px]"
-                style={{ backgroundColor: color }}
-/>
+      {/* 图例 */}
+      {showLegend && !loading && (
+        <div className="flex items-center justify-end gap-2 mt-3 px-1">
+          <span className="lh-legend-label">{t('heatmap.legend.less', 'Less')}</span>
+          <div className="flex" style={{ gap }}>
+            {[0, 1, 2, 3, 4].map(level => (
+              <div key={level} className="lh-cell lh-cell-static" data-level={level} />
             ))}
           </div>
-          <span className="text-[10px] text-muted-foreground/60">{t('heatmap.legend.more', 'More')}</span>
+          <span className="lh-legend-label">{t('heatmap.legend.more', 'More')}</span>
         </div>
       )}
-
     </div>
   );
 }

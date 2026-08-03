@@ -7,7 +7,7 @@
  * EXPLICITLY restore `user-select: text` for genuine *content* areas — the
  * places a user actually wants to copy from. Everything else (chrome: sidebar,
  * topbar, menus, badges, timestamps, model labels, button text) stays
- * un-selectable, matching VS Code / Linear / Notion / Obsidian behaviour.
+ * un-selectable, matching VS Code / Linear / behaviour.
  *
  * Add `data-selectable="true"` (or `class="select-text"`) to escape this on a
  * case-by-case basis; remove the corresponding `select-none` className/CSS

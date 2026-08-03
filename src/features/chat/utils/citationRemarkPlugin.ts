@@ -5,20 +5,18 @@
  * 转换为特殊的 HTML 节点，以便 React 渲染时替换为对应的交互组件
  */
 
-import { CITATION_TYPE_MAP } from './citationParser';
+import {
+  CITATION_TYPE_ALIASES,
+  createCitationPattern,
+  resolveCitationTypeAlias,
+} from './citationParser';
 
 // ============================================================================
 // 引用正则表达式
 // ============================================================================
 
-/**
- * RAG/Memory/WebSearch 引用正则表达式（全局匹配）
- * 匹配格式：[类型-数字] 或 [类型-数字:图片]
- * 可选的 :图片/:image 后缀用于显式请求渲染图片
- * 
- * ★ 2026-01 清理：移除"错题/graph/Knowledge Graph"匹配（错题系统废弃）
- */
-const CITATION_PATTERN = /\[(知识库|记忆|搜索|图片|knowledge|Knowledge Base|knowledge base|memory|Memory|search|Search|web|Web|image|Image)-(\d+)(?::(图片|image))?\]/gi;
+// P1-3：RAG/Memory/WebSearch 引用正则不再在本文件重复定义，
+// 统一从 citationParser 的 CITATION_PATTERN_SOURCE 派生（createCitationPattern）。
 
 /**
  * PDF 页面引用正则表达式（全局匹配）
@@ -99,26 +97,16 @@ export function makeCitationRemarkPlugin() {
         if (nodeType === 'text') {
           const value: string = node.value || '';
 
-          // 重置正则表达式状态
-          CITATION_PATTERN.lastIndex = 0;
-          MINDMAP_CITATION_PATTERN.lastIndex = 0;
-          QBANK_CITATION_PATTERN.lastIndex = 0;
-
-          // 检查是否有任何引用标记
-          const hasCitation = CITATION_PATTERN.test(value);
-          CITATION_PATTERN.lastIndex = 0;
-          const hasMindmapCitation = MINDMAP_CITATION_PATTERN.test(value);
-          MINDMAP_CITATION_PATTERN.lastIndex = 0;
-          const hasQbankCitation = QBANK_CITATION_PATTERN.test(value);
-          QBANK_CITATION_PATTERN.lastIndex = 0;
-          const hasPdfRef = PDF_REF_PATTERN.test(value);
-          PDF_REF_PATTERN.lastIndex = 0;
-          const hasPdfShortRef = PDF_SHORT_REF_PATTERN.test(value);
-          PDF_SHORT_REF_PATTERN.lastIndex = 0;
-
-          if (!hasCitation && !hasMindmapCitation && !hasQbankCitation && !hasPdfRef && !hasPdfShortRef) {
+          // 快速排除：没有 `[` 就不可能有任何引用标记
+          if (!value.includes('[')) {
             return;
           }
+
+          // 重置模块级正则状态
+          MINDMAP_CITATION_PATTERN.lastIndex = 0;
+          QBANK_CITATION_PATTERN.lastIndex = 0;
+          PDF_REF_PATTERN.lastIndex = 0;
+          PDF_SHORT_REF_PATTERN.lastIndex = 0;
 
           // 收集所有引用匹配
           interface CitationMatch {
@@ -130,13 +118,14 @@ export function makeCitationRemarkPlugin() {
 
           const matches: CitationMatch[] = [];
 
-          // 收集普通引用
+          // 收集普通引用（正则实例来自 citationParser 单一源）
+          const citationPattern = createCitationPattern();
           let match: RegExpExecArray | null;
-          while ((match = CITATION_PATTERN.exec(value)) !== null) {
+          while ((match = citationPattern.exec(value)) !== null) {
             const typeText = match[1];
             const indexNum = parseInt(match[2], 10);
             const imageSuffix = match[3];
-            const sourceType = CITATION_TYPE_MAP[typeText];
+            const sourceType = resolveCitationTypeAlias(typeText);
             if (sourceType) {
               matches.push({
                 type: 'citation',
@@ -202,18 +191,29 @@ export function makeCitationRemarkPlugin() {
             }
           }
 
-          // 按位置排序
-          matches.sort((a, b) => a.index - b.index);
-
           if (matches.length === 0) {
             return;
+          }
+
+          // 按位置排序；同起点时更长（更具体）的匹配优先
+          matches.sort((a, b) => a.index - b.index || b.length - a.length);
+
+          // P1-4：多 pattern 独立收集可能产生重叠匹配（如同一段字符被两种
+          // pattern 命中），重叠会导致 slice 切分错乱/内容重复。
+          // 保留先出现（同起点时更长）的匹配，丢弃与之重叠的后续匹配。
+          const dedupedMatches: CitationMatch[] = [];
+          let prevEnd = 0;
+          for (const m of matches) {
+            if (m.index < prevEnd) continue;
+            dedupedMatches.push(m);
+            prevEnd = m.index + m.length;
           }
 
           // 构建新节点
           const parts: any[] = [];
           let lastIndex = 0;
 
-          for (const m of matches) {
+          for (const m of dedupedMatches) {
             // 添加引用前的文本
             if (m.index > lastIndex) {
               parts.push({
@@ -443,3 +443,71 @@ export const CITATION_PLACEHOLDER_STYLES = `
   opacity: 0.85;
 }
 `;
+
+const CITATION_STYLE_ELEMENT_ID = 'citation-badge-styles';
+
+/**
+ * P2-7：幂等注入引用占位符样式。
+ * 多个 MarkdownRenderer 实例共用同一个 <style id="citation-badge-styles">，
+ * 内容一致时不做任何 DOM 写入（支持 HMR 更新样式常量）。
+ */
+export function ensureCitationPlaceholderStyles(): void {
+  if (typeof document === 'undefined') return;
+  let style = document.getElementById(CITATION_STYLE_ELEMENT_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = CITATION_STYLE_ELEMENT_ID;
+    document.head.appendChild(style);
+  }
+  if (style.textContent !== CITATION_PLACEHOLDER_STYLES) {
+    style.textContent = CITATION_PLACEHOLDER_STYLES;
+  }
+}
+
+// ============================================================================
+// 流式半截引用识别（P0-1，供 sanitizeDanglingMarkdown 使用）
+// ============================================================================
+
+/**
+ * 半截引用规则：kw 为标记关键词（小写），rest 校验关键词之后允许的残余形态。
+ * 覆盖本文件处理的全部标记族：
+ * - [类型-N(:图片)]（alias 列表来自 citationParser 单一源）
+ * - [PDF@id:pages] / [pdf第N页]
+ * - [思维导图:mm_xxx(:标题)] 等
+ * - [题目集:session_id(:名称)] 等
+ */
+const DANGLING_CITATION_RULES: ReadonlyArray<{ kw: string; rest: RegExp }> = [
+  ...CITATION_TYPE_ALIASES.map(({ alias }) => ({
+    kw: alias.toLowerCase(),
+    rest: /^(?:-\d{0,6}(?::[^\]\n]{0,12})?)?$/,
+  })),
+  { kw: 'pdf@', rest: /^[^\]\n]{0,64}$/ },
+  { kw: 'pdf', rest: /^(?:\s*第\d{0,6}页?)?$/ },
+  ...['思维导图', '导图', '脑图', 'mindmap'].map((kw) => ({
+    kw,
+    rest: /^(?::[^\]\n]*)?$/,
+  })),
+  ...['题目集', '题库', '练习册', 'questionbank', 'question bank', 'question_bank', 'qbank'].map((kw) => ({
+    kw,
+    rest: /^(?::[^\]\n]*)?$/,
+  })),
+];
+
+/**
+ * 判断流式末尾未闭合 `[` 之后的文本是否"看起来是引用标记的开头"。
+ *
+ * @param tailAfterBracket - 悬垂 `[` 之后到文本末尾的内容（不含 `[`，不含换行/`]`）
+ * @returns true 时调用方应保留原文（等 `]` 闭合后由 remark 插件接管），
+ *          而不是当作半截 markdown 链接截掉——截掉正是流式徽章闪烁的根因。
+ */
+export function isDanglingCitationStart(tailAfterBracket: string): boolean {
+  if (!tailAfterBracket) return false;
+  const lower = tailAfterBracket.toLowerCase();
+  for (const { kw, rest } of DANGLING_CITATION_RULES) {
+    // 关键词本身还没打完，如 `[知识` / `[knowl`
+    if (kw.startsWith(lower)) return true;
+    // 关键词已完整，校验后续残余形态，如 `[知识库-1` / `[PDF@res_1:2` / `[思维导图:mm_a`
+    if (lower.startsWith(kw) && rest.test(lower.slice(kw.length))) return true;
+  }
+  return false;
+}

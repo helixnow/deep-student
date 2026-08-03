@@ -38,6 +38,35 @@ interface ImageBlockFeatureConfig {
 import i18next from 'i18next';
 
 /**
+ * 降级路径 blob URL 的实例级注册表。
+ * blob URL 仅当前会话有效且不会被 GC 自动回收；编辑器实例销毁时统一 revoke，
+ * 避免长会话内反复降级上传导致的内存泄漏。
+ */
+export interface TransientBlobUrlRegistry {
+  register: (url: string) => void;
+  releaseAll: () => void;
+}
+
+export const createTransientBlobUrlRegistry = (): TransientBlobUrlRegistry => {
+  const urls = new Set<string>();
+  return {
+    register: (url: string) => {
+      urls.add(url);
+    },
+    releaseAll: () => {
+      urls.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch { /* URL 可能已随文档卸载失效 */ }
+      });
+      urls.clear();
+    },
+  };
+};
+
+export const normalizeNoteAssetPath = (path: string): string => path.replace(/\\/g, '/');
+
+/**
  * 将 File 转换为 base64 字符串
  */
 export const fileToBase64 = (file: File): Promise<string> => {
@@ -59,14 +88,16 @@ export const fileToBase64 = (file: File): Promise<string> => {
 
 /**
  * 创建图片上传处理函数
+ * @param blobRegistry 可选；降级路径创建的 blob URL 会登记于此，由宿主在销毁时统一 revoke
  */
 export const createImageUploader = (
-  noteId: string | undefined
+  noteId: string | undefined,
+  blobRegistry?: TransientBlobUrlRegistry
 ): ((file: File) => Promise<string>) => {
   return async (file: File): Promise<string> => {
     const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
     if (file.size > MAX_IMAGE_SIZE) {
-      showGlobalNotification('warning', i18next.t('common:imageUpload.tooLarge', 'Image exceeds 10MB limit'));
+      showGlobalNotification('warning', i18next.t('notes:editor.image_upload.too_large'));
       return '';
     }
 
@@ -124,7 +155,7 @@ export const createImageUploader = (
         // 1. markdown 正文只存储小体积的路径引用（如 "notes_assets/abc123.png"）
         // 2. 图片文件已经通过 notes_save_asset 保存到磁盘
         // 3. 编辑器渲染时 proxyDomURL 会自动转换路径为 data URL 显示
-        const stableRef = saved.relative_path;
+        const stableRef = normalizeNoteAssetPath(saved.relative_path);
 
         emitImageUploadDebug('upload_complete', 'info', '使用稳定路径引用代替 data URL', {
           stableRef,
@@ -149,6 +180,9 @@ export const createImageUploader = (
           'error',
           i18next.t('notes:editor.image_upload.save_failed', { error: message })
         );
+        // A blob URL would look valid for this session but becomes a broken
+        // image after restart. Keep persistent notes free of transient URLs.
+        return '';
       }
     } else {
       emitImageUploadDebug('upload_start', 'warning', '缺少笔记上下文，将使用 blob URL', {
@@ -161,12 +195,10 @@ export const createImageUploader = (
     // ★ Y8 修复：blob URL 仅当前会话有效，重启后图片将丢失。明确告知用户。
     showGlobalNotification(
       'warning',
-      i18next.t(
-        'notes:editor.image_upload.not_persisted',
-        '图片未能持久化保存，仅本次会话可见。请检查后重新插入图片。'
-      )
+      i18next.t('notes:editor.image_upload.not_persisted')
     );
     const blobUrl = URL.createObjectURL(file);
+    blobRegistry?.register(blobUrl);
     emitImageUploadDebug('upload_complete', 'info', '使用 blob URL（降级方案）', {
       blobUrl,
       fileName: file.name,
@@ -176,15 +208,16 @@ export const createImageUploader = (
 };
 
 /**
- * 获取翻译文本（带默认值回退）
+ * 触屏/窄屏编辑面判定（与 NotesCrepeEditor 的 isTouchEditingSurface 口径一致：
+ * isSmallScreen(<768, 对齐 BREAKPOINTS.md) || (pointer: coarse)）。
+ * 移动端没有「拖拽上传」场景，上传区文案需去掉拖拽话术。
  */
-const getTranslation = (key: string, defaultValue: string): string => {
+export const isTouchEditingSurface = (): boolean => {
+  if (typeof window === 'undefined') return false;
   try {
-    const result = i18next.t(key, { defaultValue });
-    // 如果返回的是 key 本身，说明 i18n 未初始化或翻译缺失
-    return result === key ? defaultValue : result;
+    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768;
   } catch {
-    return defaultValue;
+    return false;
   }
 };
 
@@ -192,19 +225,26 @@ const getTranslation = (key: string, defaultValue: string): string => {
  * 创建图片块功能配置
  */
 export const createImageBlockConfig = (
-  noteId: string | undefined
+  noteId: string | undefined,
+  blobRegistry?: TransientBlobUrlRegistry
 ): ImageBlockFeatureConfig => {
-  const uploader = createImageUploader(noteId);
+  const uploader = createImageUploader(noteId, blobRegistry);
+  // 触屏/窄屏没有拖拽场景：上传区提示改为「点击上传图片」
+  const uploadPlaceholderKey = isTouchEditingSurface()
+    ? 'notes:editor.image_upload.placeholder_touch'
+    : 'notes:editor.image_upload.placeholder';
 
   return {
-    // 块级图片上传
+    // 块级图片上传（上传按钮默认是英文 "Upload file"，这里统一 i18n）
     blockOnUpload: uploader,
-    blockUploadPlaceholderText: getTranslation('notes:editor.image_upload.placeholder', '点击或拖拽上传图片'),
-    blockCaptionPlaceholderText: getTranslation('notes:editor.image_upload.caption_placeholder', '添加图片说明...'),
+    blockUploadButton: i18next.t('notes:editor.image_upload.upload_button'),
+    blockUploadPlaceholderText: i18next.t(uploadPlaceholderKey),
+    blockCaptionPlaceholderText: i18next.t('notes:editor.image_upload.caption_placeholder'),
     
     // 内联图片上传
     inlineOnUpload: uploader,
-    inlineUploadPlaceholderText: getTranslation('notes:editor.image_upload.inline_placeholder', '粘贴图片链接或上传'),
+    inlineUploadButton: i18next.t('notes:editor.image_upload.upload_button_inline'),
+    inlineUploadPlaceholderText: i18next.t('notes:editor.image_upload.inline_placeholder'),
     
     // 代理图片 URL：将路径转换为可显示的 URL
     // macOS WebView 不支持直接在 img 标签中加载 asset:// URL，需要转换为 blob URL
@@ -213,6 +253,10 @@ export const createImageBlockConfig = (
         inputUrl: url?.slice(0, 100),
         urlLength: url?.length || 0,
       });
+
+      const normalizedAssetUrl = url.startsWith('notes_assets\\')
+        ? normalizeNoteAssetPath(url)
+        : url;
       
       // 如果是 http/https/blob/data URL，直接返回
       if (url.startsWith('http://') || url.startsWith('https://') || 
@@ -251,25 +295,25 @@ export const createImageBlockConfig = (
       }
       
       // 如果是 notes_assets 相对路径，通过后端获取 data URL
-      if (url.startsWith('notes_assets/') && isTauriEnv()) {
+      if (normalizedAssetUrl.startsWith('notes_assets/') && isTauriEnv()) {
         try {
           emitImageUploadDebug('file_read', 'info', 'proxyDomURL: 相对路径 -> 后端获取', {
-            relativePath: url,
+            relativePath: normalizedAssetUrl,
           });
           
           // 直接传递相对路径给后端，后端会自动处理
-          const base64Data = await getImageAsBase64(url);
+          const base64Data = await getImageAsBase64(normalizedAssetUrl);
           const dataUrl = base64Data.startsWith('data:') ? base64Data : `data:image/jpeg;base64,${base64Data}`;
           
           emitImageUploadDebug('file_read', 'success', 'proxyDomURL: 相对路径转换成功', {
-            inputUrl: url,
+            inputUrl: normalizedAssetUrl,
             dataUrlLength: dataUrl.length,
           });
           
           return dataUrl;
         } catch (e) {
           emitImageUploadDebug('error', 'error', 'proxyDomURL: 转换相对路径失败', {
-            url,
+            url: normalizedAssetUrl,
             error: getErrorMessage(e),
           });
           console.error('[imageUpload] proxyDomURL: failed to convert relative path', e);
@@ -280,7 +324,7 @@ export const createImageBlockConfig = (
           isTauri: isTauriEnv(),
         });
       }
-      return url;
+      return normalizedAssetUrl;
     },
   };
 };

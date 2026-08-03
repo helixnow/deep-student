@@ -24,7 +24,6 @@ export type CurrentView =
   | 'skills-management' // 技能管理页面
   | 'todo'              // 待办事项独立页面
   | 'chat-v2-test'      // Chat V2 集成测试页面（开发用）
-  | 'tree-test'          // 树形拖拽测试（开发用）
   | 'llm-playground';    // LLM 输出模拟游乐场（开发用）
 
 /**
@@ -34,7 +33,7 @@ export interface NavigationHistoryEntry {
   /** 视图标识 */
   view: CurrentView;
   /** 可选参数：如 cardId 等 */
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
   /** 状态恢复函数（滚动位置、筛选条件等） */
   restore?: () => void | Promise<void>;
   /** 创建时间戳（用于去重和调试） */

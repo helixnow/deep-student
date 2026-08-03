@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/shad/Card';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from './ui/shad/Input';
 import { Textarea } from './ui/shad/Textarea';
 import { Badge } from './ui/shad/Badge';
@@ -72,7 +72,7 @@ interface Props {
 }
 
 const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }) => {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['common', 'workbench']);
   const [userHint, setUserHint] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewMd, setPreviewMd] = useState('');
@@ -283,7 +283,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
         
         // 刷新图谱
         window.dispatchEvent(new Event('irec-tag-updated'));
-        onImported && onImported();
+        onImported?.();
         showGlobalNotification('success', t('knowledge_graph.tag_tree.import_success'));
       });
       cleanupListeners.push(un4);
@@ -302,13 +302,17 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
   return (
     <Card className="w-full max-w-[1100px] max-h-full flex flex-col">
       <CardHeader className="pb-3 flex-shrink-0">
-        <CardTitle className="text-base sm:text-lg">{t('knowledge_graph.tag_tree.no_tag_tree_title', '当前图谱暂无标签树')}</CardTitle>
+        <CardTitle className="text-base sm:text-lg">{t('knowledge_graph.tag_tree.no_tag_tree_title')}</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
         {/* 主布局：小屏单列，中屏及以上两列（左配置右结果） */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
           {/* 左侧：配置区 */}
-          <div className="w-full lg:w-[280px] lg:flex-shrink-0 space-y-3 overflow-auto">
+          <CustomScrollArea
+            className="w-full min-h-0 lg:h-full lg:w-[280px] lg:flex-shrink-0"
+            viewportClassName="space-y-3"
+            fullHeight={false}
+          >
             <div>
               <label className="block text-sm mb-1">{t('knowledge_graph.tag_tree.user_hint_label')}</label>
               <Input
@@ -329,18 +333,18 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
             </div>
             {/* 操作按钮 */}
             <div className="flex flex-wrap gap-2 pt-2">
-              <NotionButton onClick={handleGenerate} disabled={isGenerating} size="sm">
+              <DsButton onClick={handleGenerate} disabled={isGenerating} size="sm">
                 {isGenerating ? t('knowledge_graph.tag_tree.generating') : t('knowledge_graph.tag_tree.generate_preview')}
-              </NotionButton>
-              <NotionButton onClick={handleImport} disabled={!canImport || importing} size="sm" title={!canImport ? t('knowledge_graph.tag_tree.import_blocked_tooltip') : ''}>
+              </DsButton>
+              <DsButton onClick={handleImport} disabled={!canImport || importing} size="sm" title={!canImport ? t('knowledge_graph.tag_tree.import_blocked_tooltip') : ''}>
                 {t('knowledge_graph.tag_tree.confirm_import')}
-              </NotionButton>
+              </DsButton>
             </div>
             {!!error && (
-              <div className="text-sm text-red-600 whitespace-pre-wrap">{error}</div>
+              <div className="whitespace-pre-wrap text-sm text-destructive">{error}</div>
             )}
             {!!success && (
-              <div className="text-sm text-emerald-600 whitespace-pre-wrap">{success}</div>
+              <div className="whitespace-pre-wrap text-sm text-success">{success}</div>
             )}
             {validation && (
               <div className="space-y-2 pt-2 text-xs">
@@ -350,7 +354,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 </div>
                 {validation.warnings.length > 0 && (
                   <div>
-                    <div className="text-amber-600 mb-1">{t('knowledge_graph.tag_tree.warnings_label')}</div>
+                    <div className="mb-1 text-warning">{t('knowledge_graph.tag_tree.warnings_label')}</div>
                     <ul className="list-disc pl-4">
                       {validation.warnings.map((w, i) => <li key={i}>{w}</li>)}
                     </ul>
@@ -358,7 +362,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 )}
                 {validation.hardErrors.length > 0 && (
                   <div>
-                    <div className="text-red-600 mb-1">{t('knowledge_graph.tag_tree.errors_label')}</div>
+                    <div className="mb-1 text-destructive">{t('knowledge_graph.tag_tree.errors_label')}</div>
                     <ul className="list-disc pl-4">
                       {validation.hardErrors.map((w, i) => <li key={i}>{w}</li>)}
                     </ul>
@@ -366,17 +370,17 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 )}
               </div>
             )}
-          </div>
+          </CustomScrollArea>
 
           {/* 右侧：结果区（生成结果 + 树状预览） */}
           <div className="flex-1 min-h-0 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2 min-h-0">
               <div className="text-sm text-muted-foreground flex-shrink-0">{t('knowledge_graph.tag_tree.result_editable')}</div>
               <Textarea
-                className="flex-1 min-h-[120px] font-mono text-xs resize-none"
+                className="flex-1 min-h-[120px] resize-none font-mono text-xs [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)]"
                 value={previewMd}
                 onChange={(e) => setPreviewMd(e.target.value)}
-                placeholder={'# 根标签一\n### 子主题A\n#### 概念1\n##### 方法a\n###### 题型i'}
+                placeholder={t('workbench:tagTreeMarkdownPlaceholder')}
               />
               {isGenerating && (
                 <div className="space-y-2 flex-shrink-0">
@@ -404,7 +408,11 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
 
         {/* 导入日志 */}
         {(importing || importLogs.length > 0) && (
-          <div className="border rounded-md p-2 min-h-[80px] max-h-[120px] overflow-auto bg-muted/30">
+          <CustomScrollArea
+            className="min-h-[80px] max-h-[120px] rounded-md border bg-muted/30"
+            viewportClassName="p-2"
+            fullHeight={false}
+          >
             {importLogs.length === 0 ? (
               <div className="text-xs text-muted-foreground flex items-center gap-2">
                 <Skeleton className="h-3 w-24" />
@@ -415,7 +423,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 {importLogs.map((l, i) => <li key={i}>{l}</li>)}
               </ul>
             )}
-          </div>
+          </CustomScrollArea>
         )}
       </CardContent>
     </Card>

@@ -118,23 +118,23 @@ export const LLMOutputPlayground: React.FC = () => {
       <header className="flex-shrink-0 h-10 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-3 z-10">
         <div className="flex items-center gap-2">
           <h1 className="text-sm font-semibold">LLM 输出调试台</h1>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 font-mono">
+          <span className="text-2xs px-1.5 py-0.5 rounded bg-warning/10 text-warning font-mono">
             DEV
           </span>
           <span
             className={cn(
-              'text-[10px] px-1.5 py-0.5 rounded font-mono',
+              'text-2xs px-1.5 py-0.5 rounded font-mono',
               sessionStatus === 'idle'
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300'
+                ? 'bg-success/10 text-success'
                 : sessionStatus === 'streaming'
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300',
+                ? 'bg-info/10 text-info'
+                : 'bg-warning/10 text-warning',
             )}
           >
             {sessionStatus === 'idle' ? '空闲' : sessionStatus === 'streaming' ? '流式中' : sessionStatus} · {messageCount} 消息
           </span>
           {compareMode && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300 font-mono">
+            <span className="text-2xs px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300 font-mono">
               对比 A:{getStreamingPresetLabel(presetA)} vs B:{getStreamingPresetLabel(presetB)}
             </span>
           )}
@@ -218,9 +218,9 @@ export const LLMOutputPlayground: React.FC = () => {
           )}
         </div>
 
-        {/* 控制面板 */}
+        {/* 控制面板（窄屏允许收缩，避免固定宽度溢出） */}
         {showPanel && (
-          <div className="w-[340px] flex-shrink-0">
+          <div className="w-[340px] max-w-full flex-shrink">
             <PlaygroundControlPanel
               store={storeA}
               preset={presetA}
@@ -280,8 +280,8 @@ const CompareView: React.FC<CompareViewProps> = ({
         ))}
       </div>
 
-      {/* 双栏 */}
-      <div className="flex-1 grid grid-cols-2 gap-px bg-border min-h-0">
+      {/* 双栏（窄屏纵向堆叠） */}
+      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-px bg-border min-h-0">
         <ComparePane
           store={storeA}
           preset={presetA}
@@ -328,7 +328,7 @@ const ComparePane: React.FC<ComparePaneProps> = ({
               onClick={() => onPresetChange(p)}
               title={getStreamingPresetHint(p)}
               className={cn(
-                'px-1.5 py-0.5 text-[10px] rounded transition-colors',
+                'px-1.5 py-0.5 text-2xs rounded transition-colors',
                 preset === p
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted hover:bg-muted/80 text-muted-foreground',
@@ -338,7 +338,7 @@ const ComparePane: React.FC<ComparePaneProps> = ({
             </button>
           ))}
         </div>
-        <span className="text-[10px] text-muted-foreground/80" title={getRenderModeHint(renderMode)}>
+        <span className="text-2xs text-muted-foreground/80" title={getRenderModeHint(renderMode)}>
           {getRenderModeLabel(renderMode)}
         </span>
       </div>

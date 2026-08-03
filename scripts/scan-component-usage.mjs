@@ -37,7 +37,7 @@ const SEMANTIC_COLOR_SOURCE_FILES = new Set([
 /** @type {Array<{id: string, label: string, target: boolean, patterns: RegExp[]}>} */
 const COMPONENT_TARGETS = [
   // Buttons
-  { id: 'NotionButton', label: 'NotionButton', target: true, patterns: [/\bNotionButton\b/g] },
+  { id: 'DsButton', label: 'DsButton', target: true, patterns: [/\bDsButton\b/g] },
   { id: 'ShadButton', label: 'shad Button', target: false, patterns: [/from\s+['"]@\/components\/ui\/shad\/Button['"]/g] },
   { id: 'NativeButton', label: '原生 <button>', target: false, patterns: [/<button[\s>]/g] },
 
@@ -52,7 +52,7 @@ const COMPONENT_TARGETS = [
   { id: 'NativeTextarea', label: '原生 <textarea>', target: false, patterns: [/<textarea[\s>]/g] },
 
   // Dialog / Overlay
-  { id: 'NotionDialog', label: 'NotionDialog', target: true, patterns: [/\bNotionDialog\b/g] },
+  { id: 'DsDialog', label: 'DsDialog', target: true, patterns: [/\bDsDialog\b/g] },
   { id: 'ShadDialog', label: 'shad Dialog', target: false, patterns: [/from\s+['"]@\/components\/ui\/shad\/Dialog['"]/g] },
   { id: 'ShadSheet', label: 'shad Sheet', target: false, patterns: [/from\s+['"]@\/components\/ui\/shad\/Sheet['"]/g] },
   { id: 'AppMenu', label: 'AppMenu', target: false, patterns: [/\bAppMenu\b/g] },
@@ -202,7 +202,7 @@ async function main() {
     {
       id: 'button',
       label: 'Button',
-      targetIds: ['NotionButton'],
+      targetIds: ['DsButton'],
       legacyIds: ['ShadButton', 'NativeButton'],
     },
     {
@@ -214,7 +214,7 @@ async function main() {
     {
       id: 'dialog',
       label: 'Dialog / Overlay',
-      targetIds: ['NotionDialog'],
+      targetIds: ['DsDialog'],
       legacyIds: ['ShadDialog', 'ShadSheet'],
     },
     {

@@ -46,10 +46,9 @@ import {
 } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { usePdfProcessingStore, type PdfProcessingStatus, type MediaType } from '@/features/pdf/stores/pdfProcessingStore';
-import { NotionButton } from '../../components/ui/NotionButton';
+import { DsButton } from '../../components/ui/DsButton';
 import {
   CHATV2_LOG_EVENT,
-  CHATV2_LOGS_CLEARED,
   type ChatV2LogEntry,
 } from '../../features/chat/debug/chatV2Logger';
 
@@ -60,7 +59,7 @@ import {
 interface MediaProcessingEvent {
   id: string;
   timestamp: string;
-  eventType: 'progress' | 'completed' | 'error' | 'mode_change' | 'inject';
+  eventType: 'progress' | 'completed' | 'error' | 'mode_change' | 'inject' | 'lifecycle';
   fileId: string;
   mediaType: MediaType;
   stage?: string;
@@ -84,14 +83,6 @@ interface MediaProcessingEvent {
   injectModes?: Record<string, string[]>;
 }
 
-interface StoreSnapshot {
-  timestamp: string;
-  entries: Array<{
-    fileId: string;
-    status: PdfProcessingStatus;
-  }>;
-}
-
 // =============================================================================
 // 常量
 // =============================================================================
@@ -106,6 +97,8 @@ const STAGE_LABELS: Record<string, string> = {
   vector_indexing: '向量索引',
   completed: '已完成',
   error: '错误',
+  removed: '已移除',
+  store_cleanup: 'Store 清理',
 };
 
 const STAGE_COLORS: Record<string, string> = {
@@ -126,6 +119,7 @@ const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
   error: <XCircle size={12} className="text-red-500" />,
   mode_change: <Cursor size={12} className="text-purple-500" />,
   inject: <PaperPlaneRight size={12} className="text-teal-500" />,
+  lifecycle: <Trash size={12} className="text-gray-500" />,
 };
 
 const MAX_EVENTS = 200;
@@ -318,7 +312,6 @@ const StoreStatusCard: React.FC<{
 
 const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   visible,
-  isActive,
   isActivated,
 }) => {
   const [events, setEvents] = useState<MediaProcessingEvent[]>([]);
@@ -358,6 +351,12 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     if (!isActivated) return;
 
     const unlisteners: UnlistenFn[] = [];
+    // listen() 是异步的：若 effect 在 promise 落定前清理，需立即注销而不是入列后泄漏
+    let cancelled = false;
+    const registerUnlisten = (fn: UnlistenFn) => {
+      if (cancelled) fn();
+      else unlisteners.push(fn);
+    };
 
     // 统一媒体事件
     listen<{
@@ -384,7 +383,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         totalPages: event.payload.status.totalPages,
         source: 'media',
       });
-    }).then((fn) => unlisteners.push(fn));
+    }).then(registerUnlisten);
 
     listen<{
       fileId: string;
@@ -401,7 +400,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         readyModes: event.payload.readyModes,
         source: 'media',
       });
-    }).then((fn) => unlisteners.push(fn));
+    }).then(registerUnlisten);
 
     listen<{
       fileId: string;
@@ -418,7 +417,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         error: event.payload.error,
         source: 'media',
       });
-    }).then((fn) => unlisteners.push(fn));
+    }).then(registerUnlisten);
 
     // 旧 PDF 事件（兼容）
     listen<{
@@ -443,7 +442,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         totalPages: event.payload.status.totalPages,
         source: 'pdf',
       });
-    }).then((fn) => unlisteners.push(fn));
+    }).then(registerUnlisten);
 
     listen<{
       fileId: string;
@@ -459,7 +458,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         readyModes: event.payload.readyModes,
         source: 'pdf',
       });
-    }).then((fn) => unlisteners.push(fn));
+    }).then(registerUnlisten);
 
     listen<{
       fileId: string;
@@ -475,7 +474,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         error: event.payload.error,
         source: 'pdf',
       });
-    }).then((fn) => unlisteners.push(fn));
+    }).then(registerUnlisten);
 
     // 监听 chatV2Logger 的附件日志（完整生命周期）
     const handleChatV2Log = (e: CustomEvent<ChatV2LogEntry>) => {
@@ -548,10 +547,10 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         });
       }
       
-      // 监听移除操作
+      // 监听移除操作（正常生命周期事件，不是错误）
       if (log.action === 'attachment_remove' || log.action === 'remove_attachment') {
         addEvent({
-          eventType: 'error', // 使用 error 类型表示移除
+          eventType: 'lifecycle',
           fileId: String(data.sourceId || data.attachmentId || 'unknown'),
           mediaType: 'pdf', // 默认
           stage: 'removed',
@@ -570,12 +569,12 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         });
       }
       
-      // 监听 Store 清理
+      // 监听 Store 清理（正常生命周期事件，不是错误）
       if (log.action === 'processing_store_cleanup' || log.action === 'processing_store_batch_cleanup') {
         const sourceIds = data.sourceIds as string[] || (data.sourceId ? [data.sourceId] : []);
         for (const sourceId of sourceIds) {
           addEvent({
-            eventType: 'error', // 使用 error 类型表示清理
+            eventType: 'lifecycle',
             fileId: String(sourceId),
             mediaType: 'pdf',
             stage: 'store_cleanup',
@@ -590,6 +589,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     console.log('[MediaProcessingDebug] 已注册事件监听器（Tauri + chatV2Logger）');
 
     return () => {
+      cancelled = true;
       unlisteners.forEach((fn) => fn());
       window.removeEventListener(CHATV2_LOG_EVENT, handleChatV2Log as EventListener);
       console.log('[MediaProcessingDebug] 已清理事件监听器');
@@ -622,6 +622,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     error: events.filter((e) => e.eventType === 'error').length,
     modeChange: events.filter((e) => e.eventType === 'mode_change').length,
     inject: events.filter((e) => e.eventType === 'inject').length,
+    lifecycle: events.filter((e) => e.eventType === 'lifecycle').length,
     pdf: events.filter((e) => e.mediaType === 'pdf').length,
     image: events.filter((e) => e.mediaType === 'image').length,
     storeSize: statusMap.size,
@@ -634,54 +635,54 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 顶部工具栏 */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <NotionButton
+          <DsButton
             variant={isPaused ? 'warning' : 'ghost'}
             size="sm"
             onClick={() => setIsPaused(!isPaused)}
           >
             {isPaused ? <Eye size={16} className="mr-1" /> : <EyeSlash size={16} className="mr-1" />}
             {isPaused ? '恢复' : '暂停'}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton variant="ghost" size="sm" onClick={clearEvents}>
+          <DsButton variant="ghost" size="sm" onClick={clearEvents}>
             <Trash size={16} className="mr-1" />
             清空
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant={showStore ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setShowStore(!showStore)}
           >
             <Lightning size={16} className="mr-1" />
             Store
-          </NotionButton>
+          </DsButton>
         </div>
 
         <div className="flex items-center gap-1">
-          <NotionButton
+          <DsButton
             variant={filter === 'all' ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setFilter('all')}
           >
             全部
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant={filter === 'pdf' ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setFilter('pdf')}
           >
             <FileText size={12} className="mr-1" />
             PDF
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant={filter === 'image' ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setFilter('image')}
           >
             <FileImage size={12} className="mr-1" />
             图片
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -706,6 +707,9 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             </span>
             <span className="text-teal-600 dark:text-teal-400">
               注入: {stats.inject}
+            </span>
+            <span className="text-muted-foreground">
+              移除/清理: {stats.lifecycle}
             </span>
             <span className="border-l border-border pl-3 text-muted-foreground">
               PDF: {stats.pdf} | 图片: {stats.image}
@@ -777,7 +781,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         此插件监听媒体预处理的完整生命周期：后端处理事件 + 注入模式选择 + 实际内容注入。
         <br />
         <strong>事件类型：</strong>
-        🔄进度 ✅完成 ❌错误 🖱️模式选择 📤实际注入
+        🔄进度 ✅完成 ❌错误 🖱️模式选择 📤实际注入 🗑️移除/清理
         <br />
         <strong>关键检查点：</strong>
         1) fileId 应为 sourceId (att_xxx)

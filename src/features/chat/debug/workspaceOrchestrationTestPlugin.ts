@@ -87,8 +87,8 @@ const SCENARIO_DEFS: Record<ScenarioName, ScenarioDefinition> = {
     buildPrompt: (workspaceName: string) => [
       '请严格按步骤执行：',
       `1) 创建一个名为 "${workspaceName}" 的工作区。`,
-      '2) 创建 2 个 worker（一个调研、一个整理）。',
-      '3) 并行完成 "AI 在教育中的应用" 的要点提炼。',
+      '2) 用 subagent_call（wait=false）并行派发 2 个子代理（一个调研、一个整理），任务围绕 "AI 在教育中的应用" 的要点提炼。',
+      '3) 调用一次 coordinator_sleep 等待两个子代理全部完成（wake_condition=all_completed）。',
       '4) 输出汇总。',
     ].join('\n'),
     minWorkers: 2,
@@ -98,13 +98,11 @@ const SCENARIO_DEFS: Record<ScenarioName, ScenarioDefinition> = {
   orchestrate_handoff: {
     workspaceNameBase: '[OrchTest] handoff',
     buildPrompt: (workspaceName: string) => [
-      '请严格按以下顺序逐步执行，不要跳步、不要并行创建 worker：',
+      '请严格按以下顺序逐步执行，不要跳步、不要并行派发：',
       `1) 创建一个名为 "${workspaceName}" 的工作区。`,
-      '2) 仅创建研究 worker，给它的初始任务是"列出关于人工智能发展的 5 条关键要点"。',
-      '3) 使用 coordinator_sleep 等待研究 worker 完成（wake_condition=result_message 或 all_completed）。',
-      '4) 研究 worker 完成后，再创建写作 worker，给它的初始任务是"基于刚才研究 worker 给出的 5 条要点，写一段不超过 200 字的中文总结"。',
-      '5) 使用 coordinator_sleep 等待写作 worker 完成。',
-      '6) 输出最终总结结果。',
+      '2) 用 subagent_call（默认 wait=true）派发研究子代理，任务是"列出关于人工智能发展的 5 条关键要点"；工具返回值的 output 字段即研究结果。',
+      '3) 拿到研究结果后，再用 subagent_call（默认 wait=true）派发写作子代理，任务是"基于以下 5 条要点写一段不超过 200 字的中文总结"，并把研究结果放入 task 或 context。',
+      '4) 输出最终总结结果。',
     ].join('\n'),
     minWorkers: 2,
     minMessages: 2,

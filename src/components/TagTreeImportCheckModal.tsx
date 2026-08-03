@@ -1,5 +1,5 @@
 import React from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import './TagTreeImportCheckModal.css';
 import UnifiedModal from './UnifiedModal';
@@ -25,6 +25,8 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
     <UnifiedModal isOpen={open} onClose={onCancel} contentClassName="tag-tree-modal">
         <h3>{t('tag_tree.import_check_title')}</h3>
 
+        {/* 中部内容可滚动，避免长警告/错误列表在小屏被裁剪不可达 */}
+        <div className="tag-tree-modal-body">
         <div className="summary">
           <p>{t('tag_tree.total_tags')}：<strong>{totalTags}</strong></p>
           <p>{t('tag_tree.max_depth')}：<strong>{maxDepth}</strong></p>
@@ -68,10 +70,11 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
             </ul>
           </>
         )}
+        </div>
 
         <div className="actions">
-          <NotionButton variant="default" size="sm" onClick={onCancel}>{t('actions.cancel')}</NotionButton>
-          <NotionButton
+          <DsButton variant="default" size="sm" onClick={onCancel}>{t('actions.cancel')}</DsButton>
+          <DsButton
             variant="primary" size="sm"
             className="confirm-btn"
             onClick={onConfirm}
@@ -79,7 +82,7 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
             title={canImport ? '' : t('tag_tree.import_blocked_hint')}
           >
             {t('actions.import')}
-          </NotionButton>
+          </DsButton>
         </div>
     </UnifiedModal>
   );

@@ -1,0 +1,595 @@
+/**
+ * Flashcards 驾驶舱 / 统计增强（wb-fcx-*）
+ * ---------------------------------------------------------------------------
+ * 仅由 FlashcardsApp 引入；不覆写 flashcards.css（wb-fc-*）既有规则。
+ * 全部图表为纯 CSS/SVG；颜色一律走主题 token 或本文件的 HSL 通道变量，
+ * 暗色主题通过 :root.dark 覆写通道变量自动适配。
+ * 动效仅 transform / opacity / stroke-dashoffset，并尊重 prefers-reduced-motion。
+ */
+
+[data-flashcards-app] {
+  /* 图表专用色相通道（HSL 三元组，供 hsl(var(--…)) 组合透明度） */
+  --wb-fcx-blue: 211 88% 48%;
+  --wb-fcx-amber: 32 92% 44%;
+  --wb-fcx-green: 152 62% 36%;
+  --wb-fcx-purple: 262 66% 54%;
+  --wb-fcx-red: 4 74% 50%;
+  --wb-fcx-teal: 188 78% 34%;
+  --wb-fcx-heat: var(--wb-fcx-green);
+}
+
+:root.dark [data-flashcards-app] {
+  --wb-fcx-blue: 211 90% 64%;
+  --wb-fcx-amber: 36 92% 60%;
+  --wb-fcx-green: 152 56% 52%;
+  --wb-fcx-purple: 262 80% 70%;
+  --wb-fcx-red: 4 82% 64%;
+  --wb-fcx-teal: 188 72% 52%;
+}
+
+/* ==== 屏幕切换过渡（tab 间 / 进出复习会话） ============================ */
+
+@keyframes wb-fcx-screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wb-fcx-screen-anim {
+  height: 100%;
+  min-height: 0;
+  animation: wb-fcx-screen-in var(--wb-motion-quick, 150ms) var(--wb-ease-out, ease-out) both;
+}
+
+/* ==== 导航 tab 细节（不接管 .wb-fc-tab 主体样式，避免与基础层冲突） ==== */
+
+.wb-fcx-tab {
+  position: relative;
+  transition:
+    color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
+}
+
+.wb-fcx-tab:active {
+  transform: scale(0.97);
+}
+
+.wb-fcx-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: hsl(var(--wb-fcx-blue) / 0.14);
+  color: hsl(var(--wb-fcx-blue));
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fc-tab[data-active='true'] .wb-fcx-tab-badge {
+  background: hsl(var(--wb-fcx-blue) / 0.2);
+}
+
+/* ==== 通用面板 / 文案 ================================================== */
+
+.wb-fcx-panel {
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 10px;
+  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+}
+
+.wb-fcx-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding: 12px 14px 0;
+}
+
+.wb-fcx-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.wb-fcx-panel-sub {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-panel-body {
+  padding: 12px 14px 14px;
+}
+
+.wb-fcx-panel-list {
+  padding: 8px 0 4px;
+}
+
+.wb-fcx-footnote {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-note {
+  padding: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 2px;
+}
+
+/* ==== 今日屏：驾驶舱 =================================================== */
+
+.wb-fcx-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 22px;
+  padding: 16px;
+}
+
+.wb-fcx-hero-ring {
+  flex-shrink: 0;
+}
+
+.wb-fcx-hero-main {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wb-fcx-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wb-fcx-count {
+  position: relative;
+  overflow: hidden;
+  padding: 9px 11px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 8px;
+  background: color-mix(in hsl, hsl(var(--card)) 92%, transparent 8%);
+}
+
+.wb-fcx-count::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
+  opacity: 0.85;
+}
+
+.wb-fcx-count[data-tone='due'] { --wb-fcx-tone: var(--wb-fcx-blue); }
+.wb-fcx-count[data-tone='new'] { --wb-fcx-tone: var(--wb-fcx-teal); }
+.wb-fcx-count[data-tone='learning'] { --wb-fcx-tone: var(--wb-fcx-amber); }
+
+.wb-fcx-count-label {
+  font-size: 11px;
+  line-height: 1.3;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-count-value {
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.1;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.wb-fcx-cta {
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wb-fcx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--wb-fcx-amber) / 0.35);
+  background: hsl(var(--wb-fcx-amber) / 0.12);
+  color: hsl(var(--wb-fcx-amber));
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-chip[data-tone='muted'] {
+  border-color: var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: color-mix(in hsl, hsl(var(--muted)) 40%, transparent 60%);
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+/* ==== 进度环 =========================================================== */
+
+.wb-fcx-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wb-fcx-ring svg {
+  position: absolute;
+  inset: 0;
+}
+
+.wb-fcx-ring-track {
+  stroke: color-mix(in hsl, hsl(var(--muted)) 70%, transparent 30%);
+}
+
+.wb-fcx-ring-value {
+  stroke: hsl(var(--wb-fcx-green));
+  transition: stroke-dashoffset 600ms var(--wb-ease-out, ease-out);
+}
+
+.wb-fcx-ring-center {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  text-align: center;
+}
+
+.wb-fcx-ring-percent {
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.1;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-ring-caption {
+  font-size: 10px;
+  line-height: 1.2;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ==== 空态 / 完成态 ==================================================== */
+
+.wb-fcx-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: hsl(var(--wb-fcx-green) / 0.12);
+  color: hsl(var(--wb-fcx-green));
+}
+
+/* ==== 统计屏布局 ======================================================= */
+
+.wb-fcx-stats-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .wb-fcx-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wb-fcx-stats-grid > .wb-fcx-span-2 {
+    grid-column: span 2;
+  }
+}
+
+/* 关键数字网格（保留原 dl/dt/dd 语义，视觉升级） */
+.wb-fcx-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 0 0 10px 10px;
+  background: color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+}
+
+@media (min-width: 560px) {
+  .wb-fcx-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.wb-fcx-metric {
+  min-width: 0;
+  padding: 10px 12px;
+  background: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
+}
+
+.wb-fcx-metric dt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-metric dd {
+  margin: 3px 0 0;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.1;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==== 热力图 =========================================================== */
+
+.wb-fcx-heatmap {
+  padding-bottom: 4px;
+}
+
+.wb-fcx-heatmap-inner {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: max-content;
+}
+
+.wb-fcx-heat-months {
+  display: grid;
+  grid-template-columns: repeat(53, 13px);
+  height: 14px;
+}
+
+.wb-fcx-heat-month {
+  grid-row: 1;
+  overflow: visible;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 14px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-heat-grid {
+  display: flex;
+  gap: 3px;
+}
+
+.wb-fcx-heat-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wb-fcx-heat-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2.5px;
+  background: color-mix(in hsl, hsl(var(--muted)) 58%, transparent 42%);
+}
+
+.wb-fcx-heat-cell[data-level='1'] { background: hsl(var(--wb-fcx-heat) / 0.30); }
+.wb-fcx-heat-cell[data-level='2'] { background: hsl(var(--wb-fcx-heat) / 0.52); }
+.wb-fcx-heat-cell[data-level='3'] { background: hsl(var(--wb-fcx-heat) / 0.74); }
+.wb-fcx-heat-cell[data-level='4'] { background: hsl(var(--wb-fcx-heat) / 0.96); }
+
+.wb-fcx-heat-cell[data-future='true'] {
+  background: transparent;
+}
+
+.wb-fcx-heat-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-heat-legend > span:first-child {
+  margin-right: 2px;
+}
+
+.wb-fcx-heat-legend > span:last-child {
+  margin-left: 2px;
+}
+
+/* ==== 每日柱状图 ======================================================= */
+
+.wb-fcx-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 108px;
+}
+
+.wb-fcx-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 100%;
+}
+
+.wb-fcx-bar-count {
+  font-size: 9.5px;
+  line-height: 1;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-bar-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 22px;
+  flex: 1;
+  min-height: 0;
+}
+
+.wb-fcx-bar-fill {
+  width: 100%;
+  border-radius: 3px 3px 1px 1px;
+  background: hsl(var(--wb-fcx-blue) / 0.75);
+  transform-origin: bottom;
+  animation: wb-fcx-bar-grow var(--wb-motion-standard, 280ms) var(--wb-ease-out, ease-out) both;
+}
+
+.wb-fcx-bar[data-today='true'] .wb-fcx-bar-fill {
+  background: hsl(var(--wb-fcx-blue));
+}
+
+.wb-fcx-bar-label {
+  font-size: 9.5px;
+  line-height: 1.2;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes wb-fcx-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* ==== 评分分布 ========================================================= */
+
+.wb-fcx-rating-track {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.wb-fcx-rating-seg {
+  min-width: 3px;
+  background: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)) / 0.9);
+}
+
+.wb-fcx-rating-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+}
+
+.wb-fcx-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
+}
+
+.wb-fcx-legend-strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+[data-flashcards-app] [data-tone='again'] { --wb-fcx-tone: var(--wb-fcx-red); }
+[data-flashcards-app] [data-tone='hard'] { --wb-fcx-tone: var(--wb-fcx-amber); }
+[data-flashcards-app] [data-tone='good'] { --wb-fcx-tone: var(--wb-fcx-green); }
+[data-flashcards-app] [data-tone='easy'] { --wb-fcx-tone: var(--wb-fcx-teal); }
+
+/* ==== 卡片状态构成（环形） ============================================ */
+
+.wb-fcx-donut-layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 22px;
+}
+
+.wb-fcx-donut-legend {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wb-fcx-donut-seg {
+  fill: none;
+  stroke: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
+  transition: stroke-dashoffset 600ms var(--wb-ease-out, ease-out);
+}
+
+[data-flashcards-app] [data-tone='state-new'] { --wb-fcx-tone: var(--wb-fcx-teal); }
+[data-flashcards-app] [data-tone='state-learning'] { --wb-fcx-tone: var(--wb-fcx-amber); }
+[data-flashcards-app] [data-tone='state-review'] { --wb-fcx-tone: var(--wb-fcx-green); }
+[data-flashcards-app] [data-tone='state-relearning'] { --wb-fcx-tone: var(--wb-fcx-purple); }
+[data-flashcards-app] [data-tone='state-suspended'] { --wb-fcx-tone: 215 12% 62%; }
+
+/* ==== reduced motion：路径动画全部关掉 ================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-fcx-screen-anim,
+  .wb-fcx-bar-fill {
+    animation: none;
+  }
+
+  .wb-fcx-ring-value,
+  .wb-fcx-donut-seg,
+  .wb-fcx-tab {
+    transition: none;
+  }
+
+  .wb-fcx-tab:active {
+    transform: none;
+  }
+}

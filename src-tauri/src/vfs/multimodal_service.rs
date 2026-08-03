@@ -22,11 +22,15 @@ use crate::database::Database;
 use crate::llm_manager::LLMManager;
 use crate::multimodal::embedding_service::MultimodalEmbeddingService;
 use crate::multimodal::page_indexer::AttachmentPreview;
-use crate::multimodal::types::{IndexProgressEvent, MultimodalInput};
+use crate::multimodal::types::{IndexProgressEvent, MultimodalImage, MultimodalInput};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::lance_store::{VfsLanceRow, VfsLanceStore};
-use crate::vfs::repos::{embedding_dim_repo, VfsBlobRepo, MODALITY_MULTIMODAL};
+use crate::vfs::repos::index_unit_repo::IndexState as UnitIndexState;
+use crate::vfs::repos::{
+    embedding_dim_repo, index_segment_repo, index_unit_repo, CreateSegmentInput, CreateUnitInput,
+    VfsBlobRepo, VfsIndexStateRepo, VfsIndexUnit, MODALITY_MULTIMODAL,
+};
 
 // ============================================================================
 // 类型定义
@@ -61,8 +65,12 @@ pub struct VfsMultimodalIndexResult {
 /// 多模态检索结果
 #[derive(Debug, Clone)]
 pub struct VfsMultimodalSearchResult {
+    /// Lance 行 ID
+    pub embedding_id: String,
     /// 资源 ID
     pub resource_id: String,
+    /// Unit ID（一页一 Unit）
+    pub unit_id: Option<String>,
     /// 资源类型
     pub resource_type: String,
     /// 页面索引
@@ -75,6 +83,67 @@ pub struct VfsMultimodalSearchResult {
     pub score: f32,
     /// 文件夹 ID
     pub folder_id: Option<String>,
+}
+
+fn normalize_multimodal_rrf_score(score: f64, best_score: f64) -> f32 {
+    if !score.is_finite() || !best_score.is_finite() || best_score <= 0.0 {
+        0.0
+    } else {
+        (score / best_score).clamp(0.0, 1.0) as f32
+    }
+}
+
+fn unified_multimodal_request(
+    query_input: &MultimodalInput,
+    top_k: usize,
+    folder_ids: Option<&[String]>,
+    resource_ids: Option<&[String]>,
+    resource_types: Option<&[String]>,
+) -> VfsResult<crate::vfs::UnifiedRetrievalRequest> {
+    let (query_image_base64, query_image_media_type) = match query_input.image.as_ref() {
+        Some(MultimodalImage::Base64 { data, media_type }) => {
+            (Some(data.clone()), Some(media_type.clone()))
+        }
+        Some(MultimodalImage::Url { .. }) => {
+            return Err(VfsError::InvalidArgument {
+                param: "queryInput.image".to_string(),
+                reason: "profile-aware VFS retrieval requires Base64 image bytes; URL-only image queries are unsupported"
+                    .to_string(),
+            });
+        }
+        None => (None, None),
+    };
+    let query_text = query_input.text.clone().map(|text| {
+        query_input
+            .instruction
+            .as_deref()
+            .map(str::trim)
+            .filter(|instruction| !instruction.is_empty())
+            .map(|instruction| format!("{}\n\n{}", instruction, text))
+            .unwrap_or(text)
+    });
+    let query_modality = match (query_text.is_some(), query_image_base64.is_some()) {
+        (true, true) => crate::vfs::QueryModality::Mixed,
+        (false, true) => crate::vfs::QueryModality::Image,
+        (true, false) => crate::vfs::QueryModality::Text,
+        (false, false) => {
+            return Err(VfsError::InvalidArgument {
+                param: "queryInput".to_string(),
+                reason: "multimodal retrieval requires text or image input".to_string(),
+            });
+        }
+    };
+
+    Ok(crate::vfs::UnifiedRetrievalRequest {
+        query_text,
+        query_image_base64,
+        query_image_media_type,
+        query_modality,
+        top_k,
+        folder_ids: folder_ids.map(<[String]>::to_vec),
+        resource_ids: resource_ids.map(<[String]>::to_vec),
+        resource_types: resource_types.map(<[String]>::to_vec),
+    })
 }
 
 // ============================================================================
@@ -122,6 +191,12 @@ impl VfsMultimodalService {
     ///
     /// ## 返回
     /// 索引结果，包含成功/失败的页面数
+    ///
+    /// ## force_rebuild 语义
+    /// 本入口（及 `_with_progress` 变体）是**手动/显式索引**路径，固定
+    /// `force_rebuild=true`：整份资源重置重建。后台增量路径
+    /// （`process_pending_batch`）传 `false`，只重建图片变化的页面并在
+    /// 索引已完整时短路。`index_resource_by_source` 尊重调用方参数。
     pub async fn index_resource_pages(
         &self,
         resource_id: &str,
@@ -129,8 +204,16 @@ impl VfsMultimodalService {
         folder_id: Option<&str>,
         pages: Vec<VfsMultimodalPage>,
     ) -> VfsResult<VfsMultimodalIndexResult> {
-        self.index_resource_pages_with_progress(resource_id, resource_type, folder_id, pages, None)
-            .await
+        self.index_resource_pages_with_options(
+            resource_id,
+            resource_type,
+            folder_id,
+            pages,
+            true,
+            true,
+            None,
+        )
+        .await
     }
 
     /// 索引资源的多模态页面（带进度回调）
@@ -142,7 +225,36 @@ impl VfsMultimodalService {
         pages: Vec<VfsMultimodalPage>,
         progress_tx: Option<mpsc::UnboundedSender<IndexProgressEvent>>,
     ) -> VfsResult<VfsMultimodalIndexResult> {
+        self.index_resource_pages_with_options(
+            resource_id,
+            resource_type,
+            folder_id,
+            pages,
+            true,
+            true,
+            progress_tx,
+        )
+        .await
+    }
+
+    /// `refresh_counts`：单资源手动路径传 `true`（成功后立刻刷新维度计数与
+    /// profile 状态）；后台批量路径（`process_pending_batch`）传 `false`，
+    /// 由批次末尾统一刷新一次，避免 O(资源数 × 全表) 的逐资源刷新。
+    #[allow(clippy::too_many_arguments)]
+    async fn index_resource_pages_with_options(
+        &self,
+        resource_id: &str,
+        resource_type: &str,
+        folder_id: Option<&str>,
+        mut pages: Vec<VfsMultimodalPage>,
+        force_rebuild: bool,
+        refresh_counts: bool,
+        progress_tx: Option<mpsc::UnboundedSender<IndexProgressEvent>>,
+    ) -> VfsResult<VfsMultimodalIndexResult> {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
         if pages.is_empty() {
+            self.clear_resource_multimodal_index(resource_id).await?;
             return Ok(VfsMultimodalIndexResult {
                 indexed_pages: 0,
                 dimension: 0,
@@ -157,51 +269,154 @@ impl VfsMultimodalService {
             resource_type
         );
 
-        // 1. 检查模型配置
+        // 1. 检查模型配置。OCR/TM 不参与该路径，页面始终直接交给 ME。
         if !self.is_configured().await {
             return Err(VfsError::Other(
                 "未配置多模态嵌入模型，请在设置中配置 VL Embedding 模型".to_string(),
             ));
         }
 
-        // 2. 准备多模态输入
-        let mut inputs: Vec<(i32, MultimodalInput)> = Vec::new();
+        // 2. 补齐可持久化 provenance（blob_hash）。
+        // ★ 内存优化：不再在此处把全部页面的原图读成 Base64 常驻内存
+        // （百页 PDF 会同时驻留数百 MB），只校验 blob 可定位；
+        // 原图字节延迟到步骤 4 的嵌入阶段按批读取、用完即弃。
         let mut failed_pages: Vec<i32> = Vec::new();
-
-        for page in &pages {
-            let input = if let (Some(base64), Some(mime)) = (&page.image_base64, &page.image_mime) {
-                // 有图片数据：使用图文混合输入
-                if let Some(text) = &page.text_content {
-                    MultimodalInput::text_and_image(text, base64, mime)
-                } else {
-                    MultimodalInput::image_base64(base64, mime)
-                }
-            } else if let Some(text) = &page.text_content {
-                // 只有文本：使用纯文本输入
-                MultimodalInput::text(text)
-            } else {
-                // 无有效内容
-                warn!(
-                    "[VfsMultimodalService] Page {} has no valid content, skipping",
-                    page.page_index
-                );
+        for page in &mut pages {
+            if page.blob_hash.is_none() {
+                // 兼容旧 inline API：将 Base64 原图先内容寻址持久化，再建立 Unit/Segment。
+                // 没有 durable blob_hash 的向量无法可靠引用或重建，禁止只写临时向量。
+                let Some(encoded) = page.image_base64.as_deref() else {
+                    failed_pages.push(page.page_index);
+                    continue;
+                };
+                let encoded = encoded
+                    .rsplit_once(";base64,")
+                    .map_or(encoded, |(_, data)| data);
+                let data = match BASE64.decode(encoded) {
+                    Ok(data) if !data.is_empty() => data,
+                    _ => {
+                        failed_pages.push(page.page_index);
+                        continue;
+                    }
+                };
+                let mime = page.image_mime.as_deref().unwrap_or("image/png");
+                let extension = match mime {
+                    "image/jpeg" => "jpg",
+                    "image/webp" => "webp",
+                    "image/gif" => "gif",
+                    _ => "png",
+                };
+                let blob =
+                    VfsBlobRepo::store_blob(&self.vfs_db, &data, Some(mime), Some(extension))?;
+                page.blob_hash = Some(blob.hash);
+                // 原图已持久化，inline Base64 不再需要常驻；嵌入阶段按批从 blob 重读。
+                page.image_base64 = None;
+            }
+            let blob_hash = page.blob_hash.clone().unwrap_or_default();
+            if VfsBlobRepo::get_blob_path(&self.vfs_db, &blob_hash)?.is_none() {
                 failed_pages.push(page.page_index);
                 continue;
-            };
-
-            inputs.push((page.page_index, input));
+            }
+            if page.image_mime.is_none() {
+                page.image_mime = Some("image/png".to_string());
+            }
+        }
+        if !failed_pages.is_empty() {
+            return Err(VfsError::Other(format!(
+                "多模态页面缺少可读取的原图或 blob_hash: {:?}",
+                failed_pages
+            )));
         }
 
-        if inputs.is_empty() {
+        // 3. 同步一页一 Unit。该操作只拥有图片侧字段，不覆盖已有 OCR 文本。
+        let units = {
+            let conn = self.vfs_db.get_conn_safe()?;
+            conn.execute("SAVEPOINT sync_mm_units", [])?;
+            let synced = index_unit_repo::sync_multimodal_units(
+                &conn,
+                resource_id,
+                pages
+                    .iter()
+                    .map(|page| CreateUnitInput {
+                        resource_id: resource_id.to_string(),
+                        unit_index: page.page_index,
+                        image_blob_hash: page.blob_hash.clone(),
+                        image_mime_type: page.image_mime.clone(),
+                        text_content: None,
+                        text_source: None,
+                    })
+                    .collect(),
+                force_rebuild,
+            );
+            match synced {
+                Ok(result) => {
+                    // 批量路径（refresh_counts=false）跳过全表刷新，由批次末尾
+                    // 统一执行；单资源路径保持同事务内即时刷新。
+                    if refresh_counts {
+                        embedding_dim_repo::refresh_counts_from_segments(&conn)?;
+                    }
+                    conn.execute("RELEASE SAVEPOINT sync_mm_units", [])?;
+                    result.units
+                }
+                Err(error) => {
+                    let _ = conn.execute("ROLLBACK TO SAVEPOINT sync_mm_units", []);
+                    let _ = conn.execute("RELEASE SAVEPOINT sync_mm_units", []);
+                    return Err(error);
+                }
+            }
+        };
+
+        let all_current = {
+            let conn = self.vfs_db.get_conn_safe()?;
+            units.iter().all(|unit| {
+                unit.mm_state == UnitIndexState::Indexed
+                    && index_segment_repo::get_by_unit_and_modality(
+                        &conn,
+                        &unit.id,
+                        MODALITY_MULTIMODAL,
+                    )
+                    .map(|segments| segments.len() == 1)
+                    .unwrap_or(false)
+            })
+        };
+        if !force_rebuild && all_current {
+            let dimension = units
+                .first()
+                .and_then(|unit| unit.mm_embedding_dim)
+                .unwrap_or(0) as usize;
+            // 调用方（process_pending_batch）可能已把资源 claim 成 indexing；
+            // 短路返回前必须落回 indexed，否则资源卡死在 indexing。
+            self.set_resource_mm_state(resource_id, "indexed", None)?;
             return Ok(VfsMultimodalIndexResult {
-                indexed_pages: 0,
-                dimension: 0,
+                indexed_pages: units.len(),
+                dimension,
                 failed_pages,
             });
         }
 
-        // 3. 批量生成嵌入向量（带进度回调）
-        let mm_inputs: Vec<MultimodalInput> = inputs.iter().map(|(_, i)| i.clone()).collect();
+        // Freeze one concrete ME configuration for the entire logical batch.
+        // Sub-batches must never re-read assignment state independently.
+        let model_config = self
+            .llm_manager
+            .get_vl_embedding_model_config()
+            .await
+            .map_err(|error| VfsError::Other(format!("读取多模态嵌入模型配置失败: {}", error)))?;
+        let model_fingerprint =
+            embedding_dim_repo::model_fingerprint_for_config(&model_config, MODALITY_MULTIMODAL)?;
+
+        self.set_units_mm_state(&units, UnitIndexState::Indexing, None)?;
+        self.set_resource_mm_state(resource_id, "indexing", None)?;
+
+        let unit_map: HashMap<i32, &VfsIndexUnit> =
+            units.iter().map(|unit| (unit.unit_index, unit)).collect();
+
+        // 4. 流式生成嵌入向量：按批"读原图 → embed → 释放字节"。
+        // ★ 内存优化：每次只把 EMBED_READ_BATCH 页的 Base64 读入内存，
+        // embed 返回后立即释放，只保留小得多的向量结果（dim × 4 字节/页）。
+        // 批大小与 MultimodalEmbeddingService 内部拆批（8 页）一致，
+        // 不改变对 API 的请求粒度。
+        // 原图优先：即使 Unit 中存在 OCR 文本，也不把 OCR 作为 ME 输入前置。
+        const EMBED_READ_BATCH: usize = 8;
         let total_pages = pages.len() as i32;
         let skipped_pages = failed_pages.len() as i32;
         let embed_progress_tx = if progress_tx.is_some() {
@@ -234,105 +449,359 @@ impl VfsMultimodalService {
             None
         };
 
-        let embeddings = self
-            .embedding_service
-            .embed_batch_with_progress(&mm_inputs, embed_progress_tx)
-            .await
-            .map_err(|e| VfsError::Other(format!("多模态嵌入生成失败: {}", e)))?;
+        let mut embeddings: Vec<Vec<f32>> = Vec::with_capacity(pages.len());
+        let mut embed_error: Option<String> = None;
+        'embed: for (chunk_index, page_chunk) in pages.chunks(EMBED_READ_BATCH).enumerate() {
+            let completed_offset = chunk_index * EMBED_READ_BATCH;
 
-        if embeddings.is_empty() {
-            return Err(VfsError::Other("多模态嵌入 API 返回空结果".to_string()));
+            let mut chunk_inputs: Vec<MultimodalInput> = Vec::with_capacity(page_chunk.len());
+            for page in page_chunk {
+                let mime = page.image_mime.as_deref().unwrap_or("image/png");
+                let blob_hash = page.blob_hash.as_deref().unwrap_or_default();
+                let blob_path = match VfsBlobRepo::get_blob_path(&self.vfs_db, blob_hash) {
+                    Ok(Some(path)) => path,
+                    Ok(None) => {
+                        embed_error = Some(format!(
+                            "多模态页面 {} 的 blob {} 不存在",
+                            page.page_index, blob_hash
+                        ));
+                        break 'embed;
+                    }
+                    Err(error) => {
+                        embed_error = Some(format!(
+                            "解析页面 {} 的 blob 路径失败: {}",
+                            page.page_index, error
+                        ));
+                        break 'embed;
+                    }
+                };
+                match tokio::fs::read(&blob_path).await {
+                    Ok(data) if !data.is_empty() => {
+                        chunk_inputs.push(MultimodalInput::image_base64(BASE64.encode(data), mime));
+                    }
+                    Ok(_) => {
+                        embed_error = Some(format!(
+                            "多模态页面 {} 的 blob {} 为空",
+                            page.page_index, blob_hash
+                        ));
+                        break 'embed;
+                    }
+                    Err(error) => {
+                        embed_error = Some(format!(
+                            "读取页面 {} 原图失败 ({}): {}",
+                            page.page_index, blob_hash, error
+                        ));
+                        break 'embed;
+                    }
+                }
+            }
+
+            // 每个子批的 completed 从 0 计数；转发时叠加偏移，保持整卷进度单调。
+            let chunk_progress_tx = embed_progress_tx.as_ref().map(|main_tx| {
+                let (tx, mut rx) =
+                    mpsc::channel::<crate::multimodal::embedding_service::EmbeddingProgress>(64);
+                let main_tx = main_tx.clone();
+                tokio::spawn(async move {
+                    while let Some(mut progress) = rx.recv().await {
+                        progress.completed += completed_offset;
+                        let _ = main_tx.send(progress).await;
+                    }
+                });
+                tx
+            });
+
+            match self
+                .embedding_service
+                .embed_batch_with_progress_for_config(
+                    &chunk_inputs,
+                    &model_config,
+                    chunk_progress_tx,
+                )
+                .await
+            {
+                Ok(chunk_embeddings) => {
+                    if chunk_embeddings.len() != chunk_inputs.len() {
+                        embed_error = Some(format!(
+                            "多模态嵌入数量不匹配: expected={}, actual={}",
+                            chunk_inputs.len(),
+                            chunk_embeddings.len()
+                        ));
+                        break 'embed;
+                    }
+                    embeddings.extend(chunk_embeddings);
+                }
+                Err(error) => {
+                    embed_error = Some(format!("多模态嵌入生成失败: {}", error));
+                    break 'embed;
+                }
+            }
+        }
+        // 主发送端此后不再使用；显式 drop 让 relay 任务在失败提前退出时也能结束。
+        drop(embed_progress_tx);
+
+        if let Some(message) = embed_error {
+            self.set_units_mm_state(&units, UnitIndexState::Failed, Some(&message))?;
+            self.set_resource_mm_state(resource_id, "failed", Some(&message))?;
+            return Err(VfsError::Other(message));
         }
 
-        let dimension = embeddings.first().map(|v| v.len()).unwrap_or(0);
+        if embeddings.len() != pages.len() {
+            let message = format!(
+                "多模态嵌入数量不匹配: expected={}, actual={}",
+                pages.len(),
+                embeddings.len()
+            );
+            self.set_units_mm_state(&units, UnitIndexState::Failed, Some(&message))?;
+            self.set_resource_mm_state(resource_id, "failed", Some(&message))?;
+            return Err(VfsError::Other(message));
+        }
 
-        // 4. 构建 Lance 行并存储
+        if let Err(error) = self
+            .ensure_mm_assignment_unchanged(
+                &model_config.id,
+                &model_config.model,
+                &model_fingerprint,
+            )
+            .await
+        {
+            self.reset_mm_pending(&units, resource_id)?;
+            return Err(error);
+        }
+        let dimension = embeddings.first().map(|v| v.len()).unwrap_or(0);
+        if dimension == 0
+            || embeddings
+                .iter()
+                .any(|embedding| embedding.len() != dimension)
+        {
+            let message = "多模态嵌入维度为空或批次内不一致".to_string();
+            self.set_units_mm_state(&units, UnitIndexState::Failed, Some(&message))?;
+            self.set_resource_mm_state(resource_id, "failed", Some(&message))?;
+            return Err(VfsError::Other(message));
+        }
+
+        // 相同维度不等于相同向量空间。必须先激活具体 ME 模型 profile，
+        // `write_chunks` 才会打开该 profile 对应的 Lance 表。
+        let index_profile = self.lance_store.ensure_model_profile_with_fingerprint(
+            MODALITY_MULTIMODAL,
+            dimension,
+            &model_config.id,
+            Some(&model_config.model),
+            &model_fingerprint,
+        )?;
+
+        // 5. 构建 Lance 行并存储
         let now = chrono::Utc::now().to_rfc3339();
         let mut rows: Vec<VfsLanceRow> = Vec::new();
-        let page_map: HashMap<i32, &VfsMultimodalPage> =
-            pages.iter().map(|page| (page.page_index, page)).collect();
+        let generations = units
+            .iter()
+            .map(|unit| {
+                self.lance_store
+                    .next_unit_generation(&unit.id, MODALITY_MULTIMODAL)
+                    .map(|generation| (unit.unit_index, generation))
+            })
+            .collect::<VfsResult<HashMap<i32, i64>>>()?;
         let folder_id = folder_id.map(String::from);
 
-        for ((page_index, _), embedding) in inputs.iter().zip(embeddings.into_iter()) {
-            let page = page_map
-                .get(page_index)
-                .ok_or_else(|| VfsError::Other(format!("页面索引不存在: {}", page_index)))?;
+        for (page, embedding) in pages.iter().zip(embeddings) {
+            let page_index = &page.page_index;
 
+            let unit = unit_map
+                .get(page_index)
+                .ok_or_else(|| VfsError::Other(format!("页面 {} 缺少索引 Unit", page_index)))?;
+            let generation = *generations
+                .get(page_index)
+                .ok_or_else(|| VfsError::Other(format!("页面 {} 缺少 generation", page_index)))?;
             let metadata = serde_json::json!({
                 "page_index": page_index,
                 "blob_hash": page.blob_hash,
                 "source_id": resource_id,
+                "unit_id": unit.id,
+                "content_hash": unit.content_hash,
+                "modality": MODALITY_MULTIMODAL,
+                "index_profile_id": index_profile.id,
+                "generation": generation,
             });
+            let content_suffix = unit
+                .content_hash
+                .as_deref()
+                .unwrap_or("nohash")
+                .chars()
+                .take(12)
+                .collect::<String>();
+            let profile_suffix = index_profile
+                .id
+                .chars()
+                .rev()
+                .take(12)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>();
 
             rows.push(VfsLanceRow {
-                embedding_id: format!("{}_mm_p{}", resource_id, page_index),
+                embedding_id: format!(
+                    "{}_mm_p{}_g{}_{}_{}_{}",
+                    resource_id,
+                    page_index,
+                    generation,
+                    profile_suffix,
+                    content_suffix,
+                    nanoid::nanoid!(8)
+                ),
                 resource_id: resource_id.to_string(),
+                unit_id: unit.id.clone(),
                 resource_type: resource_type.to_string(),
                 folder_id: folder_id.clone(),
                 chunk_index: *page_index,
                 text: page.text_content.clone().unwrap_or_default(),
                 metadata_json: Some(metadata.to_string()),
                 created_at: now.clone(),
+                index_profile_id: index_profile.id.clone(),
+                generation,
                 embedding,
             });
         }
 
-        // 5. 无空窗替换：先按 embedding_id 写入，再按页面索引清理陈旧向量
-        // - write_chunks 内部会按 embedding_id 先删后写，确保同页向量被更新
-        // - 写入成功后再删除 "不在当前页面集合" 的历史行，避免先删后写的空窗
-        self.lance_store
+        // 6. 无空窗替换：先写新行，再切换 SQLite Segment 账本。
+        // - write_chunks 是纯 append（embedding_id 每次全新生成，不存在同 ID 重写）
+        // - 写入成功并切换账本后，由 delete_by_unit_except_ids 回收旧代行，
+        //   避免先删后写的检索空窗
+        if let Err(error) = self
+            .ensure_mm_assignment_unchanged(
+                &model_config.id,
+                &model_config.model,
+                &model_fingerprint,
+            )
+            .await
+        {
+            self.reset_mm_pending(&units, resource_id)?;
+            return Err(error);
+        }
+        if let Err(error) = self
+            .lance_store
             .write_chunks(MODALITY_MULTIMODAL, &rows)
-            .await?;
+            .await
+        {
+            if matches!(&error, VfsError::InvalidState { .. }) {
+                self.reset_mm_pending(&units, resource_id)?;
+            }
+            return Err(error);
+        }
 
-        // 清理旧维度表中的历史向量，避免跨维度残留污染检索。
-        if let Err(e) = self
+        let count = rows.len();
+
+        // 7. Segment 与 Unit 状态在同一个 savepoint 中切换；旧 row ID 同事务入队。
+        let metadata_result: VfsResult<()> = (|| {
+            let conn = self.vfs_db.get_conn_safe()?;
+            conn.execute("SAVEPOINT commit_mm_segments", [])?;
+            let commit_result: VfsResult<()> = (|| {
+                for row in &rows {
+                    let unit = unit_map.get(&row.chunk_index).ok_or_else(|| {
+                        VfsError::Other(format!("Lance row page {} has no Unit", row.chunk_index))
+                    })?;
+                    index_unit_repo::set_index_profile(
+                        &conn,
+                        &unit.id,
+                        MODALITY_MULTIMODAL,
+                        &index_profile.id,
+                        row.generation,
+                    )?;
+                    index_segment_repo::replace_by_unit_and_modality(
+                        &conn,
+                        resource_id,
+                        &unit.id,
+                        MODALITY_MULTIMODAL,
+                        vec![CreateSegmentInput {
+                            unit_id: unit.id.clone(),
+                            segment_index: 0,
+                            modality: MODALITY_MULTIMODAL.to_string(),
+                            embedding_dim: dimension as i32,
+                            lance_row_id: row.embedding_id.clone(),
+                            content_text: if row.text.is_empty() {
+                                None
+                            } else {
+                                Some(row.text.clone())
+                            },
+                            content_hash: unit.content_hash.clone(),
+                            start_pos: None,
+                            end_pos: None,
+                            metadata_json: row.metadata_json.clone(),
+                        }],
+                    )?;
+                    index_unit_repo::set_mm_indexed(&conn, &unit.id, dimension as i32)?;
+                }
+                // ★ 2026-07：全表相关子查询刷新改为可选。批量路径在批次末尾
+                // 统一刷新（refresh_counts=false 时跳过）；刷新推迟不影响正确
+                // 性——检索与写入的可见性由 Unit generation 判定，profile 的
+                // building→active 提升最迟在批次末尾补上。
+                if refresh_counts {
+                    embedding_dim_repo::refresh_counts_from_segments(&conn)?;
+                }
+                Ok(())
+            })();
+            match commit_result {
+                Ok(()) => {
+                    conn.execute("RELEASE SAVEPOINT commit_mm_segments", [])?;
+                    Ok(())
+                }
+                Err(error) => {
+                    let _ = conn.execute("ROLLBACK TO SAVEPOINT commit_mm_segments", []);
+                    let _ = conn.execute("RELEASE SAVEPOINT commit_mm_segments", []);
+                    Err(error)
+                }
+            }
+        })();
+        if let Err(error) = metadata_result {
+            let message = format!("多模态 Segment 账本提交失败: {}", error);
+            let embedding_ids = rows
+                .iter()
+                .map(|row| row.embedding_id.clone())
+                .collect::<Vec<_>>();
+            if let Err(cleanup_error) = self
+                .lance_store
+                .discard_uncommitted_rows(MODALITY_MULTIMODAL, resource_id, &embedding_ids)
+                .await
+            {
+                warn!(
+                    "[VfsMultimodalService] Failed to reclaim uncommitted rows for {}: {}",
+                    resource_id, cleanup_error
+                );
+            }
+            self.set_units_mm_state(&units, UnitIndexState::Failed, Some(&message))?;
+            self.set_resource_mm_state(resource_id, "failed", Some(&message))?;
+            return Err(VfsError::Other(message));
+        }
+
+        // The new page generations are now active.  Reclaim retired rows only
+        // after the SQLite switch so readers never observe a delete-first gap.
+        for row in &rows {
+            if let Err(error) = self
+                .lance_store
+                .delete_by_unit_except_ids(
+                    MODALITY_MULTIMODAL,
+                    resource_id,
+                    &row.unit_id,
+                    std::slice::from_ref(&row.embedding_id),
+                )
+                .await
+            {
+                warn!(
+                    "[VfsMultimodalService] Deferred cleanup for Unit {} failed: {}",
+                    row.unit_id, error
+                );
+            }
+        }
+        if let Err(error) = self
             .lance_store
             .delete_by_resource_except_dim(MODALITY_MULTIMODAL, resource_id, dimension)
             .await
         {
             warn!(
-                "[VfsMultimodalService] Failed to cleanup stale multimodal dims for {}: {}",
-                resource_id, e
+                "[VfsMultimodalService] Failed to cleanup retired multimodal profiles for {}: {}",
+                resource_id, error
             );
         }
-
-        // 清理已不属于当前页面集合的旧向量（如页数减少）
-        // 失败时保留已写入的新数据，仅记录告警，避免把本次索引整体判定为失败。
-        let table = self
-            .lance_store
-            .ensure_table(MODALITY_MULTIMODAL, dimension)
-            .await?;
-        let keep_page_indices = rows
-            .iter()
-            .map(|r| r.chunk_index.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        let escaped_resource_id = resource_id.replace('\'', "''");
-        let cleanup_expr = format!(
-            "resource_id = '{}' AND chunk_index NOT IN ({})",
-            escaped_resource_id, keep_page_indices
-        );
-        if let Err(e) = table.delete(cleanup_expr.as_str()).await {
-            warn!(
-                "[VfsMultimodalService] Failed to cleanup stale multimodal rows for {}: {}",
-                resource_id, e
-            );
-        }
-
-        let count = rows.len();
-
-        // 6. 更新维度统计
-        // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
-        {
-            let conn = self.vfs_db.get_conn()?;
-            embedding_dim_repo::register(&conn, dimension as i32, MODALITY_MULTIMODAL)?;
-            embedding_dim_repo::increment_count(
-                &conn,
-                dimension as i32,
-                MODALITY_MULTIMODAL,
-                count as i64,
-            )?;
-        }
+        self.set_resource_mm_state(resource_id, "indexed", None)?;
 
         info!(
             "[VfsMultimodalService] Successfully indexed {} pages for resource {} (dim={})",
@@ -352,6 +821,108 @@ impl VfsMultimodalService {
             dimension,
             failed_pages,
         })
+    }
+
+    fn set_units_mm_state(
+        &self,
+        units: &[VfsIndexUnit],
+        state: UnitIndexState,
+        error: Option<&str>,
+    ) -> VfsResult<()> {
+        let conn = self.vfs_db.get_conn_safe()?;
+        for unit in units {
+            index_unit_repo::set_mm_state(&conn, &unit.id, state.clone(), error)?;
+        }
+        Ok(())
+    }
+
+    async fn ensure_mm_assignment_unchanged(
+        &self,
+        expected_config_id: &str,
+        expected_model: &str,
+        expected_fingerprint: &str,
+    ) -> VfsResult<()> {
+        let current = self
+            .llm_manager
+            .get_vl_embedding_model_config()
+            .await
+            .map_err(|error| {
+                VfsError::InvalidState {
+                    message: format!(
+                        "Multimodal embedding assignment became unavailable while a batch was running: {}",
+                        error
+                    ),
+                }
+            })?;
+        let current_fingerprint =
+            embedding_dim_repo::model_fingerprint_for_config(&current, MODALITY_MULTIMODAL)?;
+        if current.id != expected_config_id
+            || current.model != expected_model
+            || current_fingerprint != expected_fingerprint
+        {
+            return Err(VfsError::InvalidState {
+                message: format!(
+                    "Multimodal embedding assignment changed while the batch was running: {}/{} -> {}/{}",
+                    expected_config_id, expected_model, current.id, current.model
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    fn reset_mm_pending(&self, units: &[VfsIndexUnit], resource_id: &str) -> VfsResult<()> {
+        self.set_units_mm_state(units, UnitIndexState::Pending, None)?;
+        self.set_resource_mm_state(resource_id, "pending", None)
+    }
+
+    fn set_resource_mm_state(
+        &self,
+        resource_id: &str,
+        state: &str,
+        error: Option<&str>,
+    ) -> VfsResult<()> {
+        if state == "failed" {
+            VfsIndexStateRepo::mark_mm_failed(
+                &self.vfs_db,
+                resource_id,
+                error.unwrap_or("multimodal indexing failed"),
+            )
+        } else {
+            VfsIndexStateRepo::set_mm_index_state(&self.vfs_db, resource_id, state, error)
+        }
+    }
+
+    async fn clear_resource_multimodal_index(&self, resource_id: &str) -> VfsResult<()> {
+        {
+            let conn = self.vfs_db.get_conn_safe()?;
+            conn.execute("SAVEPOINT clear_mm_index", [])?;
+            let clear_result: VfsResult<()> = (|| {
+                index_unit_repo::clear_multimodal_index(&conn, resource_id)?;
+                embedding_dim_repo::refresh_counts_from_segments(&conn)?;
+                Ok(())
+            })();
+            match clear_result {
+                Ok(()) => conn.execute("RELEASE SAVEPOINT clear_mm_index", [])?,
+                Err(error) => {
+                    let _ = conn.execute("ROLLBACK TO SAVEPOINT clear_mm_index", []);
+                    let _ = conn.execute("RELEASE SAVEPOINT clear_mm_index", []);
+                    return Err(error);
+                }
+            };
+        }
+        // 队列是持久兜底；直删是快路径。直删失败不会丢失删除意图。
+        if let Err(error) = self
+            .lance_store
+            .delete_by_resource(MODALITY_MULTIMODAL, resource_id)
+            .await
+        {
+            warn!(
+                "[VfsMultimodalService] Direct Lance cleanup failed for {}: {}; queued for retry",
+                resource_id, error
+            );
+        }
+        self.set_resource_mm_state(resource_id, "disabled", None)?;
+        Ok(())
     }
 
     /// 多模态向量检索
@@ -381,44 +952,72 @@ impl VfsMultimodalService {
         resource_ids: Option<&[String]>,
         resource_types: Option<&[String]>,
     ) -> VfsResult<Vec<VfsMultimodalSearchResult>> {
-        // 1. 检查模型配置
-        if !self.is_configured().await {
-            return Err(VfsError::Other("未配置多模态嵌入模型".to_string()));
-        }
-
-        // 2. 生成查询向量
         let query_input = MultimodalInput::text(query);
-        let query_embedding = self
-            .embedding_service
-            .embed_single(&query_input)
-            .await
-            .map_err(|e| VfsError::Other(format!("查询向量生成失败: {}", e)))?;
+        self.search_input_full(
+            &query_input,
+            top_k,
+            folder_ids,
+            resource_ids,
+            resource_types,
+        )
+        .await
+    }
 
-        // 3. 执行向量检索（使用支持 resource_ids 的完整方法）
-        let lance_results = self
-            .lance_store
-            .vector_search_full(
-                MODALITY_MULTIMODAL,
-                &query_embedding,
+    /// 使用文本、图片或图文混合输入执行同一多模态向量空间检索。
+    pub async fn search_input_full(
+        &self,
+        query_input: &MultimodalInput,
+        top_k: usize,
+        folder_ids: Option<&[String]>,
+        resource_ids: Option<&[String]>,
+        resource_types: Option<&[String]>,
+    ) -> VfsResult<Vec<VfsMultimodalSearchResult>> {
+        let retriever = crate::vfs::VfsUnifiedRetriever::new(
+            Arc::clone(&self.vfs_db),
+            Arc::clone(&self.lance_store),
+            Arc::clone(&self.llm_manager),
+        );
+        let response = retriever
+            .search_multimodal(unified_multimodal_request(
+                query_input,
                 top_k,
                 folder_ids,
                 resource_ids,
                 resource_types,
-            )
+            )?)
             .await?;
+        let best_rrf_score = response
+            .result
+            .hits
+            .first()
+            .map(|fused| fused.rrf_score)
+            .unwrap_or(0.0);
 
-        // 4. 转换结果
-        let results: Vec<VfsMultimodalSearchResult> = lance_results
+        let results: Vec<VfsMultimodalSearchResult> = response
+            .result
+            .hits
             .into_iter()
-            .map(|r| {
+            .map(|fused| {
+                let (metadata_blob_hash, unit_id) =
+                    Self::multimodal_provenance_from_value(&fused.hit.metadata);
                 VfsMultimodalSearchResult {
-                    resource_id: r.resource_id,
-                    resource_type: r.resource_type,
-                    page_index: r.page_index.unwrap_or(r.chunk_index),
-                    text_content: Some(r.text),
-                    blob_hash: r.source_id, // source_id 存储的是 blob_hash
-                    score: r.score,
-                    folder_id: r.folder_id,
+                    embedding_id: fused.hit.embedding_id,
+                    resource_id: fused.hit.identity.resource_id,
+                    unit_id,
+                    resource_type: fused
+                        .hit
+                        .resource_type
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    page_index: fused
+                        .hit
+                        .identity
+                        .page_index
+                        .unwrap_or(fused.hit.identity.chunk_index),
+                    text_content: Some(fused.hit.text),
+                    // blob_hash 必须来自持久化 metadata，绝不从 resource/source UUID 推导。
+                    blob_hash: fused.hit.blob_hash.or(metadata_blob_hash),
+                    score: normalize_multimodal_rrf_score(fused.rrf_score, best_rrf_score),
+                    folder_id: fused.hit.folder_id,
                 }
             })
             .collect();
@@ -426,23 +1025,37 @@ impl VfsMultimodalService {
         Ok(results)
     }
 
+    fn parse_multimodal_provenance(
+        metadata_json: Option<&str>,
+    ) -> (Option<String>, Option<String>) {
+        let Some(metadata_json) = metadata_json else {
+            return (None, None);
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(metadata_json) else {
+            return (None, None);
+        };
+        Self::multimodal_provenance_from_value(&value)
+    }
+
+    fn multimodal_provenance_from_value(
+        value: &serde_json::Value,
+    ) -> (Option<String>, Option<String>) {
+        let blob_hash = value
+            .get("blob_hash")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string);
+        let unit_id = value
+            .get("unit_id")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string);
+        (blob_hash, unit_id)
+    }
+
     /// 删除资源的多模态索引
     ///
     /// ★ 审计修复：删除后刷新 record_count
     pub async fn delete_resource_index(&self, resource_id: &str) -> VfsResult<()> {
-        self.lance_store
-            .delete_by_resource(MODALITY_MULTIMODAL, resource_id)
-            .await?;
-
-        // ★ 审计修复：刷新 record_count，防止删除后计数漂移
-        if let Ok(conn) = self.vfs_db.get_conn() {
-            if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
-                warn!(
-                    "[VfsMultimodalService] Failed to refresh counts after deleting {}: {}",
-                    resource_id, e
-                );
-            }
-        }
+        self.clear_resource_multimodal_index(resource_id).await?;
 
         info!(
             "[VfsMultimodalService] Deleted multimodal index for resource {}",
@@ -450,6 +1063,162 @@ impl VfsMultimodalService {
         );
 
         Ok(())
+    }
+
+    /// 批量处理待索引的多模态 Units。
+    ///
+    /// `limit` 以待处理 Unit 为取样上限，返回值以资源为成功/失败计数。只要资源中
+    /// 有一页 pending，就按该资源当前全部图片 Unit 重建，避免模型维度切换或页级
+    /// 更新时产生半新半旧的资源账本。
+    ///
+    /// ★ P1-4 修复：取样后先按资源原子 claim（`mm_index_state` -> indexing，
+    /// Immediate 事务），与文本侧 `claim_pending_resources` 对称。
+    /// 已被 `vfs_unified_batch_index` / 手动索引占用、或处于失败退避期/
+    /// 超过重试上限的资源本轮跳过，防止同一资源被并行重复 embedding
+    /// 以及 generation 竞态。失败统一落 `mark_mm_failed` 指数退避账本。
+    pub async fn process_pending_batch(&self, limit: u32) -> VfsResult<(usize, usize)> {
+        let pending = {
+            let conn = self.vfs_db.get_conn_safe()?;
+            index_unit_repo::list_pending_mm(&conn, limit.clamp(1, 100) as i32)?
+        };
+        let mut candidate_ids = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for unit in pending {
+            if seen.insert(unit.resource_id.clone()) {
+                candidate_ids.push(unit.resource_id);
+            }
+        }
+
+        let max_retries = crate::vfs::repos::VfsIndexingConfigRepo::get_i32(
+            &self.vfs_db,
+            "indexing.max_retries",
+            3,
+        )?;
+        let resource_ids = VfsIndexStateRepo::claim_mm_indexing_resources(
+            &self.vfs_db,
+            &candidate_ids,
+            max_retries,
+        )?;
+        if resource_ids.len() < candidate_ids.len() {
+            info!(
+                "[VfsMultimodalService] process_pending_batch: claimed {}/{} resources (rest busy, backing off, or over retry limit)",
+                resource_ids.len(),
+                candidate_ids.len()
+            );
+        }
+
+        let mut success = 0usize;
+        let mut failed = 0usize;
+        for resource_id in resource_ids {
+            let (resource_type, folder_id, pages) = {
+                let conn = self.vfs_db.get_conn_safe()?;
+                let resource_type = conn
+                    .query_row(
+                        "SELECT type FROM resources WHERE id = ?1",
+                        rusqlite::params![resource_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .unwrap_or_else(|| "file".to_string());
+                let folder_id = Self::resolve_resource_folder_id(&conn, &resource_id)?;
+                let pages = index_unit_repo::get_by_resource(&conn, &resource_id)?
+                    .into_iter()
+                    .filter(|unit| unit.mm_required && unit.image_blob_hash.is_some())
+                    .map(|unit| VfsMultimodalPage {
+                        page_index: unit.unit_index,
+                        image_base64: None,
+                        image_mime: unit.image_mime_type,
+                        // OCR/native text remains a separate Unit artifact and is not sent to ME.
+                        text_content: None,
+                        blob_hash: unit.image_blob_hash,
+                    })
+                    .collect::<Vec<_>>();
+                (resource_type, folder_id, pages)
+            };
+
+            // force_rebuild=false：增量优先。sync_multimodal_units 只把图片变化的
+            // 页面重新置 pending；若 claim 与处理之间资源已被其他路径补完索引，
+            // all_current 短路直接返回，避免整本重复 embedding。
+            // refresh_counts=false：批次末尾统一刷新（见循环后）。
+            match self
+                .index_resource_pages_with_options(
+                    &resource_id,
+                    &resource_type,
+                    folder_id.as_deref(),
+                    pages,
+                    false,
+                    false,
+                    None,
+                )
+                .await
+            {
+                Ok(_) => success += 1,
+                Err(error) => {
+                    failed += 1;
+                    warn!(
+                        "[VfsMultimodalService] Pending resource {} failed: {}",
+                        resource_id, error
+                    );
+                    // ★ P1-4：失败统一走 mark_mm_failed 指数退避。
+                    // index_resource_pages_with_options 的多数失败路径已写入
+                    // failed/pending 资源态；这里只兜底"提前返回、状态仍停留在
+                    // claim 时 indexing"的路径（如模型未配置、blob 缺失），
+                    // 否则资源卡死 indexing，要等下次启动 recover_stuck_indexing。
+                    let stuck_indexing =
+                        VfsIndexStateRepo::get_mm_index_state(&self.vfs_db, &resource_id)?
+                            .map(|state| state.state == crate::vfs::repos::INDEX_STATE_INDEXING)
+                            .unwrap_or(false);
+                    if stuck_indexing {
+                        VfsIndexStateRepo::mark_mm_failed(
+                            &self.vfs_db,
+                            &resource_id,
+                            &error.to_string(),
+                        )?;
+                    }
+                }
+            }
+        }
+
+        // ★ 2026-07：批次级刷新（与文本侧 process_pending_batch 同款）。
+        // 逐资源刷新已在 index_resource_pages_with_options(refresh_counts=false)
+        // 关闭，这里在批次完成后统一刷新一次 record_count 与 profile 状态。
+        // 失败资源也可能在 sync_mm_units 阶段删除过期 Unit/Segment，因此
+        // failed > 0 时同样需要刷新，避免 record_count 漂移。
+        if success > 0 || failed > 0 {
+            if let Ok(conn) = self.vfs_db.get_conn_safe() {
+                if let Err(e) = embedding_dim_repo::refresh_counts_from_segments(&conn) {
+                    warn!(
+                        "[VfsMultimodalService] Failed to refresh embedding_dim counts after batch: {}",
+                        e
+                    );
+                }
+            }
+        }
+
+        Ok((success, failed))
+    }
+
+    fn resolve_resource_folder_id(
+        conn: &rusqlite::Connection,
+        resource_id: &str,
+    ) -> VfsResult<Option<String>> {
+        Ok(conn
+            .query_row(
+                r#"SELECT fi.folder_id
+                   FROM folder_items fi
+                   WHERE fi.deleted_at IS NULL
+                     AND (
+                       fi.item_id = ?1
+                       OR EXISTS (SELECT 1 FROM files f WHERE f.id = fi.item_id AND f.resource_id = ?1)
+                       OR EXISTS (SELECT 1 FROM exam_sheets e WHERE e.id = fi.item_id AND e.resource_id = ?1)
+                     )
+                   ORDER BY fi.updated_at DESC, fi.created_at DESC
+                   LIMIT 1"#,
+                rusqlite::params![resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten())
     }
 
     /// 获取多模态索引统计信息
@@ -516,7 +1285,6 @@ impl VfsMultimodalService {
         _force_rebuild: bool,
         progress_tx: Option<mpsc::UnboundedSender<IndexProgressEvent>>,
     ) -> VfsResult<VfsMultimodalIndexResult> {
-        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
         use rusqlite::params;
 
         info!(
@@ -594,28 +1362,6 @@ impl VfsMultimodalService {
                     None => continue,
                 };
 
-                // 从 VFS Blob 获取文件路径并读取数据
-                let blob_path = match VfsBlobRepo::get_blob_path(&self.vfs_db, blob_hash)? {
-                    Some(p) => p,
-                    None => {
-                        warn!("[VfsMultimodalService] Blob path not found: {}", blob_hash);
-                        continue;
-                    }
-                };
-
-                // 读取文件内容
-                let blob_data = match tokio::fs::read(&blob_path).await {
-                    Ok(data) => data,
-                    Err(e) => {
-                        warn!(
-                            "[VfsMultimodalService] Failed to read blob file {:?}: {}",
-                            blob_path, e
-                        );
-                        continue;
-                    }
-                };
-
-                let image_base64 = BASE64.encode(&blob_data);
                 let mime_type = page_preview
                     .mime_type
                     .clone()
@@ -623,7 +1369,8 @@ impl VfsMultimodalService {
 
                 extracted_pages.push(VfsMultimodalPage {
                     page_index: page_preview.page_index as i32,
-                    image_base64: Some(image_base64),
+                    // 延迟到统一索引入口读取，避免 preview 解析阶段同时持有原图 bytes 和 Base64。
+                    image_base64: None,
                     image_mime: Some(mime_type),
                     text_content: None,
                     blob_hash: Some(blob_hash.clone()),
@@ -649,40 +1396,18 @@ impl VfsMultimodalService {
                 .unwrap_or((None, None));
 
             if let (Some(blob_hash), mime_type) = image_info {
-                // 从 VFS Blob 获取文件路径并读取数据
-                match VfsBlobRepo::get_blob_path(&self.vfs_db, &blob_hash)? {
-                    Some(blob_path) => match tokio::fs::read(&blob_path).await {
-                        Ok(blob_data) => {
-                            let image_base64 = BASE64.encode(&blob_data);
-                            let mime = mime_type.unwrap_or_else(|| "image/png".to_string());
-                            info!(
-                                    "[VfsMultimodalService] Image fallback: using blob_hash={} for single-page index",
-                                    blob_hash
-                                );
-                            vec![VfsMultimodalPage {
-                                page_index: 0,
-                                image_base64: Some(image_base64),
-                                image_mime: Some(mime),
-                                text_content: None,
-                                blob_hash: Some(blob_hash),
-                            }]
-                        }
-                        Err(e) => {
-                            warn!(
-                                "[VfsMultimodalService] Failed to read image blob file: {}",
-                                e
-                            );
-                            vec![]
-                        }
-                    },
-                    None => {
-                        warn!(
-                            "[VfsMultimodalService] Image blob_hash not found in blobs: {}",
-                            blob_hash
-                        );
-                        vec![]
-                    }
-                }
+                let mime = mime_type.unwrap_or_else(|| "image/png".to_string());
+                info!(
+                    "[VfsMultimodalService] Image fallback: using blob_hash={} for single-page index",
+                    blob_hash
+                );
+                vec![VfsMultimodalPage {
+                    page_index: 0,
+                    image_base64: None,
+                    image_mime: Some(mime),
+                    text_content: None,
+                    blob_hash: Some(blob_hash),
+                }]
             } else {
                 warn!(
                     "[VfsMultimodalService] Image {} has no blob_hash, cannot index",
@@ -710,6 +1435,8 @@ impl VfsMultimodalService {
                 "[VfsMultimodalService] No pages found for resource {} (type={})",
                 source_id, source_type
             );
+            // 空页面也是一次有效更新：必须清理旧 Segment/Lance 行，不能只改状态。
+            self.clear_resource_multimodal_index(&resource_id).await?;
             // 标记为 disabled（无可索引内容）
             Self::update_mm_index_state_in_business_table(
                 &conn,
@@ -744,13 +1471,15 @@ impl VfsMultimodalService {
             0,
         )?;
 
-        // 4. 调用 index_resource_pages
+        // 4. 调用 index_resource_pages；force_rebuild 会真实重置并重建整份资源。
         let result = self
-            .index_resource_pages_with_progress(
+            .index_resource_pages_with_options(
                 &resource_id,
                 source_type,
                 folder_id,
                 pages.clone(),
+                _force_rebuild,
+                true,
                 progress_tx.clone(),
             )
             .await;
@@ -805,19 +1534,36 @@ impl VfsMultimodalService {
                 }
             }
             Err(e) => {
+                let retryable_conflict = matches!(&e, VfsError::InvalidState { .. });
+                let error_message = e.to_string();
                 Self::update_mm_index_state_in_business_table(
                     &conn,
                     source_type,
                     source_id,
-                    "failed",
-                    Some(&e.to_string()),
+                    if retryable_conflict {
+                        "pending"
+                    } else {
+                        "failed"
+                    },
+                    if retryable_conflict {
+                        None
+                    } else {
+                        Some(error_message.as_str())
+                    },
                     0,
                     0,
                 )?;
 
                 if let Some(progress_tx) = progress_tx.as_ref() {
                     let event = IndexProgressEvent::new(source_type, source_id, pages.len() as i32)
-                        .with_phase("failed", &e.to_string())
+                        .with_phase(
+                            if retryable_conflict {
+                                "pending"
+                            } else {
+                                "failed"
+                            },
+                            &error_message,
+                        )
                         .with_progress(0, 0, 0);
                     let _ = progress_tx.send(event);
                 }
@@ -938,10 +1684,15 @@ impl VfsMultimodalService {
             } else {
                 None
             };
-            let _ = conn.execute(
-                "UPDATE resources SET mm_index_state = ?1, mm_index_error = ?2, updated_at = ?3 WHERE id = ?4",
-                params![state, error_val, now, res_id],
-            );
+            if state == "failed" {
+                VfsIndexStateRepo::mark_mm_failed_with_conn(
+                    conn,
+                    &res_id,
+                    error_val.unwrap_or("multimodal indexing failed"),
+                )?;
+            } else {
+                VfsIndexStateRepo::set_mm_index_state_with_conn(conn, &res_id, state, error_val)?;
+            }
         }
 
         Ok(())
@@ -964,6 +1715,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn legacy_multimodal_search_inputs_build_unified_profile_requests() {
+        let folders = vec!["folder-a".to_string()];
+        let resources = vec!["resource-a".to_string()];
+        let types = vec!["textbook".to_string()];
+        let text = MultimodalInput::text("query").with_instruction("retrieve pages");
+        let text_request =
+            unified_multimodal_request(&text, 7, Some(&folders), Some(&resources), Some(&types))
+                .expect("text request");
+        assert_eq!(text_request.query_modality, crate::vfs::QueryModality::Text);
+        assert_eq!(text_request.top_k, 7);
+        assert_eq!(text_request.folder_ids.as_deref(), Some(folders.as_slice()));
+        assert_eq!(
+            text_request.resource_ids.as_deref(),
+            Some(resources.as_slice())
+        );
+        assert_eq!(
+            text_request.resource_types.as_deref(),
+            Some(types.as_slice())
+        );
+        assert_eq!(
+            text_request.query_text.as_deref(),
+            Some("retrieve pages\n\nquery")
+        );
+
+        let image = MultimodalInput::image_base64("bytes", "image/png");
+        let image_request =
+            unified_multimodal_request(&image, 3, None, None, None).expect("image request");
+        assert_eq!(
+            image_request.query_modality,
+            crate::vfs::QueryModality::Image
+        );
+        assert_eq!(image_request.query_image_base64.as_deref(), Some("bytes"));
+
+        let mixed = MultimodalInput::text_and_image("query", "bytes", "image/webp");
+        let mixed_request =
+            unified_multimodal_request(&mixed, 5, None, None, None).expect("mixed request");
+        assert_eq!(
+            mixed_request.query_modality,
+            crate::vfs::QueryModality::Mixed
+        );
+    }
+
+    #[test]
+    fn url_only_image_cannot_bypass_profile_aware_retrieval() {
+        let input = MultimodalInput::image_url("https://example.invalid/image.png");
+        let error = unified_multimodal_request(&input, 5, None, None, None)
+            .expect_err("URL must not fall back to dimension-only Lance lookup");
+        assert!(error.to_string().contains("Base64 image bytes"));
+    }
+
+    #[test]
+    fn multimodal_compatibility_scores_preserve_rrf_order() {
+        let best = 0.032;
+        assert_eq!(normalize_multimodal_rrf_score(best, best), 1.0);
+        assert_eq!(normalize_multimodal_rrf_score(best / 2.0, best), 0.5);
+        assert_eq!(normalize_multimodal_rrf_score(f64::NAN, best), 0.0);
+    }
+
+    #[test]
     fn test_multimodal_page() {
         let page = VfsMultimodalPage {
             page_index: 0,
@@ -975,5 +1785,20 @@ mod tests {
 
         assert_eq!(page.page_index, 0);
         assert!(page.image_base64.is_some());
+    }
+
+    #[test]
+    fn parses_blob_and_unit_provenance_without_using_source_id() {
+        let metadata = serde_json::json!({
+            "page_index": 3,
+            "blob_hash": "blob_real_page_hash",
+            "source_id": "resource_uuid_not_a_blob",
+            "unit_id": "unit_page_3"
+        })
+        .to_string();
+        let (blob_hash, unit_id) =
+            VfsMultimodalService::parse_multimodal_provenance(Some(&metadata));
+        assert_eq!(blob_hash.as_deref(), Some("blob_real_page_hash"));
+        assert_eq!(unit_id.as_deref(), Some("unit_page_3"));
     }
 }

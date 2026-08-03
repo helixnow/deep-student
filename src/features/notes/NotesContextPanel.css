@@ -1,0 +1,50 @@
+/* NotesContextPanel — 大纲行 hover 预览与折叠箭头动效
+ * 令牌来源：src/styles/notes-typography.css（--notes-radius-* / --dropdown-ease）。 */
+
+.notes-outline-row {
+  border-radius: var(--notes-radius-row, 6px);
+}
+
+.notes-outline-preview {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.notes-outline-row:hover .notes-outline-preview,
+.notes-outline-row:focus-within .notes-outline-preview {
+  max-height: 20px;
+  opacity: 1;
+}
+
+/* 📱 触屏无 hover：预览常显，避免功能不可达 */
+@media (hover: none) {
+  .notes-outline-preview {
+    max-height: 20px;
+    opacity: 1;
+  }
+}
+
+.notes-outline-caret {
+  border-radius: var(--notes-radius-control, 5px);
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-outline-caret:hover {
+  background: var(--interactive-hover, hsl(var(--muted)));
+}
+
+.notes-outline-caret svg {
+  transition: transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-outline-preview,
+  .notes-outline-caret,
+  .notes-outline-caret svg {
+    transition: none;
+  }
+}

@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 const source = readFileSync(resolve(process.cwd(), 'src/styles/shadcn-variables.css'), 'utf-8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 
-const accentPalettes = ['purple', 'green', 'orange', 'pink', 'teal'] as const;
+const accentPalettes = ['purple', 'green', 'orange', 'pink', 'bright-pink', 'teal'] as const;
 const allPalettes = ['default', ...accentPalettes, 'muted', 'paper'] as const;
 
 function getRuleVars(selector: string) {

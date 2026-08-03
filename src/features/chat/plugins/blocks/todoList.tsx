@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
@@ -73,7 +73,7 @@ const StatusIcon: React.FC<StatusIconProps> = ({ status, index }) => {
   switch (status) {
     case 'running':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))] text-[9px] font-bold flex-shrink-0">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))] text-2xs font-bold flex-shrink-0">
           {index + 1}
         </span>
       );
@@ -129,6 +129,12 @@ export interface TodoListPanelProps {
   changedStepId?: string;
   /** 🆕 工具名称（todo_init/todo_update/todo_add/todo_get） */
   toolName?: string;
+  /**
+   * 🆕 steps 为空时的占位文案。
+   * 不传时保持旧行为（返回 null），避免影响时间线聚合渲染；
+   * 独立块渲染（TodoListBlock）传入占位，防止运行中短暂空列表"闪没"。
+   */
+  emptyPlaceholder?: string;
 }
 
 /**
@@ -150,6 +156,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   defaultExpanded = false, // 🔧 P7: 默认折叠
   changedStepId,
   toolName,
+  emptyPlaceholder,
 }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -174,14 +181,22 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   }, []);
 
   if (steps.length === 0) {
-    return null;
+    if (!emptyPlaceholder) {
+      return null;
+    }
+    return (
+      <div className={cn('todo-list-panel flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground', className)}>
+        <CircleNotch size={12} className="animate-spin flex-shrink-0" />
+        <span className="truncate">{emptyPlaceholder}</span>
+      </div>
+    );
   }
 
   // 🆕 生成折叠模式的摘要文本
   const getCollapsedSummary = () => {
     if (isInitTool || isGetTool) {
       // 初始化或获取：显示进度
-      return `${doneCount} / ${totalCount} ${t('timeline.todoList.tasksDone', 'tasks done')}`;
+      return t('timeline.todoList.progress', { done: doneCount, total: totalCount });
     }
     if (changedStep) {
       // 更新：显示变更的步骤
@@ -191,13 +206,13 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         : '○';
       return `${statusText} ${changedStep.description}`;
     }
-    return `${doneCount} / ${totalCount} ${t('timeline.todoList.tasksDone', 'tasks done')}`;
+    return t('timeline.todoList.progress', { done: doneCount, total: totalCount });
   };
 
   return (
     <div className={cn('todo-list-panel', className)}>
       {/* 可折叠头部 - 显示摘要或 diff */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
@@ -218,7 +233,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         )}>
           {getCollapsedSummary()}
         </span>
-      </NotionButton>
+      </DsButton>
 
       {/* 任务列表 - 可折叠 */}
       <AnimatePresence initial={false}>
@@ -258,7 +273,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
                       </span>
                       {/* 失败时显示错误信息 */}
                       {step.status === 'failed' && step.result && (
-                        <span className="block text-[10px] text-[color:hsl(var(--destructive))] opacity-65 mt-0.5">
+                        <span className="block text-2xs text-[color:hsl(var(--destructive))] opacity-65 mt-0.5">
                           {step.result}
                         </span>
                       )}
@@ -274,7 +289,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
 
             {/* 完成消息 */}
             {isAllDone && message && (
-              <div className="mt-1 text-[10px] text-[color:hsl(var(--success))]">
+              <div className="mt-1 text-2xs text-[color:hsl(var(--success))]">
                 {message}
               </div>
             )}
@@ -296,13 +311,28 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
  * 实际上在 ActivityTimeline 中会被聚合渲染
  */
 const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
+  const { t } = useTranslation(['common', 'chatV2']);
   // 从 toolOutput 解析数据
   const output = block.toolOutput as TodoListOutput | undefined;
-  
+  const isRunning = block.status === 'running' || block.status === 'pending';
+
+  // 🆕 块级错误态：此前 error 状态只能显示"loading"，用户无法感知失败
+  if (block.status === 'error') {
+    return (
+      <div className="flex items-start gap-1.5 py-0.5 text-xs text-destructive">
+        <X size={12} className="mt-0.5 flex-shrink-0" strokeWidth={3} />
+        <span className="break-words">
+          {block.error || t('chatV2:blocks.todoList.blockError')}
+        </span>
+      </div>
+    );
+  }
+
   if (!output) {
     return (
-      <div className="text-sm text-muted-foreground">
-        任务列表加载中...
+      <div className="flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground">
+        {isRunning && <CircleNotch size={12} className="animate-spin flex-shrink-0" />}
+        <span>{t('common:loading')}</span>
       </div>
     );
   }
@@ -318,6 +348,8 @@ const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
       totalCount={totalCount}
       message={message}
       defaultExpanded={true}
+      // 运行中短暂空列表不再直接消失
+      emptyPlaceholder={isRunning ? t('chatV2:blocks.todoList.emptyRunning') : undefined}
     />
   );
 });

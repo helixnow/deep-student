@@ -73,3 +73,16 @@ export async function listTodayPomodoros(): Promise<PomodoroRecord[]> {
 export async function getPomodoroDailyStats(days: number): Promise<PomodoroDailyStat[]> {
   return invoke('pomodoro_daily_stats', { days });
 }
+
+/** 删除单条番茄记录 */
+export async function deletePomodoroRecord(recordId: string): Promise<void> {
+  return invoke('pomodoro_delete_record', { recordId });
+}
+
+/** 按本地日期区间（YYYY-MM-DD，含两端）列出番茄记录 */
+export async function listPomodorosInRange(
+  startDate: string,
+  endDate: string,
+): Promise<PomodoroRecord[]> {
+  return invoke('pomodoro_list_range', { startDate, endDate });
+}

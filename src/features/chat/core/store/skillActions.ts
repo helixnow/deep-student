@@ -13,6 +13,7 @@ import i18n from 'i18next';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '../../skills/utils';
+import type { SkillRuntimeAdmission } from '../../skills/runtimeAdmission';
 
 // ============================================================================
 // 常量
@@ -97,6 +98,20 @@ function collectSkillClosure(
   return closure;
 }
 
+function localizeRuntimeAdmission(
+  admission: SkillRuntimeAdmission,
+  skillId: string,
+): string {
+  if (!admission.code) {
+    return admission.message ?? `Skill "${skillId}" cannot be activated`;
+  }
+  return i18n.t(`skills:errors.runtimeAdmission.${admission.code}`, {
+    skillId,
+    ...admission.params,
+    defaultValue: admission.message ?? `Skill "${skillId}" cannot be activated`,
+  });
+}
+
 // ============================================================================
 // Skill Actions 创建
 // ============================================================================
@@ -137,12 +152,6 @@ export function createSkillActions(
       try {
         const state = get();
 
-        // 检查是否已激活
-        if (state.activeSkillIds.includes(skillId)) {
-          console.log(LOG_PREFIX, `Skill already activated, skipping: ${skillId}`);
-          return true;
-        }
-
         // 动态导入避免循环依赖
         const { skillRegistry } = await import('../../skills/registry');
         // 检查 skill 是否存在
@@ -155,6 +164,25 @@ export function createSkillActions(
             showGlobalNotification('warning', i18n.t('skills:errors.skillNotFoundNotification', { id: skillId }));
           } catch { /* notification optional */ }
           return false;
+        }
+
+        const { getSkillRuntimeAdmissionWithDependencies } = await import('../../skills/runtimeAdmission');
+        const admission = getSkillRuntimeAdmissionWithDependencies(
+          skill,
+          (dependencyId) => skillRegistry.get(dependencyId),
+        );
+        if (!admission.allowed) {
+          console.warn(LOG_PREFIX, `Skill activation rejected: ${skillId}`, admission);
+          try {
+            const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+            showGlobalNotification('warning', localizeRuntimeAdmission(admission, skillId));
+          } catch { /* notification optional */ }
+          return false;
+        }
+
+        if (state.activeSkillIds.includes(skillId)) {
+          console.log(LOG_PREFIX, `Skill already activated, skipping: ${skillId}`);
+          return true;
         }
 
         // 结构化状态优先：先更新 activeSkillIds，skill refs 仅作兼容/UI 缓存
@@ -189,6 +217,12 @@ export function createSkillActions(
             console.warn(LOG_PREFIX, 'Auto-load embedded tools failed:', error);
           }
         }
+
+        // 使用遥测：记录显式激活（本地存储，不上报）
+        try {
+          const { recordSkillActivation } = await import('../../skills/skillUsageStats');
+          recordSkillActivation(skillId);
+        } catch { /* telemetry optional */ }
 
         console.log(LOG_PREFIX, `Activated skill: ${skill.name} (${skillId})`);
         return true;
@@ -337,7 +371,6 @@ export function createSkillActions(
       id: string;
       name: string;
       description: string;
-      allowedTools?: string[];
     }>> => {
       const state = get();
       const skillIds = state.activeSkillIds;
@@ -353,7 +386,6 @@ export function createSkillActions(
         id: string;
         name: string;
         description: string;
-        allowedTools?: string[];
       }> = [];
 
       for (const skillId of skillIds) {
@@ -363,7 +395,6 @@ export function createSkillActions(
             id: skill.id,
             name: getLocalizedSkillName(skill.id, skill.name, i18n.t.bind(i18n)),
             description: getLocalizedSkillDescription(skill.id, skill.description, i18n.t.bind(i18n)),
-            allowedTools: skill.allowedTools ?? skill.tools,
           });
         }
       }

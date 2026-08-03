@@ -156,6 +156,8 @@ export const isMobilePlatform = (): boolean => {
   if (typeof navigator === 'undefined') return false;
   const ua = (navigator.userAgent || '').toLowerCase();
   const pf = (navigator.platform || '').toLowerCase();
+  // iPadOS 13+ 的桌面站点模式会伪装成 Macintosh / MacIntel。
+  const isIPadOS = pf === 'macintel' && navigator.maxTouchPoints > 1;
   return (
     ua.includes('android') ||
     ua.includes('iphone') ||
@@ -164,6 +166,7 @@ export const isMobilePlatform = (): boolean => {
     pf.includes('android') ||
     pf.includes('iphone') ||
     pf.includes('ipad') ||
-    pf.includes('ipod')
+    pf.includes('ipod') ||
+    isIPadOS
   );
 };

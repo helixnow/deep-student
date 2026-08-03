@@ -7,7 +7,7 @@
  * - 统一的底部（可选操作区）
  * - 统一的样式和间距
  */
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   shellIconButtonClassName,
   shellNavButtonClassName,
@@ -68,9 +68,9 @@ export const MobileSidebarLayout: React.FC<MobileSidebarLayoutProps> = ({
           )}
         >
           {/* 关闭按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
             <X size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
 
           {/* 标题区域 */}
           {(title || subtitle) && (
@@ -183,7 +183,7 @@ export const MobileSidebarItem: React.FC<MobileSidebarItemProps> = ({
   className,
 }) => {
   return (
-    <NotionButton
+    <DsButton
       variant="nav"
       size="sm"
       onClick={onClick}
@@ -199,8 +199,7 @@ export const MobileSidebarItem: React.FC<MobileSidebarItemProps> = ({
       {/* 图标 */}
       {icon && (
         <span className={cn(
-          'flex items-center justify-center w-5 h-5 shrink-0',
-          selected ? 'text-foreground' : 'text-muted-foreground'
+          'flex items-center justify-center w-5 h-5 shrink-0 text-[color:inherit]'
         )}>
           {icon}
         </span>
@@ -227,7 +226,7 @@ export const MobileSidebarItem: React.FC<MobileSidebarItemProps> = ({
           {trailing}
         </span>
       )}
-    </NotionButton>
+    </DsButton>
   );
 };
 

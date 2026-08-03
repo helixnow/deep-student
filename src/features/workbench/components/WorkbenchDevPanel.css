@@ -1,0 +1,502 @@
+/**
+ * WorkbenchDevPanel.css — O15 诊断 HUD（玻璃 / 可拖动 / 可折叠 / 性能可视化）
+ * ---------------------------------------------------------------------------
+ * 铁律遵守：
+ * - 全部新类 `wb-hud-` 前缀；不重定义 workbench.css 契约类（wb-glass 只做同级叠加）。
+ * - 动画仅 transform / opacity；时长引用 O1 token（minimal 档自动归零），
+ *   缓动引用 --wb-ease / --wb-ease-out（O1 motion.css 落地后可换其曲线名，见 O15.md）。
+ * - z-index 走 O1 刻度变量 --wb-z-hud（回退与刻度表 9800 对齐，O20 已校准）。
+ * - 结构分两层：`.wb-hud`（定位层，拖拽 transform 由 JS 直写，不进 React state）
+ *   与 `.wb-hud-card`（玻璃视觉层，入场动画挂这里，避免与拖拽 transform 打架）。
+ */
+
+.wb-hud {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: var(--wb-z-hud, 9800);
+  width: 296px;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity var(--wb-snap-fade-duration, 120ms) var(--wb-ease, ease);
+}
+
+/* 外部按住指针（拖窗口/框选等）期间幽灵化：降透明 + 不截获指针，绝不挡操作。
+ * 120ms 进入延迟：普通点击不闪烁；松手立即恢复（基态无 delay）。 */
+.wb-hud.wb-hud-ghost {
+  opacity: 0.22;
+  pointer-events: none;
+  transition-delay: 120ms;
+}
+
+.wb-hud-card {
+  /* lifecycle 四色（沿用 P10 配色，集中成变量便于 O20 统一） */
+  --wb-hud-lc-focused: #22c55e;
+  --wb-hud-lc-visible: #3b82f6;
+  --wb-hud-lc-background: #9ca3af;
+  --wb-hud-lc-frozen: #a855f7;
+  --wb-hud-danger: #ef4444;
+  --wb-hud-accent: hsl(var(--primary));
+
+  box-sizing: border-box;
+  display: flex;
+  max-height: calc(100vh - 32px);
+  min-height: 0;
+  flex-direction: column;
+  border-radius: var(--wb-menu-radius, 14px);
+  overflow: hidden;
+  box-shadow: var(--wb-shadow-idle);
+  color: var(--text-primary, hsl(var(--foreground)));
+  font-size: 11px;
+  line-height: 1.45;
+  /* 入场：淡入 + 轻微上浮；`to` 省略 → 收敛到自然态，backwards 不残留 fill */
+  animation: wb-hud-in var(--wb-anim-open-duration, 160ms) var(--wb-ease-out, ease-out) backwards;
+}
+
+@keyframes wb-hud-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.wb-hud-dragging .wb-hud-card {
+  box-shadow: var(--wb-shadow-focused);
+}
+
+/* ==== 标题栏（拖拽手柄） ============================================== */
+
+.wb-hud-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 7px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.wb-hud-dragging .wb-hud-header {
+  cursor: grabbing;
+}
+
+.wb-hud-grip {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background-image: radial-gradient(
+    circle,
+    var(--text-muted, hsl(var(--muted-foreground))) 1px,
+    transparent 1.2px
+  );
+  background-size: 5px 5px;
+  opacity: 0.7;
+}
+
+.wb-hud-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.wb-hud-fps-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--wb-hud-accent);
+  background: hsl(var(--primary) / 0.12);
+}
+
+.wb-hud-fps-badge[data-hot='true'] {
+  color: var(--wb-hud-danger);
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+}
+
+.wb-hud-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wb-hud-btn:hover {
+  background: var(--interactive-hover, hsl(var(--muted) / 0.6));
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+/* ==== 主体 ============================================================ */
+
+.wb-hud-body-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wb-hud-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px;
+  animation: wb-hud-body-in var(--wb-anim-open-duration, 160ms) var(--wb-ease-out, ease-out) backwards;
+}
+
+@keyframes wb-hud-body-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.wb-hud-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+}
+
+.wb-hud-muted {
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+}
+
+.wb-hud-empty {
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.75;
+}
+
+/* ==== 帧耗时曲线 ====================================================== */
+
+.wb-hud-chart {
+  position: relative;
+  height: 44px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: hsl(var(--muted) / 0.35);
+}
+
+.wb-hud-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wb-hud-chart-line {
+  fill: none;
+  stroke: var(--wb-hud-accent);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.wb-hud-chart-ref {
+  stroke: var(--text-muted, hsl(var(--muted-foreground)));
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.35;
+}
+
+.wb-hud-chart-drop {
+  fill: var(--wb-hud-danger);
+}
+
+.wb-hud-chart-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.7;
+}
+
+.wb-hud-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.wb-hud-chip {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 0.5);
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wb-hud-chip[data-alert='true'] {
+  color: var(--wb-hud-danger);
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  font-weight: 600;
+}
+
+.wb-hud-chip[data-src='perfMonitor'] {
+  color: var(--wb-hud-accent);
+  background: hsl(var(--primary) / 0.1);
+}
+
+/* ==== 最近交互时间线 ================================================ */
+
+.wb-hud-interactions-scroll {
+  max-height: 96px;
+}
+
+.wb-hud-ixlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wb-hud-ixrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-hud-ixrow[data-alert='true'] {
+  color: var(--wb-hud-danger);
+}
+
+.wb-hud-ix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.wb-hud-linkbtn {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--wb-hud-accent);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.wb-hud-linkbtn:hover {
+  opacity: 0.85;
+}
+
+/* ==== 生命周期分布（堆叠条 + 图例） =================================== */
+
+.wb-hud-stack {
+  display: flex;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: hsl(var(--muted) / 0.5);
+}
+
+.wb-hud-stack-seg {
+  min-width: 0;
+}
+
+.wb-hud-stack-seg[data-lc='focused'] { background: var(--wb-hud-lc-focused); }
+.wb-hud-stack-seg[data-lc='visible'] { background: var(--wb-hud-lc-visible); }
+.wb-hud-stack-seg[data-lc='background'] { background: var(--wb-hud-lc-background); }
+.wb-hud-stack-seg[data-lc='frozen'] { background: var(--wb-hud-lc-frozen); }
+
+.wb-hud-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-hud-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wb-hud-dot {
+  flex: none;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wb-hud-lc-background);
+}
+
+.wb-hud-dot[data-lc='focused'] { background: var(--wb-hud-lc-focused); }
+.wb-hud-dot[data-lc='visible'] { background: var(--wb-hud-lc-visible); }
+.wb-hud-dot[data-lc='background'] { background: var(--wb-hud-lc-background); }
+.wb-hud-dot[data-lc='frozen'] { background: var(--wb-hud-lc-frozen); }
+
+/* ==== 活动窗口列表 ==================================================== */
+
+.wb-hud-windows-scroll {
+  max-height: 128px;
+}
+
+.wb-hud-winlist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-hud-winrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-hud-winrow-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary, hsl(var(--foreground)));
+  opacity: 0.9;
+}
+
+.wb-hud-winrow-tag,
+.wb-hud-winrow-meta {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-hud-winrow-tag {
+  opacity: 0.7;
+}
+
+/* ==== 内存预算条 ====================================================== */
+
+.wb-hud-bar {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: hsl(var(--muted) / 0.5);
+}
+
+.wb-hud-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--wb-hud-lc-visible);
+  transform-origin: left center;
+  transform: scaleX(var(--wb-hud-bar-ratio, 0));
+  transition: transform var(--wb-shadow-transition-duration, 160ms) var(--wb-ease, ease);
+}
+
+.wb-hud-bar-fill[data-over='true'] {
+  background: var(--wb-hud-danger);
+}
+
+.wb-hud-budget-value[data-over='true'] {
+  color: var(--wb-hud-danger);
+  font-weight: 600;
+}
+
+/* ==== 焦点栈 / 底部元信息 ============================================= */
+
+.wb-hud-focus-stack {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+}
+
+.wb-hud-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+}
+
+/* ==== ACR（R1-18） ===================================================== */
+
+.wb-hud-acr-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.wb-hud-acr-toggle:hover {
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-hud-acr-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-hud-dot[data-acr='acting'] {
+  background: var(--wb-hud-accent);
+}
+
+.wb-hud-dot[data-acr='paused'] {
+  background: #f59e0b;
+}
+
+.wb-hud-dot[data-acr='done'] {
+  background: #22c55e;
+}
+
+.wb-hud-dot[data-acr='failed'] {
+  background: #ef4444;
+}
+
+/* ==== 降级 =========================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-hud-card,
+  .wb-hud-body {
+    animation: none;
+  }
+
+  .wb-hud,
+  .wb-hud-bar-fill {
+    transition: none;
+  }
+}

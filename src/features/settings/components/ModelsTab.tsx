@@ -1,7 +1,7 @@
 /**
  * 模型分配 Tab 组件
  * 从 Settings.tsx 拆分，包含完整的模型分配功能
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,6 +15,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { OcrEngineCard } from './OcrEngineCard';
 import { cn } from '@/lib/utils';
 import type { ApiConfig } from '@/types';
+import { supportsKnowledgeModelCapability } from './knowledgeModelCapabilities';
 
 type TranslationDisplayMode = 'aligned' | 'streaming';
 
@@ -43,6 +44,7 @@ interface ModelsTabProps {
     memory_decision_model_config_id: string;
     voice_input_asr_model_config_id: string;
     image_generation_model_config_id: string;
+    compaction_model_config_id: string;
   };
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   apiConfigs: ApiConfig[];
@@ -55,7 +57,7 @@ interface ModelsTabProps {
   saveSingleAssignmentField: (field: string, value: string | null) => Promise<any>;
 }
 
-// 内部组件：设置行 - Notion 风格（无 icon，简洁）
+// 内部组件：设置行 - 简洁风格（无 icon，简洁）
 const ModelAssignmentRow = ({
   title,
   description,
@@ -81,15 +83,16 @@ const ModelAssignmentRow = ({
   onSave: (field: string, value: string | null) => Promise<any>;
   setConfig: React.Dispatch<React.SetStateAction<any>>;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+      <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
         {description}
       </p>
     </div>
     
-    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
+    <div className="w-full md:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end md:justify-start">
       <UnifiedModelSelector
         models={models}
         value={value || ''}
@@ -105,10 +108,10 @@ const ModelAssignmentRow = ({
         allowEmpty
         placeholder={placeholder}
         className="w-full justify-between h-9 bg-transparent hover:bg-[var(--interactive-hover)] transition-colors border border-border/30 hover:border-border/50"
-        popoverClassName="w-[280px]"
+        popoverClassName="w-[min(280px,calc(100vw-2rem))]"
       />
       {models.length === 0 && noModelsMessage && (
-        <div className="text-[11px] text-destructive/80 mt-1">
+        <div className="text-xs text-destructive/80 mt-1">
           {noModelsMessage}
         </div>
       )}
@@ -140,14 +143,15 @@ const TranslationDisplayModeRow = ({
   onSave: (field: string, value: string | null) => Promise<any>;
   setConfig: React.Dispatch<React.SetStateAction<any>>;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+      <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
         {description}
       </p>
     </div>
-    <div className="w-full sm:w-[280px] flex-shrink-0 flex items-center justify-end sm:justify-start">
+    <div className="w-full md:w-[280px] flex-shrink-0 flex items-center justify-end md:justify-start">
       <SegmentedControl<TranslationDisplayMode>
         ariaLabel={title}
         value={value}
@@ -199,13 +203,22 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   }, []);
 
   const handleSave = async (field: string, value: string | null) => {
+    if (value && (field === 'reranker_model_config_id' || field === 'vl_reranker_model_config_id')) {
+      const model = apiConfigs.find((candidate) => candidate.id === value);
+      const requiredCapability = field === 'vl_reranker_model_config_id'
+        ? 'vl_reranker'
+        : 'text_reranker';
+      if (!model || !supportsKnowledgeModelCapability(model, requiredCapability)) {
+        throw new Error(`Model ${value} does not support ${requiredCapability}`);
+      }
+    }
     return await saveSingleAssignmentField(field, value);
   };
 
   const notify = (key: string) => t(`settings:save_notifications.${key}`);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="model-assignment">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="model-assignment">
       <SettingSection 
         title={t('settings:sections.model_assignment_title')} 
         description={t('settings:sections.model_assignment_desc')} 
@@ -305,6 +318,18 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               setConfig={setConfig}
             />
             <ModelAssignmentRow
+              title={t('settings:api_config.compaction_model_label')}
+              description={t('settings:api_config.compaction_model_hint')}
+              value={config.compaction_model_config_id}
+              field="compaction_model_config_id"
+              configKey="compaction_model_config_id"
+              models={toUnifiedModelInfo(getAllEnabledApis(config.compaction_model_config_id))}
+              placeholder={t('settings:api.select_model')}
+              notificationKey={notify('compaction_model_saved')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
+            <ModelAssignmentRow
               title={t('settings:cards.image_generation_model_title', 'Image generation model')}
               description={t('settings:descriptions.image_generation_desc', 'Used by the built-in image generation tool in Chat V2.')}
               value={config.image_generation_model_config_id}
@@ -352,7 +377,10 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.rerankerModelConfigId}
               field="reranker_model_config_id"
               configKey="rerankerModelConfigId"
-              models={toUnifiedModelInfo(getRerankerApis(config.rerankerModelConfigId))}
+              models={toUnifiedModelInfo(
+                getRerankerApis(config.rerankerModelConfigId)
+                  .filter((model) => supportsKnowledgeModelCapability(model, 'text_reranker'))
+              )}
               placeholder={t('settings:placeholders.no_reranker')}
               notificationKey={notify('reranker_saved')}
               onSave={handleSave}
@@ -364,7 +392,10 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.vl_reranker_model_config_id}
               field="vl_reranker_model_config_id"
               configKey="vl_reranker_model_config_id"
-              models={toUnifiedModelInfo(getRerankerApis(config.vl_reranker_model_config_id))}
+              models={toUnifiedModelInfo(
+                getRerankerApis(config.vl_reranker_model_config_id)
+                  .filter((model) => supportsKnowledgeModelCapability(model, 'vl_reranker'))
+              )}
               placeholder={t('settings:placeholders.select_vl_reranker')}
               notificationKey={notify('vl_reranker_saved')}
               onSave={handleSave}

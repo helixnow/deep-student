@@ -1,4 +1,5 @@
 use super::*;
+use crate::chat_v2::types::CanonicalContentPart;
 
 impl ChatV2Pipeline {
     /// 加载聊天历史
@@ -70,9 +71,10 @@ impl ChatV2Pipeline {
             return Ok(());
         }
 
-        // 🔧 P1修复：使用固定的消息条数限制，而非 context_limit
-        // context_limit 应该用于 LLM 的 max_input_tokens_override
-        let max_messages = DEFAULT_MAX_HISTORY_MESSAGES;
+        // 🔧 P1修复：条数限制与 context_limit（token 语义）分离
+        // 🔧 P1-6 修复：token 预算充裕时按预算放宽条数粗筛上限（50–400 条），
+        // 精确裁剪仍由下方 trim_history_by_token_budget 按 token 完成
+        let max_messages = effective_max_history_messages(ctx.options.context_limit);
         let messages_to_load: Vec<_> = if messages.len() > max_messages {
             // 取最新的 max_messages 条消息
             messages
@@ -84,6 +86,7 @@ impl ChatV2Pipeline {
         } else {
             messages
         };
+        let active_variant_artifacts = active_variant_artifacts_by_user(&messages_to_load);
 
         log::debug!(
             "[ChatV2::pipeline] Loading {} messages (max_messages={})",
@@ -158,9 +161,8 @@ impl ChatV2Pipeline {
             let (content, vfs_image_base64) = if message.role == MessageRole::User {
                 if let (Some(ref vfs_conn), Some(ref blobs_dir)) = (&vfs_conn_opt, &vfs_blobs_dir) {
                     self.resolve_history_context_snapshot_v2(
-                        &content,
-                        &message,
-                        &**vfs_conn, // 解引用 PooledConnection 获取 &Connection
+                        &content, &message,
+                        vfs_conn, // 解引用 PooledConnection 获取 &Connection
                         blobs_dir,
                     )
                 } else {
@@ -283,10 +285,10 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 跳过空内容消息（但工具调用消息已经添加）
-            if content.is_empty() {
-                continue;
-            }
+            // 🔧 P1-1 修复（07 报告）：不再对"无正文"消息一刀切跳过。
+            // 之前 content 为空即 continue，导致「仅图片附件的用户消息」（附件提取
+            // 逻辑在 continue 之后永远执行不到）和「仅思维链的 assistant 消息」
+            // 从 LLM 上下文中静默消失。改为先提取附件/图片/文档，再综合判断有效载荷。
 
             // 从附件中提取图片 base64（仅用户消息有附件）
             // ★ 2025-12-10 修复：合并旧附件图片和 VFS 图片
@@ -376,6 +378,27 @@ impl ChatV2Pipeline {
                 })
                 .filter(|v| !v.is_empty());
 
+            // 🔧 P1-1 修复：仅当消息完全没有有效载荷（无正文/无图片/无文档/无思维链）
+            // 时才跳过；纯附件的用户消息用占位文本保持 role 交替与 provider 兼容
+            let has_thinking = thinking_content
+                .as_ref()
+                .is_some_and(|t| !t.trim().is_empty());
+            if content.is_empty()
+                && image_base64.is_none()
+                && doc_attachments.is_none()
+                && !has_thinking
+            {
+                continue;
+            }
+
+            let content = if content.is_empty() && role == "user" {
+                // 仅图片/文档附件的用户消息：占位文本（图片本体通过 image_base64 /
+                // doc_attachments 注入多模态请求）
+                "[用户发送了附件]".to_string()
+            } else {
+                content
+            };
+
             let legacy_message = LegacyChatMessage {
                 role: role.to_string(),
                 content: content.clone(),
@@ -395,7 +418,11 @@ impl ChatV2Pipeline {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: message.persistent_stable_id.clone(),
-                metadata: None,
+                metadata: canonical_content_for_history(
+                    &message,
+                    active_variant_artifacts.get(&message.id),
+                )
+                .map(|parts| serde_json::json!({ "canonicalContent": parts })),
             };
 
             chat_history.push(legacy_message);
@@ -407,20 +434,39 @@ impl ChatV2Pipeline {
             ctx.session_id
         );
 
-        // 🔧 改进 5：验证工具调用链完整性
-        validate_tool_chain(&chat_history);
+        // 🆕 零成本前置层（microcompact）：把最近 K 个 user 轮之外的旧工具输出
+        // 替换为占位符。只影响本次发给模型的视图，不动数据库；在插入 compaction
+        // summary 伪消息之前执行（伪消息与瞬态注入均带 pinned 标记，天然豁免）。
+        let microcompacted =
+            microcompact_old_tool_outputs(&mut chat_history, MICROCOMPACT_KEEP_RECENT_USER_TURNS);
+        if microcompacted > 0 {
+            log::info!(
+                "[ChatV2::pipeline] Microcompact: replaced {} old tool output(s) with placeholders for session={}",
+                microcompacted,
+                ctx.session_id
+            );
+        }
 
-        // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
-        let max_tokens = ctx
-            .options
-            .context_limit
-            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
-            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
-        trim_history_by_token_budget(&mut chat_history, max_tokens);
-
-        // 🆕 P1: 如果有 compaction 摘要，插到最前面（system 伪消息承载锚定摘要）
+        // The summary participates in the same authoritative history budget. Its pinned
+        // metadata prevents FIFO removal while still forcing older tail turns to yield space.
         if let Some(summary_msg) = compaction_summary_msg {
             chat_history.insert(0, summary_msg);
+        }
+
+        // 🔧 改进 5：验证工具调用链完整性
+        // 🔧 P0-2 修复：破损时就地修复（合成占位结果/丢弃孤儿），不再只 warn 后照送 LLM
+        if !validate_tool_chain(&chat_history) {
+            repair_tool_chain(&mut chat_history);
+        }
+
+        // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
+        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+        let max_tokens = effective_history_token_budget(ctx.options.context_limit);
+        let trim_outcome = trim_history_by_token_budget(&mut chat_history, max_tokens);
+        // 🆕 实际丢弃了消息时挂起报告，由调用方（execute_internal / tool_loop）
+        // 在拿到 emitter 的位置发射 `context_trimmed` 事件
+        if trim_outcome.dropped_messages > 0 {
+            ctx.pending_context_trim = Some(trim_outcome);
         }
 
         ctx.chat_history = chat_history;
@@ -500,20 +546,35 @@ impl ChatV2Pipeline {
 
             // 尝试解析为 VfsContextRefData（附件等引用模式资源）
             if let Ok(mut ref_data) = serde_json::from_str::<VfsContextRefData>(data_str) {
-                // ★ 2026-02 修复：历史消息解引用时也要恢复 inject_modes
-                // 否则编辑重发/重试时会错误注入文本
-                if let Some(ref saved_inject_modes) = context_ref.inject_modes {
-                    for vfs_ref in &mut ref_data.refs {
-                        vfs_ref.inject_modes = Some(saved_inject_modes.clone());
+                // Historical turns must be recompiled for the model active now. Old TM turns
+                // often persisted OCR-only modes; carrying those forward would make TM -> MM
+                // permanently lose the original image. Keep native PDF text plus original pages,
+                // while OCR/visual observations are selected by context_compiler for this turn.
+                for vfs_ref in &mut ref_data.refs {
+                    use crate::vfs::types::{
+                        ImageInjectMode, PdfInjectMode, ResourceInjectModes, VfsResourceType,
+                    };
+                    match vfs_ref.resource_type {
+                        VfsResourceType::Image => {
+                            vfs_ref.inject_modes = Some(ResourceInjectModes {
+                                image: Some(vec![ImageInjectMode::Image]),
+                                pdf: None,
+                            });
+                        }
+                        VfsResourceType::File | VfsResourceType::Textbook => {
+                            vfs_ref.inject_modes = Some(ResourceInjectModes {
+                                image: None,
+                                pdf: Some(vec![PdfInjectMode::Text, PdfInjectMode::Image]),
+                            });
+                        }
+                        _ => {}
                     }
                 }
-                // ★ 使用统一的 vfs_resolver 模块解析
-                // ★ 2026-01-17 修复：历史加载时使用 is_multimodal=false，同时收集图片和 OCR 文本
-                // 实际发送给 LLM 时，由 model2_pipeline 根据 config.is_multimodal 决定：
-                // - 多模态模型：使用 image_base64 发送图片
-                // - 非多模态模型：使用 content 中的 OCR 文本
+                // Resolve original images regardless of the model used on the old turn. OCR is
+                // now a text-model fallback owned by context_compiler, after this turn's model
+                // capability has been frozen.
                 let content =
-                    resolve_context_ref_data_to_content(vfs_conn, blobs_dir, &ref_data, false);
+                    resolve_context_ref_data_to_content(vfs_conn, blobs_dir, &ref_data, true);
                 total_result.merge(content);
             } else {
                 // 非引用模式资源（如笔记内容直接存储），直接使用 data
@@ -558,6 +619,48 @@ impl ChatV2Pipeline {
     }
 }
 
+pub(super) fn active_variant_artifacts_by_user(
+    messages: &[ChatMessage],
+) -> std::collections::HashMap<String, Vec<CanonicalContentPart>> {
+    let mut result = std::collections::HashMap::new();
+    for pair in messages.windows(2) {
+        let [user, assistant] = pair else {
+            continue;
+        };
+        if user.role != MessageRole::User || assistant.role != MessageRole::Assistant {
+            continue;
+        }
+        let Some(artifacts) = assistant
+            .get_active_variant()
+            .and_then(|variant| variant.meta.as_ref())
+            .and_then(|meta| meta.canonical_artifacts.as_ref())
+            .filter(|artifacts| !artifacts.is_empty())
+        else {
+            continue;
+        };
+        result.insert(user.id.clone(), artifacts.clone());
+    }
+    result
+}
+
+pub(super) fn canonical_content_for_history(
+    message: &ChatMessage,
+    active_variant_artifacts: Option<&Vec<CanonicalContentPart>>,
+) -> Option<Vec<CanonicalContentPart>> {
+    let mut canonical = message
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.canonical_content.clone())
+        .unwrap_or_default();
+    if let Some(active_artifacts) = active_variant_artifacts {
+        // Older builds promoted the then-active artifacts onto the user message. Strip those
+        // before adding the currently active variant so switching variants is immediately real.
+        canonical.retain(|part| !matches!(part, CanonicalContentPart::DerivedArtifactRef { .. }));
+        canonical.extend(active_artifacts.iter().cloned());
+    }
+    (!canonical.is_empty()).then_some(canonical)
+}
+
 /// 🔧 B1+B2 修复：判断一个 block 是否是 LLM 发起的工具调用块
 ///
 /// 条件：
@@ -577,6 +680,8 @@ fn is_tool_call_block(block: &MessageBlock) -> bool {
             | block_types::ACADEMIC_SEARCH
             | block_types::SLEEP
             | block_types::SUBAGENT_EMBED
+            // ACR R2-05：workbench_ops 亦为 LLM 工具调用块，需进入历史 tool 回放
+            | block_types::WORKBENCH_OPS
     );
     is_tool_type && block.tool_name.is_some()
 }

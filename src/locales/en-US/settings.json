@@ -21,7 +21,9 @@
     "rag_models": "RAG & Knowledge Base",
     "search_engines": "Search Engine Configuration",
     "appearance": "Appearance",
-    "voice_input": "Voice Input"
+    "voice_input": "Voice Input",
+    "search_engines_list": "Search Engines",
+    "global_search_settings": "Global Search Settings"
   },
   "voice_input": {
     "title": "Dictation",
@@ -169,6 +171,7 @@
       "subtitle": "Configure your AI model endpoints and base settings",
       "protocol_label": "OpenAI Protocol",
       "protocol_hint": "Choose explicitly between OpenAI Chat and OpenAI Responses; the provider only supplies a default.",
+      "responses_unavailable": "Enable OpenAI Responses in the provider settings before selecting it for a model.",
       "protocols": {
         "openai_chat_completions": {
           "label": "OpenAI Chat",
@@ -207,6 +210,7 @@
           "medium": "Medium",
           "high": "High"
         },
+        "verbosity_label": "Verbosity",
         "enable_thinking": "Enable Thinking mode",
         "enable_thinking_hint": "Send the enable_thinking flag when this model supports it.",
         "thinking_disabled_hint": "This model is not marked as reasoning-capable; options are disabled automatically.",
@@ -217,6 +221,8 @@
         "note": "These settings map to provider-specific options (OpenAI reasoning.effort, Claude thinking, Gemini thinkingBudget/include_thoughts)."
       },
       "fields": {
+        "api_key": "API Key",
+        "model_adapter": "Model Adapter",
         "thinking_budget": "thinking_budget",
         "thinking_budget_placeholder": "e.g. 4096",
         "thinking_budget_hint": "Note: Anthropic (Claude) models require minimum 1024; other reasoning models (e.g. Gemini) support smaller values (e.g. 256)",
@@ -237,8 +243,14 @@
         "context_window": "Context Window Size",
         "context_window_placeholder": "Leave empty to use auto-inferred value",
         "context_window_hint": "The model's context window size (tokens). Leave empty to auto-infer from model name. Current inferred value:",
-        "context_window_auto_inferred": "Auto-inferred"
+        "context_window_auto_inferred": "Auto-inferred",
+        "repetition_penalty": "Repetition Penalty",
+        "repetition_penalty_placeholder": "Qwen: >1.0, Doubao: >0",
+        "repetition_penalty_hint": "Qwen/Doubao models: penalize repeated tokens",
+        "reasoning_split": "MiniMax Reasoning Split",
+        "reasoning_split_hint": "Separate thinking content into the reasoning_details field"
       },
+      "connection_info": "Connection Information",
       "min_p_hint": "Note: min_p is ignored by Gemini",
       "anthropic": {
         "title": "Enable Claude Extended Thinking",
@@ -261,6 +273,8 @@
         "enable_thinking": "Enable Thinking Mode",
         "enable_thinking_hint": "When enabled, the model outputs reasoning_content with its thought process",
         "v31_warning": "DeepSeek V3.1 automatically disables thinking mode when using tools",
+        "v32_depth_hint": "DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.",
+        "reasoning_effort_hint": "DeepSeek V4 supports high or max reasoning effort.",
         "depth": {
           "low": "Low",
           "medium": "Medium",
@@ -315,6 +329,21 @@
         "reasoning_split_hint": "Separate thinking content to reasoning_details field",
         "no_enable_thinking": "MiniMax API does not support enable_thinking parameter"
       },
+      "mimo": {
+        "title": "Xiaomi MiMo",
+        "description": "Uses thinking.type and returns reasoning_content for thinking mode.",
+        "enable_thinking": "Thinking Mode",
+        "enable_thinking_hint": "Maps to thinking.type enabled or disabled.",
+        "preserve_reasoning": "Preserve Reasoning",
+        "preserve_reasoning_hint": "Keeps returned reasoning_content in multi-turn tool conversations."
+      },
+      "mistral": {
+        "title": "Mistral"
+      },
+      "ernie": {
+        "title": "ERNIE"
+      },
+      "model_adapter": "Model Adapter",
       "capabilities": {
         "title": "Model capabilities",
         "description": "Tag the model with the abilities it supports",
@@ -370,11 +399,13 @@
     "api_key_saving": "Saving…",
     "api_key_placeholder": "Enter API key",
     "api_key_manual_save_hint": "Paste or type your API key, then click Save",
+    "save_api_key": "Save API key",
     "api_key_save_failed": "Failed to save API key",
     "api_key_cleared": "API key cleared",
     "api_key_clear_failed": "Failed to clear API key",
     "api_key_securely_stored": "Stored securely. You won't need to enter it again next time",
     "api_key_unsaved": "You have unsaved changes",
+    "api_key_pasted_ready": "Pasted. It will not be used until you save it.",
     "clear_api_key": "Clear",
     "clear_api_key_confirm": "Confirm Clear",
     "clear_api_key_title": "Clear API Key",
@@ -387,6 +418,10 @@
     "notes": "Notes",
     "siliconflow_hint": "SiliconFlow quick import & one-click assignment",
     "model_list_title": "Models",
+    "no_api_key_short": "No API key",
+    "api_key_configured_short": "API key configured",
+    "connection_not_configured": "Connection not configured",
+    "no_api_key_hint": "Add an API key to enable this provider.",
     "model_list_desc": "{{count}} models total",
     "model_empty": "No models under this provider yet",
     "create_vendor_cta": "Create a provider to centralize API credentials and defaults.",
@@ -404,7 +439,79 @@
     "select_model_to_edit": "Select a model to edit",
     "reorder_failed": "Reorder failed",
     "api_key_configured": "API Key configured",
-    "fetch_models_button": "Fetch Models"
+    "fetch_models_button": "Fetch Models",
+    "codex_oauth": {
+      "title": "ChatGPT account",
+      "status": {
+        "checking": "Checking",
+        "signed_out": "Signed out",
+        "pending_browser": "Waiting for browser",
+        "pending_device_code": "Waiting for code",
+        "signed_in": "Signed in",
+        "reauth_required": "Sign-in required"
+      },
+      "plans": {
+        "free": "Free",
+        "plus": "Plus",
+        "pro": "Pro",
+        "team": "Team",
+        "business": "Business",
+        "enterprise": "Enterprise",
+        "edu": "Edu"
+      },
+      "signed_out_description": "Sign in with ChatGPT to use your Codex plan allowance.",
+      "pending_description": "Complete sign-in in the browser.",
+      "reauth_description": "Your ChatGPT session needs to be renewed.",
+      "checking": "Checking account status…",
+      "sign_in_browser": "Sign in with browser",
+      "sign_in_device": "Use device code",
+      "sign_in_again": "Sign in again",
+      "cancel_sign_in": "Cancel sign-in",
+      "sign_out": "Sign out",
+      "remove_account": "Remove account",
+      "retry": "Retry",
+      "refresh_usage": "Refresh usage",
+      "device_code": "One-time code",
+      "copy_code": "Copy code",
+      "code_copied": "Code copied",
+      "reopen_sign_in": "Reopen sign-in page",
+      "open_verification": "Open verification page",
+      "expires_at": "Expires {{time}}",
+      "usage_title": "Codex allowance",
+      "usage_empty": "Usage data is not available yet.",
+      "primary_window": "Primary window",
+      "secondary_window": "Secondary window",
+      "usage_percent": "{{percent}}% used",
+      "usage_unknown": "Usage unavailable",
+      "window_minutes": "{{count}} minute window",
+      "window_hours": "{{count}} hour window",
+      "window_days": "{{count}} day window",
+      "window_weeks": "{{count}} week window",
+      "resets_at": "Resets {{time}}",
+      "operation_failed": "Could not update the Codex account. Try again.",
+      "errors": {
+        "login_busy": "Another sign-in is already in progress. Cancel it or wait.",
+        "callback_bind_failed": "Browser sign-in could not start locally. Use device-code sign-in instead.",
+        "network": "Could not reach OpenAI. Check your network and try again.",
+        "authorization_denied": "Authorization was not completed. Start sign-in again.",
+        "credential_store": "Secure credential storage is unavailable. Restart the app and try again.",
+        "security": "The sign-in response could not be verified. Start sign-in again.",
+        "reauthentication": "Your ChatGPT session changed or expired. Sign in again."
+      }
+    },
+    "no_api_key_needed_short": "No key",
+    "no_api_key_required_hint": "No API key required; models will be fetched after saving",
+    "balance_title": "Account Balance",
+    "balance_loading": "Loading balance",
+    "balance_refresh": "Refresh balance",
+    "balance_remaining": "Remaining",
+    "balance_no_key": "No API key configured",
+    "balance_unauthorized": "Invalid API key. Please check and try again",
+    "balance_fetch_failed": "Failed to fetch balance",
+    "balance_just_now": "Just now",
+    "balance_minutes_ago": "{{count}} min ago",
+    "balance_hours_ago": "{{count}} hr ago",
+    "balance_days_ago": "{{count}} day(s) ago"
   },
   "vendor_model_fetcher": {
     "fetch_button": "Fetch Model List",
@@ -431,7 +538,11 @@
     "add_success": "Successfully added {{count}} models",
     "add_failed": "Failed to add models: {{error}}",
     "dialog_title": "Fetch available models from API",
-    "dialog_description": "{{vendor}}: pick items to add to your model list"
+    "dialog_description": "{{vendor}}: pick items to add to your model list",
+    "search_placeholder_empty": "Fetch the model list before searching...",
+    "add_all_new": "Add all ({{count}})",
+    "click_fetch": "Click the button above to fetch available models",
+    "need_config": "Configure the base URL and API key first"
   },
   "vendor_modal": {
     "title_new": "Add Provider",
@@ -450,6 +561,7 @@
     },
     "providers": {
       "openai": "OpenAI",
+      "openai_codex": "OpenAI Codex",
       "anthropic": "Anthropic",
       "google": "Google",
       "general": "General Adapter",
@@ -462,12 +574,22 @@
       "moonshot": "Moonshot",
       "nvidia": "NVIDIA",
       "mimo": "Xiaomi MiMo",
+      "grok": "xAI (Grok)",
+      "ernie": "Baidu ERNIE",
+      "mistral": "Mistral",
+      "openrouter": "OpenRouter",
       "ollama": "Ollama",
       "custom": "Custom"
     },
     "base_url_label": "Base URL",
+    "max_tokens_limit_label": "Max output token cap",
+    "timeout_ms_label": "Discovery/test timeout (ms)",
+    "optional_placeholder": "Optional",
     "api_key_label": "API Key",
     "api_key_placeholder_keep_or_update": "Leave empty to keep unchanged, or enter new key",
+    "backup_api_keys_label": "Backup API keys",
+    "backup_api_keys_placeholder": "One API key per line",
+    "backup_api_keys_hint": "Used in order for failover. Masked lines keep stored keys; leave a middle line blank to delete that key.",
     "notes_label": "Notes",
     "notes_placeholder": "Optional: Add notes",
     "headers_label": "Custom Headers",
@@ -478,7 +600,9 @@
     "headers_parse_error": "Invalid headers format, please enter valid JSON",
     "clear_api_key": "Clear API Key",
     "clear_api_key_title": "Clear API Key",
-    "clear_api_key_warning": "After clearing, you will need to re-enter the API key to use this provider"
+    "clear_api_key_warning": "After clearing, you will need to re-enter the API key to use this provider",
+    "no_api_key_label": "No API key required",
+    "no_api_key_desc": "For self-hosted backends (Ollama / vLLM / llama.cpp, etc.)"
   },
   "features": {
     "title": "Feature Settings",
@@ -530,6 +654,7 @@
       "green": "Forest Ink",
       "orange": "Amber",
       "pink": "Carmine",
+      "bright-pink": "Bright Pink",
       "teal": "Stone Teal",
       "muted": "Graphite",
       "paper": "Clay Brown",
@@ -539,6 +664,24 @@
       "current": "Current: {{mode}} theme",
       "auto_follow": " (following system {{system}} preference)",
       "accent": "Accent: {{accent}}"
+    },
+    "sidebar_translucent_title": "Translucent Sidebar",
+    "sidebar_translucent_description": "Makes the sidebar background a translucent frosted-glass effect so desktop content can show through."
+  },
+  "appearance": {
+    "theme": {
+      "title": "Theme",
+      "description": "Switch the application theme."
+    },
+    "font": {
+      "title": "Font",
+      "size_label": "Font Size",
+      "heading_label": "Heading Font",
+      "body_label": "Body Font"
+    },
+    "sidebar": {
+      "title": "Sidebar",
+      "position": "Sidebar Position"
     }
   },
   "zoom": {
@@ -618,31 +761,320 @@
     "data_governance": "Data Governance",
     "general": "General",
     "appearance": "Appearance",
+    "automation": "Automations",
     "app": "App Settings",
     "theme": "Theme",
     "params": "Parameters",
     "shortcuts": "Shortcuts",
-    "about": "About"
+    "about": "About",
+    "plugins": "Plugins"
+  },
+  "mobile_groups": {
+    "0": "Models",
+    "1": "General",
+    "2": "Tools & Search",
+    "3": "Data",
+    "4": "More"
+  },
+  "mobile_descriptions": {
+    "apis": "Configure model APIs and credentials",
+    "models": "Assign models to app features",
+    "general": "Language, permissions, and dictation",
+    "appearance": "Themes, fonts, and interface",
+    "automation": "Schedules and background tasks",
+    "mcp": "Connect tools and services",
+    "search": "Configure web search providers",
+    "plugins": "Manage installed integrations",
+    "statistics": "Learning and usage data",
+    "data_governance": "Back up, restore, and manage data",
+    "params": "Tune model generation settings",
+    "shortcuts": "Customize keyboard commands",
+    "about": "Version and open-source acknowledgements"
+  },
+  "automation": {
+    "title": "Automations",
+    "description": "Manage scheduled reminders and unattended Agent tasks.",
+    "capacity": "{{count}} / {{max}}",
+    "loading": "Loading automations",
+    "saving": "Saving",
+    "never": "Not run yet",
+    "paused": "Paused",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "heartbeat": "Heartbeat",
+    "prompt_empty": "No task instructions",
+    "last_run": "Last run",
+    "next_run": "Next run",
+    "last_run_relative": "Last run {{time}}",
+    "next_run_relative": "Next run {{time}}",
+    "starting_soon": "Starting soon",
+    "row_updated_elsewhere": "This task was updated elsewhere; the list has been refreshed.",
+    "background": {
+      "title": "Background running",
+      "description": "Keep the app alive after the window closes so automations still fire on time; quitting the app or shutting down stops tasks, and missed runs recover according to their policy.",
+      "active_hint": "Background scheduling active · next trigger {{time}}",
+      "active_hint_idle": "Background scheduling active; no upcoming triggers",
+      "paused_hint": "Background running is off; automations will not fire after the window closes",
+      "confirm_hint": "Turn off background running? Once the window closes, no automations (including the heartbeat) will fire until it is re-enabled.",
+      "confirm": "Turn off background running"
+    },
+    "action_type": {
+      "notify": "Notification + todo",
+      "agent_turn": "Agent task"
+    },
+    "kind": {
+      "daily": "Daily",
+      "weekdays": "Weekdays",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "interval": "Interval",
+      "once": "Once"
+    },
+    "schedule": {
+      "daily": "Every day at {{time}}",
+      "weekdays": "Weekdays at {{time}}",
+      "weekly": "Every {{weekday}} at {{time}}",
+      "monthly": "Day {{day}} of each month at {{time}}",
+      "interval": "Every {{count}} minutes",
+      "once": "Once on {{date}} at {{time}}",
+      "timezone": " · {{timezone}}"
+    },
+    "catch_up": {
+      "run_once": "Run once after resume",
+      "catch_up_all": "Run each missed occurrence",
+      "skip": "Skip missed occurrences"
+    },
+    "session_mode": {
+      "isolated": "New session each run",
+      "named": "Reuse one session"
+    },
+    "weekdays": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "actions": {
+      "refresh": "Refresh automations",
+      "retry": "Retry",
+      "toggle": "Enable or disable {{name}}",
+      "run_now": "Run {{name}} now",
+      "run_now_short": "Run now",
+      "edit": "Edit {{name}}",
+      "edit_short": "Edit",
+      "delete": "Delete {{name}}",
+      "delete_short": "Delete"
+    },
+    "empty": {
+      "title": "No automations yet",
+      "description": "There are no scheduled tasks yet.",
+      "cta": "Create your first automation"
+    },
+    "create": {
+      "button": "New automation",
+      "title": "Create automation",
+      "description": "Define the task, schedule, and failure recovery policy.",
+      "submit": "Create",
+      "capacity_full": "Capacity reached ({{max}}). Delete or disable an existing automation first."
+    },
+    "edit": {
+      "title": "Edit {{name}}",
+      "description": "Change the task, schedule, Agent session, and failure recovery policy.",
+      "name": "Name",
+      "action_type": "Action",
+      "schedule_kind": "Schedule",
+      "weekday": "Weekday",
+      "day_of_month": "Day of month",
+      "time": "Time",
+      "timezone": "Time zone",
+      "interval_minutes": "Interval in minutes",
+      "catch_up_policy": "Missed runs",
+      "session_mode": "Agent session",
+      "model_id": "Model configuration ID",
+      "default_model": "Use default model",
+      "agent_prompt": "Agent prompt",
+      "agent_prompt_fallback": "Leave blank to use the task instructions",
+      "max_retries": "Failure retries",
+      "retry_backoff_seconds": "Retry delay (seconds)",
+      "timeout_seconds": "Timeout (seconds)",
+      "prompt": "Task instructions",
+      "advanced": "Advanced options"
+    },
+    "delete": {
+      "title": "Delete automation?",
+      "description": "{{name}} will be permanently deleted, will no longer run, and cannot be restored.",
+      "confirm": "Delete permanently",
+      "inline_confirm": "Delete this automation? Its run history will be deleted too.",
+      "heartbeat_blocked": "The system heartbeat automation cannot be deleted; you can disable it instead."
+    },
+    "notices": {
+      "created": "Created {{name}}.",
+      "enabled": "Enabled {{name}}.",
+      "disabled": "Disabled {{name}}.",
+      "started": "Started {{name}}.",
+      "updated": "Updated {{name}}.",
+      "deleted": "Deleted {{name}}.",
+      "background_enabled": "Background running enabled.",
+      "background_disabled": "Background running turned off."
+    },
+    "errors": {
+      "desktop_only": "Automation management requires the Deep Student desktop app.",
+      "invalid_response": "The automation list returned invalid data.",
+      "version_conflict": "This automation changed while it was open. The latest version has been reloaded; review it before editing again.",
+      "name_required": "Name cannot be empty.",
+      "name_too_long": "Name cannot exceed 100 characters.",
+      "prompt_required": "Task instructions cannot be empty.",
+      "prompt_too_long": "Task instructions cannot exceed 4,000 characters.",
+      "invalid_time": "Enter a valid 24-hour time.",
+      "date_required": "A one-time automation needs a run date.",
+      "invalid_timezone": "Enter a valid IANA time zone, such as Asia/Shanghai.",
+      "invalid_day_of_month": "Day of month must be an integer from 1 to 31.",
+      "invalid_interval": "The interval must be an integer from 5 to 1,440 minutes.",
+      "invalid_retries": "Failure retries must be an integer from 0 to 10.",
+      "invalid_backoff": "Retry delay must be an integer from 5 to 86,400 seconds.",
+      "invalid_timeout": "Timeout must be an integer from 30 to 3,600 seconds."
+    }
+  },
+  "subagentProfiles": {
+    "title": "Subagent Profiles",
+    "description": "Manage available subagent profiles: the three built-in profiles work out of the box, and custom profiles can be created and edited right here — changes take effect immediately.",
+    "loading": "Loading subagent profiles",
+    "loading_file": "Loading profile content…",
+    "builtin_badge": "Built-in",
+    "custom_badge": "Custom",
+    "invalid_badge": "Invalid",
+    "inactive_badge": "Inactive",
+    "invalid_hint": "This file is incomplete or invalid and is skipped at runtime. Click edit to fix it.",
+    "model": "Model: {{model}}",
+    "tool_count": "Tools: {{count}}",
+    "modified_at": "Modified {{time}}",
+    "builtin_names": {
+      "default": "Default",
+      "worker": "Worker",
+      "explorer": "Explorer"
+    },
+    "actions": {
+      "refresh": "Refresh profiles",
+      "retry": "Retry",
+      "open_dir": "Open profiles directory",
+      "create": "New profile",
+      "edit": "Edit profile {{name}}",
+      "edit_short": "Edit",
+      "delete": "Delete profile {{name}}",
+      "delete_short": "Delete"
+    },
+    "form": {
+      "create_title": "New custom profile",
+      "create_description": "Fill in the profile details. Once saved it is available for subagent delegation (profile id = name).",
+      "create_submit": "Create",
+      "name": "Name (id)",
+      "name_placeholder": "my-researcher",
+      "name_hint": "Lowercase letters, digits and hyphens only; also used as the file name.",
+      "base": "Base profile",
+      "base_hint": "Uses the selected built-in profile's safe tool boundary. Custom profiles cannot change sandbox, approval, network, or context-inheritance policy.",
+      "description": "Description",
+      "description_placeholder": "Research the web and report key points",
+      "model": "Model (optional)",
+      "model_placeholder": "Leave empty to use the default model",
+      "model_hint": "Enter an exact enabled model configuration ID. Runtime will not silently fall back to another local or cloud model.",
+      "instructions": "Instructions (system prompt)",
+      "instructions_placeholder": "You are a research subagent. Always include source links with your conclusions.",
+      "instructions_hint": "Leave empty to keep the base profile's default instructions.",
+      "advanced": "Advanced fields",
+      "advanced_hint": "Supports reasoning_effort, tools and skills. Skills are injected from a creation-time content snapshot. permissions / context_inheritance are unsupported and rejected.",
+      "raw_title": "File content",
+      "raw_hint": "This file could not be parsed into the form, so you are editing the raw text (it must contain closed --- frontmatter and a valid name)."
+    },
+    "delete": {
+      "inline_confirm": "Deleting takes effect immediately and cannot be undone. Delete this profile?",
+      "confirm": "Delete"
+    },
+    "notices": {
+      "created": "Profile \"{{name}}\" created",
+      "updated": "Profile \"{{name}}\" saved",
+      "deleted": "Deleted {{fileName}}"
+    },
+    "empty": {
+      "title": "No custom profiles yet",
+      "description": "Create a custom profile to give subagents tailored instructions, models and tools.",
+      "cta": "New profile"
+    },
+    "errors": {
+      "desktop_only": "Subagent profile management requires the Deep Student desktop app.",
+      "reveal_failed": "Could not open the profiles directory. Check that it exists.",
+      "name_required": "Please enter a profile name",
+      "name_invalid": "Name may only contain lowercase letters, digits and hyphens (max 64 characters)",
+      "name_builtin_conflict": "Name must not match a built-in profile (default / worker / explorer)",
+      "content_required": "File content must not be empty",
+      "file_exists": "A profile file with this name already exists. Choose a different name.",
+      "not_found": "Profile file not found — it may have been deleted. Refresh the list.",
+      "unsupported_runtime_field": "Field {{field}} is not supported by the runtime and cannot be saved instead of being silently ignored.",
+      "reasoning_effort_invalid": "reasoning_effort must be minimal / low / medium / high / xhigh",
+      "model_catalog_unavailable": "The model catalog is temporarily unavailable. The profile was saved, but runtime still requires the exact model and will not fall back."
+    }
   },
   "sidebar": {
     "search_placeholder": "Search settings...",
     "no_results": "No matching settings found",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "back_to_home": "Back to Home",
+    "navigation_label": "Settings navigation"
   },
   "language": {
     "title": "Language Settings",
     "description": "Choose your preferred language",
     "switch_language": "Switch Language",
     "chinese": "中文",
-    "english": "English"
+    "english": "English",
+    "select_label": "Select language"
   },
   "system_notification": {
     "title": "System Notifications",
-    "desc": "Notification policy for pomodoro, todo reminders and card generation. \"Background only\" keeps quiet while the app is focused.",
+    "desc": "Notification policy for pomodoro, todo reminders, card generation and background automations. \"Background only\" keeps quiet while the app is focused; \"Never\" also silences background tasks.",
     "background": "Background only",
     "always": "Always",
     "never": "Never"
+  },
+  "system_authorization": {
+    "title": "System Permissions",
+    "description": "Manage the system access Deep Student needs to run on this computer. Access is requested only when you use the related feature.",
+    "request": "Authorize",
+    "open_settings": "Open Settings",
+    "refresh": "Refresh Status",
+    "status": {
+      "checking": "Checking",
+      "granted": "Authorized",
+      "not_requested": "Not Authorized",
+      "denied": "Denied",
+      "unavailable": "Unavailable",
+      "unknown": "Needs Check"
+    },
+    "notifications": {
+      "title": "System Notifications",
+      "description": "Allow pomodoro, todo reminders, and background automations to send system notifications when needed.",
+      "denied_hint": "Notification access was denied. Allow Deep Student to send notifications in System Settings."
+    },
+    "microphone": {
+      "title": "Microphone",
+      "description": "Allow voice input to capture audio only after you actively start dictation.",
+      "denied_hint": "Microphone access was denied. Allow Deep Student to use the microphone in System Settings."
+    },
+    "files": {
+      "title": "Files and Folders",
+      "description": "AI can access only folders you explicitly choose. Full Disk Access is not required.",
+      "status": "Authorized as Needed",
+      "manage": "Manage Folders"
+    },
+    "keychain": {
+      "title": "System Keychain Protection",
+      "description": "Store the credential encryption root key in the system keychain (macOS Keychain). Off by default: the key is kept in a permission-restricted file in the app's private directory, so no system authorization prompts appear.",
+      "enabled_notice": "Enabled: the root key has been moved into the system keychain. Future access may show a system authorization prompt; choose \"Always Allow\" when asked.",
+      "disabled_notice": "Disabled: the root key has been moved back to a restricted local file. No more system authorization prompts."
+    }
   },
   "debug": {
     "description": "For debugging global streaming sessions and events"
@@ -729,7 +1161,12 @@
       "threshold_suffix": " chars"
     },
     "reset_success": "Settings reset to defaults",
-    "tip": "OCR uses the configured OCR model for text recognition. For multi-page PDFs, pages are processed sequentially with resume support."
+    "tip": "OCR uses the configured OCR model for text recognition. For multi-page PDFs, pages are processed sequentially with resume support.",
+    "offline": "Offline",
+    "thinking_label": "VLM deep reasoning",
+    "thinking_desc": "Turning off can significantly reduce OCR / exam-sheet import latency",
+    "thinking_on": "Reasoning on",
+    "thinking_off": "Reasoning off"
   },
   "buttons": {
     "save": "Save",
@@ -755,6 +1192,13 @@
       "description": "DeepStudent grows thanks to the open-source communities listed below. Thank you for keeping the ecosystem moving forward.",
       "openDialog": "View acknowledgements",
       "closeDialog": "Close",
+      "projectLicense": "Project license",
+      "thirdPartyLicense": "Third-party licenses",
+      "projectLicenseDescription": "GNU Affero General Public License for DeepStudent.",
+      "thirdPartyLicenseDescription": "License and attribution notices for components distributed with DeepStudent.",
+      "backToAcknowledgements": "Back to acknowledgements",
+      "loadingLicenses": "Loading license text...",
+      "licenseLoadError": "The license text could not be loaded.",
       "expand": "Expand {{category}}",
       "collapse": "Collapse {{category}}",
       "categories": {
@@ -804,6 +1248,21 @@
       "description": "Preview custom UI components used in the project.",
       "app_menu": "Modern Style Menu",
       "app_menu_desc": "A modern dropdown/context menu component"
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnostics and feedback",
+    "export": {
+      "title": "Export diagnostic bundle",
+      "description": "Collects current and legacy logs into a redacted ZIP. Databases and documents are never included.",
+      "mobile_unsupported": "Mobile sharing is not available in this version. Error reporting still works automatically when enabled.",
+      "action": "Export ZIP",
+      "success": "Diagnostic bundle exported ({{count}} files)",
+      "partial": "Exported {{count}} files; {{skipped}} could not be included"
+    },
+    "include_debug": {
+      "title": "Include detailed AI request logs",
+      "description": "Off by default. These logs may contain study content; review the ZIP before sharing."
     }
   },
   "developer": {
@@ -1037,6 +1496,8 @@
     "chat_title_model_hint": "Used for generating chat titles and intelligent tag extraction. Recommend models with strong comprehension and fast speed. Defaults to second model if unset.",
     "memory_decision_model_label": "Memory Decision Model",
     "memory_decision_model_hint": "Used for smart memory write deduplication/update/append decisions. Recommend a fast and lightweight model. Defaults to the enhanced model if unset.",
+    "compaction_model_label": "Context Compaction Model",
+    "compaction_model_hint": "Dedicated model for generating anchored summaries when long conversations approach the context limit. Recommend a cheap long-context model. Defaults to the current chat model if unset.",
     "batch_create_success": "Successfully created {{count}} API configurations",
     "batch_create_failed": "Failed to batch create API configurations",
     "auto_assign_success": "Auto-assignment completed, model assignments have been applied",
@@ -1087,6 +1548,7 @@
     "test_all_success": "Health check completed: {{success}}/{{configured}} successful",
     "engine_options": {
       "none": "None (Disabled)",
+      "bing_rss": "Bing RSS (Free)",
       "google_cse": "Google CSE",
       "serpapi": "SerpAPI (Google)",
       "tavily": "Tavily",
@@ -1095,6 +1557,7 @@
       "zhipu": "Zhipu AI (China)",
       "bocha": "Bocha AI (China)"
     },
+    "bing_rss_name": "Bing RSS (Free)",
     "zhipu_name": "Zhipu AI Search",
     "zhipu_key_label": "Zhipu API Key",
     "zhipu_key_desc": "Zhipu AI Open Platform API key",
@@ -1197,9 +1660,8 @@
     "create_failed": "Failed to create dimension",
     "dimension_exists": "This dimension already exists",
     "dimension_exists_hint": "This dimension already exists",
-    "delete_dimension_title": "Delete Embedding Dimension",
-    "delete_dimension_description": "Are you sure you want to delete dimension {{dimension}}? It contains {{count}} records.",
-    "delete_warning": "This will permanently delete all {{count}} vector records in this dimension!",
+    "delete_confirm_inline": "This will delete dimension {{dimension}} and its {{count}} vector records. This action cannot be undone.",
+    "delete_confirm_button": "Confirm delete",
     "delete_success": "Dimension deleted, {{count}} records cleaned up",
     "delete_failed": "Failed to delete dimension",
     "stats_dimensions": "Dimensions",
@@ -1214,7 +1676,9 @@
     "set_default_success": "Set as default {{type}} embedding dimension",
     "set_default_failed": "Failed to set default dimension",
     "bind_model_first": "Please assign a model to this dimension first",
-    "preset_dimensions": "Presets"
+    "preset_dimensions": "Presets",
+    "preset_dimension_success": "Default embedding dimension {{dimension}} is created and active",
+    "preset_dimension_failed": "Failed to configure embedding dimension {{dimension}}. Please create it and set it as default in Embedding Dimension Management."
   },
   "mcp": {
     "title": "MCP Tool Protocol",
@@ -1265,7 +1729,25 @@
     "backend_disabled_hint": "Backend MCP feature is not enabled. Please enable the mcp feature in Cargo.toml and retry.",
     "load_config_failed": "Failed to load configuration: {{error}}",
     "save_model_assignment_failed": "Failed to save model assignment: {{error}}",
-    "vendor_not_found": "Vendor not found"
+    "vendor_not_found": "Vendor not found",
+    "oauth": {
+      "title": "OAuth authorization",
+      "login": "Sign in with OAuth",
+      "reauth": "Re-authorize",
+      "logout": "Sign out",
+      "cancel": "Cancel authorization",
+      "status_authorized": "Authorized (token stored securely)",
+      "status_none": "Not authorized",
+      "login_success": "OAuth authorization completed",
+      "login_failed": "OAuth authorization failed",
+      "logout_success": "OAuth session revoked",
+      "logout_failed": "Failed to revoke OAuth session",
+      "cancelled": "Authorization cancelled",
+      "desktop_only": "OAuth browser login is only available in the desktop app",
+      "missing_url": "Set the MCP endpoint URL before authorizing",
+      "clear_api_key_first": "Clear the API Key first — API Key takes priority over OAuth",
+      "api_key_priority_hint": "If an API Key is set, it takes priority over OAuth Bearer tokens."
+    }
   },
   "notifications": {
     "config_save_success": "Configuration saved successfully",
@@ -1433,6 +1915,7 @@
     "translation_saved": "Translation model configuration saved",
     "voice_input_asr_saved": "Voice input ASR model configuration saved",
     "image_generation_saved": "Image generation model configuration saved",
+    "compaction_model_saved": "Context compaction model configuration saved",
     "qbank_ai_grading_saved": "Question bank AI grading model configuration saved",
     "translation_save_failed": "Failed to save translation model configuration: {{error}}",
     "learning_mode_saved": "Learning mode preference updated",
@@ -1484,7 +1967,12 @@
     "not_configured": "Not Configured",
     "testing": "Testing…",
     "test_availability": "Test Availability",
-    "in_development": "In Development"
+    "in_development": "In Development",
+    "offline": "Offline",
+    "thinking_label": "Thinking Mode",
+    "thinking_desc": "Allow the OCR model to use extended reasoning when supported.",
+    "thinking_on": "On",
+    "thinking_off": "Off"
   },
   "descriptions": {
     "model1_desc": "Deprecated: OCR uses dedicated engines (DeepSeek-OCR / PaddleOCR-VL-1.5)",
@@ -1499,7 +1987,15 @@
     "qbank_ai_grading_desc": "Used for AI grading and AI analysis in question banks. If not configured, it falls back to \"Second Model\".",
     "voice_input_asr_desc": "Used for speech-to-text in the input layer. All ASR-capable models stay visible here; unsupported providers are shown as coming soon, and transcripts are inserted without auto-send.",
     "image_generation_desc": "Used by the built-in Chat V2 image generation tool. Pick a model that supports the OpenAI-compatible /images/generations API. Results are saved to VFS.",
-    "vl_reranker_desc": "Used to rerank multimodal RAG retrieval results, improving relevance for mixed image-text retrieval (optional configuration)"
+    "vl_reranker_desc": "Used to rerank multimodal RAG retrieval results, improving relevance for mixed image-text retrieval (optional configuration)",
+    "bing_rss_desc": "A built-in basic search source that needs no API key. The public endpoint may rate-limit requests and is provided on a best-effort basis.",
+    "google_cse_desc": "Google Custom Search API for accurate and comprehensive web search.",
+    "serpapi_desc": "An aggregation API wrapping Google, Bing, and other search engines.",
+    "tavily_desc": "A retrieval-optimized search engine designed for large language models.",
+    "brave_desc": "An independent web search engine focused on privacy.",
+    "searxng_desc": "An open-source metasearch engine that aggregates multiple sources.",
+    "zhipu_desc": "A China-based internet search aggregation service from Zhipu.",
+    "bocha_desc": "A lightweight retrieval service focused on Chinese-language indexes."
   },
   "common_labels": {
     "no_data": "No data",
@@ -1694,7 +2190,11 @@
     "api_config_desc": "Manage available model services and their keys, capability markers",
     "mcp_section_desc": "Manage MCP servers, tool cache and connection status",
     "semantic_fts_desc": "When enabled, first use FTS to quickly filter candidates, then do semantic similarity; enabled by default.",
-    "timeout_desc": "Search request timeout (milliseconds), avoid long waits affecting user experience"
+    "timeout_desc": "Search request timeout (milliseconds), avoid long waits affecting user experience",
+    "select_tool_to_edit": "Select a tool to edit",
+    "select_policy_to_edit": "Select a policy to edit",
+    "policy_title": "MCP Tool Permissions",
+    "advertise_all": "Advertise all tools"
   },
   "advanced_search": {
     "reranker": {
@@ -1734,10 +2234,13 @@
       "rate_limit_per_minute": "Rate limit per minute",
       "cache_ttl_seconds": "Cache TTL (seconds)",
       "cache_max_entries": "Cache max entries",
+      "strategy_title": "Strategy Configuration",
+      "strategy_hint": "Falls back to the default strategy when unconfigured.",
       "save_button": "Save strategies",
       "names": {
         "default": "Default",
         "bing": "Bing",
+        "bing_rss": "Bing RSS (Free)",
         "google_cse": "Google CSE",
         "serpapi": "SerpAPI",
         "tavily": "Tavily",
@@ -1747,6 +2250,7 @@
       "descriptions": {
         "default": "Fallback baseline for all providers",
         "bing": "Microsoft Bing Search",
+        "bing_rss": "Keyless basic search through Bing RSS",
         "google_cse": "Google Custom Search",
         "serpapi": "SerpAPI meta search",
         "tavily": "Tavily research search",
@@ -1913,22 +2417,176 @@
     "latest_prompts": "Latest Prompts",
     "latest_resources": "Latest Resources",
     "none": "None",
-    "prompts_resources_section": "Prompts & Resources"
+    "prompts_resources_section": "Prompts & Resources",
+    "toggle_enabled": "Enable or disable server {{name}}",
+    "disabled_badge": "Disabled"
   },
   "tool_permissions": {
     "title": "Tool Permissions",
-    "bypass_badge": "Bypass",
-    "global_bypass_title": "Global Bypass Mode",
-    "global_bypass_desc": "When enabled, all tools execute directly without approval dialogs. Best for trusted environments.",
-    "bypass_enabled": "Global bypass mode enabled",
-    "bypass_disabled": "Global bypass mode disabled",
+    "bypass_badge": "Fewer prompts",
+    "global_bypass_title": "Trusted Environment Fast Mode",
+    "global_bypass_desc": "Reduces routine tool approval prompts. Protected actions such as file writes, command execution, and privilege elevation still follow precise authorization and safety boundaries.",
+    "bypass_enable_confirm": "Enable Trusted Environment Fast Mode for {{count}} registered tools? Routine approvals will be reduced, while protected operations still enforce their safety boundaries.",
+    "bypass_enabled": "Trusted environment fast mode enabled",
+    "bypass_disabled": "Trusted environment fast mode disabled",
+    "runtime_roots_title": "Runtime Roots",
+    "runtime_roots_desc": "Local file tools are constrained to these roots. Workspace access is read-only by default and becomes writable only after explicit authorization; generated artifacts write into a session-scoped app data folder.",
+    "runtime_roots_empty": "Runtime roots are unavailable in this environment.",
+    "runtime_root_session_scoped": "Session scoped",
+    "runtime_root_read_only": "Read only",
+    "runtime_root_read_write": "Read / write",
+    "runtime_root_configured": "Configured",
+    "runtime_root_not_configured": "Not configured",
+    "runtime_root_not_configured_hint": "Currently falling back to the app's own folder. Pick the folder where your study materials live.",
+    "runtime_root_configure_now": "Set up now",
+    "runtime_roots_authorized_empty_hint": "Authorize a folder so the AI can read files inside it and use it as the working directory for local commands.",
+    "runtime_root_path_placeholder": "Authorize a local folder path...",
+    "runtime_root_browse": "Browse...",
+    "runtime_root_browse_title": "Select a local folder to authorize",
+    "runtime_root_kind": {
+      "workspace": "Workspace",
+      "authorized": "Authorized",
+      "skill_package": "Skill package",
+      "artifact": "Artifacts",
+      "temp": "Temp"
+    },
+    "runtime_root_set_workspace": "Set Workspace",
+    "runtime_root_workspace_access": "Workspace access",
+    "runtime_root_workspace_write_warning": "Read/write access lets the AI create, modify, move, and delete files in this workspace. File mutation tools produce auditable, reversible records; shell commands are confined to the selected working directory and must track file changes.",
+    "runtime_root_workspace_set": "Workspace root updated",
+    "runtime_root_workspace_set_failed": "Failed to update workspace root",
+    "runtime_root_workspace_reset": "Reset workspace root",
+    "runtime_root_workspace_reset_done": "Workspace root reset",
+    "runtime_root_workspace_reset_failed": "Failed to reset workspace root",
+    "runtime_root_add": "Authorize Folder",
+    "runtime_root_added": "Runtime folder authorized",
+    "runtime_root_add_failed": "Failed to authorize runtime folder",
+    "runtime_root_risk_broad": "\"{{folder}}\" is a common personal folder. Authorizing it lets the AI read every file inside. Consider picking a more specific subfolder, or click \"Confirm Authorize\" again to proceed.",
+    "runtime_root_risk_critical": "You are authorizing an entire drive or your home directory ({{path}}). The AI will be able to read every file inside. We strongly recommend a more specific subfolder, or click \"Confirm Authorize\" again to proceed.",
+    "runtime_root_confirm_add": "Confirm Authorize",
+    "runtime_root_reselect": "Choose Again",
+    "runtime_root_remove": "Revoke folder",
+    "runtime_root_removed": "Runtime folder revoked",
+    "runtime_root_remove_failed": "Failed to revoke runtime folder",
+    "shell_rules": {
+      "title": "Terminal Command Rules",
+      "desc": "Manage local terminal commands in one place. Deny rules always win, then Ask, and Allow is evaluated last. Rules use literal matching only; glob and regex patterns are not supported.",
+      "add": "Add Rule",
+      "add_title": "Add Command Rule",
+      "edit_title": "Edit Command Rule",
+      "default_title": "Default for unmatched commands",
+      "default_desc": "Keep Ask for most setups and add exceptions only for explicit, repeated commands.",
+      "default_allow_warning": "Default Allow reduces prompts, but applies only to local calls classified as safe and read-only. Set Allow anyway?",
+      "safety_boundary": "Allow rules apply only to local, safe, read-only calls. To prevent PATH shadowing and program flags that launch child processes, only trusted shell built-ins or explicit system absolute paths can skip confirmation. Git, rg, dangerous flags, command chains, redirects, interpreters, and external MCP commands still ask. Deny rules always take priority.",
+      "action_allow": "Allow",
+      "action_ask": "Ask",
+      "action_deny": "Deny",
+      "match_exact": "Exact command",
+      "match_prefix": "Command prefix",
+      "match_executable": "Executable",
+      "effect_label": "Rule effect",
+      "match_label": "Match type",
+      "placeholder_exact": "e.g. /bin/ls -la",
+      "placeholder_prefix": "e.g. /bin/ls",
+      "placeholder_executable": "e.g. /bin/ls",
+      "pattern_label": "Command match value",
+      "note_label": "Rule note",
+      "help_exact": "Matches the complete command and arguments; this is the narrowest scope.",
+      "help_prefix": "Matches a literal command prefix. Shorter prefixes cover more commands.",
+      "help_executable": "Matches only the executable identity, without arguments. An Allow rule may cover every subcommand.",
+      "note_placeholder": "Optional note, such as the use case or rule owner",
+      "error_required": "Command content is required.",
+      "error_wildcards_not_supported": "Patterns such as *, ?, [], and {} are not supported. Enter an explicit literal rule.",
+      "error_compound_not_supported": "A rule cannot contain pipes, redirects, newlines, or command separators. Split it into one command.",
+      "error_executable_only": "Executable rules cannot include arguments. Use Exact or Prefix when arguments are required.",
+      "error_duplicate": "An identical match already exists. Edit the existing rule instead.",
+      "broad_allow_warning": "This is a broad Allow rule or exposes an interpreter that can run arbitrary scripts. Safety boundaries still apply; confirm the risk before saving.",
+      "broad_badge": "Broad allow",
+      "confirm_allow": "Confirm Allow",
+      "saved": "Terminal command rules updated",
+      "save_failed": "Failed to save terminal command rules",
+      "empty": "No terminal command rules yet",
+      "empty_hint": "Unmatched commands use the default policy above.",
+      "search": "Search commands or notes...",
+      "all_effects": "All effects",
+      "all_matches": "All match types",
+      "no_matches": "No rules match the current filters",
+      "toggle_rule": "Enable or disable rule {{pattern}}",
+      "preview_title": "Rule match preview",
+      "preview_placeholder": "Enter a command, such as /bin/ls -la",
+      "preview_matched": "Matched: {{pattern}}",
+      "preview_default": "Uses the default policy",
+      "preview_hint": "This preview explains list matching only. Allow results must still pass backend read-only, safety, and local-execution checks.",
+      "select_visible": "Select current results",
+      "select_rule": "Select rule {{pattern}}",
+      "selected_count": "{{count}} selected",
+      "bulk_enable": "Enable",
+      "bulk_disable": "Disable",
+      "bulk_delete": "Delete",
+      "bulk_delete_confirm": "Delete the {{count}} selected terminal command rules?",
+      "delete_confirm": "Delete terminal command rule \"{{pattern}}\"?",
+      "relax_confirm": "This disables or removes {{count}} Ask/Deny rules and may widen terminal access. Continue?"
+    },
     "per_tool_title": "Per-Tool Level Override",
     "per_tool_desc": "Set sensitivity level for individual tools. Tools without overrides use system defaults. Click an active level to reset.",
+    "policy_overview_title": "Tool Policy Overview",
+    "policy_overview_desc": "Manage levels by capability. Open advanced management only for individual exceptions.",
+    "summary_tools": "Registered tools",
+    "summary_sources": "Tool sources",
+    "summary_overrides": "Policy configured",
+    "group_summary": "{{count}} tools · {{overridden}} overridden",
+    "group_by": "Group policy by",
+    "group_by_domain": "Capability domain",
+    "group_by_source": "Source",
+    "group_updated": "Group policy updated",
+    "bulk_level_label": "Set level for selected tools",
+    "group_level_label": "Set level for the {{group}} group",
+    "bulk_low_confirm": "Set the {{count}} selected tools to Low? Routine approvals will be reduced, while protected operations remain enforced.",
+    "group_low_confirm": "Set all {{count}} tools in this group to Low? Routine approvals will be reduced, while protected operations remain enforced.",
+    "dynamic_risk_hint": "These are baseline sensitivity levels. Risk can still be raised dynamically for each call, and protected actions cannot be bypassed by fast mode or a Low setting.",
+    "capability_files": "Files & Workspace",
+    "capability_web": "Web & Search",
+    "capability_knowledge": "Knowledge & Memory",
+    "capability_learning": "Learning & Review",
+    "capability_automation": "Commands & Automation",
+    "capability_data": "Data & Sync",
+    "capability_communication": "Sessions & Notifications",
+    "capability_other": "Other Capabilities",
+    "advanced_title": "Advanced Per-Tool Management",
+    "filters_title": "Filter tools",
+    "filtered_count": "{{count}} results",
+    "search_placeholder": "Search name, description, or source...",
+    "source_filter": "Filter by source",
+    "source_all": "All sources",
+    "level_filter": "Filter by level",
+    "level_all": "All levels",
+    "level_default": "Default",
+    "override_filter": "Filter by override status",
+    "override_all": "All statuses",
+    "override_only": "Overrides only",
+    "inherited_only": "Inherited only",
+    "status_overridden": "Overridden",
+    "status_inherited": "Inherits default",
+    "status_source": "Inherits source policy",
+    "status_domain": "Inherits domain policy",
+    "status_global": "Inherits fast mode",
+    "status_default": "Inherits system default",
+    "select_visible": "Select visible results",
+    "select_tool": "Select tool {{name}}",
+    "selected_count": "{{count}} tools selected",
+    "clear_selection": "Clear selection",
+    "no_matching_tools": "No tools match the current filters",
+    "reset_group_to_default": "Reset this group to system defaults",
+    "set_group_to_low": "Set this group to Low",
+    "set_group_to_medium": "Set this group to Medium",
+    "set_group_to_high": "Set this group to High",
+    "bulk_updated": "Updated {{count}} tools",
+    "bulk_partial_failed": "Updated {{success}}/{{total}} tools; the remaining updates failed",
     "no_tools": "No registered tools",
     "level_low": "Low",
     "level_medium": "Med",
     "level_high": "High",
-    "set_to_low": "Set to Low (skip approval)",
+    "set_to_low": "Set to Low (fewer routine prompts; protected actions excluded)",
     "set_to_medium": "Set to Medium (requires approval)",
     "set_to_high": "Set to High (must approve)",
     "reset_to_default": "Reset to default level",
@@ -1977,7 +2635,26 @@
     "memoryEnabled": "Enable",
     "memoryEnabledDesc": "When enabled, AI automatically extracts and uses information about you to personalize conversations. When disabled, memory extraction, retrieval, and injection are all stopped.",
     "memoryEnabledToast": "Memory enabled",
-    "memoryDisabledToast": "Memory disabled"
+    "memoryDisabledToast": "Memory disabled",
+    "autoSubfoldersUpdated": "Memory subfolders updated",
+    "defaultCategoryUpdated": "Default memory category updated",
+    "autoSubfolders": "Create subfolders automatically",
+    "autoSubfoldersDesc": "Create category subfolders automatically when saving memories.",
+    "defaultCategory": "Default category",
+    "defaultCategoryDesc": "The default subfolder used when no category is specified.",
+    "autoExtractFrequency": "Auto-extract frequency",
+    "autoExtractFrequencyDesc": "How often memories are auto-extracted after conversations",
+    "autoExtractFrequencyUpdated": "Auto-extract frequency updated",
+    "freqOff": "Off",
+    "freqBalanced": "Balanced",
+    "freqAggressive": "Aggressive",
+    "freqOffDesc": "Only turns off auto-extraction after conversations; existing memories are still organized, decayed and the profile keeps updating.",
+    "freqBalancedDesc": "Extracts memories after each conversation; skipped when the content is under 10 characters.",
+    "freqAggressiveDesc": "Extracts more eagerly (4-character threshold), with more frequent category refresh and memory maintenance.",
+    "categoryGeneral": "General",
+    "categoryPreference": "Preferences",
+    "categoryExperience": "Experiences",
+    "loadError": "Failed to load memory settings"
   },
   "data_governance": {
     "backup_tiers": {
@@ -1998,7 +2675,9 @@
       "subjects": "Subject Resources",
       "workspaces": "Workspaces",
       "audio": "Audio",
-      "videos": "Videos"
+      "videos": "Videos",
+      "textbooks": "Textbooks",
+      "pdf_ocr_sessions": "PDF/OCR Session Files"
     },
     "backup_in_progress": "Backup in progress...",
     "export_in_progress": "Export in progress...",
@@ -2084,9 +2763,59 @@
     "already_exists": "This server already exists",
     "free_label": "Free",
     "requires_api_key": "Requires API Key",
+    "api_key_required": "This preset requires an API Key (or enable OAuth)",
     "community": "Community",
+    "official": "Official",
     "category_documentation": "Documentation",
-    "context7_desc": "Get up-to-date documentation and code examples for any library, supporting 1000+ frameworks, no API Key required"
+    "category_search": "Search",
+    "category_knowledge": "Knowledge",
+    "category_scraping": "Scraping / Fetch",
+    "category_devops": "DevOps",
+    "risk_label": "Risk",
+    "risk_low": "Low",
+    "risk_medium": "Medium",
+    "risk_high": "High",
+    "data_scope_label": "Data scope",
+    "network_egress_label": "Network egress",
+    "network_egress_yes": "Yes — calls remote services",
+    "network_egress_no": "No",
+    "get_api_key": "Get API Key / Token",
+    "permission_title": "Permissions — {{name}}",
+    "confirm_install": "Install",
+    "enable_oauth_install": "Install with OAuth (authorize in browser after install; mutually exclusive with API Key)",
+    "context7_desc": "Up-to-date library docs and code examples for 1000+ frameworks; no API Key required",
+    "exa_desc": "Exa neural web search / code search (hosted MCP; free tier, optional API Key for higher limits)",
+    "wikipedia_desc": "Wikipedia / Wikimedia summaries and page tools via Pipeworx gateway (no auth)",
+    "firecrawl_desc": "Scrape, crawl and search the live web (keyless free tier; API Key or OAuth unlocks full tools)",
+    "cloudflare_docs_desc": "Search Cloudflare developer documentation (OAuth when connecting)",
+    "tavily_desc": "Tavily real-time search, extract, map and crawl (API Key or OAuth)",
+    "huggingface_desc": "Hugging Face Hub models, datasets, papers and Spaces (token or OAuth)",
+    "github_desc": "Official GitHub remote MCP — repos, issues, PRs (PAT required today; OAuth-ready hosts)",
+    "hints": {
+      "exa_key": "Optional Exa API key",
+      "firecrawl_key": "Optional Firecrawl API key (fc-…)",
+      "tavily_key": "Tavily API key",
+      "huggingface_token": "Hugging Face access token (hf_…)",
+      "github_pat": "GitHub Personal Access Token"
+    },
+    "permissions": {
+      "context7_scope": "Reads public library documentation from Context7; does not access your local files.",
+      "context7_notes": "Queries leave your machine to mcp.context7.com.",
+      "exa_scope": "Runs web/code search queries through Exa; search terms are sent to Exa.",
+      "exa_notes": "Optional API Key raises rate limits. No OAuth required for basic use.",
+      "wikipedia_scope": "Fetches Wikipedia / Wikimedia content via a third-party gateway.",
+      "wikipedia_notes": "Community-hosted remote endpoint; rate limits may apply.",
+      "firecrawl_scope": "Fetches and scrapes arbitrary public URLs you ask for.",
+      "firecrawl_notes": "Keyless tier is rate-limited. Prefer API Key or OAuth for production use.",
+      "cloudflare_docs_scope": "Reads Cloudflare public documentation only (not your Cloudflare account APIs).",
+      "cloudflare_docs_notes": "OAuth may be prompted by the remote server on first connect.",
+      "tavily_scope": "Web search and URL extract/map/crawl via Tavily cloud.",
+      "tavily_notes": "Supports API Key in header/URL or OAuth with compatible clients.",
+      "huggingface_scope": "Searches Hub models/datasets/papers and may invoke Gradio Spaces you enable.",
+      "huggingface_notes": "Token or OAuth (?login) required for private resources; public search may work without.",
+      "github_scope": "Accesses GitHub data allowed by your PAT/OAuth scopes (repos, issues, PRs, etc.).",
+      "github_notes": "High risk: treat tokens as secrets. Host OAuth support varies; PAT is the supported path today."
+    }
   },
   "gradingMode": {
     "backToSettings": "Back to settings",
@@ -2156,5 +2885,139 @@
     "available": "Available",
     "unavailable": "Unavailable",
     "untested": "Untested"
+  },
+  "study_ui_descriptions": {
+    "general": "Manage language, interaction habits, input methods, and personal preferences.",
+    "appearance": "Customize themes, fonts, zoom, and the app's visual style."
+  },
+  "about": {
+    "update": {
+      "checking": "Checking...",
+      "check": "Check for Updates",
+      "channel": "Update Channel",
+      "channelExpDesc": "Receive experimental updates that may include under-tested features",
+      "channelStableDesc": "Only receive verified stable updates",
+      "channelStable": "Stable",
+      "channelExp": "Experimental",
+      "frequency": "Automatic Update Checks",
+      "frequencyNoRemindDesc": "Automatic update reminders are off. Click to turn them back on",
+      "frequencyNeverDesc": "Will not check for updates automatically; you can check manually",
+      "frequencyDaysDesc": "Automatically check every {{days}} days",
+      "frequencyLaunchDesc": "Automatically check on every launch",
+      "frequencyReEnable": "Turn Back On",
+      "freqEveryLaunch": "Every Launch",
+      "freqEveryNDays": "Every N Days",
+      "freqNever": "Never",
+      "upToDate": "You are up to date",
+      "available": "Update available",
+      "mirrorDownload": "Mirror Download",
+      "githubDownload": "GitHub Download",
+      "downloading": "Downloading...",
+      "install": "Download Update",
+      "error": {
+        "check": "Failed to check for updates",
+        "download": "Download failed",
+        "install": "Install failed",
+        "unavailable": "Update is no longer available. Please try again later",
+        "relaunch": "Update installed. Please restart the app manually to finish"
+      },
+      "dialog": {
+        "title": "Update available",
+        "skipVersion": "Skip version",
+        "ignore": "Dismiss",
+        "update": "Update",
+        "neverRemind": "Never remind",
+        "neverRemindConfirm": "Stop reminding? You can re-enable this in Settings.",
+        "confirm": "Confirm",
+        "cancel": "Cancel"
+      }
+    }
+  },
+  "siliconflow_ocr": {
+    "paddle_ocr_vl_15": "Free open-source OCR 1.5 with 109 languages and 94.5% accuracy",
+    "paddle_ocr_vl": "Free open-source OCR legacy build with coordinate output, as a fallback for 1.5",
+    "deepseek_ocr": "Professional OCR model with coordinate grounding",
+    "glm4v_ocr": "Zhipu 106B MoE multimodal model with coordinate grounding; preferred for exam-sheet import",
+    "generic_vlm": "General multimodal model for simple document recognition (fallback)"
+  },
+  "a11y": {
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save"
+  },
+  "quick_assistant": {
+    "title": "Quick Study",
+    "description": "Capture content from other apps, process it quickly, and save it into your learning system.",
+    "enabled": "Enable system quick window",
+    "enabled_description": "Use {{shortcut}} to open Quick Study anytime.",
+    "clipboard": "Read clipboard on open",
+    "clipboard_description": "Reads locally only, to recognize copied questions, passages, or formulas.",
+    "background": "Keep running after main window closes",
+    "background_description": "Hide to the background when the main window closes so the system shortcut can still open the quick window.",
+    "preview": "Preview Quick Study",
+    "preview_description": "Open the quick window to check clipboard capture, search, review, and learning status.",
+    "open": "Open quick window"
+  },
+  "search_engine": {
+    "title": "Search Engine"
+  },
+  "statistics": {
+    "learning_time": "Learning time",
+    "chat_stats": "Chat statistics",
+    "heatmap": "Activity heatmap"
+  },
+  "params": {
+    "temperature": "Temperature",
+    "top_p": "Top P"
+  },
+  "plugins": {
+    "title": "Plugins & Integrations",
+    "description": "Manage desktop channel plugins (WeChat iLink Bot). Not available on mobile.",
+    "empty": "No plugins available",
+    "configure": "Configure",
+    "back_to_list": "Back to list",
+    "saved": "Plugin settings saved",
+    "connection_title": "Connection",
+    "reply_title": "Reply settings",
+    "enable_switch": "Auto-reply",
+    "pause": "Auto-reply paused",
+    "resume": "Auto-reply enabled",
+    "bind_first_hint": "Open Configure and scan the QR code to bind WeChat before enabling",
+    "binding_hint": "Scan the QR code with WeChat and confirm to bind this device as a ClawBot.",
+    "scan_qr": "Scan to bind",
+    "cancel_scan": "Cancel scan",
+    "qr_loading": "Generating QR code…",
+    "qr_status": {
+      "wait": "Scan the QR code with WeChat",
+      "scaned": "Scanned — confirm on your phone",
+      "confirmed": "Bound successfully",
+      "expired": "QR expired, refreshing…"
+    },
+    "unbound": "Not bound",
+    "bound_running_hint": "Only the WeChat user who scanned the code can trigger replies. Turn the switch off to pause anytime.",
+    "account_id": "Bot ID",
+    "user_id": "Authorized user",
+    "rebind": "Bind again",
+    "rebind_confirm_title": "Bind another WeChat account?",
+    "rebind_confirm_desc": "The bot will stop and clear its current binding. The page will return to its initial state so you can scan again.",
+    "ready_to_rebind": "Stopped and unbound. Ready to scan again.",
+    "model": "Reply model",
+    "model_desc": "Falls back to the chat model assignment when empty.",
+    "model_fallback": "Fall back to chat model",
+    "rate_limit": "Messages per minute",
+    "rate_limit_desc": "Per-contact rate limit; excess messages get a soft reject.",
+    "system_prompt": "System prompt (optional)",
+    "system_prompt_placeholder": "Customize the assistant persona…",
+    "activity": "Recent activity",
+    "states": {
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "waiting_login": "Waiting for scan",
+      "running": "Running",
+      "stopping": "Stopping",
+      "error": "Error"
+    },
+    "mobile_hidden": "Plugins are desktop-only"
   }
 }

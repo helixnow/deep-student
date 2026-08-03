@@ -182,6 +182,12 @@ svg.h-4 {
   }
 }
 
+/* Normalize the native search appearance only. Surface and focus treatment
+ * belong to the component so wrapper-based fields do not gain inner chrome. */
+input[type="search"] {
+  appearance: none;
+}
+
 /* JavaScript 检测到 Android WebView 时的专用类 */
 html.is-android-webview input,
 html.is-android-webview textarea,
@@ -295,24 +301,20 @@ html.is-android .android-safe-top {
 /* =================== 移动端响应式适配 =================== */
 
 :root {
-  /* 移动端固定顶部栏高度（统一管理） */
-  --mobile-topbar-height: 56px;
+  /* --mobile-topbar-height 已删除（2026-07）：旧版 Topbar 移除后全仓无消费者，
+     移动端顶栏高度统一走 --mobile-header-total-height */
   /* 桌面固定标题栏高度（统一管理） */
   --desktop-titlebar-height: 40px;
   --shell-titlebar-height: var(--desktop-titlebar-height);
   --shell-navigation-width: 272px;
 }
 
-/* 小屏幕下：隐藏Topbar和content-header
+/* 小屏幕下：隐藏 content-header
    SHELL-1: 移动端无持久侧栏（MobileSlidingLayout 抽屉取代），--sidebar-width 归零 */
 @media (max-width: 767.98px) {
   :root {
     --sidebar-width: 0px;
     --desktop-titlebar-height: 0px;
-  }
-  
-  .dstu-topbar {
-    display: none !important;
   }
   
   .content-header {
@@ -396,12 +398,9 @@ html.is-android .android-safe-top {
 
 @media print {
   .window-controls,
-  .dstu-topbar,
   .custom-titlebar,
-  #dstu-topbar-portal,
   .app-sidebar,
   .content-header,
-  .topbar-portal,
   [data-panel-id="notes-sidebar"],
   [data-panel-id="notes-context"],
   [data-panel-group-id] > [data-resize-handle],
@@ -443,12 +442,6 @@ html.is-android .android-safe-top {
     height: auto !important;
     min-height: auto !important;
   }
-}
-
-/* =================== Topbar button override =================== */
-
-.dstu-topbar button.icon-ghost-btn {
-  padding: 0 16px !important;
 }
 
 /* =================== Drag region & no-drag =================== */
@@ -527,7 +520,6 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
   margin-bottom: 0;
   position: relative;
-  will-change: background-color, transform;
 }
 
 .nav-item:hover {
@@ -633,85 +625,6 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   background-color: hsl(var(--muted)) !important;
   cursor: not-allowed !important;
   opacity: 0.6 !important;
-}
-
-/* =================== Button styles (shared across components) =================== */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.625rem 1.25rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-decoration: none;
-  gap: 0.5rem;
-  background: hsl(var(--background));
-  position: relative;
-  overflow: hidden;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none !important;
-}
-
-.btn-primary {
-  background: hsl(var(--muted));
-  color: hsl(var(--foreground));
-  border-color: hsl(var(--border));
-  box-shadow: var(--shadow-content-subtle);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: hsl(var(--accent));
-  border-color: hsl(var(--border));
-  box-shadow: var(--shadow-content-soft);
-}
-
-.btn-success {
-  background: hsl(var(--success) / 0.08);
-  color: hsl(var(--success));
-  border-color: hsl(var(--success) / 0.3);
-  box-shadow: var(--shadow-content-subtle);
-}
-
-.btn-success:hover:not(:disabled) {
-  background: hsl(var(--success) / 0.14);
-  border-color: hsl(var(--success) / 0.45);
-  box-shadow: var(--shadow-content-soft);
-}
-
-.btn-secondary {
-  background: hsl(var(--muted));
-  color: hsl(var(--muted-foreground));
-  border-color: hsl(var(--border));
-  box-shadow: var(--shadow-content-subtle);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: hsl(var(--accent));
-  border-color: hsl(var(--border));
-  color: hsl(var(--foreground));
-  box-shadow: var(--shadow-content-soft);
-}
-
-.btn-danger {
-  background: hsl(var(--destructive) / 0.08);
-  color: hsl(var(--destructive));
-  border-color: hsl(var(--destructive) / 0.3);
-  box-shadow: var(--shadow-content-subtle);
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: hsl(var(--destructive) / 0.14);
-  border-color: hsl(var(--destructive) / 0.45);
-  box-shadow: var(--shadow-content-soft);
 }
 
 /* =================== Utility keyframes =================== */

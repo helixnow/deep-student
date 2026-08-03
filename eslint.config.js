@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import boundaries from 'eslint-plugin-boundaries';
+import reactHooks from 'eslint-plugin-react-hooks';
 import noNativeButton from './eslint-rules/no-native-button.js';
 
 export default tseslint.config(
@@ -23,15 +24,25 @@ export default tseslint.config(
         rules: {
           'no-native-button': noNativeButton
         }
-      }
+      },
+      'react-hooks': reactHooks
     },
     rules: {
+      // React Hooks 正确性检查：rules-of-hooks 违规是真实 bug 来源，直接 error；
+      // exhaustive-deps 历史欠账较多，先 warn 逐步清理（与 no-console 同策略）。
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+
+      // 空 catch 是本代码库的既有降级风格（try { … } catch {}），允许；
+      // 其余空块（if/finally/loop）仍然报错。
+      'no-empty': ['error', { allowEmptyCatch: true }],
+
       // ============================================================
       // AGENTS.md 组件规范检查规则
       // 参见: AGENTS.md
       // ============================================================
 
-      // 1. 禁止使用 shadcn Button - 必须使用 NotionButton
+      // 1. 禁止使用 shadcn Button - 必须使用 DsButton
       // 2. 禁止使用 shadcn Tooltip - 必须使用 CommonTooltip
       // 3. 禁止使用 react-tooltip - 必须使用 CommonTooltip
       'no-restricted-imports': ['error', {
@@ -39,12 +50,12 @@ export default tseslint.config(
           // === Button 相关 ===
           {
             name: '@/components/ui/shad/Button',
-            message: '❌ 禁止使用 shadcn Button。请使用 NotionButton (@/components/ui/NotionButton)。参见 AGENTS.md 规范。'
+            message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
           },
           {
             name: '@/components/ui/button',
             importNames: ['Button'],
-            message: '❌ 禁止使用 shadcn Button。请使用 NotionButton (@/components/ui/NotionButton)。参见 AGENTS.md 规范。'
+            message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
           },
           
           // === Tooltip 相关 ===
@@ -68,7 +79,7 @@ export default tseslint.config(
           // Button 模式匹配（相对路径导入）
           {
             group: ['**/shad/Button', '**/shad/Button.tsx'],
-            message: '❌ 禁止使用 shadcn Button。请使用 NotionButton (@/components/ui/NotionButton)。参见 AGENTS.md 规范。'
+            message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
           },
           // Tooltip 模式匹配（相对路径导入）
           {
@@ -81,17 +92,17 @@ export default tseslint.config(
       // 4. 禁止使用 window.alert - 必须使用统一通知系统
       'no-alert': 'error',
 
-      // 5. 跨模块事件监听应通过集中注册（useEventRegistry / registry）
-      // 仅对新增代码做约束，历史代码逐步迁移，因此先使用 warn。
+      // 5. 跨模块事件监听应通过集中注册（@/events / useEventRegistry）
+      // 全仓历史欠账先 warn；已迁移文件（如 App.tsx）在下方单独升为 error。
       'no-restricted-syntax': [
         'warn',
         {
           selector: "CallExpression[callee.property.name='addEventListener'][callee.object.name=/^(window|document)$/]",
-          message: '❌ 禁止直接使用 window/document.addEventListener。请使用 useEventRegistry 或集中事件 registry。'
+          message: '❌ 禁止裸 window/document.addEventListener。请使用 @/events（dispatchAppEvent / useAppEvent / addAppEventListener）或 useEventRegistry。'
         }
       ],
 
-      // 6. 禁止使用原生 <button> 元素 - 必须使用 NotionButton（设为 warn 便于逐步修复）
+      // 6. 禁止使用原生 <button> 元素 - 必须使用 DsButton（设为 warn 便于逐步修复）
       'ds-components/no-native-button': 'warn',
 
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
@@ -126,17 +137,37 @@ export default tseslint.config(
     }
   },
 
-  // 事件监听白名单目录：允许底层/调试模块直接绑定原生事件
+  // 事件监听白名单：registry 实现与调试/底层模块可直接绑定原生事件
   {
     files: [
       'src/debug-panel/**/*.{ts,tsx}',
       'src/components/dev/**/*.{ts,tsx}',
       'src/chat-v2/dev/**/*.{ts,tsx}',
+      'src/dev/**/*.{ts,tsx}',
       'src/events/**/*.{ts,tsx}',
-      'src/hooks/useEventRegistry.ts'
+      'src/app-events/**/*.{ts,tsx}',
+      'src/hooks/useEventRegistry.ts',
+      'src/mcp-debug/**/*.{ts,tsx}',
+      'src/utils/testBridge.ts',
+      'src/utils/testSnapshot.ts',
+      'src/main.tsx'
     ],
     rules: {
       'no-restricted-syntax': 'off'
+    }
+  },
+
+  // 已迁移壳层：禁止再引入裸 window/document listener
+  {
+    files: ['src/App.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='addEventListener'][callee.object.name=/^(window|document)$/]",
+          message: '❌ App.tsx 已迁移至 @/events / useEventRegistry，禁止新增裸 window/document.addEventListener。'
+        }
+      ]
     }
   },
 
@@ -165,10 +196,10 @@ export default tseslint.config(
     }
   },
 
-  // NotionButton、SimpleTooltip 和 CommonTooltip 组件本身
+  // DsButton、SimpleTooltip 和 CommonTooltip 组件本身
   {
     files: [
-      'src/components/ui/NotionButton.tsx',
+      'src/components/ui/DsButton.tsx',
       'src/components/ui/SimpleTooltip.tsx',
       'src/components/shared/CommonTooltip.tsx'
     ],

@@ -1,12 +1,19 @@
 import React, { useMemo, memo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
-import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
-import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
+import { canUseDirectFlowTokenMarkdown, containsHtmlTagLikeContent } from './flowTokenEligibility';
+import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
+import { useSuspendedStreamContent } from './StreamPreferencesContext';
+import { useMessageSearchContext } from '../messageSearchContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
-import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
+import { createMarkdownBlockSplitter, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
+
+// 模块级空数组：保持引用稳定，避免流式期间每个 token 都生成新数组
+// 击穿 MemoizedBlock / MarkdownRenderer 的 memo 比较。
+const EMPTY_REMARK_PLUGINS: any[] = [];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +44,7 @@ interface MemoizedBlockProps {
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
   blockId?: string;
   messageId?: string;
+  searchActive: boolean;
 }
 
 const FLOWTOKEN_SUPPORTED_BLOCK_TYPES = new Set<MarkdownBlock['type']>([
@@ -51,6 +59,14 @@ function shouldUseFullFlowTokenEffect(
   isStreamingBlock: boolean,
 ): boolean {
   if (!isStreamingBlock || !FLOWTOKEN_SUPPORTED_BLOCK_TYPES.has(block.type)) {
+    return false;
+  }
+
+  // 🔒 P1 (2026-07-08 审阅 21 P1-1)：块级路径此前只按块类型判断，
+  // paragraph 等块中的行内 HTML（如 `文本 <img onerror=...> 文本`）会绕过
+  // 整段级别的 flowtoken 门禁进入未消毒的 AnimatedMarkdown。
+  // 这里对块原文复检疑似 HTML，命中则回退到带 rehype-sanitize 的 MarkdownRenderer。
+  if (containsHtmlTagLikeContent(block.raw)) {
     return false;
   }
 
@@ -75,11 +91,12 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   resolveCitationImage,
   blockId,
   messageId,
+  searchActive,
 }) => {
   const shouldUseFlowToken = shouldUseFullFlowTokenEffect(
     block,
     isActive && isStreaming,
-  );
+  ) && !searchActive;
   const motionLayer = isActive && isStreaming ? 'inline' : 'block';
 
   return (
@@ -114,11 +131,16 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   );
 }, (prev, next) => {
   // 已完成块：只要 raw 不变就跳过
+  // 🔧 B4: 回调 props（引用点击/图片解析）也纳入比较，
+  // 父组件换新回调时不再让子树继续持有过期闭包
   if (prev.block.isComplete && next.block.isComplete && prev.block.raw === next.block.raw) {
     return (
       prev.isNew === next.isNew &&
+      prev.searchActive === next.searchActive &&
       prev.onLinkClick === next.onLinkClick &&
-      prev.extraRemarkPlugins === next.extraRemarkPlugins
+      prev.extraRemarkPlugins === next.extraRemarkPlugins &&
+      prev.onCitationClick === next.onCitationClick &&
+      prev.resolveCitationImage === next.resolveCitationImage
     );
   }
   // 活跃块或状态变化：重渲染
@@ -126,26 +148,8 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
 });
 
 // ─── Chain of Thought Parser ─────────────────────────────────────────────────
-
-type ParsedContent = {
-  thinkingContent: string;
-  mainContent: string;
-};
-
-function parseChainOfThought(content: string): ParsedContent | null {
-  if (!content) return null;
-  const tryMatch = (src: string, tag: 'thinking' | 'think') =>
-    src.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>\\s*`, 'i'));
-
-  let thinkingMatch = tryMatch(content, 'thinking');
-  if (!thinkingMatch) thinkingMatch = tryMatch(content, 'think');
-  if (thinkingMatch) {
-    const thinkingContent = (thinkingMatch[1] || '').trim();
-    const mainContent = content.replace(thinkingMatch[0], '').trim();
-    return { thinkingContent, mainContent };
-  }
-  return null;
-}
+// parseChainOfThought 已抽到 rendererUtils（预编译正则 + 无标签快速路径，
+// 消除流式期间每次 flush 对全量文本的重复扫描）
 
 // ─── StreamingBlockRenderer ──────────────────────────────────────────────────
 //
@@ -180,19 +184,25 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   messageId,
 }) => {
   const { t } = useTranslation('chatV2');
+  const { query: searchQuery } = useMessageSearchContext();
+  const searchActive = Boolean(searchQuery.trim());
 
   // 行业最优解：不再裁剪未闭合数学。remark-math 自然降级为原文，
   // KaTeX 在闭合时无缝接管。原始 content 直通渲染器，
   // 由 flowtoken 的 AnimatedMarkdown / SplitText sep="diff" 负责增量动画。
-  const processedContent = content ?? '';
+  // OS 模式 background 窗（壳层已停绘）：冻结提交内容，避免不可见窗每个
+  // token 重跑 markdown 管线；token 留在 store，回可见立即整段补渲。
+  const processedContent = useSuspendedStreamContent(content ?? '', isStreaming);
 
   // 解析思维链
   const parsedContent = useMemo(() => parseChainOfThought(processedContent), [processedContent]);
   const mainContent = parsedContent ? parsedContent.mainContent : processedContent;
 
-  // 拆分为块
+  // 拆分为块（增量拆分器：append-only 增长时只重解析尾部，避免全流 O(n²)）
+  const splitterRef = useRef<ReturnType<typeof createMarkdownBlockSplitter> | null>(null);
+  if (!splitterRef.current) splitterRef.current = createMarkdownBlockSplitter();
   const blocks = useMemo(
-    () => splitMarkdownBlocks(mainContent, isStreaming),
+    () => splitterRef.current!(mainContent, isStreaming),
     [mainContent, isStreaming],
   );
 
@@ -222,10 +232,19 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   );
 
   const allRemarkPlugins = useMemo(() => {
-    const highlightPlugins = (!isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0)
-      ? [makeUncertaintyHighlightPlugin(mainContent, stableHighlightSpans, t('renderer.uncertain'))]
-      : [];
-    return [...(extraRemarkPlugins || []), ...highlightPlugins];
+    const needsHighlight =
+      !isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0;
+    // 流式期间（无高亮）直接复用外部插件数组的引用：
+    // mainContent 每个 token 都变化，若在此处展开新数组，
+    // 已完成块的 MemoizedBlock memo 比较会因 extraRemarkPlugins 引用变化而全部失效，
+    // 导致整条消息每个 token 全量重渲染。
+    if (!needsHighlight) {
+      return extraRemarkPlugins ?? EMPTY_REMARK_PLUGINS;
+    }
+    return [
+      ...(extraRemarkPlugins || []),
+      makeUncertaintyHighlightPlugin(mainContent, stableHighlightSpans, t('renderer.uncertain')),
+    ];
   }, [isStreaming, stableHighlightSpans, extraRemarkPlugins, mainContent, t]);
 
   const hasVisibleContent = mainContent.trim().length > 0;
@@ -234,6 +253,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
     isStreaming &&
     thinkingContent &&
     !thinkingContent.includes('\n') &&
+    !searchActive &&
     canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
   );
 
@@ -248,7 +268,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
       {parsedContent?.thinkingContent && (
         <div className="chain-of-thought">
           <div className="chain-header">
-            <span className="chain-icon">🧠</span>
+            <span className="chain-icon" aria-hidden="true"><Brain size={15} weight="duotone" /></span>
             <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
           </div>
           <div className="thinking-content">
@@ -289,18 +309,24 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             resolveCitationImage={resolveCitationImage}
             blockId={blockId}
             messageId={messageId}
+            searchActive={searchActive}
           />
         ))}
       </div>
     </div>
   );
 }, (prevProps, nextProps) => {
+  // 🔧 B4: 补齐回调 props 比较（onLinkClick / onCitationClick / resolveCitationImage），
+  // 避免父组件更新回调后子树仍引用指向过期 messageId / sourceBundle 的旧闭包
   return (
     prevProps.content === nextProps.content &&
     prevProps.isStreaming === nextProps.isStreaming &&
     shallowEqualSpans(prevProps.highlightSpans, nextProps.highlightSpans) &&
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
     prevProps.blockId === nextProps.blockId &&
-    prevProps.messageId === nextProps.messageId
+    prevProps.messageId === nextProps.messageId &&
+    prevProps.onLinkClick === nextProps.onLinkClick &&
+    prevProps.onCitationClick === nextProps.onCitationClick &&
+    prevProps.resolveCitationImage === nextProps.resolveCitationImage
   );
 });

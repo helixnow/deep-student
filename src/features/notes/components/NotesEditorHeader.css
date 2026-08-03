@@ -1,0 +1,119 @@
+/* NotesEditorHeader — 文档头统计详情与保存状态动效
+ * 依赖 tokens：--notes-radius-popup / --notes-popover-shadow / --dropdown-ease
+ * （定义于 src/styles/notes-typography.css），未定义时走 fallback。 */
+
+.notes-doc-stats {
+  position: relative;
+}
+
+.notes-doc-stats-trigger {
+  cursor: default;
+  border-radius: var(--notes-radius-control, 5px);
+  transition: color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-doc-stats:hover .notes-doc-stats-trigger,
+.notes-doc-stats:focus-within .notes-doc-stats-trigger {
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.notes-doc-stats-detail {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 168px;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--notes-popover-shadow, 0 8px 24px hsl(var(--shadow-base) / 0.14));
+  opacity: 0;
+  transform: translateY(-2px) scale(0.98);
+  transform-origin: top right;
+  pointer-events: none;
+  transition:
+    opacity 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.notes-doc-stats:hover .notes-doc-stats-detail,
+.notes-doc-stats:focus-within .notes-doc-stats-detail {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.notes-doc-stats-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 22px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notes-doc-stats-row dt {
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-doc-stats-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground) / 0.9);
+}
+
+/* 保存状态：saved 对勾淡入（200ms），saving 呼吸点复用
+ * CrepeEditor.css 的 .notes-save-status-dot[data-status="saving"]。 */
+.notes-save-status-check {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: hsl(var(--success));
+  animation: notes-save-check-in 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.notes-save-status-warn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: hsl(var(--destructive) / 0.85);
+  animation: notes-save-fade-in 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+@keyframes notes-save-check-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes notes-save-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-doc-stats-detail {
+    transition: none;
+    transform: none;
+  }
+
+  .notes-doc-stats:hover .notes-doc-stats-detail,
+  .notes-doc-stats:focus-within .notes-doc-stats-detail {
+    transform: none;
+  }
+
+  .notes-save-status-check,
+  .notes-save-status-warn {
+    animation: none;
+  }
+}

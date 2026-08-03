@@ -3,7 +3,15 @@
     "noFile": "No textbook file specified"
   },
   "loading": {
-    "largeFile": "Loading large file, please wait..."
+    "largeFile": "Loading large file, please wait...",
+    "timeout": "Loading is taking longer than expected"
+  },
+  "relink": {
+    "action": "Relink file",
+    "hint": "If the original file was moved or renamed, click \"Relink file\" to select its new location.",
+    "dialogTitle": "Select the new location of the file",
+    "success": "File relinked successfully",
+    "failed": "Failed to relink file"
   },
   "open_study_mode": "Textbook Study",
   "no_textbook_loaded": "No textbook loaded",

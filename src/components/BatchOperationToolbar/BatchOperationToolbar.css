@@ -1,4 +1,13 @@
 /* 批量操作工具栏样式 */
+
+/* 根容器：flex 列布局，列表占据剩余高度（避免硬编码视口高度假设） */
+.batch-operation-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .batch-operation-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -34,16 +43,10 @@
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   font-size: 14px;
-  width: 300px;
+  width: min(300px, 100%);
   transition: all 0.2s;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .clear-search {
@@ -234,13 +237,17 @@
   border-radius: 0 0 8px 8px;
 }
 
-/* 卡片列表 */
+/* 卡片列表：flex 占满剩余空间；max-height 仅作父级未给定高度时的兜底
+   （100dvh 兼容移动端浏览器动态视口，替代旧的 100vh - 200px 硬编码） */
 .batch-cards-list {
-  flex: 1;
-  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   background: hsl(var(--muted));
+  max-height: calc(100dvh - 200px);
+}
+
+.batch-cards-list-viewport {
   padding: 16px;
-  max-height: calc(100vh - 200px);
 }
 
 /* 卡片项 */
@@ -267,10 +274,31 @@
   border-color: hsl(var(--primary));
 }
 
+/* 复选框独立命中区（button）：负 margin 抵消 padding，视觉尺寸不变 */
 .card-checkbox {
   flex-shrink: 0;
-  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: -6px 0 0 -8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
   color: hsl(var(--muted-foreground));
+}
+
+.card-checkbox:hover {
+  background: hsl(var(--muted));
+}
+
+/* 触屏：命中区放大到 ≥44px */
+@media (pointer: coarse) {
+  .card-checkbox {
+    padding: 12px;
+    margin: -10px 0 0 -12px;
+  }
 }
 
 .batch-card-item.selected .card-checkbox {
@@ -320,40 +348,45 @@
   font-weight: 500;
 }
 
-/* 响应式设计 */
-@media (max-width: 1023.98px) {
+/* 响应式设计（断点统一为项目移动约定 767.98px） */
+@media (max-width: 767.98px) {
   .batch-operation-toolbar {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .toolbar-section {
     width: 100%;
     justify-content: space-between;
   }
-  
+
   .selection-info {
     margin-left: 0;
   }
-}
 
-@media (max-width: 639.98px) {
   .search-input {
     width: 100%;
   }
-  
+
   .batch-actions {
     flex-wrap: wrap;
   }
-  
+
   .action-btn {
     flex: 1;
     min-width: 80px;
     justify-content: center;
   }
-  
+
   .action-btn span {
     display: none;
+  }
+}
+
+/* 触屏：批量操作按钮满足 44px 触控目标 */
+@media (pointer: coarse) {
+  .action-btn {
+    min-height: 44px;
   }
 }
 
@@ -374,23 +407,4 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* 滚动条样式 */
-.batch-cards-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.batch-cards-list::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
-  border-radius: 4px;
-}
-
-.batch-cards-list::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 4px;
-}
-
-.batch-cards-list::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground));
 }

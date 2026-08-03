@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="tr_warm" x1="52" x2="52" y1="18" y2="84" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <path d="M30 18h44a16 16 0 0 1 16 16v20a16 16 0 0 1-16 16H52l-18 14 5-14h-9a16 16 0 0 1-16-16V34a16 16 0 0 1 16-16z" fill="url(#tr_warm)"/>
+  <g stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M42 56l10-26 10 26"/>
+    <path d="M46 47h12"/>
+  </g>
+  <linearGradient id="tr_cool" x1="98" x2="98" y1="66" y2="132" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#2BB3A3" offset="0"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
+  </linearGradient>
+  <path d="M120 132H76a16 16 0 0 1-16-16V96a16 16 0 0 1 16-16h22l18-14-5 14h9a16 16 0 0 1 16 16v20a16 16 0 0 1-16 16z" fill="url(#tr_cool)"/>
+  <path d="M76 80h44a16 16 0 0 1 16 16v4a16 16 0 0 0-16-16H76a16 16 0 0 0-16 16v-4a16 16 0 0 1 16-16z" fill="#fff" opacity=".25"/>
+  <g stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M98 85v4"/>
+    <path d="M81 98h34"/>
+    <path d="M105 102L87 126"/>
+    <path d="M91 102l18 24"/>
+  </g>
+</svg>

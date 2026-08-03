@@ -1,15 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import {
-  NotionDialog,
-  NotionDialogHeader,
-  NotionDialogTitle,
-  NotionDialogDescription,
-  NotionDialogBody,
-  NotionDialogFooter,
-} from '@/components/ui/NotionDialog';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   Crop,
@@ -18,7 +10,10 @@ import {
   CircleNotch,
   ImageIcon,
   Trash,
+  ArrowLeft,
 } from '@phosphor-icons/react';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { CustomScrollArea } from './custom-scroll-area';
 
 // ============================================================================
 // Types
@@ -43,6 +38,10 @@ export interface ImageCropDialogProps {
   examId: string;
   questionId: string;
   onImageAdded?: () => void;
+  /**
+   * @deprecated 组件现恒以内联裁剪工具渲染（模块规范禁模态），该 prop 仅为兼容保留、不再参与逻辑。
+   */
+  inline?: boolean;
 }
 
 // ============================================================================
@@ -56,7 +55,7 @@ export function ImageCropDialog({
   questionId,
   onImageAdded,
 }: ImageCropDialogProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('common');
 
   const [sourceImages, setSourceImages] = useState<SourceImageInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,13 +191,16 @@ export function ImageCropDialog({
         },
       });
 
-      showGlobalNotification('success', t('question_bank.crop_success', '图片裁剪成功'));
+      showGlobalNotification('success', t('question_bank.crop_success'));
 
       setCropRect(null);
       onImageAdded?.();
     } catch (e: any) {
       console.error('[ImageCropDialog] Crop failed:', e);
-      showGlobalNotification('error', t('question_bank.crop_failed', '裁剪失败: ') + (e?.message || String(e)));
+      showGlobalNotification(
+        'error',
+        t('question_bank.crop_failed', { error: e?.message || String(e) }),
+      );
     } finally {
       setCropping(false);
     }
@@ -207,24 +209,18 @@ export function ImageCropDialog({
   const currentImage = sourceImages[currentPage];
   const hasMultiplePages = sourceImages.length > 1;
 
-  return (
-    <NotionDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      maxWidth="max-w-4xl"
-      className="!max-h-[90vh]"
-    >
-      <NotionDialogHeader>
-        <NotionDialogTitle className="flex items-center gap-2">
-          <ImageIcon size={16} />
-          {t('question_bank.source_images', '原始导入图片')}
-        </NotionDialogTitle>
-        <NotionDialogDescription>
-          {t('question_bank.crop_hint', '在图片上拖拽选取区域，点击"裁剪并添加"将选区添加为题目配图')}
-        </NotionDialogDescription>
-      </NotionDialogHeader>
+  // 内联裁剪工具：Android 返回键 = 取消关闭
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      onOpenChange(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open, onOpenChange]);
 
-      <NotionDialogBody>
+  // 裁剪主体（Dialog 与 inline 工具共用）
+  const cropBody = (
+    <>
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <CircleNotch size={24} className="animate-spin text-muted-foreground" />
@@ -233,7 +229,7 @@ export function ImageCropDialog({
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
             <ImageIcon size={40} className="mb-2 opacity-40" />
             <p className="text-sm">
-              {t('question_bank.no_source_images', '该题目集没有原始导入图片')}
+              {t('question_bank.no_source_images')}
             </p>
           </div>
         ) : (
@@ -241,27 +237,31 @@ export function ImageCropDialog({
             {/* Page navigation */}
             {hasMultiplePages && (
               <div className="flex items-center justify-center gap-3">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   iconOnly
                   disabled={currentPage === 0}
                   onClick={() => { setCurrentPage(p => p - 1); setCropRect(null); }}
+                  aria-label={t('prev')}
+                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 >
                   <CaretLeft size={16} />
-                </NotionButton>
+                </DsButton>
                 <span className="text-sm text-muted-foreground tabular-nums">
                   {currentPage + 1} / {sourceImages.length}
                 </span>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   iconOnly
                   disabled={currentPage === sourceImages.length - 1}
                   onClick={() => { setCurrentPage(p => p + 1); setCropRect(null); }}
+                  aria-label={t('next')}
+                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 >
                   <CaretRight size={16} />
-                </NotionButton>
+                </DsButton>
               </div>
             )}
 
@@ -270,6 +270,8 @@ export function ImageCropDialog({
               <div
                 ref={imageContainerRef}
                 className="relative select-none cursor-crosshair border border-border/50 rounded-lg overflow-hidden bg-muted/30"
+                // 触屏拖选时禁用浏览器默认滚动/缩放手势（passive 监听下 preventDefault 不可靠）
+                style={{ touchAction: 'none' }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -277,6 +279,7 @@ export function ImageCropDialog({
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
               >
                 <img
                   ref={imageRef}
@@ -305,7 +308,7 @@ export function ImageCropDialog({
 />
                     {/* Selection border */}
                     <div
-                      className="absolute border-2 border-blue-500 pointer-events-none"
+                      className="absolute border-2 border-primary pointer-events-none"
                       style={{
                         left: `${cropRect.x * 100}%`,
                         top: `${cropRect.y * 100}%`,
@@ -316,7 +319,7 @@ export function ImageCropDialog({
                     {/* Size label */}
                     {imageRef.current && (
                       <div
-                        className="absolute text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded pointer-events-none"
+                        className="absolute text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded pointer-events-none"
                         style={{
                           left: `${cropRect.x * 100}%`,
                           top: `${cropRect.y * 100}%`,
@@ -334,46 +337,90 @@ export function ImageCropDialog({
             )}
           </div>
         )}
-      </NotionDialogBody>
+    </>
+  );
 
-      <NotionDialogFooter>
-        <div className="flex items-center justify-between w-full">
-          <div className="text-xs text-muted-foreground">
+  // ==================== 全屏内联裁剪工具（全端统一，禁模态） ====================
+  if (!open) return null;
+  return (
+    <div
+      className="absolute inset-0 z-30 flex flex-col bg-background"
+      role="dialog"
+      aria-label={t('question_bank.source_images')}
+    >
+        {/* 顶栏：取消 + 标题 + 确认 */}
+        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => onOpenChange(false)}
+            aria-label={t('cancel')}
+            className="!h-11 !w-11 text-muted-foreground"
+          >
+            <ArrowLeft size={20} />
+          </DsButton>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ImageIcon size={16} className="flex-shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm font-medium text-foreground">
+              {t('question_bank.source_images')}
+            </span>
+          </div>
+          <DsButton
+            variant="primary"
+            size="sm"
+            disabled={!cropRect || cropping}
+            onClick={handleCrop}
+            className="!h-9 flex-shrink-0 px-3 [@media(pointer:coarse)]:!h-11"
+          >
+            {cropping ? (
+              <CircleNotch size={14} className="mr-1 animate-spin" />
+            ) : (
+              <Crop size={14} className="mr-1" />
+            )}
+            {t('question_bank.crop_and_add')}
+          </DsButton>
+        </div>
+
+        {/* 提示条：拖选提示 / 已选中 + 清除 */}
+        <div className="flex min-h-[36px] flex-shrink-0 items-center justify-between gap-2 border-b border-border/40 px-4 py-1.5">
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
             {cropRect ? (
-              <span className="text-blue-500 font-medium">
-                {t('question_bank.crop_selected', '已选择裁剪区域')}
+              <span className="font-medium text-primary">
+                {t('question_bank.crop_selected')}
               </span>
             ) : sourceImages.length > 0 ? (
-              t('question_bank.drag_to_crop', '拖拽选取裁剪区域')
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            {cropRect && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => setCropRect(null)}
-              >
-                <Trash size={14} className="mr-1" />
-                {t('question_bank.clear_selection', '清除')}
-              </NotionButton>
+              t('question_bank.drag_to_crop')
+            ) : (
+              t('question_bank.crop_hint')
             )}
-            <NotionButton
-              variant="primary"
+          </span>
+          {cropRect && (
+            <DsButton
+              variant="ghost"
               size="sm"
-              disabled={!cropRect || cropping}
-              onClick={handleCrop}
+              onClick={() => setCropRect(null)}
+              className="!h-8 flex-shrink-0 px-2 text-xs [@media(pointer:coarse)]:!h-11"
             >
-              {cropping ? (
-                <CircleNotch size={14} className="mr-1 animate-spin" />
-              ) : (
-                <Crop size={14} className="mr-1" />
-              )}
-              {t('question_bank.crop_and_add', '裁剪并添加')}
-            </NotionButton>
-          </div>
+              <Trash size={14} className="mr-1" />
+              {t('question_bank.clear_selection')}
+            </DsButton>
+          )}
         </div>
-      </NotionDialogFooter>
-    </NotionDialog>
+
+        {/* 图片区：全高滚动（safe-area 兼容） */}
+        <CustomScrollArea
+          className="min-h-0 flex-1"
+          viewportClassName="px-3 pt-3"
+          viewportProps={{
+            style: {
+              paddingBottom:
+                'calc(var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px)',
+            },
+          }}
+        >
+          {cropBody}
+        </CustomScrollArea>
+      </div>
   );
 }

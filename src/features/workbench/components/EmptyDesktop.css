@@ -1,0 +1,290 @@
+/**
+ * EmptyDesktop.css（L5 克制化，原 O14）
+ * ---------------------------------------------------------------------------
+ * 契约基线 .wb-empty-desktop / .wb-empty-card / .wb-empty-icons / .wb-empty-title
+ * / .wb-empty-hint / .wb-empty-hint-arrow 在 workbench.css（冻结）。
+ * 本文件只新增 wb-empty- 细分前缀类；唯一的基线覆盖是
+ * `.wb-empty-card.wb-empty-card-pro`。动画仅 transform/opacity；
+ * prefers-reduced-motion / minimal 材质档下进场动画关停。
+ */
+
+/* ==== 卡片（单主 CTA，不必为三卡加宽） ==== */
+.wb-empty-card.wb-empty-card-pro {
+  position: absolute;
+  top: 18px;
+  left: 24px;
+  width: 292px;
+  /* 窄桌面（<412px 工作区）下钳到非负，避免负 max-width 布局未定义行为 */
+  max-width: max(180px, calc(100% - 412px));
+  padding: 20px 22px 18px;
+  align-items: flex-start;
+  text-align: left;
+}
+
+/* ==== 插画区：单图标，无光晕/星点 ==== */
+.wb-empty-scene {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.wb-empty-card-pro .wb-empty-icons {
+  margin-bottom: 6px;
+}
+
+/* ==== 主 CTA ==== */
+.wb-empty-cta-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+  pointer-events: auto;
+}
+
+.wb-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 13px;
+  border: 1px solid color-mix(in hsl, hsl(var(--primary)) 42%, hsl(var(--border)) 58%);
+  border-radius: 10px;
+  background: color-mix(in hsl, hsl(var(--primary)) 14%, transparent 86%);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, hsl(var(--foreground)));
+  transition:
+    transform 160ms var(--wb-ease-out, ease-out),
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.wb-empty-cta:hover {
+  transform: translateY(-1px);
+  background: color-mix(in hsl, hsl(var(--primary)) 22%, transparent 78%);
+  border-color: color-mix(in hsl, hsl(var(--primary)) 55%, hsl(var(--border)) 45%);
+}
+
+.wb-empty-cta:active {
+  transform: translateY(0);
+}
+
+.wb-empty-cta:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 70%);
+  outline-offset: 1px;
+}
+
+/* ==== 首启 4 步 tour ==== */
+.wb-empty-tour {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px 10px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  border-radius: 10px;
+  background: color-mix(in hsl, hsl(var(--card)) 28%, transparent 72%);
+  text-align: left;
+  pointer-events: auto;
+}
+
+.wb-empty-tour-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+}
+
+.wb-empty-tour-icon {
+  display: inline-flex;
+  color: hsl(var(--primary));
+  opacity: 0.9;
+}
+
+.wb-empty-tour-title {
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-empty-tour-progress {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.wb-empty-tour-body {
+  margin-top: 8px;
+}
+
+.wb-empty-tour-step-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-empty-tour-step-desc {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+}
+
+.wb-empty-tour-shortcut {
+  margin: 8px 0 0;
+}
+
+.wb-empty-tour-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.wb-empty-tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 35%, transparent 65%);
+}
+
+.wb-empty-tour-dot[data-active='true'] {
+  width: 14px;
+  background: hsl(var(--primary));
+}
+
+.wb-empty-tour-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.wb-empty-tour-btn {
+  margin: 0;
+  padding: 4px 9px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity 140ms ease, transform 140ms var(--wb-ease-out, ease-out),
+    background-color 140ms ease;
+}
+
+.wb-empty-tour-btn:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 70%);
+  outline-offset: 1px;
+}
+
+.wb-empty-tour-btn-ghost {
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  opacity: 0.9;
+}
+
+.wb-empty-tour-btn-ghost:hover {
+  opacity: 1;
+  background: hsl(var(--muted-foreground) / 8%);
+}
+
+.wb-empty-tour-btn-primary {
+  margin-left: auto;
+  color: hsl(var(--primary));
+  font-weight: 600;
+  background: hsl(var(--primary) / 10%);
+}
+
+.wb-empty-tour-btn-primary:hover {
+  transform: translateY(-1px);
+  background: hsl(var(--primary) / 16%);
+}
+
+.wb-empty-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  min-width: 18px;
+  height: 17px;
+  justify-content: center;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 75%, transparent 25%);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: color-mix(in hsl, hsl(var(--card)) 70%, transparent 30%);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-empty-kbd-plus {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* ==== 进场：整卡子元素错拍上浮 ==== */
+.wb-empty-rise {
+  animation: wb-empty-rise-in 380ms var(--wb-ease-out, ease-out) both;
+}
+
+.wb-empty-rise-2 {
+  animation-delay: 50ms;
+}
+
+.wb-empty-rise-3 {
+  animation-delay: 100ms;
+}
+
+.wb-empty-rise-4 {
+  animation-delay: 160ms;
+}
+
+.wb-empty-rise-5 {
+  animation-delay: 230ms;
+}
+
+@keyframes wb-empty-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-empty-rise {
+    animation-duration: 0ms;
+    animation-delay: 0ms;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-empty-rise {
+  animation-duration: 0ms;
+  animation-delay: 0ms;
+}
+
+@media (width <= 1040px) {
+  .wb-empty-card.wb-empty-card-pro {
+    width: 260px;
+    max-width: calc(100% - 404px);
+    padding: 17px 18px;
+  }
+
+  .wb-empty-card-pro .wb-empty-hint {
+    font-size: 11px;
+  }
+}

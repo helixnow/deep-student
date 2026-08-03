@@ -26,6 +26,9 @@ import {
   LOAD_SKILLS_TOOL_NAME,
   syncLoadedSkillsFromBackend,
 } from '../../skills/progressiveDisclosure';
+import { reloadSkills } from '../../skills/loader';
+// 🆕 skill_remove 成功后清理本地启停覆盖（trust 记录由后端 executor 清理）
+import { setSkillDisabled } from '../../skills/skillEnableStorage';
 // 🆕 2026-02-16: 工具调用生命周期调试插件
 import {
   emitToolCallDebug,
@@ -33,6 +36,11 @@ import {
   trackStart,
   trackEnd,
 } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+// ACR R2-05: 与恢复路径共用 workbench_* 判定
+import {
+  isWorkbenchOpsToolName,
+  stripToolNamePrefix,
+} from '@/features/chat/utils/workbenchBlockRemap';
 
 // ============================================================================
 // 辅助函数
@@ -70,6 +78,40 @@ function updateWorkspaceStatusBlockSnapshot(
       }
     }
   }
+}
+
+/**
+ * 从后端刷新指定工作区的 agents 列表并同步到 workspaceStore，
+ * 同时更新已有 workspace_status 块的快照。
+ * workspace_create / workspace_create_agent / subagent_call(auto_created_workspace) 共用。
+ */
+function refreshWorkspaceAgents(store: ChatStore, workspaceId: string): void {
+  void (async () => {
+    try {
+      const { listAgents, agentMetadataFromInfo } = await import('../../workspace/api');
+      const sessionId = store.sessionId;
+      if (!sessionId) {
+        return;
+      }
+      const agentsData = await listAgents(sessionId, workspaceId);
+      const convertedAgents: WorkspaceAgent[] = agentsData.map((a) => ({
+        sessionId: a.session_id,
+        workspaceId,
+        role: a.role as WorkspaceAgent['role'],
+        skillId: a.skill_id,
+        status: a.status as WorkspaceAgent['status'],
+        joinedAt: a.joined_at,
+        lastActiveAt: a.last_active_at,
+        metadata: agentMetadataFromInfo(a),
+        // 🆕 C12: inbox 未消费消息数（后端查询失败为 0）
+        pendingInboxCount: a.pending_inbox_count,
+      }));
+      useWorkspaceStore.getState().setAgents(convertedAgents);
+      updateWorkspaceStatusBlockSnapshot(store, workspaceId, convertedAgents);
+    } catch (e: unknown) {
+      console.warn('[ToolCall] refreshWorkspaceAgents failed for', workspaceId, e);
+    }
+  })();
 }
 
 // ============================================================================
@@ -133,13 +175,26 @@ const toolCallEventHandler: EventHandler = {
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
     // 这样 SleepBlockComponent 才能渲染，展示嵌入的子代理 ChatContainer
-    const strippedToolName = (toolName || '')
-      .replace('builtin-', '')
-      .replace('mcp.tools.', '')
-      .replace(/^.*\./, '');
+    // 🆕 subagent_call 创建 subagent_embed 块，与后端历史加载映射（context.rs
+    // get_block_type_for_tool_static）保持一致，使嵌入卡片在实时流式时也能出现
+    const strippedToolName = stripToolNamePrefix(toolName);
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
-    const blockType = isSleepTool ? 'sleep' : isAskUserTool ? 'ask_user' : 'mcp_tool';
+    const isSubagentCallTool = strippedToolName === 'subagent_call';
+    // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块
+    const isWorkspaceSendTool = strippedToolName === 'workspace_send';
+    // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops（撤销入口）
+    const blockType = isSleepTool
+      ? 'sleep'
+      : isAskUserTool
+        ? 'ask_user'
+        : isSubagentCallTool
+          ? 'subagent_embed'
+          : isWorkspaceSendTool
+            ? 'workspace_send'
+            : isWorkbenchOpsToolName(toolName)
+              ? 'workbench_ops'
+              : 'mcp_tool';
 
     // 🆕 2026-01-16: 尝试复用已存在的 preparing 块
     let preparingBlockId: string | undefined;
@@ -172,21 +227,27 @@ const toolCallEventHandler: EventHandler = {
       }
     } else if (preparingBlockId) {
       // 情况 2: 有 preparing 块 + 无后端 block_id，直接复用
-      // 🆕 2026-01-21: 如果是 sleep 工具，需要更新块类型
-      if (isSleepTool) {
-        store.updateBlock(preparingBlockId, { type: 'sleep' } as any);
+      // 🆕 2026-01-21: 如果 preparing 块类型与目标块类型不一致（sleep/subagent_embed 等），更新块类型
+      const preparingBlock = store.blocks.get(preparingBlockId);
+      if (preparingBlock && preparingBlock.type !== blockType) {
+        store.updateBlock(preparingBlockId, { type: blockType } as any);
       }
       blockId = preparingBlockId;
     } else if (backendBlockId) {
       // 情况 3: 无 preparing 块 + 有后端 block_id
-      // 使用后端 block_id 创建新块
-      blockId = store.createBlockWithId(messageId, blockType, backendBlockId);
+      // 工具的瞬时失败重试会对同一逻辑块再次发 start。已存在时直接复用，
+      // 否则 createBlockWithId 会把同一 ID 再次追加到 message.blockIds。
+      blockId = store.blocks.has(backendBlockId)
+        ? backendBlockId
+        : store.createBlockWithId(messageId, blockType, backendBlockId);
     } else {
       // 情况 4: 无 preparing 块 + 无后端 block_id
       // 前端生成 block_id
       blockId = store.createBlock(messageId, blockType);
     }
 
+    // ACR R2-05：桥 runId 现为 block_id；workbench 卡把 toolCallId 与 block.id 都保留，
+    // 撤销经 resolveWorkbenchRunId(hasRun) 选账本实际键。流式仍写 LLM toolCallId。
     // 设置完整的工具信息，清空 preparing 阶段积累的 args 预览 content
     store.updateBlock(blockId, {
       toolName,
@@ -194,6 +255,9 @@ const toolCallEventHandler: EventHandler = {
       toolCallId,
       isPreparing: false,
       content: '',
+      error: undefined,
+      toolOutput: undefined,
+      endedAt: undefined,
     });
 
     // 🔧 修复：立即将状态更新为 running
@@ -353,7 +417,7 @@ const toolCallEventHandler: EventHandler = {
 
           void (async () => {
             try {
-              const { listAgents } = await import('../../workspace/api');
+              const { listAgents, agentMetadataFromInfo } = await import('../../workspace/api');
               if (!sessionId) {
                 return;
               }
@@ -367,6 +431,9 @@ const toolCallEventHandler: EventHandler = {
                 status: a.status as WorkspaceAgent['status'],
                 joinedAt: a.joined_at,
                 lastActiveAt: a.last_active_at,
+                metadata: agentMetadataFromInfo(a),
+                // 🆕 C12: inbox 未消费消息数
+                pendingInboxCount: a.pending_inbox_count,
               }));
 
               workspaceStore.setAgents(convertedAgents);
@@ -519,7 +586,8 @@ const toolCallEventHandler: EventHandler = {
           }
 
           const mappedStatus: WorkspaceAgent['status'] =
-            agentResult.status === 'auto_starting'
+            // 'dispatched' 是后端原生派发的新状态；'auto_starting' 为旧版兼容
+            agentResult.status === 'dispatched' || agentResult.status === 'auto_starting'
               ? 'running'
               : agentResult.status === 'completed'
                 ? 'completed'
@@ -539,7 +607,7 @@ const toolCallEventHandler: EventHandler = {
 
           void (async () => {
             try {
-              const { listAgents } = await import('../../workspace/api');
+              const { listAgents, agentMetadataFromInfo } = await import('../../workspace/api');
               const agentsData = await listAgents(store.sessionId || 'unknown', agentResult.workspace_id!);
               const convertedAgents: WorkspaceAgent[] = agentsData.map((a) => ({
                 sessionId: a.session_id,
@@ -549,6 +617,9 @@ const toolCallEventHandler: EventHandler = {
                 status: a.status as WorkspaceAgent['status'],
                 joinedAt: a.joined_at,
                 lastActiveAt: a.last_active_at,
+                metadata: agentMetadataFromInfo(a),
+                // 🆕 C12: inbox 未消费消息数
+                pendingInboxCount: a.pending_inbox_count,
               }));
               workspaceStore.setAgents(convertedAgents);
 
@@ -558,6 +629,51 @@ const toolCallEventHandler: EventHandler = {
               console.warn('[ToolCall] workspace_create_agent: failed to refresh agents', e);
             }
           })();
+        }
+      }
+
+      // 🆕 单 Task 委托：subagent_call 缺省 workspace_id 时后端自动创建工作区并把
+      // 当前会话注册为 coordinator（auto_created_workspace=true）。前端参照
+      // workspace_create 成功后的逻辑做等价的 store 关联刷新，使工作区面板可见。
+      if (toolName === 'subagent_call' && unwrappedResult && typeof unwrappedResult === 'object') {
+        const subagentResult = unwrappedResult as {
+          workspace_id?: string;
+          agent_session_id?: string;
+          run_id?: string;
+          status?: string;
+          auto_created_workspace?: boolean;
+        };
+        if (subagentResult.auto_created_workspace === true && subagentResult.workspace_id) {
+          console.log(
+            '[ToolCall] subagent_call auto-created workspace, syncing store:',
+            subagentResult.workspace_id
+          );
+
+          const workspaceStore = useWorkspaceStore.getState();
+          const now = new Date().toISOString();
+          const sessionId = store.sessionId;
+
+          workspaceStore.setCurrentWorkspace(subagentResult.workspace_id);
+          workspaceStore.setWorkspace({
+            id: subagentResult.workspace_id,
+            status: 'active',
+            creatorSessionId: sessionId,
+            createdAt: now,
+            updatedAt: now,
+          });
+
+          refreshWorkspaceAgents(store, subagentResult.workspace_id);
+
+          const logDebug = (window as any).__multiAgentDebug?.log;
+          if (logDebug) {
+            logDebug('block', 'FRONTEND_SUBAGENT_AUTO_CREATED_WORKSPACE', {
+              blockId,
+              workspaceId: subagentResult.workspace_id,
+              agentSessionId: subagentResult.agent_session_id,
+              runId: subagentResult.run_id,
+              status: subagentResult.status,
+            }, 'info');
+          }
         }
       }
 
@@ -656,6 +772,54 @@ const toolCallEventHandler: EventHandler = {
               console.warn('[ToolCall] Failed to persist template_preview block:', e);
             }
           })();
+        }
+      }
+
+      // 技能安装/工坊落地/删除成功后，立即重扫文件系统注册表，
+      // 避免技能管理页仍显示变更前的旧列表。
+      const isSkillFilesystemMutatingTool =
+        toolName === 'skill_install' ||
+        toolName === 'skill_market_download_and_scan' ||
+        toolName === 'skill_workshop_apply' ||
+        toolName === 'skill_remove';
+      if (isSkillFilesystemMutatingTool && unwrappedResult && typeof unwrappedResult === 'object') {
+        const mutateResult = unwrappedResult as {
+          skill_id?: unknown;
+          applied?: unknown;
+          removed?: unknown;
+          installed?: unknown;
+          scan?: { skill_id?: unknown };
+          path?: unknown;
+        };
+        const mutatedSkillId =
+          typeof mutateResult.skill_id === 'string'
+            ? mutateResult.skill_id
+            : typeof mutateResult.scan?.skill_id === 'string'
+              ? mutateResult.scan.skill_id
+              : null;
+        const mutated =
+          typeof mutatedSkillId === 'string' &&
+          mutatedSkillId.length > 0 &&
+          (toolName !== 'skill_workshop_apply' || mutateResult.applied === true) &&
+          (toolName !== 'skill_remove' || mutateResult.removed === true) &&
+          (toolName !== 'skill_market_download_and_scan' || mutateResult.installed === true);
+        if (mutated) {
+          // skill_remove：后端已删目录 + provenance + 信任记录；
+          // 这里同步清掉 localStorage 里的启停覆盖，避免残留条目
+          if (toolName === 'skill_remove') {
+            try {
+              setSkillDisabled(mutatedSkillId, false);
+            } catch (error) {
+              console.warn('[ToolCall] Failed to clear enable override after skill_remove:', error);
+            }
+          }
+          void reloadSkills()
+            .then(() => {
+              console.log('[ToolCall] Reloaded skills after', toolName, mutatedSkillId);
+            })
+            .catch((error: unknown) => {
+              console.warn('[ToolCall] Failed to reload skills after', toolName, error);
+            });
         }
       }
 
@@ -864,13 +1028,25 @@ const toolCallPreparingEventHandler: EventHandler = {
     if (toolCallId) trackPreparing(toolCallId, toolName);
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
-    const strippedToolName = (toolName || '')
-      .replace('builtin-', '')
-      .replace('mcp.tools.', '')
-      .replace(/^.*\./, '');
+    // 🆕 subagent_call 创建 subagent_embed 块（与实时/历史两条路径的块类型保持一致）
+    const strippedToolName = stripToolNamePrefix(toolName);
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
-    const blockType = isSleepTool ? 'sleep' : isAskUserTool ? 'ask_user' : 'mcp_tool';
+    const isSubagentCallTool = strippedToolName === 'subagent_call';
+    // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块（与执行块类型保持一致）
+    const isWorkspaceSendTool = strippedToolName === 'workspace_send';
+    // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops
+    const blockType = isSleepTool
+      ? 'sleep'
+      : isAskUserTool
+        ? 'ask_user'
+        : isSubagentCallTool
+          ? 'subagent_embed'
+          : isWorkspaceSendTool
+            ? 'workspace_send'
+            : isWorkbenchOpsToolName(toolName)
+              ? 'workbench_ops'
+              : 'mcp_tool';
 
     // 创建预渲染的工具块（使用后端 block_id 或前端生成）
     const blockId = backendBlockId

@@ -1,13 +1,13 @@
 /**
  * OCR 策略设置区块
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise, CircleNotch } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/shad/Switch';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
@@ -38,16 +38,18 @@ const SettingRow = ({
   description?: string;
   children: React.ReactNode;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="w-[200px] flex-shrink-0">
+    {/* 移动端占满行宽（提高滑块可用行程），≥md 才收敛为固定列宽 */}
+    <div className="w-full md:w-[200px] flex-shrink-0">
       {children}
     </div>
   </div>
@@ -67,16 +69,24 @@ const SwitchRow = ({
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
 }) => (
-  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 rounded">
+  // 整行可点切换，开关本体 stopPropagation 避免双重切换
+  <div
+    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
+    onClick={() => {
+      if (!disabled) onCheckedChange(!checked);
+    }}
+  >
     <div className="flex-1 min-w-0">
       <h3 className={cn("text-sm leading-tight", disabled ? "text-muted-foreground/50" : "text-foreground/90")}>{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+    <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+    </span>
   </div>
 );
 
@@ -123,12 +133,12 @@ const Slider: React.FC<{
       onChange={(e) => onChange(parseFloat(e.target.value))}
       disabled={disabled}
       className={cn(
-        "flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer accent-primary",
+        "settings-range-slider flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer",
         disabled && "opacity-50 cursor-not-allowed"
       )}
     />
     {showValue && (
-      <span className="text-[11px] text-muted-foreground/70 min-w-[3.5rem] text-right">
+      <span className="text-xs text-muted-foreground/70 min-w-[3.5rem] text-right">
         {value}{suffix}
       </span>
     )}
@@ -183,7 +193,7 @@ export const OcrSettingsSection: React.FC = () => {
     try {
       setSaving(true);
       await invoke('save_setting', { key, value });
-      showGlobalNotification('success', t('common:config_saved', '配置已保存'));
+      showGlobalNotification('success', t('common:config_saved'));
     } finally {
       setSaving(false);
     }
@@ -235,7 +245,7 @@ export const OcrSettingsSection: React.FC = () => {
         save('ocr.scanned_pdf', 'true'),
       ]);
       setConfig(DEFAULT_CONFIG);
-      showGlobalNotification('success', t('settings:ocr.reset_success', '设置已重置为默认值'));
+      showGlobalNotification('success', t('settings:ocr.reset_success'));
     } catch (error: unknown) {
       console.error('重置设置失败:', error);
       showGlobalNotification('error', t('common:messages.error.update_failed', { error: String(error) }));
@@ -247,7 +257,7 @@ export const OcrSettingsSection: React.FC = () => {
   if (loading) {
     return (
       <div>
-        <GroupTitle title={t('settings:ocr.title', 'OCR 识别设置')} />
+        <GroupTitle title={t('settings:ocr.title')} />
         <div className="flex items-center justify-center py-6">
           <CircleNotch size={20} className="animate-spin text-muted-foreground" />
         </div>
@@ -258,9 +268,9 @@ export const OcrSettingsSection: React.FC = () => {
   return (
     <div>
       <GroupTitle 
-        title={t('settings:ocr.title', 'OCR 识别设置')}
+        title={t('settings:ocr.title')}
         rightSlot={
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleReset}
@@ -268,25 +278,25 @@ export const OcrSettingsSection: React.FC = () => {
             className="gap-1"
           >
             <ArrowCounterClockwise size={12} />
-            {t('common:actions.reset', '重置')}
-          </NotionButton>
+            {t('common:actions.reset')}
+          </DsButton>
         }
       />
 
       {/* 基本设置 */}
-      <SubGroupTitle title={t('settings:ocr.general.title', '基本设置')} />
+      <SubGroupTitle title={t('settings:ocr.general.title')} />
       <div className="space-y-px">
         <SwitchRow
-          title={t('settings:ocr.general.enabled', '启用自动 OCR')}
-          description={t('settings:ocr.general.enabled_desc', '上传图片或扫描版 PDF 时自动进行文字识别')}
+          title={t('settings:ocr.general.enabled')}
+          description={t('settings:ocr.general.enabled_desc')}
           checked={config.enabled}
           onCheckedChange={(v) => handleToggle('enabled', 'ocr.enabled', v)}
           disabled={saving}
         />
 
         <SwitchRow
-          title={t('settings:ocr.general.skip_multimodal', '多模态模型跳过 OCR')}
-          description={t('settings:ocr.general.skip_multimodal_desc', '当前聊天模型支持图片理解时，跳过 OCR')}
+          title={t('settings:ocr.general.skip_multimodal')}
+          description={t('settings:ocr.general.skip_multimodal_desc')}
           checked={config.skipForMultimodal}
           onCheckedChange={(v) => handleToggle('skipForMultimodal', 'ocr.skip_for_multimodal', v)}
           disabled={saving || !config.enabled}
@@ -294,11 +304,11 @@ export const OcrSettingsSection: React.FC = () => {
       </div>
 
       {/* 图片识别 */}
-      <SubGroupTitle title={t('settings:ocr.images.title', '图片识别')} />
+      <SubGroupTitle title={t('settings:ocr.images.title')} />
       <div className="space-y-px">
         <SwitchRow
-          title={t('settings:ocr.images.enabled', '图片自动 OCR')}
-          description={t('settings:ocr.images.enabled_desc', '上传图片时自动进行文字识别')}
+          title={t('settings:ocr.images.enabled')}
+          description={t('settings:ocr.images.enabled_desc')}
           checked={config.ocrImages}
           onCheckedChange={(v) => handleToggle('ocrImages', 'ocr.images', v)}
           disabled={saving || !config.enabled}
@@ -306,19 +316,19 @@ export const OcrSettingsSection: React.FC = () => {
       </div>
 
       {/* PDF 识别 */}
-      <SubGroupTitle title={t('settings:ocr.pdf.title', 'PDF 识别')} />
+      <SubGroupTitle title={t('settings:ocr.pdf.title')} />
       <div className="space-y-px">
         <SwitchRow
-          title={t('settings:ocr.pdf.enabled', '扫描版 PDF 自动 OCR')}
-          description={t('settings:ocr.pdf.enabled_desc', '当 PDF 提取的文本少于阈值时，自动进行多页 OCR')}
+          title={t('settings:ocr.pdf.enabled')}
+          description={t('settings:ocr.pdf.enabled_desc')}
           checked={config.ocrScannedPdf}
           onCheckedChange={(v) => handleToggle('ocrScannedPdf', 'ocr.scanned_pdf', v)}
           disabled={saving || !config.enabled}
         />
 
         <SettingRow
-          title={t('settings:ocr.pdf.threshold', 'PDF 文本阈值')}
-          description={t('settings:ocr.pdf.threshold_desc', '提取的文本字符数少于此值时，触发 OCR')}
+          title={t('settings:ocr.pdf.threshold')}
+          description={t('settings:ocr.pdf.threshold_desc')}
         >
           <Slider
             value={config.pdfTextThreshold}
@@ -334,8 +344,8 @@ export const OcrSettingsSection: React.FC = () => {
 
       {/* 说明提示 */}
       <div className="mt-6 py-3 px-1">
-        <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
-          {t('settings:ocr.tip', 'OCR 会使用配置的 OCR 模型进行文字识别。对于多页 PDF，会逐页进行识别并支持断点续传。')}
+        <p className="text-xs text-muted-foreground/60 leading-relaxed">
+          {t('settings:ocr.tip')}
         </p>
       </div>
     </div>

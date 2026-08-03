@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bug } from '@phosphor-icons/react';
@@ -20,7 +20,11 @@ type StreamEventDetail = DebugEvent & {
 
 const TOGGLE_POS_STORAGE_KEY = 'dstu-debug-toggle-pos';
 
-const GlobalDebugPanel = () => {
+interface GlobalDebugPanelProps {
+  openRequest?: number;
+}
+
+const GlobalDebugPanel = ({ openRequest = 0 }: GlobalDebugPanelProps) => {
   const debugEnabled = useMemo(() => getDebugEnabled(), []);
   const { t } = useTranslation('common');
   // visible 控制面板是否展开（true）或隐藏（false）
@@ -47,7 +51,7 @@ const GlobalDebugPanel = () => {
     return { x: window.innerWidth - 60, y: window.innerHeight - 60 };
   });
   const [isDraggingToggle, setIsDraggingToggle] = useState(false);
-  const toggleDragStart = useRef({ dx: 0, dy: 0, moved: false });
+  const toggleDragStart = useRef({ dx: 0, dy: 0, startX: 0, startY: 0, moved: false });
 
   // 在测试/autorun参数存在时自动挂载面板宿主（即使不可见也会创建插件，便于autorun）
   useEffect(() => {
@@ -84,6 +88,12 @@ const GlobalDebugPanel = () => {
   }, [hidePanel, openPanel]);
 
   useEffect(() => {
+    if (openRequest > 0) {
+      openPanel();
+    }
+  }, [openPanel, openRequest]);
+
+  useEffect(() => {
     if (!debugEnabled) return;
 
     const handleStreamEvent = (event: Event) => {
@@ -109,8 +119,6 @@ const GlobalDebugPanel = () => {
   }, [debugEnabled]);
 
   useEffect(() => {
-    if (!debugEnabled) return;
-
     const handleToggleEvent = (event?: CustomEvent<{ visible?: boolean }>) => {
       const explicit = event?.detail?.visible;
       if (typeof explicit === 'boolean') {
@@ -165,7 +173,7 @@ const GlobalDebugPanel = () => {
         handleHide as EventListener,
       );
     };
-  }, [debugEnabled, hidePanel, openPanel, togglePanel]);
+  }, [hidePanel, openPanel, togglePanel]);
 
   useEffect(() => {
     if (!debugEnabled) return;
@@ -187,7 +195,9 @@ const GlobalDebugPanel = () => {
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const el = document.createElement('div');
-    el.id = 'dstu-debug-toggle-portal';
+    // The shared debug-overlay cleanup CSS intentionally hides generic debug
+    // IDs/classes. Keep this portal under the debugger whitelist.
+    el.id = 'dstu-debugger-toggle-portal';
     el.style.position = 'fixed';
     el.style.left = '0';
     el.style.top = '0';
@@ -205,13 +215,15 @@ const GlobalDebugPanel = () => {
     };
   }, []);
 
-  // 悬浮球拖拽逻辑
+  // 悬浮球拖拽逻辑（Pointer Events：触屏与鼠标共用一条路径）
   useEffect(() => {
     if (!isDraggingToggle) return;
 
-    const handleMove = (ev: MouseEvent) => {
-      const dx = Math.abs(ev.clientX - (togglePos.x + toggleDragStart.current.dx));
-      const dy = Math.abs(ev.clientY - (togglePos.y + toggleDragStart.current.dy));
+    const handleMove = (ev: PointerEvent) => {
+      // moved 判定必须以按下时的指针坐标为基准累计：若与逐帧更新的 togglePos
+      // 比较，慢速拖动每个事件的增量都 <3px，永远不会置位，松手时会误触发 click
+      const dx = Math.abs(ev.clientX - toggleDragStart.current.startX);
+      const dy = Math.abs(ev.clientY - toggleDragStart.current.startY);
       if (dx > 3 || dy > 3) {
         toggleDragStart.current.moved = true;
       }
@@ -228,11 +240,13 @@ const GlobalDebugPanel = () => {
       } catch {}
     };
 
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
     };
   }, [isDraggingToggle, togglePos]);
 
@@ -248,32 +262,32 @@ const GlobalDebugPanel = () => {
     return () => window.removeEventListener('resize', clamp);
   }, []);
 
-  if (!debugEnabled) return null;
-
   const tooltipContent = (
     <>
-      <div className="dstu-debug-toggle__tooltip-label">
+      <div className="dstu-dbg-toggle__tooltip-label">
         {visible ? t('debug_panel.close_hint') : t('debug_panel.open_hint')}
       </div>
       {hasUnseenEvent && !visible && (
-        <div className="dstu-debug-toggle__tooltip-sub">
+        <div className="dstu-dbg-toggle__tooltip-sub">
           {t('debug_panel.new_events')}
         </div>
       )}
       {currentStreamId && (
-        <div className="dstu-debug-toggle__tooltip-sub">
+        <div className="dstu-dbg-toggle__tooltip-sub">
           {t('debug_panel.current_stream', { id: currentStreamId })}
         </div>
       )}
     </>
   );
 
-  const handleToggleMouseDown = (ev: React.MouseEvent) => {
-    if (ev.button !== 0) return;
+  const handleTogglePointerDown = (ev: React.PointerEvent) => {
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     toggleDragStart.current = {
       dx: ev.clientX - togglePos.x,
       dy: ev.clientY - togglePos.y,
+      startX: ev.clientX,
+      startY: ev.clientY,
       moved: false,
     };
     setIsDraggingToggle(true);
@@ -289,18 +303,18 @@ const GlobalDebugPanel = () => {
 
   // 面板未显示时显示悬浮球
   const toggleButton = !visible ? (
-    <CommonTooltip content={tooltipContent} className="dstu-debug-toggle__tooltip">
-      <NotionButton
+    <CommonTooltip content={tooltipContent} className="dstu-dbg-toggle__tooltip">
+      <DsButton
         ref={toggleBtnRef}
         variant="ghost" size="icon" iconOnly
         className={clsx(
-          'dstu-debug-toggle',
-          hasUnseenEvent && 'dstu-debug-toggle--pulse',
-          isDraggingToggle && 'dstu-debug-toggle--dragging',
+          'dstu-dbg-toggle',
+          hasUnseenEvent && 'dstu-dbg-toggle--pulse',
+          isDraggingToggle && 'dstu-dbg-toggle--dragging',
         )}
         aria-label={t('debug_panel.open')}
         aria-pressed={visible}
-        onMouseDown={handleToggleMouseDown}
+        onPointerDown={handleTogglePointerDown}
         onClick={handleToggleClick}
         style={{
           pointerEvents: 'auto',
@@ -311,17 +325,19 @@ const GlobalDebugPanel = () => {
           bottom: 'auto',
           cursor: isDraggingToggle ? 'grabbing' : 'grab',
           userSelect: 'none',
+          // 触摸拖动悬浮球时不触发页面滚动
+          touchAction: 'none',
           transition: isDraggingToggle ? 'none' : 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
         }}
       >
-        <Bug className="dstu-debug-toggle__icon" aria-hidden="true" />
+        <Bug className="dstu-dbg-toggle__icon" aria-hidden="true" />
         <span
           className={clsx(
-            'dstu-debug-toggle__status',
-            hasUnseenEvent && 'dstu-debug-toggle__status--active',
+            'dstu-dbg-toggle__status',
+            hasUnseenEvent && 'dstu-dbg-toggle__status--active',
           )}
 />
-      </NotionButton>
+      </DsButton>
     </CommonTooltip>
   ) : null;
 

@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import {
   MagnifyingGlass,
   X,
+  ArrowLeft,
   ArrowElbowDownLeft,
   Star,
   Clock,
@@ -30,10 +31,11 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useCommandPalette } from './CommandPaletteProvider';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import type { Command, CommandCategory } from './registry/types';
+import type { Command, CommandCategory, CommandView, DependencyResolver } from './registry/types';
 
 // 扩展分类类型，包含特殊分组
 type DisplayCategory = CommandCategory | 'recent' | 'favorites' | 'files' | 'sessions';
@@ -93,6 +95,17 @@ function groupCommandsByCategory(commands: Command[]): Map<DisplayCategory, Comm
   return sortedGroups;
 }
 
+function isCommandAvailableInCurrentContext(
+  command: Command,
+  currentView: CommandView,
+  deps: DependencyResolver,
+): boolean {
+  if (command.visibleInViews?.length && !command.visibleInViews.includes(currentView)) {
+    return false;
+  }
+  return !command.isEnabled || command.isEnabled(deps);
+}
+
 // ==================== 组件 ====================
 
 // 视图模式
@@ -100,7 +113,17 @@ type ViewMode = 'search' | 'recent' | 'favorites';
 
 export function CommandPalette() {
   const { t } = useTranslation(['command_palette', 'common']);
-  const { isOpen, close, searchCommands, executeCommand, deps, currentView } = useCommandPalette();
+  // 移动端没有物理键盘：快捷键徽章与键盘操作提示只在桌面显示
+  const { isSmallScreen } = useBreakpoint();
+  const {
+    isOpen,
+    close,
+    searchCommands,
+    executeCommand,
+    deps,
+    currentView,
+    sessionSearchOnly,
+  } = useCommandPalette();
   
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -108,6 +131,7 @@ export function CommandPalette() {
   const [favoritesVersion, setFavoritesVersion] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   // 标记是否为键盘导航（区分鼠标悬停），只有键盘导航才触发滚动
   const isKeyboardNavRef = useRef(false);
   
@@ -124,15 +148,12 @@ export function CommandPalette() {
     const commands: Command[] = [];
     for (const id of recentIds) {
       const cmd = commandRegistry.getById(id);
-      if (cmd) {
-        // 检查视图限制
-        if (!cmd.visibleInViews || cmd.visibleInViews.length === 0 || cmd.visibleInViews.includes(currentView)) {
-          commands.push(cmd);
-        }
+      if (cmd && isCommandAvailableInCurrentContext(cmd, currentView, deps)) {
+        commands.push(cmd);
       }
     }
     return commands;
-  }, [currentView, isOpen]); // isOpen 变化时刷新
+  }, [currentView, deps, isOpen]); // isOpen 变化时刷新
   
   // 获取收藏的命令
   const favoriteCommands = useMemo(() => {
@@ -140,12 +161,12 @@ export function CommandPalette() {
     const commands: Command[] = [];
     for (const id of favoriteIds) {
       const cmd = commandRegistry.getById(id);
-      if (cmd) {
+      if (cmd && isCommandAvailableInCurrentContext(cmd, currentView, deps)) {
         commands.push(cmd);
       }
     }
     return commands;
-  }, [favoritesVersion]);
+  }, [favoritesVersion, currentView, deps]);
   
   // 搜索结果
   const filteredCommands = useMemo(() => {
@@ -179,7 +200,7 @@ export function CommandPalette() {
     if (!resourceSearchEnabled) return [];
     return sessionResults.map((item) => ({
       id: `${RESOURCE_COMMAND_PREFIX}session.${item.sessionId}`,
-      name: item.title || t('command_palette:untitled', '未命名'),
+      name: item.title || t('command_palette:untitled'),
       description: item.snippet,
       category: 'chat',
       icon: ChatCenteredText,
@@ -189,6 +210,9 @@ export function CommandPalette() {
 
   // 分组结果（搜索模式按分类分组，最近/收藏模式显示为单独分组）
   const groupedCommands = useMemo(() => {
+    if (sessionSearchOnly) {
+      return new Map<DisplayCategory, Command[]>([['sessions', sessionCommands]]);
+    }
     if (viewMode === 'recent') {
       // 最近使用模式，显示为单独分组
       return new Map<DisplayCategory, Command[]>([['recent', filteredCommands]]);
@@ -206,7 +230,7 @@ export function CommandPalette() {
       groups.set('sessions', sessionCommands);
     }
     return groups;
-  }, [filteredCommands, viewMode, fileCommands, sessionCommands]);
+  }, [filteredCommands, viewMode, fileCommands, sessionCommands, sessionSearchOnly]);
   
   // 扁平化命令列表（用于键盘导航）
   const flatCommands = useMemo(() => {
@@ -228,7 +252,7 @@ export function CommandPalette() {
         inputRef.current?.focus();
       });
     }
-  }, [isOpen]);
+  }, [isOpen, sessionSearchOnly]);
 
   // Android 系统返回键 = 关闭面板（自绘 dialog 无 data-state，协调器 Radix 兜底覆盖不到）
   const closeRef = useRef(close);
@@ -240,6 +264,38 @@ export function CommandPalette() {
       return true;
     }, BACK_PRIORITY.overlay);
   }, [isOpen]);
+
+  // 打开期间锁定 body 滚动，防止触屏在遮罩/列表边界拖动时背景滚动穿透
+  //（与 ImageViewer 等浮层同款做法）
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
+  // 移动端全屏内联形态：软键盘弹出时结果区随 visualViewport 收缩，避免底部结果被键盘裁切。
+  // 通过 CSS 变量 --cp-viewport-height 驱动容器高度（见 command-palette.css 移动断点）。
+  useEffect(() => {
+    if (!isOpen || !isSmallScreen) return;
+    const vv = window.visualViewport;
+    const el = containerRef.current;
+    if (!vv || !el) return;
+
+    const sync = () => {
+      el.style.setProperty('--cp-viewport-height', `${Math.round(vv.height)}px`);
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+      el.style.removeProperty('--cp-viewport-height');
+    };
+  }, [isOpen, isSmallScreen]);
   
   // 执行命令并记录历史
   // 资源直达命令（files/sessions）不在注册表中：直接调用其 execute 并关闭面板
@@ -306,7 +362,7 @@ export function CommandPalette() {
           } else {
             showGlobalNotification(
               'warning',
-              t('command_palette:command_disabled', '该命令当前不可用')
+              t('command_palette:command_disabled')
             );
           }
         }
@@ -347,21 +403,33 @@ export function CommandPalette() {
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-label={t('command_palette:title', '命令面板')}
+      aria-label={t('command_palette:title')}
     >
       <div 
-        className="command-palette-container"
+        ref={containerRef}
+        className={cn('command-palette-container', isSmallScreen && 'command-palette-container-mobile')}
         onKeyDown={handleKeyDown}
       >
-        {/* 搜索栏 */}
+        {/* 搜索栏（移动端 = 全屏页顶栏：返回 + 搜索输入） */}
         <div className="command-palette-search">
+          {isSmallScreen && (
+            <button
+              className="command-palette-back-btn"
+              onClick={close}
+              aria-label={t('common:back')}
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
           <div className="command-palette-input-wrapper">
             <MagnifyingGlass className="command-palette-search-icon" size={16} />
             <input
               ref={inputRef}
-              type="text"
+              type="search"
               className="command-palette-input"
-              placeholder={t('command_palette:search_placeholder', '搜索命令...')}
+              placeholder={sessionSearchOnly
+                ? t('command_palette:session_search_placeholder', 'Search sessions...')
+                : t('command_palette:search_placeholder')}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -370,11 +438,13 @@ export function CommandPalette() {
                   setViewMode('search');
                 }
               }}
-              aria-label={t('command_palette:search_placeholder', '搜索命令...')}
+              aria-label={sessionSearchOnly
+                ? t('command_palette:session_search_placeholder', 'Search sessions...')
+                : t('command_palette:search_placeholder')}
             />
           </div>
           {/* 模式切换按钮 */}
-          <div className="command-palette-mode-buttons">
+          {!sessionSearchOnly ? <div className="command-palette-mode-buttons">
             <button
               className={cn(
                 'command-palette-mode-btn',
@@ -384,7 +454,7 @@ export function CommandPalette() {
                 setViewMode(viewMode === 'recent' ? 'search' : 'recent');
                 setSelectedIndex(0);
               }}
-              title={t('command_palette:mode_recent', '最近使用')}
+              title={t('command_palette:mode_recent')}
             >
               <Clock size={16} />
             </button>
@@ -397,18 +467,20 @@ export function CommandPalette() {
                 setViewMode(viewMode === 'favorites' ? 'search' : 'favorites');
                 setSelectedIndex(0);
               }}
-              title={t('command_palette:mode_favorites', '收藏')}
+              title={t('command_palette:mode_favorites')}
             >
               <Star size={16} />
             </button>
-          </div>
-          <button
-            className="command-palette-close-btn"
-            onClick={close}
-            aria-label={t('common:close', '关闭')}
-          >
-            <X size={18} />
-          </button>
+          </div> : null}
+          {!isSmallScreen && (
+            <button
+              className="command-palette-close-btn"
+              onClick={close}
+              aria-label={t('common:close')}
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
         
         {/* 命令列表 */}
@@ -426,23 +498,23 @@ export function CommandPalette() {
           {flatCommands.length === 0 ? (
             <div className="command-palette-empty">
               {viewMode === 'recent'
-                ? t('command_palette:no_recent', '暂无最近使用的命令')
+                ? t('command_palette:no_recent')
                 : viewMode === 'favorites'
-                ? t('command_palette:no_favorites', '暂无收藏的命令')
-                : t('command_palette:no_results', '未找到匹配的命令')}
+                ? t('command_palette:no_favorites')
+                : t('command_palette:no_results')}
             </div>
           ) : (
             Array.from(groupedCommands.entries()).map(([category, commands]) => {
               // 处理特殊分组标签
               let categoryLabel: string;
               if (category === 'recent') {
-                categoryLabel = t('command_palette:mode_recent', '最近使用');
+                categoryLabel = t('command_palette:mode_recent');
               } else if (category === 'favorites') {
-                categoryLabel = t('command_palette:mode_favorites', '收藏');
+                categoryLabel = t('command_palette:mode_favorites');
               } else if (category === 'files') {
-                categoryLabel = t('command_palette:resource_files', '文件');
+                categoryLabel = t('command_palette:resource_files');
               } else if (category === 'sessions') {
-                categoryLabel = t('command_palette:resource_sessions', '会话');
+                categoryLabel = t('command_palette:resource_sessions');
               } else {
                 categoryLabel = t(
                   `command_palette:categories.${category}`,
@@ -497,8 +569,8 @@ export function CommandPalette() {
                             )}
                             onClick={(e) => handleToggleFavorite(command.id, e)}
                             title={commandFavorites.isFavorite(command.id)
-                              ? t('command_palette:unfavorite', '取消收藏')
-                              : t('command_palette:favorite', '收藏')
+                              ? t('command_palette:unfavorite')
+                              : t('command_palette:favorite')
                             }
                           >
                             {commandFavorites.isFavorite(command.id) ? (
@@ -509,7 +581,7 @@ export function CommandPalette() {
                           </button>
                         )}
                         {/* 显示有效快捷键（优先使用自定义快捷键） */}
-                        {!isResource && (() => {
+                        {!isResource && !isSmallScreen && (() => {
                           const effectiveShortcut = shortcutManager.getShortcut(command.id);
                           return effectiveShortcut ? (
                             <div className="command-palette-item-shortcut">
@@ -526,23 +598,25 @@ export function CommandPalette() {
           )}
         </CustomScrollArea>
         
-        {/* 底部提示 */}
+        {/* 底部提示（键盘操作提示，仅桌面显示） */}
+        {!isSmallScreen && (
         <div className="command-palette-footer">
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">↑↓</span>
-            <span>{t('command_palette:hint_navigate', '导航')}</span>
+            <span>{t('command_palette:hint_navigate')}</span>
           </div>
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">
               <ArrowElbowDownLeft size={12} />
             </span>
-            <span>{t('command_palette:hint_execute', '执行')}</span>
+            <span>{t('command_palette:hint_execute')}</span>
           </div>
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">Esc</span>
-            <span>{t('command_palette:hint_close', '关闭')}</span>
+            <span>{t('command_palette:hint_close')}</span>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { NotificationContainer } from '@/components/NotificationContainer';
 import { UnifiedNotification } from '@/components/UnifiedNotification';
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key === 'close_notification' ? '关闭通知' : key,
+  }),
+}));
+
 describe('UnifiedNotification dismiss affordance', () => {
   it('renders a compact right-side close icon that dismisses the toast', () => {
     vi.useFakeTimers();

@@ -1,0 +1,116 @@
+{
+  "title": "Quick Learning",
+  "window": {
+    "pin": "Keep open (don't hide on blur)",
+    "unpin": "Restore auto-hide",
+    "hide": "Hide"
+  },
+  "actions": {
+    "ask": { "label": "Ask directly", "hint": "Conclusion first, then explanation" },
+    "explain": { "label": "Explain it", "hint": "Concepts, relations, and examples" },
+    "translate": { "label": "Translate", "hint": "Keep terms and formulas" },
+    "summarize": { "label": "Key points", "hint": "Thesis + points + keywords" },
+    "hint": { "label": "Hints only", "hint": "No answer — focus and approach" }
+  },
+  "features": {
+    "search": { "label": "Find learning records", "hint": "Notes, textbooks, mistakes, chats" },
+    "review": { "label": "Review due cards", "hint": "Squeeze in one card" },
+    "status": { "label": "Today's status", "hint": "Todos and review progress" }
+  },
+  "menu": {
+    "aria_label": "Learning actions",
+    "recommended": "Best"
+  },
+  "input": {
+    "placeholder": "Paste a problem, concept, text or screenshot to start…",
+    "placeholder_with_capture": "Add your question, or pick an action…",
+    "search_placeholder": "Search notes, textbooks, mistakes and chats…"
+  },
+  "capture": {
+    "chars": "{{count}} chars",
+    "chars_truncated": "{{count}} chars (truncated)",
+    "clear": "Clear captured content (Backspace also clears when input is empty)"
+  },
+  "asked": {
+    "toggle": "Click to expand / collapse"
+  },
+  "answer": {
+    "copy": "Copy answer",
+    "thinking": "Thinking about this content",
+    "save_to": "Save as",
+    "note": "Note",
+    "mistake": "Mistake",
+    "card": "Card",
+    "todo": "Todo",
+    "continue_in_main": "Continue in app"
+  },
+  "search": {
+    "title": "Find learning records",
+    "empty": "Type at least 2 characters to search",
+    "searching": "Searching your learning content…",
+    "conversation_fallback": "Past conversation",
+    "found": "Found {{count}} items",
+    "none": "Nothing found"
+  },
+  "review": {
+    "title": "Review due cards",
+    "remaining": "{{count}} left",
+    "preparing": "Preparing review",
+    "unnamed": "Untitled card",
+    "no_answer": "No answer yet",
+    "show_answer": "Show answer",
+    "again": "Again",
+    "hard": "Hard",
+    "good": "Good",
+    "easy": "Easy",
+    "done_title": "All due cards are done for today",
+    "done_subtitle": "Head back to the app to start something new",
+    "rated": "Review progress updated"
+  },
+  "status": {
+    "title": "Today's status",
+    "pending": "Pending",
+    "today_due": "Due today",
+    "overdue": "Overdue",
+    "today_completed": "Done today",
+    "open_plan": "Open study plan"
+  },
+  "messages": {
+    "need_content": "Type or paste something to learn first",
+    "working": "{{action}}…",
+    "done": "Done · save it to your learning system",
+    "saving": "Saving as {{target}}…",
+    "saved": "Saved as {{target}}",
+    "copied": "Answer copied",
+    "copy_failed": "Copy failed",
+    "ocr_running": "Recognizing image…",
+    "ocr_done": "Screenshot content captured",
+    "ocr_empty": "No text recognized"
+  },
+  "footer": {
+    "home": "↑↓ select · Enter run · Esc hide",
+    "answer_busy": "Esc to stop generating",
+    "back": "Esc to go back"
+  },
+  "errors": {
+    "generation_failed": "Generation failed",
+    "stopped": "Generation stopped",
+    "timeout": "Generation timed out, please retry",
+    "mistake_save_failed": "Failed to save mistake",
+    "image_read_failed": "Failed to read image"
+  },
+  "service": {
+    "group_name": "Quick Learning",
+    "default_title": "Quick learning",
+    "note_title": "Quick learning note",
+    "note_source_heading": "Original content",
+    "note_answer_heading": "Takeaways",
+    "note_pending": "To be organized",
+    "mistake_pending": "Analysis pending",
+    "card_pending": "Answer pending",
+    "todo_title": "Continue learning",
+    "tag": "quick-learning",
+    "mistake_tag": "quick-capture",
+    "need_content": "Type or paste learning content first"
+  }
+}

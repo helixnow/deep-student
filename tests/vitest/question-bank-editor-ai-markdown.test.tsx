@@ -7,7 +7,7 @@ import type { Question, SubmitResult } from '@/api/questionBankApi';
 
 vi.mock('@/hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ isSmallScreen: false }),
-  // NotionDialog 等共享组件直接消费 useIsMobile/useIsTablet，模块级 mock 需补齐
+  // DsDialog 等共享组件直接消费 useIsMobile/useIsTablet，模块级 mock 需补齐
   useIsMobile: () => false,
   useIsTablet: () => false,
 }));

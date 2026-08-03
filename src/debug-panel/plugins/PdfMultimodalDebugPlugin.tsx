@@ -19,7 +19,6 @@ import {
   Warning,
   CheckCircle,
   XCircle,
-  FileImage,
   FileText,
   ArrowClockwise,
   Image as ImageIcon,
@@ -319,17 +318,16 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     setLogs(getPdfDebugLogs());
   }, []);
 
-  // 监听新日志
+  // 监听新日志；激活时自动开始捕获，失活/卸载时恢复原始 console，避免全局副作用泄漏。
+  // 注意：deps 不含 isCapturing，否则手动「停止」会触发 effect 重跑并立即重新开始捕获。
   useEffect(() => {
     if (!isActivated) return;
 
     loadLogs();
 
-    // 自动开始捕获
-    if (!isCapturing) {
-      startInterceptingConsole();
-      setIsCapturing(true);
-    }
+    // 自动开始捕获（startInterceptingConsole 内部幂等）
+    startInterceptingConsole();
+    setIsCapturing(true);
 
     const handleNewLog = (e: CustomEvent<PdfDebugLog>) => {
       setLogs((prev) => [...prev, e.detail]);
@@ -345,8 +343,10 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     return () => {
       window.removeEventListener(PDF_DEBUG_EVENT, handleNewLog as EventListener);
       window.removeEventListener('pdf-multimodal-debug-cleared', handleClear);
+      stopInterceptingConsole();
+      setIsCapturing(false);
     };
-  }, [isActivated, loadLogs, isCapturing]);
+  }, [isActivated, loadLogs]);
 
   // 清空日志
   const handleClear = useCallback(() => {

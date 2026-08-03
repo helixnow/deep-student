@@ -12,7 +12,6 @@
 
 import { modeRegistry, type SystemPromptContext, type ModeInitConfig } from '../../registry';
 import type { ChatStore } from '../../core/types';
-import { RagPanel } from '../chat/RagPanel';
 import { ModelPanel } from '../chat/ModelPanel';
 import { AdvancedPanel } from '../chat/AdvancedPanel';
 import { McpPanel } from '../chat/McpPanel';
@@ -69,8 +68,8 @@ modeRegistry.register('chat', {
 
   // ========== 输入栏扩展 ==========
 
-  /** RAG 知识库面板 */
-  renderRagPanel: RagPanel,
+  // RAG 设置已迁入对话控制面板（AdvancedPanel），不再注册独立 RAG 面板；
+  // 注册会让 ⌘⇧K 打开一个无任何渲染出口的"幽灵面板"（占用互斥/返回键状态）
 
   /** 模型选择面板 */
   renderModelPanel: ModelPanel,

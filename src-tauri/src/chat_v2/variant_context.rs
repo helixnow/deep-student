@@ -1074,28 +1074,42 @@ impl ParallelExecutionManager {
     /// 1. 第一个 success 状态的变体
     /// 2. 第一个 cancelled 状态的变体
     /// 3. 第一个变体（即使是 error）
+    ///
+    /// 🔧 P1-3 修复（07 报告）：内部容器是 HashMap，迭代序受 SipHash 随机种子影响，
+    /// 之前「第一个」每次运行都可能不同，与前端 / `ChatMessage::select_best_active_variant`
+    /// 的插入序语义分叉。现在按 (created_at, variant_id) 确定性排序后再选取，
+    /// created_at 即创建顺序，与 Vec<Variant> 插入序一致。
     pub fn get_first_success(&self) -> Option<String> {
         let contexts = self
             .variant_contexts
             .read()
             .unwrap_or_else(|e| e.into_inner());
 
-        // 优先级 1: 找第一个 success 的
-        for (id, ctx) in contexts.iter() {
+        // 确定性顺序：按创建时间 + 变体 ID 排序（ID 兜底保证同毫秒创建时依然稳定）
+        let mut ordered: Vec<(&String, &Arc<VariantExecutionContext>)> = contexts.iter().collect();
+        ordered.sort_by(|(id_a, ctx_a), (id_b, ctx_b)| {
+            ctx_a
+                .created_at()
+                .cmp(&ctx_b.created_at())
+                .then_with(|| id_a.cmp(id_b))
+        });
+
+        // 优先级 1: 第一个 success 的
+        for (id, ctx) in &ordered {
             if ctx.status() == variant_status::SUCCESS {
-                return Some(id.clone());
+                return Some((*id).clone());
             }
         }
 
-        // 优先级 2: 找第一个 cancelled 的
-        for (id, ctx) in contexts.iter() {
+        // 优先级 2: 第一个 cancelled 的
+        for (id, ctx) in &ordered {
             if ctx.status() == variant_status::CANCELLED {
-                return Some(id.clone());
+                return Some((*id).clone());
             }
         }
 
         // 优先级 3: 返回第一个（即使是 error）
-        contexts.keys().next().cloned()
+        ordered.first().map(|(id, _)| (*id).clone())
     }
 
     /// 检查是否所有变体都已完成

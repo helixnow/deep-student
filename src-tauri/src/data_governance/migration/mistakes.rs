@@ -101,6 +101,190 @@ pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::ne
 )
 .idempotent();
 
+/// V20260705: 为 document_tasks 补充 source_session_id
+///
+/// 该列此前由 legacy 运行时代码动态添加（database/mod.rs 的 ALTER TABLE），
+/// 未纳入治理迁移，导致 schema 指纹漂移。此迁移将其正式声明。
+/// 旧库已存在该列时由 make_alter_columns_safe 幂等跳过。
+pub const V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID: MigrationDef = MigrationDef::new(
+    20260705,
+    "add_document_tasks_source_session_id",
+    include_str!(
+        "../../../migrations/mistakes/V20260705__add_document_tasks_source_session_id.sql"
+    ),
+)
+.with_expected_columns(&[("document_tasks", "source_session_id")])
+.idempotent();
+
+/// V20260709: Flashcard FSRS schema（牌组 / 调度状态 / 复习日志）
+///
+/// 独立于 anki_cards 内容表，不向 anki_cards 添加调度列。
+pub const V20260709_FLASHCARD_FSRS: MigrationDef = MigrationDef::new(
+    20260709,
+    "flashcard_fsrs",
+    include_str!("../../../migrations/mistakes/V20260709__flashcard_fsrs.sql"),
+)
+.with_expected_tables(&["anki_decks", "fsrs_card_states", "fsrs_review_logs"])
+.with_expected_indexes(&["idx_fsrs_due", "idx_fsrs_logs_card"])
+.idempotent();
+
+/// V20260710: Anki 同步 Receipt 回写字段
+///
+/// Sync 成功后写回 anki_note_id / export_status / last_exported_at / content_hash。
+/// 与 V20260709 FSRS 迁移错开版本（Refinery 不支持 V20260709_1 后缀命名）。
+///
+/// 字段级 merge 策略已在 classification.rs 登记：receipt 四列作为一组走 row-level LWW
+/// （以最新导出为准），不进入 field_merge 自动合并 picklist。
+pub const V20260710_ANKI_EXPORT_RECEIPT: MigrationDef = MigrationDef::new(
+    20260710,
+    "anki_export_receipt",
+    include_str!("../../../migrations/mistakes/V20260710__anki_export_receipt.sql"),
+)
+.with_expected_columns(&[
+    ("anki_cards", "anki_note_id"),
+    ("anki_cards", "export_status"),
+    ("anki_cards", "last_exported_at"),
+    ("anki_cards", "content_hash"),
+])
+.idempotent();
+
+/// V20260711: FSRS RowSync coverage and orphan cleanup
+pub const V20260711_FSRS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
+    20260711,
+    "fsrs_sync_coverage",
+    include_str!("../../../migrations/mistakes/V20260711__fsrs_sync_coverage.sql"),
+)
+.with_expected_columns(&[
+    ("fsrs_card_states", "device_id"),
+    ("fsrs_card_states", "local_version"),
+    ("fsrs_card_states", "deleted_at"),
+    ("fsrs_review_logs", "created_at"),
+    ("fsrs_review_logs", "updated_at"),
+    ("fsrs_review_logs", "device_id"),
+    ("fsrs_review_logs", "local_version"),
+    ("fsrs_review_logs", "deleted_at"),
+])
+.with_expected_indexes(&[
+    "idx_anki_decks_device_version",
+    "idx_fsrs_card_states_device_version",
+    "idx_fsrs_review_logs_device_version",
+])
+.idempotent();
+
+/// V20260712: 完整 FSRS 评分前快照，支持无损撤销最后一次评分
+pub const V20260712_FSRS_UNDO_SNAPSHOT: MigrationDef = MigrationDef::new(
+    20260712,
+    "fsrs_undo_snapshot",
+    include_str!("../../../migrations/mistakes/V20260712__fsrs_undo_snapshot.sql"),
+)
+.with_expected_columns(&[("fsrs_review_logs", "state_before_json")])
+.with_expected_indexes(&["idx_fsrs_logs_state_active"])
+.idempotent();
+
+/// V20260713: APKG imports preserve every Anki `cards` row.
+///
+/// Generated cards retain content-based document deduplication. APKG rows use
+/// their local card id because several cards can legitimately share one note.
+pub const V20260713_APKG_CARD_IDENTITY: MigrationDef = MigrationDef::new(
+    20260713,
+    "apkg_card_identity",
+    include_str!("../../../migrations/mistakes/V20260713__apkg_card_identity.sql"),
+)
+.with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
+.idempotent();
+
+/// V20260714: 周期自动化定义、原子领取状态与可查询运行历史
+pub const V20260714_AUTOMATION_SCHEDULER: MigrationDef = MigrationDef::new(
+    20260714,
+    "automation_scheduler",
+    include_str!("../../../migrations/mistakes/V20260714__automation_scheduler.sql"),
+)
+.with_expected_tables(&["automation_definitions", "automation_runs"])
+.with_expected_indexes(&[
+    "idx_automation_definitions_enabled_next",
+    "idx_automation_definitions_updated",
+    "idx_automation_runs_automation_created",
+    "idx_automation_runs_retry_due",
+    "idx_automation_runs_status_updated",
+])
+.idempotent();
+
+/// V20260715: automation process leases, explicit-retry intent, and orphan cleanup
+pub const V20260715_HARDEN_AUTOMATION_RUNTIME: MigrationDef = MigrationDef::new(
+    20260715,
+    "harden_automation_runtime",
+    include_str!("../../../migrations/mistakes/V20260715__harden_automation_runtime.sql"),
+)
+.with_expected_columns(&[
+    ("automation_runs", "lease_expires_at"),
+    ("automation_runs", "retry_requested"),
+])
+.with_expected_indexes(&["idx_automation_runs_owner_lease"])
+.idempotent();
+
+/// V20260721: optional hash-locked trusted execution profile for agent automations.
+pub const V20260721_TRUSTED_AUTOMATION_PROFILE: MigrationDef = MigrationDef::new(
+    20260721,
+    "trusted_automation_profile",
+    include_str!("../../../migrations/mistakes/V20260721__trusted_automation_profile.sql"),
+)
+.with_expected_columns(&[("automation_definitions", "trusted_profile_json")])
+.idempotent();
+
+/// V20260722: FSRS 调度器加固（leech、bury 到期时间与复习统计索引）
+pub const V20260722_FSRS_SCHEDULER_HARDENING: MigrationDef = MigrationDef::new(
+    20260722,
+    "fsrs_scheduler_hardening",
+    include_str!("../../../migrations/mistakes/V20260722__fsrs_scheduler_hardening.sql"),
+)
+.with_expected_columns(&[
+    ("fsrs_card_states", "leech"),
+    ("fsrs_card_states", "buried_until_ms"),
+])
+.with_expected_indexes(&["idx_fsrs_logs_review_ms"])
+.idempotent();
+
+/// V20260723: 内置模板用户态标记（user_modified / user_deleted）
+///
+/// 支撑模板 CRUD 加固：内置模板版本升级导入跳过用户改过/删过的模板，
+/// 删除内置模板改为打墓碑标记（停用）而非物理删除，保证模板 ID 稳定。
+pub const V20260723_TEMPLATE_USER_STATE: MigrationDef = MigrationDef::new(
+    20260723,
+    "template_user_state",
+    include_str!("../../../migrations/mistakes/V20260723__template_user_state.sql"),
+)
+.with_expected_columns(&[
+    ("custom_anki_templates", "user_modified"),
+    ("custom_anki_templates", "user_deleted"),
+])
+.with_expected_indexes(&["idx_custom_anki_templates_user_deleted"])
+.idempotent();
+
+/// V20260724: Anki 去重索引忽略软删除卡片。
+///
+/// 旧索引已经保证活跃卡片不存在重复；重建为 partial unique index 后，
+/// 软删除卡片不再阻止重新生成相同内容。
+pub const V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED: MigrationDef = MigrationDef::new(
+    20260724,
+    "anki_dedup_index_exclude_deleted",
+    include_str!("../../../migrations/mistakes/V20260724__anki_dedup_index_exclude_deleted.sql"),
+)
+.with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
+.idempotent();
+
+/// V20260720: durable FSRS -> mastery outbox marker.
+pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
+    20260720,
+    "fsrs_mastery_outbox",
+    include_str!("../../../migrations/mistakes/V20260720__fsrs_mastery_outbox.sql"),
+)
+.with_expected_columns(&[
+    ("fsrs_review_logs", "mastery_synced_at"),
+    ("fsrs_review_logs", "mastery_revert_pending"),
+])
+.with_expected_indexes(&["idx_fsrs_review_logs_mastery_pending"])
+.idempotent();
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -227,6 +411,19 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260209_ANKI_CARD_DEDUP_UNIQUE,
         V20260523_ADD_MISSING_SYNC_COVERAGE,
         V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
+        V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID,
+        V20260709_FLASHCARD_FSRS,
+        V20260710_ANKI_EXPORT_RECEIPT,
+        V20260711_FSRS_SYNC_COVERAGE,
+        V20260712_FSRS_UNDO_SNAPSHOT,
+        V20260713_APKG_CARD_IDENTITY,
+        V20260714_AUTOMATION_SCHEDULER,
+        V20260715_HARDEN_AUTOMATION_RUNTIME,
+        V20260720_FSRS_MASTERY_OUTBOX,
+        V20260721_TRUSTED_AUTOMATION_PROFILE,
+        V20260722_FSRS_SCHEDULER_HARDENING,
+        V20260723_TEMPLATE_USER_STATE,
+        V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED,
     ],
 };
 
@@ -368,9 +565,111 @@ mod tests {
         assert_eq!(field_deltas.name, "add_change_log_field_deltas");
         assert!(field_deltas.idempotent);
 
+        let source_session = MISTAKES_MIGRATIONS
+            .get(20260705)
+            .expect("V20260705 should exist");
+        assert_eq!(source_session.name, "add_document_tasks_source_session_id");
+        assert!(source_session.idempotent);
+
+        let flashcard_fsrs = MISTAKES_MIGRATIONS
+            .get(20260709)
+            .expect("V20260709 should exist");
+        assert_eq!(flashcard_fsrs.name, "flashcard_fsrs");
+        assert!(flashcard_fsrs.idempotent);
+        assert!(flashcard_fsrs.expected_tables.contains(&"fsrs_card_states"));
+
+        let export_receipt = MISTAKES_MIGRATIONS
+            .get(20260710)
+            .expect("V20260710 should exist");
+        assert_eq!(export_receipt.name, "anki_export_receipt");
+        assert!(export_receipt.idempotent);
+        assert!(export_receipt
+            .expected_columns
+            .contains(&("anki_cards", "anki_note_id")));
+
+        let fsrs_sync = MISTAKES_MIGRATIONS
+            .get(20260711)
+            .expect("V20260711 should exist");
+        assert_eq!(fsrs_sync.name, "fsrs_sync_coverage");
+        assert!(fsrs_sync.idempotent);
+        assert!(fsrs_sync
+            .expected_columns
+            .contains(&("fsrs_review_logs", "deleted_at")));
+        assert!(fsrs_sync
+            .sql
+            .contains("trg_fsrs_cleanup_before_anki_card_delete"));
+
+        let fsrs_undo = MISTAKES_MIGRATIONS
+            .get(20260712)
+            .expect("V20260712 should exist");
+        assert_eq!(fsrs_undo.name, "fsrs_undo_snapshot");
+        assert!(fsrs_undo.idempotent);
+        assert!(fsrs_undo
+            .expected_columns
+            .contains(&("fsrs_review_logs", "state_before_json")));
+        assert!(fsrs_undo
+            .expected_indexes
+            .contains(&"idx_fsrs_logs_state_active"));
+
+        let apkg_identity = MISTAKES_MIGRATIONS
+            .get(20260713)
+            .expect("V20260713 should exist");
+        assert_eq!(apkg_identity.name, "apkg_card_identity");
+        assert!(apkg_identity.idempotent);
+        assert!(apkg_identity
+            .sql
+            .contains("WHEN source_type = 'apkg_import'"));
+
+        let automation_scheduler = MISTAKES_MIGRATIONS
+            .get(20260714)
+            .expect("V20260714 should exist");
+        assert_eq!(automation_scheduler.name, "automation_scheduler");
+        assert!(automation_scheduler.idempotent);
+        assert!(automation_scheduler
+            .expected_tables
+            .contains(&"automation_runs"));
+
+        let mastery_outbox = MISTAKES_MIGRATIONS
+            .get(20260720)
+            .expect("V20260720 should exist");
+        assert_eq!(mastery_outbox.name, "fsrs_mastery_outbox");
+        assert!(mastery_outbox
+            .expected_columns
+            .contains(&("fsrs_review_logs", "mastery_synced_at")));
+
+        let fsrs_scheduler = MISTAKES_MIGRATIONS
+            .get(20260722)
+            .expect("V20260722 should exist");
+        assert_eq!(fsrs_scheduler.name, "fsrs_scheduler_hardening");
+        assert!(fsrs_scheduler.idempotent);
+        assert!(fsrs_scheduler
+            .expected_columns
+            .contains(&("fsrs_card_states", "leech")));
+        assert!(fsrs_scheduler
+            .expected_columns
+            .contains(&("fsrs_card_states", "buried_until_ms")));
+
+        let template_user_state = MISTAKES_MIGRATIONS
+            .get(20260723)
+            .expect("V20260723 should exist");
+        assert_eq!(template_user_state.name, "template_user_state");
+        assert!(template_user_state.idempotent);
+        assert!(template_user_state
+            .expected_columns
+            .contains(&("custom_anki_templates", "user_modified")));
+        assert!(template_user_state
+            .expected_columns
+            .contains(&("custom_anki_templates", "user_deleted")));
+
+        let anki_dedup = MISTAKES_MIGRATIONS
+            .get(20260724)
+            .expect("V20260724 should exist");
+        assert_eq!(anki_dedup.name, "anki_dedup_index_exclude_deleted");
+        assert!(anki_dedup.idempotent);
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260524,
+            20260724,
             "Latest version should track the newest published mistakes migration"
         );
     }

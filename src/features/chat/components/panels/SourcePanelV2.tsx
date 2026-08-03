@@ -13,9 +13,20 @@ import { type StoreApi } from 'zustand';
 import type { ChatStore } from '../../core/types/store';
 import type { Block } from '../../core/types/block';
 import type { SharedContext } from '../../core/types/message';
+import type { UnifiedSourceBundle } from './sourceTypes';
 import UnifiedSourcePanel from './UnifiedSourcePanel';
-import { extractSourcesFromMessageBlocks, extractSourcesFromSharedContext, hasSourcesInBlocks } from './sourceAdapter';
+import {
+  extractSourcesFromMessageBlocks,
+  extractSourcesFromSharedContext,
+  extractRetrievalErrors,
+  hasActiveRetrievalInBlocks,
+  hasSourcesInBlocks,
+} from './sourceAdapter';
 import { useMessageBlocks } from '../../hooks/useChatStore';
+import { useStableSourceBlocks } from './useStableSourceBlocks';
+
+/** 检索中但尚无来源时使用的空 bundle（保持引用稳定，避免面板重复重置状态） */
+const EMPTY_BUNDLE: UnifiedSourceBundle = { total: 0, groups: [] };
 
 // ============================================================================
 // Props 定义
@@ -40,6 +51,14 @@ export interface SourcePanelV2Props {
    * 这是性能优化选项，适用于父组件已订阅块的场景
    */
   blocks?: Block[];
+
+  /**
+   * 可选：只统计这些块的来源（多变体场景）
+   * 不提供时使用整条消息的全部块。
+   * P0-3 修复：变体卡片内的来源面板必须按 variant.blockIds 过滤，
+   * 否则会把其他变体的引用来源串进当前卡片。
+   */
+  blockIds?: string[];
 
   /**
    * 可选：共享上下文（多变体消息使用）
@@ -72,7 +91,7 @@ export interface SourcePanelV2Props {
  * - 空值处理：无来源时返回 null
  * - 多变体支持：优先使用 sharedContext（如果提供）
  */
-export const SourcePanelV2: React.FC<SourcePanelV2Props> = ({ store, messageId, blocks: propBlocks, sharedContext, className }) => {
+export const SourcePanelV2: React.FC<SourcePanelV2Props> = ({ store, messageId, blocks: propBlocks, blockIds, sharedContext, className }) => {
   // ========== 🚀 P2 性能优化：细粒度订阅 ==========
   // 使用 useMessageBlocks 替代手动订阅整个 blocks Map
   // 只有当该消息的块内容变化时才触发重渲染
@@ -81,31 +100,54 @@ export const SourcePanelV2: React.FC<SourcePanelV2Props> = ({ store, messageId, 
   const subscribedBlocks = useMessageBlocks(store, messageId);
   
   // 优先使用传入的 blocks（避免重复订阅），否则使用订阅的数据
-  const messageBlocks = propBlocks ?? subscribedBlocks;
+  const allMessageBlocks = propBlocks ?? subscribedBlocks;
+
+  // P0-3: 提供 blockIds 时只保留对应的块（多变体：限定当前变体的来源）
+  const messageBlocks = useMemo(
+    () => (blockIds ? allMessageBlocks.filter((block) => blockIds.includes(block.id)) : allMessageBlocks),
+    [allMessageBlocks, blockIds]
+  );
+
+  // 流式期间 content 块每次 flush 都让 messageBlocks 换新引用；
+  // 折叠为"仅来源相关块"的稳定数组，来源未变时 bundle 保持同一引用，
+  // 避免每 flush 重算 + 下游面板因 data 身份变化重置用户交互状态
+  const sourceBlocks = useStableSourceBlocks(messageBlocks);
+
+  // 检索进行中（pending/running 的知识检索块）→ 驱动面板"正在检索"内联态
+  const isRetrieving = useMemo(() => hasActiveRetrievalInBlocks(sourceBlocks), [sourceBlocks]);
 
   // 转换为 UnifiedSourceBundle
   // 优先使用 sharedContext（多变体模式），否则从 blocks 提取
   const sourceBundle = useMemo(() => {
-    // 1. 优先从 sharedContext 提取（多变体消息）
+    // 1. 优先从 sharedContext 提取（多变体消息）；检索失败信息仍从 blocks 提取
     if (sharedContext) {
-      return extractSourcesFromSharedContext(sharedContext);
+      const bundle = extractSourcesFromSharedContext(sharedContext);
+      const errors = extractRetrievalErrors(sourceBlocks);
+      if (!bundle) {
+        return errors.length > 0 ? { total: 0, groups: [], errors } : null;
+      }
+      return errors.length > 0 ? { ...bundle, errors } : bundle;
     }
-    
-    // 2. 从 blocks 提取（单变体消息）
-    if (!hasSourcesInBlocks(messageBlocks)) {
-      return null;
-    }
-    return extractSourcesFromMessageBlocks(messageBlocks);
-  }, [sharedContext, messageBlocks]);
+
+    // 2. 从 blocks 提取（单变体消息；内部已附带检索错误信息）
+    return extractSourcesFromMessageBlocks(sourceBlocks);
+  }, [sharedContext, sourceBlocks]);
 
   // ========== 渲染 ==========
 
-  // 无来源时不渲染
-  if (!sourceBundle) {
+  // 无来源、无检索中时不渲染
+  if (!sourceBundle && !isRetrieving) {
     return null;
   }
 
-  return <UnifiedSourcePanel data={sourceBundle} className={className} />;
+  return (
+    <UnifiedSourcePanel
+      data={sourceBundle ?? EMPTY_BUNDLE}
+      messageId={messageId}
+      isRetrieving={isRetrieving}
+      className={className}
+    />
+  );
 };
 
 // ============================================================================

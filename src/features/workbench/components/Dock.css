@@ -1,0 +1,285 @@
+/**
+ * Dock.css（O5 专属）— Dock 动效层
+ * ---------------------------------------------------------------------------
+ * 只新增 wb-dock- 细分前缀类，不重定义 workbench.css 契约类
+ * （wb-dock / wb-dock-item / wb-dock-indicator / wb-dock-badge）。
+ * 复合选择器覆盖（更高特异性，已在 O5 进度文件声明，交 O20 reconcile）：
+ *   `.wb-dock.wb-dock-slide` 接管 autohide 的 transform（复合 translate(-50%, y)，
+ *   COORDINATION 裁决形式），替代 P5 的 Tailwind translate 类。
+ *
+ * 悬停不做邻近放大/位移（产品裁决：图标保持静止，仅显示 tooltip 应用名）。
+ * 曲线引用 O1 motion.css（--wb-ease-*）；所有动画仅 transform / opacity。
+ */
+
+/* ==== O5 可调 token（挂在 .wb-dock 上） ==== */
+.wb-dock {
+  --wb-dock-scale: 1;
+
+  /* autohide 滑入（spring-soft，无假 overshoot）/ 滑出时长 */
+  --wb-dock-reveal-duration: 300ms;
+  --wb-dock-conceal-duration: 200ms;
+}
+
+/* 水平 padding；element+class 压过契约 shorthand */
+div.wb-dock {
+  gap: calc(0.25rem * var(--wb-dock-scale));
+  padding:
+    calc(0.25rem * var(--wb-dock-scale))
+    calc(0.5rem * var(--wb-dock-scale));
+  border-radius: calc(22px * var(--wb-dock-scale));
+}
+
+.wb-dock .wb-dock-item {
+  width: calc(44px * var(--wb-dock-scale));
+  height: calc(44px * var(--wb-dock-scale));
+  border-radius: calc(12px * var(--wb-dock-scale));
+}
+
+.wb-dock .wb-dock-item-icon {
+  /* 32px 图标在 44px 槽位中约占 95%，减少图标与 Dock 之间的空白。 */
+  transform: scale(var(--wb-dock-scale)) scale(1.3);
+}
+
+/* ==========================================================================
+ * 图标结构层（wb-dock-mag 为历史命名的图标内层；dockGeometry / genie 依赖其
+ * data-wb-dock-mag-item 发现属性，仅作静态布局层，无 hover 放大）
+ * ========================================================================== */
+
+.wb-dock-mag {
+  display: flex;
+}
+
+/* 去掉 hover 灰底（macOS Dock 无 hover 矩形；特异性压过契约类） */
+.wb-dock .wb-dock-item:hover {
+  background-color: transparent;
+}
+
+/* 按压反馈：压暗（macOS）而非缩小（替代契约 scale） */
+.wb-dock-item-icon {
+  transition:
+    transform 90ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    filter 90ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-dock .wb-dock-item:active {
+  transform: none;
+}
+
+.wb-dock .wb-dock-item:active .wb-dock-item-icon {
+  filter: brightness(0.82);
+}
+
+/* 键盘用户（不触发指针放大）：focus-visible 时图标内层放大，与 hover 手感对齐 */
+.wb-dock-item:focus-visible .wb-dock-item-icon {
+  transform: scale(var(--wb-dock-scale)) scale(1.36);
+}
+
+/* 焦点环统一走 O1 焦点 token（压过契约类的 snap-stroke 描边，与全局 a11y 一致） */
+.wb-dock .wb-dock-item:focus-visible {
+  box-shadow: var(--wb-focus-ring);
+}
+
+/* 固定区 / 运行区 / 全部应用 分隔线：颜色走 Dock token（明暗主题自动协调） */
+.wb-dock .wb-dock-separator {
+  background: var(--wb-dock-divider);
+  height: calc(32px * var(--wb-dock-scale));
+  margin-left: calc(0.25rem * var(--wb-dock-scale));
+  margin-right: calc(0.25rem * var(--wb-dock-scale));
+}
+
+/* 角标：微投影提升在彩色图标上的可辨识度（静态样式，非动画） */
+.wb-dock .wb-dock-badge {
+  box-shadow: 0 1px 4px hsl(var(--shadow-base, 0 0% 0%) / 0.28);
+}
+
+/* ==========================================================================
+ * hover tooltip（玻璃气泡带箭头；hover / focus-within 显示，带出现延迟）
+ * ========================================================================== */
+
+.wb-dock-tip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  z-index: 1;
+  padding: 4px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  /* 超长应用名：钳到视口内并省略，避免气泡溢出屏幕 */
+  max-width: min(60vw, 280px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--wb-titlebar-fg, inherit);
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-glass-blur);
+  backdrop-filter: var(--wb-glass-blur);
+  border: 1px solid var(--wb-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 6px 18px hsl(var(--shadow-base, 0 0% 0%) / 0.16);
+  opacity: 0;
+  /* 隐藏态：略下沉 */
+  transform: translate(-50%, 5px) scale(0.94);
+  transform-origin: 50% 100%;
+  pointer-events: none;
+  transition:
+    opacity 130ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 130ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* 指向箭头（旋转小方块，取同款玻璃底色；尺寸极小，blur 差异不可见） */
+.wb-dock-tip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -4.5px;
+  width: 9px;
+  height: 9px;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+  background-color: var(--wb-glass-bg-strong);
+  border-right: 1px solid var(--wb-glass-border);
+  border-bottom: 1px solid var(--wb-glass-border);
+}
+
+.wb-dock-item-wrap:hover .wb-dock-tip,
+.wb-dock-item-wrap:focus-within .wb-dock-tip {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  /* 出现延迟：扫过 Dock 时不闪一排气泡；消失无延迟（macOS 基准 300–500ms） */
+  transition-delay: 350ms;
+}
+
+/* ==========================================================================
+ * 运行指示点：淡入（静态点，无呼吸；基线定位规则不动）
+ * ========================================================================== */
+
+@keyframes wb-dock-ind-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.3);
+  }
+  to {
+    opacity: 0.85;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+.wb-dock-indicator.wb-dock-ind {
+  transform: translateX(-50%);
+  animation: wb-dock-ind-in 240ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+/* ==========================================================================
+ * launch bounce：两段递减弹跳（上升 ease-out / 下落 ease-in 的重力感）
+ * 挂在独立内层 wb-dock-bounce 上，与放大层 transform 互不干扰。
+ * 单次开窗触发（非循环到就绪）；幅度约 0.45× / 0.18× 图标高度（44px）。
+ * ========================================================================== */
+
+@keyframes wb-dock-bounce-launch {
+  0% {
+    transform: translate3d(0, 0, 0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  28% {
+    transform: translate3d(0, -20px, 0);
+    animation-timing-function: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+  }
+  54% {
+    transform: translate3d(0, 0, 0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  76% {
+    transform: translate3d(0, -8px, 0);
+    animation-timing-function: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.wb-dock-bounce {
+  display: flex;
+}
+
+.wb-dock-bounce[data-bouncing] {
+  animation: wb-dock-bounce-launch 780ms linear;
+}
+
+/* ==========================================================================
+ * autohide 滑入滑出（覆盖声明见文件头；复合 translate(-50%, y) 保持水平居中）
+ * 滑入用 spring-soft（平稳微弹，非假 overshoot）；滑出用标准曲线
+ * ========================================================================== */
+
+.wb-dock.wb-dock-slide {
+  transform: translate(-50%, 0);
+  will-change: transform;
+  transition: transform var(--wb-dock-reveal-duration)
+    var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.12, 0.36, 1));
+}
+
+@keyframes wb-dock-reveal {
+  from {
+    transform: translate(-50%, calc(100% + 18px));
+  }
+
+  to {
+    transform: translate(-50%, 0);
+  }
+}
+
+.wb-dock.wb-dock-slide[data-revealing] {
+  animation: wb-dock-reveal var(--wb-dock-reveal-duration)
+    var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.12, 0.36, 1)) both;
+}
+
+.wb-dock.wb-dock-slide[data-hidden] {
+  transform: translate(-50%, calc(100% + 18px));
+  transition-duration: var(--wb-dock-conceal-duration);
+  transition-timing-function: var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+/* ==========================================================================
+ * 降级：reduced-motion / minimal → 关动效
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-dock {
+    --wb-dock-reveal-duration: 0ms;
+    --wb-dock-conceal-duration: 0ms;
+  }
+
+  .wb-dock-indicator.wb-dock-ind,
+  .wb-dock-bounce[data-bouncing],
+  .wb-dock.wb-dock-slide[data-revealing] {
+    animation: none;
+  }
+
+  .wb-dock-tip,
+  .wb-dock-item-icon {
+    transition: none;
+  }
+
+  .wb-dock-item:focus-visible .wb-dock-item-icon {
+    transform: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-dock {
+  --wb-dock-reveal-duration: 0ms;
+  --wb-dock-conceal-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] .wb-dock-indicator.wb-dock-ind,
+:root[data-wb-material='minimal'] .wb-dock-bounce[data-bouncing],
+:root[data-wb-material='minimal'] .wb-dock.wb-dock-slide[data-revealing] {
+  animation: none;
+}
+
+:root[data-wb-material='minimal'] .wb-dock-tip,
+:root[data-wb-material='minimal'] .wb-dock-item-icon {
+  transition: none;
+}

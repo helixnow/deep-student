@@ -1,3 +1,4 @@
+use crate::anki::AnkiCardRepository;
 use crate::database::Database;
 use crate::document_processing_service::DocumentProcessingService;
 use crate::llm_manager::LLMManager;
@@ -264,7 +265,11 @@ impl EnhancedAnkiService {
                         let window_clone = window_clone.clone();
                         async move {
                             if let Err(e) = service
-                                .process_task_and_generate_cards_stream(task, window_clone, Some(ready_tx))
+                                .process_task_and_generate_cards_stream(
+                                    task,
+                                    window_clone,
+                                    Some(ready_tx),
+                                )
                                 .await
                             {
                                 warn!("任务处理失败: {}", e);
@@ -349,7 +354,11 @@ impl EnhancedAnkiService {
                     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
                     let handle = tokio::spawn(async move {
                         if let Err(e) = service
-                            .process_task_and_generate_cards_stream(retry_task, window_clone, Some(ready_tx))
+                            .process_task_and_generate_cards_stream(
+                                retry_task,
+                                window_clone,
+                                Some(ready_tx),
+                            )
                             .await
                         {
                             warn!("统一重试任务处理失败: {}", e);
@@ -427,8 +436,8 @@ impl EnhancedAnkiService {
         };
         let mut running_tasks: Vec<DocumentTask> = doc_tasks
             .iter()
+            .filter(|&t| matches!(t.status, TaskStatus::Processing | TaskStatus::Streaming))
             .cloned()
-            .filter(|t| matches!(t.status, TaskStatus::Processing | TaskStatus::Streaming))
             .collect();
 
         if let Some(task_id) = current_task_id.clone() {
@@ -439,58 +448,39 @@ impl EnhancedAnkiService {
             }
         }
 
-        if !running_tasks.is_empty() {
-            for task in running_tasks {
-                let task_id = task.id.clone();
-                // 通过流服务发出取消信号（硬暂停：断开流）
-                if let Err(e) = self
-                    .streaming_service
-                    .cancel_streaming(task_id.clone())
-                    .await
-                {
-                    warn!("取消流失败: {}，尝试直接中止任务句柄", e);
-                    // 兜底：直接中止运行句柄（若存在）
-                    if let Some((_, h)) = RUNNING_HANDLES.remove(&task_id) {
-                        h.abort();
-                    }
-                }
-
-                // 更新状态
-                self.doc_processor
-                    .update_task_status(&task_id, TaskStatus::Paused, None)?;
-
-                // 派发状态事件
-                // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
-                let payload = StreamedCardPayload::TaskStatusUpdate {
-                    task_id: task_id.clone(),
-                    status: TaskStatus::Paused,
-                    message: None,
-                    segment_index: Some(task.segment_index),
-                    document_id: Some(task.document_id.clone()),
-                };
-                if let Err(e) = window.emit("anki_generation_event", &payload) {
-                    warn!("发送任务状态更新事件失败: {}", e);
-                }
-            }
-        } else {
-            // 无运行任务：将第一个待处理任务置为 Paused 以便前端感知
-            if let Some(t) = doc_tasks
-                .into_iter()
-                .find(|t| matches!(t.status, TaskStatus::Pending))
+        // Pending 保持 Pending；仅将 Processing/Streaming（及 current in-flight）标为 Paused
+        for task in running_tasks {
+            let task_id = task.id.clone();
+            // 通过流服务发出取消信号（硬暂停：断开流）
+            if let Err(e) = self
+                .streaming_service
+                .cancel_streaming(task_id.clone())
+                .await
             {
-                self.doc_processor
-                    .update_task_status(&t.id, TaskStatus::Paused, None)?;
-                // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
-                let payload = StreamedCardPayload::TaskStatusUpdate {
-                    task_id: t.id.clone(),
-                    status: TaskStatus::Paused,
-                    message: None,
-                    segment_index: Some(t.segment_index),
-                    document_id: Some(t.document_id.clone()),
-                };
-                if let Err(e) = window.emit("anki_generation_event", &payload) {
-                    warn!("发送任务状态更新事件失败: {}", e);
+                warn!("取消流失败: {}，尝试直接中止任务句柄", e);
+                // 兜底：直接中止运行句柄（若存在）
+                if let Some((_, h)) = RUNNING_HANDLES.remove(&task_id) {
+                    h.abort();
                 }
+                // abort 后清理可能残留的取消通道，避免泄漏
+                self.streaming_service.clear_cancel_sender(&task_id).await;
+            }
+
+            // abort 兜底后仍写 DB 终态 Paused
+            self.doc_processor
+                .update_task_status(&task_id, TaskStatus::Paused, None)?;
+
+            // 派发状态事件
+            // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
+            let payload = StreamedCardPayload::TaskStatusUpdate {
+                task_id: task_id.clone(),
+                status: TaskStatus::Paused,
+                message: None,
+                segment_index: Some(task.segment_index),
+                document_id: Some(task.document_id.clone()),
+            };
+            if let Err(e) = window.emit("anki_generation_event", &payload) {
+                warn!("发送任务状态更新事件失败: {}", e);
             }
         }
 
@@ -529,7 +519,7 @@ impl EnhancedAnkiService {
         let mut remaining: Vec<DocumentTask> = self
             .doc_processor
             .get_document_tasks(&document_id)
-            .map_err(|e| {
+            .inspect_err(|_e| {
                 if let Some(mut entry) = DOCUMENT_STATES.get_mut(&document_id) {
                     entry.running = false;
                     if !entry.paused {
@@ -537,7 +527,6 @@ impl EnhancedAnkiService {
                         DOCUMENT_STATES.remove(&document_id);
                     }
                 }
-                e
             })?
             .into_iter()
             .filter(|t| matches!(t.status, TaskStatus::Paused | TaskStatus::Pending))
@@ -579,7 +568,7 @@ impl EnhancedAnkiService {
         Ok(())
     }
 
-    /// 手动触发单个任务处理
+    /// 手动触发单个任务处理（单卡级/单任务级重试入口）
     pub async fn trigger_task_processing(
         &self,
         task_id: String,
@@ -589,20 +578,45 @@ impl EnhancedAnkiService {
 
         if !matches!(
             task.status,
-            TaskStatus::Pending | TaskStatus::Failed | TaskStatus::Truncated | TaskStatus::Cancelled
+            TaskStatus::Pending
+                | TaskStatus::Failed
+                | TaskStatus::Truncated
+                | TaskStatus::Cancelled
         ) {
             return Err(AppError::validation("任务状态不是待处理"));
+        }
+
+        // 防重入：任务已注册运行句柄或取消通道时拒绝重复触发，
+        // 避免同一任务被并发处理两次产生重复卡片与状态竞争。
+        if RUNNING_HANDLES.contains_key(&task_id)
+            || self.streaming_service.is_streaming(&task_id).await
+        {
+            return Err(AppError::validation("任务正在处理中，请勿重复触发"));
         }
 
         let streaming_service = Arc::new(self.streaming_service.clone());
         let window_clone = window.clone();
 
-        tokio::spawn(async move {
+        // 与调度协程保持一致的生命周期管理：注册运行句柄 + 就绪信号，
+        // 使暂停/取消路径的 abort 兜底与取消通道同样覆盖手动重试的任务。
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
+        let handle = tokio::spawn(async move {
             if let Err(e) = streaming_service
-                .process_task_and_generate_cards_stream(task, window_clone, None)
+                .process_task_and_generate_cards_stream(task, window_clone, Some(ready_tx))
                 .await
             {
                 tracing::warn!("任务处理失败: {}", e);
+            }
+        });
+        RUNNING_HANDLES.insert(task_id.clone(), handle);
+
+        // 后台等待取消通道注册完成后移除句柄并接管等待，
+        // 与 process_all_tasks_async 中的模式一致（不阻塞命令返回）。
+        tokio::spawn(async move {
+            let _ = ready_rx.await;
+            let owned_handle_opt = RUNNING_HANDLES.remove(&task_id).map(|(_, h)| h);
+            if let Some(handle) = owned_handle_opt {
+                let _ = handle.await;
             }
         });
 
@@ -616,22 +630,29 @@ impl EnhancedAnkiService {
 
     /// 获取任务的卡片列表
     pub fn get_task_cards(&self, task_id: String) -> Result<Vec<AnkiCard>, AppError> {
-        self.db
-            .get_cards_for_task(&task_id)
+        AnkiCardRepository::list_by_task(self.db.as_ref(), &task_id)
             .map_err(|e| AppError::database(format!("获取任务卡片失败: {}", e)))
     }
 
     /// 更新卡片
     pub fn update_anki_card(&self, card: AnkiCard) -> Result<(), AppError> {
-        self.db
-            .update_anki_card(&card)
-            .map_err(|e| AppError::database(format!("更新卡片失败: {}", e)))
+        match self.db.update_anki_card_rows(&card) {
+            Ok(1) => Ok(()),
+            Ok(0) => Err(AppError::not_found(format!(
+                "卡片不存在或已删除: {}",
+                card.id
+            ))),
+            Ok(affected) => Err(AppError::database(format!(
+                "更新卡片影响了异常数量的记录: card={}, affected={}",
+                card.id, affected
+            ))),
+            Err(error) => Err(AppError::database(format!("更新卡片失败: {}", error))),
+        }
     }
 
     /// 删除卡片
     pub fn delete_anki_card(&self, card_id: String) -> Result<(), AppError> {
-        self.db
-            .delete_anki_card(&card_id)
+        AnkiCardRepository::delete(self.db.as_ref(), &card_id)
             .map_err(|e| AppError::database(format!("删除卡片失败: {}", e)))
     }
 
@@ -678,15 +699,20 @@ impl EnhancedAnkiService {
         }) {
             // 运行中的任务先断流
             if matches!(task.status, TaskStatus::Processing | TaskStatus::Streaming) {
-                if let Err(e) = self.streaming_service.cancel_streaming(task.id.clone()).await {
+                if let Err(e) = self
+                    .streaming_service
+                    .cancel_streaming(task.id.clone())
+                    .await
+                {
                     warn!("取消流失败: {}，尝试直接中止任务句柄", e);
                     if let Some((_, h)) = RUNNING_HANDLES.remove(&task.id) {
                         h.abort();
                     }
+                    self.streaming_service.clear_cancel_sender(&task.id).await;
                 }
             }
 
-            // 统一标记为 Cancelled（保留任务记录与已生成卡片）
+            // abort 后仍写 Cancelled 终态（保留任务记录与已生成卡片）
             self.doc_processor
                 .update_task_status(&task.id, TaskStatus::Cancelled, None)?;
 
@@ -702,13 +728,13 @@ impl EnhancedAnkiService {
             }
         }
 
-        // 清理运行状态并宣告文档处理结束（前端据此停止轮询/转入终态）
+        // 清理运行状态并宣告文档已取消（与 Completed 分离，前端保留卡片）
         DOCUMENT_STATES.remove(&document_id);
-        let complete_payload = StreamedCardPayload::DocumentProcessingCompleted {
+        let cancel_payload = StreamedCardPayload::DocumentProcessingCancelled {
             document_id: document_id.clone(),
         };
-        if let Err(e) = window.emit("anki_generation_event", &complete_payload) {
-            warn!("发送文档处理完成事件失败: {}", e);
+        if let Err(e) = window.emit("anki_generation_event", &cancel_payload) {
+            warn!("发送文档处理取消事件失败: {}", e);
         }
 
         Ok(())
@@ -832,14 +858,22 @@ impl EnhancedAnkiService {
             None
         };
 
-        crate::apkg_exporter_service::export_cards_to_apkg_with_template(
-            simple_cards,
-            options.deck_name,
-            options.note_type,
-            output_path.clone(),
-            template_config,
-        )
+        // 导出是纯阻塞的 SQLite/zip 工作：放到 blocking 线程池执行，避免卡住 async runtime
+        let export_output_path = output_path.clone();
+        let runtime_handle = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || {
+            runtime_handle.block_on(
+                crate::apkg_exporter_service::export_cards_to_apkg_with_template(
+                    simple_cards,
+                    options.deck_name,
+                    options.note_type,
+                    export_output_path,
+                    template_config,
+                ),
+            )
+        })
         .await
+        .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?
         .map_err(|e| AppError::file_system(format!("导出APKG失败: {}", e)))?;
 
         if let Some(doc_id) = document_id.as_ref() {
@@ -913,8 +947,10 @@ mod tests {
     use super::*;
     use crate::document_processing_service::DocumentProcessingService;
     use crate::file_manager::FileManager;
-    use crate::models::AnkiGenerationOptions;
+    use crate::models::{AnkiGenerationOptions, AppErrorType};
+    use rusqlite::params;
     use std::sync::Arc;
+    use tempfile::tempdir;
 
     impl EnhancedAnkiService {
         /// Test-only: pause without emitting events (for offline tests)
@@ -1134,5 +1170,94 @@ mod tests {
                 .all(|t| !matches!(t.status, TaskStatus::Paused)),
             "still paused tasks after resume"
         );
+    }
+
+    #[test]
+    fn user_visible_card_update_rejects_card_and_parent_tombstones() {
+        let tmp = tempdir().expect("tempdir");
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            let mut coordinator =
+                MigrationCoordinator::new(tmp.path().to_path_buf()).with_audit_db(None);
+            coordinator
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db = Arc::new(
+            crate::database::Database::new(&tmp.path().join("mistakes.db")).expect("database"),
+        );
+        let file_manager = Arc::new(FileManager::new(tmp.path().to_path_buf()).expect("fm"));
+        let llm = Arc::new(
+            crate::llm_manager::LLMManager::new(db.clone(), file_manager).expect("llm manager"),
+        );
+        let service = EnhancedAnkiService::new(db.clone(), llm);
+        let now = chrono::Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: "task-visible-update".to_string(),
+            document_id: "doc-visible-update".to_string(),
+            original_document_name: "visible update".to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, front: &str| AnkiCard {
+            id: id.to_string(),
+            task_id: task.id.clone(),
+            front: front.to_string(),
+            back: "answer".to_string(),
+            text: None,
+            tags: Vec::new(),
+            images: Vec::new(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        let mut card_tombstone = make_card("card-visible-tombstone", "original card");
+        let mut parent_tombstone = make_card("card-parent-tombstone", "original parent card");
+        db.save_document_task_with_cards_atomic(
+            &task,
+            &[card_tombstone.clone(), parent_tombstone.clone()],
+        )
+        .expect("seed cards");
+
+        card_tombstone.front = "live update".to_string();
+        service
+            .update_anki_card(card_tombstone.clone())
+            .expect("live card updates");
+        {
+            let conn = db.get_conn_safe().expect("connection");
+            conn.execute(
+                "UPDATE anki_cards SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &card_tombstone.id],
+            )
+            .expect("tombstone card");
+        }
+        card_tombstone.front = "must not update card tombstone".to_string();
+        let card_error = service
+            .update_anki_card(card_tombstone)
+            .expect_err("card tombstone must be reported");
+        assert!(matches!(card_error.error_type, AppErrorType::NotFound));
+
+        {
+            let conn = db.get_conn_safe().expect("connection");
+            conn.execute(
+                "UPDATE document_tasks SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &task.id],
+            )
+            .expect("tombstone parent");
+        }
+        parent_tombstone.front = "must not update parent tombstone".to_string();
+        let parent_error = service
+            .update_anki_card(parent_tombstone)
+            .expect_err("parent tombstone must be reported");
+        assert!(matches!(parent_error.error_type, AppErrorType::NotFound));
     }
 }

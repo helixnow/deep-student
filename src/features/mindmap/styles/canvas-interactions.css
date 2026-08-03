@@ -1,0 +1,73 @@
+/**
+ * 画布交互样式（W03，由 MindMapCanvas.tsx 引入；勿放进 mindmap.css）
+ *
+ * 类名契约：
+ * - .mm-canvas-mode-divider           模式开关条内的分隔线（拖拽模式 | 滚轮偏好）
+ * - .mm-canvas-wheel-toggle           滚轮语义偏好开关按钮（复用 mm-canvas-mode-button 基础样式）
+ * - .mm-canvas-zoom-indicator         缩放百分比指示按钮（CanvasZoomIndicator，点击恢复 100%）
+ * - .react-flow__selection            框选矩形品牌化（主色染色 + 圆角）
+ * - [data-mm-selection-count]::after  框选进行中的实时计数徽标
+ *   （data-attribute 由 MindMapCanvas 在 onSelectionStart/Change 时写入）
+ *
+ * 一律使用 --mm-* / 全局 token，禁止硬编码颜色。
+ */
+
+/* ============================================
+   画布模式开关条：分隔线 + 滚轮偏好开关
+   ============================================ */
+
+.mm-canvas-mode-divider {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--mm-border);
+}
+
+/* 滚轮开关文案较长，与拖拽模式按钮同高但允许更紧凑 */
+.mm-canvas-wheel-toggle {
+  min-width: 0;
+}
+
+/* 缩放百分比指示（复用 mm-canvas-mode-button 基础样式）：
+   tabular-nums 防读数跳动，点击恢复 100% */
+.mm-canvas-zoom-indicator {
+  min-width: 46px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 触屏快捷操作条内与 28px 高的 touch-button 对齐 */
+.mm-canvas-touch-actions .mm-canvas-zoom-indicator {
+  height: 28px;
+}
+
+/* ============================================
+   框选矩形品牌化（主色轻染 + 细边 + 圆角）
+   ============================================ */
+
+.mindmap-container .react-flow__selection {
+  background: color-mix(in srgb, var(--mm-primary) 8%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--mm-primary) 60%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mm-primary) 7%, transparent);
+}
+
+/* 框选实时计数徽标：挂在选框右下角，随拖动实时更新 */
+.mindmap-container .react-flow__selection[data-mm-selection-count]::after {
+  content: attr(data-mm-selection-count);
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--mm-primary);
+  color: hsl(var(--primary-foreground));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 2px 6px hsl(var(--shadow-base, var(--foreground)) / 0.25);
+  pointer-events: none;
+}

@@ -10,34 +10,57 @@ export interface EssayTextStats {
   paragraphCount: number;
 }
 
-const HAN_RE = /\p{Script=Han}/gu;
 const EN_WORD_RE = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
-const PUNCT_RE = /\p{P}/gu;
+const HAN_CHAR_RE = /\p{Script=Han}/u;
+const PUNCT_CHAR_RE = /\p{P}/u;
+const WHITESPACE_CHAR_RE = /\s/u;
+const ASCII_PUNCT_CHAR_RE = /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/;
 
 const CN_PUNCTUATION = new Set([
   '，', '。', '！', '？', '；', '：', '、', '（', '）', '【', '】', '《', '》', '〈', '〉',
   '「', '」', '『', '』', '〔', '〕', '“', '”', '‘', '’', '—', '–', '…', '．', '·',
 ]);
 
-const isAsciiPunctuation = (ch: string): boolean => /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/.test(ch);
-
 const countMatches = (text: string, regex: RegExp): number => {
-  const matches = text.match(regex);
-  return matches ? matches.length : 0;
+  regex.lastIndex = 0;
+  let count = 0;
+  while (regex.exec(text) !== null) {
+    count += 1;
+  }
+  return count;
 };
 
+/**
+ * 中英混排字数统计：CJK 按字（Unicode 码点，含扩展区）、英文按词
+ * （撇号/连字符连接的整体算一个词）。单趟逐码点扫描，避免多次全文
+ * match 产生的中间数组分配。
+ */
 export function calculateEssayTextStats(text: string): EssayTextStats {
-  const safeText = text ?? '';
+  const safeText = typeof text === 'string' ? text : '';
+  let hanChars = 0;
+  let punctuationTotal = 0;
   let cnPunctuation = 0;
   let enPunctuation = 0;
   let nonWhitespaceChars = 0;
+  let totalChars = 0;
 
   for (const ch of safeText) {
-    if (!/\s/u.test(ch)) nonWhitespaceChars += 1;
+    totalChars += 1;
+    if (WHITESPACE_CHAR_RE.test(ch)) continue;
+    nonWhitespaceChars += 1;
+    if (HAN_CHAR_RE.test(ch)) {
+      hanChars += 1;
+      continue;
+    }
     if (CN_PUNCTUATION.has(ch)) {
       cnPunctuation += 1;
-    } else if (isAsciiPunctuation(ch)) {
+    } else if (ASCII_PUNCT_CHAR_RE.test(ch)) {
       enPunctuation += 1;
+    }
+    // punctuationTotal 仅统计 Unicode \p{P}（与 en/cn 分类口径独立：
+    // + < = > 等 ASCII 符号计入 enPunctuation 但不属于 \p{P}）
+    if (PUNCT_CHAR_RE.test(ch)) {
+      punctuationTotal += 1;
     }
   }
 
@@ -49,13 +72,13 @@ export function calculateEssayTextStats(text: string): EssayTextStats {
     .length;
 
   return {
-    hanChars: countMatches(safeText, HAN_RE),
+    hanChars,
     englishWords: countMatches(safeText, EN_WORD_RE),
-    punctuationTotal: countMatches(safeText, PUNCT_RE),
+    punctuationTotal,
     cnPunctuation,
     enPunctuation,
     nonWhitespaceChars,
-    totalChars: Array.from(safeText).length,
+    totalChars,
     lineCount,
     paragraphCount,
   };

@@ -87,66 +87,102 @@ export function getPresetAppShortcuts(): PresetShortcut[] {
   const t = (key: string, fallback: string) => i18next.t(key, { defaultValue: fallback, ns: 'learningHub' });
   return [
     {
-      name: t('desktop.presets.newNote', '新建笔记'),
+      name: t('resourceType.note', 'Notes'),
       type: 'app',
-      target: { appType: 'note', action: 'create' },
+      target: { appType: 'note', action: 'list' },
     },
     {
-      name: t('desktop.presets.newExam', '新建题目集'),
+      name: t('resourceType.exam', 'Question sets'),
       type: 'app',
-      target: { appType: 'exam', action: 'create' },
+      target: { appType: 'exam', action: 'list' },
     },
     {
-      name: t('desktop.presets.newEssay', '新建作文'),
+      name: t('resourceType.essay', 'Essay grading'),
       type: 'app',
-      target: { appType: 'essay', action: 'create' },
+      target: { appType: 'essay', action: 'list' },
     },
     {
-      name: t('desktop.presets.newTranslation', '新建翻译'),
+      name: t('resourceType.translation', 'Translation'),
       type: 'app',
-      target: { appType: 'translation', action: 'create' },
+      target: { appType: 'translation', action: 'list' },
     },
     {
-      name: t('desktop.presets.newMindmap', '新建思维导图'),
+      name: t('resourceType.mindmap', 'Mind maps'),
       type: 'app',
-      target: { appType: 'mindmap', action: 'create' },
+      target: { appType: 'mindmap', action: 'list' },
     },
     {
-      name: t('desktop.presets.allNotes', '全部笔记'),
+      name: t('desktop.presets.allNotes', 'All notes'),
       type: 'quickAccess',
       target: { quickAccessType: 'notes' },
     },
     {
-      name: t('desktop.presets.allExams', '全部题目集'),
+      name: t('desktop.presets.allExams', 'All exams'),
       type: 'quickAccess',
       target: { quickAccessType: 'exams' },
     },
     {
-      name: t('desktop.presets.allEssays', '全部作文'),
+      name: t('desktop.presets.allEssays', 'All essays'),
       type: 'quickAccess',
       target: { quickAccessType: 'essays' },
     },
     {
-      name: t('desktop.presets.allTranslations', '全部翻译'),
+      name: t('desktop.presets.allTranslations', 'All translations'),
       type: 'quickAccess',
       target: { quickAccessType: 'translations' },
     },
     {
-      name: t('desktop.presets.mindmaps', '知识导图'),
+      name: t('desktop.presets.mindmaps', 'Mind maps'),
       type: 'quickAccess',
       target: { quickAccessType: 'mindmaps' },
     },
     {
-      name: t('desktop.presets.favorites', '收藏'),
+      name: t('desktop.presets.favorites', 'Favorites'),
       type: 'quickAccess',
       target: { quickAccessType: 'favorites' },
     },
     {
-      name: t('desktop.presets.recentAccess', '最近访问'),
+      name: t('desktop.presets.recentAccess', 'Recent access'),
       type: 'quickAccess',
       target: { quickAccessType: 'recent' },
     },
   ];
+}
+
+/** 将旧版“新建…”桌面图标升级为对应学习应用入口。 */
+export function migrateCreateShortcutsToAppEntries(
+  shortcuts: DesktopShortcut[],
+): DesktopShortcut[] {
+  const entryByType = new Map(
+    getPresetAppShortcuts()
+      .filter(
+        (preset): preset is PresetShortcut & {
+          target: { appType: AppType; action: 'list' };
+        } => preset.type === 'app' && preset.target.action === 'list' && Boolean(preset.target.appType),
+      )
+      .map((preset) => [preset.target.appType, preset]),
+  );
+
+  let changed = false;
+  const migrated = shortcuts.map((shortcut) => {
+    if (
+      shortcut.type !== 'app'
+      || shortcut.target.action !== 'create'
+      || !shortcut.target.appType
+    ) {
+      return shortcut;
+    }
+    const entry = entryByType.get(shortcut.target.appType);
+    if (!entry) return shortcut;
+    changed = true;
+    return {
+      ...shortcut,
+      name: entry.name,
+      target: { ...shortcut.target, action: 'list' as const },
+    };
+  });
+
+  return changed ? migrated : shortcuts;
 }
 
 /**
@@ -470,11 +506,14 @@ export const useDesktopStore = create<DesktopState>()(
       clearShortcuts: () => set({ shortcuts: [] }),
 
       initDefaultShortcuts: () => {
-        const { shortcuts } = get();
-        if (shortcuts.length > 0) return; // 已有快捷方式，不初始化
+        const shortcuts = migrateCreateShortcutsToAppEntries(get().shortcuts);
+        if (shortcuts !== get().shortcuts) {
+          set({ shortcuts });
+        }
+        if (shortcuts.length > 0) return; // 已有快捷方式，仅执行兼容迁移
 
         // 添加默认快捷方式
-        const defaultPresets = [0, 1, 2, 3, 4]; // 新建笔记、题目集、作文、翻译、思维导图
+        const defaultPresets = [0, 1, 2, 3, 4]; // 笔记、题目集、作文、翻译、思维导图应用
         defaultPresets.forEach(index => {
           get().addFromPreset(index);
         });

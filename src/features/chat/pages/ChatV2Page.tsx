@@ -7,80 +7,64 @@
  * 3. 多种功能（RAG/图谱/记忆/网络搜索）
  */
 
-import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Chat, PencilSimple, Check, X, SquaresFour, Books, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, List, ArrowClockwise, Folder, ArrowSquareOut } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { Plus, Chat, X, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, Warning, ArrowSquareOut, SquaresFour } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ChatContainer } from '../components/ChatContainer';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
+import { ThreadEmptyStateShell } from '../components/ui/ThreadEmptyStateShell';
 import { SessionBrowser } from '../components/session-browser';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { TauriAPI } from '@/utils/tauriApi';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 // Learning Hub 学习资源侧边栏
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
 import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
-import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
 import { useNotesOptional } from '@/features/notes/NotesContext';
-import { registerOpenResourceHandler } from '@/dstu/openResource';
-import type { DstuNode } from '@/dstu/types';
-import { mapDstuNodeToLearningHubItem } from './openResourceMapping';
-import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 import { lazy, Suspense } from 'react';
 
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { GroupEditorPanel, PRESET_ICONS } from '../components/groups/GroupEditorDialog';
-import { SessionGroupActions } from './SessionGroupActions';
-import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
 import { useGroupManagement } from '../hooks/useGroupManagement';
 import { useGroupCollapse } from '../hooks/useGroupCollapse';
-import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
+import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
-import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
+import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
-import { SidebarDrawer } from '@/components/ui/unified-sidebar/SidebarDrawer';
+import { MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
-import { useSandboxWorkbenchStore } from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import {
+  createSandboxOwnerKey,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
-// P1-07: 导入命令面板事件 hook
-import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 // P1-07: 导入 sessionManager 以访问当前会话 store
 import { sessionManager } from '../core/session/sessionManager';
-import { groupCache } from '../core/store/groupCache';
-import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useUIStore } from '@/stores/uiStore';
-// 导入默认技能管理器（用于新会话自动激活默认技能）
-// P1-06: 导入 Tauri 文件对话框，用于创建分析会话时选择图片
-import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc } from '@tauri-apps/api/core';
 
 // 懒加载统一应用面板
 const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
 
-// CardForge 2.0 Anki 面板 (Chat V2 集成)
-import { AnkiPanelHost } from '../anki';
-
 // 🆕 对话控制面板（侧栏版）
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { shouldShowSessionActionButtons } from './sessionItemActionVisibility';
-import { groupSessionsByTime, type TimeGroup } from './timeGroups';
 import { useSessionLifecycle } from './useSessionLifecycle';
 import { useSessionEdit } from './useSessionEdit';
 import { useChatPageLayout } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
 import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
-import { getSessionTitleText } from '../utils/sessionTitle';
 import { compareSessionsForSidebar } from '../utils/sessionPin';
 import { StreamPreferencesProvider } from '../components/renderers/StreamPreferencesContext';
+import type { StreamingSmoothingPreset } from '../components/renderers/streamingSmoothing';
 import {
   clearHiddenDraftSessionId,
   clearHiddenDraftSessionMetadata,
@@ -120,15 +104,35 @@ const getAppIcon = (type: ResourceType) => {
   }
 };
 const LAST_SESSION_KEY = 'chat-v2-last-session-id';
-const DESKTOP_SECONDARY_PANEL_TRANSITION_MS = 220;
-const DESKTOP_SECONDARY_PANEL_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+// 次级面板动效对齐 chat 动效 token（motion.css）：
+// - 时长 = --chat-motion-base（200ms）；JS 侧 setTimeout 需要数值，
+//   与下方 duration-[var(--chat-motion-base)] 保持同源语义（token 变更时同步此值）
+// - 缓动 = --chat-motion-ease（标准出口曲线）
+const DESKTOP_SECONDARY_PANEL_TRANSITION_MS = 200;
+const DESKTOP_SECONDARY_PANEL_EASING = 'var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1))';
 const DESKTOP_SECONDARY_PANEL_WIDTH = 'clamp(320px, 42vw, 720px)';
 
 // ============================================================================
 // 组件实现
 // ============================================================================
 
-export const ChatV2Page: React.FC = () => {
+export interface ChatV2PageProps {
+  /**
+   * OS 模式壳层降档信号（缺省 balanced 全速，独立页面/移动端行为不变）：
+   * 窗口不可见时由 ChatAppWindow 经 useDeferredStreamPreset 降为 silky。
+   */
+  streamPreset?: StreamingSmoothingPreset;
+  /**
+   * OS 模式 background 档：壳层已停绘（visibility:hidden），流式渲染提交
+   * 应暂停（token 缓冲不丢，回可见立即补渲）。缺省 false 行为不变。
+   */
+  isSuspended?: boolean;
+}
+
+export const ChatV2Page: React.FC<ChatV2PageProps> = ({
+  streamPreset = 'balanced',
+  isSuspended = false,
+}) => {
   const { t } = useTranslation(['chatV2', 'learningHub', 'common']);
 
   // ========== 页面生命周期监控 ==========
@@ -136,49 +140,65 @@ export const ChatV2Page: React.FC = () => {
 
   // ========== 响应式布局支持 ==========
   const { isSmallScreen } = useBreakpoint();
+  const [sandboxOwnerKey] = useState(() => createSandboxOwnerKey('chat-page'));
 
-  // 状态声明提前，用于 useMobileHeader
+  useEffect(() => {
+    return () => {
+      useSandboxWorkbenchStore.getState().disposeOwner(sandboxOwnerKey);
+    };
+  }, [sandboxOwnerKey]);
+
+  // 状态声明提前，供下方多个布局/事件 hook 使用
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionIdState] = useState<string | null>(null);
 
   // 🔧 P1-26 + P1-28: 包装 setCurrentSessionId
   // - 同步更新 sessionManager（P1-26）
   // - 保存到 localStorage（P1-28）
+  // 副作用移出 setState updater（updater 必须纯函数，StrictMode 下会被双调用）
+  const currentSessionIdRef = useRef<string | null>(null);
   const setCurrentSessionId = useCallback((sessionIdOrUpdater: string | null | ((prev: string | null) => string | null)) => {
-    setCurrentSessionIdState((prev) => {
-      const newId = typeof sessionIdOrUpdater === 'function' ? sessionIdOrUpdater(prev) : sessionIdOrUpdater;
-      // 同步更新 sessionManager 的当前会话 ID
-      sessionManager.setCurrentSessionId(newId);
-      // 🔧 P1-28: 保存到 localStorage（只保存有效的会话 ID）
-      if (newId) {
-        try {
-          // 批判性修复：只持久化普通会话 sess_，避免 Worker 会话 agent_ 污染“上次会话”
-          if (newId.startsWith('sess_')) {
-            localStorage.setItem(LAST_SESSION_KEY, newId);
-          }
-        } catch (e) {
-          console.warn('[ChatV2Page] Failed to save last session ID:', e);
+    const prev = currentSessionIdRef.current;
+    const newId = typeof sessionIdOrUpdater === 'function' ? sessionIdOrUpdater(prev) : sessionIdOrUpdater;
+    currentSessionIdRef.current = newId;
+    // 同步更新 sessionManager 的当前会话 ID
+    sessionManager.setCurrentSessionId(newId);
+    // 🔧 P1-28: 保存到 localStorage（只保存有效的会话 ID）
+    if (newId) {
+      try {
+        // 批判性修复：只持久化普通会话 sess_，避免 Worker 会话 agent_ 污染“上次会话”
+        if (newId.startsWith('sess_')) {
+          localStorage.setItem(LAST_SESSION_KEY, newId);
         }
+      } catch (e) {
+        console.warn('[ChatV2Page] Failed to save last session ID:', e);
       }
-      // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
-      if (newId !== prev) {
-        setOpenApp(null);
-        setAttachmentPreviewOpen(false);
-        useSandboxWorkbenchStore.getState().closeSession();
-      }
-      return newId;
-    });
-  }, [t]);
+    }
+    // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
+    if (newId !== prev) {
+      setOpenApp(null);
+      setAttachmentPreviewOpen(false);
+      useSandboxWorkbenchStore.getState().closeSession(sandboxOwnerKey);
+    }
+    setCurrentSessionIdState(newId);
+  }, [sandboxOwnerKey]);
   // 🔧 P1-005 修复：使用 ref 追踪最新状态，避免 deleteSession 中的闭包竞态条件
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
-  const [learningHubSheetOpen, setLearningHubSheetOpen] = useState(false);
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
-  const sandboxActiveSession = useSandboxWorkbenchStore((state) => state.activeSession);
-  const sandboxWorkbenchOpen = useSandboxWorkbenchStore((state) => state.isOpen);
+  const sandboxActiveSession = useSandboxWorkbenchStore(
+    (state) => selectSandboxWorkbenchOwnerState(state, sandboxOwnerKey).activeSession,
+  );
+  const sandboxWorkbenchOpen = useSandboxWorkbenchStore(
+    (state) => selectSandboxWorkbenchOwnerState(state, sandboxOwnerKey).isOpen,
+  );
+  const activateSandboxOwner = useSandboxWorkbenchStore((state) => state.activateOwner);
   const openSandboxWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
   const closeSandboxWorkbench = useSandboxWorkbenchStore((state) => state.closeWorkbench);
+  const handleSandboxOwnerActivation = useCallback(() => {
+    activateSandboxOwner(sandboxOwnerKey);
+  }, [activateSandboxOwner, sandboxOwnerKey]);
   // 移动端：资源库右侧滑屏状态
   const [mobileResourcePanelOpen, setMobileResourcePanelOpen] = useState(false);
   // 移动端：分组编辑器资源选择回调（右面板复用，返回 'added'|'removed'|false）
@@ -231,30 +251,8 @@ export const ChatV2Page: React.FC = () => {
   }, []);
   const [desktopSecondaryPanelSnapshot, setDesktopSecondaryPanelSnapshot] = useState<DesktopSecondaryPanelSnapshot | null>(null);
 
-  // 监听笔记工具打开事件，在右侧 DSTU 面板中打开笔记
-  const deferredSessionId = useDeferredValue(currentSessionId);
-  // 是否正在切换会话（用于显示加载指示器）
-  // 只有当从一个已存在的会话切换到另一个会话时才显示
-  // - 首次选择会话（null → A）不显示
-  // - 关闭所有会话（A → null）不显示
-  // - 会话间切换（A → B）才显示
-  const isSessionSwitching = currentSessionId !== null && deferredSessionId !== null && currentSessionId !== deferredSessionId;
-
-  // 🚀 防闪动优化：只有切换超过 500ms 才显示加载指示器
-  const [showSwitchingIndicator, setShowSwitchingIndicator] = useState(false);
-
-  useEffect(() => {
-    if (isSessionSwitching) {
-      // 切换开始，延迟 500ms 后显示指示器
-      const timer = setTimeout(() => {
-        setShowSwitchingIndicator(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      // 切换完成，立即隐藏指示器
-      setShowSwitchingIndicator(false);
-    }
-  }, [isSessionSwitching]);
+  // 会话切换加载态统一：由 ChatContainer 负责「保留上一帧 + 轻蒙层」，
+  // 页面级不再叠加第二层全屏切换指示器（避免双指示器打架）
 
   // 会话重命名状态
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -279,6 +277,7 @@ export const ChatV2Page: React.FC = () => {
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<SessionGroup | null>(null);
   const [groupEditorAutoFocusField, setGroupEditorAutoFocusField] = useState<'name' | null>(null);
+  const [groupEditorDirty, setGroupEditorDirty] = useState(false);
   const [pendingArchiveGroup, setPendingArchiveGroup] = useState<SessionGroup | null>(null);
   
   // 视图模式：sidebar（侧边栏+聊天）或 browser（全宽浏览）
@@ -327,8 +326,8 @@ export const ChatV2Page: React.FC = () => {
     const now = new Date().toISOString();
     return staleGroupIds.map((groupId, index) => ({
       id: groupId,
-      name: t('browser.staleTopic', { defaultValue: 'Needs repair' }),
-      description: t('browser.staleTopicDescription', { defaultValue: 'Sessions whose original topic is no longer available.' }),
+      name: t('browser.staleTopic'),
+      description: t('browser.staleTopicDescription'),
       icon: 'Folder',
       color: 'muted',
       defaultSkillIds: [],
@@ -340,7 +339,10 @@ export const ChatV2Page: React.FC = () => {
     }));
   }, [activeGroupIds, sessions, t]);
 
-  const displayGroups = [...groups, ...staleSessionGroups];
+  const displayGroups = useMemo(
+    () => [...groups, ...staleSessionGroups],
+    [groups, staleSessionGroups]
+  );
 
   const groupNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -370,11 +372,22 @@ export const ChatV2Page: React.FC = () => {
   const groupDragDisabled = normalizedSearchQuery.length > 0;
 
   const sessionsForBrowser = useMemo(() => {
+    // ★ 性能：分组查找建 Map，避免每个 session 在 displayGroups 上线性 find
+    // （O(sessions×groups) → O(sessions+groups)）
+    const groupById = new Map(displayGroups.map((group) => [group.id, group]));
     return sessions.map((s) => ({
       ...s,
       groupName: s.groupId ? groupNameMap.get(s.groupId) : undefined,
+      workspaceKey: (() => {
+        const metadata = s.metadata ?? {};
+        const direct = metadata.workspaceId ?? metadata.workspace_id
+          ?? metadata.defaultRuntimeRootId ?? metadata.default_runtime_root_id;
+        if (typeof direct === 'string' && direct.trim()) return direct;
+        const group = s.groupId ? groupById.get(s.groupId) : undefined;
+        return group?.defaultRuntimeRootId ?? 'default';
+      })(),
     }));
-  }, [groupNameMap, sessions]);
+  }, [displayGroups, groupNameMap, sessions]);
 
   // 浏览模式的分组信息
   const browserGroups = useMemo(() => {
@@ -392,7 +405,6 @@ export const ChatV2Page: React.FC = () => {
     () => filteredSessions.filter((s) => !s.groupId),
     [filteredSessions]
   );
-  const groupedSessions = useMemo(() => groupSessionsByTime(ungroupedSessions), [ungroupedSessions]);
 
   useEffect(() => {
     loadGroups();
@@ -404,15 +416,6 @@ export const ChatV2Page: React.FC = () => {
       pruneDeletedGroups(groups.map((g) => g.id));
     }
   }, [groups, pruneDeletedGroups]);
-  
-  // 时间分组标签映射
-  const timeGroupLabels: Record<TimeGroup, string> = {
-    today: t('page.timeGroups.today'),
-    yesterday: t('page.timeGroups.yesterday'),
-    previous7Days: t('page.timeGroups.previous7Days'),
-    previous30Days: t('page.timeGroups.previous30Days'),
-    older: t('page.timeGroups.older'),
-  };
 
   // P1-22: 分页状态
   const PAGE_SIZE = 50;
@@ -521,13 +524,23 @@ export const ChatV2Page: React.FC = () => {
 
     const unsubscribe = store.subscribe((state, prevState) => {
       if (state.title && state.title !== prevState.title) {
-        setSessions((prev) =>
-          prev.map((s) =>
+        setSessions((prev) => {
+          // ★ 性能：列表项已是目标标题时返回原引用，跳过整页重渲染
+          // 及其连带的会话列表排序/分组派生重算
+          const existing = prev.find((s) => s.id === currentSessionId);
+          if (
+            !existing ||
+            (existing.title === state.title &&
+              existing.description === (state.description ?? existing.description))
+          ) {
+            return prev;
+          }
+          return prev.map((s) =>
             s.id === currentSessionId
               ? { ...s, title: state.title, description: state.description ?? s.description }
               : s
-          )
-        );
+          );
+        });
       }
     });
     return unsubscribe;
@@ -543,8 +556,8 @@ export const ChatV2Page: React.FC = () => {
   const {
     startEditSession, saveSessionTitle, cancelEditSession, archiveSession, togglePinSession,
     openCreateGroup, openEditGroup, openRenameGroup, closeGroupEditor,
-    handleSubmitGroup, confirmArchiveGroup,
-    moveSessionToGroup, formatTime,
+    handleSubmitGroup, confirmArchiveGroup, archiveGroupDirect, applySessionGroupUpdate,
+    moveSessionToGroup, handleDragEnd, formatTime,
   } = useSessionEdit({
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
@@ -556,6 +569,25 @@ export const ChatV2Page: React.FC = () => {
     updateGroup, createGroup, archiveGroup, reorderGroups,
     loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups: editableVisibleGroups,
   });
+
+  const groupEditorCloseConfirmKeyRef = useRef(0);
+  useEffect(() => {
+    if (groupEditorOpen) {
+      groupEditorCloseConfirmKeyRef.current += 1;
+    }
+  }, [groupEditorOpen]);
+
+  const requestCloseGroupEditor = useCallback(() => {
+    if (groupEditorDirty && !unifiedConfirm(
+      t('page.groupUnsavedChangesConfirm'),
+      { key: `chat-group-editor-unsaved-${groupEditorCloseConfirmKeyRef.current}` },
+    )) {
+      return false;
+    }
+    setGroupEditorDirty(false);
+    closeGroupEditor();
+    return true;
+  }, [closeGroupEditor, groupEditorDirty, t]);
 
   // ===== 左侧主导航栏分组操作事件监听 =====
   useEffect(() => {
@@ -585,7 +617,21 @@ export const ChatV2Page: React.FC = () => {
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const { action, session, sessionId } = (event as CustomEvent).detail ?? {};
+      const { action, session, sessionId, groupId } = (event as CustomEvent).detail ?? {};
+
+      // 桌面 ModernSidebar 直接删除/移动会话后，同步本页 sessions 状态（避免 Browser/移动列表残留）
+      if (action === 'session-deleted' && typeof sessionId === 'string') {
+        setSessions((prev) => prev.filter((item) => item.id !== sessionId));
+        setTotalSessionCount((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+        void loadUngroupedCount();
+        return;
+      }
+      if (action === 'session-moved' && typeof sessionId === 'string') {
+        applySessionGroupUpdate(sessionId, typeof groupId === 'string' && groupId ? groupId : null);
+        void loadUngroupedCount();
+        return;
+      }
+
       if (action !== 'rename-session') {
         return;
       }
@@ -606,16 +652,45 @@ export const ChatV2Page: React.FC = () => {
 
     window.addEventListener('modern-sidebar:session-action', handler);
     return () => window.removeEventListener('modern-sidebar:session-action', handler);
-  }, [setCurrentSessionId, setSessionSheetOpen, setViewMode, startEditSession]);
+  }, [applySessionGroupUpdate, loadUngroupedCount, setCurrentSessionId, setSessionSheetOpen, setViewMode, startEditSession]);
 
-  // ===== 页面布局 hook =====
-  useChatPageLayout({
-    currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
-    viewMode, sessionSheetOpen, t, sessionCount: sessions.length,
-    createSession, isLoading,
-    mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
-  });
+  // ===== 移动端右屏/子屏收口 =====
+  // 沙箱工作台占据右屏时，顶栏返回箭头与手势/返回键统一走这里收回
+  const mobileSandboxOpen = sandboxWorkbenchOpen && !!sandboxActiveSession;
+  const closeMobileSandbox = useCallback(() => {
+    closeSandboxWorkbench(sandboxOwnerKey);
+    setMobileResourcePanelOpen(false);
+  }, [closeSandboxWorkbench, sandboxOwnerKey]);
+  // 右屏资源预览返回上一层（资源库列表），而非直接退回聊天
+  const closeMobileOpenApp = useCallback(() => {
+    setOpenApp(null);
+  }, []);
+
+  // ===== Android 返回键：中屏子视图（会话浏览 / 分组编辑器）逐层返回 =====
+  // 左/右屏由 MobileSlidingLayout 以 overlay 优先级先行消费，这里只处理中屏内容
+  const mobileCenterBackRef = useRef({ viewMode, groupEditorOpen });
+  mobileCenterBackRef.current = { viewMode, groupEditorOpen };
+  useEffect(() => {
+    if (!isSmallScreen) return;
+    return registerBackHandler(() => {
+      // 页面常驻挂载：仅在 chat-v2 为当前视图时消费返回键
+      if (useViewStore.getState().currentView !== 'chat-v2') return false;
+      const {
+        viewMode: centerMode,
+        groupEditorOpen: editorOpen,
+      } = mobileCenterBackRef.current;
+      if (centerMode === 'browser') {
+        setViewMode('sidebar');
+        setSessionSheetOpen(true);
+        return true;
+      }
+      if (editorOpen) {
+        requestCloseGroupEditor();
+        return true;
+      }
+      return false;
+    }, BACK_PRIORITY.view);
+  }, [isSmallScreen, requestCloseGroupEditor, setSessionSheetOpen, setViewMode]);
 
   // ===== 页面事件 hook =====
   useChatPageEvents({
@@ -639,19 +714,32 @@ export const ChatV2Page: React.FC = () => {
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     startEditSession, saveSessionTitle, cancelEditSession,
     moveSessionToGroup, deleteSession, archiveSession, togglePinSession, formatTime,
+    // B3: 移动端点会话条目后收起左抽屉并回到聊天中屏
+    //（浏览视图下打开抽屉选会话也能闭环；桌面端不渲染该侧栏，空操作无副作用）
+    onSessionActivated: () => {
+      setViewMode('sidebar');
+      setSessionSheetOpen(false);
+    },
   });
 
   // ===== 侧边栏内容 hook =====
-  const { renderSessionSidebarContent } = useSessionSidebarContent({
-    searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
-    setPendingDeleteSessionId,
+  const { renderSessionSidebarContent, renderSessionSidebarHeader } = useSessionSidebarContent({
+    searchQuery, setSearchQuery, viewMode, setViewMode, setSessionSheetOpen,
+    editableGroupIds: activeGroupIds,
+    onCreateGroup: openCreateGroup,
+    onRenameGroup: openRenameGroup,
+    onEditGroup: openEditGroup,
+    // 移动侧栏自带分组归档行内确认，确认后直接执行（不再走 pendingArchiveGroup 主区确认条）
+    onArchiveGroup: (group) => { void archiveGroupDirect(group); },
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
-    currentSessionId, totalSessionCount,
-    hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
+    currentSessionId,
+    hasMoreSessions, isLoadingMore,
     t,
-    resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
+    resetDeleteConfirmation,
     createSession, loadMoreSessions,
     renderSessionItem,
+    // 会话拖入分组（hello-pangea DnD；handleDragEnd 识别 session-group:/session-ungrouped）
+    onSessionDragEnd: handleDragEnd,
   });
 
   const handleOpenApp = useCallback((item: ResourceListItem) => {
@@ -680,11 +768,11 @@ export const ChatV2Page: React.FC = () => {
     if (!sandboxActiveSession) return;
 
     if (sandboxWorkbenchOpen) {
-      closeSandboxWorkbench();
+      closeSandboxWorkbench(sandboxOwnerKey);
     } else {
-      openSandboxWorkbench();
+      openSandboxWorkbench(sandboxOwnerKey);
     }
-  }, [closeSandboxWorkbench, openSandboxWorkbench, sandboxActiveSession, sandboxWorkbenchOpen]);
+  }, [closeSandboxWorkbench, openSandboxWorkbench, sandboxActiveSession, sandboxOwnerKey, sandboxWorkbenchOpen]);
 
   const desktopSecondaryPanelMode: DesktopSecondaryPanelMode | null = sandboxWorkbenchOpen && sandboxActiveSession
     ? 'sandbox'
@@ -708,9 +796,18 @@ export const ChatV2Page: React.FC = () => {
     }
 
     if (desktopSecondaryPanelMode) {
+      // ★ 内容相同则跳过 set：避免每次 set 新对象字面量触发
+      //   「状态变化 → 重渲染 → effect 重跑 → 又 set 新对象」的自续循环
+      const nextOpenApp = desktopSecondaryPanelMode === 'attachment' ? openApp : null;
+      if (
+        desktopSecondaryPanelSnapshot?.mode === desktopSecondaryPanelMode &&
+        desktopSecondaryPanelSnapshot.openApp === nextOpenApp
+      ) {
+        return;
+      }
       setDesktopSecondaryPanelSnapshot({
         mode: desktopSecondaryPanelMode,
-        openApp: desktopSecondaryPanelMode === 'attachment' ? openApp : null,
+        openApp: nextOpenApp,
       });
       return;
     }
@@ -728,7 +825,7 @@ export const ChatV2Page: React.FC = () => {
 
   const desktopSecondaryPanelShouldRender = !isSmallScreen && desktopSecondaryPanelSnapshotMode !== null;
   const desktopSecondaryPanelShellClassName = cn(
-    'h-full overflow-hidden will-change-transform transition-[transform,opacity] duration-200 motion-reduce:transition-none',
+    'h-full overflow-hidden will-change-transform transition-[transform,opacity] duration-[var(--chat-motion-base,200ms)] motion-reduce:transition-none',
     desktopSecondaryPanelOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-full opacity-0'
   );
 
@@ -742,11 +839,12 @@ export const ChatV2Page: React.FC = () => {
 
     if (panelMode === 'sandbox' && sandboxActiveSession) {
       return (
-        <div className="h-full transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none opacity-100 translate-x-0">
+        <div className="h-full transition-[opacity,transform] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none opacity-100 translate-x-0">
           <SandboxWorkbenchSurface
             embedded
             className="h-full"
             onClose={handleCloseSandbox}
+            ownerKey={sandboxOwnerKey}
           />
         </div>
       );
@@ -757,17 +855,25 @@ export const ChatV2Page: React.FC = () => {
     }
 
     return (
-      <PanelGroup direction="horizontal" className="h-full">
+      <PanelGroup direction="horizontal" className="h-full" autoSaveId="chat-v2-canvas-panels">
         {/* Learning Hub 侧边栏 */}
         <Panel
+          id="chat-v2-canvas-sidebar"
+          order={1}
           defaultSize={openApp ? 35 : 100}
           minSize={openApp ? 25 : 100}
           className="h-full"
         >
           <LearningHubSidebar
             mode="canvas"
+            hostId="canvas"
+            sessionActive={canvasSidebarOpen}
+            commandsEnabled={false}
             onClose={toggleCanvasSidebar}
             onOpenApp={handleOpenApp}
+            onReferenceToChat={() => {
+              // Sidebar injects via useVfsContextInject; callback keeps the entry wired.
+            }}
             className="h-full"
           />
         </Panel>
@@ -779,6 +885,8 @@ export const ChatV2Page: React.FC = () => {
               <DotsSixVertical size={12} className="text-muted-foreground/50" />
             </PanelResizeHandle>
             <Panel
+              id="chat-v2-canvas-app"
+              order={2}
               defaultSize={65}
               minSize={40}
               className="h-full"
@@ -840,7 +948,29 @@ export const ChatV2Page: React.FC = () => {
         break;
     }
     handleCloseApp();
-  }, [openApp, handleCloseApp]);
+    setMobileResourcePanelOpen(false);
+  }, [openApp, handleCloseApp, setMobileResourcePanelOpen]);
+
+  const openCurrentSessionSettings = useCallback(() => {
+    if (!currentSessionId) return;
+    sessionManager.get(currentSessionId)?.getState().setPanelState('advanced', true);
+  }, [currentSessionId]);
+
+  // ===== 页面布局 hook =====
+  useChatPageLayout({
+    currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
+    viewMode, sessionSheetOpen, t, sessionCount: sessions.length,
+    createSession, isLoading,
+    mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
+    mobileSandboxOpen, closeMobileSandbox,
+    openAppTitle: openApp ? (openApp.title ?? '') : null,
+    closeMobileOpenApp,
+    groupEditorOpen,
+    groupEditorMode: editingGroup ? 'edit' : 'create',
+    closeGroupEditor: requestCloseGroupEditor,
+    openCurrentSessionSettings,
+  });
 
   // ★ 标题更新回调
   const handleTitleChange = useCallback((title: string) => {
@@ -866,9 +996,11 @@ export const ChatV2Page: React.FC = () => {
       )}>
         <div
           className={cn(
-            'study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0',
+            'study-shell-toolbar items-center justify-between px-3 py-2 border-b shrink-0',
+            isSmallScreen && options?.fullScreen ? 'hidden' : 'flex',
             options?.fullScreen && 'study-shell-toolbar--floating backdrop-blur-lg'
           )}
+          aria-hidden={isSmallScreen && options?.fullScreen}
         >
           <div className="flex items-center gap-2 min-w-0">
             {(() => {
@@ -883,12 +1015,12 @@ export const ChatV2Page: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
               <X size={16} className="text-muted-foreground" />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 
@@ -916,11 +1048,7 @@ export const ChatV2Page: React.FC = () => {
         </div>
       </div>
     );
-  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, t]);
-
-  const desktopAttachmentPreviewFullScreen = !isSmallScreen
-    && attachmentPreviewOpen
-    && !!openApp;
+  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, isSmallScreen, t]);
 
   // ★ 处理从 openResource 触发的待打开资源
   // 简化逻辑：直接调用 handleOpenApp，不再通过事件传递
@@ -933,29 +1061,92 @@ export const ChatV2Page: React.FC = () => {
     }
   }, [pendingOpenResource, canvasSidebarOpen, mobileResourcePanelOpen, isSmallScreen, handleOpenApp]);
 
+  // ===== 无会话空状态 / 首屏加载态（统一在主内容槽内联渲染，不用模态） =====
+  const renderNoSessionState = () => {
+    if (isInitialLoading) {
+      // 首次加载：延迟淡入的安静指示（chat-loading-shell-defer 自带 150ms 延迟，避免闪烁）
+      return (
+        <div className="chat-loading-shell-defer flex flex-1 items-center justify-center" role="status" aria-live="polite">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <CircleNotch size={16} className="animate-spin" aria-hidden="true" />
+            <span className="text-sm">{t('page.loading')}</span>
+          </div>
+        </div>
+      );
+    }
+    // 加载完成仍无会话（自动创建失败等）：与会话内空态共用 ThreadEmptyStateShell
+    // 统一内容模型（品牌 → 标题 → 描述 → CTA → hint）
+    return (
+      <CustomScrollArea
+        data-slot="chat-page-empty-state"
+        className="chat-thread-enter min-h-0 flex-1"
+        viewportClassName="px-6 py-8"
+      >
+        <div className="flex min-h-full items-center justify-center">
+          <ThreadEmptyStateShell
+            title={t('page.welcome')}
+            brandIcon={<Chat size={26} weight="duotone" />}
+            description={t('page.emptyPage.subtitle')}
+            hint={t('page.emptyPage.hint')}
+            actions={
+              <>
+                <DsButton variant="primary" size="sm" onClick={() => void createSession()}>
+                  <Plus size={14} />
+                  {t('page.newChat')}
+                </DsButton>
+                {!isSmallScreen && sessions.length > 0 && (
+                  <DsButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
+                    <SquaresFour size={14} />
+                    {t('browser.title')}
+                  </DsButton>
+                )}
+              </>
+            }
+          />
+        </div>
+      </CustomScrollArea>
+    );
+  };
+
+  // ===== 归档分组内联确认条（替代模态确认框；Esc 取消，取消键自动聚焦） =====
+  const renderArchiveConfirmBar = () => pendingArchiveGroup ? (
+    <div
+      role="alertdialog"
+      aria-label={t('page.archiveGroupTitle')}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          setPendingArchiveGroup(null);
+        }
+      }}
+      className="chat-thread-enter z-30 mx-3 mt-3 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-shell-control)] border border-warning/40 bg-warning/10 px-3 py-2 shadow-[var(--shadow-shell-soft)]"
+    >
+      <Warning size={16} weight="fill" className="shrink-0 text-warning" aria-hidden="true" />
+      <p className="min-w-0 flex-1 text-sm leading-snug text-foreground">
+        {t('page.archiveGroupDesc', { name: pendingArchiveGroup.name })}
+      </p>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <DsButton
+          variant="ghost"
+          size="sm"
+          autoFocus
+          onClick={() => setPendingArchiveGroup(null)}
+        >
+          {t('common:cancel')}
+        </DsButton>
+        <DsButton variant="warning" size="sm" onClick={() => void confirmArchiveGroup()}>
+          {t('page.archiveGroupConfirm')}
+        </DsButton>
+      </div>
+    </div>
+  ) : null;
+
   // ★ 监听附件预览事件，在右侧面板打开附件
   // 使用独立的附件预览状态，不依赖于 NotesContext
   const renderMainContent = () => (
-    <div className="flex h-full flex-col overflow-hidden relative">
-      {/* 🚀 会话切换加载指示器（防闪动：只有超过 500ms 才显示） */}
-      {showSwitchingIndicator && (
-        <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-[1px] transition-opacity duration-150"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card shadow-lg border">
-            <CircleNotch size={16} className="animate-spin text-primary" aria-hidden="true" />
-            <span className="text-sm text-muted-foreground">
-              {t('page.switchingSession')}
-            </span>
-          </div>
-        </div>
-      )}
-      {/* 🔧 修复：使用 currentSessionId 作为主要判断条件
-          deferredSessionId 可能因为 useDeferredValue 在并发模式下的行为而延迟更新
-          当 ChatContainer 渲染失败时，deferredSessionId 会一直保持旧值（null）
-          使用 currentSessionId 确保选中会话时立即显示内容 */}
+    <div className="flex h-full min-h-0 flex-col overflow-hidden relative">
+      {renderArchiveConfirmBar()}
+      {/* 使用 currentSessionId 作为主要判断条件，选中会话时立即显示内容 */}
       {viewMode === 'browser' && !isSmallScreen ? (
         <SessionBrowser
           sessions={sessionsForBrowser}
@@ -976,7 +1167,8 @@ export const ChatV2Page: React.FC = () => {
           initial={editingGroup}
           autoFocusField={groupEditorAutoFocusField}
           onSubmit={handleSubmitGroup}
-          onClose={closeGroupEditor}
+          onClose={requestCloseGroupEditor}
+          onDirtyChange={setGroupEditorDirty}
           onArchive={editingGroup ? () => {
             setPendingArchiveGroup(editingGroup);
             closeGroupEditor();
@@ -984,6 +1176,8 @@ export const ChatV2Page: React.FC = () => {
           onMobileBrowse={isSmallScreen ? (addResource, currentIds) => {
             groupPickerAddRef.current = addResource;
             setGroupPinnedIds(new Set(currentIds));
+            // 清掉残留的资源预览，确保右屏展示的是资源库选择列表
+            setOpenApp(null);
             setMobileResourcePanelOpen(true);
           } : undefined}
         />
@@ -995,25 +1189,34 @@ export const ChatV2Page: React.FC = () => {
           onViewAgentSession={handleViewAgentSession}
         />
       ) : (
-        /* 🔧 防闪烁：加载中或正在自动创建会话，显示空白 */
-        <div className="flex-1" />
+        renderNoSessionState()
       )}
     </div>
   );
 
   return (
-    <StreamPreferencesProvider preset="balanced" mode="blocked">
+    <StreamPreferencesProvider preset={streamPreset} mode="blocked" suspended={isSuspended}>
       <div className={cn(
         "study-shell-page chat-v2 absolute inset-0 flex overflow-hidden",
         isSmallScreen && "flex-col"
-      )}>
+      )}
+        data-wb-chat-session={currentSessionId ?? undefined}
+        data-sandbox-owner-key={sandboxOwnerKey}
+        onPointerDownCapture={handleSandboxOwnerActivation}
+        onFocusCapture={handleSandboxOwnerActivation}
+      >
+      {/* 页面级错误隔离：SessionBrowser / GroupEditor / 次级面板等线程外区域的
+          运行时错误在此兜底，避免打穿到 App ViewLayer 白屏整页。
+          resetKey：切换会话时自动清除错误态并 remount 子树 */}
+      <ChatErrorBoundary className="flex-1" resetKey={currentSessionId}>
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
       {isSmallScreen ? (
         <MobileSlidingLayout
           className="flex-1"
+          sidebarFixedContent={renderSessionSidebarHeader()}
           sidebar={
-            <div className="study-shell-sidebar-frame font-sidebar-study-ui h-full flex flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]">
-              {renderSessionSidebarContent()}
+            <div className="min-h-0">
+              {renderSessionSidebarContent({ unifiedMobileDrawer: true, mobileDrawerHeader: 'fixed' })}
             </div>
           }
           rightPanel={
@@ -1028,18 +1231,19 @@ export const ChatV2Page: React.FC = () => {
                   embedded
                   className="h-full"
                   onClose={handleCloseSandbox}
+                  ownerKey={sandboxOwnerKey}
                 />
               ) : openApp ? (
                 renderOpenAppPanel({
                   fullScreen: true,
-                  onClose: () => {
-                    handleCloseApp();
-                    setMobileResourcePanelOpen(false);
-                  },
+                  onClose: closeMobileOpenApp,
                 })
               ) : (
                 <LearningHubSidebar
                   mode="canvas"
+                  hostId="canvas-mobile"
+                  sessionActive={mobileResourcePanelOpen}
+                  commandsEnabled={false}
                   onClose={() => setMobileResourcePanelOpen(false)}
                   onOpenApp={(item) => {
                     if (groupPickerAddRef.current) {
@@ -1057,6 +1261,9 @@ export const ChatV2Page: React.FC = () => {
                     }
                     handleOpenApp(item);
                   }}
+                  onReferenceToChat={() => {
+                    // Sidebar injects via useVfsContextInject; callback keeps the entry wired.
+                  }}
                   highlightedIds={groupPickerAddRef.current ? groupPinnedIds : undefined}
                   className="h-full"
                   hideToolbarAndNav
@@ -1069,11 +1276,24 @@ export const ChatV2Page: React.FC = () => {
             sessionSheetOpen ? 'left' : 'center'
           }
           onScreenPositionChange={(pos: ScreenPosition) => {
+            // 资源详情是右屏内的二级页：返回键/右屏回滑先回资源列表，
+            // 与统一顶栏返回行为保持一致；再次返回才退出右屏回到聊天。
+            if (pos !== 'right' && openApp && !sandboxWorkbenchOpen) {
+              setOpenApp(null);
+              setSessionSheetOpen(false);
+              setMobileResourcePanelOpen(true);
+              return;
+            }
             setSessionSheetOpen(pos === 'left');
             setMobileResourcePanelOpen(pos === 'right');
+            // 沙箱工作台占据右屏时，手势/返回键滑回中屏必须同步关闭工作台，
+            // 否则 screenPosition 会被 sandboxWorkbenchOpen 锁在 'right'（导航死胡同）
+            if (pos !== 'right' && sandboxWorkbenchOpen) {
+              closeSandboxWorkbench(sandboxOwnerKey);
+            }
           }}
           rightPanelEnabled={true}
-          sidebarWidth={304}
+          sidebarWidth="auto"
           showSidebarAppNavigation
           showContentOverlay
           enableGesture={true}
@@ -1081,62 +1301,61 @@ export const ChatV2Page: React.FC = () => {
           threshold={0.3}
         >
           {/* 移动端：会话浏览作为主内容区域的一部分，直接切换 */}
-          {viewMode === 'browser' ? (
-            <SessionBrowser
-              sessions={sessionsForBrowser}
-              groups={browserGroups}
-              isLoading={isLoading}
-              onSelectSession={handleBrowserSelectSession}
-              onDeleteSession={deleteSession}
-              onCreateSession={() => {
-                setViewMode('sidebar');
-                void createSession();
-              }}
-              onRenameSession={handleBrowserRenameSession}
-              className="h-full"
-              embeddedMode={true}
-            />
-          ) : (
-            renderMainContent()
-          )}
-        </MobileSlidingLayout>
-      ) : null}
-
-      {/* 桌面端：主聊天区域 + Canvas 侧边栏 */}
-      {!isSmallScreen && (
-        desktopAttachmentPreviewFullScreen ? (
-          <div className="flex-1 min-w-0 h-full">
-            {renderOpenAppPanel({ fullScreen: true })}
-          </div>
-        ) : (
-          <div className="flex flex-1 min-w-0 h-full overflow-hidden">
-            <div className="h-full min-w-0 flex-1">
-              {renderMainContent()}
-            </div>
-            {desktopSecondaryPanelShouldRender && (
-              <div
-                className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_rgba(15,23,42,0.08)] transition-[width] duration-200 motion-reduce:transition-none"
-                style={{
-                  width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0,
-                  transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
+          <div className="relative flex h-full flex-col">
+            {viewMode === 'browser' && renderArchiveConfirmBar()}
+            {viewMode === 'browser' ? (
+              <SessionBrowser
+                sessions={sessionsForBrowser}
+                groups={browserGroups}
+                isLoading={isLoading}
+                onSelectSession={handleBrowserSelectSession}
+                onDeleteSession={deleteSession}
+                onCreateSession={() => {
+                  setViewMode('sidebar');
+                  void createSession();
                 }}
-              >
-                <div
-                  className={cn('h-full min-w-0', desktopSecondaryPanelShellClassName)}
-                  style={{
-                    width: DESKTOP_SECONDARY_PANEL_WIDTH,
-                    transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
-                  }}
-                >
-                  {renderDesktopSecondaryPanel({
-                    mode: desktopSecondaryPanelSnapshotMode,
-                    openApp: desktopSecondaryPanelSnapshotApp,
-                  })}
-                </div>
+                onRenameSession={handleBrowserRenameSession}
+                className="min-h-0 flex-1"
+                embeddedMode={true}
+              />
+            ) : (
+              <div className="min-h-0 flex-1">
+                {renderMainContent()}
               </div>
             )}
           </div>
-        )
+        </MobileSlidingLayout>
+      ) : null}
+
+      {/* 桌面端：主聊天区域 + 次级面板（附件预览不再全屏替换聊天，统一走侧栏内联预览） */}
+      {!isSmallScreen && (
+        <div className="flex flex-1 min-w-0 h-full overflow-hidden">
+          <div className="h-full min-h-0 min-w-0 flex-1">
+            {renderMainContent()}
+          </div>
+          {desktopSecondaryPanelShouldRender && (
+            <div
+              className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_hsl(var(--shadow-base)/0.08)] transition-[width] duration-[var(--chat-motion-base,200ms)] motion-reduce:transition-none"
+              style={{
+                width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0,
+                transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
+              }}
+            >
+              <div
+                className={cn('h-full min-w-0', desktopSecondaryPanelShellClassName)}
+                style={{
+                  width: DESKTOP_SECONDARY_PANEL_WIDTH,
+                  transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
+                }}
+              >
+                {renderDesktopSecondaryPanel({
+                  mode: desktopSecondaryPanelSnapshotMode,
+                  openApp: desktopSecondaryPanelSnapshotApp,
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {!isSmallScreen && sandboxActiveSession && (
@@ -1148,28 +1367,28 @@ export const ChatV2Page: React.FC = () => {
           }}
         >
           <CommonTooltip
-            content={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
+            content={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
             position="bottom"
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
               onClick={toggleSandboxWorkbench}
               className={cn(
-                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:bg-background hover:shadow-lg',
+                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg',
                 sandboxWorkbenchOpen
                   ? '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
                   : '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'
               )}
-              aria-label={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
-              title={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
+              aria-label={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
+              title={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench') : t('page.expandSandboxWorkbench')}
             >
               <span className="relative block h-[18px] w-[18px]">
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[var(--dropdown-ease)]',
                     sandboxWorkbenchOpen ? 'translate-x-[-4px] opacity-0' : 'translate-x-0 opacity-100'
                   )}
                 >
@@ -1178,113 +1397,19 @@ export const ChatV2Page: React.FC = () => {
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[var(--dropdown-ease)]',
                     sandboxWorkbenchOpen ? 'translate-x-0 opacity-100' : 'translate-x-[4px] opacity-0'
                   )}
                 >
                   <SidebarFrameWithLeftRailIcon />
                 </span>
               </span>
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
         </div>
       )}
 
-      {/* 移动端：Learning Hub SidebarDrawer */}
-      {isSmallScreen && (
-        <SidebarDrawer
-          open={learningHubSheetOpen}
-          onOpenChange={setLearningHubSheetOpen}
-          side="right"
-          width={320}
-        >
-          <div className="h-full flex flex-col">
-            {/* 标题栏 */}
-            <div className="study-shell-toolbar flex items-center justify-between px-4 py-3 border-b shrink-0">
-              <span className="font-medium">{t('learningHub:title')}</span>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setLearningHubSheetOpen(false)} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                <X size={16} className="text-muted-foreground" />
-              </NotionButton>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              {openApp ? (
-                <div className="h-full flex flex-col">
-                  {/* 应用标题栏 */}
-                  <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {(() => {
-                        const AppIcon = getAppIcon(openApp.type);
-                        return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
-                      })()}
-                      <span className="text-sm font-medium truncate">
-                        {openApp.title || t('common:untitled')}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        ({t(`learningHub:resourceType.${openApp.type}`, openApp.type)})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                        <ArrowSquareOut size={14} className="text-muted-foreground" />
-                      </NotionButton>
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                        <X size={16} className="text-muted-foreground" />
-                      </NotionButton>
-                    </div>
-                  </div>
-
-                  {/* 应用内容 */}
-                  <div className="flex-1 overflow-hidden">
-                    <Suspense
-                      fallback={
-                        <div className="flex items-center justify-center h-full">
-                          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-                          <span className="ml-2 text-muted-foreground">
-                            {t('common:loading')}
-                          </span>
-                        </div>
-                      }
-                    >
-                      <UnifiedAppPanel
-                        type={openApp.type}
-                        resourceId={openApp.id}
-                        dstuPath={openApp.filePath || `/${openApp.id}`}
-                        onClose={handleCloseApp}
-                        onTitleChange={handleTitleChange}
-                        isActive
-                        className="h-full"
-                      />
-                    </Suspense>
-                  </div>
-                </div>
-              ) : (
-                <LearningHubSidebar
-                  mode="canvas"
-                  onClose={() => setLearningHubSheetOpen(false)}
-                  onOpenApp={handleOpenApp}
-                  className="h-full"
-                />
-              )}
-            </div>
-          </div>
-        </SidebarDrawer>
-      )}
-
-      {/* CardForge 2.0 Anki 编辑面板 - 监听 open-anki-panel 事件 */}
-        <AnkiPanelHost />
-
-      {/* 归档分组确认对话框 */}
-        <NotionAlertDialog
-          open={!!pendingArchiveGroup}
-          onOpenChange={(open) => !open && setPendingArchiveGroup(null)}
-          title={t('page.archiveGroupTitle')}
-          description={t('page.archiveGroupDesc', { name: pendingArchiveGroup?.name })}
-          confirmText={t('page.archiveGroupConfirm')}
-          cancelText={t('common:cancel')}
-          confirmVariant="warning"
-          onConfirm={confirmArchiveGroup}
-        />
-
+      </ChatErrorBoundary>
       </div>
     </StreamPreferencesProvider>
   );

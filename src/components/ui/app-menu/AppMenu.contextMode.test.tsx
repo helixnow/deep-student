@@ -29,6 +29,34 @@ describe('AppMenu context mode', () => {
     expect(screen.getByText('Rename')).toBeInTheDocument();
   });
 
+  it('uses the click as bottom-left anchor when the menu cannot expand downward', () => {
+    render(
+      <AppMenu mode="context">
+        <AppMenuTrigger asChild>
+          <div>Bottom trigger</div>
+        </AppMenuTrigger>
+        <AppMenuContent>
+          <AppMenuItem>Open</AppMenuItem>
+        </AppMenuContent>
+      </AppMenu>
+    );
+
+    const clickY = window.innerHeight - 20;
+    fireEvent.contextMenu(screen.getByText('Bottom trigger'), {
+      clientX: 320,
+      clientY: clickY,
+    });
+    const menu = screen.getByRole('menu');
+    Object.defineProperties(menu, {
+      offsetWidth: { configurable: true, value: 180 },
+      offsetHeight: { configurable: true, value: 200 },
+    });
+    fireEvent.resize(window);
+
+    expect(menu).toHaveStyle({ left: '320px', top: `${clickY - 200}px` });
+    expect(menu).toHaveClass('app-menu-origin-bottom');
+  });
+
   it('suppresses trigger tooltips while the menu is open', () => {
     render(
       <OverlayCoordinatorProvider>

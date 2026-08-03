@@ -2,17 +2,18 @@
  * 多模态检索结果卡片组件
  *
  * 用于展示多模态知识库的检索结果，支持：
- * - 页面缩略图预览
+ * - 页面缩略图预览（thumbnailBase64 / imageUrl，加载失败显示占位而非整块消失）
  * - 来源类型标识（题目集识别/教材/附件）
  * - 页码显示
  * - 文本摘要
- * - 点击跳转原文
+ * - 类型内序号徽章（与 citation `[类型-N]` 契约一致）
+ * - 定位/打开操作（由父级面板注入）
  *
  * 设计文档: docs/multimodal-user-memory-design.md (Section 8.4)
  */
 
-import React, { useState, useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import {
   FileText,
@@ -20,9 +21,9 @@ import {
   Paperclip,
   Image as ImageIcon,
   ArrowSquareOut,
-  CircleNotch,
-  MagnifyingGlass,
+  ImageBroken,
 } from '@phosphor-icons/react';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { cn } from '@/lib/utils';
 import type { UnifiedSourceItem, MultimodalSourceType } from './sourceTypes';
 
@@ -33,14 +34,26 @@ import type { UnifiedSourceItem, MultimodalSourceType } from './sourceTypes';
 export interface MultimodalSourceCardProps {
   /** 来源项数据 */
   item: UnifiedSourceItem;
+  /** 显示编号（类型内序号，1-based） */
+  displayNumber?: number;
   /** 是否高亮 */
   highlighted?: boolean;
+  /** 展开网格模式（false = 水平轮播固定宽度） */
+  expanded?: boolean;
   /** 点击回调 */
   onClick?: (item: UnifiedSourceItem) => void;
-  /** 查看原图回调 */
-  onViewOriginal?: (blobHash: string) => void;
+  /** 定位到知识库回调（存在时显示定位按钮） */
+  onLocate?: (item: UnifiedSourceItem) => void;
+  /** 定位按钮文案 */
+  locateLabel?: string;
+  /** hover 进入（用于父级 hover 预览） */
+  onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
+  /** hover 离开（用于父级 hover 预览） */
+  onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
   /** 额外的 CSS 类名 */
   className?: string;
+  /** 内联样式（父级面板注入入场 stagger 变量等） */
+  style?: React.CSSProperties;
 }
 
 // ============================================================================
@@ -48,7 +61,7 @@ export interface MultimodalSourceCardProps {
 // ============================================================================
 
 /** 获取来源类型图标 */
-function getSourceTypeIcon(sourceType: MultimodalSourceType) {
+function getSourceTypeIcon(sourceType?: MultimodalSourceType) {
   switch (sourceType) {
     case 'exam':
       return <FileText size={16} />;
@@ -61,41 +74,66 @@ function getSourceTypeIcon(sourceType: MultimodalSourceType) {
   }
 }
 
-/** 获取来源类型颜色 */
-function getSourceTypeColor(sourceType: MultimodalSourceType): string {
+/** 获取来源类型色标（token 化） */
+function getSourceTypeColor(sourceType?: MultimodalSourceType): string {
   switch (sourceType) {
     case 'exam':
-      return 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950';
+      return 'text-primary bg-primary/10';
     case 'textbook':
       return 'text-success bg-success/10';
     case 'attachment':
-      return 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950';
+      return 'text-muted-foreground bg-muted';
     default:
-      return 'text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950';
+      return 'text-muted-foreground bg-muted';
   }
+}
+
+/**
+ * 解析卡片图片源：优先缩略图 base64，回退到后端 imageUrl
+ */
+export function resolveMultimodalImageSrc(item: UnifiedSourceItem): string | null {
+  const thumbnail = item.multimodal?.thumbnailBase64;
+  if (thumbnail) {
+    return `data:image/jpeg;base64,${thumbnail}`;
+  }
+  if (item.imageUrl) {
+    return item.imageUrl;
+  }
+  return null;
 }
 
 // ============================================================================
 // 组件实现
 // ============================================================================
 
-export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
+export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalSourceCardProps>(({
   item,
+  displayNumber,
   highlighted = false,
+  expanded = false,
   onClick,
-  onViewOriginal,
+  onLocate,
+  locateLabel,
+  onMouseEnter,
+  onMouseLeave,
   className,
-}) => {
-  const { t } = useTranslation(['common']);
+  style,
+}, ref) => {
+  const { t } = useTranslation(['common', 'chatV2']);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
 
   const multimodal = item.multimodal;
-  const hasThumbnail = multimodal?.thumbnailBase64;
+  const imageSrc = useMemo(() => resolveMultimodalImageSrc(item), [item]);
   const score = item.score;
   const scorePercent = score != null ? Math.round(score * 100) : null;
 
-  // 处理图片加载
+  // 图片源变化（组件被复用展示其他 item）时重置加载/错误状态
+  useEffect(() => {
+    setImageLoading(true);
+    setImageError(false);
+  }, [imageSrc]);
+
   const handleImageLoad = useCallback(() => {
     setImageLoading(false);
   }, []);
@@ -105,67 +143,81 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
     setImageError(true);
   }, []);
 
-  // 处理卡片点击
   const handleClick = useCallback(() => {
     onClick?.(item);
   }, [onClick, item]);
 
-  // 处理查看原图
-  const handleViewOriginal = useCallback(
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick || e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    onClick(item);
+  }, [item, onClick]);
+
+  const handleLocate = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (multimodal?.blobHash) {
-        onViewOriginal?.(multimodal.blobHash);
-      }
+      onLocate?.(item);
     },
-    [multimodal?.blobHash, onViewOriginal]
+    [onLocate, item]
   );
 
   // 来源类型标签
   const sourceTypeLabel = multimodal?.sourceType
-    ? t(`common:chat.sources.multimodal.sourceTypes.${multimodal.sourceType}`)
+    ? t(`common:chat.sources.multimodal.sourceTypes.${multimodal.sourceType}`, {
+        defaultValue: multimodal.sourceType,
+      })
     : '';
 
-  // 页码标签
+  // 页码标签（优先 multimodal.pageIndex，回退 item.pageIndex）
+  const pageIndex = multimodal?.pageIndex ?? item.pageIndex;
   const pageLabel =
-    multimodal?.pageIndex != null
-      ? t('common:chat.sources.multimodal.pageLabel', { page: multimodal.pageIndex + 1 })
+    pageIndex != null
+      ? t('common:chat.sources.multimodal.pageLabel', { page: pageIndex + 1 })
       : '';
 
   return (
     <div
+      ref={ref}
       className={cn(
-        // 与 UnifiedSourcePanel 中的卡片样式保持一致
-        'usp-item-card w-56 flex-shrink-0 rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-default group',
-        highlighted && 'ring-1 ring-primary/30 shadow-lg scale-[1.02]',
+        // 视觉样式统一走 UnifiedSourcePanel.css 的 .usp-item-card
+        'usp-item-card group',
+        !expanded && 'w-56 flex-shrink-0',
+        highlighted && 'usp-citation-pulse',
         className
       )}
+      style={style}
       onClick={handleClick}
-      role="listitem"
+      onKeyDown={handleKeyDown}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      role={onClick ? 'button' : 'listitem'}
+      tabIndex={onClick ? 0 : undefined}
     >
-      {/* 缩略图区域 - 紧凑布局 */}
-      {hasThumbnail && !imageError && (
+      {/* 缩略图区域：加载失败时显示占位（图标 + 文案），不整块消失 */}
+      {imageSrc && (
         <div className="relative w-full h-24 rounded-md overflow-hidden bg-muted mb-2">
-          {imageLoading && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <CircleNotch size={20} className="animate-spin text-muted-foreground" />
+          {imageError ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground">
+              <ImageBroken size={16} />
+              <span className="text-2xs">
+                {t('chatV2:sourcePanel.thumbnailUnavailable')}
+              </span>
             </div>
-          )}
-          <img
-            src={`data:image/jpeg;base64,${multimodal.thumbnailBase64}`}
-            alt={item.title}
-            className={cn(
-              'w-full h-full object-cover transition-opacity',
-              imageLoading ? 'opacity-0' : 'opacity-100'
-            )}
-            onLoad={handleImageLoad}
-            onError={handleImageError}
-          />
-          {/* 查看原图按钮 */}
-          {multimodal?.blobHash && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleViewOriginal} className="absolute inset-0 !w-full !h-full !rounded-none bg-black/50 opacity-0 group-hover:opacity-100 text-white" aria-label={t('common:chat.sources.multimodal.viewOriginal')} title={t('common:chat.sources.multimodal.viewOriginal')}>
-              <MagnifyingGlass size={20} />
-            </NotionButton>
+          ) : (
+            <>
+              {imageLoading && <Skeleton className="absolute inset-0 rounded-none" />}
+              <img
+                src={imageSrc}
+                alt={item.title}
+                loading="lazy"
+                className={cn(
+                  'w-full h-full object-cover transition-opacity duration-300 ease-in-out motion-reduce:transition-none',
+                  imageLoading ? 'opacity-0' : 'opacity-100'
+                )}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+            </>
           )}
         </div>
       )}
@@ -173,52 +225,70 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
       {/* 标题行 */}
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 overflow-hidden">
-          <span className="text-muted-foreground shrink-0">
-            {multimodal?.sourceType ? getSourceTypeIcon(multimodal.sourceType) : <ImageIcon size={16} />}
+          {displayNumber != null && (
+            <span className="usp-item-badge">{displayNumber}</span>
+          )}
+          <span className="usp-card-icon shrink-0">
+            {getSourceTypeIcon(multimodal?.sourceType)}
           </span>
-          <span className="text-sm font-medium truncate" title={item.title}>{item.title}</span>
+          <span className="usp-card-title text-sm font-medium truncate" title={item.title}>{item.title}</span>
         </div>
         {scorePercent != null && (
-          <span className="usp-item-score">{scorePercent}%</span>
+          <span
+            className="usp-item-score"
+            data-tier={scorePercent >= 75 ? 'high' : scorePercent >= 45 ? 'mid' : 'low'}
+          >
+            <i className="usp-score-dot" aria-hidden />
+            {scorePercent}%
+          </span>
         )}
       </div>
 
       {/* 来源类型和页码 */}
-      <div className="flex items-center gap-2 text-xs mb-1.5">
-        {multimodal?.sourceType && (
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]',
-              getSourceTypeColor(multimodal.sourceType)
-            )}
-          >
-            {sourceTypeLabel}
-          </span>
-        )}
-        {pageLabel && (
-          <span className="text-muted-foreground text-[10px]">{pageLabel}</span>
-        )}
-      </div>
+      {(sourceTypeLabel || pageLabel) && (
+        <div className="flex items-center gap-2 text-xs mb-1.5">
+          {sourceTypeLabel && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs',
+                getSourceTypeColor(multimodal?.sourceType)
+              )}
+            >
+              {sourceTypeLabel}
+            </span>
+          )}
+          {pageLabel && (
+            <span className="text-muted-foreground text-2xs">{pageLabel}</span>
+          )}
+        </div>
+      )}
 
       {/* 文本摘要 */}
-      <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-[2.4em]">
-        {item.snippet || t('common:chat.sources.multimodal.noThumbnail')}
+      <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 min-h-8">
+        {item.snippet || t('common:chat.sources.multimodal.noSnippet')}
       </div>
 
       {/* 底部操作区 */}
-      <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
+      <div className="flex items-center justify-between gap-2 mt-auto pt-1.5 border-t border-border/50">
+        <span className="usp-card-meta truncate">
           {t('common:chat.sources.groupLabels.multimodal')}
         </span>
-        {multimodal?.blobHash && (
-          <NotionButton variant="ghost" size="sm" onClick={handleViewOriginal} className="text-primary hover:underline">
+        {onLocate && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleLocate}
+            className="!h-6 text-xs text-primary [@media(pointer:coarse)]:!h-11"
+          >
             <ArrowSquareOut size={12} />
-            {t('common:chat.sources.multimodal.viewOriginal')}
-          </NotionButton>
+            {locateLabel || t('common:chat.sources.locateKb')}
+          </DsButton>
         )}
       </div>
     </div>
   );
-};
+});
+
+MultimodalSourceCard.displayName = 'MultimodalSourceCard';
 
 export default MultimodalSourceCard;

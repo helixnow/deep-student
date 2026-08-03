@@ -1,0 +1,1064 @@
+{
+  "appName": "Study Desktop",
+  "agent": {
+    "core": {
+      "operating": "AI is working: {{label}}",
+      "pausedLabel": "Paused: {{label}}",
+      "pause": "Pause",
+      "paused": "Paused",
+      "stop": "Stop",
+      "stopped": "Stopped",
+      "cancelled": "Cancelled",
+      "revert": "Undo",
+      "reverting": "Reverting",
+      "acting": "Working",
+      "reviewing": "Awaiting confirmation",
+      "done": "Done",
+      "stripRegion": "AI desktop control",
+      "actions": "Control actions",
+      "progressPaused": "Paused: user input detected",
+      "announceStarted": "AI started: {{label}}",
+      "announcePaused": "AI paused: {{label}}",
+      "announceDone": "AI finished",
+      "announceStopped": "AI stopped",
+      "resume": "Resume",
+      "autoStopCountdown": "Auto-stop in {{seconds}}s",
+      "placementBackground": "(running in background)",
+      "placementStageFull": "(stage full, applied directly)",
+      "placementFrozen": "(window frozen, applied directly)",
+      "dockDoneBadge": "AI finished in the background"
+    },
+    "errors": {
+      "controlOff": "Agent desktop control is off (desktop.workbenchAgentControl=off)",
+      "controlOffHint": "Set AI assistant control to Background or Follow; domain tools can still write data",
+      "osDisabled": "Study desktop mode is off",
+      "osDisabledHint": "Enable OS/desktop mode first; use domain tools for data writes",
+      "launchFailed": "Could not open the app window",
+      "launchFailedHint": "Desktop mode is not ready or the app is not registered",
+      "abortedByControlOff": "Control turned off; operation aborted",
+      "abortedByOsOff": "Desktop mode turned off; operation aborted"
+    },
+    "apps": {
+      "reserved": "-",
+      "flashcards": {
+        "appended": "AI added {{count}} cards"
+      },
+      "templates": {
+        "undoCreate": "Delete the just-created template",
+        "undoRename": "Restore template name",
+        "undoUpdateContent": "Restore template content"
+      }
+    }
+  },
+  "agentControlCenter": {
+    "title": "AI desktop control",
+    "description": "Let Chat locate content and carry out authorized actions in learning apps.",
+    "tooltip": "AI desktop control",
+    "triggerLabel": "AI desktop control, current mode: {{status}}",
+    "modeLabel": "Run mode",
+    "capabilitiesTitle": "What it can do",
+    "appCount": "8 apps",
+    "expandCapabilities": "All capabilities",
+    "collapseCapabilities": "Collapse",
+    "saveFailed": "Could not save the control mode. Try again.",
+    "openChat": "Open Chat",
+    "openSettings": "Control settings",
+    "settingsTitle": "What the assistant can do",
+    "settingsDescription": "These capabilities are semantic actions deliberately registered by each learning app, not blind coordinate clicks. Available actions change with the current screen and state.",
+    "modeDescriptions": {
+      "off": "View status only; do not open or control windows.",
+      "background": "Work in the background without interrupting you.",
+      "follow": "Open and focus target windows while acting."
+    },
+    "groups": {
+      "organize": {
+        "title": "Organize content",
+        "actions": "Locate and edit notes, mind maps, and todos"
+      },
+      "study": {
+        "title": "Move learning forward",
+        "actions": "Navigate questions, review cards, and manage focus"
+      },
+      "browse": {
+        "title": "Find materials",
+        "actions": "Search resources, switch folders, and browse pages"
+      }
+    },
+    "safetyCompact": "Only registered actions run. Answers, submissions, and ratings stay with you; destructive actions ask first.",
+    "safety": "Only registered semantic actions are used. The assistant cannot answer or submit exams or rate flashcards for you. Destructive actions require confirmation before execution.",
+    "apps": {
+      "note": {
+        "name": "Notes",
+        "actions": "Locate headings; pair with note tools to visibly stage append, insert, and replace operations"
+      },
+      "mindmap": {
+        "name": "Mind maps",
+        "actions": "Focus nodes, switch outline/canvas views, and visibly stage node edits with mind-map tools"
+      },
+      "todo": {
+        "name": "Todos",
+        "actions": "Open lists, focus items, switch views, search, and filter"
+      },
+      "files": {
+        "name": "Files",
+        "actions": "Open folders, reveal or select resources, navigate, search, change view, and sort"
+      },
+      "exam": {
+        "name": "Question bank",
+        "actions": "Focus or move between questions, filter, switch practice/focus modes, and open settings"
+      },
+      "flashcards": {
+        "name": "Flashcards",
+        "actions": "Open library/review screens, start due review, flip, and end review; never rate for you"
+      },
+      "pomodoro": {
+        "name": "Pomodoro",
+        "actions": "Start, pause, or resume focus; stopping writes an interruption record and asks separately"
+      },
+      "browser": {
+        "name": "Browser",
+        "actions": "Navigate, go back or forward, reload, focus the address field, and show the page window"
+      }
+    },
+    "killSwitch": {
+      "emergencyStop": "Emergency stop",
+      "emergencyStopConfirm": "Stop all agents and pause automations now?",
+      "confirmStop": "Stop now",
+      "cancelConfirm": "Cancel",
+      "trippedBanner": "Agents are powered off",
+      "trippedReason": "Reason: {{reason}}",
+      "automationsStillPaused": "Automations are still paused",
+      "resumeAgents": "Resume agents",
+      "resumeAutomations": "Resume automations",
+      "resumeAutomationsConfirm": "Resume scheduled automations? They may start running again.",
+      "confirmResumeAutomations": "Resume automations",
+      "stopFailed": "Could not power off agents. Try again.",
+      "resumeFailed": "Could not resume. Try again."
+    },
+    "automationCard": {
+      "title": "Automations",
+      "running": "Scheduler running",
+      "tripped": "Emergency stop triggered — automations paused",
+      "trippedHint": "Agents are powered off. Resume agents first, then resume automation scheduling.",
+      "paused": "Automation scheduling is paused",
+      "pausedHint": "Automations are still paused after the emergency stop. Scheduled tasks run again once you resume.",
+      "resuming": "Resuming…"
+    }
+  },
+  "menubar": {
+    "label": "Study status bar",
+    "appName": "Study Desktop",
+    "flashcardsDue": "{{count}} flashcards due",
+    "tasksRunning": "{{count}} card tasks running",
+    "automations": "Open scheduled tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed",
+    "automationsTitle": "Scheduled tasks",
+    "automationsEnabledShort": "{{count}} enabled",
+    "automationsNextRun": "next run {{relative}}",
+    "automationsFailedShort": "{{count}} recently failed",
+    "automationsRelativeSoon": "soon",
+    "automationsRelativeMinutes": "in {{count}} min",
+    "automationsRelativeHours": "in {{count}} h",
+    "automationsRelativeDays": "in {{count}} d",
+    "pomodoroFocus": "Focus remaining {{time}}",
+    "pomodoroIdle": "Not started",
+    "pomodoroWork": "Focusing",
+    "pomodoroBreak": "On break",
+    "openApps": "Open all apps",
+    "brandMenu": "Learning Desktop menu",
+    "brandSettings": "System Settings…",
+    "brandExit": "Quit Learning Desktop",
+    "openCommandPalette": "Open command palette",
+    "openAppsPanel": "Search apps and commands",
+    "openSettings": "Open settings",
+    "openCenter": "Open today's rhythm",
+    "centerShort": "Rhythm",
+    "centerTitle": "Today's rhythm",
+    "moduleFlashcards": "Today's review",
+    "moduleTasks": "Card tasks",
+    "moduleFocus": "Focus",
+    "moduleDesktop": "Desktop",
+    "desktopHint": "All apps and window overview",
+    "flashcardsDueShort": "{{count}} due",
+    "tasksRunningShort": "{{count}} running",
+    "rhythmFlashcards": "Flashcards due today",
+    "rhythmPomodoro": "Pomodoro status",
+    "rhythmAutomation": "Automation health",
+    "rhythmAutomationDetail": "{{running}} running · {{failed}} failed · {{enabled}} enabled",
+    "rhythmTasks": "Tasks",
+    "rhythmTasksDetail": "{{count}} card tasks",
+    "startReview": "Start review",
+    "openTasks": "Open",
+    "openPomodoro": "Open Pomodoro",
+    "allApps": "All apps",
+    "expose": "Window overview",
+    "appMenu": "{{name}} menu",
+    "windowMenu": "Window",
+    "clockLabel": "Clock and today's agenda",
+    "agendaTitle": "Today's agenda"
+  },
+  "apps": {
+    "chat": {
+      "name": "Chat",
+      "untitledSession": "New Chat",
+      "preparing": "Preparing session…",
+      "createFailed": "Failed to create session",
+      "retry": "Retry",
+      "loading": "Loading session…",
+      "sessionNav": "Session navigation"
+    },
+    "system": {
+      "todoNav": "Todo navigation",
+      "settingsNav": "Settings navigation",
+      "showNav": "Show navigation",
+      "hideNav": "Hide navigation",
+      "tasksRunning": "{{count}} card tasks in progress",
+      "paused": "Paused",
+      "idleHint": "Start a focus session below"
+    },
+    "note": "Note",
+    "textbook": "Textbook",
+    "exam": "Exam Set",
+    "translation": "Translation",
+    "essay": "Essay Review",
+    "image": "Image",
+    "file": "File",
+    "filePreview": "File Preview",
+    "mindmap": "Mind Map",
+    "files": "Files",
+    "todo": "Todo",
+    "skills": "Skills",
+    "templates": "Templates",
+    "taskDashboard": "Card Tasks",
+    "flashcards": "Flashcards",
+    "settings": "Settings",
+    "sandbox": "Sandbox",
+    "pomodoro": "Pomodoro",
+    "browser": "Browser"
+  },
+  "dock": {
+    "label": "Dock",
+    "open": "Open",
+    "pin": "Pin to Dock",
+    "unpin": "Remove from Dock",
+    "closeAll": "Close All Windows",
+    "closeWindow": "Close window",
+    "windows": "Windows",
+    "minimized": "Minimized",
+    "newWindow": "New Window",
+    "noWindows": "No windows",
+    "running": "Running",
+    "apps": "All Apps",
+    "showAllWindows": "Show All Windows"
+  },
+  "resourceHome": {
+    "newExam": "New question set",
+    "newEssay": "New essay review",
+    "newTranslation": "New translation",
+    "search": "Search",
+    "loadFailed": "Unable to load content",
+    "noMatches": "No matching content",
+    "tryAnotherSearch": "Try another search",
+    "empty": "Nothing here yet",
+    "createHint": "Create one and start here without opening Files first.",
+    "open": "Open",
+    "library": "Library",
+    "all": "All",
+    "recent": "Recents",
+    "essaySettings": "Grading Settings",
+    "translationSettings": "Translation Settings",
+    "settingsNeedSelection": "Select or create an item first",
+    "name": "Name",
+    "details": "Status",
+    "updated": "Date Modified",
+    "questionCount": "{{count}} questions",
+    "emptyQuestionSet": "No questions imported",
+    "roundCount": "{{count}} reviews",
+    "notGraded": "Not reviewed yet",
+    "itemCount": "{{count}} items",
+    "openHint": "Double-click or press Enter to open",
+    "retry": "Retry",
+    "untitled": "Untitled"
+  },
+  "resourceWorkspace": {
+    "selectTitle": "Select an item",
+    "selectHint": "Choose one from the sidebar, or create a new item to begin.",
+    "hideSidebar": "Hide sidebar",
+    "showSidebar": "Show sidebar",
+    "clearSearch": "Clear search",
+    "refresh": "Refresh",
+    "discard": "Discard",
+    "cancel": "Cancel",
+    "reviewExitTitle": "End review session?",
+    "reviewExitDescription": "Submitted ratings are kept. You can restart the remaining cards later.",
+    "reviewExitConfirm": "End review"
+  },
+  "appsPanel": {
+    "title": "All Apps",
+    "searchPlaceholder": "Search apps, commands, resources, and chats",
+    "empty": "No matching results",
+    "close": "Close",
+    "view": "View",
+    "gridView": "Grid",
+    "listView": "List",
+    "hint": "↑↓ to select · Enter to open · Esc to close",
+    "emptyHint": "Try another keyword, or clear search to see all apps",
+    "hintSelect": "Select",
+    "hintOpen": "Open",
+    "hintClose": "Close",
+    "sectionApps": "Apps",
+    "sectionCommands": "Commands",
+    "sectionResources": "Resources",
+    "sectionChat": "Chats",
+    "searching": "Searching…",
+    "resultCount": "{{count}} results"
+  },
+  "window": {
+    "close": "Close",
+    "minimize": "Minimize",
+    "zoom": "Zoom",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "center": "Center",
+    "tileMenu": "Tiling Options",
+    "loading": "Loading…",
+    "frozenTitle": "Window Suspended",
+    "frozenHint": "This window was paused to save memory. Click to wake it.",
+    "frozenWakeAria": "Click to wake suspended window",
+    "unknownApp": "Unknown app type: {{typeId}}",
+    "crashTitle": "Something went wrong in this window",
+    "crashUnknown": "Unknown error",
+    "reload": "Reload"
+  },
+  "tile": {
+    "left": "Tile to Left Half",
+    "right": "Tile to Right Half",
+    "topLeft": "Tile to Top Left",
+    "topRight": "Tile to Top Right",
+    "bottomLeft": "Tile to Bottom Left",
+    "bottomRight": "Tile to Bottom Right",
+    "fill": "Fill",
+    "center": "Center",
+    "restore": "Restore",
+    "immersive": "Enter Immersive Mode",
+    "zone": {
+      "left": "left half",
+      "right": "right half",
+      "topLeft": "top-left",
+      "topRight": "top-right",
+      "bottomLeft": "bottom-left",
+      "bottomRight": "bottom-right"
+    }
+  },
+  "expose": {
+    "title": "Window Overview",
+    "hint": "Click a window to focus, press Esc to exit",
+    "empty": "No open windows",
+    "untitled": "Untitled Window",
+    "closeWindow": "Close window",
+    "emptyHint": "Press Esc or click anywhere to return to the desktop",
+    "emptyApp": "This app has no windows to overview"
+  },
+  "switcher": {
+    "title": "Window Switcher",
+    "hint": "Hold Ctrl to cycle, release to switch",
+    "minimized": "Minimized"
+  },
+  "emptyDesktop": {
+    "title": "Your Study Desktop",
+    "hint": "Open apps from the Dock below to get started — windows can be freely arranged, tiled and compared side by side.",
+    "actionsLabel": "Quick start",
+    "actionFiles": "Open Files",
+    "actionFilesDesc": "Browse notes, textbooks, and all resources",
+    "actionApps": "All apps",
+    "actionFlashcards": "Flashcards",
+    "actionChat": "New chat",
+    "actionChatDesc": "Open an AI chat window",
+    "actionTodo": "View todos",
+    "actionTodoDesc": "Plan today's study tasks",
+    "tipsTitle": "Tips",
+    "tipsDismiss": "Got it",
+    "tipTile": "Drag a window to the screen edge to tile",
+    "tipSwitch": "Quickly switch between windows",
+    "tipExpose": "Overview all open windows",
+    "tourTitle": "Quick tour",
+    "tourSkip": "Skip",
+    "tourDontShow": "Don't show again",
+    "tourNext": "Next",
+    "tourDone": "Done",
+    "tourStep": "{{current}} / {{total}}",
+    "tourSteps": {
+      "dock": {
+        "title": "Dock apps",
+        "body": "Launch study apps from the Dock at the bottom. Windows can be arranged, tiled, and compared side by side."
+      },
+      "search": {
+        "title": "Quick search",
+        "body": "Press {{shortcut}} to search apps and commands without leaving the desktop."
+      },
+      "statusBar": {
+        "title": "Status bar rhythm",
+        "body": "The top status bar surfaces due flashcards, pomodoro, and automation health — open it for today's rhythm."
+      },
+      "agent": {
+        "title": "Agent control",
+        "body": "When needed, let AI locate content and run authorized actions inside study apps."
+      }
+    }
+  },
+  "agenda": {
+    "label": "Calendar and study agenda",
+    "backToToday": "Back to today",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "quickAdd": "Add schedule item",
+    "pendingCount": "{{count}} to schedule",
+    "datePendingCount": "{{date}}, {{count}} todos",
+    "overdueCount": "{{count}} overdue",
+    "openTodo": "Todos",
+    "loading": "Organizing your schedule…",
+    "clear": "Nothing is due on this day",
+    "completeItem": "Complete {{title}}",
+    "completeFailed": "Could not complete task",
+    "unknownList": "Todo",
+    "allDay": "All day",
+    "more": "{{count}} more",
+    "loadFailed": "Schedule is temporarily unavailable"
+  },
+  "desktopMenu": {
+    "label": "Desktop menu",
+    "newChat": "New chat",
+    "openFiles": "Open Files",
+    "allApps": "All Apps…",
+    "arrange": "Arrange windows",
+    "tileAll": "Tile all windows",
+    "expose": "Window overview",
+    "wallpaper": "Desktop wallpaper",
+    "manageWallpaper": "Manage Wallpapers…",
+    "customWallpaper": "Custom image",
+    "materialTier": "Visual material",
+    "showDesktop": "Show desktop",
+    "restoreWindows": "Restore windows",
+    "settings": "Desktop settings…"
+  },
+  "cheatsheet": {
+    "title": "Keyboard shortcuts",
+    "close": "Close",
+    "hint": "Press ? or Esc to close · Hold Ctrl+Alt to peek",
+    "hintMac": "Press ? or Esc to close · Hold ⌘⌥ to peek",
+    "groups": {
+      "layout": "Tiling & layout",
+      "movement": "Move & snap",
+      "navigation": "Switch & navigate",
+      "management": "Window management",
+      "help": "Help"
+    }
+  },
+  "wallpaper": {
+    "mountainMist": "Mountain Mist",
+    "forestMist": "Misty Forest",
+    "alpineLake": "Alpine Lake",
+    "winterRidge": "Winter Ridge",
+    "aurora": "Aurora",
+    "horizon": "Horizon",
+    "graphite": "Graphite",
+    "meadow": "Meadow",
+    "lagoon": "Lagoon",
+    "dusk": "Dusk",
+    "sakura": "Sakura",
+    "sand": "Sand",
+    "nebula": "Nebula",
+    "auroraFlow": "Aurora Flow",
+    "duskFlow": "Dusk Flow"
+  },
+  "wallpaperManager": {
+    "title": "Wallpaper Manager",
+    "presetsSection": "Built-in Wallpapers",
+    "customSection": "My Wallpapers",
+    "import": "Import Image",
+    "importing": "Importing…",
+    "empty": "No custom wallpapers yet. Click \"Import Image\" to add one.",
+    "remove": "Remove wallpaper",
+    "limitReached": "Wallpaper library is full ({{limit}} images). Remove some before importing.",
+    "importFailed": "Import failed. Please try again.",
+    "adjustTitle": "Image Adjustments",
+    "blur": "Blur",
+    "dim": "Dim",
+    "vignette": "Vignette",
+    "close": "Close",
+    "selectTitle": "Choose a wallpaper image"
+  },
+  "content": {
+    "loading": "Loading content…",
+    "missingResource": "Missing resource identifier; this window cannot be opened",
+    "missingResourceHint": "Reopen from Files, or check that the resource still exists.",
+    "confirmCloseUnsaved": "This content has unsaved changes. Close the window anyway?",
+    "unsavedTitle": "You have unsaved changes. Leave anyway?"
+  },
+  "mindmap": {
+    "loading": "Loading mind map…",
+    "missingResourceHint": "Reopen the mind map from Files, or check that it still exists."
+  },
+  "files": {
+    "dragOut": {
+      "openOnDesktop": "Drop on desktop to open"
+    },
+    "preview": {
+      "type": {
+        "note": "Note",
+        "textbook": "Textbook",
+        "exam": "Exam",
+        "translation": "Translation",
+        "essay": "Essay",
+        "image": "Image",
+        "file": "File",
+        "mindmap": "Mind map",
+        "folder": "Folder",
+        "generic": "Resource"
+      }
+    }
+  },
+  "a11y": {
+    "desktop": "Workbench desktop",
+    "windowRole": "Window",
+    "close": "Close window",
+    "minimize": "Minimize window",
+    "zoom": "Zoom window",
+    "expose": "Window overview",
+    "tilingDivider": "Tiling divider",
+    "windowOpened": "Opened {{title}}",
+    "windowClosed": "Closed {{title}}",
+    "windowMinimized": "{{title}} minimized",
+    "windowTiled": "{{title}} tiled to {{zone}}",
+    "zoomed": "{{title}} maximized",
+    "restored": "{{title}} restored",
+    "exposeOpened": "Overview opened, {{count}} windows",
+    "exposeClosed": "Overview closed",
+    "dropOpened": "Opened {{title}}",
+    "appCrashed": "{{name}} crashed and can be reloaded",
+    "showDesktop": "Desktop shown",
+    "previewFailed": "Unable to open preview",
+    "pdfRefOpenFailed": "Unable to open PDF reference: missing source",
+    "zoomRestore": "Restore window",
+    "closeAll": "Close all windows of this app",
+    "minimizeAll": "Minimize all windows of this app",
+    "immersiveEnter": "Enter immersive mode",
+    "immersiveExit": "Exit immersive mode",
+    "immersiveEntered": "{{title}} entered immersive mode",
+    "immersiveExited": "{{title}} exited immersive mode"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "tileLeft": "Tile to left half",
+    "tileRight": "Tile to right half",
+    "tileTopLeft": "Tile to top-left",
+    "tileTopRight": "Tile to top-right",
+    "tileBottomLeft": "Tile to bottom-left",
+    "tileBottomRight": "Tile to bottom-right",
+    "moveLeft": "Snap to left edge (keep size)",
+    "moveRight": "Snap to right edge (keep size)",
+    "moveUp": "Snap to top edge (keep size)",
+    "moveDown": "Snap to bottom edge (keep size)",
+    "maximize": "Maximize (fill desktop)",
+    "restoreOrMinimize": "Restore / minimize",
+    "center": "Center window",
+    "cycleNext": "Cycle to next window",
+    "cyclePrev": "Cycle to previous window",
+    "cycleAppNext": "Next window of same app",
+    "cycleAppPrev": "Previous window of same app",
+    "minimize": "Minimize focused window",
+    "showDesktop": "Show desktop (minimize all / press again to restore)",
+    "expose": "Window overview",
+    "closeWindow": "Close focused window",
+    "closeAll": "Close all windows",
+    "cheatsheet": "Shortcut cheatsheet",
+    "exposeApp": "App windows overview (current app)"
+  },
+  "settings": {
+    "sectionTitle": "Study Desktop",
+    "sectionDesc": "Study Desktop is the product default: a windowed desktop for opening and tiling study apps. You can turn it off anytime to use Classic mode for compatibility.",
+    "mode": {
+      "title": "Study Desktop (default)",
+      "desc": "When on, use the windowed Study Desktop. Turning it off restores Classic layout as a compatibility mode; the desktop snapshot is kept.",
+      "migratedNotice": "Study Desktop is enabled. You can switch back to Classic mode in Settings."
+    },
+    "performanceProfile": {
+      "title": "Performance Profile",
+      "desc": "Balance visuals and smoothness in one step. Presets sync the visual material; changing it alone switches to Custom.",
+      "quality": "Quality",
+      "balanced": "Balanced",
+      "performance": "Performance",
+      "custom": "Custom"
+    },
+    "materialTier": {
+      "title": "Visual Material",
+      "desc": "Glass material tier. Also driven by the Performance Profile above; changing it alone switches to Custom.",
+      "auto": "Auto",
+      "full": "Full",
+      "reduced": "Reduced",
+      "minimal": "Minimal"
+    },
+    "dockSize": {
+      "title": "Dock Size",
+      "desc": "Adjust the overall size of the Dock, app icons, and spacing."
+    },
+    "wallpaper": {
+      "title": "Desktop Wallpaper",
+      "desc": "Pick a built-in nature scene or theme gradient, or use a custom image.",
+      "kindTheme": "Built-in",
+      "kindImage": "Custom Image",
+      "selectTitle": "Choose a wallpaper image",
+      "changeImage": "Change Image",
+      "importing": "Importing…",
+      "manage": "Manage Wallpapers"
+    },
+    "tileMargins": {
+      "title": "Tiled Window Margins",
+      "desc": "Keeps a gap between tiled windows. When off, tiled windows sit edge to edge.",
+      "px": "Margin (px)"
+    },
+    "dockAutohide": {
+      "title": "Automatically Hide Dock",
+      "desc": "Hides the Dock when not in use. Move the pointer to the bottom edge to reveal it."
+    },
+    "restoreSession": {
+      "title": "Restore last desktop on launch",
+      "desc": "On next launch, restore previously open windows and layout. Off by default for faster cold starts; desktop state is still saved so you can turn this on later."
+    },
+    "menubarAutohide": {
+      "title": "Automatically Hide Menu Bar",
+      "desc": "Hides the menu bar when not in use. Move the pointer to the top edge to reveal it."
+    },
+    "titleBarDoubleClick": {
+      "title": "Double-Click Window Title Bar",
+      "desc": "Action performed when double-clicking the empty area of a window's title bar.",
+      "zoom": "Zoom",
+      "minimize": "Minimize",
+      "none": "Do Nothing"
+    },
+    "devPanel": {
+      "title": "Diagnostics Panel",
+      "desc": "Shows scheduler diagnostics on the desktop: window lifecycles, memory budget and frame timing. Off by default in development; start with npm run dev:tauri:diag or ?wbDiag=1."
+    },
+    "browserEnabled": {
+      "title": "Built-in Browser",
+      "desc": "Open a dedicated browser window on the study desktop (pages run in an isolated WebView). Study Desktop must be enabled first.",
+      "needWorkbench": "Enable Study Desktop first to change built-in browser options."
+    },
+    "browserNetworkMode": {
+      "title": "Assistant HTTP Scope",
+      "desc": "Control whether the assistant may use public HTTP. Manual browsing is not restricted by this setting.",
+      "local_whitelist": "HTTPS public only",
+      "full": "Allow public HTTP (confirm)",
+      "fullConfirmTitle": "Allow assistant access to public HTTP?",
+      "fullConfirm": "Allowing the assistant to use public HTTP creates an unencrypted connection whose pages and traffic may be modified. Continue?"
+    },
+    "browserAgentControl": {
+      "title": "Allow assistant browser control",
+      "desc": "The assistant may navigate and act in the shared session; sensitive actions still require confirmation."
+    },
+    "agentControl": {
+      "title": "AI assistant desktop control",
+      "desc": "Controls whether Chat can open windows, follow focus, and stage actions on the study desktop. Destructive actions still require confirmation.",
+      "off": "Off",
+      "background": "Background",
+      "follow": "Follow",
+      "offDesc": "Read-only list/query still allowed; open, close, commands, and staging are blocked. Data writes may still go through the backend without opening windows or staging.",
+      "backgroundDesc": "Allows control without stealing focus: stage in open windows, or apply final state with a Dock hint.",
+      "followDesc": "Auto-opens and focuses target windows so the assistant's actions play in the foreground."
+    },
+    "agentPacing": {
+      "title": "Control pacing",
+      "desc": "Visual pacing when the assistant applies operations in desktop windows. Fast = instant + highlight; Normal = default; Demo = slower for walkthroughs.",
+      "fast": "Fast",
+      "normal": "Normal",
+      "demo": "Demo"
+    },
+    "browserCdpWindows": {
+      "title": "Windows CDP acceleration (advanced)",
+      "desc": "Windows only. Opens a remote debugging port for stronger automation; extra attack surface — off by default."
+    },
+    "browserAdvanced": "Advanced (Browser)",
+    "browserPolicyDisabled": "Built-in browser is disabled by policy."
+  },
+  "browser": {
+    "addressPlaceholder": "Enter a URL or search",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "stop": "Stop",
+    "secureConnection": "Secure connection",
+    "insecureConnection": "Insecure HTTP connection",
+    "connectionUnknown": "No connection yet",
+    "agentActive": "Assistant is controlling this page",
+    "userControl": "You are in control",
+    "takeOver": "Take over",
+    "detachedHint": "The page is open in a separate window",
+    "showContent": "Show page",
+    "emptyHint": "Enter a URL to start browsing",
+    "blockedScheme": "This link cannot be opened for security reasons",
+    "needWorkbench": "Enable Study Desktop first",
+    "needBrowserEnabled": "Enable the built-in browser in Settings",
+    "contentCrashed": "The page process exited. You can retry.",
+    "approveNavigate": "Allow the assistant to open: {{url}}",
+    "approveClick": "Allow the assistant to click a page element",
+    "approveType": "Allow the assistant to type on the page",
+    "nav": "Navigation"
+  },
+  "devPanel": {
+    "title": "Workbench Diagnostics",
+    "expand": "Expand panel",
+    "collapse": "Collapse panel",
+    "windows": "Windows",
+    "noWindows": "No windows",
+    "lifecycle": {
+      "focused": "Focused",
+      "visible": "Visible",
+      "background": "Background",
+      "frozen": "Frozen"
+    },
+    "budget": "Memory Budget",
+    "focusStack": "Focus Stack",
+    "emptyFocusStack": "(empty)",
+    "lastSnapshot": "Last Snapshot",
+    "never": "Never saved",
+    "frameTime": "Frame Time",
+    "avg": "Avg",
+    "max": "Max",
+    "sampling": "Sampling…",
+    "dropped": "Dropped frames",
+    "gestureDropped": "Gesture drops",
+    "longTasks": "Long tasks",
+    "source": "Data source",
+    "interactions": "Recent interactions",
+    "interactionsEmpty": "Drag or resize a window to see latency",
+    "copyTrace": "Copy JSON",
+    "clearTrace": "Clear",
+    "distribution": "Lifecycle distribution",
+    "minimizedTag": "Minimized",
+    "close": "Close panel"
+  },
+  "notesWorkspace": {
+    "title": "Notes",
+    "emptyPane": "Select a note or mind map",
+    "empty": {
+      "paneTitle": "Select or create a note",
+      "paneNewNote": "New note",
+      "paneOpenSearch": "Open search",
+      "hintQuickOpen": "Quick open",
+      "hintNewNote": "New note",
+      "treeTitle": "No notes yet",
+      "treeNewNote": "New note",
+      "treeNewFolder": "New folder",
+      "paneImport": "Import notes",
+      "paneAskAgent": "Ask Agent"
+    },
+    "untitledNote": "Untitled note",
+    "untitledMindmap": "Untitled mind map",
+    "confirmCloseUnsaved": "This tab has unsaved changes. Close it anyway?",
+    "confirmCloseSaving": "This tab is still saving. Close it anyway?",
+    "ribbon": {
+      "aria": "Notes navigation",
+      "explorer": "File explorer",
+      "search": "Search notes",
+      "backlinks": "Properties & links",
+      "trash": "Trash"
+    },
+    "explorer": {
+      "title": "Files",
+      "newNote": "New note",
+      "newFolder": "New folder",
+      "newMindmap": "New mind map",
+      "refresh": "Refresh",
+      "open": "Open file explorer",
+      "close": "Close file explorer",
+      "closeFiles": "Close files"
+    },
+    "navHistory": {
+      "aria": "Navigation history",
+      "back": "Back ({{shortcut}})",
+      "forward": "Forward ({{shortcut}})"
+    },
+    "navigation": {
+      "back": "Back",
+      "forward": "Forward"
+    },
+    "library": {
+      "manage": "Import or export library"
+    },
+    "import": {
+      "partial": "{{success}} imported, {{failed}} failed",
+      "success": "Imported {{count}} notes"
+    },
+    "tagFilter": {
+      "label": "Filter by tags",
+      "clear": "Clear",
+      "loading": "Loading tags…",
+      "retry": "Retry",
+      "empty": "No tags yet",
+      "intersectionHint": "Intersection filter: only notes carrying all {{count}} tags are shown"
+    },
+    "favorites": {
+      "title": "Favorites",
+      "empty": "No favorites yet. Star a note or mind map to add one.",
+      "unfavorite": "Remove {{name}} from favorites"
+    },
+    "search": {
+      "placeholder": "Search files...",
+      "aria": "Search files",
+      "clear": "Clear search"
+    },
+    "searchOverlay": {
+      "title": "Search notes",
+      "quickOpen": "Quick open",
+      "fullText": "Search content",
+      "quickOpenPlaceholder": "Filter openable files...",
+      "fullTextPlaceholder": "Search note contents...",
+      "close": "Close search",
+      "clear": "Clear search",
+      "modeLabel": "Search mode",
+      "searching": "Searching...",
+      "enterQuery": "Enter text to search note contents.",
+      "searchFailed": "Could not search notes.",
+      "openFailed": "Could not open this resource.",
+      "retry": "Retry",
+      "mindmap": "Mind map",
+      "note": "Note",
+      "empty": "No matching notes or mind maps.",
+      "keyboardHint": "Up/Down to select, Enter to open, Esc to close",
+      "activeTags": "Active tags",
+      "removeTag": "Remove tag {{tag}}",
+      "emptyQuickOpenHint": "Try \"Search content\" for full-text matches.",
+      "tagHint": "tag:name filters by tag",
+      "resultCount": "{{count}} results",
+      "recentGroup": "Recently opened",
+      "allGroup": "All files"
+    },
+    "backlinks": {
+      "title": "Links",
+      "panelAria": "Note info panel",
+      "tabProperties": "Properties",
+      "tabLinks": "Links",
+      "refresh": "Refresh links",
+      "close": "Close links",
+      "noActiveNote": "Select a note to inspect its links.",
+      "noActiveNoteProperties": "Select a note to inspect its properties.",
+      "loading": "Loading links...",
+      "loadFailed": "Could not load note links.",
+      "retry": "Retry",
+      "outgoing": "Outgoing links",
+      "noOutgoing": "This note doesn't link to others yet. Type [[ to create a wiki link.",
+      "incoming": "Backlinks",
+      "noIncoming": "No other notes link here yet",
+      "incomingLimited": "Scanned {{scanned}} notes; results may be incomplete.",
+      "moreContext": "Show more context",
+      "lessContext": "Show less context",
+      "unresolved": "Unresolved links",
+      "createFromUnresolved": "Create note \"{{title}}\"",
+      "createFailed": "Could not create note.",
+      "openLinkedNote": "Open {{title}}",
+      "openFailed": "Could not open linked note.",
+      "loadMore": "Load more sources",
+      "mentions": "Unlinked mentions",
+      "mentionsLoading": "Scanning mentions…",
+      "mentionsFailed": "Could not scan unlinked mentions.",
+      "mentionsLimited": "Only the {{count}} most recent candidate notes were scanned.",
+      "noMentions": "No unlinked mentions found",
+      "convertMention": "Convert the mention in \"{{title}}\" to a link"
+    },
+    "tree": {
+      "aria": "File tree",
+      "root": "Library root",
+      "folder": "Folder: {{name}}",
+      "note": "Note: {{name}}",
+      "mindmap": "Mind map: {{name}}",
+      "renameInput": "Rename",
+      "loading": "Loading files",
+      "loadFailed": "Could not load files",
+      "retry": "Retry",
+      "noMatches": "No files match \"{{query}}\"",
+      "empty": "No files in this library yet",
+      "showAll": "Show all files",
+      "dragLink": "Drag link into note",
+      "moreActions": "More actions"
+    },
+    "tabs": {
+      "aria": "Open files",
+      "close": "Close {{title}}",
+      "closeOthers": "Close other tabs",
+      "closeTabsToRight": "Close tabs to the right",
+      "pin": "Pin {{title}}",
+      "unpin": "Unpin {{title}}",
+      "pinned": "Pinned",
+      "showAll": "Show all open files",
+      "openInRightSplit": "Open {{title}} in right split",
+      "closeRightSplit": "Close {{title}} from right split"
+    },
+    "panes": {
+      "main": "Main editor",
+      "right": "Right editor",
+      "resize": "Resize split panes"
+    },
+    "saveState": {
+      "saved": "Saved",
+      "saving": "Saving",
+      "dirty": "Unsaved"
+    },
+    "status": {
+      "ready": "Ready",
+      "fileCount": "{{count}} files",
+      "creatingNote": "Creating note...",
+      "creatingMindmap": "Creating mind map...",
+      "splitNeedsAnotherTab": "Open another tab to split the workspace.",
+      "movedToTrash": "{{name}} moved to trash",
+      "movedManyToTrash": "{{count}} items moved to trash",
+      "restored": "Restored {{name}}",
+      "noteType": "Markdown",
+      "mindmapType": "Mind map",
+      "library": "Local library"
+    },
+    "actions": {
+      "undo": "Undo"
+    },
+    "context": {
+      "open": "Open",
+      "openSplit": "Open in right split",
+      "rename": "Rename",
+      "favorite": "Favorite",
+      "unfavorite": "Unfavorite",
+      "newNote": "New note",
+      "newFolder": "New folder",
+      "newMindmap": "New mind map",
+      "delete": "Delete"
+    },
+    "dialog": {
+      "renameTitle": "Rename",
+      "createFolderTitle": "New folder",
+      "deleteTitle": "Move to trash",
+      "deleteDescription": "Move \"{{name}}\" to the trash?",
+      "deleteManyDescription": "Move {{count}} selected items to the trash?",
+      "nameLabel": "Name",
+      "nameRequired": "Enter a name.",
+      "cancel": "Cancel",
+      "rename": "Rename",
+      "create": "Create",
+      "delete": "Delete"
+    },
+    "validation": {
+      "nameTooLong": "Names can be at most {{max}} characters",
+      "nameInvalidChars": "Names can't contain line breaks or control characters",
+      "charCount": "{{count}} / {{max}}"
+    },
+    "trash": {
+      "title": "Trash",
+      "close": "Close trash",
+      "loading": "Loading trash",
+      "empty": "Trash is empty",
+      "emptyAll": "Empty trash ({{count}})",
+      "deletedAt": "Deleted {{time}}",
+      "restore": "Restore {{name}}",
+      "purge": "Permanently delete {{name}}",
+      "selectAll": "Select all",
+      "selectItem": "Select {{name}}",
+      "restoreSelected": "Restore selected ({{count}})",
+      "restoreSelectedFailed": "Could not restore {{count}} item(s).",
+      "confirmEmptyTitle": "Empty trash?",
+      "confirmEmptyDesc": "Permanently delete {{count}} items. This cannot be undone.",
+      "confirmEmptyAction": "Empty",
+      "confirmPurgeTitle": "Delete permanently?",
+      "confirmPurgeDesc": "\"{{name}}\" will be permanently deleted. This cannot be undone.",
+      "confirmPurgeAction": "Delete permanently"
+    }
+  },
+  "sandbox": {
+    "title": "Sandbox Workbench",
+    "refresh": "Refresh",
+    "openInspector": "Open inspector",
+    "closeInspector": "Close inspector",
+    "close": "Close",
+    "preview": "Preview",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "inspector": "Inspector",
+    "source": "Source",
+    "codeBlock": "Code block",
+    "safePreview": "Safe preview",
+    "running": "Running",
+    "view": "Viewport",
+    "desktop": "Desktop",
+    "tablet": "Tablet",
+    "mobile": "Mobile",
+    "desktopShort": "PC",
+    "tabletShort": "Pad",
+    "mobileShort": "Ph",
+    "stats": "Statistics",
+    "language": "Language",
+    "lines": "Lines",
+    "characters": "Characters",
+    "iframeNotice": "Restricted iframe; scripts are disabled.",
+    "emptyHint": "Open a code block in chat to preview it.",
+    "mobileHint": "Mobile focuses on preview; use the desktop app for the full workbench.",
+    "closed": "Closed",
+    "open": "Open sandbox workbench",
+    "clearSession": "Clear session"
+  },
+  "tagTreeMarkdownPlaceholder": "# Root tag\n### Subtopic A\n#### Concept 1\n##### Method A\n###### Question type I",
+  "filePreview": {
+    "downloadUnavailable": "Original file unavailable",
+    "saveAs": "Save As",
+    "downloadSuccess": "Saved successfully",
+    "referenceNotSupported": "This resource cannot be referenced",
+    "search": "Search",
+    "openExternal": "Open with system app",
+    "showInFolder": "Show in Folder",
+    "print": "Print",
+    "referenceToChat": "Reference to chat",
+    "previous": "Previous",
+    "next": "Next",
+    "searchPlaceholder": "Find in document…",
+    "noMatches": "No matches",
+    "tooManyMatches": "Too many matches; only the first {{limit}} are counted",
+    "highlightUnsupported": "Match highlighting isn't supported here; press Enter to jump between matches",
+    "printUnsupported": "This file type can't be printed from the preview. Open it with a system app to print.",
+    "searchUnavailable": "Text search isn't available for this file type",
+    "moreActions": "More actions",
+    "closeSearch": "Close search"
+  },
+  "pomodoro": {
+    "modes": {
+      "focusing": "Focusing",
+      "shortBreak": "Short break",
+      "longBreak": "Long break",
+      "idle": "Pomodoro"
+    },
+    "strictHint": "Focus cannot be paused in strict mode",
+    "strictBadge": "Strict mode",
+    "countUpLabel": "Count up",
+    "controls": {
+      "startFocus": "Start focus",
+      "pause": "Pause",
+      "resume": "Resume",
+      "stop": "Stop",
+      "finish": "Finish",
+      "skipBreak": "Skip break",
+      "noiseOn": "Turn ambient sound on",
+      "noiseOff": "Turn ambient sound off",
+      "enterImmersive": "Enter immersive focus mode",
+      "extendMinutes": "+{{count}} min",
+      "extendTitle": "Extend current phase by {{count}} min"
+    },
+    "settingsTitle": "Pomodoro Settings",
+    "statsTitle": "Focus trends",
+    "progressTitle": "{{done}}/{{total}} pomodoros completed",
+    "today": {
+      "label": "Today",
+      "unit": "pomodoros",
+      "focus": "Focus",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "interrupted": "{{value}} interrupted",
+      "goalReached": "Goal reached",
+      "streak": "{{count}}-day streak",
+      "statsButton": "Stats"
+    }
+  }
+}

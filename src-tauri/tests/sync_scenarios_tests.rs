@@ -1185,7 +1185,7 @@ async fn scenario_35_apply_blob_tombstones_removes_local_file() {
 }
 
 #[tokio::test]
-async fn scenario_36_tombstone_prune_expired() {
+async fn scenario_36_tombstone_retained_without_authoritative_snapshot() {
     use tombstone::{prune_tombstones, BlobTombstoneEntry};
     let mut map = std::collections::HashMap::new();
     let old = (Utc::now() - chrono::Duration::days(120)).to_rfc3339();
@@ -1209,9 +1209,12 @@ async fn scenario_36_tombstone_prune_expired() {
         },
     );
     let removed = prune_tombstones(&mut map, 90, |e| &e.deleted_at);
-    assert_eq!(removed, 1);
+    assert_eq!(removed, 0);
     assert!(map.contains_key("fresh"));
-    assert!(!map.contains_key("old"));
+    assert!(
+        map.contains_key("old"),
+        "长期离线设备仍可能需要旧删除记录；权威 replace 快照上线前不得裁剪"
+    );
 }
 
 #[tokio::test]
@@ -1895,10 +1898,10 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 }
 
 #[tokio::test]
-async fn scenario_58_shared_state_consumes_tombstone_once() {
-    // 一个进程内的多个 SyncManager 共享同一 SyncStateStore；它们模拟的是同一
-    // app instance 的多次操作，而不是独立设备。B 消费 tombstone 后推进水位，
-    // C 在同一 state store 下不应重复消费同一条 tombstone。
+async fn scenario_58_shared_state_replays_tombstones_idempotently() {
+    // 时间戳不是可靠游标：同一毫秒可能有多条删除，设备时钟也可能回拨。
+    // 即使多个 SyncManager 共享同一 SyncStateStore，每轮也必须幂等重放完整
+    // tombstone 集，不能因另一次同步推进了诊断水位而漏删。
     let storage = MockCloudStorage::new();
     let mgr_a = SyncManager::new("dev_a".into());
     let mgr_b = SyncManager::new("dev_b".into());
@@ -1938,15 +1941,22 @@ async fn scenario_58_shared_state_consumes_tombstone_once() {
         .unwrap();
     assert!(!tmp_b.path().join(&blob.1).exists());
 
-    // C 后同步：同一 app instance 的 tombstone 水位已由 B 推进，不重复应用。
+    // C 后同步：即使共享状态中的诊断水位已由 B 推进，也必须应用同一删除。
     mgr_c
         .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(
-        tmp_c.path().join(&blob.1).exists(),
-        "同一 SyncStateStore 下 tombstone 只消费一次；真实多设备需独立 app data"
+        !tmp_c.path().join(&blob.1).exists(),
+        "共享 SyncStateStore 不能导致 tombstone 漏删"
     );
+
+    // 再次重放应保持幂等，既不报错也不复活文件。
+    mgr_c
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+    assert!(!tmp_c.path().join(&blob.1).exists());
 }
 
 #[tokio::test]
@@ -2063,7 +2073,7 @@ fn scenario_60_conflict_guard_preserves_atomicity_on_failure() {
 }
 
 #[tokio::test]
-async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
+async fn scenario_61_legacy_snapshot_bootstrap_does_not_enable_prune() {
     let storage = MockCloudStorage::new();
     let suffix = Utc::now().timestamp_nanos_opt().unwrap_or_default();
     let manager = SyncManager::new(format!("dev_snapshot_target_{suffix}"));
@@ -2183,11 +2193,11 @@ async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
 
     let deleted = manager.prune_old_changes(&storage, 30).await.unwrap();
     assert_eq!(
-        deleted, 2,
-        "only own seqs covered by the snapshot may be pruned"
+        deleted, 0,
+        "v1 snapshots lack authoritative replace/delete-set semantics and cannot authorize prune"
     );
-    assert!(storage.get(&own_seq1).await.unwrap().is_none());
-    assert!(storage.get(&own_seq2).await.unwrap().is_none());
+    assert!(storage.get(&own_seq1).await.unwrap().is_some());
+    assert!(storage.get(&own_seq2).await.unwrap().is_some());
     assert!(storage.get(&own_seq3).await.unwrap().is_some());
     assert!(storage.get(&other_seq1).await.unwrap().is_some());
 }
@@ -2400,8 +2410,11 @@ fn recompute_ref_counts_skips_unchanged_rows() {
     // 失真的 r2 被修正归零，新增引用使 r1 重算为 2，且未变化行不点火触发器
     conn.execute("UPDATE resources SET ref_count = 9 WHERE id = 'r2'", [])
         .unwrap();
-    conn.execute("DELETE FROM __change_log WHERE table_name = 'resources'", [])
-        .unwrap();
+    conn.execute(
+        "DELETE FROM __change_log WHERE table_name = 'resources'",
+        [],
+    )
+    .unwrap();
     let change2 = SyncChangeWithData {
         table_name: "files".into(),
         record_id: "f-2".into(),
@@ -2427,19 +2440,15 @@ fn recompute_ref_counts_skips_unchanged_rows() {
     );
 
     let rc2: i64 = conn
-        .query_row(
-            "SELECT ref_count FROM resources WHERE id = 'r2'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT ref_count FROM resources WHERE id = 'r2'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(rc2, 0, "失真的 ref_count 必须在相关变更批次中被重算修正");
     let rc1: i64 = conn
-        .query_row(
-            "SELECT ref_count FROM resources WHERE id = 'r1'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT ref_count FROM resources WHERE id = 'r1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(rc1, 2, "新增引用后 ref_count 必须重算为实际引用数");
 }
@@ -2453,14 +2462,18 @@ async fn manifest_decrypt_failure_fails_closed() {
     let storage = MockCloudStorage::new();
 
     // 设备 A 用密码 pw-a 上传加密清单
-    let mgr_a =
-        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_a = SyncManager::with_encryption(
+        format!("dev_a_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let manifest_a = mgr_a.create_manifest(HashMap::new());
     mgr_a.upload_manifest(&storage, &manifest_a).await.unwrap();
 
     // 设备 B 用错误密码：必须报错而非把云端当成空实例
-    let mgr_b =
-        SyncManager::with_encryption(format!("dev_b_{}", uuid::Uuid::new_v4()), Some("pw-wrong".into()));
+    let mgr_b = SyncManager::with_encryption(
+        format!("dev_b_{}", uuid::Uuid::new_v4()),
+        Some("pw-wrong".into()),
+    );
     let err = mgr_b.download_manifest(&storage).await;
     assert!(
         err.is_err(),
@@ -2470,14 +2483,13 @@ async fn manifest_decrypt_failure_fails_closed() {
     // 设备 B 未配密码：同样必须报错（云端是加密数据）
     let mgr_b_plain = SyncManager::new(format!("dev_b2_{}", uuid::Uuid::new_v4()));
     let err2 = mgr_b_plain.download_manifest(&storage).await;
-    assert!(
-        err2.is_err(),
-        "未配置密码遇到加密清单必须 fail-close"
-    );
+    assert!(err2.is_err(), "未配置密码遇到加密清单必须 fail-close");
 
     // 正确密码可正常读取
-    let mgr_c =
-        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_c = SyncManager::with_encryption(
+        format!("dev_c_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let ok = mgr_c.download_manifest(&storage).await;
     assert!(ok.is_ok(), "正确密码必须能读取清单: {:?}", ok.err());
 }
@@ -2490,10 +2502,17 @@ async fn tombstone_decrypt_failure_fails_closed() {
     let storage = MockCloudStorage::new();
 
     // 设备 A（密码 pw-a）发布一条 blob tombstone（加密）
-    let mgr_a =
-        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_a = SyncManager::with_encryption(
+        format!("dev_a_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     mgr_a
-        .mark_blob_deleted(&storage, "hash_enc_1", Some("ha/hash_enc_1.pdf".into()), None)
+        .mark_blob_deleted(
+            &storage,
+            "hash_enc_1",
+            Some("ha/hash_enc_1.pdf".into()),
+            None,
+        )
         .await
         .unwrap();
 
@@ -2513,12 +2532,15 @@ async fn tombstone_decrypt_failure_fails_closed() {
 
     // 设备 A 改了密码后再 mark：读自己旧清单失败必须报错，
     // 而非用空清单覆盖（丢失 hash_enc_1 这条历史 tombstone）
-    let mgr_a_newpw = SyncManager::with_encryption(
-        mgr_a.device_id().to_string(),
-        Some("pw-changed".into()),
-    );
+    let mgr_a_newpw =
+        SyncManager::with_encryption(mgr_a.device_id().to_string(), Some("pw-changed".into()));
     let r2 = mgr_a_newpw
-        .mark_blob_deleted(&storage, "hash_enc_2", Some("hb/hash_enc_2.pdf".into()), None)
+        .mark_blob_deleted(
+            &storage,
+            "hash_enc_2",
+            Some("hb/hash_enc_2.pdf".into()),
+            None,
+        )
         .await;
     assert!(
         r2.is_err(),
@@ -2548,8 +2570,10 @@ async fn assets_manifest_decrypt_failure_fails_closed() {
     std::fs::create_dir_all(&asset_dir).unwrap();
     std::fs::write(asset_dir.join("report.png"), b"asset-payload").unwrap();
 
-    let mgr_a =
-        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_a = SyncManager::with_encryption(
+        format!("dev_a_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let out_a = mgr_a
         .sync_asset_directories(
             &storage,
@@ -2584,8 +2608,10 @@ async fn assets_manifest_decrypt_failure_fails_closed() {
     // 正确密码端可继续同步下载
     let active_c = TempDir::new().unwrap();
     let app_data_c = TempDir::new().unwrap();
-    let mgr_c =
-        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_c = SyncManager::with_encryption(
+        format!("dev_c_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let out_c = mgr_c
         .sync_asset_directories(
             &storage,
@@ -2596,4 +2622,181 @@ async fn assets_manifest_decrypt_failure_fails_closed() {
         .await
         .unwrap();
     assert_eq!(out_c.downloaded, 1, "正确密码端必须能正常下载资产");
+}
+
+#[tokio::test]
+async fn append_only_asset_manifests_merge_without_lost_entries() {
+    let storage = MockCloudStorage::new();
+    let active_a = TempDir::new().unwrap();
+    let active_b = TempDir::new().unwrap();
+    let app_a = TempDir::new().unwrap();
+    let app_b = TempDir::new().unwrap();
+    std::fs::create_dir_all(active_a.path().join("images")).unwrap();
+    std::fs::create_dir_all(active_b.path().join("images")).unwrap();
+    std::fs::write(active_a.path().join("images/a.txt"), b"device-a").unwrap();
+    std::fs::write(active_b.path().join("images/b.txt"), b"device-b").unwrap();
+
+    let manager_a = SyncManager::new("append-device-a".into());
+    let manager_b = SyncManager::new("append-device-b".into());
+    manager_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_a.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+    manager_b
+        .sync_asset_directories(
+            &storage,
+            active_b.path(),
+            app_b.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+
+    let keys = storage.keys();
+    let manifest_keys = keys
+        .iter()
+        .filter(|key| key.starts_with("data_governance/file_manifests/assets/"))
+        .collect::<Vec<_>>();
+    assert_eq!(manifest_keys.len(), 2, "每个设备应发布独立的不可变清单");
+    assert!(
+        !keys
+            .iter()
+            .any(|key| key == "data_governance/assets_manifest.json"),
+        "新客户端不得再覆盖写旧共享清单"
+    );
+    assert_eq!(
+        keys.iter()
+            .filter(|key| key.starts_with("data_governance/asset_objects/"))
+            .count(),
+        2,
+        "资产对象必须按内容摘要寻址"
+    );
+
+    let active_c = TempDir::new().unwrap();
+    let app_c = TempDir::new().unwrap();
+    let manager_c = SyncManager::new("append-device-c".into());
+    let outcome = manager_c
+        .sync_asset_directories(
+            &storage,
+            active_c.path(),
+            app_c.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome.downloaded, 2);
+    assert_eq!(
+        std::fs::read(active_c.path().join("images/a.txt")).unwrap(),
+        b"device-a"
+    );
+    assert_eq!(
+        std::fs::read(active_c.path().join("images/b.txt")).unwrap(),
+        b"device-b"
+    );
+}
+
+#[tokio::test]
+async fn corrupt_append_only_file_manifests_fail_closed() {
+    let storage = MockCloudStorage::new();
+    let manager = SyncManager::new("manifest-corruption-device".into());
+
+    storage
+        .put(
+            "data_governance/file_manifests/assets/device/bad.json",
+            b"{not-json",
+        )
+        .await
+        .unwrap();
+    let active = TempDir::new().unwrap();
+    let app_data = TempDir::new().unwrap();
+    assert!(manager
+        .sync_asset_directories(
+            &storage,
+            active.path(),
+            app_data.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .is_err());
+
+    storage
+        .delete("data_governance/file_manifests/assets/device/bad.json")
+        .await
+        .unwrap();
+    storage
+        .put(
+            "data_governance/file_manifests/workspaces/device/bad.json",
+            b"[]",
+        )
+        .await
+        .unwrap();
+    assert!(manager
+        .sync_workspace_databases(&storage, active.path(), SyncDirection::Download)
+        .await
+        .is_err());
+
+    storage
+        .delete("data_governance/file_manifests/workspaces/device/bad.json")
+        .await
+        .unwrap();
+    storage
+        .put(
+            "data_governance/file_manifests/blobs/device/bad.json",
+            b"null",
+        )
+        .await
+        .unwrap();
+    let blobs = TempDir::new().unwrap();
+    assert!(manager
+        .sync_vfs_blobs(&storage, blobs.path(), SyncDirection::Download)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn download_only_asset_tombstone_does_not_rehydrate_in_same_round() {
+    let storage = MockCloudStorage::new();
+    let active_a = TempDir::new().unwrap();
+    let app_a = TempDir::new().unwrap();
+    std::fs::create_dir_all(active_a.path().join("images")).unwrap();
+    std::fs::write(active_a.path().join("images/deleted.txt"), b"stale").unwrap();
+
+    let manager_a = SyncManager::new("tombstone-device-a".into());
+    manager_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_a.path(),
+            SyncDirection::Upload,
+        )
+        .await
+        .unwrap();
+    manager_a
+        .mark_asset_deleted(&storage, "active/images/deleted.txt", Some(5))
+        .await
+        .unwrap();
+
+    let active_b = TempDir::new().unwrap();
+    let app_b = TempDir::new().unwrap();
+    let manager_b = SyncManager::new("tombstone-device-b".into());
+    let outcome = manager_b
+        .sync_asset_directories_with_tombstones(
+            &storage,
+            active_b.path(),
+            app_b.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.downloaded, 0);
+    assert!(
+        !active_b.path().join("images/deleted.txt").exists(),
+        "download-only 同一轮不得从陈旧清单复活刚消费的删除"
+    );
 }

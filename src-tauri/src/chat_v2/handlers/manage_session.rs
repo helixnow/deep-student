@@ -2,24 +2,38 @@
 //!
 //! 包含创建、更新设置、归档、保存、列表、删除会话等命令。
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
+use crate::chat_v2::handlers::ensure_session_writable;
+use crate::chat_v2::pipeline::authority_mode::{global_plan_gate_manager, PlanGateResponse};
 use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::runtime_roots::{cleanup_session_runtime_roots, ensure_session_runtime_roots};
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{
-    ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState,
-    SkillStateSnapshot,
+    block_types, AuthorityMode, ChatSession, CompactionRecord, PersistStatus, SessionSettings,
+    SessionSkillState, SessionState, SkillStateSnapshot,
 };
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
 const MANUALLY_ARCHIVED_BY_KEY: &str = "manuallyArchivedBy";
+static SESSION_LIFECYCLE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn session_lifecycle_guard() -> MutexGuard<'static, ()> {
+    SESSION_LIFECYCLE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            log::error!("[ChatV2::handlers] Session lifecycle mutex poisoned; recovering");
+            poisoned.into_inner()
+        })
+}
 
 /// 将 `Value` 中所有出现在 `id_map` 里的字符串原值替换为新 ID。
 /// 仅替换“整字符串完全等于映射键”的情况，避免对 UUID 子串、URL、日志文本等产生误命中。
@@ -48,25 +62,156 @@ fn remap_ids_in_value(
     }
 }
 
+/// VFS 引用计数调整方向（跨库补偿操作）
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VfsRefOp {
+    Increment,
+    Decrement,
+}
+
+impl VfsRefOp {
+    fn as_str(self) -> &'static str {
+        match self {
+            VfsRefOp::Increment => "increment",
+            VfsRefOp::Decrement => "decrement",
+        }
+    }
+}
+
+/// 批量调整 VFS 资源引用计数（补偿性加固）。
+///
+/// chat_v2.db 与 vfs.db 是两个独立数据库，无法做跨库原子事务；本函数在
+/// 事务边界之外做补偿：每个资源失败后立即重试一次，仍失败则收集进失败
+/// 清单并以 error 级日志输出完整 resource id 列表，便于事后人工/工具修复。
+///
+/// 返回重试后仍失败的 resource id 列表（不阻断调用方流程）。
+fn adjust_vfs_refs_with_retry(
+    vfs_db: &VfsDatabase,
+    resource_ids: &[String],
+    op: VfsRefOp,
+    context: &str,
+) -> Vec<String> {
+    if resource_ids.is_empty() {
+        return Vec::new();
+    }
+
+    // 连接获取失败也重试一次；两次都失败则整批记为失败并输出清单。
+    let vfs_conn = match vfs_db.get_conn_safe() {
+        Ok(conn) => conn,
+        Err(first_err) => {
+            log::warn!(
+                "[ChatV2::handlers] Failed to get vfs.db conn for ref {} during {} (retrying once): {}",
+                op.as_str(),
+                context,
+                first_err
+            );
+            match vfs_db.get_conn_safe() {
+                Ok(conn) => conn,
+                Err(second_err) => {
+                    log::error!(
+                        "[ChatV2::handlers] VFS ref {} SKIPPED for all {} resource(s) during {} (conn failed after retry): {} — resource_ids=[{}]",
+                        op.as_str(),
+                        resource_ids.len(),
+                        context,
+                        second_err,
+                        resource_ids.join(", ")
+                    );
+                    return resource_ids.to_vec();
+                }
+            }
+        }
+    };
+
+    let mut failed: Vec<String> = Vec::new();
+    for rid in resource_ids {
+        let apply = || match op {
+            VfsRefOp::Increment => {
+                VfsResourceRepo::increment_ref_with_conn(&vfs_conn, rid).map(|_| ())
+            }
+            VfsRefOp::Decrement => {
+                VfsResourceRepo::decrement_ref_with_conn(&vfs_conn, rid).map(|_| ())
+            }
+        };
+        if let Err(first_err) = apply() {
+            log::warn!(
+                "[ChatV2::handlers] VFS ref {} failed for {} during {} (retrying once): {}",
+                op.as_str(),
+                rid,
+                context,
+                first_err
+            );
+            if let Err(second_err) = apply() {
+                log::error!(
+                    "[ChatV2::handlers] VFS ref {} FAILED after retry for {} during {}: {}",
+                    op.as_str(),
+                    rid,
+                    context,
+                    second_err
+                );
+                failed.push(rid.clone());
+            }
+        }
+    }
+
+    if !failed.is_empty() {
+        log::error!(
+            "[ChatV2::handlers] VFS ref {} failure summary during {}: {}/{} resource(s) failed after retry — resource_ids=[{}]",
+            op.as_str(),
+            context,
+            failed.len(),
+            resource_ids.len(),
+            failed.join(", ")
+        );
+    } else {
+        log::debug!(
+            "[ChatV2::handlers] VFS ref {} completed for {} resource reference(s) during {}",
+            op.as_str(),
+            resource_ids.len(),
+            context
+        );
+    }
+    failed
+}
+
 pub(crate) fn session_has_running_anki_blocks(
     db: &ChatV2Database,
     session_id: &str,
-) -> Result<bool, String> {
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-    let count: i64 = conn
-        .query_row(
-            r#"
-            SELECT COUNT(*)
-            FROM chat_v2_blocks b
-            INNER JOIN chat_v2_messages m ON m.id = b.message_id
-            WHERE m.session_id = ?1
-              AND b.block_type = 'anki_cards'
-              AND b.status IN ('pending', 'running')
-            "#,
-            rusqlite::params![session_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
+) -> Result<bool, ChatV2Error> {
+    // F2 修复：先把僵尸 running/pending anki 块（无活跃管线、且超过宽限时限，
+    // 通常来自崩溃/强退遗留）落库为 failed，再统计真正运行中的块。
+    // 否则僵尸块会永久阻止会话删除（前端 watchdog 只改内存态，不写 DB）。
+    // reap 失败仅告警并退回原有保守统计，不阻塞删除流程。
+    match crate::chat_v2::tools::chatanki_executor::reap_stale_running_anki_blocks(db, session_id) {
+        Ok(reaped) if !reaped.is_empty() => {
+            log::info!(
+                "[ChatV2::handlers] Marked {} stale running anki block(s) as failed before delete check (session {})",
+                reaped.len(),
+                session_id
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!(
+                "[ChatV2::handlers] Failed to reap stale running anki blocks for {}: {}",
+                session_id,
+                e
+            );
+        }
+    }
+
+    let conn = db.get_conn_safe()?;
+    let count: i64 = conn.query_row(
+        r#"
+        SELECT COUNT(*)
+        FROM chat_v2_blocks b
+        INNER JOIN chat_v2_messages m ON m.id = b.message_id
+        WHERE m.session_id = ?1
+          AND b.block_type = 'anki_cards'
+          AND b.status IN ('pending', 'running')
+        "#,
+        rusqlite::params![session_id],
+        |row| row.get(0),
+    )?;
     Ok(count > 0)
 }
 
@@ -85,6 +230,7 @@ pub(crate) fn session_has_running_anki_blocks(
 /// - `Err(String)`: 创建失败
 #[tauri::command]
 pub async fn chat_v2_create_session(
+    app: AppHandle,
     mode: String,
     title: Option<String>,
     metadata: Option<Value>,
@@ -121,25 +267,36 @@ pub async fn chat_v2_create_session(
 
     // P1-5 fix: Validate target group exists and is active
     if let Some(ref gid) = normalized_group_id {
-        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-        let group = ChatV2Repo::get_group_with_conn(&conn, gid).map_err(|e| e.to_string())?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
+        let group = ChatV2Repo::get_group_with_conn(&conn, gid).map_err(String::from)?;
         match group {
             Some(g) if g.persist_status != PersistStatus::Active => {
                 log::warn!(
                     "[ChatV2::handlers] Ignoring deleted/archived group_id: {}",
                     gid
                 );
-                return Err(format!("Group not found or inactive: {}", gid));
+                return Err(ChatV2Error::GroupNotFound(format!("{} (inactive)", gid)).into());
             }
             None => {
                 log::warn!("[ChatV2::handlers] Ignoring non-existent group_id: {}", gid);
-                return Err(format!("Group not found: {}", gid));
+                return Err(ChatV2Error::GroupNotFound(gid.clone()).into());
             }
             _ => {}
         }
     }
 
     let session = create_session_in_db(&mode, title, metadata, normalized_group_id, &db)?;
+
+    if let Err(error) = ensure_session_runtime_roots(&app, &session.id) {
+        // Session creation remains available even if the filesystem is
+        // temporarily unavailable. Shell/file tools retry this initialization
+        // before use and will surface a scoped error if it still fails.
+        log::warn!(
+            "[ChatV2::handlers] Failed to initialize runtime roots for {}: {}",
+            session.id,
+            error
+        );
+    }
 
     log::info!(
         "[ChatV2::handlers] Created session: id={}, mode={}",
@@ -170,7 +327,7 @@ pub async fn chat_v2_get_session(
         );
     }
 
-    let session = ChatV2Repo::get_session_v2(&db, &session_id).map_err(|e| e.to_string())?;
+    let session = ChatV2Repo::get_session_v2(&db, &session_id).map_err(String::from)?;
     Ok(session)
 }
 
@@ -197,6 +354,15 @@ pub async fn chat_v2_update_session_settings(
         session_id,
         settings.title
     );
+
+    if !session_id.starts_with("sess_")
+        && !session_id.starts_with("agent_")
+        && !session_id.starts_with("subagent_")
+    {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+        );
+    }
 
     // 更新会话设置
     let session = update_session_settings_in_db(&session_id, &settings, &db)?;
@@ -229,6 +395,15 @@ pub async fn chat_v2_archive_session(
         "[ChatV2::handlers] chat_v2_archive_session: session_id={}",
         session_id
     );
+
+    if !session_id.starts_with("sess_")
+        && !session_id.starts_with("agent_")
+        && !session_id.starts_with("subagent_")
+    {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+        );
+    }
 
     // 归档会话
     archive_session_in_db(&session_id, &db)?;
@@ -308,7 +483,7 @@ pub async fn chat_v2_list_sessions(
     // 从数据库获取会话列表
     let sessions =
         ChatV2Repo::list_sessions_v2(&db, status.as_deref(), group_id.as_deref(), limit, offset)
-            .map_err(|e| e.to_string())?;
+            .map_err(String::from)?;
 
     log::info!(
         "[ChatV2::handlers] Listed {} sessions (offset={})",
@@ -343,7 +518,7 @@ pub async fn chat_v2_count_sessions(
     );
 
     let count = ChatV2Repo::count_sessions_v2(&db, status.as_deref(), group_id.as_deref())
-        .map_err(|e| e.to_string())?;
+        .map_err(String::from)?;
 
     Ok(count)
 }
@@ -375,7 +550,7 @@ pub async fn chat_v2_list_agent_sessions(
     let limit = limit.unwrap_or(50);
 
     let sessions = ChatV2Repo::list_agent_sessions_v2(&db, workspace_id.as_deref(), limit)
-        .map_err(|e| e.to_string())?;
+        .map_err(String::from)?;
 
     log::info!(
         "[ChatV2::handlers] Listed {} agent sessions",
@@ -423,43 +598,22 @@ pub async fn chat_v2_branch_session(
         ))
         .into());
     }
+    ensure_session_writable(&db, &source_session_id).map_err(String::from)?;
 
     // 2. 在事务中执行分支
     let (new_session, resource_ids) =
         branch_session_in_db(&source_session_id, &up_to_message_id, &db)?;
 
-    // 3. 事务提交后：增量 VFS 资源引用计数（失败仅告警）
-    if !resource_ids.is_empty() {
-        match vfs_db.get_conn_safe() {
-            Ok(vfs_conn) => {
-                let mut success_count = 0usize;
-                for rid in &resource_ids {
-                    match VfsResourceRepo::increment_ref_with_conn(&vfs_conn, rid) {
-                        Ok(_) => success_count += 1,
-                        Err(e) => {
-                            log::warn!(
-                                "[ChatV2::handlers] Failed to increment ref for {}: {}",
-                                rid,
-                                e
-                            );
-                        }
-                    }
-                }
-                log::debug!(
-                    "[ChatV2::handlers] Incremented refs for {}/{} resources in branched session {}",
-                    success_count,
-                    resource_ids.len(),
-                    new_session.id
-                );
-            }
-            Err(e) => {
-                log::warn!(
-                    "[ChatV2::handlers] Failed to get vfs.db conn for branch ref increment: {}",
-                    e
-                );
-            }
-        }
-    }
+    // 3. 事务提交后：增量 VFS 资源引用计数（跨库非原子，失败重试一次并输出失败清单）
+    let _failed_increments = adjust_vfs_refs_with_retry(
+        &vfs_db,
+        &resource_ids,
+        VfsRefOp::Increment,
+        &format!(
+            "branch_session({} -> {})",
+            source_session_id, new_session.id
+        ),
+    );
 
     log::info!(
         "[ChatV2::handlers] Branched session created: id={}, from={}",
@@ -487,6 +641,7 @@ pub async fn chat_v2_soft_delete_session(
     db: State<'_, Arc<ChatV2Database>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<(), String> {
+    let _lifecycle_guard = session_lifecycle_guard();
     log::info!(
         "[ChatV2::handlers] chat_v2_soft_delete_session: session_id={}",
         session_id
@@ -513,7 +668,7 @@ pub async fn chat_v2_soft_delete_session(
 
     if session_has_running_anki_blocks(&db, &session_id)? {
         return Err(ChatV2Error::Other(
-            "Cannot delete session while ChatAnki generation is still running. Please wait for completion or cancel first."
+            "Cannot delete session while ChatAnki generation is still running. Please wait for completion or cancel first. Stale generations left over from a crash are cleared automatically; if nothing is actually running, retry in about two minutes."
                 .to_string(),
         )
         .into());
@@ -521,6 +676,12 @@ pub async fn chat_v2_soft_delete_session(
 
     // 软删除会话
     soft_delete_session_in_db(&session_id, &db)?;
+
+    // P1 修复：软删（进回收站）也清理事件序列计数器（此前仅硬删清理），
+    // 防止大量软删会话使 SESSION_*_COUNTERS DashMap 无限膨胀。
+    // 此处已确认无活跃流（上方 has_active_stream 检查），清理安全；
+    // 会话被恢复后计数从 0 重新开始，前端按会话重建监听状态，不会误报乱序。
+    clear_session_sequence_counter(&session_id);
 
     log::info!("[ChatV2::handlers] Soft deleted session: id={}", session_id);
 
@@ -543,6 +704,7 @@ pub async fn chat_v2_restore_session(
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<ChatSession, String> {
+    let _lifecycle_guard = session_lifecycle_guard();
     log::info!(
         "[ChatV2::handlers] chat_v2_restore_session: session_id={}",
         session_id
@@ -586,11 +748,13 @@ pub async fn chat_v2_restore_session(
 /// - `chat_v2_session_state` 表中的会话状态
 #[tauri::command]
 pub async fn chat_v2_delete_session(
+    app: AppHandle,
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<(), String> {
+    let _lifecycle_guard = session_lifecycle_guard();
     log::info!(
         "[ChatV2::handlers] chat_v2_delete_session: session_id={}",
         session_id
@@ -607,7 +771,7 @@ pub async fn chat_v2_delete_session(
 
     if session_has_running_anki_blocks(&db, &session_id)? {
         return Err(ChatV2Error::Other(
-            "Cannot delete session while ChatAnki generation is still running. Please wait for completion or cancel first."
+            "Cannot delete session while ChatAnki generation is still running. Please wait for completion or cancel first. Stale generations left over from a crash are cleared automatically; if nothing is actually running, retry in about two minutes."
                 .to_string(),
         )
         .into());
@@ -623,11 +787,17 @@ pub async fn chat_v2_delete_session(
         );
     }
 
+    // Keep the database record retryable when filesystem cleanup fails. Runtime
+    // roots are session-scoped derived data, so remove them before committing the
+    // irreversible database deletion.
+    cleanup_session_runtime_roots(&app, &session_id)
+        .map_err(|e| String::from(ChatV2Error::IoError(e)))?;
+
     // 会话删除前递减 VFS 资源引用计数，防止 CASCADE DELETE 后引用计数永远无法归零
     decrement_vfs_refs_for_session(&db, &vfs_db, &session_id);
 
     // 从数据库删除会话（级联删除）
-    ChatV2Repo::delete_session_v2(&db, &session_id).map_err(|e| e.to_string())?;
+    ChatV2Repo::delete_session_v2(&db, &session_id).map_err(String::from)?;
     clear_session_sequence_counter(&session_id);
 
     log::info!(
@@ -655,13 +825,26 @@ pub async fn chat_v2_delete_session(
 /// - `Err(String)`: 删除失败
 #[tauri::command]
 pub async fn chat_v2_empty_deleted_sessions(
+    app: AppHandle,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<u32, String> {
     log::info!("[ChatV2::handlers] chat_v2_empty_deleted_sessions");
 
-    // ★ 先查出所有待删除的会话 ID，逐个收集资源引用并批量递减
-    let deleted_ids = ChatV2Repo::list_deleted_session_ids(&db).map_err(|e| e.to_string())?;
+    // ★ 缩小生命周期锁的临界区：只在「读取待删除 ID 列表」和「逐个复查 +
+    // 硬删除」两个 DB 阶段持锁；耗时的文件系统清理与 VFS 引用递减在锁外执行，
+    // 避免清空回收站长时间阻塞其它会话的软删/恢复/删除命令。
+    let deleted_ids = {
+        let _lifecycle_guard = session_lifecycle_guard();
+        ChatV2Repo::list_deleted_session_ids(&db).map_err(String::from)?
+    };
+
+    // Abort before purging database rows if any runtime root cannot be removed.
+    // Already-cleaned roots are harmless and the remaining rows make retry safe.
+    for session_id in &deleted_ids {
+        cleanup_session_runtime_roots(&app, session_id)
+            .map_err(|e| String::from(ChatV2Error::IoError(e)))?;
+    }
 
     if !deleted_ids.is_empty() {
         // 收集所有待删除会话中消息引用的资源 ID（不去重，与递增时对称）
@@ -679,37 +862,37 @@ pub async fn chat_v2_empty_deleted_sessions(
             }
         }
 
-        // 批量递减 VFS 资源引用计数（失败仅告警，不阻塞删除）
-        if !all_resource_ids.is_empty() {
-            match vfs_db.get_conn_safe() {
-                Ok(vfs_conn) => {
-                    if let Err(e) =
-                        VfsResourceRepo::decrement_refs_with_conn(&vfs_conn, &all_resource_ids)
-                    {
-                        log::warn!(
-                            "[ChatV2::handlers] Failed to decrement refs during trash empty: {}",
-                            e
-                        );
-                    } else {
-                        log::debug!(
-                            "[ChatV2::handlers] Decremented refs for {} resource references before emptying trash ({} sessions)",
-                            all_resource_ids.len(),
-                            deleted_ids.len()
-                        );
-                    }
+        // 批量递减 VFS 资源引用计数（失败重试一次并输出失败清单，不阻塞删除）
+        let _failed_decrements = adjust_vfs_refs_with_retry(
+            &vfs_db,
+            &all_resource_ids,
+            VfsRefOp::Decrement,
+            &format!("empty_deleted_sessions({} sessions)", deleted_ids.len()),
+        );
+    }
+
+    // 执行硬删除（锁内逐个复查状态：锁外阶段期间被恢复的会话不再删除；
+    // 锁外阶段期间新软删的会话留待下次清空，保证与上面的 FS 清理一一对应）
+    let mut count: u32 = 0;
+    {
+        let _lifecycle_guard = session_lifecycle_guard();
+        for session_id in &deleted_ids {
+            match ChatV2Repo::get_session_v2(&db, session_id).map_err(String::from)? {
+                Some(session) if session.persist_status == PersistStatus::Deleted => {
+                    ChatV2Repo::delete_session_v2(&db, session_id).map_err(String::from)?;
+                    clear_session_sequence_counter(session_id);
+                    count += 1;
                 }
-                Err(e) => {
-                    log::warn!(
-                        "[ChatV2::handlers] Failed to get vfs.db conn for trash empty ref decrement: {}",
-                        e
+                Some(_) => {
+                    log::info!(
+                        "[ChatV2::handlers] Skipping trash purge for {}: restored concurrently",
+                        session_id
                     );
                 }
+                None => {}
             }
         }
     }
-
-    // 执行批量硬删除
-    let count = ChatV2Repo::purge_deleted_sessions(&db).map_err(|e| e.to_string())?;
     log::info!(
         "[ChatV2::handlers] Emptied trash: {} sessions permanently deleted",
         count
@@ -732,14 +915,19 @@ pub async fn chat_v2_session_message_count(
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<u32, String> {
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
     let count: u32 = conn
         .query_row(
             "SELECT COUNT(*) FROM chat_v2_messages WHERE session_id = ?1",
             [&session_id],
             |row| row.get(0),
         )
-        .map_err(|e| format!("Failed to count messages for session {}: {}", session_id, e))?;
+        .map_err(|e| {
+            String::from(ChatV2Error::Database(format!(
+                "Failed to count messages for session {}: {}",
+                session_id, e
+            )))
+        })?;
     Ok(count)
 }
 
@@ -756,7 +944,7 @@ pub struct MessageSummary {
 pub async fn chat_v2_get_message_summary(
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<MessageSummary, String> {
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
     let (total, user, assistant): (u32, u32, u32) = conn
         .query_row(
             "SELECT COUNT(*),
@@ -766,7 +954,12 @@ pub async fn chat_v2_get_message_summary(
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
-        .map_err(|e| format!("Failed to summarize messages: {}", e))?;
+        .map_err(|e| {
+            String::from(ChatV2Error::Database(format!(
+                "Failed to summarize messages: {}",
+                e
+            )))
+        })?;
     Ok(MessageSummary {
         total_messages: total,
         user_messages: user,
@@ -816,30 +1009,12 @@ pub(crate) fn decrement_vfs_refs_for_session(
         return;
     }
 
-    match vfs_db.get_conn_safe() {
-        Ok(vfs_conn) => {
-            if let Err(e) = VfsResourceRepo::decrement_refs_with_conn(&vfs_conn, &all_resource_ids)
-            {
-                log::warn!(
-                    "[ChatV2::handlers] Failed to decrement refs for session {}: {}",
-                    session_id,
-                    e
-                );
-            } else {
-                log::debug!(
-                    "[ChatV2::handlers] Decremented refs for {} resource references before deleting session {}",
-                    all_resource_ids.len(),
-                    session_id
-                );
-            }
-        }
-        Err(e) => {
-            log::warn!(
-                "[ChatV2::handlers] Failed to get vfs.db conn for session delete ref decrement: {}",
-                e
-            );
-        }
-    }
+    let _failed_decrements = adjust_vfs_refs_with_retry(
+        vfs_db,
+        &all_resource_ids,
+        VfsRefOp::Decrement,
+        &format!("delete_session({})", session_id),
+    );
 }
 
 /// 在数据库中创建会话
@@ -1079,8 +1254,6 @@ fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSk
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
         branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
-        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
-        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version,
         legacy_migrated: Some(false),
@@ -1151,39 +1324,36 @@ fn branch_session_in_db(
     source_session_id: &str,
     up_to_message_id: &str,
     db: &ChatV2Database,
-) -> Result<(ChatSession, Vec<String>), String> {
+) -> Result<(ChatSession, Vec<String>), ChatV2Error> {
     use std::collections::HashMap;
 
-    let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-    let tx = conn
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(|e| e.to_string())?;
+    let mut conn = db.get_conn_safe()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
     // 1. 加载并校验源会话
-    let source_session = ChatV2Repo::get_session_with_conn(&tx, source_session_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Source session not found: {}", source_session_id))?;
+    let source_session = ChatV2Repo::get_session_with_conn(&tx, source_session_id)?
+        .ok_or_else(|| ChatV2Error::SessionNotFound(source_session_id.to_string()))?;
+    let source_compaction = ChatV2Repo::get_active_compaction_with_conn(&tx, source_session_id)?;
 
     if source_session.persist_status != PersistStatus::Active {
-        return Err(format!(
+        return Err(ChatV2Error::Validation(format!(
             "Source session is not active (status: {:?}): {}",
             source_session.persist_status, source_session_id
-        ));
+        )));
     }
 
     // 2. 加载源消息（按 timestamp ASC, rowid ASC 排序）
-    let source_messages = ChatV2Repo::get_session_messages_with_conn(&tx, source_session_id)
-        .map_err(|e| e.to_string())?;
+    let source_messages = ChatV2Repo::get_session_messages_with_conn(&tx, source_session_id)?;
 
     // 3. 按 index 截断（不用 timestamp）
     let cut_index = source_messages
         .iter()
         .position(|m| m.id == up_to_message_id)
         .ok_or_else(|| {
-            format!(
-                "Message {} not found in session {}",
+            ChatV2Error::MessageNotFound(format!(
+                "{} (not found in session {})",
                 up_to_message_id, source_session_id
-            )
+            ))
         })?;
 
     let messages_to_copy = &source_messages[..=cut_index];
@@ -1207,9 +1377,7 @@ fn branch_session_in_db(
     let mut source_blocks_map: HashMap<String, crate::chat_v2::types::MessageBlock> =
         HashMap::new();
     for block_id in &all_block_ids {
-        if let Some(block) =
-            ChatV2Repo::get_block_with_conn(&tx, block_id).map_err(|e| e.to_string())?
-        {
+        if let Some(block) = ChatV2Repo::get_block_with_conn(&tx, block_id)? {
             source_blocks_map.insert(block_id.clone(), block);
         }
     }
@@ -1229,6 +1397,7 @@ fn branch_session_in_db(
             serde_json::json!({
                 "sessionId": source_session_id,
                 "messageId": up_to_message_id,
+                "compactionId": source_compaction.as_ref().map(|record| record.id.as_str()),
                 "branchedAt": now.to_rfc3339(),
             }),
         );
@@ -1251,7 +1420,7 @@ fn branch_session_in_db(
         tags: None,
     };
 
-    ChatV2Repo::create_session_with_conn(&tx, &new_session).map_err(|e| e.to_string())?;
+    ChatV2Repo::create_session_with_conn(&tx, &new_session)?;
 
     // 7. 构建 ID 映射（old -> new）并深拷贝消息和块
     let mut msg_id_map: HashMap<String, String> = HashMap::new();
@@ -1271,7 +1440,12 @@ fn branch_session_in_db(
     // 8. 先写入新消息（含 ID 重映射）
     //    ⚠️ 必须先写 messages 再写 blocks，因为 blocks.message_id 有外键约束指向 messages.id
     for msg in messages_to_copy {
-        let new_msg_id = msg_id_map.get(&msg.id).unwrap().clone();
+        let new_msg_id = msg_id_map.get(&msg.id).cloned().ok_or_else(|| {
+            ChatV2Error::Other(format!(
+                "Branch id remap missing entry for message {}",
+                msg.id
+            ))
+        })?;
 
         // 重映射 block_ids
         let new_block_ids: Vec<String> = msg
@@ -1383,7 +1557,7 @@ fn branch_session_in_db(
             shared_context: new_shared_context,
         };
 
-        ChatV2Repo::create_message_with_conn(&tx, &new_message).map_err(|e| e.to_string())?;
+        ChatV2Repo::create_message_with_conn(&tx, &new_message)?;
     }
 
     // 9. 写入新块（必须在 messages 之后，因为 blocks.message_id FK → messages.id）
@@ -1430,11 +1604,125 @@ fn branch_session_in_db(
                 first_chunk_at: source_block.first_chunk_at,
                 block_index: source_block.block_index,
             };
-            ChatV2Repo::create_block_with_conn(&tx, &new_block).map_err(|e| e.to_string())?;
+            ChatV2Repo::create_block_with_conn(&tx, &new_block)?;
         }
     }
 
-    // 10. 复制 session_state（裁剪草稿字段）
+    // 10. Clone a self-contained active compaction when both its summary and tail survive.
+    if let Some(source_record) = source_compaction {
+        let tail_start_message_id = msg_id_map
+            .get(&source_record.tail_start_message_id)
+            .cloned();
+        let mut summary_message_id = msg_id_map.get(&source_record.summary_message_id).cloned();
+        if summary_message_id.is_none() && tail_start_message_id.is_some() {
+            if let Some(source_summary) =
+                ChatV2Repo::get_message_with_conn(&tx, &source_record.summary_message_id)?
+            {
+                let source_summary_blocks = ChatV2Repo::get_message_blocks_with_conn(
+                    &tx,
+                    &source_record.summary_message_id,
+                )?;
+                let mut new_block_ids = Vec::with_capacity(source_summary_blocks.len());
+                let mut new_blocks = Vec::with_capacity(source_summary_blocks.len());
+                let new_summary_message_id = format!("msg_{}", uuid::Uuid::new_v4());
+                for source_block in source_summary_blocks {
+                    let new_block_id = format!("blk_{}", uuid::Uuid::new_v4());
+                    let mut new_block = source_block;
+                    new_block.id = new_block_id.clone();
+                    new_block.message_id = new_summary_message_id.clone();
+                    new_block_ids.push(new_block_id);
+                    new_blocks.push(new_block);
+                }
+                let mut new_summary = source_summary;
+                new_summary.id = new_summary_message_id.clone();
+                new_summary.session_id = new_session_id.clone();
+                new_summary.block_ids = new_block_ids;
+                new_summary.parent_id = None;
+                new_summary.supersedes = None;
+                ChatV2Repo::create_message_with_conn(&tx, &new_summary)?;
+                for new_block in new_blocks {
+                    ChatV2Repo::create_block_with_conn(&tx, &new_block)?;
+                }
+                summary_message_id = Some(new_summary_message_id);
+            }
+        }
+        if let (Some(summary_message_id), Some(tail_start_message_id)) =
+            (summary_message_id, tail_start_message_id)
+        {
+            let branch_record = CompactionRecord {
+                id: CompactionRecord::generate_id(),
+                session_id: new_session_id.clone(),
+                summary_message_id,
+                tail_start_message_id,
+                tail_start_time_created: source_record.tail_start_time_created,
+                reason: "branch".to_string(),
+                is_auto: false,
+                is_overflow: source_record.is_overflow,
+                tokens_before: None,
+                tokens_after: None,
+                model_id: source_record.model_id,
+                model_config_id: source_record.model_config_id,
+                previous_compaction_id: None,
+                range_start_message_id: source_record
+                    .range_start_message_id
+                    .as_ref()
+                    .and_then(|id| msg_id_map.get(id))
+                    .cloned(),
+                range_end_message_id: source_record
+                    .range_end_message_id
+                    .as_ref()
+                    .and_then(|id| msg_id_map.get(id))
+                    .cloned(),
+                compacted_message_count: source_record.compacted_message_count,
+                created_at: now.timestamp_millis(),
+            };
+            ChatV2Repo::create_compaction_with_conn(&tx, &branch_record)?;
+            ChatV2Repo::set_session_last_compaction_with_conn(
+                &tx,
+                &new_session_id,
+                &branch_record.id,
+            )?;
+            for mut block in
+                ChatV2Repo::get_message_blocks_with_conn(&tx, &branch_record.summary_message_id)?
+            {
+                if block.block_type != block_types::COMPACTION_SUMMARY {
+                    continue;
+                }
+                let mut metadata = block
+                    .tool_output
+                    .take()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(object) = metadata.as_object_mut() {
+                    object.insert("sessionId".to_string(), serde_json::json!(&new_session_id));
+                    object.insert(
+                        "compactionId".to_string(),
+                        serde_json::json!(&branch_record.id),
+                    );
+                    object.insert("previousCompactionId".to_string(), serde_json::Value::Null);
+                    object.insert("reason".to_string(), serde_json::json!("branch"));
+                    object.insert(
+                        "rangeStartMessageId".to_string(),
+                        serde_json::json!(branch_record.range_start_message_id.as_deref()),
+                    );
+                    object.insert(
+                        "rangeEndMessageId".to_string(),
+                        serde_json::json!(branch_record.range_end_message_id.as_deref()),
+                    );
+                    object.insert(
+                        "tailStartMessageId".to_string(),
+                        serde_json::json!(&branch_record.tail_start_message_id),
+                    );
+                    object.remove("tokensBefore");
+                    object.remove("tokensAfter");
+                    object.remove("tailMessageCount");
+                }
+                block.tool_output = Some(metadata);
+                ChatV2Repo::update_block_with_conn(&tx, &block)?;
+            }
+        }
+    }
+
+    // 11. 复制 session_state（裁剪草稿字段）
     if let Ok(Some(source_state)) = ChatV2Repo::load_session_state_with_conn(&tx, source_session_id)
     {
         let trimmed_skill_state =
@@ -1458,8 +1746,9 @@ fn branch_session_in_db(
     }
 
     // 11. 提交事务
-    tx.commit()
-        .map_err(|e| format!("Failed to commit branch transaction: {}", e))?;
+    tx.commit().map_err(|e| {
+        ChatV2Error::Database(format!("Failed to commit branch transaction: {}", e))
+    })?;
 
     log::info!(
         "[ChatV2::handlers] Branch transaction committed: {} messages, {} blocks copied",
@@ -1544,12 +1833,89 @@ fn fallback_skill_state_after_history_rebuild(
         mode_required_bundle_ids: existing.mode_required_bundle_ids,
         agentic_session_skill_ids: Vec::new(),
         branch_local_skill_ids: Vec::new(),
-        effective_allowed_internal_tools: Vec::new(),
-        effective_allowed_external_tools: Vec::new(),
         effective_allowed_external_servers: Vec::new(),
         version: existing.version.saturating_add(1),
         legacy_migrated: Some(false),
     }
+}
+
+/// Set session Ask / Plan / Craft authority mode (persisted in session metadata).
+///
+/// Frontend-forged metadata is ignored — only this command updates the mode.
+#[tauri::command]
+pub async fn chat_v2_set_authority_mode(
+    session_id: String,
+    mode: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<ChatSession, String> {
+    let parsed = AuthorityMode::parse(&mode).ok_or_else(|| {
+        String::from(ChatV2Error::Validation(format!(
+            "Invalid authority mode '{}'. Valid modes: ask, plan, craft",
+            mode
+        )))
+    })?;
+    log::info!(
+        "[ChatV2::handlers] chat_v2_set_authority_mode: session={}, mode={}",
+        session_id,
+        parsed.as_str()
+    );
+    ChatV2Repo::set_session_authority_mode(&db, &session_id, parsed).map_err(String::from)
+}
+
+/// Set the session-only approval behavior preset.
+#[tauri::command]
+pub async fn chat_v2_set_permission_preset(
+    session_id: String,
+    preset: String,
+    db: State<'_, Arc<ChatV2Database>>,
+    approval_manager: State<'_, Arc<crate::chat_v2::approval_manager::ApprovalManager>>,
+) -> Result<ChatSession, String> {
+    let parsed = crate::chat_v2::types::PermissionPreset::parse(&preset).ok_or_else(|| {
+        String::from(ChatV2Error::Validation(format!(
+            "Invalid permission preset '{}'. Valid presets: cautious, relaxed, full_access, danger_full_access",
+            preset
+        )))
+    })?;
+    // Switching policy invalidates prior session-memory so a relaxed approval
+    // cannot survive a transition back to cautious.
+    approval_manager.clear_session_remembered(&session_id);
+    ChatV2Repo::set_session_permission_preset(&db, &session_id, parsed).map_err(String::from)
+}
+
+/// Respond to a Plan-mode plan_gate wait.
+///
+/// Approving binds write tools to the planId batch only — never remember/global_bypass.
+#[tauri::command]
+pub async fn chat_v2_plan_gate_respond(
+    session_id: String,
+    plan_id: String,
+    tool_call_id: String,
+    approved: bool,
+    reason: Option<String>,
+) -> Result<(), String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_plan_gate_respond: session={}, planId={}, tool_call_id={}, approved={}",
+        session_id,
+        plan_id,
+        tool_call_id,
+        approved
+    );
+    let delivered = global_plan_gate_manager().respond(PlanGateResponse {
+        session_id,
+        plan_id,
+        tool_call_id: tool_call_id.clone(),
+        approved,
+        reason,
+    });
+    if !delivered {
+        // message 保留 "plan_gate_expired" 字面量供旧调用方 include 匹配
+        return Err(ChatV2Error::Timeout(format!(
+            "plan_gate_expired: no waiting plan gate for tool_call_id={}",
+            tool_call_id
+        ))
+        .into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1626,6 +1992,7 @@ mod tests {
                 }),
                 skill_runtime_before: None,
                 skill_runtime_after: None,
+                ..Default::default()
             }),
         }]);
 
@@ -1746,7 +2113,6 @@ mod tests {
                     mode_required_bundle_ids: vec!["mode".to_string()],
                     agentic_session_skill_ids: vec!["agentic".to_string()],
                     branch_local_skill_ids: vec!["branch".to_string()],
-                    effective_allowed_internal_tools: vec!["tool_a".to_string()],
                     version: 9,
                     ..Default::default()
                 })
@@ -1759,7 +2125,73 @@ mod tests {
         assert_eq!(rebuilt.mode_required_bundle_ids, vec!["mode".to_string()]);
         assert!(rebuilt.agentic_session_skill_ids.is_empty());
         assert!(rebuilt.branch_local_skill_ids.is_empty());
-        assert!(rebuilt.effective_allowed_internal_tools.is_empty());
         assert_eq!(rebuilt.version, 10);
+    }
+
+    /// F2 修复回归：崩溃遗留的僵尸 running anki 块在删除检查时被自动落库为
+    /// failed，不再永久阻止会话删除；宽限期内的新鲜 running 块仍然拦截删除。
+    #[test]
+    fn test_session_has_running_anki_blocks_reaps_stale_zombie_blocks() {
+        use crate::chat_v2::types::{block_status, block_types, ChatMessage, MessageBlock};
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut coordinator =
+            MigrationCoordinator::new(dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat v2 migrations");
+        let db = ChatV2Database::new(dir.path()).expect("chat v2 db");
+
+        let session = ChatSession::new("sess_reap_zombie".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_v2(&db, &session).expect("create session");
+
+        // 僵尸块：running 状态、无活跃管线、最近活动远超宽限时限（模拟强退后重启）。
+        let stale_ms = chrono::Utc::now().timestamp_millis()
+            - crate::chat_v2::tools::chatanki_executor::STALE_RUNNING_ANKI_BLOCK_AFTER_MS
+            - 60_000;
+        let mut zombie_message = ChatMessage::new_assistant(session.id.clone());
+        let mut zombie_block =
+            MessageBlock::new(zombie_message.id.clone(), block_types::ANKI_CARDS, 0);
+        zombie_block.status = block_status::RUNNING.to_string();
+        zombie_block.tool_name = Some("chatanki_run".to_string());
+        zombie_block.tool_output =
+            Some(serde_json::json!({ "documentId": "doc-zombie", "cards": [] }));
+        zombie_block.started_at = Some(stale_ms);
+        zombie_block.first_chunk_at = Some(stale_ms);
+        zombie_message.block_ids = vec![zombie_block.id.clone()];
+        ChatV2Repo::create_message_v2(&db, &zombie_message).expect("create zombie message");
+        ChatV2Repo::create_block_v2(&db, &zombie_block).expect("create zombie block");
+
+        // 删除检查：僵尸块被 reap，不再拦截删除。
+        assert!(
+            !session_has_running_anki_blocks(&db, &session.id).expect("zombie check"),
+            "stale zombie running block must not block session deletion"
+        );
+        // 修复必须落库（而不是仅内存态）：块状态已是 error。
+        let reaped = ChatV2Repo::get_block_v2(&db, &zombie_block.id)
+            .expect("load reaped block")
+            .expect("reaped block exists");
+        assert_eq!(reaped.status, block_status::ERROR);
+        assert!(reaped.ended_at.is_some());
+
+        // 新鲜 running 块（宽限期内，可能是真在跑的管线）仍然拦截删除。
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let mut fresh_message = ChatMessage::new_assistant(session.id.clone());
+        let mut fresh_block =
+            MessageBlock::new(fresh_message.id.clone(), block_types::ANKI_CARDS, 0);
+        fresh_block.status = block_status::RUNNING.to_string();
+        fresh_block.tool_output =
+            Some(serde_json::json!({ "documentId": "doc-fresh", "cards": [] }));
+        fresh_block.started_at = Some(now_ms);
+        fresh_block.first_chunk_at = Some(now_ms);
+        fresh_message.block_ids = vec![fresh_block.id.clone()];
+        ChatV2Repo::create_message_v2(&db, &fresh_message).expect("create fresh message");
+        ChatV2Repo::create_block_v2(&db, &fresh_block).expect("create fresh block");
+        assert!(
+            session_has_running_anki_blocks(&db, &session.id).expect("fresh check"),
+            "recent running block must still block session deletion"
+        );
     }
 }

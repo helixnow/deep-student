@@ -27,6 +27,7 @@ interface ApisTabProps {
   setSelectedVendorId: (id: string | null) => void;
   selectedVendorModels: Array<{ profile: ModelProfile; api: ApiConfig }>;
   selectedVendorIsSiliconflow: boolean;
+  openAICodexAuthenticated?: boolean;
   profileCountByVendor: Map<string, number>;
   vendorBusy: boolean;
   vendorSaving: boolean;
@@ -38,7 +39,7 @@ interface ApisTabProps {
   handleStartEditVendor: (vendor: VendorConfig) => void;
   handleCancelEditVendor: () => void;
   handleSaveEditVendor: () => void;
-  handleDeleteVendor: (vendor: VendorConfig) => void;
+  handleDeleteVendor: (vendor: VendorConfig, options?: { skipConfirm?: boolean }) => void;
   handleSaveVendorBaseUrl: (vendorId: string, baseUrl: string) => void;
   handleSaveVendorApiKey: (vendorId: string, apiKey: string) => void;
   handleClearVendorApiKey: (vendorId: string) => void;
@@ -51,7 +52,7 @@ interface ApisTabProps {
   handleCancelAddModel: () => void;
   convertProfileToApiConfig: (profile: ModelProfile, vendor: VendorConfig) => ApiConfig;
   handleToggleModelProfile: (profile: ModelProfile, enabled: boolean) => void;
-  handleDeleteModelProfile: (profile: ModelProfile) => void;
+  handleDeleteModelProfile: (profile: ModelProfile, options?: { skipConfirm?: boolean }) => void;
   handleToggleFavorite: (profile: ModelProfile) => void;
   testApiConnection: (api: ApiConfig) => Promise<void>;
   handleSiliconFlowConfig: (config: any) => Promise<string | undefined> | void;
@@ -61,10 +62,18 @@ interface ApisTabProps {
   onAddVendorModels?: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
   isSmallScreen?: boolean;
   triggerPostSaveAutoFlow?: (vendor: VendorConfig) => Promise<void>;
+  /** 移动端两级导航：是否处于「供应商详情」态（P1-6，由 Settings 顶栏返回键联动） */
+  mobileVendorDetailOpen?: boolean;
+  /** 移动端两级导航：详情态切换回调（P1-6） */
+  onMobileVendorDetailOpenChange?: (open: boolean) => void;
+  /** Settings 外层滚动视口，供模型长列表虚拟化复用。 */
+  scrollElement?: HTMLElement | null;
 }
 
 export const ApisTab: React.FC<ApisTabProps> = (props) => {
   const { t } = useTranslation(['settings', 'common']);
+  const isSmallScreen = props.isSmallScreen ?? false;
+  const mobileVendorDetailOpen = props.mobileVendorDetailOpen ?? false;
 
   // 将 props 映射为 Context value
   const contextValue: VendorSettingsContextValue = {
@@ -75,6 +84,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
     setSelectedVendorId: props.setSelectedVendorId,
     selectedVendorModels: props.selectedVendorModels,
     selectedVendorIsSiliconflow: props.selectedVendorIsSiliconflow,
+    openAICodexAuthenticated: props.openAICodexAuthenticated ?? false,
     profileCountByVendor: props.profileCountByVendor,
     vendorBusy: props.vendorBusy,
     vendorSaving: props.vendorSaving,
@@ -85,7 +95,9 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
     inlineEditState: props.inlineEditState,
     setInlineEditState: props.setInlineEditState,
     isAddingNewModel: props.isAddingNewModel,
-    isSmallScreen: props.isSmallScreen ?? false,
+    isSmallScreen,
+    openMobileVendorDetail: () => props.onMobileVendorDetailOpenChange?.(true),
+    closeMobileVendorDetail: () => props.onMobileVendorDetailOpenChange?.(false),
     handleOpenVendorModal: props.handleOpenVendorModal,
     handleStartEditVendor: props.handleStartEditVendor,
     handleCancelEditVendor: props.handleCancelEditVendor,
@@ -120,13 +132,35 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
         className="py-0"
         contentClassName="space-y-4"
       >
+        {/* Settings 顶栏已渲染 tab 标题（故 hideHeader 防重复），
+            这里单独补回分区描述，给从欢迎弹窗进来的新用户「这是什么/该做什么」的定位。
+            移动端进入供应商详情态时隐藏，避免挤占详情面板。 */}
+        {!(isSmallScreen && mobileVendorDetailOpen) && (
+          <p className="text-sm text-muted-foreground">
+            {t('settings:sections.api_config_desc')}
+          </p>
+        )}
         <VendorSettingsProvider value={contextValue}>
-          <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
-            <VendorSidebar />
-            <div className="space-y-6 w-full min-w-0">
-              <VendorDetailPanel />
+          {isSmallScreen ? (
+            // P1-6 移动端两级导航（master → detail）：
+            // 列表态只显示供应商列表，进入详情后整屏切换为详情面板（顶栏返回键回到列表）
+            mobileVendorDetailOpen ? (
+              <div key="vendor-detail" className="desktop-shell-content-enter w-full min-w-0 space-y-6">
+                <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
+              </div>
+            ) : (
+              <div key="vendor-list" className="desktop-shell-content-enter w-full min-w-0">
+                <VendorSidebar />
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
+              <VendorSidebar />
+              <div className="space-y-6 w-full min-w-0">
+                <VendorDetailPanel scrollElement={props.scrollElement ?? null} />
+              </div>
             </div>
-          </div>
+          )}
         </VendorSettingsProvider>
       </SettingSection>
     </div>

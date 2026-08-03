@@ -1,0 +1,258 @@
+/**
+ * FilesAppWindow（O17）— wb-files- 前缀独占，不触碰 workbench.css 契约类。
+ *
+ * 覆盖：列表/网格切换过渡、hover 预览玻璃卡、拖出反馈徽标。
+ * 动效纪律（§1.5）：仅 transform / opacity；曲线引用 O1 motion tokens（带字面量兜底）；
+ * prefers-reduced-motion 与 minimal 材质档下动画归零。
+ */
+
+.wb-files-host {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--wb-window-bg, hsl(var(--background)));
+}
+
+.wb-files-viewport {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/*
+ * ANTI-REGRESSION：壳层拖/缩时 renderThrottleMs>0 → data-wb-render-paused。
+ * 只命中宿主与 viewport，禁止 `host *` 通配（起拖全子树样式匹配会卡一下）。
+ */
+.wb-files-host[data-wb-render-paused] {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.wb-files-host[data-wb-render-paused] .wb-files-viewport,
+.wb-files-host[data-wb-render-paused] .wb-files-hover-preview {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+:root[data-wb-dragging] .wb-files-host,
+:root[data-wb-settling] .wb-files-host {
+  animation-play-state: paused;
+}
+
+/* ==== 视图切换过渡（useFilesViewTransition） ========================= */
+
+.wb-files-viewport[data-wb-files-view-transition='fade'] {
+  animation: wb-files-view-fade 140ms
+    var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+/* 极轻淡入 + 2px 上浮：切换有"落定"手感又不产生呼吸感（仅 transform/opacity） */
+@keyframes wb-files-view-fade {
+  from {
+    opacity: 0.86;
+    transform: translate3d(0, 2px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ==== Finder 项适配层打磨（只读消费 learning-hub DOM，稳定钩子：
+ * [data-finder-item] / aria-selected / role="listbox"；类名选择器为
+ * FinderFileItem 现有 Tailwind 类的覆盖点，若上游改版仅优雅回退） ==== */
+
+/* 键盘走查：焦点环用统一 token，圆角与选中条一致（a11y，minimal 档不降级） */
+.wb-files-host [data-finder-item]:focus-visible {
+  outline: none;
+  border-radius: 8px;
+  box-shadow: var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65));
+}
+
+/* 列表行（wrapper 无 class = list 模式）：macOS 式内嵌圆角选中/悬停条，
+ * 不再通栏平贴，与窗口 18px 圆角呼应 */
+.wb-files-host [data-finder-item]:not([class]) > .group {
+  margin-inline: 6px;
+  border-radius: 7px;
+}
+
+/* 网格瓦片：整体圆角 + 轻悬停底色（Finder 扫过反馈；选中态仍由标签药丸表达） */
+.wb-files-host [data-finder-item][class] > .group {
+  border-radius: 10px;
+}
+
+@media (hover: hover) {
+  .wb-files-host [data-finder-item][class]:not([aria-selected='true']) > .group:hover {
+    background: var(--interactive-hover, hsl(var(--muted) / 0.5));
+  }
+}
+
+/* 抽屉把手的 44px 触控基线已上移到 SystemWindowShared.css（.wb-sys-drawer-handle） */
+
+/* 网格选中：图标盒垫一层主题色浅底（macOS 双层高亮：图标底 + 名称药丸） */
+.wb-files-host [data-finder-item][class][aria-selected='true'] div.h-12.rounded-lg {
+  background: hsl(var(--primary) / 0.14);
+}
+
+/* 空文件夹状态的快捷键提示：键帽立体感（1px 描边 + 底缘投影） */
+.wb-files-host kbd {
+  border: 1px solid hsl(var(--border) / 0.6);
+  box-shadow: 0 1px 0 hsl(var(--border) / 0.55);
+}
+
+/* ==== Hover 预览玻璃卡（useFilesHoverPreview） ======================= */
+
+.wb-files-hover-preview {
+  position: fixed;
+  z-index: var(--wb-z-dock-flyout, 9200);
+  width: min(17.5rem, calc(100vw - 1.5rem));
+  max-width: 17.5rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.75rem;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(0, 4px, 0) scale(0.98);
+  transition:
+    opacity var(--wb-motion-quick, 150ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform var(--wb-motion-quick, 150ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  box-shadow: var(--wb-shadow-popover, 0 12px 40px hsl(0 0% 0% / 0.18));
+}
+
+.wb-files-hover-preview[data-visible='true'] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.wb-files-hover-preview__type {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground, 220 9% 46%) / 0.9);
+  margin-bottom: 0.25rem;
+}
+
+.wb-files-hover-preview__title {
+  font-size: 0.875rem;
+  font-weight: 560;
+  line-height: 1.35;
+  color: hsl(var(--foreground, 224 10% 12%) / 0.92);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.wb-files-hover-preview__meta {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground, 220 9% 46%) / 0.88);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==== 拖出反馈徽标（useResourceDragOut） ============================= */
+
+.wb-files-drag-badge {
+  position: fixed;
+  z-index: var(--wb-z-drag-layer, 9900);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(16rem, calc(100vw - 1rem));
+  padding: 0.4rem 0.65rem 0.4rem 0.5rem;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(-50%, calc(-100% - 12px), 0) scale(0.96);
+  /* transform 与 opacity 同步过渡：出现时有轻微"弹起"而非硬切 */
+  transition:
+    opacity var(--wb-motion-instant, 90ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform var(--wb-motion-instant, 90ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  box-shadow: var(--wb-shadow-popover, 0 10px 28px hsl(0 0% 0% / 0.2));
+  white-space: nowrap;
+}
+
+.wb-files-drag-badge[data-visible='true'] {
+  opacity: 1;
+  transform: translate3d(-50%, calc(-100% - 12px), 0) scale(1);
+}
+
+.wb-files-drag-badge__glyph {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  color: hsl(var(--primary-foreground, 0 0% 100%));
+  background: hsl(var(--primary, 222 60% 55%));
+}
+
+.wb-files-drag-badge__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  font-weight: 520;
+  color: hsl(var(--foreground, 224 10% 12%) / 0.9);
+}
+
+/* ==== 降级 =========================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-files-viewport[data-wb-files-view-transition] {
+    animation: none;
+  }
+
+  .wb-files-hover-preview,
+  .wb-files-drag-badge {
+    transition: none;
+  }
+
+  .wb-files-hover-preview {
+    transform: none;
+  }
+
+  .wb-files-hover-preview[data-visible='true'] {
+    transform: none;
+  }
+
+  .wb-files-drag-badge,
+  .wb-files-drag-badge[data-visible='true'] {
+    transform: translate3d(-50%, calc(-100% - 12px), 0);
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-files-viewport[data-wb-files-view-transition] {
+  animation: none;
+}
+
+:root[data-wb-material='minimal'] .wb-files-hover-preview,
+:root[data-wb-material='minimal'] .wb-files-drag-badge {
+  transition: none;
+}
+
+/* 窗口侧栏统一契约（对话标准）：LearningHubSidebar 根节点自带
+   study-shell-sidebar-frame（legacy 全屏壳的不透明面），窗口内改为
+   透明面透出 --wb-window-bg；分隔线由 FinderQuickAccess 右缘自画。 */
+.wb-files-host .study-shell-sidebar-frame {
+  background: transparent !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 玻璃面搜索框（.finder-search 搜索壳在 OS 文件窗口的落地：
+   workbench 根复位已把 input 本体刷无铬，这里由包裹容器承担视觉） */
+[data-wb-sys-app='files'] .finder-search {
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: var(--radius-shell-control, 8px);
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+}

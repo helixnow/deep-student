@@ -1,8 +1,8 @@
 // ==================== ZIP 导出/导入命令 ====================
 
 use std::path::PathBuf;
-use tauri::{Manager, State};
-use tracing::{debug, error, info, warn};
+use tauri::State;
+use tracing::{error, info, warn};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
@@ -10,12 +10,10 @@ use super::backup::{
     export_backup_to_zip, AssetBackupConfig, AssetType, BackupManager, BackupSelection,
     TieredAssetConfig, ZipExportOptions,
 };
-use crate::backup_common::log_and_skip_entry_err;
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
-    BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
+    BackupJobResultPayload,
 };
-use crate::utils::text::safe_truncate_chars;
 use std::time::Instant;
 
 #[cfg(feature = "data_governance")]
@@ -27,35 +25,43 @@ use super::commands_backup::{
 };
 
 /// 将本地临时 ZIP 文件复制到虚拟 URI 目标（Android content:// 等），完成后清理临时文件。
-fn copy_temp_zip_to_virtual_uri(window: &tauri::Window, local_path: &str, virtual_uri: &str) {
+fn copy_temp_zip_to_virtual_uri(
+    window: &tauri::Window,
+    local_path: &str,
+    virtual_uri: &str,
+) -> Result<(), String> {
     let local = std::path::Path::new(local_path);
     if !local.exists() {
-        // ZIP 导出失败或被取消，临时文件不存在，无需复制
-        warn!(
-            "[data_governance] 临时 ZIP 文件不存在，跳过复制到虚拟 URI: {}",
+        return Err(format!(
+            "临时 ZIP 文件不存在，无法写入目标 URI: {}",
             local_path
-        );
-        return;
+        ));
     }
 
     info!(
         "[data_governance] 正在将 ZIP 复制到虚拟 URI: {} -> {}",
         local_path, virtual_uri
     );
-    match crate::unified_file_manager::copy_file(window, local_path, virtual_uri) {
-        Ok(bytes) => {
-            info!(
-                "[data_governance] ZIP 已成功复制到虚拟 URI ({} 字节): {}",
-                bytes, virtual_uri
-            );
-        }
+    let bytes = match crate::unified_file_manager::copy_file(window, local_path, virtual_uri) {
+        Ok(bytes) => bytes,
         Err(e) => {
             error!(
                 "[data_governance] 复制 ZIP 到虚拟 URI 失败: {} -> {} ({})",
                 local_path, virtual_uri, e
             );
+            if let Err(cleanup_error) = std::fs::remove_file(local_path) {
+                warn!(
+                    "[data_governance] 复制失败后清理临时 ZIP 失败: {} ({})",
+                    local_path, cleanup_error
+                );
+            }
+            return Err(format!("复制 ZIP 到目标 URI 失败，临时导出已清理: {}", e));
         }
-    }
+    };
+    info!(
+        "[data_governance] ZIP 已成功复制到虚拟 URI ({} 字节): {}",
+        bytes, virtual_uri
+    );
     // 清理本地临时文件
     if let Err(e) = std::fs::remove_file(local_path) {
         warn!(
@@ -63,6 +69,7 @@ fn copy_temp_zip_to_virtual_uri(window: &tauri::Window, local_path: &str, virtua
             local_path, e
         );
     }
+    Ok(())
 }
 
 /// 一步完成「备份 + 导出 ZIP」（后台任务模式）
@@ -122,8 +129,10 @@ pub async fn data_governance_backup_and_export_zip(
     tauri::async_runtime::spawn(async move {
         execute_backup_and_export_zip_with_progress(
             app_clone,
+            Some(window),
             job_ctx,
             local_output_path.clone(),
+            target_virtual_uri,
             compression_level,
             add_to_backup_list,
             use_tiered,
@@ -132,11 +141,6 @@ pub async fn data_governance_backup_and_export_zip(
             asset_types,
         )
         .await;
-
-        // 如果目标是虚拟 URI，将本地临时 ZIP 复制到目标 URI 后清理
-        if let Some(virtual_uri) = target_virtual_uri {
-            copy_temp_zip_to_virtual_uri(&window, &local_output_path, &virtual_uri);
-        }
     });
 
     Ok(BackupJobStartResponse {
@@ -149,8 +153,10 @@ pub async fn data_governance_backup_and_export_zip(
 
 async fn execute_backup_and_export_zip_with_progress(
     app: tauri::AppHandle,
+    window: Option<tauri::Window>,
     job_ctx: BackupJobContext,
     output_path: String,
+    target_virtual_uri: Option<String>,
     compression_level: u32,
     add_to_backup_list: bool,
     use_tiered: bool,
@@ -172,8 +178,10 @@ async fn execute_backup_and_export_zip_with_progress(
     job_ctx.set_params(BackupJobParams {
         backup_type: Some(if use_tiered {
             "tiered".to_string()
-        } else {
+        } else if include_assets.unwrap_or(!use_tiered) {
             "full".to_string()
+        } else {
+            "database_only".to_string()
         }),
         include_assets: include_assets.unwrap_or(!use_tiered),
         asset_types: asset_types.clone(),
@@ -199,7 +207,9 @@ async fn execute_backup_and_export_zip_with_progress(
     }
 
     let mut manager = BackupManager::new(backup_dir.clone());
-    manager.set_app_data_dir(app_data_dir);
+    // BackupManager resolves slot databases through DataSpaceManager, while
+    // crypto material and audit.db live under the application data root.
+    manager.set_app_data_dir(app_data_dir.clone());
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
     job_ctx.mark_running(
@@ -264,6 +274,14 @@ async fn execute_backup_and_export_zip_with_progress(
 
     let include_assets = include_assets.unwrap_or(!use_tiered);
 
+    let snapshot_barrier = match super::commands_backup::BackupSnapshotBarrier::enter(&app) {
+        Ok(barrier) => barrier,
+        Err(error) => {
+            job_ctx.fail(format!("无法建立一致备份快照: {}", error));
+            return;
+        }
+    };
+
     let backup_result: Result<String, String> = if use_tiered {
         let parsed_tiers: Vec<BackupTier> = tiers
             .unwrap_or_else(|| vec!["core".to_string()])
@@ -314,7 +332,7 @@ async fn execute_backup_and_export_zip_with_progress(
             .map(|result| result.manifest.backup_id)
             .map_err(|e| format!("分层备份失败: {}", e))
     } else if include_assets {
-        let asset_config = if let Some(types) = asset_types.clone() {
+        let mut asset_config = if let Some(types) = asset_types.clone() {
             let parsed_types: Vec<AssetType> = types
                 .iter()
                 .filter_map(|s| AssetType::from_str(s))
@@ -330,6 +348,10 @@ async fn execute_backup_and_export_zip_with_progress(
         } else {
             AssetBackupConfig::default()
         };
+        if asset_types.is_none() {
+            asset_config.max_file_size = u64::MAX;
+            asset_config.max_total_size = u64::MAX;
+        }
 
         manager
             .backup_with_assets(Some(asset_config))
@@ -341,6 +363,10 @@ async fn execute_backup_and_export_zip_with_progress(
             .map(|manifest| manifest.backup_id)
             .map_err(|e| format!("备份失败: {}", e))
     };
+    if let Err(error) = snapshot_barrier.release() {
+        job_ctx.fail(error);
+        return;
+    }
 
     let backup_id = match backup_result {
         Ok(id) => id,
@@ -387,6 +413,27 @@ async fn execute_backup_and_export_zip_with_progress(
         }
     };
 
+    let final_output_path = if let Some(virtual_uri) = target_virtual_uri {
+        job_ctx.mark_running(
+            BackupJobPhase::Cleanup,
+            98.0,
+            Some("正在将 ZIP 写入所选文件位置...".to_string()),
+            1,
+            1,
+        );
+        let Some(window) = window.as_ref() else {
+            job_ctx.fail("虚拟 URI 导出缺少窗口上下文".to_string());
+            return;
+        };
+        if let Err(e) = copy_temp_zip_to_virtual_uri(window, &output_path, &virtual_uri) {
+            job_ctx.fail(e);
+            return;
+        }
+        virtual_uri
+    } else {
+        export_result.zip_path.to_string_lossy().to_string()
+    };
+
     job_ctx.mark_running(
         BackupJobPhase::Verify,
         96.0,
@@ -407,7 +454,7 @@ async fn execute_backup_and_export_zip_with_progress(
     let duration_ms = start.elapsed().as_millis() as u64;
     let result_payload = BackupJobResultPayload {
         success: true,
-        output_path: Some(export_result.zip_path.to_string_lossy().to_string()),
+        output_path: Some(final_output_path.clone()),
         resolved_path: None,
         message: Some(format!(
             "备份并导出完成: {} 个文件，{} 字节",
@@ -417,7 +464,7 @@ async fn execute_backup_and_export_zip_with_progress(
         duration_ms: Some(duration_ms),
         stats: Some(serde_json::json!({
             "backup_id": backup_id,
-            "zip_path": export_result.zip_path,
+            "zip_path": final_output_path,
             "compression_level": compression_level,
             "compression_ratio": export_result.compression_ratio(),
             "add_to_backup_list": add_to_backup_list,
@@ -524,25 +571,20 @@ pub async fn data_governance_export_zip(
         );
     }
 
-    // 在后台执行 ZIP 导出
-    let local_output_for_copy = local_output_path.clone();
+    // 在后台执行 ZIP 导出。虚拟 URI 的最终复制属于任务提交阶段，只有复制成功
+    // 才允许发出唯一 Completed 终态。
     tauri::async_runtime::spawn(async move {
         execute_zip_export_with_progress(
             app,
+            Some(window),
             job_ctx,
             validated_backup_id,
             local_output_path,
+            target_virtual_uri,
             compression_level,
             include_checksums,
         )
         .await;
-
-        // 如果目标是虚拟 URI，将本地临时 ZIP 复制到目标 URI 后清理
-        if let Some(virtual_uri) = target_virtual_uri {
-            if let Some(local_path) = local_output_for_copy {
-                copy_temp_zip_to_virtual_uri(&window, &local_path, &virtual_uri);
-            }
-        }
     });
 
     Ok(BackupJobStartResponse {
@@ -556,13 +598,14 @@ pub async fn data_governance_export_zip(
 /// 执行 ZIP 导出（内部函数，带进度回调）
 async fn execute_zip_export_with_progress(
     app: tauri::AppHandle,
+    window: Option<tauri::Window>,
     job_ctx: BackupJobContext,
     backup_id: String,
     output_path: Option<String>,
+    target_virtual_uri: Option<String>,
     compression_level: u32,
     include_checksums: bool,
 ) {
-    use sha2::Digest;
     use std::fs::File;
     use std::io::Write;
     use std::time::Instant;
@@ -662,11 +705,27 @@ async fn execute_zip_export_with_progress(
     // 扫描目录，统计文件数量和总大小
     let mut files_to_compress: Vec<(PathBuf, String)> = Vec::new();
     let mut total_size: u64 = 0;
+    let mut total_files: usize = 0;
 
     for entry in WalkDir::new(&source_backup_dir)
         .into_iter()
-        .filter_map(log_and_skip_entry_err)
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || entry
+                    .path()
+                    .strip_prefix(&source_backup_dir)
+                    .is_ok_and(|path| {
+                        !super::backup::zip_export::is_portable_excluded_relative_path(path)
+                    })
+        })
     {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                job_ctx.fail(format!("扫描备份目录失败: {}", error));
+                return;
+            }
+        };
         let path = entry.path();
         let relative_path = match path.strip_prefix(&source_backup_dir) {
             Ok(p) => p,
@@ -678,23 +737,76 @@ async fn execute_zip_export_with_progress(
             continue;
         }
 
-        let relative_path_str = relative_path.to_string_lossy().replace('\\', "/");
+        if super::backup::zip_export::is_portable_excluded_relative_path(relative_path) {
+            continue;
+        }
 
-        if entry.file_type().is_file() {
-            if let Ok(metadata) = entry.metadata() {
-                total_size += metadata.len();
-            }
+        let relative_path_str = relative_path.to_string_lossy().replace('\\', "/");
+        if relative_path_str.eq_ignore_ascii_case("checksums.sha256") {
+            continue;
+        }
+
+        if entry.file_type().is_symlink() {
+            job_ctx.fail(format!(
+                "备份目录包含符号链接，拒绝导出: {}",
+                path.display()
+            ));
+            return;
+        } else if entry.file_type().is_file() {
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    job_ctx.fail(format!(
+                        "读取导出文件元数据失败 {}: {}",
+                        path.display(),
+                        error
+                    ));
+                    return;
+                }
+            };
+            total_size = match total_size.checked_add(metadata.len()) {
+                Some(size) => size,
+                None => {
+                    job_ctx.fail("ZIP 导出源总大小溢出".to_string());
+                    return;
+                }
+            };
+            total_files = match total_files.checked_add(1) {
+                Some(count) => count,
+                None => {
+                    job_ctx.fail("ZIP 导出源文件计数溢出".to_string());
+                    return;
+                }
+            };
             files_to_compress.push((path.to_path_buf(), relative_path_str));
         } else if entry.file_type().is_dir() {
             // 目录也需要记录，但不计入文件数
             files_to_compress.push((path.to_path_buf(), relative_path_str));
+        } else {
+            job_ctx.fail(format!(
+                "备份目录包含非常规条目，拒绝导出: {}",
+                path.display()
+            ));
+            return;
         }
     }
 
-    let total_files = files_to_compress
-        .iter()
-        .filter(|(p, _)| p.is_file())
-        .count();
+    let portable_manifest =
+        match super::backup::zip_export::portable_manifest_bytes(&source_backup_dir) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                job_ctx.fail(format!("生成便携备份清单失败: {}", error));
+                return;
+            }
+        };
+    if let Err(error) = super::backup::zip_export::preflight_export_source(
+        &source_backup_dir,
+        portable_manifest.len() as u64,
+        include_checksums,
+    ) {
+        job_ctx.fail(format!("ZIP 导出源超出导入安全策略: {}", error));
+        return;
+    }
 
     job_ctx.mark_running(
         BackupJobPhase::Scan,
@@ -749,9 +861,20 @@ async fn execute_zip_export_with_progress(
         }
     }
 
-    // 创建 ZIP 文件
-    let zip_file = match File::create(&zip_path) {
-        Ok(f) => f,
+    if let Err(e) =
+        super::backup::zip_export::ensure_zip_output_outside_source(&source_backup_dir, &zip_path)
+    {
+        job_ctx.fail(format!("ZIP 输出路径不安全: {}", e));
+        return;
+    }
+
+    // 同目录临时文件完成后再持久化，失败或取消不会破坏已有目标 ZIP。
+    let output_parent = zip_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let temp_output = match tempfile::NamedTempFile::new_in(output_parent) {
+        Ok(file) => file,
         Err(e) => {
             let msg = format!("创建 ZIP 文件失败: {}", e);
             #[cfg(feature = "data_governance")]
@@ -779,6 +902,13 @@ async fn execute_zip_export_with_progress(
             return;
         }
     };
+    let zip_file = match temp_output.reopen() {
+        Ok(file) => file,
+        Err(e) => {
+            job_ctx.fail(format!("打开 ZIP 临时文件失败: {}", e));
+            return;
+        }
+    };
     let mut zip_writer = ZipWriter::new(zip_file);
 
     // 配置压缩选项
@@ -796,33 +926,47 @@ async fn execute_zip_export_with_progress(
     for (path, relative_path_str) in &files_to_compress {
         // 检查取消
         if job_ctx.is_cancelled() {
-            // 清理未完成的 ZIP 文件
             drop(zip_writer);
-            let _ = std::fs::remove_file(&zip_path);
             job_ctx.cancelled(Some("用户取消 ZIP 导出".to_string()));
             return;
         }
 
-        if path.is_dir() {
+        let metadata = match std::fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                skipped_files.push(format!("{}: {}", relative_path_str, error));
+                continue;
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            skipped_files.push(format!("{}: 导出期间变为符号链接", relative_path_str));
+            continue;
+        }
+
+        if metadata.is_dir() {
             // 添加目录
             if let Err(e) = zip_writer.add_directory(relative_path_str, file_options) {
                 warn!("[zip_export] 添加目录失败: {} - {}", relative_path_str, e);
+                skipped_files.push(format!("{}: {}", relative_path_str, e));
             }
-        } else if path.is_file() {
-            // 添加文件
-            let mut file = match File::open(path) {
-                Ok(f) => f,
-                Err(e) => {
-                    warn!("[zip_export] 打开文件失败: {:?} - {}", path, e);
-                    skipped_files.push(format!("{}: {}", relative_path_str, e));
-                    continue;
-                }
-            };
+        } else if metadata.is_file() {
+            let is_manifest = relative_path_str == "manifest.json";
 
             // 计算校验和（如果需要）
             if include_checksums {
-                if let Ok(checksum) = crate::backup_common::calculate_file_hash(path) {
-                    checksums.push((relative_path_str.clone(), checksum));
+                let checksum = if is_manifest {
+                    Ok(crate::backup_common::calculate_bytes_hash(
+                        &portable_manifest,
+                    ))
+                } else {
+                    crate::backup_common::calculate_file_hash(path)
+                };
+                match checksum {
+                    Ok(checksum) => checksums.push((relative_path_str.clone(), checksum)),
+                    Err(error) => {
+                        skipped_files.push(format!("{}: {}", relative_path_str, error));
+                        continue;
+                    }
                 }
             }
 
@@ -836,10 +980,44 @@ async fn execute_zip_export_with_progress(
                 continue;
             }
 
-            if let Err(e) = std::io::copy(&mut file, &mut zip_writer) {
-                warn!("[zip_export] 写入 ZIP 失败: {} - {}", relative_path_str, e);
-                skipped_files.push(format!("{}: {}", relative_path_str, e));
-                continue;
+            let write_result = if is_manifest {
+                zip_writer
+                    .write_all(&portable_manifest)
+                    .map(|_| portable_manifest.len() as u64)
+            } else {
+                match File::open(path) {
+                    Ok(mut file) => match file.metadata() {
+                        Ok(opened) if opened.is_file() && opened.len() == metadata.len() => {
+                            std::io::copy(&mut file, &mut zip_writer)
+                        }
+                        Ok(_) => Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "导出文件在打开期间发生变化",
+                        )),
+                        Err(error) => Err(error),
+                    },
+                    Err(error) => Err(error),
+                }
+            };
+            let expected_write_size = if is_manifest {
+                portable_manifest.len() as u64
+            } else {
+                metadata.len()
+            };
+            match write_result {
+                Ok(written) if written == expected_write_size => {}
+                Ok(written) => {
+                    skipped_files.push(format!(
+                        "{}: 写入大小不一致 expected={}, actual={}",
+                        relative_path_str, expected_write_size, written
+                    ));
+                    continue;
+                }
+                Err(e) => {
+                    warn!("[zip_export] 写入 ZIP 失败: {} - {}", relative_path_str, e);
+                    skipped_files.push(format!("{}: {}", relative_path_str, e));
+                    continue;
+                }
             }
 
             compressed_files += 1;
@@ -856,6 +1034,8 @@ async fn execute_zip_export_with_progress(
                 compressed_files as u64,
                 total_files as u64,
             );
+        } else {
+            skipped_files.push(format!("{}: 非常规文件类型", relative_path_str));
         }
     }
 
@@ -869,14 +1049,71 @@ async fn execute_zip_export_with_progress(
 
         if let Err(e) = zip_writer.start_file("checksums.sha256", file_options) {
             warn!("[zip_export] 添加校验和文件失败: {}", e);
+            skipped_files.push(format!("checksums.sha256: {}", e));
         } else if let Err(e) = zip_writer.write_all(checksums_content.as_bytes()) {
             warn!("[zip_export] 写入校验和文件失败: {}", e);
+            skipped_files.push(format!("checksums.sha256: {}", e));
         }
     }
 
     // 完成 ZIP 文件
-    if let Err(e) = zip_writer.finish() {
-        let msg = format!("完成 ZIP 文件失败: {}", e);
+    let finished_file = match zip_writer.finish() {
+        Ok(file) => file,
+        Err(e) => {
+            let msg = format!("完成 ZIP 文件失败: {}", e);
+            #[cfg(feature = "data_governance")]
+            {
+                try_save_audit_log(
+                    &app,
+                    AuditLog::new(
+                        AuditOperation::Backup {
+                            backup_type: super::audit::BackupType::Full,
+                            file_count: 0,
+                            total_size: 0,
+                        },
+                        format!("zip_export/{}", backup_id),
+                    )
+                    .fail(msg.clone())
+                    .with_details(serde_json::json!({
+                        "job_id": job_ctx.job_id.clone(),
+                        "backup_id": backup_id.clone(),
+                        "subtype": "zip_export",
+                        "zip_path": zip_path.to_string_lossy(),
+                    })),
+                );
+            }
+            job_ctx.fail(msg);
+            return;
+        }
+    };
+    if let Err(e) = finished_file.sync_all() {
+        let msg = format!("同步 ZIP 临时文件失败: {}", e);
+        job_ctx.fail(msg);
+        return;
+    }
+    drop(finished_file);
+
+    if !skipped_files.is_empty() {
+        job_ctx.fail(format!(
+            "ZIP 导出失败，{} 个文件未完整写入: {}",
+            skipped_files.len(),
+            skipped_files.join("; ")
+        ));
+        return;
+    }
+
+    if let Err(error) = super::backup::zip_export::validate_archive_path(temp_output.path()) {
+        job_ctx.fail(format!("ZIP 导出自检失败，未发布输出: {}", error));
+        return;
+    }
+
+    if job_ctx.is_cancelled() {
+        job_ctx.cancelled(Some("用户取消 ZIP 导出".to_string()));
+        return;
+    }
+
+    if let Err(e) = temp_output.persist(&zip_path) {
+        let msg = format!("提交 ZIP 文件失败: {}", e.error);
         #[cfg(feature = "data_governance")]
         {
             try_save_audit_log(
@@ -899,12 +1136,6 @@ async fn execute_zip_export_with_progress(
             );
         }
         job_ctx.fail(msg);
-        return;
-    }
-
-    if job_ctx.is_cancelled() {
-        let _ = std::fs::remove_file(&zip_path);
-        job_ctx.cancelled(Some("用户取消 ZIP 导出".to_string()));
         return;
     }
 
@@ -996,6 +1227,21 @@ async fn execute_zip_export_with_progress(
         total_files as u64,
     );
 
+    let final_output_path = if let Some(virtual_uri) = target_virtual_uri {
+        let Some(window) = window.as_ref() else {
+            job_ctx.fail("虚拟 URI 导出缺少窗口上下文".to_string());
+            return;
+        };
+        let local_path = zip_path.to_string_lossy().to_string();
+        if let Err(e) = copy_temp_zip_to_virtual_uri(window, &local_path, &virtual_uri) {
+            job_ctx.fail(e);
+            return;
+        }
+        virtual_uri
+    } else {
+        zip_path.to_string_lossy().to_string()
+    };
+
     let duration_ms = start.elapsed().as_millis() as u64;
     let compression_ratio = if total_size > 0 {
         1.0 - (compressed_size as f64 / total_size as f64)
@@ -1004,8 +1250,8 @@ async fn execute_zip_export_with_progress(
     };
 
     info!(
-        "[data_governance] ZIP 导出成功: path={:?}, files={}, size={}->{}, ratio={:.1}%, duration={}ms",
-        zip_path, compressed_files, total_size, compressed_size, compression_ratio * 100.0, duration_ms
+        "[data_governance] ZIP 导出成功: path={}, files={}, size={}->{}, ratio={:.1}%, duration={}ms",
+        final_output_path, compressed_files, total_size, compressed_size, compression_ratio * 100.0, duration_ms
     );
 
     #[cfg(feature = "data_governance")]
@@ -1024,7 +1270,7 @@ async fn execute_zip_export_with_progress(
             .with_details(serde_json::json!({
                 "job_id": job_ctx.job_id.clone(),
                 "backup_id": backup_id.clone(),
-                "zip_path": zip_path.to_string_lossy(),
+                "zip_path": final_output_path.clone(),
                 "file_count": compressed_files,
                 "total_size": total_size,
                 "compressed_size": compressed_size,
@@ -1056,8 +1302,8 @@ async fn execute_zip_export_with_progress(
 
     let result_payload = BackupJobResultPayload {
         success: !has_skipped,
-        output_path: Some(zip_path.to_string_lossy().to_string()),
-        resolved_path: Some(zip_path.to_string_lossy().to_string()),
+        output_path: Some(final_output_path.clone()),
+        resolved_path: Some(final_output_path.clone()),
         message: Some(format!(
             "ZIP 导出完成: {} 个文件, 压缩率 {:.1}%{}",
             compressed_files,
@@ -1084,7 +1330,7 @@ async fn execute_zip_export_with_progress(
     };
 
     job_ctx.complete(
-        Some(format!("ZIP 导出完成: {}", zip_path.to_string_lossy())),
+        Some(format!("ZIP 导出完成: {}", final_output_path)),
         compressed_files as u64,
         total_files as u64,
         result_payload,

@@ -185,69 +185,317 @@ function checkTranslationKeys() {
 }
 
 /**
+ * 将相对路径转为统一的 posix 风格，便于 glob 式排除匹配
+ */
+function toPosixRel(relPath) {
+  return relPath.split(path.sep).join('/');
+}
+
+/**
+ * 简单 glob 匹配（仅支持 **、* 与字面路径段）
+ * 前缀 ** / 可匹配空路径，使 ** /anki/foo 也能匹配 anki/foo
+ */
+function matchGlob(relPosix, pattern) {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*\//g, '<<GS_SLASH>>')
+    .replace(/\/\*\*/g, '<<SLASH_GS>>')
+    .replace(/\*\*/g, '<<GS>>')
+    .replace(/\*/g, '[^/]*')
+    .replace(/<<GS_SLASH>>/g, '(?:.*/)?')
+    .replace(/<<SLASH_GS>>/g, '(?:/.*)?')
+    .replace(/<<GS>>/g, '.*');
+  return new RegExp(`^${escaped}$`).test(relPosix);
+}
+
+function shouldExcludePath(relPosix, excludePatterns) {
+  return excludePatterns.some((pattern) => {
+    // 目录前缀式排除（如 style-lab/、**/dev/）
+    if (pattern.endsWith('/') || pattern.endsWith('/**')) {
+      const dir = pattern
+        .replace(/^\*\*\//, '')
+        .replace(/\/\*\*$/, '')
+        .replace(/\/$/, '');
+      if (relPosix === dir || relPosix.startsWith(`${dir}/`) || relPosix.includes(`/${dir}/`)) {
+        return true;
+      }
+    }
+    return matchGlob(relPosix, pattern)
+      || matchGlob(path.basename(relPosix), pattern.replace(/^\*\*\//, ''));
+  });
+}
+
+/**
+ * 判断一行是否主要为调试/日志调用（此类中文不计入硬编码 UI）
+ * 覆盖: console.log/warn/error/debug/info、debugLog、emitDebug、emit*Debug
+ */
+function isPrimarilyDebugOrConsoleLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  return /^(?:void\s+|await\s+)?(?:console\.(?:log|warn|error|debug|info)|debugLog|emit\w*Debug)\s*[\.(]/.test(
+    trimmed,
+  );
+}
+
+function extractChineseSamples(content) {
+  // 排除注释和 import 语句中的中文
+  const codeOnly = content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*/g, '')
+    .replace(/import\s+.*from\s+.*/g, '');
+
+  // 再按行排除 console / debugLog / emit*Debug
+  const withoutDebug = codeOnly
+    .split('\n')
+    .filter((line) => !isPrimarilyDebugOrConsoleLine(line))
+    .join('\n');
+
+  return withoutDebug.match(/[\u4e00-\u9fa5]{2,}/g);
+}
+
+/**
+ * 扫描目录中的硬编码中文
+ * @returns {{ file: string, count: number, samples: string[] }[]}
+ */
+function scanHardcodedChinese(rootDir, options = {}) {
+  const {
+    extensions = ['.tsx', '.ts'],
+    excludePatterns = [],
+    relativeTo = rootDir,
+  } = options;
+  const results = [];
+
+  function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const file of fs.readdirSync(dir)) {
+      const filePath = path.join(dir, file);
+      const relPosix = toPosixRel(path.relative(relativeTo, filePath));
+      const stat = fs.statSync(filePath);
+
+      if (stat.isDirectory()) {
+        if (shouldExcludePath(`${relPosix}/`, excludePatterns) || shouldExcludePath(relPosix, excludePatterns)) {
+          continue;
+        }
+        walk(filePath);
+        continue;
+      }
+
+      if (!extensions.some((ext) => file.endsWith(ext))) continue;
+      if (shouldExcludePath(relPosix, excludePatterns)) continue;
+
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const matches = extractChineseSamples(content);
+      if (matches && matches.length > 0) {
+        results.push({
+          file: relPosix,
+          count: matches.length,
+          samples: [...new Set(matches)].slice(0, 3),
+        });
+      }
+    }
+  }
+
+  walk(rootDir);
+  results.sort((a, b) => b.count - a.count);
+  return results;
+}
+
+/**
+ * 扫描半本地化：defaultValue / t() 中带中文的 fallback
+ * @returns {{ file: string, count: number, samples: string[] }[]}
+ */
+function scanSemiLocalization(rootDir, options = {}) {
+  const {
+    extensions = ['.tsx', '.ts'],
+    excludePatterns = [],
+    relativeTo = rootDir,
+  } = options;
+
+  // 约定模式：defaultValue: '…中文…' / t(…'…中文…')
+  // 字面量内用 [^'"]* 代替贪婪 .*，避免同一行跨引号误吞导致漏计
+  const defaultValueRe = /defaultValue:\s*['"][^'"]*[\u4e00-\u9fff]/g;
+  const tFallbackRe = /t\([^)]*?['"][^'"]*[\u4e00-\u9fff]/g;
+
+  const results = [];
+
+  function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const file of fs.readdirSync(dir)) {
+      const filePath = path.join(dir, file);
+      const relPosix = toPosixRel(path.relative(relativeTo, filePath));
+      const stat = fs.statSync(filePath);
+
+      if (stat.isDirectory()) {
+        if (shouldExcludePath(`${relPosix}/`, excludePatterns) || shouldExcludePath(relPosix, excludePatterns)) {
+          continue;
+        }
+        walk(filePath);
+        continue;
+      }
+
+      if (!extensions.some((ext) => file.endsWith(ext))) continue;
+      if (shouldExcludePath(relPosix, excludePatterns)) continue;
+
+      const content = fs.readFileSync(filePath, 'utf-8');
+      // 注释已剥离，避免 // defaultValue: '中文' 误报
+      const codeOnly = content
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*/g, '');
+
+      const dvMatches = codeOnly.match(defaultValueRe) || [];
+      const tMatches = codeOnly.match(tFallbackRe) || [];
+      const all = [...dvMatches, ...tMatches];
+      if (all.length === 0) continue;
+
+      const samples = [...new Set(all.map((m) => {
+        const zh = m.match(/[\u4e00-\u9fff]+/g);
+        return zh ? zh.join('') : m.slice(0, 24);
+      }))].slice(0, 3);
+
+      results.push({
+        file: relPosix,
+        count: all.length,
+        samples,
+      });
+    }
+  }
+
+  walk(rootDir);
+  results.sort((a, b) => b.count - a.count);
+  return results;
+}
+
+/** 硬编码扫描共用的额外路径排除 */
+const HARDCODE_PATH_EXCLUDES = [
+  '**/skills/builtin/**',
+  '**/skills/builtin-tools/**',
+  '**/anki/cardforge/engines/**',
+  '**/anki/cardforge/prompts/**',
+  '**/mcp/builtinMcpServer.ts',
+  'mcp/builtinMcpServer.ts',
+];
+
+/**
  * 检查硬编码中文
  */
 function checkHardcodedChinese() {
   log('cyan', '\n=== 3. 硬编码中文检查 ===\n');
-  
+
   const componentsDir = path.join(projectRoot, 'src/components');
-  const results = [];
-  
-  function scanDirectory(dir) {
-    const files = fs.readdirSync(dir);
-    
-    files.forEach(file => {
-      const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-      
-      if (stat.isDirectory()) {
-        scanDirectory(filePath);
-      } else if (file.endsWith('.tsx') || file.endsWith('.ts')) {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        
-        // 排除注释和import语句中的中文
-        const codeOnly = content
-          .replace(/\/\*[\s\S]*?\*\//g, '') // 移除多行注释
-          .replace(/\/\/.*/g, '') // 移除单行注释
-          .replace(/import\s+.*from\s+.*/g, ''); // 移除import语句
-        
-        const matches = codeOnly.match(/[\u4e00-\u9fa5]{2,}/g);
-        
-        if (matches && matches.length > 0) {
-          results.push({
-            file: path.relative(componentsDir, filePath),
-            count: matches.length,
-            samples: [...new Set(matches)].slice(0, 3) // 取3个样本
-          });
-        }
-      }
-    });
-  }
-  
-  scanDirectory(componentsDir);
-  
-  // 按数量排序
-  results.sort((a, b) => b.count - a.count);
-  
-  log('yellow', `发现 ${results.length} 个文件包含硬编码中文\n`);
-  
-  if (results.length > 0) {
+  const featuresDir = path.join(projectRoot, 'src/features');
+  const srcDir = path.join(projectRoot, 'src');
+
+  const componentExclude = [
+    'style-lab/',
+    '**/dev/',
+    '**/*Demo*',
+    '**/*.example.*',
+    '**/__tests__/',
+    '**/*.test.*',
+    '**/prompts/',
+    ...HARDCODE_PATH_EXCLUDES,
+  ];
+
+  const featureExclude = [
+    '**/__tests__/',
+    '**/*.test.*',
+    '**/dev/',
+    '**/debug/**',
+    '**/debug-panel/**',
+    ...HARDCODE_PATH_EXCLUDES,
+  ];
+
+  const componentResults = scanHardcodedChinese(componentsDir, {
+    extensions: ['.tsx', '.ts'],
+    excludePatterns: componentExclude,
+    relativeTo: componentsDir,
+  });
+
+  const featureResults = scanHardcodedChinese(featuresDir, {
+    extensions: ['.tsx'],
+    excludePatterns: featureExclude,
+    relativeTo: featuresDir,
+  });
+
+  // --- components（主报告，保持原有摘要结构）---
+  log('yellow', `发现 ${componentResults.length} 个文件包含硬编码中文\n`);
+
+  if (componentResults.length > 0) {
     console.log('Top 20 硬编码中文最多的文件:\n');
     console.log('文件'.padEnd(60), '数量'.padEnd(8), '样本');
     console.log('-'.repeat(100));
-    
-    results.slice(0, 20).forEach(r => {
+
+    componentResults.slice(0, 20).forEach((r) => {
       console.log(
         r.file.padEnd(60),
         r.count.toString().padEnd(8),
-        r.samples.join(', ').substring(0, 30)
+        r.samples.join(', ').substring(0, 30),
       );
     });
-    
-    const totalHardcoded = results.reduce((sum, r) => sum + r.count, 0);
+
+    const totalHardcoded = componentResults.reduce((sum, r) => sum + r.count, 0);
     log('red', `\n❌ 总计: ${totalHardcoded} 处硬编码中文`);
   } else {
     log('green', '✅ 未发现硬编码中文');
+  }
+
+  // --- features UI（次级报告，单独 Top 15）---
+  log('cyan', '\n--- features UI hardcode (tsx) ---\n');
+  if (featureResults.length > 0) {
+    log('yellow', `发现 ${featureResults.length} 个 features 文件包含硬编码中文\n`);
+    console.log('Top 15 features UI hardcode:\n');
+    console.log('文件'.padEnd(60), '数量'.padEnd(8), '样本');
+    console.log('-'.repeat(100));
+
+    featureResults.slice(0, 15).forEach((r) => {
+      console.log(
+        r.file.padEnd(60),
+        r.count.toString().padEnd(8),
+        r.samples.join(', ').substring(0, 30),
+      );
+    });
+
+    const featureTotal = featureResults.reduce((sum, r) => sum + r.count, 0);
+    log('yellow', `\n⚠️  features UI 总计: ${featureTotal} 处硬编码中文`);
+  } else {
+    log('green', '✅ features UI 未发现硬编码中文');
+  }
+
+  // --- 半本地化：Chinese defaultValue / t fallback ---
+  log('cyan', '\n--- 半本地化 (Chinese defaultValue / t fallback) ---\n');
+
+  const semiExclude = [
+    '**/__tests__/',
+    '**/*.test.*',
+    '**/dev/',
+    '**/debug/**',
+    'style-lab/',
+    '**/style-lab/**',
+    ...HARDCODE_PATH_EXCLUDES,
+  ];
+
+  const semiResults = scanSemiLocalization(srcDir, {
+    extensions: ['.tsx', '.ts'],
+    excludePatterns: semiExclude,
+    relativeTo: srcDir,
+  });
+
+  if (semiResults.length > 0) {
+    const semiTotal = semiResults.reduce((sum, r) => sum + r.count, 0);
+    log('yellow', `发现 ${semiResults.length} 个文件含中文 defaultValue / t fallback（共 ${semiTotal} 处）\n`);
+    console.log('Top 15 半本地化文件:\n');
+    console.log('文件'.padEnd(60), '数量'.padEnd(8), '样本');
+    console.log('-'.repeat(100));
+
+    semiResults.slice(0, 15).forEach((r) => {
+      console.log(
+        r.file.padEnd(60),
+        r.count.toString().padEnd(8),
+        r.samples.join(', ').substring(0, 30),
+      );
+    });
+  } else {
+    log('green', '✅ 未发现中文 defaultValue / t fallback');
   }
 }
 

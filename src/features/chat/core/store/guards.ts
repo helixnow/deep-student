@@ -7,6 +7,7 @@
 
 import type { ChatStoreState } from './types';
 import { QUEUE_HARD_CAP, readBlockingInteraction } from '../types/queue';
+import { isStoreSubagentSession } from '../subagentSession';
 
 // ============================================================================
 // 守卫函数类型
@@ -82,7 +83,7 @@ export function createGuards(getState: () => ChatStoreState): Guards {
    */
   const canSend = (): boolean => {
     const state = getState();
-    return state.sessionStatus === 'idle';
+    return !isStoreSubagentSession(state) && state.sessionStatus === 'idle';
   };
 
   /**
@@ -93,6 +94,9 @@ export function createGuards(getState: () => ChatStoreState): Guards {
    */
   const canEdit = (messageId: string): boolean => {
     const state = getState();
+    if (isStoreSubagentSession(state)) {
+      return false;
+    }
     // streaming/aborting 状态下禁止编辑，避免上下文不一致
     if (state.sessionStatus === 'streaming' || state.sessionStatus === 'aborting') {
       return false;
@@ -108,6 +112,9 @@ export function createGuards(getState: () => ChatStoreState): Guards {
    */
   const canDelete = (messageId: string): boolean => {
     const state = getState();
+    if (isStoreSubagentSession(state)) {
+      return false;
+    }
     // streaming/aborting 状态下禁止删除，避免上下文不一致
     if (state.sessionStatus === 'streaming' || state.sessionStatus === 'aborting') {
       return false;

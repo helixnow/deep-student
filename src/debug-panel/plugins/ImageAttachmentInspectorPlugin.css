@@ -388,13 +388,11 @@
 }
 
 /* 暗色模式适配 */
-@media (prefers-color-scheme: dark) {
-  .duplicate-warning {
-    background: hsl(var(--destructive) / 0.15);
-  }
-  
-  .duplicate-warning code {
-    background: hsl(var(--background) / 0.1);
-  }
+:root.dark .duplicate-warning {
+  background: hsl(var(--destructive) / 0.15);
+}
+
+:root.dark .duplicate-warning code {
+  background: hsl(var(--background) / 0.1);
 }
 

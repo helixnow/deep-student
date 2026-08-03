@@ -20,13 +20,20 @@ import i18next from 'i18next';
 import { templateManager } from '@/data/ankiTemplates';
 import { ankiApiAdapter } from '@/services/ankiApiAdapter';
 import { fileManager } from '@/utils/fileManager';
+import { t } from '@/utils/i18n';
+import type { AnkiCard } from '@/types';
 import { SegmentEngine } from './SegmentEngine';
 import {
   buildContentAnalysisPrompt,
   buildCardGenerationSystemPrompt,
   buildCardGenerationUserPrompt,
 } from '../prompts';
-import { normalizeToolExportCards } from './exportNormalize';
+import {
+  filterExportableCards,
+  normalizeToolExportCards,
+  validateCardsForExport,
+} from './exportNormalize';
+import { isTerminalTaskStatus, normalizeTaskStatus } from './taskStatus';
 import type {
   GenerateCardsInput,
   GenerateCardsOutput,
@@ -44,8 +51,11 @@ import type {
   GenerationStats,
   CardForgeEvent,
   CardForgeEventListener,
-  TaskStatus,
 } from '../types';
+
+/** anki 命名空间下 engine 子对象的 i18n 快捷函数 */
+const tEngine = (key: string, options?: Record<string, unknown>): string =>
+  t(`engine.${key}`, options, 'anki');
 
 // ============================================================================
 // 类型定义 - 后端数据结构
@@ -75,6 +85,13 @@ interface BackendDocumentTask {
   error_message?: string;
 }
 
+/**
+ * 后端 `anki_generation_event` 事件载荷。
+ *
+ * 与 src-tauri/src/models.rs 的 `StreamedCardPayload` 对齐：serde 外部标签
+ * 序列化，即 `{ "NewCard": { "card": {...}, "document_id": "..." } }`。
+ * NewCard/NewErrorCard 同时兼容裸卡片对象（旧版桥接可能不带包装层）。
+ */
 interface BackendStreamedCardPayload {
   NewCard?: BackendAnkiCard | { card: BackendAnkiCard; document_id?: string };
   NewErrorCard?: BackendAnkiCard | { card: BackendAnkiCard; document_id?: string };
@@ -107,6 +124,21 @@ interface BackendStreamedCardPayload {
   DocumentProcessingPaused?: {
     document_id: string;
   };
+  /** 文档处理被用户取消（保留已生成卡片） */
+  DocumentProcessingCancelled?: {
+    document_id: string;
+  };
+  /** API 频率限制警告（全局，无 document_id） */
+  RateLimitWarning?: {
+    message: string;
+    retry_after_seconds?: number;
+  };
+  /** 工作流失败事件（全局，无 document_id） */
+  WorkflowFailed?: {
+    workflow_type: string;
+    error_message: string;
+    fallback_used: boolean;
+  };
 }
 
 /** 字段提取规则类型 */
@@ -122,7 +154,14 @@ interface BackendGenerationOptions {
   note_type: string;
   enable_images: boolean;
   max_cards_per_mistake: number;
-  /** @deprecated 使用 template_ids 替代，支持 LLM 多模板自选 */
+  /**
+   * @deprecated 使用 template_ids 替代，支持 LLM 多模板自选。
+   *
+   * 迁移状态（2026-07 核实）：后端 enhanced_anki_service.rs 仍以
+   * `options.template_id` 作为模板配置回退（template_ids 缺失/未命中时），
+   * 因此前端必须继续填充首个模板 ID；待后端完全切换到 template_ids
+   * 后方可移除此字段。
+   */
   template_id?: string;
   /** LLM-First: 传递所有可用模板，由 LLM 自动选择最合适的模板 */
   template_ids?: string[];
@@ -403,7 +442,7 @@ export class CardAgent {
         cardCollector.setDocumentId(documentId);
 
         // 等待生成完成并收集卡片（使用已经在监听的收集器）
-        const { cards, paused } = await cardCollector.waitForComplete();
+        const { cards, paused, timedOut } = await cardCollector.waitForComplete();
 
         // 计算统计信息
         const stats: GenerationStats = {
@@ -414,6 +453,19 @@ export class CardAgent {
           successCount: cards.filter((c) => !c.isErrorCard).length,
           failedCount: cards.filter((c) => c.isErrorCard).length,
         };
+
+        // 🔧 P0：空闲超时必须可区分失败，不能再以 ok:true 伪装成功
+        if (timedOut) {
+          return {
+            ok: false,
+            documentId,
+            cards,
+            stats,
+            paused: false,
+            timedOut: true,
+            error: `生成空闲超时，已收集 ${cards.length} 张卡片`,
+          };
+        }
 
         return {
           ok: true,
@@ -449,7 +501,7 @@ export class CardAgent {
           await invoke('pause_document_processing', { documentId: input.documentId });
           return {
             ok: true,
-            message: '已暂停文档处理',
+            message: tEngine('pause_success'),
           };
 
         case 'resume': {
@@ -457,7 +509,7 @@ export class CardAgent {
           const tasks = await this.getTaskStatus(input.documentId);
           return {
             ok: true,
-            message: '已恢复文档处理',
+            message: tEngine('resume_success'),
             tasks,
           };
         }
@@ -466,7 +518,7 @@ export class CardAgent {
           if (!input.taskId) {
             return {
               ok: false,
-              message: '重试操作需要提供 taskId',
+              message: tEngine('retry_requires_task_id'),
             };
           }
           await invoke('trigger_task_processing', {
@@ -474,7 +526,7 @@ export class CardAgent {
           });
           return {
             ok: true,
-            message: '已触发任务重试',
+            message: tEngine('retry_triggered'),
           };
 
         case 'cancel':
@@ -483,13 +535,13 @@ export class CardAgent {
           await invoke('cancel_document_processing', { documentId: input.documentId });
           return {
             ok: true,
-            message: '已取消文档处理，已生成的卡片已保留',
+            message: tEngine('cancel_success'),
           };
 
         default:
           return {
             ok: false,
-            message: `未知操作: ${input.action}`,
+            message: tEngine('unknown_action', { action: input.action }),
           };
       }
     } catch (error: unknown) {
@@ -512,15 +564,29 @@ export class CardAgent {
       if (!input.cards || input.cards.length === 0) {
         return {
           ok: false,
-          error: '没有可导出的卡片',
+          error: tEngine('export.no_cards'),
         };
       }
 
+      // 导出前校验：识别空卡/错误卡/缺字段，error 级问题卡被排除出导出集合。
+      // validation 结果随输出透传，供 UI 内联展示警告明细。
+      const validation = validateCardsForExport(input.cards);
+      if (!validation.ok) {
+        return {
+          ok: false,
+          error: tEngine('export.no_exportable_cards'),
+          validation,
+        };
+      }
+      const exportableCards = filterExportableCards(input.cards, validation);
+
       switch (input.format) {
         case 'apkg': {
-          // 转换卡片格式
-          const cardsForExport = input.cards.map((card) => ({
+          // 转换卡片格式（AnkiCard 形态：同时携带 fields 与 extra_fields，
+          // 分别供新版 batch_export_cards 与旧版降级接口消费）
+          const cardsForExport: AnkiCard[] = exportableCards.map((card) => ({
             id: card.id,
+            task_id: card.taskId,
             front: card.front,
             back: card.back,
             text: card.text,
@@ -528,11 +594,15 @@ export class CardAgent {
             images: card.images,
             fields: card.fields,
             extra_fields: card.fields,
+            is_error_card: card.isErrorCard,
+            error_content: card.errorContent ?? undefined,
+            created_at: card.createdAt,
+            template_id: card.templateId || undefined,
           }));
-          const templateId = resolveExportTemplateId(input.cards);
+          const templateId = resolveExportTemplateId(exportableCards);
 
           const filePath = await ankiApiAdapter.batchExportCards({
-            cards: cardsForExport as any,
+            cards: cardsForExport,
             format: 'apkg',
             options: {
               deckName: input.deckName,
@@ -544,13 +614,15 @@ export class CardAgent {
           return {
             ok: true,
             filePath,
+            exportedCount: exportableCards.length,
+            validation,
           };
         }
 
         case 'anki_connect': {
           // 使用 AnkiConnect API 导入卡片
           // 后端命令: add_cards_to_anki_connect(selected_cards, deck_name, note_type)
-          const selectedCards = input.cards.map((card) => ({
+          const selectedCards = exportableCards.map((card) => ({
             id: card.id ?? '',
             task_id: card.taskId ?? '',
             front: card.front ?? card.fields?.Front ?? '',
@@ -589,19 +661,26 @@ export class CardAgent {
             return {
               ok: report.added > 0 || allDuplicates,
               importedCount: report.added,
+              duplicateCount: report.duplicates,
+              failedCount: report.failed,
+              exportedCount: exportableCards.length,
+              validation,
             };
           } catch (importError: unknown) {
             console.warn('[CardAgent] AnkiConnect import failed:', importError);
             return {
               ok: false,
               importedCount: 0,
-              error: importError instanceof Error ? importError.message : 'AnkiConnect导入失败',
+              validation,
+              error: importError instanceof Error
+                ? importError.message
+                : tEngine('export.anki_connect_failed'),
             };
           }
         }
 
         case 'json': {
-          const exportCards = buildBackendExportCards(input.cards);
+          const exportCards = buildBackendExportCards(exportableCards);
           const jsonData = JSON.stringify(exportCards, null, 2);
           const suggestedName = `anki_cards_${Date.now()}.json`;
           const saveResult = await fileManager.saveTextFile({
@@ -613,18 +692,22 @@ export class CardAgent {
             return {
               ok: false,
               error: i18next.t('anki:operation_cancelled'),
+              validation,
             };
           }
           return {
             ok: true,
             filePath: saveResult.path,
+            exportedCount: exportCards.length,
+            validation,
           };
         }
 
         default:
           return {
             ok: false,
-            error: `不支持的导出格式: ${input.format}`,
+            error: tEngine('export.unsupported_format', { format: input.format }),
+            validation,
           };
       }
     } catch (error: unknown) {
@@ -661,22 +744,24 @@ export class CardAgent {
 
       // 转换为 TemplateInfo 格式
       // 🔧 P0 修复：必须包含 field_extraction_rules，用于后端解析AI生成的JSON
-      const templateInfos: TemplateInfo[] = templates.map((t) => {
-        const fields = this.normalizeTemplateFields(t.fields);
+      const templateInfos: TemplateInfo[] = templates.map((template) => {
+        const fields = this.normalizeTemplateFields(template.fields);
+        // CustomAnkiTemplate 未声明 category，部分旧模板数据可能携带
+        const category = (template as Partial<Record<'category', string>>).category;
         return {
-        id: t.id,
-        name: t.name,
-        description: t.description || '',
-        category: (t as any).category || 'general',
+          id: template.id,
+          name: template.name,
+          description: template.description || '',
+          category: typeof category === 'string' && category.trim() ? category : 'general',
           fields,
-        noteType: t.note_type || 'Basic',
-        isActive: t.is_active !== false,
-        complexityLevel: this.calculateComplexityLevel(t),
-        useCaseDescription: t.description || t.name,
-        // 🔧 P0 修复：传递字段提取规则
-          field_extraction_rules: this.ensureFieldExtractionRules(fields, t.field_extraction_rules),
-        // 🔧 P1 修复：传递生成提示词，指导 LLM 如何构造模板特定字段
-        generation_prompt: t.generation_prompt,
+          noteType: template.note_type || 'Basic',
+          isActive: template.is_active !== false,
+          complexityLevel: this.calculateComplexityLevel(template),
+          useCaseDescription: template.description || template.name,
+          // 🔧 P0 修复：传递字段提取规则
+          field_extraction_rules: this.ensureFieldExtractionRules(fields, template.field_extraction_rules),
+          // 🔧 P1 修复：传递生成提示词，指导 LLM 如何构造模板特定字段
+          generation_prompt: template.generation_prompt,
         };
       });
 
@@ -1171,7 +1256,8 @@ export class CardAgent {
       this.emit('task:progress', {
         taskId: update.task_id,
         segmentIndex: update.segment_index || 0,
-        status: update.status as TaskStatus,
+        // 后端为帕斯卡命名（'Processing' 等），统一归一为小写 TaskStatus
+        status: normalizeTaskStatus(update.status),
         progress: 0,
         cardsGenerated: 0,
       }, update.document_id);
@@ -1181,7 +1267,7 @@ export class CardAgent {
       const completed = payload.TaskCompleted;
       this.emit('task:complete', {
         taskId: completed.task_id,
-        status: completed.final_status as TaskStatus,
+        status: normalizeTaskStatus(completed.final_status, 'completed'),
         totalCards: completed.total_cards_generated,
       }, completed.document_id);
     }
@@ -1205,14 +1291,39 @@ export class CardAgent {
       }, payload.DocumentProcessingPaused.document_id);
     }
 
+    // 用户取消：需要让等待中的收集器立即返回，而不是等空闲超时
+    if (payload.DocumentProcessingCancelled) {
+      this.emit('document:cancelled', {
+        documentId: payload.DocumentProcessingCancelled.document_id,
+      }, payload.DocumentProcessingCancelled.document_id);
+    }
+
     // ★ 2026-01 修复：处理 TaskProcessingError 事件
     if (payload.TaskProcessingError) {
       const errorEvent = payload.TaskProcessingError;
       this.emit('task:error', {
         taskId: errorEvent.task_id,
-        error: errorEvent.error_message || '任务处理失败',
+        error: errorEvent.error_message || tEngine('task_processing_failed'),
         segmentIndex: 0,
       }, errorEvent.document_id);
+    }
+
+    // API 频率限制警告：作为生成活动广播（收集器据此重置空闲计时器）
+    if (payload.RateLimitWarning) {
+      this.emit('rate:limit', {
+        message: payload.RateLimitWarning.message,
+        retryAfterSeconds: payload.RateLimitWarning.retry_after_seconds,
+      });
+    }
+
+    // 工作流失败：以 task:error 形式对外暴露（无 document_id，全局事件）
+    if (payload.WorkflowFailed) {
+      const failed = payload.WorkflowFailed;
+      this.emit('task:error', {
+        error: failed.error_message,
+        workflowType: failed.workflow_type,
+        fallbackUsed: failed.fallback_used,
+      });
     }
   }
 
@@ -1269,11 +1380,27 @@ export class CardAgent {
     }
 
     try {
-      const { WebviewWindow } = await import('@tauri-apps/api/window');
-      const webview: any = WebviewWindow.getCurrent();
-      const labelValue = typeof webview?.label === 'string'
-        ? webview.label
-        : await webview?.label?.();
+      // Tauri v2：优先 getCurrentWindow().label；兼容旧桥接的 WebviewWindow.getCurrent()
+      const windowModule: Record<string, unknown> = await import('@tauri-apps/api/window');
+      let labelValue: unknown;
+
+      const getCurrentWindow = windowModule.getCurrentWindow;
+      if (typeof getCurrentWindow === 'function') {
+        const current = (getCurrentWindow as () => { label?: unknown })();
+        labelValue = current?.label;
+      }
+
+      if (typeof labelValue !== 'string' || !labelValue.trim()) {
+        const webviewWindowClass = windowModule.WebviewWindow as
+          | { getCurrent?: () => { label?: unknown } }
+          | undefined;
+        const webview = webviewWindowClass?.getCurrent?.();
+        const rawLabel = webview?.label;
+        labelValue = typeof rawLabel === 'function'
+          ? await (rawLabel as () => Promise<unknown>).call(webview)
+          : rawLabel;
+      }
+
       const normalized = typeof labelValue === 'string' && labelValue.trim()
         ? labelValue
         : null;
@@ -1335,16 +1462,18 @@ export class CardAgent {
    * 返回的收集器会立即开始监听事件。
    */
   private createCardCollector(): {
-    waitForComplete: () => Promise<{ cards: AnkiCardResult[]; paused: boolean }>;
+    waitForComplete: () => Promise<{ cards: AnkiCardResult[]; paused: boolean; timedOut: boolean }>;
     cancel: () => void;
     setDocumentId: (documentId: string) => void;
   } {
+    type CollectorResult = { cards: AnkiCardResult[]; paused: boolean; timedOut: boolean };
     const cards: AnkiCardResult[] = [];
     let completed = false;
     let paused = false;
+    let timedOut = false;
     let expectedDocumentId: string | null = null;
     let idleTimerId: ReturnType<typeof setTimeout> | null = null;
-    let resolveWithState: ((value: { cards: AnkiCardResult[]; paused: boolean }) => void) | null = null;
+    let resolveWithState: ((value: CollectorResult) => void) | null = null;
 
     // 🔧 F21（round2）：空闲超时替代固定总超时。
     // 旧实现对整个文档用固定 5 分钟总超时，大文档多分段累计耗时极易误触发，
@@ -1352,34 +1481,112 @@ export class CardAgent {
     // 改为“距上次生成活动”的空闲超时：每收到新卡/错误卡/任务进度/任务完成事件即重置计时器，
     // 仅在长时间无任何活动（疑似卡死）时才返回已收集卡片。
     const IDLE_TIMEOUT_MS = 300000; // 5 分钟无任何生成活动视为卡死
+    // 🔧 空闲超时轮询兜底：超时瞬间先查后端任务状态，若任务仍在推进
+    // （说明只是事件丢失，不是真的卡死），延长空闲窗口继续等，最多延长次数：
+    const MAX_IDLE_EXTENSIONS = 3;
+    let idleExtensions = 0;
+
+    // 🔧 早事件缓冲：documentId 由 invoke 返回后才可知（setDocumentId 在
+    // invoke 之后调用）。此前 expectedDocumentId 为空时事件被直接丢弃，
+    // 极早到达的 NewCard/DocumentProcessingCompleted 会永久丢失。
+    // 现在改为缓冲，setDocumentId 后按 documentId 回放匹配。
+    type BufferedKind = 'card' | 'errorCard' | 'complete' | 'paused' | 'cancelled' | 'activity';
+    const MAX_PENDING_EVENTS = 1024;
+    let pendingEvents: Array<{ kind: BufferedKind; event: CardForgeEvent<unknown> }> | null = [];
+
+    const matchesDocument = (event: CardForgeEvent<unknown>): boolean =>
+      !event.documentId || event.documentId === expectedDocumentId;
 
     const cleanup = () => {
       if (idleTimerId) {
         clearTimeout(idleTimerId);
         idleTimerId = null;
       }
+      pendingEvents = null;
       unsubscribeCard();
       unsubscribeErrorCard();
       unsubscribeComplete();
       unsubscribePaused(); // 🔧 三轮修复 #8: 清理暂停事件监听
+      unsubscribeCancelled(); // 取消事件监听
       unsubscribeProgress(); // 🔧 F21: 清理进度事件监听（仅用于重置空闲计时器）
       unsubscribeTaskComplete(); // 🔧 F21: 清理任务完成事件监听
+      unsubscribeRateLimit(); // 限流警告也属生成活动
     };
 
-    const finishWithIdleTimeout = () => {
+    const finishWith = (state: { paused: boolean }) => {
       if (completed) return;
       completed = true;
+      paused = state.paused;
+      cleanup();
+      if (resolveWithState) {
+        resolveWithState({ cards, paused, timedOut: false });
+      }
+    };
+
+    const finishWithIdleTimeout = async () => {
+      if (completed) return;
+
+      // 轮询兜底 #1：事件可能丢失。超时瞬间查询后端任务状态，
+      // 若仍有非终态任务在推进，则视为事件通道异常而非卡死，延长等待窗口。
+      if (expectedDocumentId && idleExtensions < MAX_IDLE_EXTENSIONS) {
+        try {
+          const tasks = await invoke<BackendDocumentTask[]>('get_document_tasks', {
+            documentId: expectedDocumentId,
+          });
+          const hasActiveTask = Array.isArray(tasks)
+            && tasks.some((task) => !isTerminalTaskStatus(task.status));
+          if (!completed && hasActiveTask) {
+            idleExtensions += 1;
+            console.warn(
+              `[CardAgent] 空闲超时但后端任务仍在推进，延长等待（第 ${idleExtensions}/${MAX_IDLE_EXTENSIONS} 次）`
+            );
+            resetIdleTimer();
+            return;
+          }
+        } catch {
+          // 查询失败按普通超时处理
+        }
+      }
+
+      if (completed) return;
+      completed = true;
+      timedOut = true;
+
+      // 轮询兜底 #2：超时收尾前从数据库恢复卡片，弥补事件丢失导致的
+      // 前端计数与库内数量不一致（get_document_cards 返回 DB 权威数据）。
+      let finalCards = cards;
+      if (expectedDocumentId) {
+        try {
+          const dbCards = await invoke<BackendAnkiCard[]>('get_document_cards', {
+            documentId: expectedDocumentId,
+          });
+          if (Array.isArray(dbCards) && dbCards.length > cards.length) {
+            const recovered = dbCards
+              .filter((card) => this.isValidBackendCard(card))
+              .map((card) => this.convertBackendCard(card));
+            if (recovered.length > cards.length) {
+              console.warn(
+                `[CardAgent] 空闲超时兜底：事件收集 ${cards.length} 张，DB 恢复 ${recovered.length} 张`
+              );
+              finalCards = recovered;
+            }
+          }
+        } catch {
+          // 恢复失败则返回事件收集到的卡片
+        }
+      }
+
       console.warn(
-        `[CardAgent] 文档生成空闲超时（${IDLE_TIMEOUT_MS / 1000}s 无新事件），已收集 ${cards.length} 张卡片`
+        `[CardAgent] 文档生成空闲超时（${IDLE_TIMEOUT_MS / 1000}s 无新事件），已收集 ${finalCards.length} 张卡片`
       );
       this.emit('task:error', {
-        error: `生成空闲超时，已收集 ${cards.length} 张卡片`,
+        error: `生成空闲超时，已收集 ${finalCards.length} 张卡片`,
         isTimeout: true,
-        partialCards: cards.length,
+        partialCards: finalCards.length,
       }, expectedDocumentId ?? undefined);
       cleanup();
       if (resolveWithState) {
-        resolveWithState({ cards, paused: false });
+        resolveWithState({ cards: finalCards, paused: false, timedOut: true });
       }
     };
 
@@ -1387,93 +1594,91 @@ export class CardAgent {
     const resetIdleTimer = () => {
       if (completed || !resolveWithState) return;
       if (idleTimerId) clearTimeout(idleTimerId);
-      idleTimerId = setTimeout(finishWithIdleTimeout, IDLE_TIMEOUT_MS);
+      idleTimerId = setTimeout(() => {
+        void finishWithIdleTimeout();
+      }, IDLE_TIMEOUT_MS);
+    };
+
+    // 统一事件分发：documentId 未知期间缓冲；已知后按 documentId 过滤处理。
+    const dispatch = (kind: BufferedKind, event: CardForgeEvent<unknown>) => {
+      if (completed) return;
+      if (!expectedDocumentId) {
+        if (pendingEvents && pendingEvents.length < MAX_PENDING_EVENTS) {
+          pendingEvents.push({ kind, event });
+        }
+        return;
+      }
+      if (!matchesDocument(event)) return;
+
+      switch (kind) {
+        case 'card':
+        case 'errorCard': {
+          const payload = event.payload as { card?: AnkiCardResult } | undefined;
+          if (payload?.card) {
+            cards.push(payload.card);
+          }
+          resetIdleTimer(); // 🔧 F21: 有新卡/错误卡，仍属生成活动，重置空闲超时
+          break;
+        }
+        case 'complete':
+          finishWith({ paused: false });
+          break;
+        case 'paused':
+          console.log(`[CardAgent] 文档处理已暂停，返回已收集的 ${cards.length} 张卡片`);
+          finishWith({ paused: true });
+          break;
+        case 'cancelled':
+          // 非破坏性取消：立即返回已收集卡片，避免等待空闲超时
+          console.log(`[CardAgent] 文档处理已取消，返回已收集的 ${cards.length} 张卡片`);
+          finishWith({ paused: false });
+          break;
+        case 'activity':
+          resetIdleTimer();
+          break;
+      }
     };
 
     // 立即开始监听事件（在调用后端之前）
     const unsubscribeCard = this.on<{ card: AnkiCardResult }>('card:generated', (event) => {
-      if (!expectedDocumentId) {
-        return;
-      }
-      if (event.documentId && event.documentId !== expectedDocumentId) {
-        return;
-      }
-      cards.push(event.payload.card);
-      resetIdleTimer(); // 🔧 F21: 有新卡，重置空闲超时
+      dispatch('card', event);
     });
 
     const unsubscribeErrorCard = this.on<{ card: AnkiCardResult }>('card:error', (event) => {
-      if (!expectedDocumentId) {
-        return;
-      }
-      if (event.documentId && event.documentId !== expectedDocumentId) {
-        return;
-      }
-      cards.push(event.payload.card);
-      resetIdleTimer(); // 🔧 F21: 有错误卡，仍属生成活动，重置空闲超时
+      dispatch('errorCard', event);
     });
 
     const unsubscribeComplete = this.on('document:complete', (event) => {
-      if (!expectedDocumentId) {
-        return;
-      }
-      if (event.documentId && event.documentId !== expectedDocumentId) {
-        return;
-      }
-      if (!completed) {
-        completed = true;
-        cleanup();
-        if (resolveWithState) {
-          resolveWithState({ cards, paused: false });
-        }
-      }
+      dispatch('complete', event);
     });
 
     // 🔧 三轮修复 #8: 监听暂停事件，用户暂停时立即返回已收集的卡片
     const unsubscribePaused = this.on('document:paused', (event) => {
-      if (!expectedDocumentId) {
-        return;
-      }
-      if (event.documentId && event.documentId !== expectedDocumentId) {
-        return;
-      }
-      if (!completed) {
-        completed = true;
-        paused = true;
-        console.log(`[CardAgent] 文档处理已暂停，返回已收集的 ${cards.length} 张卡片`);
-        cleanup();
-        if (resolveWithState) {
-          resolveWithState({ cards, paused });
-        }
-      }
+      dispatch('paused', event);
+    });
+
+    const unsubscribeCancelled = this.on('document:cancelled', (event) => {
+      dispatch('cancelled', event);
     });
 
     // 🔧 F21: 任务进度/完成事件也算“生成活动”，重置空闲超时（不收集卡片，仅防误超时）
     const unsubscribeProgress = this.on('task:progress', (event) => {
-      if (!expectedDocumentId) {
-        return;
-      }
-      if (event.documentId && event.documentId !== expectedDocumentId) {
-        return;
-      }
-      resetIdleTimer();
+      dispatch('activity', event);
     });
 
     const unsubscribeTaskComplete = this.on('task:complete', (event) => {
-      if (!expectedDocumentId) {
-        return;
-      }
-      if (event.documentId && event.documentId !== expectedDocumentId) {
-        return;
-      }
-      resetIdleTimer();
+      dispatch('activity', event);
+    });
+
+    // 限流警告说明后端仍在工作（等待重试），不应触发空闲超时
+    const unsubscribeRateLimit = this.on('rate:limit', (event) => {
+      dispatch('activity', event);
     });
 
     return {
-      waitForComplete: (): Promise<{ cards: AnkiCardResult[]; paused: boolean }> => {
+      waitForComplete: (): Promise<{ cards: AnkiCardResult[]; paused: boolean; timedOut: boolean }> => {
         // 如果在调用 waitForComplete 之前就已完成，立即返回
         if (completed) {
-          return Promise.resolve({ cards, paused });
+          return Promise.resolve({ cards, paused, timedOut });
         }
 
         return new Promise((resolve) => {
@@ -1484,6 +1689,15 @@ export class CardAgent {
       },
       setDocumentId: (documentId: string) => {
         expectedDocumentId = documentId;
+        // 回放 documentId 未知期间缓冲的事件（按 documentId 过滤）
+        const buffered = pendingEvents;
+        pendingEvents = null;
+        if (buffered && buffered.length > 0) {
+          for (const { kind, event } of buffered) {
+            dispatch(kind, event);
+            if (completed) break;
+          }
+        }
       },
       cancel: () => {
         if (!completed) {
@@ -1513,12 +1727,13 @@ export class CardAgent {
   private async getTaskStatus(documentId: string): Promise<TaskInfo[]> {
     try {
       const tasks = await invoke<BackendDocumentTask[]>('get_document_tasks', { documentId });
-      return tasks.map((t) => ({
-        taskId: t.id,
-        segmentIndex: t.segment_index,
-        status: t.status as TaskStatus,
+      return tasks.map((task) => ({
+        taskId: task.id,
+        segmentIndex: task.segment_index,
+        // 后端返回帕斯卡命名状态，统一归一为小写 TaskStatus
+        status: normalizeTaskStatus(task.status),
         cardsGenerated: 0,
-        errorMessage: t.error_message,
+        errorMessage: task.error_message,
       }));
     } catch {
       return [];

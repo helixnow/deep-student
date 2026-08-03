@@ -15,7 +15,11 @@
   },
   "overrides": [
     {
-      "files": ["src/shared/styles/platform-compat.css", "src/shared/styles/vendor-overrides.css"],
+      "files": [
+        "src/shared/styles/deep-student.css",
+        "src/components/crepe/CrepeEditor.css",
+        "src/features/chat/styles/chat-beautify.css"
+      ],
       "rules": {
         "declaration-no-important": null
       }

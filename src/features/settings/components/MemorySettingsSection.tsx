@@ -1,12 +1,12 @@
 /**
  * 记忆设置区块
- * Notion 风格：简洁、无边框、hover 效果
+ * 简洁风格：简洁、无边框、hover 效果
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Check, CircleNotch } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { Plus, Check, CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -19,7 +19,9 @@ import {
   setMemoryPrivacyMode,
   setMemoryAutoCreateSubfolders,
   setMemoryDefaultCategory,
+  setMemoryAutoExtractFrequency,
   createMemoryRootFolder,
+  type AutoExtractFrequency,
   type MemoryConfig,
 } from '@/api/memoryApi';
 import { getFolderTree } from '@/dstu/api/folderApi';
@@ -46,6 +48,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
 
   const [config, setConfig] = useState<MemoryConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [folders, setFolders] = useState<Array<{ id: string; title: string; path: string }>>([]);
   const [showCreateInput, setShowCreateInput] = useState(false);
@@ -69,6 +72,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadFailed(false);
       const [configResult, treeResult] = await Promise.all([
         getMemoryConfig(),
         getFolderTree(),
@@ -79,6 +83,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       }
     } catch (error: unknown) {
       console.error('加载记忆配置失败:', error);
+      setLoadFailed(true);
       showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setLoading(false);
@@ -132,7 +137,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       setSaving(true);
       await setMemoryAutoCreateSubfolders(enabled);
       setConfig((prev) => (prev ? { ...prev, autoCreateSubfolders: enabled } : prev));
-      showGlobalNotification('success', t('settings:memory.autoSubfoldersUpdated', '已更新'));
+      showGlobalNotification('success', t('settings:memory.autoSubfoldersUpdated'));
     } catch (error: unknown) {
       console.error('更新自动子文件夹失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
@@ -146,9 +151,23 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       setSaving(true);
       await setMemoryDefaultCategory(category);
       setConfig((prev) => (prev ? { ...prev, defaultCategory: category } : prev));
-      showGlobalNotification('success', t('settings:memory.defaultCategoryUpdated', '已更新'));
+      showGlobalNotification('success', t('settings:memory.defaultCategoryUpdated'));
     } catch (error: unknown) {
       console.error('更新默认分类失败:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  }, [t]);
+
+  const handleSetAutoExtractFrequency = useCallback(async (freq: string) => {
+    try {
+      setSaving(true);
+      await setMemoryAutoExtractFrequency(freq as AutoExtractFrequency);
+      setConfig((prev) => (prev ? { ...prev, autoExtractFrequency: freq as AutoExtractFrequency } : prev));
+      showGlobalNotification('success', t('settings:memory.autoExtractFrequencyUpdated'));
+    } catch (error: unknown) {
+      console.error('更新自动提取频率失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setSaving(false);
@@ -185,6 +204,23 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
     );
   }
 
+  // ★ 配置加载失败：可见错误 + 重试（原实现只弹一次 toast 后渲染空壳）
+  if (loadFailed && !config) {
+    return (
+      <div>
+        {!embedded && <GroupTitle title={t('settings:memory.title')} />}
+        <div className="flex flex-col items-center justify-center py-6 gap-2">
+          <WarningCircle size={24} className="text-destructive/60" />
+          <span className="text-xs text-muted-foreground">{t('settings:memory.loadError')}</span>
+          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-primary">
+            <ArrowClockwise size={14} />
+            {t('common:retry')}
+          </DsButton>
+        </div>
+      </div>
+    );
+  }
+
   const isConfigured = !!config?.memoryRootFolderId;
   const isMemoryOn = !config?.privacyMode;
 
@@ -206,7 +242,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               {!isMemoryOn ? t('settings:memory.disabled') : isConfigured ? t('settings:memory.configured') : t('settings:memory.notConfigured')}
             </span>
           </div>
-          <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-1 ml-3.5">
+          <p className="text-xs text-muted-foreground/70 leading-relaxed mt-1 ml-3.5">
             {t('settings:memory.description')}
           </p>
         </div>
@@ -241,7 +277,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               width={160}
             />
 
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setShowCreateInput(!showCreateInput)}
@@ -249,14 +285,14 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
             >
               <Plus size={14} className="mr-1" />
               {t('settings:memory.createFolder')}
-            </NotionButton>
+            </DsButton>
           </div>
         </SettingRow>
 
         {/* 创建新文件夹输入 */}
         {showCreateInput && (
           <div className="group py-2.5 px-1 rounded">
-            <div className="flex items-center gap-2 ml-0 sm:ml-auto sm:max-w-[280px]">
+            <div className="flex items-center gap-2 ml-0 md:ml-auto md:max-w-[280px]">
               <Input
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
@@ -268,7 +304,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                   }
                 }}
               />
-              <NotionButton
+              <DsButton
                 size="sm"
                 variant="primary"
                 onClick={handleCreateFolder}
@@ -279,31 +315,60 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 ) : (
                   <Check size={14} />
                 )}
-              </NotionButton>
+              </DsButton>
       </div>
           </div>
         )}
 
         <SwitchRow
-          title={t('settings:memory.autoSubfolders', '自动创建子文件夹')}
-          description={t('settings:memory.autoSubfoldersDesc', '写入记忆时，自动按分类路径创建子文件夹')}
+          title={t('settings:memory.autoSubfolders')}
+          description={t('settings:memory.autoSubfoldersDesc')}
           checked={!!config?.autoCreateSubfolders}
           onCheckedChange={handleToggleAutoSubfolders}
           disabled={saving}
         />
 
         <SettingRow
-          title={t('settings:memory.defaultCategory', '默认分类')}
-          description={t('settings:memory.defaultCategoryDesc', '未指定分类时记忆存入的默认子文件夹')}
+          title={t('settings:memory.defaultCategory')}
+          description={t('settings:memory.defaultCategoryDesc')}
         >
           <AppSelect
             value={config?.defaultCategory || '通用'}
             onValueChange={handleSetDefaultCategory}
             disabled={saving}
             options={[
-              { value: '通用', label: '通用' },
-              { value: '偏好', label: '偏好' },
-              { value: '经历', label: '经历' },
+              // value 为后端存储的分类文件夹名（中文），label 走 i18n
+              { value: '通用', label: t('settings:memory.categoryGeneral') },
+              { value: '偏好', label: t('settings:memory.categoryPreference') },
+              { value: '经历', label: t('settings:memory.categoryExperience') },
+            ]}
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            width={120}
+          />
+        </SettingRow>
+
+        {/* ★ 自动提取频率（此前仅在记忆文件夹横幅中可配置）
+            描述随当前档位变化：off 档如实说明只关自动提取、生命周期管理照常运行 */}
+        <SettingRow
+          title={t('settings:memory.autoExtractFrequency')}
+          description={t(
+            {
+              off: 'settings:memory.freqOffDesc',
+              balanced: 'settings:memory.freqBalancedDesc',
+              aggressive: 'settings:memory.freqAggressiveDesc',
+            }[config?.autoExtractFrequency || 'balanced']
+          )}
+        >
+          <AppSelect
+            value={config?.autoExtractFrequency || 'balanced'}
+            onValueChange={handleSetAutoExtractFrequency}
+            disabled={saving}
+            options={[
+              { value: 'off', label: t('settings:memory.freqOff') },
+              { value: 'balanced', label: t('settings:memory.freqBalanced') },
+              { value: 'aggressive', label: t('settings:memory.freqAggressive') },
             ]}
             size="sm"
             variant="ghost"

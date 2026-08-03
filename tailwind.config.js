@@ -25,6 +25,7 @@ module.exports = {
 				mono: ['var(--font-mono)'],
 			},
 			fontSize: {
+				'2xs': 'var(--font-size-2xs)',
 				'xs': 'var(--font-size-xs)',
 				'sm': 'var(--font-size-sm)',
 				'base': 'var(--font-size-base)',
@@ -33,6 +34,11 @@ module.exports = {
 				'xl': 'var(--font-size-xl)',
 				'2xl': 'var(--font-size-2xl)',
 				'3xl': 'var(--font-size-3xl)',
+				// 桌面 UI 控件标准字号（13px，介于 sm 与 base 之间）
+				'ui': 'var(--font-size-ui)',
+				// 2026-07 mobile 基建追加：caption 层（时间戳/辅助说明），
+				// 移动端最小可读字号。Token 见 src/styles/shadcn-variables.css
+				'caption': 'var(--m-text-caption)',
 			},
 			fontWeight: {
 				'normal': 'var(--font-weight-normal)',
@@ -85,20 +91,21 @@ module.exports = {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))',
 				},
+				// 语义状态色带 <alpha-value>，支持 bg-warning/10、border-danger/40 等透明度修饰符
 				info: {
-					DEFAULT: 'hsl(var(--info))',
+					DEFAULT: 'hsl(var(--info) / <alpha-value>)',
 					foreground: 'hsl(var(--info-foreground))',
 				},
 				success: {
-					DEFAULT: 'hsl(var(--success))',
+					DEFAULT: 'hsl(var(--success) / <alpha-value>)',
 					foreground: 'hsl(var(--success-foreground))',
 				},
 				warning: {
-					DEFAULT: 'hsl(var(--warning))',
+					DEFAULT: 'hsl(var(--warning) / <alpha-value>)',
 					foreground: 'hsl(var(--warning-foreground))',
 				},
 				danger: {
-					DEFAULT: 'hsl(var(--danger))',
+					DEFAULT: 'hsl(var(--danger) / <alpha-value>)',
 					foreground: 'hsl(var(--danger-foreground))',
 				},
 				neutral: {
@@ -120,6 +127,8 @@ module.exports = {
 				row: 'var(--radius-shell-row)',
 				control: 'var(--radius-shell-control)',
 				dialog: 'var(--radius-shell-dialog)',
+				// 2026-07 chat 二轮追加：pill 形按钮/胶囊（替代裸 rounded-[999px]）
+				pill: '999px',
 			},
 			boxShadow: {
 				shell: 'var(--shadow-shell-panel)',
@@ -132,70 +141,45 @@ module.exports = {
 			maxWidth: {
 				thread: 'var(--chat-thread-max-w)',
 			},
+			// z-index 阶梯（token 定义见 src/styles/theme-colors.css），供 z-modal / z-tooltip 等类使用
+			zIndex: {
+				dropdown: 'var(--z-dropdown)',
+				sticky: 'var(--z-sticky)',
+				overlay: 'var(--z-overlay)',
+				modal: 'var(--z-modal)',
+				popover: 'var(--z-popover)',
+				toast: 'var(--z-toast)',
+				tooltip: 'var(--z-tooltip)',
+				debug: 'var(--z-debug)',
+			},
+			// 2026-07 chat 二轮追加：标准出口曲线（transitions-dev --ease-standard 的
+			// Tailwind 出口），供 tsx 组件写 `transition ... ease-standard duration-150/200`
+			transitionTimingFunction: {
+				standard: 'cubic-bezier(0.22, 1, 0.36, 1)',
+			},
 			keyframes: {
 				sweep: {
 					'0%': { transform: 'translateX(-30%)' },
 					'50%': { transform: 'translateX(100%)' },
 					'100%': { transform: 'translateX(-30%)' },
 				},
-				dropzonePulse: {
-					'0%': { transform: 'scale(0.98)', boxShadow: '0 0 0 0 hsl(var(--primary) / 0.18)' },
-					'70%': { transform: 'scale(1)', boxShadow: '0 0 0 12px hsl(var(--primary) / 0)' },
-					'100%': { transform: 'scale(0.98)', boxShadow: '0 0 0 0 hsl(var(--primary) / 0)' },
+				// 2026-07 chat 二轮追加：共享入场 keyframes（仅 opacity / 独立 translate，
+				// 与 inline transform 定位不冲突）。token 见 src/features/chat/styles/motion.css
+				'chat-rise-in': {
+					from: { opacity: '0', translate: '0 4px' },
+					to: { opacity: '1', translate: '0 0' },
 				},
-				cardPop: {
-					'0%': { transform: 'scale(0.97)', opacity: '0' },
-					'60%': { transform: 'scale(1.01)', opacity: '1' },
-					'100%': { transform: 'scale(1)', opacity: '1' },
-				},
-				marqueeY: {
-					'0%': { transform: 'translateY(0)' },
-					'100%': { transform: 'translateY(-50%)' },
-				},
-				fadeSlideUp: {
-					'0%': { opacity: '0', transform: 'translateY(12px)' },
-					'100%': { opacity: '1', transform: 'translateY(0)' },
-				},
-				blink: {
-					'0%,50%': { opacity: '1' },
-					'51%,100%': { opacity: '0' },
-				},
-				// Radix UI Sheet动画
-				'slide-in-from-left': {
-					'0%': { transform: 'translateX(-100%)' },
-					'100%': { transform: 'translateX(0)' },
-				},
-				'slide-out-to-left': {
-					'0%': { transform: 'translateX(0)' },
-					'100%': { transform: 'translateX(-100%)' },
-				},
-				'slide-in-from-right': {
-					'0%': { transform: 'translateX(100%)' },
-					'100%': { transform: 'translateX(0)' },
-				},
-				'slide-out-to-right': {
-					'0%': { transform: 'translateX(0)' },
-					'100%': { transform: 'translateX(100%)' },
-				},
-				'fade-in': {
-					'0%': { opacity: '0' },
-					'100%': { opacity: '1' },
-				},
-				'fade-out': {
-					'0%': { opacity: '1' },
-					'100%': { opacity: '0' },
+				'chat-fade-in': {
+					from: { opacity: '0' },
+					to: { opacity: '1' },
 				},
 			},
 			animation: {
 				sweep: 'sweep 1.2s ease-in-out infinite',
-				dropzonePulse: 'dropzonePulse 1.5s ease-in-out infinite',
-				cardPop: 'cardPop 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
-				marqueeY: 'marqueeY 6s linear infinite',
-				fadeSlideUp: 'fadeSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
-				blink: 'blink 1s steps(2, start) infinite',
-				// Radix UI Sheet动画
-				in: 'fade-in 200ms ease-out',
-				out: 'fade-out 200ms ease-in',
+				// 2026-07 chat 二轮追加：消息/卡片入场工具类。
+				// 建议配合 motion-safe: 前缀使用（reduced-motion 自动跳过）
+				'chat-rise-in': 'chat-rise-in var(--chat-motion-fast, 150ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both',
+				'chat-fade-in': 'chat-fade-in var(--chat-motion-base, 200ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) both',
 			},
 		},
 	},

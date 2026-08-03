@@ -9,9 +9,10 @@
  */
 
 import React, { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 
 // ============================================================================
@@ -42,6 +43,7 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
   disabled = false,
   className,
 }) => {
+  const { t } = useTranslation(['common']);
   const handleRemove = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -115,13 +117,14 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
       title={model.name}
       data-model-id={model.id}
     >
-      <span className="text-primary/70 text-[10px] leading-none">@</span>
+      <span className="text-primary/70 text-2xs leading-none">@</span>
       {/* 🔧 样式统一：与技能标签保持一致 */}
       <span className="truncate max-w-[80px]">{displayName}</span>
+      {/* ★ M5：16px 删除按钮触屏命中区用伪元素扩到 ≥44px（chip 本体不可点，重叠无害） */}
       {!disabled && (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`Remove ${model.name}`}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('chatV2:common.removeNamed', { name: model.name })}>
           <X size={10} weight="bold" />
-        </NotionButton>
+        </DsButton>
       )}
     </span>
   );

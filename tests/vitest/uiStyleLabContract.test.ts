@@ -15,7 +15,7 @@ describe('UI style lab navigation contract', () => {
     expect(navigationTypesSource).toContain("| 'ui-lab'");
     expect(canonicalViewSource).toContain("'ui-lab'");
     expect(navigationConfigSource).toContain("view: 'ui-lab'");
-    expect(navigationConfigSource).toContain("'样式调试'");
+    expect(navigationConfigSource).toContain("'sidebar:navigation.ui_lab'");
     expect(modernSidebarSource).toContain("'ui-lab'");
     expect(appSource).toContain("renderViewLayer('ui-lab'");
   });
@@ -33,7 +33,7 @@ describe('UI style lab navigation contract', () => {
 
     expect(styleDebugSource).toContain('UI 迁移工作台');
     expect(styleDebugSource).toContain('真实扫描数据驱动');
-    expect(styleDebugSource).toContain('NotionButton (目标)');
+    expect(styleDebugSource).toContain('DsButton (目标)');
     expect(styleDebugSource).toContain('shad Button (遗留)');
     expect(styleDebugSource).toContain('原生 button');
   });

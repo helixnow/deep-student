@@ -100,7 +100,7 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
             <div className="space-y-3">
               {isProcessing && (
                 <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground/70">
-                  {t('workflow.progress.processing', '流程进行中')}
+                  {t('workflow.progress.processing')}
                 </div>
               )}
               <div className="space-y-1">
@@ -168,7 +168,7 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
                 {activeItem.percentage !== undefined && (
                   <span className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-0.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-primary/70" aria-hidden="true" />
-                    {t('workflow.progress.percentage', { defaultValue: '{{value}}%', value: Math.round(activeItem.percentage) })}
+                    {t('workflow.progress.percentage', { value: Math.round(activeItem.percentage) })}
                   </span>
                 )}
                 <span>{formatTimestamp(activeItem.timestamp ?? '') || '—'}</span>
@@ -182,10 +182,10 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({
                 )}
                 <span>
                   {activeItem.status === 'done'
-                    ? t('workflow.progress.stage_done', '阶段已完成')
+                    ? t('workflow.progress.stage_done')
                     : activeItem.status === 'active'
-                      ? t('workflow.progress.stage_active', '阶段执行中')
-                      : t('workflow.progress.stage_pending', '阶段待执行')}
+                      ? t('workflow.progress.stage_active')
+                      : t('workflow.progress.stage_pending')}
                 </span>
               </div>
             </motion.div>

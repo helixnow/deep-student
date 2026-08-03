@@ -160,11 +160,8 @@ export interface ChatMessage {
 
 /**
  * @deprecated 2026-01 清理：错题功能已废弃，保留以兼容旧数据。
- * ⚠️ 仍有以下文件引用（2026-02-08 确认）：
- *   - src/utils/testApi.ts（废弃函数 getMistakeDetails / updateMistake / runtimeAutosaveCommit，仅供 dev 面板）
- *   - src/utils/ankiSourceBuilder.ts（buildContentFromMistake）
- *   - src/stores/anki/types.ts（MistakeSummary 别名）
- * 待上述调用方迁移后再删除此类型。
+ * 仍由 src/stores/anki/types.ts 的 MistakeSummary 兼容别名引用；
+ * 待旧数据兼容层迁移后再删除此类型。
  */
 export interface MistakeItem {
   id: string;
@@ -283,6 +280,8 @@ export interface ApiConfig {
   vendorId?: string;
   vendorName?: string;
   providerType?: string;
+  /** 供应商鉴权方式；未知值由后端供应商实现解释。 */
+  authMode?: 'api_key' | 'none' | 'openai_codex_oauth' | string;
   providerScope?: string;
   apiProtocol?: ApiProtocol;
   supportsOpenAIResponses?: boolean;
@@ -313,8 +312,12 @@ export interface ApiConfig {
   headers?: Record<string, string>;
   /** 是否收藏（收藏的模型在列表中优先显示） */
   isFavorite?: boolean;
-  /** 供应商级别的 max_tokens 限制（API 最大允许值） */
+  /** 运行期有效 max_tokens 上限（模型与供应商限制的较小值）。 */
   maxTokensLimit?: number;
+  /** 编辑器内部：模型条目自身的上限，区别于合并后的有效上限。 */
+  modelMaxTokensLimit?: number;
+  /** 编辑器内部：打开表单时的有效上限，用于判断用户是否显式修改。 */
+  initialEffectiveMaxTokensLimit?: number;
   /** 上下文窗口大小（tokens），推断引擎提供默认值，用户可在设置页覆盖 */
   contextWindow?: number;
   repetitionPenalty?: number;
@@ -329,9 +332,13 @@ export interface VendorConfig {
   id: string;
   name: string;
   providerType: string;
+  /** 供应商鉴权方式；OAuth 凭据始终由后端安全存储管理。 */
+  authMode?: 'api_key' | 'none' | 'openai_codex_oauth' | string;
   apiProtocol?: ApiProtocol;
   supportsOpenAIResponses?: boolean;
   baseUrl: string;
+  /** 仅保存时可提交明文；读取配置时后端只返回与数量相同的 "***" 占位符。 */
+  apiKeys?: string[];
   apiKey: string;
   headers?: Record<string, string>;
   rateLimitPerMinute?: number;
@@ -344,7 +351,7 @@ export interface VendorConfig {
   maxTokensLimit?: number;
   /** 供应商官网链接 */
   websiteUrl?: string;
-  /** 无需 API Key（适用于自搭建后端，如 Ollama、vLLM 等） */
+  /** @deprecated 兼容旧前端状态；持久化请使用 authMode='none'。 */
   noApiKey?: boolean;
 }
 
@@ -365,6 +372,8 @@ export interface ModelProfile {
   isImageGeneration?: boolean;
   supportsTools?: boolean;
   supportsReasoning?: boolean;
+  /** 模型级 max_tokens 上限；与供应商上限同时存在时取较小值。 */
+  maxTokensLimit?: number;
   maxOutputTokens?: number;
   temperature?: number;
   reasoningEffort?: string;
@@ -400,8 +409,10 @@ export interface ModelAssignments {
   vl_embedding_model_config_id: string | null;  // 多模态嵌入模型（Qwen3-VL-Embedding）
   vl_reranker_model_config_id: string | null;   // 多模态重排序模型（Qwen3-VL-Reranker）
   memory_decision_model_config_id: string | null; // 记忆决策模型（smart write 去重判断）
+  review_analysis_model_config_id: string | null; // 复习分析模型
   voice_input_asr_model_config_id: string | null; // 语音输入 ASR 模型
   image_generation_model_config_id: string | null; // 生图模型
+  compaction_model_config_id: string | null; // 上下文压缩专用模型（未设置回退对话模型）
   /** 聊天内翻译弹窗显示模式：'aligned' = 短语对照（默认），'streaming' = 流式纯译文 */
   translation_display_mode: 'aligned' | 'streaming' | null;
 }
@@ -440,7 +451,6 @@ export interface SystemSettings {
   enableNotifications: boolean;
   maxChatHistory: number;
   debugMode: boolean;
-  enableAnkiConnect: boolean;
   markdownRendererMode: 'legacy' | 'enhanced';
 }
 
@@ -754,20 +764,44 @@ export interface AnkiCard {
 export interface AnkiLibraryCard extends AnkiCard {
   id: string;
   task_id: string;
-  source_type?: string | null;
-  source_id?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
   template_id?: string | null;
   extra_fields?: Record<string, string>;
   tags: string[];
   images: string[];
   created_at: string;
   updated_at: string;
+  stateId?: string | null;
+  state?: number | null;
+  dueMs?: number | null;
+  suspended: boolean;
+  enqueued: boolean;
+  isDue: boolean;
+  /** Stable document identity/version used by library-scoped Agent mutations. */
+  documentId?: string | null;
+  version?: string;
+  /** fsrs_card_states.local_version; null means the card has not been enqueued. */
+  reviewVersion?: number | null;
+  latestReview?: {
+    logId: string;
+    reviewedAt?: string | null;
+    rating?: number | null;
+    undoable: boolean;
+  } | null;
+}
+
+export interface AnkiLibraryCardPatch {
+  front?: string;
+  back?: string;
+  text?: string;
+  tags?: string[];
 }
 
 export interface AnkiLibraryListResponse {
   items: AnkiLibraryCard[];
   page: number;
-  page_size: number;
+  pageSize: number;
   total: number;
 }
 
@@ -776,6 +810,22 @@ export interface ListAnkiCardsParams {
   search?: string;
   page?: number;
   page_size?: number;
+}
+
+export interface FsrsStats {
+  total: number;
+  due: number;
+  newCount: number;
+  learning: number;
+  review: number;
+  relearning: number;
+  suspended: number;
+  reviewsToday: number;
+}
+
+export interface FsrsCardMutationResult {
+  state: Record<string, unknown>;
+  changed: boolean;
 }
 
 export interface ExportAnkiCardsResult {

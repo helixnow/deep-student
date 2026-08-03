@@ -76,18 +76,20 @@ pub async fn debug_get_database_stats(
         .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
     // 总错题数
-    let total_mistakes: usize = conn
-        .query_row("SELECT COUNT(*) FROM mistakes", [], |row| row.get(0))
-        .unwrap_or(0);
+    let total_mistakes = conn
+        .query_row("SELECT COUNT(*) FROM mistakes", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap_or(0) as usize;
 
     // 有聊天记录的错题数
-    let mistakes_with_chat: usize = conn
+    let mistakes_with_chat = conn
         .query_row(
             "SELECT COUNT(*) FROM mistakes WHERE json_array_length(chat_history) > 0",
             [],
-            |row| row.get(0),
+            |row| row.get::<_, i64>(0),
         )
-        .unwrap_or(0);
+        .unwrap_or(0) as usize;
 
     // 统计所有消息
     let mut total_messages = 0;
@@ -106,34 +108,30 @@ pub async fn debug_get_database_stats(
         .query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| AppError::database(format!("查询失败: {}", e)))?;
 
-    for row_result in rows {
-        if let Ok(chat_history_str) = row_result {
-            if let Ok(messages) =
-                serde_json::from_str::<Vec<DebugRawChatMessage>>(&chat_history_str)
-            {
-                total_messages += messages.len();
+    for chat_history_str in rows.flatten() {
+        if let Ok(messages) = serde_json::from_str::<Vec<DebugRawChatMessage>>(&chat_history_str) {
+            total_messages += messages.len();
 
-                for msg in messages {
-                    if msg.image_base64.as_ref().map_or(false, |v| !v.is_empty())
-                        || msg.image_paths.as_ref().map_or(false, |v| !v.is_empty())
-                    {
-                        messages_with_images += 1;
-                    }
-                    if msg.thinking_content.is_some() {
-                        messages_with_thinking += 1;
-                    }
-                    if msg.rag_sources.is_some() {
-                        messages_with_rag_sources += 1;
-                    }
-                    if msg.memory_sources.is_some() {
-                        messages_with_memory_sources += 1;
-                    }
-                    if msg.web_search_sources.is_some() {
-                        messages_with_web_sources += 1;
-                    }
-                    if msg.persistent_stable_id.is_some() {
-                        messages_with_persistent_id += 1;
-                    }
+            for msg in messages {
+                if msg.image_base64.as_ref().is_some_and(|v| !v.is_empty())
+                    || msg.image_paths.as_ref().is_some_and(|v| !v.is_empty())
+                {
+                    messages_with_images += 1;
+                }
+                if msg.thinking_content.is_some() {
+                    messages_with_thinking += 1;
+                }
+                if msg.rag_sources.is_some() {
+                    messages_with_rag_sources += 1;
+                }
+                if msg.memory_sources.is_some() {
+                    messages_with_memory_sources += 1;
+                }
+                if msg.web_search_sources.is_some() {
+                    messages_with_web_sources += 1;
+                }
+                if msg.persistent_stable_id.is_some() {
+                    messages_with_persistent_id += 1;
                 }
             }
         }
@@ -292,7 +290,7 @@ pub async fn debug_vfs_migration_status(
         .collect();
 
     // 4. 检查索引状态相关列
-    let index_columns = vec![
+    let index_columns = [
         "index_state",
         "index_hash",
         "index_error",
@@ -459,4 +457,27 @@ pub async fn debug_vfs_textbook_pages(
     }
 
     Ok(results)
+}
+
+// ================================================
+// DevTools 切换命令
+// ================================================
+// 包装 Tauri 公开 Rust API（open_devtools / close_devtools / is_devtools_open），
+// 而非直接调用内部命令 plugin:webview|internal_toggle_devtools（internal 前缀
+// 无兼容性承诺，升级 Tauri 可能改名/改行为）。
+// 仅在 debug 构建或启用 devtools feature 时编译注册；release 未启用时命令
+// 不存在，前端 invoke 会得到 "command not found"，由前端统一降级处理。
+// ================================================
+
+/// 切换当前 WebView 的 DevTools（Web Inspector）开关，返回切换后的打开状态。
+#[cfg(any(debug_assertions, feature = "devtools"))]
+#[tauri::command]
+pub fn toggle_devtools(webview: tauri::WebviewWindow) -> Result<bool, String> {
+    if webview.is_devtools_open() {
+        webview.close_devtools();
+        Ok(false)
+    } else {
+        webview.open_devtools();
+        Ok(true)
+    }
 }

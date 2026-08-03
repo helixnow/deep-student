@@ -1,24 +1,23 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
 import { Star, DotsThree, Check } from '@phosphor-icons/react';
 import {
-  NoteIcon,
-  TextbookIcon,
-  ExamIcon,
-  EssayIcon,
-  TranslationIcon,
-  MindmapIcon,
-  FolderIcon,
-  ImageFileIcon,
-  GenericFileIcon,
+  IllustratedNoteIcon,
+  IllustratedTextbookIcon,
+  IllustratedExamIcon,
+  IllustratedEssayIcon,
+  IllustratedTranslationIcon,
+  IllustratedMindmapIcon,
+  IllustratedFolderIcon,
+  IllustratedImageIcon,
+  IllustratedGenericFileIcon,
   type ResourceIconProps,
 } from '../../icons';
 import { cn } from '@/lib/utils';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { InlineEditText } from '../InlineEditText';
@@ -37,6 +36,8 @@ export interface FinderFileItemProps {
   isDragging?: boolean;
   /** 拖拽悬停在此项上（只对文件夹有效） */
   isDropTarget?: boolean;
+  /** spring-load 预备高亮（悬停文件夹倒计时中） */
+  isSpringLoading?: boolean;
   /** 是否正在内联编辑 */
   isEditing?: boolean;
   /** 内联编辑确认回调 */
@@ -47,6 +48,8 @@ export interface FinderFileItemProps {
   compact?: boolean;
   /** ★ 高亮标记（如已关联/已选中） */
   isHighlighted?: boolean;
+  /** ★ 多选模式：触屏单击只切换选中，不再同时触发打开（避免文件夹 toggle+导航双触发） */
+  multiSelectMode?: boolean;
 }
 
 interface SortableFinderFileItemProps extends FinderFileItemProps {
@@ -84,16 +87,16 @@ function extractMemoryMeta(tags: string[] | undefined) {
 
 /** 自定义 SVG 图标映射 */
 const TYPE_CUSTOM_ICONS: Record<DstuNodeType, React.FC<ResourceIconProps>> = {
-  folder: FolderIcon,
-  note: NoteIcon,
-  textbook: TextbookIcon,
-  exam: ExamIcon,
-  translation: TranslationIcon,
-  essay: EssayIcon,
-  image: ImageFileIcon,
-  file: GenericFileIcon,
-  retrieval: GenericFileIcon,
-  mindmap: MindmapIcon,
+  folder: IllustratedFolderIcon,
+  note: IllustratedNoteIcon,
+  textbook: IllustratedTextbookIcon,
+  exam: IllustratedExamIcon,
+  translation: IllustratedTranslationIcon,
+  essay: IllustratedEssayIcon,
+  image: IllustratedImageIcon,
+  file: IllustratedGenericFileIcon,
+  retrieval: IllustratedGenericFileIcon,
+  mindmap: IllustratedMindmapIcon,
 };
 
 /**
@@ -113,14 +116,16 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   isDragOverlay = false,
   isDragging = false,
   isDropTarget = false,
+  isSpringLoading = false,
   isEditing = false,
   onEditConfirm,
   onEditCancel,
   compact = false,
   isHighlighted = false,
+  multiSelectMode = false,
 }: FinderFileItemProps) {
-  const { t, i18n } = useTranslation(['learningHub']);
-  const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || GenericFileIcon;
+  const { t, i18n } = useTranslation(['learningHub', 'common']);
+  const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || IllustratedGenericFileIcon;
   const isFavorite = Boolean(item.metadata?.isFavorite);
   const snippet = item.metadata?.snippet as string | undefined;
   const matchSource = item.metadata?.matchSource as string | undefined;
@@ -139,13 +144,18 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     } else if (e.shiftKey) {
       onSelect('range');
     } else if (isTouchPrimary) {
-      // 移动端范式：单击 = 打开（文件夹进入 / 文件打开），选中态同步更新
-      onSelect('single');
-      onOpen();
+      if (multiSelectMode) {
+        // 多选模式：触屏单击只切换选中，不触发打开（否则文件夹会 toggle+导航双触发）
+        onSelect('toggle');
+      } else {
+        // 移动端范式：单击 = 打开（文件夹进入 / 文件打开），选中态同步更新
+        onSelect('single');
+        onOpen();
+      }
     } else {
       onSelect('single');
     }
-  }, [isEditing, isTouchPrimary, onSelect, onOpen]);
+  }, [isEditing, isTouchPrimary, multiSelectMode, onSelect, onOpen]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理双击事件
@@ -164,33 +174,37 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   }, [onEditCancel]);
 
   // 格式化相对时间（locale 跟随界面语言）
-  const relativeTime = formatDistanceToNow(item.updatedAt, { 
+  const relativeTime = useMemo(() => formatDistanceToNow(item.updatedAt, { 
     addSuffix: true, 
     locale: i18n.language?.startsWith('zh') ? zhCN : enUS 
-  });
+  }), [item.updatedAt, i18n.language]);
 
   const typeLabel = LABELED_TYPES.has(item.type)
     ? t(`learningHub:indexStatus.resourceType.${item.type}`)
     : undefined;
   const childCountLabel = item.type === 'folder' && item.childCount !== undefined
-    ? t('learningHub:finder.childCount', { count: item.childCount, defaultValue: '{{count}} 项' })
+    ? t('learningHub:finder.childCount', { count: item.childCount })
     : undefined;
   const rowTitle = snippet
-    ? `${item.name}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex', '[索引]')} ` : ''}${snippet}`
+    ? `${item.name}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex')} ` : ''}${snippet}`
     : item.name;
 
   if (viewMode === 'list') {
     return (
       <div
         className={cn(
-          "group relative flex items-center gap-2 px-3 py-1.5 cursor-default select-none rounded-md mx-1 my-0.5",
-          "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
-          "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]",
-          isSelected && "bg-primary/10 dark:bg-primary/20 hover:bg-primary/15 dark:hover:bg-primary/25",
-          isActive && !isSelected && "bg-accent/40 dark:bg-accent/30",
-          isDragging && "opacity-40 scale-[0.98]",
-          isDragOverlay && "shadow-notion-lg ring-1 ring-primary/20 bg-background rounded-lg scale-[1.02]",
-          isDropTarget && item.type === 'folder' && "ring-2 ring-primary bg-primary/10 scale-[1.01]"
+          // 触屏行高 48px（LIST_ITEM_HEIGHT_TOUCH），与虚拟滚动行槽 / 框选命中几何同源
+          "group relative flex min-h-10 items-center gap-2 px-3 py-1.5 cursor-default select-none",
+          "[@media(pointer:coarse)]:min-h-12",
+          "transition-[background-color,opacity] duration-100 ease-out",
+          // 触屏按压即时反馈（无 hover 心智，点按瞬间需要可见响应）
+          !isSelected && "hover:bg-[var(--interactive-hover)]/70 [@media(pointer:coarse)]:active:bg-[var(--interactive-hover)]",
+          isSelected && "bg-primary text-primary-foreground",
+          isActive && !isSelected && "bg-[var(--interactive-selected)]",
+          isDragging && "opacity-40",
+          isDragOverlay && "bg-primary text-primary-foreground shadow-lg",
+          isDropTarget && item.type === 'folder' && "outline outline-2 outline-primary outline-offset-[-2px] bg-primary/10",
+          isSpringLoading && item.type === 'folder' && !isDropTarget && "outline outline-2 outline-primary/50 outline-offset-[-2px] bg-primary/5 animate-pulse"
         )}
         title={rowTitle}
         onClick={handleClick}
@@ -218,8 +232,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
-            textClassName="truncate block text-[13px] font-medium text-foreground/90"
-            inputClassName="h-6 text-[13px]"
+            textClassName={cn(
+              'truncate block text-ui font-normal',
+              isSelected ? 'text-primary-foreground' : 'text-foreground/90'
+            )}
+            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
+            inputClassName="h-6 text-ui [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!text-[16px]"
           />
           {isFavorite && (
             <Star size={12} className="text-yellow-500 shrink-0" />
@@ -227,11 +245,11 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           {/* ★ 记忆 badge */}
           {memoryMeta && (
             <>
-              <span className={cn('px-1 py-0 rounded text-[9px] font-medium shrink-0', MEMORY_TYPE_STYLES[memoryMeta.memoryType] || 'bg-muted')}>
+              <span className={cn('px-1 py-0 rounded text-2xs font-medium shrink-0', MEMORY_TYPE_STYLES[memoryMeta.memoryType] || 'bg-muted')}>
                 {t(`learningHub:finder.memoryMeta.type.${memoryMeta.memoryType}`, memoryMeta.memoryType)}
               </span>
               {memoryMeta.memoryPurpose !== 'memorized' && MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] && (
-                <span className={cn('px-1 py-0 rounded text-[9px] shrink-0', MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] || 'bg-muted')}>
+                <span className={cn('px-1 py-0 rounded text-2xs shrink-0', MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] || 'bg-muted')}>
                   {t(`learningHub:finder.memoryMeta.purpose.${memoryMeta.memoryPurpose}`, memoryMeta.memoryPurpose)}
                 </span>
               )}
@@ -249,68 +267,61 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               <>
                 {/* 子项数量（文件夹）或文件大小（文件类） */}
                 {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
-                  <span className="text-[11px] text-muted-foreground/50 tabular-nums w-12 text-right">
+                  <span className={cn('text-[11px] tabular-nums w-12 text-right', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {childCountLabel ?? formatSize(item.size)}
                   </span>
                 )}
                 {/* 类型标签 */}
                 {typeLabel && (
-                  <span className="text-[10px] text-muted-foreground/45 bg-muted/50 px-1.5 py-0 rounded shrink-0">
+                  <span className={cn('text-2xs shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {typeLabel}
                   </span>
                 )}
                 {/* 修改时间 */}
-                <span className="text-[11px] text-muted-foreground/55 tabular-nums shrink-0">
+                <span className={cn('text-[11px] tabular-nums shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/55')}>
                   {relativeTime}
                 </span>
               </>
             )}
             {/* 更多操作按钮 - 桌面悬停显示，触屏常显（N-4） */}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
               className={cn(
                 'hover:bg-[var(--interactive-hover)] transition-opacity duration-150',
                 isTouchPrimary
-                  ? '!h-9 !w-9 !p-1.5 opacity-100'
+                  ? '!h-11 !w-11 !p-2.5 opacity-100'
                   : '!h-6 !w-6 !p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
               )}
               onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
-              aria-label="more"
+              aria-label={t('common:more')}
             >
-              <DotsThree size={isTouchPrimary ? 20 : 16} className="text-muted-foreground/60" />
-            </NotionButton>
+              <DotsThree size={isTouchPrimary ? 20 : 16} className={isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground/60'} />
+            </DsButton>
           </div>
         )}
       </div>
     );
   }
 
-  // Grid View - Notion 风格的卡片
+  // Grid View - Finder-style icon layout
   return (
     <div
       className={cn(
-        // Notion 风格的网格卡片 - 更大、更精致
-        "group relative flex flex-col items-center p-3 rounded-xl cursor-default select-none",
-        "w-[88px] h-[100px]",
-        "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
-        "border border-transparent",
-        // 悬停效果
-        !isSelected && !isActive && "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)] hover:shadow-notion",
-        // 选中状态
-        isSelected && "bg-primary/10 dark:bg-primary/15 border-primary/30 shadow-notion",
-        // 激活状态
-        isActive && !isSelected && "bg-accent/40 border-primary/20",
-        // 拖拽状态
-        isDragging && "opacity-40 scale-95",
-        isDragOverlay && "shadow-notion-lg ring-1 ring-primary/30 bg-background scale-105",
-        isDropTarget && item.type === 'folder' && "ring-2 ring-primary bg-primary/10 scale-102 border-primary"
+        "group relative flex flex-col items-center p-2 cursor-default select-none",
+        "box-border w-[88px] max-w-[88px] h-[100px] shrink-0",
+        // ui-press-coarse：触屏按压缩放反馈（仅 pointer:coarse 生效，桌面不变）
+        "ui-press-coarse transition-opacity duration-100 ease-out",
+        isDragging && "opacity-40",
+        isDragOverlay && "drop-shadow-lg",
+        isDropTarget && item.type === 'folder' && "rounded-lg bg-primary/10 outline outline-2 outline-primary",
+        isSpringLoading && item.type === 'folder' && !isDropTarget && "rounded-lg bg-primary/5 outline outline-2 outline-primary/50 animate-pulse"
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={onContextMenu}
-      title={isEditing ? undefined : (snippet ? `${item.name}\n📄 ${snippet}` : item.name)}
+      title={isEditing ? undefined : rowTitle}
     >
       {/* 已关联标记 */}
       {isHighlighted && (
@@ -324,25 +335,29 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       )}
       {/* 触屏更多操作入口（N-4）：网格模式无 hover/双指，常显右上角 */}
       {isTouchPrimary && !isEditing && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute top-0.5 right-0.5 z-10 !h-8 !w-8 !p-1 hover:bg-[var(--interactive-hover)]"
+          // 视觉缩为 36px 避免盖住卡片内容，热区经伪元素只向卡片外侧（上/右）扩到 44px
+          className="absolute right-0 top-0 z-10 !h-9 !w-9 !p-2 hover:bg-[var(--interactive-hover)] before:absolute before:content-[''] before:-top-2 before:-right-2 before:bottom-0 before:left-0"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
-          aria-label="more"
+          aria-label={t('common:more')}
         >
           <DotsThree size={18} className="text-muted-foreground/70" />
-        </NotionButton>
+        </DsButton>
       )}
       
-      {/* 自定义 SVG 图标 */}
-      <div className="mb-2">
-        <CustomIcon size={48} />
+      {/* 自定义 SVG 图标：固定盒，防止被网格单元横向拉伸 */}
+      <div className={cn(
+        'mb-1.5 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg',
+        isActive && !isSelected && 'bg-[var(--interactive-selected)]'
+      )}>
+        <CustomIcon size={48} className="h-12 w-12 max-w-full shrink-0" />
       </div>
       
       {/* 文件名 */}
-      <div className="w-full text-center">
+      <div className="w-full min-w-0 text-center">
         {isEditing ? (
           <InlineEditText
             value={item.name}
@@ -350,11 +365,16 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
-            className="text-center"
-            inputClassName="text-center !text-[11px]"
+            autoSize
+            className="mx-auto text-center"
+            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框相应调高）
+            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-[11px] !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!text-[16px]"
           />
         ) : (
-          <span className="text-[11px] leading-tight font-medium text-foreground/85 line-clamp-2 break-words">
+          <span className={cn(
+            'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-[11px] leading-tight font-normal line-clamp-2 break-words',
+            isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
+          )}>
             {item.name}
           </span>
         )}
@@ -364,48 +384,68 @@ export const FinderFileItem = React.memo(function FinderFileItem({
 });
 
 /**
- * 可排序的 FinderFileItem 包装组件
- * 
- * 使用 React.memo 优化，避免虚拟滚动列表中不必要的重渲染
+ * 可拖放的 FinderFileItem 包装组件
+ *
+ * 使用 useDraggable + useDroppable（仅文件夹可 drop），
+ * 不再使用 sortable，避免列表项在拖拽时产生排序位移。
+ * 使用 React.memo 优化虚拟滚动列表重渲染。
  */
 export const SortableFinderFileItem = React.memo(function SortableFinderFileItem({
   id,
   enableDrag = true,
   ...props
 }: SortableFinderFileItemProps) {
+  const isFolder = props.item.type === 'folder';
+
   const {
     attributes,
     listeners,
-    setNodeRef,
-    transform,
-    transition,
+    setNodeRef: setDragRef,
     isDragging,
-    isOver,
-  } = useSortable({ 
+  } = useDraggable({
     id,
     disabled: !enableDrag,
+    data: {
+      type: props.item.type,
+      itemId: id,
+    },
   });
 
-  // ★ 2025-12-11: 文件夹作为放置目标，不应用排序动画（防止"躲开"效果）
-  // 只有非文件夹项才应用 transform 动画
-  const isFolder = props.item.type === 'folder';
-  const style = {
-    // 文件夹不应用 transform，保持原位作为静态放置目标
-    transform: isFolder ? undefined : CSS.Transform.toString(transform),
-    transition: isFolder ? undefined : transition,
-  };
+  const {
+    setNodeRef: setDropRef,
+    isOver,
+  } = useDroppable({
+    id,
+    disabled: !isFolder || isDragging,
+    data: {
+      type: 'folder',
+      accepts: 'finder-item',
+      itemId: id,
+    },
+  });
 
-  // 只有文件夹可以作为拖放目标
-  const isDropTarget = isOver && isFolder;
+  // 合并 drag/drop ref（文件夹同时是拖源与放置目标）
+  const setNodeRef = useCallback(
+    (node: HTMLElement | null) => {
+      setDragRef(node);
+      setDropRef(node);
+    },
+    [setDragRef, setDropRef]
+  );
+
+  const isDropTarget = isOver && isFolder && !isDragging;
 
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
-      {...attributes} 
+    <div
+      ref={setNodeRef}
+      {...attributes}
       {...listeners}
       data-finder-item
       data-item-id={id}
+      data-agent-entity={`files:${id}`}
+      role="option"
+      aria-selected={props.isSelected}
+      className={props.viewMode === 'grid' ? 'w-[88px] max-w-[88px] min-w-0' : undefined}
     >
       <FinderFileItem
         {...props}

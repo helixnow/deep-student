@@ -29,7 +29,6 @@
 
 import { createStore, type StoreApi } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { flushSync } from 'react-dom';
 import type { ChatStore, LoadSessionResponseType } from '../types';
 import type { Block, BlockStatus, BlockType } from '../types/block';
 import type { AttachmentMeta, Message, Variant, VariantStatus } from '../types/message';
@@ -48,6 +47,7 @@ import i18n from 'i18next';
 import { autoSave } from '../middleware/autoSave';
 import { chunkBuffer } from '../middleware/chunkBuffer';
 import { clearEventContext, clearBridgeState } from '../middleware/eventBridge';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
 import {
   createInitialState,
   createDefaultChatParams,
@@ -132,17 +132,22 @@ export function generateId(prefix: string): string {
 /**
  * 🔧 P2修复：操作锁提示节流
  * 避免频繁弹窗打扰用户
+ *
+ * 按会话隔离节流窗口：多会话并发操作时，A 会话触发的提示
+ * 不应吞掉 B 会话的提示。
  */
-let lastOperationLockNotificationTime = 0;
+const lastOperationLockNotificationTimes = new Map<string, number>();
 const OPERATION_LOCK_NOTIFICATION_THROTTLE_MS = 3000; // 3 秒内只提示一次
 
 /**
  * 显示操作锁提示（带节流）
+ * @param sessionId 会话 ID（不传时退化为全局节流键，向后兼容）
  */
-export function showOperationLockNotification(): void {
+export function showOperationLockNotification(sessionId = ''): void {
   const now = Date.now();
-  if (now - lastOperationLockNotificationTime >= OPERATION_LOCK_NOTIFICATION_THROTTLE_MS) {
-    lastOperationLockNotificationTime = now;
+  const last = lastOperationLockNotificationTimes.get(sessionId) ?? 0;
+  if (now - last >= OPERATION_LOCK_NOTIFICATION_THROTTLE_MS) {
+    lastOperationLockNotificationTimes.set(sessionId, now);
     showGlobalNotification('info', i18n.t('chatV2:chat.operation_in_progress'));
   }
 }
@@ -177,12 +182,13 @@ export function createBlockInternal(
     startedAt: Date.now(),
   };
 
-  // 🔧 FIX: 对于流式块（content/thinking），使用 flushSync 包裹 set()
-  // 确保 React 立即处理状态更新，挂载 BlockRendererWithStore 组件
-  // 这样后续的 chunk 事件才能被正确渲染
-  const doUpdate = () => {
-    set((s) => {
-      let message = s.messageMap.get(messageId);
+  // 性能说明（P0）：此处不使用 flushSync。
+  // Zustand 的 set() 是同步的——块在本次调用返回前就已存在于 store 中，
+  // 后续 chunk 经 chunkBuffer 累积后通过 updateBlockContent 直接写 store，
+  // 不依赖 React 组件是否已挂载。组件在下一次 React 批量渲染时挂载并读到
+  // 完整的累积内容，因此强制同步渲染只会打断 React 批处理、拉长主线程阻塞。
+  set((s) => {
+      const message = s.messageMap.get(messageId);
 
       // 先添加 block
       const blocksUpdate = updateMultipleBlocks((draft) => {
@@ -238,20 +244,7 @@ export function createBlockInternal(
         messageMap: messageUpdate.messageMap,
         activeBlockIds: addToSet(s.activeBlockIds, blockId),
       };
-    });
-  };
-
-  // 对于流式块，使用 flushSync 强制同步渲染
-  if (type === 'content' || type === 'thinking') {
-    try {
-      flushSync(doUpdate);
-    } catch {
-      // flushSync 在某些情况下可能失败，降级为普通更新
-      doUpdate();
-    }
-  } else {
-    doUpdate();
-  }
+  });
 
   return blockId;
 }
@@ -303,6 +296,9 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         getState
       );
 
+      // 创建消息 Actions（含 cancelLockWatchdog 内部清理接口）
+      const messageActions = createMessageActions(set as SetState, getState);
+
       return {
         // ========== 初始状态 ==========
         ...createInitialState(sessionId),
@@ -318,7 +314,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
 
         // ========== 消息 Actions ==========
 
-        ...createMessageActions(set as SetState, getState),
+        ...messageActions,
         ...createBlockActions(set as SetState, getState),
         ...createStreamActions(set as SetState, getState),
         ...createSessionActions(set as SetState, getState, scheduleAutoSaveIfReady),
@@ -327,9 +323,19 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         // ========== 队列 Actions ==========
         ...queueActions,
 
-        // ========== 辅助方法 ==========
+        // ========== 🔧 P0 定时器竞态修复：运行时定时器统一清理 ==========
+        // SessionManager 的 destroy / LRU 淘汰路径在摘除 store 前调用，
+        // 取消所有仍可能 fire 的闭包定时器（出队 breather、操作锁看门狗），
+        // 防止它们在 store 摘除后写状态或触发新一轮出队（僵尸会话丢消息）。
+        disposeRuntimeTimers: () => {
+          queueActions.cancelDequeueBreather();
+          messageActions.cancelLockWatchdog();
+          resetTransientRuntimes(getState().setPendingApproval);
+        },
 
-        pendingApprovalRequest: null,
+        // ========== 辅助方法 ==========
+        // 注：pendingApprovalRequest（兼容旧字段）由 createInitialState 初始化为 null，
+        // 并由 sessionActions 中的阻塞交互 Actions 与 pendingBlockingInteraction 同步镜像。
 
         getMessage: (messageId: string) => {
           return getState().messageMap.get(messageId);
@@ -359,25 +365,31 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
   );
 
   // Auto-progress queue when status returns to idle OR when a blocking
-  // interaction clears. This is the dequeue heartbeat — fired by zustand's
-  // subscribe. The prev-state diff prevents re-firing on unrelated changes
-  // and avoids infinite loops.
+  // interaction clears. This is the dequeue heartbeat.
+  //
+  // 🚀 P1: 使用 subscribeWithSelector 的选择器订阅替代全量 subscribe——
+  // 流式期间每个 chunk flush 都会触发一次 set，全量监听会让心跳回调
+  // 在热路径上空转；选择器订阅只在相关字段真正变化时进入回调。
   //
   // Blocking-interaction reads use the shared `readBlockingInteraction` helper
   // so this works regardless of whether the codebase exposes the field as
   // `pendingApprovalRequest` (HEAD) or `pendingBlockingInteraction` (refactor).
-  let prevStatus = store.getState().sessionStatus;
-  let prevBlocking = readBlockingInteraction(store.getState());
-  store.subscribe((state) => {
-    const justBecameIdle = prevStatus !== 'idle' && state.sessionStatus === 'idle';
-    const nextBlocking = readBlockingInteraction(state);
-    const blockingCleared = prevBlocking !== null && nextBlocking === null;
-    prevStatus = state.sessionStatus;
-    prevBlocking = nextBlocking;
-    if (justBecameIdle || blockingCleared) {
-      void state.maybeDequeue();
+  store.subscribe(
+    (state) => state.sessionStatus,
+    (status, prevStatus) => {
+      if (prevStatus !== 'idle' && status === 'idle') {
+        void store.getState().maybeDequeue();
+      }
     }
-  });
+  );
+  store.subscribe(
+    (state) => readBlockingInteraction(state),
+    (blocking, prevBlocking) => {
+      if (prevBlocking !== null && blocking === null) {
+        void store.getState().maybeDequeue();
+      }
+    }
+  );
 
   return store;
 }

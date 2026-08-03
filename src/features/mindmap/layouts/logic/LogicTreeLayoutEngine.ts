@@ -7,7 +7,9 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
 import type { LayoutCategory, LayoutDirection } from '../../registry/types';
+import type { LayoutBoundsWithMeta } from '../../registry/types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
+import { getDepthHorizontalGap, getDepthVerticalGap } from '../../constants/layout';
 import {
   calculateSubtreeHeight,
   calculateNodeWidth,
@@ -15,6 +17,7 @@ import {
   calculateBounds,
   resolveSubtreeOverlaps,
   recenterParents,
+  normalizeLayoutRoot,
 } from '../../utils/layout/helpers';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 
@@ -61,17 +64,22 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
     config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
     direction: LayoutDirection = this.defaultDirection
   ): LayoutResult {
+    // 入口防御：children 缺失时补空数组
+    root = normalizeLayoutRoot(root);
     const validDirection = this.getValidDirection(direction);
     const isLeftDirection = validDirection === 'left';
 
     const nodes: Node<LogicNodeData>[] = [];
     const edges: Edge[] = [];
     const mindmapNodeById = new Map<string, MindMapNode>();
-    
+    // 深度超限截断标记（随 bounds 返回，供上层提示）
+    let truncated = false;
+
     // ★ P0 修复：添加深度限制
     const collectMindMapNode = (current: MindMapNode, depth: number = 0) => {
       if (depth > MAX_TREE_DEPTH) {
         console.warn(`[LogicTreeLayoutEngine] Tree depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return;
       }
       mindmapNodeById.set(current.id, current);
@@ -93,6 +101,7 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
       // 深度限制检查
       if (level > MAX_TREE_DEPTH) {
         console.warn(`[LogicTreeLayoutEngine] Layout depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return config.nodeHeight;
       }
 
@@ -138,6 +147,8 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
       // layoutBoxes 将在最终阶段统一计算
 
       // 添加边（使用 orgchart 类型实现逻辑图的阶梯连线）
+      // railOffset 取父子实际层距的一半：父节点层级为 level - 1（有 parentId 时 level >= 1），
+      // 深度间距收敛后层距变窄，竖直导轨须同步内移保持居中
       if (parentId) {
         edges.push({
           id: `e-${parentId}-${node.id}`,
@@ -146,7 +157,7 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
           type: 'orgchart',
           data: {
             direction: validDirection,
-            railOffset: config.horizontalGap / 2,
+            railOffset: getDepthHorizontalGap(config, level - 1) / 2,
           },
         });
       }
@@ -156,24 +167,28 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
         return nodeHeight;
       }
 
+      // 层距/兄弟距随本节点层级收敛（scale(0)=1 → 根到一级保持现值）
+      const levelGap = getDepthHorizontalGap(config, level);
+      const siblingGap = getDepthVerticalGap(config, level);
+
       // 计算子节点 X 位置
       let childX: number;
       if (isLeftDirection) {
         // 向左展开：子节点在父节点左侧
-        childX = nodeX - config.horizontalGap;
+        childX = nodeX - levelGap;
       } else {
         // 向右展开：子节点在父节点右侧
-        childX = x + nodeWidth + config.horizontalGap;
+        childX = x + nodeWidth + levelGap;
       }
 
-      // 计算每个子节点的子树高度
+      // 计算每个子节点的子树高度（传入子节点绝对层级，供深度间距收敛）
       const subtreeHeights = node.children!.map(child =>
-        calculateSubtreeHeight(child, config)
+        calculateSubtreeHeight(child, config, false, level + 1)
       );
 
       // 总高度
       const totalHeight = subtreeHeights.reduce(
-        (sum, h, i) => sum + h + (i > 0 ? config.verticalGap : 0),
+        (sum, h, i) => sum + h + (i > 0 ? siblingGap : 0),
         0
       );
 
@@ -183,7 +198,7 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
       // 布局子节点
       node.children!.forEach((child, index) => {
         layoutNode(child, childX, currentY, level + 1, node.id);
-        currentY += subtreeHeights[index] + config.verticalGap;
+        currentY += subtreeHeights[index] + siblingGap;
       });
 
       return Math.max(nodeHeight, totalHeight);
@@ -198,14 +213,18 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
     recenterParents(root, nodesById, config, true);
 
     // 重新计算边界
+    // ★ P0 修复：宽度估算传入 isRoot，保证 bounds 与实际渲染宽度一致
     const layoutBoxes = nodes.map(node => {
       const mmNode = mindmapNodeById.get(node.id);
-      const isRootNode = node.data?.isRoot || node.type === 'rootNode';
-      const width = mmNode ? calculateNodeWidth(mmNode, config) : config.nodeMinWidth;
+      const isRootNode = !!node.data?.isRoot || node.type === 'rootNode';
+      const width = mmNode ? calculateNodeWidth(mmNode, config, isRootNode) : config.nodeMinWidth;
       const height = mmNode ? calculateNodeHeight(mmNode, isRootNode, config) : config.nodeHeight;
       return { x: node.position.x, y: node.position.y, width, height };
     });
-    const bounds = calculateBounds(layoutBoxes);
+    const bounds: LayoutBoundsWithMeta = {
+      ...calculateBounds(layoutBoxes),
+      ...(truncated ? { truncated: true } : {}),
+    };
 
     return { nodes, edges, bounds };
   }

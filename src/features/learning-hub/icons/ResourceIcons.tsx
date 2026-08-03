@@ -1,8 +1,8 @@
 /**
- * 学习资源管理器自定义 SVG 图标 - Notion 风格优化版 (v4)
+ * 学习资源管理器自定义 SVG 图标 - 简洁风格优化版 (v4)
  * 
  * 优化重点 (v4):
- * - 文件夹：彻底扁平化，去除所有阴影滤镜，使用纯色块构建，接近 Notion UI 的文件夹质感
+ * - 文件夹：彻底扁平化，去除所有阴影滤镜，使用纯色块构建，接近常见笔记 UI 的文件夹质感
  * - 翻译：重新设计为经典的 "文/A" 切换卡片，更清晰的语义
  * - 整体：移除所有 SVG 滤镜（提升性能且更风格化），仅使用透明度表达层次
  */
@@ -20,7 +20,7 @@ export interface ResourceIconProps {
 
 const defaultSize = 48;
 
-// Notion Color Palette (Matte & Pastel)
+// Color Palette (Matte & Pastel)
 // Adjusted for v4: Slightly more vibrant for dark mode visibility, but still matte
 const palette = {
   gray:   { bg: '#F1F0EF', fg: '#787774', border: '#E0E0E0' },
@@ -52,7 +52,9 @@ const DocBase: React.FC<{
       viewBox="0 0 48 48"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      preserveAspectRatio="xMidYMid meet"
       className={cn('shrink-0', className)}
+      aria-hidden="true"
     >
       {/* 文档主体 - 纯色扁平 */}
       <path
@@ -91,7 +93,7 @@ const DocBase: React.FC<{
 // ============================================================================
 // 笔记图标 - 绿色 (Lines)
 // ============================================================================
-export const NoteIcon: React.FC<ResourceIconProps> = ({
+export const NoteIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -101,12 +103,13 @@ export const NoteIcon: React.FC<ResourceIconProps> = ({
     <rect x="14" y="30" width="18" height="2" rx="1" fill={palette.green.fg} opacity="0.6" />
     <rect x="14" y="36" width="12" height="2" rx="1" fill={palette.green.fg} opacity="0.4" />
   </DocBase>
-);
+));
+NoteIcon.displayName = 'NoteIcon';
 
 // ============================================================================
 // 教材图标 - 橙色 (Book) - v5 书本样式
 // ============================================================================
-export const TextbookIcon: React.FC<ResourceIconProps> = ({
+export const TextbookIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -116,7 +119,9 @@ export const TextbookIcon: React.FC<ResourceIconProps> = ({
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid meet"
     className={cn('shrink-0', className)}
+    aria-hidden="true"
   >
     {/* 书封面 */}
     <rect
@@ -141,12 +146,13 @@ export const TextbookIcon: React.FC<ResourceIconProps> = ({
     {/* 书签 */}
     <path d="M27 4V14L29.5 12L32 14V4" fill={palette.orange.fg} />
   </svg>
-);
+));
+TextbookIcon.displayName = 'TextbookIcon';
 
 // ============================================================================
 // 题目集图标 - 紫色 (Stacked Files) - v7 重设计：四层文件扇形展开，左下角旋转中心
 // ============================================================================
-export const ExamIcon: React.FC<ResourceIconProps> = ({
+export const ExamIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -156,7 +162,9 @@ export const ExamIcon: React.FC<ResourceIconProps> = ({
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid meet"
     className={cn('shrink-0', className)}
+    aria-hidden="true"
   >
     {/* 第4层（底层）- 向右旋转16° */}
     <g style={{ transformOrigin: '8px 44px', transform: 'rotate(16deg)' }}>
@@ -213,12 +221,13 @@ export const ExamIcon: React.FC<ResourceIconProps> = ({
       <rect x="16" y="33" width="12" height="2" rx="1" fill={palette.purple.fg} opacity="0.6" />
     </g>
   </svg>
-);
+));
+ExamIcon.displayName = 'ExamIcon';
 
 // ============================================================================
 // 作文图标 - 粉色 (Typography)
 // ============================================================================
-export const EssayIcon: React.FC<ResourceIconProps> = ({
+export const EssayIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -236,12 +245,13 @@ export const EssayIcon: React.FC<ResourceIconProps> = ({
       Aa
     </text>
   </DocBase>
-);
+));
+EssayIcon.displayName = 'EssayIcon';
 
 // ============================================================================
 // 翻译图标 - 蓝色 (Translation) - v5 重设计：纯卡片无文件背景
 // ============================================================================
-export const TranslationIcon: React.FC<ResourceIconProps> = ({
+export const TranslationIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -251,7 +261,9 @@ export const TranslationIcon: React.FC<ResourceIconProps> = ({
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid meet"
     className={cn('shrink-0', className)}
+    aria-hidden="true"
   >
     {/* 卡片 A (背景) - 右上角偏移更多 */}
     <rect
@@ -298,12 +310,13 @@ export const TranslationIcon: React.FC<ResourceIconProps> = ({
       文
     </text>
   </svg>
-);
+));
+TranslationIcon.displayName = 'TranslationIcon';
 
 // ============================================================================
 // 知识导图图标 - 青色 (Mindmap)
 // ============================================================================
-export const MindmapIcon: React.FC<ResourceIconProps> = ({
+export const MindmapIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -316,12 +329,13 @@ export const MindmapIcon: React.FC<ResourceIconProps> = ({
     <circle cx="31" cy="24" r="2.5" fill={palette.green.fg} opacity="0.8" />
     <circle cx="31" cy="32" r="2.5" fill={palette.green.fg} opacity="0.8" />
   </DocBase>
-);
+));
+MindmapIcon.displayName = 'MindmapIcon';
 
 // ============================================================================
 // 待办列表图标 - 橙色 (Todo)
 // ============================================================================
-export const TodoIcon: React.FC<ResourceIconProps> = ({
+export const TodoIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -334,13 +348,14 @@ export const TodoIcon: React.FC<ResourceIconProps> = ({
     <rect x="14" y="32" width="4" height="4" rx="0.8" stroke={palette.orange.fg} strokeWidth="1.2" fill="none" />
     <line x1="21" y1="34" x2="30" y2="34" stroke={palette.orange.fg} strokeWidth="1.5" opacity="0.7" />
   </DocBase>
-);
+));
+TodoIcon.displayName = 'TodoIcon';
 
 // ============================================================================
-// 文件夹图标 - 黄/橙色 (Notion-style Folder) - v5 重设计
-// 参考 macOS/Notion 的经典文件夹配色，更饱满的形状
+// 文件夹图标 - 黄/橙色 (简洁-style Folder) - v5 重设计
+// 参考 macOS/简洁 的经典文件夹配色，更饱满的形状
 // ============================================================================
-export const FolderIcon: React.FC<ResourceIconProps> = ({
+export const FolderIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -350,7 +365,9 @@ export const FolderIcon: React.FC<ResourceIconProps> = ({
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid meet"
     className={cn('shrink-0', className)}
+    aria-hidden="true"
   >
     {/* 后层 - 文件夹背板 */}
     <path
@@ -386,12 +403,13 @@ export const FolderIcon: React.FC<ResourceIconProps> = ({
       fillOpacity="0.5"
     />
   </svg>
-);
+));
+FolderIcon.displayName = 'FolderIcon';
 
 // ============================================================================
 // 图片图标 - 灰色 (Image)
 // ============================================================================
-export const ImageFileIcon: React.FC<ResourceIconProps> = ({
+export const ImageFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -401,7 +419,9 @@ export const ImageFileIcon: React.FC<ResourceIconProps> = ({
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid meet"
     className={cn('shrink-0', className)}
+    aria-hidden="true"
   >
     {/* 图片边框 */}
     <rect
@@ -423,12 +443,13 @@ export const ImageFileIcon: React.FC<ResourceIconProps> = ({
       opacity="0.5"
     />
   </svg>
-);
+));
+ImageFileIcon.displayName = 'ImageFileIcon';
 
 // ============================================================================
 // 通用文件图标
 // ============================================================================
-export const GenericFileIcon: React.FC<ResourceIconProps> = ({
+export const GenericFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -437,12 +458,13 @@ export const GenericFileIcon: React.FC<ResourceIconProps> = ({
     <rect x="14" y="24" width="16" height="2" rx="1" fill={palette.gray.fg} fillOpacity="0.2" />
     <rect x="14" y="30" width="12" height="2" rx="1" fill={palette.gray.fg} fillOpacity="0.2" />
   </DocBase>
-);
+));
+GenericFileIcon.displayName = 'GenericFileIcon';
 
 // ============================================================================
 // PDF 文件图标 - 红色
 // ============================================================================
-export const PdfFileIcon: React.FC<ResourceIconProps> = ({
+export const PdfFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -462,12 +484,13 @@ export const PdfFileIcon: React.FC<ResourceIconProps> = ({
     {/* 下方装饰线 */}
     <rect x="14" y="36" width="16" height="2" rx="1" fill={palette.red.fg} opacity="0.4" />
   </DocBase>
-);
+));
+PdfFileIcon.displayName = 'PdfFileIcon';
 
 // ============================================================================
 // Word/DOCX 文件图标 - 蓝色
 // ============================================================================
-export const DocxFileIcon: React.FC<ResourceIconProps> = ({
+export const DocxFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -486,12 +509,13 @@ export const DocxFileIcon: React.FC<ResourceIconProps> = ({
     {/* 下划线装饰 */}
     <rect x="16" y="36" width="16" height="2" rx="1" fill={palette.blue.fg} opacity="0.5" />
   </DocBase>
-);
+));
+DocxFileIcon.displayName = 'DocxFileIcon';
 
 // ============================================================================
 // PowerPoint/PPTX 文件图标 - 橙色
 // ============================================================================
-export const PptxFileIcon: React.FC<ResourceIconProps> = ({
+export const PptxFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -510,12 +534,13 @@ export const PptxFileIcon: React.FC<ResourceIconProps> = ({
     {/* 下划线装饰 */}
     <rect x="16" y="36" width="16" height="2" rx="1" fill={palette.orange.fg} opacity="0.5" />
   </DocBase>
-);
+));
+PptxFileIcon.displayName = 'PptxFileIcon';
 
 // ============================================================================
 // Excel/XLSX 文件图标 - 绿色
 // ============================================================================
-export const XlsxFileIcon: React.FC<ResourceIconProps> = ({
+export const XlsxFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -534,12 +559,13 @@ export const XlsxFileIcon: React.FC<ResourceIconProps> = ({
     {/* 下划线装饰 */}
     <rect x="16" y="36" width="16" height="2" rx="1" fill={palette.green.fg} opacity="0.5" />
   </DocBase>
-);
+));
+XlsxFileIcon.displayName = 'XlsxFileIcon';
 
 // ============================================================================
 // 音频文件图标 - 绿色
 // ============================================================================
-export const AudioFileIcon: React.FC<ResourceIconProps> = ({
+export const AudioFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -549,7 +575,9 @@ export const AudioFileIcon: React.FC<ResourceIconProps> = ({
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid meet"
     className={cn('shrink-0', className)}
+    aria-hidden="true"
   >
     {/* 圆形背景 */}
     <circle cx="24" cy="24" r="18" fill={palette.green.bg} stroke={palette.green.fg} strokeWidth="1.5" />
@@ -565,12 +593,13 @@ export const AudioFileIcon: React.FC<ResourceIconProps> = ({
     <circle cx="17" cy="32" r="3" fill={palette.green.fg} />
     <circle cx="27" cy="30" r="3" fill={palette.green.fg} />
   </svg>
-);
+));
+AudioFileIcon.displayName = 'AudioFileIcon';
 
 // ============================================================================
 // 视频文件图标 - 紫色
 // ============================================================================
-export const VideoFileIcon: React.FC<ResourceIconProps> = ({
+export const VideoFileIcon: React.FC<ResourceIconProps> = React.memo(({
   className,
   size = defaultSize,
 }) => (
@@ -580,7 +609,9 @@ export const VideoFileIcon: React.FC<ResourceIconProps> = ({
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    preserveAspectRatio="xMidYMid meet"
     className={cn('shrink-0', className)}
+    aria-hidden="true"
   >
     {/* 视频播放器外框 */}
     <rect
@@ -599,14 +630,15 @@ export const VideoFileIcon: React.FC<ResourceIconProps> = ({
       fill={palette.purple.fg}
     />
   </svg>
-);
+));
+VideoFileIcon.displayName = 'VideoFileIcon';
 
 // ============================================================================
 // 侧边栏图标 (Simple geometric)
 // ============================================================================
 
-export const MemoryIcon: React.FC<ResourceIconProps> = ({ className, size = 24, symbolColor = palette.purple.fg }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+export const MemoryIcon: React.FC<ResourceIconProps> = React.memo(({ className, size = 24, symbolColor = palette.purple.fg }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
     {/* 背景圆 */}
     <circle cx="12" cy="12" r="10" fill={palette.purple.bg} stroke={palette.purple.border} strokeWidth="1.2"/>
     {/* 连接线 */}
@@ -624,10 +656,11 @@ export const MemoryIcon: React.FC<ResourceIconProps> = ({ className, size = 24, 
     <circle cx="17" cy="9" r="1.8" fill={symbolColor} fillOpacity="0.65" stroke={palette.purple.border} strokeWidth="0.6"/>
     <circle cx="17" cy="17" r="1.8" fill={symbolColor} fillOpacity="0.65" stroke={palette.purple.border} strokeWidth="0.6"/>
   </svg>
-);
+));
+MemoryIcon.displayName = 'MemoryIcon';
 
-export const FavoriteIcon: React.FC<ResourceIconProps> = ({ className, size = 24, symbolColor = palette.yellow.fg }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+export const FavoriteIcon: React.FC<ResourceIconProps> = React.memo(({ className, size = 24, symbolColor = palette.yellow.fg }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
     {/* 书签底座 */}
     <rect x="4" y="2" width="16" height="20" rx="2" fill={palette.yellow.bg} stroke={palette.yellow.border} strokeWidth="1.2"/>
     {/* 书签丝带 */}
@@ -635,10 +668,11 @@ export const FavoriteIcon: React.FC<ResourceIconProps> = ({ className, size = 24
     {/* 五角星 */}
     <path d="M12 9L13.76 12.53L17.66 13.1L14.83 15.87L15.52 19.76L12 17.9L8.48 19.76L9.17 15.87L6.34 13.1L10.24 12.53Z" fill={symbolColor} fillOpacity="0.8" stroke={symbolColor} strokeWidth="0.5" strokeOpacity="0.4" strokeLinejoin="round"/>
   </svg>
-);
+));
+FavoriteIcon.displayName = 'FavoriteIcon';
 
-export const RecentIcon: React.FC<ResourceIconProps> = ({ className, size = 24, symbolColor = palette.blue.fg }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+export const RecentIcon: React.FC<ResourceIconProps> = React.memo(({ className, size = 24, symbolColor = palette.blue.fg }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
     {/* 时钟外圈 */}
     <circle cx="12" cy="12" r="10" fill={palette.blue.bg} stroke={palette.blue.border} strokeWidth="1.2"/>
     {/* 表盘刻度 */}
@@ -655,10 +689,11 @@ export const RecentIcon: React.FC<ResourceIconProps> = ({ className, size = 24, 
     {/* 中心点 */}
     <circle cx="12" cy="12" r="1.2" fill={symbolColor}/>
   </svg>
-);
+));
+RecentIcon.displayName = 'RecentIcon';
 
-export const TrashIcon: React.FC<ResourceIconProps> = ({ className, size = 24, symbolColor = palette.red.fg }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+export const TrashIcon: React.FC<ResourceIconProps> = React.memo(({ className, size = 24, symbolColor = palette.red.fg }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
     {/* 桶身 */}
     <path d="M6 7H18V20C18 21.1046 17.1046 22 16 22H8C6.89543 22 6 21.1046 6 20V7Z" fill={palette.red.bg} stroke={palette.red.border} strokeWidth="1.2"/>
     {/* 桶盖 */}
@@ -669,10 +704,11 @@ export const TrashIcon: React.FC<ResourceIconProps> = ({ className, size = 24, s
     <line x1="10" y1="10.5" x2="10" y2="18" stroke={symbolColor} strokeWidth="1" strokeLinecap="round" strokeOpacity="0.45"/>
     <line x1="14" y1="10.5" x2="14" y2="18" stroke={symbolColor} strokeWidth="1" strokeLinecap="round" strokeOpacity="0.45"/>
   </svg>
-);
+));
+TrashIcon.displayName = 'TrashIcon';
 
-export const IndexStatusIcon: React.FC<ResourceIconProps> = ({ className, size = 24, symbolColor = palette.green.fg }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+export const IndexStatusIcon: React.FC<ResourceIconProps> = React.memo(({ className, size = 24, symbolColor = palette.green.fg }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
     {/* 数据库桶身 */}
     <path d="M4 7V17C4 19.2 7.58 21 12 21C16.42 21 20 19.2 20 17V7" fill={palette.green.bg}/>
     <path d="M4 7V17C4 19.2 7.58 21 12 21C16.42 21 20 19.2 20 17V7" stroke={palette.green.border} strokeWidth="1.2"/>
@@ -685,10 +721,11 @@ export const IndexStatusIcon: React.FC<ResourceIconProps> = ({ className, size =
     <path d="M10 11L12 9L14 11" stroke={symbolColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.6"/>
     <line x1="12" y1="9" x2="12" y2="14" stroke={symbolColor} strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.6"/>
   </svg>
-);
+));
+IndexStatusIcon.displayName = 'IndexStatusIcon';
 
-export const AllFilesIcon: React.FC<ResourceIconProps> = ({ className, size = 24, symbolColor = palette.green.fg }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+export const AllFilesIcon: React.FC<ResourceIconProps> = React.memo(({ className, size = 24, symbolColor = palette.green.fg }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
     {/* 后层文件夹 */}
     <rect x="3" y="6" width="18" height="15" rx="2" fill={palette.green.bg} stroke={palette.green.border} strokeWidth="1.2" opacity="0.5"/>
     {/* 前层文件夹 */}
@@ -700,10 +737,11 @@ export const AllFilesIcon: React.FC<ResourceIconProps> = ({ className, size = 24
     <rect x="7" y="14" width="10" height="1.2" rx="0.6" fill={symbolColor} fillOpacity="0.35"/>
     <rect x="7" y="17" width="5" height="1.2" rx="0.6" fill={symbolColor} fillOpacity="0.2"/>
   </svg>
-);
+));
+AllFilesIcon.displayName = 'AllFilesIcon';
 
-export const DesktopIcon: React.FC<ResourceIconProps> = ({ className, size = 24, symbolColor = palette.blue.fg }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+export const DesktopIcon: React.FC<ResourceIconProps> = React.memo(({ className, size = 24, symbolColor = palette.blue.fg }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
     {/* 桌面板 */}
     <rect x="2" y="3" width="20" height="14" rx="2.5" fill={palette.blue.bg} stroke={palette.blue.border} strokeWidth="1.2"/>
     {/* 屏幕顶部装饰条 */}
@@ -721,7 +759,8 @@ export const DesktopIcon: React.FC<ResourceIconProps> = ({ className, size = 24,
     <path d="M14 17V19.5" stroke="currentColor" strokeWidth="1.3" opacity="0.5"/>
     <path d="M8 19.5H16" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity="0.5"/>
   </svg>
-);
+));
+DesktopIcon.displayName = 'DesktopIcon';
 
 // ============================================================================
 // 图标类型映射
@@ -786,7 +825,10 @@ export function getResourceIcon(type: ResourceIconType): React.FC<ResourceIconPr
  * 根据 MIME 类型获取对应的文件图标组件
  * 用于聊天附件、文件预览等场景
  */
-export function getFileTypeIconByMime(mimeType: string): React.FC<ResourceIconProps> {
+export function getFileTypeIconByMime(rawMimeType: string): React.FC<ResourceIconProps> {
+  // MIME 类型大小写不敏感（RFC 2045），统一小写后匹配；空值直接走通用图标
+  const mimeType = (rawMimeType || '').toLowerCase();
+
   // PDF 文件
   if (mimeType.includes('pdf')) {
     return PdfFileIcon;

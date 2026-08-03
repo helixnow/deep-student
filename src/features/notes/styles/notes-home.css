@@ -26,19 +26,36 @@
   line-height: 1.6;
 }
 
+/* 标题契约与 Crepe 编辑态同源（--notes-heading-*），阅读态/编辑态不分叉 */
 .prose-note h1,
 .prose-note h2,
 .prose-note h3,
 .prose-note h4 {
   color: hsl(var(--foreground));
-  font-weight: 700;
+  font-weight: var(--notes-heading-h1-weight, 600);
   letter-spacing: -0.02em;
 }
 
 .prose-note h1 {
-  font-size: 2.25em;
+  font-size: var(--notes-heading-h1-size, 1.875em);
+  line-height: var(--notes-heading-h1-lh, 1.3);
   margin-top: 0;
   margin-bottom: 0.8em;
+}
+
+.prose-note h2 {
+  font-size: var(--notes-heading-h2-size, 1.5em);
+  line-height: var(--notes-heading-h2-lh, 1.3);
+}
+
+.prose-note h3 {
+  font-size: var(--notes-heading-h3-size, 1.25em);
+  line-height: var(--notes-heading-h3-lh, 1.3);
+}
+
+.prose-note h4 {
+  font-size: var(--notes-heading-h4-size, 1.125em);
+  line-height: var(--notes-heading-h4-lh, 1.35);
 }
 
 .prose-note p {
@@ -50,26 +67,27 @@
   color: hsl(var(--primary));
   text-decoration: none;
   border-bottom: 1px solid hsl(var(--primary) / 0.3);
-  transition: border-color 0.2s;
+  transition: border-color var(--notes-hover-transition, 120ms ease);
 }
 
 .prose-note a:hover {
   border-bottom-color: hsl(var(--primary));
 }
 
+/* 行内代码与 Crepe 编辑态同源（--notes-inline-code-*） */
 .prose-note code {
   background-color: hsl(var(--muted));
-  color: hsl(var(--foreground));
-  padding: 0.2em 0.4em;
-  border-radius: 4px;
-  font-size: 0.875em;
+  color: var(--notes-inline-code-color, hsl(var(--foreground) / 0.86));
+  padding: 0.2em var(--notes-inline-code-pad-x, 0.2em);
+  border-radius: var(--notes-inline-code-radius, 4px);
+  font-size: var(--notes-inline-code-size, 0.875em);
   font-weight: 500;
 }
 
 .prose-note pre {
   background-color: hsl(var(--muted));
   padding: 1em;
-  border-radius: 8px;
+  border-radius: var(--radius, 0.5rem);
   overflow-x: auto;
 }
 
@@ -79,11 +97,12 @@
   color: inherit;
 }
 
+/* 引用契约与 Crepe 一致：3px 前景竖线、不斜体、正常前景 */
 .prose-note blockquote {
-  border-left: 3px solid hsl(var(--primary));
+  border-left: var(--notes-blockquote-border-w, 3px) solid hsl(var(--foreground));
   padding-left: 1em;
-  font-style: italic;
-  color: hsl(var(--muted-foreground));
+  font-style: normal;
+  color: hsl(var(--foreground));
 }
 
 .prose-note ul {
@@ -96,11 +115,12 @@
   padding-left: 1.5em;
 }
 
-/* Animations */
+/* Animations — 与 ui-motion 的 ui-rise-in 同写法（opacity + 4px 上浮、
+   --dropdown-close-dur + --dropdown-ease），CSS 内复刻同 token 节奏 */
 @keyframes slideUpFade {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -109,7 +129,13 @@
 }
 
 .animate-slide-up {
-  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUpFade var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up {
+    animation: none;
+  }
 }
 
 /* Mobile Adjustments */

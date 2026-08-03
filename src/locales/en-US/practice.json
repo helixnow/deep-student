@@ -12,6 +12,10 @@
       "label": "Review First",
       "desc": "Practice wrong answers first"
     },
+    "reviewOnly": {
+      "label": "Wrong Answers Only",
+      "desc": "Practice only questions answered incorrectly"
+    },
     "byTag": {
       "label": "By Tag",
       "desc": "Practice by knowledge tags"
@@ -33,6 +37,12 @@
       "desc": "Generate custom practice papers"
     }
   },
+  "tagPicker": {
+    "title": "Choose a knowledge point",
+    "description": "Choose a tag to start practicing",
+    "untagged": "Untagged",
+    "questionCount": "{{count}} questions"
+  },
   "timed": {
     "title": "Timed Practice",
     "duration": "Duration (minutes)",
@@ -49,16 +59,31 @@
     "resume": "Resume",
     "pause": "Pause",
     "submit": "Submit",
-    "warning": "Less than 1 minute remaining!"
+    "warning": "Less than 1 minute remaining!",
+    "timeoutMessage": "Timed practice has ended",
+    "timeoutTitle": "Time's up",
+    "startError": "Failed to start timed practice",
+    "minutesShort": "{{count}} min",
+    "confirmTitle": "Confirm Submission",
+    "confirmMessage": "Are you sure you want to finish this timed practice?",
+    "confirmWarning": "You have {{count}} unanswered questions. Are you sure you want to submit?",
+    "cancel": "Cancel",
+    "confirmSubmit": "Confirm Submit"
   },
   "questionType": {
     "single_choice": "Single Choice",
     "multiple_choice": "Multiple Choice",
+    "indefinite_choice": "Indefinite Choice",
     "fill_blank": "Fill in the Blank",
     "short_answer": "Short Answer",
     "calculation": "Calculation",
     "essay": "Essay",
-    "proof": "Proof"
+    "proof": "Proof",
+    "other": "Other",
+    "true_false": "True / False",
+    "matching": "Matching",
+    "ordering": "Ordering",
+    "numeric": "Numeric"
   },
   "difficultyLevel": {
     "easy": "Easy",
@@ -74,6 +99,7 @@
     "includeMistakes": "Include Mistakes",
     "typeDistribution": "Question Type Distribution",
     "difficultyDistribution": "Difficulty Distribution",
+    "distributionHint": "If the type or difficulty distribution total exceeds the question count, the exam uses the distribution total",
     "optional": "(optional)",
     "generating": "Generating...",
     "start": "Start Exam",
@@ -85,6 +111,10 @@
     "confirmWarning": "You have {{count}} unanswered questions. Are you sure you want to submit?",
     "cancel": "Cancel",
     "confirmSubmit": "Confirm Submit",
+    "startError": "Failed to generate exam",
+    "submitError": "Failed to submit exam",
+    "remaining": "Time Remaining",
+    "timeWarning": "Less than 1 minute left in the exam!",
     "scoreCard": "Score Card",
     "total": "Total",
     "correct": "Correct",
@@ -95,7 +125,11 @@
     "seconds": "sec",
     "typeStats": "Type Statistics",
     "back": "Back",
-    "newExam": "Try Again"
+    "newExam": "Try Again",
+    "unansweredBanner": "{{count}} questions still unanswered",
+    "jumpToUnanswered": "Go to unanswered",
+    "correctRateLabel": "Accuracy",
+    "configuredCount": "Will generate"
   },
   "daily": {
     "title": "Daily Practice",
@@ -127,7 +161,10 @@
     "questionsCount": "{{count}}q",
     "monthDays": "Days This Month",
     "monthQuestions": "Total Questions",
-    "streak": "Streak"
+    "streak": "Streak",
+    "calendarLoadFailed": "Failed to load the check-in calendar",
+    "startError": "Failed to load daily practice",
+    "completedDetail": "{{correct}} / {{total}} answered correctly"
   },
   "paper": {
     "title": "Paper Generator",
@@ -155,7 +192,12 @@
     "back": "Back to Config",
     "export": "Export",
     "answer": "Answer",
-    "explanation": "Explanation"
+    "explanation": "Explanation",
+    "generateFailed": "Failed to generate paper: {{error}}",
+    "exportComingSoon": "PDF / Word export is coming soon. Use Markdown export or preview for now.",
+    "exportTitle": "Export Paper",
+    "exportSuccess": "Paper exported",
+    "exportFailed": "Export failed. Please try again."
   },
   "tagNav": {
     "knowledgePoints": "Knowledge Points",
@@ -179,6 +221,17 @@
     "emptyDesc2": "Add tags when editing questions to practice by knowledge points."
   },
   "questionBank": {
+    "practice": {
+      "noQuestions": "No questions yet",
+      "addFirst": "Add questions first",
+      "addFirstHint": "Create questions manually, scan with your camera, or import a CSV from the Questions list, then come back to start practicing",
+      "chooseMode": "Choose Practice Mode"
+    },
+    "stats": {
+      "mastered": "Mastered",
+      "toReview": "To review",
+      "correctRate": "Accuracy"
+    },
     "statusShort": {
       "new": "New",
       "inProgress": "Learning",
@@ -214,7 +267,6 @@
     "all": "All",
     "noMatch": "No matching questions found",
     "emptyTitle": "No questions",
-    "emptyDesc": "Click \"Add Questions\" above to start",
     "masteredLabel": "Mastered",
     "pendingReview": "{{count}} to review",
     "correctRate": "Accuracy",
@@ -257,7 +309,13 @@
     "oldValue": "Old:",
     "newValue": "New:",
     "answerLabel": "Answer:",
-    "questionCreated": "Question created"
+    "questionCreated": "Question created",
+    "emptyChoosePath": "Choose a way to start building your question set",
+    "emptyCreateDesc": "Edit questions one by one, with nine question types",
+    "emptyImportDesc": "Photos, screenshots or documents, recognized by AI",
+    "emptyCsvDesc": "Batch import questions from a CSV sheet",
+    "emptyDropHint": "You can also drag images or documents here",
+    "emptyReadOnlyDesc": "This question set has no questions yet"
   },
   "editor": {
     "loading": "Loading questions...",
@@ -361,7 +419,11 @@
       "essay": "Essay",
       "calculation": "Calculation",
       "proof": "Proof",
-      "other": "Other"
+      "other": "Other",
+      "trueFalse": "True / False",
+      "matching": "Matching",
+      "ordering": "Ordering",
+      "numeric": "Numeric"
     },
     "modeShort": {
       "sequential": "Sequential",
@@ -371,7 +433,103 @@
       "timed": "Timed",
       "mockExam": "Mock Exam",
       "daily": "Daily",
-      "paper": "Paper"
+      "paper": "Paper",
+      "reviewOnly": "Wrong Only"
+    },
+    "shortcutNextAfterSubmit": "Next after submit",
+    "inlineShortcutHint": "1-9 / A-D select · Enter submit · ← → navigate",
+    "inlineShortcutHintAfterSubmit": "Enter next question · ← → navigate",
+    "aiRetry": "Retry",
+    "noteSaving": "Saving…",
+    "noteSaved": "Saved",
+    "noteSaveFailed": "Save failed",
+    "noteDone": "Done",
+    "noteAutoSaveHint": "Saves automatically when focus leaves",
+    "imageExpand": "Click to enlarge image",
+    "imageCollapse": "Click to collapse image",
+    "shortcutFavorite": "Favorite / unfavorite",
+    "shortcutTrueFalse": "True/False pick",
+    "inlineShortcutHintTrueFalse": "1 True · 2 False · Enter submit · ← → navigate",
+    "inlineShortcutHintGeneric": "Enter submit · ← → navigate · F favorite",
+    "trueFalse": {
+      "true": "True",
+      "false": "False"
+    },
+    "matching": {
+      "instruction": "Tap an item on the left, then one on the right to pair; tap a paired item to unpair",
+      "pickOtherSide": "Now tap an item in the other column to pair",
+      "pairedCount": "Paired {{count}}/{{total}}",
+      "leftColumn": "Left",
+      "rightColumn": "Right",
+      "correctPairs": "Correct pairs"
+    },
+    "ordering": {
+      "instruction": "Drag or use the arrow buttons to arrange the order",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "correctOrder": "Correct order"
+    },
+    "numeric": {
+      "placeholder": "Enter a number...",
+      "invalidNumber": "Please enter a valid number",
+      "toleranceHint": "Tolerance ±{{tolerance}}",
+      "toleranceHintRelative": "Tolerance ±{{tolerance}}%"
+    },
+    "fillBlank": {
+      "acceptedAnswers": "Accepted answers: {{answers}}"
+    },
+    "structEdit": {
+      "addItem": "Add",
+      "removeItem": "Remove item",
+      "emptyItems": "No items yet. Click \"Add\" to create one.",
+      "unpaired": "Unpaired",
+      "standardPairs": "Answer pairs",
+      "orderingItems": "Items (display order)",
+      "numericValue": "Answer value",
+      "numericUnit": "Unit",
+      "numericUnitPlaceholder": "e.g. m, kg (optional)",
+      "numericTolerance": "Tolerance",
+      "numericToleranceMode": "Tolerance mode",
+      "toleranceAbsolute": "Absolute",
+      "toleranceRelative": "Relative",
+      "numericValueRequired": "Please enter a valid answer value",
+      "numericToleranceInvalid": "Tolerance must be a non-negative number",
+      "blanksTitle": "Blanks & accepted answers",
+      "addBlank": "Add blank",
+      "removeBlank": "Remove blank",
+      "blankLabel": "Blank {{n}}",
+      "caseSensitive": "Case sensitive",
+      "trimSpaces": "Trim spaces",
+      "answerDraftPlaceholder": "Type an accepted answer and press Enter",
+      "addAnswer": "Add answer",
+      "blankNeedsAnswer": "Each blank needs at least one accepted answer",
+      "blanksAutoAnswerHint": "The answer field is generated from blank settings",
+      "trueFalseAnswerRequired": "Please pick the answer (True/False)",
+      "matchingNeedsItems": "Both columns need at least one non-empty item",
+      "matchingNeedsPairs": "Set at least one answer pair",
+      "orderingNeedsItems": "Ordering needs at least two non-empty items"
     }
+  },
+  "answerSheet": {
+    "answered": "Answered",
+    "unanswered": "Unanswered",
+    "marked": "Marked",
+    "progress": "{{answered}} / {{total}} answered",
+    "jumpTo": "Jump to question {{index}}",
+    "jumpHint": "Tap a number to jump to that question",
+    "expand": "Show answer sheet",
+    "collapse": "Hide answer sheet"
+  },
+  "modeSummary": {
+    "inProgress": "In progress",
+    "lastScore": "Last {{rate}}%",
+    "lastAccuracy": "Last accuracy {{rate}}%",
+    "streak": "{{count}}-day streak",
+    "dailyProgress": "Today {{completed}}/{{target}}",
+    "paperReady": "{{count}}-question paper ready"
+  },
+  "stepper": {
+    "decrease": "Decrease {{label}} count",
+    "increase": "Increase {{label}} count"
   }
 }

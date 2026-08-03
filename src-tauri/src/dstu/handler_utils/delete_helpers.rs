@@ -4,12 +4,12 @@
 
 use std::sync::Arc;
 
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 
 use crate::dstu::error::DstuError;
 use crate::vfs::{
-    repos::VfsMindMapRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
+    repos::VfsMindMapRepo, VfsBlobRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo,
+    VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
 };
 
 fn helper_error(action: &str, resource_type: &str, id: &str, error: impl ToString) -> String {
@@ -227,6 +227,128 @@ pub fn purge_resource_by_type(
         id
     );
     Ok(())
+}
+
+/// Atomically verify that a resource is still in the trash, then permanently delete it.
+///
+/// The former DSTU purge flow performed this check on a separate connection before
+/// calling a repository purge method. A concurrent restore could therefore land in
+/// between the check and the delete. `BEGIN IMMEDIATE` holds SQLite's writer lock
+/// across both operations, and the repository `*_with_conn` methods keep every
+/// destructive statement on that same connection.
+pub fn purge_resource_by_type_if_trashed(
+    vfs_db: &Arc<VfsDatabase>,
+    resource_type: &str,
+    id: &str,
+) -> Result<(), String> {
+    let conn = vfs_db
+        .get_conn_safe()
+        .map_err(|e| helper_error("purge", resource_type, id, e))?;
+
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| helper_error("purge", resource_type, id, e))?;
+
+    let result = (|| -> Result<(), String> {
+        let trash_sql = match resource_type {
+            "notes" | "note" => "SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
+            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments"
+            | "attachment" => "SELECT 1 FROM files WHERE id = ?1 AND deleted_at IS NOT NULL",
+            "exams" | "exam" => {
+                "SELECT 1 FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL"
+            }
+            "translations" | "translation" => {
+                "SELECT 1 FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL"
+            }
+            "essays" | "essay" if id.starts_with("essay_session_") => {
+                "SELECT 1 FROM essay_sessions WHERE id = ?1 AND deleted_at IS NOT NULL"
+            }
+            "essays" | "essay" => "SELECT 1 FROM essays WHERE id = ?1 AND deleted_at IS NOT NULL",
+            "folders" | "folder" => {
+                "SELECT 1 FROM folders WHERE id = ?1 AND deleted_at IS NOT NULL"
+            }
+            "mindmaps" | "mindmap" => {
+                "SELECT 1 FROM mindmaps WHERE id = ?1 AND deleted_at IS NOT NULL"
+            }
+            _ => return Err(invalid_type_error(resource_type, id)),
+        };
+
+        let is_trashed = conn.query_row(trash_sql, params![id], |_| Ok(())).is_ok();
+        if !is_trashed {
+            return Err(format!(
+                "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
+                id, resource_type
+            ));
+        }
+
+        match resource_type {
+            "notes" | "note" => VfsNoteRepo::purge_note_with_conn(&conn, id),
+            "textbooks" | "textbook" => {
+                VfsTextbookRepo::purge_textbook_with_conn(&conn, vfs_db.blobs_dir(), id)
+            }
+            "translations" | "translation" => {
+                VfsTranslationRepo::purge_translation_with_conn(&conn, id)
+            }
+            "exams" | "exam" => {
+                VfsExamRepo::purge_exam_sheet_with_conn(&conn, vfs_db.blobs_dir(), id)
+            }
+            "essays" | "essay" if id.starts_with("essay_session_") => {
+                VfsEssayRepo::purge_session_with_conn(&conn, id).map(|_| ())
+            }
+            "essays" | "essay" => VfsEssayRepo::purge_essay_with_conn(&conn, id),
+            "folders" | "folder" => {
+                VfsFolderRepo::purge_folder_with_conn(&conn, vfs_db.blobs_dir(), id)
+            }
+            "images" | "files" | "attachments" | "image" | "file" | "attachment" => {
+                VfsFileRepo::purge_file_with_conn(&conn, vfs_db.blobs_dir(), id)
+            }
+            "mindmaps" | "mindmap" => VfsMindMapRepo::purge_mindmap_with_conn(&conn, id),
+            _ => unreachable!("resource type was validated above"),
+        }
+        .map_err(|e| helper_error("purge", resource_type, id, e))?;
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT")
+                .map_err(|e| helper_error("purge", resource_type, id, e))?;
+
+            // The repository entry points normally perform this post-commit
+            // sweep themselves. This path deliberately calls their
+            // connection-scoped variants to retain the atomic trash check, so
+            // preserve the same two-stage blob cleanup behavior here.
+            if matches!(
+                resource_type,
+                "textbooks"
+                    | "textbook"
+                    | "exams"
+                    | "exam"
+                    | "folders"
+                    | "folder"
+                    | "images"
+                    | "image"
+                    | "files"
+                    | "file"
+                    | "attachments"
+                    | "attachment"
+            ) {
+                if let Err(e) =
+                    VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, vfs_db.blobs_dir())
+                {
+                    log::warn!(
+                        "[DSTU::delete_helpers] Post-purge blob sweep failed (will retry later): {}",
+                        e
+                    );
+                }
+            }
+            Ok(())
+        }
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
 }
 
 /// 根据资源类型执行恢复

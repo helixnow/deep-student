@@ -1,0 +1,116 @@
+{
+  "title": "快速学习",
+  "window": {
+    "pin": "保持打开（失焦不自动隐藏）",
+    "unpin": "恢复自动隐藏",
+    "hide": "隐藏"
+  },
+  "actions": {
+    "ask": { "label": "直接提问", "hint": "先结论，再解释" },
+    "explain": { "label": "讲明白", "hint": "概念、关系和例子" },
+    "translate": { "label": "翻译", "hint": "保留术语与公式" },
+    "summarize": { "label": "提炼要点", "hint": "主旨 + 要点 + 关键词" },
+    "hint": { "label": "只给提示", "hint": "不给答案，给考点和思路" }
+  },
+  "features": {
+    "search": { "label": "找回学习记录", "hint": "笔记、教材、错题、历史会话" },
+    "review": { "label": "速刷到期卡片", "hint": "顺手复习一张" },
+    "status": { "label": "今日学习状态", "hint": "待办与复习进度" }
+  },
+  "menu": {
+    "aria_label": "学习动作",
+    "recommended": "推荐"
+  },
+  "input": {
+    "placeholder": "粘贴题目、概念、外文或截图，开始学习…",
+    "placeholder_with_capture": "补充你的问题，或直接选择动作…",
+    "search_placeholder": "搜索笔记、教材、错题和历史会话…"
+  },
+  "capture": {
+    "chars": "{{count}} 字",
+    "chars_truncated": "{{count}} 字（已截断）",
+    "clear": "清除捕获内容（输入框为空时按 Backspace 同样清除）"
+  },
+  "asked": {
+    "toggle": "点击展开 / 收起原文"
+  },
+  "answer": {
+    "copy": "复制回答",
+    "thinking": "正在思考当前学习内容",
+    "save_to": "沉淀到",
+    "note": "笔记",
+    "mistake": "错题",
+    "card": "卡片",
+    "todo": "待办",
+    "continue_in_main": "主窗口继续"
+  },
+  "search": {
+    "title": "找回学习记录",
+    "empty": "输入至少 2 个字开始搜索",
+    "searching": "正在查找你的学习内容…",
+    "conversation_fallback": "历史会话",
+    "found": "找到 {{count}} 项",
+    "none": "没有找到相关内容"
+  },
+  "review": {
+    "title": "速刷到期卡片",
+    "remaining": "剩 {{count}} 张",
+    "preparing": "正在准备复习",
+    "unnamed": "未命名卡片",
+    "no_answer": "暂无答案",
+    "show_answer": "显示答案",
+    "again": "重来",
+    "hard": "困难",
+    "good": "记得",
+    "easy": "简单",
+    "done_title": "今天的到期卡片已完成",
+    "done_subtitle": "回到主应用可以开始新的学习任务",
+    "rated": "复习进度已更新"
+  },
+  "status": {
+    "title": "今日学习状态",
+    "pending": "待处理",
+    "today_due": "今日到期",
+    "overdue": "已逾期",
+    "today_completed": "今日完成",
+    "open_plan": "打开学习计划"
+  },
+  "messages": {
+    "need_content": "先输入或粘贴要学习的内容",
+    "working": "{{action}}中…",
+    "done": "完成 · 可沉淀到学习系统",
+    "saving": "正在保存为{{target}}…",
+    "saved": "已保存为{{target}}",
+    "copied": "回答已复制",
+    "copy_failed": "复制失败",
+    "ocr_running": "正在识别图片…",
+    "ocr_done": "截图内容已捕获",
+    "ocr_empty": "未识别到文字"
+  },
+  "footer": {
+    "home": "↑↓ 选择 · Enter 执行 · Esc 隐藏",
+    "answer_busy": "Esc 停止生成",
+    "back": "Esc 返回"
+  },
+  "errors": {
+    "generation_failed": "生成失败",
+    "stopped": "生成已停止",
+    "timeout": "生成超时，请重试",
+    "mistake_save_failed": "错题保存失败",
+    "image_read_failed": "图片读取失败"
+  },
+  "service": {
+    "group_name": "快速学习",
+    "default_title": "快速学习",
+    "note_title": "快速学习笔记",
+    "note_source_heading": "原始内容",
+    "note_answer_heading": "学习整理",
+    "note_pending": "待整理",
+    "mistake_pending": "待补充解析",
+    "card_pending": "待补充答案",
+    "todo_title": "继续学习",
+    "tag": "快速学习",
+    "mistake_tag": "快速收录",
+    "need_content": "请先输入或粘贴学习内容"
+  }
+}

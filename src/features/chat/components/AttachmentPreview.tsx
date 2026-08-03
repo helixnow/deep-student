@@ -1,6 +1,9 @@
 /**
  * Chat V2 - AttachmentPreview 附件预览组件
  *
+ * @deprecated 仅被 Legacy `InputBar` 使用；主聊天路径的待发附件展示在
+ * `input-bar/AttachmentPreviewChips` + 附件面板。新功能勿双改。
+ *
  * 职责：显示附件列表，支持预览、删除操作
  *
  * 功能：
@@ -12,12 +15,12 @@
  * 6. 暗色/亮色主题支持
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   X,
   CircleNotch,
@@ -127,7 +130,7 @@ const SIZE_CONFIG = {
     iconSize: 32,
     closeBtn: 'w-4 h-4',
     closeBtnPadding: 'p-0.5',
-    fontSize: 'text-[10px]',
+    fontSize: 'text-2xs',
   },
   md: {
     container: 'w-24 h-24',
@@ -169,13 +172,16 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
   const IconComponent = getResourceIconComponent(attachment.name, attachment.mimeType);
   // 触屏无 hover:删除按钮必须常显,否则附件无法在发送前移除
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  // WebView 无法解码的图片（如 HEIC/HEIF）会触发 <img> onError，此时降级为文件图标
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   // 是否显示图片预览 (仅当有 previewUrl 且是图片类型时)
   // 如果是小尺寸，且有预览图，优先显示预览图
   // 如果是大尺寸，文档类型显示图标，图片类型显示预览图
   const showImagePreview =
     (attachment.type === 'image' || attachment.mimeType.startsWith('image/')) && 
-    attachment.previewUrl;
+    attachment.previewUrl &&
+    !previewFailed;
 
   // 状态指示
   const isPending = attachment.status === 'pending';
@@ -208,11 +214,12 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
               src={attachment.previewUrl}
               alt={attachment.name}
               className="w-full h-full object-cover"
+              onError={() => setPreviewFailed(true)}
             />
             {/* 渐变遮罩，为了显示文件名（仅在非sm尺寸） */}
             {size !== 'sm' && (
                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1 pt-4">
-                 <p className="text-white text-[10px] truncate text-center px-1">
+                 <p className="text-white text-2xs truncate text-center px-1">
                    {attachment.name}
                  </p>
                </div>
@@ -238,14 +245,17 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
 
       {/* 状态遮罩 */}
       {(isPending || isUploading) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-[1px] z-10">
+        <div data-wb-blur-surface className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-[1px] z-10">
           <CircleNotch size={24} className="animate-spin text-primary" />
         </div>
       )}
 
-      {/* 错误状态 */}
+      {/* 错误状态（title 显示具体错误信息） */}
       {isError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 z-10">
+        <div
+          className="absolute inset-0 flex items-center justify-center bg-destructive/10 z-10"
+          title={attachment.error || undefined}
+        >
           <WarningCircle size={24} className="text-destructive" />
         </div>
       )}
@@ -266,11 +276,12 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
 
       {/* 删除按钮 (悬浮在右上角) */}
       {!readonly && onRemove && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          data-wb-blur-surface
           className={cn(
             'absolute top-0.5 right-0.5 z-20 !rounded-full !p-0.5',
             'bg-black/40 hover:bg-destructive text-white',
@@ -285,12 +296,12 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
           title={t('attachmentPreview.remove')}
         >
           <X className={config.closeBtn} />
-        </NotionButton>
+        </DsButton>
       )}
 
       {/* 文件大小（大尺寸显示，非图片） */}
       {size === 'lg' && !showImagePreview && (
-        <div className="absolute bottom-1 left-0 right-0 text-[10px] text-muted-foreground text-center truncate px-2">
+        <div className="absolute bottom-1 left-0 right-0 text-2xs text-muted-foreground text-center truncate px-2">
           {formatFileSize(attachment.size)}
         </div>
       )}

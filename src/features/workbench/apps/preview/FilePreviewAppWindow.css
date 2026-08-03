@@ -1,0 +1,256 @@
+/**
+ * FilePreviewAppWindow.css — 文件预览窗外壳（wb-file-preview-*）
+ * ---------------------------------------------------------------------------
+ * 视觉基准对齐 BrowserAppWindow.css：28px 无边框图标钮、hover muted/55%、
+ * 玻璃 inset 搜索条、120–150ms 过渡。只消费语义 token，不写死 hex。
+ */
+
+.wb-file-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: hsl(var(--background));
+  outline: none;
+}
+
+/*
+ * ANTI-REGRESSION：壳层拖/缩时 useDragRenderPause 挂上 data-wb-render-paused。
+ * 只命中宿主与已知动画节点，禁止 `host *` 通配（起拖全子树样式匹配会卡一下）。
+ */
+.wb-file-preview[data-wb-render-paused] {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* animation-play-state 不下沉到后代：点名本文件内的动画/过渡节点 */
+.wb-file-preview[data-wb-render-paused] .wb-file-preview-spinner,
+.wb-file-preview[data-wb-render-paused] .wb-file-preview-search,
+.wb-file-preview[data-wb-render-paused] .wb-file-preview-search input {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* 拖/缩：根旗即可停宿主动画，不依赖延后的 per-host attr */
+:root[data-wb-dragging] .wb-file-preview,
+:root[data-wb-settling] .wb-file-preview {
+  animation-play-state: paused;
+}
+
+.wb-file-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 40px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-bottom: 1px solid hsl(var(--border) / 70%);
+  background: hsl(var(--background));
+  flex: 0 0 auto;
+}
+
+/* Tooltip 触发器 span：保持与按钮同尺寸，不打乱工具栏排布 */
+.wb-file-preview-tip-anchor {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* 分组分隔线 */
+.wb-file-preview-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: hsl(var(--border) / 80%);
+}
+
+/* 搜索开关按钮的常亮态（搜索条展开时）；双类选择器压过 ghost 变体的 bg utility */
+.wb-file-preview-toolbar .wb-file-preview-btn-active {
+  background: var(--interactive-hover, hsl(var(--muted) / 55%));
+  color: hsl(var(--foreground));
+}
+
+/* 单按钮忙碌 spinner（对齐 wb-browser-spinner） */
+.wb-file-preview-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid hsl(var(--muted-foreground) / 25%);
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: wb-file-preview-spin 0.7s linear infinite;
+}
+
+@keyframes wb-file-preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Tooltip 内的快捷键角标 */
+.wb-file-preview-kbd {
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.65;
+  letter-spacing: 0.02em;
+}
+
+/* Tooltip 第二行：禁用原因等补充说明 */
+.wb-file-preview-tip-note {
+  display: block;
+  max-width: 220px;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  opacity: 0.75;
+}
+
+/* 玻璃面内联搜索条 */
+.wb-file-preview-search {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  margin-left: auto;
+  min-width: 0;
+  width: min(340px, 60%);
+  height: 30px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
+  border-radius: var(--radius-shell-control, 12px);
+  background-color: var(--wb-glass-bg, hsl(var(--card) / 20%));
+  background-image: var(--wb-glass-sheen, none);
+  backdrop-filter: var(--wb-glass-blur, none);
+  box-shadow: var(--wb-glass-edge, none);
+  transition: border-color 150ms ease;
+}
+
+.wb-file-preview-search:focus-within {
+  border-color: var(--wb-focus-ring-color, hsl(var(--ring) / 65%));
+}
+
+.wb-file-preview-search-icon {
+  flex: 0 0 auto;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.7;
+}
+
+.wb-file-preview-search input {
+  height: 100%;
+  min-width: 40px;
+  flex: 1 1 auto;
+  border: none;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.wb-file-preview-search input::placeholder {
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.75;
+}
+
+/* 隐藏 WebKit 原生 search 清除钮，避免与自绘关闭钮重复 */
+.wb-file-preview-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.wb-file-preview-search-count {
+  flex: 0 0 auto;
+  min-width: 38px;
+  padding: 0 2px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  white-space: nowrap;
+}
+
+/* 压缩搜索条内按钮到 24px，匹配 30px 高的玻璃条 */
+.wb-file-preview-search .wb-file-preview-search-btn {
+  height: 24px;
+  width: 24px;
+  min-width: 24px;
+  border-radius: 8px;
+}
+
+/* 触屏：lg 视口下 DsButton 图标钮收缩到 28px 基准、搜索条按钮 24px，
+   coarse 指针统一放大触控目标；输入 16px 防 iOS 聚焦放大 */
+@media (pointer: coarse) {
+  .wb-file-preview-toolbar .wb-file-preview-tip-anchor > button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .wb-file-preview-search {
+    height: 40px;
+  }
+
+  .wb-file-preview-search input {
+    font-size: 16px;
+  }
+
+  .wb-file-preview-search .wb-file-preview-search-btn {
+    height: 36px;
+    width: 36px;
+    min-width: 36px;
+  }
+}
+
+.wb-file-preview-content {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-file-preview-spinner {
+    animation: none;
+    border-top-color: hsl(var(--muted-foreground) / 45%);
+  }
+
+  .wb-file-preview-search {
+    transition: none;
+  }
+}
+
+@media print {
+  /*
+   * 只在本预览窗触发打印时生效（handlePrint 会临时打上
+   * data-file-preview-printing）；避免常驻规则误伤 portal / 通知层，
+   * 也避免多开预览窗时把别的窗口内容一并打出来。
+   * Printing requires overriding application-level visibility and overflow rules.
+   */
+  /* stylelint-disable declaration-no-important */
+  body:has([data-file-preview-printing]) * {
+    visibility: hidden !important;
+  }
+
+  [data-file-preview-printing] [data-file-preview-content],
+  [data-file-preview-printing] [data-file-preview-content] * {
+    visibility: visible !important;
+  }
+
+  [data-file-preview-printing] [data-file-preview-content] {
+    position: fixed;
+    inset: 0;
+    overflow: visible !important;
+    background: hsl(var(--background));
+    print-color-adjust: exact;
+  }
+
+  /*
+   * 展开内容区内部的滚动容器（文本预览的 overflow-auto 包装、
+   * OverlayScrollbars 宿主等），让整份文档参与打印分页，
+   * 而不是只打出当前视口内的一屏切片。只放开裁剪、不动高度：
+   * PPTX 幻灯片等依赖内联尺寸做绝对定位排版。
+   */
+  [data-file-preview-printing] [data-file-preview-content] div {
+    overflow: visible !important;
+  }
+  /* stylelint-enable declaration-no-important */
+}

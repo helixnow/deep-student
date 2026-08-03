@@ -1,5 +1,5 @@
 import React from "react";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/shad/Tabs";
 import { cn } from "../../lib/utils";
 import {
@@ -11,7 +11,7 @@ import {
   useSortable,
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useTouchFriendlyDndSensors } from "@/hooks/useTouchFriendlyDndSensors";
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from "@/hooks/useTouchFriendlyDndSensors";
 import { CSS } from "@dnd-kit/utilities";
 import { X, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
@@ -74,6 +74,14 @@ const SortableTab: React.FC<SortableTabProps> = ({ tab, active, onClose }) => {
           "data-[state=active]:bg-[hsl(var(--titlebar-background)/0.9)] data-[state=active]:text-foreground data-[state=active]:border-x-border/40 data-[state=active]:font-semibold",
           isDragging && "shadow-lg bg-[hsl(var(--titlebar-background)/0.6)]",
         )}
+        onAuxClick={(event) => {
+          // 中键关闭标签（对齐浏览器习惯）
+          if (event.button === 1) {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose?.(tab.id);
+          }
+        }}
       >
         <span className="truncate" title={tab.title}>
           {tab.title}
@@ -85,9 +93,10 @@ const SortableTab: React.FC<SortableTabProps> = ({ tab, active, onClose }) => {
           className={cn(
             "absolute right-1.5 flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/70 transition-all duration-150",
             "hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
+            // 触屏无 hover：非活跃标签的关闭按钮常显弱化态（对齐 Learning Hub TabBar 范式）
             active
               ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+              : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60",
           )}
           onPointerDown={(event) => {
             event.stopPropagation();
@@ -191,11 +200,20 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
 
     const onScroll = () => updateArrows();
     el.addEventListener("scroll", onScroll, { passive: true });
+    // 滚轮横向滚动：垂直滚轮转为标签条横滚（需非 passive 才能 preventDefault）
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      if (el.scrollWidth <= el.clientWidth) return;
+      event.preventDefault();
+      el.scrollLeft += event.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
     const ro = new ResizeObserver(updateArrows);
     ro.observe(el);
     return () => {
       cancelAnimationFrame(rafId);
       el.removeEventListener("scroll", onScroll as any);
+      el.removeEventListener("wheel", onWheel);
       ro.disconnect();
     };
   }, [updateArrows]);
@@ -238,17 +256,19 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
 
   // 监听窗口尺寸变化
   React.useEffect(() => {
+    let disposed = false;
     const handleResize = () => updateArrows();
     window.addEventListener('resize', handleResize, { passive: true });
 
-    // 字体加载完成后再计算一次
+    // 字体加载完成后再计算一次（卸载后忽略回调，避免对已卸载组件更新）
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => {
-        updateArrows();
+        if (!disposed) updateArrows();
       }).catch((err) => { console.warn('[NotesTabsBar] fonts.ready failed:', err); });
     }
 
     return () => {
+      disposed = true;
       window.removeEventListener('resize', handleResize);
     };
   }, [updateArrows]);
@@ -271,24 +291,24 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
         }}
       >
         {canLeft && (
-          <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-left" className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
+          <DsButton variant="ghost" size="icon" iconOnly aria-label="scroll-left" className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
             <CaretLeft size={16} />
-          </NotionButton>
+          </DsButton>
         )}
         {canRight && (
-          <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-right" className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
+          <DsButton variant="ghost" size="icon" iconOnly aria-label="scroll-right" className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
             <CaretRight size={16} />
-          </NotionButton>
+          </DsButton>
         )}
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} autoScroll={SHELL_SAFE_AUTO_SCROLL} onDragEnd={handleDragEnd}>
           <SortableContext items={items} strategy={horizontalListSortingStrategy}>
             <TabsList
               ref={scrollRef as any}
-              className="notes-tabs-scroll flex h-full w-full items-stretch gap-0 overflow-x-auto overflow-y-hidden rounded-none border-none bg-transparent px-7 !justify-start"
+              className="notes-tabs-scroll scrollbar-none flex h-full w-full items-stretch gap-0 overflow-x-auto overflow-y-hidden rounded-none border-none bg-transparent px-7 !justify-start"
             >
               {tabs.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-muted-foreground">
-                  {t('notes:common.untitledNote')}
+                <div className="px-3 py-2 text-sm text-muted-foreground/60">
+                  {t('notes:editor.empty_state.title')}
                 </div>
               ) : (
                 tabs.map((tab) => (

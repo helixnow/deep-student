@@ -6,12 +6,13 @@
  * - 自动保存
  * - 笔记资产管理（图片上传）
  * - 与 NotesContext 集成
- * - Find & Replace（待实现）
+ * - Find & Replace
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, ArrowSquareOut, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank } from '@phosphor-icons/react';
+import { COMMAND_EVENTS } from '@/command-palette';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { shouldRequestLoadMore, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
@@ -19,27 +20,104 @@ import { useNotesOptional } from './NotesContext';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { NotionButton } from '@/components/ui/NotionButton';
-// TODO: Re-import Input & Separator when Find & Replace is implemented
-// import { Input } from '@/components/ui/shad/Input';
-// import { Separator } from '@/components/ui/shad/Separator';
+import { DsButton } from '@/components/ui/DsButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
+import {
+  MobileEditorToolbar,
+  type MobileEditorToolbarActiveStates,
+} from './components/MobileEditorToolbar';
 import { FindReplacePanel } from './components/FindReplacePanel';
+import {
+  consumeNotesFindQuery,
+  NOTES_FIND_QUERY_EVENT,
+  type NotesFindQuery,
+} from './findQueryBridge';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { isMacOS } from '../../utils/platform';
 import { useTauriDragAndDrop } from '../../hooks/useTauriDragAndDrop';
 import { useCanvasAIEditHandler } from './hooks/useCanvasAIEditHandler';
-import { AIDiffPanel } from './AIDiffPanel';
+import { computeDiffLines } from './hooks/useAIEditState';
+import { AIDiffPanel, DiffHunksView } from './AIDiffPanel';
+import { dstu } from '@/dstu';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useIsMobile } from '@/hooks/useBreakpoint';
+import { buildMobileEditorCommands } from './mobileEditorCommands';
+import { parseWorkbenchDragData, WB_RESOURCE_MIME } from '@/features/workbench/hooks/useDesktopDrop';
+import { insertWikilink } from '@/components/crepe/plugins/wikilink/autocomplete';
+import { editorViewCtx } from '@milkdown/kit/core';
+import { openQuickAssistantWindow } from '@/quick-assistant/window';
+import {
+  consumeNotesHeadingTarget,
+  NOTES_HEADING_TARGET_EVENT,
+  notesHeadingTargetMatches,
+  type NotesHeadingTarget,
+} from './headingTargetBridge';
+import {
+  CREATE_FROM_WIKILINK_EVENT,
+  createNoteFromWikilinkTitle,
+  parseCreateFromWikilinkEvent,
+  refreshWikilinksAfterCreate,
+} from './createFromWikilink';
+import {
+  buildWikilinkPluginHostConfig,
+  refreshWikilinkNotesCache,
+} from './wikilinkNotesCache';
+import '@/styles/notes-typography.css';
+import './styles/notes-editor-chrome.css';
+import { applyNoteTemplate } from './noteTemplates';
+import { NotesTemplatePanel } from './components/NotesTemplatePanel';
+import { dispatchTypedEvent } from '@/events/registry';
+import {
+  NOTES_ACTIVE_HEADING_EVENT,
+  normalizeActiveHeadingText,
+  type NotesActiveHeadingDetail,
+} from './components/outlineActiveHeadingBridge';
+import type { NotesFocusModeEventDetail } from './focusModeOwnership';
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 const SAVING_INDICATOR_DELAY_MS = 400;
+/** 焦点模式 chrome 淡出/淡入时长（与 notes-editor-chrome.css 的过渡对齐） */
+const FOCUS_CHROME_TRANSITION_MS = 200;
+
+const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** 与后端 dstu_update 的 MAX_CONTENT_SIZE 保持一致（1MB） */
 const MAX_NOTE_CONTENT_BYTES = 1024 * 1024;
 
 /** 字数统计：非空白字符数（中文场景下与用户"字数"心智一致） */
 const countNoteChars = (markdown: string): number => markdown.replace(/\s/g, '').length;
+
+// ── 移动端底部工具条单实例门控 ──
+// 多个可见编辑器实例（分屏/多面板）各自 portal 一条 fixed 工具条到 body，
+// 会互相覆写 :root 上的 --mobile-toolbar-* 变量且命令指向非用户正在编辑的实例。
+// 以"最近交互（focusin/pointerdown）"的实例为唯一持有者，只渲染一条。
+let mobileToolbarOwnerId: string | null = null;
+const mobileToolbarOwnerListeners = new Set<() => void>();
+const notifyMobileToolbarOwnerChange = () => {
+  mobileToolbarOwnerListeners.forEach((fn) => fn());
+};
+const claimMobileToolbarOwner = (id: string) => {
+  if (mobileToolbarOwnerId === id) return;
+  mobileToolbarOwnerId = id;
+  notifyMobileToolbarOwnerChange();
+};
+const releaseMobileToolbarOwner = (id: string) => {
+  if (mobileToolbarOwnerId !== id) return;
+  mobileToolbarOwnerId = null;
+  notifyMobileToolbarOwnerChange();
+};
+const subscribeMobileToolbarOwner = (fn: () => void) => {
+  mobileToolbarOwnerListeners.add(fn);
+  return () => {
+    mobileToolbarOwnerListeners.delete(fn);
+  };
+};
+const getMobileToolbarOwner = () => mobileToolbarOwnerId;
 
 type PendingSavePayload = {
   noteId: string;
@@ -72,11 +150,38 @@ export interface NotesCrepeEditorProps {
   readOnly?: boolean;
   /** 自定义类名 */
   className?: string;
+  /** 编辑器操作栏右侧的宿主应用动作（如属性/大纲入口） */
+  headerActions?: React.ReactNode;
   /** 编辑器实例变化回调（创建/销毁） */
   onEditorReady?: (api: CrepeEditorApi | null) => void;
+  /**
+   * ACR R1-13：编辑器 API 就绪/销毁回调（供 workbench noteDriver 注册表）。
+   * 与 onEditorReady 并行，互不影响既有 Learning Hub / Context 路径。
+   */
+  onEditorApiReady?: (api: CrepeEditorApi | null, previousApi?: CrepeEditorApi) => void;
+  /** Optional save-state bridge for owning tab strips. */
+  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
+  /**
+   * ACR R1-13：存在时把 isCurrentNoteDirty 挂到 contentDirtyRegistry，
+   * 供 probe / canClose 查询（typeId + instanceKey = 资源 id）。
+   */
+  dirtyRegistryKey?: { typeId: string; instanceKey: string };
+  /** Exact Workbench window for local ACR suggestion routing. */
+  acrWindowId?: string;
+  /** Focus-mode events affect only this owning Notes workspace. */
+  focusModeScopeId?: string;
   windowingState?: NotesEditorWindowingState;
   onRequestLoadMore?: (currentMarkdown: string) => Promise<MarkdownLoadMoreResult | null | void>;
   onRetryLoadMore?: () => void;
+  /** P1-10：DSTU 模式标签（透传给标题下方的内联标签行） */
+  tags?: string[];
+  /** P1-10：DSTU 模式标签变更回调 */
+  onTagsChange?: (tags: string[]) => Promise<void> | void;
+  /**
+   * 移动端底部工具条挂在 body（fixed 全宽），侧栏抽屉打开时会盖住抽屉底部
+   * 且按钮仍指向编辑器；宿主（NotesHome）在抽屉打开期间置 true 暂时隐藏。
+   */
+  suppressMobileToolbar?: boolean;
 }
 
 export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
@@ -87,12 +192,21 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   noteId: dstuNoteId,
   readOnly = false,
   className,
+  headerActions,
   onEditorReady,
+  onEditorApiReady,
+  onSaveStateChange,
+  dirtyRegistryKey,
+  acrWindowId,
+  focusModeScopeId,
   windowingState,
   onRequestLoadMore,
   onRetryLoadMore,
+  tags,
+  onTagsChange,
+  suppressMobileToolbar = false,
 }) => {
-  const { t } = useTranslation(['notes', 'common']);
+  const { t, i18n } = useTranslation(['notes', 'common']);
   
   // ========== 模式判断 ==========
   // DSTU 模式：通过 props 传入数据
@@ -112,20 +226,44 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // ========== 根据模式选择数据源 ==========
   const active = isDstuMode ? null : contextActive;
 
-  // 判断当前笔记是否被 Portal 到白板
-  // 白板功能已移除，始终为 false
-  const isPortaledToCanvas = false;
-
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef<string>('');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [editorApi, setEditorApi] = useState<CrepeEditorApi | null>(null);
+  const lifecycleApiRef = useRef<CrepeEditorApi | null>(null);
   const pendingSaveQueueRef = useRef<PendingSavePayload[]>([]);
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
+  const activeSavePayloadRef = useRef<PendingSavePayload | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  /** 当前笔记草稿是否与上次成功保存快照不同 */
+  const [isDirty, setIsDirty] = useState(false);
+  /** 最近一次放弃重试后的保存错误（冲突 / 失败） */
+  const [saveError, setSaveError] = useState<'failed' | 'conflict' | null>(null);
+  /**
+   * 保存冲突上下文。mineContent 在事件到达时同步快照自 contentRef
+   * （事件派发早于发起方的强制远端刷新，此刻编辑器里仍是用户版本）；
+   * serverContent 为发起方随事件带来的远端胜出版本（旧发起方无此字段时
+   * 「对比」降级为 dstu.getContent 拉取磁盘最新内容）。
+   */
+  const [conflictAction, setConflictAction] = useState<null | {
+    restoreMine: () => void;
+    mineContent: string;
+    serverContent?: string;
+  }>(null);
+  /** 冲突「对比」内联 diff 区展开态（grid-rows 0fr→1fr） */
+  const [conflictDiffOpen, setConflictDiffOpen] = useState(false);
+  /** 降级拉取到的远端内容（payload 无 serverContent 时） */
+  const [conflictRemoteFetched, setConflictRemoteFetched] = useState<string | null>(null);
+  const [conflictRemoteStatus, setConflictRemoteStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const conflictDiffRegionId = useId();
+
+  useEffect(() => {
+    onSaveStateChange?.(isSaving ? 'saving' : isDirty ? 'dirty' : 'saved');
+  }, [isDirty, isSaving, onSaveStateChange]);
   const draftByNoteRef = useRef<Map<string, string>>(new Map());
   const lastSavedMapRef = useRef<Map<string, string>>(new Map());
+  const dstuSaveByNoteRef = useRef<Map<string, (content: string) => Promise<void>>>(new Map());
   const noteIdRef = useRef<string | null>(null);
   const prevNoteIdRef = useRef<string | null>(null);
   const isUnmountedRef = useRef(false);
@@ -138,6 +276,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // Find & Replace 状态
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
+  const [findInitialQuery, setFindInitialQuery] = useState('');
+  /** 面板挂载容器：Cmd/Ctrl+F 已开时用于把焦点送回查找输入框（不改面板 props 面） */
+  const findReplaceContainerRef = useRef<HTMLDivElement | null>(null);
 
   // 字数统计（非空白字符数，防抖更新）
   const [charCount, setCharCount] = useState(0);
@@ -155,10 +296,159 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 阅读模式状态（防止手机滑动时弹出键盘）
   const [readingMode, setReadingMode] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const focusModeOwnerId = useId();
+  const focusModeRef = useRef(false);
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const templatePanelId = useId();
+  const templateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const effectiveReadOnly = readOnly || readingMode;
+
+  // 进入只读/阅读模式时收起模板面板（应用入口已禁用，避免留下无效面板）
+  useEffect(() => {
+    if (effectiveReadOnly) setTemplateMenuOpen(false);
+  }, [effectiveReadOnly]);
+
+  // 焦点模式沉浸过渡：进入时 chrome 先 200ms 淡出再真正隐藏（display:none），
+  // 退出时立即恢复布局并播放 200ms 淡入；reduced-motion 下直接切换。
+  const [focusChromePhase, setFocusChromePhase] = useState<'visible' | 'exiting' | 'hidden' | 'restoring'>('visible');
+  useEffect(() => {
+    if (focusMode) {
+      if (prefersReducedMotion()) {
+        setFocusChromePhase('hidden');
+        return;
+      }
+      setFocusChromePhase('exiting');
+      const timer = window.setTimeout(
+        () => setFocusChromePhase('hidden'),
+        FOCUS_CHROME_TRANSITION_MS,
+      );
+      return () => window.clearTimeout(timer);
+    }
+    if (prefersReducedMotion()) {
+      setFocusChromePhase('visible');
+      return;
+    }
+    setFocusChromePhase((prev) => (prev === 'visible' ? prev : 'restoring'));
+    const timer = window.setTimeout(
+      () => setFocusChromePhase('visible'),
+      FOCUS_CHROME_TRANSITION_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [focusMode]);
+
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((enabled) => !enabled);
+  }, []);
+
+  const publishFocusMode = useCallback((enabled: boolean) => {
+    if (!focusModeScopeId) return;
+    window.dispatchEvent(new CustomEvent<NotesFocusModeEventDetail>(
+      'notes:focus-mode-changed',
+      { detail: { ownerId: focusModeOwnerId, scopeId: focusModeScopeId, enabled } },
+    ));
+  }, [focusModeOwnerId, focusModeScopeId]);
+
+  useEffect(() => {
+    focusModeRef.current = focusMode;
+    publishFocusMode(focusMode);
+  }, [focusMode, publishFocusMode]);
+
+  useEffect(() => () => {
+    if (focusModeRef.current) publishFocusMode(false);
+  }, [publishFocusMode]);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setFocusMode(false);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [focusMode]);
+
+  const applyTemplate = useCallback((markdown: string) => {
+    if (!editorApi || effectiveReadOnly) return;
+    // 模板变量：{{date}} / {{time}} 按界面语言本地化，{{title}} 取当前笔记标题
+    const noteTitle = (isDstuMode ? initialTitle : contextActive?.title) ?? '';
+    editorApi.setMarkdown(applyNoteTemplate(editorApi.getMarkdown(), markdown, {
+      title: noteTitle,
+      locale: i18n?.resolvedLanguage ?? i18n?.language,
+    }));
+    editorApi.focus();
+    setTemplateMenuOpen(false);
+  }, [editorApi, effectiveReadOnly, isDstuMode, initialTitle, contextActive?.title, i18n]);
+
+  // 移动端底部工具条：小屏（与壳层 <768 断点一致）或触屏主指针，且处于编辑态。
+  // P0-2：仅看 (pointer: coarse) 会漏掉「窄窗桌面/模拟器」，与壳层断点对齐。
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const isSmallScreen = useIsMobile();
+  const isTouchEditingSurface = isSmallScreen || isCoarsePointer;
+  // 📱 P0 泄漏修复：编辑器壳层不可见（保活 tab display:none、三屏滑动移出
+  // 视口、切换到其他应用视图）时必须收回 body 级工具条，否则它会悬浮在
+  // 聊天输入栏 / 待办 / Finder 底栏之上拦截点击。IntersectionObserver 对
+  // display:none 与 transform 移出视口的祖先都会上报不相交，天然覆盖全部宿主。
+  const [shellInViewport, setShellInViewport] = useState(true);
+  const wantsMobileToolbar =
+    isTouchEditingSurface && !effectiveReadOnly && !!editorApi && !suppressMobileToolbar && shellInViewport;
+  // 单实例门控：多个可见编辑器只让最近交互的实例渲染 body 级工具条
+  const mobileToolbarInstanceId = useId();
+  const mobileToolbarOwner = useSyncExternalStore(subscribeMobileToolbarOwner, getMobileToolbarOwner);
+  useEffect(() => {
+    if (!wantsMobileToolbar) return undefined;
+    return () => releaseMobileToolbarOwner(mobileToolbarInstanceId);
+  }, [wantsMobileToolbar, mobileToolbarInstanceId]);
+  useEffect(() => {
+    // 无持有者时（首挂载 / 前持有者卸载或退出编辑态）由可用实例认领
+    if (wantsMobileToolbar && mobileToolbarOwner === null) {
+      claimMobileToolbarOwner(mobileToolbarInstanceId);
+    }
+  }, [wantsMobileToolbar, mobileToolbarOwner, mobileToolbarInstanceId]);
+  const showMobileToolbar = wantsMobileToolbar && mobileToolbarOwner === mobileToolbarInstanceId;
+  const [mobileActiveStates, setMobileActiveStates] = useState<MobileEditorToolbarActiveStates>({});
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const notesShellRef = useRef<HTMLDivElement>(null);
+
+  // 壳层可见性监听（P0 泄漏修复的数据源）。仅触屏编辑面需要，桌面纯鼠标不挂观察器。
+  useEffect(() => {
+    if (!isTouchEditingSurface) {
+      setShellInViewport(true);
+      return undefined;
+    }
+    const shell = notesShellRef.current;
+    if (!shell) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry) setShellInViewport(entry.isIntersecting);
+    });
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, [isTouchEditingSurface]);
+
+  // 用户在本实例内交互（聚焦/触点）时抢占工具条持有权
+  useEffect(() => {
+    if (!wantsMobileToolbar) return undefined;
+    const shell = notesShellRef.current;
+    if (!shell) return undefined;
+    const claim = () => claimMobileToolbarOwner(mobileToolbarInstanceId);
+    shell.addEventListener('focusin', claim);
+    shell.addEventListener('pointerdown', claim);
+    return () => {
+      shell.removeEventListener('focusin', claim);
+      shell.removeEventListener('pointerdown', claim);
+    };
+  }, [wantsMobileToolbar, mobileToolbarInstanceId]);
+
+  const mobileCommands = buildMobileEditorCommands(editorApi, {
+    // P0-4：图片上传归档到当前笔记资产目录
+    noteId: isDstuMode ? dstuNoteId : contextActive?.id,
+    // 底栏「查找」入口：打开编辑器内联查找替换条
+    openFind: () => setIsFindReplaceOpen(true),
+  });
 
   const cancelDebounce = () => {
     if (saveTimerRef.current) {
@@ -170,6 +460,157 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
+
+  useEffect(() => {
+    const onFindQuery = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<NotesFindQuery>>).detail;
+      if (!detail?.query || (detail.noteId && detail.noteId !== noteIdRef.current)) return;
+      const query = detail.noteId
+        ? consumeNotesFindQuery(detail.noteId) ?? detail.query
+        : detail.query;
+      setFindInitialQuery(query);
+      setIsFindReplaceOpen(true);
+    };
+    window.addEventListener(NOTES_FIND_QUERY_EVENT, onFindQuery);
+    const pending = consumeNotesFindQuery(noteIdRef.current);
+    if (pending) {
+      setFindInitialQuery(pending);
+      setIsFindReplaceOpen(true);
+    }
+    return () => window.removeEventListener(NOTES_FIND_QUERY_EVENT, onFindQuery);
+  }, []);
+
+  useEffect(() => {
+    const onConflict = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        noteId?: string;
+        restoreMine?: () => void;
+        /** 可选：发起方随事件带来的远端胜出版本（向后兼容旧发起方） */
+        serverContent?: string;
+      }>).detail;
+      if (!detail?.restoreMine || detail.noteId !== noteIdRef.current) return;
+      setConflictAction({
+        restoreMine: detail.restoreMine,
+        // 事件同步派发于发起方 refreshFromDisk(force) 之前，
+        // 此刻 contentRef 仍是被冲突顶掉的用户版本。
+        mineContent: contentRef.current,
+        serverContent: typeof detail.serverContent === 'string' ? detail.serverContent : undefined,
+      });
+      setConflictDiffOpen(false);
+      setConflictRemoteFetched(null);
+      setConflictRemoteStatus('idle');
+      setSaveError('conflict');
+    };
+    window.addEventListener('notes:content-conflict', onConflict);
+    return () => window.removeEventListener('notes:content-conflict', onConflict);
+  }, []);
+
+  // ★ 顺手修复：切换笔记时清掉上一篇的冲突横幅/对比区。
+  // 之前 conflictAction 不随 noteId 复位，横幅会带着旧笔记的 restoreMine
+  // 一直挂在新笔记上。
+  useEffect(() => {
+    setConflictAction(null);
+    setConflictDiffOpen(false);
+    setConflictRemoteFetched(null);
+    setConflictRemoteStatus('idle');
+  }, [noteId]);
+
+  /** 兼容旧发起方：payload 无 serverContent 时按需拉取磁盘最新版本 */
+  const fetchConflictRemote = useCallback(async () => {
+    const targetNoteId = noteIdRef.current;
+    if (!targetNoteId) return;
+    setConflictRemoteStatus('loading');
+    const result = await dstu.getContent(`/${targetNoteId}`);
+    if (isUnmountedRef.current || targetNoteId !== noteIdRef.current) return;
+    if (result.ok && typeof result.value === 'string') {
+      setConflictRemoteFetched(result.value);
+      setConflictRemoteStatus('idle');
+    } else {
+      setConflictRemoteStatus('error');
+    }
+  }, []);
+
+  // 「对比」首次展开且 payload 未携带远端内容时触发降级拉取
+  useEffect(() => {
+    if (!conflictDiffOpen || !conflictAction) return;
+    if (conflictAction.serverContent !== undefined || conflictRemoteFetched !== null) return;
+    if (conflictRemoteStatus !== 'idle') return;
+    void fetchConflictRemote();
+  }, [conflictDiffOpen, conflictAction, conflictRemoteFetched, conflictRemoteStatus, fetchConflictRemote]);
+
+  const conflictRemoteContent = conflictAction
+    ? (conflictAction.serverContent ?? conflictRemoteFetched)
+    : null;
+
+  // 方向：远端（当前编辑器内容）→ 我的版本。
+  // + 行 = 我的版本独有、− 行 = 远端独有，与「恢复我的版本」将应用的变化一致。
+  const conflictDiffLines = useMemo(() => {
+    if (!conflictAction || conflictRemoteContent == null) return null;
+    return computeDiffLines(conflictRemoteContent, conflictAction.mineContent);
+  }, [conflictAction, conflictRemoteContent]);
+
+  const conflictDiffStats = useMemo(() => {
+    if (!conflictDiffLines) return null;
+    return {
+      added: conflictDiffLines.filter((line) => line.type === 'added').length,
+      removed: conflictDiffLines.filter((line) => line.type === 'removed').length,
+    };
+  }, [conflictDiffLines]);
+
+  /** 冲突两个行动按钮的公共收尾：清横幅/对比区，「恢复我的版本」再执行回写 */
+  const resolveConflict = useCallback((mode: 'mine' | 'remote', action: { restoreMine: () => void }) => {
+    setConflictAction(null);
+    setConflictDiffOpen(false);
+    setConflictRemoteFetched(null);
+    setConflictRemoteStatus('idle');
+    setSaveError(null);
+    if (mode === 'mine') action.restoreMine();
+  }, []);
+
+  useEffect(() => {
+    if (!editorApi || !showMobileToolbar) return undefined;
+    const update = () => {
+      const crepe = editorApi.getCrepe();
+      if (!crepe) return;
+      crepe.editor.action((ctx) => {
+        const state = ctx.get(editorViewCtx).state;
+        const markNames = new Set(state.selection.$from.marks().map((mark) => mark.type.name));
+        const ancestorNames = new Set<string>();
+        for (let depth = state.selection.$from.depth; depth >= 0; depth -= 1) {
+          ancestorNames.add(state.selection.$from.node(depth).type.name);
+        }
+        const parent = state.selection.$from.parent;
+        const headingLevel = parent.type.name === 'heading' ? Number(parent.attrs.level) : 0;
+        setMobileActiveStates({
+          bold: markNames.has('strong'),
+          italic: markNames.has('emphasis') || markNames.has('em'),
+          strikethrough: markNames.has('strike_through') || markNames.has('strikethrough'),
+          h1: headingLevel === 1,
+          h2: headingLevel === 2,
+          h3: headingLevel === 3,
+          bullet: ancestorNames.has('bullet_list'),
+          task: ancestorNames.has('task_list') || ancestorNames.has('task_item'),
+        });
+      });
+    };
+    update();
+    document.addEventListener('selectionchange', update);
+    window.addEventListener('keyup', update, true);
+    window.addEventListener('pointerup', update, true);
+    return () => {
+      document.removeEventListener('selectionchange', update);
+      window.removeEventListener('keyup', update, true);
+      window.removeEventListener('pointerup', update, true);
+    };
+  }, [editorApi, showMobileToolbar]);
+
+  // Keep each note bound to the save callback that owns its original path.
+  // A queued draft may finish after the component has switched to another note.
+  useLayoutEffect(() => {
+    if (isDstuMode && noteId && dstuOnSave) {
+      dstuSaveByNoteRef.current.set(noteId, dstuOnSave);
+    }
+  }, [isDstuMode, noteId, dstuOnSave]);
 
   useEffect(() => {
     noteIdRef.current = noteId ?? null;
@@ -191,7 +632,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         oversizeNotifiedRef.current.add(targetNoteId);
         showGlobalNotification(
           'error',
-          t('notes:actions.content_too_large', '笔记内容超过 1MB 上限，无法保存。请删减内容或拆分为多篇笔记。')
+          t('notes:actions.content_too_large')
         );
       }
       const error = new Error('Note content exceeds 1MB limit');
@@ -199,10 +640,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       throw error;
     }
     if (isDstuMode) {
-      // DSTU 模式：调用 props 的 onSave
-      if (dstuOnSave) {
-        await dstuOnSave(content);
+      const saveTarget = dstuSaveByNoteRef.current.get(targetNoteId);
+      if (!saveTarget) {
+        console.warn('[NotesCrepeEditor] DSTU save target is no longer available', {
+          targetNoteId,
+        });
+        const error = new Error('stale_note_payload');
+        (error as Error & { isNonRetryable?: boolean }).isNonRetryable = true;
+        throw error;
       }
+      await saveTarget(content);
     } else {
       // Context 模式：调用 NotesContext.saveNoteContent
       if (saveNoteContent) {
@@ -220,8 +667,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
     if (!isUnmountedRef.current && targetNoteId === noteIdRef.current) {
       setLastSaved(new Date());
+      setSaveError(null);
+      const draft = draftByNoteRef.current.get(targetNoteId);
+      setIsDirty(typeof draft === 'string' && draft !== content);
     }
-  }, [isDstuMode, dstuOnSave, saveNoteContent, readOnly, t]);
+  }, [isDstuMode, saveNoteContent, readOnly, t]);
 
   const dequeuePending = () => {
     if (!pendingSaveQueueRef.current.length) {
@@ -234,73 +684,87 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (inFlightSaveRef.current) {
       return inFlightSaveRef.current;
     }
-    const payload = dequeuePending();
-    if (!payload) {
+    if (pendingSaveQueueRef.current.length === 0) {
       return Promise.resolve();
     }
 
     if (!savingTimerRef.current) {
       savingTimerRef.current = setTimeout(() => {
-        setIsSaving(true);
+        if (!isUnmountedRef.current) {
+          setIsSaving(true);
+        }
       }, SAVING_INDICATOR_DELAY_MS);
     }
-    const promise = executeSave(payload)
-      .then(() => {
-        // 保存成功，重置重试计数
-        saveRetryCountRef.current = 0;
-      })
-      .catch((error) => {
-        // ★ R3/Y8 修复：冲突（外部版本已胜出并刷新）与不可重试错误（内容超限）
-        // 直接丢弃该 payload，不进入重试循环。
-        const flagged = error as Error & { isNoteConflict?: boolean; isNonRetryable?: boolean };
-        if (flagged?.isNoteConflict || flagged?.isNonRetryable) {
-          console.warn('[NotesCrepeEditor] ⚠️ 保存已放弃（冲突或不可重试）:', error);
-          saveRetryCountRef.current = 0;
-          throw error;
+
+    // One shared promise drains every payload queued while a save is in flight.
+    // This is important during unmount: cleanup can enqueue the latest draft and
+    // the already-running save will still await and persist it before settling.
+    const promise = (async () => {
+      const terminalErrorsByNote = new Map<string, unknown>();
+      try {
+        let payload = dequeuePending();
+        while (payload) {
+          activeSavePayloadRef.current = payload;
+          try {
+            await executeSave(payload);
+            saveRetryCountRef.current = 0;
+            terminalErrorsByNote.delete(payload.noteId);
+          } catch (error) {
+            const flagged = error as Error & { isNoteConflict?: boolean; isNonRetryable?: boolean };
+            if (flagged?.isNoteConflict || flagged?.isNonRetryable) {
+              console.warn('[NotesCrepeEditor] ⚠️ 保存已放弃（冲突或不可重试）:', error);
+              saveRetryCountRef.current = 0;
+              if (!isUnmountedRef.current && payload.noteId === noteIdRef.current) {
+                setSaveError(flagged?.isNoteConflict ? 'conflict' : 'failed');
+              }
+              terminalErrorsByNote.set(payload.noteId, error);
+            } else {
+              console.error('[NotesCrepeEditor] ❌ 自动保存失败', error);
+              const MAX_RETRIES = 5;
+              if (saveRetryCountRef.current < MAX_RETRIES) {
+                pendingSaveQueueRef.current.unshift(payload);
+                saveRetryCountRef.current++;
+                const backoffMs = Math.min(
+                  1000 * Math.pow(2, saveRetryCountRef.current - 1),
+                  16000,
+                );
+                await new Promise<void>((resolve) => setTimeout(resolve, backoffMs));
+              } else {
+                console.error('[NotesCrepeEditor] ❌ 自动保存达到最大重试次数，放弃重试');
+                saveRetryCountRef.current = 0;
+                if (!isUnmountedRef.current && payload.noteId === noteIdRef.current) {
+                  setSaveError('failed');
+                }
+                showGlobalNotification(
+                  'error',
+                  t('notes:actions.auto_save_failed')
+                );
+                terminalErrorsByNote.set(payload.noteId, error);
+              }
+            }
+          }
+          activeSavePayloadRef.current = null;
+          payload = dequeuePending();
         }
-        console.error('[NotesCrepeEditor] ❌ 自动保存失败', error);
-        // 🔒 审计修复: 添加指数退避和最大重试次数，防止保存失败时无限高频重试
-        const MAX_RETRIES = 5;
-        if (saveRetryCountRef.current < MAX_RETRIES) {
-          pendingSaveQueueRef.current.unshift(payload);
-          saveRetryCountRef.current++;
-        } else {
-          console.error('[NotesCrepeEditor] ❌ 自动保存达到最大重试次数，放弃重试');
-          saveRetryCountRef.current = 0;
-          // [S-001] 修复：通知用户保存失败，建议手动操作
-          showGlobalNotification(
-            'error',
-            t('notes:actions.auto_save_failed', '笔记自动保存失败，请尝试手动保存（Ctrl+S）或复制内容到安全位置。')
-          );
+
+        if (terminalErrorsByNote.size > 0) {
+          throw terminalErrorsByNote.values().next().value;
         }
-        throw error;
-      })
-      .finally(() => {
+      } finally {
+        activeSavePayloadRef.current = null;
         inFlightSaveRef.current = null;
         if (savingTimerRef.current) {
           clearTimeout(savingTimerRef.current);
           savingTimerRef.current = null;
         }
-        setIsSaving(false);
-        if (pendingSaveQueueRef.current.length > 0 && !isUnmountedRef.current) {
-          // 🔒 审计修复 + 审阅修复: 仅在有重试计数时才延迟（成功后的新保存立即执行）
-          if (saveRetryCountRef.current > 0) {
-            // 指数退避延迟（1s, 2s, 4s, 8s, 16s）
-            const backoffMs = Math.min(1000 * Math.pow(2, saveRetryCountRef.current - 1), 16000);
-            setTimeout(() => {
-              if (!isUnmountedRef.current) {
-                void runPendingSave();
-              }
-            }, backoffMs);
-          } else {
-            // 成功后的正常排队保存，立即执行
-            void runPendingSave();
-          }
+        if (!isUnmountedRef.current) {
+          setIsSaving(false);
         }
-      });
+      }
+    })();
     inFlightSaveRef.current = promise;
     return promise;
-  }, [executeSave]);
+  }, [executeSave, t]);
 
   const queueSave = useCallback((content: string, overrideNoteId?: string | null) => {
     const resolvedNoteId = overrideNoteId ?? noteIdRef.current;
@@ -309,9 +773,19 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
     draftByNoteRef.current.set(resolvedNoteId, content);
     const lastSavedSnapshot = lastSavedMapRef.current.get(resolvedNoteId) ?? '';
-    
-    if (lastSavedSnapshot === content) {
-      return Promise.resolve();
+    if (!isUnmountedRef.current && resolvedNoteId === noteIdRef.current) {
+      setIsDirty(lastSavedSnapshot !== content);
+    }
+
+    const queuedTarget = [...pendingSaveQueueRef.current]
+      .reverse()
+      .find((item) => item.noteId === resolvedNoteId);
+    const activeTarget = activeSavePayloadRef.current?.noteId === resolvedNoteId
+      ? activeSavePayloadRef.current
+      : null;
+    const pipelineTarget = queuedTarget?.content ?? activeTarget?.content ?? lastSavedSnapshot;
+    if (pipelineTarget === content) {
+      return runPendingSave();
     }
     
     pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((item) => item.noteId !== resolvedNoteId);
@@ -339,7 +813,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (prevId && prevId !== noteId) {
       const prevDraft = draftByNoteRef.current.get(prevId);
       if (typeof prevDraft === 'string') {
-        queueSave(prevDraft, prevId).catch(() => {});
+        queueSave(prevDraft, prevId)
+          .catch(() => {})
+          .finally(() => {
+            if (noteIdRef.current !== prevId) {
+              dstuSaveByNoteRef.current.delete(prevId);
+            }
+          });
+      } else {
+        dstuSaveByNoteRef.current.delete(prevId);
       }
       // 保存已入队，清理旧笔记的草稿/快照条目，避免 Map 无限增长
       draftByNoteRef.current.delete(prevId);
@@ -409,6 +891,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     // 导致保存状态指示器永远不可见。
     if (isNewNote) {
       setLastSaved(active?.updated_at ? new Date(active.updated_at) : null);
+      setSaveError(null);
+      if (noteId) {
+        const draft = draftByNoteRef.current.get(noteId);
+        const saved = lastSavedMapRef.current.get(noteId) ?? '';
+        setIsDirty(typeof draft === 'string' && draft !== saved);
+      } else {
+        setIsDirty(false);
+      }
     } else if (!isDstuMode && active?.updated_at) {
       // Context 模式：保留原行为，updated_at 推进时刷新显示
       setLastSaved(new Date(active.updated_at));
@@ -417,7 +907,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     // 之前的实现会导致：initialValue 变化时 setEditorApi(null)，但如果 contentVersionKey 不变
     // （比如 DSTU 模式下 noteId 相同），CrepeEditor 不会重新挂载，onReady 不会被调用，
     // editorApi 保持为 null，工具栏永久禁用
-  }, [initialValue, noteId, active?.updated_at]);
+  }, [initialValue, noteId, active?.updated_at, isDstuMode]);
 
   // 🔧 新增：只在 noteId 变化时重置 editorApi（这会触发 CrepeEditor 重新挂载）
   useLayoutEffect(() => {
@@ -426,8 +916,19 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   const handleManualSave = useCallback(async () => {
     if (effectiveReadOnly) return;
+    setSaveError(null);
     await flushNoteDraft();
   }, [flushNoteDraft, effectiveReadOnly]);
+
+  const saveStatus: 'saved' | 'saving' | 'unsaved' | 'failed' | 'conflict' = isSaving
+    ? 'saving'
+    : saveError === 'conflict'
+      ? 'conflict'
+      : saveError === 'failed'
+        ? 'failed'
+        : isDirty
+          ? 'unsaved'
+          : 'saved';
 
   const handleChange = useCallback((markdown: string) => {
     if (effectiveReadOnly) {
@@ -437,6 +938,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       contentRef.current = markdown;
       if (noteId) {
         draftByNoteRef.current.set(noteId, markdown);
+        const lastSavedSnapshot = lastSavedMapRef.current.get(noteId) ?? '';
+        setIsDirty(markdown !== lastSavedSnapshot);
       }
       setCharCount(countNoteChars(markdown));
       return;
@@ -444,6 +947,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     contentRef.current = markdown;
     if (noteId) {
       draftByNoteRef.current.set(noteId, markdown);
+      const lastSavedSnapshot = lastSavedMapRef.current.get(noteId) ?? '';
+      setIsDirty(markdown !== lastSavedSnapshot);
     }
     cancelDebounce();
     saveTimerRef.current = setTimeout(() => {
@@ -474,7 +979,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         detail: { noteId: eventNoteId, content: markdown }
       }));
     }, 500);
-  }, [noteId, queueSave, isDstuMode, effectiveReadOnly]);
+  }, [noteId, queueSave, effectiveReadOnly]);
 
   // 保存 ref
   const flushNoteDraftRef = useRef(flushNoteDraft);
@@ -484,6 +989,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 清理
   useEffect(() => {
+    isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
       cancelDebounce();
@@ -529,6 +1035,38 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       container.removeEventListener('compositionend', handleCompositionEnd, { capture: true });
     };
   }, [isDstuMode]);
+
+  useEffect(() => {
+    const container = dropZoneRef.current;
+    if (!container || !editorApi || effectiveReadOnly) return;
+    const onDragOver = (event: DragEvent) => {
+      if (!Array.from(event.dataTransfer?.types ?? []).includes(WB_RESOURCE_MIME)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!event.dataTransfer) return;
+      const resource = parseWorkbenchDragData(event.dataTransfer);
+      if (!resource || resource.resourceType !== 'note') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const crepe = editorApi.getCrepe();
+      if (!crepe) return;
+      crepe.editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const point = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        const position = point?.pos ?? view.state.selection.from;
+        insertWikilink(view, position, position, resource.title);
+        view.focus();
+      });
+    };
+    container.addEventListener('dragover', onDragOver, true);
+    container.addEventListener('drop', onDrop, true);
+    return () => {
+      container.removeEventListener('dragover', onDragOver, true);
+      container.removeEventListener('drop', onDrop, true);
+    };
+  }, [editorApi, effectiveReadOnly]);
 
   // 🔧 修复：监听 canvas:content-changed 事件，用于后端 Canvas 工具更新笔记后刷新编辑器
   useEffect(() => {
@@ -612,6 +1150,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       }
       setCharCount(countNoteChars(newContent));
       setLastSaved(new Date());
+      // 外部版本已应用：清掉失败/冲突态与脏标记，避免 Header 仍显示 Conflict/Unsaved
+      if (!isUnmountedRef.current) {
+        setSaveError(null);
+        setIsDirty(false);
+      }
     };
 
     window.addEventListener('notes:external-updated', handleExternalUpdated);
@@ -644,6 +1187,62 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       window.removeEventListener('notes:request-save', handleRequestSave);
     };
   }, [runPendingSave]);
+
+  // 宿主 wikilink 索引：挂载时拉取；创建后由 createFromWikilink upsert
+  useEffect(() => {
+    void refreshWikilinkNotesCache();
+  }, []);
+
+  useEffect(() => {
+    if (!editorApi || !noteId) return;
+    const scroll = (heading: string) => {
+      // Level 0 asks Crepe to match the heading text across all heading levels.
+      // 精确匹配谓词与 [[Note#Heading]] 补全/解析共用同一套规范化
+      //（大小写、全半角、中文标点、空白折叠），避免锚点漂移。
+      editorApi.scrollToHeading?.(heading, 0, heading.toLowerCase().trim(), (docHeading) =>
+        notesHeadingTargetMatches(docHeading, heading)
+      );
+    };
+    const onHeadingTarget = (event: Event) => {
+      const detail = (event as CustomEvent<NotesHeadingTarget>).detail;
+      if (detail?.noteId !== noteId || !detail.heading) return;
+      consumeNotesHeadingTarget(noteId);
+      scroll(detail.heading);
+    };
+    window.addEventListener(NOTES_HEADING_TARGET_EVENT, onHeadingTarget);
+    const pending = consumeNotesHeadingTarget(noteId);
+    if (pending) scroll(pending);
+    return () => window.removeEventListener(NOTES_HEADING_TARGET_EVENT, onHeadingTarget);
+  }, [editorApi, noteId]);
+
+  // 未解析 wikilink 点击 → 创建笔记 → 刷新链接样式 → DSTU_OPEN_NOTE
+  useEffect(() => {
+    const handleCreateFromWikilink = (event: Event) => {
+      const title = parseCreateFromWikilinkEvent(event);
+      if (!title) return;
+      void createNoteFromWikilinkTitle(title).then((noteId) => {
+        if (!noteId || isUnmountedRef.current) return;
+        refreshWikilinksAfterCreate(editorApi, title);
+      });
+    };
+
+    window.addEventListener(CREATE_FROM_WIKILINK_EVENT, handleCreateFromWikilink);
+    return () => {
+      window.removeEventListener(CREATE_FROM_WIKILINK_EVENT, handleCreateFromWikilink);
+    };
+  }, [editorApi]);
+
+  // 自动保存兜底：窗口隐藏（切到别的 App / 最小化）时立即冲刷待保存草稿，
+  // 不等 1.5s 防抖到期，降低桌面端强杀进程时的丢字风险。
+  useEffect(() => {
+    const flushOnHide = () => {
+      if (document.visibilityState !== 'hidden') return;
+      cancelDebounce();
+      flushNoteDraftRef.current()?.catch(() => {});
+    };
+    document.addEventListener('visibilitychange', flushOnHide);
+    return () => document.removeEventListener('visibilitychange', flushOnHide);
+  }, []);
 
   // beforeunload
   // ★ Y5 修复：检查所有笔记的草稿/保存队列（含后台 tab 的笔记），
@@ -692,19 +1291,42 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === 'f') {
         const activeEl = document.activeElement as HTMLElement | null;
         const isEditorFocused = !!activeEl && !!dropZoneRef.current?.contains(activeEl);
-        // 已打开时按 Cmd+F 只刷新焦点；未聚焦编辑器时不拦截（避免干扰其他面板）
+        // 已打开时按 Cmd+F 重新聚焦查找输入框；未聚焦编辑器时不拦截（避免干扰其他面板）
         if (!isEditorFocused && !isFindReplaceOpen) {
           return;
         }
         e.preventDefault();
         e.stopPropagation();
-        setIsFindReplaceOpen(true);
+        if (isFindReplaceOpen) {
+          // 面板已开：把焦点送回查找输入框并全选，方便直接换词
+          const input = findReplaceContainerRef.current?.querySelector('input');
+          if (input instanceof HTMLInputElement) {
+            input.focus();
+            input.select();
+          }
+        } else {
+          setIsFindReplaceOpen(true);
+        }
+        return;
+      }
+      // Cmd/Ctrl+Shift+U：进入/退出焦点模式
+      //（mod+shift+f 已被库级搜索命令占用，见 notes.commands.ts）
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'u') {
+        const activeEl = document.activeElement as HTMLElement | null;
+        const isEditorFocused = !!activeEl && !!dropZoneRef.current?.contains(activeEl);
+        // 编辑器聚焦时进入；焦点模式已开时随处可退出
+        if (!isEditorFocused && !focusModeRef.current) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFocusMode();
         return;
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleManualSave, effectiveReadOnly, t, isFindReplaceOpen]);
+  }, [handleManualSave, effectiveReadOnly, t, isFindReplaceOpen, toggleFocusMode]);
 
   // Find/Replace handlers
   const handleFindReplaceClose = useCallback(() => {
@@ -748,21 +1370,45 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 编辑器就绪回调
   const handleEditorReady = useCallback((api: CrepeEditorApi) => {
-    setEditorApi(api);
-    onEditorReady?.(api);
+    const lifecycleApi: CrepeEditorApi = {
+      ...api,
+      flushPendingSave: async () => {
+        const targetNoteId = noteIdRef.current;
+        if (!targetNoteId) return;
+
+        // Crepe 的 onChange 有 250ms 合并窗口。ACR 不能在它尚未回调时
+        // 就把视觉插入误报为“已自动保存”，因此直接以编辑器当前全文刷新草稿。
+        const currentMarkdown = api.getMarkdown();
+        contentRef.current = currentMarkdown;
+        draftByNoteRef.current.set(targetNoteId, currentMarkdown);
+        const saved = lastSavedMapRef.current.get(targetNoteId) ?? '';
+        setIsDirty(currentMarkdown !== saved);
+        await flushNoteDraftRef.current(targetNoteId);
+      },
+    };
+
+    setEditorApi(lifecycleApi);
+    lifecycleApiRef.current = lifecycleApi;
+    onEditorReady?.(lifecycleApi);
+    onEditorApiReady?.(lifecycleApi);
     // 将 Crepe API 设置到 Context（仅 Context 模式）
     if (!isDstuMode && setEditor) {
-      setEditor(api);
+      setEditor(lifecycleApi);
     }
-  }, [isDstuMode, onEditorReady, setEditor]);
+  }, [isDstuMode, onEditorReady, onEditorApiReady, setEditor]);
 
   useEffect(() => {
     return () => {
       onEditorReady?.(null);
+      const previousApi = lifecycleApiRef.current;
+      lifecycleApiRef.current = null;
+      onEditorApiReady?.(null, previousApi ?? undefined);
     };
-  }, [onEditorReady]);
+  }, [onEditorReady, onEditorApiReady]);
 
   // AI 编辑保存回调（用于 Canvas AI 编辑后自动保存）
+  // DSTU / workbench：走 props.onSave（NoteContentView.handleSave）；
+  // legacy Context Canvas：走 saveNoteContent。
   const handleAISave = useCallback(async (content: string) => {
     if (isDstuMode) {
       if (dstuOnSave) {
@@ -773,11 +1419,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
   }, [isDstuMode, dstuOnSave, noteId, saveNoteContent]);
 
+  // ACR R1-13：DSTU 下 hasSelection/isContentLoaded 恒为 true，故 workbench note 窗
+  // 同样监听 canvas:ai-edit-request → AIDiffPanel；legacy Context 条件不变。
   const {
     aiEditState,
     handleAccept,
     handleReject,
-    isLocked: isAIEditLocked,
+    isApplying: isAIEditApplying,
     checkpoint: aiCheckpoint,
     rollbackCheckpoint,
     dismissCheckpoint,
@@ -786,6 +1434,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     editorApi,
     onSave: handleAISave,
     enabled: hasSelection && isContentLoaded,
+    windowId: acrWindowId,
   });
 
   const captureViewportMetrics = useCallback(() => {
@@ -809,6 +1458,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       inFlightSaveRef.current !== null
     );
   }, []);
+
+  // ACR R1-13：把真实 isDirty 接入 contentDirtyRegistry（probe / canClose）
+  useEffect(() => {
+    if (!dirtyRegistryKey) return;
+    return registerContentDirtyChecker(
+      dirtyRegistryKey.typeId,
+      dirtyRegistryKey.instanceKey,
+      isCurrentNoteDirty,
+    );
+  }, [dirtyRegistryKey?.typeId, dirtyRegistryKey?.instanceKey, isCurrentNoteDirty]);
 
   const applyWindowExpansion = useCallback((result: MarkdownLoadMoreResult) => {
     if (!editorApi || !noteId) {
@@ -866,6 +1525,103 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         loadMoreInFlightRef.current = false;
       });
   }, [applyWindowExpansion, captureViewportMetrics, editorApi, onRequestLoadMore, windowingState]);
+
+  // ── 大纲滚动跟随：rAF 节流地广播视口顶部附近的当前标题 ──
+  const activeHeadingRafRef = useRef<number | null>(null);
+  const lastActiveHeadingKeyRef = useRef<string | null>(null);
+
+  const publishActiveHeading = useCallback(() => {
+    if (activeHeadingRafRef.current !== null) return;
+    activeHeadingRafRef.current = requestAnimationFrame(() => {
+      activeHeadingRafRef.current = null;
+      const viewport = scrollViewportRef.current;
+      const container = dropZoneRef.current;
+      const currentNoteId = noteIdRef.current;
+      if (!viewport || !container || !currentNoteId || isUnmountedRef.current) return;
+      const headingEls = container.querySelectorAll<HTMLElement>(
+        '.crepe-editor-wrapper h1, .crepe-editor-wrapper h2, .crepe-editor-wrapper h3, .crepe-editor-wrapper h4, .crepe-editor-wrapper h5, .crepe-editor-wrapper h6',
+      );
+      if (headingEls.length === 0) return;
+      // 视口顶部下方 96px 作为"当前阅读行"锚点；取其上方最近的标题
+      const anchorTop = viewport.getBoundingClientRect().top + 96;
+      let current: HTMLElement | null = null;
+      for (const el of headingEls) {
+        if (el.getBoundingClientRect().top <= anchorTop) {
+          current = el;
+        } else {
+          break;
+        }
+      }
+      const target = current ?? headingEls[0];
+      const text = normalizeActiveHeadingText(target.textContent ?? '');
+      if (!text) return;
+      const level = Number(target.tagName.slice(1)) || 0;
+      // 同名同级标题按文档序去歧义
+      let occurrence = 0;
+      for (const el of headingEls) {
+        if (el === target) break;
+        if (
+          el.tagName === target.tagName &&
+          normalizeActiveHeadingText(el.textContent ?? '') === text
+        ) {
+          occurrence += 1;
+        }
+      }
+      const key = `${currentNoteId}:${level}:${occurrence}:${text}`;
+      if (key === lastActiveHeadingKeyRef.current) return;
+      lastActiveHeadingKeyRef.current = key;
+      dispatchTypedEvent(NOTES_ACTIVE_HEADING_EVENT, {
+        noteId: currentNoteId,
+        text,
+        level,
+        occurrence,
+      } satisfies NotesActiveHeadingDetail);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (activeHeadingRafRef.current !== null) {
+      cancelAnimationFrame(activeHeadingRafRef.current);
+      activeHeadingRafRef.current = null;
+    }
+  }, []);
+
+  // 切换笔记后允许立即重新广播（key 含 noteId，这里只是显式复位）
+  useEffect(() => {
+    lastActiveHeadingKeyRef.current = null;
+  }, [noteId]);
+
+  // ── 移动端工具条滚动收起：下滑隐藏、上滑/到顶恢复；键盘弹出时不收起 ──
+  const [mobileToolbarCollapsed, setMobileToolbarCollapsed] = useState(false);
+  const lastScrollTopRef = useRef(0);
+
+  const handleMobileToolbarScroll = useCallback(() => {
+    if (!showMobileToolbar) return;
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+    const top = viewport.scrollTop;
+    const delta = top - lastScrollTopRef.current;
+    lastScrollTopRef.current = top;
+    // 接近顶部 / 底部时始终展示（底部常有待勾选任务列表）
+    const nearEdge = top < 24 ||
+      top + viewport.clientHeight >= viewport.scrollHeight - 24;
+    if (nearEdge || delta < -4) {
+      setMobileToolbarCollapsed(false);
+    } else if (delta > 12) {
+      setMobileToolbarCollapsed(true);
+    }
+  }, [showMobileToolbar]);
+
+  // 工具条隐藏条件变化（键盘收起 / 切换笔记 / 退出编辑态）时恢复展示
+  useEffect(() => {
+    if (!showMobileToolbar) setMobileToolbarCollapsed(false);
+  }, [showMobileToolbar]);
+
+  const handleViewportScroll = useCallback(() => {
+    handleWindowScroll();
+    publishActiveHeading();
+    handleMobileToolbarScroll();
+  }, [handleWindowScroll, publishActiveHeading, handleMobileToolbarScroll]);
 
   // 处理大纲滚动事件
   useEffect(() => {
@@ -934,7 +1690,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-8 max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-300">
+        <div className="flex flex-col items-center gap-8 max-w-md w-full p-6 ui-zoom-fade-in">
           <div className="flex flex-col items-center gap-2 text-center">
             <h3 className="text-lg font-medium text-foreground/90">
               {t('notes:editor.empty_state.title')}
@@ -945,8 +1701,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           </div>
 
           <div className="w-full max-w-2xl flex flex-wrap items-stretch justify-center gap-3">
-            <NotionButton
-              onClick={() => createNote()}
+            <DsButton
+              onClick={() => {
+                if (createNote) {
+                  void createNote();
+                  return;
+                }
+                // DSTU / Learning Hub：走命令事件，避免 Context createNote 为空时空点
+                window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_CREATE_NEW));
+              }}
               disabled={readOnly}
               className="w-full min-w-[220px] h-auto py-3 justify-between text-left"
               size="lg"
@@ -959,14 +1722,18 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               <div className="flex items-center gap-1">
                 <ShortcutKey>{isMacOS() ? '⌘N' : 'Ctrl+N'}</ShortcutKey>
               </div>
-            </NotionButton>
+            </DsButton>
 
-            <NotionButton
+            <DsButton
               onClick={async () => {
-                const id = await createFolder();
-                if (id) {
-                  setSidebarRevealId(id);
+                if (createFolder) {
+                  const id = await createFolder();
+                  if (id) {
+                    setSidebarRevealId?.(id);
+                  }
+                  return;
                 }
+                window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_CREATE_FOLDER));
               }}
               disabled={readOnly}
               className="w-full min-w-[220px] h-auto py-3 justify-between text-left"
@@ -977,14 +1744,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <FolderPlus size={16} className="text-muted-foreground transition-colors" />
                 {t('notes:editor.empty_state.actions.new_folder')}
               </div>
-            </NotionButton>
-            
-            <NotionButton
+            </DsButton>
+
+            <DsButton
               onClick={() => {
                 try {
+                  // Context 侧栏 + Learning Hub 侧栏各听不同事件，一并派发
                   window.dispatchEvent(new CustomEvent('notes:focus-sidebar-search'));
+                  window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_FOCUS_SEARCH));
                 } catch (error: unknown) {
-                  console.warn('[NotesCrepeEditor] Failed to dispatch notes:focus-sidebar-search:', error);
+                  console.warn('[NotesCrepeEditor] Failed to dispatch focus-search events:', error);
                 }
               }}
               disabled={readOnly}
@@ -996,7 +1765,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <MagnifyingGlass size={16} className="text-muted-foreground transition-colors" />
                 {t('notes:editor.empty_state.actions.search_note')}
               </div>
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       </div>
@@ -1008,10 +1777,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   return (
     <ErrorBoundary name="NotesEditor">
-    <div className={cn("flex-1 min-h-0 flex flex-col bg-background relative", className)}>
+    <div
+      ref={notesShellRef}
+      className={cn("notes-crepe-shell flex-1 min-h-0 flex flex-col bg-background relative", className)}
+      // display:none（宿主样式）在 chrome 淡出完成后才生效，保证 200ms 沉浸过渡可见
+      data-focus-mode={focusMode && focusChromePhase === 'hidden' ? 'true' : 'false'}
+      data-focus-chrome={focusChromePhase}
+    >
       {/* 内容加载中遮罩 - 覆盖在编辑器上方 */}
       {!isContentLoaded && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div data-wb-blur-surface className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <span className="loading loading-spinner loading-lg text-muted-foreground/60" />
         </div>
       )}
@@ -1019,32 +1794,32 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       {/* 图片拖拽覆盖层 */}
       {isDraggingOver && (
         <div 
-          className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none animate-in fade-in duration-150"
-          style={{ backgroundColor: 'hsl(var(--primary) / 0.08)', backdropFilter: 'blur(2px)' }}
+          className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none ui-rise-in"
+          style={{ backgroundColor: 'hsl(var(--background) / 0.72)' }}
         >
           <div 
-            className="flex flex-col items-center gap-4 px-10 py-8 rounded-2xl pointer-events-none"
+            className="flex flex-col items-center gap-3 px-7 py-5 rounded-[var(--radius-shell-control,12px)] pointer-events-none"
             style={{ 
-              backgroundColor: 'hsl(var(--background) / 0.95)', 
-              border: '2.5px dashed hsl(var(--primary))',
-              boxShadow: '0 8px 32px hsl(var(--primary) / 0.15), 0 0 0 1px hsl(var(--primary) / 0.1)'
+              backgroundColor: 'hsl(var(--background))',
+              border: '1px dashed hsl(var(--border))',
+              boxShadow: 'var(--notes-popup-shadow, 0 4px 16px hsl(var(--shadow-base) / 0.12))'
             }}
           >
             <div 
-              className="w-16 h-16 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: 'hsl(var(--primary) / 0.12)' }}
+              className="w-9 h-9 rounded-sm flex items-center justify-center"
+              style={{ backgroundColor: 'hsl(var(--muted))' }}
             >
-              <ImageSquare size={32} style={{ color: 'hsl(var(--primary))' }} />
+              <ImageSquare size={20} style={{ color: 'hsl(var(--muted-foreground))' }} />
             </div>
             <div className="flex flex-col items-center gap-1.5">
               <span 
-                className="text-lg font-semibold"
+                className="text-sm font-medium"
                 style={{ color: 'hsl(var(--foreground))' }}
               >
                 {t('notes:editor.image_upload.drop_overlay_title')}
               </span>
               <span 
-                className="text-sm"
+                className="text-xs"
                 style={{ color: 'hsl(var(--muted-foreground))' }}
               >
                 {t('notes:editor.image_upload.drop_overlay_hint')}
@@ -1054,176 +1829,419 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         </div>
       )}
 
-      {/* AI 编辑 Diff 面板 */}
+      {conflictAction && (
+        <div
+          className="notes-conflict-banner flex-shrink-0 flex-wrap"
+          role="alert"
+        >
+          <WarningCircle
+            size={16}
+            weight="fill"
+            className="shrink-0 text-[hsl(var(--warning,38_70%_45%))]"
+            aria-hidden
+          />
+          <span className="min-w-[160px] font-medium text-foreground/90">
+            {t('notes:editor.conflict_refreshed')}
+          </span>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11',
+                conflictDiffOpen
+                  ? 'bg-[var(--interactive-hover)] text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => setConflictDiffOpen((open) => !open)}
+              aria-expanded={conflictDiffOpen}
+              aria-controls={conflictDiffRegionId}
+            >
+              <GitDiff size={13} className="mr-1" aria-hidden />
+              {conflictDiffOpen
+                ? t('notes:editorV2.conflict_compare_hide', 'Hide comparison')
+                : t('notes:editorV2.conflict_compare', 'Compare')}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
+              onClick={() => resolveConflict('mine', conflictAction)}
+            >
+              {t('notes:editor.conflict_restore_mine')}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+              onClick={() => resolveConflict('remote', conflictAction)}
+            >
+              {t('notes:editor.conflict_keep_remote', 'Keep remote')}
+            </DsButton>
+          </div>
+        </div>
+      )}
+
+      {/* 冲突「对比」：编辑器上方内联展开的只读 diff 区（grid-rows 0fr→1fr），
+          非浮层、随文档流参与布局；reduced-motion 下瞬时切换 */}
+      {conflictAction && (
+        <div
+          id={conflictDiffRegionId}
+          className={cn(
+            'grid flex-shrink-0 transition-[grid-template-rows] duration-200 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none',
+            conflictDiffOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+          )}
+          aria-hidden={!conflictDiffOpen}
+          // inert：收起时阻止内部按钮被 Tab 聚焦（React 18 类型未收录该属性，需绕过）
+          {...(!conflictDiffOpen
+            ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>)
+            : {})}
+        >
+          <div
+            className={cn(
+              'min-h-0 overflow-hidden bg-background',
+              // 收起（0fr）时内容高度为 0 但边框仍占 1px，会在横幅下多出一道线；仅展开时描边
+              conflictDiffOpen && 'border-b border-border',
+            )}
+          >
+            <div className="mx-auto w-full max-w-[var(--notes-content-max-w)] px-5 py-2 sm:px-12">
+              <section
+                aria-label={t('notes:editorV2.conflict_diff_title', 'My version vs remote version')}
+                className="flex max-h-[min(40vh,360px)] flex-col overflow-hidden rounded-[var(--radius-shell-control,12px)] border border-border bg-card shadow-[0_1px_3px_hsl(var(--shadow-base)/0.08)]"
+              >
+                <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-1.5">
+                  <GitDiff size={14} className="shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-0 truncate text-xs font-medium">
+                    {t('notes:editorV2.conflict_diff_title', 'My version vs remote version')}
+                  </span>
+                  {conflictDiffStats && (
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      <span className="text-[hsl(var(--success))]">+{conflictDiffStats.added}</span>
+                      {' / '}
+                      <span className="text-[hsl(var(--destructive))]">-{conflictDiffStats.removed}</span>
+                    </span>
+                  )}
+                  <span className="ml-auto hidden shrink-0 text-[11px] text-muted-foreground/80 sm:inline">
+                    {t('notes:editorV2.conflict_diff_legend', '+ mine · − remote')}
+                  </span>
+                </div>
+
+                {conflictDiffLines ? (
+                  conflictDiffStats && (conflictDiffStats.added > 0 || conflictDiffStats.removed > 0) ? (
+                    <CustomScrollArea className="min-h-0 flex-1" viewportClassName="py-1">
+                      <DiffHunksView lines={conflictDiffLines} />
+                    </CustomScrollArea>
+                  ) : (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      {t('notes:editorV2.conflict_diff_identical', 'Both versions are identical')}
+                    </div>
+                  )
+                ) : conflictRemoteStatus === 'error' ? (
+                  <div className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                    <span>{t('notes:editorV2.conflict_diff_load_failed', 'Could not load the remote version')}</span>
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => { void fetchConflictRemote(); }}
+                    >
+                      {t('notes:editorV2.conflict_diff_retry', 'Retry')}
+                    </DsButton>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                    <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden />
+                    <span>{t('notes:editorV2.conflict_diff_loading', 'Loading remote version…')}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-shrink-0 items-center justify-end gap-1.5 border-t border-border/60 bg-muted/20 px-3 py-2">
+                  <DsButton
+                    variant="outline"
+                    size="sm"
+                    className="h-7"
+                    onClick={() => resolveConflict('remote', conflictAction)}
+                  >
+                    {t('notes:editor.conflict_keep_remote', 'Keep remote')}
+                  </DsButton>
+                  <DsButton
+                    size="sm"
+                    className="h-7"
+                    onClick={() => resolveConflict('mine', conflictAction)}
+                  >
+                    {t('notes:editor.conflict_restore_mine')}
+                  </DsButton>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
+      <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background">
+        <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
+            <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
+          <div className="ml-auto flex items-center gap-1">
+            {!readOnly && (
+              <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
+                <DsButton
+                  ref={templateTriggerRef}
+                  variant="ghost"
+                  iconOnly
+                  size="sm"
+                  className={cn(
+                    'h-7 w-7 transition-colors',
+                    templateMenuOpen
+                      ? 'bg-[var(--interactive-hover)] text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={() => setTemplateMenuOpen((prev) => !prev)}
+                  aria-label={t('notes:toolbar.note_templates', 'Note templates')}
+                  aria-expanded={templateMenuOpen}
+                  aria-controls={templatePanelId}
+                >
+                  <NoteBlank size={16} />
+                </DsButton>
+              </CommonTooltip>
+            )}
+            <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
+              <DsButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => { void openQuickAssistantWindow(); }}
+                aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
+              >
+                <Robot size={16} />
+              </DsButton>
+            </CommonTooltip>
+            {/* 查找替换按钮 */}
+            <CommonTooltip content={t('notes:toolbar.find_replace')} position="bottom">
+              <DsButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className={cn(
+                  'h-7 w-7 flex-shrink-0 transition-colors',
+                  isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+                onClick={() => setIsFindReplaceOpen((prev) => !prev)}
+                aria-label={t('notes:toolbar.find_replace')}
+                aria-pressed={isFindReplaceOpen}
+              >
+                <MagnifyingGlass size={16} />
+              </DsButton>
+            </CommonTooltip>
+            {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
+            {!readOnly && (
+              <CommonTooltip
+                content={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+                position="bottom"
+              >
+                <DsButton
+                  variant="ghost"
+                  iconOnly
+                  size="sm"
+                  className={cn(
+                    "h-7 w-7 flex-shrink-0 transition-colors",
+                    readingMode
+                      ? "bg-[var(--interactive-hover)] text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  onClick={() => {
+                    const next = !readingMode;
+                    // 进入阅读模式时先 flush 草稿，防止丢失未保存内容
+                    if (next) {
+                      void flushNoteDraft().catch(() => {});
+                    }
+                    setReadingMode(next);
+                    // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
+                  }}
+                  aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+                  aria-pressed={readingMode}
+                >
+                  {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
+                </DsButton>
+              </CommonTooltip>
+            )}
+            <CommonTooltip
+              content={`${focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')} (${isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'})`}
+              position="bottom"
+            >
+              <DsButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={toggleFocusMode}
+                aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
+                aria-pressed={focusMode}
+              >
+                {focusMode ? <CornersIn size={16} /> : <CornersOut size={16} />}
+              </DsButton>
+            </CommonTooltip>
+            {headerActions}
+          </div>
+        </div>
+
+        {/* 模板内联面板：编辑器顶部随文档流展开（grid-rows 0fr→1fr），无浮层遮挡；
+            方向键在卡片间移动、Enter 应用、Esc 收起（见 NotesTemplatePanel） */}
+        {!readOnly && (
+          <NotesTemplatePanel
+            open={templateMenuOpen}
+            onRequestClose={() => setTemplateMenuOpen(false)}
+            onApplyTemplate={(template) => applyTemplate(template.markdown)}
+            disabled={effectiveReadOnly || !editorApi}
+            panelId={templatePanelId}
+            triggerRef={templateTriggerRef}
+          />
+        )}
+
+        {/* ★ 2.1 AI 编辑检查点：接受后仍可整轮回滚。
+            内联 info bar（参与布局、不遮挡文档标题），随 pane 顶栏保持可见 */}
+        {aiCheckpoint && !aiEditState.isActive && (
+          <div className="notes-ai-checkpoint-bar w-full border-t border-border/50 bg-[hsl(var(--primary)/0.05)] ui-rise-in" role="status">
+            <div className="mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-2 px-5 py-1.5 sm:px-12">
+              <Robot size={14} className="text-primary shrink-0" />
+              <span className="min-w-0 truncate text-xs text-foreground">{t('notes:aiCheckpoint.applied')}</span>
+              <div className="ml-auto flex flex-shrink-0 items-center gap-1">
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+                  onClick={() => { void rollbackCheckpoint(); }}
+                >
+                  <ArrowCounterClockwise size={12} className="mr-1" />
+                  {t('notes:aiCheckpoint.rollback')}
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  onClick={dismissCheckpoint}
+                  aria-label={t('notes:aiCheckpoint.keep')}
+                >
+                  <X size={12} />
+                </DsButton>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {focusMode && (
+        <CommonTooltip content={`${t('notes:toolbar.exit_focus_mode', 'Exit focus mode')} (${isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'})`} position="left">
+          <DsButton
+            variant="ghost"
+            iconOnly
+            size="sm"
+            className="notes-focus-exit h-8 w-8"
+            onClick={toggleFocusMode}
+            aria-label={t('notes:toolbar.exit_focus_mode', 'Exit focus mode')}
+          >
+            <CornersIn size={17} />
+          </DsButton>
+        </CommonTooltip>
+      )}
+      
+      {/* 查找替换面板 - 固定在 header 下方，不随内容滚动 */}
+      <div className="relative" ref={findReplaceContainerRef}>
+        {isFindReplaceOpen && (
+          <FindReplacePanel 
+            editorApi={editorApi}
+            onClose={handleFindReplaceClose}
+            readOnly={effectiveReadOnly}
+            initialQuery={findInitialQuery}
+          />
+        )}
+      </div>
+
+      {/* AI 编辑 Diff：编辑器上方内联卡片区（有界高度），正文保持可见可滚动 */}
       {aiEditState.isActive && (
         <AIDiffPanel
           state={aiEditState}
           onAccept={handleAccept}
           onReject={handleReject}
+          isApplying={isAIEditApplying}
+          suspendShortcuts={isFindReplaceOpen}
         />
       )}
 
-      {/* ★ 2.1 AI 编辑检查点横幅：接受后仍可整轮回滚 */}
-      {aiCheckpoint && !aiEditState.isActive && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-border bg-background/95 py-1.5 pl-3.5 pr-1.5 shadow-md backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-200">
-          <Robot size={14} className="text-primary shrink-0" />
-          <span className="text-xs text-foreground">{t('notes:aiCheckpoint.applied')}</span>
-          <NotionButton
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => { void rollbackCheckpoint(); }}
-          >
-            <ArrowCounterClockwise size={12} className="mr-1" />
-            {t('notes:aiCheckpoint.rollback')}
-          </NotionButton>
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={dismissCheckpoint}
-            aria-label={t('notes:aiCheckpoint.keep')}
-          >
-            <X size={12} />
-          </NotionButton>
-        </div>
-      )}
-
-      {/* 远程桌面模式：当编辑器被 Portal 到白板时，显示占位符 */}
-      {isPortaledToCanvas ? (
-        <div className="flex-1 flex items-center justify-center bg-muted/30">
-          <div className="flex flex-col items-center gap-4 text-muted-foreground">
-            <ArrowSquareOut size={48} className="opacity-50" />
-            <p className="text-sm">{t('notes:editor.portaled_to_canvas')}</p>
-            <p className="text-xs opacity-60">{t('notes:editor.portaled_hint')}</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* 悬浮头部和工具栏 - 不随正文滚动，占满整宽 */}
-          <div className="notes-editor-header-section flex-shrink-0 w-full bg-background sticky top-0 z-10">
-            {/* 内部内容居中，保持与编辑器一致的最大宽度；移动端减小内边距 */}
-            <div className="max-w-[800px] mx-auto px-4 sm:px-8 sm:pl-24">
-              <NotesEditorHeader 
-                lastSaved={lastSaved} 
-                isSaving={isSaving}
-                charCount={charCount}
-                // DSTU 模式 props
-                initialTitle={isDstuMode ? initialTitle : undefined}
-                onTitleChange={isDstuMode && !effectiveReadOnly ? dstuOnTitleChange : undefined}
-                noteId={noteId}
-                readOnly={effectiveReadOnly}
-              />
-              <div className="flex items-center gap-1">
-                <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
-                {/* 查找替换按钮 */}
-                <CommonTooltip content={t('notes:toolbar.find_replace', '查找替换')} position="bottom">
-                  <NotionButton
-                    variant={isFindReplaceOpen ? 'primary' : 'ghost'}
-                    iconOnly
+      <CustomScrollArea
+        className="notes-editor-content-scroll flex-1"
+        viewportClassName="overflow-x-visible"
+        viewportRef={scrollViewportRef}
+        viewportProps={{ onScroll: handleViewportScroll }}
+      >
+        {/* 编辑器内容区域 */}
+        <div
+          className="notes-editor-content w-full max-w-[var(--notes-content-max-w)] mx-auto min-h-full px-5 sm:px-12 relative flex flex-col"
+          style={{
+            // P0-3：移动端底部 padding = 工具条实际高度 + 实际键盘遮挡 + safe-area + 滚过末尾余量。
+            // 两个变量由 MobileEditorToolbar 写在 :root（隐藏时移除，走 fallback）。
+            paddingBottom: showMobileToolbar
+              ? 'calc(var(--mobile-toolbar-height, 52px) + var(--mobile-toolbar-keyboard-offset, 0px) + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12vh)'
+              : '30vh',
+          }}
+          ref={dropZoneRef}
+        >
+          <NotesEditorHeader
+            lastSaved={lastSaved}
+            saveStatus={saveStatus}
+            onRetrySave={effectiveReadOnly ? undefined : handleManualSave}
+            charCount={charCount}
+            initialTitle={isDstuMode ? initialTitle : undefined}
+            onTitleChange={isDstuMode && !effectiveReadOnly ? dstuOnTitleChange : undefined}
+            noteId={noteId}
+            readOnly={effectiveReadOnly}
+            tags={tags}
+            onTagsChange={effectiveReadOnly ? undefined : onTagsChange}
+          />
+          <CrepeEditor
+            key={contentVersionKey}
+            noteId={noteId}
+            className="flex-1 min-h-[40vh] ui-rise-in"
+            defaultValue={initialValue}
+            onChange={handleChange}
+            onReady={handleEditorReady}
+            readonly={effectiveReadOnly}
+            plugins={{
+              wikilink: buildWikilinkPluginHostConfig(),
+            }}
+          />
+          {windowingState?.enabled && (windowingState.hasMore || windowingState.isLoadingMore || windowingState.loadMoreError) && (
+            <div className="mt-6 flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground/70">
+              {windowingState.isLoadingMore ? (
+                <>
+                  <CircleNotch size={14} className="animate-spin text-primary" />
+                  <span>{t('notes:editor.windowing.loading_more')}</span>
+                </>
+              ) : windowingState.loadMoreError ? (
+                <>
+                  <span>{t('notes:editor.windowing.load_more_failed')}</span>
+                  <DsButton
+                    variant="ghost"
                     size="sm"
-                    className={cn(
-                      'h-7 w-7 flex-shrink-0 transition-colors',
-                      isFindReplaceOpen ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-                    )}
-                    onClick={() => setIsFindReplaceOpen((prev) => !prev)}
+                    className="h-7 px-2 text-xs"
+                    onClick={onRetryLoadMore}
                   >
-                    <MagnifyingGlass size={16} />
-                  </NotionButton>
-                </CommonTooltip>
-                {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
-                {!readOnly && (
-                  <CommonTooltip
-                    content={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
-                    position="bottom"
-                  >
-                    <NotionButton
-                      variant={readingMode ? 'primary' : 'ghost'}
-                      iconOnly
-                      size="sm"
-                      className={cn(
-                        "h-7 w-7 flex-shrink-0 transition-colors",
-                        readingMode
-                          ? "text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                      onClick={() => {
-                        const next = !readingMode;
-                        // 进入阅读模式时先 flush 草稿，防止丢失未保存内容
-                        if (next) {
-                          void flushNoteDraft();
-                        }
-                        setReadingMode(next);
-                        // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
-                      }}
-                    >
-                      {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
-                    </NotionButton>
-                  </CommonTooltip>
-                )}
-              </div>
+                    {t('notes:editor.windowing.retry')}
+                  </DsButton>
+                </>
+              ) : null}
             </div>
-          </div>
-          
-          {/* 查找替换面板 - 固定在 header 下方，不随内容滚动 */}
-          <div className="relative">
-            {isFindReplaceOpen && (
-              <FindReplacePanel 
-                editorApi={editorApi}
-                onClose={handleFindReplaceClose}
-              />
-            )}
-          </div>
+          )}
+        </div>
+      </CustomScrollArea>
 
-          <CustomScrollArea
-            className="notes-editor-content-scroll flex-1"
-            viewportClassName="overflow-x-visible"
-            viewportRef={scrollViewportRef}
-            viewportProps={{ onScroll: handleWindowScroll }}
-          >
-            {/* 编辑器内容区域 */}
-            <div
-              className="notes-editor-content max-w-[800px] mx-auto min-h-full px-4 sm:px-8 sm:pl-24 relative flex flex-col"
-              style={{
-                paddingBottom: '30vh',
-              }}
-              ref={dropZoneRef}
-            >
-              <CrepeEditor
-                key={contentVersionKey}
-                noteId={noteId}
-                className="flex-1 min-h-[500px]"
-                defaultValue={initialValue}
-                onChange={handleChange}
-                onReady={handleEditorReady}
-                readonly={effectiveReadOnly}
-              />
-              {windowingState?.enabled && (windowingState.hasMore || windowingState.isLoadingMore || windowingState.loadMoreError) && (
-                <div className="mt-6 flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground/70">
-                  {windowingState.isLoadingMore ? (
-                    <>
-                      <CircleNotch size={14} className="animate-spin text-primary" />
-                      <span>{t('notes:editor.windowing.loading_more', 'Loading more lines...')}</span>
-                    </>
-                  ) : windowingState.loadMoreError ? (
-                    <>
-                      <span>{t('notes:editor.windowing.load_more_failed', 'Could not load more lines. Retry loading more lines.')}</span>
-                      <NotionButton
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={onRetryLoadMore}
-                      >
-                        {t('notes:editor.windowing.retry', 'Retry')}
-                      </NotionButton>
-                    </>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          </CustomScrollArea>
-        </>
-      )}
+      <MobileEditorToolbar
+        visible={showMobileToolbar}
+        collapsed={mobileToolbarCollapsed}
+        commands={mobileCommands}
+        activeStates={mobileActiveStates}
+      />
     </div>
     </ErrorBoundary>
   );

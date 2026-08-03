@@ -19,7 +19,9 @@ export {
   flattenAllNodes,
   getAncestors,
   countNodes,
+  countDescendants,
   getMaxDepth,
+  collectTopLevelNodeIds,
 } from './traverse';
 
 // 查找
@@ -46,6 +48,7 @@ export {
   collapseAll,
   expandAll,
   expandToDepth,
+  collapseToDepth,
 } from './update';
 
 // 删除
@@ -78,3 +81,6 @@ export {
   addChild,
 } from './move';
 
+// 拆分 / 合并
+export type { SplitNodeResult, MergeWithPreviousResult } from './splitMerge';
+export { splitNode, mergeWithPrevious } from './splitMerge';

@@ -183,6 +183,7 @@
     "empty": "暂未检测到可用模型，请前往“设置 → 模型设置”启用至少一个文本模型。",
     "no_match": "没有匹配的模型，请尝试其他关键词。",
     "no_matches": "没有匹配的模型",
+    "select": "选择模型",
     "missing_default_hint": "尚未配置默认对话模型，建议前往设置选择一个。",
     "go_config_model2": "前往配置",
     "set_as_default": "设为默认模型",
@@ -193,6 +194,16 @@
       "system_default": "系统默认",
       "system_default_tooltip": "此模型已设为系统默认的对话模型"
     }
+  },
+  "attachmentValidation": {
+    "success_added": "成功添加 {{count}} 个附件",
+    "rejected_count": "{{count}} 个附件被拒绝：",
+    "more_rejected": "还有 {{count}} 个文件被拒绝",
+    "limits_title": "附件限制：",
+    "images_limit": "图片：{{limit}}",
+    "documents_limit": "文档：{{limit}}",
+    "total_limit": "总计：{{limit}}",
+    "close_notice": "关闭通知"
   },
   "graph_status": {
     "started": "图谱检索中…",

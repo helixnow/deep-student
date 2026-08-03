@@ -5,7 +5,7 @@
   "identifier": "com.deepstudent.app",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1422",
+    "devUrl": "http://127.0.0.1:1422",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "features": [
@@ -27,7 +27,7 @@
         "fullscreen": false,
         "center": true,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "skipTaskbar": false,
         "alwaysOnTop": false,
         "visible": true,
@@ -35,7 +35,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost https://ipc.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.deepseek.com https://api.siliconflow.cn https://api.groq.com https://openrouter.ai https://download.deepstudent.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn https://ark.cn-beijing.volces.com https://api.minimax.io https://api.moonshot.cn ws://localhost:* ws://127.0.0.1:*; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: http://pdfstream.localhost https://pdfstream.localhost https:; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-src blob:;",
+      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost https://ipc.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.deepseek.com https://api.siliconflow.cn https://api.groq.com https://openrouter.ai https://download.deepstudent.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn https://ark.cn-beijing.volces.com https://api.minimax.io https://api.moonshot.cn ws://localhost:* ws://127.0.0.1:*; font-src 'self' data:; img-src 'self' data: blob: asset: pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https:; media-src 'self' data: blob: asset: filestream: http://filestream.localhost https://filestream.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-src blob:;",
       "assetProtocol": {
         "enable": true,
         "scope": [
@@ -57,7 +57,16 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "category": "Education",
-    "resources": {},
+    "resources": {
+      "../LICENSE": "licenses/DeepStudent-AGPL-3.0.txt",
+      "../public/legal/THIRD_PARTY_NOTICES.txt": "licenses/THIRD_PARTY_NOTICES.txt",
+      "vendor/lancedb/LICENSE": "licenses/lancedb-Apache-2.0.txt",
+      "vendor/object_store/LICENSE.txt": "licenses/object_store-LICENSE.txt",
+      "vendor/object_store/NOTICE.txt": "licenses/object_store-NOTICE.txt",
+      "vendor/rs-fsrs/LICENSE": "licenses/rs-fsrs-MIT.txt",
+      "resources/pdfium/LICENSE.pdfium-binaries": "licenses/pdfium-binaries-MIT.txt",
+      "resources/pdfium/licenses/": "licenses/pdfium/"
+    },
     "copyright": "",
     "shortDescription": "AI驱动的智能学习助手",
     "longDescription": "Deep Student 是一款专为学生设计的AI驱动的智能学习助手。它利用先进的人工智能技术，帮助用户进行错题分析、知识点梳理和个性化学习，从而实现深度理解和高效学习。",
@@ -89,7 +98,7 @@
       }
     },
     "android": {
-      "versionCode": 14392
+      "versionCode": 14634
     }
   },
   "plugins": {

@@ -389,7 +389,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   // 监听所有 chat_v2 块级事件 — 捕获 tool_call start/end 中的 chatanki 工具
   useEffect(() => {
     if (!isActivated) return;
-    let unlisten: UnlistenFn | null = null;
+    const unlisten: UnlistenFn | null = null;
 
     // 监听所有 chat_v2_event_* 通道（通配符不支持，改为监听 window 转发）
     // TauriAdapter 已经在 handleBlockEvent 中处理，这里通过全局事件拦截

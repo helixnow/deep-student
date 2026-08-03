@@ -5,7 +5,7 @@ import { Globe, GithubLogo, Bug, ArrowSquareOut, ArrowClockwise, Download } from
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { DeepStudentLogo } from '@/components/ui/DeepStudentLogo';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { SettingSection } from './SettingsCommon';
@@ -29,11 +29,12 @@ const SettingRow = ({
   description?: string;
   children: React.ReactNode;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -148,89 +149,90 @@ export const AboutTab: React.FC = () => {
   }, [handleFrequencyChange]);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
       <SettingSection title="" hideHeader className="overflow-hidden">
-        <div className="flex flex-col sm:flex-row gap-6 py-6">
-          <div className="flex flex-col items-center justify-center sm:w-1/3 gap-5">
+        <div className="flex flex-col md:flex-row gap-6 py-6">
+          <div className="flex flex-col items-center justify-center md:w-1/3 gap-5">
             <DeepStudentLogo className="w-44 max-w-full" />
             <div className="text-center">
               <p className="text-xs text-muted-foreground/70 mt-0.5">{VERSION_INFO.FULL_VERSION}</p>
             </div>
           </div>
-          <div className="sm:w-2/3">
-            <GroupTitle title={t('acknowledgements.developer.title', '开发信息')} />
+          <div className="md:w-2/3">
+            <GroupTitle title={t('acknowledgements.developer.title')} />
             <div className="space-y-px">
-              <SettingRow title={t('acknowledgements.developer.fields.developer', '开发者')}>
+              <SettingRow title={t('acknowledgements.developer.fields.developer')}>
                 <span className="text-sm text-foreground/90">DeepStudent Team</span>
               </SettingRow>
-            <SettingRow title={t('acknowledgements.developer.fields.version', '版本')}>
+            <SettingRow title={t('acknowledgements.developer.fields.version')}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-mono text-foreground/90 whitespace-nowrap">
                   {VERSION_INFO.FULL_VERSION}
                   <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH}</span>
                 </span>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={() => updater.checkForUpdate(false)}
                   disabled={updater.checking}
-                  className="h-6 px-2 text-xs flex-shrink-0 whitespace-nowrap"
+                  className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs flex-shrink-0 whitespace-nowrap"
                 >
                   <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
                   {updater.checking
-                    ? t('about.update.checking', '检查中...')
-                    : t('about.update.check', '检查更新')}
-                </NotionButton>
+                    ? t('about.update.checking')
+                    : t('about.update.check')}
+                </DsButton>
               </div>
             </SettingRow>
 
             <SettingRow
-              title={t('about.update.channel', '更新渠道')}
+              title={t('about.update.channel')}
               description={channel === 'experimental'
-                ? t('about.update.channelExpDesc', '接收实验版更新，可能包含未充分测试的功能')
-                : t('about.update.channelStableDesc', '仅接收经过验证的稳定版更新')}
+                ? t('about.update.channelExpDesc')
+                : t('about.update.channelStableDesc')}
             >
               <Select value={channel} onValueChange={(val) => handleChannelChange(val as UpdateChannel)}>
-                <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                {/* 触屏下放大到 40px 触控高度（桌面保持紧凑 24px） */}
+                <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-10 px-1.5 text-xs w-auto min-h-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="stable">{t('about.update.channelStable', '稳定版')}</SelectItem>
-                  <SelectItem value="experimental">{t('about.update.channelExp', '实验版')}</SelectItem>
+                  <SelectItem value="stable">{t('about.update.channelStable')}</SelectItem>
+                  <SelectItem value="experimental">{t('about.update.channelExp')}</SelectItem>
                 </SelectContent>
               </Select>
             </SettingRow>
 
             <SettingRow
-              title={t('about.update.frequency', '自动检查更新')}
+              title={t('about.update.frequency')}
               description={noRemind
-                ? t('about.update.frequencyNoRemindDesc', '已关闭自动更新提醒，点击重新开启')
+                ? t('about.update.frequencyNoRemindDesc')
                 : frequency === 'never'
-                  ? t('about.update.frequencyNeverDesc', '不会自动检查更新，可手动检查')
+                  ? t('about.update.frequencyNeverDesc')
                   : frequency === 'every_n_days'
-                    ? t('about.update.frequencyDaysDesc', '每 {{days}} 天自动检查一次', { days: frequencyDays })
-                    : t('about.update.frequencyLaunchDesc', '每次启动时自动检查')}
+                    ? t('about.update.frequencyDaysDesc', { days: frequencyDays })
+                    : t('about.update.frequencyLaunchDesc')}
             >
               <div className="flex items-center gap-1.5">
                 {noRemind ? (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={handleResetNoRemind}
-                    className="h-6 px-2 text-xs text-primary"
+                    className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-primary"
                   >
-                    {t('about.update.frequencyReEnable', '重新开启')}
-                  </NotionButton>
+                    {t('about.update.frequencyReEnable')}
+                  </DsButton>
                 ) : (
                   <>
                     <Select value={frequency} onValueChange={(val) => handleFrequencyChange(val as UpdateFrequency)}>
-                      <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                      <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-10 px-1.5 text-xs w-auto min-h-0">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="every_launch">{t('about.update.freqEveryLaunch', '每次启动')}</SelectItem>
-                        <SelectItem value="every_n_days">{t('about.update.freqEveryNDays', '每 N 天')}</SelectItem>
-                        <SelectItem value="never">{t('about.update.freqNever', '永不')}</SelectItem>
+                        <SelectItem value="every_launch">{t('about.update.freqEveryLaunch')}</SelectItem>
+                        <SelectItem value="every_n_days">{t('about.update.freqEveryNDays')}</SelectItem>
+                        <SelectItem value="never">{t('about.update.freqNever')}</SelectItem>
                       </SelectContent>
                     </Select>
                     {frequency === 'every_n_days' && (
@@ -240,7 +242,7 @@ export const AboutTab: React.FC = () => {
                         max={365}
                         value={frequencyDays}
                         onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
-                        className="h-6 w-14 px-1.5 text-xs text-center min-h-0"
+                        className="h-6 [@media(pointer:coarse)]:h-10 w-14 px-1.5 text-xs text-center min-h-0"
                       />
                     )}
                   </>
@@ -252,7 +254,7 @@ export const AboutTab: React.FC = () => {
             {updater.upToDate && !updater.available && (
               <div className="mx-1 p-2 rounded-lg bg-green-500/5 border border-green-500/20">
                 <p className="text-xs text-green-600 dark:text-green-400">
-                  ✓ {t('about.update.upToDate', '已是最新版本')}
+                  ✓ {t('about.update.upToDate')}
                 </p>
               </div>
             )}
@@ -263,7 +265,7 @@ export const AboutTab: React.FC = () => {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
-                      {t('about.update.available', '发现新版本')}: v{updater.info.version}
+                      {t('about.update.available')}: v{updater.info.version}
                     </p>
                     {updater.info.body && (() => {
                       const md = updater.info!.body!
@@ -281,7 +283,7 @@ export const AboutTab: React.FC = () => {
                             li: ({ children }) => <li className="break-words" style={{ overflowWrap: 'anywhere' }}>{children}</li>,
                             a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" style={{ overflowWrap: 'anywhere' }}>{children}</a>,
                             strong: ({ children }) => <strong className="font-semibold text-foreground/90">{children}</strong>,
-                            code: ({ children }) => <code className="px-1 py-0.5 rounded bg-muted text-[11px]">{children}</code>,
+                            code: ({ children }) => <code className="px-1 py-0.5 rounded bg-muted text-xs">{children}</code>,
                           }}
                         >{md}</ReactMarkdown>
                       </div>);
@@ -297,7 +299,7 @@ export const AboutTab: React.FC = () => {
                           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                         >
                           <Download size={14} />
-                          {t('about.update.mirrorDownload', '镜像下载')}
+                          {t('about.update.mirrorDownload')}
                         </a>
                       )}
                       <a
@@ -307,11 +309,11 @@ export const AboutTab: React.FC = () => {
                         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
                       >
                         <GithubLogo size={14} />
-                        {t('about.update.githubDownload', 'GitHub 下载')}
+                        {t('about.update.githubDownload')}
                       </a>
                     </div>
                   ) : (
-                    <NotionButton
+                    <DsButton
                       size="sm"
                       onClick={() => updater.downloadAndInstall()}
                       disabled={updater.downloading}
@@ -319,14 +321,26 @@ export const AboutTab: React.FC = () => {
                     >
                       <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
                       {updater.downloading
-                        ? t('about.update.downloading', '下载中...')
-                        : t('about.update.install', '下载更新')}
-                    </NotionButton>
+                        ? t('about.update.downloading')
+                        : t('about.update.install')}
+                    </DsButton>
                   )}
                 </div>
                 {!updater.isMobile && updater.downloading && updater.progress > 0 && (
                   <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
                     <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${updater.progress}%` }} />
+                  </div>
+                )}
+                {!updater.downloading && (
+                  <div className="mt-2">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => updater.skipVersion(updater.info!.version)}
+                      className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-muted-foreground"
+                    >
+                      {t('about.update.dialog.skipVersion')}
+                    </DsButton>
                   </div>
                 )}
               </div>
@@ -342,19 +356,19 @@ export const AboutTab: React.FC = () => {
                 <p className={`text-xs ${
                   updater.error.phase === 'relaunch' ? 'text-amber-600 dark:text-amber-400' : 'text-destructive'
                 }`}>
-                  {updater.error.phase === 'check' && `${t('about.update.error.check', '检查更新失败')}：`}
-                  {updater.error.phase === 'download' && `${t('about.update.error.download', '下载失败')}：`}
-                  {updater.error.phase === 'install' && `${t('about.update.error.install', '安装失败')}：`}
-                  {updater.error.phase === 'unavailable' && t('about.update.error.unavailable', '更新已不可用，请稍后重试')}
+                  {updater.error.phase === 'check' && `${t('about.update.error.check')}：`}
+                  {updater.error.phase === 'download' && `${t('about.update.error.download')}：`}
+                  {updater.error.phase === 'install' && `${t('about.update.error.install')}：`}
+                  {updater.error.phase === 'unavailable' && t('about.update.error.unavailable')}
                   {updater.error.phase !== 'relaunch' && updater.error.phase !== 'unavailable' && updater.error.message}
-                  {updater.error.phase === 'relaunch' && t('about.update.error.relaunch', '更新已安装，请手动重启应用以完成更新')}
+                  {updater.error.phase === 'relaunch' && t('about.update.error.relaunch')}
                 </p>
               </div>
             )}
-            <SettingRow title={t('acknowledgements.developer.fields.license', '许可证')}>
+            <SettingRow title={t('acknowledgements.developer.fields.license')}>
               <span className="text-sm text-foreground/90">AGPL-3.0-or-later</span>
             </SettingRow>
-            <SettingRow title={t('acknowledgements.developer.fields.platforms', '平台支持')}>
+            <SettingRow title={t('acknowledgements.developer.fields.platforms')}>
               <span className="text-sm text-foreground/90">
                 {t('acknowledgements.developer.values.platforms', 'Windows / macOS / iPadOS / Android')}
               </span>
@@ -364,12 +378,12 @@ export const AboutTab: React.FC = () => {
         </div>
 
         <div className="mt-8">
-          <GroupTitle title={t('acknowledgements.links.title', '官方链接')} />
+          <GroupTitle title={t('acknowledgements.links.title')} />
           <div className="space-y-px">
             {[
-              { icon: Globe, label: t('acknowledgements.links.website', '访问官网'), href: 'https://www.deepstudent.cn' },
+              { icon: Globe, label: t('acknowledgements.links.website'), href: 'https://www.deepstudent.cn' },
               { icon: GithubLogo, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
-              { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/helixnow/deep-student/issues' },
+              { icon: Bug, label: t('acknowledgements.links.issues'), href: 'https://github.com/helixnow/deep-student/issues' },
             ].map((item) => (
               <AboutActionRow
                 key={item.href}
@@ -381,21 +395,21 @@ export const AboutTab: React.FC = () => {
             ))}
             <AboutActionRow
               icon={PhosphorShield}
-              label={t('legal.settingsSection.viewPrivacyPolicy', '查看隐私政策')}
+              label={t('legal.settingsSection.viewPrivacyPolicy')}
               onClick={() => setShowPrivacyPolicy(true)}
             />
           </div>
         </div>
 
         <div className="mt-8">
-          <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
+          <GroupTitle title={t('acknowledgements.partners.title')} />
           <div className="flex items-start justify-between gap-4 px-1 py-1.5">
             <div className="min-w-0 flex-1 max-w-3xl">
               <h4 className="text-sm font-medium text-foreground/90">
                 {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
               </h4>
               <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground/70">
-                {t('acknowledgements.partners.cards.siliconflow.description', '提供多模态与推理模型服务，保障 DeepStudent 在国产算力生态中的高效稳定运行。')}
+                {t('acknowledgements.partners.cards.siliconflow.description')}
               </p>
             </div>
             <SiliconFlowLogo

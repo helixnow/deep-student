@@ -1,0 +1,491 @@
+/*
+ * NotesTrashDialog — class prefix: ntd-
+ *
+ * Non-modal panel anchored to the top-right of the workspace
+ * (`.notes-workspace` is the positioned ancestor). No scrim, no focus trap;
+ * the panel hugs its content up to a max height instead of pinning to the
+ * bottom edge. Entry animation comes from the shared `.ui-rise-in` class
+ * (ui-motion.css), which already degrades under prefers-reduced-motion.
+ */
+
+.ntd-panel {
+  position: absolute;
+  z-index: 60;
+  top: 12px;
+  right: 12px;
+  max-height: calc(100% - var(--notes-statusbar-height, 22px) - 24px);
+  width: min(380px, calc(100% - 24px));
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  background: hsl(var(--popover));
+  box-shadow: var(--shadow-shell-floating, var(--notes-popup-shadow));
+  color: hsl(var(--foreground));
+  outline: none;
+}
+
+.ntd-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ntd-header h2 {
+  margin: 0 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ntd-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: hsl(var(--muted) / 70%);
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.ntd-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.ntd-icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.ntd-icon-button:hover:not(:disabled) {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 55%);
+}
+
+.ntd-icon-button:focus-visible {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 55%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ntd-icon-button.is-danger:hover:not(:disabled) {
+  color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 12%);
+}
+
+.ntd-empty-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--destructive));
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.ntd-empty-btn:hover:not(:disabled) {
+  border-color: hsl(var(--destructive) / 45%);
+  background: hsl(var(--destructive) / 10%);
+}
+
+.ntd-empty-btn:focus-visible {
+  border-color: hsl(var(--destructive) / 45%);
+  background: hsl(var(--destructive) / 10%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-empty-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ===== Inline confirm surfaces (replace the old nested overlay) ===== */
+
+/* Header-level danger strip for "empty trash". */
+.ntd-confirm-bar {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid hsl(var(--destructive) / 35%);
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--destructive) / 8%);
+  animation: ntd-confirm-expand var(--notes-popup-enter-duration) var(--notes-popup-enter-easing);
+}
+
+.ntd-confirm-copy {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--foreground));
+}
+
+.ntd-confirm-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--destructive));
+}
+
+.ntd-confirm-copy span {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Row-level confirm strip for permanent delete. */
+.ntd-row-confirm {
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid hsl(var(--destructive) / 35%);
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--destructive) / 8%);
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+  animation: ntd-confirm-expand var(--notes-popup-enter-duration) var(--notes-popup-enter-easing);
+}
+
+.ntd-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.ntd-confirm-actions button {
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.ntd-confirm-actions button:hover:not(:disabled) {
+  background: hsl(var(--accent));
+}
+
+.ntd-confirm-actions button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-confirm-actions button.is-danger {
+  border-color: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  background: hsl(var(--destructive));
+}
+
+/* 危险主按钮 hover：整体加深而非退回 accent */
+.ntd-confirm-actions button.is-danger:hover:not(:disabled) {
+  border-color: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+  background: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+}
+
+.ntd-confirm-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@keyframes ntd-confirm-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== Body / list ===== */
+
+.ntd-body {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ntd-loading {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ntd-loading i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--muted-foreground));
+  animation: ntd-loading-pulse 0.9s ease-in-out infinite alternate;
+}
+
+.ntd-loading i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ntd-loading i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ntd-loading-pulse {
+  from { opacity: 0.45; }
+  to { opacity: 0.9; }
+}
+
+.ntd-message {
+  min-height: 160px;
+  padding: 16px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  text-align: center;
+}
+
+.ntd-message[data-state='error'] {
+  color: hsl(var(--destructive));
+}
+
+.ntd-empty-glyph {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: hsl(var(--muted) / 45%);
+  color: hsl(var(--muted-foreground) / 75%);
+}
+
+.ntd-message button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.ntd-message button:hover:not(:disabled) {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+}
+
+.ntd-message button:focus-visible {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* Selection toolbar: select-all + batch restore. */
+.ntd-select-bar {
+  min-height: 32px;
+  padding: 2px 4px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ntd-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ntd-select-all input,
+.ntd-item-check {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: hsl(var(--primary));
+  cursor: pointer;
+}
+
+.ntd-select-all input:disabled,
+.ntd-item-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ntd-restore-selected {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition);
+}
+
+.ntd-restore-selected:hover:not(:disabled) {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+}
+
+.ntd-restore-selected:focus-visible {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-restore-selected:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ntd-list {
+  min-height: 0;
+  flex: 1;
+  border-top: 1px solid hsl(var(--border));
+}
+
+/* Month heading grouping deleted entries by time. */
+.ntd-group-label {
+  padding: 10px 4px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: hsl(var(--muted-foreground) / 80%);
+}
+
+.ntd-item-shell {
+  border-bottom: 1px solid hsl(var(--border) / 65%);
+}
+
+.ntd-item {
+  min-height: 44px;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--notes-radius-row);
+  transition: background-color var(--notes-hover-transition);
+}
+
+/* 行 hover / 键盘定位时轻着色 */
+.ntd-item:hover,
+.ntd-item:focus-within {
+  background: hsl(var(--muted) / 35%);
+}
+
+.ntd-item:focus-visible {
+  background: hsl(var(--muted) / 35%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.ntd-item-icon {
+  flex: 0 0 auto;
+  color: hsl(var(--muted-foreground));
+  display: inline-flex;
+}
+
+.ntd-item-meta {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.ntd-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.ntd-item-time {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 80%);
+}
+
+.ntd-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ntd-confirm-bar,
+  .ntd-row-confirm {
+    animation: none;
+  }
+
+  .ntd-icon-button,
+  .ntd-empty-btn,
+  .ntd-restore-selected,
+  .ntd-message button,
+  .ntd-confirm-actions button,
+  .ntd-item {
+    transition: none;
+  }
+
+  .ntd-loading i {
+    animation: none;
+  }
+}

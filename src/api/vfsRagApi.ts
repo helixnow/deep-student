@@ -40,6 +40,14 @@ export interface VfsSearchResult {
   pageIndex?: number;
   /** 来源 ID（如 textbook_xxx, att_xxx） */
   sourceId?: string;
+  /**
+   * 页面图片 Blob 哈希（用于缩略图定位）。
+   *
+   * ⚠️ 后端 `vfs_rag_search`（文本路线）当前不返回该字段，仅多模态检索链路携带；
+   * 消费方必须按可选字段处理。若文本路线也需要缩略图，需要后端在
+   * `VfsSearchResult`（src-tauri/src/vfs/indexing.rs）中补充 blob_hash。
+   */
+  blobHash?: string;
 }
 
 /** RAG 搜索输入参数 */
@@ -133,7 +141,10 @@ export async function vfsRagSearch(input: VfsRagSearchInput): Promise<VfsRagSear
 /**
  * 简化的 RAG 搜索
  *
- * 使用默认参数进行 RAG 搜索。
+ * 使用默认参数（启用重排序）进行 RAG 搜索，只返回结果列表。
+ *
+ * @remarks 公共便捷 API：当前仓库内暂无调用方，保留供技能/插件层直接使用。
+ * 需要 elapsedMs/count 等元信息时请改用 {@link vfsRagSearch}。
  *
  * @param query 查询文本
  * @param topK 返回结果数量（默认 10）
@@ -149,6 +160,8 @@ export async function vfsRagSearchSimple(
 
 /**
  * 在指定文件夹范围内进行 RAG 搜索
+ *
+ * @remarks 公共便捷 API：当前仓库内暂无调用方，保留供技能/插件层直接使用。
  *
  * @param query 查询文本
  * @param folderIds 文件夹 ID 列表
@@ -166,6 +179,8 @@ export async function vfsRagSearchInFolders(
 
 /**
  * 按资源类型进行 RAG 搜索
+ *
+ * @remarks 公共便捷 API：当前仓库内暂无调用方，保留供技能/插件层直接使用。
  *
  * @param query 查询文本
  * @param resourceTypes 资源类型列表（如 ["note", "textbook", "exam"]）
@@ -253,6 +268,11 @@ export function toSourceInfo(result: VfsSearchResult): {
       resourceType: result.resourceType,
       chunkIndex: result.chunkIndex,
       embeddingId: result.embeddingId,
+      // 缩略图定位：pageIndex 配合 getPdfPageImage 渲染页面预览；
+      // blobHash 可直接命中图片 Blob（文本路线可能为 undefined，见 VfsSearchResult.blobHash）。
+      pageIndex: result.pageIndex,
+      blobHash: result.blobHash,
+      sourceId: result.sourceId,
       sourceType: 'vfs_rag',
     },
   };
@@ -490,20 +510,150 @@ export interface VfsMultimodalIndexOutput {
   failedPages: number[];
 }
 
+/** 多模态检索查询类型 */
+export type VfsMultimodalQueryMode = 'text' | 'image' | 'mixed';
+
 /** 多模态检索输入 */
 export interface VfsMultimodalSearchInput {
+  /**
+   * 兼容旧后端的查询文本。新调用方优先使用 queryText。
+   * 图片查询时会传空字符串，实际图片由 queryImageBase64 携带。
+   */
+  query?: string;
   /** 查询文本 */
-  query: string;
+  queryText?: string;
+  /** 查询图片 Base64 数据（不含 data URL 前缀） */
+  queryImageBase64?: string;
+  /** 查询图片 MIME 类型 */
+  queryImageMediaType?: string;
+  /** 显式查询类型；未传时由文本/图片字段推导 */
+  queryMode?: VfsMultimodalQueryMode;
   /** 返回的最大结果数 */
   topK?: number;
   /** 文件夹 ID 过滤 */
   folderIds?: string[];
+  /** 资源 ID 过滤 */
+  resourceIds?: string[];
   /** 资源类型过滤 */
   resourceTypes?: string[];
 }
 
+export type VfsRetrievalRouteKind =
+  | 'full_text'
+  | 'text_embedding'
+  | 'multimodal_text'
+  | 'multimodal_image';
+
+export type VfsQueryDerivationKind = 'multimodal_observation' | 'ocr';
+
+export interface VfsCapabilityState {
+  configured: boolean;
+  healthy: boolean;
+  circuitOpen: boolean;
+  protocolCompatible: boolean;
+  indexCompatible: boolean;
+  reason?: string;
+}
+
+export interface VfsCapabilitySnapshot {
+  textEmbedding: VfsCapabilityState;
+  multimodalEmbedding: VfsCapabilityState;
+  textModel: VfsCapabilityState;
+  multimodalModel: VfsCapabilityState;
+  ocr: VfsCapabilityState;
+}
+
+export interface VfsQueryDerivationProvenance {
+  kind: VfsQueryDerivationKind;
+  modelConfigId?: string;
+}
+
+export interface VfsPlannedRetrievalRoute {
+  routeId: string;
+  kind: VfsRetrievalRouteKind;
+  profileId?: string;
+  modelConfigId?: string;
+  expectedModelFingerprint?: string;
+  dimension?: number;
+  modality: string;
+  weight: number;
+  fetchLimit: number;
+  queryDerivation?: VfsQueryDerivationProvenance;
+}
+
+export interface VfsRetrievalRouteFailure {
+  routeId: string;
+  profileId?: string;
+  dimension?: number;
+  error: string;
+  timedOut: boolean;
+  queryDerivation?: VfsQueryDerivationProvenance;
+}
+
+export interface VfsRetrievalHitProvenance {
+  routeId: string;
+  routeKind: VfsRetrievalRouteKind;
+  profileId?: string;
+  dimension?: number;
+  modality: string;
+  rawRank: number;
+  rawScore?: number;
+  routeWeight: number;
+  rrfContribution: number;
+  queryDerivation?: VfsQueryDerivationProvenance;
+}
+
+export interface VfsUnifiedRetrievalHit {
+  identity: {
+    resourceId: string;
+    chunkIndex: number;
+    pageIndex?: number;
+  };
+  embeddingId: string;
+  text: string;
+  title?: string;
+  resourceType?: string;
+  sourceId?: string;
+  folderId?: string;
+  blobHash?: string;
+  imageUrl?: string;
+  rawScore?: number;
+  metadata: unknown;
+}
+
+export interface VfsMultimodalDetailedSearchOutput {
+  capabilitySnapshot: VfsCapabilitySnapshot;
+  plan: {
+    queryModality: VfsMultimodalQueryMode;
+    topK: number;
+    routes: VfsPlannedRetrievalRoute[];
+    imageFallbackChain: Array<{
+      kind: VfsQueryDerivationKind;
+      conditionalOnImageEmbeddingMiss: boolean;
+    }>;
+    imageFallbackUnavailableReason?: string;
+  };
+  result: {
+    hits: Array<{
+      hit: VfsUnifiedRetrievalHit;
+      rrfScore: number;
+      provenance: VfsRetrievalHitProvenance[];
+    }>;
+    failures: VfsRetrievalRouteFailure[];
+  };
+  queryDerivations: Array<{
+    provenance: VfsQueryDerivationProvenance;
+    succeeded: boolean;
+    derivedQuery?: string;
+    error?: string;
+    elapsedMs: number;
+  }>;
+}
+
 /** 多模态检索结果 */
 export interface VfsMultimodalSearchOutput {
+  /** Lance 嵌入记录 ID */
+  embeddingId: string;
   /** 资源 ID */
   resourceId: string;
   /** 资源类型 */
@@ -518,6 +668,35 @@ export interface VfsMultimodalSearchOutput {
   score: number;
   /** 文件夹 ID */
   folderId?: string;
+  /**
+   * 参与融合的检索路由及各自贡献。
+   *
+   * 后端序列化为 `serde_json::Value`（形状不受编译期约束），因此前端声明为
+   * `unknown`；请通过 {@link parseRetrievalProvenance} 做运行时校验后再使用。
+   */
+  retrievalProvenance: unknown;
+}
+
+/** {@link VfsRetrievalHitProvenance} 的轻量运行时守卫。 */
+export function isVfsRetrievalHitProvenance(value: unknown): value is VfsRetrievalHitProvenance {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.routeId === 'string'
+    && typeof candidate.routeKind === 'string'
+    && typeof candidate.modality === 'string'
+    && typeof candidate.rawRank === 'number'
+    && typeof candidate.routeWeight === 'number'
+    && typeof candidate.rrfContribution === 'number';
+}
+
+/**
+ * 将后端的 `retrievalProvenance`（serde_json::Value）安全解析为路由来源列表。
+ *
+ * 非数组、或数组内不合法的元素会被丢弃，不抛异常。
+ */
+export function parseRetrievalProvenance(value: unknown): VfsRetrievalHitProvenance[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isVfsRetrievalHitProvenance);
 }
 
 /** 多模态索引统计 */
@@ -561,19 +740,82 @@ export async function vfsMultimodalIndex(
  * @param input 多模态检索输入参数
  * @returns 检索结果列表
  */
+function normalizeMultimodalSearchInput(input: VfsMultimodalSearchInput): {
+  params: VfsMultimodalSearchInput;
+  queryMode: VfsMultimodalQueryMode;
+  queryText: string;
+} {
+  const queryText = input.queryText ?? input.query ?? '';
+  const hasText = queryText.trim().length > 0;
+  const hasImage = Boolean(input.queryImageBase64?.trim());
+  if (!hasText && !hasImage) {
+    throw new Error('Multimodal search requires query text, an image, or both');
+  }
+
+  const queryMode: VfsMultimodalQueryMode = input.queryMode
+    ?? (hasText && hasImage ? 'mixed' : hasImage ? 'image' : 'text');
+  if ((queryMode === 'image' || queryMode === 'mixed') && !hasImage) {
+    throw new Error(`${queryMode} search requires queryImageBase64`);
+  }
+  if ((queryMode === 'text' || queryMode === 'mixed') && !hasText) {
+    throw new Error(`${queryMode} search requires queryText`);
+  }
+
+  const params: VfsMultimodalSearchInput = {
+    ...input,
+    query: queryText,
+    queryText,
+    queryMode,
+    ...(hasImage
+      ? { queryImageMediaType: input.queryImageMediaType || 'image/png' }
+      : {}),
+  };
+
+  return { params, queryMode, queryText };
+}
+
 export async function vfsMultimodalSearch(
   input: VfsMultimodalSearchInput
 ): Promise<VfsMultimodalSearchOutput[]> {
-  console.log(LOG_PREFIX, 'vfsMultimodalSearch:', input.query);
+  const { params, queryMode, queryText } = normalizeMultimodalSearchInput(input);
+
+  console.log(LOG_PREFIX, 'vfsMultimodalSearch:', queryMode, queryText);
 
   try {
     const result = await invoke<VfsMultimodalSearchOutput[]>('vfs_multimodal_search', {
-      params: input,
+      params,
     });
     console.log(LOG_PREFIX, `vfsMultimodalSearch: ${result.length} results`);
     return result;
   } catch (error: unknown) {
     console.error(LOG_PREFIX, 'vfsMultimodalSearch failed:', error);
+    throw error;
+  }
+}
+
+/** 执行多模态检索并保留能力快照、计划、降级过程和逐路由失败。 */
+export async function vfsMultimodalSearchDetailed(
+  input: VfsMultimodalSearchInput
+): Promise<VfsMultimodalDetailedSearchOutput> {
+  const { params, queryMode, queryText } = normalizeMultimodalSearchInput(input);
+  console.log(LOG_PREFIX, 'vfsMultimodalSearchDetailed:', queryMode, queryText);
+
+  try {
+    return await invoke<VfsMultimodalDetailedSearchOutput>('vfs_multimodal_search_detailed', {
+      params,
+    });
+  } catch (error: unknown) {
+    console.error(LOG_PREFIX, 'vfsMultimodalSearchDetailed failed:', error);
+    throw error;
+  }
+}
+
+/** 读取当前 TE/ME/TM/MM/OCR 能力快照，不触发 Lance 修复或建索引。 */
+export async function vfsInspectRetrievalCapabilities(): Promise<VfsCapabilitySnapshot> {
+  try {
+    return await invoke<VfsCapabilitySnapshot>('vfs_inspect_retrieval_capabilities');
+  } catch (error: unknown) {
+    console.error(LOG_PREFIX, 'vfsInspectRetrievalCapabilities failed:', error);
     throw error;
   }
 }

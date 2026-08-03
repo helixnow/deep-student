@@ -6,6 +6,7 @@
 import { ModelProfile, VendorConfig, ApiConfig, type ApiProtocol, type ModelAdapter } from '@/types';
 import {
   getAllowedProtocolsForProviderType,
+  providerSupportsOpenAiResponses,
   resolvePreferredProtocol,
 } from '@/utils/providerProtocolRegistry';
 
@@ -58,18 +59,53 @@ export const normalizeApiProtocolForProviderType = (
   return defaultApiProtocolForProvider(providerType, options);
 };
 
-export const getAllowedApiProtocolsForModelAdapter = (adapter?: string | null): ApiProtocol[] => {
+export const getAllowedApiProtocolsForModelAdapter = (
+  adapter?: string | null,
+  options?: {
+    providerType?: string | null;
+    baseUrl?: string | null;
+    supportsOpenAIResponses?: boolean | null;
+  }
+): ApiProtocol[] => {
   const normalized = (adapter ?? '').toLowerCase() as ModelAdapter | '';
-  if (normalized === 'anthropic') return ['anthropic_messages'];
-  if (normalized === 'google') return ['google_generate_content'];
-  return OPENAI_COMPATIBLE_PROTOCOLS;
+  const nativeProtocol: ApiProtocol | undefined =
+    normalized === 'anthropic'
+      ? 'anthropic_messages'
+      : normalized === 'google'
+        ? 'google_generate_content'
+        : undefined;
+
+  // Without host context return the complete adapter capability list so the
+  // settings UI can display unavailable protocols as disabled options.
+  if (!options) {
+    return nativeProtocol ? [nativeProtocol, ...OPENAI_COMPATIBLE_PROTOCOLS] : OPENAI_COMPATIBLE_PROTOCOLS;
+  }
+
+  const providerProtocols = getAllowedApiProtocolsForProviderType(options.providerType);
+  if (nativeProtocol && providerProtocols.includes(nativeProtocol)) {
+    return [nativeProtocol];
+  }
+
+  const openAiProtocols = providerProtocols.filter((protocol): protocol is ApiProtocol =>
+    OPENAI_COMPATIBLE_PROTOCOLS.includes(protocol)
+  );
+  if (
+    !providerSupportsOpenAiResponses({
+      providerType: options.providerType,
+      baseUrl: options.baseUrl,
+      supportsOpenAIResponses: options.supportsOpenAIResponses,
+    })
+  ) {
+    return openAiProtocols.filter(protocol => protocol !== 'openai_responses');
+  }
+  return openAiProtocols;
 };
 
 export const defaultApiProtocolForModelAdapter = (
   adapter?: string | null,
   options?: { providerType?: string | null; model?: string | null; baseUrl?: string | null; supportsOpenAIResponses?: boolean | null }
 ): ApiProtocol => {
-  const allowed = getAllowedApiProtocolsForModelAdapter(adapter);
+  const allowed = getAllowedApiProtocolsForModelAdapter(adapter, options);
   const preferred = defaultOpenAiCompatibleProtocol({
     adapter,
     providerType: options?.providerType,
@@ -89,7 +125,11 @@ export const normalizeApiProtocolForModelAdapter = (
   providerType?: string | null,
   options?: { model?: string | null; baseUrl?: string | null; supportsOpenAIResponses?: boolean | null }
 ): ApiProtocol => {
-  const allowed = getAllowedApiProtocolsForModelAdapter(adapter);
+  const allowed = getAllowedApiProtocolsForModelAdapter(adapter, {
+    providerType,
+    baseUrl: options?.baseUrl,
+    supportsOpenAIResponses: options?.supportsOpenAIResponses,
+  });
   if (explicitProtocol && allowed.includes(explicitProtocol)) {
     return explicitProtocol;
   }
@@ -150,6 +190,10 @@ const normalizeDeepSeekModelAdapter = (
 
 export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorConfig): ApiConfig => {
   const providerScope = profile.providerScope ?? vendor.providerType;
+  const maxTokensLimit =
+    profile.maxTokensLimit != null && vendor.maxTokensLimit != null
+      ? Math.min(profile.maxTokensLimit, vendor.maxTokensLimit)
+      : profile.maxTokensLimit ?? vendor.maxTokensLimit;
   const modelAdapter = normalizeDeepSeekModelAdapter(
     profile.modelAdapter,
     profile.model,
@@ -163,6 +207,7 @@ export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorC
     vendorId: vendor.id,
     vendorName: vendor.name,
     providerType: vendor.providerType,
+    authMode: vendor.authMode,
     providerScope,
     apiProtocol: resolveApiProtocol(profile.apiProtocol ?? vendor.apiProtocol, vendor.providerType, modelAdapter, {
       model: profile.model,
@@ -195,6 +240,9 @@ export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorC
     topK: profile.topK,
     supportsReasoning: profile.supportsReasoning ?? profile.isReasoning,
     headers: vendor.headers,
+    maxTokensLimit,
+    modelMaxTokensLimit: profile.maxTokensLimit,
+    initialEffectiveMaxTokensLimit: maxTokensLimit,
     contextWindow: profile.contextWindow,
     repetitionPenalty: profile.repetitionPenalty,
     reasoningSplit: profile.reasoningSplit,
@@ -245,6 +293,10 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
     geminiApiVersion: api.geminiApiVersion,
     isBuiltin: api.isBuiltin,
     isReadOnly: api.isReadOnly,
+    maxTokensLimit:
+      api.maxTokensLimit === api.initialEffectiveMaxTokensLimit
+        ? api.modelMaxTokensLimit
+        : api.maxTokensLimit,
     contextWindow: api.contextWindow,
     repetitionPenalty: api.repetitionPenalty,
     reasoningSplit: api.reasoningSplit,
@@ -264,7 +316,8 @@ export const inferProviderTypeFromBaseUrl = (baseUrl?: string | null): string | 
   }
   if (
     lowerBaseUrl.includes('dashscope.aliyuncs.com') ||
-    lowerBaseUrl.includes('dashscope-intl.aliyuncs.com')
+    lowerBaseUrl.includes('dashscope-intl.aliyuncs.com') ||
+    lowerBaseUrl.includes('.maas.aliyuncs.com')
   ) {
     return 'qwen';
   }
@@ -298,8 +351,18 @@ export const inferProviderTypeFromBaseUrl = (baseUrl?: string | null): string | 
   if (lowerBaseUrl.includes('api.anthropic.com')) {
     return 'anthropic';
   }
-  if (lowerBaseUrl.includes('api.minimax.io') || lowerBaseUrl.includes('api.minimax.chat')) {
+  if (
+    lowerBaseUrl.includes('api.minimax.io') ||
+    lowerBaseUrl.includes('api.minimaxi.com') ||
+    lowerBaseUrl.includes('api.minimax.chat')
+  ) {
     return 'minimax';
+  }
+  if (lowerBaseUrl.includes('qianfan.baidubce.com')) {
+    return 'ernie';
+  }
+  if (lowerBaseUrl.includes('api.mistral.ai')) {
+    return 'mistral';
   }
   if (lowerBaseUrl.includes('integrate.api.nvidia.com')) {
     return 'nvidia';

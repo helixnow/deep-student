@@ -4,9 +4,22 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
+const aboutTabCopy: Record<string, string> = {
+  'acknowledgements.links.website': '访问官网',
+  'acknowledgements.links.github': 'GitHub',
+  'acknowledgements.links.issues': 'Issue 反馈',
+  'legal.settingsSection.viewPrivacyPolicy': '查看隐私政策',
+  'acknowledgements.partners.title': '技术合作伙伴致谢',
+  'acknowledgements.partners.cards.siliconflow.title': 'SiliconFlow',
+};
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, options?: string | Record<string, unknown>) => {
+      if (aboutTabCopy[key]) return aboutTabCopy[key];
+      if (typeof options === 'string') return options;
+      return key;
+    },
   }),
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));

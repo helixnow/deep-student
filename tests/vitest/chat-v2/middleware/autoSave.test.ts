@@ -3,8 +3,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createAutoSaveMiddleware } from '@/features/chat/core/middleware/autoSave';
+import {
+  createAutoSaveMiddleware,
+  createStreamingBlockSaver,
+} from '@/features/chat/core/middleware/autoSave';
 import type { ChatStore } from '@/features/chat/core/types';
+import { STREAMING_BLOCK_SAVE_THROTTLE_MS } from '@/features/chat/core/constants';
 
 // ============================================================================
 // Mock Store 创建
@@ -177,6 +181,29 @@ describe('autoSave', () => {
       // 清理
       autoSave.cleanup(store.sessionId);
     });
+
+    it('queues a trailing save when the throttle timer fires during a slow save', async () => {
+      const autoSave = createAutoSaveMiddleware({ throttleMs: 100 });
+      const store = createMockStore();
+      let resolveFirst!: () => void;
+      let resolveSecond!: () => void;
+      vi.mocked(store.saveSession)
+        .mockImplementationOnce(() => new Promise<void>((resolve) => { resolveFirst = resolve; }))
+        .mockImplementationOnce(() => new Promise<void>((resolve) => { resolveSecond = resolve; }));
+
+      autoSave.scheduleAutoSave(store);
+      autoSave.scheduleAutoSave(store);
+      expect(store.saveSession).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(store.saveSession).toHaveBeenCalledTimes(1);
+
+      resolveFirst();
+      await vi.waitFor(() => expect(store.saveSession).toHaveBeenCalledTimes(2));
+      resolveSecond();
+      await Promise.resolve();
+      autoSave.cleanup(store.sessionId);
+    });
   });
 
   describe('force immediate save when requested', () => {
@@ -221,6 +248,53 @@ describe('autoSave', () => {
 
       // 清理
       autoSave.cleanup(store.sessionId);
+    });
+
+    it('serializes concurrent force saves for the same session', async () => {
+      const autoSave = createAutoSaveMiddleware({ throttleMs: 500 });
+      const store = createMockStore();
+      const resolvers: Array<() => void> = [];
+      let activeSaves = 0;
+      let maxActiveSaves = 0;
+      vi.mocked(store.saveSession).mockImplementation(() => {
+        activeSaves += 1;
+        maxActiveSaves = Math.max(maxActiveSaves, activeSaves);
+        return new Promise<void>((resolve) => {
+          resolvers.push(() => {
+            activeSaves -= 1;
+            resolve();
+          });
+        });
+      });
+
+      const first = autoSave.forceImmediateSave(store);
+      const second = autoSave.forceImmediateSave(store);
+      expect(store.saveSession).toHaveBeenCalledTimes(1);
+
+      resolvers[0]();
+      await vi.waitFor(() => expect(store.saveSession).toHaveBeenCalledTimes(2));
+      expect(maxActiveSaves).toBe(1);
+      resolvers[1]();
+      await Promise.all([first, second]);
+    });
+
+    it('continues the force-save queue after an earlier rejection', async () => {
+      const autoSave = createAutoSaveMiddleware({ throttleMs: 500 });
+      const store = createMockStore();
+      let rejectFirst!: (error: Error) => void;
+      let resolveSecond!: () => void;
+      vi.mocked(store.saveSession)
+        .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectFirst = reject; }))
+        .mockImplementationOnce(() => new Promise<void>((resolve) => { resolveSecond = resolve; }));
+
+      const first = autoSave.forceImmediateSave(store);
+      const second = autoSave.forceImmediateSave(store);
+      rejectFirst(new Error('first failed'));
+
+      await expect(first).rejects.toThrow('first failed');
+      await vi.waitFor(() => expect(store.saveSession).toHaveBeenCalledTimes(2));
+      resolveSecond();
+      await expect(second).resolves.toBeUndefined();
     });
   });
 
@@ -289,6 +363,51 @@ describe('autoSave', () => {
       // 清理
       autoSave.cleanup(store1.sessionId);
       autoSave.cleanup(store2.sessionId);
+    });
+  });
+
+  describe('streaming block saver callback ownership', () => {
+    it('routes saves independently for two sessions', async () => {
+      const saver = createStreamingBlockSaver();
+      const saveA = vi.fn(() => Promise.resolve());
+      const saveB = vi.fn(() => Promise.resolve());
+      saver.registerSaveCallback('session-a', saveA);
+      saver.registerSaveCallback('session-b', saveB);
+
+      saver.scheduleBlockSave('block-a', 'message-a', 'content', 'A', 'session-a');
+      saver.scheduleBlockSave('block-b', 'message-b', 'content', 'B', 'session-b');
+      await vi.advanceTimersByTimeAsync(STREAMING_BLOCK_SAVE_THROTTLE_MS);
+
+      expect(saveA).toHaveBeenCalledWith(
+        'block-a', 'message-a', 'content', 'A', 'session-a',
+      );
+      expect(saveB).toHaveBeenCalledWith(
+        'block-b', 'message-b', 'content', 'B', 'session-b',
+      );
+      saver.destroy();
+    });
+
+    it('does not let an old same-session unregister remove the new callback', async () => {
+      const saver = createStreamingBlockSaver();
+      const oldSave = vi.fn(() => Promise.resolve());
+      const newSave = vi.fn(() => Promise.resolve());
+      const unregisterOld = saver.registerSaveCallback('session-retry', oldSave);
+      saver.registerSaveCallback('session-retry', newSave);
+
+      unregisterOld();
+      unregisterOld();
+      saver.scheduleBlockSave(
+        'block-retry',
+        'message-retry',
+        'content',
+        'new generation',
+        'session-retry',
+      );
+      await vi.advanceTimersByTimeAsync(STREAMING_BLOCK_SAVE_THROTTLE_MS);
+
+      expect(oldSave).not.toHaveBeenCalled();
+      expect(newSave).toHaveBeenCalledOnce();
+      saver.destroy();
     });
   });
 });

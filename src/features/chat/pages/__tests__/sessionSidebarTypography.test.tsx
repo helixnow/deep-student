@@ -30,8 +30,8 @@ vi.mock('@/components/layout/MacTopSafeDragZone', () => ({
   MacTopSafeDragZone: () => null,
 }));
 
-vi.mock('@/components/ui/NotionButton', () => ({
-  NotionButton: ({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+vi.mock('@/components/ui/DsButton', () => ({
+  DsButton: ({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button className={className} {...props}>
       {children}
     </button>

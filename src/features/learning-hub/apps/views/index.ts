@@ -10,3 +10,6 @@ export { default as TextbookContentView } from './TextbookContentView';
 export { default as ExamContentView } from './ExamContentView';
 export { default as TranslationContentView } from './TranslationContentView';
 export { default as EssayContentView } from './EssayContentView';
+// ★ 2026-07-08：补齐缺失的三类视图导出（此前索引不全；mindmap 视图在 @/features/mindmap）
+export { default as ImageContentView } from './ImageContentView';
+export { default as FileContentView } from './FileContentView';

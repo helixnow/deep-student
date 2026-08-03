@@ -1,5 +1,6 @@
 pub mod backup_crypto;
-pub mod tests;
+#[cfg(test)]
+mod tests;
 
 // =====================================================================================
 // AES-GCM 加密服务实现
@@ -45,7 +46,7 @@ impl CryptoService {
         let key_path = path.join(".master_key");
         tracing::info!("🔐 [Crypto] 初始化加密服务，密钥路径: {:?}", key_path);
         let master_key = Self::load_or_create_master_key(&key_path)?;
-        let fp = Sha256::digest(&master_key);
+        let fp = Sha256::digest(master_key);
         let key_fingerprint = format!("{:02x}{:02x}{:02x}{:02x}", fp[0], fp[1], fp[2], fp[3]);
         tracing::info!("🔐 [Crypto] 主密钥指纹: {}...", key_fingerprint);
         Ok(Self {

@@ -6,8 +6,17 @@
 # ║  场景: 修复移动端 Bug 后补发 APK / 某次 Release Android 构建   ║
 # ║        失败需要重试                                             ║
 # ║                                                                ║
+# ║  安全保障 (审查 F6 修复):                                       ║
+# ║    - source_ref 默认使用 tag 本身 (此前默认 main, 会把新代码    ║
+# ║      构出的 APK 以旧版本名义发布, 产物与 tag 可追溯性断裂)     ║
+# ║    - 校验 source_ref 代码中的版本号与 tag 一致; 确需跨版本      ║
+# ║      热修时必须显式勾选 allow_version_mismatch                 ║
+# ║    - 构建走 reusable-build-android.yml, 与主发布共用实现        ║
+# ║      (含 Prepare Android project 权限/软键盘/MainActivity 注入)║
+# ║    - 发布尾部自动刷新 CDN 缓存 (审查 F5: immutable 一年缓存 +  ║
+# ║      同名覆盖, 不刷新则用户长期拿旧 APK)                        ║
+# ║                                                                ║
 # ║  操作: GitHub → Actions → Rebuild Android APK → Run workflow   ║
-# ║        输入 release tag 和要构建的代码来源                      ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
 name: Rebuild Android APK
@@ -20,33 +29,43 @@ on:
         required: true
         type: string
       source_ref:
-        description: '构建代码来源 (分支/tag/commit SHA)，默认 main'
+        description: '构建代码来源 (分支/tag/commit SHA)，留空则使用 tag 本身'
         required: false
-        default: 'main'
+        default: ''
         type: string
+      allow_version_mismatch:
+        description: '允许 source_ref 版本号与 tag 不一致 (跨版本热修时显式确认)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: rebuild-android-${{ github.event.inputs.tag_name }}
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 env:
   R2_BUCKET: deepstudent
 
 jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 预检: 确认目标 Release 存在
+  # 预检: 确认目标 Release 存在 + source_ref 版本一致性校验
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   preflight:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.info.outputs.version }}
       tag_name: ${{ steps.info.outputs.tag_name }}
-      release_id: ${{ steps.info.outputs.release_id }}
+      source_ref: ${{ steps.info.outputs.source_ref }}
     steps:
       - name: Validate inputs & fetch release info
         id: info
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ github.event.inputs.tag_name }}"
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -54,265 +73,73 @@ jobs:
             exit 1
           fi
 
-          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" --jq '.id' 2>/dev/null || echo "")
+          RELEASE_ID=$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" --jq '.id' 2>/dev/null || echo "")
           if [ -z "$RELEASE_ID" ]; then
             echo "::error::Release '${TAG}' not found"
             exit 1
           fi
 
+          SOURCE_REF="${{ github.event.inputs.source_ref }}"
+          if [ -z "$SOURCE_REF" ]; then
+            SOURCE_REF="$TAG"
+          fi
+
           VERSION="${TAG#v}"
           echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "release_id=${RELEASE_ID}" >> $GITHUB_OUTPUT
-          echo "✅ Target release: ${TAG} (id=${RELEASE_ID}), building from: ${{ github.event.inputs.source_ref }}"
+          echo "source_ref=${SOURCE_REF}" >> $GITHUB_OUTPUT
+          echo "✅ Target release: ${TAG} (id=${RELEASE_ID}), building from: ${SOURCE_REF}"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ steps.info.outputs.source_ref }}
+
+      # F6: 产物以 tag 版本命名发布，但代码来自 source_ref —— 两者版本号
+      # 不一致时（例如手滑用 main 最新代码构旧 tag 的 APK）默认硬失败。
+      - name: Verify source_ref version matches tag
+        run: |
+          TAG_VERSION="${{ steps.info.outputs.version }}"
+          SRC_VERSION=$(jq -r '.version' package.json)
+          echo "tag version:        ${TAG_VERSION}"
+          echo "source_ref version: ${SRC_VERSION}"
+          if [[ "$SRC_VERSION" != "$TAG_VERSION" ]]; then
+            if [[ "${{ github.event.inputs.allow_version_mismatch }}" == "true" ]]; then
+              echo "::warning::source_ref version (${SRC_VERSION}) != tag (${TAG_VERSION}) — proceeding because allow_version_mismatch=true"
+            else
+              echo "::error::source_ref version (${SRC_VERSION}) does not match tag (${TAG_VERSION})."
+              echo "::error::如确需用其他版本的代码补发此 tag 的 APK，请勾选 allow_version_mismatch 重新触发。"
+              exit 1
+            fi
+          else
+            echo "✅ source_ref version matches tag"
+          fi
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 构建 Android APK
+  # 构建 Android APK (与 release.yml 共用 reusable workflow)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   build-android:
     needs: [preflight]
-    runs-on: ubuntu-latest
-    env:
-      NODE_OPTIONS: '--max-old-space-size=4096'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.inputs.source_ref }}
-
-      - name: Free disk space
-        run: |
-          echo "=== Disk usage BEFORE cleanup ==="
-          df -h /
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /usr/share/swift \
-            /usr/local/lib/android/sdk/ndk \
-            /usr/local/share/powershell \
-            /usr/local/share/chromium \
-            /usr/local/graalvm \
-            /usr/local/lib/node_modules \
-            /opt/ghc \
-            /opt/hostedtoolcache/CodeQL \
-            /opt/hostedtoolcache/go \
-            /opt/hostedtoolcache/Python \
-            /opt/hostedtoolcache/Ruby
-          sudo docker image prune --all --force
-          echo "=== Disk usage AFTER cleanup ==="
-          df -h /
-
-      - name: Add swap space
-        run: |
-          SWAPFILE=/swapfile
-
-          if swapon --show --noheadings | grep -q .; then
-            echo "Swap already enabled on runner; skipping allocation"
-          else
-            if ! sudo fallocate -l 8G "$SWAPFILE"; then
-              echo "::warning::fallocate failed; retrying swap creation with dd"
-              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=8192 status=progress
-            fi
-
-            sudo chmod 600 "$SWAPFILE"
-            sudo mkswap "$SWAPFILE"
-
-            if sudo swapon "$SWAPFILE"; then
-              echo "Swap enabled at $SWAPFILE"
-            else
-              echo "::warning::Failed to enable swap on this runner; continuing without extra swap"
-              sudo rm -f "$SWAPFILE"
-            fi
-          fi
-
-          echo "=== Memory + Swap ==="
-          free -h
-          swapon --show || true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Setup Android SDK & NDK
-        run: |
-          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
-            "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
-          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate version info
-        run: node scripts/generate-version.mjs
-
-      - name: Initialize Android project
-        run: npx tauri android init
-
-      - name: Inject Android permissions
-        run: |
-          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
-          PERM='<uses-permission android:name="android.permission.RECORD_AUDIO" />'
-          if grep -qF "$PERM" "$MANIFEST"; then
-            echo "RECORD_AUDIO permission already present"
-          else
-            echo "Injecting RECORD_AUDIO permission..."
-            sed -i "/<manifest/a\\    $PERM" "$MANIFEST"
-            echo "RECORD_AUDIO permission injected"
-          fi
-
-      - name: Copy custom Android icons
-        run: |
-          ICONS_SRC="src-tauri/icons/android"
-          RES_DST="src-tauri/gen/android/app/src/main/res"
-          if [ -d "$ICONS_SRC" ]; then
-            for density in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
-              if [ -d "$ICONS_SRC/$density" ]; then
-                mkdir -p "$RES_DST/$density"
-                cp -f "$ICONS_SRC/$density/"* "$RES_DST/$density/"
-              fi
-            done
-            if [ -d "$ICONS_SRC/mipmap-anydpi-v26" ]; then
-              mkdir -p "$RES_DST/mipmap-anydpi-v26"
-              cp -f "$ICONS_SRC/mipmap-anydpi-v26/"* "$RES_DST/mipmap-anydpi-v26/"
-            fi
-            if [ -f "$ICONS_SRC/values/ic_launcher_background.xml" ]; then
-              mkdir -p "$RES_DST/values"
-              cp -f "$ICONS_SRC/values/ic_launcher_background.xml" "$RES_DST/values/"
-            fi
-            rm -f "$RES_DST/drawable-v24/ic_launcher_foreground.xml"
-            rm -f "$RES_DST/drawable/ic_launcher_background.xml"
-            echo "✅ Custom Android icons copied"
-          else
-            echo "⚠️ No custom Android icons found, using defaults"
-          fi
-
-      - name: Bundle pdfium for Android
-        run: |
-          JNILIBS_DIR="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
-          mkdir -p "$JNILIBS_DIR"
-          if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
-            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
-            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
-          else
-            echo "⚠️ Android pdfium .so not found, downloading..."
-            bash scripts/download-pdfium.sh android-arm64
-            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
-            echo "✅ Downloaded and bundled pdfium for arm64"
-          fi
-
-      - name: Configure NDK toolchain
-        run: |
-          NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
-
-          sed -i '/\[target.aarch64-linux-android\]/,/^$/{ s|linker = .*|linker = "'"${NDK_PREBUILT}"'/bin/aarch64-linux-android21-clang"|; s|ar = .*|ar = "'"${NDK_PREBUILT}"'/bin/llvm-ar"| }' src-tauri/.cargo/config.toml
-
-          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
-          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
-          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
-
-          echo "✅ NDK toolchain configured"
-
-      - name: Build Android APK
-        env:
-          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
-          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
-          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
-          GRADLE_OPTS: -Dorg.gradle.daemon=false
-        run: |
-          set +e
-          echo "Starting Android build with 120 minute timeout"
-          timeout --signal=TERM --kill-after=60s 120m npx tauri android build --target aarch64
-          status=$?
-          set -e
-
-          if [ "$status" -eq 124 ]; then
-            echo "::error::Android build timed out after 120 minutes"
-          elif [ "$status" -ne 0 ]; then
-            echo "::error::Android build failed with exit code ${status}"
-          fi
-
-          exit "$status"
-
-      - name: Sign APK
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > /tmp/release.keystore
-
-          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
-          if [ -z "$UNSIGNED_APK" ]; then
-            echo "::error::未找到未签名的 APK"
-            find src-tauri/gen/android -name "*.apk" -type f
-            exit 1
-          fi
-          echo "找到 APK: $UNSIGNED_APK"
-
-          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
-
-          "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
-
-          "${BUILD_TOOLS}/apksigner" sign \
-            --ks /tmp/release.keystore \
-            --ks-key-alias "${ANDROID_KEY_ALIAS:-deepstudent}" \
-            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
-            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
-            --in /tmp/aligned.apk \
-            --out /tmp/signed.apk
-
-          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
-
-          VERSION="${{ needs.preflight.outputs.version }}"
-          mkdir -p android-output
-          cp /tmp/signed.apk "android-output/Deep.Student_${VERSION}_arm64.apk"
-
-          rm -f /tmp/release.keystore
-
-          echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
-          ls -lh android-output/
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: android-arm64
-          path: android-output/*.apk
+    uses: ./.github/workflows/reusable-build-android.yml
+    with:
+      ref: ${{ needs.preflight.outputs.source_ref }}
+      version: ${{ needs.preflight.outputs.version }}
+    secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 发布: 替换 Release 中的 APK 并更新 R2
+  # 发布: 替换 Release 中的 APK 并更新 R2 + 刷新 CDN
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   publish:
     needs: [preflight, build-android]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
+      # workflow ref 的 checkout：提供 scripts/ci/*
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
       - name: Download APK artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: android-arm64
           path: android-output
@@ -320,18 +147,19 @@ jobs:
       - name: Delete old APK from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
           echo "🗑️ Removing old APK assets from release ${TAG}..."
 
-          ASSET_IDS=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" \
+          ASSET_IDS=$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" \
             --jq '.assets[] | select(.name | endswith(".apk")) | .id' 2>/dev/null || echo "")
 
           if [ -n "$ASSET_IDS" ]; then
             echo "$ASSET_IDS" | while read -r AID; do
-              NAME=$(gh api "repos/${{ github.repository }}/releases/assets/${AID}" --jq '.name')
+              NAME=$(gh api "repos/${GH_REPO}/releases/assets/${AID}" --jq '.name')
               echo "  Deleting: ${NAME} (id=${AID})"
-              gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${AID}"
+              gh api -X DELETE "repos/${GH_REPO}/releases/assets/${AID}"
             done
           else
             echo "  No existing APK assets found"
@@ -340,16 +168,17 @@ jobs:
       - name: Upload new APK to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
           APK_FILE=$(ls android-output/*.apk | head -1)
           APK_NAME=$(basename "$APK_FILE")
           echo "📤 Uploading ${APK_NAME} to release ${TAG}..."
-          gh release upload "${TAG}" "$APK_FILE" --repo "${{ github.repository }}" --clobber
+          gh release upload "${TAG}" "$APK_FILE" --repo "${GH_REPO}" --clobber
           echo "✅ APK uploaded to GitHub Release"
 
       - name: Setup Node.js for wrangler
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
 
@@ -357,40 +186,14 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ needs.preflight.outputs.tag_name }}"
           R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
           APK_FILE=$(ls android-output/*.apk | head -1)
           APK_NAME=$(basename "$APK_FILE")
-          MAX_RETRIES=3
-          RETRY_DELAY=3
-
-          upload_with_retry() {
-            local object_key="$1"
-            local file_path="$2"
-            local content_type="$3"
-            local cache_control="$4"
-
-            local attempt=1
-            while [ "$attempt" -le "$MAX_RETRIES" ]; do
-              if npx wrangler r2 object put "$object_key" \
-                --file "$file_path" --content-type "$content_type" \
-                --cache-control "$cache_control" --remote; then
-                return 0
-              fi
-              echo "⚠️ Upload attempt ${attempt}/${MAX_RETRIES} failed: $(basename "$file_path")"
-              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-                sleep "$RETRY_DELAY"
-              fi
-              attempt=$((attempt + 1))
-            done
-
-            return 1
-          }
 
           echo "📤 Uploading APK to R2..."
-          upload_with_retry \
+          bash scripts/ci/r2-put.sh \
             "${R2_BUCKET}/releases/${TAG}/${APK_NAME}" \
             "$APK_FILE" \
             "application/vnd.android.package-archive" \
@@ -408,7 +211,7 @@ jobs:
             echo "Updated latest.json:"
             cat /tmp/updated-latest.json
 
-            upload_with_retry \
+            bash scripts/ci/r2-put.sh \
               "${R2_BUCKET}/releases/latest.json" \
               "/tmp/updated-latest.json" \
               "application/json" \
@@ -417,3 +220,18 @@ jobs:
           else
             echo "⚠️ Could not fetch current latest.json from R2, skipping update"
           fi
+
+      # F5: APK 与旧文件同名同 key、immutable 一年缓存 —— 不 purge 则
+      # 走 CDN 的用户继续拿被替换前的旧 APK。
+      - name: Purge Cloudflare CDN cache
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          TAG="${{ needs.preflight.outputs.tag_name }}"
+          APK_NAME=$(basename "$(ls android-output/*.apk | head -1)")
+          {
+            echo "https://download.deepstudent.cn/releases/${TAG}/${APK_NAME}"
+            echo "https://download.deepstudent.cn/releases/latest.json"
+          } > /tmp/purge-urls.txt
+          bash scripts/ci/purge-cdn.sh /tmp/purge-urls.txt

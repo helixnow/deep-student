@@ -15,7 +15,7 @@ import { pathUtils } from '../utils/pathUtils';
 import { createEmpty } from '../factory';
 import { cn } from '@/lib/utils';
 import type { DstuNode } from '../types';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 ExamContentView（DSTU 模式实现）
@@ -80,9 +80,9 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
             <WarningCircle size={40} className="text-destructive/60" />
             <span className="text-sm text-destructive text-center max-w-md">{createError}</span>
             {onClose && (
-              <NotionButton variant="ghost" onClick={onClose}>
+              <DsButton variant="ghost" onClick={onClose}>
                 {t('common:actions.close')}
-              </NotionButton>
+              </DsButton>
             )}
           </>
         ) : (
@@ -90,7 +90,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
             <CircleNotch size={32} className="animate-spin text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
               {isCreating
-                ? t('dstu:actions.creatingResource', '正在创建资源...')
+                ? t('dstu:actions.creatingResource')
                 : t('dstu:preview.loading')}
             </span>
           </>
@@ -113,9 +113,9 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
           {t('exam_sheet:errors.noSession')}
         </span>
         {onCloseError && (
-          <NotionButton variant="ghost" onClick={onCloseError}>
+          <DsButton variant="ghost" onClick={onCloseError}>
             {t('common:actions.close')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );

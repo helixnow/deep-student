@@ -10,7 +10,7 @@ import { Input } from './ui/shad/Input';
 import { AppSelect } from './ui/app-menu';
 import { Textarea } from './ui/shad/Textarea';
 
-// 内部组件：带开关的设置行 - Notion 风格
+// 内部组件：带开关的设置行 - 简洁风格
 const SwitchRow = ({
   title,
   description,
@@ -35,7 +35,7 @@ const SwitchRow = ({
   </div>
 );
 
-// 内部组件：设置行 - Notion 风格
+// 内部组件：设置行 - 简洁风格
 const SettingRow = ({
   title,
   description,
@@ -164,12 +164,12 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
           }
         } else {
           setAssignedRerankerLabel(
-            t('settings:advanced_search.reranker.unassigned', '未配置')
+            t('settings:advanced_search.reranker.unassigned')
           );
         }
       } catch (error: unknown) {
         setAssignedRerankerLabel(
-          t('settings:advanced_search.messages.load_model_failed', '加载失败')
+          t('settings:advanced_search.messages.load_model_failed')
         );
         console.warn('Failed to load reranker assignments', error);
       }
@@ -242,7 +242,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
       });
       showGlobalNotification(
         'success',
-        t('settings:advanced_search.tavily_depth.saved', '已保存 Tavily 搜索深度设置')
+        t('settings:advanced_search.tavily_depth.saved')
       );
       onConfigChange?.();
     } catch (error: unknown) {
@@ -354,7 +354,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
     return (
       <div className="flex items-center justify-center py-8 text-xs text-muted-foreground/70">
         <ArrowClockwise size={12} className="mr-2 animate-spin" />
-        {t('common:loading', '加载中…')}
+        {t('common:loading')}
       </div>
     );
   }
@@ -369,14 +369,14 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
         onCheckedChange={handleRerankerToggle}
 />
       {rerankerConfig.enabled && (
-        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-px animate-in slide-in-from-top-2 duration-200">
+        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-px ui-drop-in">
           <SettingRow
             title={t('settings:advanced_search.reranker.current_model')}
             description={t('settings:advanced_search.reranker.model_hint')}
           >
             <div className="px-3 py-1.5 rounded-md bg-muted/50 text-xs text-foreground/80 truncate">
               {assignedRerankerLabel ||
-                t('settings:advanced_search.reranker.unassigned', '未配置')}
+                t('settings:advanced_search.reranker.unassigned')}
             </div>
           </SettingRow>
           <SettingRow
@@ -399,8 +399,8 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
 
       {/* Tavily 搜索深度 */}
       <SettingRow
-        title={t('settings:advanced_search.tavily_depth.title', 'Tavily 搜索深度')}
-        description={t('settings:advanced_search.tavily_depth.description', '仅影响 Tavily 搜索，advanced 可获取更深入的结果。')}
+        title={t('settings:advanced_search.tavily_depth.title')}
+        description={t('settings:advanced_search.tavily_depth.description')}
       >
         <AppSelect value={tavilySearchDepth} onValueChange={handleTavilyDepthChange}
           options={[
@@ -422,7 +422,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
         onCheckedChange={handleCnWhitelistToggle}
 />
       {cnWhitelistConfig.enabled && (
-        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-2 animate-in slide-in-from-top-2 duration-200">
+        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-2 ui-drop-in">
           {/* 使用默认列表开关 */}
           <SwitchRow
             title={t('settings:advanced_search.whitelist.use_default_label')}

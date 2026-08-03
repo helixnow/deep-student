@@ -109,9 +109,8 @@ fn classify_path(raw: &str) -> Result<PathKind, AppError> {
 }
 
 fn parse_safe_path(raw: &str) -> Result<SafeFilePath, AppError> {
-    SafeFilePath::from_str(raw).map_err(|e| {
-        AppError::file_system(format!("无法解析系统路径 `{}`: {}", raw, e.to_string()))
-    })
+    SafeFilePath::from_str(raw)
+        .map_err(|e| AppError::file_system(format!("无法解析系统路径 `{}`: {}", raw, e)))
 }
 
 fn open_reader(
@@ -129,9 +128,10 @@ fn open_reader(
             let safe_path = parse_safe_path(uri)?;
             let mut options = OpenOptions::new();
             options.read(true);
-            let file = window.fs().open(safe_path, options).map_err(|e| {
-                AppError::file_system(format!("读取文件失败: {} ({})", uri, e.to_string()))
-            })?;
+            let file = window
+                .fs()
+                .open(safe_path, options)
+                .map_err(|e| AppError::file_system(format!("读取文件失败: {} ({})", uri, e)))?;
             Ok(BufReader::new(Box::new(file)))
         }
     }
@@ -167,9 +167,10 @@ fn open_writer(
             let safe_path = parse_safe_path(uri)?;
             let mut options = OpenOptions::new();
             options.write(true).create(true).truncate(truncate);
-            let file = window.fs().open(safe_path, options).map_err(|e| {
-                AppError::file_system(format!("写入文件失败: {} ({})", uri, e.to_string()))
-            })?;
+            let file = window
+                .fs()
+                .open(safe_path, options)
+                .map_err(|e| AppError::file_system(format!("写入文件失败: {} ({})", uri, e)))?;
             Ok(BufWriter::new(Box::new(file)))
         }
     }
@@ -182,6 +183,54 @@ pub fn read_all_bytes(window: &Window, raw_path: &str) -> Result<Vec<u8>, AppErr
     reader
         .read_to_end(&mut buffer)
         .map_err(|e| AppError::file_system(format!("读取文件失败: {} ({})", path.display(), e)))?;
+    Ok(buffer)
+}
+
+/// 带大小上限的全量读取。
+///
+/// ★ 2026-07-19（安全加固）：`read_file_bytes` 命令此前无上限，前端任意 JS
+/// 可将超大文件一次性载入内存。此处双重防护：
+/// - 本地文件先用 `metadata().len()` 预检，超限直接报错（错误信息含实际大小）；
+/// - 实际读取用 `take(max_bytes + 1)` 截断，防止预检与读取之间文件增长（TOCTOU），
+///   同时覆盖无法预检大小的虚拟 URI（content:// 等）。
+pub fn read_all_bytes_bounded(
+    window: &Window,
+    raw_path: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, AppError> {
+    let path = classify_path(raw_path)?;
+
+    if let PathKind::Local(local_path) = &path {
+        let meta = std::fs::metadata(local_path).map_err(|e| {
+            AppError::file_system(format!(
+                "获取文件信息失败: {} ({})",
+                local_path.display(),
+                e
+            ))
+        })?;
+        if meta.len() > max_bytes {
+            return Err(AppError::validation(format!(
+                "文件过大: {} 字节，超过读取上限 {} 字节: {}",
+                meta.len(),
+                max_bytes,
+                path.display()
+            )));
+        }
+    }
+
+    let reader = open_reader(window, &path)?;
+    let mut limited = reader.take(max_bytes.saturating_add(1));
+    let mut buffer = Vec::new();
+    limited
+        .read_to_end(&mut buffer)
+        .map_err(|e| AppError::file_system(format!("读取文件失败: {} ({})", path.display(), e)))?;
+    if buffer.len() as u64 > max_bytes {
+        return Err(AppError::validation(format!(
+            "文件过大: 超过读取上限 {} 字节: {}",
+            max_bytes,
+            path.display()
+        )));
+    }
     Ok(buffer)
 }
 
@@ -272,10 +321,7 @@ pub fn is_virtual_uri(path: &str) -> bool {
 pub fn extract_file_name(raw_path: &str) -> String {
     let trimmed = raw_path.trim();
     // 同时处理 `/` 和 `\`：取最后一段路径组件
-    let last_segment = trimmed
-        .rsplit(|c| c == '/' || c == '\\')
-        .next()
-        .unwrap_or(trimmed);
+    let last_segment = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
     // 尝试 URL 解码（content:// 的 document ID 中 %2F 代表 /）
     let decoded = urlencoding::decode(last_segment)
         .map(|c| c.into_owned())
@@ -448,12 +494,11 @@ pub fn detect_extension_from_magic(window: &Window, raw_path: &str) -> Option<St
     let trimmed_text = text_str.trim_start_matches('\u{FEFF}').trim();
 
     // JSON: 以 { 或 [ 开头
-    if trimmed_text.starts_with('{') || trimmed_text.starts_with('[') {
-        if serde_json::from_str::<serde_json::Value>(trimmed_text).is_ok()
-            || trimmed_text.len() >= 1024
-        {
-            return Some("json".into());
-        }
+    if (trimmed_text.starts_with('{') || trimmed_text.starts_with('['))
+        && (serde_json::from_str::<serde_json::Value>(trimmed_text).is_ok()
+            || trimmed_text.len() >= 1024)
+    {
+        return Some("json".into());
     }
 
     // CSV 启发式：多行、含逗号分隔
@@ -467,7 +512,7 @@ pub fn detect_extension_from_magic(window: &Window, raw_path: &str) -> Option<St
     }
 
     // 纯文本兜底：全部为合法 UTF-8 可打印字符
-    if text_sample.len() > 0 && std::str::from_utf8(&text_sample).is_ok() {
+    if !text_sample.is_empty() && std::str::from_utf8(&text_sample).is_ok() {
         return Some("txt".into());
     }
 

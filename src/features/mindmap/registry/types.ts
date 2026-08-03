@@ -15,6 +15,25 @@ export type LayoutCategory = 'mindmap' | 'logic' | 'orgchart' | 'custom';
 export type LayoutDirection = 'left' | 'right' | 'both' | 'up' | 'down' | 'radial';
 
 /**
+ * 带截断元信息的布局边界（布局相关新增）
+ *
+ * 树深度超过 MAX_TREE_DEPTH 时，引擎除 console.warn 外还会在返回的
+ * bounds 上标记 truncated: true，供上层（画布/toast）感知并提示用户
+ * 「部分深层节点未被布局」。字段为可选扩展，不破坏 LayoutResult 契约；
+ * 消费方按 `(result.bounds as LayoutBoundsWithMeta).truncated` 读取。
+ */
+export interface LayoutBoundsWithMeta {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+  /** 深度超限截断标记（未截断时缺省/undefined） */
+  truncated?: boolean;
+}
+
+/**
  * 布局引擎接口
  */
 export interface ILayoutEngine {

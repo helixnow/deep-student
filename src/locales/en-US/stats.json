@@ -1,31 +1,31 @@
 {
   "heatmap": {
     "title": "Learning Heatmap",
-    "loading": "Loading...",
+    "loading": "Loading learning data...",
     "error": "Failed to load: {{error}}",
     "retry": "Retry",
     "refresh": "Refresh",
     "totalActivities": "{{count}} learning activities",
     "noActivity": "No activity",
     "stats": {
-      "totalActivities": "Total Activities",
-      "activeDays": "Active Days",
-      "maxDaily": "Max Daily"
+      "totalActivities": "Total activities",
+      "activeDays": "Active days",
+      "maxDaily": "Daily peak"
     },
     "legend": {
       "less": "Less",
       "more": "More"
     },
     "details": {
-      "chatSessions": "Chat sessions: {{count}}",
-      "chatMessages": "Messages sent: {{count}}",
-      "notesEdited": "Notes edited: {{count}}",
-      "textbooksOpened": "Textbooks opened: {{count}}",
-      "examsCreated": "Exams created: {{count}}",
-      "translationsCreated": "Translations: {{count}}",
-      "essaysCreated": "Essays graded: {{count}}",
-      "ankiCardsCreated": "Cards created: {{count}}",
-      "questionsAnswered": "Questions answered: {{count}}"
+      "chatSessions": "Sessions",
+      "chatMessages": "Messages",
+      "notesEdited": "Notes",
+      "textbooksOpened": "Reading",
+      "examsCreated": "Quizzes",
+      "translationsCreated": "Translations",
+      "essaysCreated": "Essays",
+      "ankiCardsCreated": "Cards",
+      "questionsAnswered": "Questions"
     }
   },
   "calendar": {
@@ -56,6 +56,7 @@
     "correctRate": "Accuracy",
     "questionUnit": "{{count}}",
     "noRecord": "No learning records",
+    "emptyHint": "Start answering questions and your daily learning activity will be tracked here",
     "legendLess": "Less",
     "legendMore": "More"
   },
@@ -64,6 +65,7 @@
     "today": "Today",
     "week": "This Week",
     "month": "This Month",
+    "quarter": "Last 90 Days",
     "all": "All",
     "questionCount": "Questions",
     "correctCount": "Correct",
@@ -89,6 +91,47 @@
     "itemDetail": "{{total}} questions · Mastered {{mastered}}",
     "noData": "No knowledge data",
     "noDataHint": "Complete more questions to see knowledge mastery",
-    "refreshData": "Refresh"
+    "refreshData": "Refresh",
+    "topHint": "Radar shows the top {{shown}} topics; the other {{rest}} are listed below"
+  },
+  "overview": {
+    "total": "Total Questions",
+    "masteryRate": "Mastery",
+    "streak": "Day Streak",
+    "todayDone": "Done Today",
+    "daySuffix": "days",
+    "questionSuffix": "questions"
+  },
+  "questionTypes": {
+    "single_choice": "Single Choice",
+    "multiple_choice": "Multiple Choice",
+    "indefinite_choice": "Indefinite Choice",
+    "true_false": "True / False",
+    "fill_blank": "Fill in Blank",
+    "matching": "Matching",
+    "ordering": "Ordering",
+    "numeric": "Numeric",
+    "short_answer": "Short Answer",
+    "calculation": "Calculation",
+    "proof": "Proof",
+    "essay": "Essay",
+    "other": "Other"
+  },
+  "typeBreakdown": {
+    "title": "Question Types & Accuracy",
+    "typeCount": "{{count}} types",
+    "partialHint": "Based on loaded questions; load more for a complete picture",
+    "questionUnit": "{{count}}",
+    "noAttempt": "No attempts"
+  },
+  "historyView": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "filterAll": "All",
+    "filterAnswers": "Answers",
+    "filterWrongOnly": "Wrong only",
+    "loadMore": "Load more",
+    "recordCount": "{{count}} records",
+    "noFilterResult": "No records match this filter"
   }
 }

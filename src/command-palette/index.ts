@@ -4,7 +4,7 @@
 
 // 组件
 export { CommandPalette } from './CommandPalette';
-export { CommandPaletteProvider, useCommandPalette } from './CommandPaletteProvider';
+export { CommandPaletteProvider, useCommandPalette, useCommandPaletteSafe } from './CommandPaletteProvider';
 export { ShortcutSettings } from './components/ShortcutSettings';
 
 // Registry
@@ -31,6 +31,7 @@ export type { CommandEventName } from './hooks/useCommandEvents';
 export type {
   Command,
   CommandCategory,
+  CommandView,
   DependencyResolver,
   ICommandRegistry,
   CommandChangeListener,

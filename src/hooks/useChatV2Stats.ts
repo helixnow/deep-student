@@ -115,8 +115,9 @@ const getWeekdayLabel = (dayIndex: number): string => {
 
 /**
  * 获取 Chat V2 统计数据
+ * @param activityDays dailyActivity 覆盖的天数（默认 7 天）
  */
-export function useChatV2Stats(autoRefresh = false, refreshInterval = 30000): ChatV2Stats {
+export function useChatV2Stats(autoRefresh = false, refreshInterval = 30000, activityDays = 7): ChatV2Stats {
   const [stats, setStats] = useState<ChatV2Stats>({
     totalSessions: 0,
     activeSessions: 0,
@@ -173,10 +174,10 @@ export function useChatV2Stats(autoRefresh = false, refreshInterval = 30000): Ch
         }))
         .sort((a, b) => b.count - a.count);
 
-      // 计算每日活动（最近7天）
+      // 计算每日活动（最近 activityDays 天）
       const dailyActivity: DailyActivity[] = [];
 
-      for (let i = 6; i >= 0; i--) {
+      for (let i = activityDays - 1; i >= 0; i--) {
         const date = new Date(now);
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
@@ -255,7 +256,7 @@ export function useChatV2Stats(autoRefresh = false, refreshInterval = 30000): Ch
         error: error instanceof Error ? error.message : t('messages.error.load_stats_failed'),
       }));
     }
-  }, []);
+  }, [activityDays]);
 
   // 初始加载
   useEffect(() => {

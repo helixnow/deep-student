@@ -906,7 +906,7 @@ export async function cleanupChatAnkiTestData(
     for (const status of ['active', 'archived', 'deleted'] as const) {
       let offset = 0;
       const PAGE = 50;
-      // eslint-disable-next-line no-constant-condition
+
       while (true) {
         const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
           status, limit: PAGE, offset,

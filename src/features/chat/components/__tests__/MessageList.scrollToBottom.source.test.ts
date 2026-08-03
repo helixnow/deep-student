@@ -15,7 +15,9 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).toContain('aria-label={scrollToBottomLabel}');
     expect(source).toContain("title={scrollToBottomLabel}");
     expect(source).toContain('className="pointer-events-none absolute inset-x-0 bottom-2 px-4 md:bottom-3 md:px-8"');
-    expect(source).toContain('style={{ zIndex: Z_INDEX.inputBar - 10 }}');
+    // P0-4: 键盘/输入栏遮挡时按钮容器整体上抬，锚定在输入栏上沿
+    expect(source).toContain('zIndex: Z_INDEX.inputBar - 10,');
+    expect(source).toContain("transform: inputOverlapPx > 0 ? `translateY(-${inputOverlapPx}px)` : undefined,");
     expect(source).toContain('<ThreadContentShell className="pointer-events-none overflow-visible">');
     expect(source).toContain('className="t-panel-slide ml-auto w-fit"');
     expect(source).toContain("data-open={showScrollToBottom ? 'true' : 'false'}");
@@ -25,6 +27,8 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).toContain("['--panel-close-dur' as string]: '220ms'");
     expect(source).toContain('tabIndex={showScrollToBottom ? 0 : -1}');
     expect(source).toContain("'pointer-events-auto ml-auto flex h-10 w-10 items-center justify-center rounded-full'");
+    // P1-8: 视觉 40px + 透明伪元素扩大到 ≥44px 触控命中区
+    expect(source).toContain("'relative after:absolute after:-inset-1 after:rounded-full after:content-[\\'\\']'");
     expect(source).toContain("'border border-[color:var(--button-utility-border)] bg-[color:var(--button-utility-surface)]'");
     expect(source).toContain("'text-[color:var(--button-utility-foreground)] transition-colors duration-150'");
     expect(source).toContain("'hover:border-[color:var(--button-utility-border)] hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--button-utility-foreground)]'");
@@ -40,13 +44,35 @@ describe('MessageList scroll-to-bottom source contract', () => {
 
   it('shows the control based on scroll position rather than streaming state alone', () => {
     expect(source).toContain("viewportElement.addEventListener('scroll', syncScrollState");
-    expect(source).toContain('setShowScrollToBottom(!nearBottom);');
+    // scrolledUp 现在额外排除内容收缩/clamp 造成的 scrollTop 下降（!dropExplainedByShrink），
+    // 避免流式重排把 clamp 误判为用户上滚而中断吸底
+    expect(source).toContain('scrollTop < prevScrollTop - 1');
+    expect(source).toContain('!dropExplainedByShrink');
+    expect(source).toContain('const followingBottom = isAutoScrollingRef.current && !userHasScrolledRef.current;');
+    expect(source).toContain('const userScrolledUp = scrolledUp && userScrollInteractionRef.current;');
+    expect(source).toContain('const awayFromBottom = followingBottom ? (userScrolledUp && !nearBottom) : !nearBottom;');
+    expect(source).toContain('userHasScrolledRef.current = awayFromBottom;');
+    expect(source).toContain('setShowScrollToBottom(awayFromBottom);');
     expect(source).toContain("data-open={showScrollToBottom ? 'true' : 'false'}");
     expect(source).not.toContain('{showScrollToBottom && isStreaming && (');
+  });
+
+  it('wakes sticky bottom-follow immediately when streamed content grows', () => {
+    expect(source).toContain("viewportElement.querySelector<HTMLElement>('[role=\"log\"]')");
+    expect(source).toContain('new ResizeObserver(startLoop)');
+    expect(source).toContain('window.clearTimeout(idleTimerId);');
+    expect(source).toContain('resizeObserver?.disconnect();');
   });
 
   it('uses transitions-dev panel reveal semantics for fade-out', () => {
     expect(source).toContain('className="t-panel-slide ml-auto w-fit"');
     expect(source).toContain('aria-hidden={!showScrollToBottom}');
+  });
+
+  it('confines sent-message positioning to the message viewport', () => {
+    expect(source).toContain('const viewportRect = viewportElement.getBoundingClientRect();');
+    expect(source).toContain('const messageRect = userMessageEl.getBoundingClientRect();');
+    expect(source).toContain('viewportElement.scrollTop = Math.max(');
+    expect(source).not.toContain('userMessageEl.scrollIntoView(');
   });
 });

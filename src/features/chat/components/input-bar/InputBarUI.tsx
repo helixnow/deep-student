@@ -5,38 +5,34 @@
  * 保留原有 UI/UX/动效，删除所有业务逻辑和旧架构依赖。
  */
 
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
   ArrowUp,
   Square,
   Paperclip,
-  StackSimple,
-  SlidersHorizontal,
-  GraduationCap,
-  Wrench,
-  BookOpen,
   CheckCircle,
   Warning,
   Clock,
   XCircle,
   UploadSimple,
-  Network,
-  Plus,
   Camera,
   Lightning,
-  Sparkle,
   CircleNotch,
   FolderOpen,
   CaretDown,
   MagnifyingGlass,
+  DotsThree,
+  Trash,
+  X,
 } from '@phosphor-icons/react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
+import { TextSwap } from '@/components/ui/TextSwap';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -47,10 +43,9 @@ import {
   AppMenuSubTrigger,
   AppMenuSubContent,
   AppMenuSeparator,
-  AppMenuSwitchItem,
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -68,6 +63,7 @@ import { logAttachment } from '../../debug/chatV2Logger';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates, type PdfProcessingStatus } from '../../core/types/common';
 import { ModelMentionPopover, shouldHandleModelMentionKey } from './ModelMentionPopover';
+import { SkillSlashPopover, useSkillSlashCommands, shouldHandleSkillSlashKey } from './SkillSlashPopover';
 import { ModelMentionChips } from './ModelMentionChip';
 import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
@@ -77,19 +73,25 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
-import { ComposerPanel } from './ComposerPanel';
-import { ComposerToolButton } from './ComposerToolButton';
+import { ComposerInlinePanel } from './ComposerInlinePanel';
+import { ComposerPlusMenu } from './ComposerPlusMenu';
+import { ThinkingDepthSlider } from './ThinkingDepthSlider';
+import { ContextUsagePopover } from './ContextUsagePopover';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
   type MediaInjectMode,
-  getAttachmentMediaType,
   getSelectedInjectModes as ssotGetSelectedModes,
   getEffectiveReadyModes as ssotGetEffectiveReadyModes,
+  getAttachmentMediaType,
+  getMediaTypeForAttachment,
+  buildDefaultInjectModes,
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import type { DeepSeekReasoningOption } from '@/utils/deepseekReasoningControls';
+import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
 
 // ============================================================================
 // 常量
@@ -99,12 +101,16 @@ import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import {
   ATTACHMENT_MAX_SIZE,
   ATTACHMENT_MAX_COUNT,
-  ATTACHMENT_IMAGE_TYPES,
-  ATTACHMENT_IMAGE_EXTENSIONS,
-  ATTACHMENT_DOCUMENT_TYPES,
-  ATTACHMENT_DOCUMENT_EXTENSIONS,
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_ALLOWED_EXTENSIONS,
+  ATTACHMENT_AUDIO_TYPES,
+  ATTACHMENT_AUDIO_EXTENSIONS,
+  ATTACHMENT_VIDEO_TYPES,
+  ATTACHMENT_VIDEO_EXTENSIONS,
+  ATTACHMENT_ARCHIVE_TYPES,
+  ATTACHMENT_ARCHIVE_EXTENSIONS,
+  ATTACHMENT_MINDMAP_EXTENSIONS,
+  ATTACHMENT_MINDMAP_TEXT_EXTENSIONS,
   formatFileSize,
 } from '../../core/constants';
 
@@ -130,8 +136,15 @@ const INPUT_BAR_CONFIG = {
     changeThreshold: MOBILE_LAYOUT.inputBar.heightChangeThreshold,
     /** textarea 最小高度 */
     textareaMin: 40,
-    /** textarea 最大高度（超出后才允许内部滚动） */
-    textareaMax: 160,
+    /** textarea 最大高度（超出后才允许内部滚动）；220px ≈ 8 行，长草稿编辑不憋屈 */
+    textareaMax: 220,
+  },
+  /** 粘贴策略 */
+  paste: {
+    /** 超过该字符数时，粘贴后提供「转为附件」内联建议（文本默认进输入框） */
+    longTextSuggestChars: 1000,
+    /** 超过该字符数时，直接转为 .txt 附件（避免超长文本拖垮输入框） */
+    longTextAutoAttachChars: 50000,
   },
   /** 响应式断点 */
   breakpoints: {
@@ -160,12 +173,13 @@ const HEAVY_UI_DELAY_MS = INPUT_BAR_CONFIG.delays.heavyUI;
  * 调度 idle 回调的工具函数
  * 使用 requestIdleCallback（如不支持则降级到 setTimeout）
  */
-function scheduleIdle(callback: () => void, timeout = IDLE_DELAY_MS): void {
+function scheduleIdle(callback: () => void, timeout = IDLE_DELAY_MS): () => void {
   if (typeof requestIdleCallback === 'function') {
-    requestIdleCallback(callback, { timeout });
-  } else {
-    setTimeout(callback, timeout);
+    const id = requestIdleCallback(callback, { timeout });
+    return () => cancelIdleCallback(id);
   }
+  const id = setTimeout(callback, timeout);
+  return () => clearTimeout(id);
 }
 
 function getFileExtension(fileName: string): string {
@@ -181,6 +195,37 @@ function clampPercent(value?: number): number {
 function getCompactThinkingLabel(label?: string): string | undefined {
   const compact = label?.replace(/^(推理|Reasoning)\s*[:：]\s*/i, '').trim();
   return compact || label;
+}
+
+function ResizingThinkingLabel({ text }: { text: string }) {
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [labelWidth, setLabelWidth] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const width = Math.ceil(measureRef.current?.getBoundingClientRect().width ?? 0);
+    if (width > 0) setLabelWidth(width);
+  }, [text]);
+
+  return (
+    <span
+      data-testid="thinking-runtime-state-label"
+      className="relative inline-block whitespace-nowrap text-left text-[color:var(--text-muted)] opacity-70"
+    >
+      <span
+        className="t-resize inline-block whitespace-nowrap"
+        style={labelWidth ? { width: labelWidth } : undefined}
+      >
+        <TextSwap text={text} />
+      </span>
+      <span
+        ref={measureRef}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute left-0 top-0 whitespace-nowrap"
+      >
+        {text}
+      </span>
+    </span>
+  );
 }
 
 function ContextWindowUsageRing({
@@ -211,7 +256,7 @@ function ContextWindowUsageRing({
         <span className="font-semibold text-[color:var(--text-primary)]">
           {t('chatV2:tokenUsage.contextWindow')}
         </span>
-        <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums text-[color:var(--text-secondary)]">
+        <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-0.5 font-mono text-2xs leading-none tabular-nums text-[color:var(--text-secondary)]">
           {usage.usedPercent}%
         </span>
       </div>
@@ -477,8 +522,13 @@ const useDeferredOpen = (open: boolean, delay = 220): DeferredPanelState => {
 
 /**
  * InputBarUI - 纯展示输入栏组件
+ *
+ * ★ 性能：底部以 React.memo 导出。InputBarV2 因 store 订阅（流式 usage 更新、
+ * 面板状态等）重渲染而 props 未变时，跳过整棵输入栏子树的重复渲染。
+ * 打字路径（inputValue prop 变化）仍会渲染本组件，但内部重型子树
+ * （ComposerPlusMenu / 各 chips）已独立 memo。
  */
-export const InputBarUI: React.FC<InputBarUIProps> = ({
+const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 状态
   inputValue,
   canSend,
@@ -503,6 +553,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   onClearAttachments,
   onFilesUpload,
   onSetPanelState,
+  onCompactContext,
+  isCompactingContext = false,
+  compactContextStatus = null,
+  getCompactionInfo,
   // UI 配置
   placeholder,
   sendShortcut = 'enter',
@@ -513,7 +567,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   className,
   autoFocus = false,
   // 模式插件面板
-  renderRagPanel,
+  // renderRagPanel 已彻底废弃：独立 RAG 面板 UI 删除后无插件注册，快捷键统一走对话控制面板
   renderModelPanel,
   renderAdvancedPanel,
   renderMcpPanel,
@@ -535,6 +589,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   enableThinking,
   thinkingStateLabel,
   thinkingUnsupported,
+  thinkingCanDisable = true,
   thinkingDepthOptions,
   thinkingDepthValue,
   onToggleThinking,
@@ -557,6 +612,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 🆕 工具审批请求
   pendingApprovalRequest,
   sessionId,
+  authorityMode = 'craft',
+  onAuthorityModeChange,
+  permissionPreset = 'relaxed',
+  onPermissionPresetChange,
+  authorityAskBlockedHint = false,
+  knowledgeBaseProactive = false,
+  onKnowledgeBaseProactiveChange,
   // ★ PDF 页码引用
   pdfPageRefs,
   onRemovePdfPageRef,
@@ -595,6 +657,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 🔧 IME 合成态追踪：防止 WKWebView 中文输入法重复追加文本
   const isComposingRef = useRef(false);
+  // 🔧 Safari/WebKit 时序修复：compositionend 先于确认 Enter 的 keydown 触发，
+  // 该 keydown 的 isComposing 已为 false，会把「确认候选词」误判为「发送」。
+  // 标记 compositionend 后的同一轮事件循环，期间的 Enter 一律视为 IME 确认键。
+  const compositionJustEndedRef = useRef(false);
+  const compositionEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (compositionEndTimerRef.current !== null) {
+        clearTimeout(compositionEndTimerRef.current);
+      }
+    };
+  }, []);
 
   // ========== 本地状态 ==========
   // 🔧 首帧降载：使用固定高度占位，idle 后再测量真实高度
@@ -602,11 +676,68 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const [textareaViewportHeight, setTextareaViewportHeight] = useState<number>(40);
   const lastMeasuredHeightRef = useRef<number>(INITIAL_PLACEHOLDER_HEIGHT);
   const [bottomGapPx, setBottomGapPx] = useState(DESKTOP_DOCK_GAP_PX);
-  const [keyboardInsetPx, setKeyboardInsetPx] = useState(0);
-  // 🔧 统一使用 MobileLayoutContext 的移动端判断
+  // 🔧 A-6/P1-6 语义澄清（两个"移动端"判断有意分裂，勿合并）：
+  // - isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的唯一依据
+  //   （内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
+  // - isMobileEnv（pointer: coarse，见下方声明）：仅用于**设备能力**判断
+  //   （是否展示拍照入口等），窄窗口桌面端不该出现相机、宽屏触摸设备应保留相机。
   const isMobile = mobileLayout?.isMobile ?? false;
+  // ⌨️ P0-2 键盘统一：订阅全局键盘 inset 单例（iOS overlay 检测 + Android
+  // adjustResize 自动归零），不再自管 visualViewport 双轨逻辑
+  const globalKeyboardInset = useKeyboardInset();
+  // 焦点门控：仅当焦点位于 composer 区域内的可编辑元素（输入框 / 面板搜索框等）
+  // 时才应用 inset，避免页面其他输入框唤起键盘时输入栏被误抬升
+  const [composerEditableFocused, setComposerEditableFocused] = useState(false);
+  // 桌面端「Enter 发送 / Shift+Enter 换行」提示：仅在 textarea 聚焦且输入为空时展示
+  const [composerTextareaFocused, setComposerTextareaFocused] = useState(false);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  // ★ B9 修复：长文本默认进输入框；这里记录粘贴片段，提供「转为附件」内联建议
+  const [longPasteCandidate, setLongPasteCandidate] = useState<{ text: string } | null>(null);
+  // ★ 制卡可发现性：附加 pdf/docx/apkg 时展示一条可关闭的制卡/导入提示
+  const [flashcardHintDismissed, setFlashcardHintDismissed] = useState(false);
+  const flashcardHintKind = useMemo<'apkg' | 'document' | null>(() => {
+    let kind: 'apkg' | 'document' | null = null;
+    for (const att of attachments) {
+      if (att.status === 'error') continue;
+      const ext = getFileExtension(att.name);
+      if (ext === 'apkg') return 'apkg';
+      if (ext === 'pdf' || ext === 'docx') kind = 'document';
+    }
+    return kind;
+  }, [attachments]);
+  useEffect(() => {
+    // 相关附件全部移除后复位，下次附加时重新提示
+    if (!flashcardHintKind) setFlashcardHintDismissed(false);
+  }, [flashcardHintKind]);
+  // ★ 音视频可见性警示：AI 仅能看到文件名（音频可调用转写工具获取文字）
+  const [mediaHintDismissed, setMediaHintDismissed] = useState(false);
+  const mediaHintKind = useMemo<'audio' | 'video' | null>(() => {
+    let kind: 'audio' | 'video' | null = null;
+    for (const att of attachments) {
+      if (att.status === 'error') continue;
+      if (att.type === 'audio') return 'audio';
+      if (att.type === 'video') kind = 'video';
+    }
+    return kind;
+  }, [attachments]);
+  useEffect(() => {
+    if (!mediaHintKind) setMediaHintDismissed(false);
+  }, [mediaHintKind]);
+  // ★ 思维导图可发现性：附加 xmind/opml/mm/mmap 时提示可导入为思维导图
+  const [mindmapHintDismissed, setMindmapHintDismissed] = useState(false);
+  const hasMindmapAttachment = useMemo(() => attachments.some((att) => (
+    att.status !== 'error' && ATTACHMENT_MINDMAP_EXTENSIONS.includes(getFileExtension(att.name))
+  )), [attachments]);
+  useEffect(() => {
+    if (!hasMindmapAttachment) setMindmapHintDismissed(false);
+  }, [hasMindmapAttachment]);
+  // armed=true 表示粘贴内容已落入输入框，可以开始监测「片段被编辑掉」
+  const longPasteArmedRef = useRef(false);
+  // ★ L2 修复：会话切换后 isReady 前（~0.5s）粘贴的文件先缓存，就绪后自动补投
+  const pendingEarlyPasteRef = useRef<File[]>([]);
+  // ★ 斜杠命令/@mention 共用的光标位置跟踪（onChange / onSelect / 补全后更新）
+  const [composerCaretPos, setComposerCaretPos] = useState(0);
 
   // 🔧 首帧轻量化：isReady 控制重 UI 延迟挂载
   const [isReady, setIsReady] = useState(false);
@@ -629,6 +760,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     panelStatesRef.current = panelStates;
   }, [panelStates]);
 
+  // ★ P0 修复（B2）：附件数量校验不再依赖渲染期闭包快照。
+  // React 重绘前连续两次拖入/粘贴多文件时，两个批次都会按旧 count 切片而突破上限；
+  // 改为同步计数 ref：每次 onAddAttachment 后立即 +1，attachments 提交后再校准。
+  const liveAttachmentCountRef = useRef(attachments.length);
+  useEffect(() => {
+    liveAttachmentCountRef.current = attachments.length;
+  }, [attachments.length]);
+
+  // 使用 useRef 追踪 attachments 的引用，避免作为 useEffect 依赖导致频繁触发
+  //（声明提前到 processFilesToAttachments 之前：上传完成回调需读取最新注入模式）
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
+
   // 处理文件转换为附件元数据并上传
   const processFilesToAttachments = useCallback((files: File[]) => {
     if (!files.length) return;
@@ -646,8 +790,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     }
 
     // P1-08: 使用统一的附件配置常量
-    // 🔧 P2优化：检查附件数量限制
-    const currentCount = attachments.length;
+    // 🔧 P2优化：检查附件数量限制（★ B2：读同步计数 ref，而非渲染期快照）
+    const currentCount = liveAttachmentCountRef.current;
     const availableSlots = ATTACHMENT_MAX_COUNT - currentCount;
     if (availableSlots <= 0) {
       console.warn(`[InputBarUI] Attachment limit reached (${ATTACHMENT_MAX_COUNT})`);
@@ -665,7 +809,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     // 🔧 P2优化：使用 updateAttachment 原地更新，避免闪烁
     filesToProcess.forEach((file) => {
       const fileExt = getFileExtension(file.name);
-      const isImage = file.type.startsWith('image/') || ATTACHMENT_IMAGE_EXTENSIONS.includes(fileExt);
+      // ★ P1 SSOT：媒体类型统一走 getAttachmentMediaType（MIME OR 扩展名），
+      // 修复空 mime 的 .png 等文件在部分链路中不进图片流水线的分裂
+      const mediaType = getAttachmentMediaType(file.type, file.name);
+      const isImage = mediaType === 'image';
+      const isAudio = file.type.startsWith('audio/') || ATTACHMENT_AUDIO_TYPES.includes(file.type) || ATTACHMENT_AUDIO_EXTENSIONS.includes(fileExt);
+      const isVideo = file.type.startsWith('video/') || ATTACHMENT_VIDEO_TYPES.includes(file.type) || ATTACHMENT_VIDEO_EXTENSIONS.includes(fileExt);
+      const isArchive = ATTACHMENT_ARCHIVE_TYPES.includes(file.type) || ATTACHMENT_ARCHIVE_EXTENSIONS.includes(fileExt);
+      // ★ 思维导图：xmind/mmap 为二进制容器（不注入文本，归 other）；
+      // opml/mm 为 XML 纯文本（按文档/文本注入）
+      const isBinaryMindmap = ATTACHMENT_MINDMAP_EXTENSIONS.includes(fileExt)
+        && !ATTACHMENT_MINDMAP_TEXT_EXTENSIONS.includes(fileExt);
+      const attachmentType: AttachmentMeta['type'] = isImage ? 'image' : isAudio ? 'audio' : isVideo ? 'video' : (isArchive || isBinaryMindmap) ? 'other' : 'document';
       const attachmentId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // 🔧 P2优化：文件大小验证 (P1-08: 使用统一常量)
@@ -674,26 +829,28 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
           name: file.name,
-          type: isImage ? 'image' : 'document',
+          type: attachmentType,
+          resourceType: isImage ? 'image' : 'file',
           mimeType: file.type,
           size: file.size,
           status: 'error',
           error: t('analysis:input_bar.attachments.file_too_large', { size: formatFileSize(ATTACHMENT_MAX_SIZE) }),
         };
         onAddAttachment(errorAttachment);
+        liveAttachmentCountRef.current += 1;
         return;
       }
 
       // 🔧 P2优化：文件类型验证 (P1-08: 使用统一常量)
-      const isAllowedType = isImage
-        ? ATTACHMENT_IMAGE_TYPES.includes(file.type) || ATTACHMENT_IMAGE_EXTENSIONS.includes(fileExt)
-        : ATTACHMENT_DOCUMENT_TYPES.includes(file.type) || ATTACHMENT_DOCUMENT_EXTENSIONS.includes(fileExt);
+      const isAllowedType = ATTACHMENT_ALLOWED_TYPES.includes(file.type)
+        || ATTACHMENT_ALLOWED_EXTENSIONS.includes(fileExt);
       if (!isAllowedType) {
         console.warn(`[InputBarUI] Unsupported file type: ${file.name} (${file.type || fileExt})`);
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
           name: file.name,
-          type: isImage ? 'image' : 'document',
+          type: attachmentType,
+          resourceType: isImage ? 'image' : 'file',
           mimeType: file.type || 'application/octet-stream',
           size: file.size,
           status: 'error',
@@ -703,21 +860,27 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           }),
         };
         onAddAttachment(errorAttachment);
+        liveAttachmentCountRef.current += 1;
         return;
       }
 
       // 先添加 pending 状态的附件
+      // ★ P0 契约：PDF/图片附件从创建起就显式携带 UI 默认注入模式，
+      // 后续 ContextRef 同步与发送快照均以此为准，后端缺省逻辑永不触发
       const pendingAttachment: AttachmentMeta = {
         id: attachmentId,
         name: file.name,
-        type: isImage ? 'image' : 'document',
+        type: attachmentType,
+        resourceType: isImage ? 'image' : 'file',
         mimeType: file.type || 'application/octet-stream',
         size: file.size,
         status: 'uploading', // 标记为上传中
         uploadProgress: 0,
         uploadStage: 'reading',
+        injectModes: buildDefaultInjectModes(mediaType),
       };
       onAddAttachment(pendingAttachment);
+      liveAttachmentCountRef.current += 1;
 
       // 🔧 P1-25: 移动端内存优化 - 使用 Blob URL 预览，避免 DataURL 常驻内存
       // 创建 Blob URL 用于预览（内存友好，浏览器自动管理）
@@ -821,16 +984,25 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
           // 3. 添加 ContextRef 到 store
           // 注意：InputBarUI 是纯 UI 组件，通过回调通知上层处理 ContextRef
+          // ★ P0 契约修复：创建 ContextRef 时就显式写入注入模式。
+          // 优先取用户在上传期间已改过的选择（读同步 ref 中的最新附件），
+          // 否则回落到 UI 默认（PDF=['text'] / 图片=['image']），
+          // 确保后端「缺省 text+image 双开」的兜底永不触发。
+          const liveInjectModes = attachmentsRef.current.find(a => a.id === attachmentId)?.injectModes;
+          const explicitInjectModes = liveInjectModes ?? buildDefaultInjectModes(mediaType);
           const contextRef: ContextRef = {
             resourceId: result.resourceId,
             hash: result.hash,
             typeId,
+            displayName: file.name,
+            ...(explicitInjectModes ? { injectModes: explicitInjectModes } : {}),
           };
 
           logAttachment('store', 'add_context_ref_event', {
             resourceId: result.resourceId,
             hash: result.hash,
             typeId,
+            injectModes: explicitInjectModes,
           });
 
           // 通过回调交给上层统一注册 ContextRef，避免跨模块散落事件监听
@@ -841,9 +1013,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           // Blob URL 由浏览器管理，内存占用更低
 
           // 🆕 判断文件类型，PDF 和图片需要进入 processing 状态等待预处理完成
-          const isPdfFile = file.type === 'application/pdf'
-            || file.name.toLowerCase().endsWith('.pdf');
-          const isImageFile = file.type.startsWith('image/');
+          //（复用 SSOT mediaType：MIME OR 扩展名，与上方附件创建口径一致）
+          const isPdfFile = mediaType === 'pdf';
+          const isImageFile = mediaType === 'image';
 
           if (isPdfFile) {
             // PDF 上传完成后设为 processing 状态，等待预处理流水线
@@ -889,7 +1061,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               readyModes,
               fileName: file.name,
             });
-            console.log('[MediaProcessing] PDF init store:', { sourceId: uploadResult.sourceId, stage, percent, readyModes });
           } else if (isImageFile) {
             // 图片上传完成后设为 processing 状态，等待预处理流水线
             // ★ v2.1: 使用后端返回的实际处理状态（从 uploadResult 获取）
@@ -933,7 +1104,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               readyModes,
               fileName: file.name,
             });
-            console.log('[MediaProcessing] Image init store:', { sourceId: uploadResult.sourceId, stage, percent, readyModes });
           } else {
             // 其他文件类型直接 ready
             onUpdateAttachment(attachmentId, {
@@ -961,7 +1131,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           onUpdateAttachment(attachmentId, {
             status: 'error',
             previewUrl: blobPreviewUrl,
-            error: `${t('chatV2:input.attachmentUploadFailed')}${errorDetail ? ` (${errorDetail})` : ''}`,
+            error: errorDetail
+              ? t('chatV2:input.attachmentUploadFailedDetail', { detail: errorDetail })
+              : t('chatV2:input.attachmentUploadFailed'),
             uploadProgress: undefined,
             uploadStage: undefined,
           });
@@ -986,11 +1158,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       reader.readAsDataURL(file);
     });
 
-  }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, attachments.length, t]);
+  }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t]);
 
   // ========== 相机拍照处理 ==========
-  // A-6: 拍照入口按指针能力判定（触屏设备≈带摄像头的移动设备），
-  // 替代 UA 嗅探，避免与宽度断点产生"桌面布局+移动能力"混合态
+  // A-6/P1-6: 拍照入口按指针能力判定（触屏设备≈带摄像头的移动设备），
+  // 替代 UA 嗅探，避免与宽度断点产生"桌面布局+移动能力"混合态。
+  // 注意：isMobileEnv 只回答"设备能不能"（能力），布局分支一律用 isMobile（断点）。
   const isMobileEnv = useMediaQuery('(pointer: coarse)');
 
   const handleCameraClick = useCallback(() => {
@@ -1054,16 +1227,24 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       pastedFiles.push(new File([file], fallbackName, { type: mime }));
     });
 
-    // 长文本转为附件
+    // ★ B9 修复：长文本粘贴策略对齐竞品——默认进输入框可继续编辑，
+    // 仅超长文本（>50k 字符）自动转附件；中等长度（>1k）给出内联「转为附件」建议。
     const text = clipboard.getData('text/plain') ?? '';
     let textConverted = false;
-    if (text && text.length > 800) {
+    if (text && text.length > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars) {
       const filename = `pasted_${timestamp}.txt`;
       pastedFiles.push(new File([text], filename, { type: 'text/plain' }));
       textConverted = true;
     }
 
-    if (pastedFiles.length === 0) return false;
+    if (pastedFiles.length === 0) {
+      // 走浏览器默认粘贴（文本进输入框）；中等长度时挂出「转为附件」建议条
+      if (text && text.length > INPUT_BAR_CONFIG.paste.longTextSuggestChars) {
+        longPasteArmedRef.current = false;
+        setLongPasteCandidate({ text });
+      }
+      return false;
+    }
 
     event.preventDefault();
     event.stopPropagation();
@@ -1071,11 +1252,82 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     processFilesToAttachments(pastedFiles);
 
     if (textConverted) {
-      showGlobalNotification('success', t('analysis:input_bar.attachments.doc_parsing_complete'), t('analysis:input_bar.attachments.document'));
+      showGlobalNotification(
+        'info',
+        t('chatV2:inputBar.longPaste.autoConverted', { chars: text.length })
+      );
     }
 
     return true;
   }, [processFilesToAttachments, t]);
+
+  // ★ 长文本粘贴建议条：转为附件（从输入框原位剥离该片段）
+  const convertLongPasteToAttachment = useCallback(() => {
+    if (!longPasteCandidate) return;
+    const { text } = longPasteCandidate;
+    setLongPasteCandidate(null);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    processFilesToAttachments([
+      new File([text], `pasted_${timestamp}.txt`, { type: 'text/plain' }),
+    ]);
+
+    // 输入框中若仍包含该片段，原位剥离（不影响用户后续输入的其他内容）
+    const index = inputValue.indexOf(text);
+    if (index >= 0) {
+      const nextValue = inputValue.slice(0, index) + inputValue.slice(index + text.length);
+      onInputChange(nextValue);
+      const textarea = textareaRef.current;
+      if (textarea) {
+        requestAnimationFrame(() => {
+          textarea.setSelectionRange(index, index);
+          setComposerCaretPos(index);
+        });
+      }
+    }
+  }, [longPasteCandidate, processFilesToAttachments, inputValue, onInputChange]);
+
+  // 用户编辑掉粘贴片段 / 清空输入 / 切换会话后自动收起建议条。
+  // armed 机制：粘贴默认行为落地（inputValue 首次包含该片段）后才开始监测移除，
+  // 避免 onPaste 与 store 更新之间的时序差导致建议条被立即误清除。
+  useEffect(() => {
+    if (!longPasteCandidate) return;
+    const included = inputValue.includes(longPasteCandidate.text);
+    if (included) {
+      longPasteArmedRef.current = true;
+    } else if (longPasteArmedRef.current) {
+      setLongPasteCandidate(null);
+    }
+  }, [inputValue, longPasteCandidate]);
+
+  useEffect(() => {
+    setLongPasteCandidate(null);
+  }, [sessionSwitchKey]);
+
+  // ========== 技能斜杠命令内联补全 ==========
+  // 输入期即时补全 /skill-id（原先仅发送时解析，未知令牌会被原样发出）
+  const skillSlash = useSkillSlashCommands({
+    inputValue,
+    caretPos: composerCaretPos,
+    enabled: !(isStreaming && !queueEnabled),
+    activeSkillIds,
+  });
+
+  // 补全应用：更新输入值并把光标精确落在补全令牌之后
+  const applySkillSlashSelection = useCallback((index?: number) => {
+    const result = skillSlash.applySelection(index);
+    if (!result) return false;
+    onInputChange(result.value);
+    setComposerCaretPos(result.caret);
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.focus();
+      requestAnimationFrame(() => {
+        textarea.setSelectionRange(result.caret, result.caret);
+      });
+    }
+    return true;
+  }, [skillSlash, onInputChange]);
 
   // ========== 面板动画状态 ==========
   // 🔧 统一使用 useDeferredOpen 实现所有面板的弹出收起动画
@@ -1087,9 +1339,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const skillPanelMotion = useDeferredOpen(panelStates.skill);
 
   // ========== 派生值 ==========
-  const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]';
+  // P1-3 触控目标：36px 视觉尺寸不变，触屏（pointer:coarse）用透明伪元素把
+  // 命中区域扩到 ≥44px，避免改变桌面视觉密度
+  const coarseHitAreaClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']";
+  // ★ M5：28px 级小控件（h-7 推理触发器等）需要更大的外扩量才能凑满 ≥44px
+  const coarseHitAreaLgClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
+  const coarseHitAreaXlClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
+  const iconButtonClass = cn(
+    'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]',
+    coarseHitAreaClass
+  );
   const studyUiButtonBaseClassName =
-    'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-[13px] font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
+    'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
   const studyUiButtonSizeIconClassName =
     'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
   const studyUiSendButtonSizeClass =
@@ -1098,36 +1359,44 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
   const studyUiSendButtonEmptyStateClass =
     '!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted/80 active:!bg-muted/70';
-  const composerPanelShortcutClassName =
-    'rounded border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] font-mono text-[10px] text-[color:var(--composer-panel-muted-foreground)]';
-  const studyUiSendButtonAriaLabel = '发送消息';
+  const studyUiSendButtonAriaLabel = t('chatV2:inputBar.sendMessage');
   const tooltipPosition = 'top' as const;
   // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
   const tooltipDisabled = isMobile;
   const attachmentCount = attachments.length;
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
+  const resolveThinkingDepthLabel = useCallback(
+    (option: DeepSeekReasoningOption) => t(option.labelKey, option.defaultLabel),
+    [t]
+  );
   const selectedThinkingDepthOption =
     !thinkingUnsupported && enableThinking && thinkingDepthValue && thinkingDepthOptions?.length
       ? thinkingDepthOptions.find((o) => o.value === thinkingDepthValue)
       : undefined;
   const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
-    ? selectedThinkingDepthOption.defaultLabel
+    ? resolveThinkingDepthLabel(selectedThinkingDepthOption)
     : compactThinkingStateLabel;
-  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
-  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
-  const runtimeModelSearchPlaceholder = t('app_menu.search.placeholder', '搜索名称或模型 ID...');
-  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode', '进入多选模式...');
-  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider', '其他');
+  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
+  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel');
+  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder');
+  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode');
+  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider');
   const runtimeModelAccessibleCurrent = runtimeModelLabel
     ? runtimeModelProviderLabel
       ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
       : runtimeModelLabel
     : undefined;
   const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
-    ? `${chooseRuntimeModelLabel}，当前：${runtimeModelAccessibleCurrent}`
+    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
+        label: chooseRuntimeModelLabel,
+        current: runtimeModelAccessibleCurrent,
+      })
     : chooseRuntimeModelLabel;
   const runtimeModelSwitchTitle = runtimeModelAccessibleCurrent
-    ? `${chooseRuntimeModelLabel}: ${runtimeModelAccessibleCurrent}`
+    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
+        label: chooseRuntimeModelLabel,
+        current: runtimeModelAccessibleCurrent,
+      })
     : chooseRuntimeModelLabel;
   const thinkingRuntimeTitle = [
     runtimeModelAccessibleCurrent ? `${runtimeModelTitle}: ${runtimeModelAccessibleCurrent}` : undefined,
@@ -1185,21 +1454,79 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const hasAnyPanelOpen = COMPOSER_PANEL_KEYS.some((panel) => panelStates[panel]);
   const activeComposerPanel = COMPOSER_PANEL_KEYS.find((panel) => panelStates[panel]) ?? null;
 
+  // 📱 P0-1 内联面板：各面板的动画状态映射 + 收起动画期间保留最后打开的面板，
+  // 让移动端内联容器在 closing 阶段仍能渲染内容并播放收起动画
+  const composerPanelMotions: Partial<Record<keyof PanelStates, DeferredPanelState>> = {
+    attachment: attachmentPanelMotion,
+    model: modelPanelMotion,
+    advanced: advancedPanelMotion,
+    mcp: mcpPanelMotion,
+    skill: skillPanelMotion,
+  };
+  const lastComposerPanelRef = useRef<keyof PanelStates | null>(null);
+  if (activeComposerPanel && composerPanelMotions[activeComposerPanel]) {
+    lastComposerPanelRef.current = activeComposerPanel;
+  }
+  const inlineRenderPanel: keyof PanelStates | null = activeComposerPanel && composerPanelMotions[activeComposerPanel]
+    ? activeComposerPanel
+    : (lastComposerPanelRef.current && composerPanelMotions[lastComposerPanelRef.current]?.shouldRender
+        ? lastComposerPanelRef.current
+        : null);
+
   // 🔧 面板容器 ref，用于检测点击是否在面板内
   const panelContainerRef = useRef<HTMLDivElement>(null);
   const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
   const runtimeModelTriggerRef = useRef<HTMLSpanElement | null>(null);
+
+  // ⌨️ P0-2 焦点门控：追踪焦点是否落在 composer 区域内的任一可编辑元素上。
+  // 判定范围放宽到输入壳 + 面板容器 + 桌面 overlay，保证在组合面板内的
+  // 搜索框打字时 inset 不归零（旧实现要求 activeElement === textarea）。
+  useEffect(() => {
+    if (!isMobile) {
+      setComposerEditableFocused(false);
+      return;
+    }
+
+    const evaluate = () => {
+      const active = document.activeElement;
+      const withinComposer = !!active && (
+        inputContainerRef.current?.contains(active)
+        || panelContainerRef.current?.contains(active)
+        || composerPanelOverlayRef.current?.contains(active)
+        // ★ M3 修复：AppMenu 内容 portal 在 body 上（加号菜单 / 推理菜单里的
+        // 模型搜索框），焦点落入其中时同样需要应用键盘 inset
+        || !!(active instanceof Element && active.closest('[data-app-menu-id]'))
+      );
+      setComposerEditableFocused(Boolean(withinComposer && isEditableElement(active)));
+    };
+
+    evaluate();
+    const handleFocusIn = () => evaluate();
+    // blur 后焦点可能立刻移动到面板内的输入框，等下一帧再判定
+    const handleFocusOut = () => {
+      requestAnimationFrame(evaluate);
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
+    };
+  }, [isMobile, sessionSwitchKey]);
+
+  // 最终生效的键盘 inset：仅移动端 + composer 内可编辑元素聚焦时抬升
+  const keyboardInsetPx = isMobile && composerEditableFocused ? globalKeyboardInset : 0;
   // 🔧 P1修复：检查是否有附件正在上传
   const hasUploadingAttachments = attachments.some(a => a.status === 'uploading' || a.status === 'pending');
   // 允许 ready 或 processing 但选中模式已就绪的附件发送
   const hasSendableAttachments = useMemo(() => {
     return attachments.some(att => {
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
-      if (!isPdf && !isImage) return att.status === 'ready';
+      const mediaType = getMediaTypeForAttachment(att);
+      if (!mediaType) return att.status === 'ready';
 
+      const isPdf = mediaType === 'pdf';
+      const isImage = mediaType === 'image';
       const selectedModes = getSelectedModes(att, isPdf, isImage);
-      const mediaType = isPdf ? 'pdf' : 'image';
 
       if (att.status !== 'ready' && att.status !== 'processing') return false;
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
@@ -1213,19 +1540,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // ★ P0 修复：传入 mediaType 参数，正确判断图片模式的默认就绪状态
   const hasProcessingMedia = useMemo(() => {
     return attachments.some(att => {
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
+      const mediaType = getMediaTypeForAttachment(att);
 
       // 只处理 PDF 和图片
-      if (!isPdf && !isImage) return false;
+      if (!mediaType) return false;
 
       // ★ 跳过上传中的附件，避免误显示"部分模式未就绪"
       // 上传中的附件由 hasUploadingAttachments 处理
       if (att.status === 'uploading' || att.status === 'pending') return false;
 
       // 获取选中的注入模式和媒体类型
-      const selectedModes = getSelectedModes(att, isPdf, isImage);
-      const mediaType = isPdf ? 'pdf' : 'image';
+      const selectedModes = getSelectedModes(att, mediaType === 'pdf', mediaType === 'image');
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);
       return !hasAnyReadyMode(selectedModes, readyModes);
@@ -1234,13 +1559,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   const firstBlockingAttachment = useMemo(() => {
     for (const att of attachments) {
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
-      if (!isPdf && !isImage) continue;
+      const mediaType = getMediaTypeForAttachment(att);
+      if (!mediaType) continue;
       // ★ 跳过上传中的附件，由 hasUploadingAttachments 处理
       if (att.status === 'uploading' || att.status === 'pending') continue;
-      const selectedModes = getSelectedModes(att, isPdf, isImage);
-      const mediaType = isPdf ? 'pdf' : 'image';
+      const selectedModes = getSelectedModes(att, mediaType === 'pdf', mediaType === 'image');
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);
       if (!hasAnyReadyMode(selectedModes, readyModes)) {
@@ -1284,8 +1607,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [firstBlockingAttachment, formatModeList, t]);
 
   // 使用 CSS 变量作为 Android fallback，iOS 正常使用 env()
-  const bottomGapValue = `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${bottomGapPx}px + ${keyboardInsetPx}px)`;
-  const measuredInputHeight = inputContainerRef.current?.offsetHeight || inputContainerHeight || 96;
+  // ★ M1 修复：键盘弹出时 inset 已包含覆盖 home indicator 的高度，
+  // 与 safe-area 相加会让输入栏悬空 ~34px；改为两者取 max
+  const safeAreaExpr = 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))';
+  const bottomGapValue = keyboardInsetPx > 0
+    ? `calc(max(${safeAreaExpr}, ${keyboardInsetPx}px) + ${bottomGapPx}px)`
+    : `calc(${safeAreaExpr} + ${bottomGapPx}px)`;
+  // ★ 性能修复：渲染期不再实读 offsetHeight（每次渲染强制 layout），
+  // 改读 ResizeObserver / adjustTextareaHeight 维护的缓存高度；
+  // 首帧（observer 未回调）回退到初始占位高度或 96
+  const measuredInputHeight = inputContainerHeight || 96;
   const dockedHeightWithGap = Math.max(0, Math.round(measuredInputHeight + bottomGapPx + keyboardInsetPx));
   const dockedHeightVarValue = `${dockedHeightWithGap}px`;
 
@@ -1303,6 +1634,56 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   // ========== 回调函数 ==========
 
+  // ★ M4 修复：textarea 超过最大高度后由外层 wrapper 滚动，而 textarea 自身
+  // overflow-hidden，浏览器不会自动把光标滚入可视区；这里用 ghost 元素量出
+  // 光标底部 Y 偏移，手动同步 wrapper.scrollTop（等下一帧，等 viewport 高度状态生效）
+  const scrollCaretIntoView = useCallback(() => {
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      const ghost = ghostRef.current;
+      const viewport = textareaScrollViewportRef.current;
+      if (!textarea || !ghost || !viewport) return;
+      if (viewport.scrollHeight <= viewport.clientHeight) return;
+      const caret = textarea.selectionEnd ?? textarea.value.length;
+      // ghost 样式已由 adjustTextareaHeight 同步，只替换文本做一次测量后还原
+      const prevText = ghost.textContent;
+      ghost.textContent = textarea.value.slice(0, caret) + '\u200b';
+      const caretBottom = ghost.scrollHeight;
+      ghost.textContent = prevText;
+      const lineHeight = 24;
+      const top = viewport.scrollTop;
+      const bottom = top + viewport.clientHeight;
+      if (caretBottom > bottom) {
+        viewport.scrollTop = caretBottom - viewport.clientHeight;
+      } else if (caretBottom - lineHeight < top) {
+        viewport.scrollTop = Math.max(0, caretBottom - lineHeight);
+      }
+    });
+  }, []);
+
+  // ★ 性能修复：ghost 的样式（font/padding/border 等）运行期基本不变，只有
+  // width 会随窗口/面板尺寸变化。抽出为独立同步函数：首次测量时执行一次，
+  // 之后仅在容器 resize 时（挂在下方 ResizeObserver 回调里）重新同步；
+  // 按键路径只更新 ghost.textContent + 读 scrollHeight，
+  // 不再每次按键 getComputedStyle + 逐条复制样式
+  const ghostStylesSyncedRef = useRef(false);
+  const syncGhostStyles = useCallback(() => {
+    const textarea = textareaRef.current;
+    const ghost = ghostRef.current;
+    if (!textarea || !ghost) return;
+    const styles = window.getComputedStyle(textarea);
+    ghost.style.width = styles.width;
+    ghost.style.padding = styles.padding;
+    ghost.style.border = styles.border;
+    ghost.style.boxSizing = styles.boxSizing;
+    ghost.style.font = styles.font;
+    ghost.style.lineHeight = styles.lineHeight;
+    ghost.style.letterSpacing = styles.letterSpacing;
+    ghost.style.whiteSpace = 'pre-wrap';
+    ghost.style.wordWrap = 'break-word';
+    ghostStylesSyncedRef.current = true;
+  }, []);
+
   // 调整 textarea 高度
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
@@ -1310,16 +1691,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     const maxHeight = INPUT_BAR_CONFIG.heights.textareaMax;
     const minHeight = INPUT_BAR_CONFIG.heights.textareaMin;
     if (textarea && ghost) {
-      const styles = window.getComputedStyle(textarea);
-      ghost.style.width = styles.width;
-      ghost.style.padding = styles.padding;
-      ghost.style.border = styles.border;
-      ghost.style.boxSizing = styles.boxSizing;
-      ghost.style.font = styles.font;
-      ghost.style.lineHeight = styles.lineHeight;
-      ghost.style.letterSpacing = styles.letterSpacing;
-      ghost.style.whiteSpace = 'pre-wrap';
-      ghost.style.wordWrap = 'break-word';
+      if (!ghostStylesSyncedRef.current) {
+        syncGhostStyles();
+      }
       ghost.textContent = textarea.value + '\u200b';
       const contentHeight = Math.max(ghost.scrollHeight, minHeight);
       const targetViewportHeight = Math.min(contentHeight, maxHeight);
@@ -1340,7 +1714,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     } else {
       setTextareaViewportHeight(minHeight);
     }
-  }, []);
+  }, [syncGhostStyles]);
 
   const { inputToolSlot: voiceInputToolSlot } = useVoiceInputIntegration({
     targetId: sessionId ? `chat-v2-input:${sessionId}` : 'chat-v2-input',
@@ -1360,12 +1734,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     ) : null;
 
   // IME 合成态检测
+  // 覆盖三类场景：1) 标准 isComposing；2) Windows/旧 WebView 的 keyCode 229；
+  // 3) Safari/WebKit 在 compositionend 之后才派发确认 Enter 的 keydown（isComposing 已为 false）
   const isImeComposing = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const anyNative = e.nativeEvent as any;
     return Boolean(
       (e as any).isComposing ||
       (anyNative && anyNative.isComposing) ||
-      (e as any).which === 229
+      (e as any).which === 229 ||
+      (anyNative && anyNative.keyCode === 229) ||
+      isComposingRef.current ||
+      compositionJustEndedRef.current
     );
   }, []);
 
@@ -1390,7 +1769,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       showGlobalNotification('warning', t('common:messages.error.empty_input'));
       return;
     }
-    if (disabledSend) return;
+    if (disabledSend) {
+      // ★ 键盘 Enter 触发时按钮禁用态不可见，给出与 tooltip 一致的原因反馈
+      if (sendBlockedReason) {
+        showGlobalNotification('info', sendBlockedReason);
+      }
+      return;
+    }
+    // 发送即收起长文本粘贴建议条
+    setLongPasteCandidate(null);
     // 🔧 P3修复：正确处理异步 onSend 的返回值，避免未捕获的 Promise rejection
     // 错误已在 TauriAdapter 中通过 showGlobalNotification 显示，这里只需要静默处理
     const result = onSend();
@@ -1399,7 +1786,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         // 错误已在上层处理，这里只是避免未捕获的 rejection 警告
       });
     }
-  }, [canSendWithAttachments, disabledSend, onSend, t]);
+  }, [canSendWithAttachments, disabledSend, sendBlockedReason, onSend, t]);
 
   // 处理停止
   const handleStop = useCallback(() => {
@@ -1458,9 +1845,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       closeAllPanels();
     };
 
+    // Esc 关闭面板：跳过已被内层浮层（菜单/对话框）消费的事件
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      closeAllPanels();
+    };
+
     // pointerdown 同时覆盖鼠标与触摸（触摸场景不依赖合成 mouse 事件），且比 click 更早响应
     document.addEventListener('pointerdown', handleClickOutside);
-    return () => document.removeEventListener('pointerdown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [hasAnyPanelOpen, closeAllPanels]);
 
   // 📱 Android 系统返回键：组合面板（附件/模型/技能/MCP/对话控制）打开时先关闭面板，
@@ -1474,6 +1871,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       return true;
     }, BACK_PRIORITY.overlay);
   }, [isMobile, hasAnyPanelOpen]);
+
+  // 组合面板 portal 在 body 上，宿主视图被切走（visibility:hidden）时不会随之隐藏；
+  // 监听全局视图切换事件，切离 Chat 时收起所有面板，避免面板悬浮在新视图上方
+  useEffect(() => {
+    if (!hasAnyPanelOpen) return;
+    const handleViewSwitched = () => closeAllPanelsRef.current();
+    window.addEventListener('app:view-switched', handleViewSwitched);
+    return () => window.removeEventListener('app:view-switched', handleViewSwitched);
+  }, [hasAnyPanelOpen]);
 
   // 统一的面板切换函数，自动处理互斥逻辑
   const togglePanel = useCallback((panelName: keyof PanelStates) => {
@@ -1511,13 +1917,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [enableThinking, onToggleThinking]);
 
   const handleTurnThinkingOff = useCallback(() => {
+    if (!thinkingCanDisable) return;
     if (!enableThinking) return;
     if (onSetThinkingDepth) {
       onSetThinkingDepth('off');
       return;
     }
     onToggleThinking?.();
-  }, [enableThinking, onSetThinkingDepth, onToggleThinking]);
+  }, [enableThinking, onSetThinkingDepth, onToggleThinking, thinkingCanDisable]);
 
   const handleAttachmentMenuOpenChange = useCallback((open: boolean) => {
     setIsAttachmentMenuOpen(open);
@@ -1553,34 +1960,21 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     handleCameraClick();
   }, [handleCameraClick]);
 
-  // 🔧 P2: 工具开关渲染函数（支持快捷键显示）
-  const renderToolToggleSwitch = (
-    key: string,
-    label: string,
-    icon: React.ReactNode,
-    checked: boolean,
-    onToggle?: () => void,
-    shortcut?: string
-  ) => {
-    if (!onToggle) return null;
-    return (
-      <AppMenuSwitchItem
-        key={key}
-        icon={icon}
-        checked={checked}
-        onCheckedChange={onToggle}
-      >
-        <span className="flex items-center justify-between w-full">
-          <span className="app-menu-tool-label">{label}</span>
-          {shortcut && (
-            <kbd className={cn('ml-2 px-1.5 py-0.5', composerPanelShortcutClassName)}>{shortcut}</kbd>
-          )}
-        </span>
-      </AppMenuSwitchItem>
-    );
-  };
-
-  // ★ 2026-01 改造：移除加号菜单，统一桌面端和移动端样式
+  // ★ 性能：以下回调传给已 memo 的 ComposerPlusMenu，
+  // 必须保持引用稳定（内联箭头函数会击穿 memo，导致每个按键重渲染整个菜单子树）
+  const handleOpenSkillPanelAction = useCallback(() => {
+    togglePanel('skill');
+  }, [togglePanel]);
+  const handleOpenMcpPanelAction = useCallback(() => {
+    togglePanel('mcp');
+  }, [togglePanel]);
+  const handleToggleAdvancedPanel = useCallback(() => {
+    togglePanel('advanced');
+  }, [togglePanel]);
+  const renderSkillPanelMenuVariant = useMemo(() => {
+    if (!renderSkillPanel) return undefined;
+    return () => renderSkillPanel({ variant: 'menu' });
+  }, [renderSkillPanel]);
 
   // ========== Effects ==========
 
@@ -1591,55 +1985,68 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   // 🔧 P2: 全局键盘快捷键支持
   // 注册在 document 上，处理后 stopPropagation 防止与命令系统双重执行
+  // ★ B3 修复：togglePanel/onToggleThinking 走 ref，避免 effect deps 缺失导致
+  //   用过期 panelStates 做互斥关闭（出现「关不掉 / 多面板同开」边缘态）
+  // ★ B4 修复：本输入栏 textarea 聚焦时放行 ⌘⇧* 快捷键（对齐 Cursor/ChatGPT
+  //   composer 内快捷键习惯）；其他可编辑区域与对话框内仍然跳过
+  const togglePanelRef = useRef<(panel: keyof PanelStates) => void>(() => {});
+  const onToggleThinkingRef = useRef(onToggleThinking);
+  useEffect(() => {
+    togglePanelRef.current = togglePanel;
+  }, [togglePanel]);
+  useEffect(() => {
+    onToggleThinkingRef.current = onToggleThinking;
+  }, [onToggleThinking]);
+
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isEditableTarget = !!target && (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable ||
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 't' && key !== 'k' && key !== 'm' && key !== 's') return;
+
+      const target = e.target;
+      const isOwnComposer = target === textareaRef.current;
+      const isEditableTarget = target instanceof Element && (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable) ||
         !!target.closest('[contenteditable="true"]')
       );
-      const inModal = !!target?.closest('[role="dialog"], [role="alertdialog"]');
-      if (isEditableTarget || inModal) return;
+      const inModal = target instanceof Element && !!target.closest('[role="dialog"], [role="alertdialog"]');
+      if ((isEditableTarget && !isOwnComposer) || inModal) return;
 
       // ⌘⇧T / Ctrl+Shift+T: 切换推理模式（覆盖全局 toggle-theme）
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 't') {
+      if (key === 't') {
         e.preventDefault();
         e.stopPropagation();
-        onToggleThinking?.();
+        onToggleThinkingRef.current?.();
         return;
       }
-      // ⌘⇧K / Ctrl+Shift+K: 切换知识库
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'k') {
+      // ⌘⇧K / Ctrl+Shift+K: 切换知识库（RAG 设置已并入对话控制面板；
+      // 独立 rag 面板 UI 已删除且无 mode 插件再注册 renderRagPanel，死分支已移除）
+      if (key === 'k') {
         e.preventDefault();
         e.stopPropagation();
-        if (renderRagPanel) {
-          togglePanel('rag');
+        if (renderAdvancedPanel) {
+          togglePanelRef.current('advanced');
         }
         return;
       }
       // ⌘⇧M / Ctrl+Shift+M: 切换 MCP 工具
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'm') {
+      if (key === 'm') {
         e.preventDefault();
         e.stopPropagation();
         if (renderMcpPanel) {
-          togglePanel('mcp');
+          togglePanelRef.current('mcp');
         }
         return;
       }
-      // ⌘⇧S / Ctrl+Shift+S: 切换技能面板
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+      // ⌘⇧S / Ctrl+Shift+S: 打开加号菜单（技能已收入次级菜单）
+      if (key === 's') {
         e.preventDefault();
         e.stopPropagation();
         if (renderSkillPanel) {
-          if (panelStates.skill) {
-            togglePanel('skill');
-          } else if (activeSkillIds && activeSkillIds.length > 0) {
-            onClearAllSkills?.();
-          } else {
-            togglePanel('skill');
-          }
+          setIsAttachmentMenuOpen(true);
         }
         return;
       }
@@ -1647,7 +2054,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [onToggleThinking, renderRagPanel, renderMcpPanel, renderSkillPanel, panelStates.skill, activeSkillIds, onClearAllSkills, togglePanel]);
+  }, [renderAdvancedPanel, renderMcpPanel, renderSkillPanel]);
 
   // ★ Bug2 修复：监听资源库注入事件，自动打开附件面板
   useEffect(() => {
@@ -1670,18 +2077,33 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       setIsReady(false);
     }
 
-    // idle 后再延迟挂载重 UI/计算
+    // idle 后再延迟挂载重 UI/计算（取消时必须同时清 idle + delay，避免 teardown 后 setState）
     let delayTimer: ReturnType<typeof setTimeout> | null = null;
-    scheduleIdle(() => {
-      delayTimer = setTimeout(() => setIsReady(true), HEAVY_UI_DELAY_MS);
+    let cancelled = false;
+    const cancelIdle = scheduleIdle(() => {
+      if (cancelled) return;
+      delayTimer = setTimeout(() => {
+        if (!cancelled) setIsReady(true);
+      }, HEAVY_UI_DELAY_MS);
     });
 
     return () => {
+      cancelled = true;
+      cancelIdle();
       if (delayTimer) clearTimeout(delayTimer);
     };
   }, [sessionSwitchKey]);
 
+  // ★ L2：isReady 后补投未就绪期间缓存的粘贴文件
+  useEffect(() => {
+    if (!isReady || pendingEarlyPasteRef.current.length === 0) return;
+    const files = pendingEarlyPasteRef.current;
+    pendingEarlyPasteRef.current = [];
+    processFilesToAttachments(files);
+  }, [isReady, processFilesToAttachments]);
+
   // 响应式 bottom gap + 移动端检测
+  // ★ L7 修复：依赖 isMobile，避免 resize 闭包捕获初始断点值
   useEffect(() => {
     const handleResize = () => {
       const mobile = mobileLayout?.isMobile ?? (window.innerWidth < MOBILE_BREAKPOINT_PX);
@@ -1690,45 +2112,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [mobileLayout?.isMobile]);
 
-  useEffect(() => {
-    if (!isMobile) {
-      setKeyboardInsetPx(0);
-      return;
-    }
-
-    const updateKeyboardInset = () => {
-      const visualViewport = window.visualViewport;
-      const textarea = textareaRef.current;
-      if (!visualViewport || document.activeElement !== textarea) {
-        setKeyboardInsetPx(0);
-        return;
-      }
-
-      const rawInset = window.innerHeight - visualViewport.height - visualViewport.offsetTop;
-      const nextInset = rawInset > 80 ? Math.round(rawInset) : 0;
-      setKeyboardInsetPx(nextInset);
-    };
-
-    updateKeyboardInset();
-
-    const visualViewport = window.visualViewport;
-    const textarea = textareaRef.current;
-    visualViewport?.addEventListener('resize', updateKeyboardInset);
-    visualViewport?.addEventListener('scroll', updateKeyboardInset);
-    window.addEventListener('resize', updateKeyboardInset);
-    textarea?.addEventListener('focus', updateKeyboardInset);
-    textarea?.addEventListener('blur', updateKeyboardInset);
-
-    return () => {
-      visualViewport?.removeEventListener('resize', updateKeyboardInset);
-      visualViewport?.removeEventListener('scroll', updateKeyboardInset);
-      window.removeEventListener('resize', updateKeyboardInset);
-      textarea?.removeEventListener('focus', updateKeyboardInset);
-      textarea?.removeEventListener('blur', updateKeyboardInset);
-    };
-  }, [isMobile, sessionSwitchKey]);
+  // ⌨️ P0-2：键盘 inset 检测已统一到 useKeyboardInset 单例（见上方焦点门控），
+  // 此处不再自管 visualViewport 监听
 
   useEffect(() => {
     if (!autoFocus || !isMobile) return;
@@ -1798,10 +2185,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     };
   }, [sessionId]);
 
-  // 使用 useRef 追踪 attachments 的引用，避免作为 useEffect 依赖导致频繁触发
-  const attachmentsRef = useRef(attachments);
-  attachmentsRef.current = attachments;
-
   // 🔧 P1-25: 组件卸载 / 会话切换时释放所有 Blob URL，避免内存泄漏
   useEffect(() => {
     return () => {
@@ -1843,7 +2226,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const currentAttachments = attachmentsRef.current;
       const processingAttachments = currentAttachments
         .filter(att => att.status === 'processing' && !!att.sourceId)
-        .filter(att => att.mimeType === 'application/pdf' || att.mimeType?.startsWith('image/'));
+        .filter(att => getMediaTypeForAttachment(att) !== null);
       const fileIds = processingAttachments.map(att => att.sourceId as string);
 
       // ★ 修复：没有 processing 附件时完全停止轮询，不再空转
@@ -1884,7 +2267,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             percent: 0,
             readyModes: [],
             error: 'Processing timed out after 5 minutes',
-            mediaType: att.mimeType === 'application/pdf' ? 'pdf' : 'image',
+            mediaType: getMediaTypeForAttachment(att) ?? 'image',
           },
         });
       }
@@ -1959,10 +2342,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       // ★ P0 修复：使用 sourceId (file_id) 作为 key，与后端事件保持一致
       if (!att.sourceId) return;
 
-      // ★ P1 修复：同时处理 PDF 和图片
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
-      if (!isPdf && !isImage) return;
+      // ★ P1 修复：同时处理 PDF 和图片（SSOT 媒体识别：MIME OR 扩展名）
+      const attMediaType = getMediaTypeForAttachment(att);
+      if (!attMediaType) return;
+      const isPdf = attMediaType === 'pdf';
 
       // ★ P0 修复：使用 sourceId 查询 Store
       const status = pdfStatusMap.get(att.sourceId);
@@ -2073,11 +2456,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const initialHeight = el.offsetHeight;
       lastMeasuredHeightRef.current = initialHeight;
       setInputContainerHeight(initialHeight);
+      // ★ ghost 样式兜底同步一次（覆盖 observer 启动前窗口已 resize 的窗口期）
+      syncGhostStyles();
 
       // 启动 ResizeObserver
       observer = new ResizeObserver((entries) => {
         const entry = entries[0];
         const h = Math.round(entry?.contentRect?.height || el.offsetHeight);
+
+        // ★ 容器尺寸变化（含宽度变化）时重新同步 ghost 样式，
+        // 保证 ghost.width 跟随 textarea 实际宽度（resize 低频，成本可接受）
+        syncGhostStyles();
 
         // 🔧 限频：只有高度变化超过阈值才更新状态
         const delta = Math.abs(h - lastMeasuredHeightRef.current);
@@ -2093,11 +2482,456 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       isDisposed = true;
       if (observer) observer.disconnect();
     };
-  }, []);
+  }, [syncGhostStyles]);
 
-  // 🔧 P0 优化：移除全局 CSS 变量写入
-  // 高度传递改为仅使用 inline style（见下方 render），不触发全局重排
-  // MessageList 底部 padding 改为使用固定值或通过 props 传递
+  // ⌨️ P0-2 键盘统一契约：把输入栏整体停靠高度与键盘 inset 写到 document root，
+  // 供消息列表（输入栏的兄弟节点，读不到 inline style 变量）计算底部避让：
+  //   --unified-input-docked-height: 输入栏总高（含底部安全区 gap 与键盘 inset）
+  //   --unified-input-keyboard-inset: 仅键盘 inset 部分
+  //（inline style 上的同名变量仍保留，供输入栏子树内的既有 CSS 消费；
+  //  root 变量只影响 var() 消费方的样式重算，不触发全局重排）
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--unified-input-docked-height', dockedHeightVarValue);
+    root.style.setProperty('--unified-input-keyboard-inset', `${keyboardInsetPx}px`);
+    // ★ 全局契约：输入栏实际停靠高度（含底部 gap 与键盘 inset），
+    // 供聊天模块之外的悬浮组件（如全局番茄钟药丸）做底部避让；
+    // 高度来源是 inputContainer 的 ResizeObserver 测量（见 inputContainerHeight）
+    root.style.setProperty('--composer-dock-height', dockedHeightVarValue);
+    return () => {
+      root.style.removeProperty('--unified-input-docked-height');
+      root.style.removeProperty('--unified-input-keyboard-inset');
+      root.style.removeProperty('--composer-dock-height');
+    };
+  }, [dockedHeightVarValue, keyboardInsetPx]);
+
+  // ========== 附件面板内容（桌面 overlay 与移动端内联共用） ==========
+
+  // ★ 错误态重试：附件面板与预览 chips 共用（chip 上的内联重试入口）
+  const handleRetryAttachment = useCallback(async (attachment: AttachmentMeta) => {
+    if (!attachment.sourceId) return;
+    try {
+      const fileId = attachment.sourceId;
+      const isPdfRetry = getMediaTypeForAttachment(attachment) === 'pdf';
+      logAttachment('ui', 'retry_processing_start', {
+        attachmentId: attachment.id,
+        sourceId: fileId,
+        mediaType: isPdfRetry ? 'pdf' : 'image',
+        previousError: attachment.error,
+      });
+      onUpdateAttachment(attachment.id, {
+        status: 'processing',
+        error: undefined,
+        processingStatus: {
+          stage: isPdfRetry ? 'ocr_processing' : 'image_compression',
+          percent: isPdfRetry ? 50 : 10,
+          readyModes: attachment.processingStatus?.readyModes || [],
+          mediaType: isPdfRetry ? 'pdf' : 'image',
+        },
+      });
+      await retryPdfProcessing(fileId);
+      logAttachment('ui', 'retry_processing_triggered', {
+        attachmentId: attachment.id,
+        sourceId: fileId,
+      }, 'success');
+      showGlobalNotification('success', t('chatV2:inputBar.retryStarted'));
+    } catch (error) {
+      logAttachment('ui', 'retry_processing_failed', {
+        attachmentId: attachment.id,
+        error: getErrorMessage(error),
+      }, 'error');
+      const retryErrorMsg = t('chatV2:inputBar.retryFailed', { error: getErrorMessage(error) });
+      onUpdateAttachment(attachment.id, {
+        status: 'error',
+        error: retryErrorMsg,
+      });
+      showGlobalNotification('error', retryErrorMsg);
+    }
+  }, [onUpdateAttachment, t]);
+
+  // ★ 性能修复：memo 子组件（AttachmentPreviewChips / AttachmentInjectModeSelector）
+  // 的回调用 useCallback 稳定引用，避免内联箭头每次渲染换新引用击穿 memo
+  const handleRetryAttachmentChip = useCallback((attachment: AttachmentMeta) => {
+    void handleRetryAttachment(attachment);
+  }, [handleRetryAttachment]);
+
+  const handleInjectModesChange = useCallback((attachmentId: string, modes: AttachmentInjectModes) => {
+    onUpdateAttachment(attachmentId, { injectModes: modes });
+  }, [onUpdateAttachment]);
+
+  const handleClearAllAttachments = () => {
+    attachments.forEach(att => {
+      if (att.sourceId) {
+        void cancelPdfProcessing(att.sourceId).catch((error) => {
+          logAttachment('ui', 'cancel_processing_failed', {
+            attachmentId: att.id,
+            sourceId: att.sourceId,
+            error: getErrorMessage(error),
+          }, 'warning');
+        });
+      }
+      if (att.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(att.previewUrl);
+      }
+    });
+    onClearAttachments();
+  };
+
+  const renderAttachmentPanelBody = () => (
+    <>
+      {/* 面板头部：桌面横排全部操作；移动端折叠为 标题 + ⋯更多 + 关闭（P1-4） */}
+      {isMobile ? (
+        <div className="mb-2 flex items-center justify-between gap-1">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+            <Paperclip size={16} weight="bold" className="shrink-0" />
+            <span className="truncate">
+              {t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center">
+            <DsButton
+              variant="outline"
+              size="sm"
+              className="!h-11 min-w-11"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              + {t('analysis:input_bar.attachments.add')}
+            </DsButton>
+            <AppMenu>
+              <AppMenuTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  className="!h-11 !w-11"
+                  aria-label={t('common:actions.more', '更多')}
+                  data-testid="attachment-panel-more"
+                >
+                  <DotsThree size={20} weight="bold" />
+                </DsButton>
+              </AppMenuTrigger>
+              <AppMenuContent align="end" width={200}>
+                <AppMenuItem
+                  className="min-h-[44px]"
+                  icon={<FolderOpen className="w-4 h-4" weight="bold" />}
+                  onClick={handleOpenResourceLibrary}
+                >
+                  {t('chatV2:inputBar.resourceLibrary')}
+                </AppMenuItem>
+                {isMobileEnv && (
+                  <AppMenuItem
+                    className="min-h-[44px]"
+                    icon={<Camera className="w-4 h-4" weight="bold" />}
+                    onClick={handleCameraClick}
+                  >
+                    {t('chatV2:inputBar.camera')}
+                  </AppMenuItem>
+                )}
+                {attachments.length > 0 && (
+                  <AppMenuItem
+                    className="min-h-[44px]"
+                    icon={<Trash className="w-4 h-4" weight="bold" />}
+                    destructive
+                    onClick={handleClearAllAttachments}
+                  >
+                    {t('analysis:input_bar.attachments.clear_all')}
+                  </AppMenuItem>
+                )}
+              </AppMenuContent>
+            </AppMenu>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="!h-11 !w-11"
+              onClick={toggleAttachmentPanel}
+              aria-label={t('common:actions.close')}
+            >
+              <X size={16} />
+            </DsButton>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-foreground">
+            <Paperclip size={16} weight="bold" />
+            <span>{t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+              + {t('analysis:input_bar.attachments.add')}
+            </DsButton>
+            {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={handleOpenResourceLibrary}
+            >
+              <FolderOpen size={12} weight="bold" />
+              {t('chatV2:inputBar.resourceLibrary')}
+            </DsButton>
+            {isMobileEnv && (
+              <DsButton variant="outline" size="sm" onClick={handleCameraClick}>
+                <Camera size={12} weight="bold" />
+                {t('chatV2:inputBar.camera')}
+              </DsButton>
+            )}
+            {attachments.length > 0 && (
+              <DsButton variant="danger" size="sm" onClick={handleClearAllAttachments}>
+                {t('analysis:input_bar.attachments.clear_all')}
+              </DsButton>
+            )}
+            <DsButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
+              {t('common:actions.close')}
+            </DsButton>
+          </div>
+        </div>
+      )}
+
+      {/* 附件列表 */}
+      <CustomScrollArea
+        fullHeight={false}
+        className="max-h-56"
+        viewportClassName="max-h-56 flex flex-col gap-2"
+      >
+        {attachments.length === 0 ? (
+          <div className="flex items-center justify-center rounded-lg border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-6 text-sm text-[color:var(--composer-panel-muted-foreground)]">
+            {t('analysis:input_bar.attachments.empty')}
+          </div>
+        ) : (
+          attachments.map((attachment) => {
+            const isVfsRef = attachment.id.startsWith('vfs-');
+            const sizeLabel = isVfsRef ? t('analysis:input_bar.attachments.reference') : `${(attachment.size / 1024).toFixed(1)} KB`;
+
+            // 判断媒体类型（SSOT：MIME OR 扩展名；type === 'image' 作为兜底）
+            const rowMediaType = getMediaTypeForAttachment(attachment)
+              ?? (attachment.type === 'image' ? 'image' : null);
+            const isPdf = rowMediaType === 'pdf';
+            const isImage = rowMediaType === 'image';
+
+            // 🆕 媒体处理中状态显示（PDF + 图片）
+            const isPdfProcessing = isPdf && attachment.status === 'processing';
+            const isImageProcessing = isImage && attachment.status === 'processing';
+            const isMediaProcessing = isPdfProcessing || isImageProcessing;
+            // 🔧 优化：优先使用 Store 中的最新状态
+            // ★ P0 修复：使用 sourceId (file_id) 作为 key，与后端事件保持一致
+            const storeStatus = isMediaProcessing && attachment.sourceId
+              ? pdfStatusMap.get(attachment.sourceId)
+              : undefined;
+            // 类型兼容处理：Store 的 stage 包含 'pending'，需要转换为 common.ts 的类型
+            const mediaProgress = storeStatus
+              ? {
+                ...storeStatus,
+                stage: storeStatus.stage === 'pending' ? undefined : storeStatus.stage,
+              } as typeof attachment.processingStatus
+              : (isMediaProcessing ? attachment.processingStatus : undefined);
+            const selectedModes = getSelectedModes(attachment, isPdf, isImage);
+            const mediaType = isPdf ? 'pdf' : 'image';
+            const statusForModes = attachment.status === 'ready'
+              ? attachment.processingStatus
+              : mediaProgress;
+            const readyModes = getEffectiveReadyModes(statusForModes, mediaType, attachment);
+            const missingModes = getMissingModes(selectedModes, readyModes);
+            const missingModesLabel = missingModes.length > 0 ? formatModeList(missingModes) : '';
+            const displayPercent = getDisplayPercent(mediaProgress, isPdf);
+            let stageLabel = getStageLabel(t, mediaProgress, isPdf, isImage);
+            if ((mediaProgress?.stage === 'completed' || mediaProgress?.stage === 'completed_with_issues') && missingModesLabel) {
+              stageLabel = t('chatV2:inputBar.completedMissingModes', {
+                modes: missingModesLabel,
+              });
+            }
+            const isUploading = attachment.status === 'uploading' || attachment.status === 'pending';
+            // ★ 视觉统一：状态色改走语义 token（success/warning/destructive/info），
+            // 亮暗色由 token 自适应，不再散落 Tailwind 调色板 + dark: 补丁
+            const statusIcon =
+              attachment.status === 'ready' && missingModes.length > 0
+                ? <Warning size={12} weight="bold" className="text-warning" />
+                : attachment.status === 'ready' ? <CheckCircle size={12} weight="fill" className="text-success" />
+                  : attachment.status === 'error' ? <XCircle size={12} weight="fill" className="text-destructive" />
+                    : (isMediaProcessing || isUploading) ? <CircleNotch size={12} weight="bold" className="text-info animate-spin motion-reduce:animate-none" />
+                      : <Clock size={12} weight="bold" className="text-muted-foreground" />;
+            const toneClass = isVfsRef
+              ? 'border-info/25 bg-info/10'
+              : attachment.status === 'error' ? 'border-destructive/25 bg-destructive/10'
+                : attachment.status === 'ready' && missingModes.length > 0
+                  ? 'border-warning/25 bg-warning/10'
+                  : attachment.status === 'ready' ? 'border-success/25 bg-success/10'
+                    : (isMediaProcessing || isUploading) ? 'border-info/25 bg-info/10'
+                      : 'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]';
+
+            // 判断是否为图片或 PDF（需要显示注入模式选择器）
+            const showInjectModeSelector = isImage || isPdf;
+
+            return (
+              <div key={attachment.id} data-wb-blur-surface className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', toneClass)}>
+                {/* 第一行：文件名、大小、状态、移除按钮 */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-ui text-foreground truncate block">{attachment.name}</span>
+                    {attachment.status === 'error' && attachment.error && <span className="text-[11px] text-destructive truncate block">{attachment.error}</span>}
+                    {/* 🆕 统一进度条：上传(0-50%) + 处理(50-100%) */}
+                    {(() => {
+                      // 计算统一进度百分比和阶段标签
+                      let unifiedPercent: number | null = null;
+                      let unifiedLabel = '';
+
+                      if (isUploading && attachment.uploadProgress != null) {
+                        // 上传阶段：直接使用 uploadProgress (0-50%)
+                        unifiedPercent = attachment.uploadProgress;
+                        unifiedLabel = t(`chatV2:inputBar.uploadStage.${attachment.uploadStage || 'reading'}`);
+                      } else if (isMediaProcessing && mediaProgress) {
+                        // 处理阶段：后端 0-100% 映射到 50-100%
+                        unifiedPercent = 50 + Math.round(displayPercent * 0.5);
+                        unifiedLabel = stageLabel || '';
+                      }
+
+                      if (unifiedPercent == null) return null;
+
+                      return (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex-1 h-1 rounded-full bg-[color:var(--composer-panel-muted-surface)] overflow-hidden">
+                            <div
+                              className="h-full bg-info transition-[width] duration-300 motion-reduce:transition-none"
+                              style={{ width: `${unifiedPercent}%` }}
+                            />
+                          </div>
+                          <span className="text-2xs text-info whitespace-nowrap">
+                            {unifiedLabel}{unifiedPercent > 0 ? ` · ${unifiedPercent}%` : ''}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                    {missingModesLabel && !isUploading && (
+                      <div className="mt-0.5 text-2xs text-warning">
+                        {t('chatV2:inputBar.modesNotReady', { modes: missingModesLabel })}
+                      </div>
+                    )}
+                  </div>
+                  <span className={cn("text-[12px]", isVfsRef ? "text-info font-medium" : "text-muted-foreground")}>{sizeLabel}</span>
+                  <span className="flex items-center gap-1">{statusIcon}</span>
+                  {/* ★ P0 修复：错误状态时显示重试按钮（使用正确的 sourceId） */}
+                  {attachment.status === 'error' && attachment.sourceId && (
+                    <DsButton
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { void handleRetryAttachment(attachment); }}
+                      className="text-info"
+                    >
+                      {t('common:retry')}
+                    </DsButton>
+                  )}
+                  <DsButton variant="danger" size="sm" onClick={() => {
+                    logAttachment('ui', 'attachment_remove', {
+                      attachmentId: attachment.id,
+                      sourceId: attachment.sourceId,
+                      fileName: attachment.name,
+                      status: attachment.status,
+                    });
+                    if (attachment.sourceId) {
+                      void cancelPdfProcessing(attachment.sourceId).catch((error) => {
+                        logAttachment('ui', 'cancel_processing_failed', {
+                          attachmentId: attachment.id,
+                          sourceId: attachment.sourceId,
+                          error: getErrorMessage(error),
+                        }, 'warning');
+                      });
+                    }
+                    if (attachment.previewUrl?.startsWith('blob:')) {
+                      URL.revokeObjectURL(attachment.previewUrl);
+                    }
+                    onRemoveAttachment(attachment.id);
+                  }}>
+                    {t('analysis:input_bar.attachments.remove')}
+                  </DsButton>
+                </div>
+                {/* 第二行：注入模式选择器（仅图片和 PDF 显示，PDF 在处理中也显示） */}
+                {showInjectModeSelector && (attachment.status === 'ready' || isMediaProcessing) && (
+                  <div className="flex items-center gap-2 pl-1">
+                    <span className="text-[11px] text-muted-foreground">{t('chatV2:injectMode.label')}:</span>
+                    <AttachmentInjectModeSelector
+                      attachment={attachment}
+                      onInjectModesChange={handleInjectModesChange}
+                      disabled={attachment.status !== 'ready' && !isMediaProcessing}
+                      processingStatus={mediaProgress}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </CustomScrollArea>
+    </>
+  );
+
+  // ========== 📱 P0-1 移动端内联面板节点 ==========
+  // 面板在输入壳内部、输入区上方随文档流展开（顶起消息区），
+  // 替代桌面端的 createPortal + fixed 浮层；关闭沿用 Android 返回键 +
+  // 点输入区外收起（closeAllPanels）。
+  let inlineComposerPanelNode: React.ReactNode = null;
+  if (isMobile && inlineRenderPanel) {
+    const inlineMotion = composerPanelMotions[inlineRenderPanel];
+    if (inlineMotion?.shouldRender) {
+      let inlineContent: React.ReactNode = null;
+      let inlineHeightMode: 'content' | 'available' = 'content';
+      let inlineMaxHeight = 420;
+      let inlineAriaLabel = '';
+      switch (inlineRenderPanel) {
+        case 'attachment':
+          inlineContent = renderAttachmentPanelBody();
+          inlineMaxHeight = 400;
+          inlineAriaLabel = t('analysis:input_bar.attachments.title');
+          break;
+        case 'model':
+          inlineContent = renderModelPanel ? renderModelPanel() : null;
+          inlineHeightMode = 'available';
+          // 📱 模型列表通常较长：上限放宽到 520px（实际仍受 85vh/键盘 clamp 约束），
+          // 配合 ModelPicker 紧凑搜索框给列表更多可视空间
+          inlineMaxHeight = 520;
+          inlineAriaLabel = runtimeModelTitle;
+          break;
+        case 'mcp':
+          inlineContent = renderMcpPanel ? renderMcpPanel() : null;
+          inlineHeightMode = 'available';
+          inlineMaxHeight = 460;
+          inlineAriaLabel = 'MCP';
+          break;
+        case 'advanced':
+          inlineContent = renderAdvancedPanel ? renderAdvancedPanel() : null;
+          // AdvancedPanel 移动端内部是 h-full + flex-1 滚动结构，需要确定高度
+          inlineHeightMode = 'available';
+          inlineMaxHeight = 460;
+          inlineAriaLabel = t('common:chat_controls');
+          break;
+        case 'skill':
+          inlineContent = renderSkillPanel ? renderSkillPanel() : null;
+          inlineHeightMode = 'available';
+          inlineMaxHeight = 480;
+          inlineAriaLabel = 'Skills';
+          break;
+        default:
+          break;
+      }
+      if (inlineContent) {
+        inlineComposerPanelNode = (
+          // ★ H1 修复：壳体去掉 overflow-hidden 后，内联面板改由自身包装层
+          // 负责负 margin 贴边与顶部圆角裁切（rounded-t 继承壳体 22px 圆角）
+          <div className="-mx-3 -mt-2.5 overflow-hidden rounded-t-[inherit]">
+            <ComposerInlinePanel
+              panelKey={inlineRenderPanel}
+              motionState={inlineMotion.motionState}
+              heightMode={inlineHeightMode}
+              maxHeight={inlineMaxHeight}
+              ariaLabel={inlineAriaLabel}
+              bodyClassName="mb-2.5 border-b border-[color:var(--composer-panel-border)] px-3 pb-3 pt-3"
+            >
+              {inlineContent}
+            </ComposerInlinePanel>
+          </div>
+        );
+      }
+    }
+  }
 
   // ========== 渲染 ==========
 
@@ -2108,7 +2942,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
-        'relative isolate z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
+        // 层级契约：z-[100] = Z_INDEX.inputBar；isolate 建立局部层叠上下文，
+        // 内部的 z-[200] 壳体（= inputBarInner，自身又是一层上下文，包着
+        // 补全弹层 150 = inputBarPopover 与拖拽遮罩 300 = inputBarDragOverlay）
+        // 只在此上下文内比较，对外整体以 100 参与排序（低于移动顶栏 1100，符合设计）。
+        // Tailwind 任意值无法引用 TS 常量，改档位时请与 src/config/zIndex.ts 同步。
+        // 性能：勿用 transition-all——大容器上 transition-all 会让每次样式失效都
+        // 检查全部属性（CDP trace 实锤拖窗期间每帧一次 Animation 失效），点名
+        // 实际会变的 padding/background 即可。
+        'relative isolate z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-[padding,background-color] duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
         className
       )}
       style={{
@@ -2128,15 +2970,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           ref={inputContainerRef}
           data-composer-panel-anchor
           className={cn(
-            'relative z-[200] overflow-hidden border transition-[background-color,border-color,box-shadow] duration-150 ease-out',
+            // ★ H1 修复：壳体不再 overflow-hidden（会把壳内 absolute 定位的
+            // 斜杠技能 / @模型提及补全弹层整体裁掉）；内联面板的圆角裁切
+            // 已下放到面板自身的包装层（见 inlineComposerPanelNode）
+            // z-[200] = Z_INDEX.inputBarInner（根容器 isolate 局部层级，见根节点注释）
+            'relative z-[200] border transition-[background-color,border-color,box-shadow] duration-150 ease-out',
             isMobile
               ? 'rounded-[22px] border-[color:var(--composer-panel-border)] bg-[color:var(--surface-root)] px-3 py-2.5 shadow-[0_10px_24px_hsl(var(--shadow-base)/0.05)] focus-within:shadow-[0_14px_28px_hsl(var(--shadow-base)/0.07)]'
               : 'rounded-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]'
           )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
+        {/* z-[300] = Z_INDEX.inputBarDragOverlay（壳体局部层级，压过弹层 150） */}
         {isReady && isDragging && (
-          <div className="absolute inset-0 z-[300] flex items-center justify-center rounded-[inherit] border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
+          <div data-wb-blur-surface className="absolute inset-0 z-[300] flex items-center justify-center rounded-[inherit] border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
             <div className="flex flex-col items-center gap-2 text-primary">
               <UploadSimple size={32} weight="bold" />
               <span className="text-sm font-medium">
@@ -2145,6 +2992,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             </div>
           </div>
         )}
+        {/* 📱 P0-1 移动端组合面板：内联展开，随文档流顶起消息区 */}
+        {inlineComposerPanelNode}
+
         {composerInlinePanel && (
           <div className="mb-2 w-full">
             {composerInlinePanel}
@@ -2155,11 +3005,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           <BlockingInteractionBar
             interaction={pendingApprovalRequest}
             sessionId={sessionId || ''}
+            restoreFocusRef={textareaRef}
           />
         ) : (
           <>
         {/* 输入区域 */}
         <div className="mb-2 relative">
+          {/* ★ 技能斜杠命令内联补全弹层（锚定输入栏上方，非模态） */}
+          <SkillSlashPopover
+            open={skillSlash.open}
+            query={skillSlash.query}
+            suggestions={skillSlash.suggestions}
+            selectedIndex={skillSlash.selectedIndex}
+            onSelect={(index) => applySkillSlashSelection(index)}
+            onSelectedIndexChange={skillSlash.setSelectedIndex}
+          />
+
           {/* 模型 @mention 自动完成弹窗 */}
           {modelMentionState && modelMentionActions && (
             <ModelMentionPopover
@@ -2168,17 +3029,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               selectedIndex={modelMentionState.selectedIndex}
               query={modelMentionState.query}
               onSelect={(model) => {
-                // 🔧 Chip 模式：添加到 chips 并清理输入
-                const newValue = modelMentionActions.selectSuggestion(model);
-                onInputChange(newValue);
-                // 聚焦回输入框
+                // 🔧 Chip 模式：添加到 chips，并只移除 `@query` 片段（多行草稿安全）
+                const result = modelMentionActions.selectSuggestion(model);
+                onInputChange(result.value);
+                setComposerCaretPos(result.caret);
+                // 聚焦回输入框，光标回到 mention 起点
                 const textarea = textareaRef.current;
                 if (textarea) {
                   textarea.focus();
                   requestAnimationFrame(() => {
-                    // 光标移到末尾
-                    textarea.setSelectionRange(newValue.length, newValue.length);
-                    modelMentionActions.updateCursorPosition(newValue.length);
+                    textarea.setSelectionRange(result.caret, result.caret);
+                    modelMentionActions.updateCursorPosition(result.caret);
                   });
                 }
               }}
@@ -2186,6 +3047,98 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               onClose={modelMentionActions.closeAutoComplete}
               anchorRef={textareaRef as React.RefObject<HTMLElement>}
             />
+          )}
+
+          {/* ★ 长文本粘贴建议条：默认保留为文本，可一键转为附件 */}
+          {longPasteCandidate && (
+            <div
+              data-testid="long-paste-suggestion"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 truncate">
+                {t('chatV2:inputBar.longPaste.notice', { chars: longPasteCandidate.text.length })}
+              </span>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs text-primary"
+                onClick={convertLongPasteToAttachment}
+              >
+                {t('chatV2:inputBar.longPaste.convert')}
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs"
+                onClick={() => setLongPasteCandidate(null)}
+              >
+                {t('chatV2:inputBar.longPaste.dismiss')}
+              </DsButton>
+            </div>
+          )}
+
+          {/* ★ 制卡可发现性提示：pdf/docx 可制卡，apkg 可导入 */}
+          {flashcardHintKind && !flashcardHintDismissed && (
+            <div
+              data-testid="flashcard-hint"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 truncate">
+                {flashcardHintKind === 'apkg'
+                  ? t('chatV2:inputBar.flashcardHint.apkg')
+                  : t('chatV2:inputBar.flashcardHint.document')}
+              </span>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs"
+                onClick={() => setFlashcardHintDismissed(true)}
+              >
+                {t('chatV2:inputBar.flashcardHint.dismiss')}
+              </DsButton>
+            </div>
+          )}
+
+          {/* ★ 音视频可见性警示：AI 仅能看到文件名 */}
+          {mediaHintKind && !mediaHintDismissed && (
+            <div
+              data-testid="media-attachment-hint"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 truncate">
+                {mediaHintKind === 'audio'
+                  ? t('chatV2:inputBar.mediaHint.audio')
+                  : t('chatV2:inputBar.mediaHint.video')}
+              </span>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs"
+                onClick={() => setMediaHintDismissed(true)}
+              >
+                {t('chatV2:inputBar.mediaHint.dismiss')}
+              </DsButton>
+            </div>
+          )}
+
+          {/* ★ 思维导图导入提示：xmind/opml/mm/mmap 可导入为思维导图 */}
+          {hasMindmapAttachment && !mindmapHintDismissed && (
+            <div
+              data-testid="mindmap-hint"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 truncate">
+                {t('chatV2:inputBar.mindmapHint.notice')}
+              </span>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs"
+                onClick={() => setMindmapHintDismissed(true)}
+              >
+                {t('chatV2:inputBar.mindmapHint.dismiss')}
+              </DsButton>
+            </div>
           )}
 
           {/* 🔧 已选中的模型 Chips */}
@@ -2220,6 +3173,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           <AttachmentPreviewChips
             attachments={attachments}
             onRemove={onRemoveAttachment}
+            onRetry={handleRetryAttachmentChip}
             disabled={isStreaming}
           />
 
@@ -2243,54 +3197,105 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               }}
               onCompositionEnd={(e) => {
                 isComposingRef.current = false;
+                // Safari/WebKit：确认 Enter 的 keydown 会在 compositionend 之后同步派发，
+                // 用微小的时间窗标记它属于 IME 确认，避免误触发送
+                compositionJustEndedRef.current = true;
+                if (compositionEndTimerRef.current !== null) {
+                  clearTimeout(compositionEndTimerRef.current);
+                }
+                compositionEndTimerRef.current = setTimeout(() => {
+                  compositionJustEndedRef.current = false;
+                  compositionEndTimerRef.current = null;
+                }, 0);
                 // 合成结束时用最终值同步 store，确保不丢字
-                onInputChange((e.target as HTMLTextAreaElement).value);
-                setTimeout(adjustTextareaHeight, 0);
+                const composedTarget = e.target as HTMLTextAreaElement;
+                onInputChange(composedTarget.value);
+                setComposerCaretPos(composedTarget.selectionStart);
+                setTimeout(() => {
+                  adjustTextareaHeight();
+                  scrollCaretIntoView();
+                }, 0);
               }}
               onChange={(e) => {
                 // 🔧 IME 合成期间跳过 store 更新，仅移动端 WKWebView 需要（桌面端受控组件会阻止输入）
                 if (!isComposingRef.current || !isMobile) {
                   onInputChange(e.target.value);
                 }
-                setTimeout(adjustTextareaHeight, 0);
-                // 更新光标位置（用于模型提及检测）
+                setTimeout(() => {
+                  adjustTextareaHeight();
+                  scrollCaretIntoView();
+                }, 0);
+                // 更新光标位置（用于斜杠命令 / 模型提及检测）
+                setComposerCaretPos(e.target.selectionStart);
                 if (modelMentionActions) {
                   modelMentionActions.updateCursorPosition(e.target.selectionStart);
                 }
               }}
               placeholder={placeholder || t('analysis:input_bar.placeholder')}
               onKeyDown={(e) => {
+                // ★ 技能斜杠命令补全优先（与 @mention 的触发上下文互斥）
+                if (
+                  !isImeComposing(e) &&
+                  shouldHandleSkillSlashKey(e, skillSlash.open)
+                ) {
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    skillSlash.moveSelectionUp();
+                    return;
+                  }
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    skillSlash.moveSelectionDown();
+                    return;
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    if (applySkillSlashSelection()) {
+                      e.preventDefault();
+                      return;
+                    }
+                    // 无可应用项：放行原按键语义（Enter 继续走发送）
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    skillSlash.dismiss();
+                    return;
+                  }
+                }
+
                 if (
                   modelMentionState?.showAutoComplete &&
                   modelMentionActions &&
+                  !isImeComposing(e) &&
                   shouldHandleModelMentionKey(e, modelMentionState.showAutoComplete)
                 ) {
-                  if (e.key === 'ArrowUp') {
+                  const hasMentionSuggestions = modelMentionState.suggestions.length > 0;
+                  if (e.key === 'ArrowUp' && hasMentionSuggestions) {
                     e.preventDefault();
                     modelMentionActions.moveSelectionUp();
                     return;
                   }
-                  if (e.key === 'ArrowDown') {
+                  if (e.key === 'ArrowDown' && hasMentionSuggestions) {
                     e.preventDefault();
                     modelMentionActions.moveSelectionDown();
                     return;
                   }
                   if (e.key === 'Enter' || e.key === 'Tab') {
-                    e.preventDefault();
-                    const newValue = modelMentionActions.confirmSelection();
-                    if (newValue) {
-                      onInputChange(newValue);
-                      // 将光标移到正确位置
+                    const result = modelMentionActions.confirmSelection();
+                    if (result) {
+                      e.preventDefault();
+                      onInputChange(result.value);
+                      setComposerCaretPos(result.caret);
+                      // 光标精确回到 mention 起点（不再粗暴移到末尾）
                       const textarea = textareaRef.current;
                       if (textarea) {
                         requestAnimationFrame(() => {
-                          // 光标移到输入值末尾（简化处理，因为此时没有 model 信息）
-                          textarea.setSelectionRange(newValue.length, newValue.length);
-                          modelMentionActions.updateCursorPosition(newValue.length);
+                          textarea.setSelectionRange(result.caret, result.caret);
+                          modelMentionActions.updateCursorPosition(result.caret);
                         });
                       }
+                      return;
                     }
-                    return;
+                    // 无候选（noResults 提示态）：放行 Enter 走正常发送
                   }
                   if (e.key === 'Escape') {
                     e.preventDefault();
@@ -2328,13 +3333,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   return;
                 }
               }}
+              onFocus={() => setComposerTextareaFocused(true)}
+              onBlur={() => setComposerTextareaFocused(false)}
               onSelect={(e) => {
                 // 光标位置变化时更新（支持点击、选择等操作）
+                const selectionStart = (e.target as HTMLTextAreaElement).selectionStart;
+                setComposerCaretPos(selectionStart);
                 if (modelMentionActions) {
-                  modelMentionActions.updateCursorPosition(
-                    (e.target as HTMLTextAreaElement).selectionStart
-                  );
+                  modelMentionActions.updateCursorPosition(selectionStart);
                 }
+                // ★ M4：键盘移动光标（方向键/Home/End）时也保证光标可见
+                scrollCaretIntoView();
               }}
               onPaste={(e) => {
                 // 🔧 辅助链路：粘贴附件处理延迟到 isReady 后
@@ -2342,23 +3351,28 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   handlePasteAsAttachment(e);
                   return;
                 }
-                // 未就绪：仅当剪贴板包含文件或超长文本（会被转成附件）时才警告并阻断；
-                // 普通短文本直接走浏览器默认粘贴，避免每次会话切换都弹"正在初始化"
+                // ★ L2 修复：未就绪时不再直接拒绝——同步读出剪贴板文件缓存起来，
+                // isReady 后自动补投（File 对象在事件结束后仍然有效）；
+                // 普通短文本直接走浏览器默认粘贴
                 const cd = e.clipboardData;
                 if (!cd) return;
-                const hasFiles =
-                  (cd.files && cd.files.length > 0) ||
-                  (cd.items && Array.from(cd.items).some((it) => it.kind === 'file'));
-                const longText = (cd.getData('text/plain') ?? '').length > 800;
-                if (hasFiles || longText) {
+                const earlyFiles = cd.files
+                  ? Array.from(cd.files).filter((file) => file && file.size > 0)
+                  : [];
+                const text = cd.getData('text/plain') ?? '';
+                if (text.length > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars) {
+                  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                  earlyFiles.push(new File([text], `pasted_${timestamp}.txt`, { type: 'text/plain' }));
+                }
+                if (earlyFiles.length > 0) {
                   e.preventDefault();
                   e.stopPropagation();
-                  showGlobalNotification('warning', t('chatV2:inputBar.pasteNotReady'));
+                  pendingEarlyPasteRef.current.push(...earlyFiles);
                 }
               }}
               readOnly={isStreaming && !queueEnabled}
               rows={1}
-              className="w-full resize-none border-0 bg-transparent py-1 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden"
+              className="w-full resize-none border-0 bg-transparent py-1 text-md leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden [@media(pointer:coarse)]:text-[16px]"
               style={{
                 minHeight: '40px',
                 background: 'transparent',
@@ -2369,7 +3383,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           <div
             ref={ghostRef}
             aria-hidden="true"
-            className="invisible absolute top-0 left-0 -z-50 overflow-hidden whitespace-pre-wrap break-words"
+            className="invisible absolute top-0 left-0 -z-50 overflow-hidden whitespace-pre-wrap break-words text-md leading-relaxed [@media(pointer:coarse)]:text-[16px]"
             style={{
               minHeight: '40px',
               lineHeight: '24px',
@@ -2383,133 +3397,54 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         <div className="flex items-center justify-between gap-2">
           {/* 左侧按钮 - 窄屏时可横向滚动 */}
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pr-2 scrollbar-none">
-            {/* 附件按钮 - 左侧首位，方便先添加上下文 */}
-            <AppMenu open={isAttachmentMenuOpen} onOpenChange={handleAttachmentMenuOpenChange}>
-              <AppMenuTrigger asChild>
-                <span className="inline-flex rounded-[var(--radius-shell-control)]">
-                  <CommonTooltip
-                    content={
-                      attachmentCount > 0
-                        ? `${t('analysis:input_bar.attachments.title')} (${attachmentCount})`
-                        : t('analysis:input_bar.attachments.title')
-                    }
-                    position={tooltipPosition}
-                    disabled={tooltipDisabled || isAttachmentMenuOpen}
-                  >
-                    <NotionButton
-                      data-testid="btn-toggle-attachments"
-                      variant="ghost"
-                      size="icon"
-                      iconOnly
-                      className={cn(
-                        iconButtonClass,
-                        'relative transition-colors disabled:opacity-60'
-                      )}
-                      aria-label={t('analysis:input_bar.attachments.title')}
-                    >
-                      <Plus size={18} weight="bold" />
-                    </NotionButton>
-                  </CommonTooltip>
-                </span>
-              </AppMenuTrigger>
-              <AppMenuContent
-                align="start"
-                width={180}
-                style={{ zIndex: 320 }}
-              >
-                <AppMenuGroup>
-                  <AppMenuItem
-                    icon={<Paperclip className="w-4 h-4" weight="bold" />}
-                    onClick={handleAddAttachmentAction}
-                  >
-                    {t('analysis:input_bar.attachments.add')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    icon={<FolderOpen className="w-4 h-4" weight="bold" />}
-                    onClick={handleOpenResourceLibrary}
-                  >
-                    {t('chatV2:inputBar.resourceLibrary')}
-                  </AppMenuItem>
-                  {isMobileEnv && (
-                    <AppMenuItem
-                      icon={<Camera className="w-4 h-4" weight="bold" />}
-                      onClick={handleOpenCameraAction}
-                    >
-                      {t('chatV2:inputBar.camera')}
-                    </AppMenuItem>
-                  )}
-                </AppMenuGroup>
-              </AppMenuContent>
-            </AppMenu>
+            {/* 加号菜单：附件 / 模式 / 技能 / 连接器（AppMenu 次级飞出） */}
+            <ComposerPlusMenu
+              open={isAttachmentMenuOpen}
+              onOpenChange={handleAttachmentMenuOpenChange}
+              attachmentCount={attachmentCount}
+              iconButtonClass={iconButtonClass}
+              tooltipPosition={tooltipPosition}
+              tooltipDisabled={tooltipDisabled}
+              isMobile={isMobile}
+              isMobileEnv={isMobileEnv}
+              onAddAttachment={handleAddAttachmentAction}
+              onOpenResourceLibrary={handleOpenResourceLibrary}
+              onOpenCamera={handleOpenCameraAction}
+              onOpenSkillPanel={renderSkillPanel ? handleOpenSkillPanelAction : undefined}
+              onCompactContext={onCompactContext}
+              isCompactingContext={isCompactingContext}
+              compactContextStatus={compactContextStatus}
+              compactContextDisabled={isStreaming}
+              sessionId={sessionId}
+              authorityMode={authorityMode}
+              onAuthorityModeChange={onAuthorityModeChange}
+              permissionPreset={permissionPreset}
+              onPermissionPresetChange={onPermissionPresetChange}
+              authorityAskBlockedHint={authorityAskBlockedHint}
+              knowledgeBaseProactive={knowledgeBaseProactive}
+              onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
+              renderSkillPanel={renderSkillPanelMenuVariant}
+              activeSkillCount={activeSkillIds?.length ?? 0}
+              hasLoadedSkills={!!hasLoadedSkills}
+              renderMcpPanel={renderMcpPanel}
+              onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
+              mcpEnabled={mcpEnabled}
+              selectedMcpServerCount={selectedMcpServerCount}
+              onOpenAdvancedPanel={renderAdvancedPanel ? handleToggleAdvancedPanel : undefined}
+            />
 
             {leftAccessory}
 
-            {/* ★ 加号菜单已移除，统一桌面端和移动端样式 */}
-
-            {/* 🔧 P0: 技能选择独立按钮 */}
-            {renderSkillPanel && (
-              <ComposerToolButton
-                data-testid="btn-toggle-skill"
-                icon={Lightning}
-                label={t('skills:title')}
-                tooltipContent={
-                  activeSkillIds && activeSkillIds.length > 0
-                    ? t('skills:active')
-                    : hasLoadedSkills
-                      ? t('skills:toolLoaded')
-                      : t('skills:title')
-                }
-                active={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0)}
-                ariaPressed={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0) || !!hasLoadedSkills}
-                onClick={() => {
-                  if (panelStates.skill) {
-                    togglePanel('skill');
-                  } else if (activeSkillIds && activeSkillIds.length > 0) {
-                    onClearAllSkills?.();
-                  } else {
-                    togglePanel('skill');
-                  }
-                }}
-                tooltipDisabled={tooltipDisabled}
-                indicator={
-                  activeSkillIds && activeSkillIds.length > 0
-                    ? 'active'
-                    : hasLoadedSkills
-                      ? 'loaded'
-                      : null
-                }
-              />
-            )}
-
-            {/* 🔧 P0: MCP 工具独立按钮 */}
-            {renderMcpPanel && (
-              <ComposerToolButton
-                data-testid="btn-toggle-mcp"
-                icon={Wrench}
-                label={t('analysis:input_bar.mcp.title')}
-                tooltipContent={
-                  <span className="flex items-center gap-2">
-                    <span>{t('analysis:input_bar.mcp.title')}</span>
-                    <kbd className={cn('px-1 py-0.5', composerPanelShortcutClassName)}>⌘⇧M</kbd>
-                  </span>
-                }
-                active={panelStates.mcp || mcpEnabled}
-                onClick={() => togglePanel('mcp')}
-                tooltipDisabled={tooltipDisabled}
-                badge={selectedMcpServerCount}
-              />
-            )}
-
-            {/* 对话控制按钮 */}
-            {renderAdvancedPanel && (
-              <ComposerToolButton
-                icon={SlidersHorizontal}
-                label={t('common:chat_controls')}
-                active={panelStates.advanced}
-                onClick={() => togglePanel('advanced')}
-                tooltipDisabled={tooltipDisabled}
-              />
-            )}
+            {/* 快捷键提示（对齐旧版 InputBar）：桌面 Enter 发送模式下，
+                输入框聚焦且为空时在工具行空白区展示，不占额外行、不产生布局抖动 */}
+            {!isMobile &&
+              (sendShortcut || 'enter') === 'enter' &&
+              isComposerEmpty &&
+              composerTextareaFocused && (
+                <span className="pointer-events-none ml-auto shrink-0 select-none whitespace-nowrap pl-2 text-2xs text-muted-foreground/60">
+                  {t('chatV2:inputBar.shortcut')}
+                </span>
+              )}
 
           </div>
 
@@ -2518,12 +3453,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {extraButtonsRight}
 
             {contextWindowUsage && (
-              <ContextWindowUsageRing
+              /* ★ 点击水位环展开用量明细弹层（逻辑在 ContextUsagePopover，这里只挂载） */
+              <ContextUsagePopover
                 usage={contextWindowUsage}
                 sessionUsage={sessionUsage}
-                t={t}
-                disabled={tooltipDisabled}
-              />
+                onCompactContext={onCompactContext}
+                isCompactingContext={isCompactingContext}
+                compactDisabled={isStreaming}
+                getCompactionInfo={getCompactionInfo}
+              >
+                <ContextWindowUsageRing
+                  usage={contextWindowUsage}
+                  sessionUsage={sessionUsage}
+                  t={t}
+                  disabled={tooltipDisabled}
+                />
+              </ContextUsagePopover>
             )}
 
             {/* 推理强度 - 放在原附件按钮位置，靠近发送动作 */}
@@ -2531,7 +3476,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               <span
                 ref={runtimeModelTriggerRef}
                 className={cn(
-                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-[13px] font-semibold leading-none',
+                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-ui font-semibold leading-none',
                   enableThinking && !thinkingUnsupported
                     ? 'text-[color:var(--text-primary)]'
                     : 'text-[color:var(--text-muted)]'
@@ -2544,14 +3489,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       <button
                         type="button"
                         data-testid="thinking-runtime-menu-trigger"
-                        className="inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                        className={cn(
+                          'inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+                          coarseHitAreaLgClass
+                        )}
                         title={thinkingRuntimeTitle}
                         aria-label={
                           thinkingUnsupported
-                            ? 'Reasoning unsupported'
+                            ? t('chatV2:inputBar.thinkingUnsupported')
                             : hasThinkingDepthMenu
-                            ? 'Choose reasoning depth'
-                            : 'Reasoning'
+                            ? t('chatV2:inputBar.thinkingDepthMenu')
+                            : t('chatV2:inputBar.thinking')
                         }
                       >
                         {runtimeModelIconId ? (
@@ -2560,48 +3508,61 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             size={15}
                             showTooltip={false}
                             variant="mono"
-                            className="shrink-0 opacity-80"
+                            className="shrink-0 text-[color:var(--text-primary)] opacity-90"
                           />
                         ) : (
-                          <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 opacity-90" />
+                          <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 text-[color:var(--text-primary)] opacity-90" />
                         )}
-                        <span data-testid="thinking-runtime-state-label" className="min-w-0 max-w-[5.75rem] truncate">
-                          {thinkingRuntimeTriggerLabel}
-                        </span>
+                        <ResizingThinkingLabel text={thinkingRuntimeTriggerLabel} />
                         <CaretDown size={13} weight="bold" className="shrink-0 opacity-55" />
                       </button>
                     </AppMenuTrigger>
-                    <AppMenuContent align="start" width={hasRuntimeModelMenu ? 232 : 176}>
+                    <AppMenuContent align="end" width={hasRuntimeModelMenu ? 232 : 176}>
                       {hasThinkingUnsupportedMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
                           <AppMenuItem disabled>
-                            {t('chatV2:inputBar.thinkingUnsupportedDescription', '该模型不支持推理')}
+                            {t('chatV2:inputBar.thinkingUnsupportedDescription')}
                           </AppMenuItem>
                         </AppMenuGroup>
                       ) : hasThinkingDepthMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
-                          {thinkingDepthOptions.map((option) => (
-                            <AppMenuItem
-                              key={option.value}
-                              checked={!!enableThinking && thinkingDepthValue === option.value}
-                              onClick={() => onSetThinkingDepth(option.value)}
-                            >
-                              {option.defaultLabel}
-                            </AppMenuItem>
-                          ))}
-                          <AppMenuSeparator />
-                          <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
-                            {t('chatV2:inputBar.thinkingOff', '关闭')}
-                          </AppMenuItem>
-                        </AppMenuGroup>
+                        thinkingCanDisable ? (
+                          <AppMenuGroup>
+                            <ThinkingDepthSlider
+                              options={thinkingDepthOptions}
+                              value={thinkingDepthValue}
+                              enabled={!!enableThinking}
+                              onChange={(next) => onSetThinkingDepth(next)}
+                              offLabel={t('chatV2:inputBar.thinkingOff')}
+                              efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient')}
+                              smartLabel={t('chatV2:inputBar.thinkingDepthSmart')}
+                              resolveOptionLabel={resolveThinkingDepthLabel}
+                              ariaLabel={t('chatV2:inputBar.thinkingDepthMenu')}
+                            />
+                          </AppMenuGroup>
+                        ) : (
+                          // 不可关闭推理的模型：滑块必带"关闭"档，退回菜单列表以保留 thinkingCanDisable 语义
+                          <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle')}>
+                            {thinkingDepthOptions.map((option) => (
+                              <AppMenuItem
+                                key={option.value}
+                                checked={!!enableThinking && thinkingDepthValue === option.value}
+                                onClick={() => onSetThinkingDepth(option.value)}
+                              >
+                                {resolveThinkingDepthLabel(option)}
+                              </AppMenuItem>
+                            ))}
+                          </AppMenuGroup>
+                        )
                       ) : hasThinkingToggleMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
                           <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
-                            {t('chatV2:inputBar.thinkingOn', '开启')}
+                            {t('chatV2:inputBar.thinkingOn')}
                           </AppMenuItem>
-                          <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
-                            {t('chatV2:inputBar.thinkingOff', '关闭')}
-                          </AppMenuItem>
+                          {thinkingCanDisable && (
+                            <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
+                              {t('chatV2:inputBar.thinkingOff')}
+                            </AppMenuItem>
+                          )}
                         </AppMenuGroup>
                       ) : null}
                       {(hasThinkingToggleMenu || hasThinkingUnsupportedMenu) && hasRuntimeModelMenu && (
@@ -2626,7 +3587,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                     </span>
                                     {runtimeModelProviderLabel && (
                                       <span
-                                        className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
+                                        className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
                                         title={runtimeModelProviderLabel}
                                       >
                                         {runtimeModelProviderLabel}
@@ -2641,18 +3602,26 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                 <div className="app-menu-search">
                                   <MagnifyingGlass className="app-menu-search-icon" />
                                   <input
-                                    type="text"
-                                    className="app-menu-search-input"
+                                    type="search"
+                                    className="app-menu-search-input ds-search-input"
                                     placeholder={runtimeModelSearchPlaceholder}
                                     value={runtimeModelSearch}
                                     onChange={(event) => setRuntimeModelSearch(event.target.value)}
                                     onClick={(event) => event.stopPropagation()}
                                   />
                                 </div>
-                                <div className="max-h-[220px] overflow-y-auto">
+                                <CustomScrollArea
+                                  fullHeight={false}
+                                  className="max-h-[220px]"
+                                  viewportClassName="max-h-[220px]"
+                                >
                                   {groupedRuntimeModelOptions.length > 0 ? (
                                     groupedRuntimeModelOptions.map((group) => (
-                                      <AppMenuGroup key={group.providerLabel} label={group.providerLabel}>
+                                      <AppMenuGroup
+                                        key={group.providerLabel}
+                                        label={group.providerLabel}
+                                        className="app-menu-group--natural-case"
+                                      >
                                         {group.models.map((model) => (
                                           <AppMenuItem
                                             key={model.id}
@@ -2672,7 +3641,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                                 {model.label}
                                               </span>
                                               {model.providerLabel && (
-                                                <span className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground">
+                                                <span className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground">
                                                   {model.providerLabel}
                                                 </span>
                                               )}
@@ -2683,10 +3652,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                     ))
                                   ) : (
                                     <AppMenuItem disabled>
-                                      {t('chatV2:inputBar.runtimeModelNoResults', '未找到匹配模型')}
+                                      {t('chatV2:inputBar.runtimeModelNoResults')}
                                     </AppMenuItem>
                                   )}
-                                </div>
+                                </CustomScrollArea>
                                 <AppMenuSeparator />
                                 <AppMenuItem onClick={() => handleOpenRuntimeModelPanel('compare')}>
                                   {runtimeCompareModeLabel}
@@ -2710,7 +3679,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                   </span>
                                   {runtimeModelProviderLabel && (
                                     <span
-                                      className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
+                                      className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
                                       title={runtimeModelProviderLabel}
                                     >
                                       {runtimeModelProviderLabel}
@@ -2735,6 +3704,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       disabled={thinkingUnsupported}
                       className={cn(
                         'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+                        coarseHitAreaXlClass,
                         thinkingUnsupported ? 'opacity-55' : enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
                       )}
                       title={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
@@ -2756,11 +3726,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 )}
               </span>
             )}
-            {/* 🆕 媒体处理中提示 */}
+            {/* 🆕 媒体处理中提示（P1-5：移动端保留 icon + 短文案，不再整体隐藏文字） */}
             {hasProcessingMedia && (
-              <div className="text-xs text-muted-foreground flex items-center gap-1 mr-1">
-                <CircleNotch className="w-3 h-3 animate-spin" weight="bold" />
-                <span className="hidden sm:inline">
+              <div className="text-xs text-muted-foreground flex min-w-0 items-center gap-1 mr-1">
+                <CircleNotch className="w-3 h-3 shrink-0 animate-spin motion-reduce:animate-none" weight="bold" />
+                <span className="min-w-0 max-w-[7rem] truncate sm:max-w-none">
                   {processingIndicatorLabel || t('chatV2:inputBar.processingIndicator')}
                 </span>
               </div>
@@ -2770,18 +3740,29 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
             {/* 发送/停止按钮 - 极简圆形风格 */}
             {showStop ? (
-              <NotionButton
+              <DsButton
                 data-testid="btn-stop"
                 variant="default"
                 size="icon"
                 iconOnly
                 onClick={handleStop}
                 disabled={!canAbort}
-                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 !rounded-full shadow-sm')}
-                aria-label={t('analysis:input_bar.actions.stop')}
+                // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
+                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 !rounded-full shadow-sm')}
+                aria-label={canAbort
+                  ? t('analysis:input_bar.actions.stop')
+                  : t('chatV2:inputBar.stopping')}
+                title={canAbort
+                  ? t('analysis:input_bar.actions.stop')
+                  : t('chatV2:inputBar.stopping')}
               >
-                <Square size={12} weight="fill" />
-              </NotionButton>
+                {/* ★ aborting 中断确认期用 spinner 反馈，避免「点了没反应」错觉 */}
+                {canAbort ? (
+                  <Square size={12} weight="fill" />
+                ) : (
+                  <CircleNotch size={14} weight="bold" className="animate-spin motion-reduce:animate-none" />
+                )}
+              </DsButton>
             ) : (
               <CommonTooltip
                 content={disabledSend ? sendBlockedReason : undefined}
@@ -2829,9 +3810,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
       {/* 🔧 面板容器 - 用于检测点击是否在面板内 */}
       {/* 🔧 P0修复：stopPropagation 防止面板内点击冒泡到 document 触发 handleClickOutside */}
+      {/* 📱 P0-1：以下 ComposerPanelOverlay 浮层仅桌面端渲染；移动端面板走输入壳内的内联插槽 */}
       <div ref={panelContainerRef} onMouseDown={(e) => e.stopPropagation()}>
-        {/* 附件面板 - ★ 统一桌面端和移动端样式 */}
-        {activeComposerPanel === 'attachment' && attachmentPanelMotion.shouldRender && (
+        {/* 附件面板 - 桌面端锚定浮层（内容与移动端内联面板共用 renderAttachmentPanelBody） */}
+        {!isMobile && activeComposerPanel === 'attachment' && attachmentPanelMotion.shouldRender && (
           <ComposerPanelOverlay
             panelKey="attachment"
             anchorRef={inputContainerRef}
@@ -2840,268 +3822,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             maxHeight={400}
             className="overflow-hidden"
           >
-              {/* 面板头部 */}
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Paperclip size={16} weight="bold" />
-                  <span>{t('analysis:input_bar.attachments.title')} ({attachments.length})</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <NotionButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                    + {t('analysis:input_bar.attachments.add')}
-                  </NotionButton>
-                  {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
-                  <NotionButton
-                    variant="outline"
-                    size="sm"
-                    onClick={handleOpenResourceLibrary}
-                  >
-                    <FolderOpen size={12} weight="bold" />
-                    {t('chatV2:inputBar.resourceLibrary')}
-                  </NotionButton>
-                  {isMobileEnv && (
-                    <NotionButton variant="outline" size="sm" onClick={handleCameraClick}>
-                      <Camera size={12} weight="bold" />
-                      {t('chatV2:inputBar.camera')}
-                    </NotionButton>
-                  )}
-                  {attachments.length > 0 && (
-                    <NotionButton variant="danger" size="sm" onClick={() => {
-                      attachments.forEach(att => {
-                        if (att.sourceId) {
-                          void cancelPdfProcessing(att.sourceId).catch((error) => {
-                            logAttachment('ui', 'cancel_processing_failed', {
-                              attachmentId: att.id,
-                              sourceId: att.sourceId,
-                              error: getErrorMessage(error),
-                            }, 'warning');
-                          });
-                        }
-                        if (att.previewUrl?.startsWith('blob:')) {
-                          URL.revokeObjectURL(att.previewUrl);
-                        }
-                      });
-                      onClearAttachments();
-                    }}>
-                      {t('analysis:input_bar.attachments.clear_all')}
-                    </NotionButton>
-                  )}
-                  <NotionButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
-                    {t('common:actions.close')}
-                  </NotionButton>
-                </div>
-              </div>
-
-              {/* 附件列表 */}
-              <CustomScrollArea viewportClassName="max-h-56" className="flex flex-col gap-2">
-                {attachments.length === 0 ? (
-                  <div className="flex items-center justify-center rounded-lg border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-6 text-sm text-[color:var(--composer-panel-muted-foreground)]">
-                    {t('analysis:input_bar.attachments.empty')}
-                  </div>
-                ) : (
-                  attachments.map((attachment) => {
-                    const isVfsRef = attachment.id.startsWith('vfs-');
-                    const sizeLabel = isVfsRef ? t('analysis:input_bar.attachments.reference') : `${(attachment.size / 1024).toFixed(1)} KB`;
-
-                    // 判断是否为 PDF
-                    const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
-                    const isImage = attachment.type === 'image' || attachment.mimeType.startsWith('image/');
-
-                    // 🆕 媒体处理中状态显示（PDF + 图片）
-                    const isPdfProcessing = isPdf && attachment.status === 'processing';
-                    const isImageProcessing = isImage && attachment.status === 'processing';
-                    const isMediaProcessing = isPdfProcessing || isImageProcessing;
-                    // 🔧 优化：优先使用 Store 中的最新状态
-                    // ★ P0 修复：使用 sourceId (file_id) 作为 key，与后端事件保持一致
-                    const storeStatus = isMediaProcessing && attachment.sourceId
-                      ? pdfStatusMap.get(attachment.sourceId)
-                      : undefined;
-                    // 类型兼容处理：Store 的 stage 包含 'pending'，需要转换为 common.ts 的类型
-                    const mediaProgress = storeStatus
-                      ? {
-                        ...storeStatus,
-                        stage: storeStatus.stage === 'pending' ? undefined : storeStatus.stage,
-                      } as typeof attachment.processingStatus
-                      : (isMediaProcessing ? attachment.processingStatus : undefined);
-                    const selectedModes = getSelectedModes(attachment, isPdf, isImage);
-                    const mediaType = isPdf ? 'pdf' : 'image';
-                    const statusForModes = attachment.status === 'ready'
-                      ? attachment.processingStatus
-                      : mediaProgress;
-                    const readyModes = getEffectiveReadyModes(statusForModes, mediaType, attachment);
-                    const missingModes = getMissingModes(selectedModes, readyModes);
-                    const missingModesLabel = missingModes.length > 0 ? formatModeList(missingModes) : '';
-                    const displayPercent = getDisplayPercent(mediaProgress, isPdf);
-                    let stageLabel = getStageLabel(t, mediaProgress, isPdf, isImage);
-                    if ((mediaProgress?.stage === 'completed' || mediaProgress?.stage === 'completed_with_issues') && missingModesLabel) {
-                      stageLabel = t('chatV2:inputBar.completedMissingModes', {
-                        modes: missingModesLabel,
-                      });
-                    }
-                    const progressLabel = stageLabel
-                      ? (displayPercent > 0 ? `${stageLabel} · ${displayPercent}%` : stageLabel)
-                      : `${displayPercent}%`;
-
-                    const isUploading = attachment.status === 'uploading' || attachment.status === 'pending';
-                    const statusIcon =
-                      attachment.status === 'ready' && missingModes.length > 0
-                        ? <Warning size={12} weight="bold" className="text-amber-600" />
-                        : attachment.status === 'ready' ? <CheckCircle size={12} weight="fill" className="text-green-600" />
-                          : attachment.status === 'error' ? <XCircle size={12} weight="fill" className="text-red-600" />
-                            : (isMediaProcessing || isUploading) ? <CircleNotch size={12} weight="bold" className="text-blue-500 animate-spin" />
-                              : <Clock size={12} weight="bold" className="text-muted-foreground" />;
-                    const toneClass = isVfsRef
-                      ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
-                      : attachment.status === 'error' ? 'border-red-200/70 bg-red-50/70 dark:border-red-800/50 dark:bg-red-900/20'
-                        : attachment.status === 'ready' && missingModes.length > 0
-                          ? 'border-amber-200/60 bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-900/20'
-                          : attachment.status === 'ready' ? 'border-emerald-200/60 bg-emerald-50/70 dark:border-emerald-800/50 dark:bg-emerald-900/20'
-                            : (isMediaProcessing || isUploading) ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
-                              : 'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]';
-
-                    // 判断是否为图片或 PDF（需要显示注入模式选择器）
-                    const showInjectModeSelector = isImage || isPdf;
-
-                    return (
-                      <div key={attachment.id} className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', toneClass)}>
-                        {/* 第一行：文件名、大小、状态、移除按钮 */}
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[13px] text-foreground truncate block">{attachment.name}</span>
-                            {attachment.status === 'error' && attachment.error && <span className="text-[11px] text-red-600 truncate block">{attachment.error}</span>}
-                            {/* 🆕 统一进度条：上传(0-50%) + 处理(50-100%) */}
-                            {(() => {
-                              // 计算统一进度百分比和阶段标签
-                              let unifiedPercent: number | null = null;
-                              let unifiedLabel = '';
-
-                              if (isUploading && attachment.uploadProgress != null) {
-                                // 上传阶段：直接使用 uploadProgress (0-50%)
-                                unifiedPercent = attachment.uploadProgress;
-                                unifiedLabel = t(`chatV2:inputBar.uploadStage.${attachment.uploadStage || 'reading'}`);
-                              } else if (isMediaProcessing && mediaProgress) {
-                                // 处理阶段：后端 0-100% 映射到 50-100%
-                                unifiedPercent = 50 + Math.round(displayPercent * 0.5);
-                                unifiedLabel = stageLabel || '';
-                              }
-
-                              if (unifiedPercent == null) return null;
-
-                              return (
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <div className="flex-1 h-1 rounded-full bg-[color:var(--composer-panel-muted-surface)] overflow-hidden">
-                                    <div
-                                      className="h-full bg-blue-500 transition-all duration-300"
-                                      style={{ width: `${unifiedPercent}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 whitespace-nowrap">
-                                    {unifiedLabel}{unifiedPercent > 0 ? ` · ${unifiedPercent}%` : ''}
-                                  </span>
-                                </div>
-                              );
-                            })()}
-                            {missingModesLabel && !isUploading && (
-                              <div className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
-                                {t('chatV2:inputBar.modesNotReady', { modes: missingModesLabel })}
-                              </div>
-                            )}
-                          </div>
-                          <span className={cn("text-[12px]", isVfsRef ? "text-blue-600 dark:text-blue-400 font-medium" : "text-muted-foreground")}>{sizeLabel}</span>
-                          <span className="flex items-center gap-1">{statusIcon}</span>
-                          {/* ★ P0 修复：错误状态时显示重试按钮（使用正确的 sourceId） */}
-                          {attachment.status === 'error' && attachment.sourceId && (
-                            <NotionButton
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => {
-                                try {
-                                  const fileId = attachment.sourceId!;
-                                  const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
-                                  logAttachment('ui', 'retry_processing_start', {
-                                    attachmentId: attachment.id,
-                                    sourceId: fileId,
-                                    mediaType: isPdf ? 'pdf' : 'image',
-                                    previousError: attachment.error,
-                                  });
-                                  onUpdateAttachment(attachment.id, {
-                                    status: 'processing',
-                                    error: undefined,
-                                    processingStatus: {
-                                      stage: isPdf ? 'ocr_processing' : 'image_compression',
-                                      percent: isPdf ? 50 : 10,
-                                      readyModes: attachment.processingStatus?.readyModes || [],
-                                      mediaType: isPdf ? 'pdf' : 'image',
-                                    },
-                                  });
-                                  await retryPdfProcessing(fileId);
-                                  logAttachment('ui', 'retry_processing_triggered', {
-                                    attachmentId: attachment.id,
-                                    sourceId: fileId,
-                                  }, 'success');
-                                  showGlobalNotification('success', t('chatV2:inputBar.retryStarted'));
-                                } catch (error) {
-                                  logAttachment('ui', 'retry_processing_failed', {
-                                    attachmentId: attachment.id,
-                                    error: getErrorMessage(error),
-                                  }, 'error');
-                                  const retryErrorMsg = t('chatV2:inputBar.retryFailed', { error: getErrorMessage(error) });
-                                  onUpdateAttachment(attachment.id, {
-                                    status: 'error',
-                                    error: retryErrorMsg,
-                                  });
-                                  showGlobalNotification('error', retryErrorMsg);
-                                }
-                              }}
-                              className="text-blue-600"
-                            >
-                              {t('common:retry')}
-                            </NotionButton>
-                          )}
-                          <NotionButton variant="danger" size="sm" onClick={() => {
-                            logAttachment('ui', 'attachment_remove', {
-                              attachmentId: attachment.id,
-                              sourceId: attachment.sourceId,
-                              fileName: attachment.name,
-                              status: attachment.status,
-                            });
-                            if (attachment.sourceId) {
-                              void cancelPdfProcessing(attachment.sourceId).catch((error) => {
-                                logAttachment('ui', 'cancel_processing_failed', {
-                                  attachmentId: attachment.id,
-                                  sourceId: attachment.sourceId,
-                                  error: getErrorMessage(error),
-                                }, 'warning');
-                              });
-                            }
-                            if (attachment.previewUrl?.startsWith('blob:')) {
-                              URL.revokeObjectURL(attachment.previewUrl);
-                            }
-                            onRemoveAttachment(attachment.id);
-                          }}>
-                            {t('analysis:input_bar.attachments.remove')}
-                          </NotionButton>
-                        </div>
-                        {/* 第二行：注入模式选择器（仅图片和 PDF 显示，PDF 在处理中也显示） */}
-                        {showInjectModeSelector && (attachment.status === 'ready' || isMediaProcessing) && (
-                          <div className="flex items-center gap-2 pl-1">
-                            <span className="text-[11px] text-muted-foreground">{t('chatV2:injectMode.label')}:</span>
-                            <AttachmentInjectModeSelector
-                              attachment={attachment}
-                              onInjectModesChange={(attachmentId: string, modes: AttachmentInjectModes) => {
-                                onUpdateAttachment(attachmentId, { injectModes: modes });
-                              }}
-                              disabled={attachment.status !== 'ready' && !isMediaProcessing}
-                              processingStatus={mediaProgress}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </CustomScrollArea>
-
+            {renderAttachmentPanelBody()}
           </ComposerPanelOverlay>
         )}
 
@@ -3112,7 +3833,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {/* ★ RAG 知识库面板已移至对话控制面板 */}
 
         {/* 模型选择面板 - 供命令面板/消息重试等外部入口复用 */}
-        {renderModelPanel && (
+        {!isMobile && renderModelPanel && (
           activeComposerPanel === 'model' && modelPanelMotion.shouldRender && (
             <ComposerPanelOverlay
               panelKey="model"
@@ -3135,7 +3856,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         )}
 
         {/* MCP 工具面板 - 贴齐输入栏宽度 */}
-        {renderMcpPanel && (
+        {!isMobile && renderMcpPanel && (
           activeComposerPanel === 'mcp' && mcpPanelMotion.shouldRender && (
             <ComposerPanelOverlay
               panelKey="mcp"
@@ -3155,7 +3876,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {/* ★ 知识图谱选择面板已废弃（图谱模块已移除） */}
 
         {/* 对话控制面板 */}
-        {renderAdvancedPanel && (
+        {!isMobile && renderAdvancedPanel && (
           activeComposerPanel === 'advanced' && advancedPanelMotion.shouldRender && (
             <ComposerPanelOverlay
               panelKey="advanced"
@@ -3171,7 +3892,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         )}
 
         {/* 技能选择面板 - 贴齐输入栏宽度 */}
-        {renderSkillPanel && (
+        {!isMobile && renderSkillPanel && (
           activeComposerPanel === 'skill' && skillPanelMotion.shouldRender && (
             <ComposerPanelOverlay
               panelKey="skill"
@@ -3191,5 +3912,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     </div>
   );
 };
+
+export const InputBarUI = React.memo(InputBarUIInner);
+InputBarUI.displayName = 'InputBarUI';
 
 export default InputBarUI;

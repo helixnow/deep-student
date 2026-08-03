@@ -20,7 +20,7 @@ const read = (relativePath: string) =>
 // have one.
 const migrated: Array<{ path: string; minUsages: number }> = [
   { path: 'src/features/todo/components/TodoMainPanel.tsx', minUsages: 2 },
-  { path: 'src/components/anki/TaskDashboardPage.tsx', minUsages: 1 },
+  { path: 'src/features/anki-tasks/AnkiTasksApp.tsx', minUsages: 1 },
   { path: 'src/components/skills-management/SkillsManagementPage.tsx', minUsages: 1 },
 ];
 

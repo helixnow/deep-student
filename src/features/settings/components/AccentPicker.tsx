@@ -18,7 +18,7 @@ import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   PRESET_PALETTES,
   PALETTE_PREVIEW_COLORS,
@@ -35,7 +35,7 @@ interface AccentPickerProps {
 
 /**
  * 单个圆点按钮的基础 class。触控目标在移动端保持 44px，桌面压缩到 28px。
- * 关闭 NotionButton 默认的 size/variant 样式污染，只保留 focus-visible 行为。
+ * 关闭 DsButton 默认的 size/variant 样式污染，只保留 focus-visible 行为。
  */
 const DOT_BASE_CLASS =
   '!p-0 !h-11 !w-11 sm:!h-7 sm:!w-7 !min-w-0 ' +
@@ -60,7 +60,7 @@ export const AccentPicker: React.FC<AccentPickerProps> = ({
   return (
     <div
       role="radiogroup"
-      aria-label={t('settings:theme.accent_label', '强调色')}
+      aria-label={t('settings:theme.accent_label')}
       className={cn('flex flex-wrap items-center gap-2', className)}
     >
       {PRESET_PALETTES.map((paletteKey) => {
@@ -69,7 +69,7 @@ export const AccentPicker: React.FC<AccentPickerProps> = ({
         const colorName = t(`settings:theme.accent.${paletteKey}`, paletteKey);
 
         return (
-          <NotionButton
+          <DsButton
             key={paletteKey}
             variant="ghost"
             role="radio"
@@ -91,12 +91,12 @@ export const AccentPicker: React.FC<AccentPickerProps> = ({
       })}
 
       {/* 自选色：+ 按钮触发原生颜色面板 */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         role="radio"
         aria-checked={palette === 'custom'}
-        aria-label={t('settings:theme.accent.custom', '自选色')}
-        title={t('settings:theme.accent.custom', '自选色')}
+        aria-label={t('settings:theme.accent.custom')}
+        title={t('settings:theme.accent.custom')}
         onClick={openCustomColorPicker}
         className={cn(
           DOT_BASE_CLASS,
@@ -117,7 +117,7 @@ export const AccentPicker: React.FC<AccentPickerProps> = ({
         ) : (
           <Plus size={14} aria-hidden="true" />
         )}
-      </NotionButton>
+      </DsButton>
 
       <input
         ref={colorInputRef}

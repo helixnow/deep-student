@@ -29,6 +29,22 @@ const CANCELLED_BY_USER_MSG: &str = "CANCELLED_BY_USER";
 /// `handle_task_error` 据错误消息判定 `Truncated` 的关键词（上游 LLM 截断/超时提示）。
 const ERR_KEYWORD_TIMEOUT: &str = "超时";
 const ERR_KEYWORD_TRUNCATED: &str = "截断";
+/// 解析残片完全不含可读文本时的内部哨兵消息：
+/// 流式循环据此判定"丢弃该残片并记录 warning"，而非降级为错误卡。
+const UNREADABLE_FRAGMENT_MSG: &str = "UNREADABLE_CARD_FRAGMENT";
+
+/// 单个任务流式生成的统计结果（仅新增上报口径，不影响既有事件契约）。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct StreamStats {
+    /// 成功入库的卡片数
+    pub card_count: u32,
+    /// 解析/校验失败、降级为错误卡的卡片数
+    pub failed_cards: u32,
+    /// 因 DB 唯一索引去重而跳过的重复卡片数
+    pub duplicate_cards: u32,
+    /// 不含任何可读文本、被直接丢弃的残片数
+    pub dropped_fragments: u32,
+}
 
 #[derive(Clone)]
 pub struct StreamingAnkiService {
@@ -178,12 +194,101 @@ fn format_template_identifier_help(options: &AnkiGenerationOptions) -> String {
     }
 }
 
+/// 从卡片 JSON 中提取首个可读的文本内容（顶层优先，再查 `fields` 嵌套对象）。
+///
+/// 用于 front 字段的最终兜底：旧实现直接把整段 JSON `to_string()` 塞进 front，
+/// 用户会看到原始 JSON 噪声。现在优先提取可读文本，完全没有可读内容时由调用方丢弃。
+fn extract_readable_text(json_value: &Value) -> Option<String> {
+    fn scan(obj: &serde_json::Map<String, Value>) -> Option<String> {
+        for (key, value) in obj {
+            let key_lower = key.to_lowercase();
+            if matches!(
+                key_lower.as_str(),
+                "tags" | "template_id" | "templateid" | "images" | "fields"
+            ) {
+                continue;
+            }
+            if let Some(s) = value.as_str() {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    let obj = json_value.as_object()?;
+    scan(obj).or_else(|| obj.get("fields").and_then(|f| f.as_object()).and_then(scan))
+}
+
+/// 按字段提取规则的 `is_required` 标记生成诚实的字段要求描述。
+///
+/// 旧实现把所有非 front/back/tags 字段硬编码标为"可选"，
+/// 与解析侧"必需字段缺失即报错"的行为矛盾，误导模型省略必填字段。
+fn describe_prompt_field(field: &str, rule: Option<&FieldExtractionRule>) -> String {
+    let required_mark = match rule {
+        Some(r) if r.is_required => "必填",
+        Some(_) => "可选",
+        // 无规则可查时退回历史默认：front/back 必填，其余可选
+        None => match field {
+            "front" | "back" => "必填",
+            _ => "可选",
+        },
+    };
+    let type_label = match rule.map(|r| &r.field_type) {
+        Some(FieldType::Array) => "字符串数组",
+        Some(FieldType::Number) => "数字",
+        Some(FieldType::Boolean) => "布尔值",
+        Some(_) => "字符串",
+        None if field == "tags" => "字符串数组",
+        None => "字符串",
+    };
+    let description = rule
+        .map(|r| r.description.trim())
+        .filter(|d| !d.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| match field {
+            "front" => "问题或概念".to_string(),
+            "back" => "答案或解释".to_string(),
+            "tags" => "相关标签".to_string(),
+            "example" => "具体示例".to_string(),
+            "source" => "来源信息".to_string(),
+            "code" => "代码示例".to_string(),
+            "notes" => "补充注释".to_string(),
+            _ => field.to_string(),
+        });
+    format!(
+        "{}（{}，{}）：{}",
+        field, type_label, required_mark, description
+    )
+}
+
+/// 在字段提取规则中按名称查找规则（先精确匹配，再大小写不敏感匹配）。
+fn find_rule<'a>(
+    rules: Option<&'a HashMap<String, FieldExtractionRule>>,
+    field: &str,
+) -> Option<&'a FieldExtractionRule> {
+    let rules = rules?;
+    rules.get(field).or_else(|| {
+        rules
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(field))
+            .map(|(_, rule)| rule)
+    })
+}
+
 impl StreamingAnkiService {
     pub fn new(db: Arc<Database>, llm_manager: Arc<LLMManager>) -> Self {
+        // 生产路径不 panic：带超时配置构建失败时（极罕见，TLS 初始化异常等）
+        // 记录错误并回退默认客户端，保证服务仍可实例化。
         let client = Client::builder()
             .timeout(Duration::from_secs(600)) // 10分钟超时，适合流式处理
             .build()
-            .expect("创建HTTP客户端失败");
+            .unwrap_or_else(|e| {
+                error!("创建带超时配置的HTTP客户端失败，回退默认客户端: {}", e);
+                Client::new()
+            });
 
         Self {
             db,
@@ -281,7 +386,7 @@ impl StreamingAnkiService {
         // 确定API参数
         let max_tokens = options
             .max_output_tokens_override
-            .or(options.max_tokens.map(|t| t as u32))
+            .or(options.max_tokens)
             .unwrap_or(api_config.max_output_tokens);
         let temperature = options
             .temperature_override
@@ -323,15 +428,23 @@ impl StreamingAnkiService {
             )
             .await;
 
-        match result {
-            Ok(card_count) => {
-                self.complete_task_successfully(&task_id, card_count, &task.document_id, &window)
-                    .await?;
+        let outcome: Result<(), AppError> = match result {
+            Ok(stats) => {
+                // 先上报本次流式生成的质量统计（新增事件，前端按需消费，旧版前端会安全忽略）
+                self.emit_generation_stats(&task_id, &task.document_id, &stats, &window);
+                self.complete_task_successfully(
+                    &task_id,
+                    stats.card_count,
+                    &task.document_id,
+                    &window,
+                )
+                .await
             }
             Err(e) => {
                 if e.message == CANCELLED_BY_USER_MSG {
                     // 由上层 EnhancedAnkiService 负责将任务状态置为 Paused 并派发事件，避免重复事件
                     info!("🛑 任务被用户取消，保持暂停态由调度层处理: {}", task_id);
+                    Ok(())
                 } else {
                     self.handle_task_error(
                         &task_id,
@@ -340,14 +453,14 @@ impl StreamingAnkiService {
                         Some(task.segment_index),
                         Some(task.document_id.as_str()),
                     )
-                    .await?;
+                    .await
                 }
             }
-        }
-        // 清理取消通道
+        };
+        // 清理取消通道（无论成功/失败都必须执行，否则 CANCEL_SENDERS 会泄漏残留条目）
         CANCEL_SENDERS.lock().await.remove(&task_id);
 
-        Ok(())
+        outcome
     }
 
     /// 获取API配置
@@ -400,7 +513,7 @@ impl StreamingAnkiService {
             custom_prompt.clone()
         } else {
             // 默认 Anki 制卡 prompt
-            "你是一个专业的 Anki 学习卡片制作助手。请根据提供的学习内容，生成高质量的 Anki 学习卡片。\n\n要求：\n1. 卡片应该有助于记忆和理解\n2. 问题要简洁明确\n3. 答案要准确完整\n4. 适当添加相关标签\n5. 确保卡片的逻辑性和实用性".to_string()
+            "你是一个专业的 Anki 学习卡片制作助手。请根据提供的学习内容，生成高质量的 Anki 学习卡片。\n\n要求：\n1. 卡片应该有助于记忆和理解\n2. 问题要简洁明确\n3. 答案要准确完整\n4. 适当添加相关标签\n5. 确保卡片的逻辑性和实用性\n6. 卡片内容语言必须与学习材料一致：英文材料生成英文卡片，中文材料生成中文卡片，不要翻译".to_string()
         };
 
         // system role 信息
@@ -530,18 +643,26 @@ impl StreamingAnkiService {
                 "{\"template_id\": \"<模板ID>\", \"<字段名>\": \"内容\"}".to_string(),
             )
         } else if let Some(fields) = template_fields.as_ref() {
+            // 按模板字段提取规则的 is_required 生成诚实的必填/可选标记，
+            // 修复旧实现把所有扩展字段硬编码为"可选"、与解析侧校验矛盾的问题。
+            let resolved_prompt_rules: Option<&HashMap<String, FieldExtractionRule>> =
+                options.field_extraction_rules.as_ref().or_else(|| {
+                    options
+                        .field_extraction_rules_by_id
+                        .as_ref()
+                        .and_then(|rules_by_id| {
+                            if let Some(template_id) = options.template_id.as_ref() {
+                                rules_by_id.get(template_id)
+                            } else if rules_by_id.len() == 1 {
+                                rules_by_id.values().next()
+                            } else {
+                                None
+                            }
+                        })
+                });
             let fields_requirement = fields
                 .iter()
-                .map(|field| match field.as_str() {
-                    "front" => "front（字符串）：问题或概念".to_string(),
-                    "back" => "back（字符串）：答案或解释".to_string(),
-                    "tags" => "tags（字符串数组）：相关标签".to_string(),
-                    "example" => "example（字符串，可选）：具体示例".to_string(),
-                    "source" => "source（字符串，可选）：来源信息".to_string(),
-                    "code" => "code（字符串，可选）：代码示例".to_string(),
-                    "notes" => "notes（字符串，可选）：补充注释".to_string(),
-                    _ => format!("{}（字符串，可选）：{}", field, field),
-                })
+                .map(|field| describe_prompt_field(field, find_rule(resolved_prompt_rules, field)))
                 .collect::<Vec<_>>()
                 .join("、");
 
@@ -624,6 +745,8 @@ impl StreamingAnkiService {
     }
 
     /// 流式处理AI响应并生成卡片
+    ///
+    /// 返回本次流式生成的统计（成功/失败/去重/丢弃残片计数），供上层做进度与质量上报。
     async fn stream_cards_from_ai(
         &self,
         api_config: &ApiConfig,
@@ -635,7 +758,7 @@ impl StreamingAnkiService {
         window: &Window,
         options: &AnkiGenerationOptions,
         mut cancel_rx: watch::Receiver<bool>,
-    ) -> Result<u32, AppError> {
+    ) -> Result<StreamStats, AppError> {
         let mut messages = vec![];
         if let Some(system_message) = &prompt_payload.system {
             messages.push(json!({
@@ -656,16 +779,19 @@ impl StreamingAnkiService {
             "stream": true
         });
 
-        // 使用 ProviderAdapter 构建请求（支持 Gemini 中转）
+        // 使用 ProviderAdapter 构建请求（支持 Gemini 中转），并统一合并自定义头 / Codex OAuth。
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(api_config);
-        let preq = adapter
-            .build_request(
-                &api_config.base_url,
-                &api_config.api_key,
-                &api_config.model,
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                adapter.as_ref(),
+                api_config,
                 &request_body,
+                None,
+                Some(task_id),
+                "Anki 流式请求构建失败",
             )
-            .map_err(|e| AppError::llm(format!("Anki 流式请求构建失败: {}", e)))?;
+            .await?;
 
         let request_url = preq.url.clone();
         debug!(
@@ -714,22 +840,31 @@ impl StreamingAnkiService {
         );
         debug!("[ANKI_REQUEST_DEBUG] ==> 完整请求体结束 <==");
 
-        let mut req_builder = self.client
-            .post(&request_url)
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
-            .header("Accept-Encoding", "identity")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("Connection", "keep-alive")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        for (k, v) in preq.headers {
-            req_builder = req_builder.header(k, v);
-        }
+        let response = if preq.is_codex() {
+            self.llm_manager
+                .send_codex_stream_request_with_single_refresh(
+                    &mut preq,
+                    Some(Duration::from_secs(600)),
+                )
+                .await?
+        } else {
+            let mut req_builder = self.client
+                .post(&request_url)
+                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                .header("Accept-Encoding", "identity")
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .header("Connection", "keep-alive")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+            for (k, v) in &preq.headers {
+                req_builder = req_builder.header(k, v);
+            }
 
-        let response = req_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("AI请求失败: {}", e)))?;
+            req_builder
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::network(format!("AI请求失败: {}", e)))?
+        };
 
         if !response.status().is_success() {
             let status_code = response.status().as_u16();
@@ -756,12 +891,11 @@ impl StreamingAnkiService {
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
-        let mut card_count = 0u32;
+        let mut stats = StreamStats::default();
         let mut _last_activity = std::time::Instant::now(); // Prefixed to silence warning
-        const IDLE_TIMEOUT: Duration = Duration::from_secs(30); // 30秒无响应超时
+        const IDLE_TIMEOUT: Duration = Duration::from_secs(180); // 180秒无响应超时
         const LOG_STREAM_CHUNKS: bool = false; // 禁用逐chunk日志
-                                               // 初始化SSE行缓冲器
-        let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
+        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut chunk_counter: u32 = 0;
         let mut reached_card_limit = false;
 
@@ -784,12 +918,9 @@ impl StreamingAnkiService {
             let chunk =
                 chunk_result.map_err(|e| AppError::network(format!("读取AI响应流失败: {}", e)))?;
             _last_activity = std::time::Instant::now(); // Prefixed to silence warning
-            let chunk_str = String::from_utf8_lossy(&chunk);
-            // 处理SSE格式 - 使用SSE缓冲器处理chunk，获取完整的行
-            let complete_lines = sse_buffer.process_chunk(&chunk_str);
-            for line in complete_lines {
+            for line in sse_buffer.process_bytes(&chunk) {
                 // 检查是否是结束标记
-                if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+                if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
                     debug!("📍 检测到SSE结束标记: [DONE]");
                     break;
                 }
@@ -808,7 +939,9 @@ impl StreamingAnkiService {
                             }
                             buffer.push_str(&content);
                             if *cancel_rx.borrow() {
-                                return Err(AppError::validation(CANCELLED_BY_USER_MSG.to_string()));
+                                return Err(AppError::validation(
+                                    CANCELLED_BY_USER_MSG.to_string(),
+                                ));
                             }
 
                             // 检查是否有完整的卡片
@@ -816,7 +949,7 @@ impl StreamingAnkiService {
                             {
                                 // 硬截断：达到 max_cards_per_mistake 上限时停止
                                 if options.max_cards_per_mistake > 0
-                                    && card_count as i32 >= options.max_cards_per_mistake
+                                    && stats.card_count as i32 >= options.max_cards_per_mistake
                                 {
                                     info!(
                                         "[ANKI_CARD_DEBUG] 已达到卡片上限 {}，停止解析",
@@ -832,15 +965,36 @@ impl StreamingAnkiService {
                                             .await
                                         {
                                             Ok(Some(card)) => {
-                                                card_count += 1;
-                                                debug!("[ANKI_CARD_DEBUG] 已生成第{}张卡片 (上限: {}张)", card_count, options.max_cards_per_mistake);
+                                                stats.card_count += 1;
+                                                debug!("[ANKI_CARD_DEBUG] 已生成第{}张卡片 (上限: {}张)", stats.card_count, options.max_cards_per_mistake);
                                                 self.emit_new_card(card, document_id, window).await;
                                             }
                                             Ok(None) => {
-                                                // 重复或被跳过的卡片，记录日志但不中断流程
+                                                // 重复卡片被 DB 唯一索引去重跳过，计数上报但不中断流程
+                                                stats.duplicate_cards += 1;
                                                 debug!("[ANKI_CARD_DEBUG] 卡片被跳过（重复或不需要保存）");
                                             }
+                                            Err(e)
+                                                if e.message.contains(UNREADABLE_FRAGMENT_MSG) =>
+                                            {
+                                                // 残片完全不含可读文本：丢弃并记录 warning，
+                                                // 不再生成 front 为原始 JSON 的噪声卡片
+                                                stats.dropped_fragments += 1;
+                                                warn!(
+                                                    "[ANKI_CARD_DEBUG] 丢弃不可读残片（{} 字符）: {}",
+                                                    card_json.chars().count(),
+                                                    e.message
+                                                );
+                                                self.emit_generation_warning(
+                                                    task_id,
+                                                    document_id,
+                                                    "unreadable_fragment_dropped",
+                                                    &card_json,
+                                                    window,
+                                                );
+                                            }
                                             Err(e) => {
+                                                stats.failed_cards += 1;
                                                 error!(
                                                     "解析卡片失败: {} - 原始JSON: {}",
                                                     e, card_json
@@ -868,7 +1022,7 @@ impl StreamingAnkiService {
                                                             ));
                                                         let _ = self
                                                             .handle_task_error(
-                                                                &task_id,
+                                                                task_id,
                                                                 &app_err,
                                                                 window,
                                                                 None,
@@ -881,6 +1035,7 @@ impl StreamingAnkiService {
                                         }
                                     }
                                     Err(truncated_content) => {
+                                        stats.failed_cards += 1;
                                         if let Ok(error_card) = self
                                             .create_error_card(&truncated_content, task_id)
                                             .await
@@ -928,8 +1083,8 @@ impl StreamingAnkiService {
         }
 
         if !reached_card_limit {
-            // 处理SSE缓冲器中剩余的不完整行
-            if let Some(remaining_line) = sse_buffer.flush() {
+            // 处理自然关闭且没有空行分隔符的最后一个 SSE 事件。
+            for remaining_line in sse_buffer.flush() {
                 if !remaining_line.trim().is_empty() {
                     debug!(
                         "📥 处理SSE缓冲器中的剩余数据: {} 字符",
@@ -959,24 +1114,41 @@ impl StreamingAnkiService {
             let residual = buffer.trim().to_string();
             if !residual.is_empty() {
                 let within_limit = options.max_cards_per_mistake <= 0
-                    || (card_count as i32) < options.max_cards_per_mistake;
+                    || (stats.card_count as i32) < options.max_cards_per_mistake;
                 let looks_like_card = residual.contains('{');
 
                 let mut handled = false;
                 if within_limit && looks_like_card {
                     match self.parse_and_save_card(&residual, task_id, options).await {
                         Ok(Some(card)) => {
-                            card_count += 1;
+                            stats.card_count += 1;
                             info!(
                                 "[ANKI_CARD_DEBUG] 流收尾残留缓冲解析为正常卡片（第{}张）",
-                                card_count
+                                stats.card_count
                             );
                             self.emit_new_card(card, document_id, window).await;
                             handled = true;
                         }
                         Ok(None) => {
                             // 重复卡片被去重跳过，视为已处理
+                            stats.duplicate_cards += 1;
                             debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析成功但被去重跳过");
+                            handled = true;
+                        }
+                        Err(e) if e.message.contains(UNREADABLE_FRAGMENT_MSG) => {
+                            // 收尾残片不含任何可读文本：丢弃并记录 warning
+                            stats.dropped_fragments += 1;
+                            warn!(
+                                "[ANKI_CARD_DEBUG] 丢弃流收尾的不可读残片（{} 字符）",
+                                residual.chars().count()
+                            );
+                            self.emit_generation_warning(
+                                task_id,
+                                document_id,
+                                "unreadable_fragment_dropped",
+                                &residual,
+                                window,
+                            );
                             handled = true;
                         }
                         Err(e) => {
@@ -988,6 +1160,7 @@ impl StreamingAnkiService {
                 if !handled {
                     if looks_like_card {
                         // 像卡片但解析失败：保留为错误卡供用户检查
+                        stats.failed_cards += 1;
                         if let Ok(error_card) = self.create_error_card(&residual, task_id).await {
                             self.emit_error_card(error_card, document_id, window).await;
                         }
@@ -1006,15 +1179,28 @@ impl StreamingAnkiService {
             debug!("[ANKI_RESPONSE_STREAM] total_chunks={}", chunk_counter);
             debug!(
                 "[ANKI_RESPONSE_STREAM] cards_generated={} residual_len={}",
-                card_count,
+                stats.card_count,
                 buffer.len()
             );
         }
 
-        Ok(card_count)
+        Ok(stats)
     }
 
+    /// 单卡缓冲的硬性安全上限（字节）。
+    ///
+    /// 🔧 P1-2 修复：旧实现的 10000 字节阈值会把"仍在传输中的合法长卡片"
+    /// （学术模板多字段、含代码块/解析的选择题在中文下仅约 3300 字即触发）
+    /// 误判为截断并清空缓冲，腰斩合法卡且让后续内容成为无头残片。
+    /// "缓冲过大即截断"只应作为最后防线（模型完全不输出分隔符时防止无界增长），
+    /// 上限须远大于单卡体积；流结束后的残留由收尾逻辑（E1）单独处理。
+    const CARD_BUFFER_HARD_LIMIT: usize = 1_000_000;
+
     /// 从缓冲区提取卡片
+    ///
+    /// 仅在检测到完整分隔符（标准或损坏变体）时切出卡片；
+    /// 分隔符未到达时缓冲继续增长属正常现象（分隔符可能在下一个 chunk 里），
+    /// 只有超过 CARD_BUFFER_HARD_LIMIT 的异常无界增长才判为截断。
     fn extract_card_from_buffer(&self, buffer: &mut String) -> Option<Result<String, String>> {
         const DELIMITER: &str = "<<<ANKI_CARD_JSON_END>>>";
 
@@ -1029,42 +1215,45 @@ impl StreamingAnkiService {
             } else {
                 None
             }
-        } else {
+        } else if let Some(pos) = buffer.find("ANKI_CARD_JSON_END>>>") {
             // 如果找不到标准分隔符，尝试查找可能损坏的分隔符模式
-            // 使用正则表达式匹配类似 <<<...ANKI_CARD_JSON_END>>> 的模式
-            if let Some(pos) = buffer.find("ANKI_CARD_JSON_END>>>") {
-                // 向前查找 "<<<" 的位置
-                let start_pos = buffer[..pos].rfind("<<<");
-                if let Some(start) = start_pos {
-                    let card_content = buffer[..start].trim().to_string();
-                    // 找到完整的损坏分隔符的结束位置
-                    let end_pos = pos + "ANKI_CARD_JSON_END>>>".len();
-                    let remaining = buffer[end_pos..].to_string();
-                    *buffer = remaining;
+            // 匹配类似 <<<...ANKI_CARD_JSON_END>>> 的模式
+            let start_pos = buffer[..pos].rfind("<<<");
+            if let Some(start) = start_pos {
+                let card_content = buffer[..start].trim().to_string();
+                // 找到完整的损坏分隔符的结束位置
+                let end_pos = pos + "ANKI_CARD_JSON_END>>>".len();
+                let remaining = buffer[end_pos..].to_string();
+                *buffer = remaining;
 
-                    warn!("[ANKI_CARD_DEBUG] 检测到损坏的分隔符，已自动修复");
+                warn!("[ANKI_CARD_DEBUG] 检测到损坏的分隔符，已自动修复");
 
-                    if !card_content.is_empty() {
-                        Some(Ok(card_content))
-                    } else {
-                        None
-                    }
-                } else if buffer.len() > 10000 {
-                    // 如果缓冲区过大，可能是截断
-                    let truncated = buffer.clone();
-                    buffer.clear();
-                    Some(Err(truncated))
+                if !card_content.is_empty() {
+                    Some(Ok(card_content))
                 } else {
                     None
                 }
-            } else if buffer.len() > 10000 {
-                // 如果缓冲区过大，可能是截断
-                let truncated = buffer.clone();
-                buffer.clear();
-                Some(Err(truncated))
             } else {
-                None
+                Self::check_buffer_hard_limit(buffer)
             }
+        } else {
+            Self::check_buffer_hard_limit(buffer)
+        }
+    }
+
+    /// 缓冲区硬上限检查：超限时判为截断并清空（仅防无界增长的最后防线）
+    fn check_buffer_hard_limit(buffer: &mut String) -> Option<Result<String, String>> {
+        if buffer.len() > Self::CARD_BUFFER_HARD_LIMIT {
+            warn!(
+                "[ANKI_CARD_DEBUG] 卡片缓冲超过硬上限 {} 字节（当前 {} 字节）仍未出现分隔符，判为异常截断",
+                Self::CARD_BUFFER_HARD_LIMIT,
+                buffer.len()
+            );
+            let truncated = buffer.clone();
+            buffer.clear();
+            Some(Err(truncated))
+        } else {
+            None
         }
     }
 
@@ -1547,7 +1736,7 @@ impl StreamingAnkiService {
         // 新增动态映射：使用模板定义字段顺序来设置 front/back
         if front.is_empty() {
             if let Some(fields) = template_fields {
-                if let Some(first) = fields.get(0) {
+                if let Some(first) = fields.first() {
                     if let Some(val) = extra_fields.get(&first.to_lowercase()) {
                         front = val.clone();
                     }
@@ -1564,9 +1753,22 @@ impl StreamingAnkiService {
             }
         }
 
-        // 最后仍为空则用整个 JSON
+        // 最终兜底：提取首个可读文本，而不是把整段 JSON 塞进 front（旧行为会
+        // 让用户直接看到原始 JSON 噪声）。完全没有可读文本的残片返回哨兵错误，
+        // 由流式循环丢弃并记录 warning，不降级为错误卡。
         if front.is_empty() {
-            front = json_value.to_string();
+            if let Some(readable) = extract_readable_text(json_value) {
+                warn!(
+                    "[ANKI_PARSE_WARN] front 字段缺失，回退为首个可读文本（{} 字符）",
+                    readable.chars().count()
+                );
+                front = readable;
+            } else {
+                return Err(AppError::validation(format!(
+                    "{}: 残片不含任何可读文本字段，已丢弃",
+                    UNREADABLE_FRAGMENT_MSG
+                )));
+            }
         }
 
         if back.is_empty() {
@@ -2114,6 +2316,55 @@ impl StreamingAnkiService {
         }
     }
 
+    /// 发送生成质量统计事件（纯新增：外部标签 `GenerationStats`，
+    /// 前端按 key 匹配已知事件，未识别的标签会被安全忽略，不破坏既有契约）
+    fn emit_generation_stats(
+        &self,
+        task_id: &str,
+        document_id: &str,
+        stats: &StreamStats,
+        window: &Window,
+    ) {
+        let payload = json!({
+            "GenerationStats": {
+                "task_id": task_id,
+                "document_id": document_id,
+                "cards_generated": stats.card_count,
+                "failed_cards": stats.failed_cards,
+                "duplicate_cards": stats.duplicate_cards,
+                "dropped_fragments": stats.dropped_fragments,
+            }
+        });
+        if let Err(e) = window.emit("anki_generation_event", &payload) {
+            error!("发送生成统计事件失败: {}", e);
+        }
+    }
+
+    /// 发送生成过程警告事件（纯新增：外部标签 `GenerationWarning`，旧版前端安全忽略）。
+    /// 用于"丢弃不可读残片"等不值得生成错误卡、但需要留痕的情况。
+    fn emit_generation_warning(
+        &self,
+        task_id: &str,
+        document_id: &str,
+        reason: &str,
+        fragment: &str,
+        window: &Window,
+    ) {
+        // 只携带截断后的预览，避免把超长原始输出灌进事件总线
+        let preview: String = fragment.chars().take(200).collect();
+        let payload = json!({
+            "GenerationWarning": {
+                "task_id": task_id,
+                "document_id": document_id,
+                "reason": reason,
+                "fragment_preview": preview,
+            }
+        });
+        if let Err(e) = window.emit("anki_generation_event", &payload) {
+            error!("发送生成警告事件失败: {}", e);
+        }
+    }
+
     /// 成功完成任务
     async fn complete_task_successfully(
         &self,
@@ -2168,15 +2419,24 @@ impl StreamingAnkiService {
             TaskStatus::Failed
         };
 
-        self.update_task_status(
-            task_id,
-            final_status.clone(),
-            Some(error_message.clone()),
-            segment_index,
-            document_id,
-            window,
-        )
-        .await?;
+        // 状态写库失败（如任务已被删除）时不吞掉错误事件：
+        // 记录 DB 失败原因，但仍向前端派发 TaskProcessingError，避免前端永远等不到终态。
+        if let Err(db_err) = self
+            .update_task_status(
+                task_id,
+                final_status.clone(),
+                Some(error_message.clone()),
+                segment_index,
+                document_id,
+                window,
+            )
+            .await
+        {
+            error!(
+                "写入任务失败状态到数据库失败（仍将派发错误事件）: task={}, db_err={}",
+                task_id, db_err.message
+            );
+        }
 
         // 发送错误事件
         // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
@@ -2195,13 +2455,24 @@ impl StreamingAnkiService {
 
     /// 取消当前流式制卡（用于硬暂停）
     pub async fn cancel_streaming(&self, task_id: String) -> Result<(), String> {
-        let senders = CANCEL_SENDERS.lock().await;
-        if let Some(tx) = senders.get(&task_id) {
+        let mut senders = CANCEL_SENDERS.lock().await;
+        if let Some(tx) = senders.remove(&task_id) {
             let _ = tx.send(true);
             Ok(())
         } else {
             Err(format!("任务 {} 未在运行状态", task_id))
         }
+    }
+
+    /// abort 兜底后清理可能残留的取消通道（避免 CANCEL_SENDERS 泄漏）
+    pub async fn clear_cancel_sender(&self, task_id: &str) {
+        CANCEL_SENDERS.lock().await.remove(task_id);
+    }
+
+    /// 查询任务是否已注册取消通道（即流式请求已在运行）。
+    /// 供调度层做防重入检查，避免同一任务被并发触发两次。
+    pub async fn is_streaming(&self, task_id: &str) -> bool {
+        CANCEL_SENDERS.lock().await.contains_key(task_id)
     }
 
     /// 基于当前文档内的失败/截断任务与错误卡片，构建一个“统一重试”任务并插入到该文档中。
@@ -2399,5 +2670,117 @@ mod tests {
         );
 
         assert!(resolved.is_none());
+    }
+
+    fn make_rule(
+        is_required: bool,
+        field_type: FieldType,
+        description: &str,
+    ) -> FieldExtractionRule {
+        FieldExtractionRule {
+            field_type,
+            is_required,
+            default_value: None,
+            validation_pattern: None,
+            description: description.to_string(),
+            validation: None,
+            transform: None,
+            schema: None,
+            item_schema: None,
+            display_format: None,
+            ai_hint: None,
+            max_length: None,
+            min_length: None,
+            allowed_values: None,
+            depends_on: None,
+            compute_function: None,
+        }
+    }
+
+    #[test]
+    fn extract_readable_text_prefers_top_level_string() {
+        let value = json!({
+            "tags": ["a", "b"],
+            "template_id": "design-lab",
+            "question": "什么是牛顿第一定律？",
+            "answer": "惯性定律"
+        });
+        // serde_json 对象按插入序遍历（preserve_order 未启用时按字母序），
+        // 无论哪种顺序，结果都必须是可读文本而非 tags/template_id
+        let text = extract_readable_text(&value).expect("should find readable text");
+        assert!(text == "什么是牛顿第一定律？" || text == "惯性定律");
+    }
+
+    #[test]
+    fn extract_readable_text_falls_back_to_nested_fields() {
+        let value = json!({
+            "template_id": "design-lab",
+            "fields": { "Question": "  嵌套问题  " }
+        });
+        assert_eq!(extract_readable_text(&value).as_deref(), Some("嵌套问题"));
+    }
+
+    #[test]
+    fn extract_readable_text_returns_none_for_unreadable_fragment() {
+        let value = json!({
+            "tags": ["only", "tags"],
+            "template_id": "design-lab",
+            "count": 42
+        });
+        assert!(extract_readable_text(&value).is_none());
+        assert!(extract_readable_text(&json!("not an object")).is_none());
+    }
+
+    #[test]
+    fn describe_prompt_field_honors_is_required_flag() {
+        let required_rule = make_rule(true, FieldType::Text, "解析说明");
+        let described = describe_prompt_field("explanation", Some(&required_rule));
+        assert!(
+            described.contains("必填"),
+            "required rule must say 必填: {described}"
+        );
+        assert!(described.contains("解析说明"));
+
+        let optional_rule = make_rule(false, FieldType::Text, "");
+        let described = describe_prompt_field("notes", Some(&optional_rule));
+        assert!(
+            described.contains("可选"),
+            "optional rule must say 可选: {described}"
+        );
+        // 空描述回退到内置文案
+        assert!(described.contains("补充注释"));
+    }
+
+    #[test]
+    fn describe_prompt_field_defaults_without_rule() {
+        assert!(describe_prompt_field("front", None).contains("必填"));
+        assert!(describe_prompt_field("back", None).contains("必填"));
+        let tags = describe_prompt_field("tags", None);
+        assert!(tags.contains("可选"));
+        assert!(tags.contains("字符串数组"));
+        assert!(describe_prompt_field("custom_field", None).contains("可选"));
+    }
+
+    #[test]
+    fn describe_prompt_field_reports_array_type_from_rule() {
+        let rule = make_rule(true, FieldType::Array, "步骤列表");
+        let described = describe_prompt_field("steps", Some(&rule));
+        assert!(described.contains("字符串数组"));
+        assert!(described.contains("必填"));
+    }
+
+    #[test]
+    fn find_rule_matches_case_insensitively() {
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert(
+            "Front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
+
+        assert!(find_rule(Some(&rules), "Front").is_some());
+        assert!(find_rule(Some(&rules), "front").is_some());
+        assert!(find_rule(Some(&rules), "FRONT").is_some());
+        assert!(find_rule(Some(&rules), "back").is_none());
+        assert!(find_rule(None, "front").is_none());
     }
 }

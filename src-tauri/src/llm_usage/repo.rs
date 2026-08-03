@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, NaiveDate, Utc};
 use rusqlite::{params, Connection, Transaction};
 use tracing::debug;
 
@@ -9,6 +9,24 @@ use super::types::{
 };
 
 pub struct LlmUsageRepo;
+
+/// Pricing coverage for one aggregate bucket. A `cost_estimate` of zero still
+/// counts as priced; a NULL value means no applicable price was available.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriceCoverageStat {
+    pub key: Option<String>,
+    pub total_requests: u64,
+    pub priced_requests: u64,
+    pub total_tokens: u64,
+    pub priced_tokens: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PriceCoverageDimension {
+    Overall,
+    Model,
+    CallerType,
+}
 
 impl LlmUsageRepo {
     pub fn insert_usage(conn: &Connection, record: &UsageRecord) -> LlmUsageResult<()> {
@@ -182,7 +200,8 @@ impl LlmUsageRepo {
                 SUM(prompt_tokens) as prompt_tokens,
                 SUM(completion_tokens) as completion_tokens,
                 COUNT(*) as call_count,
-                MIN(timestamp) as first_ts
+                MIN(timestamp) as first_ts,
+                SUM(cost_estimate) as total_cost_estimate
             FROM llm_usage_logs
             WHERE timestamp >= datetime('now', '-{} days')
             GROUP BY time_key
@@ -205,7 +224,7 @@ impl LlmUsageRepo {
                 prompt_tokens: row.get::<_, i64>(2)? as u64,
                 completion_tokens: row.get::<_, i64>(3)? as u64,
                 request_count: row.get::<_, i64>(4)? as u32,
-                estimated_cost_usd: None,
+                estimated_cost_usd: row.get::<_, Option<f64>>(6)?,
                 success_rate: None,
             })
         })?;
@@ -231,7 +250,7 @@ impl LlmUsageRepo {
                 SUM(prompt_tokens) as total_prompt_tokens,
                 SUM(completion_tokens) as total_completion_tokens,
                 SUM(total_tokens) as total_tokens,
-                COALESCE(SUM(cost_estimate), 0) as total_cost_estimate
+                SUM(cost_estimate) as total_cost_estimate
             FROM llm_usage_logs
             WHERE date_key >= ?1 AND date_key <= ?2
             GROUP BY model
@@ -246,7 +265,7 @@ impl LlmUsageRepo {
                 prompt_tokens: row.get::<_, i64>(2)? as u64,
                 completion_tokens: row.get::<_, i64>(3)? as u64,
                 total_tokens: row.get::<_, i64>(4)? as u64,
-                estimated_cost_usd: row.get(5).ok(),
+                estimated_cost_usd: row.get::<_, Option<f64>>(5)?,
                 percentage: None,
                 avg_tokens_per_request: None,
             })
@@ -271,7 +290,7 @@ impl LlmUsageRepo {
                 caller_type,
                 COUNT(*) as call_count,
                 SUM(total_tokens) as total_tokens,
-                COALESCE(SUM(cost_estimate), 0) as total_cost_estimate
+                SUM(cost_estimate) as total_cost_estimate
             FROM llm_usage_logs
             WHERE date_key >= ?1 AND date_key <= ?2
             GROUP BY caller_type
@@ -288,7 +307,7 @@ impl LlmUsageRepo {
                 display_name,
                 request_count: row.get::<_, i64>(1)? as u64,
                 total_tokens: row.get::<_, i64>(2)? as u64,
-                estimated_cost_usd: row.get(3).ok(),
+                estimated_cost_usd: row.get::<_, Option<f64>>(3)?,
                 percentage: None,
             })
         })?;
@@ -327,8 +346,10 @@ impl LlmUsageRepo {
                 COALESCE(SUM(cached_tokens), 0) as total_cached_tokens,
                 COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0) as success_count,
                 COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0) as error_count,
-                COALESCE(SUM(cost_estimate), 0) as total_cost_estimate,
-                COALESCE(AVG(duration_ms), 0) as avg_duration_ms
+                SUM(cost_estimate) as total_cost_estimate,
+                AVG(duration_ms) as avg_duration_ms,
+                MIN(timestamp) as first_timestamp,
+                MAX(timestamp) as last_timestamp
             FROM llm_usage_logs
             {}
             "#,
@@ -339,9 +360,18 @@ impl LlmUsageRepo {
         let now = Utc::now();
 
         let build_summary = |row: &rusqlite::Row| -> rusqlite::Result<UsageSummary> {
+            let first_timestamp = row
+                .get::<_, Option<String>>(10)?
+                .and_then(|value| parse_rfc3339_utc(&value));
+            let last_timestamp = row
+                .get::<_, Option<String>>(11)?
+                .and_then(|value| parse_rfc3339_utc(&value));
+            let requested_start = start_date.and_then(|value| parse_date_boundary(value, false));
+            let requested_end = end_date.and_then(|value| parse_date_boundary(value, true));
+
             Ok(UsageSummary {
-                start_date: now,
-                end_date: now,
+                start_date: requested_start.or(first_timestamp).unwrap_or(now),
+                end_date: requested_end.or(last_timestamp).unwrap_or(now),
                 total_requests: row.get::<_, i64>(0)? as u64,
                 success_requests: row.get::<_, i64>(6)? as u64,
                 error_requests: row.get::<_, i64>(7)? as u64,
@@ -350,7 +380,7 @@ impl LlmUsageRepo {
                 total_tokens: row.get::<_, i64>(3)? as u64,
                 total_reasoning_tokens: Some(row.get::<_, i64>(4)? as u64),
                 total_cached_tokens: Some(row.get::<_, i64>(5)? as u64),
-                total_estimated_cost_usd: row.get(8).ok(),
+                total_estimated_cost_usd: row.get::<_, Option<f64>>(8)?,
                 avg_tokens_per_request: None,
                 avg_duration_ms: row.get(9).ok(),
                 by_caller_type: None,
@@ -367,6 +397,8 @@ impl LlmUsageRepo {
             stmt.query_row(params![params_vec[0], params_vec[1]], build_summary)?
         };
 
+        let mut summary = summary;
+        summary.compute_averages();
         Ok(summary)
     }
 
@@ -403,6 +435,14 @@ impl LlmUsageRepo {
     }
 
     pub fn get_recent_usage(conn: &Connection, limit: u32) -> LlmUsageResult<Vec<UsageRecord>> {
+        Self::get_recent_usage_page(conn, 0, limit)
+    }
+
+    pub fn get_recent_usage_page(
+        conn: &Connection,
+        offset: u32,
+        limit: u32,
+    ) -> LlmUsageResult<Vec<UsageRecord>> {
         let mut stmt = conn.prepare(
             r#"
             SELECT
@@ -412,11 +452,11 @@ impl LlmUsageRepo {
                 duration_ms, caller_type, session_id, status, error_message, cost_estimate
             FROM llm_usage_logs
             ORDER BY timestamp DESC
-            LIMIT ?1
+            LIMIT ?1 OFFSET ?2
             "#,
         )?;
 
-        let rows = stmt.query_map(params![limit], |row| {
+        let rows = stmt.query_map(params![limit, offset], |row| {
             let caller_type_str: String = row.get(11)?;
             let status: String = row.get(13)?;
             let timestamp_str: String = row.get(1)?;
@@ -488,7 +528,7 @@ impl LlmUsageRepo {
                 SUM(prompt_tokens) as total_prompt_tokens,
                 SUM(completion_tokens) as total_completion_tokens,
                 SUM(total_tokens) as total_tokens,
-                COALESCE(SUM(cost_estimate), 0) as total_cost_estimate
+                SUM(cost_estimate) as total_cost_estimate
             FROM llm_usage_logs
             WHERE date_key >= ?1 AND date_key <= ?2
             GROUP BY date_key
@@ -509,7 +549,7 @@ impl LlmUsageRepo {
                 total_tokens: row.get::<_, i64>(6)? as u64,
                 total_reasoning_tokens: None,
                 total_cached_tokens: None,
-                total_estimated_cost_usd: row.get(7).ok(),
+                total_estimated_cost_usd: row.get::<_, Option<f64>>(7)?,
                 avg_duration_ms: None,
             })
         })?;
@@ -521,6 +561,97 @@ impl LlmUsageRepo {
 
         Ok(results)
     }
+
+    pub fn get_price_coverage(
+        conn: &Connection,
+        start_date: &str,
+        end_date: &str,
+        dimension: PriceCoverageDimension,
+    ) -> LlmUsageResult<Vec<PriceCoverageStat>> {
+        let (select_key, group_by) = match dimension {
+            PriceCoverageDimension::Overall => ("NULL", ""),
+            PriceCoverageDimension::Model => ("model", "GROUP BY model ORDER BY model"),
+            PriceCoverageDimension::CallerType => {
+                ("caller_type", "GROUP BY caller_type ORDER BY caller_type")
+            }
+        };
+        let sql = format!(
+            r#"
+            SELECT
+                {select_key} as coverage_key,
+                COUNT(*) as total_requests,
+                COUNT(cost_estimate) as priced_requests,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(CASE WHEN cost_estimate IS NOT NULL THEN total_tokens ELSE 0 END), 0)
+                    as priced_tokens
+            FROM llm_usage_logs
+            WHERE date_key >= ?1 AND date_key <= ?2
+            {group_by}
+            "#
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![start_date, end_date], |row| {
+            Ok(PriceCoverageStat {
+                key: row.get(0)?,
+                total_requests: row.get::<_, i64>(1)? as u64,
+                priced_requests: row.get::<_, i64>(2)? as u64,
+                total_tokens: row.get::<_, i64>(3)? as u64,
+                priced_tokens: row.get::<_, i64>(4)? as u64,
+            })
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
+    pub fn get_recent_price_coverage(
+        conn: &Connection,
+        days: u32,
+    ) -> LlmUsageResult<PriceCoverageStat> {
+        conn.query_row(
+            r#"
+            SELECT
+                COUNT(*) as total_requests,
+                COUNT(cost_estimate) as priced_requests,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(CASE WHEN cost_estimate IS NOT NULL THEN total_tokens ELSE 0 END), 0)
+                    as priced_tokens
+            FROM llm_usage_logs
+            WHERE timestamp >= datetime('now', ?1)
+            "#,
+            params![format!("-{} days", days)],
+            |row| {
+                Ok(PriceCoverageStat {
+                    key: None,
+                    total_requests: row.get::<_, i64>(0)? as u64,
+                    priced_requests: row.get::<_, i64>(1)? as u64,
+                    total_tokens: row.get::<_, i64>(2)? as u64,
+                    priced_tokens: row.get::<_, i64>(3)? as u64,
+                })
+            },
+        )
+        .map_err(Into::into)
+    }
+}
+
+fn parse_rfc3339_utc(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|value| value.with_timezone(&Utc))
+}
+
+fn parse_date_boundary(value: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
+    let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()?;
+    let naive = if end_of_day {
+        date.and_hms_nano_opt(23, 59, 59, 999_999_999)?
+    } else {
+        date.and_hms_opt(0, 0, 0)?
+    };
+    Some(DateTime::from_naive_utc_and_offset(naive, Utc))
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { serializeUnknown } from '@/logging/errorReporter';
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'TRACE';
 
@@ -68,8 +69,6 @@ class DebugLogger {
   private flushInterval: number | null = null;
   private minuteResetInterval: ReturnType<typeof setInterval> | null = null;
   private maxQueueSize = 100;
-  private windowErrorHandler?: (event: ErrorEvent) => void;
-  private unhandledRejectionHandler?: (event: PromiseRejectionEvent) => void;
 
   // ===== 日志风暴防护状态 =====
   private stormConfig: StormProtectionConfig = DEFAULT_STORM_PROTECTION;
@@ -95,7 +94,6 @@ class DebugLogger {
       return;
     }
     this.startAutoFlush();
-    this.setupErrorHandlers();
     this.startMinuteResetTimer();
   }
 
@@ -139,7 +137,7 @@ class DebugLogger {
     // 立即输出严重问题
     if (level === 'ERROR' || debugInfo.action === 'MISMATCH') {
       console.error('🚨 [CHAT_RECORD_CRITICAL]', logEntry);
-      await this.flushLogs();
+      await this.flush();
     }
   }
 
@@ -179,7 +177,7 @@ class DebugLogger {
     // 立即输出RAG问题
     if (level === 'ERROR' || debugInfo.action === 'MISSING') {
       console.error('🚨 [RAG_CRITICAL]', logEntry);
-      await this.flushLogs();
+      await this.flush();
     }
   }
 
@@ -209,8 +207,14 @@ class DebugLogger {
     await this.addLog(logEntry);
 
     if (level === 'ERROR') {
-      console.error(`🚨 [${module}_ERROR]`, logEntry);
-      await this.flushLogs();
+      const summary =
+        typeof data?.message === 'string'
+          ? data.message
+          : typeof data === 'string'
+            ? data
+            : operation;
+      console.error(`🚨 [${module}_ERROR]`, summary, data);
+      await this.flush();
     }
   }
 
@@ -264,7 +268,7 @@ class DebugLogger {
         eventType,
         payload: this.sanitizePayload(payload),
         additionalInfo,
-        payloadSize: JSON.stringify(payload).length
+        payloadSize: (JSON.stringify(serializeUnknown(payload)) ?? '').length,
       },
       context: {
         streamId,
@@ -315,7 +319,7 @@ class DebugLogger {
 
     if (error) {
       console.error('🚨 [API_ERROR]', logEntry);
-      await this.flushLogs();
+      await this.flush();
     }
   }
 
@@ -374,19 +378,48 @@ class DebugLogger {
     
     const normalizedEntry: LogEntry = {
       ...logEntry,
-      data: logEntry.data === undefined || logEntry.data === null ? {} : logEntry.data,
+      data: serializeUnknown(
+        logEntry.data === undefined || logEntry.data === null ? {} : logEntry.data,
+      ),
+      context: this.normalizeContext(logEntry.context),
     };
     this.logQueue.push(normalizedEntry);
     
     // 队列满了就立即刷新
     if (this.logQueue.length >= this.maxQueueSize) {
-      await this.flushLogs();
+      await this.flush();
     }
+  }
+
+  private normalizeContext(context: unknown): LogEntry['context'] {
+    if (!context || typeof context !== 'object' || Array.isArray(context)) return undefined;
+    const value = context as Record<string, unknown>;
+    const optionalString = (key: string): string | undefined => {
+      const child = value[key];
+      if (child === undefined || child === null) return undefined;
+      return String(serializeUnknown(child)).slice(0, 256);
+    };
+    return {
+      userId: optionalString('userId'),
+      sessionId: optionalString('sessionId'),
+      mistakeId: optionalString('mistakeId'),
+      streamId: optionalString('streamId'),
+      businessId: optionalString('businessId'),
+    };
   }
 
   /** 生成错误指纹用于去重 */
   private getErrorFingerprint(logEntry: LogEntry): string {
     const data = logEntry.data || {};
+    let reason = '';
+    try {
+      reason =
+        typeof data.reason === 'object'
+          ? JSON.stringify(serializeUnknown(data.reason)).slice(0, 100)
+          : String(data.reason || '');
+    } catch {
+      reason = '[unserializable reason]';
+    }
     // 基于错误消息、文件名、行号生成指纹
     const parts = [
       logEntry.module,
@@ -394,8 +427,7 @@ class DebugLogger {
       data.message || '',
       data.filename || '',
       data.lineno || '',
-      // 对于 Promise rejection，使用 reason 的字符串表示
-      typeof data.reason === 'object' ? JSON.stringify(data.reason).slice(0, 100) : String(data.reason || '')
+      reason,
     ];
     return parts.join('|');
   }
@@ -492,7 +524,7 @@ class DebugLogger {
     }, 60000); // 每分钟重置
   }
 
-  private async flushLogs() {
+  async flush() {
     if (this.logQueue.length === 0) return;
 
     const logsToFlush = [...this.logQueue];
@@ -502,80 +534,17 @@ class DebugLogger {
       // 调用后端写入日志文件
       await invoke('write_debug_logs', { logs: logsToFlush });
     } catch (error: unknown) {
-      console.error('Failed to write debug logs:', error);
-      // 如果后端写入失败，至少在浏览器控制台输出
-      console.group('📋 Debug Logs (Backend Write Failed)');
-      logsToFlush.forEach(log => {
-        const prefix = `[${log.timestamp}] [${log.level}] [${log.module}]`;
-        switch (log.level) {
-          case 'ERROR':
-            console.error(prefix, log);
-            break;
-          case 'WARN':
-            console.warn(prefix, log);
-            break;
-          case 'DEBUG':
-          case 'TRACE':
-            console.debug(prefix, log);
-            break;
-          default:
-            console.log(prefix, log);
-        }
-      });
-      console.groupEnd();
+      // 保留待写队列，下一轮自动重试；不要把可能含用户内容的完整日志回显到 console。
+      this.logQueue = [...logsToFlush, ...this.logQueue].slice(-this.maxQueueSize * 5);
+      console.warn(`Failed to persist ${logsToFlush.length} debug log entries`, error);
     }
   }
 
   private startAutoFlush() {
     // 每5秒自动刷新一次日志
     this.flushInterval = window.setInterval(() => {
-      this.flushLogs();
+      void this.flush();
     }, 5000);
-  }
-
-  private setupErrorHandlers() {
-    if (typeof window === 'undefined') return;
-
-    this.teardownErrorHandlers();
-
-    this.windowErrorHandler = (event: ErrorEvent) => {
-      this.log('ERROR', 'GLOBAL', 'UNHANDLED_ERROR', {
-        message: event.message,
-        filename: event.filename,
-        lineno: event.lineno,
-        colno: event.colno,
-        error: event.error
-      });
-    };
-
-    this.unhandledRejectionHandler = (event: PromiseRejectionEvent) => {
-      // ★ 2026-02-04: 过滤 Tauri HTTP 插件的已知 bug (fetch_cancel_body)
-      const reason = event.reason;
-      const message = reason instanceof Error ? reason.message : String(reason ?? '');
-      if (message.includes('fetch_cancel_body') || message.includes('http.fetch_cancel_body')) {
-        return; // 静默忽略此错误
-      }
-      
-      this.log('ERROR', 'GLOBAL', 'UNHANDLED_REJECTION', {
-        reason: event.reason,
-        promise: event.promise
-      });
-    };
-
-    window.addEventListener('error', this.windowErrorHandler);
-    window.addEventListener('unhandledrejection', this.unhandledRejectionHandler);
-  }
-
-  private teardownErrorHandlers() {
-    if (typeof window === 'undefined') return;
-    if (this.windowErrorHandler) {
-      window.removeEventListener('error', this.windowErrorHandler);
-      this.windowErrorHandler = undefined;
-    }
-    if (this.unhandledRejectionHandler) {
-      window.removeEventListener('unhandledrejection', this.unhandledRejectionHandler);
-      this.unhandledRejectionHandler = undefined;
-    }
   }
 
   private findFirstMismatch(expected: any[], actual: any[]): number {
@@ -635,9 +604,9 @@ class DebugLogger {
 
   private sanitizePayload(payload: any) {
     if (!payload) return payload;
-    
+    const safePayload = serializeUnknown(payload);
     // 限制payload大小
-    const str = JSON.stringify(payload);
+    const str = JSON.stringify(safePayload) ?? String(safePayload);
     if (str.length > 1000) {
       return {
         _truncated: true,
@@ -646,7 +615,7 @@ class DebugLogger {
       };
     }
     
-    return payload;
+    return safePayload;
   }
 
   private sanitizeRequest(request: any) {
@@ -691,8 +660,7 @@ class DebugLogger {
       clearInterval(this.minuteResetInterval);
       this.minuteResetInterval = null;
     }
-    this.teardownErrorHandlers();
-    this.flushLogs();
+    void this.flush();
     
     // 清理风暴防护状态
     this.errorDedupeMap.clear();
@@ -728,16 +696,26 @@ export const debugLogger = new DebugLogger();
 
 if (typeof window !== 'undefined') {
   (window as any).__DSTU_DEBUG_LOGGER__ = debugLogger;
-  const DEBUG_LOGGER_BEFORE_UNLOAD_KEY = '__DSTU_DEBUG_LOGGER_BEFORE_UNLOAD__';
-  const previousHandler = (window as any)[DEBUG_LOGGER_BEFORE_UNLOAD_KEY] as EventListener | undefined;
-  if (previousHandler) {
-    window.removeEventListener('beforeunload', previousHandler);
-  }
+  const DEBUG_LOGGER_LIFECYCLE_CLEANUP_KEY = '__DSTU_DEBUG_LOGGER_LIFECYCLE_CLEANUP__';
+  const previousCleanup = (window as any)[DEBUG_LOGGER_LIFECYCLE_CLEANUP_KEY] as (() => void) | undefined;
+  previousCleanup?.();
   const handleBeforeUnload: EventListener = () => {
     debugLogger.destroy();
   };
+  const handlePageHide: EventListener = () => {
+    void debugLogger.flush();
+  };
+  const handleVisibilityChange: EventListener = () => {
+    if (document.visibilityState === 'hidden') void debugLogger.flush();
+  };
   window.addEventListener('beforeunload', handleBeforeUnload);
-  (window as any)[DEBUG_LOGGER_BEFORE_UNLOAD_KEY] = handleBeforeUnload;
+  window.addEventListener('pagehide', handlePageHide);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  (window as any)[DEBUG_LOGGER_LIFECYCLE_CLEANUP_KEY] = () => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.removeEventListener('pagehide', handlePageHide);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
 }
 
 // 便捷方法

@@ -114,9 +114,16 @@ export function notifyResolveFailed(
   });
 
   if (failedRefs.length === 1) {
-    showGlobalNotification('error', i18n.t('chatV2:context.resolve_failed_single', { name: failedNames }) + `：${errorMsg}`);
+    showGlobalNotification('error', i18n.t('chatV2:context.resolve_failed_single_with_detail', {
+      name: failedNames,
+      error: errorMsg,
+    }));
   } else {
-    showGlobalNotification('error', i18n.t('chatV2:context.resolve_failed_multiple', { count: failedRefs.length }) + `：${failedNames}。${errorMsg}`);
+    showGlobalNotification('error', i18n.t('chatV2:context.resolve_failed_multiple_with_detail', {
+      count: failedRefs.length,
+      names: failedNames,
+      error: errorMsg,
+    }));
   }
 }
 
@@ -491,7 +498,7 @@ export async function createSingleResourceRefData(
 
   // 后端未返回有效引用，抛出错误
   console.error(LOG_PREFIX, 'createSingleResourceRefData: No resource ref found for', sourceId);
-  throw new Error(i18n.t('chatV2:vfsRef.resourceNotFound', { sourceId, defaultValue: `Resource not found: ${sourceId}` }));
+  throw new Error(i18n.t('chatV2:vfsRef.resourceNotFound', { sourceId }));
 }
 
 // ============================================================================

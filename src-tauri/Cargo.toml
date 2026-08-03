@@ -18,6 +18,8 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde_json = "1.0"
+syn = { version = "2", features = ["full", "parsing", "visit"] }
 # 使用内置的 protoc 可执行文件，避免系统依赖
 protoc-bin-vendored = "3.0"
 
@@ -34,16 +36,18 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
 tokio = { version = "1.35.1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-rusqlite = { version = "0.29.0", features = ["bundled", "chrono", "backup"] }  # Android必须使用bundled
+rusqlite = { version = "0.40.1", default-features = false, features = ["bundled", "backup", "hooks", "cache", "fallible_uint"] }  # bundled SQLite >= 3.51.3 includes the WAL-reset corruption fix
 base64 = "0.21.7"
 tempfile = "3.10.1"
+cap-std = "3.4.5"
 chrono = { version = "0.4.38", features = ["serde"] }
+chrono-tz = "0.10"
 anyhow = "1.0.80"
 thiserror = "1.0"
 async-trait = "0.1.77"
 futures-util = "0.3"
 r2d2 = "0.8.9"
-r2d2_sqlite = "0.22.0"
+r2d2_sqlite = "0.35.0"
 regex = "1.0"
 # html2md 已移除（与 panic=abort 不兼容），使用 html2text 替代
 aes-gcm = "0.10"
@@ -57,11 +61,12 @@ tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 jsonschema = "0.42"
 # blake3 = "1.5"  # 临时禁用避免C编译问题
-# keyring = "2.0"  # 已禁用：改用加密文件存储，避免 Keychain 弹窗
+# 凭据正文仍用加密文件；根密钥种子由下方 target-specific keyring 保护。
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 url = "2.4"
 dirs = "4.0"
 image = "0.24"
+qrcode = { version = "0.13", default-features = false, features = ["image"] }
 zerocopy = "0.7"
 backon = "0.4"
 config = { version = "0.14", features = ["toml"] }
@@ -70,7 +75,7 @@ sha1 = "0.10"
 html2text = "0.16.7"
 
 # 所有平台统一依赖配置
-tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "unstable"] }
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls", "stream", "blocking", "multipart"] }
 # 高性能缓存库
 moka = { version = "0.12", features = ["future"] }
@@ -93,6 +98,8 @@ quick-xml = "0.37"   # XML 解析
 bincode = "1.3"
 # 并行计算优化
 rayon = "1.8"
+# FSRS 调度（仅 scheduler，不含优化器/Burn；vendored 避免 crates.io 拉取不稳）
+rs-fsrs = { path = "vendor/rs-fsrs", features = ["serde"] }
 # 高性能并发哈希表
 dashmap = "5.5.3"
 log = "0.4"
@@ -111,7 +118,7 @@ arrow-schema = { version = "55.2.0", optional = true }
 ## Optional tokenizer for precise token counting
 tiktoken-rs = { version = "0.5", optional = true }
 # 数据治理迁移框架
-refinery = { version = "0.9", features = ["rusqlite"], optional = true }
+refinery = { version = "=0.9.0", features = ["rusqlite"], optional = true }
 
 # Additional deps for backup module
 walkdir = "2"
@@ -127,6 +134,11 @@ urlencoding = "2.1.3"
 roxmltree = "0.20"
 argon2 = "0.5"
 zeroize = { version = "1", features = ["derive"] }
+# FTP/FTPS 支持（v7+ 已切到 tokio + rustls）
+suppaftp = { version = "7", default-features = false, features = ["tokio", "tokio-rustls"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+webpki-roots = "0.26"
 
 # 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
 aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
@@ -137,19 +149,21 @@ eventsource-stream = "0.2"
 reqwest-eventsource = "0.5"
 zstd = "0.13.3"
 tauri-plugin-clipboard-manager = "~2.2"
+fs2 = "0.4.3"
 
-# 桌面端专用插件（更新器 + 进程管理）
+# 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
 # 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# 单实例锁（审阅 34 P1-2）：防止双开进程共享同一套 SQLite/数据空间
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2.3.2"
 
 # OAuth2 在 Android 上暂不支持（会引入 native-tls）
 [target.'cfg(not(target_os = "android"))'.dependencies]
 oauth2 = "4.4"
 pkce = "0.2"
-suppaftp = { version = "6", default-features = false, features = ["async", "async-native-tls"] }
-async-std = { version = "1", default-features = false, features = ["std"] }
 # MCP客户端库
 
 
@@ -160,6 +174,9 @@ async-std = { version = "1", default-features = false, features = ["std"] }
 tauri-plugin-mcp-bridge = { version = "0.8", optional = true }
 
 [dev-dependencies]
+# Tauri mock runtime for ACL boundary tests.
+tauri = { version = "2", features = ["test", "macos-private-api", "protocol-asset", "unstable"] }
+syn = { version = "2", features = ["full", "parsing", "visit"] }
 # 测试框架
 tokio-test = "0.4"
 # 断言增强
@@ -175,17 +192,90 @@ criterion = { version = "0.5", features = ["html_reports"] }
 # 属性测试（Property-Based Testing）—— 用随机输入发现场景测试遗漏的边界
 proptest = "1.5"
 
+[[test]]
+name = "chatanki_apkg_executor_e2e"
+path = "tests/chatanki_apkg_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "session_executor_e2e"
+path = "tests/session_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "dstu_canvas_executor_e2e"
+path = "tests/dstu_canvas_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "phase5_tool_execution_e2e"
+path = "tests/phase5_tool_execution_e2e.rs"
+harness = false
+
+[[test]]
+name = "translation_executor_e2e"
+path = "tests/translation_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "qbank_executor_e2e"
+path = "tests/qbank_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "phase7_system_executor_e2e"
+path = "tests/phase7_system_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "phase8_9_executor_e2e"
+path = "tests/phase8_9_executor_e2e.rs"
+harness = false
+
 [[bench]]
 name = "tool_performance"
 harness = false
 
 # macOS 特定依赖
 [target.'cfg(target_os = "macos")'.dependencies]
+# TD-08（修订）：根密钥种子可选存入 macOS Keychain（secure_store::platform keystore）。
+# 默认关闭（Keychain 授权弹窗侵扰），仅用户在设置中开启后才迁入。
+# keyring 只在桌面 macOS/Linux 目标编译，Android/iOS 维持加密文件方案。
+keyring = { version = "=3.6.3", default-features = false, features = ["apple-native"] }
 cocoa = "0.25"
 objc = "0.2"
+window-vibrancy = "0.6"
+# 与 wry 0.54 对齐；仅用于 browser::bridge eval_with_result（WKWebView evaluateJavaScript）
+objc2 = "0.6.3"
+block2 = "0.6.2"
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSString",
+    "NSData",
+    "NSError",
+    "NSJSONSerialization",
+    "NSObject",
+] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "WKWebView",
+] }
 
-# Windows 特定依赖（系统 OCR）
+# Linux 特定依赖（browser bridge WebKitGTK evaluate_javascript）
+[target.'cfg(target_os = "linux")'.dependencies]
+# TD-08（修订）：根密钥种子可选存入 Secret Service（gnome-keyring/KWallet），
+# 默认关闭，仅用户在设置中开启后才迁入；曾迁入的种子在关闭时自动回迁为文件。
+# vendored 静态链接 libdbus，避免用户机器缺 libdbus-1。
+keyring = { version = "=3.6.3", default-features = false, features = ["sync-secret-service", "crypto-rust", "vendored"] }
+# 与 wry 0.54 / tauri-runtime-wry linux-body 对齐；仅用于 browser::bridge eval_with_result
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+javascriptcore-rs = "1.1"
+
+# Windows 特定依赖（系统 OCR + browser bridge WebView2 ExecuteScript）
 [target.'cfg(windows)'.dependencies]
+# 与 wry/tauri 对齐；仅用于 browser::bridge eval_with_result（勿与下方 OCR windows 0.58 混用类型）
+webview2-com = "0.38"
 windows = { version = "0.58", features = [
     "Media_Ocr",
     "Graphics_Imaging",
@@ -196,13 +286,26 @@ windows = { version = "0.58", features = [
     # 用于按行以 \n 连接、保留换行结构（Text() 会把所有行拼成单行丢失换行）
     "Foundation_Collections",
 ] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
 
 [profile.release]
 opt-level = "s"        # 优化大小
 lto = "thin"          # 使用thin LTO减少编译时间
 codegen-units = 1     # 减少代码生成单元以提高优化效果
 panic = "unwind"      # 使用unwind以支持catch_unwind捕获第三方库的panic
-strip = "symbols"     # 仅剥离符号表（保留 debug info 供 Sentry 符号化上传）
+debug = 1             # 生成行号信息，供 Sentry 原生崩溃符号化
+split-debuginfo = "packed" # macOS 生成 dSYM，Windows 生成 PDB，避免调试信息进入主二进制
+strip = "symbols"     # 安装包内二进制剥离符号；独立调试文件由发布流程上传
 
 # 开发配置：最大化增量与并行，不牺牲产物语义（仅影响dev/bench/test，release不变）
 [profile.dev]
@@ -247,8 +350,67 @@ data_governance = ["refinery"]
 # 使用方式：cargo tauri dev --features devtools
 devtools = ["tauri/devtools"]
 
+# =============================================================================
+# 移动端 feature profile 草案（mobile-slim）
+# =============================================================================
+# 状态：仅为骨架定义 + 裁剪评估注释，默认 features 不变，不影响桌面构建。
+# 目标：移动端构建体积/编译时间/内存占用最小化。
+#
+# 可裁剪项评估（相对 default）：
+#   - mcp / mcp-debug     : MCP 客户端为桌面能力（本地进程/stdio 桥、调试插件），移动端裁掉
+#   - cloud_storage_s3    : aws-sdk-s3 + aws-config 依赖树重；移动端云备份可先走 WebDAV/FTP 路径
+#   - tokenizer_tiktoken  : 精确 token 计数（tiktoken-rs 带词表数据）；移动端退化为启发式估算
+#   - lance               : LanceDB + arrow 系列为最大编译负担之一；移动端首版可仅用 SQLite 检索路径
+#   - devtools            : 仅开发构建使用
+# 保留项：
+#   - sqlite / builtin_free_models / data_governance（核心数据与迁移能力）
+# 无需进 feature 的裁剪：
+#   - updater/process/single-instance/global-shortcut 等桌面插件已由
+#     [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'] 条件依赖天然排除
+#
+# 使用方式（草案，落地前需先验证各 #[cfg(feature)] 门控的编译完整性）：
+#   cargo tauri android build --no-default-features --features mobile-slim
+mobile-slim = ["sqlite", "builtin_free_models", "data_governance"]
+
+# =============================================================================
+# Clippy / rustc lint gate (code-quality plan W0–W1 / C3)
+# =============================================================================
+# correctness: deny (must stay clean).
+# style: warn for now — remaining style debt below is allow-listed until later
+# waves (should_implement_trait / if_same_then_else / doc noise / ptr_arg leftovers).
+# Large-refactor complexity lints are allow (signature / type alias churn).
+[lints.rust]
+# objc macros probe cfg(feature = "cargo-clippy"); register so check-cfg is quiet.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy", "examples"))'] }
+
+[lints.clippy]
+# Groups at lower priority so per-lint allow/deny overrides win.
+correctness = { level = "deny", priority = -1 }
+# Prefer deny; kept at warn until remaining style items below are cleared.
+style = { level = "warn", priority = -1 }
+# --- deferred: large refactors / API surface ---
+too_many_arguments = "allow"
+type_complexity = "allow"
+should_implement_trait = "allow"
+manual_clamp = "allow"
+large_enum_variant = "allow"
+result_large_err = "allow"
+new_ret_no_self = "allow"
+inherent_to_string = "allow"
+# --- remaining style debt after W1 mechanical batch (style stays warn) ---
+if_same_then_else = "allow"
+doc_lazy_continuation = "allow"
+empty_line_after_doc_comments = "allow"
+empty_line_after_outer_attr = "allow"
+field_reassign_with_default = "allow"
+
 # Workaround for chrono/arrow trait method conflict (force a compatible chrono)
 
 [patch.crates-io]
 lancedb = { path = "vendor/lancedb" }
 object_store = { path = "vendor/object_store" }
+# refinery-core 0.9.0 is API-compatible with rusqlite 0.40, but its published
+# manifest caps the dependency at 0.37. Keep the compatibility patch local and
+# remove it once the upstream crate publishes the relaxed bound.
+refinery-core = { path = "vendor/refinery-core" }
+r2d2_sqlite = { path = "vendor/r2d2_sqlite" }

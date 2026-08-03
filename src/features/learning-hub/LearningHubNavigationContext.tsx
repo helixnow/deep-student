@@ -7,7 +7,8 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import type { RealPathBreadcrumbItem } from './hooks/useFolderNavigation';
+import { useShallow } from 'zustand/react/shallow';
+import type { RealPathBreadcrumbItem } from './types/navigation';
 import { useFinderStore } from './stores/finderStore';
 
 // ============================================================================
@@ -85,15 +86,27 @@ const LearningHubNavigationContext = createContext<LearningHubNavigationContextV
 export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isInLearningHub, setIsInLearningHub] = useState(false);
 
+  // ★ 性能：只订阅导航相关字段（items/selectedIds/searchQuery 等高频变化字段
+  // 与本 Provider 无关，全量订阅会让 Provider 随文件列表加载/多选频繁重渲染）
   const {
     historyIndex,
-    history,
+    historyLength,
     goBack: finderGoBack,
     goForward: finderGoForward,
     currentPath,
     enterFolder,
     jumpToBreadcrumb,
-  } = useFinderStore();
+  } = useFinderStore(
+    useShallow((state) => ({
+      historyIndex: state.historyIndex,
+      historyLength: state.history.length,
+      goBack: state.goBack,
+      goForward: state.goForward,
+      currentPath: state.currentPath,
+      enterFolder: state.enterFolder,
+      jumpToBreadcrumb: state.jumpToBreadcrumb,
+    }))
+  );
 
   const breadcrumbs = useMemo<RealPathBreadcrumbItem[]>(
     () => currentPath.breadcrumbs.map((crumb) => ({
@@ -109,7 +122,7 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
   // 移动端“关闭应用 / 返回上级目录”由 LearningHubPage 顶栏箭头单独处理，
   // 全局后退只代表历史后退，避免语义混用。
   const canGoBack = historyIndex > 0;
-  const canGoForward = historyIndex < history.length - 1;
+  const canGoForward = historyIndex < historyLength - 1;
 
   // goBack/goForward 直接使用 finderStore 的方法
   const goBack = useCallback(() => {

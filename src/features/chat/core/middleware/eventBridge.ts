@@ -16,7 +16,12 @@ import { eventRegistry, type EventStartPayload } from '../../registry/eventRegis
 import { autoSave, streamingBlockSaver } from './autoSave';
 import { chunkBuffer } from './chunkBuffer';
 import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
-import { EVENT_BRIDGE_MAX_BUFFER_SIZE, EVENT_BRIDGE_MAX_PROCESSED_IDS, EVENT_BRIDGE_GAP_TIMEOUT_MS } from '../constants';
+import {
+  EVENT_BRIDGE_MAX_BUFFER_SIZE,
+  EVENT_BRIDGE_MAX_PROCESSED_IDS,
+  EVENT_BRIDGE_GAP_TIMEOUT_MS,
+  EVENT_BRIDGE_ORPHAN_TERMINAL_TIMEOUT_MS,
+} from '../constants';
 
 // ============================================================================
 // 后端事件类型定义
@@ -103,18 +108,59 @@ function mergeEndResultWithMeta(event: BackendEvent): unknown {
 // ============================================================================
 
 /**
+ * 打开中的块记录（块生命周期状态机的最小单元）
+ *
+ * 生命周期：start（注册）→ chunk*（查询）→ end/error（注销）。
+ * 以 blockId（后端提供的 backendBlockId 或前端生成的 ID）为主键。
+ */
+export interface OpenBlockRecord {
+  /** 块 ID（主键） */
+  blockId: string;
+  /** 事件类型 */
+  type: string;
+  /** 所属变体 ID（主链为 undefined） */
+  variantId?: string;
+  /** 注册时间 */
+  startedAt: number;
+}
+
+/**
+ * 孤儿终止事件（end/error 先于对应 start 到达）
+ * 缓存短暂窗口等待 start；超时后按「late block」创建兜底块。
+ */
+export interface OrphanTerminalEvent {
+  event: BackendEvent;
+  bufferedAt: number;
+}
+
+/**
  * 事件处理上下文
  * 用于在多个事件之间共享状态（如 blockId）
+ *
+ * 🔧 P0 重构：blockIdMap 由「事件类型 → 单个块 ID」改为
+ * 「事件类型 → 未完成块 ID 的 FIFO 队列」。同类型并发块（工具环二次 rag、
+ * 并行检索等）后到的 start 不再覆盖前者；无 blockId 的 chunk/end 按 FIFO
+ * 回退到该类型最早的未完成块。openBlocks 以 blockId 为主键记录所有
+ * 打开中的块，作为生命周期 SSOT。
  */
 export interface EventContext {
   /** 当前消息 ID */
   messageId: string;
 
-  /** 事件类型到块 ID 的映射 */
-  blockIdMap: Map<string, string>;
+  /** blockId 主键 → 打开中的块记录（生命周期 SSOT） */
+  openBlocks: Map<string, OpenBlockRecord>;
 
-  /** 变体 ID 到事件类型到块 ID 的映射（多变体时使用） */
-  variantBlockIdMap: Map<string, Map<string, string>>;
+  /** 事件类型 → 未完成块 ID FIFO 队列（主链，无 blockId 事件的回退解析） */
+  blockIdMap: Map<string, string[]>;
+
+  /** 变体 ID → (事件类型 → 未完成块 ID FIFO 队列)（多变体时使用） */
+  variantBlockIdMap: Map<string, Map<string, string[]>>;
+
+  /** 孤儿终止事件缓冲（end/error 早于 start 到达） */
+  orphanTerminals: OrphanTerminalEvent[];
+
+  /** 孤儿终止事件超时定时器 */
+  orphanTimer: ReturnType<typeof setTimeout> | null;
 
   /** block_id 到工具轮次的映射 */
   blockRoundMap: Map<string, string>;
@@ -136,19 +182,41 @@ export interface EventBridgeState {
   maxBufferSize: number;
   gapTimer: ReturnType<typeof setTimeout> | null;
   gapDetectedAt: number | null;
+  /**
+   * 🔧 P1: 首个被接受的 start 事件的 sequenceId（会话流基线）。
+   * 首包 start 的 sequenceId > 0 时，比它更早的序号事件属于「基线前事件」
+   * （乱序迟到），不再按过期事件误弃，而是去重后直接处理。
+   */
+  initialBaselineSeqId: number;
+}
+
+interface ProcessedEventTracker {
+  ids: Set<number>;
+  /**
+   * 🔧 P2: 保守下界——所有 <= floor 的 sequenceId 一律视为已处理。
+   * 半量裁剪 ids 后，被裁掉的旧 seq 通过 floor 兜底，防止重放。
+   */
+  floor: number;
 }
 
 const activeContexts = new Map<string, EventContext>();
 const bridgeStates = new Map<string, EventBridgeState>();
-const processedEventIds = new Map<string, Set<number>>();
+const processedEventIds = new Map<string, ProcessedEventTracker>();
 
 function getOrCreateContext(sessionId: string, messageId: string): EventContext {
   let context = activeContexts.get(sessionId);
   if (!context || context.messageId !== messageId) {
+    // 换消息时旧上下文整体废弃：清掉挂起的孤儿定时器，防止跨消息误创建兜底块
+    if (context?.orphanTimer) {
+      clearTimeout(context.orphanTimer);
+    }
     context = {
       messageId,
+      openBlocks: new Map(),
       blockIdMap: new Map(),
       variantBlockIdMap: new Map(),
+      orphanTerminals: [],
+      orphanTimer: null,
       blockRoundMap: new Map(),
       currentRoundId: undefined,
       variantRoundMap: new Map(),
@@ -159,24 +227,26 @@ function getOrCreateContext(sessionId: string, messageId: string): EventContext 
 }
 
 function isEventProcessed(sessionId: string, sequenceId: number): boolean {
-  const ids = processedEventIds.get(sessionId);
-  return ids?.has(sequenceId) ?? false;
+  const tracker = processedEventIds.get(sessionId);
+  if (!tracker) return false;
+  return sequenceId <= tracker.floor || tracker.ids.has(sequenceId);
 }
 
 function markEventProcessed(sessionId: string, sequenceId: number): void {
-  let ids = processedEventIds.get(sessionId);
-  if (!ids) {
-    ids = new Set();
-    processedEventIds.set(sessionId, ids);
+  let tracker = processedEventIds.get(sessionId);
+  if (!tracker) {
+    tracker = { ids: new Set(), floor: -1 };
+    processedEventIds.set(sessionId, tracker);
   }
-  ids.add(sequenceId);
-  
-  if (ids.size > EVENT_BRIDGE_MAX_PROCESSED_IDS) {
-    const idsArray = Array.from(ids);
-    ids.clear();
-    for (let i = Math.floor(idsArray.length / 2); i < idsArray.length; i++) {
-      ids.add(idsArray[i]);
-    }
+  tracker.ids.add(sequenceId);
+
+  if (tracker.ids.size > EVENT_BRIDGE_MAX_PROCESSED_IDS) {
+    // 🔧 P2: 按数值升序裁剪（旧实现按插入序裁剪，乱序时可能保留旧 seq 丢新 seq），
+    // 并把被裁掉的最大值并入 floor，被裁的旧 seq 不会因裁剪而可重放
+    const sorted = Array.from(tracker.ids).sort((a, b) => a - b);
+    const keepFrom = Math.floor(sorted.length / 2);
+    tracker.floor = Math.max(tracker.floor, sorted[keepFrom - 1] ?? tracker.floor);
+    tracker.ids = new Set(sorted.slice(keepFrom));
   }
 }
 
@@ -194,6 +264,7 @@ function getOrCreateBridgeState(sessionId: string): EventBridgeState {
       maxBufferSize: EVENT_BRIDGE_MAX_BUFFER_SIZE,
       gapTimer: null,
       gapDetectedAt: null,
+      initialBaselineSeqId: -1,
     };
     bridgeStates.set(sessionId, state);
   }
@@ -202,7 +273,25 @@ function getOrCreateBridgeState(sessionId: string): EventBridgeState {
 }
 
 export function clearEventContext(sessionId: string): void {
+  const context = activeContexts.get(sessionId);
+  if (context?.orphanTimer) {
+    clearTimeout(context.orphanTimer);
+    context.orphanTimer = null;
+  }
   activeContexts.delete(sessionId);
+}
+
+/**
+ * 🔧 P2: 会话级事件桥状态统一清理钩子。
+ *
+ * eventBridge 的 activeContexts / bridgeStates / processedEventIds 均为模块级
+ * Map，异常路径（组件卸载、会话被销毁、强制重置）下可能残留。
+ * 调用方在会话生命周期终点调用一次即可保证无泄漏；重复调用安全（幂等）。
+ */
+export function disposeSessionEventBridgeState(sessionId: string): void {
+  clearEventContext(sessionId);
+  clearBridgeState(sessionId);
+  clearProcessedEventIds(sessionId);
 }
 
 export function clearBridgeState(sessionId: string): void {
@@ -211,6 +300,21 @@ export function clearBridgeState(sessionId: string): void {
     clearTimeout(state.gapTimer);
   }
   bridgeStates.delete(sessionId);
+}
+
+/**
+ * Drain block events that are still waiting behind a sequence gap.
+ *
+ * `stream_complete` is delivered on a different Tauri channel from block
+ * events, so it can overtake a tail event that is already buffered here. At a
+ * successful stream boundary the backend has finished emitting block events;
+ * keeping the gap buffer until its normal timeout would let terminal cleanup
+ * discard valid final chunks.
+ */
+export function flushPendingBackendEvents(store: ChatStore): void {
+  const state = bridgeStates.get(store.sessionId);
+  if (!state || state.pendingEvents.size === 0) return;
+  skipGapAndFlush(store, state);
 }
 
 /**
@@ -227,6 +331,7 @@ export function resetBridgeState(sessionId: string): void {
   }
   state.gapDetectedAt = null;
   state.lastSequenceId = -1;
+  state.initialBaselineSeqId = -1;
   state.pendingEvents.clear();
   
   // 🔧 清理已处理事件 ID，开始新的去重周期
@@ -310,6 +415,20 @@ export const EVENT_TYPE_VARIANT_START = 'variant_start';
 /** 变体结束事件类型 */
 export const EVENT_TYPE_VARIANT_END = 'variant_end';
 
+// 🚀 性能：content/thinking 的 chunk 阶段是 token 级热路径，多变体流式时
+// 逐条调试日志会绕开 chunk 缓冲（每秒数百次分配 + 同步 DOM 事件派发）。
+// 此处按 1/10 采样（与 TauriAdapter 的 chatanki chunk 日志同一模式），
+// start/end/error/variant_* 等低频事件仍全量记录，不影响调试面板可观测性。
+let variantChunkLogCounter = 0;
+
+/** 判断当前事件的多变体调试日志是否应记录（高频 chunk 采样，其余全量） */
+function shouldLogVariantEvent(type: string, phase: EventPhase): boolean {
+  if (phase !== 'chunk' || (type !== 'content' && type !== 'thinking')) {
+    return true;
+  }
+  return ++variantChunkLogCounter % 10 === 1;
+}
+
 // ============================================================================
 // 序列号检测与乱序缓冲 (Prompt 9)
 // ============================================================================
@@ -332,10 +451,13 @@ export function handleBackendEventWithSequence(
 ): void {
   const { sequenceId, type, variantId, phase } = event;
 
+  // 🚀 性能：本事件的调试日志采样决策（content/thinking chunk 按 1/10 采样）
+  const shouldLogThisEvent = shouldLogVariantEvent(type, phase);
+
   // 🔧 去重检查：如果事件已处理过，直接忽略
   if (sequenceId !== undefined && isEventProcessed(store.sessionId, sequenceId)) {
     // 🔧 调试打点：重复事件
-    if (variantId || type === 'variant_start' || type === 'variant_end') {
+    if (shouldLogThisEvent && (variantId || type === 'variant_start' || type === 'variant_end')) {
       logMultiVariant('adapter', 'sequenceHandler_duplicate', {
         type,
         variantId,
@@ -346,7 +468,7 @@ export function handleBackendEventWithSequence(
   }
 
   // 🔧 调试打点：序列号处理入口
-  if (variantId || type === 'variant_start' || type === 'variant_end') {
+  if (shouldLogThisEvent && (variantId || type === 'variant_start' || type === 'variant_end')) {
     logMultiVariant('adapter', 'sequenceHandler_entry', {
       type,
       phase,
@@ -358,7 +480,7 @@ export function handleBackendEventWithSequence(
 
   // 如果没有 sequenceId，直接处理（向后兼容）
   if (sequenceId === undefined) {
-    if (variantId || type === 'variant_start') {
+    if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
       logMultiVariant('adapter', 'sequenceHandler_no_seq_direct', {
         type,
         variantId,
@@ -395,6 +517,9 @@ export function handleBackendEventWithSequence(
       message: 'Accepting first start event regardless of sequence ID',
     }, 'info');
 
+    // 🔧 P1: 记录基线序号。首包 start 的 sequenceId > 0 时，比它更早的
+    // 序号事件（乱序迟到）后续不再被过期分支误弃
+    bridgeState.initialBaselineSeqId = sequenceId;
     markEventProcessed(store.sessionId, sequenceId);
     processEventInternal(store, event);
     bridgeState.lastSequenceId = sequenceId;
@@ -404,7 +529,21 @@ export function handleBackendEventWithSequence(
 
   // 1. 如果是过期事件，直接忽略
   if (sequenceId <= bridgeState.lastSequenceId) {
-    if (variantId || type === 'variant_start') {
+    // 🔧 P1: 基线前事件（早于首个被接受的 start 的序号）是迟到而非重复：
+    // 首包 start 直接跳 lastSequenceId 后，这些事件曾被无条件丢弃，
+    // 导致更早发射的检索块等凭空消失。这里去重后直接处理（不推进游标）。
+    if (sequenceId < bridgeState.initialBaselineSeqId) {
+      logMultiVariant('adapter', 'sequenceHandler_pre_baseline_late', {
+        type,
+        variantId,
+        sequenceId,
+        baseline: bridgeState.initialBaselineSeqId,
+      }, 'warning');
+      markEventProcessed(store.sessionId, sequenceId);
+      processEventInternal(store, event);
+      return;
+    }
+    if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
       logMultiVariant('adapter', 'sequenceHandler_expired', {
         type,
         variantId,
@@ -417,7 +556,7 @@ export function handleBackendEventWithSequence(
 
   // 2. 如果是期望的下一个事件，直接处理
   if (sequenceId === expectedSeqId) {
-    if (variantId || type === 'variant_start') {
+    if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
       logMultiVariant('adapter', 'sequenceHandler_process', {
         type,
         variantId,
@@ -435,7 +574,7 @@ export function handleBackendEventWithSequence(
   }
 
   // 3. 如果是未来事件（乱序），加入缓冲区
-  if (variantId || type === 'variant_start') {
+  if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
     logMultiVariant('adapter', 'sequenceHandler_buffered', {
       type,
       variantId,
@@ -598,8 +737,11 @@ function processEventInternal(store: ChatStore, event: BackendEvent): void {
 
   updateRoundContext(context, event);
 
-  // 🔧 调试打点：追踪多变体相关事件
-  if (variantId || type === EVENT_TYPE_VARIANT_START || type === EVENT_TYPE_VARIANT_END) {
+  // 🔧 调试打点：追踪多变体相关事件（content/thinking chunk 按 1/10 采样）
+  if (
+    shouldLogVariantEvent(type, phase)
+    && (variantId || type === EVENT_TYPE_VARIANT_START || type === EVENT_TYPE_VARIANT_END)
+  ) {
     logMultiVariant('adapter', 'processEventInternal', {
       type,
       phase,
@@ -622,13 +764,8 @@ function processEventInternal(store: ChatStore, event: BackendEvent): void {
     return;
   }
 
-  // 2. 处理普通 block 事件
-  // 根据 variantId 决定块归属
-  if (variantId) {
-    handleBlockEventWithVariant(store, event);
-  } else {
-    handleBlockEventWithoutVariant(store, event);
-  }
+  // 2. 处理普通 block 事件（dispatchBlockEvent 内部按 event.variantId 决定块归属）
+  dispatchBlockEvent(store, event);
 }
 
 /**
@@ -723,28 +860,247 @@ function handleVariantEnd(store: ChatStore, event: BackendEvent): void {
   autoSave.scheduleAutoSave(store);
 }
 
+// ============================================================================
+// 块生命周期追踪（P0 重构：blockId 主键 + type FIFO 回退队列 + 孤儿终止事件）
+// ============================================================================
+
 /**
- * 处理带 variantId 的 block 事件
- * block 归属到指定变体
+ * 获取（主链或指定变体的）type → FIFO 队列映射
  */
-function handleBlockEventWithVariant(
+function getFallbackQueues(
+  context: EventContext,
+  variantId?: string
+): Map<string, string[]> {
+  if (variantId === undefined) {
+    return context.blockIdMap;
+  }
+  let queues = context.variantBlockIdMap.get(variantId);
+  if (!queues) {
+    queues = new Map();
+    context.variantBlockIdMap.set(variantId, queues);
+  }
+  return queues;
+}
+
+/**
+ * start：以 blockId 为主键注册打开中的块，并加入该 type 的 FIFO 回退队列
+ */
+function trackBlockStart(
+  context: EventContext,
+  type: string,
+  blockId: string,
+  variantId?: string
+): void {
+  context.openBlocks.set(blockId, { blockId, type, variantId, startedAt: Date.now() });
+  const queues = getFallbackQueues(context, variantId);
+  const queue = queues.get(type);
+  if (queue) {
+    if (!queue.includes(blockId)) queue.push(blockId);
+  } else {
+    queues.set(type, [blockId]);
+  }
+}
+
+/**
+ * chunk：显式 blockId 优先；否则回退到该 type 最早的未完成块（FIFO 头）
+ */
+function resolveOpenBlockId(
+  context: EventContext,
+  type: string,
+  blockId?: string,
+  variantId?: string
+): string | undefined {
+  if (blockId) return blockId;
+  return getFallbackQueues(context, variantId).get(type)?.[0];
+}
+
+/**
+ * end/error：注销块。显式 blockId 按值移除（并以 openBlocks 记录中的
+ * variantId 为准定位队列）；无 blockId 时按 FIFO 头出队。
+ */
+function untrackBlock(
+  context: EventContext,
+  type: string,
+  blockId?: string,
+  variantId?: string
+): string | undefined {
+  let resolved = blockId;
+  let effectiveVariantId = variantId;
+  if (resolved !== undefined) {
+    const record = context.openBlocks.get(resolved);
+    if (record) {
+      effectiveVariantId = record.variantId;
+    }
+  } else {
+    resolved = getFallbackQueues(context, effectiveVariantId).get(type)?.[0];
+  }
+  if (resolved === undefined) return undefined;
+
+  const queues = getFallbackQueues(context, effectiveVariantId);
+  const queue = queues.get(type);
+  if (queue) {
+    const index = queue.indexOf(resolved);
+    if (index !== -1) queue.splice(index, 1);
+    if (queue.length === 0) queues.delete(type);
+  }
+  context.openBlocks.delete(resolved);
+  return resolved;
+}
+
+/**
+ * 块是否为「已知块」：正在追踪中，或已存在于 Store（restore 后继续流式等场景）
+ */
+function isBlockKnown(store: ChatStore, context: EventContext, blockId: string): boolean {
+  if (context.openBlocks.has(blockId)) return true;
+  const blocks = (store as { blocks?: Map<string, unknown> }).blocks;
+  return blocks instanceof Map && blocks.has(blockId);
+}
+
+/**
+ * 应用终止事件（end/error）到指定块并注销追踪
+ */
+function applyTerminalEvent(
   store: ChatStore,
+  handler: NonNullable<ReturnType<typeof eventRegistry.get>>,
+  context: EventContext,
+  event: BackendEvent,
+  blockId: string
+): void {
+  if (event.phase === 'error') {
+    handler.onError?.(store, blockId, event.error ?? 'Unknown error');
+  } else {
+    handler.onEnd?.(store, blockId, mergeEndResultWithMeta(event));
+  }
+  untrackBlock(context, event.type, blockId, event.variantId);
+}
+
+/**
+ * 缓存孤儿终止事件（end/error 无法解析到任何已知块）。
+ *
+ * 场景：gap 强制 flush 把 start 丢掉后，end 先于（或永远等不到）start 到达。
+ * 旧实现直接丢弃，检索结果凭空消失。现在缓存一个短暂窗口：
+ * - 若窗口内对应 start 到达 → 立即回放（见 tryApplyOrphanTerminal）
+ * - 超时 → 按「late block」创建兜底块再应用终止事件（见 flushOrphanTerminals）
+ */
+function bufferOrphanTerminal(
+  store: ChatStore,
+  context: EventContext,
   event: BackendEvent
 ): void {
-  const {
-    type,
-    phase,
-    messageId,
-    blockId,
-    variantId,
-    chunk,
-    result,
-    error,
-    payload,
-  } = event;
+  console.warn(
+    `[EventBridge] Orphan '${event.phase}' event buffered (no matching start yet). ` +
+      `type=${event.type}, blockId=${event.blockId ?? '(none)'}, ` +
+      `waiting ${EVENT_BRIDGE_ORPHAN_TERMINAL_TIMEOUT_MS}ms for start or late-block fallback.`
+  );
+  context.orphanTerminals.push({ event, bufferedAt: Date.now() });
+  if (!context.orphanTimer) {
+    context.orphanTimer = setTimeout(() => {
+      context.orphanTimer = null;
+      flushOrphanTerminals(store);
+    }, EVENT_BRIDGE_ORPHAN_TERMINAL_TIMEOUT_MS);
+  }
+}
+
+/**
+ * start 到达后回放匹配的孤儿终止事件（最多一个——一个 start 只打开一个块）
+ */
+function tryApplyOrphanTerminal(
+  store: ChatStore,
+  context: EventContext,
+  type: string,
+  blockId: string,
+  variantId?: string
+): void {
+  if (context.orphanTerminals.length === 0) return;
+  const index = context.orphanTerminals.findIndex(
+    (orphan) =>
+      orphan.event.type === type
+      && orphan.event.variantId === variantId
+      && (orphan.event.blockId === undefined || orphan.event.blockId === blockId)
+  );
+  if (index === -1) return;
+
+  const [orphan] = context.orphanTerminals.splice(index, 1);
+  const handler = eventRegistry.get(type);
+  if (!handler) return;
+
+  console.warn(
+    `[EventBridge] Replaying buffered orphan '${orphan.event.phase}' onto late-arriving start. ` +
+      `type=${type}, blockId=${blockId}`
+  );
+  applyTerminalEvent(store, handler, context, orphan.event, blockId);
+  autoSave.scheduleAutoSave(store);
+}
+
+/**
+ * 冲刷孤儿终止事件：优先解析到现存块；无法解析时创建「late block」兜底块。
+ *
+ * 在孤儿窗口超时或流式终点（stream_complete）调用，保证检索结果等
+ * end 数据不会因 start 丢失而静默消失。
+ */
+export function flushOrphanTerminals(store: ChatStore): void {
+  const context = activeContexts.get(store.sessionId);
+  if (!context) return;
+  if (context.orphanTimer) {
+    clearTimeout(context.orphanTimer);
+    context.orphanTimer = null;
+  }
+  if (context.orphanTerminals.length === 0) return;
+
+  const orphans = context.orphanTerminals.splice(0, context.orphanTerminals.length);
+  for (const { event } of orphans) {
+    const handler = eventRegistry.get(event.type);
+    if (!handler) continue;
+
+    // 再次尝试解析：等待窗口内可能已有同类型块 start
+    let blockId: string | undefined;
+    if (event.blockId && isBlockKnown(store, context, event.blockId)) {
+      blockId = event.blockId;
+    } else {
+      blockId = resolveOpenBlockId(context, event.type, undefined, event.variantId);
+    }
+
+    if (!blockId) {
+      // late block 兜底：为孤儿终止事件补建块
+      if (!handler.onStart) continue;
+      const effectiveMessageId =
+        event.messageId ?? context.messageId ?? store.currentStreamingMessageId ?? '';
+      if (!effectiveMessageId) continue;
+      const startPayload: EventStartPayload = event.payload ?? {};
+      blockId = event.blockId
+        ? handler.onStart(store, effectiveMessageId, startPayload, event.blockId)
+        : handler.onStart(store, effectiveMessageId, startPayload);
+      if (!blockId) continue;
+      console.warn(
+        `[EventBridge] Created late block ${blockId} for orphan '${event.phase}' (type=${event.type})`
+      );
+    }
+
+    applyTerminalEvent(store, handler, context, event, blockId);
+  }
+  autoSave.scheduleAutoSave(store);
+}
+
+// ============================================================================
+// 统一块事件分发（主链与变体共用）
+// ============================================================================
+
+/**
+ * 处理普通 block 事件（start/chunk/end/error）。
+ *
+ * 主链与变体块事件共用此实现：
+ * - event.variantId 存在时，块归属到指定变体（addBlockToVariant）
+ * - 块生命周期由 openBlocks（blockId 主键）+ type FIFO 队列追踪，
+ *   同类型并发块不再互相覆盖
+ * - 无法解析的 end/error 进入孤儿缓冲，等待 start 或超时兜底
+ *
+ * 注意：eventRegistry 插件接口保持不变（onStart/onChunk/onEnd/onError 签名不动）。
+ */
+function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
+  const { type, phase, messageId, blockId, variantId, chunk, payload } = event;
 
   // 🔧 调试打点：追踪变体块事件
-  if (phase === 'start') {
+  if (variantId && phase === 'start') {
     logMultiVariant('adapter', 'handleBlockEventWithVariant_start', {
       type,
       phase,
@@ -755,222 +1111,40 @@ function handleBlockEventWithVariant(
     }, 'info');
   }
 
-  // 1. 从注册表获取 Handler
+  // 1. 从注册表获取 Handler（不使用 switch/case 分发事件类型）
   const handler = eventRegistry.get(type);
   if (!handler) {
-    logMultiVariant('adapter', 'handleBlockEventWithVariant_no_handler', {
-      type,
-      variantId,
-    }, 'warning');
+    if (variantId) {
+      logMultiVariant('adapter', 'handleBlockEventWithVariant_no_handler', {
+        type,
+        variantId,
+      }, 'warning');
+    } else {
+      console.warn(
+        `[EventBridge] No handler registered for event type: "${type}". ` +
+          `Event will be ignored. To handle this event, register a handler with: ` +
+          `eventRegistry.register('${type}', { onStart, onChunk, onEnd, onError })`
+      );
+    }
     return;
   }
 
   // 2. 获取事件上下文
-  const effectiveMessageId =
-    messageId ?? store.currentStreamingMessageId ?? '';
+  const effectiveMessageId = messageId ?? store.currentStreamingMessageId ?? '';
 
   if (!effectiveMessageId && phase === 'start') {
-    logMultiVariant('adapter', 'handleBlockEventWithVariant_no_messageId', {
-      type,
-      variantId,
-      phase,
-    }, 'error');
-    return;
-  }
-
-  const context = getOrCreateContext(store.sessionId, effectiveMessageId);
-
-  // 确保变体 blockIdMap 存在
-  if (!context.variantBlockIdMap.has(variantId!)) {
-    context.variantBlockIdMap.set(variantId!, new Map());
-  }
-  const variantBlockIdMap = context.variantBlockIdMap.get(variantId!)!;
-
-  // 3. 根据 phase 处理
-  switch (phase) {
-    case 'start': {
-      if (handler.onStart) {
-        const startPayload: EventStartPayload = payload ?? {};
-        const effectiveBlockId = blockId
-          ? handler.onStart(store, effectiveMessageId, startPayload, blockId)
-          : handler.onStart(store, effectiveMessageId, startPayload);
-
-        logMultiVariant('adapter', 'handleBlockEventWithVariant_block_created', {
-          type,
-          variantId,
-          messageId: effectiveMessageId,
-          blockId: effectiveBlockId,
-          hasAddBlockToVariant: typeof (store as any).addBlockToVariant === 'function',
-        }, effectiveBlockId ? 'success' : 'warning');
-
-        if (effectiveBlockId) {
-          variantBlockIdMap.set(type, effectiveBlockId);
-          if (event.roundId) {
-            context.blockRoundMap.set(effectiveBlockId, event.roundId);
-          }
-
-          // 将 block 添加到变体
-          // 注意：handler.onStart 调用 store.createBlock 会将 block 添加到 message.blockIds
-          // addBlockToVariant (Prompt 7) 需要负责：
-          // 1. 从 message.blockIds 移除该 block（避免重复）
-          // 2. 将 block 添加到 variant.blockIds
-          if (typeof (store as any).addBlockToVariant === 'function') {
-            (store as any).addBlockToVariant(
-              effectiveMessageId,
-              variantId!,
-              effectiveBlockId
-            );
-            logMultiVariant('adapter', 'addBlockToVariant_called', {
-              messageId: effectiveMessageId,
-              variantId,
-              blockId: effectiveBlockId,
-            }, 'success');
-          } else {
-            // Prompt 7 未实现时，block 仍然保留在 message.blockIds（降级兼容）
-            logMultiVariant('adapter', 'addBlockToVariant_not_implemented', {
-              messageId: effectiveMessageId,
-              variantId,
-              blockId: effectiveBlockId,
-            }, 'warning');
-          }
-
-          // 🔧 FIX: flushSync 已移至 Store 层面，addBlockToVariant 也会触发强制同步
-          // addBlockToVariant 内部调用 set() 后会自动 flushSync
-        }
-      }
-      break;
+    if (variantId) {
+      logMultiVariant('adapter', 'handleBlockEventWithVariant_no_messageId', {
+        type,
+        variantId,
+        phase,
+      }, 'error');
+    } else {
+      console.error(
+        `[EventBridge] Cannot process 'start' event without messageId. Event:`,
+        event
+      );
     }
-
-    case 'chunk': {
-      if (handler.onChunk) {
-        const effectiveBlockId = blockId ?? variantBlockIdMap.get(type);
-        if (!effectiveBlockId) {
-          console.warn(
-            `[EventBridge] Cannot process chunk without blockId. type=${type}`
-          );
-          return;
-        }
-
-        // 🔧 DEBUG: 记录收到的 chunk 事件
-        console.log(`[EventBridge] 📨 chunk event: type=${type}, blockId=${effectiveBlockId}, chunkLen=${chunk?.length ?? 0}`);
-
-        if ((type === 'content' || type === 'thinking') && chunk) {
-          console.log(`[EventBridge] 📦 using chunkBuffer path: type=${type}`);
-          chunkBuffer.setStore(store);
-          chunkBuffer.push(effectiveBlockId, chunk, store.sessionId);
-
-          // 🔧 防闪退：多变体流式块也进行定期保存
-          if (effectiveMessageId) {
-            streamingBlockSaver.scheduleBlockSave(
-              effectiveBlockId,
-              effectiveMessageId,
-              type,
-              chunk,
-              store.sessionId
-            );
-          }
-        } else {
-          console.log(`[EventBridge] 📤 direct update: type=${type}`);
-          handler.onChunk(store, effectiveBlockId, chunk ?? '');
-        }
-
-        autoSave.scheduleAutoSave(store);
-      }
-      break;
-    }
-
-    case 'end': {
-      if (handler.onEnd) {
-        const effectiveBlockId = blockId ?? variantBlockIdMap.get(type);
-        if (!effectiveBlockId) {
-          console.warn(
-            `[EventBridge] Cannot process end without blockId. type=${type}`
-          );
-          return;
-        }
-
-        handler.onEnd(store, effectiveBlockId, mergeEndResultWithMeta(event));
-        variantBlockIdMap.delete(type);
-        autoSave.scheduleAutoSave(store);
-      }
-      break;
-    }
-
-    case 'error': {
-      if (handler.onError) {
-        const effectiveBlockId = blockId ?? variantBlockIdMap.get(type);
-        if (!effectiveBlockId) {
-          console.warn(
-            `[EventBridge] Cannot process error without blockId. type=${type}`
-          );
-          return;
-        }
-
-        handler.onError(store, effectiveBlockId, error ?? 'Unknown error');
-        variantBlockIdMap.delete(type);
-        autoSave.scheduleAutoSave(store);
-      }
-      break;
-    }
-
-    default:
-      console.warn(`[EventBridge] Unknown event phase: "${phase}"`);
-  }
-}
-
-/**
- * 处理无 variantId 的 block 事件
- * block 归属到 message.blockIds（单变体兼容）
- * 
- * 注意：store.createBlock 内部已经将 blockId 添加到 message.blockIds，
- * 所以这里不需要再调用 addBlockToMessage。
- */
-function handleBlockEventWithoutVariant(
-  store: ChatStore,
-  event: BackendEvent
-): void {
-  // 直接调用原有的 handleBackendEvent 逻辑
-  // createBlock 内部已处理 message.blockIds 更新
-  handleBackendEvent(store, event);
-}
-
-// ============================================================================
-// 原有事件处理（向后兼容）
-// ============================================================================
-
-/**
- * 处理后端事件
- *
- * 核心事件分发逻辑，禁止使用 switch/case 处理事件类型。
- * 通过 eventRegistry 动态查找 Handler。
- *
- * @param store ChatStore 实例
- * @param event 后端事件
- */
-export function handleBackendEvent(store: ChatStore, event: BackendEvent): void {
-  const { type, phase, messageId, blockId, chunk, result, error, payload } = event;
-
-  // 1. 从注册表获取 Handler（不使用 switch/case）
-  const handler = eventRegistry.get(type);
-
-  if (!handler) {
-    console.warn(
-      `[EventBridge] No handler registered for event type: "${type}". ` +
-        `Event will be ignored. To handle this event, register a handler with: ` +
-        `eventRegistry.register('${type}', { onStart, onChunk, onEnd, onError })`
-    );
-    return;
-  }
-
-  // 2. 获取事件上下文
-  const effectiveMessageId =
-    messageId ?? store.currentStreamingMessageId ?? '';
-
-  if (!effectiveMessageId && phase === 'start') {
-    console.error(
-      `[EventBridge] Cannot process 'start' event without messageId. Event:`,
-      event
-    );
     return;
   }
 
@@ -980,43 +1154,70 @@ export function handleBackendEvent(store: ChatStore, event: BackendEvent): void 
   switch (phase) {
     case 'start': {
       if (handler.onStart) {
-        // 转换 payload 类型
         const startPayload: EventStartPayload = payload ?? {};
-        
-        // 如果后端传了 blockId，直接使用；否则由前端创建
-        let effectiveBlockId: string;
-        if (blockId) {
-          // 后端传了 blockId（多工具并发场景）
-          // 仍然需要调用 onStart 创建块，但使用后端的 blockId
-          effectiveBlockId = handler.onStart(
-            store,
-            effectiveMessageId,
-            startPayload,
-            blockId
-          );
-        } else {
-          // 后端未传 blockId，由前端创建
-          effectiveBlockId = handler.onStart(store, effectiveMessageId, startPayload);
+
+        // 如果后端传了 blockId，直接使用（多工具并发场景）；否则由前端创建
+        const effectiveBlockId = blockId
+          ? handler.onStart(store, effectiveMessageId, startPayload, blockId)
+          : handler.onStart(store, effectiveMessageId, startPayload);
+
+        if (variantId) {
+          logMultiVariant('adapter', 'handleBlockEventWithVariant_block_created', {
+            type,
+            variantId,
+            messageId: effectiveMessageId,
+            blockId: effectiveBlockId,
+            hasAddBlockToVariant: typeof (store as any).addBlockToVariant === 'function',
+          }, effectiveBlockId ? 'success' : 'warning');
         }
 
-        // 保存 blockId 到上下文
         if (effectiveBlockId) {
-          context.blockIdMap.set(type, effectiveBlockId);
+          // 以 blockId 为主键注册生命周期；同类型并发块进入 FIFO 队列
+          trackBlockStart(context, type, effectiveBlockId, variantId);
           if (event.roundId) {
             context.blockRoundMap.set(effectiveBlockId, event.roundId);
           }
-        }
 
-        // 🔧 FIX: flushSync 已移至 Store 层面的 createBlock 方法中
-        // Store.createBlock 在 set() 后立即调用 flushSync，确保组件立即挂载
+          if (variantId) {
+            // 将 block 添加到变体
+            // 注意：handler.onStart 调用 store.createBlock 会将 block 添加到 message.blockIds
+            // addBlockToVariant (Prompt 7) 需要负责：
+            // 1. 从 message.blockIds 移除该 block（避免重复）
+            // 2. 将 block 添加到 variant.blockIds
+            if (typeof (store as any).addBlockToVariant === 'function') {
+              (store as any).addBlockToVariant(
+                effectiveMessageId,
+                variantId,
+                effectiveBlockId
+              );
+              logMultiVariant('adapter', 'addBlockToVariant_called', {
+                messageId: effectiveMessageId,
+                variantId,
+                blockId: effectiveBlockId,
+              }, 'success');
+            } else {
+              // Prompt 7 未实现时，block 仍然保留在 message.blockIds（降级兼容）
+              logMultiVariant('adapter', 'addBlockToVariant_not_implemented', {
+                messageId: effectiveMessageId,
+                variantId,
+                blockId: effectiveBlockId,
+              }, 'warning');
+            }
+          }
+
+          // 孤儿终止事件回放：end/error 先到、start 后到的场景
+          tryApplyOrphanTerminal(store, context, type, effectiveBlockId, variantId);
+
+          // 注：块创建通过同步 set() 立即写入 store，无需强制同步渲染
+        }
       }
       break;
     }
 
     case 'chunk': {
       if (handler.onChunk) {
-        // 优先使用事件中的 blockId，否则从上下文获取
-        const effectiveBlockId = blockId ?? context.blockIdMap.get(type);
+        // 优先使用事件中的 blockId，否则回退到该 type 最早的未完成块
+        const effectiveBlockId = resolveOpenBlockId(context, type, blockId, variantId);
 
         if (!effectiveBlockId) {
           console.warn(
@@ -1028,14 +1229,12 @@ export function handleBackendEvent(store: ChatStore, event: BackendEvent): void 
 
         // 🔧 性能优化：使用 chunkBuffer 批量更新
         // 对于流式内容块（content, thinking），使用缓冲器减少 Store 更新频率
+        // ⚠️ 热路径：此分支每个 token 级 chunk 都会执行，禁止无条件日志。
         if ((type === 'content' || type === 'thinking') && chunk) {
-          // 确保 chunkBuffer 有 Store 引用
           chunkBuffer.setStore(store);
           chunkBuffer.push(effectiveBlockId, chunk, store.sessionId);
 
           // 🔧 防闪退：定期保存流式块内容到后端
-          // 注意：传入 chunk 而不是 block.content，因为 chunkBuffer 有 16ms 延迟
-          // streamingBlockSaver 会自己累积 chunk
           // 🔧 P2修复：传递 sessionId 支持多会话并发清理
           if (effectiveMessageId) {
             streamingBlockSaver.scheduleBlockSave(
@@ -1046,69 +1245,69 @@ export function handleBackendEvent(store: ChatStore, event: BackendEvent): void 
               store.sessionId
             );
           }
+          // 🚀 P1：流式内容 chunk 不再调度全量会话 autoSave。
+          // 流式期间的持久化由 streamingBlockSaver（5s 节流的块级保存）负责，
+          // 终态完整保存由 end/error 与 stream_complete 的 forceImmediateSave 保证。
         } else {
-          // 其他类型直接更新
-          console.log(`[EventBridge:Main] 📤 direct update`);
           handler.onChunk(store, effectiveBlockId, chunk ?? '');
+          // 🚀 性能：空 chunk（如空 content chunk 落进此分支）没有产生新内容，
+          // 不调度全量会话保存
+          if (chunk) {
+            autoSave.scheduleAutoSave(store);
+          }
         }
-
-        // 触发自动保存
-        autoSave.scheduleAutoSave(store);
       }
       break;
     }
 
-    case 'end': {
-      if (handler.onEnd) {
-        // 优先使用事件中的 blockId，否则从上下文获取
-        const effectiveBlockId = blockId ?? context.blockIdMap.get(type);
-
-        if (!effectiveBlockId) {
-          console.warn(
-            `[EventBridge] Cannot process 'end' event without blockId. ` +
-              `Event type: "${type}". Make sure 'start' event was processed first.`
-          );
-          return;
-        }
-
-        handler.onEnd(store, effectiveBlockId, mergeEndResultWithMeta(event));
-
-        // 从上下文移除已完成的块
-        context.blockIdMap.delete(type);
-
-        // 触发自动保存
-        autoSave.scheduleAutoSave(store);
-      }
-      break;
-    }
-
+    case 'end':
     case 'error': {
-      if (handler.onError) {
-        // 优先使用事件中的 blockId，否则从上下文获取
-        const effectiveBlockId = blockId ?? context.blockIdMap.get(type);
+      const hasTerminalHandler = phase === 'end' ? !!handler.onEnd : !!handler.onError;
+      if (!hasTerminalHandler) break;
 
-        if (!effectiveBlockId) {
-          console.warn(
-            `[EventBridge] Cannot process 'error' event without blockId. ` +
-              `Event type: "${type}". Error: ${error}`
-          );
-          return;
+      // 解析目标块：
+      // - 显式 blockId 且为已知块（追踪中 / 已在 Store）→ 直接使用
+      // - 无 blockId → 该 type 最早未完成块（FIFO，与 start 顺序对齐）
+      let effectiveBlockId: string | undefined;
+      if (blockId) {
+        if (isBlockKnown(store, context, blockId)) {
+          effectiveBlockId = blockId;
         }
-
-        handler.onError(store, effectiveBlockId, error ?? 'Unknown error');
-
-        // 从上下文移除出错的块
-        context.blockIdMap.delete(type);
-
-        // 触发自动保存
-        autoSave.scheduleAutoSave(store);
+      } else {
+        effectiveBlockId = resolveOpenBlockId(context, type, undefined, variantId);
       }
+
+      if (!effectiveBlockId) {
+        // 孤儿终止事件：start 可能因 gap 丢失或尚未到达，缓存等待/兜底
+        bufferOrphanTerminal(store, context, event);
+        return;
+      }
+
+      applyTerminalEvent(store, handler, context, event, effectiveBlockId);
+      autoSave.scheduleAutoSave(store);
       break;
     }
 
     default:
       console.warn(`[EventBridge] Unknown event phase: "${phase}"`);
   }
+}
+
+// ============================================================================
+// 原有事件处理（向后兼容）
+// ============================================================================
+
+/**
+ * 处理后端事件（向后兼容入口，无序列号检查）
+ *
+ * 核心事件分发逻辑委托给 dispatchBlockEvent：
+ * 禁止使用 switch/case 处理事件类型，通过 eventRegistry 动态查找 Handler。
+ *
+ * @param store ChatStore 实例
+ * @param event 后端事件
+ */
+export function handleBackendEvent(store: ChatStore, event: BackendEvent): void {
+  dispatchBlockEvent(store, event);
 }
 
 // ============================================================================
@@ -1157,6 +1356,10 @@ export async function handleStreamComplete(
     );
     store.updateMessageMeta(options.messageId, { usage: options.usage });
   }
+
+  // 🔧 P1: 流式终点先冲刷孤儿终止事件（等待中的 end/error 立即走 late-block 兜底），
+  // 避免随后的上下文清理把已到达的检索结果静默丢弃
+  flushOrphanTerminals(store);
 
   // 🔧 P1修复：只刷新当前会话的 chunkBuffer（不清理，保留 session 缓冲区供后续复用）
   chunkBuffer.flushSession(store.sessionId);

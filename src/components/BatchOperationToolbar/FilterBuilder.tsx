@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import React, { useEffect, useState } from 'react';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, Funnel as FilterIcon } from '@phosphor-icons/react';
 import { generateId } from '../../utils/common';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import './FilterBuilder.css';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
@@ -70,6 +71,14 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
     setLocalFilters(localFilters.filter(filter => filter.id !== id));
   };
   
+  // 📱 Android 返回键：弹窗打开期间返回键先关闭本弹窗
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [onClose]);
+
   const handleApply = () => {
     // 清理空值过滤器
     const validFilters = localFilters.filter(filter => {
@@ -82,16 +91,17 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
   };
   
   return (
-    <div className="filter-builder-overlay" onClick={onClose}>
+    // 遮罩点击不关闭：避免误触直接丢弃未应用的筛选编辑（关闭走取消按钮/返回键）
+    <div className="filter-builder-overlay">
       <div className="filter-builder" onClick={(e) => e.stopPropagation()}>
         <div className="filter-builder-header">
           <h3>
             <FilterIcon size={20} />
             {t('filter_builder_title')}
           </h3>
-          <NotionButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
+          <DsButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
             <X size={20} />
-          </NotionButton>
+          </DsButton>
         </div>
         
         <div className="filter-builder-body">
@@ -169,28 +179,28 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                       </>
                     )}
                     
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn" title={t('remove_filter')} aria-label="remove">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn" title={t('remove_filter')} aria-label="remove">
                       <X size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
               ))}
             </div>
           )}
           
-          <NotionButton variant="ghost" size="sm" onClick={addFilter} className="add-filter-btn">
+          <DsButton variant="ghost" size="sm" onClick={addFilter} className="add-filter-btn">
             <Plus size={16} />
             {t('add_filter')}
-          </NotionButton>
+          </DsButton>
         </div>
         
         <div className="filter-builder-footer">
-          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={onClose}>
+          <DsButton variant="default" size="sm" onClick={onClose}>
             {t('cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" className="btn-primary" onClick={handleApply}>
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={handleApply}>
             {t('apply_filters')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

@@ -89,6 +89,25 @@ pub fn render_pdf_preview_with_progress<F>(
 where
     F: Fn(usize, usize),
 {
+    // 0. 基础 PDF 有效性检查
+    if pdf_bytes.len() < 5 || !pdf_bytes.starts_with(b"%PDF-") {
+        return Err(VfsError::Other(
+            "不是有效的 PDF 文档（缺少 PDF 文件头）".to_string(),
+        ));
+    }
+
+    // 0.1 加密 PDF：pdfium / pdf.js 均无法无密码预览，提前记录并跳过渲染
+    if let Err(e) = crate::document_parser::DocumentParser::new()
+        .check_pdf_encryption_bytes(pdf_bytes, "document.pdf")
+    {
+        warn!("[PDF-Preview] Encrypted PDF, skipping render: {}", e);
+        return Ok(PdfPreviewResult {
+            preview_json: None,
+            extracted_text: None,
+            page_count: 0,
+        });
+    }
+
     // 1. 提取文本（使用 pdfium，即使渲染失败也尝试提取）
     let extracted_text = extract_pdf_text(pdf_bytes);
 
@@ -130,7 +149,7 @@ fn extract_pdf_text(pdf_bytes: &[u8]) -> Option<String> {
         }
     };
 
-    match crate::pdfium_utils::extract_text_from_pdf_bytes(&pdfium, pdf_bytes) {
+    match crate::pdfium_utils::extract_text_from_pdf_bytes(pdfium, pdf_bytes) {
         Ok(text) => {
             let trimmed = text.trim().to_string();
             if trimmed.is_empty() {
@@ -180,7 +199,8 @@ where
         .map_err(|e| VfsError::Other(format!("加载 PDF 文档失败: {:?}", e)))?;
 
     let total_pages = document.pages().len() as usize;
-    let render_pages = total_pages.min(config.max_pages);
+    // ★ 审计 M5：clamp 到 u16::MAX，防止 max_pages 配置过大时 `as u16` 截断回绕
+    let render_pages = total_pages.min(config.max_pages).min(u16::MAX as usize);
 
     info!(
         "[PDF-Preview] Rendering PDF: {} pages (max: {})",
@@ -215,6 +235,15 @@ where
                 // 继续渲染其他页面
             }
         }
+    }
+
+    // ★ 审计 M5：全部页面渲染失败时返回错误而非空 preview，
+    // 避免上层记录"成功但零页"的预渲染，用户看到无任何报错的空白预览。
+    if pages.is_empty() && render_pages > 0 {
+        return Err(VfsError::Other(format!(
+            "PDF 预渲染失败：{} 页全部渲染失败",
+            render_pages
+        )));
     }
 
     // S-028 修复：记录截断信息，前端可据此显示 "仅渲染前 N 页" 提示
@@ -331,7 +360,7 @@ fn render_single_page(
 /// ★ P0 修复：优先尝试应用捆绑库，然后回退到系统库
 /// 确保移动端和桌面端使用一致的渲染引擎
 fn load_pdfium() -> VfsResult<&'static pdfium_render::prelude::Pdfium> {
-    crate::pdfium_utils::load_pdfium().map_err(|e| VfsError::Other(e))
+    crate::pdfium_utils::load_pdfium().map_err(VfsError::Other)
 }
 
 #[cfg(test)]

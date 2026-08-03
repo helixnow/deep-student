@@ -36,6 +36,11 @@ export interface NodeStyle {
   textDecoration?: 'none' | 'underline' | 'line-through';
   headingLevel?: 'h1' | 'h2' | 'h3';
   icon?: string;
+  /**
+   * 完成态以 checkbox 视觉呈现（默认仅划线）。
+   * 渲染：NodeContent 在正文前渲染可点击勾选框，点击切换 `completed`。
+   */
+  showCheckbox?: boolean;
 }
 
 // 兼容别名
@@ -66,6 +71,20 @@ export interface MindMapNode {
   blankedRanges?: BlankRange[];
   /** 关联的 VFS 资源引用列表 */
   refs?: MindMapNodeRef[];
+  /**
+   * 优先级（1–6；1 最高）。渲染为正文前的圆形数字徽标。
+   * 写入入口由样式/属性面板负责（W08），undefined 表示无优先级。
+   */
+  priority?: number;
+  /**
+   * 进度百分比（0–100）。渲染为正文前的小进度环。
+   * undefined 表示不显示进度。
+   */
+  progress?: number;
+  /**
+   * 节点超链接（http/https/mailto）。渲染为正文后的链接图标，点击经安全白名单打开。
+   */
+  href?: string;
   // 运行时注入属性
   branchColor?: string;
 }
@@ -77,7 +96,11 @@ export interface CreateNodeParams {
   style?: NodeStyle;
 }
 
-/** 更新节点参数 */
+/**
+ * 更新节点参数。
+ * 出现在 patch 中且值为 `undefined` 的键会从节点上删除（如 `{ completed: undefined }` 移除任务标记）；
+ * 未出现的键保持不变。
+ */
 export interface UpdateNodeParams {
   text?: string;
   note?: string;
@@ -86,6 +109,12 @@ export interface UpdateNodeParams {
   style?: NodeStyle;
   blankedRanges?: BlankRange[];
   refs?: MindMapNodeRef[];
+  /** 优先级（1–6；显式 undefined 移除） */
+  priority?: number;
+  /** 进度百分比（0–100；显式 undefined 移除） */
+  progress?: number;
+  /** 超链接（显式 undefined 移除） */
+  href?: string;
 }
 
 /** 节点路径（从根到当前节点的 ID 数组） */
@@ -116,10 +145,28 @@ export interface MindMapMeta {
 // 兼容别名
 export type DocumentMeta = MindMapMeta;
 
+/** 关联线样式（跨分支自由连线，非父子边） */
+export interface AssociationStyle {
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+}
+
+/** 跨分支关联线 */
+export interface MindMapAssociation {
+  id: string;
+  source: NodeId;
+  target: NodeId;
+  label?: string;
+  style?: AssociationStyle;
+}
+
 export interface MindMapDocument {
   version: '1.0';
   root: MindMapNode;
   meta: MindMapMeta;
+  /** 跨分支关联线；布局引擎不消费此字段 */
+  associations?: MindMapAssociation[];
 }
 
 export interface DocumentSettings {

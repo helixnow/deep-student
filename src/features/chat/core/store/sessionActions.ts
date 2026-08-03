@@ -1,8 +1,9 @@
 import i18n from 'i18next';
 import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
-import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
-import type { ChatStore, BlockingInteraction } from '../types';
+import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
+import { invoke } from '@tauri-apps/api/core';
+import type { AuthorityMode, ChatStore, BlockingInteraction, PermissionPreset } from '../types';
 import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
@@ -11,8 +12,65 @@ import { logAttachment } from '../../debug/chatV2Logger';
 import { modeRegistry } from '../../registry';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
+import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
+import { resetTransientRuntimes } from './transientRuntimeRegistry';
+import { isStoreSubagentSession } from '../subagentSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+let planGateHandlerRegistered = false;
+
+function ensurePlanGateEventHandlerRegistered(): void {
+  if (planGateHandlerRegistered) return;
+  planGateHandlerRegistered = true;
+
+  const planGateEventHandler: EventHandler = {
+    onStart: (store: ChatStore, _messageId: string, payload: Record<string, unknown>): string => {
+      const planId = String(payload.planId ?? '');
+      const toolCallId = String(payload.toolCallId ?? '');
+      store.handlePlanGateRequest({
+        planId,
+        toolCallId,
+        toolName: String(payload.toolName ?? ''),
+        summary: String(payload.summary ?? ''),
+        timeoutSeconds: Number(payload.timeoutSeconds ?? 60) || 60,
+        arguments: (payload.arguments as Record<string, unknown> | undefined) ?? {},
+      });
+      return `plan_gate_${toolCallId || planId}`;
+    },
+    onEnd: (store: ChatStore): void => {
+      store.clearPlanGate();
+    },
+    onError: (store: ChatStore): void => {
+      store.clearPlanGate();
+    },
+  };
+
+  eventRegistry.register('plan_gate', planGateEventHandler);
+}
+
+/**
+ * 🔧 阻塞交互双轨收敛（SSOT）：
+ * `pendingBlockingInteraction` 是唯一事实源；旧字段 `pendingApprovalRequest`
+ * 保留仅为兼容仍在读取它的外部消费方（如 workbench agentManifest）。
+ * 所有阻塞交互写入都必须经由本 helper，保证旧字段是新字段的严格派生镜像：
+ * - tool_approval 交互 → 镜像为旧字段形状（剥离 kind / runtimeScope）
+ * - 其他交互或 null → 旧字段为 null
+ * 禁止在其他位置单独写 pendingApprovalRequest。
+ */
+function blockingInteractionPatch(interaction: BlockingInteraction | null): {
+  pendingBlockingInteraction: BlockingInteraction | null;
+  pendingApprovalRequest: ChatStore['pendingApprovalRequest'];
+} {
+  if (interaction && interaction.kind === 'tool_approval') {
+    const { kind: _kind, runtimeScope: _runtimeScope, ...legacy } = interaction;
+    void _kind;
+    void _runtimeScope;
+    return { pendingBlockingInteraction: interaction, pendingApprovalRequest: legacy };
+  }
+  return { pendingBlockingInteraction: interaction, pendingApprovalRequest: null };
+}
 
 export function createSessionActions(
   set: SetState,
@@ -54,6 +112,7 @@ export function createSessionActions(
             newFeatures.set(key, enabled);
             return { features: newFeatures };
           });
+          scheduleAutoSaveIfReady();
         },
 
         toggleFeature: (key: string): void => {
@@ -62,6 +121,7 @@ export function createSessionActions(
             newFeatures.set(key, !s.features.get(key));
             return { features: newFeatures };
           });
+          scheduleAutoSaveIfReady();
         },
 
         getFeature: (key: string): boolean => {
@@ -263,14 +323,14 @@ export function createSessionActions(
         // ========== 阻塞交互 Actions ==========
 
         setBlockingInteraction: (interaction: BlockingInteraction | null): void => {
-          set({ pendingBlockingInteraction: interaction });
+          set(blockingInteractionPatch(interaction));
           if (interaction) {
             console.log('[ChatStore] setBlockingInteraction:', interaction.kind, 'toolCallId' in interaction ? interaction.toolCallId : interaction.blockId);
           }
         },
 
         clearBlockingInteraction: (): void => {
-          set({ pendingBlockingInteraction: null });
+          set(blockingInteractionPatch(null));
           console.log('[ChatStore] clearBlockingInteraction');
         },
 
@@ -286,14 +346,79 @@ export function createSessionActions(
           resolvedReason?: string;
         } | null): void => {
           if (!request) {
-            set({ pendingBlockingInteraction: null });
+            set(blockingInteractionPatch(null));
             return;
           }
-          set({ pendingBlockingInteraction: { kind: 'tool_approval', ...request } });
+          set(blockingInteractionPatch({ kind: 'tool_approval', ...request }));
         },
 
         clearPendingApproval: (): void => {
-          set({ pendingBlockingInteraction: null });
+          set(blockingInteractionPatch(null));
+        },
+
+        setAuthorityMode: async (mode: AuthorityMode): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) {
+            console.warn('[ChatStore] setAuthorityMode: no sessionId');
+            return;
+          }
+          await invoke('chat_v2_set_authority_mode', { sessionId, mode });
+          const prevMeta = getState().sessionMetadata ?? {};
+          set({
+            authorityMode: mode,
+            authorityAskBlockedHint: false,
+            sessionMetadata: {
+              ...prevMeta,
+              authorityMode: mode,
+              authority_mode: mode,
+              ...(mode === 'plan' ? {} : { plan: undefined }),
+            },
+          });
+        },
+
+        setPermissionPreset: async (preset: PermissionPreset): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) return;
+          await invoke('chat_v2_set_permission_preset', { sessionId, preset });
+          const prevMeta = getState().sessionMetadata ?? {};
+          set({
+            permissionPreset: preset,
+            sessionMetadata: {
+              ...prevMeta,
+              permissionPreset: preset,
+              permission_preset: preset,
+            },
+          });
+        },
+
+        handlePlanGateRequest: (payload: {
+          planId: string;
+          toolCallId: string;
+          toolName: string;
+          summary: string;
+          timeoutSeconds: number;
+          arguments?: Record<string, unknown>;
+        }): void => {
+          set(blockingInteractionPatch({
+            kind: 'plan_gate',
+            planId: payload.planId,
+            toolCallId: payload.toolCallId,
+            toolName: payload.toolName,
+            summary: payload.summary,
+            timeoutSeconds: payload.timeoutSeconds,
+            arguments: payload.arguments,
+          }));
+        },
+
+        clearPlanGate: (): void => {
+          const pending = getState().pendingBlockingInteraction;
+          if (pending?.kind === 'plan_gate') {
+            set(blockingInteractionPatch(null));
+          }
+        },
+
+        setAuthorityAskBlockedHint: (show: boolean): void => {
+          set({ authorityAskBlockedHint: show });
         },
 
         // ========== 会话 Actions ==========
@@ -301,6 +426,12 @@ export function createSessionActions(
         initSession: async (mode: string, initConfig?: Record<string, unknown>): Promise<void> => {
           // 🔧 P0修复：保存当前 modeState（如果外部已预设）
           const presetModeState = getState().modeState;
+
+          ensurePlanGateEventHandlerRegistered();
+          resetTransientRuntimes(getState().setPendingApproval);
+
+          // 🔧 P1 内存泄漏修复：重置前释放未发送附件的 blob: 预览 URL
+          revokeAttachmentBlobUrls(getState().attachments);
 
           set({
             mode,
@@ -320,6 +451,11 @@ export function createSessionActions(
             inputValue: '',
             attachments: [],
             panelStates: createDefaultPanelStates(),
+            authorityMode: 'craft',
+            permissionPreset: 'relaxed',
+            authorityAskBlockedHint: false,
+            pendingBlockingInteraction: null,
+            pendingApprovalRequest: null,
           });
 
           // 调用模式插件初始化，传递 initConfig
@@ -428,6 +564,16 @@ export function createSessionActions(
           );
         },
 
+        setWakeSessionCallback: (
+          callback: ((content: string, assistantMessageId: string) => Promise<void>) | null
+        ): void => {
+          set({ _wakeSessionCallback: callback } as Partial<ChatStoreState>);
+          console.log(
+            '[ChatStore] WakeSession callback',
+            callback ? 'set' : 'cleared'
+          );
+        },
+
         setAbortCallback: (
           callback: (() => Promise<void>) | null
         ): void => {
@@ -450,6 +596,10 @@ export function createSessionActions(
         },
 
         continueMessage: async (messageId: string, variantId?: string): Promise<void> => {
+          if (isStoreSubagentSession(getState())) {
+            console.warn('[ChatStore] continueMessage blocked for read-only subagent session:', messageId);
+            return;
+          }
           const continueCallback = (getState() as ChatStoreState & ChatStore & {
             _continueMessageCallback?: ((messageId: string, variantId?: string) => Promise<void>) | null
           })._continueMessageCallback;
@@ -482,7 +632,47 @@ export function createSessionActions(
           }
 
           // Fallback：发送"继续"消息（创建新轮次）
-          await getState().sendMessage(i18n.t('chatV2:store.continueMessage', { defaultValue: 'continue' }));
+          await getState().sendMessage(i18n.t('chatV2:store.continueMessage'));
+        },
+
+        // ========== 🆕 P0 分支模型：会话分支 ==========
+
+        setBranchSessionCallback: (
+          callback: ((upToMessageId: string) => Promise<BranchSessionResult>) | null
+        ): void => {
+          set({ _branchSessionCallback: callback } as Partial<ChatStoreState>);
+          console.log(
+            '[ChatStore] BranchSession callback',
+            callback ? 'set' : 'cleared'
+          );
+        },
+
+        /**
+         * 从当前会话分支出新会话（含 upToMessageId 的历史）。
+         * 优先走 TauriAdapter 注入的回调；回调未注入时直接 invoke 兜底，
+         * 保证适配器尚未 setup（或测试环境）下能力仍可用。
+         */
+        branchSession: async (upToMessageId: string): Promise<BranchSessionResult> => {
+          const state = getState() as ChatStoreState & ChatStore;
+          const branchCallback = state._branchSessionCallback;
+
+          if (branchCallback) {
+            const newSession = await branchCallback(upToMessageId);
+            console.log('[ChatStore] branchSession completed via callback:', newSession.id);
+            return newSession;
+          }
+
+          // 兜底路径：直接调用后端命令（与 setAuthorityMode 等既有直连一致）
+          const sessionId = state.sessionId;
+          if (!sessionId) {
+            throw new Error('[ChatStore] branchSession: no sessionId');
+          }
+          const newSession = await invoke<BranchSessionResult>('chat_v2_branch_session', {
+            sourceSessionId: sessionId,
+            upToMessageId,
+          });
+          console.log('[ChatStore] branchSession completed via direct invoke:', newSession.id);
+          return newSession;
         },
 
         setLoadCallback: (
@@ -517,3 +707,6 @@ export function createSessionActions(
 
   };
 }
+
+// Register plan_gate handler once when session actions module loads.
+ensurePlanGateEventHandlerRegistered();

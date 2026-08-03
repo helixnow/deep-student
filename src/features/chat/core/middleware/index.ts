@@ -32,6 +32,11 @@ export {
   handleBackendEventsWithSequence,
   resetBridgeState,
   clearBridgeState,
+  flushPendingBackendEvents,
+  // 🆕 块生命周期健壮性（P0/P2）
+  clearProcessedEventIds,
+  disposeSessionEventBridgeState,
+  flushOrphanTerminals,
   EVENT_TYPE_VARIANT_START,
   EVENT_TYPE_VARIANT_END,
   // 类型
@@ -39,6 +44,8 @@ export {
   type EventPhase,
   type EventContext,
   type EventBridgeState,
+  type OpenBlockRecord,
+  type OrphanTerminalEvent,
 } from './eventBridge';
 
 // 流式更新缓冲器

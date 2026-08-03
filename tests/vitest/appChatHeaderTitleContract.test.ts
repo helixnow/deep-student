@@ -68,7 +68,7 @@ describe('app chat header title contract', () => {
     expect(appSource).toContain('const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {');
     expect(appSource).toContain("const dragExclusionTarget = (event.target as HTMLElement).closest('[data-no-drag]');");
     expect(appSource).toContain('void startDragging(event);');
-    expect(appSource).toContain('onMouseDown={handleDesktopTitlebarMouseDown}');
+    expect(appSource).toContain('onMouseDown={workbenchActive ? undefined : handleDesktopTitlebarMouseDown}');
     expect(appSource).toContain('onMouseDown={handleHeaderHotzoneMouseDown}');
     expect(appSource).toContain('onMouseMove={handleHeaderHotzoneMouseMove}');
     expect(appSource).toContain('onMouseUp={handleHeaderHotzoneMouseUp}');

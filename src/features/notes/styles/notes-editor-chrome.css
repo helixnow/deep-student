@@ -1,0 +1,168 @@
+/**
+ * 笔记编辑器 chrome（NotesCrepeEditor 宿主层）样式：
+ * - 模板内联展开面板（编辑器顶部随文档流长出，无浮层）
+ * - 焦点模式沉浸过渡（chrome 淡出淡入 + 编辑列宽度平滑过渡）
+ *
+ * 颜色一律走 hsl(var(--token))；动效 150/200ms + var(--dropdown-ease)；
+ * 按压反馈 var(--m-press-dur)。reduced-motion 统一降级。
+ */
+
+/* ── 模板内联面板 ─────────────────────────────────────────── */
+
+.notes-template-panel {
+  padding-top: 6px;
+  padding-bottom: 10px;
+}
+
+.notes-template-panel__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 2px 6px;
+}
+
+.notes-template-panel__label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  user-select: none;
+}
+
+.notes-template-panel__hint {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  user-select: none;
+}
+
+.notes-template-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.notes-template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--border) / 0.7);
+  border-radius: var(--notes-radius-popup, 12px);
+  background: hsl(var(--background));
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    border-color var(--notes-hover-transition, 120ms ease),
+    scale var(--m-press-dur, 120ms) var(--m-press-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.notes-template-card:hover:not(:disabled) {
+  background: var(--interactive-hover, hsl(var(--foreground) / 0.04));
+  border-color: hsl(var(--border));
+}
+
+.notes-template-card:active:not(:disabled) {
+  scale: var(--m-press-scale, 0.98);
+  background: var(--interactive-selected, hsl(var(--foreground) / 0.08));
+}
+
+.notes-template-card:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notes-template-card:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-template-card__title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.notes-template-card__icon {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-template-card__summary {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── 焦点模式沉浸过渡 ─────────────────────────────────────── */
+
+/* chrome 淡出：data-focus-mode 仍为 false（display 未被宿主样式收走），
+   仅透明度过渡；200ms 后组件层把 data-focus-mode 切为 true 真正隐藏 */
+.notes-crepe-shell .notes-editor-header-section {
+  transition: opacity 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.notes-crepe-shell[data-focus-chrome='exiting'] .notes-editor-header-section {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* chrome 淡入：退出焦点模式后 display 立即恢复，播放一次 200ms 下落淡入 */
+.notes-crepe-shell[data-focus-chrome='restoring'] .notes-editor-header-section {
+  animation: notes-focus-chrome-in 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+@keyframes notes-focus-chrome-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 编辑列宽度平滑过渡：进入焦点模式后阅读列略放宽，营造沉浸感 */
+.notes-crepe-shell .notes-editor-content {
+  transition: max-width 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.notes-crepe-shell[data-focus-mode='true'] .notes-editor-content {
+  max-width: var(--notes-focus-content-max-w, 920px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-template-card {
+    transition: none;
+  }
+
+  .notes-template-card:active:not(:disabled) {
+    scale: 1;
+  }
+
+  .notes-crepe-shell .notes-editor-header-section,
+  .notes-crepe-shell .notes-editor-content {
+    transition: none;
+  }
+
+  .notes-crepe-shell[data-focus-chrome='restoring'] .notes-editor-header-section {
+    animation: none;
+  }
+}

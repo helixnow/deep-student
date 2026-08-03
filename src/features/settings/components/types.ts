@@ -32,6 +32,7 @@ export interface SystemConfig {
   memory_decision_model_config_id: string; // 记忆决策模型（smart write 去重判断）
   voice_input_asr_model_config_id: string; // 语音输入 ASR 模型
   image_generation_model_config_id: string; // 生图模型
+  compaction_model_config_id: string; // 上下文压缩专用模型（未设置回退对话模型）
   /** 聊天内翻译弹窗显示模式：'aligned' = 短语对照（默认），'streaming' = 流式纯译文 */
   translation_display_mode: 'aligned' | 'streaming';
 
@@ -48,7 +49,7 @@ export interface SystemConfig {
   mcpCacheMax: number;
   mcpCacheTtlMs: number;
   // 多个 MCP 工具配置（以工具为单位）
-  mcpTools?: Array<{ id: string; name: string; transportType?: 'stdio'|'websocket'|'sse'|'streamable_http'; url?: string; command?: string; args?: string | string[]; env?: Record<string, string>; endpoint?: string; apiKey?: string; fetch?: { type: 'sse'|'streamable_http'; url: string }; mcpServers?: Record<string, any> }>;
+  mcpTools?: Array<{ id: string; name: string; enabled?: boolean; transportType?: 'stdio'|'websocket'|'sse'|'streamable_http'; url?: string; command?: string; args?: string | string[]; env?: Record<string, string>; endpoint?: string; apiKey?: string; fetch?: { type: 'sse'|'streamable_http'; url: string }; mcpServers?: Record<string, any> }>;
 
   // 外部搜索设置（不再提供全局启用开关，仅保留引擎与密钥配置）
   webSearchEngine: string;
@@ -70,5 +71,6 @@ export interface SystemConfig {
 
 export interface SettingsProps {
   onBack: () => void;
-  mobilePresentation?: 'page' | 'sheet';
+  /** Settings view is kept mounted by the app shell; controls the mobile sheet portal. */
+  isActive?: boolean;
 }

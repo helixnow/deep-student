@@ -158,7 +158,7 @@ function createChatV2LogCapture() {
 // ── 请求体捕获 ──
 
 async function createRequestBodyCapture(sessionId: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const bodies: any[] = [];
   const unlisten = await listen<{ streamEvent: string; model: string; url: string; requestBody: unknown }>(
     'chat_v2_llm_request_body', (event) => {
@@ -316,9 +316,9 @@ function buildModelResolveMap(configIds: string[], reqBodies: Array<{ model: str
 
 async function sendMultiVariant(store: StoreApi<ChatStore>, modelIds: string[], prompt: string, log: LogFn): Promise<void> {
   const orig = store.getState().setPendingParallelModelIds;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (store as any).setState({ setPendingParallelModelIds: (ids: string[] | null) => { if (ids === null) { log('info', 'model', 'setPendingParallelModelIds(null) 拦截'); return; } orig(ids); } });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (store as any).setState({ pendingParallelModelIds: modelIds });
   log('info', 'model', `并行模型: ${modelIds.join(', ')}`);
   try {
@@ -330,7 +330,7 @@ async function sendMultiVariant(store: StoreApi<ChatStore>, modelIds: string[], 
     // ★ 与 chatInteractionTestPlugin 对齐：无论成功/失败都恢复 monkey-patch
     const current = store.getState().setPendingParallelModelIds;
     if (current !== orig) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       (store as any).setState({ setPendingParallelModelIds: orig });
     }
     log('success', 'send', 'monkey-patch 已恢复');
@@ -356,13 +356,13 @@ async function sendSingleVariant(store: StoreApi<ChatStore>, prompt: string, log
 // 验证辅助
 // =============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function sanitize(body: any): unknown {
   if (!body) return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const s = JSON.parse(JSON.stringify(body, (k: string, v: any) => (k === 'url' && typeof v === 'string' && v.startsWith('data:')) ? `[base64:${v.length}b]` : v));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     if (Array.isArray(s.messages)) s.messages = s.messages.map((m: any) => m.role === 'system' ? { role: 'system', content: `[sys:${m.content?.length||0}]` } : m);
     return s;
   } catch { return '[err]'; }

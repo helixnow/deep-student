@@ -4,7 +4,6 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { normalizeMcpToolList } from './mcpUtils';
-import { DEFAULT_STDIO_ARGS, DEFAULT_STDIO_ARGS_STORAGE } from './constants';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import type { UseSettingsConfigDeps } from './hookDepsTypes';
@@ -50,6 +49,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             memory_decision_model_config_id: null,
             voice_input_asr_model_config_id: null,
             image_generation_model_config_id: null,
+            compaction_model_config_id: null,
             translation_display_mode: null,
           })) as Promise<{
             model2_config_id: string | null,
@@ -64,6 +64,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             memory_decision_model_config_id: string | null,
             voice_input_asr_model_config_id: string | null,
             image_generation_model_config_id: string | null,
+            compaction_model_config_id: string | null,
             translation_display_mode: string | null,
           }>,
           invoke('get_setting', { key: 'auto_save' }).catch(() => 'true') as Promise<string>,
@@ -76,7 +77,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
 
           // MCP 工具协议设置（移除全局启用项）
           invoke('get_setting', { key: 'mcp.transport.command' }).catch(() => 'npx') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.transport.args' }).catch(() => DEFAULT_STDIO_ARGS_STORAGE) as Promise<string>,
+          invoke('get_setting', { key: 'mcp.transport.args' }).catch(() => '') as Promise<string>,
           invoke('get_setting', { key: 'mcp.transport.type' }).catch(() => 'stdio') as Promise<string>,
           invoke('get_setting', { key: 'mcp.transport.url' }).catch(() => 'ws://localhost:8000') as Promise<string>,
           invoke('get_setting', { key: 'mcp.tools.advertise_all_tools' }).catch(() => 'false') as Promise<string>,
@@ -217,7 +218,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
               .filter(Boolean);
           }
           if (argsArray.length === 0) {
-            argsArray = [...DEFAULT_STDIO_ARGS];
+            // 空 args 保持为空：不隐式注入 DEFAULT_STDIO_ARGS
           }
           return argsArray.join(',');
         })();
@@ -236,6 +237,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
           voice_input_asr_model_config_id: modelAssignments?.voice_input_asr_model_config_id || '',
           image_generation_model_config_id: modelAssignments?.image_generation_model_config_id || '',
+          compaction_model_config_id: modelAssignments?.compaction_model_config_id || '',
           translation_display_mode: (modelAssignments?.translation_display_mode === 'streaming' ? 'streaming' : 'aligned') as 'aligned' | 'streaming',
           autoSave: (autoSave || 'true') === 'true',
           theme: normalizeThemeMode(theme),
@@ -262,7 +264,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           // Web Search 设置（UI 层存储，仅供保存使用）
           // 为保持与其他页面一致，全部使用简单原生控件，不在此定义专门类型
           // 外部搜索设置（不再设置全局启用项）
-          webSearchEngine: webEngine || '',
+          webSearchEngine: webEngine || 'bing_rss',
           webSearchTimeoutMs: parseInt(webTimeoutMs || '15000', 10),
           webSearchGoogleKey: webGoogleKey || '',
           webSearchGoogleCx: webGoogleCx || '',

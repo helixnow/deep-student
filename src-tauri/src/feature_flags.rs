@@ -7,18 +7,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// 功能开关状态
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum FeatureState {
-    Disabled,                  // 完全禁用
+    #[default]
+    Disabled, // 完全禁用
     Enabled,                   // 完全启用
     Gradual(f32),              // 渐进发布，0.0-1.0表示启用比例
     UserSpecific(Vec<String>), // 针对特定用户启用
-}
-
-impl Default for FeatureState {
-    fn default() -> Self {
-        FeatureState::Disabled
-    }
 }
 
 /// 功能开关配置
@@ -126,12 +121,26 @@ impl FeatureFlagManager {
             let flags: HashMap<String, FeatureFlag> = serde_json::from_str(&json_str)
                 .map_err(|e| format!("Failed to parse feature flags: {}", e))?;
             self.flags = flags;
+            // 旧库可能缺新 flag：用默认表补齐，避免「未登记 = 关」
+            self.merge_missing_default_flags();
         } else {
             // 初始化默认功能开关
             self.initialize_default_flags();
         }
 
         Ok(self)
+    }
+
+    /// 将 `initialize_default_flags` 中尚未出现在当前 map 的项插入（不覆盖已有）
+    fn merge_missing_default_flags(&mut self) {
+        let mut defaults = FeatureFlagManager::new(self.app_version.clone());
+        if let Some(ref uid) = self.user_id {
+            defaults.user_id = Some(uid.clone());
+        }
+        defaults.initialize_default_flags();
+        for (name, flag) in defaults.flags {
+            self.flags.entry(name).or_insert(flag);
+        }
     }
 
     /// 保存功能开关配置到数据库
@@ -330,6 +339,54 @@ impl FeatureFlagManager {
                 "ui".to_string(),
             )
             .disable(),
+            // Anki 制卡
+            FeatureFlag::new(
+                "anki.pipeline_v2".to_string(),
+                "制卡流水线真源/恢复修复".to_string(),
+                "anki".to_string(),
+            )
+            .enable(), // 开发期默认开
+            FeatureFlag::new(
+                "anki.flashcard_app".to_string(),
+                "闪卡子应用".to_string(),
+                "anki".to_string(),
+            )
+            // 开发期默认开：workbench 已注册 flashcards；正式灰度前可再改回 disable
+            .enable()
+            .with_dependencies(vec!["anki.pipeline_v2".to_string()]),
+            FeatureFlag::new(
+                "anki.fsrs_export_scheduling".to_string(),
+                "FSRS 导出调度".to_string(),
+                "anki".to_string(),
+            )
+            .disable(),
+            // Workbench 内置浏览器硬闸（公网面更大：生产默认关；debug 可开）
+            {
+                let flag = FeatureFlag::new(
+                    "ui.workbench_browser".to_string(),
+                    "学习桌面内置浏览器".to_string(),
+                    "ui".to_string(),
+                );
+                #[cfg(debug_assertions)]
+                let flag = flag.enable();
+                #[cfg(not(debug_assertions))]
+                let flag = flag.disable();
+                flag
+            },
+            FeatureFlag::new(
+                "tools.browser_agent".to_string(),
+                "ChatV2 Agent 操控内置浏览器".to_string(),
+                "tools".to_string(),
+            )
+            .disable()
+            .with_dependencies(vec!["ui.workbench_browser".to_string()]),
+            // ACR 桌面操控：默认开（开箱可用）；用户关闭用 desktop.workbenchAgentControl=off
+            FeatureFlag::new(
+                "tools.workbench_agent".to_string(),
+                "ChatV2 Agent 操控学习桌面".to_string(),
+                "tools".to_string(),
+            )
+            .enable(),
         ];
 
         for flag in default_flags {
@@ -485,5 +542,68 @@ mod tests {
         // 切换到不在列表中的用户
         manager.user_id = Some("not_allowed_user".to_string());
         assert!(!manager.is_feature_enabled("test.user_specific"));
+    }
+
+    #[test]
+    fn workbench_browser_flags_defaults() {
+        let mut manager = FeatureFlagManager::new("1.0.0".to_string());
+        manager.initialize_default_flags();
+
+        let browser = manager
+            .get_feature_flag("ui.workbench_browser")
+            .expect("ui.workbench_browser registered");
+        #[cfg(debug_assertions)]
+        assert_eq!(browser.state, FeatureState::Enabled);
+        #[cfg(not(debug_assertions))]
+        assert_eq!(browser.state, FeatureState::Disabled);
+
+        let agent = manager
+            .get_feature_flag("tools.browser_agent")
+            .expect("tools.browser_agent registered");
+        assert_eq!(agent.state, FeatureState::Disabled);
+        assert_eq!(agent.dependencies, vec!["ui.workbench_browser".to_string()]);
+        // Agent 硬闸始终关；即使依赖在 debug 下为 enable，工具本身仍 disable
+        assert!(!manager.is_feature_enabled("tools.browser_agent"));
+
+        let wb_agent = manager
+            .get_feature_flag("tools.workbench_agent")
+            .expect("tools.workbench_agent registered");
+        assert_eq!(wb_agent.state, FeatureState::Enabled);
+        assert!(manager.is_feature_enabled("tools.workbench_agent"));
+    }
+
+    #[test]
+    fn merge_missing_defaults_adds_enabled_workbench_agent() {
+        let mut manager = FeatureFlagManager::new("1.0.0".to_string());
+
+        manager.merge_missing_default_flags();
+
+        let flag = manager
+            .get_feature_flag("tools.workbench_agent")
+            .expect("missing workbench agent flag should be added");
+        assert_eq!(flag.state, FeatureState::Enabled);
+        assert!(manager.is_feature_enabled("tools.workbench_agent"));
+    }
+
+    #[test]
+    fn merge_missing_defaults_preserves_disabled_workbench_agent() {
+        let mut manager = FeatureFlagManager::new("1.0.0".to_string());
+        manager.flags.insert(
+            "tools.workbench_agent".to_string(),
+            FeatureFlag::new(
+                "tools.workbench_agent".to_string(),
+                "ChatV2 Agent 操控学习桌面".to_string(),
+                "tools".to_string(),
+            )
+            .disable(),
+        );
+
+        manager.merge_missing_default_flags();
+
+        let flag = manager
+            .get_feature_flag("tools.workbench_agent")
+            .expect("existing workbench agent flag should remain registered");
+        assert_eq!(flag.state, FeatureState::Disabled);
+        assert!(!manager.is_feature_enabled("tools.workbench_agent"));
     }
 }

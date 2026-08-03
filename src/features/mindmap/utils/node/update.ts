@@ -5,6 +5,21 @@
 import type { MindMapNode, NodeId, UpdateNodeParams } from '../../types';
 import { findNodeWithParent } from './find';
 
+/** 将 patch 应用到节点；显式 undefined 的键从副本中删除 */
+function applyNodePatch(node: MindMapNode, updates: UpdateNodeParams): MindMapNode {
+  const next: MindMapNode = { ...node };
+  const record = next as unknown as Record<string, unknown>;
+  for (const key of Object.keys(updates) as Array<keyof UpdateNodeParams>) {
+    const value = updates[key];
+    if (value === undefined) {
+      delete record[key];
+    } else {
+      record[key] = value;
+    }
+  }
+  return next;
+}
+
 /** 更新节点（返回新的树） */
 export function updateNode(
   root: MindMapNode,
@@ -12,7 +27,7 @@ export function updateNode(
   updates: UpdateNodeParams
 ): MindMapNode {
   if (root.id === nodeId) {
-    return { ...root, ...updates };
+    return applyNodePatch(root, updates);
   }
   
   return {
@@ -104,7 +119,7 @@ function expandAllRecursive(node: MindMapNode): MindMapNode {
   };
 }
 
-/** 展开到指定深度 */
+/** 展开到指定深度（更深节点折叠） */
 export function expandToDepth(root: MindMapNode, depth: number): MindMapNode {
   function expand(node: MindMapNode, currentDepth: number): MindMapNode {
     const shouldCollapse = currentDepth >= depth && node.children.length > 0;
@@ -118,3 +133,10 @@ export function expandToDepth(root: MindMapNode, depth: number): MindMapNode {
   return expand(root, 0);
 }
 
+/**
+ * 折叠到指定深度（与 expandToDepth 同语义）。
+ * maxDepth=1：根展开，直接子可见，更深全折叠。
+ */
+export function collapseToDepth(root: MindMapNode, maxDepth: number): MindMapNode {
+  return expandToDepth(root, maxDepth);
+}

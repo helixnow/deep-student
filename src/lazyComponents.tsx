@@ -15,8 +15,9 @@
  * - 基础 UI 组件
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import './styles/page-loading.css';
 
 // ============================================================================
 // 懒加载 fallback 组件
@@ -25,11 +26,44 @@ import { useTranslation } from 'react-i18next';
 /**
  * 页面加载占位符（极简，避免布局抖动）
  */
-export const PageLoadingFallback: React.FC = () => {
+interface PageLoadingFallbackProps {
+  fullScreen?: boolean;
+}
+
+export const PageLoadingFallback: React.FC<PageLoadingFallbackProps> = ({ fullScreen = false }) => {
   const { t } = useTranslation('common');
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsVisible(true), 220);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="flex-1 flex items-center justify-center min-h-[200px]">
-      <div className="animate-pulse text-muted-foreground text-sm">{t('loading')}</div>
+    <div
+      className={fullScreen ? 'page-loading-fallback page-loading-fallback--fullscreen bg-background' : 'page-loading-fallback bg-background'}
+      role="status"
+      aria-label={t('loading')}
+      aria-busy="true"
+    >
+      <div className="page-loading-fallback__logo-wrap" data-visible={isVisible}>
+        <img
+          className="page-loading-fallback__logo"
+          src="/logo-black.svg"
+          alt=""
+          aria-hidden="true"
+          width="60"
+          height="60"
+        />
+        <img
+          className="page-loading-fallback__logo page-loading-fallback__shine"
+          src="/logo-black.svg"
+          alt=""
+          aria-hidden="true"
+          width="60"
+          height="60"
+        />
+      </div>
     </div>
   );
 };
@@ -51,10 +85,8 @@ export const LazySOTADashboard = React.lazy(() =>
   import('./components/SOTADashboardLite').then(m => ({ default: m.SOTADashboard }))
 );
 
-// LLM 使用量统计
-export const LazyLlmUsageStatsPage = React.lazy(() =>
-  import('./components/llm-usage/LlmUsageStatsPage').then(m => ({ default: m.LlmUsageStatsPage }))
-);
+// ★ 2026-07-08：移除 LazyLlmUsageStatsPage 死导出（llm-usage-stats 独立视图已并入 DataStats，
+//   页面组件仍以 embedded 形态被 LlmUsageStatsSection 使用）
 
 // 数据导入导出
 export const LazyDataImportExport = React.lazy(() =>
@@ -73,7 +105,7 @@ export const LazySkillsManagementPage = React.lazy(() =>
 
 // 模板管理
 export const LazyTemplateManagementPage = React.lazy(() =>
-  import('./components/TemplateManagementPage').then(m => ({ default: m.default }))
+  import('./features/template-management/TemplateManagementApp').then(m => ({ default: m.default }))
 );
 
 // UI 样式调试
@@ -114,10 +146,6 @@ export const LazyTodoPage = React.lazy(() =>
 // 开发专用组件：生产构建中 import.meta.env.DEV 为 false，动态 import 被 Rollup 死代码消除
 const DevNull: React.FC<any> = () => null;
 const devLazy = () => Promise.resolve({ default: DevNull as React.ComponentType<any> });
-
-export const LazyTreeDragTest = import.meta.env.DEV
-  ? React.lazy(() => import('./features/notes/TreeDragTest').then(m => ({ default: m.default })))
-  : React.lazy(devLazy);
 
 export const LazyCrepeDemoPage = import.meta.env.DEV
   ? React.lazy(() => import('./components/dev/CrepeDemoPage').then(m => ({ default: m.CrepeDemoPage })))

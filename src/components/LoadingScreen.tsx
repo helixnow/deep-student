@@ -120,7 +120,7 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
   const [dots, setDots] = useState('');
   const [activeStep, setActiveStep] = useState(0);
 
-  const displayText = loadingText || t('loadingScreen.initializing', '正在初始化...');
+  const displayText = loadingText || t('loadingScreen.initializing');
 
   useEffect(() => {
     if (!isLoading) return;
@@ -147,9 +147,9 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({
   }, [isLoading]);
 
   const loadingSteps = useMemo(() => [
-    { icon: '✓', text: t('loadingScreen.step_config', '加载配置') },
-    { icon: '⚡', text: t('loadingScreen.step_database', '初始化数据库') },
-    { icon: '🚀', text: t('loadingScreen.step_ui', '准备界面') }
+    { icon: '✓', text: t('loadingScreen.step_config') },
+    { icon: '⚡', text: t('loadingScreen.step_database') },
+    { icon: '🚀', text: t('loadingScreen.step_ui') }
   ], [t]);
 
   return (

@@ -16,6 +16,10 @@
 //! 回答时如引用了上下文信息，请使用 [来源类型-编号] 格式标注。
 //! </system_instructions>
 //!
+//! <project_agents_instructions>
+//! 项目/全局 AGENTS.md 常驻指令...
+//! </project_agents_instructions>
+//!
 //! <context>
 //! <knowledge_base>
 //! [知识库-1] 内容...
@@ -386,6 +390,10 @@ pub struct PromptBuilder {
     context_type_hints: Vec<String>,
     /// 用户画像摘要（始终注入，不依赖 query 匹配）
     user_profile: Option<String>,
+    /// 学习者画像（三层记忆的策展长期层，随会话注入；见 memory/learner_profile.rs）
+    learner_profile: Option<String>,
+    /// 项目/全局 AGENTS.md 常驻指令（system_instructions 之后注入）
+    project_agents_instructions: Option<String>,
     /// 活跃待办摘要（始终注入）
     active_todos: Option<String>,
 }
@@ -409,6 +417,8 @@ impl PromptBuilder {
             canvas_note: None,
             context_type_hints: Vec::new(),
             user_profile: None,
+            learner_profile: None,
+            project_agents_instructions: None,
             active_todos: None,
         }
     }
@@ -416,6 +426,12 @@ impl PromptBuilder {
     /// 添加活跃待办摘要
     pub fn with_active_todos(mut self, todos: Option<String>) -> Self {
         self.active_todos = todos;
+        self
+    }
+
+    /// 添加项目/全局 AGENTS.md 常驻指令
+    pub fn with_project_agents_instructions(mut self, instructions: Option<String>) -> Self {
+        self.project_agents_instructions = instructions.filter(|s| !s.trim().is_empty());
         self
     }
 
@@ -464,6 +480,12 @@ impl PromptBuilder {
     /// 添加用户画像摘要（始终注入，不依赖检索 query）
     pub fn with_user_profile(mut self, profile: Option<String>) -> Self {
         self.user_profile = profile;
+        self
+    }
+
+    /// 添加学习者画像（策展长期层，随会话注入；内容应已渲染为 Markdown）
+    pub fn with_learner_profile(mut self, profile: Option<String>) -> Self {
+        self.learner_profile = profile;
         self
     }
 
@@ -525,8 +547,19 @@ impl PromptBuilder {
     }
 
     /// 构建最终的 System Prompt
+    ///
+    /// ## Prompt cache 友好性（2026-07 改造）
+    /// system 按「稳定前缀 → 动态后缀」两段组织：
+    /// - **稳定前缀**（同一会话内逐轮不变）：LaTeX 规则、system_instructions、
+    ///   AGENTS.md、user_preferences —— 保证 provider 前缀缓存（OpenAI 自动
+    ///   prefix cache / Anthropic cache_control）逐轮命中；
+    /// - **动态后缀**（每轮可能变化）：格式 hints、画像、待办、引用规则、
+    ///   检索 context、Canvas 笔记 —— 变化只打碎后缀，不影响前缀命中。
+    /// 所有块仍在 system 内，语义与行为保持兼容，仅调整块顺序。
     pub fn build(self) -> String {
         let mut parts: Vec<String> = Vec::new();
+
+        // ==================== 稳定前缀 ====================
 
         // 0. LaTeX 规则（最高优先级，稳定前缀第一块）
         parts.push(LATEX_RULES.to_string());
@@ -538,12 +571,27 @@ impl PromptBuilder {
             instructions
         ));
 
-        // 1.1 引用规则（如果有来源）
-        if self.has_sources {
-            parts.push(CITATION_GUIDE.to_string());
+        // 1.05 项目/全局 AGENTS.md 常驻指令（紧随 system_instructions）
+        // 内容已在 agents_md 侧做纯文本消毒与预算截断；此处再 XML 转义防标签伪造
+        if let Some(agents) = self.project_agents_instructions {
+            parts.push(format!(
+                "<project_agents_instructions>\n{}\n</project_agents_instructions>",
+                escape_xml_content(&agents)
+            ));
         }
 
-        // 1.5 用户消息格式说明（如果有 hints）
+        // 1.1 用户追加指令（会话内稳定，归入稳定前缀；
+        // 原位于 context 之后，前移不改变语义——各块均为独立 XML 段）
+        if let Some(append) = self.user_append {
+            parts.push(format!(
+                "<user_preferences>\n{}\n</user_preferences>",
+                append
+            ));
+        }
+
+        // ==================== 动态后缀（每轮可能变化） ====================
+
+        // 2.0 用户消息格式说明（依赖本轮上下文引用的 hints）
         if !self.context_type_hints.is_empty() {
             let hints_content = self.context_type_hints.join("\n");
             parts.push(format!(
@@ -559,7 +607,7 @@ impl PromptBuilder {
             ));
         }
 
-        // 1.8 用户画像（始终注入，不依赖检索 query）
+        // 2.1 用户画像（始终注入，不依赖检索 query）
         // 必须 XML 转义：画像内容来自记忆系统（可被用户输入污染），
         // 不转义会让 <tag> 形式的内容伪造提示词结构（注入攻击面）
         if let Some(profile) = self.user_profile {
@@ -569,7 +617,16 @@ impl PromptBuilder {
             ));
         }
 
-        // 1.9 活跃待办事项（始终注入，帮助 LLM 了解用户当前任务）
+        // 2.2 学习者画像（三层记忆的策展长期层，随会话注入）
+        // 同 user_profile 必须 XML 转义（画像内容可被对话/工具写入污染）
+        if let Some(profile) = self.learner_profile {
+            parts.push(format!(
+                "<learner_profile>\n以下是该学习者的长期画像（薄弱知识点/学习偏好/学习目标/近期状态）。请据此调整讲解方式与难度，主动关照薄弱环节；画像可用 learner_profile_update 工具增量更新：\n{}\n</learner_profile>",
+                escape_xml_content(&profile)
+            ));
+        }
+
+        // 2.3 活跃待办事项（始终注入，帮助 LLM 了解用户当前任务）
         // 同上，todo 标题为用户自由输入，必须转义
         if let Some(todos) = self.active_todos {
             parts.push(format!(
@@ -578,21 +635,17 @@ impl PromptBuilder {
             ));
         }
 
-        // 3. 上下文块（如果有来源）
+        // 3. 引用规则 + 上下文块（引用规则紧邻其约束的 context，
+        // 且 RAG 命中与否只影响动态后缀，不再打碎稳定前缀）
+        if self.has_sources {
+            parts.push(CITATION_GUIDE.to_string());
+        }
         if !self.context_blocks.is_empty() {
             let context_content = self.context_blocks.join("\n\n");
             parts.push(format!("<context>\n{}\n</context>", context_content));
         }
 
-        // 4. 用户追加指令（如果有）
-        if let Some(append) = self.user_append {
-            parts.push(format!(
-                "<user_preferences>\n{}\n</user_preferences>",
-                append
-            ));
-        }
-
-        // 5. Canvas 笔记块（如果有）
+        // 4. Canvas 笔记块（如果有）
         // 实现长短笔记策略：短笔记（<3000字）全量注入，长笔记仅注入摘要
         if let Some(note) = self.canvas_note {
             let structure = note.parse_structure();
@@ -684,12 +737,88 @@ pub fn build_system_prompt_with_profile(
     canvas_note: Option<CanvasNoteInfo>,
     user_profile: Option<String>,
 ) -> String {
+    build_system_prompt_with_profile_and_agents(options, sources, canvas_note, user_profile, None)
+}
+
+/// 带用户画像 + AGENTS.md 常驻指令注入的 System Prompt 构建
+pub fn build_system_prompt_with_profile_and_agents(
+    options: &SendOptions,
+    sources: &MessageSources,
+    canvas_note: Option<CanvasNoteInfo>,
+    user_profile: Option<String>,
+    project_agents_instructions: Option<String>,
+) -> String {
     PromptBuilder::new(options.system_prompt_override.as_deref())
         .with_message_sources(sources)
         .with_options(options)
         .with_canvas_note(canvas_note)
         .with_user_profile(user_profile)
+        .with_learner_profile(load_learner_profile_block(options))
+        .with_project_agents_instructions(project_agents_instructions)
         .build()
+}
+
+/// 加载学习者画像注入内容（三层记忆的策展长期层）
+///
+/// - 通过全局 AppHandle 取 VFS 数据库（prompt_builder 自身无 DB 依赖，
+///   避免为注入改动 pipeline 侧调用签名）
+/// - 尊重 memory_enabled 开关与隐私模式
+/// - 经 injection_budget 以 High 优先级分配预算（类型上限 4000 字符，
+///   与 LEARNER_PROFILE_MAX_CHARS 对齐），超限时智能截断
+fn load_learner_profile_block(options: &SendOptions) -> Option<String> {
+    use crate::injection_budget::{InjectionBudgetManager, InjectionItem, InjectionType, Priority};
+    use tauri::Manager;
+
+    if options.memory_enabled == Some(false) {
+        return None;
+    }
+
+    let app_handle = crate::get_global_app_handle()?;
+    let vfs_db = app_handle
+        .try_state::<std::sync::Arc<crate::vfs::VfsDatabase>>()?
+        .inner()
+        .clone();
+
+    let mem_cfg = crate::memory::MemoryConfig::new(vfs_db.clone());
+    // 🔧 P1-8：隐私模式读取失败不再完全静默（保持原「按非隐私继续」语义，但可观测）
+    match mem_cfg.is_privacy_mode() {
+        Ok(true) => return None,
+        Ok(false) => {}
+        Err(e) => {
+            log::warn!(
+                "[PromptBuilder] Failed to read privacy mode: {}; proceeding as non-privacy (unchanged behavior)",
+                e
+            );
+        }
+    }
+
+    let profile = match crate::memory::learner_profile::load_profile_from_db(&vfs_db) {
+        Ok(Some(p)) => p,
+        Ok(None) => return None,
+        Err(e) => {
+            // 🔧 P1-8：debug → warn（学习者画像注入被静默跳过应可观测）
+            log::warn!("[PromptBuilder] Failed to load learner profile: {}; skipping learner profile injection", e);
+            return None;
+        }
+    };
+    if profile.is_content_empty() {
+        return None;
+    }
+
+    let rendered = profile.render_markdown();
+    let mut budget_mgr = InjectionBudgetManager::with_default_config();
+    budget_mgr.add_item(InjectionItem::new(
+        InjectionType::LearnerProfile,
+        rendered,
+        Priority::High,
+        "learner_profile".to_string(),
+    ));
+    let allocation = budget_mgr.allocate();
+    allocation
+        .selected_items
+        .into_iter()
+        .next()
+        .map(|item| item.content)
 }
 
 /// 从 SendOptions 和 SharedContext 构建 System Prompt
@@ -850,13 +979,16 @@ mod tests {
             .with_user_append(Some("追加指令"))
             .build();
 
-        // 验证结构顺序
+        // 验证结构顺序（2026-07 cache 友好性改造：
+        // 稳定前缀 instructions/preferences 在前，动态 context 在后）
         let instructions_pos = prompt.find("<system_instructions>").unwrap();
         let context_pos = prompt.find("<context>").unwrap();
         let prefs_pos = prompt.find("<user_preferences>").unwrap();
+        let citation_pos = prompt.find("<citation_rules>").unwrap();
 
-        assert!(instructions_pos < context_pos);
-        assert!(context_pos < prefs_pos);
+        assert!(instructions_pos < prefs_pos);
+        assert!(prefs_pos < citation_pos);
+        assert!(citation_pos < context_pos);
     }
 
     #[test]
@@ -882,5 +1014,64 @@ mod tests {
         assert!(prompt
             .contains("1. 完成 &lt;todo id=\"math\"&gt;数学错题&lt;/todo&gt;\n2. 复习 &amp; 总结"));
         assert!(!prompt.contains("<todo id=\"math\">数学错题</todo>"));
+    }
+
+    #[test]
+    fn test_project_agents_instructions_after_system_and_budget() {
+        use crate::chat_v2::agents_md::{
+            clear_agents_md_cache_for_test, load_agents_instructions, truncate_agents_md_content,
+            AGENTS_MD_MAX_CHARS,
+        };
+        use std::fs;
+
+        clear_agents_md_cache_for_test();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let long_body = format!("AGENT-MARKER-{}", "X".repeat(AGENTS_MD_MAX_CHARS + 80));
+        fs::write(dir.path().join("AGENTS.md"), &long_body).expect("write");
+
+        let loaded = load_agents_instructions(Some(dir.path())).expect("load agents");
+        assert!(loaded.contains("AGENT-MARKER-"));
+        assert!(loaded.contains("…（已截断）"));
+        assert!(loaded.chars().count() <= AGENTS_MD_MAX_CHARS + "…（已截断）".chars().count());
+
+        let prompt = PromptBuilder::new(Some("BASE-SYS"))
+            .with_project_agents_instructions(Some(loaded))
+            .build();
+
+        let sys_pos = prompt.find("<system_instructions>").unwrap();
+        let agents_pos = prompt.find("<project_agents_instructions>").unwrap();
+        assert!(
+            sys_pos < agents_pos,
+            "agents block must follow system_instructions"
+        );
+        assert!(prompt.contains("AGENT-MARKER-"));
+        assert!(prompt.contains("…（已截断）"));
+
+        // 越界：直接构造截断内容验证 builder 本身不丢标记
+        let truncated = truncate_agents_md_content(&"Y".repeat(10), 5);
+        assert!(truncated.ends_with("…（已截断）"));
+    }
+
+    #[test]
+    fn test_project_agents_out_of_bounds_rejected() {
+        use crate::chat_v2::agents_md::{
+            clear_agents_md_cache_for_test, read_agents_md_file, AgentsMdError,
+        };
+        use std::fs;
+
+        clear_agents_md_cache_for_test();
+        let workspace = tempfile::tempdir().expect("workspace");
+        let outside = tempfile::tempdir().expect("outside");
+        fs::write(outside.path().join("AGENTS.md"), "ESCAPE-PAYLOAD").expect("write");
+
+        let err = read_agents_md_file(&outside.path().join("AGENTS.md"), workspace.path())
+            .expect_err("out of bounds must be rejected");
+        assert_eq!(err, AgentsMdError::OutOfBounds);
+
+        let prompt = PromptBuilder::new(None)
+            .with_project_agents_instructions(None)
+            .build();
+        assert!(!prompt.contains("<project_agents_instructions>"));
+        assert!(!prompt.contains("ESCAPE-PAYLOAD"));
     }
 }

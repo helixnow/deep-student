@@ -7,6 +7,13 @@ import type { Icon } from '@phosphor-icons/react';
 import type { CurrentView } from '@/types/navigation';
 import type { TFunction } from 'i18next';
 
+/**
+ * Command visibility can target a surface that is not a legacy navigation view.
+ * The workbench replaces the legacy view layer, so treating it as a dedicated
+ * command view prevents the previous page from leaking commands into the OS.
+ */
+export type CommandView = CurrentView | 'workbench';
+
 // ==================== 命令分类 ====================
 
 /**
@@ -34,7 +41,9 @@ export interface DependencyResolver {
   /** 获取导航函数 */
   navigate: (view: CurrentView, params?: Record<string, unknown>) => void;
   /** 获取当前视图 */
-  getCurrentView: () => CurrentView;
+  getCurrentView: () => CommandView;
+  /** App type for the focused Workbench window; null outside the Workbench. */
+  getFocusedWorkbenchAppTypeId: () => string | null;
   /** 获取翻译函数 */
   t: TFunction;
   /** 显示全局通知 */
@@ -84,8 +93,8 @@ export interface Command {
   execute: (deps: DependencyResolver) => void | Promise<void> | CommandExecutionResult | Promise<CommandExecutionResult>;
   /** 动态判断是否可用 */
   isEnabled?: (deps: DependencyResolver) => boolean;
-  /** 仅在特定视图显示（空数组或 undefined 表示全局可见） */
-  visibleInViews?: CurrentView[];
+  /** 仅在特定命令视图显示（空数组或 undefined 表示全局可见） */
+  visibleInViews?: CommandView[];
   /** 额外搜索关键词 */
   keywords?: string[];
   /** 排序权重，越大越靠前（默认 0） */
@@ -144,13 +153,13 @@ export interface ICommandRegistry {
   /** 获取所有命令 */
   getAll: () => Command[];
   /** 根据当前视图获取可用命令 */
-  getAvailable: (currentView: CurrentView, deps: DependencyResolver) => Command[];
+  getAvailable: (currentView: CommandView, deps: DependencyResolver) => Command[];
   /** 根据 ID 获取命令 */
   getById: (id: string) => Command | undefined;
   /** 根据快捷键获取命令 */
   getByShortcut: (shortcut: string) => Command | undefined;
   /** 根据快捷键解析当前视图下的可执行命令 */
-  resolveShortcut: (shortcut: string, currentView: CurrentView, deps: DependencyResolver) => Command | undefined;
+  resolveShortcut: (shortcut: string, currentView: CommandView, deps: DependencyResolver) => Command | undefined;
   /** 根据分类获取命令 */
   getByCategory: (category: CommandCategory) => Command[];
   /** 根据标签获取命令 */
@@ -160,7 +169,7 @@ export interface ICommandRegistry {
   /** 订阅命令变更 */
   subscribe: (listener: CommandChangeListener) => () => void;
   /** 搜索命令（模糊匹配） */
-  search: (query: string, currentView: CurrentView, deps: DependencyResolver) => Command[];
+  search: (query: string, currentView: CommandView, deps: DependencyResolver) => Command[];
   /** 获取命令数量 */
   count: () => number;
 }
@@ -214,47 +223,47 @@ export const CATEGORY_CONFIG: Record<CommandCategory, CategoryConfig> = {
   navigation: {
     order: 1,
     labelKey: 'command_palette:categories.navigation',
-    color: 'text-blue-500',
+    color: 'text-blue-500 dark:text-blue-400',
   },
   chat: {
     order: 2,
     labelKey: 'command_palette:categories.chat',
-    color: 'text-green-500',
+    color: 'text-green-500 dark:text-green-400',
   },
   global: {
     order: 3,
     labelKey: 'command_palette:categories.global',
-    color: 'text-gray-500',
+    color: 'text-muted-foreground',
   },
   notes: {
     order: 4,
     labelKey: 'command_palette:categories.notes',
-    color: 'text-yellow-500',
+    color: 'text-yellow-500 dark:text-yellow-400',
   },
   analysis: {
     order: 5,
     labelKey: 'command_palette:categories.analysis',
-    color: 'text-purple-500',
+    color: 'text-purple-500 dark:text-purple-400',
   },
   anki: {
     order: 6,
     labelKey: 'command_palette:categories.anki',
-    color: 'text-orange-500',
+    color: 'text-orange-500 dark:text-orange-400',
   },
   learning: {
     order: 7,
     labelKey: 'command_palette:categories.learning',
-    color: 'text-pink-500',
+    color: 'text-pink-500 dark:text-pink-400',
   },
   settings: {
     order: 8,
     labelKey: 'command_palette:categories.settings',
-    color: 'text-slate-500',
+    color: 'text-muted-foreground',
   },
   dev: {
     order: 9,
     labelKey: 'command_palette:categories.dev',
-    color: 'text-red-500',
+    color: 'text-red-500 dark:text-red-400',
   },
 };
 

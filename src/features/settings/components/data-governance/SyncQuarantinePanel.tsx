@@ -9,8 +9,10 @@ import {
 } from "@phosphor-icons/react";
 import * as DataGovernanceApi from "@/api/dataGovernance";
 import type { SyncQuarantineRow } from "@/api/dataGovernance";
-import { NotionButton } from "@/components/ui/NotionButton";
-import { NotionAlertDialog } from "@/components/ui/NotionDialog";
+import { DsButton } from "@/components/ui/DsButton";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
+import { DsAlertDialog } from "@/components/ui/DsDialog";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
 import {
   Card,
   CardContent,
@@ -34,12 +36,22 @@ export const SyncQuarantinePanel: React.FC<{
   refreshSignal?: string | number;
 }> = ({ refreshSignal }) => {
   const { t } = useTranslation(["data", "common"]);
+  // P2-12 移动端契约：批量确认不走 AlertDialog，改为按钮两段式行内确认
+  const { isSmallScreen } = useBreakpoint();
   const [rows, setRows] = useState<SyncQuarantineRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
   const [showRetryAllDialog, setShowRetryAllDialog] = useState(false);
   const [showDiscardAllDialog, setShowDiscardAllDialog] = useState(false);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
+  // 移动端行内二次确认：记录待确认的批量操作，4 秒未确认自动复位
+  const [confirmingBatch, setConfirmingBatch] = useState<"retryAll" | "discardAll" | null>(null);
+
+  useEffect(() => {
+    if (!confirmingBatch) return;
+    const timer = window.setTimeout(() => setConfirmingBatch(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmingBatch]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -176,10 +188,22 @@ export const SyncQuarantinePanel: React.FC<{
         <div className="flex gap-2">
           {rows.length > 0 && (
             <>
-              <NotionButton
-                variant="ghost"
+              <DsButton
+                variant={isSmallScreen && confirmingBatch === "retryAll" ? "primary" : "ghost"}
                 size="sm"
-                onClick={() => setShowRetryAllDialog(true)}
+                onClick={() => {
+                  if (!isSmallScreen) {
+                    setShowRetryAllDialog(true);
+                    return;
+                  }
+                  // 移动端两段式行内确认（P2-12）
+                  if (confirmingBatch === "retryAll") {
+                    setConfirmingBatch(null);
+                    void handleRetryAll();
+                  } else {
+                    setConfirmingBatch("retryAll");
+                  }
+                }}
                 disabled={isBatchRunning || loading}
                 className="h-8 text-xs"
               >
@@ -188,21 +212,38 @@ export const SyncQuarantinePanel: React.FC<{
                 ) : (
                   <ArrowClockwise size={14} className="mr-1" />
                 )}
-                {t("data:governance.quarantine_retry_all", "全部重试")}
-              </NotionButton>
-              <NotionButton
-                variant="ghost"
+                {isSmallScreen && confirmingBatch === "retryAll"
+                  ? t("common:actions.retry")
+                  : t("data:governance.quarantine_retry_all")}
+              </DsButton>
+              <DsButton
+                variant={isSmallScreen && confirmingBatch === "discardAll" ? "danger" : "ghost"}
                 size="sm"
-                onClick={() => setShowDiscardAllDialog(true)}
+                onClick={() => {
+                  if (!isSmallScreen) {
+                    setShowDiscardAllDialog(true);
+                    return;
+                  }
+                  if (confirmingBatch === "discardAll") {
+                    setConfirmingBatch(null);
+                    void handleDiscardAll();
+                  } else {
+                    setConfirmingBatch("discardAll");
+                  }
+                }}
                 disabled={isBatchRunning || loading}
-                className="h-8 text-xs text-destructive hover:text-destructive"
+                className={isSmallScreen && confirmingBatch === "discardAll"
+                  ? "h-8 text-xs"
+                  : "h-8 text-xs text-destructive hover:text-destructive"}
               >
                 <Trash size={14} className="mr-1" />
-                {t("data:governance.quarantine_discard_all", "全部清除")}
-              </NotionButton>
+                {isSmallScreen && confirmingBatch === "discardAll"
+                  ? t("data:governance.quarantine_discard_all_confirm")
+                  : t("data:governance.quarantine_discard_all")}
+              </DsButton>
             </>
           )}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={refresh}
@@ -214,8 +255,8 @@ export const SyncQuarantinePanel: React.FC<{
             ) : (
               <ArrowClockwise size={14} className="mr-1.5" />
             )}
-            {t("actions.refresh")}
-          </NotionButton>
+            {t("common:actions.refresh")}
+          </DsButton>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -250,7 +291,7 @@ export const SyncQuarantinePanel: React.FC<{
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleRetry(row)}
@@ -263,8 +304,8 @@ export const SyncQuarantinePanel: React.FC<{
                       <ArrowClockwise size={13} className="mr-1" />
                     )}
                     {t("common:actions.retry")}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleDiscard(row)}
@@ -273,7 +314,7 @@ export const SyncQuarantinePanel: React.FC<{
                   >
                     <Trash size={13} className="mr-1" />
                     {t("data:governance.quarantine_discard")}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
               <div className="rounded-md bg-muted/40 p-2 text-xs text-destructive/90 break-words">
@@ -284,9 +325,9 @@ export const SyncQuarantinePanel: React.FC<{
                   <summary className="cursor-pointer text-muted-foreground">
                     {t("data:governance.quarantine_payload_label")}
                   </summary>
-                  <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted/40 p-2 text-[11px] leading-5">
-                    {formatPayload(row.payload_json)}
-                  </pre>
+                  <CustomScrollArea orientation="both" className="mt-2 h-48 rounded-md bg-muted/40" viewportClassName="p-2">
+                    <pre className="text-xs leading-5">{formatPayload(row.payload_json)}</pre>
+                  </CustomScrollArea>
                 </details>
               )}
             </div>
@@ -294,13 +335,13 @@ export const SyncQuarantinePanel: React.FC<{
         })}
       </CardContent>
 
-      {/* 批量重试确认对话框 */}
-      <NotionAlertDialog
-        open={showRetryAllDialog}
+      {/* 批量重试确认对话框（仅桌面；移动端用按钮两段式行内确认） */}
+      <DsAlertDialog
+        open={!isSmallScreen && showRetryAllDialog}
         onOpenChange={(open) => { if (!open) setShowRetryAllDialog(false); }}
-        title={t("data:governance.quarantine_retry_all_confirm_title", "确认全部重试")}
-        description={t("data:governance.quarantine_retry_all_confirm_desc", "将对 {{count}} 条隔离记录执行重试操作。失败的记录会增加重试次数并更新错误信息。", { count: rows.length })}
-        confirmText={t("common:actions.retry_all", "全部重试")}
+        title={t("data:governance.quarantine_retry_all_confirm_title")}
+        description={t("data:governance.quarantine_retry_all_confirm_desc", { count: rows.length })}
+        confirmText={t("common:actions.retry")}
         cancelText={t("common:actions.cancel")}
         confirmVariant="primary"
         onConfirm={handleRetryAll}
@@ -308,13 +349,13 @@ export const SyncQuarantinePanel: React.FC<{
         disabled={isBatchRunning}
       />
 
-      {/* 批量清除确认对话框 */}
-      <NotionAlertDialog
-        open={showDiscardAllDialog}
+      {/* 批量清除确认对话框（仅桌面；移动端用按钮两段式行内确认） */}
+      <DsAlertDialog
+        open={!isSmallScreen && showDiscardAllDialog}
         onOpenChange={(open) => { if (!open) setShowDiscardAllDialog(false); }}
-        title={t("data:governance.quarantine_discard_all_confirm_title", "确认全部清除")}
-        description={t("data:governance.quarantine_discard_all_confirm_desc", "将永久删除 {{count}} 条隔离记录。此操作不可逆。", { count: rows.length })}
-        confirmText={t("data:governance.quarantine_discard_all_confirm", "确认清除")}
+        title={t("data:governance.quarantine_discard_all_confirm_title")}
+        description={t("data:governance.quarantine_discard_all_confirm_desc", { count: rows.length })}
+        confirmText={t("data:governance.quarantine_discard_all_confirm")}
         cancelText={t("common:actions.cancel")}
         confirmVariant="danger"
         onConfirm={handleDiscardAll}

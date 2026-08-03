@@ -19,7 +19,7 @@
   font-size: 14px;
   line-height: 1.5;
   color: hsl(var(--foreground));
-  font-family: var(--notes-font-sans, system-ui, -apple-system, sans-serif);
+  font-family: var(--font-family-cn, var(--font-family));
   padding: 4px 8px 8px;
   box-sizing: border-box;
 }
@@ -28,7 +28,7 @@
 .rct-tree-item-li {
   position: relative;
   user-select: none;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
   will-change: auto;
   contain: layout style;
   transform: translateZ(0);
@@ -46,22 +46,23 @@
   cursor: pointer;
   text-align: left;
   outline: none;
-  transition: all 0.1s ease;
+  /* 显式属性过渡，禁止 transition: all */
+  transition: background-color var(--notes-hover-transition, 120ms ease), color var(--notes-hover-transition, 120ms ease), box-shadow var(--notes-hover-transition, 120ms ease);
   position: relative;
-  border-radius: 6px;
+  border-radius: var(--notes-radius-row, 6px);
   box-sizing: border-box;
   gap: 4px;
   color: hsl(var(--muted-foreground));
 }
 
 .rct-tree-item-button:hover {
-  background-color: hsl(var(--foreground) / 0.08);
+  background-color: var(--interactive-hover, hsl(var(--foreground) / 0.08));
   color: hsl(var(--foreground));
 }
 
-/* 暗色模式悬浮 */
+/* 暗色模式悬浮 — --interactive-hover 基于 foreground 混合，自动适配暗色 */
 .dark .rct-tree-item-button:hover {
-  background-color: hsl(var(--foreground) / 0.1);
+  background-color: var(--interactive-hover, hsl(var(--foreground) / 0.1));
 }
 
 /* 选中状态 */
@@ -75,9 +76,15 @@
   background-color: var(--tree-selected-bg-hover);
 }
 
-/* 聚焦状态 */
+/* 聚焦状态：键盘导航可见焦点环（WCAG 2.4.7） */
 .rct-tree-item-li-focused .rct-tree-item-button {
-  /* Optional: add focus ring if needed for accessibility */
+  box-shadow: inset 0 0 0 2px var(--tree-focus-ring);
+}
+
+/* 搜索匹配节点高亮 */
+.rct-tree-item-li-searchMatch .rct-tree-item-button {
+  background-color: hsl(var(--primary) / 0.08);
+  box-shadow: inset 2px 0 0 var(--tree-drop-indicator);
 }
 
 /* 拖拽悬停状态 */
@@ -128,9 +135,9 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  transition: transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1), color 0.15s ease, background-color 0.15s ease;
+  transition: transform var(--page-slide-dur, 200ms) var(--ease-shell), color var(--dropdown-close-dur, 150ms) ease, background-color var(--dropdown-close-dur, 150ms) ease;
   color: hsl(var(--muted-foreground) / 0.7);
-  border-radius: 4px;
+  border-radius: var(--notes-radius-control, 5px);
 }
 
 .rct-tree-item-arrow[aria-expanded="true"] {
@@ -138,7 +145,7 @@
 }
 
 .rct-tree-item-arrow:hover {
-  background-color: var(--tree-hover-bg);
+  background-color: var(--interactive-hover, var(--tree-hover-bg));
   color: hsl(var(--foreground));
 }
 
@@ -172,7 +179,7 @@
   width: 100%;
   padding: 2px 4px;
   border: 1px solid hsl(var(--ring));
-  border-radius: 4px;
+  border-radius: var(--notes-radius-control, 5px);
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-size: 13px;
@@ -190,7 +197,7 @@
   pointer-events: none;
   z-index: 10;
   border-radius: 1px;
-  transition: top 0.1s cubic-bezier(0.2, 0, 0, 1);
+  transition: top var(--notes-hover-transition, 120ms ease);
   box-shadow: 0 0 4px var(--tree-drop-indicator);
 }
 
@@ -207,14 +214,15 @@
   box-shadow: 0 0 2px var(--tree-drop-indicator);
 }
 
-/* 拖拽覆盖层 - Notion 风格 */
+/* 拖拽覆盖层 - 简洁风格 */
 .dnd-drag-overlay {
   padding: 0 12px;
-  background: hsl(var(--background));
+  background: hsl(var(--background) / 0.88);
   border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  box-shadow: 0 4px 16px -2px hsl(var(--foreground) / 0.12),
-              0 2px 6px -1px hsl(var(--foreground) / 0.08);
+  border-radius: var(--notes-radius-popup, 12px);
+  /* 阴影必须黑基（--shadow-base），禁止 --foreground：暗色下会变白色光晕 */
+  box-shadow: 0 4px 16px -2px hsl(var(--shadow-base) / 0.12),
+              0 2px 6px -1px hsl(var(--shadow-base) / 0.08);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -224,7 +232,9 @@
   max-width: 260px;
   opacity: 0.96;
   transform: scale(1.01);
-  backdrop-filter: blur(8px);
+  /* 毛玻璃对齐 composer/menu 契约（blur 18px + saturate） */
+  backdrop-filter: var(--composer-panel-backdrop-filter, blur(18px) saturate(140%));
+  -webkit-backdrop-filter: var(--composer-panel-backdrop-filter, blur(18px) saturate(140%));
 }
 
 .dnd-drag-overlay-icon {
@@ -303,13 +313,13 @@
 
 /* 引用节点悬停样式 */
 .rct-tree-item-li-reference .rct-tree-item-button:hover {
-  background-color: hsl(var(--foreground) / 0.06);
+  background-color: var(--interactive-hover, hsl(var(--foreground) / 0.06));
   color: hsl(var(--foreground) / 0.9);
 }
 
-/* 暗色模式引用节点悬停 */
+/* 暗色模式引用节点悬停 — token 自动适配 */
 .dark .rct-tree-item-li-reference .rct-tree-item-button:hover {
-  background-color: hsl(var(--foreground) / 0.08);
+  background-color: var(--interactive-hover, hsl(var(--foreground) / 0.08));
 }
 
 /* 引用节点选中状态 */
@@ -373,4 +383,26 @@
 
 .rct-tree-item-li[data-source-db="chat_v2"] .rct-tree-item-icon {
   /* 附件引用可以添加额外样式 */
+}
+
+/* ============================================================================
+   触屏适配（P2-13 / 触控目标）
+   ============================================================================ */
+
+@media (pointer: coarse) {
+  /* 树行 ≥44px 触控目标（桌面 28px 行高不动） */
+  .rct-tree-item-button {
+    min-height: 44px;
+  }
+
+  /* 长按弹出的上下文菜单：行高放大到 44px，间距同步放宽 */
+  .notes-tree-context-menu .app-menu-item {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .notes-tree-context-menu {
+    min-width: 200px;
+  }
 }

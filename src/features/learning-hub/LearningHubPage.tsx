@@ -15,7 +15,7 @@
  * - 打开资源时自动切换到右侧应用视图
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { registerOpenResourceHandler, type OpenResourceHandler } from '@/dstu/openResource';
@@ -27,12 +27,22 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
-import { DotsSixVertical, SquaresFour, Gear } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DotsSixVertical, DotsThree, SquaresFour, Gear, ArrowClockwise, ChatCircle } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
+import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useUIStore } from '@/stores/uiStore';
 import { useMobileHeader, MobileSlidingLayout, DEFAULT_GESTURE_IGNORE_SELECTOR, type ScreenPosition } from '@/components/layout';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { MobileBreadcrumb } from './components/MobileBreadcrumb';
+import { LEARNING_HUB_MOBILE_RESET_EVENT } from '@/dev/DevMobileRecoveryFab';
+import { exportResourceById } from './utils/exportResource';
 import { useVfsContextInject, useLearningHubEvents } from './hooks';
 import type {
   OpenExamEventDetail,
@@ -46,15 +56,20 @@ import type { VfsResourceType } from '@/features/chat/context/types';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { useFinderStore } from './stores/finderStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
 import { TabPanelContainer } from './apps/TabPanelContainer';
-import { setActiveTabForExternal } from './activeTabAccessor';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { getCreatableFolderId } from './viewGuards';
-import { getQuickAccessTypeFromLauncherType, getViewCapabilities } from './learningHubContracts';
+import {
+  getQuickAccessTypeFromLauncherType,
+  getQuickAccessTypeFromPath,
+  getViewCapabilities,
+  type QuickAccessType,
+} from './learningHubContracts';
 
 /**
  * 根据文件名推断资源类型
@@ -151,6 +166,7 @@ export const LearningHubPage: React.FC = () => {
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
   const desktopShellSidebarTarget = useDesktopShellSidebarPortal('learning-hub');
+  const desktopShellHeaderTarget = useDesktopShellHeaderPortal('learning-hub');
 
   // ========== ★ 标签页状态 ==========
   // ★ I10 修复：标签页持久化——重启后恢复上次打开的标签页
@@ -186,10 +202,10 @@ export const LearningHubPage: React.FC = () => {
       const invalidIds: string[] = [];
       for (const tab of restored) {
         const result = await dstu.get(tab.dstuPath);
+        if (cancelled) return;
         if (!result.ok) {
           invalidIds.push(tab.tabId);
         }
-        if (cancelled) return;
       }
       if (invalidIds.length === 0) return;
       setTabs(prev => {
@@ -231,24 +247,99 @@ export const LearningHubPage: React.FC = () => {
     });
   }, []);
 
+  // ★ 2026-07-08（分屏死角修复）：选择新的活跃 tab 时避开右侧分屏 tab。
+  // TabPanelContainer 左侧面板会过滤掉分屏 tab，若活跃 tab 恰好是分屏 tab，
+  // 左侧面板将显示空白。避不开时退出分屏并激活该 tab。
+  const splitViewRef = useRef(splitView);
+  splitViewRef.current = splitView;
+  const pickNextActiveTab = useCallback(
+    (preferred: (OpenTab | undefined)[], remaining: OpenTab[]): string | null => {
+      const splitRightId = splitViewRef.current?.rightTabId ?? null;
+      const ordered = [...preferred, ...[...remaining].reverse()]
+        .filter((tab): tab is OpenTab => !!tab);
+      const nonSplit = ordered.find(tab => tab.tabId !== splitRightId);
+      if (nonSplit) return nonSplit.tabId;
+      const fallback = ordered[0];
+      if (fallback) {
+        setSplitView(null);
+        return fallback.tabId;
+      }
+      return null;
+    },
+    []
+  );
+
   const closeTab = useCallback((tabId: string) => {
     setTabs(prev => {
       const idx = prev.findIndex(t => t.tabId === tabId);
       if (idx === -1) return prev;
       const next = prev.filter(t => t.tabId !== tabId);
-      // 激活相邻 tab
+      // 激活相邻 tab（避开分屏 tab）
       setActiveTabId(currentId => {
         if (currentId !== tabId) return currentId;
-        const newActive = next[idx] ?? next[idx - 1] ?? null;
-        return newActive?.tabId ?? null;
+        return pickNextActiveTab([next[idx], next[idx - 1]], next);
       });
       return next;
     });
-  }, []);
+  }, [pickNextActiveTab]);
 
   const updateTabTitle = useCallback((tabId: string, title: string) => {
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, title } : t));
   }, []);
+
+  // ★ 2026-07-08：固定/取消固定标签页（isPinned 早已参与 LRU 淘汰豁免，此前缺 UI 入口）
+  const togglePinTab = useCallback((tabId: string) => {
+    setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, isPinned: !t.isPinned } : t));
+  }, []);
+
+  // ★ 2026-07-08：批量关闭（固定标签页豁免，与 VS Code 行为一致）
+  const closeOtherTabs = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const next = prev.filter(t => t.tabId === tabId || t.isPinned);
+      if (next.length === prev.length) return prev;
+      setActiveTabId(currentId => {
+        const splitRightId = splitViewRef.current?.rightTabId;
+        if (
+          currentId &&
+          currentId !== splitRightId &&
+          next.some(t => t.tabId === currentId)
+        ) {
+          return currentId;
+        }
+        return pickNextActiveTab([next.find(t => t.tabId === tabId)], next);
+      });
+      setSplitView(prevSplit => {
+        if (prevSplit?.rightTabId && next.some(t => t.tabId === prevSplit.rightTabId)) return prevSplit;
+        return null;
+      });
+      return next;
+    });
+  }, [pickNextActiveTab]);
+
+  const closeTabsToRight = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.tabId === tabId);
+      if (idx === -1) return prev;
+      const next = prev.filter((t, i) => i <= idx || t.isPinned);
+      if (next.length === prev.length) return prev;
+      setActiveTabId(currentId => {
+        const splitRightId = splitViewRef.current?.rightTabId;
+        if (
+          currentId &&
+          currentId !== splitRightId &&
+          next.some(t => t.tabId === currentId)
+        ) {
+          return currentId;
+        }
+        return pickNextActiveTab([next.find(t => t.tabId === tabId)], next);
+      });
+      setSplitView(prevSplit => {
+        if (prevSplit?.rightTabId && next.some(t => t.tabId === prevSplit.rightTabId)) return prevSplit;
+        return null;
+      });
+      return next;
+    });
+  }, [pickNextActiveTab]);
 
   // ★ 标签页切换（同时更新 openedAt 以确保 LRU 正确性）
   const switchTab = useCallback((tabId: string) => {
@@ -263,22 +354,66 @@ export const LearningHubPage: React.FC = () => {
 
   // ★ 分屏操作
   const openSplitView = useCallback((tabId: string) => {
+    // 只有一个 tab 时分屏会让左侧空白（左面板会过滤分屏 tab），直接忽略
+    if (tabsRef.current.length < 2) return;
     // 将指定 tab 放到右侧分屏
     setSplitView({ rightTabId: tabId });
     // 如果右侧 tab 恰好是当前活跃 tab，则切换左侧到其他 tab
+    // （通过 tabsRef 读取最新 tabs，保持回调引用稳定，避免 TabBar 子树随 tabs 变化重建闭包）
     setActiveTabId(currentId => {
       if (currentId === tabId) {
         // 找一个非当前 tab 作为左侧
-        const other = tabs.find(t => t.tabId !== tabId);
+        const other = tabsRef.current.find(t => t.tabId !== tabId);
         return other?.tabId ?? currentId;
       }
       return currentId;
     });
-  }, [tabs]);
+  }, []);
 
   const closeSplitView = useCallback(() => {
     setSplitView(null);
   }, []);
+
+  // ★ 2026-07-08：标签页循环切换快捷键（对齐 VS Code / 浏览器习惯）
+  // Ctrl+Tab / Ctrl+PageDown → 下一个；Ctrl+Shift+Tab / Ctrl+PageUp → 上一个。
+  // 仅在 Learning Hub 视图活跃且有 ≥2 个标签页时拦截按键。
+  const { isActive: isLearningHubViewActive } = useViewVisibility('learning-hub');
+  useEffect(() => {
+    if (!isLearningHubViewActive) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey) return;
+      const isTabKey = e.key === 'Tab';
+      if (!isTabKey && e.key !== 'PageDown' && e.key !== 'PageUp') return;
+      const currentTabs = tabsRef.current;
+      if (currentTabs.length < 2) return;
+      e.preventDefault();
+      const idx = currentTabs.findIndex(t => t.tabId === activeTabIdRef.current);
+      const dir = e.key === 'PageUp' || (isTabKey && e.shiftKey) ? -1 : 1;
+      const next = currentTabs[(idx + dir + currentTabs.length) % currentTabs.length];
+      if (next) switchTab(next.tabId);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isLearningHubViewActive, switchTab]);
+
+  // Cmd/Ctrl+W：关闭当前 activeTab（仅 learning-hub 视图活跃时）
+  useEffect(() => {
+    if (!isLearningHubViewActive) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey)
+        || event.altKey
+        || event.shiftKey
+        || event.key.toLocaleLowerCase() !== 'w'
+      ) return;
+      event.preventDefault();
+      const currentId = activeTabIdRef.current;
+      if (!currentId) return;
+      closeTab(currentId);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isLearningHubViewActive, closeTab]);
 
   // ★ 关闭 tab 时自动清理分屏状态
   const closeTabWithSplit = useCallback((tabId: string) => {
@@ -332,7 +467,7 @@ export const LearningHubPage: React.FC = () => {
       if (wasActiveTabAffected) {
         showGlobalNotification(
           'warning',
-          t('learningHub:errors.resourceDeletedOrMoved', '资源已删除或已移动，已关闭失效标签页')
+          t('learningHub:errors.resourceDeletedOrMoved')
         );
       }
     });
@@ -346,6 +481,9 @@ export const LearningHubPage: React.FC = () => {
   // A-8 归一：手势/动画/返回键统一由 MobileSlidingLayout 承载，本页只管理屏幕位置状态
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [activeAppType, setActiveAppType] = useState<string>('all');
+  const [tabReloadKeys, setTabReloadKeys] = useState<Record<string, number>>({});
+  const [isFinderRefreshing, setIsFinderRefreshing] = useState(false);
+  const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
@@ -355,6 +493,8 @@ export const LearningHubPage: React.FC = () => {
   const finderRefresh = useFinderStore(state => state.refresh);
   const finderQuickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
   const finderEnterFolder = useFinderStore(state => state.enterFolder);
+  const finderSearchQuery = useFinderStore(state => state.searchQuery);
+  const finderSetSearchQuery = useFinderStore(state => state.setSearchQuery);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const finderViewCapabilities = getViewCapabilities(finderCurrentPath.viewKind);
 
@@ -405,49 +545,207 @@ export const LearningHubPage: React.FC = () => {
   // 根目录标题
   const rootTitle = t('learningHub:title');
 
-  // 移动端统一顶栏配置 - 根据屏幕位置、activeTab 和文件夹层级动态变化
+  // 📱 移动端顶栏修复：特殊视图（回收站/最近/收藏/类型筛选等）下 breadcrumbs 为空，
+  // 之前顶栏始终显示根标题「学习资源」，用户无法得知当前所在视图。
+  // 这里按当前快捷入口类型映射视图标题（与左屏 DstuAppLauncher 菜单文案一致）。
+  const finderQuickAccessType = getQuickAccessTypeFromPath(finderCurrentPath);
+  const centerViewTitle = useMemo(() => {
+    const labelMap: Partial<Record<QuickAccessType, string>> = {
+      desktop: t('learningHub:finder.quickAccess.desktop'),
+      recent: t('learningHub:apps.recent'),
+      favorites: t('learningHub:apps.favorites'),
+      trash: t('learningHub:apps.trash'),
+      indexStatus: t('learningHub:finder.quickAccess.indexStatus'),
+      memory: t('learningHub:memory.title'),
+      notes: t('learningHub:resourceType.note'),
+      textbooks: t('learningHub:resourceType.textbook'),
+      exams: t('learningHub:resourceType.exam'),
+      essays: t('learningHub:resourceType.essay'),
+      translations: t('learningHub:resourceType.translation'),
+      mindmaps: t('learningHub:resourceType.mindmap'),
+      images: t('learningHub:resourceType.image'),
+      files: t('learningHub:resourceType.file'),
+    };
+    return (finderQuickAccessType && labelMap[finderQuickAccessType]) || rootTitle;
+  }, [finderQuickAccessType, rootTitle, t]);
+
+  const refreshFinder = useCallback(async () => {
+    setIsFinderRefreshing(true);
+    try {
+      await finderRefresh();
+    } finally {
+      setIsFinderRefreshing(false);
+    }
+  }, [finderRefresh]);
+
+  const reloadActiveTab = useCallback(() => {
+    if (!activeTabId) return;
+    setTabReloadKeys((prev) => ({
+      ...prev,
+      [activeTabId]: (prev[activeTabId] ?? 0) + 1,
+    }));
+  }, [activeTabId]);
+
+  const openActiveTabSettings = useCallback(() => {
+    if (!activeTab || !['translation', 'essay', 'exam'].includes(activeTab.type)) return;
+    const eventName = activeTab.type === 'translation'
+      ? 'translation:openSettings'
+      : activeTab.type === 'essay'
+        ? 'essay:openSettings'
+        : 'exam:openSettings';
+    window.dispatchEvent(new CustomEvent(eventName, {
+      detail: { targetResourceId: activeTab.resourceId },
+    }));
+  }, [activeTab]);
+
+  useEffect(() => {
+    setMobileHeaderMenuOpen(false);
+  }, [screenPosition, activeTabId]);
+
+  useEffect(() => {
+    if (!isSmallScreen || !mobileHeaderMenuOpen) return;
+    return registerBackHandler(() => {
+      setMobileHeaderMenuOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, mobileHeaderMenuOpen]);
+
+  useEffect(() => {
+    const handleMobileReset = () => {
+      setScreenPosition('center');
+      void refreshFinder();
+    };
+    window.addEventListener(LEARNING_HUB_MOBILE_RESET_EVENT, handleMobileReset);
+    return () => window.removeEventListener(LEARNING_HUB_MOBILE_RESET_EVENT, handleMobileReset);
+  }, [refreshFinder]);
+
+  const mobileHeaderRightActions = useMemo(() => {
+    if (screenPosition === 'center') {
+      return (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          onClick={() => void refreshFinder()}
+          disabled={isFinderRefreshing}
+          className="h-11 w-11"
+          aria-label={t('common:refresh')}
+          title={t('common:refresh')}
+        >
+          <ArrowClockwise size={20} className={isFinderRefreshing ? 'animate-spin' : undefined} />
+        </DsButton>
+      );
+    }
+
+    if (screenPosition !== 'right' || !activeTab) {
+      return undefined;
+    }
+
+    const supportsSettings = activeTab.type === 'translation'
+      || activeTab.type === 'essay'
+      || activeTab.type === 'exam';
+
+    const injectableTypes = ['note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap'];
+    const canShowInject = injectableTypes.includes(activeTab.type) && canInject();
+    const injectButton = canShowInject ? (
+      <DsButton
+        variant="ghost"
+        size="icon"
+        onClick={() => handleInjectToChatRef.current()}
+        disabled={isInjecting}
+        className="h-11 w-11"
+        aria-label={t('learningHub:contextMenu.referenceToChat')}
+        title={t('learningHub:contextMenu.referenceToChat')}
+      >
+        <ChatCircle size={20} />
+      </DsButton>
+    ) : null;
+
+    return (
+      <>
+        {injectButton}
+        <AppMenu open={mobileHeaderMenuOpen} onOpenChange={setMobileHeaderMenuOpen}>
+          <AppMenuTrigger asChild>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11"
+              aria-label={t('common:more')}
+              title={t('common:more')}
+            >
+              <DotsThree size={22} weight="bold" />
+            </DsButton>
+          </AppMenuTrigger>
+          <AppMenuContent align="end" width={188}>
+            <AppMenuItem icon={<ArrowClockwise size={16} />} onClick={reloadActiveTab}>
+              {t('common:reload')}
+            </AppMenuItem>
+            {supportsSettings && (
+              <AppMenuItem icon={<Gear size={16} />} onClick={openActiveTabSettings}>
+                {t('learningHub:toolbar.settings')}
+              </AppMenuItem>
+            )}
+          </AppMenuContent>
+        </AppMenu>
+      </>
+    );
+  }, [
+    screenPosition,
+    activeTab,
+    isFinderRefreshing,
+    refreshFinder,
+    reloadActiveTab,
+    openActiveTabSettings,
+    canInject,
+    isInjecting,
+    mobileHeaderMenuOpen,
+    t,
+  ]);
+
+  // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
   useMobileHeader('learning-hub', {
     title: screenPosition === 'left'
-      ? t('learningHub:apps.title')
+      ? rootTitle
       : screenPosition === 'right' && activeTab
         ? (activeTab.title || t('common:untitled'))
         : undefined,
     titleNode: screenPosition === 'center' ? (
       <MobileBreadcrumb
-        rootTitle={rootTitle}
+        rootTitle={centerViewTitle}
         breadcrumbs={finderBreadcrumbs}
         onNavigate={handleBreadcrumbNavigate}
       />
     ) : undefined,
-    showMenu: true,
+    showMenu: screenPosition !== 'right' && !(screenPosition === 'center' && isInSubfolder),
     onMenuClick: screenPosition === 'right'
       ? () => setScreenPosition('center')
       : screenPosition === 'center' && isInSubfolder
         ? () => finderGoUp()
-        : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
+        : screenPosition === 'left'
+          ? () => setScreenPosition('center')
+          : () => setScreenPosition('left'),
     showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
-    rightActions: screenPosition === 'right' && (activeTab?.type === 'translation' || activeTab?.type === 'essay' || activeTab?.type === 'exam') ? (
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        onClick={() => {
-          const eventName = activeTab?.type === 'translation' 
-            ? 'translation:openSettings' 
-            : activeTab?.type === 'essay'
-              ? 'essay:openSettings'
-              : 'exam:openSettings';
-          // ★ 标签页修复：统一使用带 targetResourceId 的事件派发，
-          //   确保只影响当前活跃标签页（而非通过全局 store 影响所有实例）
-          window.dispatchEvent(new CustomEvent(eventName, {
-            detail: { targetResourceId: activeTab?.resourceId },
-          }));
-        }}
-        className="h-9 w-9"
-      >
-        <Gear size={20} />
-      </NotionButton>
-    ) : undefined,
-  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, handleBreadcrumbNavigate]);
+    rightActions: mobileHeaderRightActions,
+  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions]);
+
+  // 📱 Android 返回键接入目录层级后退（契约第 4 条）：
+  // 中间屏且在子文件夹时，返回键先执行 goUp（与顶栏返回箭头同语义），
+  // 而不是直接落到应用级视图历史导致跳出 Learning Hub。
+  // 左屏/右屏收回由 MobileSlidingLayout 的 overlay 级 handler 处理（优先级更高）。
+  const backNavStateRef = useRef({ active: false, canGoUp: false, goUp: finderGoUp });
+  backNavStateRef.current = {
+    active: isLearningHubViewActive && screenPosition === 'center',
+    canGoUp: isInSubfolder,
+    goUp: finderGoUp,
+  };
+  useEffect(() => {
+    if (!isSmallScreen) return;
+    return registerBackHandler(() => {
+      const { active, canGoUp, goUp } = backNavStateRef.current;
+      if (!active || !canGoUp) return false;
+      goUp();
+      return true;
+    }, BACK_PRIORITY.view);
+  }, [isSmallScreen]);
 
   // ========== 侧边栏收缩状态 ==========
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
@@ -579,11 +877,11 @@ export const LearningHubPage: React.FC = () => {
       const result = await openResource(dstuPath, { mode: 'view', targetView: 'learning-hub' });
       if (!result.ok) {
         debugLog.error('[LearningHubPage] Open resource failed:', result.error.toUserMessage());
-        showGlobalNotification('error', t('learningHub:errors.openResourceFailed', '打开资源失败'));
+        showGlobalNotification('error', t('learningHub:errors.openResourceFailed'));
       }
     } catch (err: unknown) {
       debugLog.error('[LearningHubPage] Open resource error:', err);
-      showGlobalNotification('error', t('learningHub:errors.openResourceFailed', '打开资源失败'));
+      showGlobalNotification('error', t('learningHub:errors.openResourceFailed'));
     }
   }, [t]);
 
@@ -620,24 +918,24 @@ export const LearningHubPage: React.FC = () => {
             debugLog.log('[LearningHub] Resolved VFS resource ID:', locator.resourceId, '→', finalDocumentId);
           } else {
             debugLog.warn('[LearningHub] VFS resource has no sourceId:', locator.resourceId);
-            showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+            showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
             return;
           }
         } catch (error: unknown) {
           debugLog.error('[LearningHub] Failed to resolve VFS resource:', error);
-          showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+          showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
           return;
         }
       }
 
       if (!finalDocumentId) {
-        showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+        showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
         return;
       }
 
       const verifyResult = await dstu.get(`/${finalDocumentId}`);
       if (!verifyResult.ok || !verifyResult.value) {
-        showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+        showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
         return;
       }
 
@@ -685,7 +983,7 @@ export const LearningHubPage: React.FC = () => {
   // ========== 快捷创建并打开资源 ==========
   const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => {
     if (!finderViewCapabilities.canCreate) {
-      showGlobalNotification('warning', t('learningHub:errors.createNotAllowed', '当前视图不支持新建资源'));
+      showGlobalNotification('warning', t('learningHub:errors.createNotAllowed'));
       return;
     }
 
@@ -745,26 +1043,40 @@ export const LearningHubPage: React.FC = () => {
         handleSidebarCollapsedChange(!sidebarCollapsed);
       },
       [COMMAND_EVENTS.NOTES_EXPORT_CURRENT]: () => {
-        showGlobalNotification(
-          'info',
-          t('notes:export.not_available_current', '当前版本暂未接入“导出当前笔记”快捷命令，请使用导出面板。')
-        );
+        // ★ 2026-07-08：接通命令面板导出——复用侧栏右键菜单的导出实现
+        const current = tabsRef.current.find(tab => tab.tabId === activeTabIdRef.current);
+        if (!current) {
+          showGlobalNotification(
+            'info',
+            t('notes:export.no_active_resource')
+          );
+          return;
+        }
+        void exportResourceById(current.resourceId, t);
       },
+      // bulk export 未接入：遗留事件降级为「导出当前」，避免只弹空提示
       [COMMAND_EVENTS.NOTES_EXPORT_ALL]: () => {
+        const current = tabsRef.current.find(tab => tab.tabId === activeTabIdRef.current);
+        if (!current) {
+          showGlobalNotification(
+            'info',
+            t(
+              'notes:export.not_available_all'
+            )
+          );
+          return;
+        }
         showGlobalNotification(
           'info',
-          t('notes:export.not_available_all', '当前版本暂未接入“导出全部笔记”快捷命令，请使用导出面板。')
+          t(
+            'notes:export.fallback_current'
+          )
         );
+        void exportResourceById(current.resourceId, t);
       },
     },
     true
   );
-
-  // ========== ★ 同步活跃标签页到全局访问器（供 CommandPalette 等使用） ==========
-  useEffect(() => {
-    setActiveTabForExternal(activeTab);
-    return () => setActiveTabForExternal(null);
-  }, [activeTab]);
 
   // ========== 添加到对话（引用模式） ==========
   const handleInjectToChat = useCallback(async () => {
@@ -799,7 +1111,12 @@ export const LearningHubPage: React.FC = () => {
 
   const canInjectCurrentResource = useCallback(() => {
     if (!activeTab) return false;
-    const supportedTypes: ResourceType[] = ['note', 'textbook', 'exam', 'translation', 'essay'];
+    // ★ 2026-07-08：与 handleInjectToChat 的 typeMapping 及侧栏批量注入保持一致。
+    // 注入管线（getResourceRefsV2 / resourceStoreApi / vfsMimeTypes）本就支持
+    // image/file/mindmap，旧白名单只放行 5 类属遗漏。
+    const supportedTypes: ResourceType[] = [
+      'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
+    ];
     return supportedTypes.includes(activeTab.type);
   }, [activeTab]);
 
@@ -812,10 +1129,17 @@ export const LearningHubPage: React.FC = () => {
   const appPanelRef = useRef<ImperativePanelHandle>(null);
   
   // ★ 当标签页打开/全部关闭时控制面板展开/折叠
+  // ★ 2026-07-08：只在「无 tab ↔ 有 tab」状态切换时执行。
+  // 之前依赖 tabs.length，关闭多个 tab 中的一个也会重新折叠用户手动展开的侧栏。
+  const prevHadTabsRef = useRef<boolean | null>(null);
   useEffect(() => {
+    const hasTabs = tabs.length > 0;
+    if (prevHadTabsRef.current === hasTabs) return;
+    prevHadTabsRef.current = hasTabs;
+
     const appPanel = appPanelRef.current;
 
-    if (tabs.length > 0) {
+    if (hasTabs) {
       if (appPanel) {
         appPanel.expand();
         requestAnimationFrame(() => {
@@ -840,22 +1164,21 @@ export const LearningHubPage: React.FC = () => {
   if (isSmallScreen) {
     return (
       <div
-        className="study-shell-page absolute inset-0 flex flex-col overflow-hidden"
-        style={{
-          bottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-        }}
+        className="study-shell-page relative flex h-full min-h-0 w-full flex-col overflow-hidden"
       >
         <MobileSlidingLayout
-          className="flex-1"
-          sidebarWidth={0.575}
+          className="min-h-0 flex-1"
+          sidebarWidth="auto"
           screenPosition={screenPosition}
           onScreenPositionChange={setScreenPosition}
           rightPanelEnabled={!!activeTab}
+          showContentOverlay
+          showSidebarAppNavigation
           gestureIgnoreSelector={mobileGestureIgnoreSelector}
           sidebar={
-            <div className="study-shell-pane h-full">
-              <DstuAppLauncher
-                activeType={activeAppType}
+            <DstuAppLauncher
+              embedded
+              activeType={activeAppType}
                 onSelectApp={(type) => {
                   setActiveAppType(type);
                   // ★ 2026-01-19: 调用 finderStore 进行实际导航
@@ -864,30 +1187,43 @@ export const LearningHubPage: React.FC = () => {
                   setScreenPosition('center');
                 }}
                 onCreateAndOpen={handleCreateAndOpen}
+                // 📱 修复：之前未接线，抽屉里的「新建文件夹」点了没有任何反应。
+                // 复用 LearningHubSidebar 已监听的命令事件（learningHub:create-folder）。
+                onNewFolder={() => {
+                  window.dispatchEvent(new CustomEvent('learningHub:create-folder'));
+                }}
                 onClose={() => setScreenPosition('center')}
+                onRefresh={refreshFinder}
+                isRefreshing={isFinderRefreshing}
                 createDisabled={!finderViewCapabilities.canCreate}
+                // 📱 修复：之前未接线 searchQuery/onSearchChange，抽屉搜索框输入无效
+                searchQuery={finderSearchQuery}
+                onSearchChange={finderSetSearchQuery}
                 searchDisabled={!finderViewCapabilities.canSearch}
               />
-            </div>
           }
           rightPanel={
-            <div className="study-shell-panel h-full overflow-hidden">
+            <div className="study-shell-panel h-full min-h-0 overflow-hidden">
               {tabs.length > 0 ? (
-                <div className="h-full flex flex-col safe-area-bottom">
+                <div className="flex h-full min-h-0 flex-col overflow-hidden safe-area-bottom">
                   {/* ★ 移动端标签页栏：多 tab 可见、可切换、可关闭（修复"标签黑洞"） */}
                   <TabBar
                     tabs={tabs}
                     setTabs={setTabs}
                     activeTabId={activeTabId}
                     onSwitch={switchTab}
-                    onClose={closeTab}
+                    onClose={closeTabWithSplit}
+                    onTogglePin={togglePinTab}
+                    onCloseOthers={closeOtherTabs}
+                    onCloseRight={closeTabsToRight}
                   />
-                  <div className="flex-1 overflow-hidden">
+                  <div className="flex-1 min-h-0 overflow-hidden">
                     <TabPanelContainer
                       tabs={tabs}
                       activeTabId={activeTabId}
-                      onClose={closeTab}
+                      onClose={closeTabWithSplit}
                       onTitleChange={updateTabTitle}
+                      tabReloadKeys={tabReloadKeys}
                       className="h-full"
                     />
                   </div>
@@ -903,15 +1239,27 @@ export const LearningHubPage: React.FC = () => {
             </div>
           }
         >
-          {/* 中间：文件视图 */}
-          <div className="study-shell-pane h-full overflow-hidden">
+          {/* 中间：文件视图 — 移动端与顶栏无缝衔接，不用 desktop pane 边框/阴影 */}
+          <div
+            className={cn(
+              'h-full min-h-0 overflow-hidden',
+              isSmallScreen ? 'bg-background' : 'study-shell-pane h-full',
+            )}
+          >
             <LearningHubSidebar
               mode="fullscreen"
+              hostId="page-mobile"
+              sessionActive={isLearningHubViewActive && screenPosition === 'center'}
+              // 📱 命令事件监听不能只在中屏开启：左抽屉「新建文件夹」是同步派发
+              // learningHub:create-folder，此刻 screenPosition 仍为 'left'，
+              // 若门控到 center 监听器尚未绑定，事件会被静默丢弃（点了没反应）。
+              commandsEnabled={isLearningHubViewActive && screenPosition !== 'right'}
               onOpenPreview={handleOpenApp}
               onOpenApp={handleOpenApp}
               className="h-full overflow-hidden"
               isCollapsed={false}
               activeFileId={activeTab?.resourceId}
+              hideToolbarAndNav={screenPosition !== 'center'}
             />
           </div>
         </MobileSlidingLayout>
@@ -921,10 +1269,10 @@ export const LearningHubPage: React.FC = () => {
 
   // ========== 桌面端：分栏布局 ==========
   return (
-    <div className="study-shell-page w-full h-full">
+    <div className="study-shell-page h-full min-h-0 w-full overflow-hidden">
       <PanelGroup
         direction="horizontal"
-        className="h-full"
+        className="h-full min-h-0"
         autoSaveId="learning-hub-layout"
       >
         {/* 左侧：资源访达（文件管理） */}
@@ -934,11 +1282,14 @@ export const LearningHubPage: React.FC = () => {
           minSize={15}
           id="learning-hub-sidebar"
           order={1}
-          className="h-full"
+          className="h-full min-h-0 overflow-hidden"
         >
-          <div className={cn("study-shell-pane h-full", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
+          <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
+              hostId="page"
+              sessionActive={isLearningHubViewActive}
+              commandsEnabled={isLearningHubViewActive}
               onOpenPreview={handleOpenApp}
               onOpenApp={handleOpenApp}
               className="w-full h-full"
@@ -948,6 +1299,8 @@ export const LearningHubPage: React.FC = () => {
               hasOpenApp={hasOpenApp}
               onCloseApp={handleCloseApp}
               quickAccessPortalTarget={desktopShellSidebarTarget}
+              toolbarPortalTarget={desktopShellHeaderTarget}
+              toolbarPortalMode="shell"
             />
           </div>
         </Panel>
@@ -968,10 +1321,10 @@ export const LearningHubPage: React.FC = () => {
           collapsedSize={0}
           id="learning-hub-app"
           order={2}
-          className="h-full"
+          className="h-full min-h-0 overflow-hidden"
         >
           {tabs.length > 0 && (
-            <div className="study-shell-panel h-full flex flex-col min-w-0">
+            <div className="study-shell-panel flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
               {/* ★ 标签页栏 */}
               <TabBar
                 tabs={tabs}
@@ -982,8 +1335,11 @@ export const LearningHubPage: React.FC = () => {
                 splitView={splitView}
                 onSplitView={openSplitView}
                 onCloseSplitView={closeSplitView}
+                onTogglePin={togglePinTab}
+                onCloseOthers={closeOtherTabs}
+                onCloseRight={closeTabsToRight}
               />
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <TabPanelContainer
                   tabs={tabs}
                   activeTabId={activeTabId}

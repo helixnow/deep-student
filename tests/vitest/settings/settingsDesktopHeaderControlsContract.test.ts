@@ -13,6 +13,11 @@ describe('settings desktop header controls contract', () => {
     expect(appSource).not.toContain('{!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
   });
 
+  it('does not render the desktop sidebar toggle icon while the settings view is active', () => {
+    expect(appSource).toContain("const shouldShowDesktopSidebarToggle = currentView !== 'settings';");
+    expect(appSource).toContain('{shouldShowDesktopSidebarToggle ? (\n        <DesktopSidebarAccessory');
+  });
+
   it('keeps only the right desktop workspace titlebar seamless without changing the left navigation titlebar', () => {
     expect(appCssSource).toMatch(/\.desktop-shell-header-cell--workspace\s*\{[\s\S]*border:\s*0;[\s\S]*box-shadow:\s*none;/);
     expect(appCssSource).toMatch(/\.desktop-shell-header-cell--nav\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);[\s\S]*border-right:\s*0;/);

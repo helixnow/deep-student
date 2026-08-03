@@ -272,10 +272,7 @@ impl DocumentProcessingService {
         let base_limit = 10_000;
 
         // 如果用户设置了较小的max_tokens，相应调整分段大小
-        if let Some(max_tokens) = options
-            .max_output_tokens_override
-            .or(options.max_tokens.map(|t| t as u32))
-        {
+        if let Some(max_tokens) = options.max_output_tokens_override.or(options.max_tokens) {
             if (max_tokens as usize) < base_limit * 2 {
                 // 如果输出限制较小，输入也应该相应减少
                 return std::cmp::min(base_limit, (max_tokens / 2) as usize);

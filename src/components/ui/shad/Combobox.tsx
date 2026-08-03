@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, Check, MagnifyingGlass } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ProviderIcon, isGenericProviderIconPath } from '../ProviderIcon';
 import { Input } from './Input';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '../NotionDialog';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogBody } from '../DsDialog';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { cn } from '../../../lib/utils';
 
@@ -80,7 +80,7 @@ export function Combobox({
 
   return (
     <div className={cn('w-full', className)}>
-      <NotionButton
+      <DsButton
         type="button"
         variant="ghost"
         className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)]', buttonClassName)}
@@ -92,12 +92,12 @@ export function Combobox({
           <span className="truncate">{buttonLabel}</span>
         </span>
         <CaretDown size={16} className="opacity-70" />
-      </NotionButton>
+      </DsButton>
 
-      <NotionDialog open={open} onOpenChange={setOpen} maxWidth="max-w-lg" className="p-0">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="text-base">{resolvedTitle}</NotionDialogTitle>
-        </NotionDialogHeader>
+      <DsDialog open={open} onOpenChange={setOpen} maxWidth="max-w-lg" className="p-0">
+        <DsDialogHeader>
+          <DsDialogTitle className="text-base">{resolvedTitle}</DsDialogTitle>
+        </DsDialogHeader>
         <div className="px-5 pb-2">
             <div className="mt-2 relative">
               <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">
@@ -105,6 +105,7 @@ export function Combobox({
               </span>
               <Input
                 autoFocus
+                type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={resolvedSearchPlaceholder}
@@ -113,7 +114,7 @@ export function Combobox({
             </div>
         </div>
 
-        <NotionDialogBody>
+        <DsDialogBody>
           <CustomScrollArea className="h-[min(320px,50vh)]" viewportClassName="px-2 pb-2">
             {filtered.length === 0 ? (
               <div className="px-2 py-6 text-sm text-muted-foreground text-center">{resolvedEmptyText}</div>
@@ -145,8 +146,8 @@ export function Combobox({
               </ul>
             )}
           </CustomScrollArea>
-        </NotionDialogBody>
-      </NotionDialog>
+        </DsDialogBody>
+      </DsDialog>
     </div>
   );
 }

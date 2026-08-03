@@ -4,7 +4,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { showGlobalNotification } from '../components/UnifiedNotification';
 import {
   ATTACHMENT_IMAGE_EXTENSIONS,
-  ATTACHMENT_DOCUMENT_EXTENSIONS,
+  ATTACHMENT_ALLOWED_EXTENSIONS,
 } from '@/features/chat/core/constants';
 import i18n from '@/i18n';
 
@@ -24,6 +24,7 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   json: 'application/json', xml: 'application/xml',
   html: 'text/html', htm: 'text/html',
   epub: 'application/epub+zip', rtf: 'application/rtf',
+  zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed',
 };
 
 // ============================================================================
@@ -214,7 +215,7 @@ export const useTauriDragAndDrop = ({
           showGlobalNotification('warning', i18n.t('drag_drop:errors.file_count_exceeded', { max: maxFiles, defaultValue: 'File count exceeds limit. Only processing the first {{max}} files.' }));
         }
         
-        const supportedTypesText = `图片: ${ATTACHMENT_IMAGE_EXTENSIONS.join('/')}, 文档: ${ATTACHMENT_DOCUMENT_EXTENSIONS.join('/')}`;
+        const supportedTypesText = ATTACHMENT_ALLOWED_EXTENSIONS.join('/');
         emitDebugEvent(zoneId, 'validation_start', 'debug', `开始验证 ${pathsToProcess.length} 个文件`, {
           supportedTypes: supportedTypesText,
         });
@@ -222,14 +223,14 @@ export const useTauriDragAndDrop = ({
         // 🔧 使用 Tauri IPC 读取文件，避免 asset protocol 在 Windows 上对含中文/空格路径的 fetch 失败
         const { invoke } = await import('@tauri-apps/api/core');
         const imageRegex = new RegExp(`\\.(${ATTACHMENT_IMAGE_EXTENSIONS.join('|')})$`, 'i');
-        const documentRegex = new RegExp(`\\.(${ATTACHMENT_DOCUMENT_EXTENSIONS.join('|')})$`, 'i');
+        const allowedRegex = new RegExp(`\\.(${ATTACHMENT_ALLOWED_EXTENSIONS.join('|')})$`, 'i');
 
         for (const path of pathsToProcess) {
           const fileName = path.split(/[/\\]/).pop() || 'file';
           const isImage = imageRegex.test(path);
-          const isDocument = documentRegex.test(path);
+          const isAllowed = allowedRegex.test(path);
           
-          if (!(isImage || isDocument)) {
+          if (!isAllowed) {
             rejectedFiles.push(`${fileName}: 不支持的文件类型`);
             emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件类型不支持: ${fileName}`, {
               fileName,
@@ -569,10 +570,9 @@ export const useTauriDragAndDrop = ({
           fileNames: allFiles.map(f => f.name),
         });
         
-        const imageRegex = new RegExp(`\\.(${ATTACHMENT_IMAGE_EXTENSIONS.join('|')})$`, 'i');
-        const documentRegex = new RegExp(`\\.(${ATTACHMENT_DOCUMENT_EXTENSIONS.join('|')})$`, 'i');
+        const allowedRegex = new RegExp(`\\.(${ATTACHMENT_ALLOWED_EXTENSIONS.join('|')})$`, 'i');
         const files = allFiles.filter(
-          (f) => f.type.startsWith('image/') || imageRegex.test(f.name) || documentRegex.test(f.name)
+          (f) => ATTACHMENT_ALLOWED_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(`.${ext}`)) || allowedRegex.test(f.name)
         );
         
         const rejectedCount = allFiles.length - files.length;

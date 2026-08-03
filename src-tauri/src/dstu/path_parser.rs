@@ -77,8 +77,8 @@ pub fn parse_real_path(path: &str) -> DstuResult<NewParsedPath> {
     }
 
     // 检查虚拟路径（以 /@ 开头）
-    if normalized.starts_with("/@") {
-        let virtual_type = &normalized[2..]; // 移除 /@
+    if let Some(virtual_type) = normalized.strip_prefix("/@") {
+        // 移除 /@
         if is_virtual_path_type(virtual_type) {
             return Ok(NewParsedPath::virtual_path(virtual_type));
         }

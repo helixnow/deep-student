@@ -54,11 +54,16 @@ try {
 
 import { initializeSkillSystem, loadSkillsFromFileSystem } from './skills';
 import { skillRegistry } from './skills/registry';
+import { setupSkillLifecycleBridge } from './skills/skillLifecycleBridge';
 
 // 注册 skill_instruction 上下文类型
 initializeSkillSystem().catch((error) => {
   console.error('[Chat V2] Skill system initialization failed:', error);
 });
+
+// 技能生命周期前端桥：后端 skill_set_enabled / skill_remove / skill_trust_request
+// 经此桥读取 registry、写 localStorage 启停覆盖、走信任正门（web-only 环境自动降级）
+setupSkillLifecycleBridge();
 
 // 延迟加载 skills 文件（等待 Tauri 初始化完成后再执行）
 const loadSkillsWhenReady = async () => {

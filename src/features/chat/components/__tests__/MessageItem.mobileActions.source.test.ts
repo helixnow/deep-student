@@ -40,6 +40,6 @@ describe('MessageItem mobile actions source', () => {
   it('keeps the compact mobile affordances visually tighter', () => {
     expect(messageActionsSource).toContain('!h-9 !w-9 rounded-full');
     expect(messageActionsSource).toContain('width={compactMobile ? 168 : 188}');
-    expect(messageItemSource).toContain('text-[10px] leading-none text-muted-foreground/45');
+    expect(messageItemSource).toContain('text-2xs leading-none text-muted-foreground/45');
   });
 });

@@ -86,6 +86,8 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
         height: height !== undefined ? height : iframeHeight,
         border: 'none',
         overflow: 'auto',
+        background: 'hsl(var(--background))',
+        colorScheme: 'light dark',
         ...style,
       }}
       title={title}

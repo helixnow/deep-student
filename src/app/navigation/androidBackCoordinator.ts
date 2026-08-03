@@ -5,8 +5,16 @@
  *   MainActivity.OnBackPressedCallback
  *     → webView.evaluateJavascript('window.__DEEP_STUDENT_HANDLE_BACK__()')
  *     → handleAndroidBack()（本模块）
- *     → 按优先级分发：显式 handler 栈 → Radix 浮层 Escape 兜底 → 应用导航后退
- *     → 返回 false 时 native 执行 moveTaskToBack（应用退到后台，不杀进程）
+ *     → 按优先级分发：显式 overlay handler 栈 → Radix 浮层 Escape 兜底
+ *       → 显式 view/navigation handler → 返回 false 时 native 执行
+ *       moveTaskToBack（应用退到后台，不杀进程）
+ *
+ * Radix 兜底的插入位置（2026-07 移动端审计 残留#2）：
+ * 未显式注册 handler 的 Radix 浮层（shad/Sheet、shad/Select 下拉等）语义上属
+ * overlay 层，兜底探测必须先于 view（页内导航）与 navigation（应用级历史）
+ * handler 执行，否则「浮层还开着，返回键却先切走了视图」。显式注册的 overlay
+ * handler 仍然最先执行（栈语义不变）；探测只在真的存在 data-state="open" 的
+ * Radix 浮层时消费事件，无浮层时行为与旧实现完全一致。
  *
  * 接入方式：
  * - overlay/抽屉等组件在打开时调用 registerBackHandler(close, priority) 注册，
@@ -84,9 +92,26 @@ function dismissTopOverlayViaEscape(): boolean {
  * 系统返回键统一入口。返回 true 表示前端已消费。
  */
 export function handleAndroidBack(): boolean {
-  // 1. 显式 handler：高优先级在前，同优先级后注册在前
+  // 显式 handler：高优先级在前，同优先级后注册在前。
+  // Radix 浮层 Escape 兜底夹在 overlay 档与更低优先级档之间执行（见文件头注释）：
+  // 显式 overlay handler（含 DsDialog/AppMenu 等自绘弹层）保持最先，
+  // 未显式接入的 Radix 浮层其次，view / navigation handler 只有在没有任何
+  // 打开的浮层时才会拿到事件，保证「先关浮层再退页面」。
   const sorted = [...handlers].sort((a, b) => (b.priority - a.priority) || (b.seq - a.seq));
-  for (const { handler } of sorted) {
+  let radixProbeDone = false;
+  const probeRadixOverlay = (): boolean => {
+    radixProbeDone = true;
+    if (dismissTopOverlayViaEscape()) {
+      debugLog.log('[AndroidBack] dismissed Radix overlay via Escape');
+      return true;
+    }
+    return false;
+  };
+
+  for (const { handler, priority } of sorted) {
+    if (!radixProbeDone && priority < BACK_PRIORITY.overlay && probeRadixOverlay()) {
+      return true;
+    }
     try {
       if (handler()) {
         debugLog.log('[AndroidBack] consumed by registered handler');
@@ -97,9 +122,8 @@ export function handleAndroidBack(): boolean {
     }
   }
 
-  // 2. Radix 浮层兜底：未显式接入的 Dialog/Menu 等
-  if (dismissTopOverlayViaEscape()) {
-    debugLog.log('[AndroidBack] dismissed Radix overlay via Escape');
+  // 全部 handler 都是 overlay 档（或没有 handler）时，兜底探测在循环后补跑
+  if (!radixProbeDone && probeRadixOverlay()) {
     return true;
   }
 

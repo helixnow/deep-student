@@ -12,6 +12,8 @@ import { notesCommands } from '../modules/notes.commands';
 import { devCommands } from '../modules/dev.commands';
 import { getChatCommands } from '../modules/chat.commands';
 import { learningCommands } from '../modules/learning.commands';
+import { automationCommands } from '../modules/automation.commands';
+import { ankiCommands } from '../modules/anki.commands';
 
 /**
  * 注册所有内置命令
@@ -33,6 +35,8 @@ export function registerBuiltinCommands(): () => void {
     { name: 'settings', commands: settingsCommands },
     { name: 'notes', commands: notesCommands },
     { name: 'learning', commands: learningCommands },
+    { name: 'automation', commands: automationCommands },
+    { name: 'anki', commands: ankiCommands },
     // 开发命令仅在非生产模式下注册，避免用户看到不可用的"幽灵命令"
     ...(import.meta.env.DEV ? [{ name: 'dev', commands: devCommands }] : []),
   ];
@@ -68,6 +72,8 @@ export function getCommandStats(): { total: number; byModule: Record<string, num
     { name: 'settings', commands: settingsCommands },
     { name: 'notes', commands: notesCommands },
     { name: 'learning', commands: learningCommands },
+    { name: 'automation', commands: automationCommands },
+    { name: 'anki', commands: ankiCommands },
     ...(import.meta.env.DEV ? [{ name: 'dev', commands: devCommands }] : []),
   ];
   const byModule: Record<string, number> = {};

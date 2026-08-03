@@ -1,5 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriRuntime } from './shared';
+// ★ 2026-07-08（审计 30-P1-2）：错误重抛统一走 getErrorMessage，
+// 避免 `${error}` 对对象错误产生 "[object Object]"，且保留结构化 message 可解析性
+import { getErrorMessage } from './errorUtils';
 
 export async function saveSetting(key: string, value: string): Promise<void> {
   try {
@@ -12,7 +15,7 @@ export async function saveSetting(key: string, value: string): Promise<void> {
     await invoke<void>('save_setting', { key, value });
   } catch (error) {
     console.error('Failed to save setting:', error);
-    throw new Error(`Failed to save setting: ${error}`);
+    throw new Error(`Failed to save setting: ${getErrorMessage(error)}`);
   }
 }
 
@@ -62,7 +65,7 @@ export async function testMcpConnection(command: string, args: string[], env?: R
     return response;
   } catch (error) {
     console.error('Failed to test MCP connection:', error);
-    throw new Error(`Failed to test MCP connection: ${error}`);
+    throw new Error(`Failed to test MCP connection: ${getErrorMessage(error)}`);
   }
 }
 
@@ -83,7 +86,7 @@ export async function testMcpWebsocket(url: string, env?: Record<string, string>
     return response;
   } catch (error) {
     console.error('Failed to test MCP WebSocket connection:', error);
-    throw new Error(`Failed to test MCP WebSocket connection: ${error}`);
+    throw new Error(`Failed to test MCP WebSocket connection: ${getErrorMessage(error)}`);
   }
 }
 
@@ -93,7 +96,7 @@ export async function testMcpSse(endpoint: string, apiKey: string, env?: Record<
     return response;
   } catch (error) {
     console.error('Failed to test MCP SSE connection:', error);
-    throw new Error(`Failed to test MCP SSE connection: ${error}`);
+    throw new Error(`Failed to test MCP SSE connection: ${getErrorMessage(error)}`);
   }
 }
 
@@ -103,7 +106,7 @@ export async function testMcpHttp(endpoint: string, apiKey: string, env?: Record
     return response;
   } catch (error) {
     console.error('Failed to test MCP HTTP connection:', error);
-    throw new Error(`Failed to test MCP HTTP connection: ${error}`);
+    throw new Error(`Failed to test MCP HTTP connection: ${getErrorMessage(error)}`);
   }
 }
 
@@ -113,7 +116,7 @@ export async function testMcpModelScope(serverId: string, apiKey: string, region
     return response;
   } catch (error) {
     console.error('Failed to test MCP ModelScope connection:', error);
-    throw new Error(`Failed to test MCP ModelScope connection: ${error}`);
+    throw new Error(`Failed to test MCP ModelScope connection: ${getErrorMessage(error)}`);
   }
 }
 
@@ -123,7 +126,7 @@ export async function reloadMcpClient(): Promise<{ success: boolean; message?: s
     return response;
   } catch (error) {
     console.error('Failed to reload MCP client:', error);
-    throw new Error(`Failed to reload MCP client: ${error}`);
+    throw new Error(`Failed to reload MCP client: ${getErrorMessage(error)}`);
   }
 }
 
@@ -134,7 +137,7 @@ export async function testWebSearchConnectivity(engine?: string): Promise<any> {
     return response;
   } catch (error) {
     console.error('Failed to test external search connection:', error);
-    throw new Error(`Failed to test external search connection: ${error}`);
+    throw new Error(`Failed to test external search connection: ${getErrorMessage(error)}`);
   }
 }
 
@@ -144,7 +147,7 @@ export async function getMcpStatus(): Promise<any> {
     return await invoke<any>('get_mcp_status');
   } catch (error) {
     console.error('Failed to get MCP status:', error);
-    throw new Error(`Failed to get MCP status: ${error}`);
+    throw new Error(`Failed to get MCP status: ${getErrorMessage(error)}`);
   }
 }
 
@@ -153,7 +156,7 @@ export async function getMcpTools(): Promise<Array<{ name: string; description?:
     return await invoke<Array<{ name: string; description?: string; input_schema: any }>>('get_mcp_tools');
   } catch (error) {
     console.error('Failed to get MCP tools:', error);
-    throw new Error(`Failed to get MCP tools: ${error}`);
+    throw new Error(`Failed to get MCP tools: ${getErrorMessage(error)}`);
   }
 }
 
@@ -177,7 +180,7 @@ export async function testAllSearchEngines(): Promise<{
     return await invoke('test_all_search_engines');
   } catch (error) {
     console.error('Search engine health check failed:', error);
-    throw new Error(`Search engine health check failed: ${error}`);
+    throw new Error(`Search engine health check failed: ${getErrorMessage(error)}`);
   }
 }
 
@@ -191,7 +194,7 @@ export async function testApiConnection(apiKey: string, apiBase: string, model?:
     return response;
   } catch (error) {
     console.error('Failed to test API connection:', error);
-    throw new Error(`Failed to test API connection: ${error}`);
+    throw new Error(`Failed to test API connection: ${getErrorMessage(error)}`);
   }
 }
 
@@ -203,7 +206,7 @@ export async function getEnhancedStatistics(): Promise<any> {
     return response;
   } catch (error) {
     console.error('Failed to get enhanced statistics:', error);
-    throw new Error(`Failed to get enhanced statistics: ${error}`);
+    throw new Error(`Failed to get enhanced statistics: ${getErrorMessage(error)}`);
   }
 }
 

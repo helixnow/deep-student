@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -22,6 +22,7 @@ import {
   Info,
   Star,
   PaperPlaneRight,
+  WarningCircle,
 } from '@phosphor-icons/react';
 
 import type { BlockComponentProps } from '../../registry/blockRegistry';
@@ -128,6 +129,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
   const { t } = useTranslation('chatV2');
   const [hasResponded, setHasResponded] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [customInput, setCustomInput] = useState('');
   const [checkedIndices, setCheckedIndices] = useState<Set<number>>(new Set());
 
@@ -175,6 +177,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       if (hasResponded || isResponding || isResolved) return;
 
       setIsResponding(true);
+      setSubmitError(null);
       setLocalSelectedTexts(selectedTexts);
       setLocalCustomText(customText);
       setLocalSource(source);
@@ -190,8 +193,17 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
         setHasResponded(true);
       } catch (error: unknown) {
         console.error('[AskUserBlock] Failed to send response:', error);
-        // 即使发送失败也标记为已回答，避免 UI 卡住
-        setHasResponded(true);
+        // 🔧 P0 修复：提交失败时不再伪装成功；回滚乐观状态并展示可重试的错误
+        setLocalSelectedTexts(null);
+        setLocalCustomText(null);
+        setLocalSource(null);
+        const detail =
+          typeof error === 'string'
+            ? error
+            : error instanceof Error
+              ? error.message
+              : '';
+        setSubmitError(detail);
       } finally {
         setIsResponding(false);
       }
@@ -253,6 +265,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     if (block.status === 'running') {
       setHasResponded(false);
       setIsResponding(false);
+      setSubmitError(null);
       setCustomInput('');
       setCheckedIndices(new Set());
       setLocalSelectedTexts(null);
@@ -269,7 +282,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       case 'custom_input':
         return t('askUser.sourceCustomInput');
       case 'mixed':
-        return t('askUser.sourceMixed', { defaultValue: '混合选择' });
+        return t('askUser.sourceMixed');
       case 'timeout':
         return t('askUser.sourceNoResponse');
       case 'channel_closed':
@@ -287,7 +300,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
         <CommonTooltip content={option.reason} delay={150} maxWidth={280}>
           <button
             type="button"
-            aria-label={t('askUser.optionReasonLabel', { defaultValue: 'Why this option' })}
+            aria-label={t('askUser.optionReasonLabel')}
             className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)]"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
@@ -322,7 +335,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     if (resolvedCustomText) {
       displayParts.push(resolvedCustomText);
     }
-    const displayText = displayParts.join(' + ') || t('askUser.noResponse', { defaultValue: '（未收到回答）' });
+    const displayText = displayParts.join(' + ') || t('askUser.noResponse');
 
     return (
       <div className="overflow-hidden rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] shadow-[var(--shadow-content-subtle)]">
@@ -366,6 +379,24 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       {context && (
         <div className="border-b border-[color:var(--border-soft)] px-3 py-1.5 text-xs text-[color:var(--text-muted)]">
           {context}
+        </div>
+      )}
+
+      {/* 提交失败提示（内联，可直接重新选择/提交） */}
+      {submitError !== null && (
+        <div className="mx-3 mt-2 flex items-start gap-2 rounded-[var(--radius-shell-control)] border border-destructive/30 bg-destructive/10 px-3 py-2">
+          <WarningCircle size={14} className="mt-0.5 flex-shrink-0 text-destructive" />
+          <div className="min-w-0 flex-1 text-xs">
+            <span className="font-medium text-destructive">
+              {t('askUser.submitFailed')}
+            </span>
+            {submitError && (
+              <span className="ml-1 break-words text-destructive/80">{submitError}</span>
+            )}
+            <div className="mt-0.5 text-[color:var(--text-muted)]">
+              {t('askUser.submitRetryHint')}
+            </div>
+          </div>
         </div>
       )}
 
@@ -422,7 +453,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                   isResponding && 'opacity-50'
                 )}
               >
-                <NotionButton
+                <DsButton
                   variant={isRecommended ? 'primary' : 'ghost'}
                   size="sm"
                   onClick={() => handleSingleSelect(index, option.label)}
@@ -430,7 +461,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                   className="!h-auto !flex-1 !justify-start !p-0 text-left !bg-transparent !text-inherit hover:!bg-transparent"
                 >
                   <span className="flex-1">{option.label}</span>
-                </NotionButton>
+                </DsButton>
                 {renderOptionReason(option)}
                 {isRecommended && (
                   <span className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-secondary)]">
@@ -447,7 +478,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       {/* Multi-select confirm button */}
       {multiple && (
         <div className="px-3 pb-2">
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={handleMultiConfirm}
@@ -455,8 +486,8 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             className="w-full"
           >
             <Check size={14} className="mr-1.5" />
-            {t('askUser.confirmSelection', { defaultValue: '确认选择' })}
-          </NotionButton>
+            {t('askUser.confirmSelection')}
+          </DsButton>
         </div>
       )}
 
@@ -487,16 +518,16 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             )}
           />
           {!multiple && (
-            <NotionButton
+            <DsButton
               variant="primary"
               size="sm"
               onClick={handleCustomSubmit}
               disabled={isResponding || !customInput.trim()}
               iconOnly
-              aria-label="send"
+              aria-label={t('askUser.send')}
             >
               <PaperPlaneRight size={14} />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

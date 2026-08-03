@@ -26,12 +26,9 @@ vi.mock('../useInputBarV2', () => ({
     attachments: store.getState().attachments,
     panelStates: {
       attachment: false,
-      rag: false,
       model: false,
       advanced: false,
-      learn: false,
       mcp: false,
-      search: false,
       skill: false,
     },
     setInputValue: vi.fn(),
@@ -54,6 +51,38 @@ vi.mock('../../../registry', () => ({
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
+
+// 测试环境不加载异步 i18n 命名空间（chatV2 等按需加载），真实 t 会原样返回
+// 未插值的 defaultValue（如 '推理: {{depth}}'）。与同目录其它测试一致，
+// mock useTranslation 并补上 {{var}} 插值，保证断言确定性。
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  const translate = (
+    key: string,
+    defaultValueOrOptions?: unknown,
+    maybeOptions?: Record<string, unknown>
+  ): string => {
+    const defaultValue =
+      typeof defaultValueOrOptions === 'string'
+        ? defaultValueOrOptions
+        : (defaultValueOrOptions as { defaultValue?: string } | undefined)?.defaultValue;
+    const options =
+      (typeof defaultValueOrOptions === 'object' && defaultValueOrOptions !== null
+        ? (defaultValueOrOptions as Record<string, unknown>)
+        : maybeOptions) ?? {};
+    const template = defaultValue ?? key;
+    return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+      options[name] !== undefined ? String(options[name]) : match
+    );
+  };
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: translate,
+      i18n: { language: 'zh-CN', changeLanguage: vi.fn() },
+    }),
+  };
+});
 
 vi.mock('../../skills/hooks/useLoadedSkills', () => ({
   useLoadedSkills: () => ({ loadedSkillIds: new Set<string>() }),
@@ -252,6 +281,42 @@ describe('InputBarV2 stale context ref guard', () => {
     expect(capturedInputBarUIProps?.thinkingUnsupported).toBe(true);
     expect(capturedInputBarUIProps?.enableThinking).toBe(false);
     expect(capturedInputBarUIProps?.thinkingDepthOptions).toEqual([]);
+  });
+
+  it('keeps reasoning controls when capability support is true but the default mode is false', () => {
+    const { store } = createMockStore();
+
+    act(() => {
+      store.setState({
+        chatParams: {
+          ...store.getState().chatParams,
+          modelId: 'mistral-medium-latest',
+          enableThinking: false,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        },
+      });
+    });
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[{
+          id: 'mistral-medium-latest',
+          name: 'Mistral Medium',
+          model: 'mistral-medium-latest',
+          isReasoning: false,
+          supportsReasoning: true,
+        }]}
+      />
+    );
+
+    expect(capturedInputBarUIProps?.thinkingUnsupported).toBe(false);
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+    ]);
   });
 
   it('keeps pending parallel model selections out of the runtime model label', () => {
@@ -569,6 +634,106 @@ describe('InputBarV2 stale context ref guard', () => {
       thinkingBudget: undefined,
     });
   });
+
+  it('sets runtime OpenAI Codex reasoning effort from the input bar', () => {
+    const { store, setChatParams } = createMockStore();
+
+    act(() => {
+      store.setState({
+        chatParams: {
+          ...store.getState().chatParams,
+          modelId: 'builtin-codex-gpt-5.6-sol',
+          enableThinking: true,
+          reasoningEffort: 'medium',
+          thinkingBudget: undefined,
+        },
+      });
+    });
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'builtin-codex-gpt-5.6-sol',
+            name: 'GPT-5.6 Sol',
+            model: 'gpt-5.6-sol',
+            vendorId: 'builtin-openai-codex',
+            providerType: 'openai_codex',
+            providerScope: 'openai_codex',
+            isReasoning: true,
+            reasoningEffort: 'medium',
+          },
+        ]}
+      />
+    );
+
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ]);
+    expect(capturedInputBarUIProps?.thinkingCanDisable).toBe(false);
+
+    capturedInputBarUIProps?.onSetThinkingDepth?.('high');
+
+    expect(setChatParams).toHaveBeenLastCalledWith({
+      enableThinking: true,
+      reasoningEffort: 'high',
+      thinkingBudget: undefined,
+    });
+  });
+
+  it.each([
+    ['gemini-3.5-flash', 'google', ['minimal', 'low', 'medium', 'high'], 'minimal', false],
+    ['claude-opus-4-8', 'anthropic', ['low', 'medium', 'high', 'xhigh', 'max'], 'max', true],
+    ['glm-5.2', 'zhipu', ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], 'xhigh', true],
+    ['grok-latest', 'grok', ['low', 'medium', 'high'], 'medium', true],
+    ['mistral-medium-latest', 'mistral', ['low', 'medium', 'high'], 'high', true],
+    ['ernie-5.0-thinking', 'ernie', ['high', 'max'], 'max', true],
+  ] as const)(
+    'exposes and applies the runtime effort contract for %s',
+    (model, providerType, options, selected, canDisable) => {
+      const { store, setChatParams } = createMockStore();
+
+      act(() => {
+        store.setState({
+          chatParams: {
+            ...store.getState().chatParams,
+            modelId: `config-${model}`,
+            enableThinking: true,
+            reasoningEffort: undefined,
+            thinkingBudget: undefined,
+          },
+        });
+      });
+
+      render(
+        <InputBarV2
+          store={store as any}
+          availableModels={[{
+            id: `config-${model}`,
+            name: model,
+            model,
+            providerType,
+            providerScope: providerType,
+            isReasoning: true,
+          }]}
+        />
+      );
+
+      expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(options);
+      expect(capturedInputBarUIProps?.thinkingCanDisable).toBe(canDisable);
+
+      capturedInputBarUIProps?.onSetThinkingDepth?.(selected);
+      expect(setChatParams).toHaveBeenLastCalledWith({
+        enableThinking: true,
+        reasoningEffort: selected,
+        thinkingBudget: undefined,
+      });
+    }
+  );
 
   it('uses modelDisplayName as a fallback when the current config id is not in the available model cache', () => {
     const { store } = createMockStore();

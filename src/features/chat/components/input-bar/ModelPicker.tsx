@@ -28,11 +28,12 @@ import { Input } from '@/components/ui/shad/Input';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
+import { triggerOpenSettingsModels } from '../../readiness/readinessGate';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ModelAssignments } from '@/types';
 
@@ -89,7 +90,7 @@ export interface ModelPickerProps {
   onClose: () => void;
   /** 流式生成中禁用交互 */
   disabled?: boolean;
-  /** 移动端底部抽屉模式可隐藏头部 */
+  /** 外部宿主（命令面板等）复用时可隐藏内置头部；移动端为 composer 内联面板，默认保留头部 */
   hideHeader?: boolean;
   /** 紧凑模式：用于 app menu 子菜单，收窄宽度和高度 */
   compact?: boolean;
@@ -125,7 +126,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   const { t } = useTranslation(['chatV2', 'chat_host', 'common']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
-  const shouldHideHeader = hideHeader ?? isMobile;
+  // 📱 移动端也默认显示头部：面板在 composer 内联展开（无外层抽屉标题栏），
+  // 隐藏头部会一并丢失可见的关闭按钮（移动端契约：面板须可见关闭 + 返回键）
+  const shouldHideHeader = hideHeader ?? false;
 
   const isRetryMode = Boolean(retryMessageId);
   // retry 模式始终走 compare（即便只选一个也通过 compareSelected 传出）
@@ -343,16 +346,16 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
 
   // ----- header -----
   const titleText = isRetryMode
-    ? t('chatV2:modelPicker.retryTitle', '选择模型重试')
-    : t('chatV2:modelPicker.title', '选择模型');
+    ? t('chatV2:modelPicker.retryTitle')
+    : t('chatV2:modelPicker.title');
 
   const subtitleText = isRetryMode
     ? compareSelected.length === 0
-      ? t('chatV2:modelPicker.retryHintEmpty', '选择模型后点击重试')
+      ? t('chatV2:modelPicker.retryHintEmpty')
       : t('chatV2:modelPicker.retryHint', { count: compareSelected.length })
     : effectiveMode === 'compare'
       ? t('chatV2:modelPicker.compareHint', { count: compareSelected.length })
-      : t('chatV2:modelPicker.singleHint', '当前会话模型');
+      : t('chatV2:modelPicker.singleHint');
 
   // ----- render -----
   const hasModels = sortedAndFiltered.length > 0;
@@ -393,7 +396,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         {effectiveMode === 'compare' ? (
           <span
             className={cn(
-              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border text-[10px] font-semibold transition',
+              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border text-2xs font-semibold transition',
               isCompareSelected
                 ? 'border-[color:var(--menu-shell-border)] bg-[color:var(--menu-shell-foreground)] text-[color:var(--menu-shell-surface)]'
                 : 'border-[color:var(--menu-shell-border)] bg-transparent text-transparent'
@@ -437,9 +440,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             />
             {isDefault && (
               <CommonTooltip content={systemBadgeTooltip} position="top">
+                {/* 移动端也常显（原 hidden sm:inline-flex 在 <640 隐藏，用户看不到系统默认标记；对齐 ModelPanel 的修复） */}
                 <Badge
                   variant="outline"
-                  className="hidden h-[18px] px-1.5 py-0 text-[9px] font-medium shrink-0 border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] text-[color:var(--menu-shell-muted-foreground)] cursor-help sm:inline-flex"
+                  className="inline-flex h-[18px] px-1.5 py-0 text-2xs font-medium shrink-0 border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] text-[color:var(--menu-shell-muted-foreground)] cursor-help"
                 >
                   {systemBadge}
                 </Badge>
@@ -449,7 +453,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           <span
             className={cn(
               'mt-0.5 block w-full truncate text-[color:var(--menu-shell-foreground)]',
-              compact ? 'text-[12px] leading-4' : isMobile ? 'text-[13px] leading-4' : 'text-[12px] leading-4'
+              compact ? 'text-[12px] leading-4' : isMobile ? 'text-ui leading-4' : 'text-[12px] leading-4'
             )}
           >
             {option.model || option.name}
@@ -457,7 +461,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         </span>
 
         {!isDefault && (
-          <CommonTooltip content={t('chatV2:modelPicker.setAsDefault', '设为系统默认')} position="left">
+          <CommonTooltip content={t('chatV2:modelPicker.setAsDefault')} position="left">
             <span
               role="button"
               tabIndex={-1}
@@ -467,10 +471,13 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               }}
               className={cn(
                 'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--menu-shell-row-radius)] text-[color:var(--menu-shell-muted-foreground)] opacity-0 transition group-hover:opacity-100',
+                // 触屏无 hover：保持常显，否则"设为默认"入口不可达
+                '[@media(pointer:coarse)]:opacity-100',
+                'relative after:absolute after:-inset-2 after:content-[\'\']',
                 'hover:bg-[color:var(--menu-shell-row-hover)]',
                 (disabled || savingDefault) && 'pointer-events-none opacity-25'
               )}
-              aria-label={t('chatV2:modelPicker.setAsDefault', '设为系统默认')}
+              aria-label={t('chatV2:modelPicker.setAsDefault')}
             >
               <PushPin size={12} />
             </span>
@@ -495,15 +502,15 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             <span className="shrink-0 text-[12px] font-medium text-[color:var(--menu-shell-foreground)]">
               {titleText}
             </span>
-            <span className="truncate text-[10.5px] text-[color:var(--menu-shell-muted-foreground)]">
+            <span className="truncate text-2xs text-[color:var(--menu-shell-muted-foreground)]">
               · {subtitleText}
             </span>
             {effectiveMode === 'compare' && compareSelected.length >= 2 && !isRetryMode && (
               <Badge
                 variant="default"
-                className="h-[18px] shrink-0 self-center border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] px-1.5 py-0 text-[9px] font-medium text-[color:var(--menu-shell-muted-foreground)]"
+                className="h-[18px] shrink-0 self-center border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] px-1.5 py-0 text-2xs font-medium text-[color:var(--menu-shell-muted-foreground)]"
               >
-                {t('chatV2:modelPicker.parallelMode', '并行模式')}
+                {t('chatV2:modelPicker.parallelMode')}
               </Badge>
             )}
           </div>
@@ -513,13 +520,13 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               <CompareToggle
                 checked={effectiveMode === 'compare'}
                 onChange={(next) => onModeChange?.(next ? 'compare' : 'single')}
-                label={t('chatV2:modelPicker.compareToggle', '对比模式')}
-                hint={t('chatV2:modelPicker.compareToggleHint', '同时使用多个模型回答')}
+                label={t('chatV2:modelPicker.compareToggle')}
+                hint={t('chatV2:modelPicker.compareToggleHint')}
                 disabled={disabled}
               />
             )}
             {isRetryMode && onRetry && (
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={() => {
@@ -527,23 +534,24 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                   onClose();
                 }}
                 disabled={disabled || compareSelected.length === 0}
-                title={t('chatV2:modelMention.retry', '重试')}
+                title={t('chatV2:modelMention.retry')}
               >
                 <ArrowCounterClockwise size={14} />
-                {t('chatV2:modelMention.retry', '重试')}
-              </NotionButton>
+                {t('chatV2:modelMention.retry')}
+              </DsButton>
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
               onClick={onClose}
-              className="h-7 w-7 rounded-[var(--menu-shell-row-radius)]"
+              // P1-3: 28px 视觉尺寸保留，触屏用伪元素把命中区扩到 ≥44px
+              className="relative h-7 w-7 rounded-[var(--menu-shell-row-radius)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
               aria-label={t('common:actions.cancel')}
               title={t('common:actions.cancel')}
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -554,8 +562,12 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           className={cn(
             'relative flex items-center gap-1.5 rounded-[var(--menu-shell-row-radius)] border',
             'bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)]',
-            'border-[color:var(--menu-shell-border)] px-2 py-1.5 transition-colors',
-            'focus-within:border-[hsl(var(--primary)/0.55)] focus-within:bg-[color:var(--menu-shell-surface)]'
+            'border-[color:var(--menu-shell-border)] px-2 transition-colors',
+            // 📱 移动端：搜索框收敛为紧凑尺寸（外壳约 36px），
+            // 否则内部 Input 的 min-h-[--touch-target-size]（44px）叠加外壳
+            // padding 会撑到 ~58px，挤压下方模型列表可视区域
+            isMobile ? 'min-h-9 py-1' : 'py-1.5',
+            'focus-within:border-[color:var(--border)] focus-within:bg-[color:var(--menu-shell-surface)]'
           )}
         >
         <MagnifyingGlass
@@ -563,11 +575,16 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           className="pointer-events-none shrink-0 text-[color:var(--menu-shell-muted-foreground)]"
         />
         <Input
-          type="text"
+          type="search"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder={t('chatV2:modelPicker.searchPlaceholder', '搜索名称或模型 ID...')}
-          className="h-auto w-full border-0 bg-transparent px-0 py-0 text-[var(--menu-shell-font-size)] text-[color:var(--menu-shell-foreground)] shadow-none hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
+          placeholder={t('chatV2:modelPicker.searchPlaceholder')}
+          className={cn(
+            'h-auto w-full border-0 bg-transparent px-0 py-0 text-[color:var(--menu-shell-foreground)] shadow-none hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-0',
+            // 📱 移动端：干掉 Input 自带的 44px 触控 min-h（外壳 min-h-9 保底），
+            // 字号必须 ≥16px——iOS WKWebView 聚焦 <16px 的输入框会自动放大页面
+            isMobile ? '!min-h-0 text-[16px] leading-5' : 'text-[var(--menu-shell-font-size)]'
+          )}
           disabled={disabled}
         />
         </div>
@@ -617,7 +634,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                         <CaretDown size={14} className="shrink-0 text-[color:var(--menu-shell-muted-foreground)]" />
                       )}
                       <span className={cn(
-                        'truncate text-[10px] font-medium uppercase tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]',
+                        'truncate text-2xs font-medium tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]',
                         compact && 'max-w-[10rem]'
                       )}>
                         {group.vendorName}
@@ -628,7 +645,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       {groupSelectedCount > 0 && (
                         <Badge
                           variant="default"
-                          className="ml-auto h-[16px] border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] px-1 py-0 text-[9px] font-medium text-[color:var(--menu-shell-muted-foreground)]"
+                          className="ml-auto h-[16px] border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] px-1 py-0 text-2xs font-medium text-[color:var(--menu-shell-muted-foreground)]"
                         >
                           {groupSelectedCount}
                         </Badge>
@@ -641,10 +658,26 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 );
               })
             ) : (
-              <div className="px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
-                {searchTerm
-                  ? t('chatV2:modelPicker.noMatches', '未找到匹配的模型')
-                  : t('chatV2:modelPicker.empty', '暂无可用模型')}
+              <div className="flex flex-col items-center gap-2 px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
+                <span>
+                  {searchTerm
+                    ? t('chatV2:modelPicker.noMatches')
+                    : t('chatV2:modelPicker.empty')}
+                </span>
+                {/* 真空态（非搜索无结果）：深链设置-模型页，复用 readiness 的引导机制 */}
+                {!searchTerm && (
+                  <DsButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      triggerOpenSettingsModels();
+                    }}
+                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+                  >
+                    {t('chatV2:modelPicker.goToSettings')}
+                  </DsButton>
+                )}
               </div>
             )}
           </div>
@@ -657,7 +690,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
 
       {isRetryMode && onRetry && (
         <div className="flex shrink-0 items-center justify-end px-1 pb-1">
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={() => {
@@ -665,12 +698,12 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               onClose();
             }}
             disabled={disabled || compareSelected.length === 0}
-            title={t('chatV2:modelMention.retry', '重试')}
+            title={t('chatV2:modelMention.retry')}
             className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
           >
             <ArrowCounterClockwise size={14} />
-            {t('chatV2:modelMention.retry', '重试')}
-          </NotionButton>
+            {t('chatV2:modelMention.retry')}
+          </DsButton>
         </div>
       )}
     </div>
@@ -698,7 +731,9 @@ const CompareToggle: React.FC<CompareToggleProps> = ({ checked, onChange, label,
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-[999px] border px-2 py-1 text-[10px] font-medium transition-colors',
+        'inline-flex items-center gap-1.5 rounded-[999px] border px-2 py-1 text-2xs font-medium transition-colors',
+        // 📱 触控目标：coarse 指针下放大到 ≥44px 高 + 12px 字号（视觉 pill 随之变高，桌面不受影响）
+        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:text-[12px]',
         checked
           ? 'border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] text-[color:var(--menu-shell-foreground)]'
           : 'border-[color:var(--menu-shell-border)] bg-transparent text-[color:var(--menu-shell-muted-foreground)] hover:bg-[color:var(--menu-shell-row-hover)]',

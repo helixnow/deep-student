@@ -1,0 +1,267 @@
+/**
+ * TileMenuPopover.css（O4）— 缩放键平铺菜单
+ * ---------------------------------------------------------------------------
+ * 类名一律 wb-tilemenu- 前缀；玻璃材质组合契约类 .wb-glass，不重定义。
+ *
+ * 纪律：
+ *   - 动画仅 transform / opacity；
+ *   - 时长/曲线引用 motion.css token（--wb-motion-* / --wb-ease-*）；
+ *   - z-index 走 --wb-z-dock-flyout（与 Dock 飞出层同刻度，高于窗口）；
+ *   - reduced-motion / minimal 档时长归零（0ms 仍触发 animationend，卸载不破）。
+ */
+
+.wb-tilemenu {
+  /* 入场 ~220ms：绿灯平铺菜单 macOS 基准 200–230ms（motion.css 无此刻度，用组件值） */
+  --wb-tilemenu-in-duration: 220ms;
+  --wb-tilemenu-out-duration: var(--wb-motion-quick, 150ms);
+  --wb-tilemenu-hover-duration: var(--wb-motion-quick, 150ms);
+  --wb-tilemenu-glyph-bounce: var(--wb-motion-quick, 150ms);
+  /* 微缩桌面：外缘 / 窗间间隙近似 DEFAULT_TILE_MARGIN 比例（2px 分缝更清晰） */
+  --wb-tilemenu-m: 2px;
+  --wb-tilemenu-gap: 2px;
+
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: var(--wb-z-dock-flyout, 9200);
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 2px;
+  padding: 6px;
+  border-radius: 12px;
+  box-shadow: var(--wb-shadow-popover);
+  transform-origin: top center;
+  animation: wb-kf-overshoot-in var(--wb-tilemenu-in-duration)
+    var(--wb-ease-overshoot, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+
+.wb-tilemenu[data-phase='closing'] {
+  pointer-events: none;
+  animation: wb-kf-pop-out var(--wb-tilemenu-out-duration)
+    var(--wb-ease-in, cubic-bezier(0.5, 0.05, 0.8, 0.4)) both;
+}
+
+/* ==== 选项格 ============================================================= */
+
+.wb-tilemenu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+/* hover / 焦点高亮：背景淡入（仅 opacity） */
+.wb-tilemenu-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in hsl, hsl(var(--foreground)) 12%, transparent 88%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--wb-tilemenu-hover-duration)
+    var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
+}
+
+.wb-tilemenu-item:hover::before,
+.wb-tilemenu-item:focus-visible::before,
+.wb-tilemenu-item[data-wb-tile-active='true']::before {
+  opacity: 1;
+}
+
+.wb-tilemenu-item:focus-visible {
+  box-shadow: var(--wb-focus-ring);
+}
+
+.wb-tilemenu-item[data-wb-tile-current='true'] {
+  color: hsl(var(--primary));
+}
+
+.wb-tilemenu-item[data-wb-tile-current='true']::before {
+  background: color-mix(in hsl, hsl(var(--primary)) 16%, transparent 84%);
+  opacity: 1;
+}
+
+/* ==== 微缩桌面 glyph ===================================================== */
+
+.wb-tilemenu-glyph {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 20px;
+  box-sizing: border-box;
+  border-radius: 3px;
+  /* 外框略淡于填充块：屏幕轮廓退后，落位块成为视觉主角 */
+  border: 1px solid color-mix(in hsl, currentColor 62%, transparent 38%);
+  opacity: 0.92;
+  transition: transform var(--wb-tilemenu-glyph-bounce)
+    var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
+}
+
+.wb-tilemenu-glyph-cell {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 1.5px;
+  background: currentColor;
+  pointer-events: none;
+}
+
+.wb-tilemenu-glyph-cell.is-dim {
+  opacity: 0.2;
+}
+
+/* will-change 仅在可交互 hover 期挂载（父 item hover 时才提升合成层），
+ * 避免菜单常驻期间每个 is-active 格都占一层 */
+.wb-tilemenu-glyph-cell.is-active {
+  opacity: 0.78;
+  transform: scale(1);
+  transform-origin: center center;
+  transition: transform var(--wb-tilemenu-glyph-bounce)
+    var(--wb-ease-spring, cubic-bezier(0.32, 1.25, 0.36, 1));
+}
+
+.wb-tilemenu-item:hover .wb-tilemenu-glyph-cell.is-active {
+  will-change: transform;
+}
+
+.wb-tilemenu-item:hover .wb-tilemenu-glyph-cell.is-active,
+.wb-tilemenu-item:focus-visible .wb-tilemenu-glyph-cell.is-active,
+.wb-tilemenu-item[data-wb-tile-active='true'] .wb-tilemenu-glyph-cell.is-active {
+  transform: scale(1.1);
+}
+
+
+/* 半屏 */
+.wb-tilemenu-glyph-cell.cell-left {
+  left: var(--wb-tilemenu-m);
+  top: var(--wb-tilemenu-m);
+  bottom: var(--wb-tilemenu-m);
+  width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+.wb-tilemenu-glyph-cell.cell-right {
+  right: var(--wb-tilemenu-m);
+  top: var(--wb-tilemenu-m);
+  bottom: var(--wb-tilemenu-m);
+  width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+/* 四分屏 */
+.wb-tilemenu-glyph-cell.cell-tl {
+  left: var(--wb-tilemenu-m);
+  top: var(--wb-tilemenu-m);
+  width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+.wb-tilemenu-glyph-cell.cell-tr {
+  right: var(--wb-tilemenu-m);
+  top: var(--wb-tilemenu-m);
+  width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+.wb-tilemenu-glyph-cell.cell-bl {
+  left: var(--wb-tilemenu-m);
+  bottom: var(--wb-tilemenu-m);
+  width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+.wb-tilemenu-glyph-cell.cell-br {
+  right: var(--wb-tilemenu-m);
+  bottom: var(--wb-tilemenu-m);
+  width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+/* 填满 / 居中 */
+.wb-tilemenu-glyph-cell.cell-fill {
+  inset: var(--wb-tilemenu-m);
+}
+
+.wb-tilemenu-glyph-cell.cell-center {
+  left: 22%;
+  top: 20%;
+  width: 56%;
+  height: 60%;
+  border-radius: 2px;
+}
+
+.wb-tilemenu-glyph-cell.cell-desktop-dim {
+  inset: var(--wb-tilemenu-m);
+  opacity: 0.1;
+}
+
+.wb-tilemenu-restore {
+  display: inline-flex;
+  opacity: 0.85;
+  transition: transform var(--wb-tilemenu-glyph-bounce)
+    var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
+}
+
+/* 恢复键悬停：箭头沿其指向轻转，提示"转回原状" */
+.wb-tilemenu-item:hover .wb-tilemenu-restore,
+.wb-tilemenu-item:focus-visible .wb-tilemenu-restore,
+.wb-tilemenu-item[data-wb-tile-active='true'] .wb-tilemenu-restore {
+  transform: rotate(-24deg);
+}
+
+/* 按压反馈：整块示意图轻微回缩（仅 transform；置后覆盖 hover 态） */
+.wb-tilemenu-item:active .wb-tilemenu-glyph,
+.wb-tilemenu-item[data-wb-tile-active='true']:active .wb-tilemenu-glyph {
+  transform: scale(0.92);
+}
+
+.wb-tilemenu-item:active .wb-tilemenu-restore,
+.wb-tilemenu-item[data-wb-tile-active='true']:active .wb-tilemenu-restore {
+  transform: scale(0.92) rotate(-24deg);
+}
+
+/* ==== 沉浸模式整行入口（P2） ============================================= */
+
+.wb-tilemenu-item.wb-tilemenu-immersive {
+  grid-column: 1 / -1;
+  width: auto;
+  height: 30px;
+  gap: 6px;
+  padding: 0 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1;
+  color: inherit;
+}
+
+.wb-tilemenu-immersive-label {
+  white-space: nowrap;
+}
+
+/* ==== 降级 =============================================================== */
+
+:root[data-wb-material='minimal'] .wb-tilemenu {
+  --wb-tilemenu-in-duration: 0ms;
+  --wb-tilemenu-out-duration: 0ms;
+  --wb-tilemenu-hover-duration: 0ms;
+  --wb-tilemenu-glyph-bounce: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-tilemenu {
+    --wb-tilemenu-in-duration: 0ms;
+    --wb-tilemenu-out-duration: 0ms;
+    --wb-tilemenu-hover-duration: 0ms;
+    --wb-tilemenu-glyph-bounce: 0ms;
+  }
+}

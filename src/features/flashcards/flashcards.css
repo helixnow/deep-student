@@ -1,0 +1,792 @@
+/**
+ * Flashcards（wb-fc-*）— 对齐 SystemWindowShared 表面，保持学习工具密度。
+ * 引用 workbench token；不引入大面积渐变 / 卡片墙。
+ */
+
+.wb-fc-host,
+.wb-fc-root {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--wb-window-bg, hsl(var(--card)));
+}
+
+.wb-fc-nav {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 92%, hsl(var(--muted)) 8%);
+}
+
+.wb-fc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: color 120ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-tab:hover {
+  color: hsl(var(--foreground));
+}
+
+.wb-fc-tab[data-active='true'] {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  border-bottom-color: hsl(var(--foreground));
+}
+
+.wb-fc-tab:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: -2px;
+}
+
+.wb-fc-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-fc-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  padding: 14px 16px;
+}
+
+.wb-fc-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wb-fc-header[data-align='end'] {
+  align-items: flex-end;
+}
+
+.wb-fc-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: hsl(var(--foreground));
+}
+
+.wb-fc-subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-banner {
+  padding: 8px 10px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--muted)) 28%, transparent 72%);
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.wb-fc-list {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+}
+
+.wb-fc-list-ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-fc-row {
+  padding: 9px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+}
+
+.wb-fc-row:last-child {
+  border-bottom: none;
+}
+
+.wb-fc-row-front {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: hsl(var(--foreground));
+}
+
+.wb-fc-row-back {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.wb-fc-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+  font-size: 10px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-empty,
+.wb-fc-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 8rem;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-empty {
+  min-height: 10rem;
+}
+
+.wb-fc-panel {
+  padding: 12px 14px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  font-size: 13px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+@media (min-width: 640px) {
+  .wb-fc-screen {
+    padding: 16px 18px;
+  }
+
+  .wb-fc-row {
+    padding: 9px 14px;
+  }
+}
+
+/* OS 闪卡窗口：玻璃面搜索框（input 本体由 workbench 根复位刷无铬，容器承担视觉）。
+   .wb-fc-host 仅存在于 OS 窗口（FlashcardsAppWindow），legacy 页面不受影响。 */
+.wb-fc-host .wb-fc-search {
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: var(--radius-shell-control, 8px);
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+}
+
+/* ============================================================
+   复习会话（wb-fc-session-*）— 3D 翻卡、进度条、评分栏、完成态
+   ============================================================ */
+
+/* --- 顶部细进度条 --- */
+.wb-fc-session-progress {
+  flex-shrink: 0;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--muted)) 70%, transparent 30%);
+}
+
+.wb-fc-session-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--primary) / 0.75),
+    hsl(var(--primary))
+  );
+  transition: width 320ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* --- 计数徽标 / 连击 --- */
+.wb-fc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+  background: color-mix(in hsl, hsl(var(--muted)) 45%, transparent 55%);
+}
+
+.wb-fc-chip--new {
+  color: hsl(var(--primary));
+  background: color-mix(in hsl, hsl(var(--primary)) 10%, transparent 90%);
+}
+
+.wb-fc-chip--learn {
+  color: hsl(24 70% 42%);
+  background: color-mix(in hsl, hsl(24 90% 55%) 12%, transparent 88%);
+}
+
+.dark .wb-fc-chip--learn {
+  color: hsl(24 85% 65%);
+}
+
+.wb-fc-chip--streak {
+  color: hsl(41 85% 36%);
+  background: color-mix(in hsl, hsl(45 95% 55%) 16%, transparent 84%);
+  animation: wb-fc-pop 260ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.dark .wb-fc-chip--streak {
+  color: hsl(45 90% 62%);
+}
+
+/* --- 卡面舞台：透视 + 阴影层次 --- */
+.wb-fc-card-stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.wb-fc-card {
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 12px;
+  background: var(--wb-window-bg, hsl(var(--card)));
+  box-shadow: var(
+    --wb-shadow-idle,
+    0 1px 2px hsl(var(--foreground) / 0.05),
+    0 4px 14px hsl(var(--foreground) / 0.06)
+  );
+  /* 滚动 viewport 会拍扁 preserve-3d，透视直接放在卡面父级 */
+  perspective: 1200px;
+  transition:
+    box-shadow 180ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    border-color 180ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color 120ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-fc-card:hover:not([aria-disabled='true']) {
+  border-color: color-mix(in hsl, hsl(var(--border)) 85%, hsl(var(--primary)) 15%);
+  box-shadow: var(
+    --wb-shadow-lifted,
+    0 2px 6px hsl(var(--foreground) / 0.07),
+    0 10px 28px hsl(var(--foreground) / 0.1)
+  );
+}
+
+.wb-fc-card[data-side='back'] {
+  background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 96%, hsl(var(--primary)) 4%);
+}
+
+.wb-fc-card-side-label {
+  margin-bottom: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+.wb-fc-card-flip-hint {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.55);
+  opacity: 0;
+  transition: opacity 160ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-card:hover .wb-fc-card-flip-hint,
+.wb-fc-card:focus-visible .wb-fc-card-flip-hint {
+  opacity: 1;
+}
+
+/* 翻面动画：内容已同步切换，动画呈现后半程翻转（-90° → 0°）。
+   两个等价 keyframes 交替触发以重启动画。 */
+.wb-fc-card-face {
+  backface-visibility: hidden;
+  transform-origin: center center;
+}
+
+.wb-fc-card-face[data-flip='a'] {
+  animation: wb-fc-flip-a 300ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-card-face[data-flip='b'] {
+  animation: wb-fc-flip-b 300ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+@keyframes wb-fc-flip-a {
+  from {
+    transform: rotateY(-88deg);
+    opacity: 0.2;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    transform: rotateY(0deg);
+  }
+}
+
+@keyframes wb-fc-flip-b {
+  from {
+    transform: rotateY(-88deg);
+    opacity: 0.2;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    transform: rotateY(0deg);
+  }
+}
+
+/* 换卡入场：轻微上移 + 淡入 */
+.wb-fc-card[data-enter='a'] {
+  animation: wb-fc-enter-a 260ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-card[data-enter='b'] {
+  animation: wb-fc-enter-b 260ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+@keyframes wb-fc-enter-a {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wb-fc-enter-b {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- 评分栏 --- */
+.wb-fc-ratebar {
+  display: grid;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.wb-fc-ratebar[data-mode='rate'] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  animation: wb-fc-fade-up 200ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-ratebar[data-mode='reveal'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wb-fc-rate-btn {
+  position: relative;
+  transition:
+    transform 110ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color 130ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    box-shadow 130ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-fc-rate-btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
+}
+
+.wb-fc-rate-btn[data-pressed='true'] {
+  animation: wb-fc-rate-press 240ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+@keyframes wb-fc-rate-press {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.wb-fc-rate-label {
+  font-weight: 500;
+}
+
+.wb-fc-rate-interval {
+  font-size: 10px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.wb-fc-show-answer .wb-fc-keycap {
+  opacity: 0.75;
+}
+
+/* --- 键位提示 --- */
+.wb-fc-keycap {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border: 1px solid color-mix(in hsl, currentColor 28%, transparent 72%);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.wb-fc-keycap--corner {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  opacity: 0.45;
+}
+
+.wb-fc-shortcut-hint {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.75);
+}
+
+.wb-fc-shortcut-hint > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wb-fc-shortcut-sep {
+  opacity: 0.5;
+}
+
+/* --- 内联编辑面板 --- */
+.wb-fc-edit-panel {
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 12px;
+  background: var(--wb-window-bg, hsl(var(--card)));
+  box-shadow: var(--wb-shadow-idle, 0 1px 2px hsl(var(--foreground) / 0.05));
+  animation: wb-fc-fade-up 180ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-edit-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -4px 0 0;
+  font-size: 11px;
+  color: hsl(41 85% 36%);
+}
+
+.dark .wb-fc-edit-hint {
+  color: hsl(45 90% 62%);
+}
+
+/* --- 错误条 --- */
+.wb-fc-session-error {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--destructive) / 0.3);
+  border-radius: 8px;
+  background: hsl(var(--destructive) / 0.08);
+  animation: wb-fc-fade-up 160ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* --- 加载 spinner --- */
+.wb-fc-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in hsl, hsl(var(--muted-foreground)) 30%, transparent 70%);
+  border-top-color: hsl(var(--primary));
+  animation: wb-fc-spin 700ms linear infinite;
+}
+
+@keyframes wb-fc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- 完成态 / 空态 --- */
+.wb-fc-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: hsl(var(--primary));
+  background: color-mix(in hsl, hsl(var(--primary)) 10%, transparent 90%);
+  animation: wb-fc-pop 320ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-summary-icon--empty {
+  color: hsl(var(--muted-foreground));
+  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+}
+
+.wb-fc-summary-icon--error {
+  color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 0.1);
+}
+
+.wb-fc-summary-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(22rem, 100%);
+  padding: 14px 16px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 12px;
+  background: color-mix(in hsl, hsl(var(--card)) 90%, transparent 10%);
+  box-shadow: var(--wb-shadow-idle, 0 1px 2px hsl(var(--foreground) / 0.05));
+  animation: wb-fc-fade-up 240ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-summary-stats {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.wb-fc-summary-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wb-fc-summary-stat-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+
+.wb-fc-summary-stat-bolt {
+  color: hsl(41 85% 45%);
+}
+
+.wb-fc-summary-stat-label {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-dist {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.wb-fc-dist-row {
+  display: grid;
+  grid-template-columns: 3.5em minmax(0, 1fr) 2em;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-dist-label {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.wb-fc-dist-count {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fc-dist-bar {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--muted)) 60%, transparent 40%);
+}
+
+.wb-fc-dist-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 420ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-dist-fill--again {
+  background: hsl(var(--destructive) / 0.8);
+}
+
+.wb-fc-dist-fill--hard {
+  background: hsl(38 92% 50% / 0.85);
+}
+
+.wb-fc-dist-fill--good {
+  background: hsl(152 60% 42% / 0.85);
+}
+
+.wb-fc-dist-fill--easy {
+  background: hsl(201 90% 50% / 0.85);
+}
+
+.wb-fc-summary-remaining {
+  margin: 0;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* --- 共用 keyframes --- */
+@keyframes wb-fc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wb-fc-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  60% {
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --- 动效降级 --- */
+@media (prefers-reduced-motion: reduce) {
+  .wb-fc-session-progress-fill,
+  .wb-fc-card,
+  .wb-fc-card-flip-hint,
+  .wb-fc-rate-btn,
+  .wb-fc-dist-fill {
+    transition: none;
+  }
+
+  .wb-fc-card[data-enter='a'],
+  .wb-fc-card[data-enter='b'],
+  .wb-fc-card-face[data-flip='a'],
+  .wb-fc-card-face[data-flip='b'],
+  .wb-fc-ratebar[data-mode='rate'],
+  .wb-fc-rate-btn[data-pressed='true'],
+  .wb-fc-chip--streak,
+  .wb-fc-summary-icon,
+  .wb-fc-summary-panel,
+  .wb-fc-edit-panel,
+  .wb-fc-session-error {
+    animation: none;
+  }
+
+  .wb-fc-rate-btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ===== 触屏适配 ===== */
+
+/* 顶部 tab 触控目标兜底（原 padding 高约 31px） */
+@media (pointer: coarse) {
+  .wb-fc-tab {
+    min-height: 44px;
+  }
+}
+
+/* 触屏无 hover：「点按翻面」提示常显（弱化透明度，避免视觉噪音） */
+@media (hover: none) {
+  .wb-fc-card-flip-hint {
+    opacity: 0.7;
+  }
+}
+
+/* 触屏设备隐藏键盘键位提示（Space/1-4/Z 对触屏无意义） */
+@media (hover: none) and (pointer: coarse) {
+  .wb-fc-keycap,
+  .wb-fc-shortcut-hint {
+    display: none;
+  }
+}
+
+/* ===== 复习会话：滑动评分手势层 ===== */
+
+/* 滑动评分：跟手期由内联样式接管（transition:none），回弹/飞出走这里的过渡 */
+.wb-fc-swipe-card {
+  transition:
+    transform 200ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    opacity 200ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-fc-swipe-card {
+    transition: none;
+  }
+}

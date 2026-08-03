@@ -1,0 +1,1064 @@
+{
+  "appName": "学习桌面",
+  "agent": {
+    "core": {
+      "operating": "AI 正在操作：{{label}}",
+      "pausedLabel": "已暂停：{{label}}",
+      "pause": "暂停",
+      "paused": "已暂停",
+      "stop": "停止",
+      "stopped": "已停止",
+      "cancelled": "已取消",
+      "revert": "撤销",
+      "reverting": "正在撤销",
+      "acting": "操作中",
+      "reviewing": "待确认",
+      "done": "已完成",
+      "stripRegion": "AI 桌面操控",
+      "actions": "操控操作",
+      "progressPaused": "已暂停：检测到用户输入",
+      "announceStarted": "AI 开始操作：{{label}}",
+      "announcePaused": "AI 已暂停操作：{{label}}",
+      "announceDone": "AI 已完成操作",
+      "announceStopped": "AI 已停止操作",
+      "resume": "继续",
+      "autoStopCountdown": "{{seconds}} 秒后自动停止",
+      "placementBackground": "（后台直落）",
+      "placementStageFull": "（演出槽满，直落）",
+      "placementFrozen": "（窗口冻结，直落）",
+      "dockDoneBadge": "AI 已在后台完成操作"
+    },
+    "errors": {
+      "controlOff": "Agent 桌面操控已关闭（desktop.workbenchAgentControl=off）",
+      "controlOffHint": "将设置「AI 助手操控」改为「后台」或「跟随」即可；数据修改也可改用领域工具",
+      "osDisabled": "桌面模式未开启",
+      "osDisabledHint": "请先开启 OS/桌面模式；数据修改请改用领域工具",
+      "launchFailed": "无法打开应用窗口",
+      "launchFailedHint": "桌面模式未就绪或应用未注册",
+      "abortedByControlOff": "操控已关闭，操作已中止",
+      "abortedByOsOff": "桌面模式已关闭，操作已中止"
+    },
+    "apps": {
+      "reserved": "-",
+      "flashcards": {
+        "appended": "AI 添加了 {{count}} 张卡片"
+      },
+      "templates": {
+        "undoCreate": "删除刚创建的模板",
+        "undoRename": "恢复模板名称",
+        "undoUpdateContent": "恢复模板内容"
+      }
+    }
+  },
+  "agentControlCenter": {
+    "title": "AI 桌面操控",
+    "description": "让 Chat 在学习应用中定位内容并执行已授权操作。",
+    "tooltip": "AI 桌面操控",
+    "triggerLabel": "AI 桌面操控，当前：{{status}}",
+    "modeLabel": "运行方式",
+    "capabilitiesTitle": "能做什么",
+    "appCount": "8 个应用",
+    "expandCapabilities": "全部能力",
+    "collapseCapabilities": "收起",
+    "saveFailed": "未能保存操控方式，请重试。",
+    "openChat": "打开 Chat",
+    "openSettings": "操控设置",
+    "settingsTitle": "助手可以做什么",
+    "settingsDescription": "这些能力来自学习子应用主动注册的语义操作，不使用坐标盲点。实际可用动作会随当前页面和状态变化。",
+    "modeDescriptions": {
+      "off": "仅查看状态，不打开或操作窗口。",
+      "background": "在后台执行，不打断当前工作。",
+      "follow": "操作时自动打开并聚焦目标窗口。"
+    },
+    "groups": {
+      "organize": {
+        "title": "整理内容",
+        "actions": "定位并编辑笔记、导图与待办"
+      },
+      "study": {
+        "title": "推进学习",
+        "actions": "切换题目、复习闪卡、管理专注计时"
+      },
+      "browse": {
+        "title": "查找资料",
+        "actions": "检索资源、切换目录与导航网页"
+      }
+    },
+    "safetyCompact": "只执行已注册操作；不会代答、提交或评分，破坏性操作会先确认。",
+    "safety": "只使用应用注册的语义操作；不会替你答题、提交考试或给闪卡评分。破坏性操作会在执行前确认。",
+    "apps": {
+      "note": {
+        "name": "笔记",
+        "actions": "定位标题；配合笔记工具在已打开窗口中演出追加、插入与替换"
+      },
+      "mindmap": {
+        "name": "思维导图",
+        "actions": "聚焦节点、切换大纲/画布；配合导图工具演出节点编辑"
+      },
+      "todo": {
+        "name": "待办",
+        "actions": "打开清单、定位事项、切换视图、搜索与筛选"
+      },
+      "files": {
+        "name": "资源库",
+        "actions": "打开目录、揭示或选择资源、导航、搜索、切换视图与排序"
+      },
+      "exam": {
+        "name": "题库",
+        "actions": "定位或切换题目、筛选题目、切换练习/专注模式和设置面板"
+      },
+      "flashcards": {
+        "name": "闪卡",
+        "actions": "打开资料库或复习页、开始到期复习、翻面和结束复习；不代替评分"
+      },
+      "pomodoro": {
+        "name": "番茄钟",
+        "actions": "开始、暂停或继续专注计时；停止会写入中断记录并单独确认"
+      },
+      "browser": {
+        "name": "浏览器",
+        "actions": "导航网址、前进后退、刷新、聚焦地址栏和显示页面窗口"
+      }
+    },
+    "killSwitch": {
+      "emergencyStop": "紧急断电",
+      "emergencyStopConfirm": "立即停止全部 Agent 并暂停自动化？",
+      "confirmStop": "立即停止",
+      "cancelConfirm": "取消",
+      "trippedBanner": "Agent 已断电",
+      "trippedReason": "原因：{{reason}}",
+      "automationsStillPaused": "自动化仍处于暂停状态",
+      "resumeAgents": "恢复 Agent",
+      "resumeAutomations": "恢复自动化",
+      "resumeAutomationsConfirm": "恢复定时自动化？它们可能会再次开始运行。",
+      "confirmResumeAutomations": "确认恢复自动化",
+      "stopFailed": "断电失败，请重试。",
+      "resumeFailed": "恢复失败，请重试。"
+    },
+    "automationCard": {
+      "title": "自动化",
+      "running": "调度正常",
+      "tripped": "紧急停止已触发，自动化已暂停",
+      "trippedHint": "Agent 已断电。请先恢复 Agent，再恢复自动化调度。",
+      "paused": "自动化调度暂停中",
+      "pausedHint": "紧急停止后自动化仍处于暂停状态，点击恢复后定时任务才会再次运行。",
+      "resuming": "恢复中…"
+    }
+  },
+  "menubar": {
+    "label": "学习状态栏",
+    "appName": "学习桌面",
+    "flashcardsDue": "{{count}} 张到期闪卡",
+    "tasksRunning": "{{count}} 个制卡任务进行中",
+    "automations": "打开定时任务：{{enabled}} 个启用，{{running}} 个运行中，{{failed}} 个最近失败",
+    "automationsTitle": "定时任务",
+    "automationsEnabledShort": "{{count}} 个启用",
+    "automationsNextRun": "下次运行 {{relative}}",
+    "automationsFailedShort": "{{count}} 个最近失败",
+    "automationsRelativeSoon": "即将开始",
+    "automationsRelativeMinutes": "{{count}} 分钟后",
+    "automationsRelativeHours": "{{count}} 小时后",
+    "automationsRelativeDays": "{{count}} 天后",
+    "pomodoroFocus": "专注剩余 {{time}}",
+    "pomodoroIdle": "未开始",
+    "pomodoroWork": "专注中",
+    "pomodoroBreak": "休息中",
+    "openApps": "打开全部应用",
+    "brandMenu": "学习桌面菜单",
+    "brandSettings": "系统设置…",
+    "brandExit": "退出学习桌面",
+    "openCommandPalette": "打开命令面板",
+    "openAppsPanel": "搜索应用与命令",
+    "openSettings": "打开设置",
+    "openCenter": "打开今日节律",
+    "centerShort": "节律",
+    "centerTitle": "今日节律",
+    "moduleFlashcards": "今日复习",
+    "moduleTasks": "制卡任务",
+    "moduleFocus": "专注",
+    "moduleDesktop": "桌面",
+    "desktopHint": "全部应用与窗口俯瞰",
+    "flashcardsDueShort": "{{count}} 张到期",
+    "tasksRunningShort": "{{count}} 进行中",
+    "rhythmFlashcards": "今日到期闪卡",
+    "rhythmPomodoro": "番茄状态",
+    "rhythmAutomation": "自动化健康",
+    "rhythmAutomationDetail": "运行 {{running}} · 失败 {{failed}} · 启用 {{enabled}}",
+    "rhythmTasks": "任务入口",
+    "rhythmTasksDetail": "{{count}} 个制卡任务",
+    "startReview": "开始复习",
+    "openTasks": "打开",
+    "openPomodoro": "打开番茄钟",
+    "allApps": "全部应用",
+    "expose": "窗口俯瞰",
+    "appMenu": "{{name}} 菜单",
+    "windowMenu": "窗口",
+    "clockLabel": "时钟与今日日程",
+    "agendaTitle": "今日日程"
+  },
+  "apps": {
+    "chat": {
+      "name": "对话",
+      "untitledSession": "新对话",
+      "preparing": "正在准备会话…",
+      "createFailed": "创建会话失败",
+      "retry": "重试",
+      "loading": "正在加载会话…",
+      "sessionNav": "会话导航"
+    },
+    "system": {
+      "todoNav": "待办导航",
+      "settingsNav": "设置导航",
+      "showNav": "显示导航",
+      "hideNav": "收起导航",
+      "tasksRunning": "{{count}} 个制卡任务进行中",
+      "paused": "已暂停",
+      "idleHint": "在下方开始一段专注"
+    },
+    "note": "笔记",
+    "textbook": "教材",
+    "exam": "题目集",
+    "translation": "翻译",
+    "essay": "作文批改",
+    "image": "图片",
+    "file": "文件",
+    "filePreview": "文件预览",
+    "mindmap": "思维导图",
+    "files": "资源库",
+    "todo": "待办",
+    "skills": "技能管理",
+    "templates": "模板管理",
+    "taskDashboard": "制卡任务",
+    "flashcards": "闪卡",
+    "settings": "设置",
+    "sandbox": "沙箱工作台",
+    "pomodoro": "番茄钟",
+    "browser": "浏览器"
+  },
+  "dock": {
+    "label": "程序坞",
+    "open": "打开",
+    "pin": "固定到 Dock",
+    "unpin": "从 Dock 移除",
+    "closeAll": "关闭全部窗口",
+    "closeWindow": "关闭窗口",
+    "windows": "窗口",
+    "minimized": "已最小化",
+    "newWindow": "新建窗口",
+    "noWindows": "暂无窗口",
+    "running": "运行中",
+    "apps": "全部应用",
+    "showAllWindows": "显示全部窗口"
+  },
+  "resourceHome": {
+    "newExam": "新建题目集",
+    "newEssay": "新建作文批改",
+    "newTranslation": "新建翻译",
+    "search": "搜索",
+    "loadFailed": "无法加载内容",
+    "noMatches": "没有匹配的内容",
+    "tryAnotherSearch": "请尝试其他关键词",
+    "empty": "这里还没有内容",
+    "createHint": "新建后即可直接开始使用，无需先打开资源库。",
+    "open": "打开",
+    "library": "资料库",
+    "all": "全部",
+    "recent": "最近使用",
+    "essaySettings": "批改设置",
+    "translationSettings": "翻译设置",
+    "settingsNeedSelection": "请先选择或新建一个项目",
+    "name": "名称",
+    "details": "状态",
+    "updated": "修改日期",
+    "questionCount": "{{count}} 道题",
+    "emptyQuestionSet": "尚未导入题目",
+    "roundCount": "{{count}} 次批改",
+    "notGraded": "尚未批改",
+    "itemCount": "{{count}} 个项目",
+    "openHint": "双击或按 Enter 打开",
+    "retry": "重试",
+    "untitled": "未命名"
+  },
+  "resourceWorkspace": {
+    "selectTitle": "选择一个项目",
+    "selectHint": "从左侧选择，或新建后直接开始。",
+    "hideSidebar": "隐藏侧边栏",
+    "showSidebar": "显示侧边栏",
+    "clearSearch": "清除搜索",
+    "refresh": "刷新",
+    "discard": "丢弃",
+    "cancel": "取消",
+    "reviewExitTitle": "结束复习会话？",
+    "reviewExitDescription": "已提交的评分会保留，剩余题目可稍后重新开始复习。",
+    "reviewExitConfirm": "结束复习"
+  },
+  "appsPanel": {
+    "title": "全部应用",
+    "searchPlaceholder": "搜索应用、命令、资源与聊天",
+    "empty": "没有匹配的结果",
+    "close": "关闭",
+    "view": "视图",
+    "gridView": "网格",
+    "listView": "列表",
+    "hint": "↑↓ 选择 · Enter 打开 · Esc 关闭",
+    "emptyHint": "换个关键词，或清空搜索查看全部应用",
+    "hintSelect": "选择",
+    "hintOpen": "打开",
+    "hintClose": "关闭",
+    "sectionApps": "应用",
+    "sectionCommands": "命令",
+    "sectionResources": "资源",
+    "sectionChat": "聊天",
+    "searching": "正在搜索…",
+    "resultCount": "{{count}} 个结果"
+  },
+  "window": {
+    "close": "关闭",
+    "minimize": "最小化",
+    "zoom": "缩放",
+    "maximize": "最大化",
+    "restore": "恢复原尺寸",
+    "center": "居中",
+    "tileMenu": "平铺选项",
+    "loading": "加载中…",
+    "frozenTitle": "窗口已休眠",
+    "frozenHint": "为节省内存已暂停此窗口，点击唤醒",
+    "frozenWakeAria": "点击唤醒休眠窗口",
+    "unknownApp": "未知应用类型：{{typeId}}",
+    "crashTitle": "此窗口的应用出错了",
+    "crashUnknown": "未知错误",
+    "reload": "重新加载"
+  },
+  "tile": {
+    "left": "平铺到左半屏",
+    "right": "平铺到右半屏",
+    "topLeft": "平铺到左上角",
+    "topRight": "平铺到右上角",
+    "bottomLeft": "平铺到左下角",
+    "bottomRight": "平铺到右下角",
+    "fill": "填满",
+    "center": "居中",
+    "restore": "恢复原尺寸",
+    "immersive": "进入沉浸模式",
+    "zone": {
+      "left": "左半屏",
+      "right": "右半屏",
+      "topLeft": "左上",
+      "topRight": "右上",
+      "bottomLeft": "左下",
+      "bottomRight": "右下"
+    }
+  },
+  "expose": {
+    "title": "窗口俯瞰",
+    "hint": "点击窗口聚焦，按 Esc 退出",
+    "empty": "没有打开的窗口",
+    "untitled": "未命名窗口",
+    "closeWindow": "关闭窗口",
+    "emptyHint": "按 Esc 或点击任意处返回桌面",
+    "emptyApp": "该应用没有可俯瞰的窗口"
+  },
+  "switcher": {
+    "title": "窗口切换器",
+    "hint": "按住 Ctrl 循环选择，松开切换",
+    "minimized": "已最小化"
+  },
+  "emptyDesktop": {
+    "title": "你的学习桌面",
+    "hint": "从下方 Dock 打开应用开始工作——窗口可以自由摆放、平铺与并排对比。",
+    "actionsLabel": "快速开始",
+    "actionFiles": "打开资源库",
+    "actionFilesDesc": "浏览笔记、教材与全部资源",
+    "actionApps": "全部应用",
+    "actionFlashcards": "闪卡",
+    "actionChat": "新建对话",
+    "actionChatDesc": "开一个 AI 对话窗口",
+    "actionTodo": "查看待办",
+    "actionTodoDesc": "安排今天的学习任务",
+    "tipsTitle": "小技巧",
+    "tipsDismiss": "知道了",
+    "tipTile": "把窗口拖到屏幕边缘，松手即可平铺",
+    "tipSwitch": "在窗口间快速切换",
+    "tipExpose": "俯瞰所有打开的窗口",
+    "tourTitle": "快速上手",
+    "tourSkip": "跳过",
+    "tourDontShow": "不再显示",
+    "tourNext": "下一步",
+    "tourDone": "完成",
+    "tourStep": "{{current}} / {{total}}",
+    "tourSteps": {
+      "dock": {
+        "title": "Dock 应用",
+        "body": "从底部 Dock 打开常用学习应用，窗口可自由摆放、平铺与并排对比。"
+      },
+      "search": {
+        "title": "快速搜索",
+        "body": "按 {{shortcut}} 搜索应用与命令，不必离开当前桌面。"
+      },
+      "statusBar": {
+        "title": "状态栏节律",
+        "body": "顶部状态栏汇集到期闪卡、番茄与自动化健康；点开即可查看今日节律。"
+      },
+      "agent": {
+        "title": "Agent 控制",
+        "body": "需要时让 AI 在已授权的学习应用中定位内容并执行操作。"
+      }
+    }
+  },
+  "agenda": {
+    "label": "日历与学习日程",
+    "backToToday": "回到今天",
+    "previousMonth": "上个月",
+    "nextMonth": "下个月",
+    "quickAdd": "添加日程",
+    "pendingCount": "{{count}} 项待安排",
+    "datePendingCount": "{{date}}，{{count}} 项待办",
+    "overdueCount": "{{count}} 项逾期",
+    "openTodo": "待办",
+    "loading": "正在整理日程…",
+    "clear": "这一天没有待完成事项",
+    "completeItem": "完成 {{title}}",
+    "completeFailed": "完成任务失败",
+    "unknownList": "待办",
+    "allDay": "全天",
+    "more": "还有 {{count}} 项",
+    "loadFailed": "日程暂时不可用"
+  },
+  "desktopMenu": {
+    "label": "桌面菜单",
+    "newChat": "新建对话",
+    "openFiles": "打开资源库",
+    "allApps": "全部应用…",
+    "arrange": "整理窗口",
+    "tileAll": "平铺全部窗口",
+    "expose": "窗口俯瞰",
+    "wallpaper": "桌面壁纸",
+    "manageWallpaper": "管理壁纸…",
+    "customWallpaper": "自定义图片",
+    "materialTier": "视觉材质",
+    "showDesktop": "显示桌面",
+    "restoreWindows": "恢复窗口",
+    "settings": "桌面设置…"
+  },
+  "cheatsheet": {
+    "title": "键盘快捷键",
+    "close": "关闭",
+    "hint": "按 ? 或 Esc 关闭 · 长按 Ctrl+Alt 随时查看",
+    "hintMac": "按 ? 或 Esc 关闭 · 长按 ⌘⌥ 随时查看",
+    "groups": {
+      "layout": "平铺与布局",
+      "movement": "移动与贴边",
+      "navigation": "切换与导航",
+      "management": "窗口管理",
+      "help": "帮助"
+    }
+  },
+  "wallpaper": {
+    "mountainMist": "薄雾雪山",
+    "forestMist": "山间雾林",
+    "alpineLake": "雪山静水",
+    "winterRidge": "冬日山脊",
+    "aurora": "极光",
+    "horizon": "破晓",
+    "graphite": "石墨",
+    "meadow": "草地",
+    "lagoon": "潟湖",
+    "dusk": "暮色",
+    "sakura": "樱花",
+    "sand": "沙丘",
+    "nebula": "星云",
+    "auroraFlow": "极光流动",
+    "duskFlow": "暮色流动"
+  },
+  "wallpaperManager": {
+    "title": "壁纸管理",
+    "presetsSection": "内置壁纸",
+    "customSection": "我的壁纸",
+    "import": "导入图片",
+    "importing": "正在导入…",
+    "empty": "还没有自定义壁纸，点击「导入图片」添加。",
+    "remove": "删除壁纸",
+    "limitReached": "壁纸库已达上限（{{limit}} 张），请先删除部分壁纸再导入。",
+    "importFailed": "导入失败，请重试。",
+    "adjustTitle": "图片调节",
+    "blur": "模糊",
+    "dim": "压暗",
+    "vignette": "暗角",
+    "close": "关闭",
+    "selectTitle": "选择壁纸图片"
+  },
+  "content": {
+    "loading": "正在加载内容…",
+    "missingResource": "缺少资源标识，无法打开该窗口",
+    "missingResourceHint": "请从资源库重新打开，或检查该资源是否仍存在。",
+    "confirmCloseUnsaved": "当前内容有未保存的修改，确定要关闭窗口吗？",
+    "unsavedTitle": "有未保存的更改，确定要离开吗？"
+  },
+  "mindmap": {
+    "loading": "正在加载思维导图…",
+    "missingResourceHint": "请从资源库重新打开思维导图，或检查该导图是否仍存在。"
+  },
+  "files": {
+    "dragOut": {
+      "openOnDesktop": "拖到桌面打开"
+    },
+    "preview": {
+      "type": {
+        "note": "笔记",
+        "textbook": "教材",
+        "exam": "试卷",
+        "translation": "翻译",
+        "essay": "作文",
+        "image": "图片",
+        "file": "文件",
+        "mindmap": "思维导图",
+        "folder": "文件夹",
+        "generic": "资源"
+      }
+    }
+  },
+  "a11y": {
+    "desktop": "工作台桌面",
+    "windowRole": "窗口",
+    "close": "关闭窗口",
+    "minimize": "最小化窗口",
+    "zoom": "缩放窗口",
+    "expose": "窗口俯瞰",
+    "tilingDivider": "平铺分割条",
+    "windowOpened": "已打开 {{title}}",
+    "windowClosed": "已关闭 {{title}}",
+    "windowMinimized": "{{title}} 已最小化",
+    "windowTiled": "{{title}} 已平铺至{{zone}}",
+    "zoomed": "{{title}} 已最大化",
+    "restored": "{{title}} 已恢复",
+    "exposeOpened": "俯瞰已打开，共 {{count}} 个窗口",
+    "exposeClosed": "俯瞰已关闭",
+    "dropOpened": "已打开 {{title}}",
+    "appCrashed": "{{name}} 出现错误，可重新加载",
+    "showDesktop": "已显示桌面",
+    "previewFailed": "无法打开预览",
+    "pdfRefOpenFailed": "无法打开 PDF 引用：缺少来源",
+    "zoomRestore": "还原窗口",
+    "closeAll": "关闭该应用全部窗口",
+    "minimizeAll": "最小化该应用全部窗口",
+    "immersiveEnter": "进入沉浸模式",
+    "immersiveExit": "退出沉浸模式",
+    "immersiveEntered": "{{title}} 已进入沉浸模式",
+    "immersiveExited": "{{title}} 已退出沉浸模式"
+  },
+  "shortcuts": {
+    "title": "快捷键",
+    "tileLeft": "平铺到左半屏",
+    "tileRight": "平铺到右半屏",
+    "tileTopLeft": "平铺到左上角",
+    "tileTopRight": "平铺到右上角",
+    "tileBottomLeft": "平铺到左下角",
+    "tileBottomRight": "平铺到右下角",
+    "moveLeft": "贴靠到左边缘（保持尺寸）",
+    "moveRight": "贴靠到右边缘（保持尺寸）",
+    "moveUp": "贴靠到上边缘（保持尺寸）",
+    "moveDown": "贴靠到下边缘（保持尺寸）",
+    "maximize": "最大化（填满桌面）",
+    "restoreOrMinimize": "恢复原尺寸 / 最小化",
+    "center": "居中窗口",
+    "cycleNext": "循环切换到下一个窗口",
+    "cyclePrev": "循环切换到上一个窗口",
+    "cycleAppNext": "切换到同应用下一个窗口",
+    "cycleAppPrev": "切换到同应用上一个窗口",
+    "minimize": "最小化焦点窗口",
+    "showDesktop": "显示桌面（最小化全部 / 再按恢复）",
+    "expose": "窗口俯瞰",
+    "closeWindow": "关闭焦点窗口",
+    "closeAll": "关闭所有窗口",
+    "cheatsheet": "快捷键速查表",
+    "exposeApp": "应用窗口俯瞰（当前应用）"
+  },
+  "settings": {
+    "sectionTitle": "学习桌面",
+    "sectionDesc": "学习桌面是产品默认身份：主内容区为可自由开窗、平铺的窗口化桌面。也可随时关闭，回到经典布局（兼容模式）。",
+    "mode": {
+      "title": "学习桌面（默认）",
+      "desc": "开启后使用窗口化学习桌面；关闭后切回经典布局作为兼容模式，桌面布局快照会保留。",
+      "migratedNotice": "已启用学习桌面，可在设置切回经典模式"
+    },
+    "performanceProfile": {
+      "title": "性能档位",
+      "desc": "一键平衡画质与流畅度。选择预设会同步视觉材质；单独改下面选项会变为「自定义」。",
+      "quality": "画质",
+      "balanced": "均衡",
+      "performance": "性能",
+      "custom": "自定义"
+    },
+    "materialTier": {
+      "title": "视觉材质",
+      "desc": "玻璃材质档位。也可由上方「性能档位」预设驱动；单独修改会切到自定义。",
+      "auto": "跟随平台",
+      "full": "全效果",
+      "reduced": "降透明",
+      "minimal": "极简"
+    },
+    "dockSize": {
+      "title": "Dock 大小",
+      "desc": "调节 Dock、应用图标和间距的整体尺寸。"
+    },
+    "wallpaper": {
+      "title": "桌面壁纸",
+      "desc": "选择内置自然风景或主题渐变，也可以使用自定义图片。",
+      "kindTheme": "内置壁纸",
+      "kindImage": "自定义图片",
+      "selectTitle": "选择壁纸图片",
+      "changeImage": "更换图片",
+      "importing": "正在导入…",
+      "manage": "管理壁纸"
+    },
+    "tileMargins": {
+      "title": "平铺间距",
+      "desc": "平铺窗口之间保留间距，关闭后平铺窗口紧贴排列。",
+      "px": "间距（px）"
+    },
+    "dockAutohide": {
+      "title": "自动隐藏 Dock",
+      "desc": "不使用时 Dock 自动收起，指针移到屏幕底部时滑出。"
+    },
+    "restoreSession": {
+      "title": "启动时恢复上次桌面",
+      "desc": "下次启动学习桌面时恢复上次打开的窗口与布局。默认关闭以加快冷启动；关闭时仍会保存桌面状态，便于日后开启。"
+    },
+    "menubarAutohide": {
+      "title": "自动隐藏菜单栏",
+      "desc": "不使用时菜单栏自动收起，指针移到屏幕顶部时滑出。"
+    },
+    "titleBarDoubleClick": {
+      "title": "双击窗口标题栏",
+      "desc": "双击窗口标题栏空白区时执行的操作。",
+      "zoom": "缩放",
+      "minimize": "最小化",
+      "none": "无操作"
+    },
+    "devPanel": {
+      "title": "诊断面板",
+      "desc": "在桌面上显示窗口生命周期、内存预算与帧耗时等调度诊断信息。开发版默认关闭；需用 npm run dev:tauri:diag，或 URL 加 ?wbDiag=1 启动后才可用。"
+    },
+    "browserEnabled": {
+      "title": "内置浏览器",
+      "desc": "在学习桌面中打开独立浏览器窗口（页面在隔离 WebView 中运行）。需先启用学习桌面。",
+      "needWorkbench": "请先启用学习桌面，才能打开内置浏览器相关选项。"
+    },
+    "browserNetworkMode": {
+      "title": "助手 HTTP 范围",
+      "desc": "限制助手控制浏览器时能否访问公网 HTTP；你手动浏览不受此项限制。",
+      "local_whitelist": "仅 HTTPS 公网",
+      "full": "允许公网 HTTP（需确认）",
+      "fullConfirmTitle": "允许助手访问公网 HTTP？",
+      "fullConfirm": "允许助手访问公网 HTTP 会使用未加密连接，页面和传输内容可能被篡改。是否继续？"
+    },
+    "browserAgentControl": {
+      "title": "允许助手操控浏览器",
+      "desc": "助手可在共享会话中导航与操作页面；敏感动作仍会请求确认。"
+    },
+    "agentControl": {
+      "title": "AI 助手操控",
+      "desc": "控制 Chat 助手能否在学习桌面中打开窗口、跟随焦点并演出操作。破坏性动作仍会请求确认。",
+      "off": "关闭",
+      "background": "后台",
+      "follow": "跟随",
+      "offDesc": "只读允许列出/查询窗口；打开、关闭、指令与演出一律拒绝。数据修改可走后端直写，不会开窗或演出。",
+      "backgroundDesc": "允许操控但不抢焦点：可在已开窗口演出，或直落终态并在 Dock 提示。",
+      "followDesc": "自动开窗并聚焦跟随：助手操作时会把目标窗口带到前台演出。"
+    },
+    "agentPacing": {
+      "title": "操控演出节奏",
+      "desc": "助手在桌面窗口中逐步应用操作时的视觉节奏。快速=直落+高亮；正常=默认体感；演示=放慢便于讲解。",
+      "fast": "快速",
+      "normal": "正常",
+      "demo": "演示"
+    },
+    "browserCdpWindows": {
+      "title": "Windows CDP 加速（高级）",
+      "desc": "仅 Windows。启用远程调试端口以增强自动化；有额外安全面，默认关闭。"
+    },
+    "browserAdvanced": "高级（浏览器）",
+    "browserPolicyDisabled": "当前策略禁用了内置浏览器。"
+  },
+  "browser": {
+    "addressPlaceholder": "输入网址或搜索",
+    "back": "后退",
+    "forward": "前进",
+    "reload": "刷新",
+    "stop": "停止",
+    "secureConnection": "安全连接",
+    "insecureConnection": "不安全的 HTTP 连接",
+    "connectionUnknown": "尚未建立连接",
+    "agentActive": "助手正在操控此页",
+    "userControl": "由你控制",
+    "takeOver": "接管",
+    "detachedHint": "网页已在独立窗口中打开",
+    "showContent": "显示页面",
+    "emptyHint": "输入网址开始浏览",
+    "blockedScheme": "出于安全原因，无法打开此链接",
+    "needWorkbench": "请先启用学习桌面",
+    "needBrowserEnabled": "请在设置中启用内置浏览器",
+    "contentCrashed": "页面进程已退出，可重试",
+    "approveNavigate": "允许助手打开：{{url}}",
+    "approveClick": "允许助手点击页面元素",
+    "approveType": "允许助手在页面中输入",
+    "nav": "导航"
+  },
+  "devPanel": {
+    "title": "Workbench 诊断",
+    "expand": "展开面板",
+    "collapse": "折叠面板",
+    "windows": "窗口",
+    "noWindows": "暂无窗口",
+    "lifecycle": {
+      "focused": "焦点",
+      "visible": "可见",
+      "background": "后台",
+      "frozen": "冻结"
+    },
+    "budget": "内存预算",
+    "focusStack": "焦点栈",
+    "emptyFocusStack": "（空）",
+    "lastSnapshot": "快照最后保存",
+    "never": "尚未保存",
+    "frameTime": "帧耗时",
+    "avg": "平均",
+    "max": "峰值",
+    "sampling": "采样中…",
+    "dropped": "掉帧",
+    "gestureDropped": "手势掉帧",
+    "longTasks": "长任务",
+    "source": "数据源",
+    "interactions": "最近交互",
+    "interactionsEmpty": "拖动或缩放窗口后显示延迟",
+    "copyTrace": "复制 JSON",
+    "clearTrace": "清空",
+    "distribution": "生命周期分布",
+    "minimizedTag": "最小化",
+    "close": "关闭面板"
+  },
+  "notesWorkspace": {
+    "title": "笔记",
+    "emptyPane": "选择一个笔记或思维导图",
+    "empty": {
+      "paneTitle": "选择或新建一篇笔记",
+      "paneNewNote": "新建笔记",
+      "paneOpenSearch": "打开搜索",
+      "hintQuickOpen": "快速打开",
+      "hintNewNote": "新建",
+      "treeTitle": "还没有笔记",
+      "treeNewNote": "新建笔记",
+      "treeNewFolder": "新建文件夹",
+      "paneImport": "导入笔记",
+      "paneAskAgent": "问问智能体"
+    },
+    "untitledNote": "未命名笔记",
+    "untitledMindmap": "未命名导图",
+    "confirmCloseUnsaved": "此标签页有未保存的更改，确定要关闭吗？",
+    "confirmCloseSaving": "此标签页仍在保存，确定要关闭吗？",
+    "ribbon": {
+      "aria": "笔记应用导航",
+      "explorer": "文件浏览器",
+      "search": "搜索笔记",
+      "backlinks": "属性与链接",
+      "trash": "回收站"
+    },
+    "explorer": {
+      "title": "文件",
+      "newNote": "新建笔记",
+      "newFolder": "新建文件夹",
+      "newMindmap": "新建思维导图",
+      "refresh": "刷新",
+      "open": "打开文件浏览器",
+      "close": "关闭文件浏览器",
+      "closeFiles": "关闭文件面板"
+    },
+    "navHistory": {
+      "aria": "导航历史",
+      "back": "后退 ({{shortcut}})",
+      "forward": "前进 ({{shortcut}})"
+    },
+    "navigation": {
+      "back": "后退",
+      "forward": "前进"
+    },
+    "library": {
+      "manage": "导入或导出知识库"
+    },
+    "import": {
+      "partial": "已导入 {{success}} 篇，{{failed}} 篇失败",
+      "success": "已导入 {{count}} 篇笔记"
+    },
+    "tagFilter": {
+      "label": "标签筛选",
+      "clear": "清空",
+      "loading": "加载标签…",
+      "retry": "重试",
+      "empty": "暂无标签",
+      "intersectionHint": "交集筛选：仅显示同时包含这 {{count}} 个标签的笔记"
+    },
+    "favorites": {
+      "title": "收藏",
+      "empty": "暂无收藏。在笔记或导图上点亮星标即可加入。",
+      "unfavorite": "取消收藏 {{name}}"
+    },
+    "search": {
+      "placeholder": "搜索文件...",
+      "aria": "搜索文件",
+      "clear": "清除搜索"
+    },
+    "searchOverlay": {
+      "title": "搜索笔记",
+      "quickOpen": "快速切换",
+      "fullText": "搜索内容",
+      "quickOpenPlaceholder": "筛选可打开的文件...",
+      "fullTextPlaceholder": "搜索笔记正文...",
+      "close": "关闭搜索",
+      "clear": "清除搜索",
+      "modeLabel": "搜索模式",
+      "searching": "正在搜索...",
+      "enterQuery": "输入内容以搜索笔记正文。",
+      "searchFailed": "无法搜索笔记。",
+      "openFailed": "无法打开此资源。",
+      "retry": "重试",
+      "mindmap": "思维导图",
+      "note": "笔记",
+      "empty": "没有匹配的笔记或思维导图。",
+      "keyboardHint": "上下方向键选择，Enter 打开，Esc 关闭",
+      "activeTags": "已选标签",
+      "removeTag": "移除标签 {{tag}}",
+      "emptyQuickOpenHint": "试试「搜索内容」进行全文匹配。",
+      "tagHint": "tag:名称 按标签筛选",
+      "resultCount": "{{count}} 条结果",
+      "recentGroup": "最近打开",
+      "allGroup": "全部文件"
+    },
+    "backlinks": {
+      "title": "链接",
+      "panelAria": "笔记信息面板",
+      "tabProperties": "属性",
+      "tabLinks": "链接",
+      "refresh": "刷新链接",
+      "close": "关闭链接",
+      "noActiveNote": "选择一篇笔记以查看链接。",
+      "noActiveNoteProperties": "选择一篇笔记以查看属性。",
+      "loading": "正在读取链接...",
+      "loadFailed": "无法读取笔记链接。",
+      "retry": "重试",
+      "outgoing": "出链",
+      "noOutgoing": "本篇还没有链接其他笔记，输入 [[ 即可创建双链",
+      "incoming": "反向链接",
+      "noIncoming": "还没有其他笔记链接到这里",
+      "incomingLimited": "已扫描 {{scanned}} 篇笔记，结果可能不完整。",
+      "moreContext": "显示更多上下文",
+      "lessContext": "显示更少上下文",
+      "unresolved": "未解析链接",
+      "createFromUnresolved": "创建笔记「{{title}}」",
+      "createFailed": "无法创建笔记。",
+      "openLinkedNote": "打开 {{title}}",
+      "openFailed": "无法打开关联笔记。",
+      "loadMore": "加载更多来源",
+      "mentions": "未链接提及",
+      "mentionsLoading": "正在扫描提及…",
+      "mentionsFailed": "无法扫描未链接提及。",
+      "mentionsLimited": "仅扫描最近 {{count}} 篇候选笔记。",
+      "noMentions": "没有找到未链接的提及",
+      "convertMention": "在「{{title}}」中转为链接"
+    },
+    "tree": {
+      "aria": "文件树",
+      "root": "资料库根目录",
+      "folder": "文件夹：{{name}}",
+      "note": "笔记：{{name}}",
+      "mindmap": "导图：{{name}}",
+      "renameInput": "重命名",
+      "loading": "正在读取文件",
+      "loadFailed": "文件列表加载失败",
+      "retry": "重试",
+      "noMatches": "没有匹配“{{query}}”的文件",
+      "empty": "知识库中还没有文件",
+      "showAll": "显示全部文件",
+      "dragLink": "拖动链接到笔记",
+      "moreActions": "更多操作"
+    },
+    "tabs": {
+      "aria": "打开的文件",
+      "close": "关闭 {{title}}",
+      "closeOthers": "关闭其他标签页",
+      "closeTabsToRight": "关闭右侧标签页",
+      "pin": "固定 {{title}}",
+      "unpin": "取消固定 {{title}}",
+      "pinned": "已固定",
+      "showAll": "显示全部打开的文件",
+      "openInRightSplit": "在右侧分屏打开 {{title}}",
+      "closeRightSplit": "从右侧分屏关闭 {{title}}"
+    },
+    "panes": {
+      "main": "主编辑器",
+      "right": "右侧编辑器",
+      "resize": "调整分屏大小"
+    },
+    "saveState": {
+      "saved": "已保存",
+      "saving": "正在保存",
+      "dirty": "未保存"
+    },
+    "status": {
+      "ready": "就绪",
+      "fileCount": "{{count}} 个文件",
+      "creatingNote": "正在创建笔记...",
+      "creatingMindmap": "正在创建思维导图...",
+      "splitNeedsAnotherTab": "请先打开另一标签页再分屏。",
+      "movedToTrash": "已将 {{name}} 移到回收站",
+      "movedManyToTrash": "已将 {{count}} 项移到回收站",
+      "restored": "已恢复 {{name}}",
+      "noteType": "Markdown",
+      "mindmapType": "思维导图",
+      "library": "本地知识库"
+    },
+    "actions": {
+      "undo": "撤销"
+    },
+    "context": {
+      "open": "打开",
+      "openSplit": "在右侧分屏打开",
+      "rename": "重命名",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
+      "newNote": "新建笔记",
+      "newFolder": "新建文件夹",
+      "newMindmap": "新建导图",
+      "delete": "删除"
+    },
+    "dialog": {
+      "renameTitle": "重命名",
+      "createFolderTitle": "新建文件夹",
+      "deleteTitle": "移到回收站",
+      "deleteDescription": "将“{{name}}”移到回收站？",
+      "deleteManyDescription": "将选中的 {{count}} 项移到回收站？",
+      "nameLabel": "名称",
+      "nameRequired": "请输入名称。",
+      "cancel": "取消",
+      "rename": "重命名",
+      "create": "创建",
+      "delete": "删除"
+    },
+    "validation": {
+      "nameTooLong": "名称最多 {{max}} 个字符",
+      "nameInvalidChars": "名称不能包含换行或控制字符",
+      "charCount": "{{count}} / {{max}}"
+    },
+    "trash": {
+      "title": "回收站",
+      "close": "关闭回收站",
+      "loading": "正在加载回收站",
+      "empty": "回收站为空",
+      "emptyAll": "清空回收站（{{count}}）",
+      "deletedAt": "删除于 {{time}}",
+      "restore": "恢复 {{name}}",
+      "purge": "彻底删除 {{name}}",
+      "selectAll": "全选",
+      "selectItem": "选择 {{name}}",
+      "restoreSelected": "恢复选中（{{count}}）",
+      "restoreSelectedFailed": "{{count}} 项恢复失败。",
+      "confirmEmptyTitle": "清空回收站？",
+      "confirmEmptyDesc": "将永久删除 {{count}} 项，此操作不可撤销。",
+      "confirmEmptyAction": "清空",
+      "confirmPurgeTitle": "彻底删除？",
+      "confirmPurgeDesc": "「{{name}}」将被永久删除，此操作不可撤销。",
+      "confirmPurgeAction": "彻底删除"
+    }
+  },
+  "sandbox": {
+    "title": "沙箱工作台",
+    "refresh": "刷新",
+    "openInspector": "打开检查器",
+    "closeInspector": "收起检查器",
+    "close": "关闭",
+    "preview": "预览",
+    "expand": "展开",
+    "collapse": "收起",
+    "inspector": "检查器",
+    "source": "来源",
+    "codeBlock": "代码块",
+    "safePreview": "安全预览",
+    "running": "运行",
+    "view": "视图",
+    "desktop": "桌面",
+    "tablet": "平板",
+    "mobile": "手机",
+    "desktopShort": "桌",
+    "tabletShort": "平",
+    "mobileShort": "手",
+    "stats": "统计",
+    "language": "语言",
+    "lines": "行数",
+    "characters": "字符",
+    "iframeNotice": "受限 iframe，脚本已禁用。",
+    "emptyHint": "在聊天中打开代码块即可预览。",
+    "mobileHint": "移动端以预览为主，完整工作台建议在桌面端使用。",
+    "closed": "已收起",
+    "open": "打开沙箱工作台",
+    "clearSession": "清空会话"
+  },
+  "tagTreeMarkdownPlaceholder": "# 根标签一\n### 子主题A\n#### 概念1\n##### 方法a\n###### 题型i",
+  "filePreview": {
+    "downloadUnavailable": "原文件不可用",
+    "saveAs": "另存为",
+    "downloadSuccess": "保存成功",
+    "referenceNotSupported": "该资源暂不支持引用",
+    "search": "搜索",
+    "openExternal": "使用系统应用打开",
+    "showInFolder": "在文件夹中显示",
+    "print": "打印",
+    "referenceToChat": "引用到对话",
+    "previous": "上一个",
+    "next": "下一个",
+    "searchPlaceholder": "在文档中查找…",
+    "noMatches": "无匹配",
+    "tooManyMatches": "匹配过多，仅统计前 {{limit}} 处",
+    "highlightUnsupported": "当前环境不支持高亮标注，仍可用 Enter 在匹配间跳转",
+    "printUnsupported": "该文件类型不支持在预览内打印，可使用系统应用打开后打印",
+    "searchUnavailable": "该文件类型不支持文本搜索",
+    "moreActions": "更多操作",
+    "closeSearch": "关闭搜索"
+  },
+  "pomodoro": {
+    "modes": {
+      "focusing": "专注中",
+      "shortBreak": "短休息",
+      "longBreak": "长休息",
+      "idle": "番茄钟"
+    },
+    "strictHint": "严格模式下专注不可暂停",
+    "strictBadge": "严格模式",
+    "countUpLabel": "正计时",
+    "controls": {
+      "startFocus": "开始专注",
+      "pause": "暂停",
+      "resume": "继续",
+      "stop": "停止",
+      "finish": "完成",
+      "skipBreak": "跳过休息",
+      "noiseOn": "开启环境音",
+      "noiseOff": "关闭环境音",
+      "enterImmersive": "进入沉浸式专注模式",
+      "extendMinutes": "+{{count}} 分钟",
+      "extendTitle": "延长当前阶段 {{count}} 分钟"
+    },
+    "settingsTitle": "番茄钟设置",
+    "statsTitle": "专注趋势",
+    "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
+    "today": {
+      "label": "今日",
+      "unit": "个番茄",
+      "focus": "专注",
+      "minutes": "{{value}} 分钟",
+      "hours": "{{value}} 小时",
+      "interrupted": "中断 {{value}} 次",
+      "goalReached": "目标达成",
+      "streak": "连续 {{count}} 天达标",
+      "statsButton": "统计"
+    }
+  }
+}

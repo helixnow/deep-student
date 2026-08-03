@@ -1,0 +1,496 @@
+/**
+ * SystemWindowShared.css（O18）— 系统应用窗口共享样式
+ * ---------------------------------------------------------------------------
+ * 全部类带 wb-sys- 前缀；动画仅 transform/opacity；
+ * 缓动引用 O1 token（--wb-ease / --wb-ease-out，带兜底值）；
+ * reduced-motion 与 minimal 材质档下动效归零。
+ */
+
+/* ==== 窗口侧栏统一契约 ================================================
+ * Token 定义在 workbench.tokens.css（--wb-sidebar-width /
+ * --wb-sidebar-width-medium / --wb-sidebar-seam），本文件只消费。
+ * 面：透明（透出 --wb-window-bg）+ 右缘软分隔线；
+ * 行：desktop-shell-nav-row（32px / 14px / --shell-nav-row-radius）。
+ */
+
+/* ==== 骨架屏 ========================================================== */
+
+.wb-sys-skeleton {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-window-bg, hsl(var(--card)));
+}
+
+.wb-sys-bone {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 11%, transparent 89%);
+}
+
+/* 高光跑马：transform-only shimmer（不动 background-position） */
+.wb-sys-bone::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in hsl, hsl(var(--foreground)) 7%, transparent 93%) 50%,
+    transparent 80%
+  );
+  /* linear：扫光形状交给渐变本身；ease-out + infinite 会在圈末减速再瞬跳起点 */
+  animation: wb-sys-shimmer 1.6s linear infinite;
+}
+
+@keyframes wb-sys-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.wb-sys-bone-row {
+  height: 12px;
+}
+
+.wb-sys-bone-title {
+  height: 22px;
+  border-radius: 8px;
+}
+
+.wb-sys-bone-chip {
+  height: 24px;
+  width: 64px;
+  border-radius: 12px;
+}
+
+.wb-sys-bone-card {
+  height: 88px;
+  flex: 1;
+  border-radius: 10px;
+}
+
+.wb-sys-bone-canvas {
+  flex: 1;
+  min-height: 120px;
+  border-radius: 14px;
+}
+
+.wb-sys-skel-split {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.wb-sys-skel-aside {
+  width: var(--wb-sidebar-width, 272px);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px;
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+}
+
+.wb-sys-skel-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+}
+
+.wb-sys-skel-pad {
+  padding: 18px 20px;
+}
+
+.wb-sys-skel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.wb-sys-skel-toolbar .wb-sys-bone-chip:last-child {
+  margin-left: auto;
+}
+
+.wb-sys-skel-cards {
+  display: flex;
+  gap: 12px;
+}
+
+/* 中窗骨架：侧栏骨架同步收窄，加载完成零跳变 */
+[data-wb-sys-size='medium'] .wb-sys-skel-aside {
+  width: var(--wb-sidebar-width-medium, 240px);
+}
+
+/* 窄窗骨架：侧栏骨架随之收起，与真实布局对齐 */
+[data-wb-sys-size='compact'] .wb-sys-skel-aside {
+  display: none;
+}
+
+/* ==== 内容就绪淡入 ==================================================== */
+
+.wb-sys-fade {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  animation: wb-sys-fade-in 200ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+@keyframes wb-sys-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==== 侧栏 + 内容布局 ================================================= */
+
+.wb-sys-split {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-sys-aside {
+  width: var(--wb-sidebar-width, 272px);
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
+  /* 侧栏与内容之间的软分隔线：与对话窗口同源，避免同色背景下两面糊成一片 */
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+  transition:
+    width 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    border-color 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-split[data-wb-sys-sidebar-collapsed='true'] .wb-sys-aside {
+  width: 0;
+  border-right-color: transparent;
+}
+
+/* 中窗：侧栏收窄，还内容一口气 */
+[data-wb-sys-size='medium'] .wb-sys-aside {
+  width: var(--wb-sidebar-width-medium, 240px);
+}
+
+/* 窗口内的 legacy Shell 侧栏组件（SettingsSidebar / TodoShellSidebar 等）
+ * 自带 study-shell-sidebar-frame 的不透明面 + seam 边框 + 投影——那是给
+ * legacy 全屏壳用的。窗口内统一对齐对话标准：透明面（透出 --wb-window-bg），
+ * 分隔线由 .wb-sys-aside 统一画。依赖类名 study-shell-sidebar-frame 稳定。 */
+.wb-sys-aside .study-shell-sidebar-frame,
+.wb-sys-drawer-body .study-shell-sidebar-frame {
+  background: transparent !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 窄窗：侧栏离场（内容由抽屉接管）——双保险：祖先分级属性或布局自身抽屉模式 */
+[data-wb-sys-size='compact'] .wb-sys-aside,
+.wb-sys-split[data-wb-sys-drawer-mode='true'] .wb-sys-aside {
+  display: none;
+}
+
+.wb-sys-content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  /* 截断超出内容，让子项（如 .wb-resource-workspace-main）的 height:100% 有确定参照 */
+  overflow: hidden;
+}
+
+/* ---- 左缘抽屉把手（窄窗唯一导航入口） ---- */
+
+.wb-sys-drawer-handle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  /* 窗内局部层级锚定 --wb-z-window-content（+5/+6/+7 递进，恒低于标题栏 10） */
+  z-index: calc(var(--wb-z-window-content, 0) + 5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-left: none;
+  border-radius: 0 9px 9px 0;
+  background: var(--wb-glass-bg-strong, hsl(var(--card) / 0.85));
+  /* 走 --wb-glass-blur：拖/缩时窗壳清 token，避免跟手每帧重采样 */
+  -webkit-backdrop-filter: var(--wb-glass-blur, none);
+  backdrop-filter: var(--wb-glass-blur, none);
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transform: translateY(-50%) translateX(-4px);
+  opacity: 0.72;
+  transition:
+    transform 160ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    opacity 160ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-drawer-handle:hover,
+.wb-sys-drawer-handle:focus-visible {
+  transform: translateY(-50%) translateX(0);
+  opacity: 1;
+  color: hsl(var(--foreground));
+}
+
+.wb-sys-drawer-handle:focus-visible {
+  /* 焦点环统一走 O1 token（minimal 档不降级，属 a11y） */
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline-offset: 1px;
+}
+
+/* 触屏基线（原 ResourceAppWorkspace / FilesAppWindow 的重复覆盖上移共享）：
+   hover 展开在 coarse 指针上不可达，把手直接放大到 44px 命中区，
+   取消内缩位移与半透明 */
+@media (pointer: coarse) {
+  .wb-sys-drawer-handle {
+    width: 44px;
+    height: 64px;
+    transform: translateY(-50%);
+    opacity: 1;
+  }
+
+  /* 抽屉关闭按钮：22px 视觉过小，触屏放大到 40px 命中区 */
+  .wb-sys-drawer-close {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ---- 遮罩 ---- */
+
+.wb-sys-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--wb-z-window-content, 0) + 6);
+  background: hsl(var(--background) / 0.42);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 180ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    visibility 0s linear 180ms;
+}
+
+.wb-sys-scrim[data-open='true'] {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 180ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    visibility 0s;
+}
+
+/* ---- 抽屉面板（常驻挂载，visibility 切换） ---- */
+
+.wb-sys-drawer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: calc(var(--wb-z-window-content, 0) + 7);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: min(248px, 82%);
+  border-right: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: var(--wb-window-bg, hsl(var(--card)));
+  box-shadow: 12px 0 32px hsl(var(--shadow-base, 0 0% 0%) / 0.14);
+  transform: translateX(-102%);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 220ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    opacity 180ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    visibility 0s linear 220ms;
+}
+
+.wb-sys-drawer[data-open='true'] {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
+  transition:
+    transform 220ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    opacity 160ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    visibility 0s;
+}
+
+.wb-sys-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+}
+
+.wb-sys-drawer-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-sys-drawer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: opacity 120ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-drawer-close:hover {
+  color: hsl(var(--foreground));
+  background: var(--interactive-hover, rgba(0, 0, 0, 0.08));
+}
+
+.wb-sys-drawer-close:focus-visible {
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline-offset: 1px;
+}
+
+/* 抽屉面板自身可编程聚焦（tabIndex=-1），不画默认外框 */
+.wb-sys-drawer:focus {
+  outline: none;
+}
+
+.wb-sys-drawer-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.wb-sys-drawer-body-viewport {
+  /* 抽屉滚到边缘不把滚动链传给底下的内容区 */
+  overscroll-behavior: contain;
+}
+
+/* ==== 任务进行中活动条 ================================================ */
+
+.wb-sys-activity {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: calc(var(--wb-z-window-content, 0) + 5);
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-activity[data-active='true'] {
+  opacity: 1;
+}
+
+.wb-sys-activity-runner {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--info) / 0.85) 35%,
+    hsl(var(--info)) 50%,
+    hsl(var(--info) / 0.85) 65%,
+    transparent 100%
+  );
+  transform: translate3d(-70%, 0, 0);
+}
+
+.wb-sys-activity[data-active='true'] .wb-sys-activity-runner {
+  /* linear：跑条循环末端不减速顿挫；形状由渐变条本身承担 */
+  animation: wb-sys-activity-run 2.2s linear infinite;
+}
+
+@keyframes wb-sys-activity-run {
+  0% {
+    transform: translate3d(-70%, 0, 0);
+  }
+  100% {
+    transform: translate3d(70%, 0, 0);
+  }
+}
+
+/* ==== 动效降级（reduced-motion / minimal 材质档） ====================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-sys-aside {
+    transition-duration: 0ms;
+  }
+
+  .wb-sys-bone::after,
+  .wb-sys-activity[data-active='true'] .wb-sys-activity-runner {
+    animation: none;
+  }
+
+  .wb-sys-fade {
+    animation-duration: 0ms;
+  }
+
+  .wb-sys-drawer,
+  .wb-sys-drawer[data-open='true'],
+  .wb-sys-scrim,
+  .wb-sys-scrim[data-open='true'],
+  .wb-sys-drawer-handle {
+    transition-duration: 0ms;
+  }
+
+  /* 静态化的活动条：保留纯色存在感提示 */
+  .wb-sys-activity[data-active='true'] .wb-sys-activity-runner {
+    transform: none;
+    background: hsl(var(--info) / 0.7);
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-sys-bone::after,
+:root[data-wb-material='minimal'] .wb-sys-activity[data-active='true'] .wb-sys-activity-runner {
+  animation: none;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-activity[data-active='true'] .wb-sys-activity-runner {
+  transform: none;
+  background: hsl(var(--info) / 0.7);
+}
+
+:root[data-wb-material='minimal'] .wb-sys-fade {
+  animation-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-aside {
+  transition-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-drawer,
+:root[data-wb-material='minimal'] .wb-sys-drawer[data-open='true'],
+:root[data-wb-material='minimal'] .wb-sys-scrim,
+:root[data-wb-material='minimal'] .wb-sys-scrim[data-open='true'],
+:root[data-wb-material='minimal'] .wb-sys-drawer-handle {
+  transition-duration: 0ms;
+}

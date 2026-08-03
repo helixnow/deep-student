@@ -5,6 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "@phosphor-icons/react"
 
 import { cn } from "../../../lib/utils"
+import { Z_INDEX } from "@/config/zIndex"
 
 const Sheet = SheetPrimitive.Root
 
@@ -17,12 +18,16 @@ const SheetPortal = SheetPrimitive.Portal
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
->(({ className, ...props }, ref) => (
+>(({ className, style, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-[var(--overlay)] transition-opacity data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:duration-[var(--modal-open-dur)] data-[state=closed]:duration-[var(--modal-close-dur)] motion-reduce:transition-none",
+      "fixed inset-0 bg-[var(--overlay)] ui-fade-in ui-fade-out",
       className
     )}
+    // 层级走 Z_INDEX.sheet（曾为 z-50：portal 到 body 后被移动顶栏 1100 /
+    // 弹窗 3000 盖住，2026-07 移动端审计 H-2）。遮罩与内容同档，
+    // Radix 渲染顺序（overlay 在前）保证内容盖在遮罩上。
+    style={{ zIndex: Z_INDEX.sheet, ...style }}
     {...props}
     ref={ref}
   />
@@ -30,16 +35,19 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 border-[color:var(--dialog-shell-border)] bg-[color:var(--dialog-shell-surface)] p-6 text-popover-foreground shadow-[var(--shadow-shell-floating)] transition-opacity duration-200 ease-out data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=open]:duration-[var(--panel-open-dur)] data-[state=closed]:duration-[var(--panel-close-dur)] motion-reduce:transition-none",
+  // 开闭动画走 ui-motion（transitions-dev token）：进场 ui-slide-in-*，
+  // 离场 ui-slide-out-*（仅 data-state="closed" 时生效，Radix 等 animationend 再卸载）
+  // z-index 由 SheetContent 以 Z_INDEX.sheet 内联设置（不要在此写死 z-* 类）
+  "fixed gap-4 border-[color:var(--dialog-shell-border)] bg-[color:var(--dialog-shell-surface)] p-6 text-popover-foreground shadow-[var(--shadow-shell-floating)]",
   {
     variants: {
       side: {
-        top: "inset-x-0 top-0 rounded-b-[var(--radius-shell-dialog)] border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+        top: "inset-x-0 top-0 rounded-b-[var(--radius-shell-dialog)] border-b ui-slide-in-top ui-slide-out-top",
         bottom:
-          "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-[var(--radius-shell-dialog)] border-x border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-        left: "inset-y-0 left-0 h-dvh w-[min(92vw,28rem)] border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+          "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-[var(--radius-shell-dialog)] border-x border-t ui-slide-in-bottom ui-slide-out-bottom",
+        left: "inset-y-0 left-0 h-dvh w-[min(92vw,28rem)] border-r ui-slide-in-left ui-slide-out-left",
         right:
-          "inset-y-0 right-0 h-dvh w-[min(92vw,28rem)] border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+          "inset-y-0 right-0 h-dvh w-[min(92vw,28rem)] border-l ui-slide-in-right ui-slide-out-right",
       },
     },
     defaultVariants: {
@@ -59,7 +67,7 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, hideCloseButton = false, overlayClassName, ...props }, ref) => {
+>(({ side = "right", className, children, hideCloseButton = false, overlayClassName, style, ...props }, ref) => {
   const { t } = useTranslation("common")
   return (
     <SheetPortal>
@@ -68,6 +76,7 @@ const SheetContent = React.forwardRef<
         ref={ref}
         data-overlay-container="true"
         className={cn(sheetVariants({ side }), className)}
+        style={{ zIndex: Z_INDEX.sheet, ...style }}
         {...props}
       >
         {children}

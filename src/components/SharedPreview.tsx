@@ -93,7 +93,7 @@ const applyClozeMarkup = (text: string, showBack: boolean) =>
       return `<span class="cloze-revealed">${clozeText}</span>`;
     }
     const hintMarkup = hint ? `<span class="cloze-hint">${hint}</span>` : '';
-    return `<span class="cloze">[...]</span>${hintMarkup}<span class="cloze-live-reveal">${clozeText}</span>`;
+    return `<span class="cloze">[...]</span>${hintMarkup}`;
   });
 
 const stripClozeMarkup = (text: string) =>
@@ -125,15 +125,11 @@ export const renderCardPreview = (
   const hasActualCardData = !!actualCardData && Object.keys(actualCardData).length > 0;
   
   
-  // 🎯 SOTA级别修复：根据模板ID/名称提供完整的示例数据
   // 🌐 i18n: 加载预览数据翻译
   const rawPd = i18n.t('pd', { ns: 'template', returnObjects: true });
   const pd: Record<string, any> = typeof rawPd === 'object' && rawPd !== null ? rawPd : {};
 
   const getTemplateSpecificData = () => {
-    const templateName = templateData.name || '';
-    const templateId = templateData.id || '';
-    
     // 🔥 优先使用数据库中的预览数据
     if (templateData.preview_data_json) {
       try {
@@ -142,208 +138,17 @@ export const renderCardPreview = (
         debugWarn('Failed to parse preview_data_json:', e);
       }
     }
-    
-    // 🔥 关键修复：为所有14个模板提供完整的预览数据（兜底方案）
-    switch (templateId) {
-      case 'minimal-card': {
-        const d = pd?.minimal_card || {};
-        return {
-          'Front': templateData.preview_front || d.Front,
-          'Back': templateData.preview_back || d.Back,
-          'Notes': d.Notes,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'code-card': {
-        const d = pd?.code_card || {};
-        return {
-          'Question': templateData.preview_front || d.Question,
-          'Code': templateData.preview_back || d.Code,
-          'Language': d.Language || 'Python',
-          'Notes': d.Notes,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'cloze-card': {
-        const d = pd?.cloze_card || {};
-        return {
-          'Text': templateData.preview_front || d.Text,
-          'Hint': d.Hint,
-          'Notes': d.Notes,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'choice-card': {
-        const d = pd?.choice_card || {};
-        return {
-          'Front': templateData.preview_front || d.Front,
-          'Question': templateData.preview_front || d.Front,
-          'OptionA': d.OptionA,
-          'OptionB': d.OptionB,
-          'OptionC': d.OptionC,
-          'OptionD': d.OptionD,
-          'optiona': d.OptionA,
-          'optionb': d.OptionB,
-          'optionc': d.OptionC,
-          'optiond': d.OptionD,
-          'Correct': d.Correct || 'C',
-          'correct': d.Correct || 'C',
-          'Explanation': templateData.preview_back || d.Explanation,
-          'explanation': templateData.preview_back || d.Explanation,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'language-learning-card': {
-        const d = pd?.language_learning_card || {};
-        return {
-          'Word': templateData.preview_front || d.Word,
-          'Translation': templateData.preview_back || d.Translation,
-          'Pronunciation': d.Pronunciation,
-          'Example': d.Example,
-          'Grammar': d.Grammar,
-          'Context': d.Context,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'medical-terminology-card': {
-        const d = pd?.medical_terminology_card || {};
-        return {
-          'Term': d.Term || 'Hypertension',
-          'Translation': d.Translation,
-          'Definition': d.Definition,
-          'Category': d.Category,
-          'Symptoms': d.Symptoms,
-          'Treatment': d.Treatment,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'historical-events-card': {
-        const d = pd?.historical_events_card || {};
-        return {
-          'Event': d.Event,
-          'Date': d.Date,
-          'Location': d.Location,
-          'KeyFigures': d.KeyFigures,
-          'Causes': d.Causes,
-          'Consequences': d.Consequences,
-          'Significance': d.Significance,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'math-formulas-card': {
-        const d = pd?.math_formulas_card || {};
-        return {
-          'Formula': d.Formula || 'a² + b² = c²',
-          'Name': d.Name,
-          'Description': d.Description,
-          'Variables': d.Variables,
-          'Application': d.Application,
-          'Example': d.Example,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'legal-articles-card': {
-        const d = pd?.legal_articles_card || {};
-        return {
-          'Article': d.Article,
-          'Law': d.Law,
-          'Content': d.Content,
-          'Keywords': d.Keywords,
-          'Interpretation': d.Interpretation,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'concept-comparison-card': {
-        const d = pd?.concept_comparison_card || {};
-        return {
-          'ConceptA': d.ConceptA,
-          'ConceptB': d.ConceptB,
-          'Similarities': d.Similarities,
-          'DifferencesA': d.DifferencesA,
-          'DifferencesB': d.DifferencesB,
-          'ApplicationA': d.ApplicationA,
-          'ApplicationB': d.ApplicationB,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'multi-step-tutorial': {
-        const d = pd?.multi_step_tutorial || {};
-        // Steps 中的 code 对象需要保持结构（code 内容不需翻译）
-        const steps = Array.isArray(d.Steps) ? d.Steps.map((step: any, idx: number) => ({
-          ...step,
-          code: idx === 1 ? {
-            language: 'bash',
-            code: 'git config --global user.name "Your Name"\ngit config --global user.email "your@email.com"'
-          } : step.code || undefined,
-        })) : [];
-        return {
-          'Title': templateData.preview_front || d.Title,
-          'Overview': d.Overview,
-          'Steps': steps,
-          'EstimatedTime': d.EstimatedTime,
-          'Tips': d.Tips,
-          'CommonMistakes': d.CommonMistakes,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'code-debug-exercise': {
-        const d = pd?.code_debug_exercise || {};
-        return {
-          'Title': d.Title,
-          'BuggyCode': d.BuggyCode,
-          'Language': d.Language || 'Python',
-          'ErrorType': d.ErrorType || 'IndexError',
-          'ErrorMessage': d.ErrorMessage,
-          'CorrectCode': d.CorrectCode,
-          'Explanation': d.Explanation,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'data-analysis-comparison': {
-        const d = pd?.data_analysis_comparison || {};
-        return {
-          'Topic': d.Topic,
-          'Criteria': d.Criteria,
-          'ComparisonItems': d.ComparisonItems,
-          'Conclusion': d.Conclusion,
-          'Tags': d.Tags,
-        };
-      }
-        
-      case 'knowledge-graph': {
-        const d = pd?.knowledge_graph || {};
-        return {
-          'CentralConcept': d.CentralConcept,
-          'Definition': d.Definition,
-          'Components': d.Components,
-          'Relationships': d.Relationships,
-          'Tags': d.Tags,
-        };
-      }
-        
-      default: {
-        // 兜底数据，使用模板的preview数据
-        const d = pd?.fallback || {};
-        return {
-          'Front': templateData.preview_front || d.Front,
-          'Back': templateData.preview_back || d.Back,
-          'Notes': d.Notes,
-          'Tags': d.Tags,
-        };
-      }
-    }
+
+    // 兜底数据，使用模板的 preview 数据。
+    // 历史上此处有 14 个按旧模板 ID（minimal-card / code-card 等）分支的兜底示例数据，
+    // 这些 ID 已不存在于内置模板库（现内置模板 ID 均为 design-*），已删除。
+    const d = pd?.fallback || {};
+    return {
+      'Front': templateData.preview_front || d.Front,
+      'Back': templateData.preview_back || d.Back,
+      'Notes': d.Notes,
+      'Tags': d.Tags,
+    };
   };
 
   const specificData = hasActualCardData ? {} : getTemplateSpecificData();

@@ -8,6 +8,8 @@
  */
 
 import React, { memo, useMemo, useRef, useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { invoke } from '@tauri-apps/api/core';
@@ -18,13 +20,21 @@ import { QueuedMessageStack } from './QueuedMessageStack';
 import { modeRegistry } from '../../registry';
 import { ModelPicker, type ModelPickerMode } from './ModelPicker';
 import { SkillSelector } from '../../skills/components/SkillSelector';
+import { parseLeadingSkillCommands } from '../../skills/slashCommands';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
-import type { InputBarV2Props, ModelMentionState, ModelMentionActions } from './types';
+import type { InputBarV2Props } from './types';
+import { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
 import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
 import { QUEUE_HARD_CAP } from '../../core/types/queue';
 import { usePdfPageRefs } from './usePdfPageRefs';
+import {
+  clearComposerDraft,
+  composerDraftStorageKey,
+  restoreComposerDraftIfSafe,
+  writeComposerDraft,
+} from './composerDraftStorage';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import type { ModelInfo } from '../../utils/parseModelMentions';
@@ -32,6 +42,12 @@ import { isMultiModelSelectEnabled } from '@/config/featureFlags';
 import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
 import { deriveContextWindowUsage } from './contextWindowUsage';
 import { useSessionUsageSummary } from './useSessionUsageSummary';
+import { findActiveCompactionInfo, type ContextCompactionInfo } from './contextCompactionInfo';
+import {
+  compactionReasonI18nKey,
+  normalizeCompactSessionResponse,
+} from '../../utils/compactionFeedback';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
@@ -80,30 +96,54 @@ interface ModelProfileDisplayRecord {
   model?: string;
 }
 
-const THINKING_DEPTH_LABELS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
+// 值 → i18n 键后缀（chatV2:inputBar.thinkingDepth.*）；kind 仅约束该模型允许的档位
+const THINKING_DEPTH_LABEL_KEYS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
   'openai-effort': {
-    low: '低',
-    medium: '中',
-    high: '高',
-    xhigh: '超高',
+    minimal: 'minimal',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
   },
   'v4-effort': {
-    high: '高',
-    max: '超高',
+    high: 'high',
+    max: 'max',
   },
   'v32-budget-effort': {
-    low: '低',
-    medium: '中',
-    high: '高',
-    xhigh: '超高',
-    max: '超高',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
   },
+  'gemini-pro-effort': { low: 'low', high: 'high' },
+  'gemini-flash-effort': { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high' },
+  'anthropic-adaptive-effort': { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
+  'glm-effort': { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
+  'grok-effort': { low: 'low', medium: 'medium', high: 'high' },
+  'mistral-effort': { low: 'low', medium: 'medium', high: 'high' },
+  'ernie-effort': { high: 'high', max: 'max' },
   'toggle-only': {},
 };
 
-function getThinkingDepthLabel(kind: DeepSeekReasoningControlKind, value: DeepSeekReasoningOptionValue | undefined): string {
-  if (!value) return '开启';
-  return THINKING_DEPTH_LABELS[kind][value] ?? value;
+const THINKING_DEPTH_LABEL_FALLBACKS: Record<string, string> = {
+  minimal: '最低',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '超高',
+  max: '超高',
+};
+
+function getThinkingDepthLabel(
+  kind: DeepSeekReasoningControlKind,
+  value: DeepSeekReasoningOptionValue | undefined,
+  t: TFunction
+): string {
+  if (!value) return t('chatV2:inputBar.thinkingOn');
+  const keySuffix = THINKING_DEPTH_LABEL_KEYS[kind][value];
+  if (!keySuffix) return value;
+  return t(`chatV2:inputBar.thinkingDepth.${keySuffix}`, THINKING_DEPTH_LABEL_FALLBACKS[keySuffix] ?? value);
 }
 
 function normalizeModelIdentity(value: unknown): string {
@@ -176,11 +216,13 @@ function resolveModelReasoningSupport(model: ModelInfo | undefined): boolean {
     return true;
   }
 
-  const explicitReasoning =
-    getModelBooleanField(model, 'isReasoning') ??
-    getModelBooleanField(model, 'supportsReasoning');
-  if (typeof explicitReasoning === 'boolean') {
-    return explicitReasoning;
+  const isReasoning = getModelBooleanField(model, 'isReasoning');
+  const supportsReasoning = getModelBooleanField(model, 'supportsReasoning');
+  if (isReasoning === true || supportsReasoning === true) {
+    return true;
+  }
+  if (isReasoning === false && supportsReasoning === false) {
+    return false;
   }
 
   return inferCapabilities({
@@ -214,6 +256,7 @@ function getManualPinnedSkillIds(
 
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
   ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, inputToolSlot, composerInlinePanel, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
+    const { t } = useTranslation(['chatV2']);
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
     const {
       sessionId,
@@ -241,6 +284,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       clearContextRefs,
       // 🆕 工具审批请求
       pendingApprovalRequest,
+      authorityMode,
+      permissionPreset,
+      authorityAskBlockedHint,
+      setAuthorityMode,
+      setPermissionPreset,
+      setAuthorityAskBlockedHint,
+      knowledgeBaseProactive,
+      setFeature,
+      liveAuthorityBlockedBlockId,
     } = useStore(
       store,
       useShallow((s) => ({
@@ -258,7 +310,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         lastAssistantUsage: (() => {
           const messageOrder = Array.isArray(s.messageOrder) ? s.messageOrder : [];
           const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
-          for (let i = messageOrder.length - 1; i >= 0; i -= 1) {
+          // ★ 性能：selector 在流式期间每次 store flush 都会执行；
+          // 倒序扫描封顶 30 条——带 usage 的助手消息几乎总在末尾，
+          // 避免长会话（数百条）时每 32ms 全量倒扫
+          const scanFloor = Math.max(0, messageOrder.length - 30);
+          for (let i = messageOrder.length - 1; i >= scanFloor; i -= 1) {
             const message = messageMap.get(messageOrder[i]);
             if (message?.role === 'assistant' && message._meta?.usage) {
               return message._meta.usage;
@@ -280,8 +336,60 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         clearContextRefs: s.clearContextRefs,
         // 🆕 阻塞交互请求
         pendingApprovalRequest: s.pendingBlockingInteraction,
+        authorityMode: s.authorityMode ?? 'craft',
+        permissionPreset: s.permissionPreset ?? 'relaxed',
+        authorityAskBlockedHint: s.authorityAskBlockedHint ?? false,
+        setAuthorityMode: s.setAuthorityMode,
+        setPermissionPreset: s.setPermissionPreset,
+        setAuthorityAskBlockedHint: s.setAuthorityAskBlockedHint,
+        // 🆕 知识库主动检索开关（features 与 messageMap 同理做 Map 防御，
+        // 恢复/测试路径可能给到普通对象）
+        knowledgeBaseProactive:
+          s.features instanceof Map ? (s.features.get('kbProactive') ?? false) : false,
+        setFeature: s.setFeature,
+        liveAuthorityBlockedBlockId: (() => {
+          if (!s.currentStreamingMessageId) return null;
+          const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
+          const blocks = s.blocks instanceof Map ? s.blocks : new Map();
+          const message = messageMap.get(s.currentStreamingMessageId);
+          if (message?.role !== 'assistant') return null;
+          return (message.blockIds ?? []).find((blockId) => {
+            const block = blocks.get(blockId) as {
+              error?: unknown;
+              toolOutput?: unknown;
+              output?: unknown;
+            } | undefined;
+            const error = typeof block?.error === 'string' ? block.error : '';
+            if (error.includes('AUTHORITY_BLOCKED') || error.includes('suggestedMode=plan')) {
+              return true;
+            }
+            const output = block?.toolOutput ?? block?.output;
+            return Boolean(
+              output &&
+              typeof output === 'object' &&
+              (output as { authorityBlocked?: boolean }).authorityBlocked === true,
+            );
+          }) ?? null;
+        })(),
       }))
     );
+
+    // 🆕 知识库主动检索开关（持久化到会话 features）
+    const handleKnowledgeBaseProactiveChange = useCallback(
+      (enabled: boolean) => setFeature('kbProactive', enabled),
+      [setFeature],
+    );
+
+    const handledAuthorityBlockRef = useRef<string | null>(null);
+    useEffect(() => {
+      handledAuthorityBlockRef.current = null;
+    }, [sessionId]);
+    useEffect(() => {
+      if (!liveAuthorityBlockedBlockId) return;
+      if (handledAuthorityBlockRef.current === liveAuthorityBlockedBlockId) return;
+      handledAuthorityBlockRef.current = liveAuthorityBlockedBlockId;
+      if (authorityMode === 'ask') setAuthorityAskBlockedHint(true);
+    }, [authorityMode, liveAuthorityBlockedBlockId, setAuthorityAskBlockedHint]);
 
     // 🆕 队列模式设置（来自本地存储）
     const queueSettings = useQueueSettings();
@@ -334,6 +442,46 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [sessionId]);
 
+    // ★ 会话级 composer 草稿：sessionStorage keyed by sessionId。
+    // 切换会话/视图后回到本会话时恢复未发送草稿；发送后 inputValue 置空 → 自动清除。
+    // 只存文本，不存附件二进制（附件由 Store/VFS 管理）。
+    //
+    // 注意：首条消息发送后 empty→docked 会 remount 本组件。发送路径会同步
+    // clearComposerDraft；此处恢复也必须避开 streaming/sending，否则会把已发送
+    // 正文写回输入框。
+    const draftStorageKey = composerDraftStorageKey(sessionId);
+    const draftRestoredKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+      if (!draftStorageKey) return;
+      if (draftRestoredKeyRef.current === draftStorageKey) return;
+      draftRestoredKeyRef.current = draftStorageKey;
+      const state = store.getState();
+      const draft = restoreComposerDraftIfSafe(
+        sessionId,
+        state.inputValue,
+        state.sessionStatus,
+      );
+      if (draft) {
+        state.setInputValue(draft);
+      }
+    }, [draftStorageKey, sessionId, store]);
+
+    useEffect(() => {
+      if (!draftStorageKey) return;
+      // 恢复动作尚未执行前不要用空值覆盖已存草稿
+      if (draftRestoredKeyRef.current !== draftStorageKey) return;
+      // 清空必须同步：empty→docked remount 发生在同一轮 commit，等 300ms 会丢竞态
+      if (!inputValue) {
+        clearComposerDraft(sessionId);
+        return;
+      }
+      const timer = window.setTimeout(() => {
+        writeComposerDraft(sessionId, inputValue);
+      }, 300);
+      return () => window.clearTimeout(timer);
+    }, [draftStorageKey, inputValue, sessionId]);
+
     const handleContextRefCreated = useCallback((payload: { contextRef: { resourceId: string; hash: string; typeId: string }; attachmentId: string }) => {
       const state = store.getState();
       const attachmentStillExists = state.attachments.some((attachment) => attachment.id === payload.attachmentId);
@@ -342,12 +490,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         return;
       }
       state.addContextRef(payload.contextRef);
-    }, [store]);
-
-    // 切换推理模式回调（使用 store.getState 避免闭包陈旧）
-    const handleToggleThinking = useCallback(() => {
-      const state = store.getState();
-      state.setChatParams({ enableThinking: !state.chatParams.enableThinking });
     }, [store]);
 
     const currentModelInfo = useMemo(
@@ -406,7 +548,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       () => deriveContextWindowUsage(lastAssistantUsage, contextUsageLimitTokens),
       [contextUsageLimitTokens, lastAssistantUsage]
     );
-
+    const [isCompactingContext, setIsCompactingContext] = useState(false);
+    const [compactContextStatus, setCompactContextStatus] = useState<
+      'success' | 'not-needed' | 'skipped' | 'error' | null
+    >(null);
+    useEffect(() => {
+      setIsCompactingContext(false);
+      setCompactContextStatus(null);
+    }, [sessionId]);
     // ★ 1.2 本会话累计用量（每轮回复结束后刷新）
     const sessionUsage = useSessionUsageSummary(sessionId, lastAssistantUsage);
 
@@ -462,19 +611,29 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         return;
       }
 
-      if (!runtimeDepthIsSet && thinkingControl.kind !== 'toggle-only') return;
+      if (
+        !runtimeDepthIsSet &&
+        thinkingControl.kind !== 'toggle-only' &&
+        (thinkingControl.canDisable || enableThinking)
+      ) return;
 
+      const nextEnableThinking = normalizedThinkingSelection.enableThinking;
       const nextReasoningEffort = normalizedThinkingSelection.reasoningEffort;
       const nextThinkingBudget = normalizedThinkingSelection.thinkingBudget;
-      if (reasoningEffort === nextReasoningEffort && thinkingBudget === nextThinkingBudget) return;
+      if (
+        enableThinking === nextEnableThinking &&
+        reasoningEffort === nextReasoningEffort &&
+        thinkingBudget === nextThinkingBudget
+      ) return;
 
       setChatParams({
-        enableThinking,
+        enableThinking: nextEnableThinking,
         reasoningEffort: nextReasoningEffort,
         thinkingBudget: nextThinkingBudget,
       });
     }, [
       enableThinking,
+      normalizedThinkingSelection.enableThinking,
       normalizedThinkingSelection.reasoningEffort,
       normalizedThinkingSelection.thinkingBudget,
       reasoningEffort,
@@ -482,8 +641,24 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       runtimeModelSupportsReasoning,
       setChatParams,
       thinkingBudget,
+      thinkingControl.canDisable,
       thinkingControl.kind,
     ]);
+
+    // 切换推理模式回调（使用 store.getState 避免闭包陈旧）
+    const handleToggleThinking = useCallback(() => {
+      const state = store.getState();
+      if (state.chatParams.enableThinking && !thinkingControl.canDisable) return;
+      if (state.chatParams.enableThinking) {
+        state.setChatParams({
+          enableThinking: false,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        });
+      } else {
+        state.setChatParams({ enableThinking: true });
+      }
+    }, [store, thinkingControl.canDisable]);
 
     const handleSetThinkingDepth = useCallback(
       (value: DeepSeekReasoningOptionValue | 'off') => {
@@ -497,7 +672,21 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         }
 
         if (value === 'off') {
-          store.getState().setChatParams({ enableThinking: false });
+          if (!thinkingControl.canDisable) return;
+          store.getState().setChatParams({
+            enableThinking: false,
+            reasoningEffort: undefined,
+            thinkingBudget: undefined,
+          });
+          return;
+        }
+
+        if (thinkingControl.kind === 'openai-effort') {
+          store.getState().setChatParams({
+            enableThinking: true,
+            reasoningEffort: value === 'max' ? 'xhigh' : value,
+            thinkingBudget: undefined,
+          });
           return;
         }
 
@@ -520,20 +709,30 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           return;
         }
 
+        if (thinkingControl.kind !== 'toggle-only') {
+          store.getState().setChatParams({
+            enableThinking: true,
+            reasoningEffort: value,
+            thinkingBudget: undefined,
+          });
+          return;
+        }
+
         store.getState().setChatParams({ enableThinking: true });
       },
-      [store, thinkingControl.kind, runtimeModelSupportsReasoning]
+      [store, thinkingControl.canDisable, thinkingControl.kind, runtimeModelSupportsReasoning]
     );
 
     const thinkingStateLabel = useMemo(() => {
-      if (!runtimeModelSupportsReasoning) return '推理: 不支持';
-      if (!effectiveEnableThinking) return '推理: 关闭';
+      if (!runtimeModelSupportsReasoning) return t('chatV2:inputBar.thinkingState.unsupported');
+      if (!effectiveEnableThinking) return t('chatV2:inputBar.thinkingState.off');
       const depthLabel = getThinkingDepthLabel(
         thinkingControl.kind,
-        normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined
+        normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined,
+        t
       );
-      return `推理: ${depthLabel}`;
-    }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind]);
+      return t('chatV2:inputBar.thinkingState.on', { depth: depthLabel });
+    }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind, t]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools
     // Anki 工具现在始终可用，无需单独开关
@@ -768,6 +967,92 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setPanelState,
     } = useInputBarV2(store, inputBarOptions);
 
+    // 手动压缩上下文（放在 useInputBarV2 之后：依赖其解构出的 isStreaming）
+    const handleCompactContext = useCallback(async () => {
+      const modelConfigId =
+        model2OverrideId || activeRuntimeModelInfo?.id || currentModelInfo?.id || modelId;
+      if (!sessionId || !modelConfigId || isCompactingContext || isStreaming) return;
+      setIsCompactingContext(true);
+      setCompactContextStatus(null);
+      try {
+        // 契约：新版返回 { status, reason? }；联调期间可能仍是旧 boolean，
+        // normalizeCompactSessionResponse 内部做降级兼容
+        const rawResult = await invoke<unknown>('chat_v2_compact_session', {
+          sessionId,
+          modelConfigId,
+          contextLimit: contextUsageLimitTokens || null,
+        });
+        const result = normalizeCompactSessionResponse(rawResult);
+        const reasonText = t(`chatV2:${compactionReasonI18nKey(result.reason)}`);
+
+        switch (result.status) {
+          case 'compacted':
+            setCompactContextStatus('success');
+            try {
+              await store.getState().loadSession(sessionId);
+            } catch (reloadError) {
+              console.error(
+                '[InputBarV2] Context compacted but session reload failed:',
+                reloadError
+              );
+            }
+            break;
+          case 'notNeeded':
+            setCompactContextStatus('not-needed');
+            break;
+          case 'skipped':
+            setCompactContextStatus('skipped');
+            showGlobalNotification(
+              'info',
+              t('chatV2:compaction.manualSkipped', { reason: reasonText }),
+              t('chatV2:inputBar.plusMenu.compactionSkipped'),
+            );
+            break;
+          case 'failed':
+            setCompactContextStatus('error');
+            showGlobalNotification(
+              'error',
+              t('chatV2:compaction.manualFailed', { reason: reasonText }),
+              t('chatV2:inputBar.plusMenu.compactionFailed'),
+            );
+            break;
+        }
+      } catch (error) {
+        console.error('[InputBarV2] Manual context compaction failed:', error);
+        setCompactContextStatus('error');
+        showGlobalNotification(
+          'error',
+          t('chatV2:compaction.manualFailed', {
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+          t('chatV2:inputBar.plusMenu.compactionFailed'),
+        );
+      } finally {
+        setIsCompactingContext(false);
+      }
+    }, [
+      activeRuntimeModelInfo?.id,
+      contextUsageLimitTokens,
+      currentModelInfo?.id,
+      isCompactingContext,
+      isStreaming,
+      model2OverrideId,
+      modelId,
+      sessionId,
+      store,
+      t,
+    ]);
+
+    // ★ 上下文用量弹层：懒读 store（弹层打开时才扫描 blocks），避免流式期间反复计算
+    const getCompactionInfo = useCallback((): ContextCompactionInfo | null => {
+      const state = store.getState();
+      return findActiveCompactionInfo({
+        messageOrder: state.messageOrder,
+        messageMap: state.messageMap,
+        blocks: state.blocks,
+      });
+    }, [store]);
+
     const handleOpenRuntimeModelPanel = useCallback((mode: 'single' | 'compare' = 'single') => {
       const currentState = store.getState();
       const isOpen = currentState.panelStates?.model === true;
@@ -795,40 +1080,24 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [panelStates.model, modelRetryTarget, store, clearSelectedModels]);
 
-    // 🔧 构建模型状态和操作（使用外部面板，不再显示 @mention 弹窗）
-    // 🚩 Feature Flag：当 enableMultiModelSelect 为 false 时，不显示多选 chips
-    const modelMentionState: ModelMentionState | undefined = useMemo(() => {
-      if (!availableModels || availableModels.length === 0) return undefined;
-      return {
-        showAutoComplete: false, // 🔧 禁用 @mention 弹窗
-        query: '',
-        suggestions: [],
-        selectedIndex: 0,
-        // 🔧 重试模式下不显示 chips（选中的模型仅在面板内显示）
-        // 🚩 Feature Flag：当 enableMultiModelSelect 为 false 时，不显示 chips
-        selectedModels: (!multiModelSelectEnabled || modelRetryTarget) ? [] : selectedModels,
-      };
-    }, [availableModels, selectedModels, modelRetryTarget, multiModelSelectEnabled]);
+    // 🔧 模型 @mention 内联补全（原为硬禁用死开关，现由安全实现接管：
+    // 光标处精确删除 `@query`，不再复用旧 useModelMentions 的空白折叠逻辑）
+    const handleRemoveLastSelectedModel = useCallback(() => {
+      setSelectedModels(prev => prev.slice(0, -1));
+    }, []);
 
-    const modelMentionActions: ModelMentionActions | undefined = useMemo(() => {
-      if (!availableModels || availableModels.length === 0) return undefined;
-      return {
-        selectSuggestion: (model: ModelInfo) => {
-          handleSelectModel(model);
-          return inputValue; // 不修改输入值
-        },
-        removeSelectedModel: handleDeselectModel,
-        setSelectedIndex: () => {},
-        moveSelectionUp: () => {},
-        moveSelectionDown: () => {},
-        confirmSelection: () => null,
-        closeAutoComplete: () => {},
-        updateCursorPosition: () => {},
-        removeLastSelectedModel: () => {
-          setSelectedModels(prev => prev.slice(0, -1));
-        },
-      };
-    }, [availableModels, handleSelectModel, handleDeselectModel, inputValue]);
+    const { state: modelMentionState, actions: modelMentionActions } = useModelMentionAutocomplete({
+      availableModels,
+      inputValue,
+      // 重试模式下模型选择走 ModelPicker 面板，避免两套选择心智叠加
+      enabled: !modelRetryTarget,
+      selectedModels,
+      // 🔧 重试模式下不显示 chips（选中的模型仅在面板内显示）
+      displaySelectedModels: modelRetryTarget ? [] : selectedModels,
+      onSelectModel: handleSelectModel,
+      onDeselectModel: handleDeselectModel,
+      onRemoveLastModel: handleRemoveLastSelectedModel,
+    });
 
     // 合并模式插件的扩展组件
     const ModeLeftAccessory = modePlugin?.renderInputBarLeft;
@@ -848,15 +1117,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       </>
     ), [extraButtonsRight, ModeRightAccessory, store]);
 
-    // RAG 面板渲染函数
-    const renderRagPanel = useMemo(() => {
-      if (!modePlugin?.renderRagPanel) return undefined;
-      const RagPanel = modePlugin.renderRagPanel;
-      return () => <RagPanel store={store} onClose={() => setPanelState('rag', false)} />;
-    }, [modePlugin?.renderRagPanel, store, setPanelState]);
-
     // 🔧 模型选择面板渲染函数（统一 ModelPicker：单选/对比/重试）
-    // hideHeader 参数用于移动端底部抽屉模式
+    // hideHeader 供外部宿主（如命令面板）复用时隐藏内置头部；
+    // 移动端面板已改为 composer 内联展开（P0-1），不存在底部抽屉形态
     const renderModelPanel = useMemo(() => {
       const RuntimeModelPanel = modePlugin?.renderModelPanel;
       if (!RuntimeModelPanel && (!availableModels || availableModels.length === 0)) {
@@ -965,17 +1228,43 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     );
 
     const renderSkillPanel = useMemo(() => {
-      return () => (
+      return (opts?: { variant?: 'panel' | 'menu' }) => (
         <SkillSelector
           activeSkillIds={activeSkillIds}
           onToggleSkill={handleToggleSkill}
-          onClose={() => setPanelState('skill', false)}
+          onClose={() => {
+            if (opts?.variant === 'menu') return;
+            setPanelState('skill', false);
+          }}
           onRefresh={handleRefreshSkills}
           disabled={isStreaming}
           sessionId={sessionId}
+          variant={opts?.variant ?? 'panel'}
         />
       );
     }, [activeSkillIds, handleToggleSkill, setPanelState, handleRefreshSkills, isStreaming, sessionId]);
+
+    // ★ 技能斜杠命令：消息开头的 /skill-id 令牌在发送前解析为显式激活
+    //（最多叠加 5 个，遇到非技能令牌即停）
+    const sendMessageWithSkillCommands = useCallback(async () => {
+      const rawInput = store.getState().inputValue;
+      const parsed = parseLeadingSkillCommands(rawInput);
+      if (parsed.skillIds.length > 0) {
+        for (const skillId of parsed.skillIds) {
+          if (!activeSkillIds.includes(skillId)) {
+            await activateSkill(skillId);
+          }
+        }
+        // 纯激活命令（无剩余正文）：只激活不发送，输入框清空
+        if (parsed.rest.trim() === '') {
+          store.getState().setInputValue('');
+          return;
+        }
+        // zustand setState 同步生效，sendMessage 内部读到的是剥离命令后的正文
+        store.getState().setInputValue(parsed.rest);
+      }
+      await sendMessage();
+    }, [store, activeSkillIds, activateSkill, sendMessage]);
 
     return (
       <>
@@ -1003,7 +1292,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         panelStates={panelStates}
         // 回调
         onInputChange={setInputValue}
-        onSend={sendMessage}
+        onSend={sendMessageWithSkillCommands}
         onAbort={abortStream}
         onAddAttachment={addAttachment}
         onUpdateAttachment={updateAttachment}
@@ -1011,6 +1300,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         onClearAttachments={clearAttachments}
         onFilesUpload={onFilesUpload}
         onSetPanelState={setPanelState}
+        onCompactContext={handleCompactContext}
+        isCompactingContext={isCompactingContext}
+        compactContextStatus={compactContextStatus}
+        getCompactionInfo={getCompactionInfo}
         // UI 配置
         placeholder={placeholder}
         sendShortcut={sendShortcut}
@@ -1021,7 +1314,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         className={className}
         autoFocus={autoFocus}
         // 模式插件面板
-        renderRagPanel={renderRagPanel}
         renderModelPanel={renderModelPanel}
         renderAdvancedPanel={renderAdvancedPanel}
         renderMcpPanel={renderMcpPanel}
@@ -1052,6 +1344,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         enableThinking={effectiveEnableThinking}
         thinkingStateLabel={thinkingStateLabel}
         thinkingUnsupported={!runtimeModelSupportsReasoning}
+        thinkingCanDisable={thinkingControl.canDisable}
         thinkingDepthOptions={runtimeModelSupportsReasoning ? thinkingControl.options : []}
         thinkingDepthValue={runtimeModelSupportsReasoning ? normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined : undefined}
         onToggleThinking={handleToggleThinking}
@@ -1067,6 +1360,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 🆕 工具审批请求
         pendingApprovalRequest={pendingApprovalRequest}
         sessionId={sessionId}
+        authorityMode={authorityMode}
+        onAuthorityModeChange={(mode) => setAuthorityMode(mode)}
+        permissionPreset={permissionPreset}
+        onPermissionPresetChange={(preset) => setPermissionPreset(preset)}
+        authorityAskBlockedHint={authorityAskBlockedHint}
+        // 🆕 知识库主动检索
+        knowledgeBaseProactive={knowledgeBaseProactive}
+        onKnowledgeBaseProactiveChange={handleKnowledgeBaseProactiveChange}
         // ★ PDF 页码引用
         pdfPageRefs={pdfPageRefs}
         onRemovePdfPageRef={removePdfPageRef}

@@ -11,7 +11,13 @@ set -Eeuo pipefail
 #   # 将 LLVM 添加到 PATH: export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 #
 # 用法:
-#   bash ./scripts/build_windows.sh
+#   DS_ALLOW_UNSIGNED=1 bash ./scripts/build_windows.sh
+#
+# 签名说明:
+#   本脚本是 macOS 交叉编译路径, 无法运行 signtool, 产物必然未签名,
+#   因此要求显式设置 DS_ALLOW_UNSIGNED=1 才会运行（仅限本地验证, 不得
+#   分发）。官方带 Authenticode 签名的安装包由
+#   .github/workflows/reusable-build-windows.yml 构建。
 #
 # 可选环境变量:
 #   SKIP_FRONTEND_BUILD=true  # 跳过前端构建
@@ -28,6 +34,12 @@ die() { echo -e "\033[1;31m[error]\033[0m $*" >&2; exit 1; }
 require_cmd() { 
   command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1\n请运行: $2"
 }
+
+# ── 显式未签名模式（默认拒绝, 防止误把未签名包当发布产物）──
+if [[ "${DS_ALLOW_UNSIGNED:-}" != "1" ]]; then
+  die "本脚本产出的安装包未经 Authenticode 签名，仅限本地验证。\n  确认后请显式运行: DS_ALLOW_UNSIGNED=1 bash ./scripts/build_windows.sh\n  官方签名安装包由 .github/workflows/reusable-build-windows.yml 构建（signtool + 时间戳 + verify）。"
+fi
+warn "DS_ALLOW_UNSIGNED=1: 将产出未签名安装包（仅限本地验证, 不得分发）"
 
 # 检查必要工具
 say "检查构建环境..."

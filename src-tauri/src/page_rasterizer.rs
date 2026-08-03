@@ -136,10 +136,11 @@ impl PageRasterizer {
             let jpeg_bytes = jpeg_buffer.into_inner();
 
             // 立即入库；jpeg_bytes 在本次迭代结束即释放，不跨页累积
-            let blob = VfsBlobRepo::store_blob(vfs_db, &jpeg_bytes, Some("image/jpeg"), Some("jpg"))
-                .map_err(|e| {
-                    AppError::database(format!("页面 {} Blob 存储失败: {}", page_idx + 1, e))
-                })?;
+            let blob =
+                VfsBlobRepo::store_blob(vfs_db, &jpeg_bytes, Some("image/jpeg"), Some("jpg"))
+                    .map_err(|e| {
+                        AppError::database(format!("页面 {} Blob 存储失败: {}", page_idx + 1, e))
+                    })?;
 
             debug!(
                 "[PageRasterizer] 页面 {}/{}: {}x{}, text_hint={} chars, blob={}",

@@ -1,0 +1,275 @@
+.wb-resource-workspace {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+.wb-resource-workspace-sidebar {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: transparent;
+}
+
+.wb-resource-workspace-sidebar-title {
+  display: flex;
+  height: 40px;
+  padding: 0 7px 0 10px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.wb-resource-workspace-sidebar-title strong {
+  overflow: hidden;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-resource-workspace-sidebar-title button {
+  width: 25px;
+  height: 25px;
+  min-height: 25px;
+  border-radius: 5px;
+}
+
+.wb-resource-workspace-app-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border: 1px solid hsl(var(--border) / 70%);
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--background) / 72%);
+}
+
+.wb-resource-workspace-search {
+  display: flex;
+  height: 30px;
+  margin: 0 8px 6px;
+  padding: 0 7px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: 5px;
+  color: hsl(var(--muted-foreground));
+
+  /* 玻璃面搜索框：低透明墨色 inset，不用实色灰底 */
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+}
+
+.wb-resource-workspace-search:focus-within {
+  border-color: hsl(var(--border));
+  box-shadow: none;
+}
+
+.wb-resource-workspace-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+}
+
+.wb-resource-workspace-search button {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  flex: 0 0 20px;
+}
+
+.wb-resource-workspace-nav {
+  display: grid;
+  padding: 1px 6px 5px;
+  gap: 2px;
+  border-bottom: 1px solid hsl(var(--border) / 70%);
+}
+
+.wb-resource-workspace-list-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.wb-resource-workspace-list {
+  padding: 5px 6px 10px;
+  outline: none;
+}
+
+.wb-resource-workspace-list:focus-visible {
+  box-shadow: inset 0 0 0 2px hsl(var(--ring) / 32%);
+}
+
+.wb-resource-workspace-settings {
+  display: grid;
+  padding: 5px 6px;
+  flex: 0 0 auto;
+  border-top: 1px solid hsl(var(--border) / 70%);
+}
+
+/* 「设置」禁用原因的内联提示（title 在触屏不可见） */
+.wb-resource-workspace-settings-hint {
+  padding: 2px 8px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-resource-workspace-sidebar-footer {
+  display: flex;
+  height: 22px;
+  padding: 0 5px 0 9px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 24%);
+  font-size: 10px;
+}
+
+.wb-resource-workspace-sidebar-footer button {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+}
+
+/* 窄窗（compact 档）：10px 底栏字号过小，提到 11px */
+[data-wb-sys-size='compact'] .wb-resource-workspace-sidebar-footer {
+  font-size: 11px;
+}
+
+.wb-resource-workspace-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+
+  /*
+   * 撑满 WorkbenchSidebarLayout 的 .wb-sys-content（flex 拉伸，有确定高度）。
+   * 旧 grid 布局时代高度为 auto（行由 minmax(0,1fr) 拉伸），换成 flex 宿主
+   * 后 auto 会塌缩成内容高度，工作台整体挤在窗口顶部（翻译/作文同源）。
+   * 同时压制 app.css 全局 main 元素的 100dvh 视口高度。
+   */
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  background: hsl(var(--background));
+}
+
+.wb-resource-workspace-empty,
+.wb-resource-workspace-message {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+}
+
+.wb-resource-workspace-empty strong {
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.wb-resource-workspace-empty span,
+.wb-resource-workspace-message span {
+  max-width: 280px;
+  font-size: 12px;
+}
+
+.wb-resource-workspace-message {
+  height: auto;
+  min-height: 130px;
+  padding: 18px 8px;
+}
+
+.wb-resource-workspace-loading {
+  display: grid;
+  gap: 5px;
+  padding: 4px 2px;
+}
+
+.wb-resource-workspace-loading i {
+  width: 78%;
+  height: 25px;
+  border-radius: 5px;
+  background: hsl(var(--muted) / 62%);
+  animation: wb-resource-workspace-loading 900ms ease-in-out infinite alternate;
+}
+
+.wb-resource-workspace-loading i:nth-child(2) { width: 64%; }
+.wb-resource-workspace-loading i:nth-child(3) { width: 86%; }
+.wb-resource-workspace-loading i:nth-child(4) { width: 70%; }
+.wb-resource-workspace-loading i:nth-child(5) { width: 76%; }
+
+@keyframes wb-resource-workspace-loading {
+  from { opacity: 0.5; }
+  to { opacity: 0.92; }
+}
+
+/* Touch-primary windows preserve the compact visual density while exposing
+   standard 44px hit targets for every resource-list action. */
+@media (pointer: coarse) {
+  /* 抽屉把手的 44px 触控基线已上移到 SystemWindowShared.css（.wb-sys-drawer-handle） */
+  .wb-resource-workspace-sidebar-title {
+    height: auto;
+    min-height: 52px;
+  }
+
+  .wb-resource-workspace-sidebar-title button,
+  .wb-resource-workspace-search button,
+  .wb-resource-workspace-sidebar-footer button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .wb-resource-workspace-search {
+    height: 44px;
+  }
+
+  .wb-resource-workspace-search input,
+  .wb-resource-workspace [data-workbench-sidebar-row] {
+    min-height: 44px;
+  }
+
+  .wb-resource-workspace-sidebar-footer {
+    height: auto;
+    min-height: 52px;
+    padding-bottom: var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+    flex: 0 0 auto;
+    /* 10px 底栏字号在触屏上过小，提到 12px */
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-resource-workspace-sidebar {
+    transition: none;
+  }
+
+  .wb-resource-workspace-loading i {
+    animation: none;
+  }
+}

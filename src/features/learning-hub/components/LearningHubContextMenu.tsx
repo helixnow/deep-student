@@ -37,10 +37,11 @@ import {
 } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
-import {
-  AppMenuItem,
-  AppMenuSeparator,
-} from '@/components/ui/app-menu';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useLiquidGlassLens } from '@/features/workbench/core/liquidGlassLens';
+import '@/features/workbench/styles/workbench.tokens.css';
+import '@/features/workbench/components/DesktopContextMenu.css';
 import type { ResourceListItem } from '../types';
 import type { FolderTreeNode, VfsFolderItem } from '@/dstu/types/folder';
 import { useShallow } from 'zustand/react/shallow';
@@ -73,6 +74,14 @@ export interface LearningHubContextMenuProps {
   currentFolderId?: string | null;
   /** 是否在回收站视图 */
   isTrashView?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许新建 */
+  canCreate?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许删除 */
+  canDelete?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许移动 */
+  canMove?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许添加到对话 */
+  canAddToChat?: boolean;
   
   // ========== 回调函数 ==========
   /** 新建文件夹 */
@@ -112,7 +121,42 @@ export interface LearningHubContextMenuProps {
   onEmptyTrash?: () => void;
   /** 导出资源 */
   onExportResource?: (resource: ResourceListItem) => void;
+  /** ★ 2026-07-20：文件夹批量导出为 ZIP */
+  onExportFolder?: (folderId: string) => void;
 }
+
+// ============================================================================
+// 菜单行 / 分隔线（学习桌面 wb-desk-menu 同款样式，见 DesktopContextMenu.css）
+// ============================================================================
+
+interface MenuItemProps {
+  icon: React.ReactNode;
+  disabled?: boolean;
+  /** 危险操作（删除 / 清空回收站等）：红字 + 红色 hover 高亮 */
+  danger?: boolean;
+  onClick?: () => void;
+  children: React.ReactNode;
+}
+
+const MenuItem: React.FC<MenuItemProps> = ({ icon, disabled, danger, onClick, children }) => (
+  <button
+    type="button"
+    role="menuitem"
+    className={cn('wb-desk-menu-item', danger && 'wb-desk-menu-item--danger')}
+    disabled={disabled}
+    onClick={onClick}
+  >
+    <span className="wb-desk-menu-item-icon" aria-hidden="true">
+      {icon}
+    </span>
+    <span className="wb-desk-menu-item-label">{children}</span>
+  </button>
+);
+
+const MenuSeparator: React.FC = () => <div className="wb-desk-menu-sep" role="separator" />;
+
+/** 离场编排：与学习桌面菜单一致，播完 wb-kf-window-close(90ms) 再卸载 + 余量 */
+const MENU_EXIT_MS = 180;
 
 // ============================================================================
 // 右键菜单 Portal 组件
@@ -126,6 +170,10 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   dataView,
   currentFolderId,
   isTrashView = false,
+  canCreate = true,
+  canDelete = true,
+  canMove = true,
+  canAddToChat = true,
   onCreateFolder,
   onCreateItem,
   onImportMarkdownNote,
@@ -144,14 +192,60 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onPermanentDeleteItem,
   onEmptyTrash,
   onExportResource,
+  onExportFolder,
 }) => {
   const { t } = useTranslation('learningHub');
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ x: position.x, y: position.y });
+  // 触屏设备（长按/更多按钮打开）：改用贴底动作面板并提供标准 44px 触控目标。
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+
+  // ---- 离场编排（与学习桌面菜单一致）：open=false 后保留面板播退场动画，播完再卸载 ----
+  const [renderedOpen, setRenderedOpen] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const renderedOpenRef = useRef(renderedOpen);
+  const exitTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    renderedOpenRef.current = renderedOpen;
+  }, [renderedOpen]);
+  useEffect(() => {
+    if (open) {
+      if (exitTimerRef.current !== null) {
+        window.clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setRenderedOpen(true);
+      setClosing(false);
+      return;
+    }
+    if (!renderedOpenRef.current) return;
+    setClosing(true);
+    exitTimerRef.current = window.setTimeout(() => {
+      exitTimerRef.current = null;
+      setRenderedOpen(false);
+      setClosing(false);
+    }, MENU_EXIT_MS);
+  }, [open]);
+  // 卸载兜底：清掉进行中的离场计时器
+  useEffect(
+    () => () => {
+      if (exitTimerRef.current !== null) {
+        window.clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
+  // 液态玻璃透镜（学习桌面菜单同款材质）
+  useLiquidGlassLens(menuRef, renderedOpen);
 
   // 边界检测：当菜单向下展示不全时，向上展示
+  // ★ target 变化会改变菜单项数量/高度，需一并重新测量
   useLayoutEffect(() => {
-    if (!open || !menuRef.current) return;
+    // `renderedOpen` changes after the opening transition starts. Include it so
+    // the first measurement happens after the portal node has been mounted.
+    if (!open || !renderedOpen || !menuRef.current || isTouchPrimary) return;
 
     const rect = menuRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
@@ -175,9 +269,10 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     y = Math.max(8, y);
 
     setMenuPosition({ x, y });
-  }, [open, position]);
+  }, [isTouchPrimary, open, position, renderedOpen, target]);
 
-  // 点击外部关闭菜单
+  // 点击外部关闭菜单；触屏补充：菜单外 touchstart（capture）或背景滚动时关闭，
+  // 避免触摸滚动穿透时菜单悬空在错误位置
   useEffect(() => {
     if (!open) return;
 
@@ -185,6 +280,17 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onOpenChange(false);
       }
+    };
+
+    const handleTouchOutside = (e: TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onOpenChange(false);
+      }
+    };
+
+    const handleScroll = (event: Event) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      onOpenChange(false);
     };
 
     const handleEscape = (e: KeyboardEvent) => {
@@ -196,14 +302,28 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     // 延迟添加监听器，避免立即触发
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleTouchOutside, { capture: true, passive: true });
+      window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
       document.addEventListener('keydown', handleEscape);
     }, 0);
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleTouchOutside, { capture: true });
+      window.removeEventListener('scroll', handleScroll, { capture: true });
       document.removeEventListener('keydown', handleEscape);
     };
+  }, [open, onOpenChange]);
+
+  // 📱 Android 返回键：自绘浮层菜单打开时先关闭菜单（契约第 4 条）。
+  // 该菜单不带 data-state="open"，androidBackCoordinator 的 Radix 兜底匹配不到，必须显式注册。
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      onOpenChange(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
   }, [open, onOpenChange]);
 
   // 关闭菜单的辅助函数
@@ -221,38 +341,38 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     }))
   );
 
-  if (!open) return null;
+  if (!renderedOpen) return null;
 
   // ========== 渲染回收站空白区域菜单 ==========
   const renderTrashEmptyMenu = () => (
     <>
       {/* 清空回收站 */}
       {onEmptyTrash && (
-        <AppMenuItem
-          icon={<Warning size={16} />}
+        <MenuItem
+          icon={<Warning size={15} weight="duotone" />}
           onClick={() => {
             closeMenu();
             setTimeout(() => {
               onEmptyTrash();
             }, 50);
           }}
-          className="text-destructive hover:text-destructive"
+          danger
         >
           {t('finder.trash.emptyAction')}
-        </AppMenuItem>
+        </MenuItem>
       )}
-      <AppMenuSeparator />
+      <MenuSeparator />
       
       {/* 刷新 */}
-      <AppMenuItem
-        icon={<ArrowClockwise size={16} />}
+      <MenuItem
+        icon={<ArrowClockwise size={15} weight="duotone" />}
         onClick={() => {
           onRefresh?.();
           closeMenu();
         }}
       >
         {t('common.refresh')}
-      </AppMenuItem>
+      </MenuItem>
     </>
   );
 
@@ -261,8 +381,8 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     <>
       {/* 恢复 */}
       {onRestoreItem && (
-        <AppMenuItem
-          icon={<ArrowCounterClockwise size={16} />}
+        <MenuItem
+          icon={<ArrowCounterClockwise size={15} weight="duotone" />}
           onClick={() => {
             closeMenu();
             setTimeout(() => {
@@ -271,208 +391,244 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
           }}
         >
           {t('finder.contextMenu.restore')}
-        </AppMenuItem>
+        </MenuItem>
       )}
       
       {/* 永久删除 */}
       {onPermanentDeleteItem && (
         <>
-          <AppMenuSeparator />
-          <AppMenuItem
-            icon={<Trash size={16} />}
+          <MenuSeparator />
+          <MenuItem
+            icon={<Trash size={15} weight="duotone" />}
             onClick={() => {
               closeMenu();
               setTimeout(() => {
                 onPermanentDeleteItem(id, itemType);
               }, 50);
             }}
-            className="text-destructive hover:text-destructive"
+            danger
           >
             {t('finder.contextMenu.permanentDelete')}
-          </AppMenuItem>
+          </MenuItem>
         </>
       )}
     </>
   );
 
   // ========== 渲染空白区域菜单 ==========
-  const renderEmptyMenu = () => (
+  const renderEmptyMenu = () => {
+    // 非 creatable 视图（收藏/最近等）：空白菜单只保留刷新
+    if (!canCreate) {
+      return (
+        <MenuItem
+          icon={<ArrowClockwise size={15} weight="duotone" />}
+          onClick={() => {
+            onRefresh?.();
+            closeMenu();
+          }}
+        >
+          {t('common.refresh')}
+        </MenuItem>
+      );
+    }
+
+    return (
     <>
       {/* 新建文件夹 - 仅在文件夹视图显示 */}
       {dataView === 'folder' && (
         <>
-          <AppMenuItem
-            icon={<FolderPlus size={16} />}
+          <MenuItem
+            icon={<FolderPlus size={15} weight="duotone" />}
             onClick={() => {
               onCreateFolder?.(currentFolderId ?? null);
               closeMenu();
             }}
           >
             {t('folder.newFolder')}
-          </AppMenuItem>
-          <AppMenuSeparator />
+          </MenuItem>
+          <MenuSeparator />
         </>
       )}
       
       {/* 新建内容 */}
-      <AppMenuItem
-        icon={<FileText size={16} />}
+      <MenuItem
+        icon={<FileText size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('note', currentFolderId ?? null);
           closeMenu();
         }}
       >
         {t('contextMenu.newNote')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<Download size={16} />}
+      </MenuItem>
+      <MenuItem
+        icon={<Download size={15} weight="duotone" />}
         onClick={() => {
           onImportMarkdownNote?.(currentFolderId ?? null);
           closeMenu();
         }}
       >
-        {t('contextMenu.importMarkdown', '导入 Markdown')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<ClipboardText size={16} />}
+        {t('contextMenu.importMarkdown')}
+      </MenuItem>
+      <MenuItem
+        icon={<ClipboardText size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('exam', currentFolderId ?? null);
           closeMenu();
         }}
       >
         {t('contextMenu.newExam')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<BookOpen size={16} />}
+      </MenuItem>
+      <MenuItem
+        icon={<BookOpen size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('textbook', currentFolderId ?? null);
           closeMenu();
         }}
       >
         {t('contextMenu.newTextbook')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<Translate size={16} />}
+      </MenuItem>
+      <MenuItem
+        icon={<Translate size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('translation', currentFolderId ?? null);
           closeMenu();
         }}
       >
         {t('contextMenu.newTranslation')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<PenNib size={16} />}
+      </MenuItem>
+      <MenuItem
+        icon={<PenNib size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('essay', currentFolderId ?? null);
           closeMenu();
         }}
       >
         {t('contextMenu.newEssay')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<FlowArrow size={16} />}
+      </MenuItem>
+      <MenuItem
+        icon={<FlowArrow size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('mindmap', currentFolderId ?? null);
           closeMenu();
         }}
       >
         {t('contextMenu.newMindMap')}
-      </AppMenuItem>
-      <AppMenuSeparator />
+      </MenuItem>
+      <MenuSeparator />
       
       {/* 刷新 */}
-      <AppMenuItem
-        icon={<ArrowClockwise size={16} />}
+      <MenuItem
+        icon={<ArrowClockwise size={15} weight="duotone" />}
         onClick={() => {
           onRefresh?.();
           closeMenu();
         }}
       >
         {t('common.refresh')}
-      </AppMenuItem>
+      </MenuItem>
     </>
-  );
+    );
+  };
 
   // ========== 渲染文件夹菜单 ==========
   const renderFolderMenu = (folder: FolderTreeNode) => (
     <>
       {/* 打开 */}
-      <AppMenuItem
-        icon={<FolderOpen size={16} />}
+      <MenuItem
+        icon={<FolderOpen size={15} weight="duotone" />}
         onClick={() => {
           onOpenFolder?.(folder.folder.id);
           closeMenu();
         }}
       >
         {t('contextMenu.open')}
-        </AppMenuItem>
-        <AppMenuSeparator />
+        </MenuItem>
+        <MenuSeparator />
       
         {/* 在此文件夹新建 */}
-      <AppMenuItem
-        icon={<FolderPlus size={16} />}
+      {canCreate && (
+        <>
+      <MenuItem
+        icon={<FolderPlus size={15} weight="duotone" />}
         onClick={() => {
           onCreateFolder?.(folder.folder.id);
           closeMenu();
         }}
       >
         {t('contextMenu.newSubfolder')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<FileText size={16} />}
+      </MenuItem>
+      <MenuItem
+        icon={<FileText size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('note', folder.folder.id);
           closeMenu();
         }}
       >
         {t('contextMenu.newNoteHere')}
-      </AppMenuItem>
-      <AppMenuItem
-        icon={<Download size={16} />}
+      </MenuItem>
+      <MenuItem
+        icon={<Download size={15} weight="duotone" />}
         onClick={() => {
           onImportMarkdownNote?.(folder.folder.id);
           closeMenu();
         }}
       >
-        {t('contextMenu.importMarkdownHere', '在此导入 Markdown')}
-      </AppMenuItem>
-      <AppMenuSeparator />
+        {t('contextMenu.importMarkdownHere')}
+      </MenuItem>
+      <MenuSeparator />
+        </>
+      )}
 
       {/* ★ 移动到… */}
-      {onMoveTo && (
-        <AppMenuItem
-          icon={<ArrowBendUpRight size={16} />}
+      {canMove && onMoveTo && (
+        <MenuItem
+          icon={<ArrowBendUpRight size={15} weight="duotone" />}
           onClick={() => {
             closeMenu();
             setTimeout(() => onMoveTo(target), 50);
           }}
         >
-          {t('contextMenu.moveTo', '移动到…')}
-        </AppMenuItem>
+          {t('contextMenu.moveTo')}
+        </MenuItem>
       )}
 
       {/* 重命名 */}
-      <AppMenuItem
-        icon={<Pencil size={16} />}
+      <MenuItem
+        icon={<Pencil size={15} weight="duotone" />}
         onClick={() => {
           onRenameFolder?.(folder.folder.id);
           closeMenu();
         }}
       >
         {t('contextMenu.rename')}
-        </AppMenuItem>
-      
+        </MenuItem>
+
+      {/* ★ 2026-07-20：文件夹批量导出为 ZIP */}
+      {onExportFolder && (
+        <MenuItem
+          icon={<Download size={15} weight="duotone" />}
+          onClick={() => {
+            closeMenu();
+            setTimeout(() => onExportFolder(folder.folder.id), 50);
+          }}
+        >
+          {t('contextMenu.exportFolderZip')}
+        </MenuItem>
+      )}
+
         {/* 删除 */}
-      <AppMenuItem
-        icon={<Trash size={16} />}
+      {canDelete && onDeleteFolder && (
+      <MenuItem
+        icon={<Trash size={15} weight="duotone" />}
         onClick={() => {
-          onDeleteFolder?.(folder.folder.id);
+          onDeleteFolder(folder.folder.id);
           closeMenu();
         }}
-        className="text-destructive hover:text-destructive"
+        danger
       >
         {t('contextMenu.delete')}
-        </AppMenuItem>
+        </MenuItem>
+      )}
     </>
   );
 
@@ -490,80 +646,80 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     return (
       <>
         {/* 打开 */}
-        <AppMenuItem
-          icon={<ArrowSquareOut size={16} />}
+        <MenuItem
+          icon={<ArrowSquareOut size={15} weight="duotone" />}
           onClick={() => {
             onOpenResource?.(resource);
             closeMenu();
           }}
         >
           {t('contextMenu.open')}
-        </AppMenuItem>
-        <AppMenuSeparator />
+        </MenuItem>
+        <MenuSeparator />
         
         {/* 引用到对话 */}
-        {onReferenceToChat && (
-          <AppMenuItem
-            icon={<Chat size={16} />}
+        {canAddToChat && onReferenceToChat && (
+          <MenuItem
+            icon={<Chat size={15} weight="duotone" />}
             onClick={() => {
               onReferenceToChat(target);
               closeMenu();
             }}
           >
             {t('contextMenu.referenceToChat')}
-          </AppMenuItem>
+          </MenuItem>
         )}
         
         {/* 复制 */}
         {onCopy && (
-          <AppMenuItem
-            icon={<Copy size={16} />}
+          <MenuItem
+            icon={<Copy size={15} weight="duotone" />}
             onClick={() => {
               onCopy(target);
               closeMenu();
             }}
           >
             {t('contextMenu.copy')}
-          </AppMenuItem>
+          </MenuItem>
         )}
 
         {/* ★ 移动到… */}
-        {onMoveTo && (
-          <AppMenuItem
-            icon={<ArrowBendUpRight size={16} />}
+        {canMove && onMoveTo && (
+          <MenuItem
+            icon={<ArrowBendUpRight size={15} weight="duotone" />}
             onClick={() => {
               closeMenu();
               setTimeout(() => onMoveTo(target), 50);
             }}
           >
-            {t('contextMenu.moveTo', '移动到…')}
-          </AppMenuItem>
+            {t('contextMenu.moveTo')}
+          </MenuItem>
         )}
         
         {/* 重命名 - 仅资源项 */}
         {resourceItem && onRenameResource && (
           <>
-            <AppMenuSeparator />
-            <AppMenuItem
-              icon={<Pencil size={16} />}
+            <MenuSeparator />
+            <MenuItem
+              icon={<Pencil size={15} weight="duotone" />}
               onClick={() => {
                 onRenameResource(resourceItem);
                 closeMenu();
               }}
             >
               {t('contextMenu.rename')}
-            </AppMenuItem>
+            </MenuItem>
           </>
         )}
         
         {/* 收藏 - 仅资源项 */}
         {resourceItem && onToggleFavorite && (
           <>
-            <AppMenuSeparator />
-            <AppMenuItem
+            <MenuSeparator />
+            <MenuItem
               icon={resourceItem.isFavorite 
-                ? <StarHalf size={16} /> 
-                : <Star size={16} />
+                ? <StarHalf size={15} weight="duotone" />
+                : <Star size={15} weight="duotone" />
               }
               onClick={() => {
                 onToggleFavorite(resourceItem);
@@ -574,16 +730,16 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
                 ? t('contextMenu.unfavorite')
                 : t('contextMenu.favorite')
               }
-            </AppMenuItem>
+            </MenuItem>
           </>
         )}
         
         {/* ★ 2026-01-31: 添加到桌面 - 仅资源项 */}
         {resourceItem && (
-          <AppMenuItem
+          <MenuItem
             icon={isAddedToDesktop 
-              ? <CheckCircle size={16} className="text-green-500" /> 
-              : <Monitor size={16} />
+              ? <CheckCircle size={15} weight="duotone" className="text-success" />
+              : <Monitor size={15} weight="duotone" />
             }
             onClick={() => {
               if (!isAddedToDesktop) {
@@ -606,15 +762,15 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
               ? t('contextMenu.addedToDesktop')
               : t('contextMenu.addToDesktop')
             }
-          </AppMenuItem>
+          </MenuItem>
         )}
         
         {/* 导出 - 仅资源项 */}
         {resourceItem && onExportResource && (
           <>
-            <AppMenuSeparator />
-            <AppMenuItem
-              icon={<Download size={16} />}
+            <MenuSeparator />
+            <MenuItem
+              icon={<Download size={15} weight="duotone" />}
               onClick={() => {
                 closeMenu();
                 setTimeout(() => {
@@ -622,17 +778,17 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
                 }, 50);
               }}
             >
-              {t('contextMenu.export', '导出')}
-            </AppMenuItem>
+              {t('contextMenu.export')}
+            </MenuItem>
           </>
         )}
         
         {/* 删除 - 仅资源项 */}
-        {resourceItem && onDeleteResource && (
+        {canDelete && resourceItem && onDeleteResource && (
           <>
-            <AppMenuSeparator />
-            <AppMenuItem
-              icon={<Trash size={16} />}
+            <MenuSeparator />
+            <MenuItem
+              icon={<Trash size={15} weight="duotone" />}
               onClick={() => {
                 // ★ 先关闭菜单，再执行删除（避免菜单状态影响确认框）
                 closeMenu();
@@ -641,10 +797,10 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
                   onDeleteResource(resourceItem);
                 }, 50);
               }}
-              className="text-destructive hover:text-destructive"
+              danger
             >
               {t('contextMenu.delete')}
-            </AppMenuItem>
+            </MenuItem>
           </>
         )}
       </>
@@ -699,21 +855,57 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     }
   };
 
+  // 触屏贴底面板顶部展示完整名称（列表内长文件名被截断时的完整查看入口）
+  const targetTitle =
+    target.type === 'folder'
+      ? target.folder.folder.title
+      : target.type === 'resource'
+        ? target.resource.title
+        : null;
+
   return createPortal(
     <div
       ref={menuRef}
+      role="menu"
+      data-wb-blur-surface
+      data-phase={closing ? 'closing' : 'open'}
       className={cn(
-        'fixed min-w-[180px] overflow-hidden rounded-lg',
-        'bg-popover/95 backdrop-blur-md text-popover-foreground',
-        'border border-transparent ring-1 ring-border/40 shadow-lg',
-        'py-1.5 animate-in fade-in-0 zoom-in-95'
+        // 学习桌面右键菜单同款玻璃外壳（见 workbench DesktopContextMenu.css）
+        'wb-desk-menu wb-glass-lens',
+        // ★ 小视口下限制高度并允许内部滚动，避免长菜单被裁剪不可达
+        //   （本菜单无飞出子菜单，允许 overflow 裁剪）
+        'scroll-area--native max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',
+        // 触屏使用贴底动作面板，入口位置稳定且不依赖长按坐标。
+        isTouchPrimary && 'max-w-none rounded-t-2xl [&_[role=menuitem]]:min-h-11'
       )}
-      style={{
-        left: menuPosition.x,
-        top: menuPosition.y,
-        zIndex: Z_INDEX.contextMenu,
-      }}
+      style={isTouchPrimary
+        ? {
+            position: 'fixed',
+            left: 8,
+            right: 8,
+            bottom: 0,
+            top: 'auto',
+            width: 'auto',
+            maxHeight: 'calc(100dvh - var(--mobile-header-total-height, 56px) - 8px)',
+            paddingBottom: 'var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
+            zIndex: Z_INDEX.contextMenu,
+          }
+        : {
+            // .wb-desk-menu 默认 absolute（相对桌面根定位）；此处 Portal 到 body，用 fixed
+            position: 'fixed',
+            left: menuPosition.x,
+            top: menuPosition.y,
+            zIndex: Z_INDEX.contextMenu,
+          }}
     >
+      {isTouchPrimary && (
+        <div aria-hidden className="mx-auto my-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/25" />
+      )}
+      {isTouchPrimary && targetTitle && (
+        <div className="mb-1 border-b border-border/40 px-3 pb-2 text-xs font-medium text-muted-foreground break-all">
+          {targetTitle}
+        </div>
+      )}
       {renderMenuContent()}
     </div>,
     document.body

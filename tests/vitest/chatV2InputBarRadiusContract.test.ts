@@ -7,6 +7,10 @@ describe('chat v2 input bar radius contract', () => {
     resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
+  const plusMenuSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPlusMenu.tsx'),
+    'utf-8'
+  );
   const shadcnVariablesSource = readFileSync(
     resolve(process.cwd(), 'src/styles/shadcn-variables.css'),
     'utf-8'
@@ -23,13 +27,10 @@ describe('chat v2 input bar radius contract', () => {
     expect(inputBarSource).not.toContain('rounded-[26px]');
   });
 
-  it('uses a smaller control radius for secondary composer toolbar controls', () => {
+  it('uses a smaller desktop control radius while keeping the mobile plus affordance circular', () => {
     const iconButtonClassStart = inputBarSource.indexOf('const iconButtonClass =');
     const iconButtonClassEnd = inputBarSource.indexOf(';', iconButtonClassStart);
     const iconButtonClass = inputBarSource.slice(iconButtonClassStart, iconButtonClassEnd);
-    const leftToolbarStart = inputBarSource.indexOf('{/* 左侧按钮 - 窄屏时可横向滚动 */}');
-    const rightToolbarStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
-    const leftToolbar = inputBarSource.slice(leftToolbarStart, rightToolbarStart);
     const thinkingRuntimeDataTest = inputBarSource.indexOf('data-testid="thinking-runtime-control"');
     const thinkingRuntimeStart = inputBarSource.lastIndexOf('<span', thinkingRuntimeDataTest);
     const thinkingRuntimeEnd = inputBarSource.indexOf('{/* 🆕 媒体处理中提示 */}', thinkingRuntimeStart);
@@ -38,14 +39,22 @@ describe('chat v2 input bar radius contract', () => {
     expect(inputBarSource).toContain('--radius-shell-control');
     expect(iconButtonClass).toContain('rounded-[var(--radius-shell-control)]');
     expect(iconButtonClass).not.toContain('rounded-full');
-    expect(leftToolbar).toContain('inline-flex rounded-[var(--radius-shell-control)]');
-    expect(leftToolbar).not.toContain('inline-flex rounded-full');
+    expect(plusMenuSource).toContain("isMobile && '!rounded-full'");
     expect(thinkingRuntimeControl).toContain('rounded-[var(--radius-shell-control)]');
     expect(thinkingRuntimeControl).not.toContain('rounded-lg');
   });
 
   it('keeps only the primary send and stop affordances circular inside the composer', () => {
     expect(inputBarSource).toContain("const studyUiSendButtonSizeClass =\n    'h-11 w-11 !rounded-full");
-    expect(inputBarSource).toContain("className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 !rounded-full shadow-sm')}");
+    const stopButtonStart = inputBarSource.indexOf('data-testid="btn-stop"');
+    const stopButtonEnd = inputBarSource.indexOf('</DsButton>', stopButtonStart);
+    const stopButton = inputBarSource.slice(stopButtonStart, stopButtonEnd);
+    const sendButtonStart = inputBarSource.indexOf('data-testid="btn-send"');
+    const sendButtonEnd = inputBarSource.indexOf('</button>', sendButtonStart);
+    const sendButton = inputBarSource.slice(sendButtonStart, sendButtonEnd);
+
+    expect(stopButton).toContain('!rounded-full');
+    expect(stopButton).toContain('max-md:!w-11 max-md:!h-11');
+    expect(sendButton).toContain('studyUiSendButtonSizeClass');
   });
 });

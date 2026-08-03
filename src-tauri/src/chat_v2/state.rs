@@ -5,11 +5,14 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+
+use super::kill_switch::AgentKillSwitch;
 
 /// Chat V2 全局状态（注册到 Tauri AppState）
 ///
@@ -26,12 +29,49 @@ use tokio_util::task::TaskTracker;
 /// // 取消流式生成
 /// state.cancel_stream(&session_id);
 /// ```
+#[derive(Clone)]
+struct ActiveStream {
+    token: CancellationToken,
+    generation: u64,
+}
+
+/// An atomic registration lease for one session stream generation.
+///
+/// The generation is intentionally kept alongside the token. Cancellation removes the
+/// registration before the spawned pipeline necessarily finishes, so a later retry may already
+/// own the same session key when the old task's cleanup guard runs.
+#[derive(Clone, Debug)]
+pub(crate) struct StreamRegistration {
+    token: CancellationToken,
+    generation: u64,
+}
+
+impl StreamRegistration {
+    pub(crate) fn token(&self) -> &CancellationToken {
+        &self.token
+    }
+
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    fn into_token(self) -> CancellationToken {
+        self.token
+    }
+}
+
 pub struct ChatV2State {
     /// 活跃的流式会话：session_id -> CancellationToken
-    pub active_streams: Mutex<HashMap<String, CancellationToken>>,
+    active_streams: Mutex<HashMap<String, ActiveStream>>,
+    /// Monotonic identity used by compare-and-remove cleanup.
+    next_stream_generation: AtomicU64,
     /// 🆕 P1修复：任务追踪器，用于追踪所有 tokio::spawn 的任务
     /// 确保任务在应用关闭时能被正确清理
     task_tracker: TaskTracker,
+    /// 全局一键断电（Kill Switch）。
+    ///
+    /// `Arc` 以便 Pipeline 工具环与准入闸共享同一开关实例（断电优先于会话档位）。
+    pub kill_switch: Arc<AgentKillSwitch>,
 }
 
 impl ChatV2State {
@@ -39,8 +79,14 @@ impl ChatV2State {
     pub fn new() -> Self {
         Self {
             active_streams: Mutex::new(HashMap::new()),
+            next_stream_generation: AtomicU64::new(1),
             task_tracker: TaskTracker::new(),
+            kill_switch: Arc::new(AgentKillSwitch::new()),
         }
+    }
+
+    fn allocate_stream_generation(&self) -> u64 {
+        self.next_stream_generation.fetch_add(1, Ordering::Relaxed)
     }
 
     /// 🆕 P1修复：创建被追踪的异步任务
@@ -114,6 +160,15 @@ impl ChatV2State {
 
     /// 注册新的流式会话
     ///
+    /// # ⚠️ 遗留 API：新代码请使用 [`Self::try_register_stream`]
+    ///
+    /// 本方法会**静默覆盖**同 key 的已有注册（旧 token 不会被 cancel，
+    /// 旧任务失去被取消的能力），存在并发双流竞态。生产主路径
+    /// （send_message / variant / headless）均已改用原子的
+    /// `try_register_stream*`；本方法仅保留给单元测试与遗留调用，
+    /// 覆盖发生时会记录 warn 日志。未加 `#[deprecated]` 属性是为了避免
+    /// 现有测试代码产生编译警告。
+    ///
     /// 返回一个 CancellationToken，可用于：
     /// - 在流水线各阶段检查是否被取消：`token.is_cancelled()`
     /// - 在异步操作中等待取消：`token.cancelled().await`
@@ -124,7 +179,17 @@ impl ChatV2State {
     /// # Returns
     /// 返回该会话的 CancellationToken
     pub fn register_stream(&self, session_id: &str) -> CancellationToken {
+        if self.kill_switch.is_tripped() {
+            log::warn!(
+                "[ChatV2::state] register_stream rejected (AgentKillSwitch): {}",
+                session_id
+            );
+            let token = CancellationToken::new();
+            token.cancel();
+            return token;
+        }
         let token = CancellationToken::new();
+        let generation = self.allocate_stream_generation();
         // 🔧 P0修复：使用 lock().unwrap_or_else() 处理 mutex poisoning
         // 如果 mutex 被 poison，获取内部数据并继续（数据可能不一致但不会 panic）
         let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
@@ -133,7 +198,21 @@ impl ChatV2State {
             );
             poisoned.into_inner()
         });
-        guard.insert(session_id.to_string(), token.clone());
+        let replaced = guard.insert(
+            session_id.to_string(),
+            ActiveStream {
+                token: token.clone(),
+                generation,
+            },
+        );
+        if let Some(old) = replaced {
+            log::warn!(
+                "[ChatV2::state] register_stream OVERWROTE existing registration for session {} (old_generation={}, new_generation={}); old task can no longer be cancelled. Use try_register_stream instead.",
+                session_id,
+                old.generation,
+                generation
+            );
+        }
         log::info!(
             "[ChatV2::state] Registered stream for session: {}",
             session_id
@@ -156,8 +235,8 @@ impl ChatV2State {
             log::error!("[ChatV2::state] Mutex poisoned during cancel_stream! Attempting recovery");
             poisoned.into_inner()
         });
-        if let Some(token) = guard.remove(session_id) {
-            token.cancel();
+        if let Some(active) = guard.remove(session_id) {
+            active.token.cancel();
             log::info!(
                 "[ChatV2::state] Cancelled stream for session: {}",
                 session_id
@@ -170,6 +249,28 @@ impl ChatV2State {
             );
             false
         }
+    }
+
+    /// Cancel every active stream (session + variant keys). Returns how many were cancelled.
+    pub fn cancel_all_streams(&self) -> usize {
+        let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
+            log::error!(
+                "[ChatV2::state] Mutex poisoned during cancel_all_streams! Attempting recovery"
+            );
+            poisoned.into_inner()
+        });
+        let count = guard.len();
+        for (key, active) in guard.drain() {
+            active.token.cancel();
+            log::info!("[ChatV2::state] cancel_all_streams: cancelled {}", key);
+        }
+        if count > 0 {
+            log::warn!(
+                "[ChatV2::state] cancel_all_streams: cancelled {} active stream(s)",
+                count
+            );
+        }
+        count
     }
 
     /// 移除流式会话（完成或出错后调用）
@@ -185,6 +286,40 @@ impl ChatV2State {
         });
         guard.remove(session_id);
         log::debug!("[ChatV2::state] Removed stream for session: {}", session_id);
+    }
+
+    /// Remove a stream only when the caller still owns the current registration generation.
+    ///
+    /// This prevents a cancelled task's delayed cleanup from deleting an immediately-started
+    /// retry that reuses the same session (and often the same assistant message ID).
+    pub(crate) fn remove_stream_if_generation(&self, session_id: &str, generation: u64) -> bool {
+        let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
+            log::error!(
+                "[ChatV2::state] Mutex poisoned during remove_stream_if_generation! Attempting recovery"
+            );
+            poisoned.into_inner()
+        });
+
+        let owns_current = guard
+            .get(session_id)
+            .map(|active| active.generation == generation)
+            .unwrap_or(false);
+        if owns_current {
+            guard.remove(session_id);
+            log::debug!(
+                "[ChatV2::state] Removed owned stream generation: session={}, generation={}",
+                session_id,
+                generation
+            );
+            true
+        } else {
+            log::debug!(
+                "[ChatV2::state] Ignored stale stream cleanup: session={}, generation={}",
+                session_id,
+                generation
+            );
+            false
+        }
     }
 
     /// 检查会话是否有活跃的流式生成
@@ -224,9 +359,25 @@ impl ChatV2State {
     /// - `Ok(CancellationToken)`: 注册成功
     /// - `Err(())`: 会话已有活跃流
     pub fn try_register_stream(&self, session_id: &str) -> Result<CancellationToken, ()> {
+        self.try_register_stream_owned(session_id)
+            .map(StreamRegistration::into_token)
+    }
+
+    /// Atomically register a stream and return the token together with its cleanup identity.
+    pub(crate) fn try_register_stream_owned(
+        &self,
+        session_id: &str,
+    ) -> Result<StreamRegistration, ()> {
+        if self.kill_switch.is_tripped() {
+            log::warn!(
+                "[ChatV2::state] try_register_stream_owned rejected (AgentKillSwitch): {}",
+                session_id
+            );
+            return Err(());
+        }
         let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
             log::error!(
-                "[ChatV2::state] Mutex poisoned during try_register_stream! Attempting recovery"
+                "[ChatV2::state] Mutex poisoned during try_register_stream_owned! Attempting recovery"
             );
             poisoned.into_inner()
         });
@@ -240,12 +391,20 @@ impl ChatV2State {
         }
 
         let token = CancellationToken::new();
-        guard.insert(session_id.to_string(), token.clone());
-        log::info!(
-            "[ChatV2::state] Registered stream for session: {}",
-            session_id
+        let generation = self.allocate_stream_generation();
+        guard.insert(
+            session_id.to_string(),
+            ActiveStream {
+                token: token.clone(),
+                generation,
+            },
         );
-        Ok(token)
+        log::info!(
+            "[ChatV2::state] Registered stream for session: {}, generation={}",
+            session_id,
+            generation
+        );
+        Ok(StreamRegistration { token, generation })
     }
 
     // 🔧 P1修复：为多变体模式添加注册已存在 token 的方法
@@ -258,12 +417,47 @@ impl ChatV2State {
     /// * `key` - 注册键（格式：`session_id:variant_id`）
     /// * `token` - 已存在的 CancellationToken（通常是 child_token）
     pub fn register_existing_token(&self, key: &str, token: CancellationToken) {
+        let _ = self.register_existing_token_owned(key, token);
+    }
+
+    /// Register an existing token and return its cleanup identity.
+    ///
+    /// Retry paths reuse `session_id:variant_id` keys. Their cleanup must retain this registration
+    /// so a cancelled attempt cannot remove the child token installed by an immediate retry.
+    pub(crate) fn register_existing_token_owned(
+        &self,
+        key: &str,
+        token: CancellationToken,
+    ) -> StreamRegistration {
+        if self.kill_switch.is_tripped() {
+            log::warn!(
+                "[ChatV2::state] register_existing_token_owned rejected (AgentKillSwitch): {}",
+                key
+            );
+            token.cancel();
+            return StreamRegistration {
+                token,
+                generation: 0,
+            };
+        }
+        let generation = self.allocate_stream_generation();
         let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
             log::error!("[ChatV2::state] Mutex poisoned during register_existing_token! Attempting recovery");
             poisoned.into_inner()
         });
-        guard.insert(key.to_string(), token);
-        log::debug!("[ChatV2::state] Registered existing token for key: {}", key);
+        guard.insert(
+            key.to_string(),
+            ActiveStream {
+                token: token.clone(),
+                generation,
+            },
+        );
+        log::debug!(
+            "[ChatV2::state] Registered existing token for key: {}, generation={}",
+            key,
+            generation
+        );
+        StreamRegistration { token, generation }
     }
 }
 
@@ -284,7 +478,7 @@ impl Default for ChatV2State {
 ///
 /// ```ignore
 /// chat_v2_state.spawn_tracked(async move {
-///     let _guard = StreamGuard::new(state_clone.clone(), session_id.clone());
+///     let _guard = StreamGuard::new(state_clone.clone(), session_id.clone(), registration);
 ///     // ... 业务逻辑 ...
 ///     // remove_stream 由 _guard 自动调用，无需手动清理
 /// });
@@ -292,6 +486,7 @@ impl Default for ChatV2State {
 pub struct StreamGuard {
     state: Arc<ChatV2State>,
     session_id: String,
+    generation: u64,
 }
 
 impl StreamGuard {
@@ -300,24 +495,75 @@ impl StreamGuard {
     /// # Arguments
     /// * `state` - ChatV2State 的 Arc 引用
     /// * `session_id` - 需要在 drop 时清理的会话 ID
-    pub fn new(state: Arc<ChatV2State>, session_id: String) -> Self {
-        Self { state, session_id }
+    /// * `registration` - 此任务原子注册时获得的所有权租约
+    pub(crate) fn new(
+        state: Arc<ChatV2State>,
+        session_id: String,
+        registration: StreamRegistration,
+    ) -> Self {
+        Self {
+            state,
+            session_id,
+            generation: registration.generation(),
+        }
+    }
+
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Compatibility path for callers that only retained the cancellation token.
+    ///
+    /// New fire-and-forget handlers should carry `StreamRegistration` instead. The two token
+    /// checks make the legacy path safe for the normal cancel-then-retry sequence: if cancellation
+    /// races with generation lookup, no guard is created for the replacement generation.
+    pub(crate) fn from_registered_token(
+        state: Arc<ChatV2State>,
+        session_id: String,
+        token: &CancellationToken,
+    ) -> Option<Self> {
+        if token.is_cancelled() {
+            return None;
+        }
+        let generation = {
+            let guard = state.active_streams.lock().unwrap_or_else(|poisoned| {
+                log::error!(
+                    "[ChatV2::state] Mutex poisoned during StreamGuard token lookup! Attempting recovery"
+                );
+                poisoned.into_inner()
+            });
+            guard.get(&session_id).map(|active| active.generation)
+        }?;
+        if token.is_cancelled() {
+            return None;
+        }
+        Some(Self {
+            state,
+            session_id,
+            generation,
+        })
     }
 }
 
 impl Drop for StreamGuard {
     fn drop(&mut self) {
-        self.state.remove_stream(&self.session_id);
+        let removed = self
+            .state
+            .remove_stream_if_generation(&self.session_id, self.generation);
         // 判断是否因 panic 触发的 drop（用于日志分级）
         if std::thread::panicking() {
             log::error!(
-                "[ChatV2::StreamGuard] Panic detected! Auto-cleaned stream for session: {} (panic guard triggered)",
-                self.session_id
+                "[ChatV2::StreamGuard] Panic detected! Stream cleanup attempted for session: {}, generation={}, removed={} (panic guard triggered)",
+                self.session_id,
+                self.generation,
+                removed
             );
         } else {
             log::debug!(
-                "[ChatV2::StreamGuard] Auto-cleaned stream for session: {}",
-                self.session_id
+                "[ChatV2::StreamGuard] Stream cleanup attempted for session: {}, generation={}, removed={}",
+                self.session_id,
+                self.generation,
+                removed
             );
         }
     }
@@ -407,12 +653,13 @@ mod tests {
     #[test]
     fn test_stream_guard_cleanup_on_normal_drop() {
         let state = Arc::new(ChatV2State::new());
-        state.register_stream("sess_guard_1");
+        let registration = state.try_register_stream_owned("sess_guard_1").unwrap();
         assert!(state.has_active_stream("sess_guard_1"));
 
         // Guard 在作用域结束时自动调用 remove_stream
         {
-            let _guard = StreamGuard::new(Arc::clone(&state), "sess_guard_1".to_string());
+            let _guard =
+                StreamGuard::new(Arc::clone(&state), "sess_guard_1".to_string(), registration);
         }
 
         // Guard drop 后，流应该被清理
@@ -422,10 +669,11 @@ mod tests {
     #[test]
     fn test_stream_guard_idempotent_double_cleanup() {
         let state = Arc::new(ChatV2State::new());
-        state.register_stream("sess_guard_2");
+        let registration = state.try_register_stream_owned("sess_guard_2").unwrap();
 
         {
-            let _guard = StreamGuard::new(Arc::clone(&state), "sess_guard_2".to_string());
+            let _guard =
+                StreamGuard::new(Arc::clone(&state), "sess_guard_2".to_string(), registration);
             // 手动调用 remove_stream（模拟旧代码路径）
             state.remove_stream("sess_guard_2");
             assert!(!state.has_active_stream("sess_guard_2"));
@@ -437,13 +685,14 @@ mod tests {
     #[test]
     fn test_stream_guard_cleanup_on_panic() {
         let state = Arc::new(ChatV2State::new());
-        state.register_stream("sess_guard_panic");
+        let registration = state.try_register_stream_owned("sess_guard_panic").unwrap();
         assert!(state.has_active_stream("sess_guard_panic"));
 
         // 模拟 panic 场景：catch_unwind 捕获 panic，guard 的 Drop 仍然执行
         let state_clone = Arc::clone(&state);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _guard = StreamGuard::new(state_clone, "sess_guard_panic".to_string());
+            let _guard =
+                StreamGuard::new(state_clone, "sess_guard_panic".to_string(), registration);
             panic!("simulated panic inside spawned task");
         }));
 
@@ -453,5 +702,66 @@ mod tests {
             !state.has_active_stream("sess_guard_panic"),
             "Stream should be cleaned up even after panic"
         );
+    }
+
+    #[test]
+    fn stale_guard_cannot_remove_immediate_retry_generation() {
+        let state = Arc::new(ChatV2State::new());
+        let old_registration = state.try_register_stream_owned("sess_retry").unwrap();
+        let old_generation = old_registration.generation();
+        let old_guard = StreamGuard::new(
+            Arc::clone(&state),
+            "sess_retry".to_string(),
+            old_registration,
+        );
+
+        assert!(state.cancel_stream("sess_retry"));
+        let retry_registration = state.try_register_stream_owned("sess_retry").unwrap();
+        assert_ne!(old_generation, retry_registration.generation());
+
+        drop(old_guard);
+        assert!(
+            state.has_active_stream("sess_retry"),
+            "old cleanup must not delete the replacement registration"
+        );
+        assert!(state.remove_stream_if_generation("sess_retry", retry_registration.generation()));
+    }
+
+    #[test]
+    fn stale_guard_cannot_remove_replacement_after_early_cleanup() {
+        let state = Arc::new(ChatV2State::new());
+        let old_registration = state.try_register_stream_owned("sess_early_error").unwrap();
+        let old_guard = StreamGuard::new(
+            Arc::clone(&state),
+            "sess_early_error".to_string(),
+            old_registration,
+        );
+
+        state.remove_stream("sess_early_error");
+        let replacement = state.try_register_stream_owned("sess_early_error").unwrap();
+        drop(old_guard);
+
+        assert!(state.has_active_stream("sess_early_error"));
+        assert!(state.remove_stream_if_generation("sess_early_error", replacement.generation()));
+    }
+
+    #[test]
+    fn stale_variant_child_guard_cannot_remove_retry_token() {
+        let state = Arc::new(ChatV2State::new());
+        let key = "sess_retry:variant_reused";
+
+        let old_registration = state.register_existing_token_owned(key, CancellationToken::new());
+        let old_generation = old_registration.generation();
+        let old_guard = StreamGuard::new(Arc::clone(&state), key.to_string(), old_registration);
+
+        assert!(state.cancel_stream(key));
+        let retry_token = CancellationToken::new();
+        let retry_registration = state.register_existing_token_owned(key, retry_token.clone());
+        assert_ne!(old_generation, retry_registration.generation());
+
+        drop(old_guard);
+        assert!(state.has_active_stream(key));
+        assert!(!retry_token.is_cancelled());
+        assert!(state.remove_stream_if_generation(key, retry_registration.generation()));
     }
 }

@@ -44,7 +44,10 @@ vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.
 vi.mock('@/utils/pendingMemoryLocate', () => ({ setPendingMemoryLocate: pageMocks.setPendingMemoryLocate }));
 vi.mock('@/features/learning-hub/LearningHubSidebar', () => ({ LearningHubSidebar: () => <div>sidebar</div> }));
 vi.mock('@/stores/uiStore', () => ({ useUIStore: (selector: (state: { leftPanelCollapsed: boolean; setLeftPanelCollapsed: () => void }) => unknown) => selector({ leftPanelCollapsed: false, setLeftPanelCollapsed: vi.fn() }) }));
-vi.mock('@/components/layout', () => ({ useMobileHeader: vi.fn() }));
+vi.mock('@/components/layout', () => ({
+  useMobileHeader: vi.fn(),
+  DEFAULT_GESTURE_IGNORE_SELECTOR: '[data-no-gesture]',
+}));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));
 vi.mock('@/features/learning-hub/stores/finderStore', () => ({
   useFinderStore: (selector: (state: typeof finderState) => unknown) => selector(finderState),
@@ -54,7 +57,6 @@ vi.mock('@/features/learning-hub/components/TabBar', () => ({ TabBar: () => null
 vi.mock('@/features/learning-hub/apps/TabPanelContainer', () => ({
   TabPanelContainer: ({ tabs }: { tabs: Array<{ title: string }> }) => <div data-testid="tab-count">{tabs.length}:{tabs[0]?.title ?? ''}</div>,
 }));
-vi.mock('@/features/learning-hub/activeTabAccessor', () => ({ setActiveTabForExternal: vi.fn() }));
 vi.mock('@/command-palette/hooks/useCommandEvents', () => ({ COMMAND_EVENTS: {}, useCommandEvents: vi.fn() }));
 vi.mock('@/debug-panel/hooks/usePageLifecycle', () => ({ usePageMount: vi.fn() }));
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({ debugLog: { log: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -62,7 +64,7 @@ vi.mock('@/features/learning-hub/hooks', async () => {
   const actual = await vi.importActual<typeof import('@/features/learning-hub/hooks')>('@/features/learning-hub/hooks');
   return {
     ...actual,
-    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: false, isInjecting: false }),
+    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: () => false, isInjecting: false }),
   };
 });
 

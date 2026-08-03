@@ -12,10 +12,11 @@ import type {
   PanelStates,
   ChatStore,
   BlockingInteraction,
+  PermissionPreset,
 } from '../types/store';
 import { createDefaultChatParams, createDefaultPanelStates } from '../types/common';
 import type { ContextRef } from '../../context/types';
-import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
+import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import type { QueuedMessage } from '../types/queue';
 
 // ============================================================================
@@ -56,6 +57,9 @@ export interface StoreCallbacks {
     userMessageId: string,
     assistantMessageId: string
   ) => Promise<void>) | null;
+
+  /** 系统唤醒回调：只创建助手消息，唤醒内容不写入用户历史 */
+  _wakeSessionCallback?: ((content: string, assistantMessageId: string) => Promise<void>) | null;
 
   /** 
    * 重试消息回调 
@@ -118,6 +122,9 @@ export interface StoreCallbacks {
 
   /** 🔧 P0 修复：继续执行消息回调 */
   _continueMessageCallback?: ((messageId: string, variantId?: string) => Promise<void>) | null;
+
+  /** 🆕 P0 分支模型：会话分支回调（chat_v2_branch_session 封装） */
+  _branchSessionCallback?: ((upToMessageId: string) => Promise<BranchSessionResult>) | null;
 }
 
 // Re-export BlockingInteraction from public types
@@ -150,6 +157,13 @@ export interface ChatStoreState extends StoreCallbacks {
 
   /** 会话元数据 */
   sessionMetadata: Record<string, unknown> | null;
+
+  /** Ask / Plan / Craft */
+  authorityMode: 'ask' | 'plan' | 'craft';
+  permissionPreset: PermissionPreset;
+
+  /** Ask write-blocked CTA */
+  authorityAskBlockedHint: boolean;
 
   /** 会话状态 */
   sessionStatus: SessionStatus;
@@ -281,6 +295,9 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     description: description ?? '',
     groupId: null,
     sessionMetadata: null,
+    authorityMode: 'craft',
+    permissionPreset: 'relaxed',
+    authorityAskBlockedHint: false,
     sessionStatus: 'idle',
     isDataLoaded: false, // 🔧 性能优化：新会话尚未加载数据
     messageMap: new Map(),
@@ -308,6 +325,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     panelStates: createDefaultPanelStates(),
     // 🔧 P1修复：Callback 初始值
     _sendCallback: null,
+    _wakeSessionCallback: null,
     _retryCallback: null,
     _deleteCallback: null,
     _editAndResendCallback: null,
@@ -322,5 +340,6 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     _retryAllVariantsCallback: null,
     _cancelVariantCallback: null,
     _continueMessageCallback: null,
+    _branchSessionCallback: null,
   };
 }

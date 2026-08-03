@@ -5,7 +5,7 @@
  * 自执行注册：import 即注册
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import {
@@ -18,7 +18,9 @@ import {
 } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
-import { convertBackendSources, type BackendSourceInfo, type MemoryType } from './components/types';
+import { convertBackendSources, type BackendSourceInfo, type MemoryType, type RetrievalSource } from './components/types';
+import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
+import { DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT } from '@/features/learning-hub/learningHubContracts';
 
 /**
  * 后端 Memory 检索结果的原始格式
@@ -99,6 +101,23 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
   
   const memoryType = data?.memoryType ?? 'conversation';
 
+  // ★ 点击记忆来源：定位到 Learning Hub 记忆视图并展开对应条目
+  //   （与 UnifiedSourcePanel 的记忆定位链路保持一致）
+  const handleSourceClick = useCallback((source: RetrievalSource) => {
+    const meta = source.metadata || {};
+    const memoryId = [meta.memory_id, meta.note_id, meta.document_id]
+      .find((v): v is string => typeof v === 'string' && v.trim().length > 0);
+    if (!memoryId) return;
+    try {
+      setPendingMemoryLocate(memoryId);
+      window.dispatchEvent(new CustomEvent(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT, {
+        detail: { preferTab: 'memory' },
+      }));
+    } catch (error: unknown) {
+      console.error('[MemoryBlock] Failed to dispatch memory navigate event:', error);
+    }
+  }, []);
+
   // 状态判断
   const isPending = block.status === 'pending';
   const isRunning = block.status === 'running' || isStreaming;
@@ -131,11 +150,10 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
         <div
           className={cn(
             'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-amber-500/10',
-            'dark:bg-amber-500/20'
+            'w-6 h-6 rounded bg-warning/10'
           )}
         >
-          <Brain size={16} className="text-amber-600 dark:text-amber-400" />
+          <Brain size={16} className="text-warning" />
         </div>
 
         {/* 标题 */}
@@ -148,8 +166,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
           <span
             className={cn(
               'flex items-center gap-1 px-2 py-0.5 rounded-full',
-              'bg-amber-500/10 text-amber-600 text-xs',
-              'dark:bg-amber-500/20 dark:text-amber-400'
+              'bg-warning/10 text-warning text-xs'
             )}
           >
             <MemoryIcon size={12} />
@@ -166,7 +183,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
         )}
 
         {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-red-600 dark:text-red-400">
+          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
             <WarningCircle size={12} />
             <span>{t('blocks.memory.error')}</span>
           </span>
@@ -194,7 +211,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
         {/* 错误状态 */}
         {isError && (
           <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <div className="flex items-center gap-2 text-destructive">
               <WarningCircle size={20} />
               <span className="text-sm">
                 {block.error || t('blocks.memory.errorMessage')}
@@ -209,6 +226,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
             sources={sources}
             maxVisible={3}
             defaultExpanded={false}
+            onSourceClick={handleSourceClick}
           />
         )}
 

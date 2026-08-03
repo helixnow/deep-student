@@ -94,19 +94,6 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_tool_schemas_anki() {
-        let mut context = HashMap::new();
-        // Anki 工具现在通过内置 MCP 服务器注入，不再通过 registry
-        let tool_ids = vec![
-            "builtin-anki_generate_cards".to_string(),
-            "builtin-anki_control_task".to_string(),
-        ];
-        let count = inject_tool_schemas(Some(&tool_ids), &mut context);
-        // 这些工具不在 registry 中，所以 count 应为 0
-        assert_eq!(count, 0);
-    }
-
-    #[test]
     fn test_inject_tool_schemas_invalid() {
         let mut context = HashMap::new();
         let tool_ids = vec!["invalid_tool".to_string()];

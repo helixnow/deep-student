@@ -380,9 +380,12 @@ const SnappySliderValue = React.forwardRef<
     inputRef.current?.focus();
   };
 
+  // 按当前值位数自适应宽度，避免大数值（如 887232）在固定 w-12 下被裁剪
+  const valueCh = Math.max(4, String(props.value ?? '').length + 1);
+
   return (
     <div
-      className="group inline-flex w-12 cursor-text items-center rounded bg-primary/5 px-1 py-[2px] focus-within:ring-1 focus-within:ring-primary/70 dark:bg-primary/10"
+      className="group inline-flex min-w-12 cursor-text items-center rounded bg-primary/5 px-1 py-[2px] focus-within:ring-1 focus-within:ring-primary/70 dark:bg-primary/10"
       onClick={handleContainerClick}
     >
       {prefix && <span className="shrink-0 select-none text-xs text-primary/75 dark:text-primary/80">{prefix}</span>}
@@ -390,8 +393,9 @@ const SnappySliderValue = React.forwardRef<
         ref={assignRef}
         type="number"
         inputMode="decimal"
+        style={{ width: `${valueCh}ch` }}
         className={cn(
-          'min-w-0 flex-1 border-none bg-transparent text-right text-xs text-primary outline-none',
+          'min-w-0 border-none bg-transparent text-right text-xs text-primary outline-none',
           '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
           'dark:text-primary/90',
           className,

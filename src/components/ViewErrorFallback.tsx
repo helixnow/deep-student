@@ -1,6 +1,7 @@
 import React from 'react';
+import { WarningCircle } from '@phosphor-icons/react';
 import i18n from '@/i18n';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 const SHOW_DETAILS = import.meta.env.DEV;
 
@@ -19,7 +20,12 @@ export const ViewErrorFallback: React.FC<ViewErrorFallbackProps> = ({ error, onR
   const message = error instanceof Error ? error.message : String(error ?? '');
   return (
     <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-      <div className="text-3xl" aria-hidden>⚠️</div>
+      <div
+        aria-hidden
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10"
+      >
+        <WarningCircle size={26} weight="duotone" className="text-destructive/80" />
+      </div>
       <p className="text-sm font-medium text-foreground">
         {i18n.t('common:errorBoundary.title', '出了点问题')}
       </p>
@@ -29,9 +35,9 @@ export const ViewErrorFallback: React.FC<ViewErrorFallbackProps> = ({ error, onR
         </pre>
       )}
       {onRetry && (
-        <NotionButton variant="primary" size="sm" onClick={onRetry} className="text-xs">
+        <DsButton variant="primary" size="sm" onClick={onRetry} className="text-xs">
           {i18n.t('common:errorBoundary.retry', '重试')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );

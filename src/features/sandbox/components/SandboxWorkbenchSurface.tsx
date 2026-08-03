@@ -1,22 +1,37 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { SidebarSimple } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
-import { useSandboxWorkbenchStore } from '../store/useSandboxWorkbenchStore';
+import {
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '../store/useSandboxWorkbenchStore';
 import { SandboxInspectorPanel } from './SandboxInspectorPanel';
 import { SandboxStatusRail } from './SandboxStatusRail';
 import { SandboxToolbar } from './SandboxToolbar';
+import type { SandboxOwnerKey } from '../types';
+import './SandboxWorkbenchSurface.css';
 
 export interface SandboxWorkbenchSurfaceProps {
   embedded?: boolean;
   className?: string;
   onClose?: () => void;
+  ownerKey?: SandboxOwnerKey;
+  /**
+   * 隐藏自绘的 SandboxToolbar。
+   * ★ 2026-07-08（移动端审计 D-6）：独立视图形态下移动端已有统一顶栏
+   * （UnifiedMobileHeader），再渲染 SandboxToolbar 会形成第二条顶栏；
+   * 由 SandboxWorkbenchPage 在小屏时传入。嵌入 chat-v2 右屏时保持默认 false。
+   */
+  hideToolbar?: boolean;
 }
 
 const viewportClasses: Record<'desktop' | 'tablet' | 'mobile', string> = {
@@ -29,12 +44,23 @@ export function SandboxWorkbenchSurface({
   embedded = false,
   className,
   onClose,
+  ownerKey,
+  hideToolbar = false,
 }: SandboxWorkbenchSurfaceProps) {
+  const { t } = useTranslation('workbench');
   const { isSmallScreen } = useBreakpoint();
-  const activeSession = useSandboxWorkbenchStore((state) => state.activeSession);
-  const isOpen = useSandboxWorkbenchStore((state) => state.isOpen);
-  const inspectorOpen = useSandboxWorkbenchStore((state) => state.inspectorOpen);
-  const viewportPreset = useSandboxWorkbenchStore((state) => state.viewportPreset);
+  const activeSession = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).activeSession
+    : state.activeSession);
+  const isOpen = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).isOpen
+    : state.isOpen);
+  const inspectorOpen = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).inspectorOpen
+    : state.inspectorOpen);
+  const viewportPreset = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).viewportPreset
+    : state.viewportPreset);
   const refreshSession = useSandboxWorkbenchStore((state) => state.refreshSession);
   const closeSession = useSandboxWorkbenchStore((state) => state.closeSession);
   const openWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
@@ -44,20 +70,68 @@ export function SandboxWorkbenchSurface({
 
   const handleClose = useCallback(() => {
     onClose?.();
-    closeWorkbench();
-  }, [closeWorkbench, onClose]);
+    closeWorkbench(ownerKey);
+  }, [closeWorkbench, onClose, ownerKey]);
 
   const handleClear = useCallback(() => {
-    closeSession();
-  }, [closeSession]);
+    closeSession(ownerKey);
+  }, [closeSession, ownerKey]);
 
   const handleToggleInspector = useCallback(() => {
-    setInspectorOpen(!inspectorOpen);
-  }, [inspectorOpen, setInspectorOpen]);
+    setInspectorOpen(!inspectorOpen, ownerKey);
+  }, [inspectorOpen, ownerKey, setInspectorOpen]);
+
+  // ACR 4.0（A6 演出）：viewport 切换 / refresh 后给画布一次轻量反馈。
+  // 画布 max-width 无 transition（宽度瞬时落位），用一次 scale/opacity 脉冲确认
+  // 切换发生；refresh 用 ::after 覆层 flash。皆有 reduced-motion 静态路径（CSS）。
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const prevViewportRef = useRef<string | null>(null);
+  const prevSessionStampRef = useRef<{ id: string; updatedAt: number } | null>(null);
+
+  useEffect(() => {
+    const prev = prevViewportRef.current;
+    prevViewportRef.current = viewportPreset;
+    const el = canvasRef.current;
+    if (!el || prev === null || prev === viewportPreset) return;
+    el.removeAttribute('data-sandbox-viewport-pulse');
+    // 强制重排，确保连续切换能重启动画
+    void el.offsetWidth;
+    el.setAttribute('data-sandbox-viewport-pulse', '');
+    const timer = window.setTimeout(
+      () => el.removeAttribute('data-sandbox-viewport-pulse'),
+      400,
+    );
+    return () => window.clearTimeout(timer);
+  }, [viewportPreset]);
+
+  useEffect(() => {
+    const prev = prevSessionStampRef.current;
+    prevSessionStampRef.current = activeSession
+      ? { id: activeSession.id, updatedAt: activeSession.updatedAt }
+      : null;
+    const el = canvasRef.current;
+    if (
+      !el ||
+      !activeSession ||
+      !prev ||
+      prev.id !== activeSession.id ||
+      prev.updatedAt === activeSession.updatedAt
+    ) {
+      return;
+    }
+    el.removeAttribute('data-sandbox-refresh-flash');
+    void el.offsetWidth;
+    el.setAttribute('data-sandbox-refresh-flash', '');
+    const timer = window.setTimeout(
+      () => el.removeAttribute('data-sandbox-refresh-flash'),
+      700,
+    );
+    return () => window.clearTimeout(timer);
+  }, [activeSession]);
 
   const subtitle = activeSession
-    ? `${activeSession.language.toUpperCase()} · 安全预览`
-    : '在聊天中打开代码块即可预览';
+    ? `${activeSession.language.toUpperCase()} · ${t('sandbox.safePreview')}`
+    : t('sandbox.emptyHint');
 
   const lineCount = useMemo(() => {
     if (!activeSession?.content) return 0;
@@ -73,17 +147,24 @@ export function SandboxWorkbenchSurface({
 
     return (
       <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
-        <SandboxToolbar
-          title="沙箱工作台"
-          subtitle={subtitle}
-          inspectorOpen={inspectorOpen}
-          onReload={refreshSession}
-          onToggleInspector={handleToggleInspector}
-          onClose={handleClose}
-        />
+        {!hideToolbar && (
+          <SandboxToolbar
+            title={t('sandbox.title')}
+            subtitle={subtitle}
+            inspectorOpen={inspectorOpen}
+            onReload={() => refreshSession(ownerKey)}
+            onToggleInspector={handleToggleInspector}
+            onClose={handleClose}
+          />
+        )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
           <div className="w-full max-w-3xl rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
-            <p className="text-sm text-muted-foreground">在聊天中打开代码块即可预览。</p>
+            <p className="text-sm text-muted-foreground">{t('sandbox.emptyHint')}</p>
+            {isSmallScreen && (
+              <p className="mt-2 text-xs text-muted-foreground/70">
+                {t('sandbox.mobileHint')}
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -93,33 +174,36 @@ export function SandboxWorkbenchSurface({
   if (!isOpen && !embedded) {
     return (
       <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
-        <SandboxToolbar
-          title={activeSession.title}
-          meta="已收起"
-          inspectorOpen={inspectorOpen}
-          onReload={refreshSession}
-          onToggleInspector={handleToggleInspector}
-          onClose={handleClose}
-        />
+        {!hideToolbar && (
+          <SandboxToolbar
+            title={activeSession.title}
+            meta={t('sandbox.closed')}
+            inspectorOpen={inspectorOpen}
+            onReload={() => refreshSession(ownerKey)}
+            onToggleInspector={handleToggleInspector}
+            onClose={handleClose}
+          />
+        )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
           <div className="flex flex-col items-center gap-4">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
-              onClick={openWorkbench}
-              aria-label="打开沙箱工作台"
-              title="打开沙箱工作台"
+              onClick={() => openWorkbench(ownerKey)}
+              aria-label={t('sandbox.open')}
+              title={t('sandbox.open')}
+              data-wb-blur-surface
               className="!h-12 !w-12 rounded-2xl border border-border/80 bg-background/90 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md hover:bg-background hover:text-foreground"
             >
               <SidebarSimple size={18} />
-            </NotionButton>
+            </DsButton>
             <button
               type="button"
               onClick={handleClear}
               className="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
             >
-              清空会话
+              {t('sandbox.clearSession')}
             </button>
           </div>
         </div>
@@ -127,14 +211,14 @@ export function SandboxWorkbenchSurface({
     );
   }
 
-  const toolbarSubtitle = `${activeSession.language.toUpperCase()} · 安全预览`;
+  const toolbarSubtitle = `${activeSession.language.toUpperCase()} · ${t('sandbox.safePreview')}`;
 
   const previewShell = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            预览
+            {t('sandbox.preview')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -142,27 +226,38 @@ export function SandboxWorkbenchSurface({
             <button
               key={preset}
               type="button"
-              onClick={() => setViewportPreset(preset)}
+              onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                // 触屏（coarse 指针）下药丸放大到 ≥40px 触控目标
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-4',
                 viewportPreset === preset
                   ? 'border-foreground/25 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent text-muted-foreground hover:text-foreground'
               )}
-              aria-label={preset === 'desktop' ? '桌面' : preset === 'tablet' ? '平板' : '手机'}
-              title={preset === 'desktop' ? '桌面' : preset === 'tablet' ? '平板' : '手机'}
+              aria-label={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
+              title={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
             >
-              {preset === 'desktop' ? '桌' : preset === 'tablet' ? '平' : '手'}
+              {/* 文案走 i18n（此前硬编码「桌/平/手」，英文界面不可读） */}
+              {preset === 'desktop'
+                ? t('sandbox.desktopShort', '桌')
+                : preset === 'tablet'
+                  ? t('sandbox.tabletShort', '平')
+                  : t('sandbox.mobileShort', '手')}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.55),_transparent_58%)] p-4">
+      <CustomScrollArea
+        className="min-h-0 flex-1"
+        viewportClassName="bg-[radial-gradient(circle_at_top,_hsl(var(--card)/0.55),_transparent_58%)] p-4"
+        orientation="both"
+      >
         <div
+          ref={canvasRef}
           data-testid="sandbox-runtime-canvas"
           className={cn(
-            'mx-auto h-full min-h-[360px] overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px]',
+            'relative mx-auto h-full min-h-[360px] overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px]',
             viewportClasses[viewportPreset]
           )}
         >
@@ -174,7 +269,7 @@ export function SandboxWorkbenchSurface({
             className="h-full w-full"
           />
         </div>
-      </div>
+      </CustomScrollArea>
     </div>
   );
 
@@ -184,28 +279,32 @@ export function SandboxWorkbenchSurface({
       viewportPreset={viewportPreset}
       lineCount={lineCount}
       charCount={charCount}
-      onClose={() => setInspectorOpen(false)}
-      onSetViewportPreset={setViewportPreset}
+      onClose={() => setInspectorOpen(false, ownerKey)}
+      onSetViewportPreset={(preset) => setViewportPreset(preset, ownerKey)}
       compact={isSmallScreen}
     />
   );
 
   return (
     <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
-      <SandboxToolbar
-        title={activeSession.title}
-        subtitle={toolbarSubtitle}
-        inspectorOpen={inspectorOpen}
-        onReload={refreshSession}
-        onToggleInspector={handleToggleInspector}
-        onClose={handleClose}
-      />
+      {!hideToolbar && (
+        <SandboxToolbar
+          title={activeSession.title}
+          subtitle={toolbarSubtitle}
+          inspectorOpen={inspectorOpen}
+          onReload={() => refreshSession(ownerKey)}
+          onToggleInspector={handleToggleInspector}
+          onClose={handleClose}
+        />
+      )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
         {isSmallScreen ? (
           <div className="flex h-full min-h-0 flex-col">
             <div className="min-h-0 flex-1">{previewShell}</div>
-            {inspectorShell}
+            {/* ★ 2026-07-08（移动端审计 D-7）：原先无条件渲染，
+                工具栏的检查器开关与面板内 X 按钮在小屏上形同虚设 */}
+            {inspectorOpen ? inspectorShell : null}
           </div>
         ) : (
           <PanelGroup direction="horizontal" className="h-full">

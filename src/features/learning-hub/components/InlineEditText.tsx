@@ -23,6 +23,19 @@ export interface InlineEditTextProps {
   maxLength?: number;
   /** 是否禁用编辑 */
   disabled?: boolean;
+  /** 输入框宽度随内容收缩（Finder 图标视图重命名） */
+  autoSize?: boolean;
+}
+
+const FULL_WIDTH_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60\uFFE0-\uFFE6]/;
+
+function getTextWidthEm(value: string): number {
+  return Math.max(
+    1,
+    Array.from(value).reduce((width, character) => (
+      width + (FULL_WIDTH_CHAR.test(character) ? 1 : 0.58)
+    ), 0),
+  );
 }
 
 /**
@@ -45,6 +58,7 @@ export const InlineEditText = React.memo(function InlineEditText({
   textClassName,
   maxLength = 255,
   disabled = false,
+  autoSize = false,
 }: InlineEditTextProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [editValue, setEditValue] = useState(value);
@@ -52,15 +66,21 @@ export const InlineEditText = React.memo(function InlineEditText({
   // 追踪是否已经处理过确认/取消，避免 onBlur 重复触发
   const hasHandledRef = useRef(false);
 
-  // 同步外部值变化
+  // 同步外部值变化（编辑中不覆盖用户正在输入的内容）
   useEffect(() => {
-    setEditValue(value);
-  }, [value]);
+    if (!isEditing) {
+      setEditValue(value);
+    }
+  }, [value, isEditing]);
 
-  // 编辑状态变化时重置 hasHandled 标记
+  // 进入编辑时重置 hasHandled 标记，并以当时的最新值作为编辑起点
+  // （deps 有意不含 value：编辑期间外部值变化不应重置输入）
+  const valueRef = useRef(value);
+  valueRef.current = value;
   useEffect(() => {
     if (isEditing) {
       hasHandledRef.current = false;
+      setEditValue(valueRef.current);
     }
   }, [isEditing]);
 
@@ -173,9 +193,12 @@ export const InlineEditText = React.memo(function InlineEditText({
       onCompositionEnd={handleCompositionEnd}
       maxLength={maxLength}
       disabled={disabled}
+      style={autoSize ? {
+        width: `min(calc(${getTextWidthEm(editValue)}em + 10px), 100%)`,
+      } : undefined}
       className={cn(
         // 基础样式 - 继承父元素字体
-        "w-full px-1 py-0.5 text-[inherit] leading-[inherit]",
+        autoSize ? "min-w-6 max-w-full px-1 py-0.5 text-[inherit] leading-[inherit]" : "w-full px-1 py-0.5 text-[inherit] leading-[inherit]",
         // 边框和背景 - macOS 风格
         "bg-background border border-primary/50 rounded",
         // 选中高亮

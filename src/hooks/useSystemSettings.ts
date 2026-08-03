@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { useEventRegistry } from './useEventRegistry';
 
 // 系统设置接口
 export interface SystemSettings {
@@ -14,9 +15,10 @@ export interface SystemSettings {
   enableNotifications: boolean;
   maxChatHistory: number;
   debugMode: boolean;
-  enableAnkiConnect: boolean;
   markdownRendererMode: 'legacy' | 'enhanced';
 }
+// 注：旧 key `enableAnkiConnect` 已移除——全仓库无消费方；
+// AnkiConnect 开关统一使用 `anki_connect_enabled`（见 ankiConnectClient）。
 
 // 检查是否在Tauri环境中
 const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
@@ -30,7 +32,6 @@ const DEFAULT_SETTINGS: SystemSettings = {
   enableNotifications: true,
   maxChatHistory: 100,
   debugMode: false,
-  enableAnkiConnect: true,
   markdownRendererMode: 'legacy',
 };
 
@@ -51,7 +52,6 @@ export const useSystemSettings = () => {
           'enableNotifications',
           'maxChatHistory',
           'debugMode',
-          'enableAnkiConnect',
           'markdownRendererMode'
         ];
         
@@ -75,7 +75,6 @@ export const useSystemSettings = () => {
             case 'autoSave':
             case 'enableNotifications':
             case 'debugMode':
-            case 'enableAnkiConnect':
               loadedSettings[settingKey] = !['0', 'false', 'False', 'FALSE', 'null', 'undefined', ''].includes((value ?? '').toString());
               break;
             
@@ -224,6 +223,12 @@ export const useSystemSettings = () => {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  const reloadExternalSettings = useCallback(() => { void loadSettings(); }, [loadSettings]);
+  useEventRegistry(
+    [{ target: 'window', type: 'settings_changed', listener: reloadExternalSettings }],
+    [reloadExternalSettings],
+  );
 
   // 🔧 修复：移除强制亮色主题的逻辑，让 useTheme hook 完全接管主题管理
   // 注意：主题管理现在由 src/hooks/useTheme.ts 统一处理

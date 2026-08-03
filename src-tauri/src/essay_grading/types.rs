@@ -209,6 +209,23 @@ pub struct GradingStreamComplete {
     pub created_at: String,
 }
 
+/// SSE 事件负载 - 阶段进度（2026-07 新增，纯增量事件；旧前端未监听该 type 时自动忽略）
+///
+/// stage 取值（按典型出现顺序）：
+/// preparing / annotating / polishing / model_essay / scoring / saving
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GradingStreamProgress {
+    /// 事件类型
+    #[serde(rename = "type")]
+    pub event_type: String, // "progress"
+
+    /// 阶段代码
+    pub stage: String,
+
+    /// 已流出的字符数
+    pub char_count: usize,
+}
+
 /// SSE 事件负载 - 错误
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GradingStreamError {
@@ -246,6 +263,8 @@ pub const MARKER_INSTRUCTIONS: &str = r#"
 整体评价和各维度点评写入评分标签 <dim> 的评语文本中即可。
 
 第二部分 —— 附加段落（如有后续指令则输出）
+学生若在作文尾部附加了提问或困惑，也在此部分逐一解答：先复述问题要点，再给出明确结论和至少一个示范句。提问文字不属于作文正文，不加批改标记，不纳入评分与字数统计。
+
 第三部分 —— 评分标签 <score>（放在最末尾）
 
 批改标记格式
@@ -274,8 +293,37 @@ connective: 关联词使用不当    rhetoric: 修辞手法误用
 article: 冠词错误    preposition: 介词错误    tense: 时态错误
 agreement: 主谓一致错误    word_form: 词性错误
 
-每个 <err> 标记的 explanation 属性必须包含详细解释。
-同样，<replace> 和 <del> 标记的 reason 属性也应包含详细解释。
+标记使用规则：
+1. <del>/<note>/<good>/<err> 包裹的文本必须与原文逐字一致，不得改写或缩略。
+2. <replace> 是自闭合标签，直接放在原文被替换片段的位置上，old 属性即该片段——正文中不得再重复出现这段原文。
+3. 标记之间不得嵌套或交叉（例如 <err> 内不要再套 <good>）。
+4. 属性值一律用英文双引号 "" 包裹。属性值内部如需引用词句，改用中文引号「」或单引号 ''；不要在属性值内写英文双引号，也不要写 \" 或 &quot;（解析器不做反转义，会原样显示给学生）。
+5. 属性值内部不得出现换行符，整个标记（含属性）必须写在同一段落内；单个标记不得跨越段落或包裹整段以上的文本。
+6. 只允许使用上面定义的标记名（del/ins/replace/note/good/err），不得自造其他标记（如 <fix>、<comment>、<highlight> 等，解析器不识别会原样显示给学生）。
+
+微型示例（正误对照，务必模仿正确写法）：
+示例一 <replace>：
+正确：他平时很喜欢<replace old="read书" new="读书" reason="中英文混杂，书面语应统一用中文表达"/>。
+错误：他平时很喜欢read书。<replace old="read书" new="读书" reason="中英混杂"/> ——原文片段与标记重复出现，禁止。
+示例二 <err>（属性值内引号的正确处理）：
+She <err type="agreement" explanation="主语 She 是第三人称单数，谓语应改为 has；注意与'They have'的复数用法区分">have</err> a book.
+示例三 <good>：
+正确：<good>月光像一层薄纱，轻轻覆在院子里</good>
+错误：<good>比喻贴切，画面感强</good> ——good 只能包裹原文中的优秀片段本身，你的点评写入 note 或 <dim> 评语。
+
+批注密度要求（按作文实际水平调整，避免过度批注）：
+优秀作文（预计得分约达满分 85% 以上）：精批 3-8 处，以 <good> 亮点为主，仅标注真正值得改进的细节。
+中等作文：批注 8-15 处，问题与亮点兼顾。
+问题较多的作文：批注 15-25 处，优先标注最具教学价值的问题。
+同类错误重复出现时，标注前 2-3 处即可，其余在 <dim> 评语中归纳说明，不要逐一标注淹没重点。
+<good> 标注的亮点必须真实、具体（如精准的用词、贴切的修辞、巧妙的过渡、有力的论证），禁止为凑数量把平庸句子标为亮点。
+
+每个 <err> 标记的 explanation 属性必须包含具体解释：错在哪里、为什么错、怎样改。
+同样，<replace> 和 <del> 标记的 reason 属性也应说明修改理由，不得只写"用词不当"之类的空泛结论。
+
+多轮批改（仅当用户消息中提供了【上一轮学生原文】或【上一轮批改反馈】时执行）：
+逐条核对上一轮指出的主要问题：已改进之处用 <good> 或 <note> 明确指出"此处已按上轮建议改进"；仍未解决的问题在标记解释中注明"上轮已指出，仍未修正"。
+<dim> 评语必须包含与上一轮的对比性反馈（该维度进步、停滞还是退步，依据是什么），总分变化应与实际改进幅度相称。
 
 【重要】输出格式规范（严格禁止 Markdown）：
 严禁使用 #、##、### 标题标记。
@@ -307,7 +355,9 @@ pub const SECTION_INSTRUCTIONS: &str = r#"
 
 【润色要求】：
 润色应提升句子的流畅度、用词精准度和表达力，而非仅修正错误。
-每个 polish-item 是独立的句子级改写。
+<original> 内容必须逐字摘自原文；<polished> 保持原意与原文语言，不添加新事实。
+每个 polish-item 是独立的句子级改写；优先挑选"本身可用但明显有提升空间"的句子，而非已标注错误的句子。
+<original> 与 <polished> 内部不要使用任何批改 XML 标记。
 "#;
 
 /// 参考范文 section 指令（仅在有题目元数据时注入）
@@ -331,11 +381,32 @@ pub const SCORE_FORMAT_INSTRUCTIONS: &str = r#"
 在批改的【最末尾】输出一个评分标签（注意：整个回复中只能有一个 <score> 标签）：
 
 <score total="得分" max="满分">
-  <dim name="维度名" score="得分" max="满分">简要评语</dim>
+  <dim name="维度名" score="得分" max="满分">评语</dim>
 </score>
+
+【评分流程 —— 先评估后给分】：
+给分前先在内心逐维度对照评分标准：找到该维度最匹配的档位描述，确认作文中支持该档位的具体证据，再确定分数。
+评分只取决于作文本身的质量证据，不受批注数量、篇幅长短之外的因素影响；同一篇作文重复批改应得到基本一致的分数（波动不应超过总分的 5%）。
+total 与各维度分的关系必须符合本模式的计分规则：默认模式下 total = 各维度分之和；若模式说明中规定总分为各维度平均值（如雅思/托福 band 制），则 total 必须按其规定的平均及取整规则计算，严禁求和。
+
+【评分校准锚点】（按得分占满分的百分比，适用于总分计分的模式）：
+90%-100%：全面达成任务要求，立意/内容出色，语言精准流畅，仅有个别瑕疵。
+75%-89%：整体完成良好，结构清晰、语言通顺，存在少量不影响理解的问题。
+60%-74%：基本完成任务，内容或语言有明显短板，问题可见但主体可读。
+40%-59%：仅部分完成任务，内容单薄或错误较多，阅读时常受阻。
+40% 以下：严重偏题、结构混乱或语言错误密集，难以达意。
+满分与零分并非禁区：确实无可挑剔时给满分，确实完全离题或不可读时给零分，不要习惯性向中间分数回归。
+
+【dim 评语要求】：
+每条评语必须指出该维度的具体得分点与失分点，引用作文中的实际表现作为依据（如「论点明确但第三段论据与观点脱节」）。
+禁止「表现良好」「有待提高」「继续努力」等无信息量的套话。
+若为多轮批改，评语中须包含与上一轮的对比结论。
 
 【重要规范】：
 只输出一个评分，放在回复的最后。
+建议按 total、max 的顺序书写 <score> 属性，按 name、score、max 的顺序书写 <dim> 属性（解析已兼容 total/max 乱序，但请保持规范顺序）。
+total、score、max 属性值必须是纯数字（如 score="8" 或 score="8.5"），不得带单位、汉字或斜杠（禁止 score="8分"、score="8/10"、total="约45"）。
+维度 name 必须与系统给出的维度名逐字一致，不得翻译、缩写或增删维度。
 不要用代码块包裹评分标签。
 如果需要描述"修改后可能的分数"，用文字说明，不要再输出第二个 <score> 标签。
 评分标签必须是有效的 XML 格式。
@@ -395,7 +466,11 @@ pub fn get_builtin_grading_modes() -> Vec<GradingMode> {
 根据作文内容自动识别文体（记叙文/议论文/散文），按对应文体标准侧重评判。
 议论文：论点鲜明、论据充分、论证严密、逻辑清晰。
 记叙文：叙事完整、细节生动、情感真实、详略得当。
-散文：形散神聚、意境优美、语言有张力。"#.to_string(),
+散文：形散神聚、意境优美、语言有张力。
+
+五、评分输出规则
+最终评分按三个维度输出：内容（20分）、表达（20分）、发展等级（20分），总分 = 三维之和（满分60分）。
+第三部分的各项扣分（缺标题、字数不足、错别字、标点、套作等）计入最相关的维度并在该维度评语中注明扣分事由。"#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "内容".to_string(), max_score: 20.0, description: Some("切题、中心、内容充实".to_string()) },
                 ScoreDimension { name: "表达".to_string(), max_score: 20.0, description: Some("文体、结构、语言".to_string()) },
@@ -451,6 +526,9 @@ Key Assessment Areas:
 Common Gaokao Short Essay Types:
 书信（建议信、邀请信、感谢信、申请信、道歉信、通知等）、通知、演讲稿、便条。
 根据具体文体类型调整评判侧重点。
+
+Score Output Rules:
+先按五档整体定档确定总分（15分制），再将总分分解到三个维度：Content & Key Points（5分）、Language Quality（5分）、Format & Register（5分）。三维之和必须等于总分，且各维度分应与整体档位相称（例如总分12分时，各维度约在4分上下，不应出现5+5+2的极端分布，除非评语中给出明确依据）。
 
 Provide feedback in English with Chinese translations for key advice (适合高中生理解)."#.to_string(),
             score_dimensions: vec![
@@ -519,6 +597,9 @@ Scoring Principles:
 3. 如发现大量抄袭原文内容，直接降至第一档或零分处理。
 4. 语言质量和内容质量需综合考量，不可偏废。
 
+Score Output Rules:
+先按五档整体定档确定总分（25分制），再将总分分解到三个维度：Content & Context Coherence（10分）、Language Use（10分）、Cohesion & Structure（5分）。三维之和必须等于总分，各维度分与整体档位相称。
+
 Provide feedback in English with Chinese translations for key advice (适合高中生理解)."#.to_string(),
             score_dimensions: vec![
                 ScoreDimension { name: "Content & Context Coherence".to_string(), max_score: 10.0, description: Some("内容创造、情境融洽度、逻辑性".to_string()) },
@@ -565,7 +646,11 @@ Band 6: Mix of simple and complex sentence forms; some errors in grammar/punctua
 Band 5: Limited range of structures; attempts complex sentences but with frequent grammatical errors; may cause some difficulty for the reader.
 
 Grading Instructions:
-Score each of the four criteria independently. The overall band = average of 4 criteria, rounded to nearest 0.5.
+Score each of the four criteria independently as a WHOLE band (0-9, no half bands for individual criteria).
+Overall band = arithmetic MEAN of the four criterion bands — NEVER their sum. Apply the official IELTS rounding rule to the mean:
+mean ending in .25 rounds UP to the next half band; mean ending in .75 rounds UP to the next whole band; otherwise keep the .0 or .5 value.
+Examples: TR 6, CC 6, LR 7, GRA 6 → mean 6.25 → overall 6.5; TR 6, CC 7, LR 7, GRA 7 → mean 6.75 → overall 7.0; TR 7, CC 6, LR 7, GRA 6 → mean 6.5 → overall 6.5.
+In the final <score> tag: total = overall band (max="9"), and each <dim> = one criterion band (max="9"). Summing the four criteria into total is a critical error.
 Always specify the band for each criterion AND the overall band.
 Provide feedback in English, with Chinese translations for complex advice.
 Specifically comment on whether the "Position" is clear and consistent throughout (crucial for TR Band 7+)."#.to_string(),
@@ -622,7 +707,11 @@ Band 6: Mix of simple and complex forms; some errors but rarely reduce communica
 Band 5: Limited range; attempts complex sentences but with frequent errors.
 
 Grading Instructions:
-Score each criterion independently. Overall = average of 4, rounded to nearest 0.5.
+Score each criterion independently as a WHOLE band (0-9, no half bands for individual criteria).
+Overall band = arithmetic MEAN of the four criterion bands — NEVER their sum. Apply the official IELTS rounding rule to the mean:
+mean ending in .25 rounds UP to the next half band; mean ending in .75 rounds UP to the next whole band; otherwise keep the .0 or .5 value.
+Example: TA 6, CC 6, LR 7, GRA 6 → mean 6.25 → overall 6.5.
+In the final <score> tag: total = overall band (max="9"), and each <dim> = one criterion band (max="9"). Summing the four criteria into total is a critical error.
 For Academic: Do NOT look for arguments or opinions. Focus on data reporting, comparison, and summary.
 For General: Assess purpose clarity, tone appropriateness, and bullet point coverage.
 Word count: At least 150 words. If significantly under, penalise TA.
@@ -646,11 +735,13 @@ Provide feedback in English, with Chinese translations for key advice."#.to_stri
             description: "考研英语（一图画/二图表）Part B 评分模式，总分20分".to_string(),
             system_prompt: r#"You are a professional grader for the Chinese National Postgraduate Entrance Examination (English Section). Grade this Part B essay (大作文) according to the official rubric.
 
-Auto-detect exam type based on content:
-English I (英语一): Picture/cartoon description → interpret meaning → give commentary. Total 20 points, 160-200 words.
-English II (英语二): Chart/graph/table description → analyze trends → give commentary. Total 15 points, 150+ words.
+SCORING SCALE — READ CAREFULLY:
+This mode grades on the English I (英语一) 20-point scale. The final score, all level boundaries below, and the three dimension scores all use the 20-point scale.
+Auto-detect the task type from content:
+English I (英语一): Picture/cartoon description → interpret meaning → give commentary. 160-200 words expected.
+English II (英语二): Chart/graph/table description → analyze trends → give commentary. 150+ words expected. Officially English II Part B is worth 15 points; for consistency, still grade on the 20-point scale here, then state the 15-point equivalent in prose (multiply by 0.75, e.g. 16/20 ≈ 12/15) inside the overall comment — never output a second <score> tag or a 15-point total.
 
-Official 5-Level Scoring Rubric (for 20-point scale; for 15-point scale, use 13-15/10-12/7-9/4-6/1-3):
+Official 5-Level Scoring Rubric (20-point scale):
 
 Level 5 (17-20 / A): Excellent
 Very well organized and effectively addresses the task. Uses a wide range of vocabulary and sentence structures. Grammar correct except for minor slips. Demonstrates clear understanding of the visual prompt with insightful interpretation.
@@ -674,6 +765,9 @@ Scoring Principles:
 2. Graders have 1-3 points of adjustment within each level.
 3. If writing quality is notably poor (difficult to read), lower by one level.
 4. Word count: English I under 160 words or English II under 150 words → penalise.
+
+Score Output Rules:
+After fixing the total (20-point scale), decompose it into the three dimensions: Content & Task Fulfillment (8), Organization & Coherence (5), Language & Accuracy (7). The three dimension scores MUST sum exactly to the total, and each should be consistent with the overall level.
 
 Key Assessment Areas:
 Content completeness: Does it cover description + interpretation + commentary?
@@ -729,7 +823,11 @@ Check that the response contributes meaningfully to the discussion (not just rep
 Evaluate whether it introduces a new perspective, example, or reasoning.
 Relevance to the professor's question is critical.
 
-2026 Score Reporting: TOEFL now uses a 1-6 section scale (aligned to CEFR). A raw score of 5 on each task converts to the highest band. For compatibility, also report the equivalent 0-30 scaled score (5=30, 4=24, 3=17, 2=13, 1=7).
+2026 Score Reporting: TOEFL now uses a 1-6 section scale (aligned to CEFR). A raw score of 5 on each task converts to the highest band. For compatibility, also report the equivalent 0-30 scaled score (5=30, 4=24, 3=17, 2=13, 1=7) in prose — never as a second <score> tag.
+
+Score Output Rules (0-5 scale):
+total = the single holistic task score (0-5, whole numbers preferred as in official ETS rating; use .5 only when genuinely between two levels).
+The three dimensions (Content & Relevance, Organization & Coherence, Language Use, each 0-5) are diagnostic sub-ratings that explain the holistic score. The total should be close to their average and consistent with the rubric level — NEVER the sum of the three (total can never exceed 5).
 
 Provide feedback in English with Chinese translations for key advice."#.to_string(),
             score_dimensions: vec![
@@ -821,7 +919,7 @@ Level 0 (0 points): Blank, completely off-topic, or unintelligible; merely copie
 
 Scoring Principles:
 1. Determine the overall level based on content and language impression, then fine-tune within the level.
-2. CET writing uses holistic scoring — do NOT mechanically split into sub-scores; the single overall score reflects the total impression.
+2. CET writing uses holistic scoring: FIRST fix the overall total (15-point scale) from the level descriptors, THEN decompose it into the three dimensions — Content & Relevance (5), Organization (5), Language (5). The three dimension scores must sum exactly to the total and be consistent with the overall level; do not score the dimensions independently and add them up.
 3. Word count: CET-4 requires 120-180 words, CET-6 requires 150-200 words. Significantly under-length essays should be penalised.
 
 Anti-Template Check (Important):
@@ -851,7 +949,11 @@ Provide overall feedback in Chinese (适合大学生理解), with specific sugge
             description: "宽松友好的批改模式，适合日常写作练习".to_string(),
             system_prompt: r#"你是一位温和友善的写作教练，请以鼓励为主的方式对这篇作文进行批改。
 
-自动检测作文语言（中文/英文/其他），并使用与作文相同的语言进行批改反馈。
+语言适配（先判断作文主体语言，再按下列规则统一反馈语言，全文保持一致）：
+中文作文：全部反馈（标记属性、维度评语、总结）均使用中文。
+英文作文：采用统一的双语格式——标记属性（reason/explanation/text）先写一句英文简评，随后紧跟中文解释，用「｜」分隔，例如 explanation="Tense error: should be past simple｜时态错误：叙述过去发生的事应用一般过去时"；<dim> 评语与结尾总结使用中文。
+其他语言作文：用该语言批注，并附中文解释（同上双语格式）。
+中英混杂的作文以占比更高的语言为主体语言。
 
 批改风格：
 多发现闪光点并用 <good> 标记出来——每篇至少标注3处亮点。
@@ -889,7 +991,7 @@ pub fn get_default_grading_mode() -> GradingMode {
     get_builtin_grading_modes()
         .into_iter()
         .find(|m| m.id == "practice")
-        .unwrap()
+        .expect("builtin grading modes must contain the 'practice' default mode")
 }
 
 /// 归一化预置模式 ID，兼容历史或外部调用别名
@@ -945,5 +1047,39 @@ mod tests {
         assert!(ids.contains("cet"));
         assert!(ids.contains("zhongkao"));
         assert!(ids.contains("practice"));
+    }
+
+    /// 维度分值与总分的一致性守护：
+    /// - 求和制模式：各维度满分之和 == 总分满分
+    /// - band 制模式（雅思/托福）：每个维度满分 == 总分满分（总分为平均而非求和）
+    #[test]
+    fn builtin_mode_dimensions_are_consistent_with_total() {
+        let band_modes = ["ielts", "ielts_task1", "toefl"];
+
+        for mode in get_builtin_grading_modes() {
+            assert!(
+                !mode.score_dimensions.is_empty(),
+                "模式 {} 缺少评分维度",
+                mode.id
+            );
+            if band_modes.contains(&mode.id.as_str()) {
+                for dim in &mode.score_dimensions {
+                    assert_eq!(
+                        dim.max_score, mode.total_max_score,
+                        "band 制模式 {} 的维度 {} 满分应等于总分满分",
+                        mode.id, dim.name
+                    );
+                }
+            } else {
+                let dim_sum: f32 = mode.score_dimensions.iter().map(|d| d.max_score).sum();
+                assert!(
+                    (dim_sum - mode.total_max_score).abs() < 0.01,
+                    "求和制模式 {} 的维度满分之和 ({}) 与总分满分 ({}) 不一致",
+                    mode.id,
+                    dim_sum,
+                    mode.total_max_score
+                );
+            }
+        }
     }
 }

@@ -7,6 +7,10 @@
   --radius-shell-control: 12px;
   --radius-shell-window-control: 10px;
   --radius-shell-dialog: 22px;
+  /* 业务卡片圆角语义 token（2026-07 R6 风格统一）：当前业务卡片在
+     rounded-md(6px)/lg(8px)/xl(12px) 间摇摆，统一收敛目标为 12px。
+     新卡片请用 rounded-[var(--radius-card)]，存量渐进替换、不做一次性扫换。 */
+  --radius-card: 12px;
 
   /* ──────────────────────────────────────────────────────────────────────
    * Chat thread layout
@@ -54,7 +58,7 @@
   --button-plain-active-bg: var(--button-utility-active);
   
   /* =========================================
-     字体系统 (Notion-inspired)
+     字体系统 (clean-inspired)
      ========================================= */
   
   /* 主字体栈 - 优先系统字体，确保原生感 */
@@ -74,6 +78,7 @@
   
   /* 语义化字体大小 */
   --font-size-scale: 1;
+  --font-size-2xs: calc(10px * var(--font-size-scale));
   --font-size-xs: calc(11px * var(--font-size-scale));
   --font-size-sm: calc(12px * var(--font-size-scale));
   --font-size-base: calc(14px * var(--font-size-scale));
@@ -82,6 +87,8 @@
   --font-size-xl: calc(18px * var(--font-size-scale));
   --font-size-2xl: calc(20px * var(--font-size-scale));
   --font-size-3xl: calc(24px * var(--font-size-scale));
+  /* 桌面 UI 控件标准字号（介于 sm 与 base 之间） */
+  --font-size-ui: calc(13px * var(--font-size-scale));
 
   /* 思维链字号（用户可缩放） */
   --chat-thinking-font-size: var(--font-size-sm);
@@ -102,6 +109,22 @@
   --letter-spacing-tight: -0.01em;
   --letter-spacing-normal: 0;
   --letter-spacing-wide: 0.01em;
+}
+
+/* =========================================
+   移动端字号补充 token（2026-07 mobile 基建，追加区）
+
+   移动字号地板（floor）约定：
+   - 正文/列表行/输入框 ≥ 14px（--font-size-base）。输入框低于 16px 时
+     iOS Safari/WKWebView 聚焦会自动放大页面，表单场景建议直接 16px
+     （--font-size-lg）。
+   - 辅助说明/时间戳/徽标计数等 caption 层 ≥ 12px（--m-text-caption），
+     这是移动端可读下限；11px（--font-size-xs）仅限桌面密集 UI，
+     移动端不得使用。
+   ========================================= */
+:root {
+  /* caption 层字号（时间戳/辅助说明/徽标），移动端最小可读字号 */
+  --m-text-caption: calc(12px * var(--font-size-scale));
 }
 
 /* =========================================
@@ -144,8 +167,9 @@
   --warning-foreground: 0 0% 100%;
   --info: 217 70% 50%;
   --info-foreground: 0 0% 100%;
-  --danger: 0 55% 50%;
-  --danger-foreground: 0 0% 100%;
+  /* danger 与 destructive 统一为同一红色，避免同屏双红 */
+  --danger: var(--destructive);
+  --danger-foreground: var(--destructive-foreground);
 
   /* 状态指示色 */
   --status-working: 152 60% 36%;
@@ -158,7 +182,7 @@
 /* 暗色模式基础灰度（纯中性灰，不带色相） */
 :root.dark {
   --titlebar-background: 0 0% 11%;
-  --nav-background: 0 0% 0%;
+  --nav-background: 0 0% 12%;
   --background: 0 0% 9%;
   --foreground: 0 0% 96%;
   --card: 0 0% 12%;
@@ -183,8 +207,8 @@
   --warning-foreground: 40 100% 10%;
   --info: 217 65% 55%;
   --info-foreground: 210 100% 10%;
-  --danger: 0 50% 48%;
-  --danger-foreground: 0 0% 98%;
+  --danger: var(--destructive);
+  --danger-foreground: var(--destructive-foreground);
 
   /* 状态指示色 */
   --status-working: 152 55% 42%;
@@ -296,7 +320,25 @@
   --primary-color: hsl(var(--primary));
 }
 
-/* 6. 青岩蓝 (teal) */
+/* 6. 明亮粉 (bright-pink) —— #fb7299 */
+:root[data-theme-palette='bright-pink'] {
+  --primary: 346 94% 72%;
+  --primary-foreground: 220 30% 10%;
+  --ring: 346 86% 64%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 346 82% 56%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='bright-pink'] {
+  --primary: 346 94% 72%;
+  --primary-foreground: 220 30% 10%;
+  --ring: 346 86% 76%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 346 94% 82%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 7. 青岩蓝 (teal) */
 :root[data-theme-palette='teal'] {
   --primary: 184 54% 30%;
   --primary-foreground: 0 0% 100%;

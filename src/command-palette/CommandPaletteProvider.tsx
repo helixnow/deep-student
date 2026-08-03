@@ -20,7 +20,9 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CurrentView } from '@/types/navigation';
-import type { DependencyResolver, Command } from './registry/types';
+import { useWindowStore } from '@/features/workbench/core/windowStore';
+import { openAppsPanel, toggleAppsPanel } from '@/features/workbench/components/appsPanelStore';
+import type { CommandView, DependencyResolver, Command } from './registry/types';
 import { commandRegistry } from './registry/commandRegistry';
 import { shortcutManager } from './registry/shortcutManager';
 import { normalizeShortcut, buildShortcutString } from './registry/shortcutUtils';
@@ -33,6 +35,8 @@ interface CommandPaletteContextValue {
   isOpen: boolean;
   /** 打开命令面板 */
   open: () => void;
+  /** 打开仅检索会话的命令面板 */
+  openSessionSearch: () => void;
   /** 关闭命令面板 */
   close: () => void;
   /** 切换命令面板 */
@@ -44,9 +48,11 @@ interface CommandPaletteContextValue {
   /** 依赖解析器 */
   deps: DependencyResolver;
   /** 当前视图（快照值，可能滞后于最新切换；优先使用 getCurrentView()） */
-  currentView: CurrentView;
+  currentView: CommandView;
+  /** 当前面板是否只展示会话检索结果 */
+  sessionSearchOnly: boolean;
   /** 获取最新视图（ref-based，始终返回最新值） */
-  getCurrentView: () => CurrentView;
+  getCurrentView: () => CommandView;
 }
 
 const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(null);
@@ -57,6 +63,8 @@ interface CommandPaletteProviderProps {
   children: ReactNode;
   /** 当前视图 */
   currentView: CurrentView;
+  /** Workbench replaces the legacy view layer and has its own command scope. */
+  workbenchActive?: boolean;
   /** 导航函数 */
   navigate: (view: CurrentView, params?: Record<string, unknown>) => void;
   /** 切换主题 */
@@ -72,26 +80,59 @@ interface CommandPaletteProviderProps {
 export function CommandPaletteProvider({
   children,
   currentView,
+  workbenchActive = false,
   navigate,
   toggleTheme,
   isDarkMode,
   switchLanguage,
 }: CommandPaletteProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [sessionSearchOnly, setSessionSearchOnly] = useState(false);
   const { t, i18n } = useTranslation();
 
-  // 🚀 用 ref 持有 currentView，避免 deps/contextValue 在每次视图切换时重建
-  const currentViewRef = useRef(currentView);
-  currentViewRef.current = currentView;
-  
-  // 打开/关闭命令面板
-  const open = useCallback(() => setIsOpen(true), []);
+  const focusedWorkbenchAppTypeId = useWindowStore((state) => {
+    if (!workbenchActive) return null;
+    const focusedWindowId = state.focusStack.at(-1);
+    return focusedWindowId ? state.windows[focusedWindowId]?.typeId ?? null : null;
+  });
+  const commandView: CommandView = workbenchActive ? 'workbench' : currentView;
+
+  // 🚀 用 ref 持有 command view，避免执行路径读取过期的 legacy 视图。
+  const currentViewRef = useRef<CommandView>(commandView);
+  currentViewRef.current = commandView;
+
+  // OS 模式（workbench）：独立命令面板退役，所有「打开命令面板」的入口
+  // （⌘K、顶栏搜索钮、命令内 openCommandPalette）统一改道到全部应用面板
+  // （Spotlight：应用 / 命令 / 学习资源 / 聊天）。legacy 壳行为不变。
+  const open = useCallback(() => {
+    if (workbenchActive) {
+      openAppsPanel();
+      return;
+    }
+    setSessionSearchOnly(false);
+    setIsOpen(true);
+  }, [workbenchActive]);
+  const openSessionSearch = useCallback(() => {
+    if (workbenchActive) {
+      openAppsPanel();
+      return;
+    }
+    setSessionSearchOnly(true);
+    setIsOpen(true);
+  }, [workbenchActive]);
   const close = useCallback(() => setIsOpen(false), []);
-  const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
+  const toggle = useCallback(() => {
+    if (workbenchActive) {
+      toggleAppsPanel();
+      return;
+    }
+    setIsOpen((prev) => !prev);
+  }, [workbenchActive]);
 
   const deps = useMemo<DependencyResolver>(() => ({
     navigate,
     getCurrentView: () => currentViewRef.current,
+    getFocusedWorkbenchAppTypeId: () => focusedWorkbenchAppTypeId,
     t,
     showNotification: showGlobalNotification,
     toggleTheme,
@@ -107,6 +148,7 @@ export function CommandPaletteProvider({
     isDarkMode,
     switchLanguage,
     i18n.language,
+    focusedWorkbenchAppTypeId,
     open,
     close,
   ]);
@@ -121,7 +163,7 @@ export function CommandPaletteProvider({
       showGlobalNotification(
         'error',
         t('command_palette:error.execute_failed'),
-        t('common:error')
+        t('common:status.error')
       );
     }
   }, [deps, close, t]);
@@ -179,7 +221,7 @@ export function CommandPaletteProvider({
    * 尊重视图范围和 isEnabled，取最高优先级。
    */
   const resolveEffectiveShortcut = useCallback(
-    (normalized: string, view: CurrentView, d: DependencyResolver): Command | undefined => {
+    (normalized: string, view: CommandView, d: DependencyResolver): Command | undefined => {
       const candidates = effectiveShortcutIndex.get(normalized);
       if (!candidates || candidates.length === 0) return undefined;
 
@@ -210,19 +252,24 @@ export function CommandPaletteProvider({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
+      const target = e.target;
       const isInput =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable;
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
 
       // 检查是否在富文本编辑器内部
-      const isInRichEditor = target.closest(
+      const isInRichEditor = target instanceof Element && !!target.closest(
         '.milkdown, .ProseMirror, .crepe-editor-wrapper, [data-rich-editor]',
       );
 
       // ── Cmd/Ctrl+K：打开命令面板（富文本编辑器内让编辑器自行处理）──
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey && !e.altKey) {
+      // 仅当用户未自定义/禁用 global.command-palette 绑定时走硬编码快捷路径；
+      // 有自定义时交给下方注册表统一解析，避免改绑/禁用后旧键仍生效。
+      if (
+        (e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey && !e.altKey &&
+        !shortcutManager.hasCustomShortcut('global.command-palette')
+      ) {
         if (isInRichEditor) return;
         e.preventDefault();
         toggle();
@@ -246,7 +293,7 @@ export function CommandPaletteProvider({
       const shortcut = buildShortcutString(e);
       if (shortcut) {
         const normalized = normalizeShortcut(shortcut);
-        const matchedCommand = resolveEffectiveShortcut(normalized, currentView, deps);
+        const matchedCommand = resolveEffectiveShortcut(normalized, commandView, deps);
 
         if (matchedCommand) {
           e.preventDefault();
@@ -257,7 +304,7 @@ export function CommandPaletteProvider({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, toggle, currentView, deps, resolveEffectiveShortcut]);
+  }, [isOpen, toggle, commandView, deps, resolveEffectiveShortcut]);
   
   // 🚀 getCurrentView getter 替代直接暴露 currentView，使 contextValue 不随视图切换重建
   const getCurrentView = useCallback(() => currentViewRef.current, []);
@@ -265,14 +312,16 @@ export function CommandPaletteProvider({
   const contextValue = useMemo<CommandPaletteContextValue>(() => ({
     isOpen,
     open,
+    openSessionSearch,
     close,
     toggle,
     executeCommand,
     searchCommands,
     deps,
-    currentView: currentViewRef.current,
+    currentView: commandView,
+    sessionSearchOnly,
     getCurrentView,
-  }), [isOpen, open, close, toggle, executeCommand, searchCommands, deps, getCurrentView]);
+  }), [isOpen, open, openSessionSearch, close, toggle, executeCommand, searchCommands, deps, commandView, sessionSearchOnly, getCurrentView]);
   
   return (
     <CommandPaletteContext.Provider value={contextValue}>
@@ -289,6 +338,14 @@ export function useCommandPalette() {
     throw new Error('useCommandPalette must be used within a CommandPaletteProvider');
   }
   return context;
+}
+
+/**
+ * 安全版本：Provider 外返回 null 而非抛错。
+ * 供布局层共享组件（如移动端抽屉导航）使用，避免其单测/隔离渲染时崩溃。
+ */
+export function useCommandPaletteSafe() {
+  return useContext(CommandPaletteContext);
 }
 
 // ==================== 辅助函数 ====================

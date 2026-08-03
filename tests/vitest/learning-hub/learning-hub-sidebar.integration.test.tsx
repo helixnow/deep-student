@@ -98,16 +98,16 @@ vi.mock('@/dstu', () => ({
 vi.mock('@/features/chat/context/vfsRefApi', () => ({ updatePathCacheV2: vi.fn() }));
 vi.mock('@/shared/result', () => ({ VfsError: class {}, VfsErrorCode: {}, err: vi.fn(), ok: vi.fn(), reportError: vi.fn() }));
 vi.mock('@/features/learning-hub/components/LearningHubContextMenu', () => ({ LearningHubContextMenu: () => null }));
-vi.mock('@/components/ui/NotionDialog', () => ({
-  NotionDialog: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  NotionDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  NotionDialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  NotionDialogBody: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  NotionDialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  NotionAlertDialog: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+vi.mock('@/components/ui/DsDialog', () => ({
+  DsDialog: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DsDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DsDialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DsDialogBody: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DsDialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DsAlertDialog: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@/components/ui/shad/Input', () => ({ Input: (props: any) => <input {...props} /> }));
-vi.mock('@/components/ui/NotionButton', () => ({ NotionButton: ({ children, ...props }: any) => <button {...props}>{children}</button> }));
+vi.mock('@/components/ui/DsButton', () => ({ DsButton: ({ children, ...props }: any) => <button {...props}>{children}</button> }));
 vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.fn() }));
 vi.mock('@/debug-panel/hooks/usePageLifecycle', () => ({ usePageMount: vi.fn(), pageLifecycleTracker: { log: vi.fn() } }));
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({ debugLog: { log: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -117,7 +117,7 @@ vi.mock('@/features/learning-hub/hooks', async () => {
   const actual = await vi.importActual<typeof import('@/features/learning-hub/hooks')>('@/features/learning-hub/hooks');
   return {
     ...actual,
-    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: false, isInjecting: false }),
+    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: () => false, isInjecting: false }),
   };
 });
 vi.mock('@/command-palette/hooks/useCommandEvents', () => ({ useCommandEvents: vi.fn() }));

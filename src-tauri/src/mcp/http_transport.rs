@@ -19,6 +19,8 @@ pub struct HttpConfig {
     pub url: String,
     pub api_key: Option<String>,
     pub oauth: Option<OAuthConfig>,
+    /// 用于 OAuth token 查找的 server_id（与 api_key 互斥：api_key 优先）
+    pub auth_provider: Option<String>,
     pub headers: HeaderMap,
     pub timeout: Duration,
 }
@@ -61,7 +63,25 @@ impl HttpTransport {
         // 构建HTTP客户端
         let mut headers = config.headers.clone();
 
-        // 添加认证头
+        // 认证优先级：api_key > oauth Bearer
+        #[cfg(not(target_os = "android"))]
+        {
+            use super::auth::resolve_authorization_header;
+            if let Some(auth) = resolve_authorization_header(
+                config.auth_provider.as_deref(),
+                &config.api_key,
+                config.oauth.is_some(),
+            )
+            .await?
+            {
+                headers.insert(
+                    AUTHORIZATION,
+                    HeaderValue::from_str(&auth)
+                        .map_err(|e| McpError::AuthenticationError(e.to_string()))?,
+                );
+            }
+        }
+        #[cfg(target_os = "android")]
         if let Some(api_key) = &config.api_key {
             headers.insert(
                 AUTHORIZATION,
@@ -109,7 +129,7 @@ impl Transport for HttpTransport {
 
         // 提取 method/id 用于日志与 session 处理
         let json_message: Value =
-            serde_json::from_str(message).map_err(|e| McpError::SerializationError(e))?;
+            serde_json::from_str(message).map_err(McpError::SerializationError)?;
         let method = json_message
             .get("method")
             .and_then(|v| v.as_str())
@@ -217,7 +237,7 @@ impl HttpTransport {
         debug!("HTTP MCP send_and_receive: {}", message);
 
         let json_message: Value =
-            serde_json::from_str(message).map_err(|e| McpError::SerializationError(e))?;
+            serde_json::from_str(message).map_err(McpError::SerializationError)?;
 
         let mut request = self.client.post(&self.config.url);
 
@@ -259,6 +279,7 @@ impl HttpTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mcp::auth::resolve_authorization_header;
 
     #[tokio::test]
     async fn test_http_config() {
@@ -266,11 +287,65 @@ mod tests {
             url: "https://example.com/mcp".to_string(),
             api_key: Some("test_key".to_string()),
             oauth: None,
+            auth_provider: None,
             headers: HeaderMap::new(),
             timeout: Duration::from_secs(30),
         };
 
         assert_eq!(config.url, "https://example.com/mcp");
         assert!(config.api_key.is_some());
+    }
+
+    /// 连接前鉴权接线：与 HttpTransport::new 相同的 resolve 调用约定（无真实 socket）
+    #[tokio::test]
+    async fn http_auth_wiring_api_key_beats_oauth_flag() {
+        let config = HttpConfig {
+            url: "https://example.test/mcp".into(),
+            api_key: Some("http-key".into()),
+            oauth: Some(OAuthConfig {
+                client_id: String::new(),
+                auth_url: String::new(),
+                token_url: String::new(),
+                redirect_uri: "http://127.0.0.1/cb".into(),
+                scopes: vec![],
+            }),
+            auth_provider: Some("global-mcp".into()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+        };
+        let auth = resolve_authorization_header(
+            config.auth_provider.as_deref(),
+            &config.api_key,
+            config.oauth.is_some(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(auth.as_deref(), Some("Bearer http-key"));
+    }
+
+    #[tokio::test]
+    async fn http_auth_wiring_oauth_without_token_is_reauth() {
+        let config = HttpConfig {
+            url: "https://example.test/mcp".into(),
+            api_key: None,
+            oauth: Some(OAuthConfig {
+                client_id: String::new(),
+                auth_url: String::new(),
+                token_url: String::new(),
+                redirect_uri: "http://127.0.0.1/cb".into(),
+                scopes: vec![],
+            }),
+            auth_provider: Some("http-missing-oauth-c7".into()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+        };
+        let err = resolve_authorization_header(
+            config.auth_provider.as_deref(),
+            &config.api_key,
+            config.oauth.is_some(),
+        )
+        .await
+        .expect_err("oauth reauth");
+        assert!(err.to_string().contains("OAuth re-authorization required"));
     }
 }

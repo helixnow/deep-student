@@ -41,6 +41,8 @@
       "load_failed": "Failed to read file",
       "file_too_large": "File too large (max {{size}})",
       "limit_reached": "Maximum {{count}} attachments allowed",
+      "limit_reached_one": "Maximum {{count}} attachment allowed",
+      "limit_reached_other": "Maximum {{count}} attachments allowed",
       "status": {
         "processing": "Parsing…",
         "success": "Parsed",
@@ -82,7 +84,8 @@
       "cached_badge": "Cached",
       "server": "Server",
       "no_tools": "No tools available",
-      "builtin_hint": "Manage in Settings → MCP"
+      "builtin_hint": "Manage in Settings → MCP",
+      "no_matches": "No matching servers or tools"
     },
     "search_engine": {
       "title": "Web Search",

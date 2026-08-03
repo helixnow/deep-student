@@ -3,6 +3,7 @@ import {
   streamingMarkdownProfiler,
   type StreamingMarkdownProfiler,
 } from './streamingProfiler';
+import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
 
 export type StreamingSmoothingPreset = 'natural' | 'realtime' | 'balanced' | 'silky' | 'fluid';
 
@@ -295,7 +296,7 @@ function createRafScheduler(): RafScheduler {
         task(ts, dt);
       } catch (err) {
         // 单个任务异常不污染整个 tick
-        // eslint-disable-next-line no-console
+
         console.warn('[stream-smoothing] task error', err);
       }
       if (performance.now() - start > TICK_BUDGET_MS) break;
@@ -435,6 +436,9 @@ export function useSmoothedStreamingContent(
     }
 
     const task: RafTask = (ts, dtMs) => {
+      // OS 模式拖/缩/settle：禁止流式 setState 抢跟手帧（token 留在 target，松手后续跑）
+      if (shouldPauseHeavyContent()) return;
+
       const target = targetRef.current;
       const remaining = target.length - advancedRef.current;
       if (remaining <= 0) {

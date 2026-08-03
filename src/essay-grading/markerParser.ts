@@ -7,18 +7,27 @@
  * - <replace old="原文" new="修正" reason="原因"/>
  * - <note text="批注内容">被批注的原文</note>
  * - <good>优秀片段</good>
- * - <err type="grammar|spelling|logic|expression">错误内容</err>
+ * - <err type="grammar|spelling|logic|expression|...">错误内容</err>
  * - <score total="X" max="Y"><dim name="维度" score="X" max="Y">评语</dim></score>
  */
 
-import type { MarkerType } from './markerTypes';
-import type { GradeCode } from './types';
+import type { ParsedMarkerType, ErrorType } from './markerTypes';
+import {
+  parseScoreFromText,
+  removeScoreTag as streamingRemoveScoreTag,
+  stripNestedMarkerTags,
+} from './streamingMarkerParser';
+import type { ParsedScore } from './streamingMarkerParser';
 
 // Re-export GradeCode for external use
 export type { GradeCode } from './types';
 
+// ParsedScore/DimensionScore 的类型真相源在 streamingMarkerParser（含 isComplete 字段），
+// 此处 re-export 以兼容既有 import（如 ScoreCard）。
+export type { ParsedScore, DimensionScore } from './streamingMarkerParser';
+
 export interface ParsedMarker {
-  type: MarkerType;
+  type: ParsedMarkerType;
   content: string;
   // del
   reason?: string;
@@ -27,24 +36,9 @@ export interface ParsedMarker {
   newText?: string;
   // note
   comment?: string;
-  // err
-  errorType?: 'grammar' | 'spelling' | 'logic' | 'expression' | 'article' | 'preposition' | 'word_form' | 'sentence_structure' | 'word_choice' | 'punctuation' | 'tense' | 'agreement';
+  // err（词汇表见 markerTypes.ErrorType，与后端 MARKER_INSTRUCTIONS 一致）
+  errorType?: ErrorType;
   explanation?: string;
-}
-
-export interface ParsedScore {
-  total: number;
-  maxTotal: number;
-  /** 等级代码，使用 essay_grading:score.grade.{code} 获取本地化文案 */
-  grade: GradeCode;
-  dimensions: DimensionScore[];
-}
-
-export interface DimensionScore {
-  name: string;
-  score: number;
-  maxScore: number;
-  comment?: string;
 }
 
 /**
@@ -53,7 +47,8 @@ export interface DimensionScore {
  * 结束引号判定：后续是空白+下一个属性，或字符串结束。
  */
 function extractAttributeValue(attrs: string, attrName: string): string | undefined {
-  const attrStartRegex = new RegExp(`${attrName}\\s*=\\s*(['"])`, 'i');
+  // (?:^|\s) 边界防止匹配到其他属性名的后缀（如 old 误匹配 bold）
+  const attrStartRegex = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*(['"])`, 'i');
   const startMatch = attrStartRegex.exec(attrs);
   if (!startMatch || startMatch.index == null) return undefined;
 
@@ -72,60 +67,54 @@ function extractAttributeValue(attrs: string, attrName: string): string | undefi
 }
 
 /**
- * 解析批改结果中的评分
+ * 解析批改结果中的评分。
+ * 直接委托给 streamingMarkerParser 的统一实现：
+ * - <score>/<dim> 属性任意顺序
+ * - 超满分统一 clamp 到 max（total 与 dim），与后端一致
+ * - <dim> 评语允许包含 '<'
  */
 export function parseScore(text: string): ParsedScore | null {
-  // 匹配 <score total="X" max="Y">...</score>（与后端/流式解析器一致，兼容 total/max 两种属性顺序）
-  const scoreRegex = /<score\s+(?:total="([^"]+)"\s+max="([^"]+)"|max="([^"]+)"\s+total="([^"]+)")[^>]*>([\s\S]*?)<\/score>/i;
-  const dimRegex = /<dim\s+name="([^"]+)"\s+score="([^"]+)"\s+max="([^"]+)"[^>]*>([^<]*)<\/dim>/gi;
-  
-  const scoreMatch = text.match(scoreRegex);
-  if (!scoreMatch) return null;
-  
-  const total = parseFloat(scoreMatch[1] ?? scoreMatch[4]);
-  const maxTotal = parseFloat(scoreMatch[2] ?? scoreMatch[3]);
-  const dimsContent = scoreMatch[5];
-  
-  if (isNaN(total) || isNaN(maxTotal)) return null;
-  
-  // 解析维度评分
-  const dimensions: DimensionScore[] = [];
-  let dimMatch;
-  while ((dimMatch = dimRegex.exec(dimsContent)) !== null) {
-    const score = parseFloat(dimMatch[2]);
-    const maxScore = parseFloat(dimMatch[3]);
-    if (!isNaN(score) && !isNaN(maxScore)) {
-      dimensions.push({
-        name: dimMatch[1],
-        score,
-        maxScore,
-        comment: dimMatch[4]?.trim() || undefined,
-      });
-    }
-  }
-  
-  // 计算等级代码（组件层负责翻译）
-  const percentage = (total / maxTotal) * 100;
-  let grade: GradeCode;
-  if (percentage >= 90) {
-    grade = 'excellent';
-  } else if (percentage >= 75) {
-    grade = 'good';
-  } else if (percentage >= 60) {
-    grade = 'pass';
-  } else {
-    grade = 'fail';
-  }
-  
-  return { total, maxTotal, grade, dimensions };
+  return parseScoreFromText(text);
 }
 
 /**
- * 从文本中移除评分标签，返回纯内容
+ * 从文本中移除评分标签，返回纯内容（与流式解析器共用同一实现）
  */
 export function removeScoreTag(text: string): string {
-  // 与流式解析器保持一致：兼容 total/max 两种属性顺序
-  return text.replace(/<score\s+(?:total="[^"]+"\s+max="[^"]+"|max="[^"]+"\s+total="[^"]+")[^>]*>[\s\S]*?<\/score>/gi, '').trim();
+  return streamingRemoveScoreTag(text);
+}
+
+// 正则预编译（模块级），使用前重置 lastIndex
+const PATTERNS: ReadonlyArray<{ regex: RegExp; type: ParsedMarkerType }> = [
+  // <del reason="...">...</del>
+  { regex: /<del(?:\s+([\s\S]*?))?>([\s\S]*?)<\/del>/gi, type: 'del' },
+  // <ins>...</ins>
+  { regex: /<ins>([\s\S]*?)<\/ins>/gi, type: 'ins' },
+  // <replace old="..." new="..." reason="..."/>
+  { regex: /<replace\s+([\s\S]*?)\/>/gi, type: 'replace' },
+  // <note text="...">...</note>
+  { regex: /<note\s+([\s\S]*?)>([\s\S]*?)<\/note>/gi, type: 'note' },
+  // <good>...</good>
+  { regex: /<good>([\s\S]*?)<\/good>/gi, type: 'good' },
+  // <err type="..." explanation="...">...</err> (supports both attribute orders)
+  { regex: /<err\s+([\s\S]*?)>([\s\S]*?)<\/err>/gi, type: 'err' },
+];
+
+// 畸形容错：<replace ...>（缺 '/'）成对形式与仅开始标签形式。
+// 成对形式的内文限定为不含 '<'，避免与远处的孤儿 </replace> 误配而吞掉中间的合法标记
+const REPLACE_MALFORMED_PAIRED_REGEX = /<replace\b([^>]*[^/\s])\s*>([^<]*)<\/replace>/gi;
+const REPLACE_MALFORMED_OPEN_REGEX = /<replace\b([^>]*)>/gi;
+
+function buildReplaceMarker(attrs: string): ParsedMarker {
+  const oldText = extractAttributeValue(attrs, 'old');
+  const newText = extractAttributeValue(attrs, 'new');
+  return {
+    type: 'replace',
+    content: `${oldText ?? ''} → ${newText ?? ''}`,
+    oldText,
+    newText,
+    reason: extractAttributeValue(attrs, 'reason'),
+  };
 }
 
 /**
@@ -133,24 +122,7 @@ export function removeScoreTag(text: string): string {
  */
 export function parseMarkers(text: string): ParsedMarker[] {
   const markers: ParsedMarker[] = [];
-  let remaining = text;
   let lastIndex = 0;
-  
-  // 正则表达式匹配所有标记
-  const patterns = [
-    // <del reason="...">...</del>
-    { regex: /<del(?:\s+([\s\S]*?))?>([\s\S]*?)<\/del>/gi, type: 'del' as MarkerType },
-    // <ins>...</ins>
-    { regex: /<ins>([\s\S]*?)<\/ins>/gi, type: 'ins' as MarkerType },
-    // <replace old="..." new="..." reason="..."/>
-    { regex: /<replace\s+([\s\S]*?)\/>/gi, type: 'replace' as MarkerType },
-    // <note text="...">...</note>
-    { regex: /<note\s+([\s\S]*?)>([\s\S]*?)<\/note>/gi, type: 'note' as MarkerType },
-    // <good>...</good>
-    { regex: /<good>([\s\S]*?)<\/good>/gi, type: 'good' as MarkerType },
-    // <err type="..." explanation="...">...</err> (supports both attribute orders)
-    { regex: /<err\s+([\s\S]*?)>([\s\S]*?)<\/err>/gi, type: 'err' as MarkerType },
-  ];
   
   // 收集所有匹配及其位置
   interface MatchInfo {
@@ -161,7 +133,7 @@ export function parseMarkers(text: string): ParsedMarker[] {
   
   const allMatches: MatchInfo[] = [];
   
-  for (const pattern of patterns) {
+  for (const pattern of PATTERNS) {
     let match;
     pattern.regex.lastIndex = 0;
     while ((match = pattern.regex.exec(text)) !== null) {
@@ -170,30 +142,29 @@ export function parseMarkers(text: string): ParsedMarker[] {
       switch (pattern.type) {
         case 'del':
           marker.reason = extractAttributeValue(match[1] || '', 'reason');
-          marker.content = match[2];
+          marker.content = stripNestedMarkerTags(match[2]);
           break;
         case 'ins':
-          marker.content = match[1];
+          marker.content = stripNestedMarkerTags(match[1]);
           break;
-        case 'replace':
-          marker.oldText = extractAttributeValue(match[1] || '', 'old');
-          marker.newText = extractAttributeValue(match[1] || '', 'new');
-          marker.reason = extractAttributeValue(match[1] || '', 'reason');
-          marker.content = `${marker.oldText ?? ''} → ${marker.newText ?? ''}`;
+        case 'replace': {
+          const built = buildReplaceMarker(match[1] || '');
+          Object.assign(marker, built);
           break;
+        }
         case 'note':
           marker.comment = extractAttributeValue(match[1] || '', 'text');
-          marker.content = match[2];
+          marker.content = stripNestedMarkerTags(match[2]);
           break;
         case 'good':
-          marker.content = match[1];
+          marker.content = stripNestedMarkerTags(match[1]);
           break;
         case 'err': {
           const attrs = match[1] || '';
           const extractedType = extractAttributeValue(attrs, 'type');
           marker.errorType = (extractedType || 'grammar') as ParsedMarker['errorType'];
           marker.explanation = extractAttributeValue(attrs, 'explanation');
-          marker.content = match[2];
+          marker.content = stripNestedMarkerTags(match[2]);
           break;
         }
       }
@@ -204,6 +175,28 @@ export function parseMarkers(text: string): ParsedMarker[] {
         marker,
       });
     }
+  }
+  
+  // 畸形容错 1：<replace old new reason>原文</replace>（缺 '/' 的成对形式）
+  let malformedMatch;
+  REPLACE_MALFORMED_PAIRED_REGEX.lastIndex = 0;
+  while ((malformedMatch = REPLACE_MALFORMED_PAIRED_REGEX.exec(text)) !== null) {
+    const marker = buildReplaceMarker(malformedMatch[1] || '');
+    // 属性缺失时不产出标记，安全降级为原样文本
+    if (marker.oldText === undefined && marker.newText === undefined) continue;
+    allMatches.push({ index: malformedMatch.index, length: malformedMatch[0].length, marker });
+  }
+  
+  // 畸形容错 2：<replace old new reason>（缺 '/' 且无结束标签）
+  REPLACE_MALFORMED_OPEN_REGEX.lastIndex = 0;
+  while ((malformedMatch = REPLACE_MALFORMED_OPEN_REGEX.exec(text)) !== null) {
+    const attrs = malformedMatch[1] || '';
+    // 规范自闭合形式已由 PATTERNS 中的 replace 正则处理
+    if (attrs.trimEnd().endsWith('/')) continue;
+    const marker = buildReplaceMarker(attrs);
+    if (marker.oldText === undefined && marker.newText === undefined) continue;
+    // 若同起点存在更长的成对畸形匹配，"同起点更长优先"排序会让本匹配被跳过
+    allMatches.push({ index: malformedMatch.index, length: malformedMatch[0].length, marker });
   }
   
   // 按位置排序；同起点时优先更长的匹配（外层标记优先于其内部的嵌套标记）
@@ -242,4 +235,3 @@ export function parseMarkers(text: string): ParsedMarker[] {
   
   return markers;
 }
-

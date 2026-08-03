@@ -120,7 +120,7 @@ export function getAncestors(root: MindMapNode, nodeId: NodeId): MindMapNode[] {
   return ancestors;
 }
 
-/** 计算节点总数 */
+/** 计算节点总数（含自身） */
 export function countNodes(root: MindMapNode): number {
   let count = 1;
   for (const child of root.children) {
@@ -129,9 +129,51 @@ export function countNodes(root: MindMapNode): number {
   return count;
 }
 
+/** 计算后代节点总数（不含自身） */
+export function countDescendants(node: MindMapNode): number {
+  if (!node.children || node.children.length === 0) return 0;
+  return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
+}
+
 /** 获取最大深度 */
 export function getMaxDepth(root: MindMapNode): number {
   if (root.children.length === 0) return 0;
   return 1 + Math.max(...root.children.map(getMaxDepth));
 }
 
+/**
+ * 去重并移除已选祖先的后代，仅保留选中集中的顶层节点。
+ * 遍历树一次，结果顺序保持调用方传入顺序。
+ */
+export function collectTopLevelNodeIds(
+  root: MindMapNode,
+  nodeIds: readonly string[],
+  options?: { excludeRoot?: boolean }
+): string[] {
+  const orderedIds: string[] = [];
+  const selectedIds = new Set<string>();
+
+  for (const nodeId of nodeIds) {
+    if (selectedIds.has(nodeId)) continue;
+    if (options?.excludeRoot && nodeId === root.id) continue;
+    selectedIds.add(nodeId);
+    orderedIds.push(nodeId);
+  }
+
+  if (selectedIds.size === 0) return [];
+
+  const topLevelIds = new Set<string>();
+  const visit = (node: MindMapNode, hasSelectedAncestor: boolean) => {
+    const isSelected = selectedIds.has(node.id);
+    if (isSelected && !hasSelectedAncestor) {
+      topLevelIds.add(node.id);
+    }
+    const descendantHasSelectedAncestor = hasSelectedAncestor || isSelected;
+    for (const child of node.children) {
+      visit(child, descendantHasSelectedAncestor);
+    }
+  };
+
+  visit(root, false);
+  return orderedIds.filter((nodeId) => topLevelIds.has(nodeId));
+}

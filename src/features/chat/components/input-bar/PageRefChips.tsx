@@ -10,7 +10,7 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, BookOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 
 // ============================================================================
@@ -102,9 +102,9 @@ export const PageRefChips: React.FC<PageRefChipsProps> = memo(
           <span className="opacity-60">·</span>
           <span className="whitespace-nowrap">{label}</span>
           {!disabled && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className="-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={t('chatV2:pageRef.clearAll')} title={t('chatV2:pageRef.clearAll')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className="-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={t('chatV2:pageRef.clearAll')} title={t('chatV2:pageRef.clearAll')}>
               <X size={10} weight="bold" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>

@@ -1,0 +1,104 @@
+/* SkillTapBrowser — tab strip + SkillMarket badges */
+
+.skill-tap-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  padding: 0 12px;
+}
+
+.skill-tap-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.skill-tap-tab:hover {
+  color: hsl(var(--foreground));
+  background: color-mix(in srgb, var(--interactive-hover, #f5f5f5) 80%, transparent);
+}
+
+.skill-tap-tab[aria-selected='true'] {
+  color: hsl(var(--foreground));
+}
+
+.skill-tap-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: hsl(var(--foreground));
+}
+
+.skill-tap-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skill-market-verify-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.skill-market-verify-badge--ok {
+  background: hsl(var(--success) / 0.14);
+  color: hsl(var(--success));
+}
+
+.skill-market-verify-badge--fail {
+  background: hsl(var(--danger) / 0.14);
+  color: hsl(var(--danger));
+}
+
+.skill-market-verify-badge--pending {
+  background: hsl(var(--warning) / 0.14);
+  color: hsl(var(--warning));
+}
+
+.skill-market-verify-badge--unknown {
+  background: hsl(var(--muted-foreground) / 0.14);
+  color: hsl(var(--muted-foreground));
+}
+
+.skill-market-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.skill-market-filter-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  user-select: none;
+}
+
+.skill-market-filter-row input[type='checkbox'] {
+  width: 13px;
+  height: 13px;
+  accent-color: hsl(var(--foreground));
+}

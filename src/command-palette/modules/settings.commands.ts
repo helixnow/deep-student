@@ -15,6 +15,7 @@ import {
   Key,
 } from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 /** Helper: get localized keywords array for a given command key */
 const kw = (key: string): string[] =>
@@ -88,7 +89,7 @@ export const settingsCommands: Command[] = [
       deps.navigate('settings');
       // 触发设置页面跳转到 API 配置 tab
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'api' } }));
+        dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'apis' });
       }, 100);
     },
   },

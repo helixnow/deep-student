@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Eye, EyeSlash, X } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useMindMapStore } from '../../store';
 import { countBlankProgress } from '../../utils/node/blankRanges';
 
@@ -21,16 +21,17 @@ export const ReciteStatusBar: React.FC = () => {
 
   if (!reciteMode) return null;
 
+  // 顶部内联占位条：占用文档流（父容器 flex-col），不再作为悬浮层遮挡画布顶部节点
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-xl bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] shadow-lg backdrop-blur">
-      <BookOpen className="w-4 h-4 text-amber-500 shrink-0" />
+    <div className="mm-recite-status-bar shrink-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] ui-drop-in">
+      <BookOpen className="w-4 h-4 text-[var(--mm-warning)] shrink-0" />
       <span className="text-sm font-medium whitespace-nowrap">{t('recite.title')}</span>
 
       {progress.total > 0 ? (
         <div className="flex items-center gap-2">
           <div className="w-24 h-1.5 rounded-full bg-[var(--mm-border)] overflow-hidden">
             <div
-              className="h-full rounded-full bg-amber-500 transition-all duration-300"
+              className="h-full rounded-full bg-[var(--mm-warning)] transition-all duration-300 motion-reduce:transition-none"
               style={{ width: `${(progress.revealed / progress.total) * 100}%` }}
             />
           </div>
@@ -39,24 +40,28 @@ export const ReciteStatusBar: React.FC = () => {
           </span>
         </div>
       ) : (
-        <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap max-w-[200px] truncate">
-          {t('recite.emptyHint')}
-        </span>
+        <DsButton
+          variant="ghost"
+          className="mm-recite-status-action h-7 px-2 text-xs"
+          onClick={() => setReciteMode(false)}
+        >
+          {t('recite.createBlankCta')}
+        </DsButton>
       )}
 
       <div className="w-px h-4 bg-[var(--mm-border)]" />
-      <NotionButton variant="ghost" onClick={revealAllBlanks} className="h-7 px-2 text-xs gap-1" disabled={progress.total === 0}>
+      <DsButton variant="ghost" onClick={revealAllBlanks} className="mm-recite-status-action h-7 px-2 text-xs gap-1" disabled={progress.total === 0}>
         <Eye size={14} />
         {t('recite.revealAll')}
-      </NotionButton>
-      <NotionButton variant="ghost" onClick={resetAllBlanks} className="h-7 px-2 text-xs gap-1" disabled={progress.total === 0}>
+      </DsButton>
+      <DsButton variant="ghost" onClick={resetAllBlanks} className="mm-recite-status-action h-7 px-2 text-xs gap-1" disabled={progress.total === 0}>
         <EyeSlash size={14} />
         {t('recite.resetAll')}
-      </NotionButton>
-      <NotionButton variant="ghost" onClick={() => setReciteMode(false)} className="h-7 px-2 text-xs gap-1">
+      </DsButton>
+      <DsButton variant="ghost" onClick={() => setReciteMode(false)} className="mm-recite-status-action h-7 px-2 text-xs gap-1">
         <X size={14} />
         {t('recite.exit')}
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };

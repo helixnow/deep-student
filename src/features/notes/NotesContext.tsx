@@ -39,6 +39,7 @@ import { useReferenceValidation, type UseReferenceValidationReturn } from "./hoo
 // Learning Hub - 引用到对话 (Prompt 9)
 import type { ContextRef } from "@/features/chat/resources/types";
 import { sessionManager } from "@/features/chat/core/session/sessionManager";
+import { ensureActiveChatSession } from "@/features/chat/pages/ensureActiveChatSession";
 import { NOTE_TYPE_ID } from "@/features/chat/context/definitions/note";
 import { TEXTBOOK_TYPE_ID } from "@/features/chat/context/definitions/textbook";
 import { EXAM_TYPE_ID } from "@/features/chat/context/definitions/exam";
@@ -344,6 +345,11 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [searchError, setSearchError] = useState<string | null>(null);
     const searchReqSeqRef = useRef(0);
 
+    // 标签页偏好是否已从磁盘加载完成（加载前禁止回写，避免初次 [] 覆盖磁盘偏好）
+    const tabsPrefLoadedRef = useRef(false);
+    // ensureNoteContent 并发去重：同一 noteId 的 in-flight 加载 Promise
+    const inflightContentRef = useRef<Map<string, Promise<void>>>(new Map());
+
     // Sidebar Control
     const [sidebarRevealId, setSidebarRevealId] = useState<string | null>(null);
 
@@ -473,7 +479,11 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     const note = (items || []).find(n => n.id === act) || null;
                     if (note) setActive(note);
                 }
-            } catch {}
+            } catch {
+            } finally {
+                // 无论读取成功与否，磁盘偏好加载流程已结束，允许后续回写
+                tabsPrefLoadedRef.current = true;
+            }
         } else {
             reportError(result.error, t('notes:errors.load_notes_list'));
             console.error("[notes] load notes failed", result.error.toUserMessage());
@@ -490,42 +500,55 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const ensureNoteContent = useCallback(async (noteId: string) => {
         if (loadedContentIds.has(noteId)) return;
 
-        console.log('[NotesContext] Using DSTU API to get note content:', noteId);
-        const dstuPath = `/${noteId}`;
-        const contentResult = await dstu.getContent(dstuPath);
-        const nodeResult = await dstu.get(dstuPath);
+        // 竞态防护：同一 noteId 的并发加载复用同一个 in-flight Promise，避免双写
+        const inflight = inflightContentRef.current.get(noteId);
+        if (inflight) return inflight;
 
-        if (contentResult.ok && nodeResult.ok) {
-            // 合并节点信息和内容
-            const full: NoteItem = {
-                ...dstuNodeToNoteItem(nodeResult.value),
-                content_md: typeof contentResult.value === 'string' ? contentResult.value : '',
-            };
+        const load = (async () => {
+            console.log('[NotesContext] Using DSTU API to get note content:', noteId);
+            const dstuPath = `/${noteId}`;
+            const contentResult = await dstu.getContent(dstuPath);
+            const nodeResult = await dstu.get(dstuPath);
 
-            setNotes(prev => {
-                const exists = prev.some(n => n.id === noteId);
-                if (exists) {
-                    return prev.map(n => n.id === noteId ? full : n);
+            if (contentResult.ok && nodeResult.ok) {
+                // 合并节点信息和内容
+                const full: NoteItem = {
+                    ...dstuNodeToNoteItem(nodeResult.value),
+                    content_md: typeof contentResult.value === 'string' ? contentResult.value : '',
+                };
+
+                setNotes(prev => {
+                    const exists = prev.some(n => n.id === noteId);
+                    if (exists) {
+                        return prev.map(n => n.id === noteId ? full : n);
+                    }
+                    return [...prev, full];
+                });
+                setLoadedContentIds(prev => {
+                    const next = new Set(prev);
+                    next.add(noteId);
+                    return next;
+                });
+                if (active?.id === noteId) {
+                    setActive(full);
                 }
-                return [...prev, full];
-            });
-            setLoadedContentIds(prev => {
-                const next = new Set(prev);
-                next.add(noteId);
-                return next;
-            });
-            if (active?.id === noteId) {
-                setActive(full);
+            } else {
+                const error = !contentResult.ok ? contentResult.error : nodeResult.error;
+                reportError(error, t('notes:errors.load_note_content'));
+                console.error("[notes] load note content failed", error.toUserMessage());
+                notify({
+                    title: t('notes:notifications.loadFailed'),
+                    description: error.toUserMessage(),
+                    variant: "destructive",
+                });
             }
-        } else {
-            const error = !contentResult.ok ? contentResult.error : nodeResult.error;
-            reportError(error, t('notes:errors.load_note_content'));
-            console.error("[notes] load note content failed", error.toUserMessage());
-            notify({
-                title: t('notes:notifications.loadFailed'),
-                description: error.toUserMessage(),
-                variant: "destructive",
-            });
+        })();
+
+        inflightContentRef.current.set(noteId, load);
+        try {
+            await load;
+        } finally {
+            inflightContentRef.current.delete(noteId);
         }
     }, [active?.id, loadedContentIds, notify, t]);
 
@@ -677,13 +700,15 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const closeTab = useCallback((noteId: string) => {
         setOpenTabs(prev => {
+            const closedIndex = prev.indexOf(noteId);
+            if (closedIndex === -1) return prev;
             const newTabs = prev.filter(id => id !== noteId);
             if (activeTabId === noteId) {
-                // If closing active tab, activate the last one or null
-                const lastTab = newTabs.length > 0 ? newTabs[newTabs.length - 1] : null;
-                setActiveTabId(lastTab);
-                if (lastTab) {
-                    const note = notes.find(n => n.id === lastTab);
+                // 关闭激活标签时，优先激活右侧邻近标签，否则左侧。
+                const neighborTab = newTabs[closedIndex] ?? newTabs[closedIndex - 1] ?? null;
+                setActiveTabId(neighborTab);
+                if (neighborTab) {
+                    const note = notes.find(n => n.id === neighborTab);
                     if (note) setActive(note);
                     else setActive(null);
                 } else {
@@ -954,7 +979,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const saveNoteContent = useCallback(async (id: string, content: string, title?: string) => {
         // 🆕 维护模式检查：阻止保存笔记
         if (useSystemStatusStore.getState().maintenanceMode) {
-            showGlobalNotification('warning', t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记，请稍后再试。'));
+            showGlobalNotification('warning', t('common:maintenance.blocked_note_save'));
             throw new Error('maintenance_mode');
         }
 
@@ -983,7 +1008,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!loadedContentIds.has(id)) {
             console.warn('[NotesContext] ⚠️ saveNoteContent: 笔记内容尚未加载，先触发加载', { id });
             void ensureNoteContent(id);
-            throw new Error('content_not_loaded');
+            // ★ P1 修复：打 isNonRetryable 标记，避免编辑器对该裸错误空转指数退避重试
+            const notLoadedError = new Error('content_not_loaded') as Error & { isNonRetryable?: boolean };
+            notLoadedError.isNonRetryable = true;
+            throw notLoadedError;
         }
 
         // Normalize image links: replace preview URLs with relative paths
@@ -1018,20 +1046,23 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const isConflict = msg.includes('notes.conflict');
             reportError(updateResult.error, t('notes:errors.save_note_content'));
             notify({
-                title: isConflict ? t('notes:actions.conflict', '内容已在其他处更新') : t('notes:actions.save_failed'),
-                description: isConflict ? t('notes:actions.conflict_hint', '请刷新后再尝试保存或回滚到历史版本') : msg,
+                title: isConflict ? t('notes:actions.conflict') : t('notes:actions.save_failed'),
+                description: isConflict ? t('notes:actions.conflict_hint') : msg,
                 variant: isConflict ? "warning" : "destructive"
             });
             if (isConflict) {
                 void ensureNoteContent(id);
             }
-            // 避免留下未加载状态
-            setLoadedContentIds(prev => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-            throw new Error(isConflict ? 'save_conflict' : 'save_failed');
+            // ★ P1 修复：不再从 loadedContentIds 删除 id。
+            // 内容本就已加载（保存失败不改变加载状态），之前的删除会让后续重试
+            // 全部命中 content_not_loaded 守卫而必然失败。
+            // ★ P1 修复：冲突错误打 isNoteConflict 标记，编辑器据此放弃重试，
+            // 避免冲突进入指数退避循环并反复弹冲突提示。
+            const saveError = new Error(isConflict ? 'save_conflict' : 'save_failed') as Error & { isNoteConflict?: boolean };
+            if (isConflict) {
+                saveError.isNoteConflict = true;
+            }
+            throw saveError;
         }
 
         console.log('[NotesContext] ✅ DSTU API 内容保存成功!', { id, updatedAt: updateResult.value.updatedAt });
@@ -1048,7 +1079,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 effectiveTitle = updateResult.value.name; // 回退到原标题
                 reportError(metadataResult.error, t('notes:errors.update_note_title'));
                 notify({
-                    title: t('notes:actions.title_save_failed', '内容已保存，但标题更新失败'),
+                    title: t('notes:actions.title_save_failed'),
                     description: metadataResult.error.toUserMessage(),
                     variant: "warning"
                 });
@@ -1213,14 +1244,14 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
             notify({
                 title: updated.is_favorite
-                    ? t('notes:favorites.toast_marked', '已加入收藏')
-                    : t('notes:favorites.toast_unmarked', '已取消收藏'),
+                    ? t('notes:favorites.toast_marked')
+                    : t('notes:favorites.toast_unmarked'),
                 variant: "success"
             });
         } else {
             reportError(result.error, t('notes:errors.toggle_favorite'));
             notify({
-                title: t('notes:favorites.toast_error_title', '收藏操作失败'),
+                title: t('notes:favorites.toast_error_title'),
                 description: result.error.toUserMessage(),
                 variant: "destructive"
             });
@@ -1334,6 +1365,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, [active, openTabs, activeTabId, openTab]);
 
     useEffect(() => {
+        // 竞态防护：磁盘偏好尚未加载完成时不回写，避免初始空 openTabs 覆盖用户偏好
+        if (!tabsPrefLoadedRef.current) return;
         const payload = JSON.stringify({ openTabs, activeId: activeTabId });
         void invoke<boolean>('notes_set_pref', { key: 'notes_tabs', value: payload });
     }, [openTabs, activeTabId]);
@@ -1366,7 +1399,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const existingRefId = findExistingRef('textbooks', textbookId);
         if (existingRefId) {
             notify({
-                title: t('notes:reference.already_exists', '引用已存在'),
+                title: t('notes:reference.already_exists'),
                 variant: 'warning',
             });
             return existingRefId;
@@ -1394,7 +1427,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         );
 
         notify({
-            title: t('notes:reference.add_success', '已添加引用'),
+            title: t('notes:reference.add_success'),
             variant: 'success',
         });
 
@@ -1407,7 +1440,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const removeRef = useCallback((refId: string): void => {
         removeReference(refId);
         notify({
-            title: t('notes:reference.remove_success', '已移除引用'),
+            title: t('notes:reference.remove_success'),
             variant: 'success',
         });
     }, [removeReference, notify, t]);
@@ -1475,9 +1508,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
      * | exam_sessions | 'exam'      | 'exam'     |
      */
     const referenceToChat = useCallback(async (nodeId: string): Promise<void> => {
-        // 1. 获取当前活跃的会话
-        const sessionIds = sessionManager.getAllSessionIds();
-        if (sessionIds.length === 0) {
+        // 1. 无活动会话时先经 chat 域闭环入口建立/复用隐藏 draft 会话
+        //    （2026-07-20 移动端审计闭环：此前直接 toast 丢弃动作）
+        const activeSessionId = await ensureActiveChatSession();
+        if (!activeSessionId) {
             notify({
                 title: t('notes:reference.no_active_session'),
                 description: t('notes:reference.no_active_session_desc'),
@@ -1486,8 +1520,6 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return;
         }
 
-        // 使用最近访问的会话（第一个）
-        const activeSessionId = sessionIds[0];
         const store = sessionManager.get(activeSessionId);
         if (!store) {
             notify({

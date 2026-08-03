@@ -14,17 +14,9 @@ export type {
   UseVfsFoldersReturn,
 } from './useVfsFolders';
 
-export { useFolderNavigationHistory } from './useFolderNavigationHistory';
+export type { RealPathBreadcrumbItem } from '../types/navigation';
 
-export { useFolderNavigation } from './useFolderNavigation';
-export type {
-  RealPathBreadcrumbItem,
-  FolderNavigationState,
-  UseFolderNavigationReturn,
-} from './useFolderNavigation';
-
-export { useMultiSelect } from './useMultiSelect';
-export type { UseMultiSelectOptions, UseMultiSelectReturn } from './useMultiSelect';
+export { useDialogFocusManagement } from './useDialogFocusManagement';
 
 export { useVfsContextInject } from './useVfsContextInject';
 export type { VfsInjectParams, VfsInjectResult, UseVfsContextInjectReturn } from './useVfsContextInject';

@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/shad/Card';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CollapsibleModelSelector, type CollapsibleModelOption } from '@/components/ui/shad/CollapsibleModelSelector';
@@ -21,6 +21,7 @@ import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { cn } from '@/lib/utils';
 import { vfsUnifiedIndexApi } from '@/api/vfsUnifiedIndexApi';
 import { ApiKeyField } from './ApiKeyField';
+import { normalizePastedApiKey } from '../utils/apiKeyValidation';
 
 interface SiliconFlowModel {
   id: string;
@@ -67,6 +68,7 @@ interface ApiConfig {
 }
 
 type SiliconFlowSectionVariant = 'full' | 'quick' | 'models' | 'inline';
+const TEMPORARY_API_KEY_REVEAL_MS = 8000;
 
 interface SiliconFlowSectionProps {
   onCreateConfig: (config: Omit<ApiConfig, 'id'>) => Promise<string | null | undefined> | void;
@@ -74,11 +76,9 @@ interface SiliconFlowSectionProps {
   onBatchConfigsCreated?: (configIds: { [key: string]: string }) => void;
   onBatchCreateConfigs?: (configs: Array<Omit<ApiConfig, 'id'> & { tempId: string }>) => Promise<{ success: boolean; idMap: { [tempId: string]: string } }> | void | undefined;
   variant?: SiliconFlowSectionVariant;
-  /** 保存成功后触发（用于自动获取模型 + 自动分配） */
-  onApiKeySaved?: (apiKey: string) => void;
 }
 
-export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, onApiKeySaved, variant = 'full' }) => {
+export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, variant = 'full' }) => {
   const { t } = useTranslation(['common', 'settings']);
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<SiliconFlowModel[]>([]);
@@ -90,14 +90,19 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [showApiKey, setShowApiKey] = useState(false);
   const [confirmingClearApiKey, setConfirmingClearApiKey] = useState(false);
   const [savingApiKey, setSavingApiKey] = useState(false);
+  const [hasConfiguredApiKey, setHasConfiguredApiKey] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+  const [apiKeyPasted, setApiKeyPasted] = useState(false);
+  const [viewingStoredKey, setViewingStoredKey] = useState(false);
+  // 一键分配后的嵌入维度创建结果（内联展示，避免静默失败）
+  const [dimensionSetupResult, setDimensionSetupResult] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const siliconFlowVendorKey = 'builtin-siliconflow.api_key';
   const siliconFlowLegacyKey = 'siliconflow.api_key';
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null); // 上次获取时间
   const [isFromCache, setIsFromCache] = useState(false); // 是否来自缓存
   const lastSavedApiKeyRef = React.useRef('');
   const statusTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearStatusTimer = useCallback(() => {
     if (statusTimerRef.current) {
@@ -105,6 +110,33 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       statusTimerRef.current = null;
     }
   }, []);
+
+  const clearRevealTimer = useCallback(() => {
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  }, []);
+
+  const hideRevealedApiKey = useCallback(() => {
+    clearRevealTimer();
+    setShowApiKey(false);
+    setViewingStoredKey(false);
+    setApiKey(current => (
+      current.trim() && current.trim() === lastSavedApiKeyRef.current
+        ? ''
+        : current
+    ));
+  }, [clearRevealTimer]);
+
+  const scheduleRevealHide = useCallback(() => {
+    clearRevealTimer();
+    revealTimerRef.current = setTimeout(() => {
+      hideRevealedApiKey();
+    }, TEMPORARY_API_KEY_REVEAL_MS);
+  }, [clearRevealTimer, hideRevealedApiKey]);
+
+  const getEffectiveApiKey = useCallback(() => apiKey.trim() || lastSavedApiKeyRef.current, [apiKey]);
 
   const scheduleStatusReset = useCallback((nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
     clearStatusTimer();
@@ -250,8 +282,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         }
       }
       // Broadcast the change so other views refresh immediately.
+      // 安全修复（审阅 26 P1-1）：事件 detail 不再携带明文 Key（任何注入页面的
+      // 脚本挂监听器即可收割），仅广播 hasKey 状态；需要 Key 的监听方自行从
+      // 安全存储按需读取。
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('siliconflow-apikey-changed', { detail: { apiKey: trimmed } }));
+        window.dispatchEvent(
+          new CustomEvent('siliconflow-apikey-changed', { detail: { hasKey: Boolean(trimmed) } })
+        );
         window.dispatchEvent(new CustomEvent('api_configurations_changed'));
       }
     } catch (error: unknown) {
@@ -299,35 +336,43 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   }, [clearStatusTimer]);
 
   // 监听其他实例的API Key变化（修复多实例状态不同步问题）
+  // 安全修复（审阅 26 P1-1）：事件不再携带明文 Key，收到通知后从安全存储按需回读。
   React.useEffect(() => {
-    const handleApiKeyChanged = (event: Event) => {
-      const customEvent = event as CustomEvent<{ apiKey: string }>;
-      if (customEvent.detail?.apiKey !== undefined) {
-        setApiKey(customEvent.detail.apiKey);
-        lastSavedApiKeyRef.current = customEvent.detail.apiKey.trim();
+    let disposed = false;
+    const handleApiKeyChanged = () => {
+      void (async () => {
+        let latest = '';
+        try {
+          latest = (await TauriAPI.getSetting(siliconFlowVendorKey)) ?? '';
+        } catch (error: unknown) {
+          console.warn('同步 SiliconFlow API Key 失败:', error);
+          return;
+        }
+        if (disposed) return;
+        setApiKey(latest);
+        lastSavedApiKeyRef.current = latest.trim();
         setConfirmingClearApiKey(false);
         clearStatusTimer();
         setApiKeyStatus('idle');
-        if (!customEvent.detail.apiKey.trim()) {
+        setApiKeyPasted(false);
+        if (!latest.trim()) {
           setShowApiKey(false);
         }
-      }
+      })();
     };
 
     if (typeof window !== 'undefined') {
       window.addEventListener('siliconflow-apikey-changed', handleApiKeyChanged);
       return () => {
+        disposed = true;
         window.removeEventListener('siliconflow-apikey-changed', handleApiKeyChanged);
       };
     }
-  }, [clearStatusTimer]);
+  }, [clearStatusTimer, siliconFlowVendorKey]);
 
   React.useEffect(() => {
     return () => {
       clearStatusTimer();
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
     };
   }, [clearStatusTimer]);
 
@@ -364,27 +409,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     const isDirty = value.trim() !== lastSavedApiKeyRef.current;
     setApiKeyStatus(isDirty ? 'dirty' : 'idle');
 
-    // 防抖自动保存：输入停止 800ms 后自动保存
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    if (isDirty) {
-      autoSaveTimerRef.current = setTimeout(() => {
-        void handleSaveApiKey();
-      }, 800);
-    }
-  };
-
-  const handleApiKeyBlur = () => {
-    // 失焦时取消防抖 timer 并立即保存（如果内容已变更）
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    const trimmed = apiKey.trim();
-    if (trimmed && trimmed !== lastSavedApiKeyRef.current) {
-      void handleSaveApiKey();
-    }
   };
 
   const handleSaveApiKey = useCallback(async () => {
@@ -400,7 +424,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       await persistApiKey(trimmed);
       lastSavedApiKeyRef.current = trimmed;
       scheduleStatusReset('saved');
-      onApiKeySaved?.(trimmed);
+      setApiKeyPasted(false);
       showMessage?.('success', t('settings:vendor_panel.api_key_saved'));
     } catch (error: unknown) {
       console.error('保存 SiliconFlow API 密钥失败:', error);
@@ -424,6 +448,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     setConfirmingClearApiKey(false);
     clearStatusTimer();
     setApiKeyStatus('idle');
+    setApiKeyPasted(false);
     setModels([]);
     setAvailableModels([]);
     setSelectedModel('');
@@ -679,12 +704,23 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
 
   // 一键分配功能 - 预设模型配置
   // 注意：嵌入模型不再通过全局分配，而是通过维度管理
-  const PRESET_MODELS = [
+  // 目前仅预设文本嵌入（BAAI/bge-m3, 1024 维）；硅基流动暂无可确认的多模态嵌入模型，
+  // 若后续上线可在此追加 modality: 'multimodal' 预设项
+  interface OneClickPresetModel {
+    model: string;
+    name: string;
+    assignmentKey: string;
+    /** 嵌入模型：创建 API 配置后，还需在维度管理中创建对应维度并设为默认 */
+    isDimensionModel?: boolean;
+    dimension?: number;
+    modality?: 'text' | 'multimodal';
+  }
+  const PRESET_MODELS: OneClickPresetModel[] = [
     { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.model2_configured') },
     { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.qbank_ai_grading_configured') },
     { model: 'Qwen/Qwen3-30B-A3B-Instruct-2507', name: 'SiliconFlow - Qwen/Qwen3-30B-A3B-Instruct-2507', assignmentKey: t('settings:mapping_keys.anki_configured') },
     // 嵌入模型将通过维度管理创建，但仍需创建 API 配置
-    { model: 'BAAI/bge-m3', name: 'SiliconFlow - BAAI/bge-m3', assignmentKey: '__embedding_text__', isDimensionModel: true, dimension: 1024, modality: 'text' as const },
+    { model: 'BAAI/bge-m3', name: 'SiliconFlow - BAAI/bge-m3', assignmentKey: '__embedding_text__', isDimensionModel: true, dimension: 1024, modality: 'text' },
     { model: 'BAAI/bge-reranker-v2-m3', name: 'SiliconFlow - BAAI/bge-reranker-v2-m3', assignmentKey: t('settings:mapping_keys.reranker_configured') },
     { model: 'inclusionAI/Ling-mini-2.0', name: 'SiliconFlow - inclusionAI/Ling-mini-2.0', assignmentKey: t('settings:mapping_keys.chat_title_configured') },
     { model: 'tencent/Hunyuan-MT-7B', name: 'SiliconFlow - tencent/Hunyuan-MT-7B', assignmentKey: t('settings:mapping_keys.translation_configured') },
@@ -702,35 +738,35 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       model: 'PaddlePaddle/PaddleOCR-VL-1.5', 
       name: 'SiliconFlow - PaddleOCR-VL-1.5',
       engineType: 'paddle_ocr_vl',
-      description: '免费开源 OCR 1.5 版，支持 109 种语言，精度达 94.5%',
+      description: t('settings:siliconflow_ocr.paddle_ocr_vl_15'),
       isFree: true,
     },
     { 
       model: 'PaddlePaddle/PaddleOCR-VL', 
       name: 'SiliconFlow - PaddleOCR-VL',
       engineType: 'paddle_ocr_vl_v1',
-      description: '免费开源 OCR 旧版，支持坐标输出，作为 1.5 版的备用',
+      description: t('settings:siliconflow_ocr.paddle_ocr_vl'),
       isFree: true,
     },
     { 
       model: 'deepseek-ai/DeepSeek-OCR', 
       name: 'SiliconFlow - DeepSeek-OCR',
       engineType: 'deepseek_ocr',
-      description: '专业 OCR 模型，支持坐标定位',
+      description: t('settings:siliconflow_ocr.deepseek_ocr'),
       isFree: false,
     },
     {
       model: 'zai-org/GLM-4.6V',
       name: 'SiliconFlow - GLM-4.6V',
       engineType: 'glm4v_ocr',
-      description: '智谱 106B MoE 多模态模型，支持坐标定位，题目集导入自动优先使用',
+      description: t('settings:siliconflow_ocr.glm4v_ocr'),
       isFree: false,
     },
     {
       model: 'Qwen/Qwen3-VL-8B-Instruct',
       name: 'SiliconFlow - Qwen3-VL-8B',
       engineType: 'generic_vlm',
-      description: '通用多模态模型，适合简单文档识别（备用）',
+      description: t('settings:siliconflow_ocr.generic_vlm'),
       isFree: false,
     },
   ];
@@ -743,6 +779,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
 
     setLoading(true);
+    setDimensionSetupResult(null);
 
     try {
       // 准备批量创建的配置
@@ -848,22 +885,15 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         }
       }
 
-      console.log('🎯 准备批量创建配置:');
-      console.log('  - 配置数量:', batchConfigs.length);
-      console.log('  - 配置ID列表:', batchConfigs.map(c => c.tempId));
-      console.log('  - 配置名称列表:', batchConfigs.map(c => c.name));
-      
       // 批量创建所有配置
       let success = false;
       let idMap: { [tempId: string]: string } = {};
       if (onBatchCreateConfigs) {
-        console.log('📤 调用 onBatchCreateConfigs...');
         const result = await onBatchCreateConfigs(batchConfigs);
         if (result && typeof result === 'object') {
           success = !!result.success;
           idMap = result.idMap || {};
         }
-        console.log('📥 onBatchCreateConfigs 返回:', result);
       } else {
         // 回退到单个创建
         for (const config of batchConfigs) {
@@ -892,28 +922,47 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           onBatchConfigsCreated(finalMapping);
         }
 
-        // 创建嵌入维度并设置为默认
-        try {
-          for (const presetModel of PRESET_MODELS) {
-            if ((presetModel as any).isDimensionModel) {
-              const tempId = configMapping[presetModel.assignmentKey];
-              const realConfigId = idMap[tempId] || tempId;
-              const { dimension, modality } = presetModel as any;
-              
-              console.log(`📊 创建嵌入维度: ${dimension} (${modality}), 模型: ${realConfigId}`);
-              
-              // 创建维度并绑定模型
-              await vfsUnifiedIndexApi.createDimension(dimension, modality, realConfigId, presetModel.name);
-              
-              // 设置为默认维度
-              await vfsUnifiedIndexApi.setDefaultEmbeddingDimension(dimension, modality);
-              
-              console.log(`✅ 已设置默认 ${modality} 嵌入维度: ${dimension}`);
-            }
+        // 创建嵌入维度并设置为默认（逐项处理，结果对用户可见，不再静默失败）
+        const readyDimensions: number[] = [];
+        const failedDimensions: number[] = [];
+        for (const presetModel of PRESET_MODELS) {
+          if (!presetModel.isDimensionModel || presetModel.dimension == null || !presetModel.modality) {
+            continue;
           }
-        } catch (e: unknown) {
-          console.warn('创建嵌入维度失败:', e);
-          // 不阻止整体流程
+          const tempId = configMapping[presetModel.assignmentKey];
+          const realConfigId = idMap[tempId] || tempId;
+          const { dimension, modality } = presetModel;
+
+          try {
+            // 创建维度并绑定模型
+            await vfsUnifiedIndexApi.createDimension(dimension, modality, realConfigId, presetModel.name);
+          } catch (e: unknown) {
+            // 维度可能已存在（重复执行一键分配）；真正的失败会在下面设默认时暴露
+            console.warn(`Failed to create embedding dimension ${dimension} (${modality}):`, e);
+          }
+
+          try {
+            // 设置为默认维度（决定嵌入配置是否真正可用）
+            await vfsUnifiedIndexApi.setDefaultEmbeddingDimension(dimension, modality);
+            readyDimensions.push(dimension);
+          } catch (e: unknown) {
+            console.warn(`Failed to set default embedding dimension ${dimension} (${modality}):`, e);
+            failedDimensions.push(dimension);
+          }
+        }
+        if (failedDimensions.length > 0) {
+          const failedMessage = t('settings:dimension_management.preset_dimension_failed', {
+            dimension: failedDimensions.join(', '),
+          });
+          setDimensionSetupResult({ tone: 'error', message: failedMessage });
+          showGlobalNotification('warning', failedMessage);
+        } else if (readyDimensions.length > 0) {
+          setDimensionSetupResult({
+            tone: 'success',
+            message: t('settings:dimension_management.preset_dimension_success', {
+              dimension: readyDimensions.join(', '),
+            }),
+          });
         }
 
         // M6 fix: 合并模式 — 保留用户已有的自定义 OCR 引擎，仅补充预设引擎
@@ -981,16 +1030,16 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const canSaveApiKey = apiKey.trim().length > 0 && apiKey.trim() !== lastSavedApiKeyRef.current && !savingApiKey;
   const apiKeyStatusText =
     apiKeyStatus === 'saving'
-      ? t('settings:vendor_panel.api_key_saving', { defaultValue: '正在保存…' })
+      ? t('settings:vendor_panel.api_key_saving')
       : apiKeyStatus === 'saved'
         ? t('settings:vendor_panel.api_key_saved')
         : apiKeyStatus === 'error'
           ? t('settings:vendor_panel.api_key_save_failed')
           : apiKeyStatus === 'dirty'
-            ? t('settings:vendor_panel.api_key_unsaved', { defaultValue: '有未保存的更改' })
+            ? t('settings:vendor_panel.api_key_unsaved')
             : lastSavedApiKeyRef.current
-              ? t('settings:vendor_panel.api_key_securely_stored', { defaultValue: '已安全保存，下次无需重新输入' })
-              : t('settings:vendor_panel.api_key_manual_save_hint', { defaultValue: '粘贴或输入后，点击保存' });
+              ? t('settings:vendor_panel.api_key_securely_stored')
+              : t('settings:vendor_panel.api_key_manual_save_hint');
   const apiKeyStatusToneClassName =
     apiKeyStatus === 'error'
       ? 'text-destructive'
@@ -1005,7 +1054,15 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
-        onBlur={handleApiKeyBlur}
+        onPaste={e => {
+          const raw = e.clipboardData.getData('text');
+          const pasted = normalizePastedApiKey(raw);
+          setApiKeyPasted(true);
+          if (pasted !== raw) {
+            e.preventDefault();
+            handleApiKeyChange(pasted);
+          }
+        }}
         onKeyDown={e => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
@@ -1026,36 +1083,53 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         {apiKeyStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
         {apiKeyStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
         {apiKeyStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
-        <span>{apiKeyStatusText}</span>
+        <span>{apiKeyStatus === 'dirty' && apiKeyPasted ? t('settings:vendor_panel.api_key_pasted_ready') : apiKeyStatusText}</span>
       </div>
       <div className="flex items-center justify-between gap-2 pt-2">
         <div className="flex flex-wrap gap-2">
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={() => {
               void handleSaveApiKey();
             }}
             disabled={!canSaveApiKey}
-            title={t('common:actions.save')}
+            title={t('settings:vendor_panel.save_api_key')}
           >
             {savingApiKey ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
-            {t('common:actions.save')}
-          </NotionButton>
+            {t('settings:vendor_panel.save_api_key')}
+          </DsButton>
         </div>
-        {/* Notion 风格按钮 - 一键分配 */}
-        <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
+        {/* 简洁风格按钮 - 一键分配 */}
+        <DsButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
           <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
-        </NotionButton>
-        {/* Notion 风格按钮 - 清除 (右对齐) */}
-        <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
+        </DsButton>
+        {/* 简洁风格按钮 - 清除 (右对齐) */}
+        <DsButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
           <Trash className="h-3.5 w-3.5" />
           {confirmingClearApiKey
             ? t('common:siliconflow.clear_confirm_button')
             : t('common:siliconflow.clear_button')}
-        </NotionButton>
+        </DsButton>
       </div>
+      {/* 一键分配的嵌入维度结果反馈（成功/失败均可见） */}
+      {dimensionSetupResult && (
+        <div
+          className={cn(
+            'flex items-start gap-2 text-xs ui-drop-in',
+            dimensionSetupResult.tone === 'error'
+              ? 'text-destructive'
+              : 'text-green-600 dark:text-green-400'
+          )}
+          aria-live="polite"
+        >
+          {dimensionSetupResult.tone === 'error'
+            ? <WarningCircle className="h-3.5 w-3.5 shrink-0 mt-px" />
+            : <Check className="h-3.5 w-3.5 shrink-0 mt-px" />}
+          <span className="leading-relaxed">{dimensionSetupResult.message}</span>
+        </div>
+      )}
     </div>
   );
 
@@ -1130,14 +1204,14 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     <div className={variant === 'models' ? 'rounded-lg border border-dashed border-border/50 bg-muted/20 p-4 space-y-3' : 'space-y-3'}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <NotionButton
+          <DsButton
             variant="default"
             onClick={() => fetchSiliconFlowModels(true)}
             disabled={loading || !apiKey.trim()}
           >
             {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
             {loading ? t('common:siliconflow.fetching_models') : t('common:siliconflow.get_model_list')}
-          </NotionButton>
+          </DsButton>
         </div>
         <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
           <Stack className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1174,10 +1248,10 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         ) : (
           <div />
         )}
-        <NotionButton variant="primary" onClick={handleCreateConfig} disabled={!selectedModel} className="shrink-0 whitespace-nowrap">
+        <DsButton variant="primary" onClick={handleCreateConfig} disabled={!selectedModel} className="shrink-0 whitespace-nowrap">
           <Plus className="h-3.5 w-3.5" />
           {t('common:siliconflow.create_api_config')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ import type { SkillDefinition } from '../types';
 export const learningResourceSkill: SkillDefinition = {
   id: 'learning-resource',
   name: 'learning-resource',
-  description: '学习资源管理能力组。当用户需要浏览或查看学习资料（笔记、教材、整卷、作文、翻译、知识导图）或搜索学习资源时使用。注：创建/编辑思维导图请加载 mindmap-tools 技能。',
+  description: '学习资源只读发现能力组。当用户需要浏览、搜索或读取学习资料（笔记、教材、整卷、作文、翻译、知识导图）时使用；创建文件夹、移动、重命名、删除、恢复、收藏或上传资源请同时加载 dstu-tools。创建/编辑思维导图请加载 mindmap-tools。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 3,
@@ -32,6 +32,8 @@ export const learningResourceSkill: SkillDefinition = {
 - **builtin-folder_list**: 列出文件夹结构，了解资源组织方式
 
 > 💡 如需创建/编辑思维导图，请加载 **mindmap-tools** 技能
+> 资源库组织写入（创建文件夹、移动、重命名、删除/恢复、收藏、上传）请加载
+> **dstu-tools**；本技能只负责发现与读取。
 
 ## 工具参数格式
 
@@ -101,6 +103,7 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
 2. 再用 resource_list 浏览指定文件夹的资源
 3. 找到目标后用 resource_read 读取详细内容
 4. 不确定在哪个资源时使用 resource_search 搜索
+5. 需要组织写入时加载 dstu-tools，使用上述只读结果中的准确 ID/path 执行，再回到本技能复查结果
 `,
   embeddedTools: [
     {

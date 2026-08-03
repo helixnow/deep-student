@@ -4,37 +4,36 @@ import path from "node:path";
 import { describe, it } from "vitest";
 
 const appPath = path.resolve(process.cwd(), "src/App.tsx");
+const sidebarPath = path.resolve(process.cwd(), "src/components/ModernSidebar.tsx");
 
-describe("App sidebar update badge source", () => {
-  it("guards the desktop shell update badge behind updater visibility state", () => {
+describe("sidebar update badge source", () => {
+  it("passes updater state to the sidebar instead of the desktop titlebar", () => {
     const source = readFileSync(appPath, "utf8");
 
-    assert.match(source, /function SidebarUpdateBadge\(\{/u);
-    assert.match(source, /visible:\s*boolean;/u);
-    assert.match(source, /onClick:\s*\(\)\s*=>\s*void;/u);
-    assert.match(source, /downloading:\s*boolean;/u);
-    assert.match(source, /if\s*\(!visible\)\s*return null;/u);
-    assert.match(source, /const updateBadgeVisible = !updater\.checking && updater\.available && !!updater\.info;/u);
     assert.match(
       source,
-      /<DesktopSidebarAccessory[\s\S]*updateVisible=\{updateBadgeVisible\}[\s\S]*onUpdate=\{\(\) => void updater\.performUpdateAction\(\)\}[\s\S]*updateDownloading=\{updater\.downloading\}/u,
+      /<ModernSidebar[\s\S]*updater=\{updater\}/u,
     );
+    assert.doesNotMatch(source, /function SidebarUpdateBadge\(\{/u);
+    assert.doesNotMatch(source, /updateVisible=\{updateBadgeVisible\}/u);
   });
 
-  it("hides the update badge immediately once the desktop sidebar collapses", () => {
-    const source = readFileSync(appPath, "utf8");
+  it("keeps the sidebar update badge behind updater visibility state", () => {
+    const source = readFileSync(sidebarPath, "utf8");
 
     assert.match(
       source,
-      /<SidebarUpdateBadge[\s\S]*visible=\{updateVisible && !collapsed\}[\s\S]*onClick=\{onUpdate\}[\s\S]*downloading=\{updateDownloading\}/u,
+      /const shouldShowUpdateBadge = Boolean\([\s\S]*!sidebarCollapsed && updater && !updater\.checking && updater\.available && updater\.info/u,
     );
+    assert.match(source, /data-slot="sidebar-update-badge"/u);
+    assert.match(source, /void updater\.performUpdateAction\(\)/u);
   });
 
   it("uses an icon-only loading state instead of the 下载中 label", () => {
-    const source = readFileSync(appPath, "utf8");
+    const source = readFileSync(sidebarPath, "utf8");
 
     assert.doesNotMatch(source, /\{downloading \? '下载中' : '更新'\}/u);
-    assert.match(source, /downloading\s*\?\s*<CircleNotch[\s\S]*animate-spin/u);
-    assert.match(source, /:\s*<DownloadSimple size=\{12\}/u);
+    assert.match(source, /updater\?\.downloading\s*\?\s*\([\s\S]*<CircleNotch[\s\S]*animate-spin/u);
+    assert.match(source, /:\s*t\('sidebar:update\.short'\)/u);
   });
 });

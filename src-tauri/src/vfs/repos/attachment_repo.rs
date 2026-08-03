@@ -141,6 +141,14 @@ const INLINE_SIZE_THRESHOLD: usize = 1024 * 1024;
 const MAX_IMAGE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 
+/// 附件原始内容的内部来源。调用方可直接处理磁盘文件，避免先读取并 base64 编码，
+/// 随后又解码回字节的高峰内存往返。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum VfsAttachmentContentSource {
+    Base64(String),
+    File(PathBuf),
+}
+
 /// 允许的扩展名（用于服务端类型校验）
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "heic", "heif", // images
@@ -149,6 +157,7 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
     "epub", "rtf", // ebook/rtf
     "mp3", "wav", "ogg", "m4a", "flac", "aac", "wma", "opus", // audio
     "mp4", "webm", "mov", "avi", "mkv", "m4v", "wmv", "flv", // video
+    "zip", "rar", "7z", // archives (validated by magic before persistence)
 ];
 
 /// 允许的 MIME 类型（用于服务端类型校验）
@@ -204,7 +213,141 @@ const SUPPORTED_MIME_TYPES: &[&str] = &[
     "video/x-m4v",
     "video/x-ms-wmv",
     "video/x-flv",
+    // archives
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/vnd.rar",
+    "application/x-rar-compressed",
+    "application/x-7z-compressed",
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchiveKind {
+    Zip,
+    Rar,
+    SevenZip,
+}
+
+fn archive_kind_from_extension(name: &str) -> Option<ArchiveKind> {
+    match normalize_extension(name).as_deref() {
+        Some("zip") => Some(ArchiveKind::Zip),
+        Some("rar") => Some(ArchiveKind::Rar),
+        Some("7z") => Some(ArchiveKind::SevenZip),
+        _ => None,
+    }
+}
+
+fn archive_kind_from_mime(mime_type: &str) -> Option<ArchiveKind> {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "application/zip" | "application/x-zip-compressed" => Some(ArchiveKind::Zip),
+        "application/vnd.rar" | "application/x-rar-compressed" => Some(ArchiveKind::Rar),
+        "application/x-7z-compressed" => Some(ArchiveKind::SevenZip),
+        _ => None,
+    }
+}
+
+fn archive_kind_from_magic(data: &[u8]) -> Option<ArchiveKind> {
+    if data.starts_with(b"PK\x03\x04")
+        || data.starts_with(b"PK\x05\x06")
+        || data.starts_with(b"PK\x07\x08")
+    {
+        Some(ArchiveKind::Zip)
+    } else if data.starts_with(b"Rar!\x1a\x07\x00") || data.starts_with(b"Rar!\x1a\x07\x01\x00") {
+        Some(ArchiveKind::Rar)
+    } else if data.starts_with(b"\x37\x7a\xbc\xaf\x27\x1c") {
+        Some(ArchiveKind::SevenZip)
+    } else {
+        None
+    }
+}
+
+/// ZIP 清单条目上限（防注入内容过长 / 存储膨胀）
+const ZIP_MANIFEST_MAX_ENTRIES: usize = 200;
+
+fn format_manifest_size(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+/// ★ 解析 ZIP 中央目录生成文本清单（文件名+大小，最多 200 条）
+///
+/// 只读取目录元信息，不解压条目内容。解析失败返回 None（不阻塞上传）。
+/// 清单文本存入 extracted_text：注入对话与文本索引即可直接使用。
+pub(crate) fn build_zip_manifest_text(name: &str, data: &[u8]) -> Option<String> {
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = match zip::ZipArchive::new(cursor) {
+        Ok(archive) => archive,
+        Err(e) => {
+            warn!(
+                "[VFS::AttachmentRepo] Failed to parse zip central directory for {}: {}",
+                name, e
+            );
+            return None;
+        }
+    };
+    let total = archive.len();
+    let shown = total.min(ZIP_MANIFEST_MAX_ENTRIES);
+    let mut lines: Vec<String> = Vec::with_capacity(shown + 2);
+    lines.push(format!(
+        "[压缩包清单] {}：共 {} 个条目{}",
+        name,
+        total,
+        if total > shown {
+            format!("（仅显示前 {} 条）", shown)
+        } else {
+            String::new()
+        }
+    ));
+    for index in 0..shown {
+        match archive.by_index(index) {
+            Ok(entry) => {
+                if entry.is_dir() {
+                    lines.push(format!("- {} (目录)", entry.name()));
+                } else {
+                    lines.push(format!(
+                        "- {} ({})",
+                        entry.name(),
+                        format_manifest_size(entry.size())
+                    ));
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "[VFS::AttachmentRepo] Failed to inspect zip entry {} of {}: {}",
+                    index, name, e
+                );
+                lines.push(format!("- <条目 {} 无法读取>", index));
+            }
+        }
+    }
+    Some(lines.join("\n"))
+}
+
+fn validate_archive_content(name: &str, mime_type: &str, data: &[u8]) -> VfsResult<()> {
+    let extension_kind = archive_kind_from_extension(name);
+    let mime_kind = archive_kind_from_mime(mime_type);
+    let Some(declared_kind) = extension_kind.or(mime_kind) else {
+        return Ok(());
+    };
+    if extension_kind.is_some() && mime_kind.is_some() && extension_kind != mime_kind {
+        return Err(VfsError::InvalidArgument {
+            param: "content".to_string(),
+            reason: "Archive extension and MIME type disagree".to_string(),
+        });
+    }
+    if archive_kind_from_magic(data) != Some(declared_kind) {
+        return Err(VfsError::InvalidArgument {
+            param: "content".to_string(),
+            reason: "Archive signature does not match the declared format".to_string(),
+        });
+    }
+    Ok(())
+}
 
 /// VFS 附件 Repo
 pub struct VfsAttachmentRepo;
@@ -236,7 +379,11 @@ impl VfsAttachmentRepo {
             return true;
         }
         normalize_extension(name)
-            .map(|ext| SUPPORTED_EXTENSIONS.contains(&ext.as_str()))
+            .map(|ext| {
+                SUPPORTED_EXTENSIONS.contains(&ext.as_str())
+                    // ★ 代码/纯文本扩展名（与前端 ATTACHMENT_CODE_TEXT_EXTENSIONS 同一清单）
+                    || crate::document_parser::is_plain_text_code_extension(&ext)
+            })
             .unwrap_or(false)
     }
 
@@ -248,11 +395,15 @@ impl VfsAttachmentRepo {
             });
         }
         if !Self::is_supported_upload_type(name, mime_type) {
+            // ★ 结构化拒绝错误：带上具体文件名/扩展名/MIME，前端可直接展示给用户
+            let ext_display = normalize_extension(name)
+                .map(|ext| format!(".{}", ext))
+                .unwrap_or_else(|| "(无扩展名)".to_string());
             return Err(VfsError::InvalidArgument {
                 param: "mime_type".to_string(),
                 reason: format!(
-                    "Unsupported mime type or file extension: {} ({})",
-                    mime_type, name
+                    "UNSUPPORTED_FILE_TYPE: 不支持的文件类型 {} (文件: {}, MIME: {})",
+                    ext_display, name, mime_type
                 ),
             });
         }
@@ -304,19 +455,19 @@ impl VfsAttachmentRepo {
         }
         let path_obj = std::path::Path::new(trimmed);
 
-        // 尝试 canonicalize 完整路径（文件存在时）
+        // 文件存在时必须以真实 canonical target 作最终判定。若目标已解析到 slot 外，
+        // 立即拒绝，不能再按 symlink 自身的父目录回退判断。
         if let Ok(canonical_path) = path_obj.canonicalize() {
-            if let Ok(canonical_blobs_dir) = blobs_dir.canonicalize() {
-                if canonical_path.starts_with(&canonical_blobs_dir) {
-                    return true;
-                }
-                if let Some(slot_root) = canonical_blobs_dir.parent() {
-                    let textbooks_dir = slot_root.join("textbooks");
-                    if canonical_path.starts_with(&textbooks_dir) {
-                        return true;
-                    }
-                }
+            let Ok(canonical_blobs_dir) = blobs_dir.canonicalize() else {
+                return false;
+            };
+            if canonical_path.starts_with(&canonical_blobs_dir) {
+                return true;
             }
+            return canonical_blobs_dir
+                .parent()
+                .map(|slot_root| canonical_path.starts_with(slot_root))
+                .unwrap_or(false);
         }
 
         // 文件可能尚不存在（如恢复后资产还未就位），改用父目录判断
@@ -418,7 +569,7 @@ impl VfsAttachmentRepo {
         }
     }
 
-    fn try_read_original_path(blobs_dir: &Path, id: &str, raw_path: &str) -> Option<Vec<u8>> {
+    fn try_resolve_original_path(blobs_dir: &Path, id: &str, raw_path: &str) -> Option<PathBuf> {
         for candidate in Self::build_original_path_candidates(blobs_dir, raw_path) {
             let candidate_str = candidate.to_string_lossy().to_string();
             if !Self::is_safe_original_path(blobs_dir, &candidate_str) {
@@ -429,37 +580,67 @@ impl VfsAttachmentRepo {
                 continue;
             }
 
-            if !candidate.exists() {
+            if !candidate.is_file() {
                 debug!(
-                    "[VFS::AttachmentRepo] original_path not exists for {}: {}",
+                    "[VFS::AttachmentRepo] original_path is not a file for {}: {}",
                     id,
                     candidate.display()
                 );
                 continue;
             }
 
-            match std::fs::read(&candidate) {
-                Ok(data) => {
-                    info!(
-                        "[VFS::AttachmentRepo] Fallback to original_path for {}: {}, file_size={}",
-                        id,
-                        candidate.display(),
-                        data.len()
-                    );
-                    return Some(data);
-                }
-                Err(e) => {
-                    warn!(
-                        "[VFS::AttachmentRepo] Failed to read original_path for {}: {} - {}",
-                        id,
-                        candidate.display(),
-                        e
-                    );
-                }
-            }
+            let resolved = candidate.canonicalize().unwrap_or(candidate);
+            info!(
+                "[VFS::AttachmentRepo] Resolved original_path for {}: {}",
+                id,
+                resolved.display()
+            );
+            return Some(resolved);
         }
 
         None
+    }
+
+    fn read_file_bounded(path: &Path, max_bytes: u64) -> VfsResult<Vec<u8>> {
+        use std::io::Read;
+
+        let file = std::fs::File::open(path)
+            .map_err(|e| VfsError::Io(format!("Failed to open attachment file: {}", e)))?;
+        let declared_size = file
+            .metadata()
+            .map_err(|e| VfsError::Io(format!("Failed to stat attachment file: {}", e)))?
+            .len();
+        if declared_size > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "attachment".to_string(),
+                reason: format!(
+                    "Attachment file too large: {} bytes exceeds {} bytes",
+                    declared_size, max_bytes
+                ),
+            });
+        }
+
+        let capacity = usize::try_from(declared_size).map_err(|_| VfsError::InvalidArgument {
+            param: "attachment".to_string(),
+            reason: format!(
+                "Attachment size does not fit this platform: {}",
+                declared_size
+            ),
+        })?;
+        let mut data = Vec::with_capacity(capacity);
+        file.take(max_bytes.saturating_add(1))
+            .read_to_end(&mut data)
+            .map_err(|e| VfsError::Io(format!("Failed to read attachment file: {}", e)))?;
+        if data.len() as u64 > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "attachment".to_string(),
+                reason: format!(
+                    "Attachment grew beyond the {} byte limit while reading",
+                    max_bytes
+                ),
+            });
+        }
+        Ok(data)
     }
 
     // ========================================================================
@@ -503,14 +684,32 @@ impl VfsAttachmentRepo {
         blobs_dir: &Path,
         params: VfsUploadAttachmentParams,
     ) -> VfsResult<VfsUploadAttachmentResult> {
-        // 1. 解码 Base64
-        let data = Self::decode_base64(&params.base64_content)?;
-        let size = data.len() as i64;
-
-        // 1.5 基础校验：类型 + 大小 + attachment_type 一致性
+        // 1. 基础类型校验与解码前大小预算
         Self::validate_upload_type(&params.name, &params.mime_type)?;
-        Self::validate_upload_size(&params.mime_type, data.len())?;
         Self::validate_attachment_type(params.attachment_type.as_deref(), &params.mime_type)?;
+        let max_upload_bytes = Self::max_upload_size_bytes(&params.mime_type);
+        let data = Self::decode_base64_bounded(&params.base64_content, max_upload_bytes)?;
+        let size = data.len() as i64;
+        Self::validate_upload_size(&params.mime_type, data.len())?;
+        validate_archive_content(&params.name, &params.mime_type, &data)?;
+
+        // 1.6 PDF 专项校验：文件头 + 加密检测
+        let is_pdf_upload =
+            params.mime_type == "application/pdf" || params.name.to_lowercase().ends_with(".pdf");
+        if is_pdf_upload {
+            if data.len() < 5 || !data.starts_with(b"%PDF-") {
+                return Err(VfsError::InvalidArgument {
+                    param: "content".to_string(),
+                    reason: "不是有效的 PDF 文档（缺少 PDF 文件头）".to_string(),
+                });
+            }
+            crate::document_parser::DocumentParser::new()
+                .check_pdf_encryption_bytes(&data, &params.name)
+                .map_err(|e| VfsError::InvalidArgument {
+                    param: "content".to_string(),
+                    reason: format!("{}", e),
+                })?;
+        }
 
         // 2. 计算内容哈希
         let content_hash = Self::compute_hash(&data);
@@ -668,6 +867,11 @@ impl VfsAttachmentRepo {
         let is_pdf =
             params.mime_type == "application/pdf" || params.name.to_lowercase().ends_with(".pdf");
 
+        // ★ PDF 渲染失败时的可读原因（写入 processing_error，状态显式化不再静默降级）
+        let mut pdf_render_error: Option<String> = None;
+        // ★ pptx/epub 页级拆分结果（写入 ocr_pages_json，使检索命中可定位页/章节）
+        let mut paged_text_pages: Option<Vec<String>> = None;
+
         let (preview_json, extracted_text, page_count): (
             Option<String>,
             Option<String>,
@@ -704,11 +908,15 @@ impl VfsAttachmentRepo {
                         "[VFS::AttachmentRepo] PDF preview failed, storing without preview: {}",
                         e
                     );
+                    pdf_render_error = Some(format!(
+                        "PDF 渲染失败，预览与文本提取不可用：{}。可尝试删除后重新导入，或检查 PDF 是否损坏/加密",
+                        e
+                    ));
                     (None, None, None)
                 }
             }
         } else {
-            // 非 PDF 文件：尝试解析文本内容（docx/xlsx/pptx/epub/rtf/txt/md/html 等）
+            // 非 PDF 文件：尝试解析文本内容（docx/xlsx/pptx/epub/rtf/txt/md/html/代码等）
             let extension = std::path::Path::new(&params.name)
                 .extension()
                 .and_then(|ext| ext.to_str())
@@ -718,40 +926,87 @@ impl VfsAttachmentRepo {
             let supported_extensions = [
                 "docx", "xlsx", "xls", "xlsb", "ods",  // Office 文档
                 "pptx", // PowerPoint（pptx-to-md）
-                "epub", // 电子书（epub crate）
+                "epub", // 电子书（zip + quick-xml）
                 "rtf",  // 富文本（rtf-parser）
-                "txt", "md", "html", "htm",  // 文本格式
+                "txt", "md", "markdown", "html", "htm",  // 文本格式
                 "csv",  // CSV 表格（csv crate）
                 "json", // JSON 数据（serde_json）
                 "xml",  // XML 数据（quick-xml）
             ];
 
-            if let Some(ref ext) = extension {
-                if supported_extensions.contains(&ext.as_str()) {
+            let is_zip_archive = archive_kind_from_extension(&params.name)
+                .or_else(|| archive_kind_from_mime(&params.mime_type))
+                == Some(ArchiveKind::Zip);
+
+            if is_zip_archive {
+                // ★ ZIP 压缩包：解析中央目录生成条目清单（不解压内容），
+                // 存入 extracted_text 供预览兜底页与对话注入使用
+                match build_zip_manifest_text(&params.name, &data) {
+                    Some(manifest) => {
+                        info!(
+                            "[VFS::AttachmentRepo] Built zip manifest for {}: {} chars",
+                            params.name,
+                            manifest.len()
+                        );
+                        (None, Some(manifest), None)
+                    }
+                    None => (None, None, None),
+                }
+            } else if let Some(ref ext) = extension {
+                let is_parseable = supported_extensions.contains(&ext.as_str())
+                    || crate::document_parser::is_plain_text_code_extension(ext);
+                if is_parseable {
                     let parser = DocumentParser::new();
-                    match parser.extract_text_from_bytes(&params.name, data.clone()) {
-                        Ok(text) => {
-                            if !text.trim().is_empty() {
+
+                    // ★ pptx/epub 优先页级拆分（按 slide/章节），失败回退整篇提取
+                    match parser.extract_paged_text_from_bytes(&params.name, &data) {
+                        Ok(Some(pages)) if !pages.is_empty() => {
+                            let joined = pages.join("\n\n").trim().to_string();
+                            if !joined.is_empty() {
                                 info!(
-                                    "[VFS::AttachmentRepo] Extracted text from {}: {} chars",
+                                    "[VFS::AttachmentRepo] Extracted paged text from {}: {} pages, {} chars",
                                     params.name,
-                                    text.len()
+                                    pages.len(),
+                                    joined.len()
                                 );
-                                (None, Some(text), None)
+                                let count = pages.len() as i32;
+                                paged_text_pages = Some(pages);
+                                (None, Some(joined), Some(count))
                             } else {
                                 debug!(
-                                    "[VFS::AttachmentRepo] No text extracted from {}",
+                                    "[VFS::AttachmentRepo] Paged extraction empty for {}",
                                     params.name
                                 );
                                 (None, None, None)
                             }
                         }
-                        Err(e) => {
-                            warn!(
-                                "[VFS::AttachmentRepo] Failed to extract text from {}: {}",
-                                params.name, e
-                            );
-                            (None, None, None)
+                        Ok(_) | Err(_) => {
+                            // 不支持页级拆分或拆分失败 → 整篇提取
+                            match parser.extract_text_from_bytes(&params.name, data.clone()) {
+                                Ok(text) => {
+                                    if !text.trim().is_empty() {
+                                        info!(
+                                            "[VFS::AttachmentRepo] Extracted text from {}: {} chars",
+                                            params.name,
+                                            text.len()
+                                        );
+                                        (None, Some(text), None)
+                                    } else {
+                                        debug!(
+                                            "[VFS::AttachmentRepo] No text extracted from {}",
+                                            params.name
+                                        );
+                                        (None, None, None)
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "[VFS::AttachmentRepo] Failed to extract text from {}: {}",
+                                        params.name, e
+                                    );
+                                    (None, None, None)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -791,17 +1046,27 @@ impl VfsAttachmentRepo {
                 ready_modes.push("text".to_string());
             }
 
-            let progress = serde_json::json!({
-                "stage": "page_compression",
-                "percent": 25.0,
-                "readyModes": ready_modes
-            });
+            if pdf_render_error.is_some() {
+                // ★ 渲染失败：显式记录 error 状态（此前静默入库，用户不可见）
+                let progress = serde_json::json!({
+                    "stage": "error",
+                    "percent": 0.0,
+                    "readyModes": ready_modes
+                });
+                (Some("error"), Some(progress.to_string()), Some(now_ms))
+            } else {
+                let progress = serde_json::json!({
+                    "stage": "page_compression",
+                    "percent": 25.0,
+                    "readyModes": ready_modes
+                });
 
-            (
-                Some("page_compression"),
-                Some(progress.to_string()),
-                Some(now_ms),
-            )
+                (
+                    Some("page_compression"),
+                    Some(progress.to_string()),
+                    Some(now_ms),
+                )
+            }
         } else {
             (None, None, None)
         };
@@ -868,8 +1133,7 @@ impl VfsAttachmentRepo {
             }
         }
 
-        if let (Some(ref resource_id), Some(ref text)) =
-            (resource_id.as_ref(), extracted_text.as_ref())
+        if let (Some(ref resource_id), Some(text)) = (resource_id.as_ref(), extracted_text.as_ref())
         {
             if !text.trim().is_empty() {
                 if let Err(e) = VfsResourceRepo::save_ocr_text_with_conn(conn, resource_id, text) {
@@ -910,6 +1174,24 @@ impl VfsAttachmentRepo {
             } else {
                 None
             }
+        } else if let Some(ref pages) = paged_text_pages {
+            // ★ pptx/epub 页级文本：与 PDF 相同写入 ocr_pages_json，索引可定位页/章节
+            match serde_json::to_string(pages) {
+                Ok(json) => {
+                    info!(
+                        "[VFS::AttachmentRepo] Paged document text stored as {} pages in ocr_pages_json",
+                        pages.len()
+                    );
+                    Some(json)
+                }
+                Err(e) => {
+                    warn!(
+                        "[VFS::AttachmentRepo] Failed to serialize paged ocr_pages_json: {}",
+                        e
+                    );
+                    None
+                }
+            }
         } else {
             None
         };
@@ -924,6 +1206,18 @@ impl VfsAttachmentRepo {
                 ) {
                     warn!(
                         "[VFS::AttachmentRepo] Failed to write ocr_pages_json for {}: {}",
+                        attachment_id, e
+                    );
+                }
+            }
+            // ★ PDF 渲染失败：写入可读的 processing_error（状态显式化）
+            if let Some(ref render_error) = pdf_render_error {
+                if let Err(e) = conn.execute(
+                    "UPDATE files SET processing_error = ?1 WHERE id = ?2",
+                    params![render_error, attachment_id],
+                ) {
+                    warn!(
+                        "[VFS::AttachmentRepo] Failed to write processing_error for {}: {}",
                         attachment_id, e
                     );
                 }
@@ -1433,15 +1727,42 @@ impl VfsAttachmentRepo {
         Self::get_content_with_conn(&conn, db.blobs_dir(), id)
     }
 
-    /// 获取附件内容（使用现有连接）
-    ///
-    /// ★ 2026-01-25 修复：支持从 original_path 读取文件内容
-    /// ★ 2026-02-08 收紧：仅允许读取 VFS blobs 目录内的安全路径
-    pub fn get_content_with_conn(
+    /// 获取有明确大小上限的 Base64 内容。文件源在读取前检查并使用有界读取；
+    /// 内联 Base64 按解码后的保守上界检查，避免超大内容跨 IPC。
+    pub fn get_content_bounded(
+        db: &VfsDatabase,
+        id: &str,
+        max_bytes: u64,
+    ) -> VfsResult<Option<String>> {
+        let conn = db.get_conn_safe()?;
+        match Self::get_content_source_with_conn(&conn, db.blobs_dir(), id)? {
+            Some(VfsAttachmentContentSource::Base64(data)) => {
+                let decoded_upper_bound = (data.trim().len() as u64).saturating_mul(3) / 4;
+                if decoded_upper_bound > max_bytes {
+                    return Err(VfsError::InvalidArgument {
+                        param: "max_bytes".to_string(),
+                        reason: format!(
+                            "attachment content exceeds preview limit: {} > {} bytes",
+                            decoded_upper_bound, max_bytes
+                        ),
+                    });
+                }
+                Ok(Some(data))
+            }
+            Some(VfsAttachmentContentSource::File(path)) => {
+                let data = Self::read_file_bounded(&path, max_bytes)?;
+                Ok(Some(STANDARD.encode(data)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// 获取附件原始内容来源（使用现有连接）。磁盘内容只返回安全路径，不做全量读取。
+    pub(crate) fn get_content_source_with_conn(
         conn: &Connection,
         blobs_dir: &Path,
         id: &str,
-    ) -> VfsResult<Option<String>> {
+    ) -> VfsResult<Option<VfsAttachmentContentSource>> {
         let attachment = match Self::get_by_id_with_conn(conn, id)? {
             Some(a) => a,
             None => return Ok(None),
@@ -1515,8 +1836,8 @@ impl VfsAttachmentRepo {
                     .flatten();
 
                 if let Some(path) = original_path {
-                    if let Some(file_data) = Self::try_read_original_path(blobs_dir, id, &path) {
-                        return Ok(Some(STANDARD.encode(file_data)));
+                    if let Some(file_path) = Self::try_resolve_original_path(blobs_dir, id, &path) {
+                        return Ok(Some(VfsAttachmentContentSource::File(file_path)));
                     }
                 }
 
@@ -1540,10 +1861,9 @@ impl VfsAttachmentRepo {
                     if let Some(blob_path) =
                         VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, blob_hash)?
                     {
-                        let blob_data = std::fs::read(&blob_path).map_err(|e| {
-                            VfsError::Io(format!("Failed to read blob file: {}", e))
-                        })?;
-                        return Ok(Some(STANDARD.encode(blob_data)));
+                        if blob_path.is_file() {
+                            return Ok(Some(VfsAttachmentContentSource::File(blob_path)));
+                        }
                     } else {
                         warn!(
                             "[VFS::AttachmentRepo] Blob not found for attachment {}: {}",
@@ -1559,15 +1879,22 @@ impl VfsAttachmentRepo {
                 return Ok(None);
             }
 
-            Ok(data)
+            Ok(data.map(VfsAttachmentContentSource::Base64))
         } else if let Some(blob_hash) = &attachment.blob_hash {
-            // External 模式：从 blobs 读取文件
+            // External 模式：返回 blob 路径，由调用方决定流式读取或编码
             if let Some(blob_path) =
                 VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, blob_hash)?
             {
-                let data = std::fs::read(&blob_path)
-                    .map_err(|e| VfsError::Io(format!("Failed to read blob file: {}", e)))?;
-                Ok(Some(STANDARD.encode(data)))
+                if blob_path.is_file() {
+                    Ok(Some(VfsAttachmentContentSource::File(blob_path)))
+                } else {
+                    warn!(
+                        "[VFS::AttachmentRepo] Blob path is not a file for attachment {}: {}",
+                        id,
+                        blob_path.display()
+                    );
+                    Ok(None)
+                }
             } else {
                 warn!(
                     "[VFS::AttachmentRepo] Blob not found for attachment {}: {}",
@@ -1587,8 +1914,8 @@ impl VfsAttachmentRepo {
                 .flatten();
 
             if let Some(path) = original_path {
-                if let Some(data) = Self::try_read_original_path(blobs_dir, id, &path) {
-                    return Ok(Some(STANDARD.encode(data)));
+                if let Some(file_path) = Self::try_resolve_original_path(blobs_dir, id, &path) {
+                    return Ok(Some(VfsAttachmentContentSource::File(file_path)));
                 }
             }
 
@@ -1597,6 +1924,23 @@ impl VfsAttachmentRepo {
                 id
             );
             Ok(None)
+        }
+    }
+
+    /// 获取附件内容（使用现有连接）。保留历史 Base64 返回契约，磁盘读取受 200MB
+    /// 产品上限约束，并用 `take(limit + 1)` 防止读取期间文件增长造成无界分配。
+    pub fn get_content_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        id: &str,
+    ) -> VfsResult<Option<String>> {
+        match Self::get_content_source_with_conn(conn, blobs_dir, id)? {
+            Some(VfsAttachmentContentSource::Base64(data)) => Ok(Some(data)),
+            Some(VfsAttachmentContentSource::File(path)) => {
+                let data = Self::read_file_bounded(&path, MAX_FILE_BYTES as u64)?;
+                Ok(Some(STANDARD.encode(data)))
+            }
+            None => Ok(None),
         }
     }
 
@@ -1882,6 +2226,10 @@ impl VfsAttachmentRepo {
 
     /// 解码 Base64 内容
     fn decode_base64(input: &str) -> VfsResult<Vec<u8>> {
+        Self::decode_base64_bounded(input, MAX_FILE_BYTES)
+    }
+
+    fn decode_base64_bounded(input: &str, max_bytes: usize) -> VfsResult<Vec<u8>> {
         // 处理 Data URL 格式
         let base64_str = if input.starts_with("data:") {
             input
@@ -1895,12 +2243,55 @@ impl VfsAttachmentRepo {
             input
         };
 
-        STANDARD
+        let groups = base64_str
+            .len()
+            .checked_add(3)
+            .ok_or_else(|| VfsError::InvalidArgument {
+                param: "base64".to_string(),
+                reason: "Base64 length overflow".to_string(),
+            })?
+            / 4;
+        let padding = base64_str
+            .as_bytes()
+            .iter()
+            .rev()
+            .take_while(|byte| **byte == b'=')
+            .take(2)
+            .count();
+        let decoded_upper_bound = groups
+            .checked_mul(3)
+            .and_then(|bytes| bytes.checked_sub(padding))
+            .ok_or_else(|| VfsError::InvalidArgument {
+                param: "base64".to_string(),
+                reason: "Base64 decoded length overflow".to_string(),
+            })?;
+        if decoded_upper_bound > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "base64_content".to_string(),
+                reason: format!(
+                    "File too large: decoded base64 may exceed {}MB",
+                    max_bytes / (1024 * 1024)
+                ),
+            });
+        }
+
+        let data = STANDARD
             .decode(base64_str)
             .map_err(|e| VfsError::InvalidArgument {
                 param: "base64".to_string(),
                 reason: format!("Invalid base64: {}", e),
-            })
+            })?;
+        if data.len() > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "base64_content".to_string(),
+                reason: format!(
+                    "File too large: {} bytes exceeds {} bytes",
+                    data.len(),
+                    max_bytes
+                ),
+            });
+        }
+        Ok(data)
     }
 
     /// 计算 SHA-256 哈希
@@ -1992,6 +2383,11 @@ impl VfsAttachmentRepo {
             "video/x-m4v" => Some("m4v".to_string()),
             "video/x-ms-wmv" => Some("wmv".to_string()),
             "video/x-flv" => Some("flv".to_string()),
+
+            // 压缩包
+            "application/zip" | "application/x-zip-compressed" => Some("zip".to_string()),
+            "application/vnd.rar" | "application/x-rar-compressed" => Some("rar".to_string()),
+            "application/x-7z-compressed" => Some("7z".to_string()),
 
             _ => None,
         }
@@ -2377,7 +2773,7 @@ impl VfsAttachmentRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::get_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     pub fn get_mm_index_state(db: &VfsDatabase, attachment_id: &str) -> VfsResult<Option<String>> {
@@ -2387,7 +2783,7 @@ impl VfsAttachmentRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -2409,7 +2805,7 @@ impl VfsAttachmentRepo {
     /// 设置附件的多模态索引状态
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService` 替代
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     pub fn set_mm_index_state(
         db: &VfsDatabase,
         attachment_id: &str,
@@ -2421,7 +2817,7 @@ impl VfsAttachmentRepo {
     }
 
     /// ⚠️ 已废弃
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     #[allow(deprecated)]
     pub fn set_mm_index_state_with_conn(
         conn: &Connection,
@@ -2456,7 +2852,7 @@ impl VfsAttachmentRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::sync_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     pub fn save_mm_indexed_pages(
@@ -2470,7 +2866,7 @@ impl VfsAttachmentRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -2559,6 +2955,65 @@ mod tests {
         let input = "data:text/plain;base64,SGVsbG8gV29ybGQ=";
         let result = VfsAttachmentRepo::decode_base64(input).unwrap();
         assert_eq!(result, b"Hello World");
+    }
+
+    #[test]
+    fn test_decode_base64_checks_limit_before_allocating_output() {
+        let result = VfsAttachmentRepo::decode_base64_bounded("SGVsbG8=", 4);
+        assert!(matches!(result, Err(VfsError::InvalidArgument { .. })));
+        assert_eq!(
+            VfsAttachmentRepo::decode_base64_bounded("SGVsbG8=", 5).unwrap(),
+            b"Hello"
+        );
+    }
+
+    #[test]
+    fn archive_magic_accepts_supported_formats() {
+        assert!(
+            validate_archive_content("bundle.zip", "application/zip", b"PK\x03\x04payload").is_ok()
+        );
+        assert!(validate_archive_content(
+            "bundle.rar",
+            "application/vnd.rar",
+            b"Rar!\x1a\x07\x01\x00payload"
+        )
+        .is_ok());
+        assert!(validate_archive_content(
+            "bundle.7z",
+            "application/x-7z-compressed",
+            b"\x37\x7a\xbc\xaf\x27\x1cpayload"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn archive_magic_rejects_spoofing_and_declared_mismatch() {
+        assert!(
+            validate_archive_content("bundle.zip", "application/zip", b"not an archive").is_err()
+        );
+        assert!(validate_archive_content(
+            "bundle.zip",
+            "application/x-7z-compressed",
+            b"PK\x03\x04payload"
+        )
+        .is_err());
+        assert!(validate_archive_content(
+            "bundle.rar",
+            "application/vnd.rar",
+            b"PK\x03\x04payload"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_read_file_bounded_rejects_oversized_sparse_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("oversized.bin");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_FILE_BYTES as u64 + 1).unwrap();
+
+        let result = VfsAttachmentRepo::read_file_bounded(&path, MAX_FILE_BYTES as u64);
+        assert!(matches!(result, Err(VfsError::InvalidArgument { .. })));
     }
 
     #[test]
@@ -2668,6 +3123,34 @@ mod tests {
 
         std::fs::remove_dir_all(slot_root).ok();
         std::fs::remove_dir_all(external_root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_original_path_rejects_symlink_escaping_slot() {
+        use std::os::unix::fs::symlink;
+
+        let slot = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let blobs_dir = slot.path().join("vfs_blobs");
+        let textbooks_dir = slot.path().join("textbooks");
+        std::fs::create_dir_all(&blobs_dir).unwrap();
+        std::fs::create_dir_all(&textbooks_dir).unwrap();
+        let secret = external.path().join("secret.txt");
+        std::fs::write(&secret, b"outside-slot").unwrap();
+        let link = textbooks_dir.join("leak.txt");
+        symlink(&secret, &link).unwrap();
+
+        assert!(!VfsAttachmentRepo::is_safe_original_path(
+            &blobs_dir,
+            link.to_string_lossy().as_ref(),
+        ));
+        assert!(VfsAttachmentRepo::try_resolve_original_path(
+            &blobs_dir,
+            "att_symlink_escape",
+            link.to_string_lossy().as_ref(),
+        )
+        .is_none());
     }
 
     #[test]

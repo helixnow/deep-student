@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { Hash } from '@phosphor-icons/react';
+import { Hash, ImageBroken } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { LatexText } from '@/components/LatexText';
@@ -46,6 +46,8 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
   const tOcr = (key: string) => t(`chatV2:ocr.${key}`);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [shouldStackNote, setShouldStackNote] = useState(false);
+  // 加载失败的图片索引：显示占位而非静默消失（与 MultimodalSourceCard 的失败占位一致）
+  const [failedImageIndices, setFailedImageIndices] = useState<Set<number>>(() => new Set());
 
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return;
@@ -94,7 +96,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
           {isSavingNote ? tCommon('note_saving') : tCommon('note_autosave')}
         </span>
         {noteError ? (
-          <span className="text-rose-500">{noteError}</span>
+          <span className="text-danger">{noteError}</span>
         ) : null}
       </div>
     </div>
@@ -155,6 +157,17 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
                     const finalSrc = isFullUrl ? src : `data:image/*;base64,${src}`;
                     // 单张图片时使用横向自适应，多张图片时使用固定尺寸
                     const isSingleImage = safeImages.length === 1;
+                    if (failedImageIndices.has(idx)) {
+                      // 失败占位：图标 + 保留位置，不让图片静默消失
+                      return (
+                        <div
+                          key={idx}
+                          className="flex h-20 w-20 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground sm:h-24 sm:w-24"
+                        >
+                          <ImageBroken size={20} />
+                        </div>
+                      );
+                    }
                     return (
                       <div
                         key={idx}
@@ -162,7 +175,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
                       >
                         <img
                           src={finalSrc}
-                          alt={`Question image ${idx + 1}`}
+                          alt={t('chatV2:imageViewer.imageAlt', { index: idx + 1 })}
                           className={`rounded-md border border-border bg-card object-contain ${
                             isSingleImage
                               ? 'w-full max-h-[300px]'
@@ -171,8 +184,13 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
                             onImageClick ? 'cursor-pointer transition-transform hover:scale-[1.02]' : ''
                           }`}
                           onClick={() => onImageClick && onImageClick(idx)}
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
+                          onError={() => {
+                            setFailedImageIndices((prev) => {
+                              if (prev.has(idx)) return prev;
+                              const next = new Set(prev);
+                              next.add(idx);
+                              return next;
+                            });
                           }}
                           onLoad={(e) => {
                             // 对于单张图片，根据图片的宽高比决定是否横向伸展

@@ -1,8 +1,14 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { StyleRegistry } from '../../registry';
 import { ensureInitialized } from '../../init';
 import { 
@@ -17,16 +23,46 @@ import {
   TextHOne,
   TextHTwo,
   TextHThree,
-  PaintBucket 
 } from '@phosphor-icons/react';
 
 // ============================================================================
 // 预设颜色（统一引用共享常量）
 // ============================================================================
 import { FULL_TEXT_COLORS, FULL_BG_COLORS } from '../../constants';
+import type { IStyleTheme } from '../../registry/types';
 
 const PRESET_COLORS = FULL_BG_COLORS as unknown as string[];
 const TEXT_COLORS = FULL_TEXT_COLORS as unknown as string[];
+
+// ============================================================================
+// 子组件：主题缩略预览（画布底色 + 根节点色块 + 分支色板圆点）
+// ============================================================================
+const ThemeThumbnail: React.FC<{ theme: IStyleTheme }> = ({ theme }) => {
+  const canvasBg = theme.canvas?.background || theme.canvasStyle?.background || 'var(--mm-bg)';
+  const rootBg = theme.node?.root?.background || 'var(--mm-primary)';
+  const palette = (theme.palette ?? []).slice(0, 4);
+  return (
+    <span
+      aria-hidden
+      className="inline-flex items-center gap-1 h-5 w-11 shrink-0 rounded-[4px] border border-[var(--mm-border)] px-1 overflow-hidden"
+      style={{ background: canvasBg }}
+    >
+      <span
+        className="h-2 w-3.5 shrink-0 rounded-[2px]"
+        style={{ background: rootBg }}
+      />
+      <span className="flex items-center gap-0.5 min-w-0">
+        {palette.map((color, index) => (
+          <span
+            key={`${color}-${index}`}
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ background: color }}
+          />
+        ))}
+      </span>
+    </span>
+  );
+};
 
 // ============================================================================
 // 子组件：颜色选择器
@@ -37,16 +73,16 @@ const ColorPicker: React.FC<{
   onChange: (color: string) => void;
   label: string;
 }> = ({ colors, value, onChange, label }) => (
-  <div className="space-y-2">
-    <div className="text-xs font-medium text-muted-foreground">{label}</div>
-    <div className="flex flex-wrap gap-1.5">
+  <div className="mm-style-color-section">
+    <div className="mm-style-label">{label}</div>
+    <div className="mm-style-swatches">
       {colors.map((color) => (
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           key={color}
           className={cn(
-            "w-6 h-6 rounded-full border border-border transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
+            "mm-style-swatch",
             color === 'transparent' && "bg-transparent bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxwYXRoIGZpbGw9IiNjY2MiIGQ9Ik0wIDBoNHY0SDB6Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTQgMGg0djRINHoiLz48cGF0aCBmaWxsPSIjY2NjIiBkPSJNNSA1aDR2NEg1eiIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik0wIDRoNHY0SDB6Ii8+PC9zdmc+')]",
-            value === color && "ring-2 ring-primary ring-offset-1 border-primary"
+            value === color && "is-active"
           )}
           style={{ backgroundColor: color !== 'transparent' && color !== 'inherit' ? color : undefined }}
           onClick={() => onChange(color)}
@@ -55,7 +91,7 @@ const ColorPicker: React.FC<{
           {color === 'inherit' && (
             <span className="flex items-center justify-center w-full h-full text-[10px] text-muted-foreground">A</span>
           )}
-        </NotionButton>
+        </DsButton>
       ))}
     </div>
   </div>
@@ -74,10 +110,14 @@ export const StyleSettings: React.FC<{
   onOpenChange?: (open: boolean) => void;
 }> = ({ className, trigger, placement = 'bottom-right', open: controlledOpen, onOpenChange }) => {
   const { t } = useTranslation('mindmap');
+  const isMindMapActive = useMindMapIsActive();
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  
+  const triggerRef = useRef<HTMLDivElement>(null);
+  // 视口钳位：面板锚定触发按钮时的水平修正量（px）
+  const [clampOffset, setClampOffset] = useState(0);
+  const clampOffsetRef = useRef(0);
+
   // 受控/非受控模式
   const isControlled = controlledOpen !== undefined;
   const isOpen = isControlled ? controlledOpen : internalOpen;
@@ -142,8 +182,7 @@ export const StyleSettings: React.FC<{
       if (
         panelRef.current &&
         !panelRef.current.contains(event.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(event.target as Node)
+        !triggerRef.current?.contains(event.target as Node)
       ) {
         setIsOpen(false);
       }
@@ -154,6 +193,58 @@ export const StyleSettings: React.FC<{
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [isOpen, setIsOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setIsOpen(false);
+      triggerRef.current?.querySelector<HTMLElement>('button')?.focus();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, setIsOpen]);
+
+  useEffect(() => {
+    if (!isOpen || isInline || !isMindMapActive) return;
+    return registerBackHandler(() => {
+      setIsOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isInline, isMindMapActive, isOpen, setIsOpen]);
+
+  // 视口钳位：锚定面板贴近窗口边缘时向内平移，防止右缘/左缘被裁切
+  // 用独立的 translate 属性修正，避免与 ui-zoom-fade-in 的 transform 动画互相覆盖
+  useLayoutEffect(() => {
+    if (!isOpen || isInline) {
+      clampOffsetRef.current = 0;
+      setClampOffset(0);
+      return;
+    }
+    const measure = () => {
+      const el = panelRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const margin = 8;
+      // 先扣掉上一次修正量，还原面板的自然锚定位置再重新计算
+      const naturalLeft = rect.left - clampOffsetRef.current;
+      const naturalRight = rect.right - clampOffsetRef.current;
+      let next = 0;
+      if (naturalRight > window.innerWidth - margin) {
+        next = window.innerWidth - margin - naturalRight;
+      }
+      if (naturalLeft + next < margin) {
+        next = margin - naturalLeft;
+      }
+      if (next !== clampOffsetRef.current) {
+        clampOffsetRef.current = next;
+        setClampOffset(next);
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isOpen, isInline]);
 
   const getPlacementStyles = () => {
     switch (placement) {
@@ -167,96 +258,106 @@ export const StyleSettings: React.FC<{
 
   // 面板内容（共用）
   const panelContent = (
-    <div className="space-y-4">
+    <div className="mm-style-panel">
       {/* 全局主题 */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-semibold">{t('style.globalTheme')}</h4>
-        <div className="grid grid-cols-2 gap-2">
+      <div>
+        <h4 className="mm-style-heading">{t('style.globalTheme')}</h4>
+        <div className="mm-theme-list">
           {themes.map(theme => (
-            <NotionButton variant="ghost"
+            <DsButton variant="ghost"
               key={theme.id}
               onClick={() => setStyleId(theme.id)}
               className={cn(
-                "flex items-center justify-between px-3 py-2 rounded-md text-sm border border-transparent transition-colors",
-                "hover:bg-[var(--interactive-hover)] hover:text-accent-foreground",
-                styleId === theme.id && "bg-primary/10 text-primary border-primary/20"
+                "mm-theme-option",
+                styleId === theme.id && "is-active"
               )}
+              aria-pressed={styleId === theme.id}
             >
-              {t(theme.name)}
-              {styleId === theme.id && <Check className="w-3 h-3" />}
-            </NotionButton>
+              <span className="inline-flex items-center gap-2 min-w-0">
+                <ThemeThumbnail theme={theme} />
+                <span className="truncate">{t(theme.name)}</span>
+              </span>
+              {styleId === theme.id && <Check className="w-3 h-3 shrink-0" />}
+            </DsButton>
           ))}
         </div>
       </div>
 
-      <div className="h-px bg-border" />
+      <div className="mm-panel-separator" />
 
       {/* 节点样式 (仅当选中节点时显示) */}
       {focusedNode ? (
-        <div className="space-y-4">
-          <h4 className="text-sm font-semibold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary" />
+        <div className="mm-node-style-section">
+          <h4 className="mm-style-heading">
             {t('style.currentNodeStyle')}
           </h4>
           
           {/* 字号 */}
-          <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-md w-fit">
+          <div className="mm-font-size-control">
             <TextT className="w-4 h-4 text-muted-foreground ml-1" />
             <input
               type="number"
-              className="w-12 h-6 text-sm bg-transparent border-none text-center focus:ring-0"
+              min={8}
+              max={72}
+              step={1}
+              inputMode="numeric"
+              className="mm-font-size-input"
               value={focusedNode.style?.fontSize || 14}
-              onChange={(e) => handleNodeStyleUpdate({ fontSize: parseInt(e.target.value) })}
+              onChange={(e) => {
+                const value = e.currentTarget.valueAsNumber;
+                if (!Number.isFinite(value)) return;
+                handleNodeStyleUpdate({ fontSize: Math.min(72, Math.max(8, value)) });
+              }}
             />
           </div>
 
           {/* B / I / U / S */}
-          <div className="flex items-center gap-1">
+          <div className="mm-style-button-row">
             {[
               { key: 'bold', icon: TextB, prop: 'fontWeight' as const, val: 'bold', cur: focusedNode.style?.fontWeight },
               { key: 'italic', icon: TextItalic, prop: 'fontStyle' as const, val: 'italic', cur: focusedNode.style?.fontStyle },
               { key: 'underline', icon: TextUnderline, prop: 'textDecoration' as const, val: 'underline', cur: focusedNode.style?.textDecoration },
               { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: focusedNode.style?.textDecoration },
             ].map(({ key, icon: Icon, prop, val, cur }) => (
-              <NotionButton variant="ghost" key={key}
+              <DsButton variant="ghost" key={key}
                 onClick={() => handleNodeStyleUpdate({ [prop]: cur === val ? undefined : val })}
                 className={cn(
-                  "p-1.5 rounded-md transition-colors",
+                  "mm-style-icon-button",
                   cur === val
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
+                    ? "is-active"
+                    : ""
                 )}
                 title={t(`contextMenu.${key}`)}
-              ><Icon className="w-4 h-4" /></NotionButton>
+              ><Icon className="w-4 h-4" /></DsButton>
             ))}
           </div>
 
           {/* H1 / H2 / H3 / T */}
-          <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">{t('contextMenu.headingLevel')}</div>
-            <div className="flex items-center gap-1">
+          <div>
+            <div className="mm-style-label">{t('contextMenu.headingLevel')}</div>
+            <div className="mm-style-button-row">
               {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
-                <NotionButton variant="ghost" key={level}
+                <DsButton variant="ghost" key={level}
                   onClick={() => handleNodeStyleUpdate({ headingLevel: focusedNode.style?.headingLevel === level ? undefined : level })}
                   className={cn(
-                    "p-1.5 rounded-md transition-colors",
+                    "mm-style-icon-button",
                     focusedNode.style?.headingLevel === level
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
+                      ? "is-active"
+                      : ""
                   )}
                   title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-                ><Icon className="w-4 h-4" /></NotionButton>
+                ><Icon className="w-4 h-4" /></DsButton>
               ))}
-              <NotionButton variant="ghost"
+              <DsButton variant="ghost"
                 onClick={() => handleNodeStyleUpdate({ headingLevel: undefined })}
                 className={cn(
-                  "p-1.5 rounded-md transition-colors",
+                  "mm-style-icon-button",
                   !focusedNode.style?.headingLevel
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
+                    ? "is-active"
+                    : ""
                 )}
                 title={t('contextMenu.normalText')}
-              ><TextT className="w-4 h-4" /></NotionButton>
+              ><TextT className="w-4 h-4" /></DsButton>
             </div>
           </div>
 
@@ -277,7 +378,7 @@ export const StyleSettings: React.FC<{
           />
         </div>
       ) : (
-        <div className="text-sm text-muted-foreground text-center py-4 bg-muted/20 rounded-lg">
+        <div className="mm-style-empty">
           {t('style.selectNodeHint')}
         </div>
       )}
@@ -294,46 +395,46 @@ export const StyleSettings: React.FC<{
   }
 
   return (
-    <div className={cn('relative', className)}>
+    <div ref={triggerRef} className={cn('relative', className)}>
       {trigger ? (
         <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
       ) : (
-        <NotionButton variant="ghost"
-          ref={triggerRef}
+        <DsButton variant="ghost"
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg',
-            'bg-background hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
-            'border border-input',
-            'transition-all duration-200',
-            'text-sm font-medium',
-            'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-            isOpen && 'bg-accent text-accent-foreground'
+            'flex items-center gap-2 px-2 h-7 rounded',
+            'bg-transparent hover:bg-[var(--mm-bg-hover)]',
+            'border border-transparent',
+            'transition-colors duration-100',
+            'text-sm text-[var(--mm-text-secondary)]',
+            'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-primary)]',
+            isOpen && 'bg-[var(--mm-bg-hover)] text-[var(--mm-text)]'
           )}
         >
           <Palette className="w-4 h-4 text-muted-foreground" />
           <span>{t('toolbar.style')}</span>
           <CaretDown className={cn('w-4 h-4 transition-transform duration-200', isOpen && 'rotate-180')} />
-        </NotionButton>
+        </DsButton>
       )}
 
+      {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}
       {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40 bg-transparent md:hidden" onClick={() => setIsOpen(false)} />
-          <div
-            ref={panelRef}
-            className={cn(
-              'absolute z-50',
-              getPlacementStyles(),
-              'w-[280px] p-4 rounded-xl shadow-lg',
-              'bg-popover border border-border text-popover-foreground',
-              'animate-in fade-in-0 zoom-in-95 duration-200',
-              'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'
-            )}
-          >
-            {panelContent}
-          </div>
-        </>
+        <CustomScrollArea
+          ref={panelRef}
+          className={cn(
+            'absolute z-50',
+            getPlacementStyles(),
+            'mm-settings-popover mm-style-popover',
+            'ui-zoom-fade-in'
+          )}
+          viewportClassName="mm-settings-popover-viewport p-2"
+          style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
+          role="dialog"
+          aria-label={t('style.globalTheme')}
+          fullHeight={false}
+        >
+          {panelContent}
+        </CustomScrollArea>
       )}
     </div>
   );

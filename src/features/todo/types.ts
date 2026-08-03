@@ -95,6 +95,8 @@ export interface CreateTodoItemInput {
   priority?: TodoPriority;
   dueDate?: string;
   dueTime?: string;
+  /** 提醒时刻（YYYY-MM-DDTHH:MM，本地时间，与 UpdateTodoItemInput.reminder 一致） */
+  reminder?: string;
   tags?: string[];
   parentId?: string;
   attachments?: string[];
@@ -115,7 +117,12 @@ export interface UpdateTodoItemInput {
   attachments?: string[];
   repeatJson?: string;
   estimatedPomodoros?: number;
-  completedPomodoros?: number;
+  /**
+   * 可选乐观锁基线（后端 R1-04 契约：camelCase expectedUpdatedAt）。
+   * 传入待办当前的 updatedAt；后端检测到并发修改时抛 TODO_CONFLICT。
+   * 缺省不校验（兼容存量调用）。
+   */
+  expectedUpdatedAt?: string;
 }
 
 // ============================================================================
@@ -143,11 +150,37 @@ const PRIORITY_RANK: Record<TodoPriority, number> = {
   none: 4,
 };
 
+/** title 排序的默认 collator locale（中文拼音；英文标题排序仍正确） */
+const DEFAULT_TITLE_SORT_LOCALE = 'zh-Hans-CN-u-co-pinyin';
+
+// Intl.Collator 构造开销大；按 locale 缓存（此前每次比较都走
+// String.localeCompare(locale)，等价于每次比较新建一个 collator）
+const collatorCache = new Map<string, Intl.Collator>();
+function getCollator(locale: string): Intl.Collator {
+  let collator = collatorCache.get(locale);
+  if (!collator) {
+    try {
+      collator = new Intl.Collator(locale, { numeric: true });
+    } catch {
+      collator = new Intl.Collator(undefined, { numeric: true });
+    }
+    collatorCache.set(locale, collator);
+  }
+  return collator;
+}
+
 /**
- * 客户端排序（不改后端顺序）。manual 原样返回（后端已按 sort_order 排）。
+ * 客户端排序（不改后端顺序，Array.sort 为稳定排序——比较键相同的条目
+ * 保持后端返回的相对顺序）。manual 原样返回（后端已按 sort_order 排）。
  * dueDate：无到期日排最后，同日按优先级；priority：同级按到期日；title：本地化字典序。
+ * `locale` 为兼容性新增参数：title 排序的 collator locale，
+ * 缺省保持既有的中文拼音规则（en 用户可传 i18n.language）。
  */
-export function sortTodoItems(items: TodoItem[], sortBy: TodoSortBy): TodoItem[] {
+export function sortTodoItems(
+  items: TodoItem[],
+  sortBy: TodoSortBy,
+  locale: string = DEFAULT_TITLE_SORT_LOCALE,
+): TodoItem[] {
   if (sortBy === 'manual') return items;
   const sorted = [...items];
   switch (sortBy) {
@@ -173,9 +206,11 @@ export function sortTodoItems(items: TodoItem[], sortBy: TodoSortBy): TodoItem[]
         return 0;
       });
       break;
-    case 'title':
-      sorted.sort((a, b) => a.title.localeCompare(b.title, 'zh-Hans-CN-u-co-pinyin'));
+    case 'title': {
+      const collator = getCollator(locale);
+      sorted.sort((a, b) => collator.compare(a.title, b.title));
       break;
+    }
   }
   return sorted;
 }
@@ -184,17 +219,23 @@ export function sortTodoItems(items: TodoItem[], sortBy: TodoSortBy): TodoItem[]
 // 辅助函数
 // ============================================================================
 
+/** 仅保留字符串元素（脏数据/旧版本写入的非字符串条目静默丢弃） */
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
 export function parseTags(tagsJson: string): string[] {
   try {
-    return JSON.parse(tagsJson);
+    return toStringArray(JSON.parse(tagsJson));
   } catch {
     return [];
   }
 }
 
+/** 附件为文件路径/URL 字符串数组（与后端 attachments_json 契约一致） */
 export function parseAttachments(attachmentsJson: string): string[] {
   try {
-    return JSON.parse(attachmentsJson);
+    return toStringArray(JSON.parse(attachmentsJson));
   } catch {
     return [];
   }
@@ -337,7 +378,7 @@ export const EISENHOWER_QUADRANTS: EisenhowerQuadrant[] = [
 
 /**
  * 四象限归类：重要 = 优先级 high/urgent；紧急 = 今天到期或已逾期。
- * 与滴答清单的默认映射一致（优先级×时间两轴）。
+ * 使用优先级与时间两个维度归类。
  */
 export function classifyEisenhower(item: TodoItem, today: string = localToday()): EisenhowerQuadrant {
   const important = item.priority === 'high' || item.priority === 'urgent';
@@ -419,6 +460,21 @@ export function localToday(): string {
 export function isOverdue(item: TodoItem): boolean {
   if (!item.dueDate || item.status !== 'pending') return false;
   return item.dueDate < localToday();
+}
+
+/**
+ * 精确到分钟的逾期判断（isOverdue 的 dueTime 感知版，不改变 isOverdue 语义）：
+ * 到期日早于今天 → 逾期；到期日为今天且设置了 dueTime 且已过该时刻 → 逾期。
+ */
+export function isOverdueAt(item: TodoItem, now: Date = new Date()): boolean {
+  if (!item.dueDate || item.status !== 'pending') return false;
+  const today = formatLocalDate(now);
+  if (item.dueDate < today) return true;
+  if (item.dueDate === today && item.dueTime) {
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return item.dueTime < currentTime;
+  }
+  return false;
 }
 
 export function isDueToday(item: TodoItem): boolean {
@@ -519,4 +575,58 @@ export function nextRepeatOccurrence(
     if (guard > 1000) return null;
   }
   return next ? formatLocalDate(next) : null;
+}
+
+// ============================================================================
+// 展示态辅助类型（UI 层可选使用，纯新增，不影响既有契约）
+// ============================================================================
+
+/** 子任务完成进度聚合（供行内进度条/详情面板展示） */
+export interface SubtaskProgress {
+  /** 直接子任务总数（不含孙子级） */
+  total: number;
+  /** 已完成的直接子任务数 */
+  completed: number;
+  /** 0-100 整数百分比；total 为 0 时为 0 */
+  percent: number;
+}
+
+/**
+ * 计算某条待办的直接子任务完成进度。
+ * `items` 为当前视图数据集；未加载子任务时返回 { total: 0, completed: 0, percent: 0 }。
+ */
+export function computeSubtaskProgress(items: TodoItem[], parentId: string): SubtaskProgress {
+  let total = 0;
+  let completed = 0;
+  for (const item of items) {
+    if (item.parentId !== parentId) continue;
+    total += 1;
+    if (item.status === 'completed') completed += 1;
+  }
+  return {
+    total,
+    completed,
+    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+  };
+}
+
+/** 回收站条目展示元数据（列表/清单通用） */
+export interface TrashEntryMeta {
+  /** 删除时刻（ISO 字符串，缺失表示脏数据） */
+  deletedAt?: string;
+  /** 已在回收站停留的整天数（不足一天为 0；deletedAt 非法时为 null） */
+  daysInTrash: number | null;
+}
+
+/** 从回收站条目（TodoItem/TodoList 均可）提取展示元数据 */
+export function getTrashEntryMeta(
+  entry: Pick<TodoItem, 'deletedAt'> | Pick<TodoList, 'deletedAt'>,
+  now: Date = new Date(),
+): TrashEntryMeta {
+  const deletedAt = entry.deletedAt;
+  if (!deletedAt) return { deletedAt, daysInTrash: null };
+  const ts = Date.parse(deletedAt);
+  if (Number.isNaN(ts)) return { deletedAt, daysInTrash: null };
+  const days = Math.floor((now.getTime() - ts) / 86_400_000);
+  return { deletedAt, daysInTrash: Math.max(0, days) };
 }

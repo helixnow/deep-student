@@ -8,19 +8,22 @@
 //!   这样当用户在设置中更换模型时，无需重启服务。
 //! - **批量处理**: VL 模型通常处理速度较慢，批量大小建议限制在 8 以内。
 //!   服务负责将大批量输入拆分处理。
-//! - **错误处理**: 图片加载失败时降级为纯文本嵌入，确保索引流程不中断。
-//! - **双模式支持**: 支持 VL-Embedding 直接向量化和 VL摘要+文本嵌入两种方案。
+//! - **错误处理**: 图片加载失败时降级为纯文本嵌入，确保索引流程不中断；
+//!   瞬时错误（429/5xx/网络故障）按子批指数退避重试。
+//! - **进度语义**: 起始/完成等关键进度事件使用带背压的 `send`（不丢弃），
+//!   中间进度使用 `try_send`（通道占满时丢弃并计数）。
 //!
 //! 设计文档参考: docs/multimodal-knowledge-base-design.md (Section 7.3)
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::stream::{self, StreamExt};
 use tokio::sync::mpsc;
 
-use crate::llm_manager::{ImagePayload, LLMManager};
-use crate::models::AppError;
+use crate::llm_manager::{ApiConfig, ImagePayload, LLMManager};
+use crate::models::{AppError, AppErrorType};
 use crate::multimodal::types::{MultimodalImage, MultimodalIndexingMode, MultimodalInput};
 
 /// 嵌入进度信息
@@ -44,6 +47,80 @@ type Result<T> = std::result::Result<T, AppError>;
 const DEFAULT_BATCH_SIZE: usize = 8;
 /// 默认摘要生成并发数
 const DEFAULT_SUMMARY_CONCURRENCY: usize = 10;
+
+/// VL 嵌入子批的最大尝试次数（1 次初始 + 3 次重试）
+const VL_EMBED_MAX_ATTEMPTS: u32 = 4;
+/// 重试退避基准毫秒数（指数增长：500ms → 1s → 2s，上限见下）
+const VL_EMBED_BACKOFF_BASE_MS: u64 = 500;
+/// 单次退避上限
+const VL_EMBED_BACKOFF_MAX_MS: u64 = 8_000;
+
+/// 判断嵌入 API 错误是否为可重试的瞬时错误
+///
+/// 依据 llm_manager::rag_extension 的错误契约：
+/// - 传输层失败（连接/超时）→ `AppErrorType::Network`
+/// - HTTP 429 → "请求过于频繁，请稍后重试"
+/// - HTTP 5xx → "嵌入服务暂时不可用，请稍后重试"
+///
+/// 401/403/配置错误/数量不匹配等确定性错误不重试。
+fn is_transient_embedding_error(error: &AppError) -> bool {
+    if matches!(error.error_type, AppErrorType::Network) {
+        return true;
+    }
+    let msg = error.message.as_str();
+    msg.contains("请求过于频繁")
+        || msg.contains("暂时不可用")
+        || msg.contains("429")
+        || msg.contains("502")
+        || msg.contains("503")
+        || msg.contains("504")
+        || msg.to_ascii_lowercase().contains("rate limit")
+        || msg.to_ascii_lowercase().contains("timed out")
+        || msg.to_ascii_lowercase().contains("timeout")
+}
+
+/// 计算第 `attempt` 次重试前的退避时长（指数退避 + 0~25% 抖动）
+///
+/// 抖动避免多个并行索引任务在同一时刻集中重试，加剧限流。
+fn vl_embed_backoff_delay(attempt: u32) -> Duration {
+    let exp = VL_EMBED_BACKOFF_BASE_MS.saturating_mul(1u64 << attempt.min(6).saturating_sub(1));
+    let capped = exp.min(VL_EMBED_BACKOFF_MAX_MS);
+    let jitter_range = capped / 4;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    Duration::from_millis(capped + nanos % (jitter_range + 1))
+}
+
+/// 校验 Base64 图片数据是否大致合法
+///
+/// 只扫描头部片段以避免对 MB 级数据做全量校验；常见错误
+/// （误带 `data:` 前缀、原始二进制、传入 URL、空数据）都会在头部暴露。
+fn looks_like_valid_base64(data: &str) -> bool {
+    if data.len() < 100 {
+        return false;
+    }
+    data.bytes().take(1024).all(|b| {
+        matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'+' | b'/' | b'=' | b'\r' | b'\n')
+    })
+}
+
+/// 发送关键进度事件（起始/完成）：带背压，不丢弃；通道关闭时静默忽略
+async fn send_progress_critical(tx: &mpsc::Sender<EmbeddingProgress>, progress: EmbeddingProgress) {
+    let _ = tx.send(progress).await;
+}
+
+/// 发送中间进度事件：通道占满时丢弃并计数（由调用方在结束时汇总记录）
+fn send_progress_lossy(
+    tx: &mpsc::Sender<EmbeddingProgress>,
+    progress: EmbeddingProgress,
+    dropped: &AtomicUsize,
+) {
+    if let Err(mpsc::error::TrySendError::Full(_)) = tx.try_send(progress) {
+        dropped.fetch_add(1, Ordering::Relaxed);
+    }
+}
 
 /// 嵌入服务配置
 #[derive(Debug, Clone)]
@@ -109,13 +186,6 @@ impl MultimodalEmbeddingService {
             .is_ok()
     }
 
-    /// 检查文本嵌入模型是否可用（方案二的一部分）
-    ///
-    /// 注意：文本嵌入模型通过维度管理的默认文本维度设置
-    pub async fn is_text_embedding_available(&self) -> bool {
-        self.llm_manager.get_embedding_model_config().await.is_ok()
-    }
-
     /// 获取当前嵌入模型的输出维度
     ///
     /// 通过调用一个简单的文本输入来检测模型输出维度
@@ -143,7 +213,7 @@ impl MultimodalEmbeddingService {
 
     /// 为单个多模态输入生成嵌入向量
     pub async fn embed_single(&self, input: &MultimodalInput) -> Result<Vec<f32>> {
-        let embeddings = self.embed_batch(&[input.clone()]).await?;
+        let embeddings = self.embed_batch(std::slice::from_ref(input)).await?;
         embeddings
             .into_iter()
             .next()
@@ -163,28 +233,55 @@ impl MultimodalEmbeddingService {
         inputs: &[MultimodalInput],
         progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
     ) -> Result<Vec<Vec<f32>>> {
+        let model_config = self.llm_manager.get_vl_embedding_model_config().await?;
+        self.embed_batch_with_progress_for_config(inputs, &model_config, progress_tx)
+            .await
+    }
+
+    /// Run one logical batch against an immutable model configuration.  Every
+    /// physical sub-batch uses the same endpoint/model even if the UI changes
+    /// assignments while the request is in flight.
+    ///
+    /// ★ 2026-07-19：子批遇到瞬时错误（429/5xx/网络故障）时按指数退避重试，
+    /// 最多 `VL_EMBED_MAX_ATTEMPTS` 次；确定性错误（401/403/配置错误）立即失败。
+    pub async fn embed_batch_with_progress_for_config(
+        &self,
+        inputs: &[MultimodalInput],
+        model_config: &ApiConfig,
+        progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
+    ) -> Result<Vec<Vec<f32>>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
         }
 
-        // 检查是否配置了多模态模型
-        if !self.is_configured().await {
-            return Err(AppError::configuration("未配置多模态嵌入模型"));
+        if !model_config.enabled
+            || !model_config.is_embedding
+            || !model_config.is_multimodal
+            || model_config.is_reranker
+        {
+            return Err(AppError::configuration(
+                "冻结的多模态嵌入配置已禁用或能力协议不匹配",
+            ));
         }
 
         let batch_size = self.config.batch_size;
         let total = inputs.len();
         let mut all_embeddings = Vec::with_capacity(total);
         let mut completed = 0usize;
+        let dropped_progress = AtomicUsize::new(0);
 
         if let Some(ref tx) = progress_tx {
-            let _ = tx.try_send(EmbeddingProgress {
-                phase: "embedding".to_string(),
-                completed,
-                total,
-                current_page: None,
-                message: format!("开始多模态嵌入: 0/{}", total),
-            });
+            send_progress_critical(
+                tx,
+                EmbeddingProgress {
+                    phase: "embedding".to_string(),
+                    completed,
+                    total,
+                    current_page: None,
+                    message: format!("开始多模态嵌入: 0/{}", total),
+                },
+            )
+            .await;
         }
 
         log::info!(
@@ -211,48 +308,52 @@ impl MultimodalEmbeddingService {
                 chunk.to_vec()
             };
 
-            // 调用 API
-            match self
-                .llm_manager
-                .call_multimodal_embedding_api(&processed_inputs)
-                .await
-            {
-                Ok(embeddings) => {
-                    if embeddings.len() != processed_inputs.len() {
-                        return Err(AppError::internal(format!(
-                            "嵌入 API 返回数量不匹配: 期望 {}, 实际 {}",
-                            processed_inputs.len(),
-                            embeddings.len()
-                        )));
-                    }
-                    all_embeddings.extend(embeddings);
-                    completed = all_embeddings.len().min(total);
+            let embeddings = self
+                .call_vl_embedding_with_retry(&processed_inputs, model_config, batch_idx)
+                .await?;
 
-                    if let Some(ref tx) = progress_tx {
-                        let _ = tx.try_send(EmbeddingProgress {
-                            phase: "embedding".to_string(),
-                            completed,
-                            total,
-                            current_page: Some(completed),
-                            message: format!("多模态嵌入进度: {}/{}", completed, total),
-                        });
-                    }
-                }
-                Err(e) => {
-                    log::error!("  批次 {} 嵌入失败: {}", batch_idx + 1, e);
-                    return Err(e);
-                }
+            if embeddings.len() != processed_inputs.len() {
+                return Err(AppError::internal(format!(
+                    "嵌入 API 返回数量不匹配: 期望 {}, 实际 {}",
+                    processed_inputs.len(),
+                    embeddings.len()
+                )));
+            }
+            all_embeddings.extend(embeddings);
+            completed = all_embeddings.len().min(total);
+
+            if let Some(ref tx) = progress_tx {
+                send_progress_lossy(
+                    tx,
+                    EmbeddingProgress {
+                        phase: "embedding".to_string(),
+                        completed,
+                        total,
+                        current_page: Some(completed),
+                        message: format!("多模态嵌入进度: {}/{}", completed, total),
+                    },
+                    &dropped_progress,
+                );
             }
         }
 
         if let Some(ref tx) = progress_tx {
-            let _ = tx.try_send(EmbeddingProgress {
-                phase: "embedding".to_string(),
-                completed: total,
-                total,
-                current_page: Some(total),
-                message: format!("多模态嵌入完成: {}/{}", total, total),
-            });
+            send_progress_critical(
+                tx,
+                EmbeddingProgress {
+                    phase: "embedding".to_string(),
+                    completed: total,
+                    total,
+                    current_page: Some(total),
+                    message: format!("多模态嵌入完成: {}/{}", total, total),
+                },
+            )
+            .await;
+        }
+
+        let dropped = dropped_progress.load(Ordering::Relaxed);
+        if dropped > 0 {
+            log::debug!("多模态嵌入：{} 条中间进度事件因通道占满被丢弃", dropped);
         }
 
         log::info!(
@@ -263,37 +364,50 @@ impl MultimodalEmbeddingService {
         Ok(all_embeddings)
     }
 
-    /// 为页面内容生成嵌入向量
-    ///
-    /// ## 参数
-    /// - `image_base64`: 页面图片的 Base64 编码
-    /// - `media_type`: 图片 MIME 类型（如 "image/png"）
-    /// - `text_summary`: 页面的文本摘要（OCR 文本或 VLM 生成的摘要）
-    /// - `instruction`: 可选的任务指令
-    ///
-    /// ## 返回
-    /// 嵌入向量
-    pub async fn embed_page(
+    /// 调用 VL 嵌入 API，瞬时错误按指数退避自动重试
+    async fn call_vl_embedding_with_retry(
         &self,
-        image_base64: &str,
-        media_type: &str,
-        text_summary: Option<&str>,
-        instruction: Option<&str>,
-    ) -> Result<Vec<f32>> {
-        let mut input = if let Some(text) = text_summary {
-            // 图文混合输入
-            MultimodalInput::text_and_image(text, image_base64, media_type)
-        } else {
-            // 纯图片输入
-            MultimodalInput::image_base64(image_base64, media_type)
-        };
-
-        // 添加任务指令
-        if let Some(instr) = instruction {
-            input = input.with_instruction(instr);
+        inputs: &[MultimodalInput],
+        model_config: &ApiConfig,
+        batch_idx: usize,
+    ) -> Result<Vec<Vec<f32>>> {
+        let mut attempt: u32 = 0;
+        loop {
+            match self
+                .llm_manager
+                .call_multimodal_embedding_api_with_config(inputs, model_config)
+                .await
+            {
+                Ok(embeddings) => {
+                    if attempt > 0 {
+                        log::info!("  批次 {} 嵌入在第 {} 次重试后成功", batch_idx + 1, attempt);
+                    }
+                    return Ok(embeddings);
+                }
+                Err(error) => {
+                    attempt += 1;
+                    if attempt >= VL_EMBED_MAX_ATTEMPTS || !is_transient_embedding_error(&error) {
+                        log::error!(
+                            "  批次 {} 嵌入失败（共尝试 {} 次）: {}",
+                            batch_idx + 1,
+                            attempt,
+                            error
+                        );
+                        return Err(error);
+                    }
+                    let delay = vl_embed_backoff_delay(attempt);
+                    log::warn!(
+                        "  批次 {} 嵌入遇到瞬时错误（第 {}/{} 次尝试），{}ms 后重试: {}",
+                        batch_idx + 1,
+                        attempt,
+                        VL_EMBED_MAX_ATTEMPTS,
+                        delay.as_millis(),
+                        error
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+            }
         }
-
-        self.embed_single(&input).await
     }
 
     /// 为页面内容批量生成嵌入向量
@@ -329,7 +443,7 @@ impl MultimodalEmbeddingService {
 
     /// 准备输入数据，处理可能的图片加载失败
     ///
-    /// 如果输入包含无效的图片数据，降级为纯文本输入（如果有文本的话）
+    /// 如果输入包含无效的图片数据（过短或非 Base64 字符集），降级为纯文本输入（如果有文本的话）
     fn prepare_inputs_with_fallback(&self, inputs: &[MultimodalInput]) -> Vec<MultimodalInput> {
         inputs
             .iter()
@@ -338,9 +452,11 @@ impl MultimodalEmbeddingService {
                 if let Some(ref image) = input.image {
                     match image {
                         MultimodalImage::Base64 { data, .. } => {
-                            // Base64 数据为空或太短可能是无效的
-                            if data.len() < 100 {
-                                log::warn!("图片 Base64 数据过短，可能无效，降级为纯文本");
+                            if !looks_like_valid_base64(data) {
+                                log::warn!(
+                                    "图片 Base64 数据无效（长度 {} 或含非法字符），降级为纯文本",
+                                    data.len()
+                                );
                                 if let Some(ref text) = input.text {
                                     return MultimodalInput::text(text);
                                 }
@@ -364,40 +480,14 @@ impl MultimodalEmbeddingService {
 
     // ============================================================================
     // 方案二：DeepSeek-OCR 摘要 + 文本嵌入
+    //
+    // ⚠️ 已弃用（is_mode_available 恒 false，VFS 编排不再调用）。
+    // 保留 `generate_summaries_batch_with_progress` / `embed_texts*` 供
+    // `embed_pages_with_mode_and_progress` 的兼容分支使用；无调用方的薄 wrapper
+    // （generate_image_summary / generate_summaries_batch / embed_page /
+    //  embed_pages_with_mode / detect_embedding_dimension_for_mode /
+    //  get_model_version_for_mode / is_text_embedding_available）已于 2026-07-19 删除。
     // ============================================================================
-
-    /// 使用 DeepSeek-OCR 模型为图片生成文本摘要
-    ///
-    /// ⚠️ 使用 DeepSeek-OCR 官方 prompt "Free OCR."，速度更快、精度更高
-    ///
-    /// ## 参数
-    /// - `image_base64`: 图片的 Base64 编码
-    /// - `media_type`: 图片 MIME 类型
-    /// - `_existing_text`: 已有的文本内容（保留参数兼容性，DeepSeek-OCR 不使用）
-    ///
-    /// ## 返回
-    /// 生成的文本摘要（Markdown 格式）
-    pub async fn generate_image_summary(
-        &self,
-        image_base64: &str,
-        media_type: &str,
-        _existing_text: Option<&str>,
-    ) -> Result<String> {
-        // ⚠️ DeepSeek-OCR 官方 prompt - 文档转 Markdown 格式（不带 grounding，无坐标标记）
-        let prompt = "Convert the document to markdown.";
-
-        let image_payload = ImagePayload {
-            mime: media_type.to_string(),
-            base64: image_base64.to_string(),
-        };
-
-        let result = self
-            .llm_manager
-            .call_ocr_model_raw_prompt(prompt, Some(vec![image_payload]))
-            .await?;
-
-        Ok(result.assistant_message)
-    }
 
     /// 批量为图片生成文本摘要（并行处理，带进度回调）
     ///
@@ -433,8 +523,9 @@ impl MultimodalEmbeddingService {
             concurrency
         );
 
-        // 使用原子计数器跟踪完成的页面数
+        // 使用原子计数器跟踪完成的页面数与丢弃的进度事件数
         let completed_count = Arc::new(AtomicUsize::new(0));
+        let dropped_progress = Arc::new(AtomicUsize::new(0));
 
         // 创建带索引的任务列表，以保持结果顺序
         let tasks: Vec<(usize, String, String, Option<String>)> = pages
@@ -456,6 +547,7 @@ impl MultimodalEmbeddingService {
                 let llm_manager = self.llm_manager.clone();
                 let progress_tx = progress_tx.clone();
                 let completed_count = completed_count.clone();
+                let dropped_progress = dropped_progress.clone();
                 async move {
                     // ★ 如果已有 OCR 文本，直接复用，跳过 OCR 调用
                     if let Some(ref text) = existing_text {
@@ -465,23 +557,29 @@ impl MultimodalEmbeddingService {
                             // 更新完成计数并发送进度
                             let completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
                             if let Some(ref tx) = progress_tx {
-                                let _ = tx.try_send(EmbeddingProgress {
-                                    phase: "summarizing".to_string(),
-                                    completed,
-                                    total,
-                                    current_page: Some(idx + 1),
-                                    message: format!("复用已有 OCR: {}/{} 页完成", completed, total),
-                                });
+                                send_progress_lossy(
+                                    tx,
+                                    EmbeddingProgress {
+                                        phase: "summarizing".to_string(),
+                                        completed,
+                                        total,
+                                        current_page: Some(idx + 1),
+                                        message: format!("复用已有 OCR: {}/{} 页完成", completed, total),
+                                    },
+                                    &dropped_progress,
+                                );
                             }
 
                             return (idx, text.clone());
                         }
                     }
 
-                    // 调试：输出 base64 数据的前 100 字符，确认图片数据是否正确
-                    let base64_preview: String = base64.chars().take(100).collect();
-                    log::info!("  📄 开始生成页面 {} 摘要 (DeepSeek-OCR)... base64前100字符: {}", idx + 1, base64_preview);
-                    log::info!("  📄 页面 {} media_type: {}, base64长度: {} 字节", idx + 1, media_type, base64.len());
+                    log::info!(
+                        "  📄 开始生成页面 {} 摘要 (DeepSeek-OCR)... media_type: {}, base64长度: {} 字节",
+                        idx + 1,
+                        media_type,
+                        base64.len()
+                    );
 
                     // ⚠️ DeepSeek-OCR 官方 prompt - 文档转 Markdown 格式（不带 grounding，无坐标标记）
                     let prompt = "Convert the document to markdown.";
@@ -517,13 +615,17 @@ impl MultimodalEmbeddingService {
                     // 更新完成计数并发送进度
                     let completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
                     if let Some(ref tx) = progress_tx {
-                        let _ = tx.try_send(EmbeddingProgress {
-                            phase: "summarizing".to_string(),
-                            completed,
-                            total,
-                            current_page: Some(idx + 1),
-                            message: format!("DeepSeek-OCR: {}/{} 页完成", completed, total),
-                        });
+                        send_progress_lossy(
+                            tx,
+                            EmbeddingProgress {
+                                phase: "summarizing".to_string(),
+                                completed,
+                                total,
+                                current_page: Some(idx + 1),
+                                message: format!("DeepSeek-OCR: {}/{} 页完成", completed, total),
+                            },
+                            &dropped_progress,
+                        );
                     }
 
                     result
@@ -541,20 +643,19 @@ impl MultimodalEmbeddingService {
             .map(|(_, summary)| summary)
             .collect();
 
+        let dropped = dropped_progress.load(Ordering::Relaxed);
+        if dropped > 0 {
+            log::debug!(
+                "DeepSeek-OCR 摘要：{} 条中间进度事件因通道占满被丢弃",
+                dropped
+            );
+        }
+
         log::info!(
             "✅ DeepSeek-OCR 摘要服务：完成 {} 个页面的摘要生成",
             summaries.len()
         );
         Ok(summaries)
-    }
-
-    /// 批量为图片生成文本摘要（并行处理，无进度回调）
-    pub async fn generate_summaries_batch(
-        &self,
-        pages: &[(String, String, Option<String>)],
-    ) -> Result<Vec<String>> {
-        self.generate_summaries_batch_with_progress(pages, None)
-            .await
     }
 
     /// 使用文本嵌入模型为文本生成向量（带进度回调）
@@ -572,15 +673,19 @@ impl MultimodalEmbeddingService {
         let total = texts.len();
         log::info!("📊 文本嵌入服务：开始为 {} 个文本生成向量", total);
 
-        // 发送开始进度
+        // 发送开始进度（关键事件，不丢弃）
         if let Some(ref tx) = progress_tx {
-            let _ = tx.try_send(EmbeddingProgress {
-                phase: "embedding".to_string(),
-                completed: 0,
-                total,
-                current_page: None,
-                message: format!("开始文本嵌入: 0/{} 个", total),
-            });
+            send_progress_critical(
+                tx,
+                EmbeddingProgress {
+                    phase: "embedding".to_string(),
+                    completed: 0,
+                    total,
+                    current_page: None,
+                    message: format!("开始文本嵌入: 0/{} 个", total),
+                },
+            )
+            .await;
         }
 
         let config = self.llm_manager.get_embedding_model_config().await?;
@@ -661,15 +766,19 @@ impl MultimodalEmbeddingService {
             result
         };
 
-        // 发送完成进度
+        // 发送完成进度（关键事件，不丢弃）
         if let Some(ref tx) = progress_tx {
-            let _ = tx.try_send(EmbeddingProgress {
-                phase: "embedding".to_string(),
-                completed: total,
-                total,
-                current_page: None,
-                message: format!("文本嵌入完成: {}/{} 个", total, total),
-            });
+            send_progress_critical(
+                tx,
+                EmbeddingProgress {
+                    phase: "embedding".to_string(),
+                    completed: total,
+                    total,
+                    current_page: None,
+                    message: format!("文本嵌入完成: {}/{} 个", total, total),
+                },
+            )
+            .await;
         }
 
         log::info!(
@@ -834,7 +943,7 @@ impl MultimodalEmbeddingService {
                             round + 2, current_max_tokens, error_str
                         );
                         // 减半 token 限制，进行更激进的分块
-                        current_max_tokens = current_max_tokens / 2;
+                        current_max_tokens /= 2;
                         // 确保不会太小
                         if current_max_tokens < 256 {
                             current_max_tokens = 256;
@@ -902,7 +1011,10 @@ impl MultimodalEmbeddingService {
                 .await
             {
                 if mode != MultimodalIndexingMode::VLEmbedding {
-                    log::warn!("⚠️ 请求的模式 {:?} 不可用（或已弃用），回退到 VLEmbedding", mode);
+                    log::warn!(
+                        "⚠️ 请求的模式 {:?} 不可用（或已弃用），回退到 VLEmbedding",
+                        mode
+                    );
                 }
                 MultimodalIndexingMode::VLEmbedding
             } else {
@@ -949,17 +1061,6 @@ impl MultimodalEmbeddingService {
         }
     }
 
-    /// 根据索引模式为页面生成嵌入向量（无进度回调）
-    pub async fn embed_pages_with_mode(
-        &self,
-        pages: &[(String, String, Option<String>)],
-        mode: MultimodalIndexingMode,
-        instruction: Option<&str>,
-    ) -> Result<(Vec<Vec<f32>>, Vec<Option<String>>)> {
-        self.embed_pages_with_mode_and_progress(pages, mode, instruction, None)
-            .await
-    }
-
     /// 检查指定模式是否可用
     pub async fn is_mode_available(&self, mode: MultimodalIndexingMode) -> bool {
         match mode {
@@ -970,41 +1071,6 @@ impl MultimodalEmbeddingService {
             MultimodalIndexingMode::VLSummaryThenTextEmbed => {
                 // 已废弃：第一模型移除，VL 摘要方案不可用
                 false
-            }
-        }
-    }
-
-    /// 获取指定模式的嵌入维度
-    ///
-    /// 通过实际调用 API 检测维度
-    pub async fn detect_embedding_dimension_for_mode(
-        &self,
-        mode: MultimodalIndexingMode,
-    ) -> Result<usize> {
-        match mode {
-            MultimodalIndexingMode::VLEmbedding => self.detect_embedding_dimension().await,
-            MultimodalIndexingMode::VLSummaryThenTextEmbed => {
-                // 使用文本嵌入模型检测维度
-                let config = self.llm_manager.get_embedding_model_config().await?;
-                let embeddings = self
-                    .llm_manager
-                    .call_embedding_api(vec!["test".to_string()], &config.id)
-                    .await?;
-                embeddings
-                    .first()
-                    .map(|v| v.len())
-                    .ok_or_else(|| AppError::configuration("无法检测文本嵌入模型输出维度"))
-            }
-        }
-    }
-
-    /// 获取指定模式的模型版本标识
-    pub async fn get_model_version_for_mode(&self, mode: MultimodalIndexingMode) -> Result<String> {
-        match mode {
-            MultimodalIndexingMode::VLEmbedding => self.get_model_version().await,
-            MultimodalIndexingMode::VLSummaryThenTextEmbed => {
-                let config = self.llm_manager.get_embedding_model_config().await?;
-                Ok(format!("text_embed:{}@{}", config.model, config.id))
             }
         }
     }
@@ -1029,5 +1095,49 @@ mod tests {
 
         assert_eq!(input.text.as_deref(), Some("test text"));
         assert!(input.image.is_some());
+    }
+
+    #[test]
+    fn test_looks_like_valid_base64() {
+        assert!(looks_like_valid_base64(&"aGVsbG8=".repeat(20)));
+        // 过短
+        assert!(!looks_like_valid_base64("aGVsbG8="));
+        // 误带 data: 前缀（冒号/分号不在 Base64 字符集内）
+        let with_prefix = format!("data:image/png;base64,{}", "a".repeat(200));
+        assert!(!looks_like_valid_base64(&with_prefix));
+        // 含非法字符
+        let with_invalid = format!("{}#{}", "a".repeat(100), "b".repeat(100));
+        assert!(!looks_like_valid_base64(&with_invalid));
+    }
+
+    #[test]
+    fn test_is_transient_embedding_error() {
+        assert!(is_transient_embedding_error(&AppError::network(
+            "多模态嵌入API请求失败: connection reset"
+        )));
+        assert!(is_transient_embedding_error(&AppError::llm(
+            "请求过于频繁，请稍后重试"
+        )));
+        assert!(is_transient_embedding_error(&AppError::llm(
+            "嵌入服务暂时不可用，请稍后重试"
+        )));
+        assert!(!is_transient_embedding_error(&AppError::llm(
+            "API 密钥无效或已过期，请检查设置"
+        )));
+        assert!(!is_transient_embedding_error(&AppError::configuration(
+            "冻结的多模态嵌入配置已禁用或能力协议不匹配"
+        )));
+    }
+
+    #[test]
+    fn test_vl_embed_backoff_delay_capped() {
+        for attempt in 1..=10u32 {
+            let delay = vl_embed_backoff_delay(attempt);
+            assert!(delay.as_millis() as u64 >= VL_EMBED_BACKOFF_BASE_MS);
+            // 上限 + 25% 抖动
+            assert!(
+                delay.as_millis() as u64 <= VL_EMBED_BACKOFF_MAX_MS + VL_EMBED_BACKOFF_MAX_MS / 4
+            );
+        }
     }
 }

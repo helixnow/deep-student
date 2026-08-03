@@ -38,6 +38,10 @@
     "search": "搜索",
     "filter": "筛选",
     "sort": "排序"
+  ,
+    "creatingResource": "正在创建资源..."
+  ,
+    "creatingResource": "正在创建资源..."
   },
   "sort": {
     "name": "名称",

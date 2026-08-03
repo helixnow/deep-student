@@ -9,6 +9,7 @@
  */
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { TauriAPI } from '@/utils/tauriApi';
 import type { VendorConfig } from '@/types';
 
@@ -37,6 +38,13 @@ interface GeminiModelItem {
   supportedGenerationMethods?: string[];
 }
 
+/** Anthropic API 返回的模型对象 */
+interface AnthropicModelItem {
+  id: string;
+  display_name?: string;
+  type?: string;
+}
+
 export interface AutoPostSaveOptions {
   /** 该供应商已有的模型 ID 列表，用于去重 */
   existingModelIds: string[];
@@ -56,6 +64,42 @@ const isStreamChannelError = (error: unknown): boolean => {
   return message.includes('fetch_read_body') && message.includes('streamChannel');
 };
 
+/**
+ * Merge user-configured vendor headers with headers required by the selected
+ * transport. Transport headers win case-insensitively so a stale custom
+ * `authorization` value cannot replace the active API key.
+ */
+export function mergeVendorModelRequestHeaders(
+  vendorHeaders: Record<string, string> | undefined,
+  transportHeaders: Record<string, string>
+): Record<string, string> {
+  const merged: Record<string, string> = { ...(vendorHeaders ?? {}) };
+
+  for (const [transportName, transportValue] of Object.entries(transportHeaders)) {
+    for (const existingName of Object.keys(merged)) {
+      if (existingName.toLowerCase() === transportName.toLowerCase()) {
+        delete merged[existingName];
+      }
+    }
+    merged[transportName] = transportValue;
+  }
+
+  return merged;
+}
+
+/** Build an OpenAI-compatible model-list URL from either a root/base URL or a request endpoint. */
+export function buildVendorModelsUrl(baseUrl: string): string {
+  const url = new URL(baseUrl.trim());
+  const pathWithoutTrailingSlash = url.pathname.replace(/\/+$/u, '');
+  const endpointRoot = pathWithoutTrailingSlash.replace(
+    /\/(?:chat\/completions|responses|models)$/iu,
+    ''
+  );
+  url.pathname = `${endpointRoot.replace(/\/+$/u, '')}/models`;
+  url.hash = '';
+  return url.toString();
+}
+
 // ============================================================================
 // 1. resolveApiKey - 解析供应商的真实 API Key
 // ============================================================================
@@ -64,13 +108,16 @@ const isStreamChannelError = (error: unknown): boolean => {
  * 解析供应商的明文 API Key。
  * 内置供应商 → 优先从 Tauri 安全存储读取，回退到 vendor.apiKey
  * 普通供应商 → 直接返回（排除掩码 ***）
- * noApiKey 供应商 → 返回空字符串（允许无 Key 获取模型）
+ * authMode=none（兼容 noApiKey）供应商 → 返回空字符串（允许无 Key 获取模型）
  */
 export async function resolveApiKey(vendor: VendorConfig): Promise<string | null> {
-  // noApiKey 供应商：无需 Key，返回空字符串表示"可跳过认证"
-  if (vendor.noApiKey) {
+  // 免密供应商：authMode 是持久化契约，noApiKey 仅用于兼容旧前端状态。
+  if (vendor.authMode === 'none' || vendor.noApiKey) {
     return '';
   }
+  const submittedKey = [vendor.apiKey, ...(vendor.apiKeys ?? [])]
+    .map(key => key?.trim() ?? '')
+    .find(key => key && key !== '***' && !key.split('').every(character => character === '*'));
 
   const isBuiltin = vendor.isBuiltin || vendor.id.startsWith('builtin-');
 
@@ -82,29 +129,15 @@ export async function resolveApiKey(vendor: VendorConfig): Promise<string | null
         key = await TauriAPI.getSetting('siliconflow.api_key');
       }
       // 回退：Tauri 存储为空时，检查 vendor.apiKey（handleSaveVendorApiKey 临时存入）
-      if (!key) {
-        const raw = vendor.apiKey?.trim();
-        if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-          return raw;
-        }
-      }
+      if (!key && submittedKey) return submittedKey;
       return key && key.trim() ? key.trim() : null;
     } catch {
       console.warn(`[vendorModelService] Failed to resolve builtin API key for ${vendor.id}`);
-      // 异常时回退到 vendor.apiKey
-      const raw = vendor.apiKey?.trim();
-      if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-        return raw;
-      }
-      return null;
+      return submittedKey ?? null;
     }
   }
 
-  const raw = vendor.apiKey?.trim();
-  if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-    return raw;
-  }
-  return null;
+  return submittedKey ?? null;
 }
 
 // ============================================================================
@@ -113,25 +146,42 @@ export async function resolveApiKey(vendor: VendorConfig): Promise<string | null
 
 /**
  * 从供应商 API 获取模型列表
- * Gemini → 使用 {baseUrl}/v1beta/models?key=...，过滤 generateContent
+ * Gemini/Google → 使用 {baseUrl}/v1beta/models，过滤 generateContent
+ * Anthropic → 使用 {baseUrl}/v1/models + x-api-key/anthropic-version 头
  * 其他 → 使用 {baseUrl}/models Bearer auth，过滤非文本模型
  */
 export async function fetchModelsFromVendor(
   vendor: VendorConfig,
   resolvedApiKey: string
 ): Promise<FetchedModel[]> {
-  const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
+  if (
+    typeof window !== 'undefined'
+    && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+    && vendor.id.trim()
+  ) {
+    return tauriInvoke<FetchedModel[]>('fetch_vendor_models', {
+      vendorId: vendor.id,
+    });
+  }
+
+  const baseUrl = vendor.baseUrl.trim().replace(/\/+$/u, '');
   if (!baseUrl) {
     throw new Error('Vendor base URL is empty');
   }
 
-  const isGemini = (vendor.providerType ?? '').toLowerCase() === 'gemini';
+  const providerTypeLower = (vendor.providerType ?? '').toLowerCase();
+  // 「选 Google 类型获取模型 404」修复：google 与 gemini 均走 Gemini 原生列表接口
+  const isGemini = providerTypeLower === 'gemini' || providerTypeLower === 'google';
+  const isAnthropic = providerTypeLower === 'anthropic';
 
   const doFetch = async (fetcher: typeof fetch): Promise<FetchedModel[]> => {
     if (isGemini) {
-      return fetchGemini(fetcher, baseUrl, resolvedApiKey);
+      return fetchGemini(fetcher, baseUrl, resolvedApiKey, vendor.headers);
     }
-    return fetchOpenAICompatible(fetcher, baseUrl, resolvedApiKey);
+    if (isAnthropic) {
+      return fetchAnthropic(fetcher, baseUrl, resolvedApiKey, vendor.headers);
+    }
+    return fetchOpenAICompatible(fetcher, baseUrl, resolvedApiKey, vendor.headers);
   };
 
   try {
@@ -148,13 +198,14 @@ export async function fetchModelsFromVendor(
 async function fetchOpenAICompatible(
   doFetch: typeof fetch,
   baseUrl: string,
-  apiKey: string
+  apiKey: string,
+  vendorHeaders?: Record<string, string>
 ): Promise<FetchedModel[]> {
-  const headers: Record<string, string> = {};
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-  const response = await doFetch(`${baseUrl}/models`, {
+  const headers = mergeVendorModelRequestHeaders(
+    vendorHeaders,
+    apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+  );
+  const response = await doFetch(buildVendorModelsUrl(baseUrl), {
     method: 'GET',
     headers,
   });
@@ -202,10 +253,18 @@ async function fetchOpenAICompatible(
 async function fetchGemini(
   doFetch: typeof fetch,
   baseUrl: string,
-  apiKey: string
+  apiKey: string,
+  vendorHeaders?: Record<string, string>
 ): Promise<FetchedModel[]> {
-  const response = await doFetch(`${baseUrl}/v1beta/models?key=${apiKey}&pageSize=100`, {
+  // 安全修复（审阅 26 P1-3）：Key 改用 x-goog-api-key 请求头传递，
+  // 避免进入代理/网关/供应商访问日志，且规避 URL 特殊字符导致的畸形请求。
+  const headers = mergeVendorModelRequestHeaders(
+    vendorHeaders,
+    apiKey ? { 'x-goog-api-key': apiKey } : {}
+  );
+  const response = await doFetch(`${baseUrl}/v1beta/models?pageSize=100`, {
     method: 'GET',
+    headers,
   });
 
   if (!response.ok) {
@@ -241,6 +300,58 @@ async function fetchGemini(
     .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
 }
 
+/**
+ * 获取 Anthropic API 的模型列表。
+ * Anthropic 使用 GET {base}/v1/models + `x-api-key` + `anthropic-version` 头
+ * （Bearer 鉴权与不带 /v1 的路径都会失败，见 2026-07 审阅 r4 #10）。
+ */
+async function fetchAnthropic(
+  doFetch: typeof fetch,
+  baseUrl: string,
+  apiKey: string,
+  vendorHeaders?: Record<string, string>
+): Promise<FetchedModel[]> {
+  // 默认 base URL 为 https://api.anthropic.com（不带版本段）；若用户已带 /v1 则不重复追加
+  const versionedBase = /\/v\d+$/.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
+  const headers = mergeVendorModelRequestHeaders(vendorHeaders, {
+    'anthropic-version': '2023-06-01',
+    ...(apiKey ? { 'x-api-key': apiKey } : {}),
+  });
+  const response = await doFetch(`${versionedBase}/models?limit=1000`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    let detail: string;
+    try {
+      detail = JSON.stringify(await response.json());
+    } catch {
+      detail = response.statusText || `HTTP ${response.status}`;
+    }
+    throw new Error(`${response.status}: ${detail}`);
+  }
+
+  let body: { data?: AnthropicModelItem[] };
+  try {
+    body = await response.json();
+  } catch (err: unknown) {
+    if (isStreamChannelError(err)) {
+      throw new Error('TAURI_HTTP_READ_BODY_FAILED');
+    }
+    throw err;
+  }
+
+  if (!body?.data || !Array.isArray(body.data)) {
+    throw new Error('Invalid Anthropic API response: missing data array');
+  }
+
+  return body.data
+    .filter((m: AnthropicModelItem) => !!m.id && (m.type === undefined || m.type === 'model'))
+    .map((m: AnthropicModelItem) => ({ id: m.id, label: m.display_name || m.id }))
+    .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
+}
+
 // ============================================================================
 // 3. autoPostSaveFlow - 自动编排：获取模型 → 添加模型 → 自动分配
 // ============================================================================
@@ -261,9 +372,10 @@ export async function autoPostSaveFlow(
 ): Promise<void> {
   const { existingModelIds, onAddModels } = options;
 
-  // 1. 解析 API Key
-  const resolvedKey = await resolveApiKey(vendor);
-  // noApiKey 供应商返回空字符串（而非 null），允许无 Key 获取模型
+  // 1. Tauri 运行时由 Rust 解析凭据；浏览器回退路径才读取当前表单中的明文 key。
+  const isTauri = typeof window !== 'undefined'
+    && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+  const resolvedKey = isTauri ? '' : await resolveApiKey(vendor);
   if (resolvedKey === null) {
     console.warn(
       `[autoPostSaveFlow] Cannot resolve API key for vendor ${vendor.id} (${vendor.name}), skipping auto-fetch.`

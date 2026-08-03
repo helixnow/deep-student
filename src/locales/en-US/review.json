@@ -33,7 +33,9 @@
   "todayReview": {
     "title": "Today's Review",
     "hasDue": "You have {{count}} items to review",
-    "noDue": "Great job! No items to review today"
+    "noDue": "Great job! No items to review today",
+    "itemsUnit": "items to review",
+    "estimatedTime": "about {{count}} min"
   },
 
   "progress": {
@@ -43,16 +45,43 @@
   "queue": {
     "title": "Review Queue",
     "sortedByDue": "Sorted by due date",
-    "andMore": "{{count}} more..."
+    "andMore": "{{count}} more...",
+    "questionUnavailable": "Question content is unavailable. Refresh and try again.",
+    "otherSessionNotice": "A review session for another question bank is in progress. Starting a review here will end it (submitted ratings are kept).",
+    "overdueDays": "{{count}}d overdue",
+    "overdueGroup": "Overdue ({{count}})",
+    "todayGroup": "Due today"
+  },
+
+  "setup": {
+    "title": "No review plans yet",
+    "description": "Create review plans for this question bank and the spaced repetition system will schedule your daily reviews automatically.",
+    "createAll": "Create plans for all questions"
   },
 
   "empty": {
     "title": "All Done!",
-    "description": "You've completed all your review tasks. Keep it up, more content awaits tomorrow!"
+    "description": "You've completed all your review tasks. Keep it up, more content awaits tomorrow!",
+    "masteredChip": "{{count}} mastered",
+    "viewCalendar": "View review history"
+  },
+
+  "estimate": {
+    "days": "{{count}}d",
+    "weeks": "{{count}}w",
+    "months": "{{count}}mo",
+    "years": "{{count}}y"
   },
 
   "session": {
-    "noItems": "No items to review"
+    "noItems": "No items to review",
+    "submitFailed": "Could not save the review. Please try again.",
+    "submitFailedTitle": "Could not save review",
+    "exitTitle": "End this review session?",
+    "exitDescription": "Submitted ratings will be kept. You can start the remaining items again later.",
+    "exitConfirm": "End review",
+    "otherExamTitle": "This review session belongs to another question bank",
+    "otherExamDescription": "Switch to that question bank's window to continue, or end the session there."
   },
 
   "card": {
@@ -68,7 +97,29 @@
 
   "keyboard": {
     "space": "Space",
-    "ratingHint": "Press 1-4 to rate"
+    "ratingHint": "Press 1-4 to rate",
+    "spaceGood": "Space = Good"
+  },
+
+  "questionType": {
+    "single_choice": "Single Choice",
+    "multiple_choice": "Multiple Choice",
+    "indefinite_choice": "Indefinite Choice",
+    "fill_blank": "Fill in the Blank",
+    "short_answer": "Short Answer",
+    "essay": "Essay",
+    "calculation": "Calculation",
+    "proof": "Proof",
+    "true_false": "True / False",
+    "matching": "Matching",
+    "ordering": "Ordering",
+    "numeric": "Numeric",
+    "other": "Other"
+  },
+
+  "structured": {
+    "trueLabel": "True",
+    "falseLabel": "False"
   },
 
   "rating": {
@@ -108,6 +159,7 @@
     "accuracy": "Accuracy",
     "history": "History",
     "noData": "No reviews on this day",
+    "emptyHint": "Complete some reviews and your study footprint will light up here",
     "less": "Less",
     "more": "More",
     "currentStreak": "Current Streak",
@@ -115,7 +167,14 @@
     "totalDays": "Days Studied",
     "weekdaysShort": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     "monthsFull": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-    "monthYearFormat": "{{monthName}} {{year}}"
+    "monthYearFormat": "{{monthName}} {{year}}",
+    "failed": "Failed",
+    "closeDetail": "Collapse day detail",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "dueQueue": "Due that day ({{count}})",
+    "dueMore": "{{count}} more...",
+    "dueLegend": "Reviews due"
   },
 
   "questions": {
@@ -132,10 +191,13 @@
     "weeksAgo": "{{count}}w ago",
     "monthsAgo": "{{count}}mo ago",
     "noContent": "No content",
+    "selectQuestion": "Select {{label}}",
     "selectAll": "Select All",
     "cancel": "Cancel",
     "reset": "Reset",
     "delete": "Delete",
+    "confirmReset": "Reset {{count}}?",
+    "confirmDelete": "Delete {{count}}?",
     "toReview": "To Review",
     "mastered": "Mastered",
     "avgAttempts": "Avg <bold>{{count}}</bold> attempts",
@@ -144,7 +206,22 @@
     "attemptCount": "{{count}}x",
     "emptyTitle": "Great! No Wrong Answers",
     "emptyDesc": "You've mastered all questions, keep it up!<br/>Try challenging harder questions.",
-    "masteryTip": "Auto-marked as mastered after <highlight>2 correct</highlight> answers in a row"
+    "masteryTip": "Auto-marked as mastered after <highlight>2 correct</highlight> answers in a row",
+    "myAnswer": "My Answer",
+    "correctAnswer": "Correct Answer",
+    "noAnswerRecorded": "No answer recorded",
+    "redo": "Redo",
+    "explanation": "Explanation",
+    "sortLabel": "Sort",
+    "sortDefault": "Default",
+    "sortByErrors": "Most errors",
+    "sortByRecent": "Recent errors",
+    "errorCause": {
+      "neverCorrect": "Never correct",
+      "repeatedErrors": "Repeated errors",
+      "highErrorRate": "High error rate",
+      "stale": "Not reviewed lately"
+    }
   },
 
   "actions": {

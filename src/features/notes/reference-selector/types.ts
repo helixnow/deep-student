@@ -4,6 +4,7 @@
  * 用于选择教材/题目集识别资源进行引用
  */
 
+import type * as React from 'react';
 import type { SourceDatabase, PreviewType } from '../types/reference';
 
 /**
@@ -49,6 +50,13 @@ export interface ReferenceSelectorProps {
   onSelect: (item: ReferenceSelectResult) => void;
   /** 已存在的引用列表（用于禁用已引用的资源） */
   existingRefs?: Array<{ sourceDb: string; sourceId: string }>;
+  /**
+   * 锚点元素：面板从该元素下方锚定展开（Popover 式内联浮层）。
+   * 缺省时回退为顶部居中的非模态浮层。
+   */
+  anchorRef?: React.RefObject<HTMLElement | null>;
+  /** 底部信息栏附加提示文案（如"将添加到当前文件夹"） */
+  hint?: string;
 }
 
 /**

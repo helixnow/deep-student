@@ -1,4 +1,5 @@
 use super::*;
+use crate::llm_manager::ApiConfig;
 
 fn session_skill_state_from_snapshot(
     snapshot: &crate::chat_v2::types::SkillStateSnapshot,
@@ -8,8 +9,6 @@ fn session_skill_state_from_snapshot(
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
         branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
-        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
-        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version,
         legacy_migrated: Some(false),
@@ -21,6 +20,7 @@ fn build_replay_skill_payload_snapshot(
 ) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
+        execution_allowed_tools: options.execution_allowed_tools.clone(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
         skill_dependencies: options.skill_dependencies.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
@@ -30,6 +30,21 @@ fn build_replay_skill_payload_snapshot(
     .without_skill_contents();
 
     snapshot.has_replay_metadata().then_some(snapshot)
+}
+
+fn source_user_canonical_before_assistant(
+    messages: &[ChatMessage],
+    assistant_message_id: &str,
+) -> Option<Vec<crate::chat_v2::types::CanonicalContentPart>> {
+    let assistant_index = messages
+        .iter()
+        .position(|message| message.id == assistant_message_id)?;
+    messages[..assistant_index]
+        .iter()
+        .rev()
+        .find(|message| message.role == MessageRole::User)
+        .and_then(|message| message.meta.as_ref())
+        .and_then(|meta| meta.canonical_content.clone())
 }
 
 impl ChatV2Pipeline {
@@ -164,31 +179,34 @@ impl ChatV2Pipeline {
         // 构建 config_id -> (model, config_id) 的映射
         // model: 用于前端显示（如 "Qwen/Qwen3-8B"）
         // config_id: 用于 LLM 调用
-        let config_map: std::collections::HashMap<String, (String, String)> = api_configs
+        let config_map: std::collections::HashMap<String, ApiConfig> = api_configs
             .into_iter()
-            .map(|c| (c.id.clone(), (c.model.clone(), c.id)))
+            .map(|config| (config.id.clone(), config))
             .collect();
 
         // 解析 model_ids，提取真正的模型名称和配置 ID
         let resolved_models: Vec<(String, String)> = model_ids
             .iter()
             .filter_map(|config_id| {
-                config_map.get(config_id).cloned().or_else(|| {
-                    // 🔧 三轮修复：如果 config_id 是配置 UUID，不应作为模型显示名称
-                    if is_config_id_format(config_id) {
-                        log::warn!(
-                            "[ChatV2::pipeline] Config not found for id and id is a config format, using empty display name: {}",
-                            config_id
-                        );
-                        Some((String::new(), config_id.clone()))
-                    } else {
-                        log::warn!(
-                            "[ChatV2::pipeline] Config not found for id: {}, using as model name",
-                            config_id
-                        );
-                        Some((config_id.clone(), config_id.clone()))
-                    }
-                })
+                config_map
+                    .get(config_id)
+                    .map(|config| (config.model.clone(), config.id.clone()))
+                    .or_else(|| {
+                        // 🔧 三轮修复：如果 config_id 是配置 UUID，不应作为模型显示名称
+                        if is_config_id_format(config_id) {
+                            log::warn!(
+                                "[ChatV2::pipeline] Config not found for id and id is a config format, using empty display name: {}",
+                                config_id
+                            );
+                            Some((String::new(), config_id.clone()))
+                        } else {
+                            log::warn!(
+                                "[ChatV2::pipeline] Config not found for id: {}, using as model name",
+                                config_id
+                            );
+                            Some((config_id.clone(), config_id.clone()))
+                        }
+                    })
             })
             .collect();
 
@@ -211,7 +229,10 @@ impl ChatV2Pipeline {
             .unwrap_or_else(ChatMessage::generate_id);
 
         // === 3. 创建事件发射器 ===
-        let emitter = Arc::new(ChatV2EventEmitter::new(window.clone(), session_id.clone()));
+        let emitter = Arc::new(
+            ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(options.stream_generation),
+        );
 
         // === 4. 执行共享检索（只执行一次）===
         let shared_context = self
@@ -233,33 +254,64 @@ impl ChatV2Pipeline {
             .unwrap_or(&[])
             .is_empty()
         {
-            let model_for_budget = options.model_id.as_deref();
-            let api_cfg = self.resolve_api_config_by_id(model_for_budget).await;
+            let strictest_cfg = resolved_models
+                .iter()
+                .filter_map(|(_, config_id)| config_map.get(config_id))
+                .min_by_key(|config| {
+                    super::compaction::effective_usable_tokens(Some(*config), options.context_limit)
+                });
+            let model_for_budget = strictest_cfg
+                .map(|config| config.id.as_str())
+                .or_else(|| resolved_models.first().map(|(_, id)| id.as_str()))
+                .or(options.model_id.as_deref());
             if self
-                .should_compact_before_multi_variant_fanout(&session_id, api_cfg.as_ref())
+                .should_compact_before_multi_variant_fanout(
+                    &session_id,
+                    strictest_cfg,
+                    options.context_limit,
+                )
                 .await
             {
                 let exclude = vec![user_message_id.clone(), assistant_message_id.clone()];
                 match self
-                    .run_compaction_for_session(&session_id, model_for_budget, &exclude)
+                    .run_compaction_for_session(
+                        &session_id,
+                        model_for_budget,
+                        "auto",
+                        &exclude,
+                        options.context_limit,
+                        options.memory_enabled,
+                        Some(&cancel_token),
+                    )
                     .await
                 {
-                    Ok(true) => {
+                    Ok(outcome) if outcome.did_compact() => {
                         log::info!(
                             "[ChatV2::pipeline] multi-variant: compaction ran successfully for session={}",
                             session_id
                         );
                     }
-                    Ok(false) => {
+                    Ok(outcome) => {
                         log::debug!(
-                            "[ChatV2::pipeline] multi-variant: compaction skipped for session={}",
-                            session_id
+                            "[ChatV2::pipeline] multi-variant: compaction skipped for session={}: status={} reason={:?}",
+                            session_id,
+                            outcome.status_code(),
+                            outcome.reason_code()
                         );
+                        // 🆕 自动压缩失败可见化（与单变体路径同一事件契约）
+                        if outcome.is_failed() {
+                            if let Some(reason) = outcome.reason_code() {
+                                emitter.emit_compaction_failed(reason);
+                            }
+                        }
                     }
                     Err(e) => {
                         log::warn!(
                             "[ChatV2::pipeline] multi-variant: compaction failed (non-fatal): {}",
                             e
+                        );
+                        emitter.emit_compaction_failed(
+                            super::compaction::CompactionSkipReason::InternalError.as_code(),
                         );
                     }
                 }
@@ -270,21 +322,35 @@ impl ChatV2Pipeline {
         // 多变体模式不在 stream_start 中传递模型名称，每个变体通过 variant_start 事件传递
         emitter.emit_stream_start(&assistant_message_id, None);
 
+        // Build stable canonical refs once for the shared user message. Execution snapshots remain
+        // variant-local below; this first snapshot is only the crash-safe user-message audit.
+        let mut base_options = options.clone();
+        if let Some((_, first_config_id)) = resolved_models.first() {
+            base_options.model_id = Some(first_config_id.clone());
+            base_options.model2_override_id = Some(first_config_id.clone());
+        }
+        let temp_request = SendMessageRequest {
+            session_id: session_id.clone(),
+            content: user_content.clone(),
+            user_message_id: Some(user_message_id.clone()),
+            assistant_message_id: Some(assistant_message_id.clone()),
+            options: Some(base_options),
+            user_context_refs: request.user_context_refs.clone(),
+            path_map: request.path_map.clone(),
+            workspace_id: request.workspace_id.clone(),
+        };
+        let mut temp_ctx = PipelineContext::new(temp_request);
+        temp_ctx.init_context_snapshot();
+        self.freeze_execution_context(&mut temp_ctx).await?;
+        let canonical_content = temp_ctx.canonical_content.clone();
+        // The shared user message has no single active model. Per-variant snapshots are persisted
+        // on VariantMeta; attaching the first variant here would misrepresent the other variants.
+        temp_ctx.execution_snapshot = None;
+        let user_execution_snapshot = None;
+
         // 🆕 P0防闪退：用户消息即时保存（多变体模式）
         // 在变体执行前立即保存用户消息，确保用户输入不会因闪退丢失
         if !options.skip_user_message_save.unwrap_or(false) {
-            // 构建临时 PipelineContext 用于保存用户消息
-            let temp_request = SendMessageRequest {
-                session_id: session_id.clone(),
-                content: user_content.clone(),
-                user_message_id: Some(user_message_id.clone()),
-                assistant_message_id: Some(assistant_message_id.clone()),
-                options: Some(options.clone()),
-                user_context_refs: request.user_context_refs.clone(),
-                path_map: request.path_map.clone(),
-                workspace_id: request.workspace_id.clone(),
-            };
-            let temp_ctx = PipelineContext::new(temp_request);
             if let Err(e) = self.save_user_message_immediately(&temp_ctx).await {
                 log::warn!(
                     "[ChatV2::pipeline] Multi-variant: Failed to save user message immediately: {}",
@@ -320,6 +386,28 @@ impl ChatV2Pipeline {
             // 🔧 P2修复：设置 config_id，用于重试时正确选择模型
             ctx.set_config_id(config_id.clone());
 
+            // Freeze and persist a per-variant plan before the crash-safe assistant skeleton is
+            // written. The execution task recompiles independently and later fills actual route.
+            let mut variant_options = options.clone();
+            variant_options.model_id = Some(config_id.clone());
+            variant_options.model2_override_id = Some(config_id.clone());
+            let mut freeze_ctx = PipelineContext::new(SendMessageRequest {
+                session_id: session_id.clone(),
+                content: user_content.clone(),
+                options: Some(variant_options),
+                user_message_id: Some(user_message_id.clone()),
+                assistant_message_id: Some(assistant_message_id.clone()),
+                user_context_refs: request.user_context_refs.clone(),
+                path_map: request.path_map.clone(),
+                workspace_id: request.workspace_id.clone(),
+            });
+            freeze_ctx.init_context_snapshot();
+            self.freeze_execution_context(&mut freeze_ctx).await?;
+            ctx.set_meta(crate::chat_v2::types::VariantMeta {
+                execution_snapshot: freeze_ctx.execution_snapshot,
+                ..Default::default()
+            });
+
             // 🔧 P1修复：为每个变体注册独立的 cancel token
             // 使用 session_id:variant_id 作为 key，这样可以精确取消单个变体
             if let Some(ref state) = chat_v2_state {
@@ -341,11 +429,13 @@ impl ChatV2Pipeline {
             let skeleton_variants: Vec<Variant> = variant_contexts
                 .iter()
                 .map(|(ctx, _)| {
-                    Variant::new_with_id_and_config(
+                    let mut variant = Variant::new_with_id_and_config(
                         ctx.variant_id().to_string(),
                         ctx.model_id().to_string(),
                         ctx.get_config_id().unwrap_or_default(),
-                    )
+                    );
+                    variant.meta = ctx.get_meta();
+                    variant
                 })
                 .collect();
 
@@ -362,6 +452,8 @@ impl ChatV2Pipeline {
                 supersedes: None,
                 meta: Some(MessageMeta {
                     model_id: None,
+                    execution_snapshot: None,
+                    canonical_content: None,
                     chat_params: Some(serde_json::json!({
                         "reasoningEffort": options.reasoning_effort,
                         "thinkingBudget": options.thinking_budget,
@@ -420,12 +512,13 @@ impl ChatV2Pipeline {
             let shared_ctx = Arc::clone(&shared_context);
             let context_refs_clone = Arc::clone(&context_refs_arc);
             let state_clone = chat_v2_state.clone();
+            let variant_meta_clone = ctx.get_meta();
 
             let future = async move {
                 self_ref.execute_single_variant_with_config(
                     ctx_clone,
                     config_id_clone,  // 传递 API 配置 ID
-                    None,
+                    variant_meta_clone,
                     (*options_clone).clone(),
                     (*user_content_clone).clone(),
                     (*session_id_clone).clone(),
@@ -535,6 +628,8 @@ impl ChatV2Pipeline {
                 &contexts_only,
                 active_variant_id.as_deref(),
                 context_snapshot,
+                canonical_content,
+                user_execution_snapshot,
             )
             .await;
 
@@ -551,17 +646,32 @@ impl ChatV2Pipeline {
         }
 
         if let Err(e) = save_result {
+            // 🔧 P0 修复：终态事件必须互斥且只发一次 —— 保存失败只发
+            // stream_error，不再补发 stream_complete（先 error 后 complete
+            // 会让前端把会话覆盖为「已完成」，吞掉错误态）。
             emitter.emit_stream_error(&assistant_message_id, &e.to_string());
-            let duration_ms = start_time.elapsed().as_millis() as u64;
-            emitter.emit_stream_complete_with_usage(&assistant_message_id, duration_ms, None);
             return Err(e);
         }
 
-        // === 12. 发射 stream_complete（带 token 统计） ===
+        // === 12. 发射 stream_complete（带汇总 token 统计） ===
         let duration_ms = start_time.elapsed().as_millis() as u64;
-        // 多变体模式下 Message._meta.usage 为 None，每个变体独立统计
-        // TODO: Prompt 9 实现后，可选择性汇总所有变体的 token 统计
-        emitter.emit_stream_complete_with_usage(&assistant_message_id, duration_ms, None);
+        // 🆕 汇总所有变体的 usage 到会话级 complete 事件；
+        // 变体级明细仍通过 variant_end 事件与 Variant.usage 持久化字段传递
+        let aggregated_usage = {
+            let mut total = TokenUsage::zero();
+            for (variant_ctx, _) in &variant_contexts {
+                let usage = variant_ctx.get_usage();
+                if usage.has_tokens() {
+                    total.accumulate(&usage);
+                }
+            }
+            total.has_tokens().then_some(total)
+        };
+        emitter.emit_stream_complete_with_usage(
+            &assistant_message_id,
+            duration_ms,
+            aggregated_usage.as_ref(),
+        );
 
         log::info!(
             "[ChatV2::pipeline] Multi-variant pipeline completed in {}ms",
@@ -569,114 +679,20 @@ impl ChatV2Pipeline {
         );
 
         // 🆕 多变体模式：对话后自动记忆提取（使用 active_variant 的内容）
-        // 门控逻辑与 persistence.rs::trigger_auto_memory_extraction 保持一致
+        // 与单变体路径共用 persistence.rs::trigger_auto_memory_extraction_for_turn，
+        // 门控（会话 memory_enabled / 频率 / 隐私 / 长度 / 竞态）单一实现，消除镜像漂移
         if let Some(active_id) = &active_variant_id {
             if let Some((active_ctx, _)) = variant_contexts
                 .iter()
                 .find(|(ctx, _)| ctx.variant_id() == active_id.as_str())
             {
-                if let Some(vfs_db) = self.vfs_db.clone() {
-                    // ① 早期门控：频率 + 隐私模式（同步 SQLite 读取，亚毫秒级）
-                    let mem_config = crate::memory::MemoryConfig::new(vfs_db.clone());
-                    let frequency = mem_config
-                        .get_auto_extract_frequency()
-                        .unwrap_or(crate::memory::AutoExtractFrequency::Balanced);
-
-                    let should_extract = frequency != crate::memory::AutoExtractFrequency::Off
-                        && !mem_config.is_privacy_mode().unwrap_or(false);
-
-                    if should_extract {
-                        let assistant_content = active_ctx.get_accumulated_content();
-                        let user_content_for_mem = user_content.clone();
-
-                        // ② 内容长度门槛（统一字符数）
-                        let min_chars = frequency.content_min_chars();
-                        let user_chars = user_content_for_mem.chars().count();
-                        let assistant_chars = assistant_content.chars().count();
-
-                        // ③ 竞态保护：检查 active variant 的工具结果
-                        let llm_wrote_fact_memory =
-                            active_ctx.get_tool_results().iter().any(|tr| {
-                                let name = tr.tool_name.as_str();
-                                let is_memory_tool = matches!(
-                                    name.strip_prefix("builtin-").unwrap_or(name),
-                                    "memory_write" | "memory_write_smart" | "memory_update_by_id"
-                                );
-                                if !is_memory_tool {
-                                    return false;
-                                }
-                                let declared_type = tr
-                                    .input
-                                    .get("memory_type")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("fact");
-                                declared_type == "fact"
-                            });
-
-                        if (user_chars >= min_chars || assistant_chars >= min_chars)
-                            && !llm_wrote_fact_memory
-                        {
-                            let llm_mgr = self.llm_manager.clone();
-                            tokio::spawn(async move {
-                                use crate::memory::{
-                                    MemoryAutoExtractor, MemoryCategoryManager, MemoryEvolution,
-                                    MemoryService,
-                                };
-                                use crate::vfs::lance_store::VfsLanceStore;
-
-                                let lance_store = match VfsLanceStore::new(vfs_db.clone()) {
-                                    Ok(s) => std::sync::Arc::new(s),
-                                    Err(_) => return,
-                                };
-                                let memory_service = MemoryService::new(
-                                    vfs_db.clone(),
-                                    lance_store,
-                                    llm_mgr.clone(),
-                                );
-
-                                let extractor = MemoryAutoExtractor::new(llm_mgr.clone());
-                                if let Ok(count) = extractor
-                                    .extract_and_store(
-                                        &memory_service,
-                                        &user_content_for_mem,
-                                        &assistant_content,
-                                    )
-                                    .await
-                                {
-                                    if count > 0 {
-                                        log::info!("[AutoMemory::MultiVariant] Auto-extracted {} memories (frequency={:?})", count, frequency);
-                                        let should_refresh = memory_service
-                                            .list(None, 500, 0)
-                                            .map(|all| {
-                                                let t = all
-                                                    .iter()
-                                                    .filter(|m| !m.title.starts_with("__"))
-                                                    .count();
-                                                frequency.should_refresh_categories(t)
-                                            })
-                                            .unwrap_or(false);
-                                        if should_refresh {
-                                            let cat_mgr = MemoryCategoryManager::new(
-                                                vfs_db.clone(),
-                                                llm_mgr.clone(),
-                                            );
-                                            let _ = cat_mgr
-                                                .refresh_all_categories(&memory_service)
-                                                .await;
-                                        }
-                                    }
-
-                                    // 自进化：使用共享全局节流，间隔由频率档位决定
-                                    let evolution = MemoryEvolution::new(vfs_db);
-                                    evolution.run_throttled(
-                                        &memory_service,
-                                        frequency.evolution_interval_ms(),
-                                    );
-                                }
-                            });
-                        }
-                    }
-                }
+                self.trigger_auto_memory_extraction_for_turn(
+                    options.memory_enabled,
+                    &user_content,
+                    &active_ctx.get_accumulated_content(),
+                    &active_ctx.get_tool_results(),
+                    "AutoMemory::MultiVariant",
+                );
             }
         }
 
@@ -766,12 +782,14 @@ impl ChatV2Pipeline {
             .await;
 
         // 加载聊天历史
-        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
+        let mut chat_history = self
+            .load_variant_chat_history(&session_id, Some(ctx.message_id()), options.context_limit)
+            .await?;
+        // load_variant_chat_history excludes this attempt's persisted user/assistant rows by id.
+        // Do not infer duplicates from message text: consecutive identical prompts are valid.
         // 🔧 Token 预算裁剪（对齐单变体路径）
-        let max_tokens = options
-            .context_limit
-            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
-            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
+        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+        let max_tokens = effective_history_token_budget(options.context_limit);
         trim_history_by_token_budget(&mut chat_history, max_tokens);
 
         // 构建当前用户消息
@@ -787,12 +805,22 @@ impl ChatV2Pipeline {
             Some("variant-tool-round-0".to_string()),
         ));
 
-        // 注册 LLM 流式回调 hooks
-        // 🔧 P0修复：每个变体使用唯一的 hook 键，避免并行执行时互相覆盖
-        // 前端仍然监听 chat_v2_event_{session_id}，变体 ID 通过 VariantLLMAdapter 在事件 payload 中携带
-        let stream_event = format!("chat_v2_event_{}_{}", session_id, ctx.variant_id());
+        // Each concrete variant attempt gets a unique hook key. Variant IDs are reused by retry,
+        // so `{session}:{variant}` alone is not an ownership identity.
+        let stream_event = super::tool_loop::build_run_scoped_stream_event(
+            &session_id,
+            ctx.variant_id(),
+            &Uuid::new_v4().simple().to_string(),
+            options.stream_generation,
+        );
+        let registered_hooks: Arc<dyn LLMStreamHooks> = emitter.clone();
+        let mut hooks_guard = super::tool_loop::StreamHooksGuard::new(
+            self.llm_manager.clone(),
+            stream_event.clone(),
+            registered_hooks.clone(),
+        );
         self.llm_manager
-            .register_stream_hooks(&stream_event, emitter.clone())
+            .register_stream_hooks(&stream_event, registered_hooks.clone())
             .await;
 
         // 构建消息历史
@@ -814,9 +842,8 @@ impl ChatV2Pipeline {
                 .or(options.skill_contents.as_ref())
                 .unwrap_or(&empty_skill_contents),
             options.skill_dependencies.as_ref(),
-            options
-                .context_limit
-                .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+            // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+            options.context_limit.map(|v| v as usize),
         );
         insert_transient_skill_messages(&mut messages, base_history_len, transient_skill_messages);
 
@@ -882,8 +909,12 @@ impl ChatV2Pipeline {
         // 如需完整的工具调用循环，请使用 execute_single_variant_with_config
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
+                let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
+                    .filter(|tool| {
+                        is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
+                    })
                     .filter_map(|tool| {
                         let Some(prepared) = prepare_external_tool_schema(tool, false) else {
                             log::warn!(
@@ -934,12 +965,15 @@ impl ChatV2Pipeline {
         );
 
         // 🔧 F2 修复：空闲超时 + 绝对上限（替代总时长 600s 掐断健康长流）
+        // 🔧 2026-07：空闲阈值/是否断流按请求读取 chat.stream.* 设置
+        let stream_idle_cfg = load_stream_idle_config(self.main_db.as_ref());
         let call_result = {
             let adapter_for_idle = emitter.clone();
             match wait_llm_stream_with_idle_timeout(
                 llm_future,
-                Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
+                stream_idle_cfg.idle_limit,
                 Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS),
+                stream_idle_cfg.cancel_on_idle,
                 move || adapter_for_idle.idle_elapsed(),
             )
             .await
@@ -951,9 +985,7 @@ impl ChatV2Pipeline {
                         idle_secs,
                         ctx.variant_id()
                     );
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
+                    hooks_guard.cleanup().await;
                     let msg = format!("LLM stream timed out: no data received for {}s", idle_secs);
                     ctx.fail(&msg);
                     return Err(ChatV2Error::Timeout(msg));
@@ -964,13 +996,8 @@ impl ChatV2Pipeline {
                         total_secs,
                         ctx.variant_id()
                     );
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
-                    let msg = format!(
-                        "LLM stream exceeded absolute time limit ({}s)",
-                        total_secs
-                    );
+                    hooks_guard.cleanup().await;
+                    let msg = format!("LLM stream exceeded absolute time limit ({}s)", total_secs);
                     ctx.fail(&msg);
                     return Err(ChatV2Error::Timeout(msg));
                 }
@@ -978,9 +1005,7 @@ impl ChatV2Pipeline {
         };
 
         // 注销 hooks
-        self.llm_manager
-            .unregister_stream_hooks(&stream_event)
-            .await;
+        hooks_guard.cleanup().await;
 
         // 处理结果
         match call_result {
@@ -1011,34 +1036,97 @@ impl ChatV2Pipeline {
         attachments: Vec<AttachmentInput>,
         user_context_refs: Vec<SendContextRef>,
     ) -> ChatV2Result<()> {
-        const MAX_TOOL_ROUNDS: u32 = 10;
+        // 🔧 2026-07: 变体工具循环上限与单变体路径统一。
+        // 之前硬编码 `MAX_TOOL_ROUNDS = 10`，与单变体路径「用户可配 1-100、
+        // 默认 MAX_TOOL_RECURSION(30)」不一致（短板 13）。现在与
+        // tool_loop.rs execute_with_tools 共用 constants.rs 的
+        // effective_max_tool_rounds（默认值/clamp 逻辑单点维护）。
+        // 注意：变体内无心跳白名单豁免（coordinator_sleep 在多变体模式下不适用），
+        // 因此不需要 ABSOLUTE_MAX_RECURSION 二级上限。
+        let max_tool_rounds: u32 = effective_max_tool_rounds(options.max_tool_recursion);
 
         options.model_id = Some(config_id.clone());
         options.model2_override_id = Some(config_id.clone());
-
-        if let Some(meta) = variant_meta {
-            ctx.set_meta(meta);
-        }
-
-        ctx.start_streaming();
 
         if ctx.is_cancelled() {
             ctx.cancel();
             return Ok(());
         }
 
+        // Each variant owns an independent frozen capability snapshot and compiler context.
+        // This must happen before variant_start so UI changes or another variant's model cannot
+        // affect the in-flight request.
+        let compile_request = SendMessageRequest {
+            session_id: session_id.clone(),
+            content: user_content.clone(),
+            options: Some(options.clone()),
+            user_message_id: None,
+            assistant_message_id: Some(ctx.message_id().to_string()),
+            user_context_refs: Some(user_context_refs.clone()),
+            path_map: None,
+            workspace_id: None,
+        };
+        let mut compile_ctx = PipelineContext::new(compile_request);
+        compile_ctx.init_context_snapshot();
+        compile_ctx.set_cancellation_token(ctx.cancel_token().clone());
+        if user_context_refs.is_empty() {
+            if let Some(mut canonical) =
+                self.load_source_user_canonical_for_assistant(&session_id, ctx.message_id())?
+            {
+                canonical.retain(|part| {
+                    !matches!(
+                        part,
+                        crate::chat_v2::types::CanonicalContentPart::DerivedArtifactRef { .. }
+                    )
+                });
+                if let Some(artifacts) = variant_meta
+                    .as_ref()
+                    .and_then(|meta| meta.canonical_artifacts.as_ref())
+                {
+                    canonical.extend(artifacts.iter().cloned());
+                }
+                compile_ctx.canonical_content = canonical;
+            }
+        }
+        self.freeze_execution_context(&mut compile_ctx).await?;
+        options = compile_ctx.options.clone();
+
+        let mut chat_history = self
+            .load_variant_chat_history(&session_id, Some(ctx.message_id()), options.context_limit)
+            .await?;
+        // 🔧 Token 预算裁剪（对齐单变体路径）
+        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+        let max_tokens_budget = effective_history_token_budget(options.context_limit);
+        trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
+        compile_ctx.chat_history = chat_history;
+        self.compile_frozen_context(&mut compile_ctx).await?;
+        let mut effective_meta = variant_meta.unwrap_or_default();
+        effective_meta.execution_snapshot = compile_ctx.execution_snapshot.clone();
+        let artifacts: Vec<_> = compile_ctx
+            .canonical_content
+            .iter()
+            .filter(|part| {
+                matches!(
+                    part,
+                    crate::chat_v2::types::CanonicalContentPart::DerivedArtifactRef { .. }
+                )
+            })
+            .cloned()
+            .collect();
+        effective_meta.canonical_artifacts = (!artifacts.is_empty()).then_some(artifacts);
+        ctx.set_meta(effective_meta);
+
+        ctx.start_streaming();
+
         let system_prompt = self
             .build_system_prompt_with_shared_context(&options, &shared_context)
             .await;
-        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
-        // 🔧 Token 预算裁剪（对齐单变体路径）
-        let max_tokens_budget = options
-            .context_limit
-            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
-            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
-        trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
-        let current_user_message =
-            self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
+        let chat_history = compile_ctx.chat_history;
+        let current_user_message = compile_ctx
+            .compiled_current_user_message
+            .unwrap_or_else(|| {
+                self.build_variant_user_message(&user_content, &attachments, &user_context_refs)
+            });
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
         let max_input_tokens_override = options.context_limit.map(|v| v as usize);
@@ -1059,9 +1147,20 @@ impl ChatV2Pipeline {
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
         ));
-        let stream_event = format!("chat_v2_event_{}_{}", session_id, ctx.variant_id());
+        let stream_event = super::tool_loop::build_run_scoped_stream_event(
+            &session_id,
+            ctx.variant_id(),
+            &Uuid::new_v4().simple().to_string(),
+            options.stream_generation,
+        );
+        let registered_hooks: Arc<dyn LLMStreamHooks> = adapter.clone();
+        let mut hooks_guard = super::tool_loop::StreamHooksGuard::new(
+            self.llm_manager.clone(),
+            stream_event.clone(),
+            registered_hooks.clone(),
+        );
         self.llm_manager
-            .register_stream_hooks(&stream_event, adapter.clone())
+            .register_stream_hooks(&stream_event, registered_hooks.clone())
             .await;
 
         let mut llm_context: std::collections::HashMap<String, Value> =
@@ -1110,11 +1209,15 @@ impl ChatV2Pipeline {
         // 🔧 工具名称映射：sanitized API name → original name
         let mut variant_tool_name_mapping: HashMap<String, super::tool_loop::ExternalToolRoute> =
             HashMap::new();
+        let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
 
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
+                    .filter(|tool| {
+                        is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
+                    })
                     .filter_map(|tool| {
                         let Some(prepared) = prepare_external_tool_schema(tool, true) else {
                             log::warn!(
@@ -1166,6 +1269,9 @@ impl ChatV2Pipeline {
             .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
 
         let mut tool_round = 0u32;
+        // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
+        // 与单变体路径共用 apply_doom_loop_guard（tool_loop.rs）
+        let mut doom_loop_guard = crate::chat_v2::context::DoomLoopGuard::default();
         loop {
             if ctx.is_cancelled() {
                 ctx.cancel();
@@ -1182,9 +1288,9 @@ impl ChatV2Pipeline {
                     .or(options.skill_contents.as_ref())
                     .unwrap_or(&empty_skill_contents),
                 options.skill_dependencies.as_ref(),
-                options
-                    .context_limit
-                    .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+                // 🔧 P1-2 修复（对齐单变体 tool_loop）：context_limit 显式配置时为权威值，
+                // 不再被 32K 常量 min() 钳制，消除多变体/单变体双路径漂移
+                options.context_limit.map(|v| v as usize),
             );
             let skill_audit = transient_skill_messages.audit.clone();
             insert_transient_skill_messages(
@@ -1234,13 +1340,16 @@ impl ChatV2Pipeline {
 
             // 使用 tokio::select! 支持取消（与单变体 pipeline 对齐）
             // 🔧 F2 修复：空闲超时 + 绝对上限（替代总时长 600s 掐断健康长流）
+            // 🔧 2026-07：空闲阈值/是否断流按请求读取 chat.stream.* 设置
+            let stream_idle_cfg = load_stream_idle_config(self.main_db.as_ref());
             let call_result = tokio::select! {
                 outcome = {
                     let adapter_for_idle = adapter.clone();
                     wait_llm_stream_with_idle_timeout(
                         llm_future,
-                        Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
+                        stream_idle_cfg.idle_limit,
                         Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS),
+                        stream_idle_cfg.cancel_on_idle,
                         move || adapter_for_idle.idle_elapsed(),
                     )
                 } => {
@@ -1253,9 +1362,7 @@ impl ChatV2Pipeline {
                                 ctx.variant_id(),
                                 tool_round
                             );
-                            self.llm_manager
-                                .unregister_stream_hooks(&stream_event)
-                                .await;
+                            hooks_guard.cleanup().await;
                             let msg = format!(
                                 "LLM stream timed out: no data received for {}s",
                                 idle_secs
@@ -1270,9 +1377,7 @@ impl ChatV2Pipeline {
                                 ctx.variant_id(),
                                 tool_round
                             );
-                            self.llm_manager
-                                .unregister_stream_hooks(&stream_event)
-                                .await;
+                            hooks_guard.cleanup().await;
                             let msg = format!(
                                 "LLM stream exceeded absolute time limit ({}s)",
                                 total_secs
@@ -1307,9 +1412,7 @@ impl ChatV2Pipeline {
                     }
                 }
                 Some(Err(e)) => {
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
+                    hooks_guard.cleanup().await;
                     ctx.fail(&e.to_string());
                     return Err(ChatV2Error::Llm(e.to_string()));
                 }
@@ -1340,14 +1443,30 @@ impl ChatV2Pipeline {
             let memory_enabled = options.memory_enabled.unwrap_or(true);
             let rag_enabled = options.rag_enabled.unwrap_or(true);
             let web_search_enabled = options.web_search_enabled.unwrap_or(true);
+            let execution_allowed_tools = options.execution_allowed_tools.clone();
             let round_id = format!("variant-tool-round-{}", tool_round);
+
+            // 🆕 2026-07 Doom loop 检测：拦截连续重复调用（同工具同参数第 3 次起），
+            // 合成失败结果回喂 LLM；第 5 次落终止标记，本轮结果回喂后终止变体循环
+            let (calls_to_execute, doom_synthetic) = self.apply_doom_loop_guard(
+                &mut doom_loop_guard,
+                &tool_calls,
+                &emitter_arc,
+                ctx.message_id(),
+                Some(ctx.variant_id()),
+                options.skill_state_version,
+                Some(round_id.as_str()),
+            );
+
             // 🔧 F9 修复：传真实 session_id（之前是 "{session}:{variant}" 复合键，
             // 导致所有按 session 查库的工具——子代理/附件/技能状态/所有权校验——在
             // 变体模式下全部失效）。变体间内存状态隔离改由 variant_id 参数承担
             // （todo_executor 内部组合 session_id+variant_id 作为隔离键）。
-            let tool_results = self
-                .execute_tool_calls(
-                    &tool_calls,
+            let executed_results = if calls_to_execute.is_empty() {
+                Vec::new()
+            } else {
+                self.execute_tool_calls(
+                    &calls_to_execute,
                     &emitter_arc,
                     &session_id,
                     ctx.message_id(),
@@ -1357,7 +1476,10 @@ impl ChatV2Pipeline {
                     &canvas_note_id,
                     &skill_contents,
                     &options.skill_embedded_tools,
+                    &options.skill_admission_errors,
+                    &options.skill_package_roots,
                     &active_skill_ids,
+                    &execution_allowed_tools,
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
@@ -1366,7 +1488,14 @@ impl ChatV2Pipeline {
                     web_search_enabled,
                     &variant_tool_name_mapping,
                 )
-                .await?;
+                .await?
+            };
+            // 合成失败结果按原始 tool_calls 顺序归并（保证协议完整性与历史确定性）
+            let tool_results = super::tool_loop::merge_round_results_in_call_order(
+                &tool_calls,
+                executed_results,
+                doom_synthetic,
+            );
 
             let success_count = tool_results.iter().filter(|r| r.success).count();
             log::info!(
@@ -1419,9 +1548,16 @@ impl ChatV2Pipeline {
                                     );
                                     let refreshed_tools: Vec<Value> = mcp_schemas
                                         .iter()
+                                        .filter(|tool| {
+                                            is_mcp_tool_allowed_by_policy(
+                                                tool,
+                                                &whitelist,
+                                                &blacklist,
+                                            )
+                                        })
                                         .filter_map(|tool| {
                                             let Some(prepared) =
-                                                prepare_external_tool_schema(tool, false)
+                                                prepare_external_tool_schema(tool, true)
                                             else {
                                                 log::warn!(
                                                     "[ChatV2::VariantPipeline] Skipping refreshed MCP tool with blank API name: raw='{}'",
@@ -1429,6 +1565,14 @@ impl ChatV2Pipeline {
                                                 );
                                                 return None;
                                             };
+                                            variant_tool_name_mapping.insert(
+                                                prepared.api_name.clone(),
+                                                super::tool_loop::ExternalToolRoute {
+                                                    raw_tool_name: prepared.raw_tool_name,
+                                                    preferred_server_id: prepared
+                                                        .preferred_server_id,
+                                                },
+                                            );
                                             Some(prepared.schema)
                                         })
                                         .collect();
@@ -1532,14 +1676,26 @@ impl ChatV2Pipeline {
                 break;
             }
 
+            // 🆕 2026-07 Doom loop 终止：同一调用连续第 5 次重复，
+            // 拦截结果已回喂本轮 messages，直接终止变体循环（对齐 max rounds 处理）
+            if doom_loop_guard.abort_triggered() {
+                log::warn!(
+                    "[ChatV2::VariantPipeline] variant={} doom loop abort: tool={:?} repeated identical calls, stopping",
+                    ctx.variant_id(),
+                    doom_loop_guard.abort_tool_name()
+                );
+                ctx.complete();
+                break;
+            }
+
             tool_round += 1;
             ctx.increment_tool_round();
 
-            if tool_round >= MAX_TOOL_ROUNDS {
+            if tool_round >= max_tool_rounds {
                 log::warn!(
                     "[ChatV2::VariantPipeline] variant={} reached max tool rounds ({})",
                     ctx.variant_id(),
-                    MAX_TOOL_ROUNDS
+                    max_tool_rounds
                 );
                 ctx.complete();
                 break;
@@ -1548,9 +1704,7 @@ impl ChatV2Pipeline {
             adapter.reset_for_new_round();
         }
 
-        self.llm_manager
-            .unregister_stream_hooks(&stream_event)
-            .await;
+        hooks_guard.cleanup().await;
         Ok(())
     }
 
@@ -1628,9 +1782,21 @@ impl ChatV2Pipeline {
         if mem_cfg.is_privacy_mode().ok()? {
             return None;
         }
-        let lance_store = VfsLanceStore::new(vfs_db.clone())
-            .ok()
-            .map(std::sync::Arc::new)?;
+        // 优先复用 app 托管单例（保留 Lance 连接与 ensured_tables 缓存）；
+        // 无托管单例（启动降级/测试）时才按需新建。
+        let lance_store = match managed_vfs_lance_store_for(vfs_db) {
+            Some(store) => store,
+            None => match VfsLanceStore::new(vfs_db.clone()) {
+                Ok(store) => std::sync::Arc::new(store),
+                Err(e) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] load_user_profile_for_variant: failed to open lance store: {}; skipping profile injection",
+                        e
+                    );
+                    return None;
+                }
+            },
+        };
         let svc = MemoryService::new(vfs_db.clone(), lance_store, self.llm_manager.clone());
 
         let root_id = match svc.get_root_folder_id() {
@@ -1729,15 +1895,31 @@ impl ChatV2Pipeline {
     /// 加载变体的聊天历史（V2 增强版）
     ///
     /// 对齐单变体 `load_chat_history()` 的完整能力：
-    /// - 使用 DEFAULT_MAX_HISTORY_MESSAGES 限制消息数
+    /// - 使用 effective_max_history_messages（按 token 预算推导）粗筛消息条数
     /// - 提取所有 content 块并拼接（不只是第一个）
     /// - 提取 thinking 块内容
     /// - 提取 mcp_tool 块的工具调用信息
     /// - 解析 context_snapshot（如果有 vfs_db 连接）
     /// - 从附件中提取图片 base64 和文档附件
+    fn load_source_user_canonical_for_assistant(
+        &self,
+        session_id: &str,
+        assistant_message_id: &str,
+    ) -> ChatV2Result<Option<Vec<crate::chat_v2::types::CanonicalContentPart>>> {
+        let conn = self.db.get_conn_safe()?;
+        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
+        Ok(source_user_canonical_before_assistant(
+            &messages,
+            assistant_message_id,
+        ))
+    }
+
     async fn load_variant_chat_history(
         &self,
         session_id: &str,
+        assistant_message_id: Option<&str>,
+        // 🔧 P1-6：用于按 token 预算推导条数粗筛上限（对齐单变体 load_chat_history）
+        context_limit: Option<u32>,
     ) -> ChatV2Result<Vec<LegacyChatMessage>> {
         log::debug!(
             "[ChatV2::pipeline] Loading variant chat history for session={}",
@@ -1761,7 +1943,7 @@ impl ChatV2Pipeline {
             .as_ref()
             .map(|vfs_db| vfs_db.blobs_dir().to_path_buf());
 
-        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
+        let mut messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
 
         if messages.is_empty() {
             log::debug!(
@@ -1771,12 +1953,33 @@ impl ChatV2Pipeline {
             return Ok(Vec::new());
         }
 
+        if let Some(assistant_message_id) = assistant_message_id {
+            if let Some(assistant_index) = messages
+                .iter()
+                .position(|message| message.id == assistant_message_id)
+            {
+                let source_user_id = messages[..assistant_index]
+                    .iter()
+                    .rev()
+                    .find(|message| message.role == MessageRole::User)
+                    .map(|message| message.id.clone());
+                messages.retain(|message| {
+                    message.id != assistant_message_id
+                        && source_user_id
+                            .as_ref()
+                            .is_none_or(|user_id| message.id != *user_id)
+                });
+            }
+        }
+
         // 🆕 P1: 应用 compaction 视图（与单变体路径一致）
         let (compaction_summary_msg, messages) =
             super::compaction::apply_compaction_view(&conn, session_id, messages);
 
-        // 🔧 使用固定的消息条数限制（对齐单变体）
-        let max_messages = DEFAULT_MAX_HISTORY_MESSAGES;
+        // 🔧 条数粗筛上限（对齐单变体）
+        // 🔧 P1-6 修复：token 预算充裕时按预算放宽（50–400 条），精确裁剪由
+        // 调用方的 trim_history_by_token_budget 按 token 完成
+        let max_messages = effective_max_history_messages(context_limit);
         let messages_to_load: Vec<_> = if messages.len() > max_messages {
             // 取最新的 max_messages 条消息
             messages
@@ -1788,6 +1991,8 @@ impl ChatV2Pipeline {
         } else {
             messages
         };
+        let active_variant_artifacts =
+            super::history::active_variant_artifacts_by_user(&messages_to_load);
 
         log::debug!(
             "[ChatV2::pipeline] Loading {} variant messages (max_messages={})",
@@ -1835,10 +2040,7 @@ impl ChatV2Pipeline {
             let (content, vfs_image_base64) = if message.role == MessageRole::User {
                 if let (Some(ref vfs_conn), Some(ref blobs_dir)) = (&vfs_conn_opt, &vfs_blobs_dir) {
                     self.resolve_history_context_snapshot_v2(
-                        &content,
-                        &message,
-                        &**vfs_conn,
-                        blobs_dir,
+                        &content, &message, vfs_conn, blobs_dir,
                     )
                 } else {
                     (content, Vec::new())
@@ -1942,11 +2144,6 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 跳过空内容消息（但工具调用消息已经添加）
-            if content.is_empty() {
-                continue;
-            }
-
             // 🆕 从附件中提取图片 base64（仅用户消息有附件）
             // 合并旧附件图片和 VFS 图片
             let mut all_images: Vec<String> = message
@@ -2034,6 +2231,21 @@ impl ChatV2Pipeline {
                 })
                 .filter(|v| !v.is_empty());
 
+            if content.is_empty()
+                && image_base64.is_none()
+                && doc_attachments.is_none()
+                && thinking_content
+                    .as_ref()
+                    .is_none_or(|thinking| thinking.trim().is_empty())
+            {
+                continue;
+            }
+            let content = if content.is_empty() && role == "user" {
+                "[用户发送了附件]".to_string()
+            } else {
+                content
+            };
+
             let legacy_message = LegacyChatMessage {
                 role: role.to_string(),
                 content: content.clone(),
@@ -2053,7 +2265,11 @@ impl ChatV2Pipeline {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: message.persistent_stable_id.clone(),
-                metadata: None,
+                metadata: super::history::canonical_content_for_history(
+                    &message,
+                    active_variant_artifacts.get(&message.id),
+                )
+                .map(|parts| serde_json::json!({ "canonicalContent": parts })),
             };
 
             chat_history.push(legacy_message);
@@ -2066,7 +2282,10 @@ impl ChatV2Pipeline {
         );
 
         // 🆕 验证工具调用链完整性
-        validate_tool_chain(&chat_history);
+        // 🔧 P0-2 修复：破损时就地修复（合成占位结果/丢弃孤儿），不再只 warn 后照送 LLM
+        if !validate_tool_chain(&chat_history) {
+            repair_tool_chain(&mut chat_history);
+        }
 
         // 🆕 P1: 如果有 compaction 摘要，插到最前面
         if let Some(summary_msg) = compaction_summary_msg {
@@ -2262,7 +2481,7 @@ impl ChatV2Pipeline {
     ///
     /// 复用原有 SharedContext，并行执行多个变体的重试。
     /// 使用单一事件发射器以保证序列号全局递增。
-    pub async fn execute_variants_retry_batch(
+    pub(crate) async fn execute_variants_retry_batch(
         &self,
         window: Window,
         session_id: String,
@@ -2292,10 +2511,10 @@ impl ChatV2Pipeline {
         }
 
         // 单一事件发射器，确保 sequenceId 全局递增
-        let emitter = Arc::new(super::super::events::ChatV2EventEmitter::new(
-            window.clone(),
-            session_id.clone(),
-        ));
+        let emitter = Arc::new(
+            super::super::events::ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(options.stream_generation),
+        );
 
         let shared_context_arc = Arc::new(shared_context);
 
@@ -2307,6 +2526,7 @@ impl ChatV2Pipeline {
             String,
             Option<crate::chat_v2::types::VariantMeta>,
         )> = Vec::with_capacity(variants.len());
+        let mut variant_stream_guards = Vec::with_capacity(variants.len());
 
         for spec in &variants {
             let ctx = manager.create_variant(
@@ -2321,7 +2541,13 @@ impl ChatV2Pipeline {
             // 注册每个变体的 cancel token（用于按 variant 取消）
             if let Some(ref state) = chat_v2_state {
                 let cancel_key = format!("{}:{}", session_id, spec.variant_id);
-                state.register_existing_token(&cancel_key, ctx.cancel_token().clone());
+                let registration =
+                    state.register_existing_token_owned(&cancel_key, ctx.cancel_token().clone());
+                variant_stream_guards.push(super::super::state::StreamGuard::new(
+                    Arc::clone(state),
+                    cancel_key.clone(),
+                    registration,
+                ));
                 log::debug!(
                     "[ChatV2::pipeline] Registered cancel token for retry variant: {}",
                     cancel_key
@@ -2423,13 +2649,8 @@ impl ChatV2Pipeline {
             }
         }
 
-        // 清理 cancel token
-        if let Some(ref state) = chat_v2_state {
-            for (ctx, _, _) in &variant_contexts {
-                let cancel_key = format!("{}:{}", session_id, ctx.variant_id());
-                state.remove_stream(&cancel_key);
-            }
-        }
+        // Generation-owned guards clean up retry child keys without deleting a newer retry.
+        drop(variant_stream_guards);
 
         if let Some(err) = update_error {
             return Err(err);
@@ -2478,10 +2699,10 @@ impl ChatV2Pipeline {
         );
 
         // 创建事件发射器
-        let emitter = Arc::new(super::super::events::ChatV2EventEmitter::new(
-            window.clone(),
-            session_id.clone(),
-        ));
+        let emitter = Arc::new(
+            super::super::events::ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(options.stream_generation),
+        );
 
         // 创建共享上下文的 Arc
         let shared_context_arc = Arc::new(shared_context);
@@ -2602,6 +2823,7 @@ impl ChatV2Pipeline {
                 variant.status = ctx.status();
                 variant.error = ctx.error();
                 variant.block_ids = ctx.block_ids();
+                variant.meta = ctx.get_meta();
                 let usage = ctx.get_usage();
                 variant.usage = if usage.total_tokens > 0 {
                     Some(usage)
@@ -2707,12 +2929,6 @@ impl ChatV2Pipeline {
                             mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
                             agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
                             branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
-                            effective_allowed_internal_tools: snapshot
-                                .effective_allowed_internal_tools
-                                .clone(),
-                            effective_allowed_external_tools: snapshot
-                                .effective_allowed_external_tools
-                                .clone(),
                             effective_allowed_external_servers: snapshot
                                 .effective_allowed_external_servers
                                 .clone(),
@@ -2757,6 +2973,8 @@ impl ChatV2Pipeline {
         variant_contexts: &[Arc<super::super::variant_context::VariantExecutionContext>],
         active_variant_id: Option<&str>,
         context_snapshot: Option<ContextSnapshot>,
+        canonical_content: Vec<crate::chat_v2::types::CanonicalContentPart>,
+        user_execution_snapshot: Option<crate::chat_v2::types::ModelExecutionSnapshot>,
     ) -> ChatV2Result<()> {
         let conn = self.db.get_conn_safe()?;
         let now_ms = chrono::Utc::now().timestamp_millis();
@@ -2776,6 +2994,11 @@ impl ChatV2Pipeline {
                 UserMessageParams::new(session_id.to_string(), user_content.to_string())
                     .with_id(user_message_id.to_string())
                     .with_attachments(attachments.to_vec())
+                    // Variant artifacts remain variant-scoped. History compilation reads the
+                    // currently active variant dynamically, so later switching cannot reuse a
+                    // stale observation promoted by an earlier active selection.
+                    .with_canonical_content(canonical_content.clone())
+                    .with_execution_snapshot(user_execution_snapshot.clone())
                     .with_timestamp(now_ms);
 
             if let Some(snapshot) = context_snapshot.clone() {
@@ -2797,7 +3020,7 @@ impl ChatV2Pipeline {
                 if shared_context
                     .rag_sources
                     .as_ref()
-                    .map_or(false, |v| !v.is_empty())
+                    .is_some_and(|v| !v.is_empty())
                 {
                     let rag_block = MessageBlock {
                         id: block_id.clone(),
@@ -2827,7 +3050,7 @@ impl ChatV2Pipeline {
                 if shared_context
                     .memory_sources
                     .as_ref()
-                    .map_or(false, |v| !v.is_empty())
+                    .is_some_and(|v| !v.is_empty())
                 {
                     let memory_block = MessageBlock {
                         id: block_id.clone(),
@@ -2857,7 +3080,7 @@ impl ChatV2Pipeline {
                 if shared_context
                     .web_search_sources
                     .as_ref()
-                    .map_or(false, |v| !v.is_empty())
+                    .is_some_and(|v| !v.is_empty())
                 {
                     let web_block = MessageBlock {
                         id: block_id.clone(),
@@ -2976,7 +3199,9 @@ impl ChatV2Pipeline {
                 parent_id: None,
                 supersedes: None,
                 meta: Some(MessageMeta {
-                    model_id: None, // 多变体模式下不设置单一模型
+                    model_id: None,           // 多变体模式下不设置单一模型
+                    execution_snapshot: None, // 每个 VariantMeta 持有独立快照
+                    canonical_content: None,
                     chat_params: Some(json!({
                         "temperature": options.temperature,
                         "maxTokens": options.max_tokens,
@@ -3004,8 +3229,8 @@ impl ChatV2Pipeline {
                     context_snapshot: context_snapshot.clone(),
                     skill_snapshot_before: None,
                     skill_snapshot_after: None,
-                    skill_runtime_before: build_replay_skill_payload_snapshot(&options),
-                    skill_runtime_after: build_replay_skill_payload_snapshot(&options),
+                    skill_runtime_before: build_replay_skill_payload_snapshot(options),
+                    skill_runtime_after: build_replay_skill_payload_snapshot(options),
                     replay_source: None,
                 }),
                 attachments: None,
@@ -3086,5 +3311,65 @@ impl ChatV2Pipeline {
                 Err(e)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod canonical_retry_tests {
+    use super::*;
+    use crate::chat_v2::types::{CanonicalContentPart, MessageMeta};
+
+    fn message(
+        id: &str,
+        role: MessageRole,
+        canonical_content: Option<Vec<CanonicalContentPart>>,
+    ) -> ChatMessage {
+        ChatMessage {
+            id: id.to_string(),
+            session_id: "session".to_string(),
+            role,
+            block_ids: Vec::new(),
+            timestamp: 1,
+            persistent_stable_id: None,
+            parent_id: None,
+            supersedes: None,
+            meta: canonical_content.map(|canonical_content| MessageMeta {
+                canonical_content: Some(canonical_content),
+                ..Default::default()
+            }),
+            attachments: None,
+            active_variant_id: None,
+            variants: None,
+            shared_context: None,
+        }
+    }
+
+    #[test]
+    fn retry_without_context_refs_recovers_original_blob_canonical() {
+        let original = vec![
+            CanonicalContentPart::Text {
+                text: "inspect this".to_string(),
+            },
+            CanonicalContentPart::ImageRef {
+                image_id: "img-1".to_string(),
+                name: Some("photo.jpg".to_string()),
+                resource_id: Some("res-1".to_string()),
+                source_id: Some("source-1".to_string()),
+                blob_hash: Some("stable-original-blob".to_string()),
+                content_hash: None,
+                mime_type: "image/jpeg".to_string(),
+                pinned: false,
+                retrieval_hit: false,
+            },
+        ];
+        let messages = vec![
+            message("user", MessageRole::User, Some(original.clone())),
+            message("assistant", MessageRole::Assistant, None),
+        ];
+
+        assert_eq!(
+            source_user_canonical_before_assistant(&messages, "assistant"),
+            Some(original)
+        );
     }
 }

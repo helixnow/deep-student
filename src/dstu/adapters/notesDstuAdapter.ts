@@ -273,7 +273,7 @@ export const notesDstuAdapter = {
     // ★ 移动端修复：当文件名无法提取有效标题时，从 Markdown 内容提取 H1
     if (!title) {
       title = extractFirstHeading(content)
-        || `导入笔记_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15)}`;
+        || `导入笔记_${new Date().toISOString().replace(/-|:|T/g, '').slice(0, 15)}`;
     }
 
     console.log(LOG_PREFIX, 'importMarkdownContent via DSTU:', fileName, 'title:', title, 'folderId:', folderId);

@@ -1,8 +1,5 @@
 import * as React from "react";
-import {
-  OverlayScrollbarsComponent,
-  type OverlayScrollbarsComponentRef,
-} from "overlayscrollbars-react";
+import { useOverlayScrollbars } from "overlayscrollbars-react";
 
 import { cn } from "../../lib/utils";
 import { detectScrollPlatform } from "../../lib/scroll-platform";
@@ -16,7 +13,8 @@ import { useScrollbarTheme } from "../../lib/scroll-theme";
  * - Windows / macOS / Linux → overlay scrollbars synced to app theme
  *
  * Moved from study-ui so DeepStudent can run independently without the
- * `@study-ui` alias. The `.scroll-area--native` styles live in App.css.
+ * `@study-ui` alias. Overlay and native fallback visuals share the contract in
+ * src/styles/native-feel/scrollbars.css.
  *
  * ## Migration checklist (when replacing `.custom-scrollbar` or legacy CustomScrollArea)
  * - Do NOT wrap CodeMirror `.cm-scroller`, Crepe/Milkdown editor body,
@@ -32,6 +30,7 @@ import { useScrollbarTheme } from "../../lib/scroll-theme";
 const SCROLL_AREA_NATIVE_CLASS = "scroll-area--native";
 
 type ScrollOrientation = "vertical" | "horizontal" | "both";
+type ScrollAutoHideMode = "never" | "scroll" | "leave" | "move";
 
 type TrackOffset = {
   top?: number | string;
@@ -46,10 +45,15 @@ export interface ScrollAreaProps
   className?: string;
   viewportClassName?: string;
   viewportRef?: React.Ref<HTMLDivElement>;
-  viewportProps?: Omit<React.HTMLAttributes<HTMLDivElement>, "className" | "ref">;
+  /** Applied to the real scrolling viewport; className is merged with viewportClassName. */
+  viewportProps?: React.HTMLAttributes<HTMLDivElement>;
   orientation?: ScrollOrientation;
-  /** Hide delay in ms. 0 = always visible. Default 700. */
+  /** Hide delay in ms. 0 = always visible. Default 600. */
   scrollHideDelay?: number;
+  /** Controls what interaction reveals an overlay scrollbar. */
+  scrollAutoHide?: ScrollAutoHideMode;
+  /** Keep the scrollbar visible until the first scroll. Default true. */
+  scrollAutoHideSuspend?: boolean;
   trackOffset?: TrackOffset;
   /** Override platform default. iOS auto-detects to `true`. */
   nativeScrollbars?: boolean;
@@ -65,6 +69,34 @@ function assignRef<T>(ref: React.Ref<T> | undefined, value: T | null): void {
   if (!ref) return;
   if (typeof ref === "function") ref(value);
   else (ref as React.MutableRefObject<T | null>).current = value;
+}
+
+const pendingScrollTimelineHandleRefreshes = new WeakSet<HTMLElement>();
+
+function refreshScrollTimelineHandleGeometry(handles: readonly HTMLElement[]): void {
+  const pendingHandles = handles.filter((handle) => {
+    if (pendingScrollTimelineHandleRefreshes.has(handle)) return false;
+    pendingScrollTimelineHandleRefreshes.add(handle);
+    return true;
+  });
+  if (pendingHandles.length === 0) return;
+
+  requestAnimationFrame(() => {
+    for (const handle of pendingHandles) {
+      pendingScrollTimelineHandleRefreshes.delete(handle);
+      if (!handle.isConnected || typeof KeyframeEffect === "undefined") continue;
+      for (const animation of handle.getAnimations()) {
+        if (animation.timeline?.constructor.name !== "ScrollTimeline") continue;
+        const effect = animation.effect;
+        if (!(effect instanceof KeyframeEffect)) continue;
+
+        // Chromium can keep container-query units from the size at which the
+        // ScrollTimeline keyframes were created. Re-applying the same frames
+        // makes 100cqh / 100cqw resolve against the current track geometry.
+        effect.setKeyframes(effect.getKeyframes());
+      }
+    }
+  });
 }
 
 type ScrollAreaCssVars = {
@@ -83,7 +115,9 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       viewportRef,
       viewportProps,
       orientation = "vertical",
-      scrollHideDelay = 700,
+      scrollHideDelay = 600,
+      scrollAutoHide,
+      scrollAutoHideSuspend = true,
       trackOffset,
       nativeScrollbars,
       style,
@@ -124,8 +158,105 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
     const dataSlot = rest["data-slot"] ?? "scroll-area";
     const { "data-slot": _dataSlotDrop, ...restProps } = rest;
     void _dataSlotDrop;
+    const {
+      className: viewportPropsClassName,
+      ...resolvedViewportProps
+    } = viewportProps ?? {};
+    const overlayTargetRef = React.useRef<HTMLDivElement | null>(null);
+    const overlayViewportRef = React.useRef<HTMLDivElement | null>(null);
+    const setOverlayTargetRef = React.useCallback(
+      (value: HTMLDivElement | null) => {
+        overlayTargetRef.current = value;
+        assignRef(ref, value);
+      },
+      [ref],
+    );
+    const setOverlayViewportRef = React.useCallback(
+      (value: HTMLDivElement | null) => {
+        overlayViewportRef.current = value;
+        assignRef(viewportRef, value);
+      },
+      [viewportRef],
+    );
+    const [initializeOverlay, getOverlayInstance] = useOverlayScrollbars({
+      options: {
+        update: {
+          // LTR 使用标准顺向流，跳过 Chromium 容易误判的坐标探测；
+          // RTL 则保留方向信号，确保横向滑块与负 scrollLeft 正确映射。
+          flowDirectionStyles: (viewport) => {
+            const direction = getComputedStyle(viewport).direction;
+            return direction === "rtl" ? { direction } : {};
+          },
+        },
+        scrollbars: {
+          theme,
+          // 触屏无 hover：'leave' 策略会让滚动条永不出现（M-1），
+          // 改为滚动时显影、停止后按 delay 隐藏；显式传入 scrollAutoHide 时以调用方为准
+          autoHide:
+            scrollHideDelay > 0
+              ? (scrollAutoHide ?? (platform.isTouchPrimary ? "scroll" : "leave"))
+              : "never",
+          autoHideDelay: scrollHideDelay,
+          autoHideSuspend: scrollAutoHideSuspend,
+          dragScroll: true,
+          // 点击轨道跳转遵循平台惯例：macOS 原生滚动条无此行为，点击轨道
+          // 不应跳转（聊天右缘是高频点击区，误触会意外跳走）；
+          // Windows/Linux 惯例是点击跳转，保持开启。
+          clickScroll: platform.isMac ? false : true,
+        },
+        overflow: { x: overflowX, y: overflowY },
+      },
+      events: {
+        initialized: (instance) => {
+          const elements = instance.elements();
+          refreshScrollTimelineHandleGeometry([
+            elements.scrollbarHorizontal?.handle,
+            elements.scrollbarVertical.handle,
+          ].filter((h): h is HTMLElement => Boolean(h)));
+        },
+        updated: (instance) => {
+          const elements = instance.elements();
+          refreshScrollTimelineHandleGeometry([
+            elements.scrollbarHorizontal?.handle,
+            elements.scrollbarVertical.handle,
+          ].filter((h): h is HTMLElement => Boolean(h)));
+        },
+      },
+    });
 
-    const osRef = React.useRef<OverlayScrollbarsComponentRef | null>(null);
+    React.useEffect(() => {
+      if (useNative) return;
+      const target = overlayTargetRef.current;
+      const viewport = overlayViewportRef.current;
+      if (!target || !viewport) return;
+
+      initializeOverlay({
+        target,
+        elements: { viewport },
+      });
+      return () => {
+        getOverlayInstance()?.destroy();
+      };
+    }, [getOverlayInstance, initializeOverlay, useNative]);
+
+    React.useEffect(() => {
+      if (useNative) return;
+      const instance = getOverlayInstance();
+      if (!instance) return;
+      instance.update(true);
+      const elements = instance.elements();
+      refreshScrollTimelineHandleGeometry([
+        elements.scrollbarHorizontal?.handle,
+        elements.scrollbarVertical.handle,
+      ].filter((h): h is HTMLElement => Boolean(h)));
+    }, [
+      getOverlayInstance,
+      trackOffset?.bottom,
+      trackOffset?.left,
+      trackOffset?.right,
+      trackOffset?.top,
+      useNative,
+    ]);
 
     if (useNative) {
       const overflowClass = cn(
@@ -139,7 +270,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           data-slot={dataSlot}
           data-orientation={orientation}
           data-native-scrollbars="true"
-          className={cn("relative", className)}
+          className={cn("relative min-h-0 min-w-0", className)}
           style={offsetStyle}
           {...restProps}
         >
@@ -147,11 +278,12 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
             ref={viewportRef}
             className={cn(
               SCROLL_AREA_NATIVE_CLASS,
-              "h-full w-full",
+              "h-full min-h-0 w-full min-w-0",
               overflowClass,
               viewportClassName,
+              viewportPropsClassName,
             )}
-            {...viewportProps}
+            {...resolvedViewportProps}
           >
             {children}
           </div>
@@ -161,41 +293,31 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
 
     return (
       <div
-        ref={ref}
+        ref={setOverlayTargetRef}
         data-slot={dataSlot}
         data-orientation={orientation}
+        data-scroll-axes={orientation}
         data-native-scrollbars="false"
-        className={cn("relative", className)}
+        data-overlayscrollbars-initialize=""
+        data-scroll-track-top={trackOffset?.top !== undefined ? "" : undefined}
+        data-scroll-track-bottom={trackOffset?.bottom !== undefined ? "" : undefined}
+        data-scroll-track-left={trackOffset?.left !== undefined ? "" : undefined}
+        data-scroll-track-right={trackOffset?.right !== undefined ? "" : undefined}
+        className={cn("relative min-h-0 min-w-0", className)}
         style={offsetStyle}
         {...restProps}
       >
-        <OverlayScrollbarsComponent
-          ref={osRef}
-          element="div"
-          className={cn("h-full w-full", viewportClassName)}
-          options={{
-            scrollbars: {
-              theme,
-              autoHide: scrollHideDelay > 0 ? "leave" : "never",
-              autoHideDelay: scrollHideDelay,
-              autoHideSuspend: true,
-              dragScroll: true,
-              clickScroll: true,
-            },
-            overflow: { x: overflowX, y: overflowY },
-          }}
-          events={{
-            initialized: (instance) => {
-              assignRef(viewportRef, instance.elements().viewport as HTMLDivElement);
-            },
-            destroyed: () => {
-              assignRef(viewportRef, null);
-            },
-          }}
-          {...(viewportProps ?? {})}
+        <div
+          ref={setOverlayViewportRef}
+          className={cn(
+            "h-full min-h-0 w-full min-w-0",
+            viewportClassName,
+            viewportPropsClassName,
+          )}
+          {...resolvedViewportProps}
         >
           {children}
-        </OverlayScrollbarsComponent>
+        </div>
       </div>
     );
   },

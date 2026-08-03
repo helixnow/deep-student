@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   Archive, Check, X, TextT, Smiley, TextAlignLeft, Terminal, Lightning,
   Folder, FolderOpen, Star, Heart, BookOpen, GraduationCap,
@@ -14,6 +14,17 @@ import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem } from '@/features/learning-hub/types';
+
+interface RuntimeRootEntry {
+  id: string;
+  kind: string;
+  path: string;
+  access: 'read_only' | 'read_write' | string;
+  label: string;
+  description?: string;
+  session_scoped?: boolean;
+  configured?: boolean;
+}
 
 function getResourceTypeIcon(type: string): React.ElementType {
   switch (type) {
@@ -61,13 +72,14 @@ export const PRESET_ICONS = [
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
+import { configureTaskWorkspace } from '../../api/taskWorkspaceApi';
 
 interface GroupEditorPanelProps {
   mode: 'create' | 'edit';
@@ -75,6 +87,7 @@ interface GroupEditorPanelProps {
   autoFocusField?: 'name' | null;
   onSubmit: (payload: CreateGroupRequest | UpdateGroupRequest) => Promise<void>;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
   onArchive?: () => void;
   /** 移动端：通过父级 MobileSlidingLayout 右面板浏览资源，传入 togglePinnedResource 回调和当前已选 ID */
   onMobileBrowse?: (toggleResource: (sourceId: string) => 'added' | 'removed' | false, currentIds: string[]) => void;
@@ -113,6 +126,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   autoFocusField = null,
   onSubmit,
   onClose,
+  onDirtyChange,
   onArchive,
   onMobileBrowse,
 }) => {
@@ -129,6 +143,11 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [registryVersion, setRegistryVersion] = useState(0);
+  const [defaultRuntimeRootId, setDefaultRuntimeRootId] = useState('');
+  const [preferredProjectRootPath, setPreferredProjectRootPath] = useState('');
+  const [runtimeRoots, setRuntimeRoots] = useState<RuntimeRootEntry[]>([]);
+  const [rootsLoading, setRootsLoading] = useState(false);
+  const [isAuthorizingRoot, setIsAuthorizingRoot] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -155,6 +174,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       setSystemPrompt(initial.systemPrompt ?? '');
       setDefaultSkillIds(initial.defaultSkillIds ?? []);
       setPinnedResourceIds(initial.pinnedResourceIds ?? []);
+      setDefaultRuntimeRootId(initial.defaultRuntimeRootId ?? '');
+      setPreferredProjectRootPath(initial.preferredProjectRootPath ?? '');
     } else {
       setName('');
       setDescription('');
@@ -163,8 +184,29 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       setDefaultSkillIds([]);
       setPinnedResourceIds([]);
       setResolvedPinnedRefs([]);
+      setDefaultRuntimeRootId('');
+      setPreferredProjectRootPath('');
     }
   }, [mode, initial]);
+
+  const loadRuntimeRoots = useCallback(async () => {
+    setRootsLoading(true);
+    try {
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_list_runtime_roots');
+      // 课题绑定仅使用持久根（workspace / authorized），排除会话临时根
+      setRuntimeRoots((roots ?? []).filter((root) => !root.session_scoped));
+    } catch (err) {
+      console.error('[GroupEditorPanel] Failed to load runtime roots:', err);
+      setRuntimeRoots([]);
+      showGlobalNotification('error', t('page.groupDefaultRuntimeRootLoadFailed'));
+    } finally {
+      setRootsLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadRuntimeRoots();
+  }, [loadRuntimeRoots]);
 
   // Resolve pinned resource IDs to display info
   useEffect(() => {
@@ -240,6 +282,120 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     });
   }, []);
 
+  const bindRuntimeRoot = useCallback((root: RuntimeRootEntry) => {
+    setDefaultRuntimeRootId(root.id);
+    setPreferredProjectRootPath(root.path);
+  }, []);
+
+  const clearRuntimeRoot = useCallback(() => {
+    setDefaultRuntimeRootId('');
+    setPreferredProjectRootPath('');
+  }, []);
+
+  const handleSelectRuntimeRoot = useCallback((rootId: string) => {
+    if (!rootId) {
+      clearRuntimeRoot();
+      return;
+    }
+    const root = runtimeRoots.find((entry) => entry.id === rootId);
+    if (root) {
+      bindRuntimeRoot(root);
+      return;
+    }
+    setDefaultRuntimeRootId(rootId);
+  }, [bindRuntimeRoot, clearRuntimeRoot, runtimeRoots]);
+
+  const handleBrowseAndAuthorizeRoot = useCallback(async () => {
+    if (isAuthorizingRoot) return;
+    try {
+      const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
+      const selected = await dialogOpen({
+        directory: true,
+        multiple: false,
+        title: t('page.groupDefaultRuntimeRootBrowseTitle'),
+      });
+      if (typeof selected !== 'string' || !selected.trim()) return;
+
+      setIsAuthorizingRoot(true);
+      const roots = await configureTaskWorkspace(selected.trim());
+      const nextRoots = (roots ?? []).filter((root) => !root.session_scoped);
+      setRuntimeRoots(nextRoots);
+      const matched = nextRoots.find((root) => root.id === 'workspace' && root.access === 'read_write');
+      if (matched) {
+        bindRuntimeRoot(matched);
+      }
+    } catch (err) {
+      console.error('[GroupEditorPanel] Authorize runtime root failed:', err);
+      showGlobalNotification('error', t('page.groupDefaultRuntimeRootAuthorizeFailed'));
+    } finally {
+      setIsAuthorizingRoot(false);
+    }
+  }, [bindRuntimeRoot, isAuthorizingRoot, t]);
+
+  const selectedRuntimeRootPath = useMemo(() => {
+    if (preferredProjectRootPath.trim()) return preferredProjectRootPath.trim();
+    const matched = runtimeRoots.find((root) => root.id === defaultRuntimeRootId);
+    return matched?.path ?? '';
+  }, [defaultRuntimeRootId, preferredProjectRootPath, runtimeRoots]);
+
+  const isDirty = useMemo(() => {
+    const baseline = mode === 'edit' && initial
+      ? {
+          name: initial.name,
+          description: initial.description ?? '',
+          icon: initial.icon ?? '',
+          systemPrompt: initial.systemPrompt ?? '',
+          defaultSkillIds: initial.defaultSkillIds ?? [],
+          pinnedResourceIds: initial.pinnedResourceIds ?? [],
+          defaultRuntimeRootId: initial.defaultRuntimeRootId ?? '',
+          preferredProjectRootPath: initial.preferredProjectRootPath ?? '',
+        }
+      : {
+          name: '',
+          description: '',
+          icon: '',
+          systemPrompt: '',
+          defaultSkillIds: [] as string[],
+          pinnedResourceIds: [] as string[],
+          defaultRuntimeRootId: '',
+          preferredProjectRootPath: '',
+        };
+    const sameIds = (left: string[], right: string[]) => {
+      if (left.length !== right.length) return false;
+      const sortedLeft = [...left].sort();
+      const sortedRight = [...right].sort();
+      return sortedLeft.every((value, index) => value === sortedRight[index]);
+    };
+
+    return name !== baseline.name
+      || description !== baseline.description
+      || icon !== baseline.icon
+      || systemPrompt !== baseline.systemPrompt
+      || !sameIds(defaultSkillIds, baseline.defaultSkillIds)
+      || !sameIds(pinnedResourceIds, baseline.pinnedResourceIds)
+      || defaultRuntimeRootId !== baseline.defaultRuntimeRootId
+      || preferredProjectRootPath !== baseline.preferredProjectRootPath;
+  }, [
+    defaultRuntimeRootId,
+    defaultSkillIds,
+    description,
+    icon,
+    initial,
+    mode,
+    name,
+    pinnedResourceIds,
+    preferredProjectRootPath,
+    systemPrompt,
+  ]);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => () => {
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
   const handleSubmit = useCallback(async () => {
     if (!name.trim()) return;
     setIsSaving(true);
@@ -252,6 +408,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           systemPrompt: systemPrompt.trim() || undefined,
           defaultSkillIds,
           pinnedResourceIds,
+          defaultRuntimeRootId: defaultRuntimeRootId.trim() || undefined,
+          preferredProjectRootPath: preferredProjectRootPath.trim() || undefined,
         };
         await onSubmit(payload);
       } else {
@@ -263,6 +421,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           systemPrompt: systemPrompt.trim(),
           defaultSkillIds,
           pinnedResourceIds,
+          defaultRuntimeRootId: defaultRuntimeRootId.trim(),
+          preferredProjectRootPath: preferredProjectRootPath.trim(),
         };
         await onSubmit(payload);
       }
@@ -272,26 +432,38 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [defaultSkillIds, pinnedResourceIds, description, icon, mode, name, onSubmit, systemPrompt, t]);
+  }, [
+    defaultRuntimeRootId,
+    defaultSkillIds,
+    pinnedResourceIds,
+    description,
+    icon,
+    mode,
+    name,
+    onSubmit,
+    preferredProjectRootPath,
+    systemPrompt,
+    t,
+  ]);
 
   return (
     <div className="flex flex-col h-full bg-background relative">
       {/* Action Buttons - Absolute Positioned */}
       <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10 flex items-center gap-2">
-          <NotionButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3">
+          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:h-11">
             {t('common:cancel')}
-          </NotionButton>
-          <NotionButton 
+          </DsButton>
+          <DsButton 
             variant="primary" 
             onClick={handleSubmit} 
             disabled={isSaving || !name.trim()}
-            className="h-8 px-3"
+            className="h-8 px-3 max-md:h-11"
           >
             {mode === 'create' ? t('common:create') : t('common:save')}
-          </NotionButton>
+          </DsButton>
       </div>
 
-      <CustomScrollArea className="flex-1">
+      <CustomScrollArea className="min-h-0 flex-1">
         <div className="max-w-3xl mx-auto px-5 py-8 md:px-8 md:py-10 space-y-6 md:space-y-8 mt-10 md:mt-12">
           
           {/* Title Section */}
@@ -332,7 +504,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       key={iconName}
                       onClick={() => setIcon(iconName)}
                       className={cn(
-                        "w-9 h-9 flex items-center justify-center rounded-md cursor-pointer transition-colors",
+                        // 移动端触控目标放大到 44px，桌面保持 36px
+                        "w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer transition-colors",
                         icon === iconName
                           ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                           : "hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
@@ -346,7 +519,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   {icon && (
                     <div
                       onClick={() => setIcon('')}
-                      className="w-9 h-9 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      className="w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       title={t('common:clear')}
                     >
                       <X size={16} />
@@ -381,6 +554,70 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 className="min-h-[120px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 py-2 transition-colors resize-none overflow-hidden"
                 placeholder={t('page.groupSystemPromptPlaceholder')}
               />
+            </PropertyRow>
+
+            <PropertyRow icon={FolderOpen} label={t('page.groupDefaultRuntimeRoot')} mobileStacked>
+              <div className="space-y-2 px-0 md:px-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={defaultRuntimeRootId}
+                    onChange={(e) => handleSelectRuntimeRoot(e.target.value)}
+                    disabled={rootsLoading || isAuthorizingRoot}
+                    className="h-9 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
+                  >
+                    <option value="">{t('page.groupDefaultRuntimeRootNone')}</option>
+                    {defaultRuntimeRootId
+                      && !runtimeRoots.some((root) => root.id === defaultRuntimeRootId) && (
+                      <option value={defaultRuntimeRootId}>
+                        {selectedRuntimeRootPath || defaultRuntimeRootId}
+                      </option>
+                    )}
+                    {runtimeRoots.map((root) => (
+                      <option key={root.id} value={root.id}>
+                        {root.label || root.id}
+                        {root.access === 'read_only' ? ' (RO)' : ''}
+                        {root.path ? ` — ${root.path}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <DsButton
+                    variant="ghost"
+                    onClick={() => void handleBrowseAndAuthorizeRoot()}
+                    disabled={isAuthorizingRoot}
+                    className="h-8 px-3 shrink-0"
+                  >
+                    {isAuthorizingRoot ? (
+                      <CircleNotch size={14} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <Folder size={14} className="mr-1.5" />
+                    )}
+                    {t('page.groupDefaultRuntimeRootBrowse')}
+                  </DsButton>
+                  {defaultRuntimeRootId && (
+                    <DsButton
+                      variant="ghost"
+                      onClick={clearRuntimeRoot}
+                      disabled={isAuthorizingRoot}
+                      className="h-8 px-3 shrink-0 text-muted-foreground hover:text-destructive"
+                      title={t('common:clear')}
+                    >
+                      <X size={14} className="mr-1.5" />
+                      {t('common:clear')}
+                    </DsButton>
+                  )}
+                </div>
+                {selectedRuntimeRootPath ? (
+                  <div
+                    className="text-xs text-muted-foreground font-mono truncate"
+                    title={selectedRuntimeRootPath}
+                  >
+                    {selectedRuntimeRootPath}
+                  </div>
+                ) : null}
+                <p className="text-xs text-muted-foreground/60 leading-relaxed">
+                  {t('page.groupDefaultRuntimeRootHint')}
+                </p>
+              </div>
             </PropertyRow>
 
             <PropertyRow icon={Lightning} label={t('page.groupDefaultSkills')} mobileStacked>
@@ -427,7 +664,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             {pinnedLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                 <CircleNotch size={16} className="animate-spin" />
-                <span>{t('common:loading', '加载中...')}</span>
+                <span>{t('common:loading')}</span>
               </div>
             ) : resolvedPinnedRefs.length > 0 ? (
               <div className="space-y-1">
@@ -447,10 +684,11 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         type="button"
                         onClick={() => removePinnedResource(ref.sourceId)}
                         className={cn(
-                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors',
+                          // 视觉紧凑，透明伪元素扩大触控命中区
+                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
                           isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                         )}
-                        aria-label={t('common:remove', '移除')}
+                        aria-label={t('common:remove')}
                       >
                         <X size={14} />
                       </button>
@@ -460,21 +698,65 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               </div>
             ) : null}
 
-            {/* Add from browse — primary action */}
+            {/* Add from browse — primary action（桌面端切换内联资源选择区，不再用侧滑抽屉） */}
             <button
               type="button"
+              aria-expanded={!onMobileBrowse ? pickerOpen : undefined}
               onClick={() => {
                 if (onMobileBrowse) {
                   onMobileBrowse(togglePinnedResource, pinnedResourceIds);
                 } else {
-                  setPickerOpen(true);
+                  setPickerOpen((open) => !open);
                 }
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border transition-colors cursor-pointer"
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed text-sm transition-colors cursor-pointer',
+                !onMobileBrowse && pickerOpen
+                  ? 'border-primary/40 bg-primary/5 text-foreground'
+                  : 'border-border/60 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border'
+              )}
             >
-              <Plus size={16} />
-              <span>{t('page.groupPinnedBrowse')}</span>
+              {!onMobileBrowse && pickerOpen ? <X size={16} /> : <Plus size={16} />}
+              <span>
+                {!onMobileBrowse && pickerOpen
+                  ? t('common:close')
+                  : t('page.groupPinnedBrowse')}
+              </span>
+              {!onMobileBrowse && pickerOpen && pinnedResourceIds.length > 0 && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {t('page.groupPinnedSelectedCount', { count: pinnedResourceIds.length })}
+                </span>
+              )}
             </button>
+
+            {/* 内联资源选择区（原 Portal 右侧抽屉内联化；grid-rows 展开动画，遵循 D 报告动效基线） */}
+            {!onMobileBrowse && (
+              <div
+                className={cn(
+                  'grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
+                  pickerOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                )}
+              >
+                <div className={cn('min-h-0 overflow-hidden', !pickerOpen && 'pointer-events-none')}>
+                  <div className="h-[380px] overflow-hidden rounded-[var(--radius-shell-control)] border border-border/50 bg-card">
+                    {pickerOpen && (
+                      <LearningHubSidebar
+                        mode="canvas"
+                        hostId="group-picker"
+                        sessionActive={pickerOpen}
+                        commandsEnabled={false}
+                        onClose={() => setPickerOpen(false)}
+                        onOpenApp={(item: ResourceListItem) => {
+                          togglePinnedResource(item.id);
+                        }}
+                        className="h-full"
+                        highlightedIds={pinnedHighlightSet}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {resolvedPinnedRefs.length > 0 && (
               <p className="text-xs text-muted-foreground/60">
@@ -485,63 +767,18 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
 
           {mode === 'edit' && onArchive && (
             <div className="pt-6 border-t border-border/40">
-              <NotionButton
+              <DsButton
                 variant="warning"
                 onClick={onArchive}
                 className="h-8 px-3"
               >
                 <Archive size={14} className="mr-1.5" />
                 {t('page.archiveGroup')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>
       </CustomScrollArea>
-
-      {/* Resource Picker — 桌面端使用 Portal 右侧面板；移动端由父级 MobileSlidingLayout 右面板处理 */}
-      {pickerOpen && !onMobileBrowse && createPortal(
-        <div
-          className="fixed inset-0 z-[200] flex justify-end"
-          onClick={() => setPickerOpen(false)}
-        >
-          <div
-            className="h-full w-[380px] max-w-[85vw] bg-card shadow-xl flex flex-col border-l border-border/40 animate-in slide-in-from-right-full duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 shrink-0">
-              <div className="flex items-center gap-2">
-                <NotionButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={() => setPickerOpen(false)}
-                  className="!h-7 !w-7"
-                >
-                  <X size={16} />
-                </NotionButton>
-                <span className="text-sm font-medium">{t('page.groupPinnedBrowse')}</span>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {pinnedResourceIds.length > 0
-                  ? t('page.groupPinnedSelectedCount', { count: pinnedResourceIds.length })
-                  : ''}
-              </span>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <LearningHubSidebar
-                mode="canvas"
-                onClose={() => setPickerOpen(false)}
-                onOpenApp={(item: ResourceListItem) => {
-                  togglePinnedResource(item.id);
-                }}
-                className="h-full"
-                highlightedIds={pinnedHighlightSet}
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 };

@@ -32,11 +32,13 @@ const rootClassNames = {
     'rounded-[var(--radius-shell-control)] bg-[color:var(--surface-muted)] p-[3px]',
 } as const;
 
+// [@media(pointer:coarse)]:min-h-10：触屏统一 ≥40px 命中高度（min-height 与
+// 调用点的 !h-auto/!py-* 覆写正交，桌面 fine 指针不受影响）
 const itemClassNames = {
   default:
-    'h-9 rounded-[var(--radius-shell-control)] px-3.5 text-sm font-medium sm:px-4',
+    'h-9 rounded-[var(--radius-shell-control)] px-3.5 text-sm font-medium sm:px-4 [@media(pointer:coarse)]:min-h-[2.5rem]',
   compact:
-    'h-7 rounded-[calc(var(--radius-shell-control)-2px)] px-2.5 text-xs font-medium',
+    'h-7 rounded-[calc(var(--radius-shell-control)-2px)] px-2.5 text-xs font-medium [@media(pointer:coarse)]:min-h-[2.5rem]',
 } as const;
 
 function getNextEnabledIndex<T extends string>(

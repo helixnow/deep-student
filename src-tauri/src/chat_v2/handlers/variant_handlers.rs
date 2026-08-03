@@ -21,16 +21,16 @@ use tracing::{debug, info, warn};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::{ChatV2Error, ChatV2Result};
 use crate::chat_v2::events::session_event_type;
+use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::handlers::send_message::apply_original_skill_snapshot_overrides;
 use crate::chat_v2::pipeline::{ChatV2Pipeline, VariantRetrySpec};
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::state::ChatV2State;
+use crate::chat_v2::state::{ChatV2State, StreamGuard};
 use crate::chat_v2::types::{
     variant_status, AttachmentInput, ChatMessage, MessageRole, SendOptions, SessionSkillState,
     SharedContext, SkillStateSnapshot,
 };
 use crate::chat_v2::vfs_resolver::{resolve_context_ref_data_to_content, ResolvedContent};
-use crate::llm_manager::LLMManager;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 use crate::vfs::types::VfsContextRefData;
@@ -61,8 +61,6 @@ fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSk
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids,
         branch_local_skill_ids: Vec::new(),
-        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
-        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version.saturating_add(1),
         legacy_migrated: Some(false),
@@ -163,10 +161,11 @@ pub async fn chat_v2_switch_variant(
         "[ChatV2::VariantHandler] switch_variant: session_id={}, message_id={}, variant_id={}",
         session_id, message_id, variant_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     switch_variant_impl(&db, &session_id, &message_id, &variant_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(String::from)
 }
 
 async fn switch_variant_impl(
@@ -234,10 +233,11 @@ pub async fn chat_v2_delete_variant(
         "[ChatV2::VariantHandler] delete_variant: session_id={}, message_id={}, variant_id={}",
         session_id, message_id, variant_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     delete_variant_impl(&db, &window, &session_id, &message_id, &variant_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(String::from)
 }
 
 async fn delete_variant_impl(
@@ -279,8 +279,7 @@ async fn delete_variant_impl(
         return Err(ChatV2Error::Other(
             "Cannot delete a streaming variant. Please wait for completion or cancel it first."
                 .to_string(),
-        )
-        .into());
+        ));
     }
 
     let block_ids_to_delete = variant_to_delete.block_ids.clone();
@@ -416,6 +415,7 @@ pub async fn chat_v2_retry_variant(
         "[ChatV2::VariantHandler] retry_variant: session_id={}, message_id={}, variant_id={}, model_override={:?}",
         session_id, message_id, variant_id, model_override
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     retry_variant_impl(
         &db,
@@ -430,7 +430,7 @@ pub async fn chat_v2_retry_variant(
         options,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(String::from)
 }
 
 /// 批量重试变体
@@ -459,6 +459,7 @@ pub async fn chat_v2_retry_variants(
         message_id,
         variant_ids.len()
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     retry_variants_impl(
         &db,
@@ -472,13 +473,13 @@ pub async fn chat_v2_retry_variants(
         options,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(String::from)
 }
 
 async fn retry_variant_impl(
     db: &ChatV2Database,
     vfs_db: &VfsDatabase,
-    chat_v2_state: &ChatV2State,
+    chat_v2_state: &Arc<ChatV2State>,
     pipeline: &ChatV2Pipeline,
     window: Window,
     requester_session_id: &str,
@@ -507,7 +508,7 @@ async fn retry_variant_impl(
     if chat_v2_state.has_active_stream(&session_id) {
         return Err(ChatV2Error::Other(
             "Cannot retry variant while session is streaming. Please wait for completion or cancel first.".to_string()
-        ).into());
+        ));
     }
 
     // 3. 获取变体
@@ -690,7 +691,7 @@ async fn retry_variant_impl(
             skill_runtime_after: meta.skill_runtime_after.clone(),
             ..Default::default()
         });
-    let options = apply_original_skill_snapshot_overrides(
+    let mut options = apply_original_skill_snapshot_overrides(
         resolve_retry_options(saved_chat_params, &model_id, options_override),
         selected_variant_meta.as_ref(),
         message.meta.as_ref(),
@@ -705,17 +706,28 @@ async fn retry_variant_impl(
     );
 
     // 16. 注册会话级流锁 + 变体取消令牌
-    let session_token = match chat_v2_state.try_register_stream(&session_id) {
-        Ok(token) => token,
+    let session_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
+        Ok(registration) => registration,
         Err(()) => {
             return Err(ChatV2Error::Other(
                 "Cannot retry variant while session is streaming. Please wait for completion or cancel first.".to_string()
-            ).into());
+            ));
         }
     };
+    options.stream_generation = Some(session_registration.generation());
+    let session_token = session_registration.token().clone();
+    let _session_guard = StreamGuard::new(
+        Arc::clone(chat_v2_state),
+        session_id.clone(),
+        session_registration,
+    );
+
     let cancel_key = format!("{}:{}", session_id, variant_id);
     let cancel_token = session_token.child_token();
-    chat_v2_state.register_existing_token(&cancel_key, cancel_token.clone());
+    let cancel_registration =
+        chat_v2_state.register_existing_token_owned(&cancel_key, cancel_token.clone());
+    let _cancel_guard =
+        StreamGuard::new(Arc::clone(chat_v2_state), cancel_key, cancel_registration);
 
     // 17. 触发 Pipeline 重新执行
     let result = pipeline
@@ -732,10 +744,6 @@ async fn retry_variant_impl(
             cancel_token,
         )
         .await;
-
-    // 18. 清理取消令牌
-    chat_v2_state.remove_stream(&cancel_key);
-    chat_v2_state.remove_stream(&session_id);
 
     result
 }
@@ -776,7 +784,7 @@ async fn retry_variants_impl(
     if chat_v2_state.has_active_stream(&session_id) {
         return Err(ChatV2Error::Other(
             "Cannot retry variants while session is streaming. Please wait for completion or cancel first.".to_string()
-        ).into());
+        ));
     }
 
     // 3. 去重 variant_ids（保持顺序）
@@ -989,7 +997,7 @@ async fn retry_variants_impl(
         .map(|spec| spec.config_id.clone())
         .unwrap_or_default();
     let saved_chat_params = message.meta.as_ref().and_then(|m| m.chat_params.as_ref());
-    let options = apply_original_skill_snapshot_overrides(
+    let mut options = apply_original_skill_snapshot_overrides(
         resolve_retry_options(saved_chat_params, &primary_model_id, options_override),
         message.meta.as_ref(),
         None,
@@ -1004,16 +1012,24 @@ async fn retry_variants_impl(
         retry_specs.len()
     );
 
-    let session_token = match chat_v2_state.try_register_stream(&session_id) {
-        Ok(token) => token,
+    let session_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
+        Ok(registration) => registration,
         Err(()) => {
             return Err(ChatV2Error::Other(
                 "Cannot retry variants while session is streaming. Please wait for completion or cancel first.".to_string()
-            ).into());
+            ));
         }
     };
 
-    let result = pipeline
+    options.stream_generation = Some(session_registration.generation());
+    let session_token = session_registration.token().clone();
+    let _session_guard = StreamGuard::new(
+        Arc::clone(chat_v2_state),
+        session_id.clone(),
+        session_registration,
+    );
+
+    pipeline
         .execute_variants_retry_batch(
             window,
             session_id.clone(),
@@ -1026,15 +1042,7 @@ async fn retry_variants_impl(
             session_token,
             Some(Arc::clone(chat_v2_state)),
         )
-        .await;
-
-    for variant_id in &unique_variant_ids {
-        let cancel_key = format!("{}:{}", session_id, variant_id);
-        chat_v2_state.remove_stream(&cancel_key);
-    }
-    chat_v2_state.remove_stream(&session_id);
-
-    result
+        .await
 }
 
 /// 取消变体生成
@@ -1048,7 +1056,6 @@ async fn retry_variants_impl(
 pub async fn chat_v2_cancel_variant(
     db: State<'_, Arc<ChatV2Database>>,
     state: State<'_, Arc<ChatV2State>>,
-    llm_manager: State<'_, Arc<LLMManager>>,
     session_id: String,
     variant_id: String,
 ) -> Result<(), String> {
@@ -1057,15 +1064,14 @@ pub async fn chat_v2_cancel_variant(
         session_id, variant_id
     );
 
-    cancel_variant_impl(&db, &state, &llm_manager, &session_id, &variant_id)
+    cancel_variant_impl(&db, &state, &session_id, &variant_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(String::from)
 }
 
 async fn cancel_variant_impl(
     db: &ChatV2Database,
     state: &ChatV2State,
-    llm_manager: &LLMManager,
     session_id: &str,
     variant_id: &str,
 ) -> ChatV2Result<()> {
@@ -1087,14 +1093,9 @@ async fn cancel_variant_impl(
         );
     }
 
-    // 层 2：通知 LLM 流式循环停止（通过 cancel_rx/cancel_registry）
-    // stream_event 格式与 pipeline.rs execute_single_variant_with_config 中一致
-    let stream_event = format!("chat_v2_event_{}_{}", session_id, variant_id);
-    llm_manager.request_cancel_stream(&stream_event).await;
-    info!(
-        "[ChatV2::VariantHandler] LLM stream cancel requested: stream_event={}",
-        stream_event
-    );
+    // The pipeline's cancellation select forwards this token to LLMManager using the exact
+    // run-scoped hook key. Constructing the former `{session}:{variant}` key here would leave an
+    // unmatched cancel-registry entry after retry keys became run-scoped.
 
     Ok(())
 }

@@ -1,12 +1,16 @@
 import React from 'react';
-import { MindMapCanvas } from './MindMapCanvas';
+import { MindMapCanvas, type MindMapCanvasHandle, type MindMapCanvasProps } from './MindMapCanvas';
 
-export const MindMapViewNew: React.FC = () => {
-  return (
-    <div className="w-full h-full relative">
-      <MindMapCanvas />
-      {/* 结构选择器已移至顶部工具栏 */}
-    </div>
-  );
-};
+export type MindMapViewNewHandle = MindMapCanvasHandle;
+export type MindMapViewNewProps = MindMapCanvasProps;
 
+export const MindMapViewNew = React.forwardRef<MindMapViewNewHandle, MindMapViewNewProps>(
+  function MindMapViewNew(props, ref) {
+    return (
+      <div className="w-full h-full relative">
+        <MindMapCanvas ref={ref} {...props} />
+        {/* 结构选择器已移至顶部工具栏 */}
+      </div>
+    );
+  },
+);

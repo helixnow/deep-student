@@ -4,10 +4,12 @@
 
 use crate::commands::{get_template_config, AppState};
 use crate::models::{AnkiCard, AnkiGenerationOptions, AppError};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use tauri::{State, Window};
+use tauri::{AppHandle, Emitter, State, Window};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -27,6 +29,86 @@ fn card_has_cloze_markup(card: &AnkiCard) -> bool {
         return true;
     }
     card.extra_fields.values().any(|v| contains_cloze_markup(v))
+}
+
+/// 计算卡片内容指纹（sha1 hex），用于导出 receipt 的 content_hash 回写：
+/// 覆盖 front/back/text/排序后的 extra_fields/tags/template_id，
+/// 字段间用不可见分隔符隔离，避免拼接歧义。
+pub(crate) fn compute_anki_card_content_hash(card: &AnkiCard) -> String {
+    use sha1::{Digest, Sha1};
+    const FIELD_SEP: [u8; 1] = [0x1f];
+    const PAIR_SEP: [u8; 1] = [0x1e];
+
+    let mut hasher = Sha1::new();
+    hasher.update(card.front.as_bytes());
+    hasher.update(FIELD_SEP);
+    hasher.update(card.back.as_bytes());
+    hasher.update(FIELD_SEP);
+    if let Some(text) = card.text.as_deref() {
+        hasher.update(text.as_bytes());
+    }
+    hasher.update(FIELD_SEP);
+    let mut keys: Vec<&String> = card.extra_fields.keys().collect();
+    keys.sort();
+    for key in keys {
+        hasher.update(key.as_bytes());
+        hasher.update(PAIR_SEP);
+        if let Some(value) = card.extra_fields.get(key) {
+            hasher.update(value.as_bytes());
+        }
+        hasher.update(PAIR_SEP);
+    }
+    hasher.update(FIELD_SEP);
+    for tag in &card.tags {
+        hasher.update(tag.as_bytes());
+        hasher.update(PAIR_SEP);
+    }
+    hasher.update(FIELD_SEP);
+    if let Some(template_id) = card.template_id.as_deref() {
+        hasher.update(template_id.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// 在 receipt（anki_note_id + export_status）已由 `write_anki_export_receipts`
+/// 写回后，补写 content_hash（V20260710 迁移已提供该列，但通用回写函数不覆盖）。
+/// 仅更新本次真正同步成功（note_id 存在）且已标记 synced 的活卡。
+fn write_anki_export_content_hashes(
+    database: &crate::database::Database,
+    card_ids: &[String],
+    content_hashes: &[String],
+    note_ids: &[Option<u64>],
+) -> std::result::Result<usize, String> {
+    let len = card_ids.len().min(content_hashes.len()).min(note_ids.len());
+    if len == 0 {
+        return Ok(0);
+    }
+    let conn = database
+        .get_conn_safe()
+        .map_err(|e| format!("获取数据库连接失败: {}", e))?;
+    let mut written = 0usize;
+    for i in 0..len {
+        if note_ids[i].is_none() {
+            continue;
+        }
+        let card_id = card_ids[i].trim();
+        if card_id.is_empty() {
+            continue;
+        }
+        let affected = conn
+            .execute(
+                "UPDATE anki_cards SET content_hash = ?1
+                 WHERE id = ?2
+                   AND deleted_at IS NULL
+                   AND export_status = 'synced'",
+                rusqlite::params![content_hashes[i], card_id],
+            )
+            .map_err(|e| format!("回写 content_hash 失败 (card={}): {}", card_id, e))?;
+        if affected > 0 {
+            written += 1;
+        }
+    }
+    Ok(written)
 }
 
 pub(crate) fn sanitize_filename_component(raw: &str, fallback: &str) -> String {
@@ -228,6 +310,38 @@ pub async fn add_cards_to_anki_connect(
         }
     }
 
+    // 保留卡片 id 顺序，供 Sync 成功后按位回写 anki_note_id receipt；
+    // 同步前先算好内容指纹，卡片随后会被移动进 detailed 同步调用。
+    let card_ids: Vec<String> = selected_cards.iter().map(|c| c.id.clone()).collect();
+    let card_content_hashes: Vec<String> = selected_cards
+        .iter()
+        .map(compute_anki_card_content_hash)
+        .collect();
+
+    // 激活死设置：从 settings 读取 batch_size / retry_times / media_mode
+    let sync_options = {
+        let batch = state
+            .database
+            .get_setting("anki_connect_batch_size")
+            .ok()
+            .flatten();
+        let retry = state
+            .database
+            .get_setting("anki_connect_retry_times")
+            .ok()
+            .flatten();
+        let media = state
+            .database
+            .get_setting("anki_connect_media_mode")
+            .ok()
+            .flatten();
+        crate::anki_connect_service::AnkiConnectSyncOptions::from_setting_strings(
+            batch.as_deref(),
+            retry.as_deref(),
+            media.as_deref(),
+        )
+    };
+
     // D1 修复：detailed 版本会自动创建缺失模型、用 canAddNotes 把重复与失败分开
     match crate::anki_connect_service::add_notes_to_anki_detailed(
         selected_cards,
@@ -235,6 +349,7 @@ pub async fn add_cards_to_anki_connect(
         note_type,
         card_models,
         templates_by_model,
+        sync_options,
     )
     .await
     {
@@ -259,6 +374,43 @@ pub async fn add_cards_to_anki_connect(
                 reason.push_str("。请检查 Anki 中是否存在对应笔记类型、卡片字段是否为空");
                 Err(AppError::validation(reason))
             } else {
+                // M4：按卡片回写 note id + export_status='synced'。
+                // 双库路由修复：anki_cards 属于 Anki 独立数据库（AppState.anki_database），
+                // 之前误写主库 state.database；模板类读取仍走主库（custom_anki_templates 在主库）。
+                if report.added > 0 {
+                    match state
+                        .anki_database
+                        .write_anki_export_receipts(&card_ids, &report.note_ids)
+                    {
+                        Ok(n) => {
+                            if n > 0 {
+                                println!("✅ Anki export receipt 已回写 {} 张卡片", n);
+                            }
+                            // 补写 content_hash（write_anki_export_receipts 不覆盖该列）
+                            match write_anki_export_content_hashes(
+                                &state.anki_database,
+                                &card_ids,
+                                &card_content_hashes,
+                                &report.note_ids,
+                            ) {
+                                Ok(h) if h > 0 => {
+                                    println!("✅ Anki export content_hash 已回写 {} 张卡片", h);
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    log::warn!(
+                                        "[add_cards_to_anki_connect] content_hash 回写失败: {}",
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            // receipt 失败不阻断同步成功（Anki 侧已写入）
+                            log::warn!("[add_cards_to_anki_connect] receipt 回写失败: {}", e);
+                        }
+                    }
+                }
                 // 含"全部已存在"的幂等成功：duplicates 信息随报告返回前端展示
                 Ok(report)
             }
@@ -271,10 +423,20 @@ pub async fn add_cards_to_anki_connect(
 }
 
 /// 导入 APKG 到本机 Anki（通过 AnkiConnect）
+///
+/// `delete_after` 为 true 时，导入成功后删除本地 APKG 文件（对应设置
+/// `anki_connect_delete_apkg_after_import`）；删除失败仅记录警告，不影响导入结果。
 #[tauri::command]
-pub async fn import_anki_package(path: String) -> Result<bool> {
+pub async fn import_anki_package(path: String, delete_after: Option<bool>) -> Result<bool> {
     match crate::anki_connect_service::import_apkg(&path).await {
-        Ok(ok) => Ok(ok),
+        Ok(ok) => {
+            if ok && delete_after.unwrap_or(false) {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    log::warn!("[import_anki_package] 导入成功但删除 APKG 失败 ({path}): {e}");
+                }
+            }
+            Ok(ok)
+        }
         Err(e) => Err(AppError::validation(e)),
     }
 }
@@ -305,16 +467,247 @@ pub struct SaveAnkiCardsRequest {
     pub options: Option<AnkiGenerationOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAnkiCardFailure {
+    pub id: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAnkiCardIdMapping {
+    pub input_index: usize,
+    pub input_id: Option<String>,
+    pub persisted_id: String,
+}
+
+/// `save_anki_cards` 诚实语义响应：
+/// - `saved_ids`：本次真正新插入
+/// - `duplicated_ids`：已存在且 UPDATE 命中（按 id 更新）
+/// - `skipped_ids`：INSERT 被 IGNORE 且按当前文档内容映射到已有卡片
+/// - `failed`：单卡更新失败明细
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct SaveAnkiCardsResponse {
     pub saved_ids: Vec<String>,
     pub task_id: String,
+    #[serde(default)]
+    pub card_id_mappings: Vec<SaveAnkiCardIdMapping>,
+    #[serde(default)]
+    pub skipped_ids: Vec<String>,
+    #[serde(default)]
+    pub duplicated_ids: Vec<String>,
+    #[serde(default)]
+    pub failed: Vec<SaveAnkiCardFailure>,
 }
 
-#[tauri::command]
-pub async fn save_anki_cards(
+fn is_temporary_anki_card_id(id: &str) -> bool {
+    let id = id.trim();
+    id.is_empty() || id.starts_with("anki_synthetic_") || id.starts_with("chat-batch-")
+}
+
+fn durable_anki_card_id(input_id: Option<&str>) -> String {
+    match input_id.map(str::trim) {
+        Some(id) if !is_temporary_anki_card_id(id) => id.to_string(),
+        _ => Uuid::new_v4().to_string(),
+    }
+}
+
+fn find_existing_card_id_by_content(
+    database: &crate::database::Database,
+    document_id: &str,
+    card: &AnkiCard,
+) -> Result<Option<String>> {
+    let conn = database
+        .get_conn_safe()
+        .map_err(|e| AppError::database(format!("查询内容去重卡片失败: {}", e)))?;
+    let text = card.text.as_deref().filter(|text| !text.is_empty());
+    conn.query_row(
+        "SELECT id
+         FROM anki_cards
+         WHERE source_type = 'document'
+           AND source_id = ?1
+           AND is_error_card = 0
+           AND deleted_at IS NULL
+           AND EXISTS (
+             SELECT 1
+             FROM document_tasks dt
+             WHERE dt.id = anki_cards.task_id
+               AND dt.document_id = ?1
+               AND dt.deleted_at IS NULL
+           )
+           AND (
+             (?2 IS NOT NULL AND length(?2) > 0 AND text = ?2)
+             OR
+             ((?2 IS NULL OR length(?2) = 0)
+               AND (text IS NULL OR length(text) = 0)
+               AND front = ?3
+               AND back = ?4)
+           )
+         ORDER BY rowid
+         LIMIT 1",
+        rusqlite::params![document_id, text, card.front, card.back],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| AppError::database(format!("查询内容去重卡片失败: {}", e)))
+}
+
+fn update_anki_card_rows_for_document(
+    database: &crate::database::Database,
+    document_id: &str,
+    card: &AnkiCard,
+) -> Result<usize> {
+    let conn = database
+        .get_conn_safe()
+        .map_err(|e| AppError::database(format!("更新当前文档卡片失败: {}", e)))?;
+    let updated_at = chrono::Utc::now().to_rfc3339();
+    // 故意不改写 is_error_card / error_content：chat 保存路径始终带 false，
+    // 若写入会把诊断卡洗成可复习卡。诊断卡只能由专门修复路径改标记。
+    conn.execute(
+        "UPDATE anki_cards SET
+         front = ?1, back = ?2, text = ?3, tags_json = ?4, images_json = ?5,
+         updated_at = ?6,
+         extra_fields_json = ?7, template_id = ?8
+         WHERE id = ?9
+           AND source_type = 'document'
+           AND source_id = ?10
+           AND deleted_at IS NULL
+           AND is_error_card = 0
+           AND EXISTS (
+             SELECT 1
+             FROM document_tasks dt
+             WHERE dt.id = anki_cards.task_id
+               AND dt.document_id = ?10
+               AND dt.deleted_at IS NULL
+           )",
+        rusqlite::params![
+            card.front,
+            card.back,
+            card.text,
+            serde_json::to_string(&card.tags)
+                .map_err(|e| AppError::validation(format!("无法序列化卡片标签: {}", e)))?,
+            serde_json::to_string(&card.images)
+                .map_err(|e| AppError::validation(format!("无法序列化卡片图片: {}", e)))?,
+            updated_at,
+            serde_json::to_string(&card.extra_fields)
+                .map_err(|e| AppError::validation(format!("无法序列化卡片字段: {}", e)))?,
+            card.template_id,
+            card.id,
+            document_id,
+        ],
+    )
+    .map_err(|e| AppError::database(format!("更新当前文档卡片失败: {}", e)))
+}
+
+fn anki_card_is_diagnostic_in_document(
+    database: &crate::database::Database,
+    document_id: &str,
+    card_id: &str,
+) -> Result<bool> {
+    let conn = database
+        .get_conn_safe()
+        .map_err(|e| AppError::database(format!("查询诊断卡失败: {}", e)))?;
+    let flag: Option<i64> = conn
+        .query_row(
+            "SELECT is_error_card
+             FROM anki_cards
+             WHERE id = ?1
+               AND source_type = 'document'
+               AND source_id = ?2
+               AND deleted_at IS NULL
+               AND EXISTS (
+                 SELECT 1
+                 FROM document_tasks dt
+                 WHERE dt.id = anki_cards.task_id
+                   AND dt.document_id = ?2
+                   AND dt.deleted_at IS NULL
+               )
+             LIMIT 1",
+            rusqlite::params![card_id, document_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| AppError::database(format!("查询诊断卡失败: {}", e)))?;
+    Ok(matches!(flag, Some(v) if v != 0))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_card_update_fallback(
+    database: &crate::database::Database,
+    document_id: &str,
+    card: &AnkiCard,
+    input_index: usize,
+    persisted_ids: &mut [Option<String>],
+    duplicated_ids: &mut Vec<String>,
+    skipped_ids: &mut Vec<String>,
+    failed: &mut Vec<SaveAnkiCardFailure>,
+) -> Result<()> {
+    match update_anki_card_rows_for_document(database, document_id, card) {
+        Ok(rows) if rows > 0 => {
+            duplicated_ids.push(card.id.clone());
+            persisted_ids[input_index] = Some(card.id.clone());
+        }
+        Ok(_) => {
+            if anki_card_is_diagnostic_in_document(database, document_id, &card.id)? {
+                skipped_ids.push(card.id.clone());
+                return Ok(());
+            }
+            if let Some(existing_id) =
+                find_existing_card_id_by_content(database, document_id, card)?
+            {
+                skipped_ids.push(card.id.clone());
+                persisted_ids[input_index] = Some(existing_id);
+            } else {
+                failed.push(SaveAnkiCardFailure {
+                    id: card.id.clone(),
+                    error: "卡片 ID 不属于当前文档，且未找到可映射的内容去重卡片".to_string(),
+                });
+            }
+        }
+        Err(error) => failed.push(SaveAnkiCardFailure {
+            id: card.id.clone(),
+            error: format!("更新已有卡片失败: {}", error),
+        }),
+    }
+    Ok(())
+}
+
+/// 是否视为可接受的保存结果（含「全部已存在/跳过」幂等成功）。
+pub(crate) fn save_anki_cards_outcome_is_acceptable(response: &SaveAnkiCardsResponse) -> bool {
+    if !response.saved_ids.is_empty() || !response.duplicated_ids.is_empty() {
+        return true;
+    }
+    // 全部跳过且无失败：内容去重幂等成功
+    !response.skipped_ids.is_empty() && response.failed.is_empty()
+}
+
+fn build_save_anki_cards_changed_payload(response: &SaveAnkiCardsResponse) -> Option<Value> {
+    let mut seen = HashSet::new();
+    let entity_ids: Vec<&str> = response
+        .saved_ids
+        .iter()
+        .chain(response.duplicated_ids.iter())
+        .map(String::as_str)
+        .filter(|id| !id.trim().is_empty() && seen.insert(*id))
+        .collect();
+
+    if entity_ids.is_empty() {
+        return None;
+    }
+
+    Some(json!({
+        "source": "user",
+        "action": "cards_persisted",
+        "entityIds": entity_ids,
+    }))
+}
+
+fn save_anki_cards_in_database(
+    database: &crate::database::Database,
     request: SaveAnkiCardsRequest,
-    state: State<'_, AppState>,
 ) -> Result<SaveAnkiCardsResponse> {
     if request.cards.is_empty() {
         return Err(AppError::validation(
@@ -322,164 +715,246 @@ pub async fn save_anki_cards(
         ));
     }
 
-    let database = state.anki_database.clone();
-    let response = tokio::task::spawn_blocking(move || -> Result<SaveAnkiCardsResponse> {
-        let subject = "未分类".to_string();
-        let document_id = request
-            .document_id
-            .clone()
-            .filter(|id| !id.trim().is_empty())
-            .or_else(|| request.block_id.clone().filter(|id| !id.trim().is_empty()))
-            .or_else(|| {
-                request
-                    .message_stable_id
-                    .clone()
-                    .filter(|id| !id.trim().is_empty())
-            })
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
-        let task_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
-        let options_json = request
-            .options
-            .as_ref()
-            .map(|opts| serde_json::to_string(opts))
-            .transpose()
-            .map_err(|e| AppError::validation(format!("无法序列化制卡配置: {}", e)))?
-            .unwrap_or_else(|| "{}".to_string());
-
-        let content_segment = request
-            .document_id
-            .as_ref()
-            .filter(|id| !id.trim().is_empty())
-            .map(|id| format!("chat_document:{}", id))
-            .or_else(|| {
-                request
-                    .block_id
-                    .as_ref()
-                    .filter(|id| !id.trim().is_empty())
-                    .map(|id| format!("chat_block:{}", id))
-            })
-            .or_else(|| {
-                request
-                    .message_stable_id
-                    .as_ref()
-                    .filter(|id| !id.trim().is_empty())
-                    .map(|id| format!("chat_message:{}", id))
-            })
-            .or_else(|| {
-                request
-                    .business_session_id
-                    .as_ref()
-                    .filter(|id| !id.trim().is_empty())
-                    .map(|id| format!("chat_session:{}", id))
-            })
-            .unwrap_or_else(|| "chat_session:anonymous".to_string());
-
-        let document_task = crate::models::DocumentTask {
-            id: task_id.clone(),
-            document_id,
-            original_document_name: format!("Chat Cards {}", subject),
-            segment_index: 0,
-            content_segment,
-            status: crate::models::TaskStatus::Pending,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            error_message: None,
-            anki_generation_options_json: options_json,
-        };
-
-        let mut cards_to_insert = Vec::with_capacity(request.cards.len());
-        for (index, payload) in request.cards.iter().enumerate() {
-            let mut fields = payload.fields.clone().unwrap_or_default();
-            let front = payload
-                .front
-                .clone()
-                .or_else(|| fields.get("Front").cloned())
-                .unwrap_or_else(|| format!("Chat card {}", index + 1));
-            let back = payload
-                .back
-                .clone()
-                .or_else(|| fields.get("Back").cloned())
-                .unwrap_or_else(|| "".to_string());
-            let card_id = payload
-                .id
+    let subject = "未分类".to_string();
+    let document_id = request
+        .document_id
+        .clone()
+        .filter(|id| !id.trim().is_empty())
+        .or_else(|| request.block_id.clone().filter(|id| !id.trim().is_empty()))
+        .or_else(|| {
+            request
+                .message_stable_id
                 .clone()
                 .filter(|id| !id.trim().is_empty())
-                .unwrap_or_else(|| Uuid::new_v4().to_string());
+        })
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let task_id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let options_json = request
+        .options
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|e| AppError::validation(format!("无法序列化制卡配置: {}", e)))?
+        .unwrap_or_else(|| "{}".to_string());
 
-            // 将 front/back 写回字段，确保导出时存在
-            fields.entry("Front".to_string()).or_insert(front.clone());
-            fields.entry("Back".to_string()).or_insert(back.clone());
+    let content_segment = request
+        .document_id
+        .as_ref()
+        .filter(|id| !id.trim().is_empty())
+        .map(|id| format!("chat_document:{}", id))
+        .or_else(|| {
+            request
+                .block_id
+                .as_ref()
+                .filter(|id| !id.trim().is_empty())
+                .map(|id| format!("chat_block:{}", id))
+        })
+        .or_else(|| {
+            request
+                .message_stable_id
+                .as_ref()
+                .filter(|id| !id.trim().is_empty())
+                .map(|id| format!("chat_message:{}", id))
+        })
+        .or_else(|| {
+            request
+                .business_session_id
+                .as_ref()
+                .filter(|id| !id.trim().is_empty())
+                .map(|id| format!("chat_session:{}", id))
+        })
+        .unwrap_or_else(|| "chat_session:anonymous".to_string());
 
-            let mut card = crate::models::AnkiCard {
-                front,
-                back,
-                text: payload.text.clone(),
-                tags: payload.tags.clone().unwrap_or_default(),
-                images: payload.images.clone().unwrap_or_default(),
-                id: card_id.clone(),
-                task_id: task_id.clone(),
-                is_error_card: false,
-                error_content: None,
-                created_at: now.clone(),
-                updated_at: now.clone(),
-                extra_fields: fields,
-                template_id: payload
-                    .template_id
-                    .clone()
-                    .or_else(|| request.template_id.clone()),
-            };
+    let document_task = crate::models::DocumentTask {
+        id: task_id.clone(),
+        document_id,
+        original_document_name: format!("Chat Cards {}", subject),
+        segment_index: 0,
+        content_segment,
+        status: crate::models::TaskStatus::Pending,
+        created_at: now.clone(),
+        updated_at: now.clone(),
+        error_message: None,
+        anki_generation_options_json: options_json,
+    };
 
-            if card.text.is_none() {
-                card.text = card.extra_fields.get("Text").cloned();
+    let mut cards_to_insert = Vec::with_capacity(request.cards.len());
+    let mut input_ids = Vec::with_capacity(request.cards.len());
+    let mut first_input_by_card_id = HashMap::with_capacity(request.cards.len());
+    for (index, payload) in request.cards.iter().enumerate() {
+        let mut fields = payload.fields.clone().unwrap_or_default();
+        let front = payload
+            .front
+            .clone()
+            .or_else(|| fields.get("Front").cloned())
+            .unwrap_or_else(|| format!("Chat card {}", index + 1));
+        let back = payload
+            .back
+            .clone()
+            .or_else(|| fields.get("Back").cloned())
+            .unwrap_or_else(|| "".to_string());
+        let input_id = payload.id.clone();
+        let card_id = durable_anki_card_id(input_id.as_deref());
+        if let Some(first_index) = first_input_by_card_id.insert(card_id.clone(), index) {
+            return Err(AppError::validation(format!(
+                "duplicate_card_id_in_request: id={}, firstInputIndex={}, duplicateInputIndex={}",
+                card_id, first_index, index
+            )));
+        }
+
+        // 将 front/back 写回字段，确保导出时存在
+        fields.entry("Front".to_string()).or_insert(front.clone());
+        fields.entry("Back".to_string()).or_insert(back.clone());
+
+        let mut card = crate::models::AnkiCard {
+            front,
+            back,
+            text: payload.text.clone(),
+            tags: payload.tags.clone().unwrap_or_default(),
+            images: payload.images.clone().unwrap_or_default(),
+            id: card_id.clone(),
+            task_id: task_id.clone(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: fields,
+            template_id: payload
+                .template_id
+                .clone()
+                .or_else(|| request.template_id.clone()),
+        };
+
+        if card.text.is_none() {
+            card.text = card.extra_fields.get("Text").cloned();
+        }
+
+        cards_to_insert.push(card);
+        input_ids.push(input_id);
+    }
+
+    let mut document_task = document_task;
+    document_task.status = crate::models::TaskStatus::Completed;
+
+    let mut saved_ids = Vec::new();
+    let mut duplicated_ids = Vec::new();
+    let mut skipped_ids = Vec::new();
+    let mut failed = Vec::new();
+    let mut persisted_ids = vec![None; cards_to_insert.len()];
+
+    match database.save_document_task_with_cards_atomic(&document_task, &cards_to_insert) {
+        Ok(inserted_ids) => {
+            saved_ids = inserted_ids;
+            let inserted_set: std::collections::HashSet<&str> =
+                saved_ids.iter().map(|id| id.as_str()).collect();
+            // 部分 INSERT 被 IGNORE 的卡片：先按当前文档内 id 更新，再按内容映射。
+            for (index, card) in cards_to_insert.iter().enumerate() {
+                if inserted_set.contains(card.id.as_str()) {
+                    persisted_ids[index] = Some(card.id.clone());
+                    continue;
+                }
+                apply_card_update_fallback(
+                    database,
+                    &document_task.document_id,
+                    card,
+                    index,
+                    &mut persisted_ids,
+                    &mut duplicated_ids,
+                    &mut skipped_ids,
+                    &mut failed,
+                )?;
             }
-
-            cards_to_insert.push(card);
         }
-
-        let mut document_task = document_task;
-        document_task.status = crate::models::TaskStatus::Completed;
-        let saved_ids =
-            match database.save_document_task_with_cards_atomic(&document_task, &cards_to_insert) {
-                Ok(ids) => ids,
-                Err(e) if e.to_string().contains("no_cards_saved_in_atomic_insert") => {
-                    for card in &cards_to_insert {
-                        database.update_anki_card(card).map_err(|update_err| {
-                            AppError::database(format!("更新已有卡片失败: {}", update_err))
-                        })?;
-                    }
-                    cards_to_insert.iter().map(|card| card.id.clone()).collect()
-                }
-                Err(e) => {
-                    return Err(AppError::database(format!("保存卡片事务失败: {}", e)));
-                }
-            };
-
-        if let Some(session_id) = request
-            .business_session_id
-            .as_ref()
-            .filter(|id| !id.trim().is_empty())
-        {
-            database
-                .set_document_session_source(&document_task.document_id, session_id)
-                .map_err(|e| AppError::database(format!("保存文档来源会话失败: {}", e)))?;
+        Err(e) if e.to_string().contains("no_cards_saved_in_atomic_insert") => {
+            // 全部 IGNORE：逐卡做当前文档作用域内的 UPDATE/内容映射。
+            for (index, card) in cards_to_insert.iter().enumerate() {
+                apply_card_update_fallback(
+                    database,
+                    &document_task.document_id,
+                    card,
+                    index,
+                    &mut persisted_ids,
+                    &mut duplicated_ids,
+                    &mut skipped_ids,
+                    &mut failed,
+                )?;
+            }
         }
-
-        if saved_ids.is_empty() {
-            return Err(AppError::validation(
-                "未能保存任何卡片，请检查输入数据".to_string(),
-            ));
+        Err(e) => {
+            return Err(AppError::database(format!("保存卡片事务失败: {}", e)));
         }
+    }
 
-        Ok(SaveAnkiCardsResponse { saved_ids, task_id })
-    })
-    .await
-    .map_err(|e| {
-        AppError::internal(format!(
-            "save_anki_cards task join error: {}",
-            e.to_string()
-        ))
-    })??;
+    let card_id_mappings = persisted_ids
+        .into_iter()
+        .enumerate()
+        .filter_map(|(input_index, persisted_id)| {
+            persisted_id.map(|persisted_id| SaveAnkiCardIdMapping {
+                input_index,
+                input_id: input_ids[input_index].clone(),
+                persisted_id,
+            })
+        })
+        .collect();
+
+    let response = SaveAnkiCardsResponse {
+        saved_ids,
+        task_id,
+        card_id_mappings,
+        skipped_ids,
+        duplicated_ids,
+        failed,
+    };
+
+    if !save_anki_cards_outcome_is_acceptable(&response) {
+        if !response.failed.is_empty() {
+            let detail = response
+                .failed
+                .iter()
+                .map(|f| format!("{}: {}", f.id, f.error))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(AppError::validation(format!(
+                "未能保存任何卡片：{}",
+                detail
+            )));
+        }
+        return Err(AppError::validation(
+            "未能保存任何卡片，请检查输入数据".to_string(),
+        ));
+    }
+
+    if let Some(session_id) = request
+        .business_session_id
+        .as_ref()
+        .filter(|id| !id.trim().is_empty())
+    {
+        database
+            .set_document_session_source(&document_task.document_id, session_id)
+            .map_err(|e| AppError::database(format!("保存文档来源会话失败: {}", e)))?;
+    }
+
+    Ok(response)
+}
+
+#[tauri::command]
+pub async fn save_anki_cards(
+    app: AppHandle,
+    request: SaveAnkiCardsRequest,
+    state: State<'_, AppState>,
+) -> Result<SaveAnkiCardsResponse> {
+    let database = state.anki_database.clone();
+    let response =
+        tokio::task::spawn_blocking(move || save_anki_cards_in_database(&database, request))
+            .await
+            .map_err(|e| AppError::internal(format!("save_anki_cards task join error: {}", e)))??;
+
+    if let Some(payload) = build_save_anki_cards_changed_payload(&response) {
+        if let Err(error) = app.emit("fsrs://changed", payload) {
+            log::debug!("[save_anki_cards] Failed to emit fsrs://changed: {}", error);
+        }
+    }
 
     Ok(response)
 }
@@ -535,7 +1010,11 @@ pub async fn export_cards_as_apkg_with_template(
         let full_tmpl = match state.database.get_custom_template_by_id(tid) {
             Ok(tmpl) => tmpl,
             Err(e) => {
-                log::warn!("获取完整模板失败 - 模板ID: {}, 错误: {}，回退默认模板", tid, e);
+                log::warn!(
+                    "获取完整模板失败 - 模板ID: {}, 错误: {}，回退默认模板",
+                    tid,
+                    e
+                );
                 None
             }
         };
@@ -594,16 +1073,25 @@ pub async fn export_cards_as_apkg_with_template(
 
     println!("📁 导出路径: {:?}", output_path);
 
-    match crate::apkg_exporter_service::export_cards_to_apkg_with_full_template(
-        selected_cards,
-        deck_name,
-        note_type,
-        output_path.clone(),
-        template_config,
-        full_template,
-    )
+    // 导出是纯阻塞的 SQLite/zip 工作：放到 blocking 线程池执行，避免卡住 async runtime
+    let export_output_path = output_path.clone();
+    let runtime_handle = tokio::runtime::Handle::current();
+    let export_result = tokio::task::spawn_blocking(move || {
+        runtime_handle.block_on(
+            crate::apkg_exporter_service::export_cards_to_apkg_with_full_template(
+                selected_cards,
+                deck_name,
+                note_type,
+                export_output_path,
+                template_config,
+                full_template,
+            ),
+        )
+    })
     .await
-    {
+    .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?;
+
+    match export_result {
         Ok(_) => {
             println!(".apkg文件导出成功: {:?}", output_path);
             Ok(output_path.to_string_lossy().to_string())
@@ -698,14 +1186,21 @@ pub async fn export_multi_template_apkg(
         output_path.set_extension("apkg");
     }
 
-    if let Err(e) = crate::apkg_exporter_service::export_multi_template_apkg(
-        cards.into_iter().filter(|c| !c.is_error_card).collect(),
-        deck_name,
-        output_path.clone(),
-        template_map,
-    )
+    // 导出是纯阻塞的 SQLite/zip 工作：放到 blocking 线程池执行，避免卡住 async runtime
+    let staged_output_path = output_path.clone();
+    let runtime_handle = tokio::runtime::Handle::current();
+    let export_result = tokio::task::spawn_blocking(move || {
+        runtime_handle.block_on(crate::apkg_exporter_service::export_multi_template_apkg(
+            cards.into_iter().filter(|c| !c.is_error_card).collect(),
+            deck_name,
+            staged_output_path,
+            template_map,
+        ))
+    })
     .await
-    {
+    .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?;
+
+    if let Err(e) = export_result {
         if target_uri.is_some() {
             if let Err(cleanup_err) = std::fs::remove_file(&output_path) {
                 log::warn!(
@@ -835,13 +1330,679 @@ pub async fn batch_export_cards(
             save_json_file(json_content, filename).await
         }
         "anki-connect" => {
-            // AnkiConnect 导出暂时返回成功（实际由前端处理）
-            Ok("anki-connect export delegated to frontend".to_string())
+            // 真实同步：复用 detailed 通道（自动建组/建模、canAddNotes 去重、分批推送），
+            // 不再返回占位字符串。批量导出的卡片是临时构造（batch_N id），
+            // 不落本地库，因此这里不做 receipt 回写。
+            if anki_cards.is_empty() {
+                return Err(AppError::validation("没有卡片可以同步到 AnkiConnect"));
+            }
+
+            if let Err(e) = crate::anki_connect_service::create_deck_if_not_exists(&deck_name).await
+            {
+                log::warn!("[batch_export_cards] 创建牌组失败（可能已存在）: {}", e);
+            }
+
+            // 模板 → 模型映射：模板读取走主库（custom_anki_templates 在主库）
+            let mut card_models: HashMap<String, String> = HashMap::new();
+            let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> =
+                HashMap::new();
+            if let Some(tid) = anki_cards
+                .iter()
+                .find_map(|card| card.template_id.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                match state.database.get_custom_template_by_id(tid) {
+                    Ok(Some(template)) => {
+                        let model_name = template.note_type.trim().to_string();
+                        if !model_name.is_empty() {
+                            for card in &anki_cards {
+                                card_models.insert(card.id.clone(), model_name.clone());
+                            }
+                            templates_by_model.insert(model_name, template);
+                        }
+                    }
+                    Ok(None) => {
+                        log::warn!(
+                            "[batch_export_cards] 模板不存在: {}，将按 note_type 直接同步",
+                            tid
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[batch_export_cards] 读取模板失败: {}，将按 note_type 直接同步: {}",
+                            tid,
+                            e
+                        );
+                    }
+                }
+            }
+
+            // 激活死设置：从 settings 读取 batch_size / retry_times / media_mode
+            let sync_options = {
+                let batch = state
+                    .database
+                    .get_setting("anki_connect_batch_size")
+                    .ok()
+                    .flatten();
+                let retry = state
+                    .database
+                    .get_setting("anki_connect_retry_times")
+                    .ok()
+                    .flatten();
+                let media = state
+                    .database
+                    .get_setting("anki_connect_media_mode")
+                    .ok()
+                    .flatten();
+                crate::anki_connect_service::AnkiConnectSyncOptions::from_setting_strings(
+                    batch.as_deref(),
+                    retry.as_deref(),
+                    media.as_deref(),
+                )
+            };
+
+            match crate::anki_connect_service::add_notes_to_anki_detailed(
+                anki_cards,
+                deck_name,
+                note_type,
+                card_models,
+                templates_by_model,
+                sync_options,
+            )
+            .await
+            {
+                Ok(report) => {
+                    if report.added == 0 && report.failed > 0 {
+                        Err(AppError::validation(format!(
+                            "AnkiConnect 同步失败：新增 0 张，失败 {} 张，重复 {} 张",
+                            report.failed, report.duplicates
+                        )))
+                    } else {
+                        // 返回 JSON 化的同步报告字符串（历史契约为不透明字符串，向后兼容）
+                        serde_json::to_string(&report)
+                            .map_err(|e| AppError::validation(format!("序列化同步报告失败: {}", e)))
+                    }
+                }
+                Err(e) => Err(AppError::validation(e)),
+            }
         }
         _ => Err(AppError::validation(format!(
             "不支持的导出格式: {}",
             format
         ))),
+    }
+}
+
+#[cfg(test)]
+mod save_anki_cards_semantics_tests {
+    use super::*;
+
+    fn setup_migrated_db(
+        app_data_dir: &std::path::Path,
+    ) -> anyhow::Result<crate::database::Database> {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let mut coordinator =
+            MigrationCoordinator::new(app_data_dir.to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .map_err(|e| anyhow::anyhow!("mistakes migrations failed: {}", e))?;
+        Ok(crate::database::Database::new(
+            &app_data_dir.join("mistakes.db"),
+        )?)
+    }
+
+    fn card_payload(id: Option<&str>, front: &str, back: &str) -> SaveAnkiCardPayload {
+        SaveAnkiCardPayload {
+            id: id.map(str::to_string),
+            front: Some(front.to_string()),
+            back: Some(back.to_string()),
+            text: None,
+            tags: None,
+            images: None,
+            fields: None,
+            template_id: None,
+        }
+    }
+
+    fn save_request(document_id: &str, cards: Vec<SaveAnkiCardPayload>) -> SaveAnkiCardsRequest {
+        SaveAnkiCardsRequest {
+            document_id: Some(document_id.to_string()),
+            business_session_id: None,
+            message_stable_id: None,
+            block_id: None,
+            template_id: None,
+            cards,
+            options: None,
+        }
+    }
+
+    fn save_for_test(
+        database: &crate::database::Database,
+        request: SaveAnkiCardsRequest,
+    ) -> anyhow::Result<SaveAnkiCardsResponse> {
+        save_anki_cards_in_database(database, request)
+            .map_err(|e| anyhow::anyhow!("save failed: {:?}", e))
+    }
+
+    fn live_card_count_for_document(
+        database: &crate::database::Database,
+        document_id: &str,
+        card_id: &str,
+    ) -> anyhow::Result<i64> {
+        let conn = database.get_conn_safe()?;
+        Ok(conn.query_row(
+            "SELECT COUNT(*)
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.id = ?1
+               AND ac.source_type = 'document'
+               AND ac.source_id = ?2
+               AND ac.deleted_at IS NULL
+               AND dt.document_id = ?2
+               AND dt.deleted_at IS NULL",
+            rusqlite::params![card_id, document_id],
+            |row| row.get(0),
+        )?)
+    }
+
+    #[test]
+    fn temporary_and_missing_ids_are_replaced_and_mapped_in_input_order() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        let response = save_for_test(
+            &database,
+            save_request(
+                "doc-durable-ids",
+                vec![
+                    card_payload(None, "missing", "a"),
+                    card_payload(Some("anki_synthetic_msg-1-0"), "synthetic", "b"),
+                    card_payload(Some("chat-batch-block-1-0"), "batch", "c"),
+                    card_payload(Some("real-card-id"), "real", "d"),
+                ],
+            ),
+        )?;
+
+        assert_eq!(
+            response
+                .card_id_mappings
+                .iter()
+                .map(|mapping| mapping.input_index)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2, 3]
+        );
+        assert_eq!(response.card_id_mappings[0].input_id, None);
+        assert_eq!(
+            response.card_id_mappings[1].input_id.as_deref(),
+            Some("anki_synthetic_msg-1-0")
+        );
+        assert_eq!(
+            response.card_id_mappings[2].input_id.as_deref(),
+            Some("chat-batch-block-1-0")
+        );
+        for mapping in &response.card_id_mappings[..3] {
+            Uuid::parse_str(&mapping.persisted_id)?;
+        }
+        assert_eq!(response.card_id_mappings[3].persisted_id, "real-card-id");
+
+        for mapping in &response.card_id_mappings {
+            let count =
+                live_card_count_for_document(&database, "doc-durable-ids", &mapping.persisted_id)?;
+            assert_eq!(count, 1, "mapped ID must exist in anki_cards");
+        }
+        let conn = database.get_conn_safe()?;
+        let temporary_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM anki_cards WHERE id LIKE 'anki_synthetic_%' OR id LIKE 'chat-batch-%'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(temporary_count, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn existing_real_id_updates_idempotently_and_maps_to_itself() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        save_for_test(
+            &database,
+            save_request(
+                "doc-real-update",
+                vec![card_payload(Some("real-update-id"), "question", "old")],
+            ),
+        )?;
+
+        let response = save_for_test(
+            &database,
+            save_request(
+                "doc-real-update",
+                vec![card_payload(Some("real-update-id"), "question", "new")],
+            ),
+        )?;
+        assert_eq!(response.duplicated_ids, vec!["real-update-id"]);
+        assert_eq!(response.card_id_mappings.len(), 1);
+        assert_eq!(response.card_id_mappings[0].persisted_id, "real-update-id");
+
+        let conn = database.get_conn_safe()?;
+        let back: String = conn.query_row(
+            "SELECT back FROM anki_cards WHERE id = 'real-update-id'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(back, "new");
+        Ok(())
+    }
+
+    #[test]
+    fn real_id_collision_cannot_overwrite_card_from_another_document() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        save_for_test(
+            &database,
+            save_request(
+                "doc-owner",
+                vec![card_payload(
+                    Some("shared-real-id"),
+                    "owner question",
+                    "owner answer",
+                )],
+            ),
+        )?;
+
+        let error = save_for_test(
+            &database,
+            save_request(
+                "doc-attacker",
+                vec![card_payload(
+                    Some("shared-real-id"),
+                    "attacker question",
+                    "attacker answer",
+                )],
+            ),
+        )
+        .expect_err("cross-document ID collision must fail");
+        assert!(
+            error.to_string().contains("卡片 ID 不属于当前文档"),
+            "unexpected error: {error:#}"
+        );
+
+        let conn = database.get_conn_safe()?;
+        let (front, back, source_id, owner_document): (String, String, String, String) = conn
+            .query_row(
+                "SELECT ac.front, ac.back, ac.source_id, dt.document_id
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE ac.id = 'shared-real-id'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+        assert_eq!(front, "owner question");
+        assert_eq!(back, "owner answer");
+        assert_eq!(source_id, "doc-owner");
+        assert_eq!(owner_document, "doc-owner");
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_durable_ids_fail_before_any_task_or_card_is_persisted() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        let error = save_for_test(
+            &database,
+            save_request(
+                "doc-duplicate-input",
+                vec![
+                    card_payload(Some("same-real-id"), "first question", "first answer"),
+                    card_payload(Some("same-real-id"), "second question", "second answer"),
+                ],
+            ),
+        )
+        .expect_err("duplicate durable IDs must reject the complete request");
+        assert!(
+            error.to_string().contains("duplicate_card_id_in_request"),
+            "unexpected error: {error:#}"
+        );
+
+        let conn = database.get_conn_safe()?;
+        let task_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM document_tasks WHERE document_id = 'doc-duplicate-input'",
+            [],
+            |row| row.get(0),
+        )?;
+        let card_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM anki_cards WHERE id = 'same-real-id'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(task_count, 0);
+        assert_eq!(card_count, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn fully_failed_save_does_not_claim_existing_document_tasks() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        save_for_test(
+            &database,
+            save_request(
+                "doc-unowned-target",
+                vec![card_payload(Some("target-card"), "target", "answer")],
+            ),
+        )?;
+        save_for_test(
+            &database,
+            save_request(
+                "doc-id-owner",
+                vec![card_payload(Some("foreign-id"), "foreign", "answer")],
+            ),
+        )?;
+
+        let mut request = save_request(
+            "doc-unowned-target",
+            vec![card_payload(
+                Some("foreign-id"),
+                "collision without a local content match",
+                "answer",
+            )],
+        );
+        request.business_session_id = Some("session-must-not-claim".to_string());
+        let error = save_for_test(&database, request)
+            .expect_err("a fully unresolved save must remain a failure");
+        assert!(error.to_string().contains("不属于当前文档"));
+
+        let conn = database.get_conn_safe()?;
+        let (task_count, claimed_count): (i64, i64) = conn.query_row(
+            "SELECT COUNT(*),
+                    SUM(CASE WHEN source_session_id IS NOT NULL THEN 1 ELSE 0 END)
+             FROM document_tasks
+             WHERE document_id = 'doc-unowned-target'
+               AND deleted_at IS NULL",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(task_count, 1);
+        assert_eq!(claimed_count, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn tombstoned_real_id_is_a_full_failure_without_a_mapping() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        save_for_test(
+            &database,
+            save_request(
+                "doc-ghost",
+                vec![card_payload(
+                    Some("deleted-real-id"),
+                    "old question",
+                    "old answer",
+                )],
+            ),
+        )?;
+        {
+            let conn = database.get_conn_safe()?;
+            conn.execute(
+                "UPDATE anki_cards SET deleted_at = '2026-07-14T00:00:00Z'
+                 WHERE id = 'deleted-real-id'",
+                [],
+            )?;
+        }
+
+        let error = save_for_test(
+            &database,
+            save_request(
+                "doc-ghost",
+                vec![card_payload(
+                    Some("deleted-real-id"),
+                    "new question",
+                    "new answer",
+                )],
+            ),
+        )
+        .expect_err("a tombstoned durable ID must not be reported as skipped success");
+        assert!(
+            error.to_string().contains("卡片 ID 不属于当前文档"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(
+            live_card_count_for_document(&database, "doc-ghost", "deleted-real-id")?,
+            0
+        );
+
+        let conn = database.get_conn_safe()?;
+        let (front, back, deleted_at): (String, String, Option<String>) = conn.query_row(
+            "SELECT front, back, deleted_at FROM anki_cards WHERE id = 'deleted-real-id'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(front, "old question");
+        assert_eq!(back, "old answer");
+        assert!(deleted_at.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn partial_save_returns_only_scoped_success_mappings_and_explicit_failures(
+    ) -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        save_for_test(
+            &database,
+            save_request(
+                "doc-other",
+                vec![card_payload(
+                    Some("other-doc-id"),
+                    "other question",
+                    "other answer",
+                )],
+            ),
+        )?;
+
+        let response = save_for_test(
+            &database,
+            save_request(
+                "doc-partial",
+                vec![
+                    card_payload(Some("partial-success-id"), "saved question", "saved answer"),
+                    card_payload(
+                        Some("other-doc-id"),
+                        "collision question",
+                        "collision answer",
+                    ),
+                ],
+            ),
+        )?;
+
+        assert_eq!(response.saved_ids, vec!["partial-success-id"]);
+        assert!(response.duplicated_ids.is_empty());
+        assert!(response.skipped_ids.is_empty());
+        assert_eq!(response.failed.len(), 1);
+        assert_eq!(response.failed[0].id, "other-doc-id");
+        assert!(response.failed[0].error.contains("不属于当前文档"));
+        assert_eq!(response.card_id_mappings.len(), 1);
+        assert_eq!(response.card_id_mappings[0].input_index, 0);
+        assert_eq!(
+            response.card_id_mappings[0].persisted_id,
+            "partial-success-id"
+        );
+        assert_eq!(
+            live_card_count_for_document(&database, "doc-partial", "partial-success-id")?,
+            1
+        );
+        assert_eq!(
+            live_card_count_for_document(&database, "doc-partial", "other-doc-id")?,
+            0
+        );
+        assert_eq!(
+            live_card_count_for_document(&database, "doc-other", "other-doc-id")?,
+            1
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn temporary_content_duplicate_maps_to_existing_persisted_id() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let database = setup_migrated_db(dir.path())?;
+        save_for_test(
+            &database,
+            save_request(
+                "doc-content-dedup",
+                vec![card_payload(Some("existing-real-id"), "same", "content")],
+            ),
+        )?;
+
+        let response = save_for_test(
+            &database,
+            save_request(
+                "doc-content-dedup",
+                vec![card_payload(
+                    Some("anki_synthetic_duplicate"),
+                    "same",
+                    "content",
+                )],
+            ),
+        )?;
+        assert_eq!(response.card_id_mappings.len(), 1);
+        assert_eq!(
+            response.card_id_mappings[0].persisted_id,
+            "existing-real-id"
+        );
+        assert_eq!(response.skipped_ids.len(), 1);
+
+        let conn = database.get_conn_safe()?;
+        let total: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM anki_cards WHERE source_id = 'doc-content-dedup'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(total, 1);
+        let mapped_count: i64 = conn.query_row(
+            "SELECT COUNT(*)
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.id = ?1
+               AND ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL",
+            [&response.card_id_mappings[0].persisted_id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(mapped_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn save_outcome_accepts_all_skipped_without_failures() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec![],
+            task_id: "t1".into(),
+            card_id_mappings: vec![],
+            skipped_ids: vec!["ghost-1".into()],
+            duplicated_ids: vec![],
+            failed: vec![],
+        };
+        assert!(save_anki_cards_outcome_is_acceptable(&response));
+    }
+
+    #[test]
+    fn save_outcome_rejects_empty_with_failures_only() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec![],
+            task_id: "t1".into(),
+            card_id_mappings: vec![],
+            skipped_ids: vec![],
+            duplicated_ids: vec![],
+            failed: vec![SaveAnkiCardFailure {
+                id: "x".into(),
+                error: "boom".into(),
+            }],
+        };
+        assert!(!save_anki_cards_outcome_is_acceptable(&response));
+    }
+
+    #[test]
+    fn save_response_serde_defaults_new_fields() {
+        let json = r#"{"savedIds":["a"],"taskId":"t1"}"#;
+        let parsed: SaveAnkiCardsResponse = serde_json::from_str(json).expect("compat deserialize");
+        assert_eq!(parsed.saved_ids, vec!["a".to_string()]);
+        assert_eq!(parsed.task_id, "t1");
+        assert!(parsed.card_id_mappings.is_empty());
+        assert!(parsed.skipped_ids.is_empty());
+        assert!(parsed.duplicated_ids.is_empty());
+        assert!(parsed.failed.is_empty());
+    }
+
+    #[test]
+    fn save_response_serializes_camel_case() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec!["s1".into()],
+            task_id: "t1".into(),
+            card_id_mappings: vec![SaveAnkiCardIdMapping {
+                input_index: 0,
+                input_id: Some("anki_synthetic_1".into()),
+                persisted_id: "s1".into(),
+            }],
+            skipped_ids: vec!["k1".into()],
+            duplicated_ids: vec!["d1".into()],
+            failed: vec![SaveAnkiCardFailure {
+                id: "f1".into(),
+                error: "err".into(),
+            }],
+        };
+        let value = serde_json::to_value(&response).expect("serialize");
+        assert_eq!(value["savedIds"][0], "s1");
+        assert_eq!(value["taskId"], "t1");
+        assert_eq!(value["cardIdMappings"][0]["inputIndex"], 0);
+        assert_eq!(value["cardIdMappings"][0]["inputId"], "anki_synthetic_1");
+        assert_eq!(value["cardIdMappings"][0]["persistedId"], "s1");
+        assert_eq!(value["skippedIds"][0], "k1");
+        assert_eq!(value["duplicatedIds"][0], "d1");
+        assert_eq!(value["failed"][0]["id"], "f1");
+        assert_eq!(value["failed"][0]["error"], "err");
+    }
+
+    #[test]
+    fn save_changed_payload_uses_persisted_ids_in_stable_deduplicated_order() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec!["saved-1".into(), "shared".into(), "".into()],
+            task_id: "t1".into(),
+            card_id_mappings: vec![],
+            skipped_ids: vec!["skipped-1".into()],
+            duplicated_ids: vec!["shared".into(), "duplicated-1".into()],
+            failed: vec![SaveAnkiCardFailure {
+                id: "failed-1".into(),
+                error: "boom".into(),
+            }],
+        };
+
+        let payload = build_save_anki_cards_changed_payload(&response).expect("persisted ids emit");
+        assert_eq!(payload["source"], "user");
+        assert_eq!(payload["action"], "cards_persisted");
+        assert_eq!(
+            payload["entityIds"],
+            json!(["saved-1", "shared", "duplicated-1"])
+        );
+    }
+
+    #[test]
+    fn save_changed_payload_skips_non_persisted_outcomes() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec![],
+            task_id: "t1".into(),
+            card_id_mappings: vec![],
+            skipped_ids: vec!["skipped-1".into()],
+            duplicated_ids: vec![],
+            failed: vec![SaveAnkiCardFailure {
+                id: "failed-1".into(),
+                error: "boom".into(),
+            }],
+        };
+
+        assert!(build_save_anki_cards_changed_payload(&response).is_none());
     }
 }
 
@@ -891,6 +2052,65 @@ mod batch_export_tests {
     fn test_sanitize_filename_with_extension_normalizes_suffix() {
         let got = sanitize_filename_with_extension(" deck-name ", "fallback", "apkg");
         assert_eq!(got, "deck-name.apkg");
+    }
+
+    fn hash_fixture_card() -> AnkiCard {
+        let now = chrono::Utc::now().to_rfc3339();
+        AnkiCard {
+            id: "hash-card".to_string(),
+            task_id: String::new(),
+            front: "front".to_string(),
+            back: "back".to_string(),
+            text: Some("text".to_string()),
+            tags: vec!["a".to_string(), "b".to_string()],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: std::collections::HashMap::from([
+                ("Zeta".to_string(), "z".to_string()),
+                ("Alpha".to_string(), "a".to_string()),
+            ]),
+            template_id: Some("tmpl-1".to_string()),
+        }
+    }
+
+    #[test]
+    fn content_hash_is_stable_across_extra_field_iteration_order() {
+        let card = hash_fixture_card();
+        let first = compute_anki_card_content_hash(&card);
+        let second = compute_anki_card_content_hash(&card);
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 40, "sha1 hex digest");
+    }
+
+    #[test]
+    fn content_hash_changes_when_content_changes() {
+        let card = hash_fixture_card();
+        let base = compute_anki_card_content_hash(&card);
+
+        let mut changed_back = hash_fixture_card();
+        changed_back.back = "different".to_string();
+        assert_ne!(base, compute_anki_card_content_hash(&changed_back));
+
+        let mut changed_field = hash_fixture_card();
+        changed_field
+            .extra_fields
+            .insert("Alpha".to_string(), "mutated".to_string());
+        assert_ne!(base, compute_anki_card_content_hash(&changed_field));
+
+        // 字段边界不产生歧义：("ab","c") 与 ("a","bc") 哈希不同
+        let mut ambiguous_one = hash_fixture_card();
+        ambiguous_one.front = "ab".to_string();
+        ambiguous_one.back = "c".to_string();
+        let mut ambiguous_two = hash_fixture_card();
+        ambiguous_two.front = "a".to_string();
+        ambiguous_two.back = "bc".to_string();
+        assert_ne!(
+            compute_anki_card_content_hash(&ambiguous_one),
+            compute_anki_card_content_hash(&ambiguous_two)
+        );
     }
 }
 

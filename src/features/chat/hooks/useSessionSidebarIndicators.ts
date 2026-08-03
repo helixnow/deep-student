@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { CurrentView } from '@/types/navigation';
 import { sessionManager } from '../core/session/sessionManager';
+import { readBlockingInteraction } from '../core/types/queue';
 import type { SessionManagerEvent } from '../core/session/types';
 
 interface SessionSidebarViewContext {
@@ -74,8 +75,10 @@ function getInitialBlockingSessionIds(): string[] {
   }
 
   return sessionManager.getAllSessionIds().filter((sessionId) => {
-    const store = sessionManager.get(sessionId);
-    return store?.getState().pendingBlockingInteraction != null;
+    // 🔧 P0-3 读路径收敛：经 readBlockingInteraction 单一入口读取；
+    // 同时改用 peek —— 初始化扫描属推测性读取，不应 touch LRU
+    const store = sessionManager.peek(sessionId);
+    return store ? readBlockingInteraction(store.getState()) != null : false;
   });
 }
 

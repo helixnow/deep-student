@@ -18,7 +18,23 @@
     "listenerRegistrationFailedMessage": "Event listener registration failed",
     "listenerRegistrationFailed": "Listener registration failed",
     "sessionLoadFailedMessage": "A new session was created automatically. Check network or restart the app if needed.",
-    "sessionLoadFailed": "Session load failed"
+    "sessionLoadFailed": "Session load failed",
+    "streamInterrupted": "Stream interrupted",
+    "abortFailed": "Abort failed",
+    "abortFailedMessage": "Could not reliably abort generation; local state was force-reset",
+    "killSwitchBlocked": "Agents are powered off. Resume them from the desktop control center, then try again."
+  },
+  "killSwitch": {
+    "tripped": "Agents powered off",
+    "resumeHint": "Resume agents from AI desktop control"
+  },
+  "sourcePanel": {
+    "retrieving": "Retrieving sources…",
+    "retrievalFailed": "{{scopes}} retrieval failed",
+    "retrievalFailedGeneric": "Some sources failed to load",
+    "loadMore": "Load more ({{count}} left)",
+    "showAllCard": "View all {{count}}",
+    "thumbnailUnavailable": "Thumbnail unavailable"
   },
   "success": {
     "listenerRetrySuccessMessage": "Event listener retry succeeded",
@@ -32,6 +48,9 @@
     "copy": "Copy",
     "copySuccess": "Code copied to clipboard",
     "copySuccessTitle": "Copy successful",
+    "copyFailed": "Copy failed, please try again",
+    "copyFailedTitle": "Copy Failed",
+    "errorWithDetail": "{{message}}: {{detail}}",
     "render": "Render",
     "run": "Run",
     "source": "Source",
@@ -50,11 +69,17 @@
     "zoomIn": "Zoom In",
     "zoomOut": "Zoom Out",
     "fitView": "Fit View",
-    "resetView": "Reset View"
+    "resetView": "Reset View",
+    "sandboxTitle": "HTML Sandbox",
+    "openSandbox": "Open in Sandbox"
   },
   "common": {
     "close": "Close",
     "cancel": "Cancel",
+    "clearSearch": "Clear search",
+    "removeNamed": "Remove {{name}}",
+    "closeNamed": "Close {{name}}",
+    "retryNamed": "Retry {{name}}",
     "justNow": "Just now",
     "minutesAgo": "{{count}} min ago",
     "hoursAgo": "{{count}} hr ago",
@@ -74,7 +99,18 @@
       "suggestion5": "Generate a set of Anki flashcards from my uploaded class notes for review."
     },
     "scrollToBottom": "Scroll to bottom",
-    "waiting": "Thinking..."
+    "waiting": "Thinking...",
+    "waitingLabel": "Thinking",
+    "srNewMessages": "New messages received, total {{count}} messages",
+    "search": {
+      "open": "Search chat",
+      "placeholder": "Search chat...",
+      "close": "Close chat search",
+      "previous": "Previous match",
+      "next": "Next match",
+      "results": "{{current}}/{{count}}",
+      "noResults": "No matches"
+    }
   },
   "messageItem": {
     "actions": {
@@ -101,6 +137,7 @@
       "contentUnchanged": "Content unchanged",
       "retryDeleteConfirm": "Retrying will delete {{count}} subsequent message(s). Continue?",
       "retryDeletingSubsequent": "{{count}} subsequent message(s) removed due to retry",
+      "retryConfirmAction": "Retry anyway",
       "saveAsNote": "Save as Note",
       "saveAsNoteSuccess": "Saved as note: {{title}}",
       "saveAsNoteFailed": "Failed to save note",
@@ -108,9 +145,13 @@
       "exportMarkdownSuccess": "Markdown file exported",
       "exportMarkdownFailed": "Export failed",
       "noContentToExport": "No content to export",
+      "noteDefaultTitle": "Chat Note {{date}}",
       "branch": "Branch from here",
       "branchSuccess": "Branch session created",
       "branchFailed": "Branch failed"
+    },
+    "touchBar": {
+      "ariaLabel": "Message quick actions"
     },
     "failure": {
       "retry": "Retry",
@@ -128,8 +169,13 @@
       "retry": "Retry",
       "retryParallel": "Parallel Retry ({{count}})"
     },
+    "bubble": {
+      "expand": "Show more",
+      "collapse": "Collapse"
+    },
     "rawRequest": {
       "title": "API Request Body",
+      "titleWithModel": "API Request Body — {{model}}",
       "copy": "Copy",
       "copySuccess": "Request body copied",
       "copyFailed": "Copy failed",
@@ -141,10 +187,20 @@
       "stats": {
         "bodyChars": "{{kb}}K chars",
         "messages": "{{count}} messages",
+        "messages_one": "{{count}} message",
+        "messages_other": "{{count}} messages",
         "images": "{{count}} images",
+        "images_one": "{{count}} image",
+        "images_other": "{{count}} images",
         "tools": "{{count}} tools",
+        "tools_one": "{{count}} tool",
+        "tools_other": "{{count}} tools",
         "toolCalls": "{{count}} calls",
-        "toolResults": "{{count}} results"
+        "toolCalls_one": "{{count}} call",
+        "toolCalls_other": "{{count}} calls",
+        "toolResults": "{{count}} results",
+        "toolResults_one": "{{count}} result",
+        "toolResults_other": "{{count}} results"
       }
     },
     "loadingFiles": "Loading files...",
@@ -172,17 +228,35 @@
       "creating": "Creating reference"
     },
     "modeSeparator": ", ",
+    "runtimeModelSwitchCurrent": "{{label}}, current: {{current}}",
     "thinkingEnabled": "Reasoning mode enabled",
     "thinkingDisabled": "Click to enable reasoning mode",
     "toggleThinking": "Toggle reasoning mode",
     "thinking": "Reasoning mode",
     "thinkingDepthMenu": "Choose reasoning depth",
     "thinkingDepthTitle": "Reasoning depth",
+    "thinkingDepthEfficient": "Faster",
+    "thinkingDepthSmart": "Smarter",
     "thinkingOn": "On",
     "thinkingOff": "Off",
     "thinkingUnsupported": "Reasoning unsupported",
     "thinkingUnsupportedDescription": "This model does not support reasoning",
+    "thinkingDepth": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Ultra",
+      "max": "Max"
+    },
+    "thinkingState": {
+      "unsupported": "Reasoning: unsupported",
+      "off": "Reasoning: off",
+      "on": "Reasoning: {{depth}}"
+    },
     "runtimeModelTitle": "Model",
+    "runtimeModelCompareMode": "Enter multi-select mode...",
+    "runtimeModelOtherProvider": "Other",
+    "runtimeModelNoResults": "No matching models",
     "chooseRuntimeModel": "Choose model",
     "thinkingDepthExpensive": "Slower",
     "ankiTools": "Anki cards",
@@ -278,6 +352,27 @@
     },
     "camera": "Take Photo",
     "resourceLibrary": "Resources",
+    "plusMenu": {
+      "trigger": "Add & session options",
+      "attachmentsCount": "Attachments ({{count}})",
+      "mcpServersCount": "MCP ({{count}})",
+      "mcpServerGeneratedName": "MCP Server #{{suffix}}",
+      "addFile": "Add file",
+      "mode": "Mode",
+      "connectors": "Connectors",
+      "openConnectors": "Manage connectors",
+      "connectorsHint": "Choose MCP / external tool connections",
+      "modeDefaultDescription": "Craft follows the selected execution preset. Ask and Plan mode restrictions always take precedence.",
+      "knowledgeBase": "Knowledge base",
+      "kbProactive": "Proactive retrieval",
+      "kbProactiveHint": "When on, the model is asked to search your notes, textbooks and other local materials before answering",
+      "compactContext": "Compact context",
+      "compactingContext": "Compacting context…",
+      "compactionComplete": "Context compaction complete",
+      "compactionNotNeeded": "Nothing eligible to compact",
+      "compactionSkipped": "Compaction skipped",
+      "compactionFailed": "Compaction failed, try again"
+    },
     "pasteNotReady": "Initializing, please try again shortly",
     "retryStarted": "Processing restarted",
     "retryFailed": "Retry failed: {{error}}",
@@ -286,7 +381,49 @@
       "pdf": "PDF",
       "image": "Image"
     },
-    "processingTimeout": "Processing timed out, please retry"
+    "processingTimeout": "Processing timed out, please retry",
+    "sendMessage": "Send message",
+    "stopping": "Stopping...",
+    "sendGuard": {
+      "streaming": "A reply is in progress. Wait for it to finish or click Stop",
+      "notReady": "This session can't send right now, please try again shortly"
+    },
+    "longPaste": {
+      "notice": "Pasted long text ({{chars}} characters)",
+      "convert": "Convert to attachment",
+      "dismiss": "Keep as text",
+      "autoConverted": "Text too long ({{chars}} characters), converted to an attachment"
+    },
+    "flashcardHint": {
+      "document": "You can ask me to turn this document into flashcards",
+      "apkg": "Anki deck detected — you can ask me to import it into your card library",
+      "dismiss": "Got it"
+    },
+    "mediaHint": {
+      "audio": "AI can't listen to audio directly and only sees the file name; ask me to run the transcription tool to get the text",
+      "video": "AI can't watch videos directly and only sees the file name",
+      "dismiss": "Got it"
+    },
+    "mindmapHint": {
+      "notice": "Mind map file detected — you can ask me to import it as a mind map",
+      "dismiss": "Got it"
+    },
+    "errorAttachmentsExcluded": "{{count}} failed attachment(s) were not sent with the message: {{names}}",
+    "chip": {
+      "ready": "Ready",
+      "error": "Failed",
+      "pages": "{{count}} pages",
+      "pages_one": "{{count}} page",
+      "pages_other": "{{count}} pages",
+      "truncated": "Will truncate",
+      "truncatedTitle": "File exceeds 100KB; only the first 100KB will be injected. Ask AI to use retrieval tools for the full content",
+      "title": "{{name}} · {{status}}",
+      "titleTruncated": "{{name}} · {{status}} · {{truncation}}"
+    },
+    "slashCommand": {
+      "title": "Skill commands",
+      "active": "Active"
+    }
   },
   "queue": {
     "settings": {
@@ -299,19 +436,24 @@
     "bubble": {
       "steer": "Steer",
       "delete": "Delete",
-      "iconLabel": "Queued message"
+      "iconLabel": "Queued message",
+      "attachmentsOnly": "Attachments only",
+      "empty": "Empty message"
     },
     "steeredBadge": "Steered turn",
     "error": {
       "retry": "Retry",
       "skip": "Skip",
       "clearAll": "Clear all",
-      "tooltipPrefix": "Failed: "
+      "tooltipPrefix": "Failed: ",
+      "tooltip": "Failed: {{error}}",
+      "unknown": "Unknown error"
     },
     "fullTooltip": "Queue is full, please wait"
   },
   "input": {
-    "attachmentUploadFailed": "Attachment upload failed, please retry"
+    "attachmentUploadFailed": "Attachment upload failed, please retry",
+    "attachmentUploadFailedDetail": "Attachment upload failed: {{detail}}"
   },
   "anki": {
     "loadingPanel": "Loading Anki Panel..."
@@ -324,13 +466,54 @@
     "compactionSummary": {
       "title": "Context compacted · learning state summary",
       "expandHint": "click to expand",
-      "footnote": "This summary replaces earlier turns in the model's view. The original messages remain in the database."
+      "footnote": "This summary replaces earlier turns in the model's view. The original messages remain in the database.",
+      "copy": "Copy summary",
+      "copied": "Copied",
+      "messageCount": "{{count}} messages compacted",
+      "tokenChange": "~{{before}} → {{after}} tokens",
+      "summaryPasses": "{{count}} incremental summary passes",
+      "undo": "Undo compaction",
+      "undoHint": "Restore the previous context view without deleting source messages or audit records",
+      "undone": "Undone",
+      "undoFailed": "Unable to undo: this may no longer be the active compaction.",
+      "locateOriginal": "Locate source",
+      "originalNotLoaded": "The source is hidden by the compacted view; undo compaction to restore it.",
+      "originalMissing": "The source message is no longer in this session (it may have been deleted)."
     },
     "generic": {
       "type": "Type",
       "input": "Input",
       "output": "Output",
-      "error": "Error"
+      "error": "Error",
+      "unknownType": "Unknown block type",
+      "copy": "Copy",
+      "status": {
+        "pending": "Pending",
+        "running": "Running",
+        "success": "Done",
+        "error": "Failed"
+      }
+    },
+    "templatePreview": {
+      "loading": "Generating template preview...",
+      "error": "Template preview failed",
+      "nonVisualFallback": "Template tool output (non-visual)",
+      "noOutput": "(no output)"
+    },
+    "todoList": {
+      "blockError": "Failed to update the task list",
+      "emptyRunning": "Preparing task list..."
+    },
+    "multimodalRag": {
+      "title": "Multimodal Retrieval",
+      "searching": "Searching...",
+      "loading": "Retrieving multimodal sources...",
+      "error": "Retrieval failed",
+      "errorMessage": "Multimodal retrieval failed, please retry",
+      "noResults": "No related sources found",
+      "statsSimple": "{{count}} results",
+      "statsSimple_one": "{{count}} result",
+      "statsSimple_other": "{{count}} results"
     },
     "retrieval": {
       "sourcesCount": "sources",
@@ -342,8 +525,42 @@
       "sourceTypes": {
         "rag": "Document RAG",
         "memory": "User Memory",
-        "web_search": "Web Search"
+        "web_search": "Web Search",
+        "multimodal": "Multimodal",
+        "academic": "Academic Paper"
       }
+    },
+    "paperSave": {
+      "title": "Paper Download",
+      "preparing": "Preparing paper download…",
+      "stage": {
+        "resolving": "Resolving URL",
+        "downloading": "Downloading",
+        "deduplicating": "Checking duplicates",
+        "storing": "Storing",
+        "processing": "Extracting text",
+        "indexing": "Indexing",
+        "done": "Done",
+        "error": "Failed"
+      },
+      "sourceTitle": "Download source: {{source}}",
+      "dedup": "Duplicate",
+      "dedupTitle": "Already in your library",
+      "saved": "Saved",
+      "retry": "Retry",
+      "retryTitle": "Retry download",
+      "switchSource": "Switch download source",
+      "retryFailed": "Retry failed",
+      "downloadFailed": "Download failed",
+      "blockError": "Paper download failed",
+      "summaryDone_one": "{{done}}/{{total}} paper completed",
+      "summaryDone_other": "{{done}}/{{total}} papers completed",
+      "summaryDone": "{{done}}/{{total}} papers completed",
+      "summaryFailedSuffix_one": ", {{count}} failed",
+      "summaryFailedSuffix_other": ", {{count}} failed",
+      "summaryFailedSuffix": ", {{count}} failed",
+      "summaryWithFailures": "{{done}}/{{total}} completed, {{count}} failed",
+      "downloading": "Downloading {{done}}/{{total}}"
     },
     "rag": {
       "title": "Document RAG",
@@ -354,7 +571,9 @@
       "errorMessage": "Document search failed, please retry",
       "noResults": "No documents found",
       "stats": "Showing {{shown}} / {{total}} results",
-      "statsSimple": "{{count}} results"
+      "statsSimple": "{{count}} results",
+      "statsSimple_one": "{{count}} result",
+      "statsSimple_other": "{{count}} results"
     },
     "memory": {
       "title": "User Memory",
@@ -364,6 +583,8 @@
       "errorMessage": "Memory search failed, please retry",
       "noResults": "No related memories found",
       "statsSimple": "{{count}} memories",
+      "statsSimple_one": "{{count}} memory",
+      "statsSimple_other": "{{count}} memories",
       "types": {
         "conversation": "Conversation",
         "long_term": "Long-term",
@@ -378,7 +599,9 @@
       "errorMessage": "Web search failed, please retry",
       "noResults": "No results found",
       "stats": "Showing {{shown}} / {{total}} results",
-      "statsSimple": "{{count}} results"
+      "statsSimple": "{{count}} results",
+      "statsSimple_one": "{{count}} result",
+      "statsSimple_other": "{{count}} results"
     },
     "academicSearch": {
       "title": "Academic Search",
@@ -388,13 +611,16 @@
       "errorMessage": "Academic search failed, please retry",
       "noResults": "No papers found",
       "stats": "Showing {{shown}} / {{total}} papers",
-      "statsSimple": "{{count}} papers"
+      "statsSimple": "{{count}} papers",
+      "statsSimple_one": "{{count}} paper",
+      "statsSimple_other": "{{count}} papers"
     },
     "mcpTool": {
       "title": "Tool Call",
       "unknownTool": "Unknown Tool",
       "input": "Input Parameters",
       "output": "Output Result",
+      "copyOutput": "Copy output",
       "noOutput": "No output",
       "showFullJson": "Show full JSON",
       "executing": "Executing...",
@@ -411,12 +637,55 @@
       "status": {
         "pending": "Pending",
         "running": "Running",
+        "started": "Started in the background",
         "success": "Completed",
         "error": "Failed"
       },
       "loadedSkills": "Loaded skills",
       "loadedTools": "Loaded tools",
-      "viewSourceFile": "View Source File"
+      "toolOutputImage": "Tool output image",
+      "moreRows": "{{count}} more rows",
+      "viewSourceFile": "View Source File",
+      "openRuntimeSettings": "Authorize runtime folders",
+      "generatingArgs": "Generating arguments...",
+      "expandLongOutput": "Show all (~{{count}} chars)",
+      "collapseLongOutput": "Collapse long output"
+    },
+    "workbenchOps": {
+      "title": "Desktop ops",
+      "openTarget": "Open target window",
+      "undo": "Undo",
+      "steps": "Steps",
+      "done": "Done",
+      "pending": "Not done",
+      "target": "Target",
+      "noTarget": "No target window",
+      "message": "Note",
+      "applied": "Applied {{applied}}/{{total}}",
+      "undoExpired": "Undo window expired",
+      "undoExpiredHint": "The undo window has expired: the undo token is no longer valid or the run ledger has been cleared, so this action can no longer be undone.",
+      "undoApplied": "Reverted recoverable changes",
+      "undoing": "Undoing…",
+      "undoRetry": "Partially reverted, retry",
+      "undoUnavailable": "Undo unavailable",
+      "undoIncompleteExhausted": "Undo incomplete (cannot retry)",
+      "verified": "Post-action state verified",
+      "verificationFailed": "{{count}} postcondition(s) not met",
+      "undoPersistent": "Persistent undo is available for this action, including after an app restart.",
+      "undoSession": "This action can be undone during the current app session.",
+      "undoPersistentShort": "Survives restart · one use after success",
+      "undoSessionShort": "Current session only · one use after success",
+      "undoHighRisk": "Undo is High risk: this click confirms one undo only, and authorization is never remembered.",
+      "resultUnknownTitle": "Operation outcome unknown",
+      "resultUnknownHint": "Observe or read the target again before deciding what to do next. Do not retry unchanged or fall back to a backend write.",
+      "status": {
+        "running": "Running",
+        "success": "Completed",
+        "partial": "Partial",
+        "cancelled": "Cancelled",
+        "unknown": "Outcome unknown",
+        "error": "Failed"
+      }
     },
     "imageGen": {
       "title": "Image Generation",
@@ -430,7 +699,10 @@
       "generationFailed": "Generation Failed",
       "unknownError": "Unknown error",
       "retry": "Retry",
+      "retryUnavailable": "Automatic retry unavailable, please resend the message",
       "fullscreen": "Fullscreen",
+      "expandInline": "Zoom in",
+      "collapse": "Collapse",
       "download": "Download",
       "openInNewTab": "Open in new tab",
       "close": "Close"
@@ -455,9 +727,30 @@
       "collapse": "Collapse",
       "showMore": "Load more ({{remaining}} remaining)",
       "showAll": "Show all ({{total}})",
+      "showMoreBig": "Load {{count}} more",
+      "selectCard": "Select card {{index}}",
+      "selectAll": "Select all cards",
+      "invertSelection": "Invert selection",
+      "selectedCount": "{{count}} selected",
+      "deleteSelected": "Delete selected",
+      "saveSelected": "Save selected",
+      "exportSelected": "Export selected",
+      "deckName": "Deck",
+      "deckNamePlaceholder": "Deck name",
+      "deckNameHint": "Used when saving, exporting, and syncing this batch of cards.",
+      "quoteText": "Card #{{index}} (id: {{id}})",
       "save": "Save",
+      "addToLibrary": "Add to card library",
+      "addedToLibrary": "Added to card library",
       "export": "Export",
       "sync": "Sync",
+      "moreActions": "More card actions",
+      "reviewBatch": "Review batch",
+      "reviewBatchNeedsRealIds": "Finish generating and save every card to get real IDs before reviewing this batch",
+      "pause": "Pause",
+      "resume": "Resume",
+      "cancel": "Cancel",
+      "retryFailedSegments": "Retry failed segments",
       "synced": "Synced",
       "syncToAnki": "Sync to Anki",
       "syncStatus": {
@@ -475,7 +768,9 @@
         },
         "metrics": {
           "cards": "Cards",
-          "segments": "Segments"
+          "segments": "Segments",
+          "cardsValue": "Cards: {{count}}",
+          "segmentsValue": "Segments: {{completed}}/{{total}}"
         },
         "route": "route",
         "routeValues": {
@@ -487,12 +782,14 @@
           "label": "AnkiConnect",
           "checking": "checking",
           "connected": "connected",
-          "notConnected": "not connected"
+          "notConnected": "not connected",
+          "refresh": "Refresh AnkiConnect status"
         },
         "segments": {
           "pending": "Pending",
           "processing": "Processing",
           "paused": "Paused",
+          "completedWithErrors": "Completed with some failed segments",
           "failed": "Failed",
           "truncated": "Truncated",
           "cancelled": "Cancelled"
@@ -508,6 +805,7 @@
           "paused": "Paused — resume when you're ready.",
           "cancelled": "Generation cancelled.",
           "completedWithErrors": "Completed with some segment failures (failed={{failed}}, truncated={{truncated}}). Retry failed segments when ready.",
+          "recovered": "Automatic generation did not finish; {{count}} usable cards were supplied by the fallback path.",
           "limitReached": "Reached the configured card limit ({{limit}} cards); generation finished normally."
         }
       },
@@ -518,27 +816,54 @@
         "startFailed": "Failed to start card generation. Retry or adjust your template/settings.",
         "pipelineTimeout": "Generation took too long and stopped updating. Use chatanki_status later or retry the run.",
         "contextRefInvalid": "Attachment references are invalid. Remove and reattach the files, then retry.",
+        "generationFailed": "Automatic generation failed without producing usable cards. Check the model configuration or error details.",
         "partialSegmentsFailed": "Some segments failed. Use retry in the panel to re-run failed segments.",
         "waitInvalidArgs": "chatanki_wait needs an ankiBlockId or documentId. Re-run the tool with one of them.",
         "waitNotFound": "The cards block isn't available yet. Wait a moment or call chatanki_status with the documentId.",
         "waitTimeout": "Timed out waiting for completion. Try chatanki_status later or retry with a longer timeout.",
+        "documentIdRequired": "documentId is required. Provide the card document ID and retry.",
+        "databaseUnavailable": "The card database is unavailable. Try again later.",
+        "updateArgsRequired": "Updating a card requires cardId, expectedVersion, and at least one changed field.",
+        "deleteArgsRequired": "Deleting a card requires cardId and expectedVersion.",
+        "addArgsRequired": "Adding cards requires documentId and between 1 and 100 cards.",
+        "cardContentRequired": "A card needs non-empty front and back fields, or non-empty Cloze text.",
+        "reviewSelectorRequired": "Provide exactly one of documentId or cardIds when enqueueing cards for review.",
+        "retemplateSelectorRequired": "Provide exactly one of documentId or cardIds when changing templates.",
+        "templateDatabaseUnavailable": "The template database is unavailable. Try again later.",
         "statusNotFound": "No tasks found for this document yet. Wait a bit or restart the generation.",
+        "watchdogFailedWithoutCards": "Generation failed before any usable cards were produced.",
+        "watchdogCancelledWithoutCards": "Generation was cancelled before any usable cards were produced.",
+        "watchdogCompletedWithoutCards": "Generation completed without producing any usable cards.",
+        "watchdogUnknownWithoutCards": "Generation stopped in an unrecognized state before any usable cards were produced.",
         "ankiConnectUnavailable": "AnkiConnect is unavailable. Open Anki, enable AnkiConnect, then retry.",
         "missingClozeNoteType": "Cloze note type is missing in Anki. Create it in Anki and retry.",
         "ankiSyncEmpty": "No cards were imported. Check that Anki is running, the note type exists, and card fields are not empty."
       },
       "warnings": {
+        "generationRecovered": "Automatic generation encountered a problem; the fallback path supplied {{count}} usable cards.",
         "imageTruncated": "Only the first {{shown}} of {{total}} images were used (limit {{limit}}). Split attachments and retry if needed.",
         "contextRefInvalid": "{{count}} attachments could not be parsed. Remove and reattach them if needed.",
         "textTruncated": "Document exceeds {{limitMB}}MB text limit. Only the first {{limitMB}}MB was processed. Consider splitting the document.",
         "templateLoadPartial": "{{count}} templates failed to load and were skipped. Check whether they were removed, or re-enable them in template settings and retry.",
-        "overLimitCardsRemoved": "Concurrent generation exceeded the limit of {{limit}} cards; {{count}} extra cards were removed."
+        "overLimitCardsRetained": "Concurrent generation exceeded the limit of {{limit}} cards; {{count}} over-limit cards were retained in the library but not included in this batch."
       },
       "action": {
         "saveFailed": "Save failed",
         "savedCount": "Saved {{count}} cards",
+        "savedCount_one": "Saved {{count}} card",
+        "savedCount_other": "Saved {{count}} cards",
         "savedCountWithHint": "Saved {{count}} cards. Next: open the Anki panel to review or export.",
+        "savedCountWithHint_one": "Saved {{count}} card. Next: open the Anki panel to review or export.",
+        "savedCountWithHint_other": "Saved {{count}} cards. Next: open the Anki panel to review or export.",
+        "savePartialTitle": "Partially saved",
+        "savePartialDetail": "Added {{saved}}, updated existing {{duplicated}}, skipped {{skipped}}, failed {{failed}}.",
+        "saveAllSkippedTitle": "Cards already in library",
+        "saveAllSkippedDetail": "{{skipped}} skipped as content duplicates, {{duplicated}} updated by id; nothing new was added.",
+        "skippedDiagnosticDetail": "Skipped {{count}} diagnostic cards; they were not saved to the library.",
+        "skippedDiagnosticDetail_one": "Skipped {{count}} diagnostic card; it was not saved to the library.",
+        "skippedDiagnosticDetail_other": "Skipped {{count}} diagnostic cards; they were not saved to the library.",
         "saveFailedWithHint": "Save failed. Retry, or export from the panel instead.",
+        "saveFailedDetail": "Save failed: {{detail}}",
         "exportFailed": "Export failed",
         "exportFailedNoPath": "Export failed: no file path returned",
         "apkgExported": "APKG exported",
@@ -551,12 +876,28 @@
         "syncAllDuplicatesTitle": "Cards already exist",
         "syncAllDuplicatesDetail": "All {{count}} cards already exist in Anki (skipped as duplicates); nothing new was added.",
         "syncedCount": "Synced {{count}} cards to Anki",
+        "syncedCount_one": "Synced {{count}} card to Anki",
+        "syncedCount_other": "Synced {{count}} cards to Anki",
         "syncedCountWithHint": "Synced {{count}} cards to Anki. Next: open Anki to review.",
+        "syncedCountWithHint_one": "Synced {{count}} card to Anki. Next: open Anki to review.",
+        "syncedCountWithHint_other": "Synced {{count}} cards to Anki. Next: open Anki to review.",
         "syncFailedWithHint": "Sync failed. Ensure Anki is running and AnkiConnect is enabled, then retry.",
         "persistFailed": "Card edit failed to save. Changes may be lost if you switch sessions. Please retry.",
         "dbSyncFailed": "Card change failed to sync to the card library; AI export/sync may not include it.",
         "exportCancelled": "Export cancelled",
-        "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards."
+        "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards.",
+        "exportSkippedErrorsWithNote": "Exported {{exported}} cards, skipped {{skipped}} error cards. {{note}}",
+        "apkgExportedWithNote": "APKG exported. {{note}}",
+        "paused": "Generation paused",
+        "resumed": "Generation resumed",
+        "cancelled": "Generation cancelled",
+        "pauseFailed": "Failed to pause",
+        "resumeFailed": "Failed to resume",
+        "cancelFailed": "Failed to cancel",
+        "retrySegmentsStarted": "Resubmitted {{count}} failed segments",
+        "retrySegmentsPartial": "{{failed}} of {{total}} segments could not be resubmitted",
+        "retrySegmentsFailed": "All {{failed}} failed segments could not be resubmitted",
+        "exportNewCardsNote": "Cards imported into Anki from this package will appear as new cards (review progress is not carried in the file)."
       }
     }
   },
@@ -600,7 +941,9 @@
     "pageAlt": "Page {{page}}",
     "pageLabel": "Page {{page}}",
     "stillPreparing": "Textbook images are still being prepared, please wait",
-    "pagesInjected": "Injected {{count}} textbook pages"
+    "pagesInjected": "Injected {{count}} textbook pages",
+    "pagesInjected_one": "Injected {{count}} textbook page",
+    "pagesInjected_other": "Injected {{count}} textbook pages"
   },
   "bridge": {
     "linkingInProgress": "Establishing session link, please wait",
@@ -669,8 +1012,6 @@
     "enableThinkingDesc": "Show model reasoning process",
     "disableTools": "Disable Tools",
     "disableToolsDesc": "Don't call external tools",
-    "disableToolWhitelist": "Disable Tool Whitelist",
-    "disableToolWhitelistDesc": "Allow all tools to bypass skill whitelist restrictions",
     "reset": "Reset to defaults",
     "maxToolRecursion": "Tool Recursion Limit",
     "maxToolRecursionHint": "Maximum consecutive tool calls by AI to prevent infinite loops",
@@ -682,6 +1023,7 @@
     "placeholder": "Enter system prompt to customize AI behavior and role...",
     "copy": "Copy",
     "clear": "Clear",
+    "undoClear": "Undo clear",
     "saveAsTemplate": "Save as Template",
     "newTemplateName": "New Template",
     "personas": {
@@ -784,18 +1126,26 @@
     "groupActions": "Group Actions",
     "editGroup": "Edit Group",
     "renameGroup": "Rename Group",
+    "groupUnsavedChangesConfirm": "Discard unsaved group changes?",
     "archiveGroup": "Archive Group",
     "archiveGroupTitle": "Archive Group",
     "archiveGroupDesc": "Archiving hides this group from the active group list. Its sessions will not be deleted. Archive \"{{name}}\"?",
     "archiveGroupConfirm": "Archive",
     "groupName": "Group name",
-    "groupNamePlaceholder": "Enter group name",
+    "groupNamePlaceholder": "Describe the task in one sentence",
     "groupIcon": "Group icon",
     "groupIconPlaceholder": "e.g. 📁 or folder",
     "groupDescription": "Description",
     "groupDescriptionPlaceholder": "Optional, describe this group",
     "groupSystemPrompt": "Group system prompt",
     "groupSystemPromptPlaceholder": "Optional, default system prompt for this group",
+    "groupDefaultRuntimeRoot": "Default project folder",
+    "groupDefaultRuntimeRootHint": "Select or create a folder and bind it as this task's read-write workspace. File operations remain root-bounded and approval-controlled.",
+    "groupDefaultRuntimeRootNone": "Not bound",
+    "groupDefaultRuntimeRootBrowse": "Choose / create…",
+    "groupDefaultRuntimeRootBrowseTitle": "Select or create a task workspace",
+    "groupDefaultRuntimeRootAuthorizeFailed": "Failed to bind task workspace",
+    "groupDefaultRuntimeRootLoadFailed": "Failed to load bindable folders",
     "groupDefaultSkills": "Default skills",
     "groupPinnedResources": "Pinned Resources",
     "groupPinnedResourcePlaceholder": "Enter resource ID (e.g. note_xxx, tb_xxx) and press Enter",
@@ -817,9 +1167,14 @@
     "moveToGroup": "Move to group",
     "untitled": "Untitled Session",
     "deleteSession": "Delete Session",
+    "deleteSessionConfirm": "Delete this session permanently? This cannot be undone",
+    "archiveGroupConfirmInline": "Archive \"{{name}}\"? Its sessions will not be deleted",
+    "clearSearch": "Clear search",
     "renameSession": "Rename Thread",
     "pinSession": "Pin Thread",
     "unpinSession": "Unpin Thread",
+    "pinGroup": "Pin group",
+    "unpinGroup": "Unpin group",
     "archiveSession": "Archive Thread",
     "archivedSessionsEntry": "Archived Sessions",
     "confirmArchiveSession": "Confirm Archive",
@@ -837,6 +1192,7 @@
     "sessionNamePlaceholder": "Enter session name",
     "welcome": "Welcome to DeepStudent",
     "newChat": "New Chat",
+    "mobileDrawerSubtitle": "Start your learning here",
     "selectOrCreate": "Select a session or create a new one to start chatting",
     "timeGroups": {
       "today": "Today",
@@ -850,6 +1206,11 @@
     "searchPlaceholder": "Search sessions...",
     "switchingSession": "Switching session...",
     "deleteSessionFailed": "Failed to delete session",
+    "createSessionFailed": "Failed to create session. Please try again.",
+    "createAnalysisSessionFailed": "Failed to create analysis session. Please try again.",
+    "loadSessionsFailed": "Failed to load sessions. Refresh and try again.",
+    "loadMoreSessionsFailed": "Failed to load more sessions. Please try again.",
+    "exportSession": "Export session",
     "analysis_session_title": "Question Analysis",
     "selectSessionFirst": "Please select a session first",
     "loading": "Loading...",
@@ -862,7 +1223,14 @@
     "primaryNavigation": "Primary navigation",
     "resourceUnsupported": "This resource type is not yet supported in Learning Hub",
     "groupSaveFailed": "Failed to save group",
-    "openNoteFailed": "Failed to open note"
+    "openNoteFailed": "Failed to open note",
+    "openInLearningHub": "Open in Learning Hub",
+    "collapseSandboxWorkbench": "Collapse Sandbox Workbench",
+    "expandSandboxWorkbench": "Expand Sandbox Workbench",
+    "emptyPage": {
+      "subtitle": "Start a new conversation to explore your materials, organize notes, and ask anything",
+      "hint": "Tip: press Ctrl / ⌘ + N anytime to start a new chat"
+    }
   },
   "pdfRef": {
     "openFailedTitle": "Cannot Open PDF Reference",
@@ -905,6 +1273,7 @@
     "sessionCost": "Session cost",
     "tokens": "tokens",
     "inputEstimate": "Estimated input token count",
+    "tokensValue": "{{count}} tokens",
     "source": {
       "api": "API Exact",
       "tiktoken": "Tiktoken Est.",
@@ -912,10 +1281,112 @@
       "mixed": "Mixed Source"
     }
   },
+  "contextUsagePopover": {
+    "limit": "Context limit",
+    "compactionStatus": "Compaction",
+    "compactionActive": "Active",
+    "compactionTokens": "Before → after",
+    "compactDisabledStreaming": "Unavailable while generating"
+  },
+  "compaction": {
+    "manualSkipped": "Compaction skipped: {{reason}}",
+    "manualFailed": "Context compaction failed: {{reason}}. Please try again.",
+    "autoFailedTitle": "Auto-compaction failed",
+    "autoFailed": "Automatic context compaction failed; older history may be truncated ({{reason}})",
+    "contextTrimmedTitle": "Context window full",
+    "contextTrimmed": "Context is full — the earliest {{count}} messages were not included in this turn",
+    "reason": {
+      "sessionTooShort": "The session is too short to compact",
+      "usableTooSmall": "Not enough compactable content",
+      "lockBusy": "Another compaction is already running, try again later",
+      "streaming": "The session is still generating, try again later",
+      "summaryFailed": "Summary generation failed",
+      "cancelled": "Compaction was cancelled",
+      "staleLineage": "The session context changed, please retry",
+      "invalidResponse": "Unexpected backend response",
+      "unknown": "Unknown reason"
+    }
+  },
   "agentPanel": {
     "plan": "Plan",
+    "environment": "Environment",
+    "local": "Local",
+    "activityCount": "{{count}} activities",
+    "blockedCount": "{{count}} blocked",
+    "environmentBoundary": "Boundary",
+    "sandbox": "Sandbox",
+    "network": "Network",
+    "networkEnabled": "Enabled",
+    "networkDisabled": "Disabled",
+    "recentActivity": "Recent activity {{count}}",
     "sources": "Sources",
-    "artifacts": "Artifacts"
+    "artifacts": "Artifacts",
+    "workspaceFiles": "Workspace files",
+    "browserDownloads": "Browser downloads",
+    "loadMoreFiles": "Load more",
+    "fileTreeTruncated": "File list truncated",
+    "loadingFiles": "Loading…",
+    "runtime": "Runtime",
+    "changes": "Changes",
+    "changeCoverageIncomplete": "Change tracking or rollback coverage is incomplete; do not treat this run as fully successful",
+    "runtimeActions": {
+      "list": "List",
+      "read": "Read",
+      "write": "Write",
+      "check": "Command",
+      "blocked": "Blocked"
+    },
+    "changeActions": {
+      "create": "Create",
+      "update": "Update",
+      "delete": "Delete",
+      "append": "Append",
+      "write": "Write"
+    },
+    "goAuthorize": "Authorize runtime folders",
+    "authorizationTitle": "{{label}} — {{action}}",
+    "revealInFolder": "Reveal in file manager: {{path}}",
+    "revealFailed": "Could not locate file",
+    "reverted": "Reverted",
+    "revertWrite": "Revert write (delete this artifact file)",
+    "revertDone": "Artifact write reverted",
+    "revertFailed": "Failed to revert",
+    "preview": "Preview",
+    "previewClose": "Close preview",
+    "previewFailed": "Preview failed",
+    "previewTruncated": "Content truncated",
+    "revertRestore": "Restore original content",
+    "revertDeleteNew": "Delete new file",
+    "revertWorkspace": "Revert this workspace change",
+    "revertWorkspaceDone": "Workspace change reverted",
+    "restoreDone": "Original content restored",
+    "saveAsNote": "Save to note library",
+    "savedAsNote": "Saved as note",
+    "openSavedNote": "Open note",
+    "saveAsNoteFailed": "Failed to save as note",
+    "saveAsNoteTruncated": "Artifact content was truncated before saving",
+    "collapsePanel": "Collapse panel"
+  },
+  "shellOutput": {
+    "title": "Local command",
+    "showFull": "Show all ({{kb}} KB)",
+    "copyCommand": "Copy command",
+    "copyStdout": "Copy stdout",
+    "copyStderr": "Copy stderr",
+    "exitCode": "Exit code {{code}}",
+    "timedOut": "Timed out",
+    "truncated": "Output truncated",
+    "noOutput": "Command produced no output",
+    "policy": "Execution policy",
+    "netOn": "Network: allowed",
+    "netOff": "Network: blocked",
+    "envAllowlist": "Env: allowlist mode",
+    "envExplicit": "{{count}} custom env vars",
+    "hint": {
+      "timeout": "The command timed out and was terminated. Narrow the task or raise timeout_ms and retry.",
+      "nonZeroWithStderr": "The command exited with a non-zero code. Check stderr above for the reason.",
+      "nonZero": "The command exited with a non-zero code. This usually means bad arguments, a missing dependency, or a nonexistent path."
+    }
   },
   "timeline": {
     "thinking": {
@@ -944,12 +1415,14 @@
       "preparing": "Preparing...",
       "pending": "Pending",
       "running": "Running...",
+      "groupSummary": "Used {{count}} tools",
       "success": "Completed",
       "completed": "Completed",
       "failed": "Failed",
       "input": "Input",
       "output": "Output",
       "noOutput": "No output",
+      "liveOutput": "Live output",
       "contentLabel": "Tool details",
       "moreParams": "{{count}} more params...",
       "arrayResult": "Array ({{count}} items)",
@@ -960,8 +1433,23 @@
       "loadedSkills": "Loaded skills",
       "loadedTools": "Loaded tools"
     },
+    "shell": {
+      "checking": "Checking",
+      "checked": "Checked",
+      "blocked": "Blocked",
+      "running": "Running",
+      "ran": "Ran",
+      "failed": "Command failed",
+      "pending": "Pending",
+      "preflight": "Shell check",
+      "commandUnavailable": "Command unavailable",
+      "commandPreparing": "Generating parameters…",
+      "commandInterrupted": "Command interrupted (no parameters received)"
+    },
     "noteTool": {
       "read": "Read Note",
+      "create": "Create Note",
+      "list": "List Notes",
       "append": "Append Content",
       "replace": "Replace Content",
       "set": "Set Content",
@@ -973,6 +1461,7 @@
       "addedContent": "Added Content",
       "afterContent": "Content After",
       "search": "Search",
+      "searchNotes": "Search Notes",
       "emptyString": "(empty)",
       "before": "Before",
       "after": "After",
@@ -990,6 +1479,7 @@
     },
     "todoList": {
       "tasksDone": "tasks done",
+      "progress": "{{done}} / {{total}} tasks done",
       "allDone": "All tasks completed",
       "inProgress": "In progress"
     }
@@ -1031,6 +1521,7 @@
     "label": "Inject",
     "selectMode": "Select Mode",
     "allModes": "All",
+    "joiner": "+",
     "image": {
       "title": "Image Inject Mode",
       "image": "Image",
@@ -1065,11 +1556,14 @@
     "confirm": "Confirm",
     "resolve_failed_single": "Failed to resolve resource \"{{name}}\"",
     "resolve_failed_multiple": "{{count}} resources failed to resolve",
+    "resolve_failed_single_with_detail": "Failed to resolve resource \"{{name}}\": {{error}}",
+    "resolve_failed_multiple_with_detail": "Failed to resolve {{count}} resources: {{names}}. {{error}}",
     "source_ids_empty": "sourceIds cannot be empty",
     "resource_deleted_or_moved": "Resource has been deleted or moved",
     "resolve_failed_skipped": "{{count}} resources failed to resolve, skipped",
     "unnamed_resource": "Unnamed resource",
-    "more_warnings": "; and {{count}} more warnings"
+    "more_warnings": "; and {{count}} more warnings",
+    "warningsSummary": "{{warnings}}; and {{count}} more warnings"
   },
   "variant": {
     "switcher": "Variant Switcher",
@@ -1090,20 +1584,48 @@
     "stopAll": "Stop All",
     "retrying": "Retrying",
     "retryFailed": "Retry failed",
+    "retryFailedWithDetail": "Retry failed: {{error}}",
     "deleted": "Deleted",
     "deleteFailed": "Delete failed",
+    "deleteFailedWithDetail": "Delete failed: {{error}}",
     "cancelFailed": "Cancel failed",
     "switchFailed": "Switch variant failed",
     "retryAll": "Retry All",
     "deleteMessage": "Delete Message",
     "unknownModel": "Unknown Model",
-    "switchToVariant": "Switch to variant {{index}}"
+    "switchToVariant": "Switch to variant {{index}}",
+    "prevVariant": "Previous variant",
+    "nextVariant": "Next variant"
+  },
+  "selectionToolbar": {
+    "ariaLabel": "Selected text actions",
+    "copy": "Copy",
+    "copied": "Copied",
+    "explain": "Explain",
+    "translate": "Translate",
+    "addToChat": "Add to chat",
+    "makeCards": "Make cards",
+    "makeCardsEmpty": "Select some text to make cards",
+    "makeCardsTooShort": "Selection is too short. Please select at least {{count}} characters.",
+    "makeCardsStarted": "Card generation started. Track progress in the task dashboard.",
+    "makeCardsFailed": "Failed to start card generation",
+    "makeCardsDeckName": "Selection cards",
+    "makeCardsRequirements": "Generate high-quality memory cards from the selected excerpt, prioritizing key concepts and facts in the selection.",
+    "openTaskDashboard": "Open task dashboard"
+  },
+  "explainPopover": {
+    "thinking": "Thinking...",
+    "prompt": "Explain the following content in clear, concise language. If it is a technical term, provide a definition and a plain-language explanation; if it is a passage, summarize its core meaning. Answer in English.\n\n\"{{text}}\""
   },
   "browser": {
     "title": "Session Browser",
+    "titleWithCount": "Session Browser ({{count}})",
     "back": "Back",
     "refresh": "Refresh",
     "openBrowser": "Open Browser View",
+    "exportSession": "Export session",
+    "exportSuccess": "Exported {{messageCount}} messages to {{path}}",
+    "exportFailed": "Export failed: {{error}}",
     "allSessions": "All Sessions",
     "noResults": "No matching sessions found",
     "tryDifferentKeyword": "Try a different keyword",
@@ -1111,6 +1633,11 @@
     "createdAt": "Created",
     "groupByTime": "Group by time",
     "groupByGroup": "Group by category",
+    "groupByWorkspace": "Group by workspace",
+    "defaultWorkspace": "Default runtime",
+    "taskStatus": { "running": "Running", "blocked": "Blocked", "completed": "Completed", "unknown": "Status unavailable" },
+    "taskArtifacts": "{{count}} outputs",
+    "taskChanges": "{{count}} changes",
     "staleTopic": "Needs repair",
     "staleTopicDescription": "Sessions whose original topic is no longer available.",
     "ungrouped": "Ungrouped"
@@ -1130,17 +1657,79 @@
     "showLess": "Show less",
     "addPlaceholder": "Add tag"
   },
+  "authority": {
+    "modes": {
+      "ask": "Ask",
+      "plan": "Plan",
+      "craft": "Craft"
+    },
+    "modeSubtitles": {
+      "ask": "Read-only",
+      "plan": "Plan first"
+    },
+    "hints": {
+      "ask": "Ask is read-only and takes precedence: write tools are refused regardless of execution preset",
+      "plan": "Plan takes precedence: writes wait for plan confirmation regardless of execution preset",
+      "craft": "Run tools under the selected execution preset"
+    },
+    "permissionPreset": {
+      "label": "Craft execution preset",
+      "modes": {
+        "cautious": "Cautious",
+        "relaxed": "Relaxed",
+        "full_access": "Full access",
+        "danger_full_access": "Danger full access"
+      },
+      "hints": {
+        "cautious": "Confirm each Medium or High action. Dangerous approvals are never remembered.",
+        "relaxed": "Low and Medium actions run silently; High actions still require approval.",
+        "full_access": "Tools and shell run without step-by-step confirmation, and local-shell runtime-root, host-file, and network sandbox limits are removed; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied.",
+        "danger_full_access": "Danger: tools and shell run without step-by-step confirmation and local-shell host file/network limits are removed; privilege actions such as skill trust / MCP install / runtime root still require a one-shot confirmation; catastrophic commands are denied."
+      },
+      "shortHints": {
+        "cautious": "Confirm Medium and High actions",
+        "relaxed": "Run Low/Medium silently; approve High",
+        "full_access": "Full host-file and network access",
+        "danger_full_access": "Unrestricted host files and network"
+      },
+      "modePriority": "This preset controls Craft only. Ask and Plan mode restrictions always take precedence.",
+      "fullAccessActive": "Full access",
+      "fullAccessDowngradeHint": "Full access is on. Local shell can access host files and network available to the current user. Click to downgrade to Relaxed and restore approval and sandbox boundaries.",
+      "dangerActive": "Danger",
+      "dangerDowngradeHint": "Danger full access is on. Click to downgrade to Relaxed and restore runtime roots, the OS sandbox, and network boundaries.",
+      "dangerConfirmTitle": "Enable danger full access?",
+      "dangerConfirmDescription": "Ordinary tools and every external MCP will run without approval, and local shell will have no file or network sandbox. Recognized catastrophic commands are still denied, but dynamically generated scripts that cannot be classified may still damage the host; external MCP internals are also outside the local shell guard. Continue only if you explicitly accept these risks.",
+      "dangerConfirmAction": "Enable danger full access"
+    },
+    "switchToPlan": "Switch to Plan",
+    "askBlocked": "Ask mode refused a write tool",
+    "planGate": {
+      "title": "Confirm plan execution",
+      "fallbackSummary": "The model is ready to run write tools",
+      "tool": "Tool",
+      "countdown": "Auto-reject in {{seconds}}s",
+      "timedOut": "Timed out — plan auto-rejected",
+      "approve": "Confirm & run",
+      "reject": "Reject"
+    }
+  },
   "approval": {
     "title": "Tool Execution Confirmation",
     "toolName": "Tool Name",
     "description": "Description",
     "arguments": "Arguments",
-    "approve": "Approve",
-    "reject": "Reject",
+    "approve": "Allow Once",
     "allowSession": "Allow for Session",
-    "alwaysAllow": "Always Allow",
-    "alwaysDeny": "Always Deny",
+    "allowScope": "Allow Scope",
+    "reject": "Reject Once",
+    "rejectReasonPlaceholder": "Optional: tell the AI why you rejected or what it should do instead",
+    "rejectDirectly": "Reject Directly",
+    "rejectSend": "Send",
+    "userReasonLabel": "User feedback",
+    "runtimeRoot": "Runtime root",
+    "runtimeCwd": "Working directory",
     "timeout": "Approval Timeout",
+    "timedOutWaiting": "Timed out — auto-rejecting",
     "resolution": {
       "approved": "Approved",
       "rejected": "Rejected",
@@ -1161,10 +1750,64 @@
     },
     "expandArgs": "Show full arguments",
     "collapseArgs": "Collapse arguments",
+    "scopeExpand": "Details",
+    "scopeCollapse": "Hide details",
+    "countdownPaused": "Paused",
+    "aria": {
+      "requested": "Tool {{tool}} is awaiting approval and will be rejected automatically in {{seconds}} seconds",
+      "countdownWarning": "{{seconds}} seconds left before automatic rejection",
+      "countdownPaused": "Auto-reject countdown paused",
+      "autoRejectCountdown": "Auto-reject in {{seconds}} seconds"
+    },
     "sensitivity": {
       "low": "Low Risk",
       "medium": "Medium Risk",
       "high": "High Risk"
+    },
+    "descriptions": {
+      "shell": "Will execute command: {{command}}",
+      "noteSet": "Will completely replace the contents of note {{noteId}}",
+      "noteReplace": "Will replace content matching \"{{search}}\" in the note",
+      "fileWrite": "Will write file: {{path}}",
+      "artifactWrite": "Will write session artifact: {{path}}",
+      "fileManagerCommit": "Will apply reviewed file plan {{plan}} in {{root}}",
+      "fileManagerRestore": "Will restore file from workspace trash: {{path}}",
+      "fileDelete": "Will delete file: {{path}}",
+      "browserOpen": "Will open in the built-in browser: {{url}}",
+      "browserNavigate": "Will navigate to: {{url}}",
+      "browserClick": "Will click webpage element: {{element}} (ref={{ref}})",
+      "browserFileUpload": "Will upload {{count}} authorized file(s) to: {{element}}",
+      "browserType": "Will type into webpage element: {{element}} (ref={{ref}}; content hidden)",
+      "browserOperation": "Will perform browser operation: {{tool}}",
+      "mediaTranscribe": "Will send authorized audio file {{file}} to the external ASR provider SiliconFlow and write the transcript to a task artifact",
+      "skillEnable": "Will enable skill: {{skillId}}",
+      "skillDisable": "Will disable skill: {{skillId}} (skill files are retained and can be re-enabled)",
+      "skillRemove": "Will delete skill package: {{skillId}} (cannot be undone; built-in skills are unaffected)",
+      "skillTrust": "Will trust skill {{skillId}} (trust is bound to the current package fingerprint)",
+      "skillTrustWithReason": "Will trust skill {{skillId}} (trust is bound to the current package fingerprint): {{reason}}",
+      "mcpUpdate": "Will update MCP server configuration: {{serverId}}",
+      "mcpUpdateWithFields": "Will update MCP server configuration: {{serverId}} (fields: {{fields}}; connection-tested automatically and rolled back on failure)",
+      "mcpEnable": "Will enable MCP server: {{serverId}}",
+      "mcpDisable": "Will disable MCP server: {{serverId}} (disconnects but retains configuration and saved credentials)",
+      "mcpRemove": "Will delete MCP server: {{serverId}} (transport: {{transport}}; saved credentials are also deleted; cannot be undone)",
+      "customAgentList": "Will view pending subagent persona proposals",
+      "customAgentReject": "Will reject subagent persona proposal: {{proposalId}}",
+      "customAgentPropose": "Will draft subagent persona proposal: {{fileName}} (saved to the pending area; a later approval is required before writing to agents/)",
+      "customAgentApply": "Will write custom subagent persona: workspaces/agents/{{fileName}}",
+      "customAgentApplyWithSummary": "Will write custom subagent persona {{fileName}}: {{summary}}",
+      "customAgentRemove": "Will delete custom subagent persona: {{fileName}} (cannot be undone)",
+      "customAgentRemoveWithTitle": "Will delete custom subagent persona: {{fileName}} ({{title}}; cannot be undone)",
+      "generic": "Will execute tool: {{tool}}"
+    }
+  },
+  "skillInstall": {
+    "approval": {
+      "sha256Prefix": "Package SHA-256 prefix",
+      "risk": {
+        "low": "Scan: low risk",
+        "medium": "Scan: medium risk",
+        "high": "Scan: high risk"
+      }
     }
   },
   "completion": {
@@ -1176,6 +1819,7 @@
   },
   "renderer": {
     "aiThinkingProcess": "AI Thinking Process",
+    "imageLoadFailed": "Image failed to load",
     "incompleteMathFormula": "Incomplete math formula detected, rendering temporarily disabled",
     "uncertain": "Uncertain"
   },
@@ -1193,11 +1837,19 @@
     "web_search": "Web Search",
     "multimodal": "Multimodal"
   },
+  "ragPanel": {
+    "topkHelper": "Return the {{value}} most relevant snippets; higher is broader but slightly slower",
+    "multimodalTopkLabel": "Multimodal Top-K",
+    "multimodalTopkHelper": "Number of image/figure snippets to return",
+    "nextRunHint": "Changes take effect on the next retrieval",
+    "streamingLocked": "Retrieval settings are locked while a reply is streaming"
+  },
   "tool_limit": {
     "title": "Tool Call Limit",
     "hint": "Tip: Click continue button or send \"continue\" in the input box to let AI continue the task",
     "continue": "Continue",
-    "continuing": "Running..."
+    "continuing": "Running...",
+    "continueFailed": "Failed to continue. Please try again."
   },
   "chat": {
     "operation_in_progress": "Operation in progress, please try again later",
@@ -1264,6 +1916,22 @@
     "hint": "Select a model and click retry button",
     "retry": "Retry"
   },
+  "modelPicker": {
+    "title": "Select Model",
+    "retryTitle": "Select Model to Retry",
+    "retryHintEmpty": "Select a model, then click retry",
+    "retryHint": "{{count}} models selected",
+    "compareHint": "Comparing {{count}} selected models",
+    "singleHint": "Current session model",
+    "setAsDefault": "Set as system default",
+    "parallelMode": "Parallel mode",
+    "compareToggle": "Compare mode",
+    "compareToggleHint": "Use multiple models to answer",
+    "searchPlaceholder": "Search by name or model ID...",
+    "noMatches": "No matching models",
+    "empty": "No models available",
+    "goToSettings": "Add models in Settings"
+  },
   "workspace": {
     "title": "Workspace",
     "toggle": "Workspace Panel",
@@ -1276,6 +1944,8 @@
     "defaultName": "Collaboration Task",
     "coordinator": "Coordinator",
     "workers": "Workers",
+    "workersCount": "Workers ({{count}})",
+    "messagesCount": "Messages ({{count}})",
     "viewFull": "View Full",
     "loadError": "Load failed",
     "refreshFailed": "Workspace sync failed: {{message}}",
@@ -1286,6 +1956,17 @@
     "task": "Task",
     "response": "Response",
     "moreMessages": "{{count}} more messages",
+    "failedHint": "This agent failed. Expand the session output below or choose “View Full Session” to see why.",
+    "elapsed": {
+      "runningHint": "Elapsed time (live)",
+      "finalHint": "Total elapsed time (approximate)"
+    },
+    "summary": {
+      "finished": "{{done}}/{{total}} completed",
+      "running": "{{count}} running",
+      "failed": "{{count}} failed",
+      "cancelled": "{{count}} cancelled"
+    },
     "agent": {
       "coordinator": "Coordinator",
       "worker": "Worker",
@@ -1294,17 +1975,23 @@
     "status": {
       "noWorkspace": "No workspace",
       "agents": "Participants",
+      "agentsCount": "Participants ({{count}})",
       "noAgents": "No participants",
       "agentsDone": "done",
       "recentMessages": "Recent Messages",
+      "recentMessagesCount": "Recent Messages ({{count}})",
       "createdAt": "Created at",
       "historicalWorkspace": "Historical Workspace",
       "workspaceSwitched": "Workspace Switched",
       "historicalSnapshot": "This is a historical snapshot, the active workspace has changed",
       "idle": "Idle",
+      "queued": "Queued",
       "running": "Running",
       "completed": "Completed",
-      "failed": "Failed"
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted",
+      "closed": "Closed"
     },
     "skill": {
       "loading": "Loading...",
@@ -1355,10 +2042,23 @@
     "unableToResolveSessionId": "Unable to resolve requester session ID for workspace command",
     "online": "Network restored, syncing workspace...",
     "offline": "Network disconnected, some operations unavailable",
+    "workerStartFailed": "Worker \"{{name}}\" failed to start: {{error}}",
+    "coordinatorAwakened": "Coordinator awakened by subagent {{agent}}, continuing...",
+    "subagentRetry": "Subagent {{agent}} did not send a result, re-triggering...",
+    "subagentRetryExhausted": "Subagent {{agent}} produced no result after multiple retries",
+    "subagentRetryExhaustedTitle": "Subagent produced no result after multiple retries",
     "subagentRetryDefault": "Subagent completed the task but did not send a result message, re-triggering...",
     "subagentRetryFailed": "Subagent retry failed",
     "subagentRetryResolved": "Subagent has resent the result",
     "subagentRetryTitle": "Subagent Retry",
+    "subagentWakeNotice": "Background subagent {{agent}} finished; waking main agent to process the result",
+    "warning": {
+      "inbox_full_rejected": "Agent {{agent}} inbox is full; new messages were rejected. Wait for it to finish and retry.",
+      "run_agent_conflict_requeue_failed": "Agent {{agent}} is already running and some task messages could not be re-queued. Wait for completion, then retry manually.",
+      "run_agent_requeue_failed": "Some task messages for agent {{agent}} could not be re-queued. Retry the task manually later.",
+      "retry_limit_exceeded": "Message retry limit reached ({{retry}}/{{max}})",
+      "agent_cancelled": "Agent {{agent}} execution was cancelled"
+    },
     "cancelled": "Stop request sent",
     "cancelNoop": "Nothing to cancel (may already be idle)",
     "cancelFailed": "Stop failed: {{error}}",
@@ -1405,21 +2105,29 @@
     },
     "wakeSuccess": "Wake request sent",
     "wakeNoop": "Wake had no effect (may already be awake)",
-    "wakeFailed": "Wake failed: {{msg}}"
+    "wakeFailed": "Wake failed: {{msg}}",
+    "toggleSize": "Toggle size"
   },
   "subagent": {
     "title": "Subagent",
     "status": {
       "running": "Running...",
+      "queued": "Queued",
       "completed": "Completed",
       "failed": "Failed",
-      "idle": "Idle"
+      "idle": "Idle",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted",
+      "closed": "Closed"
     },
     "unknownSkill": "Subagent",
     "noSessionId": "Subagent session ID missing",
     "collapse": "Collapse",
     "expand": "Expand",
     "viewFull": "View Full Session"
+  },
+  "subagentSession": {
+    "readOnlyNotice": "Subagent session (read-only) · Triggered by the main agent; messages cannot be edited or resent"
   },
   "debug": {
     "copyDebugInfo": "Copy Debug Info",
@@ -1428,6 +2136,7 @@
     "copyFailed": "Copy failed"
   },
   "readiness": {
+    "not_ready": "The current chat is not ready",
     "model2_missing": "Please configure a chat model in Settings → Model Assignment before sending messages.",
     "model2_auto_assigned": "Auto-assigned {{count}} models: {{models}}. You can review or change this in Settings → Model Assignment.",
     "model2_auto_assigned_single": "Auto-assigned \"{{model}}\" as the default chat model. You can review or change this in Settings → Model Assignment."
@@ -1463,6 +2172,7 @@
     "chatComponentError": "Chat component error",
     "unknownErrorRefresh": "An unknown error occurred, please try refreshing the page",
     "retry": "Retry",
+    "reloadSession": "Reload session",
     "viewErrorDetails": "View error details"
   },
   "mindmapCitation": {
@@ -1471,7 +2181,10 @@
   },
   "documentViewer": {
     "defaultTitle": "Document Preview",
-    "search": "Search"
+    "search": "Search",
+    "previewHint": "Hint: Press ESC to close, +/- to adjust font size",
+    "noWrap": "Disable word wrap",
+    "wrap": "Enable word wrap"
   },
   "imageViewer": {
     "imageAlt": "Image {{index}}",
@@ -1496,10 +2209,12 @@
     "locationGlobal": "global",
     "locationProject": "project",
     "locationBuiltin": "builtin",
+    "locationCount": "{{location}} {{count}}",
     "loadedSummary": "Loaded {{count}} skills ({{details}})"
   },
   "templateTool": {
     "previewTitle": "Template Preview",
+    "renderIssues": "{{count}} render issue(s) found",
     "diffTitle": "Template Changes",
     "forkTitle": "Template Forked",
     "createTitle": "Template Created",
@@ -1510,6 +2225,8 @@
     "showJson": "JSON",
     "hideJson": "Visual",
     "fieldsCount": "{{count}} fields",
+    "fieldsCount_one": "{{count}} field",
+    "fieldsCount_other": "{{count}} fields",
     "active": "Active",
     "inactive": "Inactive",
     "builtin": "Built-in",
@@ -1527,7 +2244,13 @@
     "recommended": "Recommended",
     "optionReasonLabel": "Why this option",
     "confirmSelection": "Confirm selection",
-    "customPlaceholder": "Or enter a custom answer..."
+    "customPlaceholder": "Or enter a custom answer...",
+    "ignore": "Ignore",
+    "responded": "Answered",
+    "submit": "Submit",
+    "send": "Send answer",
+    "submitFailed": "Failed to submit response",
+    "submitRetryHint": "Please choose or submit again."
   },
   "pageRef": {
     "clearAll": "Clear all page references",

@@ -74,7 +74,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
         const title = t ? t('notes:sidebar.actions.new_folder') : 'New Folder';
         const newFolder = { title, children: [] };
         
-        let newFolders = { ...folders, [id]: newFolder };
+        const newFolders = { ...folders, [id]: newFolder };
         let newRoot = [...rootChildren];
 
         if (parentId && newFolders[parentId]) {
@@ -93,7 +93,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
     }, [folders, rootChildren, saveFoldersToPref]);
 
     const addToStructure = useCallback((noteId: string, parentId?: string) => {
-        let newFolders = { ...folders };
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
 
         if (parentId && folders[parentId]) {
@@ -112,9 +112,9 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
 
     const removeFromStructure = useCallback((ids: string[]) => {
         // Separate folders and notes logic handled in parent usually, but here we just remove IDs from structure
-        let newFolders = { ...folders };
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
-        let newReferences = { ...references };
+        const newReferences = { ...references };
 
         // We need to remove these IDs from their parents
         // And if any ID is a folder, we remove the folder entry (and maybe move its children to root?)
@@ -177,11 +177,48 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
     }, [folders, rootChildren, references, saveStructureToPref]);
 
     const moveItem = useCallback(async (dragIds: string[], parentId: string | null, index: number) => {
-        let newFolders = { ...folders };
+        // ★ P1 修复：写入前环校验。
+        // 把文件夹拖入自身或自身后代会形成 A→…→B→A 的引用环，
+        // buildTreeData 会把环上所有文件夹从侧栏排除，且结构立即持久化、重启不恢复。
+        // 这里过滤掉会成环的 dragId（目标自身 / 目标的祖先文件夹），全部无效则拒绝本次移动。
+        let effectiveDragIds = dragIds;
+        if (parentId) {
+            const isDescendantOf = (ancestorId: string, targetId: string): boolean => {
+                const visited = new Set<string>();
+                const stack = [...(folders[ancestorId]?.children ?? [])];
+                while (stack.length > 0) {
+                    const cur = stack.pop() as string;
+                    if (cur === targetId) return true;
+                    if (visited.has(cur)) continue;
+                    visited.add(cur);
+                    const child = folders[cur];
+                    if (child) stack.push(...child.children);
+                }
+                return false;
+            };
+            effectiveDragIds = dragIds.filter(id => {
+                if (!folders[id]) return true; // 笔记/引用节点不会成环
+                if (id === parentId) return false; // 拖入自身
+                if (isDescendantOf(id, parentId)) return false; // 拖入自身后代
+                return true;
+            });
+            if (effectiveDragIds.length === 0) {
+                console.warn('[useFolderStorage] moveItem rejected: would create circular folder reference', { dragIds, parentId });
+                return;
+            }
+            if (effectiveDragIds.length < dragIds.length) {
+                console.warn('[useFolderStorage] moveItem: filtered drag ids that would create circular folder reference', {
+                    dropped: dragIds.filter(id => !effectiveDragIds.includes(id)),
+                    parentId,
+                });
+            }
+        }
+
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
 
         // 1. Remove all dragIds from their current parents
-        dragIds.forEach(id => {
+        effectiveDragIds.forEach(id => {
             // Check root
             if (newRoot.includes(id)) {
                 newRoot = newRoot.filter(c => c !== id);
@@ -202,12 +239,12 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
             const targetChildren = [...newFolders[parentId].children];
             // Insert at index (clamped)
             const insertIdx = Math.min(Math.max(0, index), targetChildren.length);
-            targetChildren.splice(insertIdx, 0, ...dragIds);
+            targetChildren.splice(insertIdx, 0, ...effectiveDragIds);
             newFolders[parentId] = { ...newFolders[parentId], children: targetChildren };
         } else {
             // Insert into root
             const insertIdx = Math.min(Math.max(0, index), newRoot.length);
-            newRoot.splice(insertIdx, 0, ...dragIds);
+            newRoot.splice(insertIdx, 0, ...effectiveDragIds);
         }
 
         setFolders(newFolders);
@@ -242,7 +279,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
                 const refIds = new Set(Object.keys(loadedReferences));
                 
                 // 扩展过滤逻辑：笔记 ID、文件夹 ID、引用 ID 都保留
-                let cleanRoot = loadedRoot.filter((id: string) => 
+                const cleanRoot = loadedRoot.filter((id: string) => 
                     noteIds.has(id) || cleanFolders[id] || refIds.has(id)
                 );
                 
@@ -304,7 +341,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
         const newReferences = { ...references, [refId]: newRef };
         
         // 更新结构（添加到文件夹或根级别）
-        let newFolders = { ...folders };
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
         
         if (parentId && folders[parentId]) {
@@ -339,8 +376,8 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
         delete newReferences[refId];
 
         // 从结构中移除
-        let newFolders = { ...folders };
-        let newRoot = rootChildren.filter(id => id !== refId);
+        const newFolders = { ...folders };
+        const newRoot = rootChildren.filter(id => id !== refId);
         
         // 从所有文件夹的 children 中移除
         Object.keys(newFolders).forEach(fid => {

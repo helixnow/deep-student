@@ -12,7 +12,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import {
   WarningCircle,
@@ -302,7 +302,7 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
             {/* 播放控制按钮 */}
             <div className="flex items-center gap-2">
               {/* 快退 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-10 w-10 p-0"
@@ -311,10 +311,10 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
                 title={t('notes:previewPanel.audio.skipBack')}
               >
                 <SkipBack className="h-5 w-5" />
-              </NotionButton>
+              </DsButton>
 
               {/* 播放/暂停 */}
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="md"
                 className="h-14 w-14 rounded-full p-0"
@@ -330,10 +330,10 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
                 ) : (
                   <Play className="h-7 w-7 ml-1" />
                 )}
-              </NotionButton>
+              </DsButton>
 
               {/* 快进 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-10 w-10 p-0"
@@ -342,12 +342,12 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
                 title={t('notes:previewPanel.audio.skipForward')}
               >
                 <SkipForward className="h-5 w-5" />
-              </NotionButton>
+              </DsButton>
             </div>
 
             {/* 音量控制 */}
             <div className="flex items-center gap-2 w-full max-w-[200px]">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0 shrink-0"
@@ -358,7 +358,7 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
                 }
               >
                 <VolumeIcon className="h-4 w-4" />
-              </NotionButton>
+              </DsButton>
               <Slider
                 value={[isMuted ? 0 : volume]}
                 max={1}

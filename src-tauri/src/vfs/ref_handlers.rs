@@ -796,10 +796,52 @@ fn resolve_single_ref_with_conn(
                     }
                     _ => {
                         warn!("[PDF_DEBUG] No text available for source_id={}, returning filename hint", r.source_id);
-                        (
-                            Some(format!("[文档: {}]", title)),
-                            Some(format!("「{}」文本提取失败，该文档内容未能送入对话", title)),
-                        )
+                        // ★ 音视频占位增强：明确告诉模型当前能力与可用工具，
+                        // 避免只有 "[文档: xxx]" 时模型凭空猜测内容
+                        let ext = title
+                            .rsplit('.')
+                            .next()
+                            .map(|s| s.trim().to_lowercase())
+                            .unwrap_or_default();
+                        let is_audio = matches!(
+                            ext.as_str(),
+                            "mp3" | "wav" | "ogg" | "m4a" | "flac" | "aac" | "wma" | "opus"
+                        );
+                        let is_video = matches!(
+                            ext.as_str(),
+                            "mp4" | "webm" | "mov" | "avi" | "mkv" | "m4v" | "wmv" | "flv"
+                        );
+                        if is_audio {
+                            (
+                                Some(format!(
+                                    "[音频文件: {}（resourceId: {}）。该音频尚未转写，内容不可直接读取。\
+                                     若需要其中的语音内容，可调用 media_transcribe 工具（传入该 resourceId 或 attachment_stage 的 handle）转写为文本；\
+                                     WMA 格式暂不支持转写]",
+                                    title, r.source_id
+                                )),
+                                Some(format!(
+                                    "「{}」是音频文件且尚未转写，模型可通过 media_transcribe 工具转写",
+                                    title
+                                )),
+                            )
+                        } else if is_video {
+                            (
+                                Some(format!(
+                                    "[视频文件: {}。当前不支持提取视频音轨或画面内容，视频内容无法送入对话；\
+                                     仅文件名可用作参考]",
+                                    title
+                                )),
+                                Some(format!(
+                                    "「{}」是视频文件，当前不支持提取视频内容",
+                                    title
+                                )),
+                            )
+                        } else {
+                            (
+                                Some(format!("[文档: {}]", title)),
+                                Some(format!("「{}」文本提取失败，该文档内容未能送入对话", title)),
+                            )
+                        }
                     }
                 }
             }

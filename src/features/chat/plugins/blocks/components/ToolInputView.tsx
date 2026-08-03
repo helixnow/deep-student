@@ -8,7 +8,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { CaretDown, CaretRight, CodeBlock } from '@phosphor-icons/react';
 
 // ============================================================================
@@ -122,14 +123,15 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
     setIsExpanded((prev) => !prev);
   }, []);
 
-  // 格式化的 JSON 字符串
+  // 格式化的 JSON 字符串（仅在展开时才序列化，流式期间折叠态不付出 stringify 成本）
   const formattedJson = useMemo(() => {
+    if (!isExpanded) return '';
     try {
-      return JSON.stringify(input, null, 2);
+      return JSON.stringify(input, null, 2) ?? String(input);
     } catch {
       return String(input);
     }
-  }, [input]);
+  }, [input, isExpanded]);
 
   // 获取参数键列表
   const paramKeys = useMemo(() => Object.keys(input), [input]);
@@ -141,22 +143,24 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
   return (
     <div className={cn('tool-input-view', className)}>
       {/* 折叠头部 */}
-      <NotionButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
+      <DsButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
         {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
         <CodeBlock size={12} />
         <span>{t('blocks.mcpTool.input')}</span>
         <span className="text-muted-foreground/60">({paramKeys.length})</span>
-      </NotionButton>
+      </DsButton>
 
       {/* 内容区域 */}
       {isExpanded && (
-        <div
+        <CustomScrollArea
+          orientation="both"
+          fullHeight={false}
           className={cn(
-            'mt-1 p-2 rounded',
+            'mt-1 max-h-48 rounded',
             'bg-muted/30 dark:bg-muted/20',
             'border border-border/30',
-            'overflow-auto max-h-48'
           )}
+          viewportClassName="max-h-48 p-2"
         >
           {/* 简洁模式：键值对列表 */}
           <div className="space-y-1">
@@ -181,7 +185,7 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
               </pre>
             </details>
           )}
-        </div>
+        </CustomScrollArea>
       )}
     </div>
   );

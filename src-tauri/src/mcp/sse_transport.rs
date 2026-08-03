@@ -21,6 +21,8 @@ pub struct SSEConfig {
     pub endpoint: String,
     pub api_key: Option<String>,
     pub oauth: Option<OAuthConfig>,
+    /// 用于 OAuth token 查找的 server_id（与 api_key 互斥：api_key 优先）
+    pub auth_provider: Option<String>,
     pub headers: HeaderMap,
     pub timeout: Duration,
 }
@@ -65,7 +67,25 @@ impl SSETransport {
         // 构建HTTP客户端
         let mut headers = config.headers.clone();
 
-        // 添加认证头
+        // 认证优先级：api_key > oauth Bearer
+        #[cfg(not(target_os = "android"))]
+        {
+            use super::auth::resolve_authorization_header;
+            if let Some(auth) = resolve_authorization_header(
+                config.auth_provider.as_deref(),
+                &config.api_key,
+                config.oauth.is_some(),
+            )
+            .await?
+            {
+                headers.insert(
+                    AUTHORIZATION,
+                    HeaderValue::from_str(&auth)
+                        .map_err(|e| McpError::AuthenticationError(e.to_string()))?,
+                );
+            }
+        }
+        #[cfg(target_os = "android")]
         if let Some(api_key) = &config.api_key {
             headers.insert(
                 AUTHORIZATION,
@@ -166,6 +186,24 @@ impl SSETransport {
         // 创建SSE连接（保留认证/自定义头）
         let client = {
             let mut headers = self.config.headers.clone();
+            #[cfg(not(target_os = "android"))]
+            {
+                use super::auth::resolve_authorization_header;
+                if let Some(auth) = resolve_authorization_header(
+                    self.config.auth_provider.as_deref(),
+                    &self.config.api_key,
+                    self.config.oauth.is_some(),
+                )
+                .await?
+                {
+                    headers.insert(
+                        AUTHORIZATION,
+                        HeaderValue::from_str(&auth)
+                            .map_err(|e| McpError::AuthenticationError(e.to_string()))?,
+                    );
+                }
+            }
+            #[cfg(target_os = "android")]
             if let Some(api_key) = &self.config.api_key {
                 headers.insert(
                     AUTHORIZATION,
@@ -304,21 +342,30 @@ impl SSETransport {
         Ok(())
     }
 
-    /// 执行OAuth 2.1认证流程（支持PKCE）
-    /// Android 平台不支持 OAuth2（需要 native-tls），请使用 API Key 认证
-    ///
-    /// NOTE: OAuth 2.1 interactive flow 尚未完整实现（需要打开浏览器 + 处理回调）。
-    /// 当前直接返回错误，引导用户使用 API Key 认证。
+    /// 执行 OAuth 2.1 认证：委托 `start_oauth`（需提供 server_id / resource URL）
     #[cfg(not(target_os = "android"))]
-    pub async fn perform_oauth_authentication(_oauth: &OAuthConfig) -> McpResult<String> {
-        // SECURITY: 不返回 mock token，防止使用虚假凭据访问受保护资源。
-        // 完整 OAuth 2.1 流程需要：1) 打开浏览器跳转授权 URL  2) 处理 redirect_uri 回调
-        // 3) 用 authorization code + PKCE verifier 换取 access_token。
-        // 此功能待后续版本实现。
-        error!("OAuth 2.1 authentication flow is not yet implemented. Please use API Key authentication.");
-        Err(McpError::AuthenticationError(
-            "OAuth 2.1 interactive flow is not yet implemented. Please configure an API Key instead.".to_string()
-        ))
+    pub async fn perform_oauth_authentication(
+        server_id: &str,
+        resource_url: &str,
+        oauth: &OAuthConfig,
+    ) -> McpResult<String> {
+        use super::auth::{get_auth_manager, StartOAuthParams};
+        let outcome = get_auth_manager()
+            .start_oauth(StartOAuthParams {
+                server_id: server_id.to_string(),
+                resource_url: resource_url.to_string(),
+                client_id: if oauth.client_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(oauth.client_id.clone())
+                },
+                client_secret: None,
+                scopes: oauth.scopes.clone(),
+                open_browser: true,
+                timeout: None,
+            })
+            .await?;
+        Ok(outcome.access_token)
     }
 
     /// Android 平台的 OAuth 替代实现：返回错误提示使用 API Key
@@ -383,6 +430,7 @@ impl Transport for SSETransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mcp::auth::resolve_authorization_header;
 
     #[tokio::test]
     async fn test_sse_config() {
@@ -390,11 +438,65 @@ mod tests {
             endpoint: "https://modelscope.cn/api/v1/mcp/sse".to_string(),
             api_key: Some("test_key".to_string()),
             oauth: None,
+            auth_provider: None,
             headers: HeaderMap::new(),
             timeout: Duration::from_secs(30),
         };
 
         assert_eq!(config.endpoint, "https://modelscope.cn/api/v1/mcp/sse");
         assert!(config.api_key.is_some());
+    }
+
+    /// 连接前鉴权接线：与 SSETransport::new 相同的 resolve 调用约定（无真实 socket）
+    #[tokio::test]
+    async fn sse_auth_wiring_api_key_beats_oauth_flag() {
+        let config = SSEConfig {
+            endpoint: "https://example.test/sse".into(),
+            api_key: Some("sse-key".into()),
+            oauth: Some(OAuthConfig {
+                client_id: String::new(),
+                auth_url: String::new(),
+                token_url: String::new(),
+                redirect_uri: "http://127.0.0.1/cb".into(),
+                scopes: vec![],
+            }),
+            auth_provider: Some("global-mcp".into()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+        };
+        let auth = resolve_authorization_header(
+            config.auth_provider.as_deref(),
+            &config.api_key,
+            config.oauth.is_some(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(auth.as_deref(), Some("Bearer sse-key"));
+    }
+
+    #[tokio::test]
+    async fn sse_auth_wiring_oauth_without_token_is_reauth() {
+        let config = SSEConfig {
+            endpoint: "https://example.test/sse".into(),
+            api_key: None,
+            oauth: Some(OAuthConfig {
+                client_id: String::new(),
+                auth_url: String::new(),
+                token_url: String::new(),
+                redirect_uri: "http://127.0.0.1/cb".into(),
+                scopes: vec![],
+            }),
+            auth_provider: Some("sse-missing-oauth-c7".into()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+        };
+        let err = resolve_authorization_header(
+            config.auth_provider.as_deref(),
+            &config.api_key,
+            config.oauth.is_some(),
+        )
+        .await
+        .expect_err("oauth reauth");
+        assert!(err.to_string().contains("OAuth re-authorization required"));
     }
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Copy, Check, Plus, Minus, ArrowCounterClockwise, Warning } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -12,6 +12,19 @@ import { CodeBlockShell } from '../ui/CodeBlockShell';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { launchSandboxWorkbench } from '@/features/sandbox/launchSandboxWorkbench';
+import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
+import { reportFrontendError } from '@/logging/errorReporter';
+
+/**
+ * OS 模式拖/缩/settle 手势期让路：mermaid 解析/渲染主线程开销大，
+ * 延迟重试到手势结束再跑（结果不变只是延后）。旗由 settle 桥接兜底清理，
+ * 不会悬挂；轮询间隔与 SETTLE_BRIDGE_MS 同量级。
+ */
+const waitForShellGestureIdle = async (): Promise<void> => {
+  while (shouldPauseHeavyContent()) {
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+};
 
 // ============================================================================
 // HTML 转义辅助函数（防止 XSS）
@@ -122,7 +135,20 @@ class MermaidErrorBoundary extends Component<MermaidErrorBoundaryProps, MermaidE
   }
 
   componentDidCatch(error: unknown, errorInfo: ErrorInfo): void {
-    console.error('[CodeBlock] Mermaid render error:', getErrorMessage(error), errorInfo.componentStack);
+    console.error(
+      '[CodeBlock] Mermaid render error:',
+      getErrorMessage(error),
+      error,
+      errorInfo.componentStack,
+    );
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'mermaid-renderer',
+      extra: {
+        language: this.props.language,
+        componentStack: errorInfo.componentStack,
+      },
+    }).catch(() => undefined);
   }
 
   handleReset = (): void => {
@@ -167,20 +193,22 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
       <div className="mermaid-error-header">
         <Warning size={16} className="mermaid-error-icon" />
         <span className="mermaid-error-title">
-          {t('codeBlock.renderFailed', '渲染失败')}
+          {t('codeBlock.renderFailed')}
         </span>
-        <NotionButton variant="ghost" size="sm" className="mermaid-error-reset" onClick={onReset}>
-          {t('codeBlock.retry', '重试')}
-        </NotionButton>
+        <DsButton variant="ghost" size="sm" className="mermaid-error-reset" onClick={onReset}>
+          {t('codeBlock.retry')}
+        </DsButton>
       </div>
       <div className="mermaid-error-message">
-        {error || t('codeBlock.unknownError', '未知错误')}
+        {error || t('codeBlock.unknownError')}
       </div>
-      <pre className="code-block mermaid-fallback-code">
-        <code className={`language-${language}`}>
-          {fallbackCode}
-        </code>
-      </pre>
+      <ScrollArea orientation="both" className="mermaid-fallback-scroll-area">
+        <pre className="code-block mermaid-fallback-code">
+          <code className={`language-${language}`}>
+            {fallbackCode}
+          </code>
+        </pre>
+      </ScrollArea>
     </div>
   );
 };
@@ -276,9 +304,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           setCopied(false);
         }
       }, 2000);
-      try { showGlobalNotification('success', t('codeBlock.copySuccess', '已复制代码到剪贴板'), t('codeBlock.copySuccessTitle', '复制成功')); } catch {}
+      try { showGlobalNotification('success', t('codeBlock.copySuccess'), t('codeBlock.copySuccessTitle')); } catch {}
     } catch (err: unknown) {
       console.error('[CodeBlock] Copy failed:', getErrorMessage(err));
+      try { showGlobalNotification('error', t('codeBlock.copyFailed'), t('codeBlock.copyFailedTitle')); } catch {}
     }
   };
 
@@ -292,9 +321,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
   const handleRunMermaid = async () => {
     if (!canRunMermaid || isStreaming) return;
+    const id = `mermaid-${Math.random().toString(36).slice(2)}`;
     try {
       setRunning(true);
       setMermaidError(null);
+      // 手势期不启动渲染，结束后再跑（拖拽热路径禁止 mermaid 抢帧）
+      await waitForShellGestureIdle();
       const lib: any = await import('mermaid');
       
       if (!isMountedRef.current) return;
@@ -314,7 +346,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           sequence: { useMaxWidth: true },
         });
       }
-      const id = `mermaid-${Math.random().toString(36).slice(2)}`;
       let svg: string | null = null;
       if (mermaid?.render) {
         const out = await mermaid.render(id, codeContent);
@@ -343,6 +374,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       setRenderedSvg(svg);
       setShowRendered(true);
     } catch (err: unknown) {
+      // mermaid.render 解析失败时会把错误图（id / d+id）残留在 document.body 上，
+      // 必须手动移除，否则每次失败渲染都会泄漏一个孤儿 DOM 节点
+      try {
+        document.getElementById(id)?.remove();
+        document.getElementById(`d${id}`)?.remove();
+      } catch {}
+
       // 组件卸载后不更新状态
       if (!isMountedRef.current) return;
       
@@ -350,7 +388,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       console.error('[CodeBlock] Mermaid render failed:', errorMsg);
       setMermaidError(errorMsg);
       // 仍然设置一个错误提示的 SVG 内容，但保留切换到源码的能力
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.mermaidFailed', 'Mermaid 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.mermaidFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     } finally {
       // 组件卸载后不更新状态
@@ -383,7 +421,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       console.error('[CodeBlock] HTML render failed:', errorMsg);
       setMermaidError(errorMsg);
       setHtmlPreviewContent(null);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.htmlFailed', 'HTML 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.htmlFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     }
   };
@@ -406,7 +444,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       const errorMsg = getErrorMessage(err);
       console.error('[CodeBlock] SVG render failed:', errorMsg);
       setMermaidError(errorMsg);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.svgFailed', 'SVG 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.svgFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     }
   };
@@ -436,7 +474,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       const errorMsg = getErrorMessage(err);
       console.error('[CodeBlock] XML render failed:', errorMsg);
       setMermaidError(errorMsg);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.xmlFailed', 'XML 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
+      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.xmlFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     }
   };
@@ -448,7 +486,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       sourceType: 'chat-code-block',
       sourceMessageId: 'chat-code-block',
       language: langLower,
-      title: t('codeBlock.sandboxTitle', 'HTML Sandbox'),
+      title: t('codeBlock.sandboxTitle'),
       content: codeContent,
     });
   };
@@ -477,12 +515,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     setOffset({ x: 0, y: 0 });
   };
 
-  const onMouseDown = (e: React.MouseEvent) => {
+  // P1-11: 平移改用 Pointer Events —— 鼠标 / 触摸 / 触控笔统一处理。
+  // 触屏依赖 CSS touch-action: none（见 markdown.css .mermaid-preview），
+  // 否则浏览器会把单指拖动当作页面滚动而不派发 pointermove。
+  const onPanPointerDown = (e: React.PointerEvent) => {
     if (!showRendered) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // 捕获指针：拖出预览区域时 move/up 事件不丢失（替代原 onMouseLeave 兜底）
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     setPanning(true);
     setLastMouse({ x: e.clientX, y: e.clientY });
   };
-  const onMouseMove = (e: React.MouseEvent) => {
+  const onPanPointerMove = (e: React.PointerEvent) => {
     if (!panning || !lastMouse) return;
     const dx = e.clientX - lastMouse.x;
     const dy = e.clientY - lastMouse.y;
@@ -490,6 +534,36 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     setLastMouse({ x: e.clientX, y: e.clientY });
   };
   const endPan = () => { setPanning(false); setLastMouse(null); };
+  const onPanPointerUp = (e: React.PointerEvent) => {
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    }
+    endPan();
+  };
+
+  // React 17+ 在根容器以 passive 模式绑定 wheel 事件，onWheel 里的
+  // preventDefault() 会被忽略：ctrl+滚轮缩放预览时页面/WebView 仍会同步缩放滚动，
+  // 且控制台报 "Unable to preventDefault inside passive event listener"。
+  // 改用原生非 passive 监听器；handler 存 ref，避免 offset/scale 闭包过期。
+  const wheelHandlerRef = useRef<(e: WheelEvent) => void>(() => {});
+  wheelHandlerRef.current = (e: WheelEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) return; // 需要修饰键
+    e.preventDefault();
+    const el = previewRef.current;
+    if (!el) return;
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const rect = el.getBoundingClientRect();
+    applyZoom(factor, { x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  useEffect(() => {
+    if (!showRendered || !renderedSvg || htmlPreviewContent) return;
+    const el = previewRef.current;
+    if (!el) return;
+    const onWheelNative = (e: WheelEvent) => wheelHandlerRef.current(e);
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => el.removeEventListener('wheel', onWheelNative);
+  }, [showRendered, renderedSvg, htmlPreviewContent]);
 
   // 重置错误边界
   const handleErrorBoundaryReset = () => {
@@ -638,30 +712,30 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     <div className="code-block-header">
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
-        <NotionButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
+        <DsButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
           <IconSwap
             active={copied}
             a={<Copy size={14} />}
             b={<Check size={14} />}
           />
-          <span>{copied ? t('codeBlock.copied', '已复制') : t('codeBlock.copy', '复制')}</span>
-        </NotionButton>
+          <span>{copied ? t('codeBlock.copied') : t('codeBlock.copy')}</span>
+        </DsButton>
 
         {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
           (renderedSvg || htmlPreviewContent) ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="code-block-copy"
               onClick={() => setShowRendered(v => !v)}
-              title={showRendered ? t('codeBlock.viewSource', '查看源码') : t('codeBlock.viewRender', '查看渲染')}
+              title={showRendered ? t('codeBlock.viewSource') : t('codeBlock.viewRender')}
             >
               <span style={{ marginRight: 4 }}>{showRendered ? '</>' : '◎'}</span>
-              <span>{showRendered ? t('codeBlock.source', '源码') : t('codeBlock.render', '渲染')}</span>
-            </NotionButton>
+              <span>{showRendered ? t('codeBlock.source') : t('codeBlock.render')}</span>
+            </DsButton>
           ) : (
             <>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="code-block-copy"
@@ -673,27 +747,27 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
                 }
                 disabled={!!isStreaming || running}
                 title={
-                  canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint', '内容生成中，等待代码块封闭后再运行') : t('codeBlock.runMermaid', '运行 mermaid 渲染')) :
-                  canRenderSvg ? t('codeBlock.renderSvg', '渲染 SVG') :
-                  canRenderHtml ? t('codeBlock.renderHtml', '渲染 HTML (隔离于 iframe)') :
-                  t('codeBlock.renderXml', '渲染 XML')
+                  canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint') : t('codeBlock.runMermaid')) :
+                  canRenderSvg ? t('codeBlock.renderSvg') :
+                  canRenderHtml ? t('codeBlock.renderHtml') :
+                  t('codeBlock.renderXml')
                 }
               >
                 <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
-                <span>{running && canRunMermaid ? t('codeBlock.running', '运行中') : t('codeBlock.run', '运行')}</span>
-              </NotionButton>
+                <span>{running && canRunMermaid ? t('codeBlock.running') : t('codeBlock.run')}</span>
+              </DsButton>
 
               {canRenderHtml && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="code-block-copy"
                   onClick={handleOpenSandbox}
                   disabled={!!isStreaming}
-                  title={t('codeBlock.openSandbox', 'Open in Sandbox')}
+                  title={t('codeBlock.openSandbox')}
                 >
-                  <span>{t('codeBlock.openSandbox', 'Open in Sandbox')}</span>
-                </NotionButton>
+                  <span>{t('codeBlock.openSandbox')}</span>
+                </DsButton>
               )}
             </>
           )
@@ -701,18 +775,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
         {(renderedSvg && showRendered && !htmlPreviewContent) && (
           <>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut', '缩小')} title={t('codeBlock.zoomOut', '缩小')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut')} title={t('codeBlock.zoomOut')}>
               <Minus size={14} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn', '放大')} title={t('codeBlock.zoomIn', '放大')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn')} title={t('codeBlock.zoomIn')}>
               <Plus size={14} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView', '适配视图')} title={t('codeBlock.fitView', '适配视图')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView')} title={t('codeBlock.fitView')}>
               <span style={{ fontSize: 12 }}>⤢</span>
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView', '重置视图')} title={t('codeBlock.resetView', '重置视图')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView')} title={t('codeBlock.resetView')}>
               <ArrowCounterClockwise size={14} />
-            </NotionButton>
+            </DsButton>
           </>
         )}
       </div>
@@ -750,19 +824,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           <div
             className={`mermaid-preview ${panning ? 'panning' : ''} ${mermaidError ? 'has-error' : ''}`}
             ref={previewRef}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={endPan}
-            onMouseLeave={endPan}
+            onPointerDown={onPanPointerDown}
+            onPointerMove={onPanPointerMove}
+            onPointerUp={onPanPointerUp}
+            onPointerCancel={onPanPointerUp}
             onDoubleClick={handleFitView}
-            onWheel={(e) => {
-              if (!(e.ctrlKey || e.metaKey)) return; // 需要修饰键
-              e.preventDefault();
-              const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-              const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-              const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-              applyZoom(factor, anchor);
-            }}
           >
             <div className="mermaid-canvas">
               <div

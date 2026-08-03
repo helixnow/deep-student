@@ -15,7 +15,25 @@
     "copy": "复制",
     "export": "导出",
     "copied": "已复制到剪贴板",
+    "copied_feedback": "已复制",
     "exported": "批改结果已导出"
+  },
+  "result_empty": {
+    "title": "等待批改",
+    "description": "在输入区输入或粘贴作文，点击「开始批改」后，批注结果将实时显示在这里"
+  },
+  "confirm": {
+    "clear": "确认清空？",
+    "cancel": "确认取消？"
+  },
+  "grading_lock": {
+    "hint": "批改进行中，输入已暂时锁定"
+  },
+  "ocr_status": {
+    "processing": "识别中",
+    "retrying": "重试中",
+    "timeout": "超时",
+    "error": "失败"
   },
   "essay_type": {
     "label": "作文类型",
@@ -28,7 +46,8 @@
     "label": "年级水平",
     "middle_school": "初中",
     "high_school": "高中",
-    "college": "大学"
+    "college": "大学",
+    "other": "其他"
   },
   "session": {
     "new": "新建会话",
@@ -68,7 +87,7 @@
     "restore_default": "恢复默认",
     "save": "保存",
     "saved": "提示词已保存",
-    "default_prompt": "你是一位专业的作文批改老师，具有丰富的教学经验。请对学生提交的作文进行全面、细致的批改。\n\n批改要求：\n1. 总体评价：对作文整体质量给出评价\n2. 亮点分析：指出作文中的优秀之处\n3. 问题指出：标出存在的问题\n4. 修改建议：给出具体的修改建议\n5. 示范改写：对问题较多的段落给出改写示例\n\n请使用 Markdown 格式输出批改结果。"
+    "default_prompt": "批改时请重点关注：\n1. 立意与内容：论点是否明确、素材是否切题充实\n2. 结构与逻辑：段落衔接与论证推进是否严密\n3. 语言表达：用词准确性、句式多样性与表达生动性\n4. 亮点识别：指出值得保持和发扬的优秀之处\n\n修改建议要具体、可操作，避免泛泛而谈。"
   },
   "history": {
     "title": "批改历史",
@@ -92,7 +111,14 @@
     "rounds_count": "{{count}} 轮批改"
   },
   "progress": {
-    "grading": "批改中"
+    "grading": "批改中",
+    "waiting_response": "等待模型响应...",
+    "chars_generated": "已生成 {{count}} 字",
+    "phase_preparing": "准备中",
+    "phase_annotating": "批注中",
+    "phase_scoring": "评分中",
+    "phase_polishing": "润色中",
+    "phase_model_essay": "生成范文中"
   },
   "errors": {
     "empty_text": "请输入待批改的作文",
@@ -104,7 +130,11 @@
     "load_models_failed": "模型列表加载失败，请检查设置",
     "load_modes_failed": "批阅模式加载失败",
     "offline": "离线状态下无法批改，请检查网络连接",
-    "unchanged_text": "内容未修改，请修改后再提交批改"
+    "unchanged_text": "内容未修改，请修改后再提交批改",
+    "export_failed": "导出失败，请重试",
+    "api_key_missing": "未配置 API 密钥，请前往设置添加",
+    "model_not_found": "所选模型不可用，请重新选择",
+    "network_error": "网络连接失败，请检查网络后重试"
   },
   "toast": {
     "grading_success": "批改完成",
@@ -122,7 +152,15 @@
     "ocr_failed": "OCR 识别失败：{{error}}",
     "ocr_timeout": "图片「{{fileName}}」OCR 识别超时，已跳过",
     "suggestions_in_result": "改进建议已包含在批改结果中",
-    "max_images_reached": "已达到图片上限（最多 {{max}} 张）"
+    "max_images_reached": "已达到图片上限（最多 {{max}} 张）",
+    "unsupported_image_format": "不支持的图片格式，请使用 PNG / JPG / WebP",
+    "ocr_retrying_image": "正在重新识别「{{fileName}}」...",
+    "save_failed": "保存失败：{{error}}",
+    "cleared": "已清空输入与批改结果",
+    "clear_blocked_grading": "批改进行中，无法清空",
+    "suggestion_applied": "已应用修改建议",
+    "suggestion_not_found": "未在正文中找到对应原文，可能已被修改",
+    "suggestion_blocked_grading": "批改进行中，暂不能应用建议"
   },
   "round_navigation": {
     "title": "轮次导航",
@@ -162,6 +200,8 @@
     "points": "{{score}} 分",
     "total": "总分",
     "dimensions": "分项评分",
+    "view_bars": "条形视图",
+    "view_radar": "雷达视图",
     "grade": {
       "excellent": "优秀",
       "good": "良好",
@@ -171,6 +211,7 @@
     "parse_failed": "评分解析失败，请查看下方批改正文"
   },
   "markers": {
+    "apply": "应用修改",
     "delete": "建议删除",
     "insert": "建议增加",
     "replace": "建议替换",
@@ -188,8 +229,28 @@
       "word_choice": "用词建议",
       "punctuation": "标点错误",
       "tense": "时态错误",
-      "agreement": "主谓一致"
+      "agreement": "主谓一致",
+      "idiom_misuse": "成语误用",
+      "collocation": "搭配不当",
+      "redundancy": "语义冗余",
+      "ambiguity": "表意不明",
+      "connective": "关联词误用",
+      "rhetoric": "修辞建议"
     }
+  },
+  "annotation_card": {
+    "original": "原文",
+    "suggestion": "建议",
+    "copy_suggestion": "复制建议",
+    "copied": "已复制",
+    "click_hint": "点击查看详情"
+  },
+  "result_ui": {
+    "annotation_prev": "上一条批注",
+    "annotation_next": "下一条批注",
+    "annotation_close": "收起批注详情",
+    "polish_show_diff": "显示修改痕迹",
+    "polish_hide_diff": "隐藏修改痕迹"
   },
   "legend": {
     "title": "批注说明",
@@ -200,10 +261,10 @@
     "filter_suggestions": "建议",
     "filter_highlights": "亮点",
     "del_desc": "红色删除线：建议删除的内容",
-    "ins_desc": "绿色下划线：建议增加的内容",
-    "replace_desc": "橙色箭头：建议替换的内容",
-    "note_desc": "蓝色虚线：批注说明",
-    "good_desc": "金色高亮：写得好的亮点",
+    "ins_desc": "琥珀色下划线：建议增加的内容",
+    "replace_desc": "琥珀色箭头：建议替换的内容",
+    "note_desc": "琥珀色虚线：批注说明",
+    "good_desc": "绿色高亮：写得好的亮点",
     "err_desc": "红色波浪线：语法/拼写等错误",
     "example": "示例",
     "example_old": "旧",
@@ -213,6 +274,8 @@
     "title": "开始批改作文",
     "description": "在下方输入或粘贴作文内容，也可以导入图片进行 OCR 识别",
     "paste_hint": "粘贴或输入作文",
+    "drop_hint": "拖拽或粘贴图片",
+    "drop_hint_mobile": "导入或粘贴图片",
     "ocr_hint": "导入图片识别",
     "ocr_supported": "支持 PNG/JPG/WEBP，最多 {{max}} 张"
   },
@@ -233,7 +296,8 @@
   },
   "char_limit": {
     "reached": "已达到字符上限（{{max}} 字符）",
-    "warning": "接近字符上限"
+    "warning": "接近字符上限",
+    "truncated": "粘贴内容超出上限，已截断至 {{max}} 字符"
   },
   "partial_result": {
     "label": "部分结果",
@@ -269,12 +333,31 @@
     "per_image_failed": "第 {{index}} 张图片识别失败"
   },
   "images": {
-    "essay_images": "作文原图 ({{count}})"
+    "essay_images": "作文原图 ({{count}})",
+    "ocr_error_detail": "「{{fileName}}」识别失败：{{error}}",
+    "tap_to_retry": "点按查看错误并重试识别"
+  },
+  "workbench": {
+    "settings": {
+      "section_criteria": "评分标准",
+      "locked_while_grading": "批改中已锁定"
+    },
+    "stats": {
+      "paragraphs": "段落"
+    },
+    "sample": {
+      "fill_button": "填入示例作文",
+      "filled_toast": "已填入示例作文，点击「开始批改」即可体验",
+      "topic": "请以「坚持」为话题，写一篇不少于 600 字的议论文，题目自拟。",
+      "content": "坚持，是通往远方的阶梯\n\n古人云：“不积跬步，无以至千里；不积小流，无以成江海。”任何伟大的成就，都不是一蹴而就的，而是由无数个平凡日子里的坚持累积而成。\n\n王羲之临池学书，池水尽墨，方有《兰亭集序》的飘逸俊秀；李时珍跋涉千山，遍尝百草，历时二十七载，方成《本草纲目》的鸿篇巨制。可见，坚持是理想与现实之间最坚实的桥梁。\n\n然而，坚持并非固执。真正的坚持，是在认清方向之后的笃定前行，是在遭遇挫折之时的及时调整。方向错了，停下来便是进步；方向对了，慢一点也终会抵达。\n\n作为新时代的青年，我们更应懂得：星光不问赶路人，时光不负有心人。愿我们都能以坚持为帆，以信念为桨，在人生的长河中破浪前行。"
+    }
   },
   "topic": {
     "toggle_label": "题目/参考材料",
     "placeholder": "输入作文题目、要求或参考内容...",
-    "add_image": "添加参考图片"
+    "add_image": "添加参考图片",
+    "filled": "已填写",
+    "image_count": "{{count}} 张图"
   },
   "sections": {
     "tab_overview": "批注总览",
@@ -282,12 +365,20 @@
     "tab_polish": "润色提升",
     "tab_model_essay": "参考范文",
     "no_corrections": "未发现需要修改的内容",
+    "no_corrections_desc": "本轮批改未标注错误或修改建议",
     "no_polish": "暂无润色建议",
+    "no_polish_desc": "本轮批改未生成润色建议",
     "no_model_essay": "暂无参考范文（请提供作文题目）",
+    "no_model_essay_desc": "提供作文题目后可生成参考范文",
     "polish_desc": "以下句子可以进一步润色提升，提高表达的流畅度和精准度",
     "model_essay_desc": "根据题目要求生成的参考范文，供学习参考",
     "original": "原句",
-    "polished": "润色后"
+    "polished": "润色后",
+    "copied": "已复制",
+    "generating_polish": "润色建议生成中...",
+    "generating_model_essay": "参考范文生成中...",
+    "model_essay_word_count": "{{total}} 字",
+    "serif_toggle": "切换衬线字体"
   },
   "export": {
     "grading_details": "### 批改详情",
@@ -298,6 +389,40 @@
     "table_separator": "| :--- | :---: | :---: | :--- |",
     "delete_reason": "删除: ",
     "original_sentence": "**{{index}}. 原句**：",
-    "polished_sentence": "**润色**："
+    "polished_sentence": "**润色**：",
+    "original_text": "### 原文"
+  },
+  "settings_panel": {
+    "close": "关闭设置",
+    "section_mode": "批阅模式",
+    "section_essay_info": "文体与年级",
+    "section_mode_editor": "模式管理",
+    "editing_badge": "编辑中",
+    "edit_current": "编辑当前模式",
+    "copy_current": "复制当前模式",
+    "create_mode": "新建模式",
+    "confirm_reset": "确认重置？",
+    "confirm_delete": "确认删除？",
+    "drag_reorder": "拖拽排序",
+    "move_dimension_up": "上移",
+    "move_dimension_down": "下移",
+    "remove_dimension": "删除维度",
+    "prompt_saved_short": "已保存",
+    "validation": {
+      "dimension_invalid": "请修正标红的维度：名称不能为空，分值需大于 0",
+      "total_positive": "总分需大于 0",
+      "total_mismatch": "总分 {{total}} 与维度之和 {{sum}} 不一致",
+      "sync_total": "同步为 {{sum}}"
+    }
+  },
+  "data_layer": {
+    "errors": {
+      "rate_limited": "请求过于频繁或额度不足，请稍后重试",
+      "auth_failed": "鉴权失败，请检查 API 密钥或账户权限"
+    },
+    "export": {
+      "corrections_title": "### 逐句修改对照",
+      "empty_result": "（暂无批改内容）"
+    }
   }
 }

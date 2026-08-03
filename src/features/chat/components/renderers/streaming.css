@@ -5,13 +5,12 @@
   position: relative;
 }
 
-/* 流式消息特殊样式 */
-/* 统一修复：流式期间不改变背景/边框/动画，与静态完全一致 */
-.message.streaming .message-content {
-  border-left: none !important;
-  background: inherit !important;
-  animation: none !important;
+/* 不确定性高亮（rendererUtils.makeUncertaintyHighlightPlugin 产出的 <mark>）。
+ * 用 class 承载样式：rehype-sanitize 会丢弃内联 style。
+ * 颜色走 --warning token，亮/暗主题下自动适配。 */
+.markdown-content mark.uncertainty-mark {
+  background-color: hsl(var(--warning) / 0.3);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
 }
-
-/* 保留占位的空动画，避免外部引用报错 */
-@keyframes streamingPulse { from { opacity: 1; } to { opacity: 1; } }

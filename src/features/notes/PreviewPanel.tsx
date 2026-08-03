@@ -44,7 +44,9 @@ import {
   WarningCircle,
   CursorClick,
   Question,
+  ArrowClockwise,
 } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 
 // ============================================================================
 // DSTU API 调用
@@ -206,7 +208,7 @@ async function fetchReferenceContent(
         },
       };
 
-    case 'pdf':
+    case 'pdf': {
       // PDF 内容可能是文件路径或 base64
       let pdfPath = '';
       if (typeof content === 'string') {
@@ -230,8 +232,9 @@ async function fetchReferenceContent(
           fileSize,
         },
       };
+    }
 
-    case 'image':
+    case 'image': {
       // 图片内容：如果是 Blob 转为 data URL，否则假设是路径或 base64
       let imageUrl = '';
       if (content instanceof Blob) {
@@ -257,6 +260,7 @@ async function fetchReferenceContent(
           imageUrl,
         },
       };
+    }
 
     default:
       return {
@@ -378,11 +382,12 @@ const LoadingSkeleton: React.FC = () => (
 );
 
 /**
- * 错误状态
+ * 错误状态（提供 onRetry 时展示内联重试按钮）
  */
-const ErrorState: React.FC<{ error: string; className?: string }> = ({
+const ErrorState: React.FC<{ error: string; className?: string; onRetry?: () => void }> = ({
   error,
   className,
+  onRetry,
 }) => {
   const { t } = useTranslation(['notes']);
 
@@ -402,6 +407,17 @@ const ErrorState: React.FC<{ error: string; className?: string }> = ({
         </h3>
         <p className="max-w-xs text-xs text-muted-foreground">{error}</p>
       </div>
+      {onRetry && (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={onRetry}
+          className="gap-1.5 text-xs text-primary"
+        >
+          <ArrowClockwise size={14} />
+          {t('notes:wikilinkV2.previewRetry')}
+        </DsButton>
+      )}
     </div>
   );
 };
@@ -531,9 +547,9 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
       );
     }
 
-    // 4.3 加载错误
+    // 4.3 加载错误（内联重试，不整面板刷新）
     if (status === 'error' && error) {
-      return <ErrorState error={error} className={className} />;
+      return <ErrorState error={error} className={className} onRetry={() => void loadContent()} />;
     }
 
     // 4.4 根据 previewType 渲染对应的预览组件

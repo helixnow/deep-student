@@ -9,13 +9,14 @@ use std::collections::HashMap;
 /// 注入类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InjectionType {
-    Rag,          // RAG检索内容
-    Memory,       // 记忆内容
-    WebSearch,    // 网页搜索结果
-    Context,      // 上下文信息
-    SystemPrompt, // 系统提示
-    UserInput,    // 用户输入
-    ToolResults,  // 工具执行结果
+    Rag,            // RAG检索内容
+    Memory,         // 记忆内容
+    LearnerProfile, // 学习者画像（策展长期层，随会话注入）
+    WebSearch,      // 网页搜索结果
+    Context,        // 上下文信息
+    SystemPrompt,   // 系统提示
+    UserInput,      // 用户输入
+    ToolResults,    // 工具执行结果
 }
 
 impl InjectionType {
@@ -23,6 +24,7 @@ impl InjectionType {
         match self {
             InjectionType::Rag => "rag",
             InjectionType::Memory => "memory",
+            InjectionType::LearnerProfile => "learner_profile",
             InjectionType::WebSearch => "web_search",
             InjectionType::Context => "context",
             InjectionType::SystemPrompt => "system_prompt",
@@ -33,19 +35,16 @@ impl InjectionType {
 }
 
 /// 优先级级别
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 pub enum Priority {
     Critical = 1, // 关键内容，必须包含
     High = 2,     // 高优先级
-    Medium = 3,   // 中等优先级
+    #[default]
+    Medium = 3, // 中等优先级
     Low = 4,      // 低优先级
     Optional = 5, // 可选内容，预算不足时可丢弃
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Medium
-    }
 }
 
 /// 注入内容项
@@ -112,6 +111,8 @@ impl Default for BudgetConfig {
         let mut type_limits = HashMap::new();
         type_limits.insert(InjectionType::Rag, 8000);
         type_limits.insert(InjectionType::Memory, 4000);
+        // 与 memory/learner_profile.rs 的 LEARNER_PROFILE_MAX_CHARS 对齐
+        type_limits.insert(InjectionType::LearnerProfile, 4000);
         type_limits.insert(InjectionType::WebSearch, 6000);
         type_limits.insert(InjectionType::Context, 3000);
         type_limits.insert(InjectionType::SystemPrompt, 2000);
@@ -215,7 +216,7 @@ impl InjectionBudgetManager {
         for item in &self.pending_items {
             items_by_priority
                 .entry(item.priority)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(item.clone());
         }
 
@@ -392,7 +393,7 @@ impl InjectionBudgetManager {
     pub fn generate_injection_summary(&self, result: &AllocationResult) -> String {
         let mut summary = String::new();
 
-        summary.push_str(&format!("# 注入预算分配报告\n\n"));
+        summary.push_str("# 注入预算分配报告\n\n");
         summary.push_str(&format!("- 总预算: {} 字符\n", self.config.total_budget));
         summary.push_str(&format!("- 已使用: {} 字符\n", result.total_chars_used));
         summary.push_str(&format!("- 剩余: {} 字符\n", result.budget_remaining));

@@ -27,16 +27,28 @@ export interface JsonSchemaProperty {
   items?: JsonSchemaProperty;
   properties?: Record<string, JsonSchemaProperty>;
   required?: string[];
-  additionalProperties?: boolean;
+  additionalProperties?: boolean | JsonSchemaProperty;
   /** JSON Schema 数值约束 */
   minimum?: number;
   maximum?: number;
   /** JSON Schema 数组约束 */
   minItems?: number;
   maxItems?: number;
+  uniqueItems?: boolean;
+  /** JSON Schema 对象属性数量约束 */
+  minProperties?: number;
+  /** JSON Schema 字符串正则约束 */
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
   /** JSON Schema anyOf/oneOf 支持 */
+  allOf?: JsonSchemaProperty[];
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];
+  const?: unknown;
+  if?: JsonSchemaProperty;
+  then?: JsonSchemaProperty;
+  else?: JsonSchemaProperty;
 }
 
 /**
@@ -46,8 +58,9 @@ export interface ToolInputSchema {
   type: 'object';
   properties: Record<string, JsonSchemaProperty>;
   required?: string[];
-  additionalProperties?: boolean;
-  /** JSON Schema anyOf/oneOf 支持（与 JsonSchemaProperty 对齐） */
+  additionalProperties?: boolean | JsonSchemaProperty;
+  /** JSON Schema composition support（与 JsonSchemaProperty 对齐） */
+  allOf?: JsonSchemaProperty[];
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];
 }
@@ -128,6 +141,28 @@ export interface SkillMetadata {
   author?: string;
 
   /**
+   * 许可证（Agent Skills / Anthropic 生态兼容）
+   *
+   * 可为 SPDX 标识或指向包内 LICENSE 文件的引用，例如 `"MIT"` / `"LICENSE.txt"`。
+   */
+  license?: string;
+
+  /**
+   * 主页 / 文档 URL（可选）
+   */
+  homepage?: string;
+
+  /**
+   * 发现用标签（市场 / 目录筛选）
+   */
+  tags?: string[];
+
+  /**
+   * 环境兼容性说明（Agent Skills `compatibility`，建议 ≤500 字符）
+   */
+  compatibility?: string;
+
+  /**
    * 优先级（默认 3）
    *
    * 优先级值越小越靠前：
@@ -139,10 +174,10 @@ export interface SkillMetadata {
   priority?: number;
 
   /**
-   * 限制可访问的工具列表
+   * Legacy SKILL.md `allowed-tools` metadata.
    *
-   * SKILL.md 规范的 allowed-tools 字段
-   * 例如：['Read', 'Grep', 'Bash'] 允许读取但限制写入
+   * Deep Student preserves this field for package compatibility only. It does
+   * not filter tool schemas or authorize/block tool execution.
    */
   allowedTools?: string[];
 
@@ -158,9 +193,25 @@ export interface SkillMetadata {
    * 设为 true 时，skill 只能通过 /skill 命令或 UI 手动激活，
    * 不会出现在 <available_skills> 元数据中供 LLM 自动推荐。
    *
-   * 注：Anthropic 官方 Skills 默认自动激活，此为 Deep Student 扩展功能
+   * 外部 SKILL.md 格式的 `disable-model-invocation: true` 会映射到此字段；
+   * 若两者同时存在，取更保守值（任一为 true → true）。
    */
   disableAutoInvoke?: boolean;
+
+  /**
+   * 是否允许用户通过 `/skill` 菜单手动调用（Anthropic `user-invocable`）
+   *
+   * 默认 true；设为 false 时对用户隐藏 slash 入口，但仍可被模型发现/加载
+   *（除非同时 `disableAutoInvoke`）。
+   */
+  userInvocable?: boolean;
+
+  /**
+   * Slash 自动补全参数提示（Anthropic `argument-hint`）
+   *
+   * 例如 `"[issue-number]"` 或 `"[filename] [format]"`。
+   */
+  argumentHint?: string;
 
   /**
    * 内嵌工具定义（渐进披露架构核心字段）
@@ -168,9 +219,8 @@ export interface SkillMetadata {
    * 用于在 SKILL.md 中直接定义该 Skill 提供的工具 Schema。
    * 当 Skill 被激活时，这些工具会被注入到 LLM 请求中。
    *
-   * 与 allowedTools 的区别：
-   * - allowedTools: 引用已存在的工具名称，用于权限过滤
-   * - embeddedTools: 直接嵌入完整的工具 Schema 定义
+   * `allowedTools` 仅作为兼容元数据保留；`embeddedTools` 才是技能激活后
+   * 渐进注入的完整工具 Schema。
    *
    * 示例：
    * ```yaml
@@ -229,6 +279,29 @@ export interface SkillMetadata {
    * ```
    */
   dependencies?: string[];
+
+  /** Reserved package manifest version, when present in frontmatter. */
+  manifestVersion?: string;
+
+  /**
+   * Runtime dependency declarations (legacy metadata / AgentSkills compatible).
+   *
+   * ```yaml
+   * requires:
+   *   bins: [python, pandoc]
+   *   env: [OPENAI_API_KEY]
+   *   python_packages: [pymupdf]
+   * ```
+   */
+  requires?: SkillRequires;
+}
+
+/** Declared runtime dependencies from SKILL.md frontmatter. */
+export interface SkillRequires {
+  bins?: string[];
+  env?: string[];
+  /** PyPI distribution names (YAML key: `python_packages`). */
+  pythonPackages?: string[];
 }
 
 // ============================================================================
@@ -239,6 +312,22 @@ export interface SkillMetadata {
  * Skill 存储位置
  */
 export type SkillLocation = 'global' | 'project' | 'builtin';
+
+export type SkillPackageSource =
+  | 'builtin'
+  | 'global'
+  | 'project'
+  | 'external'
+  | 'unknown';
+
+export type SkillTrustStatus = 'trusted' | 'untrusted' | 'builtin';
+
+export interface SkillPackageFile {
+  /** Path relative to package root, using forward slashes. */
+  path: string;
+  kind: 'entry' | 'reference' | 'script' | 'asset' | 'config' | 'other';
+  size?: number;
+}
 
 /**
  * 完整的 Skill 定义
@@ -253,6 +342,27 @@ export interface SkillDefinition extends SkillMetadata {
 
   /** 来源位置 */
   location: SkillLocation;
+
+  /** Derived package/source classification for management UI and policy. */
+  packageSource?: SkillPackageSource;
+
+  /** Root directory that contains SKILL.md. */
+  packageRoot?: string;
+
+  /** Lightweight package file index. */
+  packageFiles?: SkillPackageFile[];
+
+  /** Trust state surfaced inline in skill management. */
+  trustStatus?: SkillTrustStatus;
+
+  /**
+   * 是否被用户停用（skillEnableStorage 覆盖，非 frontmatter 字段）
+   *
+   * 停用的技能不进入 schema 工具收集、不参与自动激活与手动选择，
+   * UI 置灰但保留。注册时由 applyEnableOverride 附加快照；
+   * 运行时判断请使用 isSkillDisabled(skill.id) 获取最新状态。
+   */
+  disabled?: boolean;
 
   /**
    * 解析后保留的未知 frontmatter 字段
@@ -468,6 +578,39 @@ export function validateSkillMetadata(metadata: Partial<SkillMetadata>): SkillVa
 
   if (metadata.author !== undefined && typeof metadata.author !== 'string') {
     errors.push('author 必须是字符串');
+  }
+
+  if (metadata.license !== undefined && typeof metadata.license !== 'string') {
+    errors.push('license 必须是字符串');
+  }
+
+  if (metadata.homepage !== undefined && typeof metadata.homepage !== 'string') {
+    errors.push('homepage 必须是字符串');
+  }
+
+  if (metadata.compatibility !== undefined && typeof metadata.compatibility !== 'string') {
+    errors.push('compatibility 必须是字符串');
+  } else if (
+    typeof metadata.compatibility === 'string' &&
+    metadata.compatibility.length > 500
+  ) {
+    warnings.push(`compatibility 建议不超过 500 字符（当前 ${metadata.compatibility.length}）`);
+  }
+
+  if (metadata.tags !== undefined) {
+    if (!Array.isArray(metadata.tags)) {
+      errors.push('tags 必须是字符串数组');
+    } else if (!metadata.tags.every((t) => typeof t === 'string')) {
+      errors.push('tags 数组中的每个元素必须是字符串');
+    }
+  }
+
+  if (metadata.argumentHint !== undefined && typeof metadata.argumentHint !== 'string') {
+    errors.push('argumentHint 必须是字符串');
+  }
+
+  if (metadata.userInvocable !== undefined && typeof metadata.userInvocable !== 'boolean') {
+    errors.push('userInvocable 必须是布尔值');
   }
 
   if (metadata.priority !== undefined) {

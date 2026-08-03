@@ -1,25 +1,36 @@
 /**
- * Hook：根据 templateId 异步加载 CustomAnkiTemplate
+ * Hook：根据单个 templateId 异步加载 CustomAnkiTemplate
  *
- * 用于 ChatAnki 卡片块在展示时加载模板的 HTML/CSS，
- * 以便用 TemplateRenderService 渲染出带样式的卡片预览。
+ * 与 useMultiTemplateLoader 共享模块级缓存与 in-flight 去重，
+ * 同一模板在聊天多个块中同时使用时只会请求一次。
+ * 额外提供 error / retry，便于调用方展示加载失败态并重试。
+ *
+ * 返回结构与旧版（re-export 的 useAnkiTemplateLoader）向后兼容：
+ * `{ template, loading }` 保持不变，新增 `error`、`retry`。
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { TemplateService } from '@/services/templateService';
+import { useCallback, useEffect, useState } from 'react';
 import { templateManager } from '@/data/ankiTemplates';
 import type { CustomAnkiTemplate } from '@/types';
+import {
+  clearTemplateCache,
+  clearTemplateLoadFailure,
+  getCachedTemplate,
+  isTemplateLoadFailed,
+  loadTemplateShared,
+} from './useMultiTemplateLoader';
 
 export function useTemplateLoader(templateId?: string | null) {
-  const [template, setTemplate] = useState<CustomAnkiTemplate | null>(null);
+  const [template, setTemplate] = useState<CustomAnkiTemplate | null>(
+    () => (templateId ? getCachedTemplate(templateId) ?? null : null)
+  );
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
-  // 缓存已加载的模板，避免重复请求
-  const cacheRef = useRef<Map<string, CustomAnkiTemplate>>(new Map());
 
   useEffect(() => {
     return templateManager.subscribe(() => {
-      cacheRef.current.clear();
+      clearTemplateCache();
       setRefreshToken((value) => value + 1);
     });
   }, []);
@@ -28,43 +39,48 @@ export function useTemplateLoader(templateId?: string | null) {
     if (!templateId) {
       setTemplate(null);
       setLoading(false);
+      setError(false);
       return;
     }
 
-    // 缓存命中
-    const cached = cacheRef.current.get(templateId);
+    const cached = getCachedTemplate(templateId);
     if (cached) {
       setTemplate(cached);
       setLoading(false);
+      setError(false);
+      return;
+    }
+
+    // 已知失败的模板不自动重试，避免反复请求；等待显式 retry 或缓存清空
+    if (isTemplateLoadFailed(templateId)) {
+      setTemplate(null);
+      setLoading(false);
+      setError(true);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
+    setError(false);
 
-    TemplateService.getInstance()
-      .getTemplateById(templateId)
-      .then((t) => {
-        if (!cancelled) {
-          if (t) {
-            cacheRef.current.set(templateId, t);
-          }
-          setTemplate(t);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error('[useTemplateLoader] Failed to load template:', templateId, err);
-        if (!cancelled) {
-          setTemplate(null);
-          setLoading(false);
-        }
-      });
+    loadTemplateShared(templateId).then((nextTemplate) => {
+      if (cancelled) return;
+      setTemplate(nextTemplate);
+      setError(!nextTemplate);
+      setLoading(false);
+    });
 
     return () => {
       cancelled = true;
     };
   }, [templateId, refreshToken]);
 
-  return { template, loading };
+  /** 重试加载（仅在上次失败后有意义） */
+  const retry = useCallback(() => {
+    if (!templateId) return;
+    clearTemplateLoadFailure(templateId);
+    setRefreshToken((value) => value + 1);
+  }, [templateId]);
+
+  return { template, loading, error, retry };
 }

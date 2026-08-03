@@ -8,7 +8,8 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
@@ -36,35 +37,36 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // 消息类型配置
 // ============================================================================
 
+// 消息类型徽章（语义 token，与 WorkspaceMessageItem.typeColors 同一语义映射）
 const messageTypeConfig: Record<MessageType, { i18nKey: string; className: string; icon: string }> = {
   task: { 
     i18nKey: 'workspace.messageType.task', 
-    className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
+    className: 'bg-info/10 text-info',
     icon: '📋',
   },
   progress: { 
     i18nKey: 'workspace.messageType.progress', 
-    className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300',
+    className: 'bg-warning/10 text-warning',
     icon: '⏳',
   },
   result: { 
     i18nKey: 'workspace.messageType.result', 
-    className: 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300',
+    className: 'bg-success/10 text-success',
     icon: '✅',
   },
   query: { 
     i18nKey: 'workspace.messageType.query', 
-    className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
+    className: 'bg-primary/10 text-primary',
     icon: '❓',
   },
   correction: { 
     i18nKey: 'workspace.messageType.correction', 
-    className: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300',
+    className: 'bg-destructive/10 text-destructive',
     icon: '🔧',
   },
   broadcast: { 
     i18nKey: 'workspace.messageType.broadcast', 
-    className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    className: 'bg-muted text-muted-foreground',
     icon: '📢',
   },
 };
@@ -81,7 +83,7 @@ const MessageTypeBadge: React.FC<MessageTypeBadgeProps> = ({ type }) => {
   const { t } = useTranslation('chatV2');
   const config = messageTypeConfig[type];
   return (
-    <span className={cn('px-1.5 py-0.5 text-[10px] font-medium rounded inline-flex items-center gap-0.5', config.className)}>
+    <span className={cn('px-1.5 py-0.5 text-2xs font-medium rounded inline-flex items-center gap-0.5', config.className)}>
       <span>{config.icon}</span>
       <span>{t(config.i18nKey)}</span>
     </span>
@@ -98,18 +100,21 @@ interface LogMessageItemProps {
 }
 
 const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
-  const { t } = useTranslation(['chatV2', 'skills']);
+  const { t, i18n } = useTranslation(['chatV2', 'skills']);
   const senderInfo = agents.get(message.senderSessionId);
   const targetInfo = message.targetSessionId ? agents.get(message.targetSessionId) : null;
 
   const shortSenderId = message.senderSessionId.slice(-6);
   const shortTargetId = message.targetSessionId?.slice(-6);
 
-  const time = new Date(message.createdAt).toLocaleTimeString(undefined, {
+  const time = new Date(message.createdAt).toLocaleTimeString(
+    i18n.resolvedLanguage ?? i18n.language,
+    {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  });
+    },
+  );
 
   const getSenderName = () => {
     if (!senderInfo) return shortSenderId;
@@ -136,7 +141,7 @@ const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
     <div className="py-2 border-b border-border/30 last:border-0">
       {/* 头部信息 */}
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <span className="text-[10px] text-muted-foreground font-mono">{time}</span>
+        <span className="text-2xs text-muted-foreground font-mono">{time}</span>
         <MessageTypeBadge type={message.messageType} />
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           {senderInfo?.role === 'coordinator' ? (
@@ -157,7 +162,7 @@ const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
             </>
           )}
           {!message.targetSessionId && message.messageType === 'broadcast' && (
-            <span className="text-[10px] text-muted-foreground/70">({t('chatV2:workspace.messageType.broadcast')})</span>
+            <span className="text-2xs text-muted-foreground/70">({t('chatV2:workspace.messageType.broadcast')})</span>
           )}
         </div>
       </div>
@@ -190,7 +195,8 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
   maxMessages = 20,
   store,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
   const [debugCopied, setDebugCopied] = useState(false);
@@ -240,7 +246,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
 
     const logText = sortedMessages
       .map((msg) => {
-        const time = new Date(msg.createdAt).toLocaleString();
+        const time = new Date(msg.createdAt).toLocaleString(locale);
         const sender = msg.senderSessionId.slice(-6);
         const target = msg.targetSessionId ? ` → ${msg.targetSessionId.slice(-6)}` : '';
         return `[${time}] [${msg.messageType}] ${sender}${target}\n${msg.content}`;
@@ -265,6 +271,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
       showGlobalNotification('success', t('debug.copySuccessDesc'), t('debug.copySuccess'));
       setTimeout(() => setDebugCopied(false), 2000);
     } catch (error: unknown) {
+      console.error('[WorkspaceLogInline] Copy debug info failed:', error);
       showGlobalNotification('error', t('debug.copyFailed'));
     }
   };
@@ -283,8 +290,18 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
     >
       {/* 头部 - 可折叠 */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
         className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsExpanded(!isExpanded);
+          }
+        }}
       >
         <div className="flex items-center gap-2">
           <Chat size={16} className="text-primary" />
@@ -298,14 +315,14 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         <div className="flex items-center gap-1">
           {/* 🆕 复制完整调试信息按钮 */}
           {store && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
-              {debugCopied ? <Check size={14} className="text-green-500" /> : <Bug size={14} />}
-            </NotionButton>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
+              {debugCopied ? <Check size={14} className="text-success" /> : <Bug size={14} />}
+            </DsButton>
           )}
           {/* 复制日志按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
-            {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-          </NotionButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
+            {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+          </DsButton>
           {isExpanded ? (
             <CaretUp size={16} className="text-muted-foreground" />
           ) : (
@@ -321,7 +338,11 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
             {...disclosureMotion}
             className="border-t border-border/30"
           >
-            <div className="max-h-80 overflow-y-auto px-3">
+            <CustomScrollArea
+              fullHeight={false}
+              className="max-h-80"
+              viewportClassName="max-h-80 px-3"
+            >
               {sortedMessages.map((msg) => (
                 <LogMessageItem
                   key={msg.id}
@@ -329,9 +350,9 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
                   agents={agentMap}
                 />
               ))}
-            </div>
+            </CustomScrollArea>
             {filteredMessages.length > maxMessages && (
-              <div className="px-3 py-1.5 text-center text-[10px] text-muted-foreground border-t border-border/30">
+              <div className="px-3 py-1.5 text-center text-2xs text-muted-foreground border-t border-border/30">
                 {t('workspace.log.moreMessages', {
                   count: filteredMessages.length - maxMessages,
                 })}

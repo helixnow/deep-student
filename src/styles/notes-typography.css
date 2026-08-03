@@ -1,0 +1,133 @@
+/**
+ * Notes editor typography tokens ( -aligned)
+ *
+ * Imported by NotesCrepeEditor; consumed by CrepeEditor.css and
+ * content-width Tailwind arbitrary values.
+ */
+
+:root {
+  /* Body */
+  --notes-body-size: calc(16px * var(--font-size-scale, 1));
+  --notes-body-lh: 1.5;
+
+  /* Content column (clean reading reading width) */
+  --notes-content-max-w: 816px;
+
+  /* Heading ladder (relative to body em) */
+  --notes-heading-h1-size: 1.875em;
+  --notes-heading-h1-weight: 600;
+  --notes-heading-h1-lh: 1.3;
+
+  --notes-heading-h2-size: 1.5em;
+  --notes-heading-h2-weight: 600;
+  --notes-heading-h2-lh: 1.3;
+
+  --notes-heading-h3-size: 1.25em;
+  --notes-heading-h3-weight: 600;
+  --notes-heading-h3-lh: 1.3;
+
+  --notes-heading-h4-size: 1.125em;
+  --notes-heading-h4-weight: 600;
+  --notes-heading-h4-lh: 1.35;
+
+  --notes-heading-h5-size: 1em;
+  --notes-heading-h5-weight: 600;
+  --notes-heading-h5-lh: 1.4;
+
+  --notes-heading-h6-size: 1em;
+  --notes-heading-h6-weight: 500;
+  --notes-heading-h6-lh: 1.4;
+
+  /* Document title (NotesEditorHeader) */
+  --notes-doc-title-size: 40px;
+  --notes-doc-title-weight: 600;
+  --notes-doc-title-lh: 1.2;
+
+  /* Rhythm */
+  --notes-block-gap: 0.75em;
+  --notes-list-item-gap: 0.125em;
+  --notes-callout-gap: 1em;
+
+  /* ──────────────────────────────────────────────────────────
+   * Notes UI consistency tokens（笔记模块统一视觉契约）
+   *
+   * 圆角语言：行/条目 6px、小控件 5px、浮层与对话框 12px
+   * （与 --radius-shell-control / AppMenu 同族）、chip 胶囊。
+   * 阴影/遮罩：必须基于 --shadow-base（黑基），禁止用 --foreground
+   * 做阴影 —— 暗色模式下 foreground 近白，会产生白色光晕。
+   * ────────────────────────────────────────────────────────── */
+  --notes-radius-row: 6px;
+  --notes-radius-control: 5px;
+  --notes-radius-popup: 12px;
+
+  --notes-popover-shadow: 0 8px 24px hsl(var(--shadow-base) / 0.14);
+  --notes-dialog-shadow: 0 16px 42px hsl(var(--shadow-base) / 0.18);
+  --notes-overlay-scrim: hsl(var(--shadow-base) / 0.32);
+
+  /* 微过渡契约（与 A16 的 120ms/150ms 节奏一致；缓动统一走全局 --dropdown-ease） */
+  --notes-hover-transition: 120ms ease;
+  --notes-popup-enter-duration: 150ms;
+  --notes-popup-enter-easing: var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  --notes-tab-transition-duration: 150ms;
+
+  /* ──────────────────────────────────────────────────────────
+   * Editor body polish（V4）— 正文微样式 token
+   * 仅追加；不得改动上方既有值。
+   * ────────────────────────────────────────────────────────── */
+  --notes-blockquote-border-w: 3px;
+  --notes-hr-margin-block: 0.75em;
+  --notes-inline-code-size: 0.875em;
+  --notes-inline-code-radius: 4px;
+  --notes-inline-code-pad-x: 0.2em;
+  --notes-inline-code-color: hsl(var(--foreground) / 0.86);
+  --notes-selection-bg: hsl(var(--primary) / 0.14);
+  --notes-block-selected-bg: hsl(var(--primary) / 0.14);
+  --notes-table-header-bg: hsl(var(--muted) / 0.5);
+  --notes-popup-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
+  --notes-popup-item-radius: 4px;
+
+  /* ──────────────────────────────────────────────────────────
+   * 查找高亮 / ACR agent 插入 派生 token
+   * 一律派生自语义状态色（--warning / --info），随主题与调色板翻转；
+   * 暗色差异统一在下方 :root.dark 覆写 token 值，组件 CSS 不得写魔数。
+   * ────────────────────────────────────────────────────────── */
+  --notes-search-match-bg: hsl(var(--warning) / 0.28);
+  --notes-search-match-ring: hsl(var(--warning) / 0.3);
+  --notes-search-match-active-bg: hsl(var(--warning) / 0.5);
+  --notes-search-match-active-ring: hsl(var(--warning) / 0.7);
+
+  --notes-agent-insert-bg: hsl(var(--info) / 0.16);
+  --notes-agent-insert-ring: hsl(var(--info) / 0.2);
+  --notes-agent-caret-color: hsl(var(--info));
+  --notes-agent-caret-label-fg: hsl(var(--info));
+  --notes-agent-caret-label-bg: color-mix(in hsl, hsl(var(--info)) 10%, hsl(var(--background)));
+  --notes-agent-caret-label-border: hsl(var(--info) / 0.4);
+}
+
+/* 暗色：亮色值直接叠在深底上会发闷、标签会刺眼，仅调整 alpha/混合比 */
+:root.dark {
+  --notes-search-match-bg: hsl(var(--warning) / 0.32);
+  --notes-search-match-ring: hsl(var(--warning) / 0.35);
+  --notes-search-match-active-bg: hsl(var(--warning) / 0.48);
+  --notes-search-match-active-ring: hsl(var(--warning) / 0.65);
+
+  --notes-agent-insert-bg: hsl(var(--info) / 0.22);
+  --notes-agent-insert-ring: hsl(var(--info) / 0.26);
+  --notes-agent-caret-label-bg: color-mix(in hsl, hsl(var(--info)) 24%, hsl(var(--background)));
+  --notes-agent-caret-label-border: hsl(var(--info) / 0.45);
+}
+.notes-conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 12px;
+  border-bottom: 1px solid hsl(var(--warning, 38 70% 45%) / 0.35);
+  background: hsl(var(--warning, 38 70% 45%) / 0.1);
+  color: hsl(var(--foreground));
+  font-size: 12px;
+}
+
+.notes-conflict-banner > span {
+  flex: 1;
+}

@@ -18,6 +18,7 @@
 //! - 数据持久化：每个阶段完成后立即保存
 
 pub(crate) use std::collections::{HashMap, HashSet};
+pub(crate) use std::sync::atomic::{AtomicBool, AtomicI64};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::time::Instant;
 
@@ -34,11 +35,15 @@ pub(crate) use super::approval_manager::{ApprovalManager, ApprovalRequest};
 pub(crate) use super::database::ChatV2Database;
 pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
-    AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
-    BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
-    FetchExecutor, GeneralToolExecutor, ImageGenerationExecutor, KnowledgeExecutor,
-    MemoryToolExecutor, SkillsExecutor, TemplateDesignerExecutor, ToolExecutorRegistry,
-    ToolSensitivity, UserTodoExecutor, WorkspaceToolExecutor,
+    AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor, BuiltinResourceExecutor,
+    BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, DataGovernanceToolExecutor,
+    DstuToolExecutor, ExecutionContext, FetchExecutor, FileManagerExecutor, GeneralToolExecutor,
+    ImageGenerationExecutor, IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor,
+    LlmUsageToolExecutor, LocalShellExecuteExecutor, LocalShellPreflightExecutor,
+    McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor, OfficeFidelityExecutor,
+    SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor, TextbookPdfToolExecutor,
+    ToolExecutorRegistry, ToolSensitivity, TranslationToolExecutor, UserTodoExecutor,
+    WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -53,13 +58,10 @@ pub(crate) use super::prompt_builder;
 pub(crate) use super::repo::ChatV2Repo;
 // 🆕 VFS 统一存储（2025-12-07）：使用 vfs.db 的 VfsResourceRepo
 pub(crate) use crate::vfs::database::VfsDatabase;
-pub(crate) use crate::vfs::error::VfsError;
 pub(crate) use crate::vfs::repos::VfsResourceRepo;
 // 🆕 VFS RAG 统一知识管理（2025-01）：使用 VFS 向量检索
-pub(crate) use crate::vfs::indexing::{VfsFullSearchService, VfsSearchParams};
 pub(crate) use crate::vfs::lance_store::VfsLanceStore;
 pub(crate) use crate::vfs::multimodal_service::VfsMultimodalService;
-pub(crate) use crate::vfs::repos::MODALITY_TEXT;
 // 🆕 MCP 工具注入支持：现在使用前端传递的 mcp_tool_schemas，无需后端 MCP Client
 pub(crate) use super::context::PipelineContext;
 pub(crate) use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
@@ -72,12 +74,16 @@ pub(crate) use super::user_message_builder::{build_user_message, UserMessagePara
 pub(crate) use super::workspace::WorkspaceCoordinator;
 pub(crate) use std::sync::Mutex;
 
+pub mod authority_mode; // Ask / Plan / Craft session authority gate
 pub mod compaction; // 🆕 P1: 上下文压缩 agent（锚定摘要 + 尾部保真）
 pub mod constants;
+pub mod context_compiler;
 pub mod helpers;
 pub mod history;
 pub mod llm_adapter;
 pub mod multi_variant;
+#[cfg(test)]
+mod parallel_exec_tests;
 pub mod persistence;
 pub mod prompt;
 pub mod retrieval;
@@ -86,19 +92,40 @@ pub mod token_resources;
 pub mod tool_loop;
 pub mod variant_adapter;
 
+pub use authority_mode::*;
 pub use compaction::*;
-pub use constants::*;
-pub use helpers::*;
-pub use history::*;
+pub(crate) use constants::*;
+pub(crate) use helpers::*;
 pub use llm_adapter::*;
-pub use multi_variant::*;
-pub use persistence::*;
-pub use prompt::*;
-pub use retrieval::*;
-pub use summary::*;
-pub use token_resources::*;
-pub use tool_loop::*;
-pub use variant_adapter::*;
+pub(crate) use variant_adapter::*;
+
+// ============================================================
+// 托管 VfsLanceStore 单例解析
+// ============================================================
+
+/// 解析 app 托管的 `Arc<VfsLanceStore>` 单例（lib.rs 启动时 `app.manage` 注入）。
+///
+/// 复用单例可以保留实例级 Lance 连接缓存与 `ensured_tables` 缓存，
+/// 避免热路径上每次调用都重建连接、重发索引确认请求。
+///
+/// 仅当传入的 `vfs_db` 与托管的 `Arc<VfsDatabase>` 是同一实例时才返回单例，
+/// 避免测试或数据治理等场景下把单例误绑到另一个数据库。
+///
+/// 返回 `None` 的情况（调用方应自行降级，例如按需新建实例）：
+/// - 无全局 AppHandle（集成测试 / headless 环境）
+/// - 启动时 VfsLanceStore 初始化失败（lib.rs 已降级，不 manage）
+/// - `vfs_db` 与托管实例不一致
+pub(crate) fn managed_vfs_lance_store_for(vfs_db: &Arc<VfsDatabase>) -> Option<Arc<VfsLanceStore>> {
+    use tauri::Manager;
+    let app_handle = crate::get_global_app_handle()?;
+    let managed_db = app_handle.try_state::<Arc<VfsDatabase>>()?;
+    if !Arc::ptr_eq(managed_db.inner(), vfs_db) {
+        return None;
+    }
+    app_handle
+        .try_state::<Arc<VfsLanceStore>>()
+        .map(|state| state.inner().clone())
+}
 
 // ============================================================
 // 流水线主结构
@@ -130,6 +157,8 @@ pub struct ChatV2Pipeline {
     executor_registry: Arc<ToolExecutorRegistry>,
     /// 🆕 工具审批管理器（文档 29 P1-3）
     approval_manager: Option<Arc<ApprovalManager>>,
+    /// 🆕 全局一键断电（与 ChatV2State 共享；工具执行前强制拦截）
+    kill_switch: Option<Arc<super::kill_switch::AgentKillSwitch>>,
     workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     /// 🆕 智能题目集服务（用于 qbank_* MCP 工具，2026-01）
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
@@ -138,6 +167,10 @@ pub struct ChatV2Pipeline {
     /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
     /// 同时触发 compaction 产生重复 LLM 调用 + 孤儿记录
     compaction_locks: Arc<Mutex<HashSet<String>>>,
+    /// 全局 memory-flush 恢复单 worker 门闩。所有 Pipeline clone 共享状态。
+    memory_flush_recovery_running: Arc<AtomicBool>,
+    /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。
+    memory_flush_next_retry_at_ms: Arc<AtomicI64>,
 }
 
 impl ChatV2Pipeline {
@@ -173,10 +206,13 @@ impl ChatV2Pipeline {
             notes_manager,
             executor_registry,
             approval_manager: None,
+            kill_switch: None,
             workspace_coordinator: None,
             question_bank_service: None,
             pdf_processing_service: None,
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
+            memory_flush_recovery_running: Arc::new(AtomicBool::new(false)),
+            memory_flush_next_retry_at_ms: Arc::new(AtomicI64::new(0)),
         }
     }
 
@@ -185,6 +221,17 @@ impl ChatV2Pipeline {
     /// 🆕 文档 29 P1-3：敏感工具需要用户审批
     pub fn with_approval_manager(mut self, approval_manager: Arc<ApprovalManager>) -> Self {
         self.approval_manager = Some(approval_manager);
+        self
+    }
+
+    /// 绑定全局 Kill Switch（与 `ChatV2State.kill_switch` 共用同一 `Arc`）。
+    ///
+    /// 工具环在 AuthorityGate / ApprovalManager 之前检查；断电优先于会话档位。
+    pub fn with_kill_switch(
+        mut self,
+        kill_switch: Arc<super::kill_switch::AgentKillSwitch>,
+    ) -> Self {
+        self.kill_switch = Some(kill_switch);
         self
     }
 
@@ -227,28 +274,87 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(ChatAnkiToolExecutor::new()));
         executors.push(Arc::new(BuiltinRetrievalExecutor::new()));
         executors.push(Arc::new(BuiltinResourceExecutor::new()));
+        executors.push(Arc::new(super::tools::ConnectorToolExecutor::new()));
+        executors.push(Arc::new(super::tools::TaskAuditExecutor::new()));
+        executors.push(Arc::new(DstuToolExecutor::new()));
         executors.push(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
         executors.push(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
+        executors.push(Arc::new(super::tools::BrowserToolExecutor::new())); // 🆕 内置浏览器 Agent 工具（非 Playwright）
+        executors.push(Arc::new(MediaToolExecutor::new())); // Managed attachment audio transcription
+        executors.push(Arc::new(OfficeFidelityExecutor::new())); // Read-only Office/PDF fidelity inventory
+        executors.push(Arc::new(McpProposeExecutor::new())); // 🆕 MCP server 提案工具（High 敏感度）
+        executors.push(Arc::new(super::tools::McpManageExecutor::new())); // 🆕 MCP server 修改/启停/删除（update/remove High，set_enabled Medium）
+        executors.push(Arc::new(AutomationExecutor::new())); // 🆕 周期自动化工具（propose High / set_enabled Medium）
         executors.push(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
         executors.push(Arc::new(super::tools::PaperSaveExecutor::new())); // 🆕 论文保存+引用格式化工具
         executors.push(Arc::new(KnowledgeExecutor::new()));
         executors.push(Arc::new(super::tools::TodoListExecutor::new()));
         executors.push(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
+        executors.push(Arc::new(TranslationToolExecutor::new()));
+        executors.push(Arc::new(SettingsModelsToolExecutor::new()));
+        executors.push(Arc::new(LlmUsageToolExecutor::new()));
+        executors.push(Arc::new(LearningOverviewExecutor::new()));
+        executors.push(Arc::new(DataGovernanceToolExecutor::new()));
         executors.push(Arc::new(MemoryToolExecutor::new()));
         executors.push(Arc::new(UserTodoExecutor::new()));
         executors.push(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
         executors.push(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
+        executors.push(Arc::new(TextbookPdfToolExecutor::new()));
+        executors.push(Arc::new(IndexWebpageToolExecutor::new()));
         executors.push(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
         executors.push(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器
         executors.push(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
         executors.push(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
         executors.push(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
         executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
+        executors.push(Arc::new(WorkspaceFsExecutor::new()));
+        executors.push(Arc::new(FileManagerExecutor::new()));
+        executors.push(Arc::new(
+            super::tools::attachment_stage_executor::AttachmentStageExecutor::new(),
+        )); // 🆕 附件物化工具执行器（附件原始字节 → temp root 路径 + 受管 zip 解压）
+        executors.push(Arc::new(
+            super::tools::notes_import_executor::NotesImportExecutor::new(),
+        )); // 🆕 笔记库 zip 导入执行器（staged zip → NotesImporter，Medium）
+        executors.push(Arc::new(
+            super::tools::skill_install_executor::SkillInstallExecutor::new(),
+        )); // 🆕 skill_scan / skill_install 技能包自装（High 安装必审批 + provenance）
+        executors.push(Arc::new(
+            super::skill_market_client::SkillMarketReadToolExecutor::new(),
+        )); // 🆕 skill_market_search / skill_market_skill_detail 只读市场工具
+        executors.push(Arc::new(
+            super::skill_market_client::SkillMarketInstallToolExecutor::new(),
+        )); // 🆕 skill_market_verify / skill_market_download_and_scan 治理安装正门
+        executors.push(Arc::new(
+            super::tools::skill_workshop_executor::SkillWorkshopExecutor::new(),
+        )); // 🆕 skill_workshop_propose / skill_workshop_apply 提案式自建/自改技能
+        executors.push(Arc::new(
+            super::tools::skill_lifecycle_executor::SkillLifecycleExecutor::new(),
+        )); // 🆕 skill_set_enabled / skill_remove / skill_trust_request 技能生命周期治理正门
+        executors.push(Arc::new(LocalShellPreflightExecutor::new()));
+        executors.push(Arc::new(
+            super::tools::self_inspect_executor::SelfInspectExecutor::new(),
+        )); // 🆕 self_inspect 只读自查工具（Low 敏感度，脱敏输出）
+        executors.push(Arc::new(
+            super::tools::role_pack_executor::RolePackExecutor::new(),
+        )); // Versioned role pack list/get/validate (read-only + auditable selection)
+        executors.push(Arc::new(
+            super::tools::runtime_root_request_executor::RuntimeRootRequestExecutor::new(),
+        )); // 🆕 runtime_root_request 授权请求（High，never-remember，critical 直接拒绝）
+        executors.push(Arc::new(LocalShellExecuteExecutor::new()));
+        executors.push(Arc::new(super::tools::EssayGradingExecutor::new())); // 🆕 作文批改工具执行器（essay_* 异步任务 + 历史查询）
+        executors.push(Arc::new(super::tools::ReviewToolExecutor::new())); // 🆕 间隔重复复习计划工具执行器（review_*，SM-2）
+        executors.push(Arc::new(super::tools::DocumentProcessingExecutor::new())); // 🆕 文档解析/OCR 主动触发执行器（document_parse/status）
+        executors.push(Arc::new(super::tools::WorkbenchToolExecutor::new())); // ACR R1-02：workbench_* 桌面操控工具
 
         if let Some(coordinator) = workspace_coordinator {
             executors.push(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));
             // 注册 SubagentExecutor（subagent_call 语法糖）
             executors.push(Arc::new(super::tools::SubagentExecutor::new(
+                coordinator.clone(),
+            )));
+            // 🆕 custom_agent_* 自定义子代理 persona 管理
+            // （list/get Low，propose Medium，apply/remove High 必审批）
+            executors.push(Arc::new(super::tools::CustomAgentExecutor::new(
                 coordinator.clone(),
             )));
             // 🆕 注册 CoordinatorSleepExecutor（主代理睡眠/唤醒机制）
@@ -257,12 +363,10 @@ impl ChatV2Pipeline {
             )));
         }
 
-                // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
+        // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
         let registry = Arc::new_cyclic(|weak: &std::sync::Weak<ToolExecutorRegistry>| {
             // ToolPackExecutor must be registered before GeneralToolExecutor
-            executors.push(Arc::new(
-                super::tools::ToolPackExecutor::new(weak.clone()),
-            ));
+            executors.push(Arc::new(super::tools::ToolPackExecutor::new(weak.clone())));
             // GeneralToolExecutor must be last (catch-all)
             executors.push(Arc::new(GeneralToolExecutor::new()));
             ToolExecutorRegistry::from_vec(executors)
@@ -289,6 +393,16 @@ impl ChatV2Pipeline {
     /// 对应的 block_type 字符串
     fn tool_name_to_block_type(tool_name: &str) -> String {
         let stripped = Self::normalize_tool_name_for_skill_match(tool_name);
+
+        // ACR R2-05 / R3-01：与 context::get_block_type_for_tool_static / 前端 remap 对齐
+        if stripped.starts_with("workbench_")
+            || matches!(
+                stripped,
+                "note_append" | "note_replace" | "note_set" | "mindmap_edit_nodes"
+            )
+        {
+            return block_types::WORKBENCH_OPS.to_string();
+        }
 
         match stripped {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
@@ -373,6 +487,10 @@ impl ChatV2Pipeline {
         cancel_token: CancellationToken,
         chat_v2_state: Option<Arc<super::state::ChatV2State>>,
     ) -> ChatV2Result<String> {
+        // 启动时 VFS/Lance 可能尚未就绪。正常请求入口做带退避的异步兜底，
+        // 不让 compaction 已提交的 memory-flush ledger 永久滞留。
+        self.schedule_memory_flush_recovery();
+
         // === Feature Flag 检查 ===
         let multi_variant_enabled = feature_flags::is_multi_variant_enabled();
         log::info!(
@@ -439,13 +557,21 @@ impl ChatV2Pipeline {
 
         // === 单变体模式（原有逻辑）===
         let mut ctx = PipelineContext::new(request);
-        // 🆕 设置取消令牌：传递给工具执行器，支持工具执行取消
+        // Freeze the active model and capability route before emitting/saving anything. The
+        // options stored in this context are owned by this request, so later UI switches only
+        // affect the next turn.
+        ctx.init_context_snapshot();
         ctx.set_cancellation_token(cancel_token.clone());
+        self.freeze_execution_context(&mut ctx).await?;
+        // 🆕 设置取消令牌：传递给工具执行器，支持工具执行取消
         let session_id = ctx.session_id.clone();
         let assistant_message_id = ctx.assistant_message_id.clone();
 
         // 创建事件发射器
-        let emitter = Arc::new(ChatV2EventEmitter::new(window.clone(), session_id.clone()));
+        let emitter = Arc::new(
+            ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(ctx.options.stream_generation),
+        );
 
         // 获取模型名称用于前端显示
         // 从 API 配置中解析 model_id 到真正的模型名称（如 "Qwen/Qwen3-8B"）
@@ -556,8 +682,10 @@ impl ChatV2Pipeline {
         // 注意：skip_user_message_save 为 true 时跳过（编辑重发场景）
         if !ctx.options.skip_user_message_save.unwrap_or(false) {
             if let Err(e) = self.save_user_message_immediately(&ctx).await {
-                log::warn!(
-                    "[ChatV2::pipeline] Failed to save user message immediately: {}",
+                // 🔧 升级为 error：此时用户输入仅存在于内存，若后续 save_results
+                // 也失败则输入彻底丢失，必须在日志中醒目可见
+                log::error!(
+                    "[ChatV2::pipeline] Failed to save user message immediately (will rely on save_results as fallback): {}",
                     e
                 );
                 // 不阻塞流程，继续执行（save_results 会再次保存）
@@ -751,6 +879,15 @@ impl ChatV2Pipeline {
 
         // 阶段 2：加载聊天历史
         self.load_chat_history(ctx).await?;
+        // 🆕 FIFO 截断可见化：实际丢弃了消息时向前端发 context_trimmed 事件
+        self.notify_context_trimmed(ctx, &emitter);
+        // Recompile canonical history/current content for this turn's frozen TM/MM capability.
+        // This is where transient image base64 is resolved and where auxiliary-MM/OCR fallback
+        // happens for text-only active models.
+        tokio::select! {
+            result = self.compile_frozen_context(ctx) => result?,
+            _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
+        }
 
         // 阶段 3：并行执行检索
         if cancel_token.is_cancelled() {
@@ -791,18 +928,37 @@ impl ChatV2Pipeline {
         // 设计文档 30：在 stream_complete 前检查 inbox
         if let Some(workspace_id) = ctx.get_workspace_id() {
             if let Some(ref coordinator) = self.workspace_coordinator {
+                use super::workspace::injector::InjectionThrottle;
                 use super::workspace::WorkspaceInjector;
 
                 let injector = WorkspaceInjector::new(coordinator.clone());
+                // 节流状态在本次执行的空闲期检查点内持有（函数局部，不跨 await 共享）
+                let mut throttle = InjectionThrottle::new();
                 let max_injections = 3u32; // 单次空闲期最多处理 3 批消息
 
-                match injector.check_and_inject(workspace_id, &ctx.session_id, max_injections) {
+                match injector.check_and_inject(
+                    &mut throttle,
+                    workspace_id,
+                    &ctx.session_id,
+                    max_injections,
+                ) {
                     Ok(injection_result) => {
                         if !injection_result.messages.is_empty() {
                             let formatted = WorkspaceInjector::format_injected_messages(
                                 &injection_result.messages,
                             );
-                            ctx.inject_workspace_messages(formatted);
+                            // 🆕 契约 C11：内存注入照旧，持久化 + 事件发射为附加动作
+                            // （借用冲突规避：workspace_id 借自 ctx，先克隆再传 &mut ctx）
+                            let workspace_id_owned = workspace_id.to_string();
+                            ctx.inject_workspace_messages(formatted.clone());
+                            self.persist_and_emit_workspace_injection(
+                                ctx,
+                                &emitter,
+                                &workspace_id_owned,
+                                &injection_result.messages,
+                                &formatted,
+                                None,
+                            );
 
                             log::info!(
                                 "[ChatV2::pipeline] Workspace idle injection: {} messages injected, should_continue={}",
@@ -836,14 +992,30 @@ impl ChatV2Pipeline {
         self.save_results(ctx).await?;
 
         // 阶段 7：🆕 P1 压缩 — 本轮 LLM 若命中阈值，现在落盘 compaction 记录，
-        // 下一次 load_chat_history 就会应用视图（隐藏旧消息 + 注入摘要）
+        // 下一次 load_chat_history 就会应用视图（隐藏旧消息 + 注入摘要）。
+        // 🔧 P1-4 后本阶段是兜底路径：工具环内（tool_loop）已在下一轮 LLM 调用前
+        // 主动执行压缩，只有「最后一轮 LLM 回复才命中阈值」的情况会走到这里。
         if ctx.needs_compaction {
-            if let Err(e) = self.run_compaction(ctx).await {
-                log::warn!(
-                    "[ChatV2::pipeline] run_compaction failed (non-fatal): {}",
-                    e
-                );
-                ctx.needs_compaction = false;
+            match self.run_compaction(ctx).await {
+                Ok(outcome) => {
+                    // 🆕 自动压缩失败可见化：向前端发 compaction_failed 事件
+                    if outcome.is_failed() {
+                        if let Some(reason) = outcome.reason_code() {
+                            emitter.emit_compaction_failed(reason);
+                        }
+                    }
+                }
+                Err(e) => {
+                    // 🔧 升级为 error：压缩失败意味着长会话只能靠 FIFO 截断兜底，
+                    // 上下文质量将悬崖式下降，不能只留一条 warn
+                    log::error!(
+                        "[ChatV2::pipeline] run_compaction failed for session={} (non-fatal, falling back to FIFO trim next round): {}",
+                        ctx.session_id,
+                        e
+                    );
+                    ctx.needs_compaction = false;
+                    emitter.emit_compaction_failed(CompactionSkipReason::InternalError.as_code());
+                }
             }
         }
 
@@ -870,6 +1042,216 @@ mod tests {
             executor.name(),
             "ToolPackExecutor",
             "ToolPackExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_workspace_fs_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-workspace_file_read")
+            .expect("builtin-workspace_file_read must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "WorkspaceFsExecutor",
+            "WorkspaceFsExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_external_mcp_workspace_name_bypasses_builtin_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        for tool_name in ["mcp_workspace_file_read", "mcp.tools.workspace_file_read"] {
+            let executor = registry
+                .get_executor(tool_name)
+                .expect("external MCP tools must route through the general bridge");
+            assert_eq!(
+                executor.name(),
+                "GeneralToolExecutor",
+                "external MCP tools must not collide with WorkspaceFsExecutor"
+            );
+        }
+    }
+
+    #[test]
+    fn test_attachment_stage_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-attachment_stage")
+            .expect("builtin-attachment_stage must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "AttachmentStageExecutor",
+            "AttachmentStageExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_local_shell_preflight_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-local_shell_preflight")
+            .expect("builtin-local_shell_preflight must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "LocalShellPreflightExecutor",
+            "LocalShellPreflightExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_self_inspect_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-self_inspect")
+            .expect("builtin-self_inspect must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "SelfInspectExecutor",
+            "SelfInspectExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_skill_install_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-skill_scan")
+            .expect("builtin-skill_scan must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "SkillInstallExecutor",
+            "SkillInstallExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_skill_market_tools_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let search = registry
+            .get_executor("builtin-skill_market_search")
+            .expect("builtin-skill_market_search must have a registered executor");
+        assert_eq!(search.name(), "SkillMarketReadToolExecutor");
+        let detail = registry
+            .get_executor("builtin-skill_market_skill_detail")
+            .expect("builtin-skill_market_skill_detail must have a registered executor");
+        assert_eq!(detail.name(), "SkillMarketReadToolExecutor");
+        // 写操作不得由只读执行器承接
+        let download = registry
+            .get_executor("builtin-skill_market_download_and_scan")
+            .expect("builtin-skill_market_download_and_scan must have a registered executor");
+        assert_eq!(download.name(), "SkillMarketInstallToolExecutor");
+        let verify = registry
+            .get_executor("builtin-skill_market_verify")
+            .expect("builtin-skill_market_verify must have a registered executor");
+        assert_eq!(verify.name(), "SkillMarketInstallToolExecutor");
+    }
+
+    #[test]
+    fn test_skill_workshop_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-skill_workshop_propose")
+            .expect("builtin-skill_workshop_propose must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "SkillWorkshopExecutor",
+            "SkillWorkshopExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_skill_lifecycle_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        for tool in [
+            "builtin-skill_set_enabled",
+            "builtin-skill_remove",
+            "builtin-skill_trust_request",
+        ] {
+            let executor = registry
+                .get_executor(tool)
+                .unwrap_or_else(|| panic!("{tool} must have a registered executor"));
+            assert_eq!(
+                executor.name(),
+                "SkillLifecycleExecutor",
+                "SkillLifecycleExecutor must be matched before GeneralToolExecutor for {tool}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_mcp_propose_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-mcp_server_propose")
+            .expect("builtin-mcp_server_propose must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "McpProposeExecutor",
+            "McpProposeExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_mcp_manage_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        // 裸名 mcp_server_* 若落到 GeneralToolExecutor 会被误当外部 MCP 工具转发，
+        // 因此带前缀与裸名两种形态都必须命中 McpManageExecutor
+        for tool in [
+            "builtin-mcp_server_update",
+            "mcp_server_update",
+            "builtin-mcp_server_set_enabled",
+            "mcp_server_set_enabled",
+            "builtin-mcp_server_remove",
+            "mcp_server_remove",
+        ] {
+            let executor = registry
+                .get_executor(tool)
+                .unwrap_or_else(|| panic!("{tool} must have a registered executor"));
+            assert_eq!(
+                executor.name(),
+                "McpManageExecutor",
+                "McpManageExecutor must be matched before GeneralToolExecutor for {tool}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_automation_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-automation_propose")
+            .expect("builtin-automation_propose must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "AutomationExecutor",
+            "AutomationExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_runtime_root_request_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-runtime_root_request")
+            .expect("builtin-runtime_root_request must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "RuntimeRootRequestExecutor",
+            "RuntimeRootRequestExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_local_shell_execute_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-local_shell_execute")
+            .expect("builtin-local_shell_execute must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "LocalShellExecuteExecutor",
+            "LocalShellExecuteExecutor must be matched before GeneralToolExecutor"
         );
     }
 }

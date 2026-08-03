@@ -13,6 +13,7 @@ import {
   Square as SquareIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { EVAL_CASES } from './eval/cases';
 import { RHYTHM_PRESETS, DEFAULT_RHYTHM } from './eval/rhythm';
 import { runEval, type RunEvalProgress } from './eval/runner';
@@ -142,22 +143,22 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
         {/* Cases 多选 */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-muted-foreground tracking-wider font-medium">
+            <span className="text-2xs text-muted-foreground tracking-wider font-medium">
               测试用例 ({selectedCases.size}/{EVAL_CASES.length})
             </span>
             <div className="flex gap-1">
               <button
                 type="button"
                 onClick={() => setSelectedCases(new Set(EVAL_CASES.map((c) => c.id)))}
-                className="text-[9px] text-muted-foreground hover:text-foreground"
+                className="text-2xs text-muted-foreground hover:text-foreground"
               >
                 全选
               </button>
-              <span className="text-[9px] text-muted-foreground">·</span>
+              <span className="text-2xs text-muted-foreground">·</span>
               <button
                 type="button"
                 onClick={() => setSelectedCases(new Set())}
-                className="text-[9px] text-muted-foreground hover:text-foreground"
+                className="text-2xs text-muted-foreground hover:text-foreground"
               >
                 清空
               </button>
@@ -172,7 +173,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                   type="button"
                   onClick={() => toggleCase(c.id)}
                   className={cn(
-                    'flex items-center gap-1 px-1.5 py-1 rounded text-[10px] text-left transition-colors',
+                    'flex items-center gap-1 px-1.5 py-1 rounded text-2xs text-left transition-colors',
                     sel
                       ? 'bg-primary/10 text-primary'
                       : 'bg-muted/50 hover:bg-muted text-muted-foreground',
@@ -189,7 +190,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
 
         {/* Presets 多选 */}
         <div>
-          <div className="text-[10px] text-muted-foreground tracking-wider font-medium mb-1">
+          <div className="text-2xs text-muted-foreground tracking-wider font-medium mb-1">
             平滑预设 ({selectedPresets.size}/{ALL_PRESETS.length})
           </div>
           <div className="flex gap-1">
@@ -202,7 +203,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                   onClick={() => togglePreset(p)}
                   title={getStreamingPresetHint(p)}
                   className={cn(
-                    'flex-1 px-1.5 py-1 rounded text-[10px] transition-colors',
+                    'flex-1 px-1.5 py-1 rounded text-2xs transition-colors',
                     sel
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted/50 hover:bg-muted text-muted-foreground',
@@ -217,7 +218,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
 
         {/* Rhythm */}
         <div>
-          <div className="text-[10px] text-muted-foreground tracking-wider font-medium mb-1">
+          <div className="text-2xs text-muted-foreground tracking-wider font-medium mb-1">
             输入节奏
           </div>
           <select
@@ -280,7 +281,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
         {/* Progress */}
         {running && progress && (
           <div className="space-y-1">
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-2xs text-muted-foreground">
               <span>
                 {progress.current}/{progress.total} · {progress.caseId} · {getStreamingPresetLabel(progress.preset)}
               </span>
@@ -297,7 +298,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
       </div>
 
       {/* 结果 */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="p-3 space-y-2">
         {!report ? (
           <div className="text-[11px] text-muted-foreground text-center py-8 border border-dashed border-border rounded-md">
             选择测试用例与平滑预设后点击「开始评测」
@@ -306,7 +307,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
           <>
             {/* Preset averages */}
             <div>
-              <div className="text-[10px] text-muted-foreground tracking-wider font-medium mb-1">
+              <div className="text-2xs text-muted-foreground tracking-wider font-medium mb-1">
                 预设平均分
               </div>
               <div className="grid grid-cols-2 gap-1">
@@ -329,11 +330,11 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
 
             {/* Heatmap */}
             <div>
-              <div className="text-[10px] text-muted-foreground tracking-wider font-medium mb-1">
+              <div className="text-2xs text-muted-foreground tracking-wider font-medium mb-1">
                 得分矩阵（点击单元格展开详情）
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[10px]">
+              <CustomScrollArea orientation="horizontal" fullHeight={false}>
+                <table className="w-full text-2xs">
                   <thead>
                     <tr className="text-muted-foreground">
                       <th className="text-left font-medium px-1 py-1 sticky left-0 bg-card">
@@ -396,7 +397,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </CustomScrollArea>
             </div>
 
             {/* 详情 */}
@@ -404,13 +405,13 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
               <ResultDetail result={matrix.get(expandedKey)!} />
             )}
 
-            <div className="text-[10px] text-muted-foreground/70 pt-2 border-t border-border/40">
+            <div className="text-2xs text-muted-foreground/70 pt-2 border-t border-border/40">
               共 {report.results.length} 次运行 · 耗时 {(report.totalMs / 1000).toFixed(1)}s · 开始于{' '}
               {new Date(report.startedAt).toLocaleTimeString()}
             </div>
           </>
         )}
-      </div>
+      </CustomScrollArea>
     </div>
   );
 };
@@ -422,13 +423,13 @@ interface ResultDetailProps {
 const ResultDetail: React.FC<ResultDetailProps> = ({ result }) => {
   const m = result.metrics;
   return (
-    <div className="rounded-md border border-border bg-muted/30 p-2 space-y-1.5 text-[10px]">
+    <div className="rounded-md border border-border bg-muted/30 p-2 space-y-1.5 text-2xs">
       <div className="flex items-center justify-between">
         <span className="font-medium">
           {result.caseLabel} · <span className="text-muted-foreground">{result.preset}</span>
         </span>
         <span
-          className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+          className="px-1.5 py-0.5 rounded text-2xs font-semibold"
           style={{ background: scoreToColor(result.total), color: '#fff' }}
         >
           {result.total.toFixed(1)}
@@ -455,7 +456,7 @@ const ResultDetail: React.FC<ResultDetailProps> = ({ result }) => {
       </div>
 
       {result.failed && (
-        <div className="text-destructive text-[10px]">运行失败：{result.failReason}</div>
+        <div className="text-destructive text-2xs">运行失败：{result.failReason}</div>
       )}
     </div>
   );
@@ -463,7 +464,7 @@ const ResultDetail: React.FC<ResultDetailProps> = ({ result }) => {
 
 const DetailCell: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex flex-col px-1.5 py-1 rounded bg-card/60">
-    <span className="text-[9px] tracking-wider text-muted-foreground">
+    <span className="text-2xs tracking-wider text-muted-foreground">
       {label}
     </span>
     <span className="font-mono font-semibold tabular-nums">{value}</span>

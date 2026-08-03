@@ -7,7 +7,9 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
 import type { LayoutCategory, LayoutDirection } from '../../registry/types';
+import type { LayoutBoundsWithMeta } from '../../registry/types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
+import { getDepthHorizontalGap, getDepthVerticalGap } from '../../constants/layout';
 import {
   calculateSubtreeHeight,
   calculateNodeWidth,
@@ -15,7 +17,9 @@ import {
   calculateBounds,
   resolveSubtreeOverlaps,
   recenterParents,
+  normalizeLayoutRoot,
 } from '../../utils/layout/helpers';
+import { compactSiblingSubtrees, isCompactionEnabled } from '../../utils/layout/compactTree';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 
 /** 节点数据类型 */
@@ -66,9 +70,10 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     }
 
     // 计算每个子树的实际视觉高度，并记录原始顺序
+    // （children 恒为根的直接子节点 → 绝对层级 1，供深度间距收敛）
     const childrenWithHeight = children.map((child, originalIndex) => ({
       node: child,
-      height: calculateSubtreeHeight(child, config),
+      height: calculateSubtreeHeight(child, config, false, 1),
       originalIndex,
     }));
 
@@ -81,8 +86,13 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     let rightHeight = 0;
 
     // 贪心分配：将子树放到累计高度较小的一侧（含间距）
+    // ★ P1 修复：高度相等时不再恒偏左——先比子树数量，再默认右侧
+    //   （首条分支默认出现在右侧，等高兄弟左右交替）
     for (const item of sorted) {
-      if (rightHeight < leftHeight) {
+      const placeRight =
+        rightHeight < leftHeight ||
+        (rightHeight === leftHeight && rightIndices.length <= leftIndices.length);
+      if (placeRight) {
         const gap = rightIndices.length > 0 ? config.verticalGap : 0;
         rightIndices.push(item.originalIndex);
         rightHeight += item.height + gap;
@@ -115,14 +125,19 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
     _direction: LayoutDirection = this.defaultDirection
   ): LayoutResult {
+    // 入口防御：children 缺失时补空数组
+    root = normalizeLayoutRoot(root);
     const nodes: Node<BalancedNodeData>[] = [];
     const edges: Edge[] = [];
     const mindmapNodeById = new Map<string, MindMapNode>();
-    
+    // 深度超限截断标记（随 bounds 返回，供上层提示）
+    let truncated = false;
+
     // ★ P0 修复：添加深度限制，防止栈溢出
     const collectMindMapNode = (current: MindMapNode, depth: number = 0) => {
       if (depth > MAX_TREE_DEPTH) {
         console.warn(`[BalancedLayoutEngine] Tree depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return;
       }
       mindmapNodeById.set(current.id, current);
@@ -169,6 +184,7 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
           maxY: rootHeight,
           width: rootWidth,
           height: rootHeight,
+          ...(truncated ? { truncated: true } : {}),
         },
       };
     }
@@ -186,9 +202,9 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     ) => {
       if (children.length === 0) return;
 
-      // 计算子树高度
+      // 计算子树高度（一级节点绝对层级为 1；根级兄弟距 scale(0)=1 不收敛）
       const subtreeHeights = children.map(child =>
-        calculateSubtreeHeight(child, config)
+        calculateSubtreeHeight(child, config, false, 1)
       );
       const totalHeight = subtreeHeights.reduce(
         (sum, h, i) => sum + h + (i > 0 ? config.verticalGap : 0),
@@ -208,6 +224,10 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
      * 递归布局子树
      * ★ P0 修复：添加深度限制检查
      */
+    /**
+     * 递归布局子树
+     * @param x 右侧分支为左边缘；左侧分支为右边缘锚点（同 TreeLayoutEngine 的向左语义）
+     */
     const layoutSubtree = (
       node: MindMapNode,
       x: number,
@@ -219,12 +239,15 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       // 深度限制检查
       if (level > MAX_TREE_DEPTH) {
         console.warn(`[BalancedLayoutEngine] Layout depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return config.nodeHeight;
       }
       
       const hasChildren = node.children && node.children.length > 0;
       const nodeWidth = calculateNodeWidth(node, config);
       const nodeHeight = calculateNodeHeight(node, false, config);
+      // 左侧：x 是右边缘锚点，实际左边缘 = x - ownWidth（宽窄兄弟各自独立，避免共用 children[0] 宽度）
+      const nodeX = side === 'left' ? x - nodeWidth : x;
 
       // 根据分支位置设置 Handle 位置
       // 左侧分支：target 在右边（连接根节点），source 在左边（连接子节点）
@@ -235,7 +258,7 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       nodes.push({
         id: node.id,
         type: 'branchNode',
-        position: { x, y },
+        position: { x: nodeX, y },
         width: nodeWidth,
         height: nodeHeight,
         data: {
@@ -246,7 +269,8 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
           level,
           collapsed: !!node.collapsed,
           completed: !!node.completed,
-          hasChildren: hasChildren && !node.collapsed,
+          // 折叠节点也要保留 hasChildren=true，展开按钮/子数徽章依赖它（与 Tree/OrgChart 语义一致）
+          hasChildren,
           childCount: this.countAllDescendants(node),
           nodeId: node.id,
           side,
@@ -271,17 +295,21 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
         return nodeHeight;
       }
 
-      // 计算子节点位置
+      // 层距/兄弟距随本节点层级收敛（level >= 1，一级节点的子代起开始收紧）
+      const levelGap = getDepthHorizontalGap(config, level);
+      const siblingGap = getDepthVerticalGap(config, level);
+
+      // 右侧：子节点左边缘；左侧：子节点右边缘锚点（各子节点再按自身宽度回退）
       const childX =
         side === 'right'
-          ? x + nodeWidth + config.horizontalGap
-          : x - config.horizontalGap - calculateNodeWidth(node.children![0], config);
+          ? nodeX + nodeWidth + levelGap
+          : nodeX - levelGap;
 
       const subtreeHeights = node.children!.map(child =>
-        calculateSubtreeHeight(child, config)
+        calculateSubtreeHeight(child, config, false, level + 1)
       );
       const totalHeight = subtreeHeights.reduce(
-        (sum, h, i) => sum + h + (i > 0 ? config.verticalGap : 0),
+        (sum, h, i) => sum + h + (i > 0 ? siblingGap : 0),
         0
       );
 
@@ -289,16 +317,17 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
 
       node.children!.forEach((child, index) => {
         layoutSubtree(child, childX, currentY, level + 1, node.id, side);
-        currentY += subtreeHeights[index] + config.verticalGap;
+        currentY += subtreeHeights[index] + siblingGap;
       });
 
       return Math.max(nodeHeight, totalHeight);
     };
 
-    // 布局左侧
+    // 布局左侧：传入右边缘锚点（根左边缘 0 - gap），各子节点按自身宽度定位
+    // 根到一级为 scale(0)=1，层距保持基准 horizontalGap 不收敛
     if (left.length > 0) {
-      const leftX = -config.horizontalGap - calculateNodeWidth(left[0], config);
-      layoutSide(left, 'left', leftX);
+      const leftAnchorX = -config.horizontalGap;
+      layoutSide(left, 'left', leftAnchorX);
     }
 
     // 布局右侧
@@ -307,20 +336,29 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       layoutSide(right, 'right', rightX);
     }
 
-    // 基于实测高度的子树碰撞消除
     const nodesById = new Map(nodes.map(node => [node.id, node]));
+    // 基于实测高度的子树碰撞消除
     resolveSubtreeOverlaps(root, nodesById, config, true);
     recenterParents(root, nodesById, config, true);
+    // 轮廓紧凑（须在 resolve/recenter 之后）：按子树实际轮廓上提同侧兄弟，
+    // 减少「深窄子树旁的大片空白」；左右分支分组独立，不产生新重叠
+    if (isCompactionEnabled(config)) {
+      compactSiblingSubtrees(root, nodesById, config, true);
+    }
 
     // 计算边界
+    // ★ P0 修复：宽度估算传入 isRoot，保证 bounds 与实际渲染宽度一致
     const layoutBoxes = nodes.map(node => {
       const mmNode = mindmapNodeById.get(node.id);
-      const isRootNode = node.data?.isRoot || node.type === 'rootNode';
-      const width = mmNode ? calculateNodeWidth(mmNode, config) : config.nodeMinWidth;
+      const isRootNode = !!node.data?.isRoot || node.type === 'rootNode';
+      const width = mmNode ? calculateNodeWidth(mmNode, config, isRootNode) : config.nodeMinWidth;
       const height = mmNode ? calculateNodeHeight(mmNode, isRootNode, config) : config.nodeHeight;
       return { x: node.position.x, y: node.position.y, width, height };
     });
-    const bounds = calculateBounds(layoutBoxes);
+    const bounds: LayoutBoundsWithMeta = {
+      ...calculateBounds(layoutBoxes),
+      ...(truncated ? { truncated: true } : {}),
+    };
 
     return { nodes, edges, bounds };
   }

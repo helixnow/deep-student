@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   convertApiConfigToProfile,
   convertProfileToApiConfig,
+  getAllowedApiProtocolsForModelAdapter,
   inferProviderTypeFromBaseUrl,
+  normalizeApiProtocolForModelAdapter,
 } from '../modelConverters';
 import type { ApiConfig, ModelProfile, VendorConfig } from '@/types';
 
@@ -72,7 +74,7 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     expect(api.reasoningEffort).toBeUndefined();
   });
 
-  it('preserves DeepSeek V4 profile semantics when converting back from api config', () => {
+  it('keeps DeepSeek V4 semantics while rejecting an unsupported responses protocol', () => {
     const api: ApiConfig = {
       ...convertProfileToApiConfig(baseProfile, baseVendor),
       modelAdapter: 'openai',
@@ -82,7 +84,7 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     const profile = convertApiConfigToProfile(api, baseVendor.id);
 
     expect(profile.modelAdapter).toBe('deepseek');
-    expect(profile.apiProtocol).toBe('openai_responses');
+    expect(profile.apiProtocol).toBe('openai_chat_completions');
     expect(profile.providerScope).toBe('deepseek');
     expect(profile.reasoningEffort).toBe('high');
     expect(profile.supportsReasoning).toBe(true);
@@ -198,6 +200,138 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     expect(api.apiProtocol).toBe('openai_chat_completions');
   });
 
+  it('only exposes and preserves responses after a custom vendor declares support', () => {
+    const unsupportedOptions = {
+      providerType: 'custom',
+      baseUrl: 'https://proxy.example.com/v1',
+      supportsOpenAIResponses: false,
+    };
+
+    expect(getAllowedApiProtocolsForModelAdapter('general', unsupportedOptions)).toEqual([
+      'openai_chat_completions',
+    ]);
+    expect(
+      normalizeApiProtocolForModelAdapter(
+        'openai_responses',
+        'general',
+        unsupportedOptions.providerType,
+        unsupportedOptions
+      )
+    ).toBe('openai_chat_completions');
+
+    const supportedOptions = { ...unsupportedOptions, supportsOpenAIResponses: true };
+    expect(getAllowedApiProtocolsForModelAdapter('general', supportedOptions)).toContain(
+      'openai_responses'
+    );
+    expect(
+      normalizeApiProtocolForModelAdapter(
+        'openai_responses',
+        'general',
+        supportedOptions.providerType,
+        supportedOptions
+      )
+    ).toBe('openai_responses');
+  });
+
+  it('makes native adapter protocols provider-aware', () => {
+    expect(
+      getAllowedApiProtocolsForModelAdapter('anthropic', {
+        providerType: 'anthropic',
+        baseUrl: 'https://api.anthropic.com/v1',
+      })
+    ).toEqual(['anthropic_messages']);
+    expect(
+      getAllowedApiProtocolsForModelAdapter('google', {
+        providerType: 'gemini',
+        baseUrl: 'https://generativelanguage.googleapis.com',
+      })
+    ).toEqual(['google_generate_content']);
+
+    for (const adapter of ['anthropic', 'google']) {
+      expect(
+        getAllowedApiProtocolsForModelAdapter(adapter, {
+          providerType: 'custom',
+          baseUrl: 'https://one-api.example.com/v1',
+        })
+      ).toEqual(['openai_chat_completions']);
+      expect(
+        getAllowedApiProtocolsForModelAdapter(adapter, {
+          providerType: 'openrouter',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          supportsOpenAIResponses: true,
+        })
+      ).toEqual(['openai_chat_completions', 'openai_responses']);
+    }
+  });
+
+  it('round-trips proxied Claude and Gemini profiles through OpenAI protocols', () => {
+    const cases = [
+      {
+        providerType: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        adapter: 'anthropic' as const,
+        model: 'anthropic/claude-sonnet-4.6',
+      },
+      {
+        providerType: 'custom',
+        baseUrl: 'https://one-api.example.com/v1',
+        adapter: 'google' as const,
+        model: 'google/gemini-3.1-pro-preview',
+      },
+    ];
+
+    for (const item of cases) {
+      const vendor: VendorConfig = {
+        ...baseVendor,
+        id: `vendor-${item.providerType}-${item.adapter}`,
+        providerType: item.providerType,
+        baseUrl: item.baseUrl,
+        apiProtocol: undefined,
+      };
+      const profile: ModelProfile = {
+        ...baseProfile,
+        id: `profile-${item.adapter}`,
+        vendorId: vendor.id,
+        model: item.model,
+        providerScope: item.providerType,
+        modelAdapter: item.adapter,
+        apiProtocol: undefined,
+      };
+
+      const api = convertProfileToApiConfig(profile, vendor);
+      expect(api.apiProtocol).toBe('openai_chat_completions');
+      expect(api.modelAdapter).toBe(item.adapter);
+
+      const roundTripped = convertApiConfigToProfile(api, vendor.id);
+      expect(roundTripped.apiProtocol).toBe('openai_chat_completions');
+      expect(roundTripped.modelAdapter).toBe(item.adapter);
+    }
+  });
+
+  it('preserves explicitly supported Responses for proxied native model families', () => {
+    for (const adapter of ['anthropic', 'google'] as const) {
+      const vendor: VendorConfig = {
+        ...baseVendor,
+        id: `vendor-responses-${adapter}`,
+        providerType: 'custom',
+        baseUrl: 'https://sub2api.example.com/v1',
+        supportsOpenAIResponses: true,
+      };
+      const profile: ModelProfile = {
+        ...baseProfile,
+        vendorId: vendor.id,
+        model: adapter === 'anthropic' ? 'claude-sonnet-4-6' : 'gemini-3.1-pro-preview',
+        providerScope: 'custom',
+        modelAdapter: adapter,
+        apiProtocol: 'openai_responses',
+      };
+
+      const api = convertProfileToApiConfig(profile, vendor);
+      expect(api.apiProtocol).toBe('openai_responses');
+      expect(convertApiConfigToProfile(api, vendor.id).apiProtocol).toBe('openai_responses');
+    }
+  });
+
   it('round-trips DeepSeek context window metadata through model profile conversion', () => {
     const profileWithContext = {
       ...baseProfile,
@@ -209,6 +343,14 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
 
     const profile = convertApiConfigToProfile(api, baseVendor.id) as ModelProfile & { contextWindow?: number };
     expect(profile.contextWindow).toBe(1_000_000);
+  });
+});
+
+describe('settings modelConverters Qwen provider support', () => {
+  it('detects DashScope and Alibaba Cloud Model Studio workspace hosts', () => {
+    expect(inferProviderTypeFromBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1')).toBe('qwen');
+    expect(inferProviderTypeFromBaseUrl('https://dashscope-intl.aliyuncs.com/compatible-mode/v1')).toBe('qwen');
+    expect(inferProviderTypeFromBaseUrl('https://workspace-id.maas.aliyuncs.com/v1')).toBe('qwen');
   });
 });
 

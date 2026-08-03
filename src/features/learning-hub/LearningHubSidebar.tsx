@@ -1,14 +1,15 @@
-import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { MagnifyingGlass, Plus, FolderPlus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House } from '@phosphor-icons/react';
+import { MagnifyingGlass, Plus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House } from '@phosphor-icons/react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { extractFileName, extractDisplayFileName, fileManager } from '@/utils/fileManager';
+import { exportResourceById } from './utils/exportResource';
 import { getMemoryConfig } from '@/api/memoryApi';
 import { MemoryFolderBanner } from './components/MemoryFolderBanner';
 import { MemoryTreePreview } from './components/MemoryTreePreview';
@@ -58,6 +59,19 @@ const IMAGE_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'heic', 'heif',
 ]);
 
+/**
+ * ★ 2026-07-20（P3 引导）：需要引导到专属模块导入的格式。
+ * 资源库不直接接收这类文件，拖入时给出明确的模块引导而非笼统"导入失败"。
+ */
+const MODULE_GUIDANCE_EXTENSIONS: Record<string, 'flashcards' | 'mindmap'> = {
+  apkg: 'flashcards',
+  colpkg: 'flashcards',
+  xmind: 'mindmap',
+  opml: 'mindmap',
+  mm: 'mindmap',
+  mmap: 'mindmap',
+};
+
 /** 从文件名获取扩展名 */
 const getFileExtension = (name: string): string =>
   (name.split('.').pop() || '').toLowerCase();
@@ -69,11 +83,12 @@ const MemoryView = lazy(() => import('./views/MemoryView'));
 // ★ 2026-01-31: 懒加载桌面视图
 import { DesktopView, type CreateResourceType } from './components/finder';
 import type { DesktopRootConfig } from './stores/desktopStore';
-import { useFinderStore, type QuickAccessType } from './stores/finderStore';
+import { useFinderStore, type FinderPath, type QuickAccessType } from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   FinderToolbar,
   FinderQuickAccess,
@@ -88,9 +103,9 @@ import type { LearningHubSidebarProps, ResourceListItem } from './types';
 import type { FolderItemType, FolderTreeNode } from '@/dstu/types/folder';
 import { VfsError, VfsErrorCode, err, ok, reportError } from '@/shared/result';
 import { LearningHubContextMenu, type ContextMenuTarget } from './components/LearningHubContextMenu';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter, NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -107,19 +122,46 @@ import {
 import { getCreatableFolderId } from './viewGuards';
 import {
   getFinderPathDisplayPath,
+  getQuickAccessTarget,
   getQuickAccessTypeFromPath,
   getViewCapabilities,
   resolveQuickAccessType,
 } from './learningHubContracts';
 import { useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
+import { getSearchPlaceholderKey, matchesLiveName } from './utils/searchHonesty';
+import { pruneSelectionAgainstItems } from './stores/selectionPrune';
 
-/** ★ Bug4: canvas 模式下不应显示的特殊视图 */
+/** ★ Bug4: canvas 模式下不应显示的特殊视图（仅显示层 fallback，不写回 store） */
 const CANVAS_BLOCKED_VIEW_KINDS = new Set(['indexStatus', 'memory', 'desktop']);
+const CANVAS_FALLBACK_PATH = {
+  viewKind: 'folder' as const,
+  breadcrumbs: [] as Array<{ id: string; name: string; dstuPath: string }>,
+  folderId: null as string | null,
+  typeFilter: null as null,
+};
+const createCanvasFinderPath = (): FinderPath => ({
+  viewKind: 'folder',
+  breadcrumbs: [],
+  folderId: null,
+  typeFilter: null,
+});
+const PENDING_FOLDER_ID_PREFIX = '__pending_new_folder__';
+
+type SoftDeleteTarget = { id: string; type: string; name: string };
+
+const isPendingFolderId = (id: string | null | undefined): boolean =>
+  Boolean(id?.startsWith(PENDING_FOLDER_ID_PREFIX));
+
+interface PendingFolderDraft {
+  node: DstuNode;
+  parentFolderId: string | null;
+}
 
 export function LearningHubSidebar({
   mode,
   onOpenApp,
   onClose,
+  onReferenceToChat,
   className,
   isCollapsed = false,
   onToggleCollapse,
@@ -129,9 +171,15 @@ export function LearningHubSidebar({
   onCloseApp,
   hideToolbarAndNav = false,
   quickAccessPortalTarget,
+  toolbarPortalTarget,
+  toolbarPortalMode = 'window',
   highlightedIds,
+  hostId: _hostId,
+  sessionActive,
+  commandsEnabled,
 }: LearningHubSidebarProps) {
   const { isActive: isLearningHubViewActive } = useViewVisibility('learning-hub');
+  const commandEventsEnabled = commandsEnabled ?? isLearningHubViewActive;
   const { t } = useTranslation('learningHub');
 
   // ========== 响应式布局 ==========
@@ -142,42 +190,71 @@ export function LearningHubSidebar({
 
   // Store state
   const {
-    currentPath,
-    history,
-    historyIndex,
+    currentPath: storeCurrentPath,
+    history: storeHistory,
+    historyIndex: storeHistoryIndex,
     viewMode,
     sortBy,
     sortOrder,
-    selectedIds,
-    searchQuery,
+    selectedIds: storeSelectedIds,
+    searchQuery: storeSearchQuery,
     isSearching,
-    items,
-    isLoading,
-    error,
+    searchMeta,
+    items: storeItems,
+    isLoading: storeIsLoading,
+    error: storeError,
 
     // Actions
-    goBack,
-    goForward,
-    jumpToBreadcrumb,
+    goBack: storeGoBack,
+    goForward: storeGoForward,
+    goUp: storeGoUp,
+    jumpToBreadcrumb: storeJumpToBreadcrumb,
     setViewMode,
     setSorting,
-    select,
-    selectAll,
-    clearSelection,
-    setSelectedIds,
-    setSearchQuery,
+    select: storeSelect,
+    selectAll: storeSelectAll,
+    clearSelection: storeClearSelection,
+    setSelectedIds: storeSetSelectedIds,
+    setSearchQuery: storeSetSearchQuery,
     refresh: finderRefresh,
-    enterFolder,
-    navigateTo,
-    quickAccessNavigate,
-    setCurrentPathWithoutHistory,
+    enterFolder: storeEnterFolder,
+    navigateTo: storeNavigateTo,
+    quickAccessNavigate: storeQuickAccessNavigate,
+    queryItemsForPath,
   } = useFinderStore();
 
-  const currentPathDisplay = getFinderPathDisplayPath(currentPath);
-  const viewCapabilities = getViewCapabilities(currentPath.viewKind);
-  const currentCreatableFolderId = getCreatableFolderId(currentPath);
-  const baseQuickAccessType = getQuickAccessTypeFromPath(currentPath) ?? null;
-  const isTrashView = currentPath.viewKind === 'trash';
+  const [canvasPath, setCanvasPath] = useState<FinderPath>(createCanvasFinderPath);
+  const [canvasHistory, setCanvasHistory] = useState<FinderPath[]>(() => [createCanvasFinderPath()]);
+  const [canvasHistoryIndex, setCanvasHistoryIndex] = useState(0);
+  const [canvasItems, setCanvasItems] = useState<DstuNode[]>([]);
+  const [canvasIsLoading, setCanvasIsLoading] = useState(false);
+  const [canvasError, setCanvasError] = useState<string | null>(null);
+  const [canvasSelectedIds, setCanvasSelectedIds] = useState<Set<string>>(new Set());
+  const [canvasLastSelectedId, setCanvasLastSelectedId] = useState<string | null>(null);
+  const [canvasSearchQuery, setCanvasSearchQuery] = useState('');
+  const canvasRequestIdRef = useRef(0);
+
+  // Canvas uses an isolated file-browser state: never reuse the global path/items/search.
+  const currentPath = mode === 'canvas' ? canvasPath : storeCurrentPath;
+  const history = mode === 'canvas' ? canvasHistory : storeHistory;
+  const historyIndex = mode === 'canvas' ? canvasHistoryIndex : storeHistoryIndex;
+  const items = mode === 'canvas' ? canvasItems : storeItems;
+  const isLoading = mode === 'canvas' ? canvasIsLoading : storeIsLoading;
+  const error = mode === 'canvas' ? canvasError : storeError;
+  const selectedIds = mode === 'canvas' ? canvasSelectedIds : storeSelectedIds;
+  const searchQuery = mode === 'canvas' ? canvasSearchQuery : storeSearchQuery;
+  const setSearchQuery = mode === 'canvas' ? setCanvasSearchQuery : storeSetSearchQuery;
+
+  // ★ LH-HOST：canvas 遇到特殊视图时仅显示层 fallback 到 root，不写回全局 store
+  const isCanvasPathBlocked =
+    mode === 'canvas' && CANVAS_BLOCKED_VIEW_KINDS.has(currentPath.viewKind);
+  const effectivePath = isCanvasPathBlocked ? CANVAS_FALLBACK_PATH : currentPath;
+
+  const currentPathDisplay = getFinderPathDisplayPath(effectivePath);
+  const viewCapabilities = getViewCapabilities(effectivePath.viewKind);
+  const currentCreatableFolderId = getCreatableFolderId(effectivePath);
+  const baseQuickAccessType = getQuickAccessTypeFromPath(effectivePath) ?? null;
+  const isTrashView = effectivePath.viewKind === 'trash';
 
   // ★ 记忆系统改造：跟踪记忆根文件夹 ID，用于高亮侧边栏
   // 在组件挂载和 viewKind 变化时刷新（用户可能通过 MemoryView 设置了根文件夹后返回）
@@ -185,26 +262,21 @@ export function LearningHubSidebar({
   const refreshMemoryRootFolderId = useCallback(() => {
     getMemoryConfig().then(c => setMemoryRootFolderId(c.memoryRootFolderId)).catch(() => {});
   }, []);
-  useEffect(() => { refreshMemoryRootFolderId(); }, [refreshMemoryRootFolderId, currentPath.viewKind]);
+  useEffect(() => { refreshMemoryRootFolderId(); }, [refreshMemoryRootFolderId, effectivePath.viewKind]);
 
   // 判断当前是否在记忆文件夹内（检查面包屑中是否包含记忆根文件夹）
   const isInMemoryFolder = memoryRootFolderId != null && (
-    currentPath.folderId === memoryRootFolderId ||
-    currentPath.breadcrumbs?.some(b => b.id === memoryRootFolderId)
+    effectivePath.folderId === memoryRootFolderId ||
+    effectivePath.breadcrumbs?.some(b => b.id === memoryRootFolderId)
   );
   const currentQuickAccessType = isInMemoryFolder ? 'memory' as QuickAccessType : baseQuickAccessType;
+  const searchPlaceholder = t(getSearchPlaceholderKey(effectivePath));
   const canCreateInCurrentView = viewCapabilities.canCreate;
   const canSearchInCurrentView = viewCapabilities.canSearch;
-
-  // ★ Bug4 修复：canvas 模式下，如果 currentPath 是特殊视图（indexStatus/memory/desktop），
-  // 自动重置到 root，避免从 LearningHubPage 泄露的特殊视图状态影响聊天侧边栏
-  // 使用 setCurrentPathWithoutHistory 避免污染共享的导航历史栈
-  useEffect(() => {
-    if (mode === 'canvas' && CANVAS_BLOCKED_VIEW_KINDS.has(currentPath.viewKind)) {
-      debugLog.log('[LearningHub] canvas 模式检测到特殊视图，重置到 root:', currentPath.viewKind);
-      setCurrentPathWithoutHistory(null);
-    }
-  }, [mode, currentPath.viewKind, setCurrentPathWithoutHistory]); // 仅在组件挂载/mode 变化时检查，避免循环
+  const canDeleteInCurrentView = viewCapabilities.canDelete;
+  const canMoveInCurrentView = viewCapabilities.canMove;
+  const canAddToChatInCurrentView = viewCapabilities.canAddToChat;
+  const canDragDropInCurrentView = viewCapabilities.canDragDrop;
 
   // ★ 搜索防抖处理：延迟 300ms 触发 API 调用，避免快速输入导致频繁请求
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -229,6 +301,17 @@ export function LearningHubSidebar({
   // P1-20: 移动端搜索框展开状态
   const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
 
+  // 📱 移动端顶部工具栏「新建」菜单：受控 + Android 返回键关闭（契约第 4 条）。
+  // AppMenu 是自绘浮层（无 data-state="open"），androidBackCoordinator 的 Radix 兜底匹配不到。
+  const [mobileCreateMenuOpen, setMobileCreateMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!mobileCreateMenuOpen) return;
+    return registerBackHandler(() => {
+      setMobileCreateMenuOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [mobileCreateMenuOpen]);
+
   // ★ Canvas 模式多选模式状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
 
@@ -238,22 +321,21 @@ export function LearningHubSidebar({
   // 多选模式生效条件：canvas 模式（原有逻辑）或触屏普通模式
   const multiSelectActive = isMultiSelectMode && (mode === 'canvas' || isTouchPrimary);
 
-  // New folder/note dialog state
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createDialogType, setCreateDialogType] = useState<'folder' | 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap'>('folder');
-  const [createDialogName, setCreateDialogName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  // 新文件夹只作为前端草稿显示；用户提交非空名称后才写入后端。
+  const [pendingFolderDraft, setPendingFolderDraft] = useState<PendingFolderDraft | null>(null);
+  const pendingFolderDraftRef = useRef<PendingFolderDraft | null>(null);
+  const pendingFolderSequenceRef = useRef(0);
+  pendingFolderDraftRef.current = pendingFolderDraft;
   
   // Context menu state
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTarget>({ type: 'empty' });
 
-  // ★ 删除确认对话框状态（替代 window.confirm）
+  // ★ 删除确认对话框状态：仅永久删 / 清空 / 回收站批永久删（软删走 Undo toast）
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: 'resource' | 'permanent' | 'emptyTrash' | 'batch';
-    resource?: ResourceListItem;
+    type: 'permanent' | 'emptyTrash' | 'batch';
     permanentDeleteInfo?: { id: string; itemType: string };
     batchIds?: Set<string>;
     message: string;
@@ -292,6 +374,8 @@ export function LearningHubSidebar({
 
   // ★ P0-001 修复: 防止 UnifiedDragDropZone 同时调用 onPathsDropped 和 onFilesDropped 导致双重导入
   const pathsDropHandledRef = useRef(false);
+  const softDeleteUndoGenRef = useRef(0);
+  const softDeleteUndoInFlightRef = useRef(false);
 
   // ★ VFS 上下文注入 Hook（用于批量添加到对话）
   const { injectToChat, canInject, isInjecting } = useVfsContextInject();
@@ -302,6 +386,176 @@ export function LearningHubSidebar({
       isMountedRef.current = false;
     };
   }, []);
+
+  const navigateCanvasTo = useCallback((path: FinderPath) => {
+    setCanvasHistory((previous) => {
+      const next = [...previous.slice(0, canvasHistoryIndex + 1), path];
+      setCanvasHistoryIndex(next.length - 1);
+      return next;
+    });
+    setCanvasPath(path);
+    setCanvasSelectedIds(new Set());
+    setCanvasLastSelectedId(null);
+    setCanvasSearchQuery('');
+  }, [canvasHistoryIndex]);
+
+  const enterCanvasFolder = useCallback(async (folderId: string, _folderName?: string, _folderPath?: string) => {
+    const breadcrumbsResult = await folderApi.getBreadcrumbs(folderId);
+    const breadcrumbs = breadcrumbsResult.ok
+      ? breadcrumbsResult.value.map((crumb, index, all) => ({
+          id: crumb.id,
+          name: crumb.name,
+          dstuPath: `/${all.slice(0, index + 1).map((item) => item.name).join('/')}`,
+        }))
+      : [];
+    navigateCanvasTo({
+      viewKind: 'folder',
+      folderId,
+      breadcrumbs,
+      typeFilter: null,
+    });
+  }, [navigateCanvasTo]);
+
+  const goCanvasBack = useCallback(() => {
+    if (canvasHistoryIndex <= 0) return;
+    const index = canvasHistoryIndex - 1;
+    setCanvasHistoryIndex(index);
+    setCanvasPath(canvasHistory[index]);
+    setCanvasSelectedIds(new Set());
+    setCanvasLastSelectedId(null);
+  }, [canvasHistory, canvasHistoryIndex]);
+
+  const goCanvasForward = useCallback(() => {
+    if (canvasHistoryIndex >= canvasHistory.length - 1) return;
+    const index = canvasHistoryIndex + 1;
+    setCanvasHistoryIndex(index);
+    setCanvasPath(canvasHistory[index]);
+    setCanvasSelectedIds(new Set());
+    setCanvasLastSelectedId(null);
+  }, [canvasHistory, canvasHistoryIndex]);
+
+  const jumpCanvasToBreadcrumb = useCallback((index: number) => {
+    if (index === -1) {
+      navigateCanvasTo(createCanvasFinderPath());
+      return;
+    }
+    if (index < 0 || index >= canvasPath.breadcrumbs.length - 1) return;
+    const breadcrumbs = canvasPath.breadcrumbs.slice(0, index + 1);
+    navigateCanvasTo({
+      viewKind: 'folder',
+      folderId: breadcrumbs[index].id,
+      breadcrumbs,
+      typeFilter: null,
+    });
+  }, [canvasPath, navigateCanvasTo]);
+
+  const navigateCanvasQuickAccess = useCallback((type: QuickAccessType) => {
+    const target = getQuickAccessTarget(type);
+    navigateCanvasTo({
+      viewKind: target.viewKind,
+      breadcrumbs: [],
+      folderId: null,
+      typeFilter: target.typeFilter,
+    });
+  }, [navigateCanvasTo]);
+
+  const goCanvasUp = useCallback(() => {
+    if (canvasPath.breadcrumbs.length === 0) return;
+    const breadcrumbs = canvasPath.breadcrumbs.slice(0, -1);
+    const parent = breadcrumbs[breadcrumbs.length - 1] ?? null;
+    navigateCanvasTo({
+      viewKind: 'folder',
+      breadcrumbs,
+      folderId: parent ? parent.id : null,
+      typeFilter: null,
+    });
+  }, [canvasPath.breadcrumbs, navigateCanvasTo]);
+
+  const goBack = mode === 'canvas' ? goCanvasBack : storeGoBack;
+  const goForward = mode === 'canvas' ? goCanvasForward : storeGoForward;
+  const jumpToBreadcrumb = mode === 'canvas' ? jumpCanvasToBreadcrumb : storeJumpToBreadcrumb;
+  const enterFolder = mode === 'canvas' ? enterCanvasFolder : storeEnterFolder;
+  const navigateTo = mode === 'canvas' ? navigateCanvasTo : storeNavigateTo;
+  const quickAccessNavigate = mode === 'canvas' ? navigateCanvasQuickAccess : storeQuickAccessNavigate;
+  const goUp = mode === 'canvas' ? goCanvasUp : storeGoUp;
+
+  const select = useCallback((id: string, selectionMode: 'single' | 'toggle' | 'range') => {
+    if (mode !== 'canvas') {
+      storeSelect(id, selectionMode);
+      return;
+    }
+    setCanvasSelectedIds((previous) => {
+      if (selectionMode === 'single') {
+        setCanvasLastSelectedId(id);
+        return new Set([id]);
+      }
+      if (selectionMode === 'toggle') {
+        const next = new Set(previous);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setCanvasLastSelectedId(id);
+        return next;
+      }
+      const anchor = canvasLastSelectedId;
+      const anchorIndex = items.findIndex((item) => item.id === anchor);
+      const currentIndex = items.findIndex((item) => item.id === id);
+      if (anchorIndex === -1 || currentIndex === -1) {
+        setCanvasLastSelectedId(id);
+        return new Set([id]);
+      }
+      return new Set(items.slice(Math.min(anchorIndex, currentIndex), Math.max(anchorIndex, currentIndex) + 1).map((item) => item.id));
+    });
+  }, [canvasLastSelectedId, items, mode, storeSelect]);
+
+  const selectAll = useCallback(() => {
+    if (mode === 'canvas') setCanvasSelectedIds(new Set(items.map((item) => item.id)));
+    else storeSelectAll();
+  }, [items, mode, storeSelectAll]);
+  const clearSelection = useCallback(() => {
+    if (mode === 'canvas') {
+      setCanvasSelectedIds(new Set());
+      setCanvasLastSelectedId(null);
+    } else storeClearSelection();
+  }, [mode, storeClearSelection]);
+  const setSelectedIds = useCallback((ids: Set<string>) => {
+    if (mode === 'canvas') setCanvasSelectedIds(ids);
+    else storeSetSelectedIds(ids);
+  }, [mode, storeSetSelectedIds]);
+
+  const refreshCanvas = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    const requestId = ++canvasRequestIdRef.current;
+    const pathSnapshot = canvasPath;
+    const querySnapshot = canvasSearchQuery.trim();
+    setCanvasIsLoading(true);
+    setCanvasError(null);
+    const result = await queryItemsForPath(pathSnapshot);
+    if (!isMountedRef.current || requestId !== canvasRequestIdRef.current) return;
+    if (result.ok) {
+      const nextItems = querySnapshot
+        ? result.value.filter((item) => matchesLiveName(item, querySnapshot))
+        : result.value;
+      setCanvasItems(nextItems);
+      setCanvasSelectedIds((previous) => {
+        const pruned = pruneSelectionAgainstItems(
+          previous,
+          nextItems,
+          canvasLastSelectedId,
+          { preserveLastSelectedIfWasSelected: true },
+        );
+        setCanvasLastSelectedId(pruned.lastSelectedId);
+        return pruned.selectedIds;
+      });
+    } else if ('error' in result) {
+      setCanvasError(result.error.message);
+    }
+    setCanvasIsLoading(false);
+  }, [canvasLastSelectedId, canvasPath, canvasSearchQuery, queryItemsForPath]);
+
+  useEffect(() => {
+    if (mode !== 'canvas' || sessionActive === false) return;
+    void refreshCanvas();
+  }, [mode, canvasPath, canvasSearchQuery, refreshCanvas, sessionActive]);
 
   // ★ 2025-12-31: 移除组件挂载时的 reset() 调用
   // 原因: finderStore 使用 persist 中间件保存导航状态到 localStorage
@@ -320,7 +574,13 @@ export function LearningHubSidebar({
 
   // Load items when path changes
   // ★ 使用 debouncedSearchQuery 触发搜索，避免快速输入导致频繁 API 调用
+  // ★ LH-HOST：sessionActive===false 时跳过（非活跃宿主不抢刷新）
+  // ★ 2026-07-21：同路径因窗口焦点恢复（sessionActive false→true）时走静默刷新；
+  //   store 侧若列表等价会跳过 items 写入，避免关闭预览后整表闪烁重绘。
+  const lastLoadSignatureRef = useRef<string | null>(null);
   useEffect(() => {
+    if (mode === 'canvas' || sessionActive === false) return;
+
     let isCancelled = false;
 
     const loadData = async () => {
@@ -328,12 +588,26 @@ export function LearningHubSidebar({
         return;
       }
 
+      const signature = [
+        currentPath.viewKind,
+        currentPath.folderId ?? '',
+        currentPath.typeFilter ?? '',
+        debouncedSearchQuery,
+      ].join('\0');
+      const silent = lastLoadSignatureRef.current === signature;
+
       const start = Date.now();
-      pageLifecycleTracker.log('learning-hub-sidebar', 'LearningHubSidebar', 'data_load', `path: ${currentPathDisplay}`);
+      pageLifecycleTracker.log(
+        'learning-hub-sidebar',
+        'LearningHubSidebar',
+        'data_load',
+        `path: ${currentPathDisplay}${silent ? ' (silent)' : ''}`,
+      );
 
       try {
-        await finderRefresh();
+        await finderRefresh(silent ? { silent: true } : undefined);
         if (!isCancelled && isMountedRef.current) {
+          lastLoadSignatureRef.current = signature;
           pageLifecycleTracker.log(
             'learning-hub-sidebar',
             'LearningHubSidebar',
@@ -353,7 +627,7 @@ export function LearningHubSidebar({
     return () => {
       isCancelled = true;
     };
-  }, [currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh]);
+  }, [mode, sessionActive, currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh]);
 
   // Handle open item
   const handleOpen = (item: DstuNode) => {
@@ -405,20 +679,29 @@ export function LearningHubSidebar({
 
   const handleRefresh = useCallback(async () => {
     if (!isMountedRef.current) return;
-    await finderRefresh();
-  }, [finderRefresh]);
+    if (mode === 'canvas') await refreshCanvas();
+    else await finderRefresh();
+  }, [finderRefresh, mode, refreshCanvas]);
 
   // ★ 2026-06-12（审阅问题 FE-S1）：文件变更事件触发的后台刷新使用静默模式，
   // 保留当前列表展示直至新数据到达（stale-while-revalidate），不打断浏览。
   const handleSilentRefresh = useCallback(async () => {
     if (!isMountedRef.current) return;
-    await finderRefresh({ silent: true });
-  }, [finderRefresh]);
+    if (mode === 'canvas') await refreshCanvas();
+    else await finderRefresh({ silent: true });
+  }, [finderRefresh, mode, refreshCanvas]);
 
   // ★ 监听 DSTU 资源变化，自动刷新列表（带防抖，避免批量操作时频繁刷新）
   const watchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (sessionActive === false) {
+      if (watchDebounceRef.current) {
+        clearTimeout(watchDebounceRef.current);
+        watchDebounceRef.current = null;
+      }
+      return;
+    }
     if (currentPath.viewKind === 'indexStatus' || currentPath.viewKind === 'memory' || currentPath.viewKind === 'desktop') {
       return;
     }
@@ -438,7 +721,19 @@ export function LearningHubSidebar({
         }
         watchDebounceRef.current = setTimeout(() => {
           watchDebounceRef.current = null;
-          handleSilentRefresh();
+          // R2-04：内联重命名进行中延迟 silent refresh（非永久跳过），避免丢 agent 变更
+          const trySilentRefresh = () => {
+            // canvas 宿主有独立列表；勿被全局 fullscreen 的 inlineEdit 卡住刷新
+            if (mode !== 'canvas' && useFinderStore.getState().inlineEdit.editingId) {
+              watchDebounceRef.current = setTimeout(() => {
+                watchDebounceRef.current = null;
+                trySilentRefresh();
+              }, 400);
+              return;
+            }
+            handleSilentRefresh();
+          };
+          trySilentRefresh();
         }, 300);
       }
     });
@@ -450,41 +745,49 @@ export function LearningHubSidebar({
         watchDebounceRef.current = null;
       }
     };
-  }, [currentPath.viewKind, handleSilentRefresh]);
+  }, [sessionActive, currentPath.viewKind, handleSilentRefresh, mode]);
 
-  // Open create dialog
   const ensureCreatableView = useCallback(() => {
     if (canCreateInCurrentView) {
       return true;
     }
-    showGlobalNotification('warning', t('finder.create.notAllowedHere', '当前视图不支持新建资源'));
+    showGlobalNotification('warning', t('finder.create.notAllowedHere'));
     return false;
   }, [canCreateInCurrentView, t]);
 
-  const handleNewFolder = () => {
+  const handleNewFolder = useCallback(() => {
     if (!ensureCreatableView()) return;
-    setCreateDialogType('folder');
-    setCreateDialogName('');
-    setCreateDialogOpen(true);
-  };
+    const beginDraft = () => {
+      if (!isMountedRef.current) return;
+      cancelInlineEdit();
+      clearSelection();
+      const now = Date.now();
+      const pendingId = `${PENDING_FOLDER_ID_PREFIX}${++pendingFolderSequenceRef.current}`;
+      const draft: PendingFolderDraft = {
+        node: {
+          id: pendingId,
+          sourceId: pendingId,
+          path: '',
+          name: '',
+          type: 'folder',
+          createdAt: now,
+          updatedAt: now,
+          childCount: 0,
+        },
+        parentFolderId: currentCreatableFolderId,
+      };
+      pendingFolderDraftRef.current = draft;
+      setPendingFolderDraft(draft);
+      startInlineEdit(pendingId, 'folder', '');
+    };
 
-  const handleQuickCreateFolder = useCallback(async () => {
-    if (!ensureCreatableView()) return;
-    const result = await folderApi.createFolder(
-      t('finder.create.defaultFolderName', '新建文件夹'),
-      currentCreatableFolderId ?? undefined
-    );
-
-    if (!isMountedRef.current) return;
-
-    if (result.ok) {
-      showGlobalNotification('success', t('finder.create.folderSuccess', '文件夹已创建'));
-      handleRefresh();
-      return;
+    // 连续新建时，先让旧输入框的 blur 完成提交/取消，再开始下一份草稿。
+    if (pendingFolderDraftRef.current) {
+      requestAnimationFrame(beginDraft);
+    } else {
+      beginDraft();
     }
-
-    showGlobalNotification('error', result.error.toUserMessage());
-  }, [currentCreatableFolderId, ensureCreatableView, handleRefresh, t]);
+  }, [cancelInlineEdit, clearSelection, currentCreatableFolderId, ensureCreatableView, startInlineEdit]);
 
   const handleNewNote = async () => {
     if (!ensureCreatableView()) return;
@@ -498,7 +801,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.noteSuccess', '笔记已创建'));
+      showGlobalNotification('success', t('finder.create.noteSuccess'));
       handleRefresh();
       // 打开右侧应用面板
       if (onOpenApp) {
@@ -562,7 +865,7 @@ export function LearningHubSidebar({
             fileName: file.name,
             result: err(new VfsError(
               VfsErrorCode.UNKNOWN,
-              error instanceof Error ? error.message : t('finder.markdownImport.failed', 'Markdown 导入失败'),
+              error instanceof Error ? error.message : t('finder.markdownImport.failed'),
             )),
           };
         }
@@ -595,16 +898,16 @@ export function LearningHubSidebar({
   ) => {
     const failedFileSummary = summarizeFailedMarkdownFiles(failedFiles);
     const failedFilesText = failedFileSummary
-      ? t('finder.markdownImport.failedFiles', '失败文件：{{names}}', { names: failedFileSummary })
+      ? t('finder.markdownImport.failedFiles', { names: failedFileSummary })
       : null;
 
     if (importedCount > 0 && failedCount === 0) {
-      showGlobalNotification('success', t('finder.markdownImport.success', '已导入 {{count}} 个 Markdown 笔记', { count: importedCount }));
+      showGlobalNotification('success', t('finder.markdownImport.success', { count: importedCount }));
       return;
     }
 
     if (importedCount > 0) {
-      const baseMessage = t('finder.markdownImport.partial', '成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败', {
+      const baseMessage = t('finder.markdownImport.partial', {
         success: importedCount,
         failed: failedCount,
       });
@@ -612,7 +915,7 @@ export function LearningHubSidebar({
       return;
     }
 
-    const baseError = firstError || t('finder.markdownImport.failed', 'Markdown 导入失败');
+    const baseError = firstError || t('finder.markdownImport.failed');
     showGlobalNotification('error', failedFilesText ? `${baseError}；${failedFilesText}` : baseError);
   }, [t]);
 
@@ -630,10 +933,10 @@ export function LearningHubSidebar({
       const selected = await dialogOpen({
         multiple: true,
         filters: [{
-          name: t('finder.markdownImport.filterName', 'Markdown 文件'),
+          name: t('finder.markdownImport.filterName'),
           extensions: ['md', 'markdown'],
         }],
-        title: t('finder.markdownImport.selectFiles', '选择 Markdown 文件'),
+        title: t('finder.markdownImport.selectFiles'),
       });
 
       if (!selected || (Array.isArray(selected) && selected.length === 0)) {
@@ -652,7 +955,7 @@ export function LearningHubSidebar({
 
       notifyMarkdownImportResult(importedNodes.length, failedCount, failedFiles, firstError);
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : t('finder.markdownImport.failed', 'Markdown 导入失败'));
+      showGlobalNotification('error', error instanceof Error ? error.message : t('finder.markdownImport.failed'));
     }
   }, [currentCreatableFolderId, ensureCreatableView, handleRefresh, importMarkdownPathNotes, notifyMarkdownImportResult, openImportedMarkdownNote, t]);
 
@@ -663,7 +966,7 @@ export function LearningHubSidebar({
         const config = await getMemoryConfig();
         if (config.memoryRootFolderId) {
           // 记忆根文件夹已配置，直接导航到该文件夹
-          enterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || '记忆');
+          enterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || t('memory.defaultRootTitle'));
           return;
         }
       } catch (e) {
@@ -672,7 +975,7 @@ export function LearningHubSidebar({
       // 未配置根文件夹或获取失败，回退到 MemoryView（用于引导设置）
     }
     quickAccessNavigate(type);
-  }, [enterFolder, quickAccessNavigate]);
+  }, [enterFolder, quickAccessNavigate, t]);
 
   const focusSearchInput = useCallback(() => {
     setQuickAccessCollapsed(false);
@@ -680,7 +983,7 @@ export function LearningHubSidebar({
       setMobileSearchExpanded(true);
     }
     window.setTimeout(() => {
-      const input = (quickAccessPortalTarget ?? containerRef.current)?.querySelector<HTMLInputElement>('input[type="text"]');
+      const input = (quickAccessPortalTarget ?? containerRef.current)?.querySelector<HTMLInputElement>('input[type="search"]');
       if (input) {
         input.focus();
         input.select();
@@ -691,13 +994,13 @@ export function LearningHubSidebar({
   useCommandEvents(
     {
       'learningHub:create-folder': () => {
-        void handleQuickCreateFolder();
+        handleNewFolder();
       },
       'learningHub:focus-search': () => {
         focusSearchInput();
       },
     },
-    isLearningHubViewActive
+    commandEventsEnabled,
   );
 
   const handleNewExam = async () => {
@@ -712,7 +1015,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.examSuccess', '题目集识别已创建'));
+      showGlobalNotification('success', t('finder.create.examSuccess'));
       handleRefresh();
       // 打开右侧应用面板
       if (onOpenApp) {
@@ -735,8 +1038,8 @@ export function LearningHubSidebar({
         multiple: true,
         filters: [
           {
-            name: t('textbook.allDocuments', '所有文档'),
-            // 注：doc（旧版 Word）不支持，无纯 Rust 解析库
+            name: t('textbook.allDocuments'),
+      // 注：doc（旧版办公文档格式）不支持，无纯 Rust 解析库
             extensions: [
               'pdf', 'docx', 'txt', 'md', 'html', 'htm',
               'xlsx', 'xls', 'xlsb', 'ods',
@@ -745,31 +1048,31 @@ export function LearningHubSidebar({
             ],
           },
           {
-            name: t('textbook.pdfDocuments', 'PDF 文档'),
+            name: t('textbook.pdfDocuments'),
             extensions: ['pdf'],
           },
           {
-            name: t('textbook.wordDocuments', 'Word 文档'),
+            name: t('textbook.wordDocuments'),
             extensions: ['docx'],
           },
           {
-            name: t('textbook.excelFiles', 'Excel/CSV 表格'),
+            name: t('textbook.excelFiles'),
             extensions: ['xlsx', 'xls', 'xlsb', 'ods', 'csv'],
           },
           {
-            name: t('textbook.textFiles', '文本文件'),
+            name: t('textbook.textFiles'),
             extensions: ['txt', 'md', 'html', 'htm'],
           },
           {
-            name: t('textbook.presentationFiles', '演示文稿/电子书'),
+            name: t('textbook.presentationFiles'),
             extensions: ['pptx', 'epub', 'rtf'],
           },
           {
-            name: t('textbook.dataFiles', '数据文件'),
+            name: t('textbook.dataFiles'),
             extensions: ['json', 'xml'],
           },
         ],
-        title: t('textbook.selectFiles', '选择学习资料文件'),
+        title: t('textbook.selectFiles'),
       });
 
       if (!selected || (Array.isArray(selected) && selected.length === 0)) {
@@ -845,7 +1148,7 @@ export function LearningHubSidebar({
         setImportProgress(prev => ({
           ...prev,
           stage: 'error',
-          error: prev.error || t('textbook.importEmpty', '没有成功导入任何教材'),
+          error: prev.error || t('textbook.importEmpty'),
         }));
       } else if (!result.ok) {
         setImportProgress(prev => ({
@@ -861,7 +1164,7 @@ export function LearningHubSidebar({
       setImportProgress(prev => ({
         ...prev,
         stage: 'error',
-        error: t('textbook.importError', '导入教材失败'),
+        error: t('textbook.importError'),
       }));
     }
   };
@@ -878,7 +1181,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.translationSuccess', '翻译已创建'));
+      showGlobalNotification('success', t('finder.create.translationSuccess'));
       handleRefresh();
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'translation'));
@@ -900,7 +1203,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.essaySuccess', '作文已创建'));
+      showGlobalNotification('success', t('finder.create.essaySuccess'));
       handleRefresh();
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'essay'));
@@ -922,7 +1225,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.mindmapSuccess', '知识导图已创建'));
+      showGlobalNotification('success', t('finder.create.mindmapSuccess'));
       handleRefresh();
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'mindmap'));
@@ -940,7 +1243,7 @@ export function LearningHubSidebar({
     if (paths.length === 0) return;
     // 回收站/特殊视图不允许拖入
     if (isDragDropBlockedView(currentPath)) {
-      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere', '当前视图不支持拖入文件'));
+      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere'));
       return;
     }
     // 统一导入主链路：本次拖拽已走路径分支，后续 files 回调直接跳过。
@@ -956,9 +1259,20 @@ export function LearningHubSidebar({
     const imagePaths: string[] = [];
     const otherPaths: string[] = [];
 
+    const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
+      flashcards: [],
+      mindmap: [],
+    };
+
     for (const p of paths) {
       const name = extractFileName(p);
       const ext = getFileExtension(name);
+      const guidance = MODULE_GUIDANCE_EXTENSIONS[ext];
+      if (guidance) {
+        // ★ P3 引导：apkg/xmind 等不进资源库，提示到对应模块导入
+        guidanceNames[guidance].push(name);
+        continue;
+      }
       if (DOCUMENT_EXTENSIONS.has(ext)) {
         docPaths.push(p);
       } else if (IMAGE_EXTENSIONS.has(ext)) {
@@ -966,6 +1280,20 @@ export function LearningHubSidebar({
       } else {
         otherPaths.push(p);
       }
+    }
+
+    if (guidanceNames.flashcards.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceFlashcards', {
+        names: guidanceNames.flashcards.join('、'),
+      }));
+    }
+    if (guidanceNames.mindmap.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceMindmap', {
+        names: guidanceNames.mindmap.join('、'),
+      }));
+    }
+    if (docPaths.length === 0 && imagePaths.length === 0 && otherPaths.length === 0) {
+      return;
     }
 
     debugLog.log('[LearningHub] 文件分类:', {
@@ -985,6 +1313,8 @@ export function LearningHubSidebar({
     let totalFailed = 0;
     let unlisten: UnlistenFn | null = null;
     let firstImportedNode: DstuNode | null = null;
+    // ★ 2026-07-20：失败文件明细（文件名 + 具体原因），toast 不再只报笼统"导入失败"
+    const failedDetails: { name: string; reason?: string }[] = [];
 
     try {
       const dropTargetFolderId = currentCreatableFolderId;
@@ -1068,7 +1398,9 @@ export function LearningHubSidebar({
               try {
                 const url = convertFileSrc(filePath);
                 const res = await fetch(url);
-                if (!res.ok) return { ok: false as const, name };
+                if (!res.ok) {
+                  return { ok: false as const, name, reason: t('finder.dragDrop.readFileFailed') };
+                }
 
                 const blob = await res.blob();
                 const file = new File([blob], name, {
@@ -1080,10 +1412,18 @@ export function LearningHubSidebar({
                   isImage ? 'image' : 'file',
                   currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
                 );
-                return { ok: result.ok, name };
+                if (!result.ok) {
+                  // ★ 携带后端结构化拒绝原因（如"不支持的文件类型 .xyz"）
+                  return { ok: false as const, name, reason: result.error.toUserMessage() };
+                }
+                return { ok: true as const, name };
               } catch (e) {
                 debugLog.error('[LearningHub] 附件导入失败:', name, e);
-                return { ok: false as const, name };
+                return {
+                  ok: false as const,
+                  name,
+                  reason: e instanceof Error ? e.message : undefined,
+                };
               } finally {
                 if (isMountedRef.current) {
                   setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
@@ -1098,25 +1438,38 @@ export function LearningHubSidebar({
 
         for (const r of attachResults) {
           if (r.ok) totalSuccess++;
-          else totalFailed++;
+          else {
+            totalFailed++;
+            failedDetails.push({ name: r.name, reason: r.reason });
+          }
         }
       }
 
-      // 3. 显示结果通知
+      // 3. 显示结果通知（失败时附具体文件与原因，最多 3 条）
+      const failedSummary = failedDetails.length > 0
+        ? t('finder.dragDrop.importFailedFiles', {
+            names: failedDetails
+              .slice(0, 3)
+              .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
+              .join('；'),
+          })
+        : undefined;
       if (totalSuccess > 0 && totalFailed === 0) {
         showGlobalNotification('success',
-          t('finder.dragDrop.importSuccess', '已导入 {{count}} 个文件', { count: totalSuccess })
+          t('finder.dragDrop.importSuccess', { count: totalSuccess })
         );
       } else if (totalSuccess > 0 && totalFailed > 0) {
         showGlobalNotification('warning',
-          t('finder.dragDrop.importPartial', '导入 {{success}} 个成功，{{failed}} 个失败', {
+          t('finder.dragDrop.importPartial', {
             success: totalSuccess,
             failed: totalFailed,
-          })
+          }),
+          failedSummary
         );
       } else if (totalFailed > 0) {
         showGlobalNotification('error',
-          t('finder.dragDrop.importFailed', '文件导入失败')
+          t('finder.dragDrop.importFailed'),
+          failedSummary
         );
       }
 
@@ -1136,7 +1489,7 @@ export function LearningHubSidebar({
       debugLog.error('[LearningHub] 拖拽导入异常:', error);
       setImportProgress(prev => ({ ...prev, isImporting: false }));
       setAttachImportProgress(null);
-      showGlobalNotification('error', t('finder.dragDrop.importFailed', '文件导入失败'));
+      showGlobalNotification('error', t('finder.dragDrop.importFailed'));
     }
   }, [currentCreatableFolderId, currentPath, currentQuickAccessType, importMarkdownPathNotes, importProgress.isImporting, openImportedMarkdownNote, t, handleRefresh, onOpenApp]);
 
@@ -1150,15 +1503,40 @@ export function LearningHubSidebar({
       return;
     }
     if (isDragDropBlockedView(currentPath)) {
-      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere', '当前视图不支持拖入文件'));
+      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere'));
       return;
     }
 
     debugLog.log('[LearningHub] 浏览器拖拽导入:', files.length, '个文件');
 
+    // ★ P3 引导：apkg/xmind 等不进资源库，提示到对应模块导入
+    const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
+      flashcards: [],
+      mindmap: [],
+    };
+    const importableFiles = files.filter((file) => {
+      const guidance = MODULE_GUIDANCE_EXTENSIONS[getFileExtension(file.name)];
+      if (guidance) {
+        guidanceNames[guidance].push(file.name);
+        return false;
+      }
+      return true;
+    });
+    if (guidanceNames.flashcards.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceFlashcards', {
+        names: guidanceNames.flashcards.join('、'),
+      }));
+    }
+    if (guidanceNames.mindmap.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceMindmap', {
+        names: guidanceNames.mindmap.join('、'),
+      }));
+    }
+    if (importableFiles.length === 0) return;
+
     const shouldImportMarkdownAsNotes = currentQuickAccessType === 'notes';
     const { markdownItems: markdownFiles, otherItems: attachmentFiles } = partitionMarkdownNoteImports(
-      files,
+      importableFiles,
       (file) => file.name,
       shouldImportMarkdownAsNotes,
     );
@@ -1196,9 +1574,16 @@ export function LearningHubSidebar({
               isImage ? 'image' : 'file',
               currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
             );
-            return result.ok;
-          } catch {
-            return false;
+            if (!result.ok) {
+              return { ok: false as const, name: file.name, reason: result.error.toUserMessage() };
+            }
+            return { ok: true as const, name: file.name };
+          } catch (e) {
+            return {
+              ok: false as const,
+              name: file.name,
+              reason: e instanceof Error ? e.message : undefined,
+            };
           } finally {
             if (isMountedRef.current) {
               setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
@@ -1211,24 +1596,38 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
     setAttachImportProgress(null);
 
-    for (const ok of results) {
-      if (ok) totalSuccess++;
-      else totalFailed++;
+    const failedDetails: { name: string; reason?: string }[] = [];
+    for (const r of results) {
+      if (r.ok) totalSuccess++;
+      else {
+        totalFailed++;
+        failedDetails.push({ name: r.name, reason: r.reason });
+      }
     }
 
+    // ★ 失败时附具体文件与原因（最多 3 条），不再只报笼统"导入失败"
+    const failedSummary = failedDetails.length > 0
+      ? t('finder.dragDrop.importFailedFiles', {
+          names: failedDetails
+            .slice(0, 3)
+            .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
+            .join('；'),
+        })
+      : undefined;
     if (totalSuccess > 0 && totalFailed === 0) {
       showGlobalNotification('success',
-        t('finder.dragDrop.importSuccess', '已导入 {{count}} 个文件', { count: totalSuccess })
+        t('finder.dragDrop.importSuccess', { count: totalSuccess })
       );
     } else if (totalSuccess > 0) {
       showGlobalNotification('warning',
-        t('finder.dragDrop.importPartial', '导入 {{success}} 个成功，{{failed}} 个失败', {
+        t('finder.dragDrop.importPartial', {
           success: totalSuccess,
           failed: totalFailed,
-        })
+        }),
+        failedSummary
       );
-    } else {
-      showGlobalNotification('error', t('finder.dragDrop.importFailed', '文件导入失败'));
+    } else if (totalFailed > 0) {
+      showGlobalNotification('error', t('finder.dragDrop.importFailed'), failedSummary);
     }
 
     if (totalSuccess > 0) {
@@ -1240,37 +1639,11 @@ export function LearningHubSidebar({
   }, [currentCreatableFolderId, currentPath, currentQuickAccessType, handleRefresh, importMarkdownFileObjects, openImportedMarkdownNote, t]);
 
   // 是否允许拖拽导入（排除回收站、特殊视图等）
-  const isDragDropEnabled = mode !== 'canvas' && !isDragDropBlockedView(currentPath);
-
-  // Create folder (note creation moved to handleNewNote)
-  const handleCreate = async () => {
-    if (!ensureCreatableView()) return;
-    if (!createDialogName.trim()) return;
-
-    setIsCreating(true);
-    // ★ 2025-12-13: 对话框现在只用于创建文件夹，笔记创建使用 createEmpty
-    const result = await folderApi.createFolder(
-      createDialogName.trim(),
-      currentCreatableFolderId ?? undefined
-    );
-
-    // ★ MEDIUM-005: 检查组件是否已卸载
-    if (!isMountedRef.current) return;
-
-    setIsCreating(false);
-
-    if (result.ok) {
-      showGlobalNotification('success', t('finder.create.folderSuccess'));
-      setCreateDialogOpen(false);
-      handleRefresh();
-    } else {
-      reportError(result.error, 'create folder');
-      showGlobalNotification('error', result.error.toUserMessage());
-    }
-  };
+  const isDragDropEnabled = mode !== 'canvas' && canDragDropInCurrentView;
 
   // Context menu handlers
   const handleContextMenu = (e: React.MouseEvent, item: DstuNode) => {
+    if (isPendingFolderId(item.id)) return;
     e.preventDefault();
     e.stopPropagation(); // 阻止冒泡到容器，避免触发空白区域菜单
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
@@ -1329,78 +1702,117 @@ export function LearningHubSidebar({
     }
   }, [items, enterFolder]);
 
-  // 右键菜单 - 删除文件夹（软删除到回收站，无需确认）
+  // ★ LH-UNDO：软删成功 toast + Undo → trashApi.restoreItem
+  const showSoftDeleteUndoToast = useCallback((
+    targets: SoftDeleteTarget[],
+    opts?: { refCount?: number }
+  ) => {
+    if (targets.length === 0) return;
+    const generation = ++softDeleteUndoGenRef.current;
+
+    const message = opts?.refCount && opts.refCount > 0
+      ? t('finder.movedToTrashWithRefs', { count: opts.refCount })
+      : targets.length === 1
+        ? t('finder.movedToTrash')
+        : t('finder.batchMovedToTrash', { count: targets.length });
+
+    showGlobalNotification('success', message, undefined, {
+      action: {
+        label: t('finder.undo'),
+        onClick: () => {
+          void (async () => {
+            if (generation !== softDeleteUndoGenRef.current || softDeleteUndoInFlightRef.current) {
+              return;
+            }
+            softDeleteUndoInFlightRef.current = true;
+            const limit = pLimit(3);
+            try {
+              const results = await Promise.all(
+                targets.map((target) =>
+                  limit(async () => trashApi.restoreItem(target.id, target.type))
+                )
+              );
+              if (!isMountedRef.current) return;
+              const failed = results.filter((r) => !r.ok).length;
+              if (failed === 0) {
+                showGlobalNotification('success', t('finder.restored'));
+              } else if (failed < results.length) {
+                showGlobalNotification('warning', t('finder.trash.restoreSuccess'));
+              } else {
+                const firstErr = results.find((r) => !r.ok);
+                showGlobalNotification(
+                  'error',
+                  firstErr && !firstErr.ok
+                    ? firstErr.error.toUserMessage()
+                    : t('finder.trash.restoreSuccess')
+                );
+              }
+              await handleRefresh();
+            } finally {
+              softDeleteUndoInFlightRef.current = false;
+            }
+          })();
+        },
+      },
+    });
+  }, [t, handleRefresh]);
+
+  // 右键菜单 - 删除文件夹（软删除到回收站，无需确认 + Undo）
   const handleDeleteFolder = useCallback(async (folderId: string) => {
+    if (!canDeleteInCurrentView) return;
+    const folder = items.find((i) => i.id === folderId);
     const result = await folderApi.deleteFolder(folderId);
 
-    // ★ MEDIUM-005: 检查组件是否已卸载
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('contextMenu.deleteFolderSuccess', '文件夹已移至回收站'));
+      showSoftDeleteUndoToast([{
+        id: folderId,
+        type: 'folder',
+        name: folder?.name || folderId,
+      }]);
       handleRefresh();
     } else {
       reportError(result.error, 'delete folder');
       showGlobalNotification('error', result.error.toUserMessage());
     }
-  }, [t, handleRefresh]);
+  }, [canDeleteInCurrentView, items, handleRefresh, showSoftDeleteUndoToast]);
 
-  // 右键菜单 - 删除资源（软删除到回收站，显示引用计数）
+  // 右键菜单 - 删除资源（软删除，无确认；有引用时仅警告文案 + Undo）
   const handleDeleteResource = useCallback(async (resource: ResourceListItem) => {
-    // ★ MEDIUM-004: 删除前查询引用数量
+    if (!canDeleteInCurrentView) return;
+
     const { getResourceRefCountV2 } = await import('@/features/chat/context/vfsRefApi');
     const refCountResult = await getResourceRefCountV2(resource.id);
+    const refCount = refCountResult.ok ? refCountResult.value : 0;
 
-    let confirmMessage = t('contextMenu.confirmDelete', '确定要删除此资源吗？');
-    if (refCountResult.ok && refCountResult.value > 0) {
-      confirmMessage = t(
-        'contextMenu.confirmDeleteWithRefs',
-        `此资源被 ${refCountResult.value} 个对话引用，删除后这些对话将无法访问此资源。确定要删除吗？`,
-        { count: refCountResult.value }
-      );
-    }
-
-    // ★ 使用 AlertDialog 替代 window.confirm
-    setDeleteTarget({
-      type: 'resource',
-      resource,
-      message: confirmMessage,
-    });
-    setDeleteConfirmOpen(true);
-  }, [t]);
-
-  // ★ 执行删除资源操作（AlertDialog 确认后调用）
-  const executeDeleteResource = useCallback(async (resource: ResourceListItem) => {
-    // 优先使用 resource.path，如果没有则从 items 中查找
     let deletePath = resource.path;
     if (!deletePath) {
       const item = items.find(i => i.id === resource.id);
       deletePath = item?.path;
     }
-
     if (!deletePath) {
-      const resourceId = resource.id;
-      deletePath = `/${resourceId}`;
+      deletePath = `/${resource.id}`;
     }
-
     if (!deletePath) {
-      showGlobalNotification('error', t('contextMenu.deleteError', '无法删除：资源路径未找到'));
+      showGlobalNotification('error', t('contextMenu.deleteError'));
       return;
     }
 
     const deleteResult = await dstu.delete(deletePath);
-
-    // ★ MEDIUM-005: 检查组件是否已卸载
     if (!isMountedRef.current) return;
 
     if (deleteResult.ok) {
-      showGlobalNotification('success', t('contextMenu.deleteSuccess', '删除成功'));
+      showSoftDeleteUndoToast(
+        [{ id: resource.id, type: resource.type, name: resource.title }],
+        { refCount }
+      );
       handleRefresh();
     } else {
       reportError(deleteResult.error, 'delete resource');
       showGlobalNotification('error', deleteResult.error.toUserMessage());
     }
-  }, [items, t, handleRefresh]);
+  }, [canDeleteInCurrentView, items, t, handleRefresh, showSoftDeleteUndoToast]);
 
   // P1-14: 右键菜单 - 收藏/取消收藏资源
   const handleToggleFavorite = useCallback(async (resource: ResourceListItem) => {
@@ -1412,7 +1824,7 @@ export function LearningHubSidebar({
     }
 
     if (!resourcePath) {
-      showGlobalNotification('error', t('contextMenu.favoriteError', '无法收藏：资源路径未找到'));
+      showGlobalNotification('error', t('contextMenu.favoriteError'));
       return;
     }
 
@@ -1425,8 +1837,8 @@ export function LearningHubSidebar({
     if (result.ok) {
       showGlobalNotification('success',
         newFavoriteState
-          ? t('contextMenu.favoriteSuccess', '已添加到收藏')
-          : t('contextMenu.unfavoriteSuccess', '已取消收藏')
+          ? t('contextMenu.favoriteSuccess')
+          : t('contextMenu.unfavoriteSuccess')
       );
       handleRefresh();
     } else {
@@ -1436,85 +1848,14 @@ export function LearningHubSidebar({
   }, [items, t, handleRefresh]);
 
   // 右键菜单 - 导出资源
+  // ★ 2026-07-08：实现抽取到 utils/exportResource.ts，与命令面板「导出当前笔记」共用
   const handleExportResource = useCallback(async (resource: ResourceListItem) => {
-    try {
-      // 移动端不支持文件保存对话框
-      if (typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent)) {
-        showGlobalNotification('warning', t('contextMenu.exportFailed', '导出失败') + ': 移动端暂不支持导出');
-        return;
-      }
+    await exportResourceById(resource.id, t);
+  }, [t]);
 
-      // 1. 构建资源路径
-      const resourcePath = `/${resource.id}`;
-
-      // 2. 查询支持的导出格式
-      const formatsResult = await dstu.exportFormats(resourcePath);
-      if (!formatsResult.ok) {
-        showGlobalNotification('error', formatsResult.error.toUserMessage());
-        return;
-      }
-
-      const formats = formatsResult.value;
-      if (formats.length === 0) {
-        showGlobalNotification('warning', t('contextMenu.exportNoFormats', '该资源不支持导出'));
-        return;
-      }
-
-      // 3. 选择导出格式（优先 markdown，其次第一个可用格式）
-      const format = (formats.includes('markdown') ? 'markdown' : formats[0]) as 'markdown' | 'original' | 'zip';
-
-      // 4. 执行导出
-      showGlobalNotification('info', t('contextMenu.exporting', '正在导出...'));
-      const exportResult = await dstu.exportResource(resourcePath, format);
-      if (!exportResult.ok) {
-        showGlobalNotification('error', exportResult.error.toUserMessage());
-        return;
-      }
-
-      const payload = exportResult.value;
-
-      // 5. 根据 payloadType 保存文件
-      if (payload.payloadType === 'text' && payload.content) {
-        const result = await fileManager.saveTextFile({
-          content: payload.content,
-          title: t('contextMenu.exportSaveTitle', '导出资源'),
-          defaultFileName: payload.suggestedFilename,
-          filters: [{ name: payload.suggestedFilename.endsWith('.json') ? 'JSON' : 'Markdown', extensions: [payload.suggestedFilename.split('.').pop() || 'md'] }],
-        });
-        if (!result.canceled && result.path) {
-          showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
-        }
-      } else if (payload.payloadType === 'binary' && payload.dataBase64) {
-        // 解码 base64 并保存
-        const binaryStr = atob(payload.dataBase64);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-          bytes[i] = binaryStr.charCodeAt(i);
-        }
-        const ext = payload.suggestedFilename.split('.').pop() || 'bin';
-        const result = await fileManager.saveBinaryFile({
-          data: bytes,
-          title: t('contextMenu.exportSaveTitle', '导出资源'),
-          defaultFileName: payload.suggestedFilename,
-          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
-        });
-        if (!result.canceled && result.path) {
-          showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
-        }
-      } else if (payload.payloadType === 'file' && payload.tempPath) {
-        const result = await fileManager.saveFromSource({
-          sourcePath: payload.tempPath,
-          title: t('contextMenu.exportSaveTitle', '导出资源'),
-          defaultFileName: payload.suggestedFilename,
-        });
-        if (!result.canceled && result.path) {
-          showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
-        }
-      }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      showGlobalNotification('error', t('contextMenu.exportFailed', '导出失败') + ': ' + msg);
-    }
+  // 右键菜单 - 文件夹批量导出为 ZIP（后端遍历子资源打包）
+  const handleExportFolder = useCallback(async (folderId: string) => {
+    await exportResourceById(folderId, t);
   }, [t]);
 
   // 右键菜单 - 开始文件夹内联编辑
@@ -1533,7 +1874,36 @@ export function LearningHubSidebar({
   // 内联编辑确认处理
   const handleInlineEditConfirm = useCallback(async (itemId: string, newName: string) => {
     if (!newName.trim()) {
+      if (isPendingFolderId(itemId)) {
+        if (pendingFolderDraftRef.current?.node.id !== itemId) return;
+        pendingFolderDraftRef.current = null;
+        setPendingFolderDraft(null);
+      }
       cancelInlineEdit();
+      return;
+    }
+
+    if (isPendingFolderId(itemId)) {
+      const draft = pendingFolderDraftRef.current;
+      // 旧输入框的延迟 blur 不得提交或清除后来创建的新草稿。
+      if (!draft || draft.node.id !== itemId) return;
+
+      cancelInlineEdit();
+      pendingFolderDraftRef.current = null;
+      setPendingFolderDraft(null);
+      const result = await folderApi.createFolder(
+        newName.trim(),
+        draft.parentFolderId ?? undefined
+      );
+
+      if (!isMountedRef.current) return;
+      if (result.ok) {
+        showGlobalNotification('success', t('finder.create.folderSuccess'));
+        await handleRefresh();
+      } else {
+        reportError(result.error, 'create folder');
+        showGlobalNotification('error', result.error.toUserMessage());
+      }
       return;
     }
 
@@ -1564,7 +1934,7 @@ export function LearningHubSidebar({
       // 重命名资源 - 使用 DSTU rename API
       const resourcePath = item.path;
       if (!resourcePath) {
-        showGlobalNotification('error', t('contextMenu.renameError', '无法重命名：资源路径未找到'));
+        showGlobalNotification('error', t('contextMenu.renameError'));
         if (isMountedRef.current) {
           await handleRefresh();
         }
@@ -1577,7 +1947,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (renameResult.ok) {
-      showGlobalNotification('success', t('contextMenu.renameSuccess', '重命名成功'));
+      showGlobalNotification('success', t('contextMenu.renameSuccess'));
       await handleRefresh();
     } else {
       reportError(renameResult.error, 'rename');
@@ -1588,9 +1958,32 @@ export function LearningHubSidebar({
   }, [items, inlineEdit.editingType, t, handleRefresh, cancelInlineEdit]);
 
   // 内联编辑取消处理
-  const handleInlineEditCancel = useCallback(() => {
-    cancelInlineEdit();
+  const handleInlineEditCancel = useCallback((itemId: string) => {
+    if (isPendingFolderId(itemId)) {
+      if (pendingFolderDraftRef.current?.node.id !== itemId) return;
+      pendingFolderDraftRef.current = null;
+      setPendingFolderDraft(null);
+    }
+    if (useFinderStore.getState().inlineEdit.editingId === itemId) {
+      cancelInlineEdit();
+    }
   }, [cancelInlineEdit]);
+
+  useEffect(() => {
+    if (!pendingFolderDraft) return;
+    setPendingFolderDraft(null);
+    pendingFolderDraftRef.current = null;
+    if (isPendingFolderId(useFinderStore.getState().inlineEdit.editingId)) {
+      cancelInlineEdit();
+    }
+    // 路径变化后草稿不应跟随到另一个文件夹。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPathDisplay]);
+
+  const displayedItems = useMemo(
+    () => pendingFolderDraft ? [pendingFolderDraft.node, ...items] : items,
+    [items, pendingFolderDraft]
+  );
 
   // 拖拽移动单个项目
   const handleMoveItem = useCallback(async (itemId: string, targetFolderId: string | null) => {
@@ -1642,7 +2035,7 @@ export function LearningHubSidebar({
         if (!item) {
           const notFoundError = new VfsError(
             VfsErrorCode.NOT_FOUND,
-            t('error.itemNotFound', '项目未找到'),
+            t('error.itemNotFound'),
             true,
             { itemId }
           );
@@ -1700,8 +2093,124 @@ export function LearningHubSidebar({
     handleRefresh();
   }, [items, t, clearSelection, handleRefresh]);
 
+  // 拖拽时可放置的面包屑祖先（含根目录）——对齐访达「拖到路径栏」
+  const parentDropTargets = useMemo(() => {
+    if (!canDragDropInCurrentView || mode === 'canvas') return undefined;
+    if (effectivePath.viewKind !== 'folder') return undefined;
+    // 仅在子目录时显示（根目录无更上级）
+    if (!effectivePath.folderId && effectivePath.breadcrumbs.length === 0) return undefined;
+
+    const targets: Array<{ id: string | null; label: string }> = [
+      { id: null, label: t('learningHub:title') },
+    ];
+    // 不含当前目录自身（最后一个 breadcrumb）
+    const ancestors = effectivePath.breadcrumbs.slice(0, -1);
+    for (const crumb of ancestors) {
+      targets.push({ id: crumb.id, label: crumb.name });
+    }
+    return targets;
+  }, [canDragDropInCurrentView, mode, effectivePath.viewKind, effectivePath.folderId, effectivePath.breadcrumbs, t]);
+
+  // 拖拽快捷目标：收藏 / 回收站（拖拽时出现在列表顶栏）
+  const specialDropTargets = useMemo(() => {
+    if (!canDragDropInCurrentView || mode === 'canvas') return undefined;
+    return [
+      { id: 'favorites' as const, label: t('finder.quickAccess.favorites') },
+      { id: 'trash' as const, label: t('finder.quickAccess.trash') },
+    ];
+  }, [canDragDropInCurrentView, mode, t]);
+
+  const handleSpecialDrop = useCallback(async (targetId: 'favorites' | 'trash', itemIds: string[]) => {
+    if (itemIds.length === 0) return;
+
+    if (targetId === 'favorites') {
+      // 批量收藏：跳过文件夹，仅资源
+      const limit = pLimit(3);
+      let success = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      await Promise.all(itemIds.map((id) => limit(async () => {
+        const item = items.find(i => i.id === id);
+        if (!item || item.type === 'folder') {
+          skipped += 1;
+          return;
+        }
+        if (item.metadata?.isFavorite) {
+          skipped += 1;
+          return;
+        }
+        const resourcePath = item.path || `/${item.id}`;
+        const result = await dstu.setFavorite(resourcePath, true);
+        if (result.ok) success += 1;
+        else failed += 1;
+      })));
+
+      if (!isMountedRef.current) return;
+      if (success > 0) {
+        showGlobalNotification(
+          'success',
+          t('finder.dragDrop.favoriteSuccess', { count: success })
+        );
+        handleRefresh();
+        clearSelection();
+      } else if (failed > 0) {
+        showGlobalNotification('error', t('finder.dragDrop.favoriteFailed'));
+      } else if (skipped > 0) {
+        showGlobalNotification(
+          'info',
+          t('finder.dragDrop.favoriteSkipped')
+        );
+      }
+      return;
+    }
+
+    // trash: 软删除（拖入回收站直接执行 + Undo）
+    if (targetId === 'trash') {
+      if (!canDeleteInCurrentView) return;
+      setIsBatchProcessing(true);
+      try {
+        const limit = pLimit(3);
+        const succeededTargets: SoftDeleteTarget[] = [];
+        const results = await Promise.all(itemIds.map((id) => limit(async () => {
+          const item = items.find(i => i.id === id);
+          if (!item) return { ok: false as const };
+          if (item.type === 'folder') {
+            const result = await folderApi.deleteFolder(id);
+            if (result.ok) succeededTargets.push({ id, type: 'folder', name: item.name });
+            return { ok: result.ok };
+          }
+          const dstuPath = item.path || `/${item.id}`;
+          const result = await dstu.delete(dstuPath);
+          if (result.ok) succeededTargets.push({ id, type: item.type, name: item.name });
+          return { ok: result.ok };
+        })));
+
+        if (!isMountedRef.current) return;
+        const success = results.filter(r => r.ok).length;
+        const failed = results.length - success;
+        if (success > 0) {
+          showSoftDeleteUndoToast(succeededTargets);
+          if (failed > 0) {
+            showGlobalNotification(
+              'warning',
+              t('finder.batch.deletePartial', { succeeded: success, failed })
+            );
+          }
+          clearSelection();
+          handleRefresh();
+        } else {
+          showGlobalNotification('error', t('finder.batch.deleteFailed'));
+        }
+      } finally {
+        if (isMountedRef.current) setIsBatchProcessing(false);
+      }
+    }
+  }, [items, t, handleRefresh, clearSelection, canDeleteInCurrentView, showSoftDeleteUndoToast]);
+
   // 批量全选 - 使用 store 的 selectAll
   const handleSelectAll = useCallback(() => {
+
     selectAll();
   }, [selectAll]);
 
@@ -1710,34 +2219,7 @@ export function LearningHubSidebar({
     clearSelection();
   }, [clearSelection]);
 
-  // 批量删除（显示确认对话框）
-  // ★ Bug Fix: 回收站视图中走永久删除路径，而非软删除
-  const handleBatchDelete = useCallback(() => {
-    if (selectedIds.size === 0) return;
-
-    if (isTrashView) {
-      setDeleteTarget({
-        type: 'batch',
-        batchIds: new Set(selectedIds),
-        message: t('finder.trash.confirmBatchPermanentDelete', {
-          count: selectedIds.size,
-          defaultValue: `确定要永久删除选中的 ${selectedIds.size} 个项目吗？此操作不可撤销。`
-        }),
-      });
-    } else {
-      setDeleteTarget({
-        type: 'batch',
-        batchIds: new Set(selectedIds),
-        message: t('finder.batch.confirmDelete', {
-          count: selectedIds.size,
-          defaultValue: `确定要删除选中的 ${selectedIds.size} 个项目吗？删除后可在回收站恢复。`
-        }),
-      });
-    }
-    setDeleteConfirmOpen(true);
-  }, [selectedIds, t, isTrashView]);
-
-  // ★ 执行批量删除操作（AlertDialog 确认后调用）
+  // ★ 执行批量软删除（非 trash；带 Undo toast）
   const executeBatchDelete = useCallback(async (idsToDelete: Set<string>) => {
     setIsBatchProcessing(true);
 
@@ -1756,7 +2238,7 @@ export function LearningHubSidebar({
           missingResults.push({
             id,
             ok: false,
-            error: t('error.itemNotFound', '项目未找到'),
+            error: t('error.itemNotFound'),
           });
           continue;
         }
@@ -1829,16 +2311,25 @@ export function LearningHubSidebar({
       const succeeded = deleteResults.length - failedResults.length;
       const failed = failedResults.length;
       const failedIds = failedResults.map(r => r.id);
+      const succeededTargets: SoftDeleteTarget[] = deleteResults
+        .filter((r) => r.ok)
+        .map((r) => {
+          const item = items.find((i) => i.id === r.id);
+          return {
+            id: r.id,
+            type: item?.type === 'folder' ? 'folder' : (item?.type || 'note'),
+            name: item?.name || r.id,
+          };
+        });
 
       if (failed === 0) {
-        // 全部成功
-        showGlobalNotification('success', t('finder.batch.deleteSuccess', { count: idsToDelete.size }));
+        showSoftDeleteUndoToast(succeededTargets);
         clearSelection();
       } else if (succeeded > 0) {
-        // 部分成功 - 保留失败项的选择状态
+        showSoftDeleteUndoToast(succeededTargets);
         showGlobalNotification('warning',
           t('finder.batch.deletePartial', { succeeded, failed }) +
-          ' ' + t('finder.batch.failedItemsSelected', '失败的项目已保持选中状态，可重试')
+          ' ' + t('finder.batch.failedItemsSelected')
         );
 
         // ★ 只保留失败项的选择
@@ -1862,7 +2353,26 @@ export function LearningHubSidebar({
         setIsBatchProcessing(false);
       }
     }
-  }, [items, t, clearSelection, setSelectedIds, handleRefresh]);
+  }, [items, t, clearSelection, setSelectedIds, handleRefresh, showSoftDeleteUndoToast]);
+
+  // 批量删除：非 trash 直接软删；trash 仍 DsAlert 永久删
+  const handleBatchDelete = useCallback(() => {
+    if (selectedIds.size === 0 || !canDeleteInCurrentView) return;
+
+    if (isTrashView) {
+      setDeleteTarget({
+        type: 'batch',
+        batchIds: new Set(selectedIds),
+        message: t('finder.trash.confirmBatchPermanentDelete', {
+          count: selectedIds.size,
+        }),
+      });
+      setDeleteConfirmOpen(true);
+      return;
+    }
+
+    void executeBatchDelete(new Set(selectedIds));
+  }, [selectedIds, t, isTrashView, canDeleteInCurrentView, executeBatchDelete]);
 
   // ★ 2025-12-11: 回收站相关操作
   // 恢复项目
@@ -1873,7 +2383,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.trash.restoreSuccess', '已恢复'));
+      showGlobalNotification('success', t('finder.trash.restoreSuccessWithReindex'));
       handleRefresh();
     } else {
       reportError(result.error, 'restore item');
@@ -1887,7 +2397,7 @@ export function LearningHubSidebar({
     setDeleteTarget({
       type: 'permanent',
       permanentDeleteInfo: { id, itemType },
-      message: t('finder.trash.confirmPermanentDelete', '确定要永久删除此项目吗？此操作不可撤销。'),
+      message: t('finder.trash.confirmPermanentDelete'),
     });
     setDeleteConfirmOpen(true);
   }, [t]);
@@ -1900,7 +2410,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.trash.deleteSuccess', '已永久删除'));
+      showGlobalNotification('success', t('finder.trash.deleteSuccess'));
       handleRefresh();
     } else {
       reportError(result.error, 'permanent delete');
@@ -1913,7 +2423,7 @@ export function LearningHubSidebar({
     // ★ 使用 AlertDialog 替代 window.confirm
     setDeleteTarget({
       type: 'emptyTrash',
-      message: t('finder.trash.emptyConfirm', '确定要永久删除回收站中的所有项目吗？此操作不可撤销。'),
+      message: t('finder.trash.emptyConfirm'),
     });
     setDeleteConfirmOpen(true);
   }, [t]);
@@ -1926,7 +2436,8 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.trash.emptySuccess', '已清空回收站') + ` (${result.value})`);
+      softDeleteUndoGenRef.current += 1;
+      showGlobalNotification('success', t('finder.trash.emptySuccess') + ` (${result.value})`);
       handleRefresh();
     } else {
       reportError(result.error, 'empty trash');
@@ -1941,36 +2452,28 @@ export function LearningHubSidebar({
     setIsDeleting(true);
     try {
       switch (deleteTarget.type) {
-        case 'resource':
-          if (deleteTarget.resource) {
-            await executeDeleteResource(deleteTarget.resource);
-          }
-          break;
         case 'batch':
+          // 仅回收站批永久删走确认框
           if (deleteTarget.batchIds) {
-            if (isTrashView) {
-              const idsArray = Array.from(deleteTarget.batchIds);
-              let succeeded = 0;
-              let failed = 0;
-              for (const id of idsArray) {
-                const item = items.find(i => i.id === id);
-                if (!item) { failed++; continue; }
-                const result = await trashApi.permanentlyDelete(id, item.type);
-                if (result.ok) { succeeded++; } else { failed++; }
-              }
-              if (!isMountedRef.current) break;
-              if (failed === 0) {
-                showGlobalNotification('success', t('finder.trash.batchDeleteSuccess', { count: succeeded }));
-              } else if (succeeded > 0) {
-                showGlobalNotification('warning', t('finder.trash.batchDeletePartial', { succeeded, failed }));
-              } else {
-                showGlobalNotification('error', t('finder.trash.batchDeleteFailed'));
-              }
-              clearSelection();
-              handleRefresh();
-            } else {
-              await executeBatchDelete(deleteTarget.batchIds);
+            const idsArray = Array.from(deleteTarget.batchIds);
+            let succeeded = 0;
+            let failed = 0;
+            for (const id of idsArray) {
+              const item = items.find(i => i.id === id);
+              if (!item) { failed++; continue; }
+              const result = await trashApi.permanentlyDelete(id, item.type);
+              if (result.ok) { succeeded++; } else { failed++; }
             }
+            if (!isMountedRef.current) break;
+            if (failed === 0) {
+              showGlobalNotification('success', t('finder.trash.batchDeleteSuccess', { count: succeeded }));
+            } else if (succeeded > 0) {
+              showGlobalNotification('warning', t('finder.trash.batchDeletePartial', { succeeded, failed }));
+            } else {
+              showGlobalNotification('error', t('finder.trash.batchDeleteFailed'));
+            }
+            clearSelection();
+            handleRefresh();
           }
           break;
         case 'permanent':
@@ -1990,13 +2493,65 @@ export function LearningHubSidebar({
       setDeleteConfirmOpen(false);
       setDeleteTarget(null);
     }
-  }, [deleteTarget, executeDeleteResource, executeBatchDelete, executePermanentDelete, executeEmptyTrash, isTrashView, items, t, clearSelection, handleRefresh]);
+  }, [deleteTarget, executePermanentDelete, executeEmptyTrash, items, t, clearSelection, handleRefresh]);
+
+  // ★ 右键「引用到对话」→ injectToChat（对齐批量注入契约）
+  const handleReferenceToChat = useCallback(async (target: ContextMenuTarget) => {
+    if (!canInject()) {
+      showGlobalNotification('warning', t('finder.multiSelect.noChatSession'));
+      return;
+    }
+
+    const typeMap: Record<string, VfsResourceType> = {
+      note: 'note',
+      textbook: 'textbook',
+      exam: 'exam',
+      translation: 'translation',
+      essay: 'essay',
+      image: 'image',
+      file: 'file',
+      mindmap: 'mindmap',
+    };
+
+    let sourceId: string | null = null;
+    let sourceType: VfsResourceType | null = null;
+    let name = '';
+
+    if (target.type === 'resource') {
+      const resource = target.resource;
+      sourceType = typeMap[resource.type] ?? null;
+      sourceId = resource.id;
+      name = resource.title;
+    } else if (target.type === 'folderItem') {
+      const item = target.item;
+      sourceType = typeMap[item.itemType] ?? null;
+      sourceId = item.itemId || item.id;
+      name = item.itemId || item.id;
+    } else {
+      return;
+    }
+
+    if (!sourceId || !sourceType) {
+      showGlobalNotification('warning', t('error.unsupportedResourceType', { type: 'unknown' }));
+      return;
+    }
+
+    const result = await injectToChat({
+      sourceId,
+      sourceType,
+      name,
+      metadata: { title: name },
+    });
+    if (result.success && result.contextRef && onReferenceToChat) {
+      onReferenceToChat(result.contextRef);
+    }
+  }, [canInject, injectToChat, onReferenceToChat, t]);
 
   // ★ 批量添加到对话（将选中的文件引用发送到 Chat V2 附件区域）
   const handleBatchAddToChat = useCallback(async () => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || !canAddToChatInCurrentView) return;
     if (!canInject()) {
-      showGlobalNotification('warning', t('finder.multiSelect.noChatSession', '请先打开一个对话'));
+      showGlobalNotification('warning', t('finder.multiSelect.noChatSession'));
       return;
     }
 
@@ -2010,12 +2565,12 @@ export function LearningHubSidebar({
         limit(async () => {
           const item = items.find(i => i.id === id);
           if (!item) {
-            return { id, ok: false, error: t('error.itemNotFound', '项目未找到') };
+            return { id, ok: false, error: t('error.itemNotFound') };
           }
 
           // 文件夹不支持添加到对话
           if (item.type === 'folder') {
-            return { id, ok: false, error: t('error.folderCannotAddToChat', '文件夹不支持添加到对话') };
+            return { id, ok: false, error: t('error.folderCannotAddToChat') };
           }
 
           // 映射 DstuNodeType 到 VfsResourceType
@@ -2032,7 +2587,7 @@ export function LearningHubSidebar({
 
           const sourceType = typeMap[item.type];
           if (!sourceType) {
-            return { id, ok: false, error: t('error.unsupportedResourceType', '不支持的资源类型: {{type}}', { type: item.type }) };
+            return { id, ok: false, error: t('error.unsupportedResourceType', { type: item.type }) };
           }
 
           const result = await injectToChat({
@@ -2041,6 +2596,7 @@ export function LearningHubSidebar({
             name: item.name,
             metadata: { title: item.name },
             resourceHash: item.resourceHash,
+            openAttachmentPanel: false,
           });
 
           return { id, ok: result.success, error: result.error };
@@ -2053,39 +2609,44 @@ export function LearningHubSidebar({
       const succeeded = injectResults.length - failedResults.length;
       const failed = failedResults.length;
 
+      if (succeeded > 0) {
+        window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
+      }
+
       if (failed === 0) {
-        showGlobalNotification('success', t('finder.multiSelect.addToChatSuccess', '已添加 {{count}} 项到对话', { count: succeeded }));
+        showGlobalNotification('success', t('finder.multiSelect.addToChatSuccess', { count: succeeded }));
         clearSelection();
       } else if (succeeded > 0) {
         showGlobalNotification('warning',
-          t('finder.multiSelect.addToChatPartial', '成功添加 {{succeeded}} 项，{{failed}} 项失败', { succeeded, failed })
+          t('finder.multiSelect.addToChatPartial', { succeeded, failed })
         );
         // 保留失败项的选择状态
         const failedIds = failedResults.map(r => r.id);
         setSelectedIds(new Set(failedIds));
       } else {
-        showGlobalNotification('error', t('finder.multiSelect.addToChatFailed', '添加失败'));
+        showGlobalNotification('error', t('finder.multiSelect.addToChatFailed'));
       }
     } catch (err) {
       debugLog.error('[LearningHub] 批量添加到对话失败:', err);
-      showGlobalNotification('error', t('finder.multiSelect.addToChatFailed', '添加失败'));
+      showGlobalNotification('error', t('finder.multiSelect.addToChatFailed'));
     } finally {
       if (isMountedRef.current) {
         setIsBatchProcessing(false);
       }
     }
-  }, [selectedIds, items, canInject, injectToChat, t, clearSelection, setSelectedIds]);
+  }, [selectedIds, items, canInject, injectToChat, t, clearSelection, setSelectedIds, canAddToChatInCurrentView]);
 
   // 批量移动（打开移动对话框）
   const handleBatchMove = useCallback(() => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || !canMoveInCurrentView) return;
     setMoveTargetIds(null);
     setMoveDialogOpen(true);
-  }, [selectedIds]);
+  }, [selectedIds, canMoveInCurrentView]);
 
   // ★ 2026-06-12（审阅问题 FE-M4）：右键菜单"移动到…"
-  // 若右键项属于多选集合则移动整个集合（Finder 行为），否则只移动该项
+  // 若右键项属于多选集合则移动整个集合，否则只移动该项。
   const handleMoveTo = useCallback((target: ContextMenuTarget) => {
+    if (!canMoveInCurrentView) return;
     let targetId: string | null = null;
     if (target.type === 'folder') {
       targetId = target.folder.folder.id;
@@ -2102,7 +2663,7 @@ export function LearningHubSidebar({
       setMoveTargetIds(new Set([targetId]));
     }
     setMoveDialogOpen(true);
-  }, [selectedIds]);
+  }, [selectedIds, canMoveInCurrentView]);
 
   // 批量移动确认
   const handleBatchMoveConfirm = useCallback(async (targetFolderId: string | null) => {
@@ -2123,7 +2684,7 @@ export function LearningHubSidebar({
             return {
               id,
               ok: false,
-              error: t('error.itemNotFound', '项目未找到')
+              error: t('error.itemNotFound')
             };
           }
 
@@ -2187,7 +2748,7 @@ export function LearningHubSidebar({
         // 部分成功 - 保留失败项的选择状态
         showGlobalNotification('warning',
           t('finder.batch.movePartial', { succeeded, failed }) +
-          ' ' + t('finder.batch.failedItemsSelected', '失败的项目已保持选中状态，可重试')
+          ' ' + t('finder.batch.failedItemsSelected')
         );
 
         // ★ 只保留失败项的选择
@@ -2234,9 +2795,22 @@ export function LearningHubSidebar({
         e.preventDefault();
         handleSelectAll();
       }
+
+      // Cmd/Ctrl + ↑：返回上一级（访达）
+      if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') {
+        if (currentPath.viewKind === 'folder' && (currentPath.folderId || currentPath.breadcrumbs.length > 0)) {
+          e.preventDefault();
+          goUp();
+        }
+      }
       
-      // Delete/Backspace：删除选中项
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.size > 0) {
+      // Delete：删除选中项
+      // Backspace：仅 Cmd/Ctrl+Backspace 删除（避免与访达「上一级」心智及输入习惯冲突）
+      if (e.key === 'Delete' && selectedIds.size > 0 && canDeleteInCurrentView) {
+        e.preventDefault();
+        handleBatchDelete();
+      }
+      if (e.key === 'Backspace' && (e.metaKey || e.ctrlKey) && selectedIds.size > 0 && canDeleteInCurrentView) {
         e.preventDefault();
         handleBatchDelete();
       }
@@ -2250,10 +2824,10 @@ export function LearningHubSidebar({
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection]);
+  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs.length, goUp, canDeleteInCurrentView]);
 
-  const shouldRenderDesktopQuickAccess = !isSmallScreen && mode !== 'canvas';
-  const quickAccessNode = shouldRenderDesktopQuickAccess ? (
+  const shouldRenderQuickAccess = mode !== 'canvas' && (!isSmallScreen || Boolean(quickAccessPortalTarget));
+  const quickAccessNode = shouldRenderQuickAccess ? (
     <FinderQuickAccess
       collapsed={quickAccessPortalTarget ? false : effectiveQuickAccessCollapsed}
       activeType={currentQuickAccessType}
@@ -2261,7 +2835,9 @@ export function LearningHubSidebar({
       onToggleCollapse={quickAccessPortalTarget ? undefined : () => setQuickAccessCollapsed(!quickAccessCollapsed)}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
+      searchPlaceholder={searchPlaceholder}
       searchDisabled={!canSearchInCurrentView}
+      hideSearch={Boolean(quickAccessPortalTarget)}
       onNewFolder={handleNewFolder}
       onNewNote={handleNewNote}
       onImportMarkdownNote={() => {
@@ -2279,8 +2855,18 @@ export function LearningHubSidebar({
   ) : null;
 
   return (
-    <div ref={containerRef} className={cn("study-shell-sidebar-frame relative flex h-full", className)} tabIndex={-1}>
-      {/* 左侧：快速导航栏（可折叠，包含搜索和新建）- 移动端和 canvas 模式隐藏 */}
+    <div
+      ref={containerRef}
+      className={cn(
+        'relative flex h-full min-h-0 min-w-0 overflow-hidden',
+        isSmallScreen && mode === 'fullscreen'
+          ? 'bg-background'
+          : 'study-shell-sidebar-frame',
+        className,
+      )}
+      tabIndex={-1}
+    >
+      {/* 左侧快速导航；移动端由 LearningHubPage portal 到统一抽屉。 */}
       {quickAccessPortalTarget && quickAccessNode
         ? createPortal(quickAccessNode, quickAccessPortalTarget)
         : quickAccessNode}
@@ -2294,76 +2880,80 @@ export function LearningHubSidebar({
         acceptedFileTypes={[FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT]}
         maxFiles={20}
         maxFileSize={200 * 1024 * 1024}
-        customOverlayText={t('finder.dragDrop.overlayText', '拖放文件到此处导入')}
+        customOverlayText={t('finder.dragDrop.overlayText')}
         className="flex-1 flex flex-col min-w-0 min-h-0"
       >
         {/* P1-20: 移动端顶部工具栏（搜索 + 新建文件夹 + 新建笔记 + 清空回收站） */}
         {isSmallScreen && !hideToolbarAndNav && (
-          <div 
-            className="study-shell-toolbar study-shell-toolbar--floating flex items-center gap-1 px-2 pb-1.5 border-b backdrop-blur-lg shrink-0"
-            style={{ marginTop: 3, paddingTop: 9 }}
+          <div
+            className="flex shrink-0 items-center gap-1 border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)] px-2 py-1.5"
           >
             {mobileSearchExpanded ? (
               // 搜索框展开态
               <div className="flex-1 flex items-center gap-1">
                 <Input
-                  type="text"
-                  placeholder={t('finder.search.placeholder', '搜索...')}
+                  type="search"
+                  placeholder={searchPlaceholder}
+                  aria-label={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-9 text-sm flex-1"
+                  // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
+                  className="h-11 text-[16px] flex-1"
                   autoFocus
                   disabled={!canSearchInCurrentView}
                 />
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-10 p-0"
+                  className="h-11 w-11 p-0"
                   onClick={() => {
                     setMobileSearchExpanded(false);
                     setSearchQuery('');
                   }}
+                  aria-label={t('common:close')}
                 >
                   <X className="w-5 h-5" />
-                </NotionButton>
+                </DsButton>
               </div>
             ) : (
-              // 工具栏按钮（N-5: 移动端触控目标 ≥40px）
+              // 工具栏按钮（移动端触控目标 ≥44px；刷新在顶栏，此处仅搜索/新建）
               <>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
-                  className="h-10 w-10 p-0"
+                  className="h-11 w-11 p-0"
                   onClick={() => setMobileSearchExpanded(true)}
-                  title={t('finder.search.title', '搜索')}
+                  title={t('finder.search.title')}
+                  aria-label={t('finder.search.title')}
                   disabled={!canSearchInCurrentView}
                 >
                   <MagnifyingGlass className="w-5 h-5" />
-                </NotionButton>
-                <AppMenu>
+                </DsButton>
+                <AppMenu open={mobileCreateMenuOpen} onOpenChange={setMobileCreateMenuOpen}>
                   <AppMenuTrigger asChild>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
-                      className="h-10 w-10 p-0"
-                      title={t('finder.toolbar.new', '新建')}
+                      className="h-11 w-11 p-0"
+                      title={t('finder.toolbar.new')}
+                      aria-label={t('finder.toolbar.new')}
                       disabled={!canCreateInCurrentView}
                     >
                       <Plus className="w-5 h-5" />
-                    </NotionButton>
+                    </DsButton>
                   </AppMenuTrigger>
                   <AppMenuContent align="end" className="min-w-[180px]">
                     <AppMenuItem
                       icon={<FolderIcon size={16} />}
                       onClick={handleNewFolder}
                     >
-                      {t('finder.toolbar.newFolder', '新建文件夹')}
+                      {t('finder.toolbar.newFolder')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<NoteIcon size={16} />}
                       onClick={handleNewNote}
                     >
-                      {t('finder.toolbar.newNote', '新建笔记')}
+                      {t('finder.toolbar.newNote')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<NoteIcon size={16} />}
@@ -2371,51 +2961,52 @@ export function LearningHubSidebar({
                         void handleImportMarkdownNote();
                       }}
                     >
-                      {t('finder.toolbar.importMarkdown', '导入 Markdown')}
+                      {t('finder.toolbar.importMarkdown')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<ExamIcon size={16} />}
                       onClick={handleNewExam}
                     >
-                      {t('finder.toolbar.newExam', '新建题目集')}
+                      {t('finder.toolbar.newExam')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<TextbookIcon size={16} />}
                       onClick={handleNewTextbook}
                     >
-                      {t('finder.toolbar.newTextbook', '导入教材')}
+                      {t('finder.toolbar.newTextbook')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<TranslationIcon size={16} />}
                       onClick={handleNewTranslation}
                     >
-                      {t('finder.toolbar.newTranslation', '新建翻译')}
+                      {t('finder.toolbar.newTranslation')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<EssayIcon size={16} />}
                       onClick={handleNewEssay}
                     >
-                      {t('finder.toolbar.newEssay', '新建作文')}
+                      {t('finder.toolbar.newEssay')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<MindmapIcon size={16} />}
                       onClick={handleNewMindMap}
                     >
-                      {t('finder.toolbar.newMindMap', '新建导图')}
+                      {t('finder.toolbar.newMindMap')}
                     </AppMenuItem>
                   </AppMenuContent>
                 </AppMenu>
                 {/* 回收站视图显示清空按钮 */}
                 {isTrashView && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
-                    className="h-10 w-10 p-0 text-destructive hover:text-destructive"
+                    className="h-11 w-11 p-0 text-destructive hover:text-destructive"
                     onClick={handleEmptyTrash}
-                    title={t('finder.actions.emptyTrash', '清空回收站')}
+                    title={t('finder.actions.emptyTrash')}
+                    aria-label={t('finder.actions.emptyTrash')}
                   >
                     <Trash className="w-5 h-5" />
-                  </NotionButton>
+                  </DsButton>
                 )}
                 <div className="flex-1" />
                 {/* 项目数显示 */}
@@ -2431,40 +3022,40 @@ export function LearningHubSidebar({
         {mode === 'canvas' && !hideToolbarAndNav && (
           <div className="study-shell-toolbar flex items-center gap-1 px-1.5 py-1 border-b shrink-0 min-w-0">
             {/* 返回/前进按钮（N-5: 小屏放大触控目标） */}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
               onClick={goBack}
               disabled={historyIndex <= 0}
-              title={t('finder.toolbar.back', '返回')}
+              title={t('finder.toolbar.back')}
             >
               <CaretLeft className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
-              title={t('finder.toolbar.forward', '前进')}
+              title={t('finder.toolbar.forward')}
             >
               <CaretRight className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
-            </NotionButton>
+            </DsButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title', '资源库')} aria-label="home">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
-              </NotionButton>
-              {currentPath.breadcrumbs.map((crumb, index) => (
+              </DsButton>
+              {effectivePath.breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
                   <span className="text-muted-foreground/50 shrink-0">/</span>
-                  {index === currentPath.breadcrumbs.length - 1 ? (
+                  {index === effectivePath.breadcrumbs.length - 1 ? (
                     <span className="truncate text-foreground font-medium">{crumb.name}</span>
                   ) : (
-                    <NotionButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
+                    <DsButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
                       {crumb.name}
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </React.Fragment>
               ))}
@@ -2474,30 +3065,31 @@ export function LearningHubSidebar({
 
         {/* ★ Canvas 模式顶部工具栏：多选模式 + 关闭按钮 */}
         {mode === 'canvas' && (
-          <div className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-2 py-1.5 border-b backdrop-blur-lg shrink-0">
+          <div data-wb-blur-surface className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-2 py-1.5 border-b backdrop-blur-lg shrink-0">
             <div className="flex items-center gap-1.5 min-w-0">
               {isMultiSelectMode ? (
                 // 多选模式下显示选中信息和操作
                 <>
                   <span className="text-xs font-medium whitespace-nowrap">
                     {selectedIds.size > 0
-                      ? t('finder.canvas.selected', '已选 {{count}} 项', { count: selectedIds.size })
-                      : t('finder.canvas.selectHint', '点击选择文件')}
+                      ? t('finder.canvas.selected', { count: selectedIds.size })
+                      : t('finder.canvas.selectHint')}
                   </span>
                   {selectedIds.size > 0 && (
                     <>
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="h-6 text-xs px-1.5"
                         onClick={selectedIds.size === items.length ? handleClearSelection : handleSelectAll}
-                        title={selectedIds.size === items.length ? t('finder.batch.deselectAll', '取消全选') : t('finder.batch.selectAll', '全选')}
+                        title={selectedIds.size === items.length ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}
                       >
                         {selectedIds.size === items.length
                           ? <CheckSquare className="w-3.5 h-3.5" />
-                          : t('finder.batch.selectAll', '全选')}
-                      </NotionButton>
-                      <NotionButton
+                          : t('finder.batch.selectAll')}
+                      </DsButton>
+                      {canAddToChatInCurrentView && (
+                      <DsButton
                         variant="primary"
                         size="sm"
                         className="h-6 text-xs px-2"
@@ -2505,9 +3097,10 @@ export function LearningHubSidebar({
                         disabled={isBatchProcessing || isInjecting}
                       >
                         {isInjecting
-                          ? t('finder.canvas.adding', '添加中...')
-                          : t('finder.canvas.addToChat', '添加到聊天')}
-                      </NotionButton>
+                          ? t('finder.canvas.adding')
+                          : t('finder.canvas.addToChat')}
+                      </DsButton>
+                      )}
                     </>
                   )}
                 </>
@@ -2520,12 +3113,12 @@ export function LearningHubSidebar({
             </div>
             <div className="flex items-center gap-0.5 shrink-0">
               {/* 多选模式切换按钮 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className={cn(
                   'p-0',
-                  isSmallScreen ? 'h-9 w-9' : 'h-7 w-7',
+                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={() => {
@@ -2536,30 +3129,63 @@ export function LearningHubSidebar({
                     setIsMultiSelectMode(true);
                   }
                 }}
-                title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect', '退出多选') : t('finder.canvas.multiSelect', '多选')}
+                title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect') : t('finder.canvas.multiSelect')}
               >
                 <ListChecks className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
-              </NotionButton>
+              </DsButton>
               {/* 关闭资源库按钮 */}
               {onClose && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
-                  className={cn('p-0', isSmallScreen ? 'h-9 w-9' : 'h-7 w-7')}
+                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7')}
                   onClick={onClose}
-                  title={t('common:close', '关闭')}
+                  title={t('common:close')}
                 >
                   <X className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           </div>
         )}
 
+        {!isSmallScreen && mode === 'fullscreen' && !hideToolbarAndNav && (() => {
+          const toolbar = (
+            <FinderToolbar
+            breadcrumbs={effectivePath.breadcrumbs}
+            onBreadcrumbClick={jumpToBreadcrumb}
+            currentTitle={
+              effectivePath.breadcrumbs[effectivePath.breadcrumbs.length - 1]?.name ||
+              (currentQuickAccessType
+                ? t(`finder.quickAccess.${currentQuickAccessType}`)
+                : t('title'))
+            }
+            onNavigateHome={() => jumpToBreadcrumb(-1)}
+            canGoBack={historyIndex > 0}
+            canGoForward={historyIndex < history.length - 1}
+            onBack={goBack}
+            onForward={goForward}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={setSorting}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchPlaceholder={searchPlaceholder}
+            searchDisabled={!canSearchInCurrentView}
+            onNewFolder={canCreateInCurrentView ? handleNewFolder : undefined}
+            onRefresh={handleRefresh}
+            titlebarMode={toolbarPortalTarget ? toolbarPortalMode : false}
+          />
+          );
+          return toolbarPortalTarget ? createPortal(toolbar, toolbarPortalTarget) : toolbar;
+        })()}
+
         {/* ★ 2026-01-15: 向量化状态视图 */}
         {/* ★ 2026-01-19: VFS 记忆管理视图 */}
         {/* ★ 2026-01-31: 桌面视图 */}
-        {currentPath.viewKind === 'indexStatus' ? (
+        {effectivePath.viewKind === 'indexStatus' ? (
           <Suspense fallback={
             <div className="flex-1 flex items-center justify-center">
               <CircleNotch className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -2567,7 +3193,7 @@ export function LearningHubSidebar({
           }>
             <IndexStatusView />
           </Suspense>
-        ) : currentPath.viewKind === 'memory' ? (
+        ) : effectivePath.viewKind === 'memory' ? (
           <Suspense fallback={
             <div className="flex-1 flex items-center justify-center">
               <CircleNotch className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -2575,7 +3201,7 @@ export function LearningHubSidebar({
           }>
             <MemoryView onOpenApp={onOpenApp} />
           </Suspense>
-        ) : currentPath.viewKind === 'desktop' ? (
+        ) : effectivePath.viewKind === 'desktop' ? (
           <DesktopView
             onNavigateQuickAccess={handleQuickAccessNavigate}
             onOpenResource={async (resourceId, resourceType) => {
@@ -2591,7 +3217,7 @@ export function LearningHubSidebar({
               if (result.ok && result.value) {
                 handleOpen(result.value);
               } else {
-                showGlobalNotification('error', t('desktop.resourceNotFound', '资源不存在或已被删除'));
+                showGlobalNotification('error', t('desktop.resourceNotFound'));
               }
             }}
             onOpenFolder={(folderId) => {
@@ -2612,11 +3238,11 @@ export function LearningHubSidebar({
 
               if (result.ok) {
                 const resourceNames: Record<CreateResourceType, string> = {
-                  note: t('finder.create.noteSuccess', '笔记已创建'),
-                  exam: t('finder.create.examSuccess', '题目集已创建'),
-                  essay: t('finder.create.essaySuccess', '作文已创建'),
-                  translation: t('finder.create.translationSuccess', '翻译已创建'),
-                  mindmap: t('finder.create.mindmapSuccess', '思维导图已创建'),
+                  note: t('finder.create.noteSuccess'),
+                  exam: t('finder.create.examSuccess'),
+                  essay: t('finder.create.essaySuccess'),
+                  translation: t('finder.create.translationSuccess'),
+                  mindmap: t('finder.create.mindmapSuccess'),
                 };
                 showGlobalNotification('success', resourceNames[type]);
 
@@ -2663,8 +3289,14 @@ export function LearningHubSidebar({
               className="flex-1"
             />
           ) : (
+          <>
+          {isSearching && searchMeta?.truncated && (
+            <div className="shrink-0 px-3 py-1.5 text-[12px] text-muted-foreground border-b border-border/40">
+              {t('finder.search.truncatedHint', { limit: searchMeta.limit })}
+            </div>
+          )}
           <FinderFileList
-            items={items}
+            items={displayedItems}
             viewMode={isCollapsed || mode === 'canvas' ? 'list' : viewMode}
             selectedIds={selectedIds}
             onSelect={
@@ -2676,7 +3308,7 @@ export function LearningHubSidebar({
                 : mode === 'canvas'
                   ? (id, _mode) => {
                       // canvas 非多选模式下，单击直接打开文件/文件夹
-                      const item = items.find(i => i.id === id);
+                      const item = displayedItems.find(i => i.id === id);
                       if (item) handleOpen(item);
                     }
                   : select
@@ -2687,13 +3319,31 @@ export function LearningHubSidebar({
                 : handleOpen
             }
             onContextMenu={mode === 'canvas' ? undefined : handleContextMenu}
+            multiSelectMode={multiSelectActive}
             onContainerClick={mode === 'canvas' ? (isMultiSelectMode ? clearSelection : undefined) : clearSelection}
             onContainerContextMenu={mode === 'canvas' ? undefined : handleContainerContextMenu}
             onMoveItem={mode === 'canvas' ? undefined : handleMoveItem}
             onMoveItems={mode === 'canvas' ? undefined : handleMoveItems}
             isLoading={isLoading}
             error={error}
-            enableDragDrop={mode !== 'canvas' && !isTrashView}
+            canCreate={canCreateInCurrentView}
+            emptyMessage={
+              effectivePath.viewKind === 'favorites'
+                ? t('finder.empty.favorites')
+                : effectivePath.viewKind === 'recent'
+                  ? t('finder.empty.recent')
+                  : effectivePath.viewKind === 'trash'
+                    ? t('finder.empty.trash')
+                    : undefined
+            }
+            emptyHint={
+              effectivePath.viewKind === 'trash'
+                ? t('finder.empty.trashHint')
+                : !canCreateInCurrentView
+                  ? t(isSmallScreen ? 'finder.empty.noCreateHintTouch' : 'finder.empty.noCreateHint')
+                  : undefined
+            }
+            enableDragDrop={mode !== 'canvas' && canDragDropInCurrentView}
             editingId={mode === 'canvas' ? undefined : inlineEdit.editingId}
             onEditConfirm={mode === 'canvas' ? undefined : handleInlineEditConfirm}
             onEditCancel={mode === 'canvas' ? undefined : handleInlineEditCancel}
@@ -2708,24 +3358,39 @@ export function LearningHubSidebar({
                 ? undefined
                 : (item) => startInlineEdit(item.id, item.type === 'folder' ? 'folder' : 'resource', item.name)
             }
+            parentDropTargets={mode === 'canvas' || !canDragDropInCurrentView ? undefined : parentDropTargets}
+            specialDropTargets={mode === 'canvas' || !canDragDropInCurrentView ? undefined : specialDropTargets}
+            onSpecialDrop={mode === 'canvas' || !canDragDropInCurrentView ? undefined : handleSpecialDrop}
+            onNavigateUp={
+              mode === 'canvas' || isTrashView
+                ? undefined
+                : () => {
+                    if (effectivePath.viewKind === 'folder' && (effectivePath.folderId || effectivePath.breadcrumbs.length > 0)) {
+                      goUp();
+                    }
+                  }
+            }
           />
+          </>
           )}
           </>
         )}
       
-        {/* Batch Operation Toolbar + View Mode Toggle + App Close - canvas 模式用顶部工具栏 */}
-        {mode === 'canvas' ? null : (
+        {/* Batch Operation Toolbar + View Mode Toggle + App Close
+            canvas / 特殊系统视图（索引状态、记忆、桌面）不显示文件列表底栏，避免「0 个项目」错位 */}
+        {mode === 'canvas' || effectivePath.viewKind === 'indexStatus' || effectivePath.viewKind === 'memory' || effectivePath.viewKind === 'desktop' ? null : (
           <FinderBatchToolbar
             selectedCount={selectedIds.size}
             totalCount={items.length}
             onSelectAll={handleSelectAll}
             onClearSelection={handleClearSelection}
-            onBatchDelete={handleBatchDelete}
-            onBatchMove={isTrashView ? undefined : handleBatchMove}
-            onBatchAddToChat={isTrashView ? undefined : handleBatchAddToChat}
+            onBatchDelete={canDeleteInCurrentView ? handleBatchDelete : undefined}
+            onBatchMove={canMoveInCurrentView ? handleBatchMove : undefined}
+            onBatchAddToChat={canAddToChatInCurrentView ? handleBatchAddToChat : undefined}
+            isTrashView={isTrashView}
             isProcessing={isBatchProcessing || isInjecting}
             viewMode={isCollapsed ? 'list' : viewMode}
-            onViewModeChange={isCollapsed ? undefined : setViewMode}
+            onViewModeChange={isSmallScreen && !isCollapsed ? setViewMode : undefined}
             multiSelectMode={isMultiSelectMode}
             onToggleMultiSelectMode={
               isTouchPrimary
@@ -2741,7 +3406,7 @@ export function LearningHubSidebar({
             }
             sortBy={sortBy}
             sortOrder={sortOrder}
-            onSortChange={setSorting}
+            onSortChange={isSmallScreen ? setSorting : undefined}
             hasOpenApp={!isSmallScreen && hasOpenApp}
             onCloseApp={onCloseApp}
           />
@@ -2755,10 +3420,14 @@ export function LearningHubSidebar({
         position={contextMenuPosition}
         target={contextMenuTarget}
         dataView="folder"
-        currentFolderId={currentPath.folderId}
+        currentFolderId={effectivePath.folderId}
         isTrashView={isTrashView}
-        onCreateFolder={() => handleNewFolder()}
-        onCreateItem={(type, _folderId) => {
+        canCreate={canCreateInCurrentView}
+        canDelete={canDeleteInCurrentView}
+        canMove={canMoveInCurrentView}
+        canAddToChat={canAddToChatInCurrentView}
+        onCreateFolder={canCreateInCurrentView ? () => handleNewFolder() : undefined}
+        onCreateItem={canCreateInCurrentView ? (type, _folderId) => {
           switch (type) {
             case 'note':
               handleNewNote();
@@ -2779,78 +3448,47 @@ export function LearningHubSidebar({
               handleNewMindMap();
               break;
           }
-        }}
-        onImportMarkdownNote={(folderId) => {
+        } : undefined}
+        onImportMarkdownNote={canCreateInCurrentView ? (folderId) => {
           void handleImportMarkdownNote(folderId);
-        }}
+        } : undefined}
         onRefresh={handleRefresh}
         onOpenFolder={handleOpenFolder}
         onRenameFolder={handleOpenRenameDialog}
-        onDeleteFolder={(folderId) => {
-          // ★ BUG FIX: 如果右键的文件夹属于多选集合且选中数量 > 1，走批量删除路径
+        onDeleteFolder={canDeleteInCurrentView ? (folderId) => {
           if (selectedIds.size > 1 && selectedIds.has(folderId)) {
             handleBatchDelete();
           } else {
             handleDeleteFolder(folderId);
           }
-        }}
+        } : undefined}
         onOpenResource={(resource) => {
           if (onOpenApp && 'id' in resource) {
             onOpenApp(resource as ResourceListItem);
           }
         }}
         onRenameResource={handleOpenRenameResourceDialog}
-        onDeleteResource={(resource) => {
-          // ★ BUG FIX: 如果右键的资源属于多选集合且选中数量 > 1，走批量删除路径
+        onDeleteResource={canDeleteInCurrentView ? (resource) => {
           if (selectedIds.size > 1 && selectedIds.has(resource.id)) {
             handleBatchDelete();
           } else {
             handleDeleteResource(resource);
           }
-        }}
+        } : undefined}
         onToggleFavorite={handleToggleFavorite}
-        onMoveTo={handleMoveTo}
         onExportResource={handleExportResource}
+        onExportFolder={handleExportFolder}
         onRestoreItem={handleRestoreItem}
         onPermanentDeleteItem={handlePermanentDeleteItem}
         onEmptyTrash={handleEmptyTrash}
+        onReferenceToChat={
+          canAddToChatInCurrentView ? handleReferenceToChat : undefined
+        }
+        onMoveTo={canMoveInCurrentView ? handleMoveTo : undefined}
       />
       
-      {/* Create Folder Dialog - Notion 风格 */}
-      <NotionDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} maxWidth="max-w-[400px]">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
-            <FolderPlus className="w-4 h-4 text-muted-foreground" />
-            {t('finder.create.folderTitle')}
-          </NotionDialogTitle>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-          <Input
-            type="text"
-            placeholder={t('finder.create.folderPlaceholder')}
-            value={createDialogName}
-            onChange={(e) => setCreateDialogName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !isCreating) {
-                handleCreate();
-              }
-            }}
-            autoFocus
-            className="w-full h-9"
-          />
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton variant="ghost" size="sm" onClick={() => setCreateDialogOpen(false)} disabled={isCreating}>
-            {t('common:cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={handleCreate} disabled={!createDialogName.trim() || isCreating}>
-            {isCreating && <CircleNotch className="w-3.5 h-3.5 mr-1.5 animate-spin inline" />}
-            {isCreating ? t('common:actions.creating') : t('common:actions.create')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
-      
-      {/* Folder Picker Dialog for Batch Move */}
+      {/* Folder Picker for Batch Move
+          📱 移动端契约：走 inline 全屏子屏（挂在中屏容器 absolute inset-0），桌面保留 Dialog */}
       <FolderPickerDialog
         open={moveDialogOpen}
         onOpenChange={(open) => {
@@ -2861,11 +3499,12 @@ export function LearningHubSidebar({
           items.find(i => i.id === id)?.type === 'folder'
         )}
         onConfirm={handleBatchMoveConfirm}
-        title={t('finder.batch.moveDialogTitle', '移动到...')}
+        title={t('finder.batch.moveDialogTitle')}
+        inline={isSmallScreen}
       />
 
       {/* ★ 删除确认对话框 - 替代原生 window.confirm */}
-      <NotionAlertDialog
+      <DsAlertDialog
         open={deleteConfirmOpen}
         onOpenChange={(open) => {
           if (!open && !isDeleting) {
@@ -2875,12 +3514,12 @@ export function LearningHubSidebar({
         }}
         title={
           deleteTarget?.type === 'emptyTrash'
-            ? t('finder.trash.emptyTitle', '清空回收站')
-            : t('contextMenu.deleteTitle', '确认删除')
+            ? t('finder.trash.emptyTitle')
+            : t('contextMenu.deleteTitle')
         }
         description={deleteTarget?.message}
-        confirmText={isDeleting ? t('common:deleting', '删除中...') : t('common:delete', '删除')}
-        cancelText={t('common:cancel', '取消')}
+        confirmText={isDeleting ? t('common:actions.deleting') : t('common:delete')}
+        cancelText={t('common:cancel')}
         confirmVariant="danger"
         loading={isDeleting}
         disabled={isDeleting}
@@ -2897,10 +3536,16 @@ export function LearningHubSidebar({
 
       {/* ★ 2026-06-12（审阅问题 FE-M5）：附件批量导入进度横幅（非模态，不阻塞操作） */}
       {attachImportProgress && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-background/95 backdrop-blur-lg border shadow-notion-lg">
+        <div
+          data-wb-blur-surface
+          className="absolute left-1/2 z-50 flex max-w-[calc(100%_-_1rem)] -translate-x-1/2 items-center gap-2.5 rounded-lg border bg-background/95 px-3.5 py-2 shadow-card-lg backdrop-blur-lg"
+          style={{
+            bottom: 'calc(3rem + var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+          }}
+        >
           <CircleNotch className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
-          <span className="text-xs whitespace-nowrap">
-            {t('finder.dragDrop.importing', '正在导入 {{done}} / {{total}}', {
+          <span className="max-w-[60vw] truncate text-xs">
+            {t('finder.dragDrop.importing', {
               done: attachImportProgress.done,
               total: attachImportProgress.total,
             })}

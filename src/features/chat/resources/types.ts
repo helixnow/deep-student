@@ -33,10 +33,11 @@ import type { ResourceInjectModes } from '../context/vfsRefTypes';
  * | textbook    | textbook     | 25     | 教材 ★       |
  * | image       | image        | 30     | 图片          |
  * | file        | file         | 30     | 文件附件      |
+ * | mindmap     | mindmap      | 26     | 知识导图 ★    |
  * | retrieval   | retrieval    | 50     | 检索结果      |
  * | folder      | folder       | 100    | 文件夹 ★     |
  */
-export type ResourceType = 'image' | 'file' | 'note' | 'card' | 'exam' | 'essay' | 'translation' | 'textbook' | 'retrieval' | 'folder';
+export type ResourceType = 'image' | 'file' | 'note' | 'card' | 'exam' | 'essay' | 'translation' | 'textbook' | 'mindmap' | 'retrieval' | 'folder';
 
 // ============================================================================
 // 内容块类型（兼容 OpenAI/Anthropic/Gemini）

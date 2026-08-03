@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -21,12 +23,43 @@ pub struct EssayTextStats {
     pub line_count: usize,
     /// 段落数（按空行分段）
     pub paragraph_count: usize,
+    /// 句子数（中英文句末标点 + 换行/文末兜底）
+    #[serde(default)]
+    pub sentence_count: usize,
 }
 
 const CN_PUNCTUATION: &[char] = &[
     '，', '。', '！', '？', '；', '：', '、', '（', '）', '【', '】', '《', '》', '〈', '〉', '「',
     '」', '『', '』', '〔', '〕', '“', '”', '‘', '’', '—', '–', '…', '．', '·',
 ];
+
+/// 与前端 textStats.ts 中 JS 正则 `\s` 完全一致的空白字符集。
+///
+/// 注意与 Rust `char::is_whitespace`（Unicode White_Space 属性）的两处差异：
+/// - JS `\s` 包含 U+FEFF（BOM / 零宽不换行空格），White_Space 不包含；
+/// - JS `\s` 不包含 U+0085（NEL），White_Space 包含。
+/// 统计口径以前端为准，保证 UI 字数与 prompt 注入的统计块一致。
+fn is_frontend_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+/// 无歧义的句末终结符（'.' 单独用启发式处理，避免小数/缩写误计）
+fn is_sentence_terminator(c: char) -> bool {
+    matches!(
+        c,
+        '。' | '！' | '？' | '!' | '?' | '…' | '．' | '‽' | '⁉' | '⁈' | '⁇'
+    )
+}
 
 fn is_ascii_punctuation(c: char) -> bool {
     matches!(
@@ -65,24 +98,39 @@ fn is_ascii_punctuation(c: char) -> bool {
     )
 }
 
-pub fn calculate_text_stats(text: &str) -> EssayTextStats {
-    let han_re = Regex::new(r"\p{Han}").expect("valid han regex");
-    let en_word_re = Regex::new(r"[A-Za-z]+(?:['’-][A-Za-z]+)*").expect("valid english word regex");
-    let punct_re = Regex::new(r"\p{P}").expect("valid punctuation regex");
-    let paragraph_re = Regex::new(r"\r?\n\s*\r?\n").expect("valid paragraph split regex");
+static HAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Han}").expect("valid han regex"));
+static EN_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[A-Za-z]+(?:['’-][A-Za-z]+)*").expect("valid english word regex")
+});
+static PUNCT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\p{P}").expect("valid punctuation regex"));
+/// 段落分隔正则：空白类使用与前端 JS `\s` 一致的显式字符集（见 is_frontend_whitespace）
+static PARAGRAPH_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\r?\n[\t\n\x0B\x0C\r \u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]*\r?\n",
+    )
+    .expect("valid paragraph split regex")
+});
 
-    let han_chars = han_re.find_iter(text).count();
-    let english_words = en_word_re.find_iter(text).count();
-    let punctuation_total = punct_re.find_iter(text).count();
+pub fn calculate_text_stats(text: &str) -> EssayTextStats {
+    let han_chars = HAN_RE.find_iter(text).count();
+    let english_words = EN_WORD_RE.find_iter(text).count();
+    let punctuation_total = PUNCT_RE.find_iter(text).count();
 
     let mut cn_punctuation = 0usize;
     let mut en_punctuation = 0usize;
     let mut non_whitespace_chars = 0usize;
     let mut total_chars = 0usize;
 
+    // 句子计数状态：pending 表示自上一个句末以来出现过"实质内容"
+    // （非空白、非标点字符）；句末标点连用（！！、……）只计一句。
+    let mut sentence_count = 0usize;
+    let mut pending_sentence = false;
+    let mut prev_char: Option<char> = None;
+
     for ch in text.chars() {
         total_chars += 1;
-        if !ch.is_whitespace() {
+        if !is_frontend_whitespace(ch) {
             non_whitespace_chars += 1;
         }
         if CN_PUNCTUATION.contains(&ch) {
@@ -90,6 +138,26 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
         } else if is_ascii_punctuation(ch) {
             en_punctuation += 1;
         }
+
+        // '.' 仅在紧跟字母后视为句号（排除 3.14 等小数；e.g. 类缩写可接受少量误差）
+        let ends_sentence = is_sentence_terminator(ch)
+            || (ch == '.' && prev_char.is_some_and(|p| p.is_alphabetic()))
+            || ch == '\n';
+        if ends_sentence {
+            if pending_sentence {
+                sentence_count += 1;
+                pending_sentence = false;
+            }
+        } else if !is_frontend_whitespace(ch)
+            && !CN_PUNCTUATION.contains(&ch)
+            && !is_ascii_punctuation(ch)
+        {
+            pending_sentence = true;
+        }
+        prev_char = Some(ch);
+    }
+    if pending_sentence {
+        sentence_count += 1;
     }
 
     let normalized_line_text = text.replace("\r\n", "\n");
@@ -98,9 +166,9 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
     } else {
         normalized_line_text.split('\n').count()
     };
-    let paragraph_count = paragraph_re
+    let paragraph_count = PARAGRAPH_RE
         .split(text)
-        .map(str::trim)
+        .map(|p| p.trim_matches(is_frontend_whitespace))
         .filter(|p| !p.is_empty())
         .count();
 
@@ -114,12 +182,13 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
         total_chars,
         line_count,
         paragraph_count,
+        sentence_count,
     }
 }
 
 pub fn build_stats_prompt_block(stats: &EssayTextStats) -> String {
     format!(
-        "【写作统计（系统自动计算）】\n- 中文字数（汉字）: {}\n- 英文词数: {}\n- 标点总数: {}\n- 中文标点: {}\n- 英文标点: {}\n- 非空白字符数: {}\n- 总字符数: {}\n- 段落数: {}\n- 行数: {}\n\n请在判断是否达到字数要求时，优先依据以上统计，不要依据 token 估算。\n\n",
+        "【写作统计（系统自动计算）】\n- 中文字数（汉字）: {}\n- 英文词数: {}\n- 标点总数: {}\n- 中文标点: {}\n- 英文标点: {}\n- 非空白字符数: {}\n- 总字符数: {}\n- 句子数: {}\n- 段落数: {}\n- 行数: {}\n\n请在判断是否达到字数要求时，优先依据以上统计，不要依据 token 估算。\n\n",
         stats.han_chars,
         stats.english_words,
         stats.punctuation_total,
@@ -127,6 +196,7 @@ pub fn build_stats_prompt_block(stats: &EssayTextStats) -> String {
         stats.en_punctuation,
         stats.non_whitespace_chars,
         stats.total_chars,
+        stats.sentence_count,
         stats.paragraph_count,
         stats.line_count
     )
@@ -162,5 +232,87 @@ mod tests {
         let text = "第一段\r\n\r\n   \r\n第二段";
         let stats = calculate_text_stats(text);
         assert_eq!(stats.paragraph_count, 2);
+    }
+
+    /// 前端 JS `\s` 包含 U+FEFF（BOM），因此 BOM 不计入非空白字符
+    #[test]
+    fn bom_is_whitespace_like_frontend() {
+        let text = "\u{FEFF}你好";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.total_chars, 3);
+        assert_eq!(stats.non_whitespace_chars, 2);
+        assert_eq!(stats.han_chars, 2);
+    }
+
+    /// 前端 JS `\s` 不包含 U+0085（NEL），因此 NEL 计入非空白字符
+    #[test]
+    fn nel_is_not_whitespace_like_frontend() {
+        let text = "a\u{0085}b";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.non_whitespace_chars, 3);
+    }
+
+    /// 空行中夹杂 BOM 时仍视为段落分隔（与前端 /\r?\n\s*\r?\n/ 一致）
+    #[test]
+    fn paragraph_split_treats_bom_blank_line_as_separator() {
+        let text = "第一段\n\u{FEFF}\n第二段";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.paragraph_count, 2);
+    }
+
+    /// 英文缩写与连字符按单词整体计数（与前端 EN_WORD_RE 一致）
+    #[test]
+    fn english_words_count_contractions_and_hyphens() {
+        let text = "state-of-the-art isn't don’t two words";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.english_words, 5);
+    }
+
+    /// 中英文标点分别归类，且互不重复计数
+    #[test]
+    fn cn_and_en_punctuation_are_disjoint() {
+        let text = "你好，世界。Hello, world!";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.cn_punctuation, 2);
+        assert_eq!(stats.en_punctuation, 2);
+        assert_eq!(stats.punctuation_total, 4);
+    }
+
+    /// 尾部空段不计入段落数
+    #[test]
+    fn trailing_blank_lines_do_not_add_paragraphs() {
+        let text = "唯一段落\n\n\n";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.paragraph_count, 1);
+    }
+
+    /// 中英混排句子计数：句末标点连用只计一句，文末无标点兜底计一句
+    #[test]
+    fn sentence_count_handles_mixed_zh_en() {
+        let text = "今天天气很好。我们去公园玩！！This is great. 最后一句没有标点";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.sentence_count, 4);
+    }
+
+    /// 小数点不计为句号；省略号连用只计一句
+    #[test]
+    fn sentence_count_ignores_decimal_points_and_collapses_ellipsis() {
+        let text = "圆周率约为3.14，很神奇……真的很神奇。";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.sentence_count, 2);
+    }
+
+    /// 换行视为句子边界；句末标点后的收尾引号不会多计一句
+    #[test]
+    fn sentence_count_newline_boundary_and_closing_quotes() {
+        let text = "他说：「走吧。」\n第二行没有句号";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.sentence_count, 2);
+    }
+
+    #[test]
+    fn sentence_count_empty_text_is_zero() {
+        let stats = calculate_text_stats("");
+        assert_eq!(stats.sentence_count, 0);
     }
 }

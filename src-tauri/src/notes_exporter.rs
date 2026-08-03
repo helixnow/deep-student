@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use zip::write::FileOptions;
@@ -17,6 +17,24 @@ type Result<T> = std::result::Result<T, AppError>;
 
 const SCHEMA_VERSION: u32 = 2;
 
+/// ★ 2026-07-19 硬化：导入时会整体读入内存的文本条目（.md 笔记、偏好 JSON、
+/// manifest）单条上限。附件走流式落盘不受此限制；正常笔记远小于该值，
+/// 超限条目视为异常归档（解压炸弹/损坏文件），跳过并告警。
+const MAX_IMPORT_TEXT_BYTES: u64 = 64 * 1024 * 1024;
+
+/// 导入进度事件的最大报告次数（每阶段）。超大归档按百分比步进上报，
+/// 避免每个条目一条事件把前端事件通道打爆；小归档仍逐条上报。
+const IMPORT_PROGRESS_MAX_REPORTS: usize = 200;
+
+/// 进度节流：total 较小时逐条上报；较大时按步长上报（首条与末条必报）。
+fn should_report_progress(processed: usize, total: usize) -> bool {
+    if total <= IMPORT_PROGRESS_MAX_REPORTS {
+        return true;
+    }
+    let step = total.div_ceil(IMPORT_PROGRESS_MAX_REPORTS).max(1);
+    processed == 1 || processed == total || processed % step == 0
+}
+
 /// 统一的 ZIP 格式：Markdown 文件 + 完整元数据（版本历史、偏好设置）
 /// 其他软件可以直接读取 .md 文件，忽略 _versions 和 _preferences 目录
 
@@ -28,6 +46,10 @@ pub struct NotesExporter {
 
 #[derive(Debug, Clone)]
 pub struct ExportOptions {
+    /// ⚠️ 语义对齐（2026-07-19）：笔记版本历史表已在 VFS 迁移
+    /// `V20260214__drop_notes_versions.sql` 中移除，此开关目前恒为空操作，
+    /// 仅为前端契约向后兼容保留。manifest 的 `version_count` 恒为 0，
+    /// README 不再宣称包含版本历史。
     pub include_versions: bool,
     pub output_path: Option<PathBuf>,
 }
@@ -35,6 +57,7 @@ pub struct ExportOptions {
 #[derive(Debug, Clone)]
 pub struct SingleNoteExportOptions {
     pub note_id: String,
+    /// ⚠️ 同 [`ExportOptions::include_versions`]：版本历史已移除，恒为空操作。
     pub include_versions: bool,
     pub output_path: Option<PathBuf>,
 }
@@ -53,6 +76,9 @@ struct Manifest {
     app_version: String,
     note_count: usize,
     attachment_count: usize,
+    /// 版本历史已移除（V20260214），新导出恒为 0；
+    /// 字段保留用于反序列化旧备份的 manifest（default 兜底缺失字段）。
+    #[serde(default)]
     version_count: usize,
     preferences: Vec<ManifestPreference>,
     // subject 已废弃，但为了向后兼容保留该字段（用于导入旧备份）
@@ -102,17 +128,6 @@ struct ExportAttachment {
     size: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct ExportVersion {
-    version_id: String,
-    note_id: String,
-    title: String,
-    content_md: String,
-    tags: Vec<String>,
-    label: Option<String>,
-    created_at: String,
-}
-
 impl NotesExporter {
     pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Self {
         Self {
@@ -150,12 +165,13 @@ impl NotesExporter {
     /// ├── manifest.json              # 完整元数据
     /// ├── notes/
     /// │   ├── {folder}/{title}_{id}.md   # 可读 Markdown（YAML frontmatter）
-    /// ├── _versions/                  # 版本历史（其他软件可忽略）
-    /// │   └── {note_id}_{version_id}.md
     /// ├── _preferences/               # 偏好设置
     /// │   └── {key}.json
     /// ├── assets/                     # 附件
     /// └── README.md
+    ///
+    /// 注：`_versions/` 目录已随版本历史功能移除（V20260214）不再产出，
+    /// 导入侧仍会忽略旧备份中的该目录。
     fn export_unified_zip(&self, options: ExportOptions) -> Result<ExportSummary> {
         log::info!("使用统一 ZIP 格式导出");
 
@@ -197,10 +213,9 @@ impl NotesExporter {
         }
 
         log::info!(
-            "找到 {} 条笔记，{} 个附件，{} 个版本",
+            "找到 {} 条笔记，{} 个附件",
             bundle.notes.len(),
-            bundle.attachments.len(),
-            bundle.versions.len()
+            bundle.attachments.len()
         );
 
         let note_id_set: HashSet<String> = bundle.notes.iter().map(|n| n.id.clone()).collect();
@@ -223,23 +238,8 @@ impl NotesExporter {
             })?;
         }
 
-        let mut version_total = 0usize;
-        // 导出版本历史（_versions 目录，其他软件可忽略）
-        if options.include_versions && !bundle.versions.is_empty() {
-            for version in bundle.versions.iter() {
-                let version_filename =
-                    format!("_versions/{}_{}.md", version.note_id, version.version_id);
-                let version_content = self.render_version_markdown_flat(version);
-                zip.start_file(&version_filename, file_options)
-                    .map_err(|e| {
-                        AppError::file_system(format!("写入版本 {} 失败: {}", version_filename, e))
-                    })?;
-                zip.write_all(version_content.as_bytes()).map_err(|e| {
-                    AppError::file_system(format!("写入版本 {} 失败: {}", version_filename, e))
-                })?;
-            }
-            version_total = bundle.versions.len();
-        }
+        // 版本历史已随 V20260214 迁移移除：options.include_versions 恒为空操作
+        // （见 ExportOptions 字段注释），不再产出 _versions/ 目录。
 
         // 导出偏好设置（_preferences 目录）
         let mut preferences_entries: Vec<ManifestPreference> = Vec::new();
@@ -275,9 +275,10 @@ impl NotesExporter {
                     continue;
                 }
                 let zip_entry = format!("assets/{}", relative);
-                // A6-23: 逐个附件读盘后立即写入 zip，避免全部附件字节常驻内存
-                let bytes = match fs::read(&attachment.absolute_path) {
-                    Ok(buf) => buf,
+                // A6-23 + 2026-07-19 硬化：附件以 io::copy 流式写入 zip，
+                // 单个大附件也不会整体驻留内存。
+                let mut src = match fs::File::open(&attachment.absolute_path) {
+                    Ok(f) => f,
                     Err(err) => {
                         log::warn!("读取附件失败，跳过 {}: {}", zip_entry, err);
                         continue;
@@ -286,7 +287,7 @@ impl NotesExporter {
                 zip.start_file(&zip_entry, file_options).map_err(|e| {
                     AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
                 })?;
-                zip.write_all(&bytes).map_err(|e| {
+                io::copy(&mut src, &mut zip).map_err(|e| {
                     AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
                 })?;
             }
@@ -299,7 +300,7 @@ impl NotesExporter {
             app_version: env!("CARGO_PKG_VERSION").to_string(),
             note_count: bundle.notes.len(),
             attachment_count: bundle.attachments.len(),
-            version_count: version_total,
+            version_count: 0, // 版本历史已移除（V20260214），恒为 0
             preferences: preferences_entries,
             subjects: Vec::new(), // subject 已废弃，导出时不再包含
         };
@@ -312,18 +313,17 @@ impl NotesExporter {
             .map_err(|e| AppError::file_system(format!("写入 manifest 失败: {}", e)))?;
 
         // 写入 README.md（说明文件）
+        // ★ 2026-07-19：版本历史功能已移除（V20260214），README 不再提及 `_versions/`。
         let readme = format!(
             "# 笔记导出\n\n\
             导出时间：{}\n\
             导出格式：统一 ZIP 格式（Markdown + 元数据）\n\
             笔记数量：{}\n\
-            版本数量：{}\n\
             附件数量：{}\n\n\
             ## 目录结构\n\n\
-            - 根目录包含 `.md` 笔记文件\n\
-            - `_versions/` 目录：版本历史（可选，其他软件可忽略）\n\
+            - `notes/` 目录：`.md` 笔记文件（YAML frontmatter + 正文）\n\
             - `_preferences/` 目录：偏好设置（可选）\n\
-            - `assets/` 目录：附件文件\n\n\
+            - `assets/` 目录：附件文件（笔记正文中的 `notes_assets/<x>` 对应归档内 `assets/<x>`）\n\n\
             ## 跨软件兼容性\n\n\
             本备份格式兼容常见 Markdown 编辑器。\n\
             解压后即可查看笔记内容。\n\
@@ -331,7 +331,6 @@ impl NotesExporter {
             ",
             Utc::now().format("%Y-%m-%d %H:%M:%S"),
             bundle.notes.len(),
-            version_total,
             bundle.attachments.len()
         );
 
@@ -372,32 +371,6 @@ impl NotesExporter {
         let default_dir = self.file_manager.get_app_data_dir().join("exports");
         let filename = format!("notes_export_{}.zip", Utc::now().format("%Y%m%d_%H%M%S"));
         Ok(default_dir.join(filename))
-    }
-
-    /// 渲染版本历史为 Markdown
-    fn render_version_markdown(&self, version: &ExportVersion, subject: &str) -> String {
-        let mut md_content = String::new();
-
-        md_content.push_str("---\n");
-        md_content.push_str(&format!("version_id: {}\n", version.version_id));
-        md_content.push_str(&format!("note_id: {}\n", version.note_id));
-        md_content.push_str(&format!("title: {}\n", yaml_quote(&version.title)));
-        md_content.push_str(&format!("subject: {}\n", yaml_quote(subject)));
-        md_content.push_str(&format!("created: {}\n", version.created_at));
-        if let Some(ref label) = version.label {
-            md_content.push_str(&format!("label: {}\n", yaml_quote(label)));
-        }
-        if !version.tags.is_empty() {
-            md_content.push_str("tags:\n");
-            for tag in version.tags.iter() {
-                md_content.push_str(&format!("  - {}\n", yaml_quote(tag)));
-            }
-        }
-        md_content.push_str("---\n\n");
-
-        md_content.push_str(&version.content_md);
-
-        md_content
     }
 
     fn resolve_single_output_path(
@@ -452,28 +425,6 @@ impl NotesExporter {
         }
         md_content.push_str("---\n\n");
         md_content.push_str(&note.content_md);
-        md_content
-    }
-
-    fn render_version_markdown_flat(&self, version: &ExportVersion) -> String {
-        let mut md_content = String::new();
-
-        md_content.push_str("---\n");
-        md_content.push_str(&format!("version_id: {}\n", version.version_id));
-        md_content.push_str(&format!("note_id: {}\n", version.note_id));
-        md_content.push_str(&format!("title: {}\n", yaml_quote(&version.title)));
-        md_content.push_str(&format!("created: {}\n", version.created_at));
-        if let Some(ref label) = version.label {
-            md_content.push_str(&format!("label: {}\n", yaml_quote(label)));
-        }
-        if !version.tags.is_empty() {
-            md_content.push_str("tags:\n");
-            for tag in version.tags.iter() {
-                md_content.push_str(&format!("  - {}\n", yaml_quote(tag)));
-            }
-        }
-        md_content.push_str("---\n\n");
-        md_content.push_str(&version.content_md);
         md_content
     }
 
@@ -570,18 +521,27 @@ impl NotesExporter {
             if !note_ids.contains(&note_id) {
                 continue;
             }
-            let abs_path = self.file_manager.get_app_data_dir().join(&path_str);
+            let stored_path = Path::new(&path_str);
+            if is_path_traversal(stored_path) {
+                log::warn!("跳过可能越界的附件路径: {}", path_str);
+                continue;
+            }
+            let abs_path = self.file_manager.get_app_data_dir().join(stored_path);
             if abs_path.exists() {
+                // ★ 2026-07-19：剥离 notes_assets/ 前缀。此前 zip 条目为
+                // assets/notes_assets/<subject>/...，导入侧会把 "notes_assets"
+                // 误判为 subject slug，落盘成 notes_assets/notes_assets/...，
+                // 导致附件引用断链。剥离后条目为 assets/<subject>/...，
+                // 与 import_unified_zip* 的解析约定一致（round-trip 无损）。
+                let normalized_path = strip_notes_assets_prefix(stored_path)
+                    .unwrap_or_else(|| stored_path.to_path_buf());
                 // A6-23: 不再在此读盘，改为 zip 写入时逐个流式读取
                 attachments.push(ExportAttachmentInternal {
-                    relative_path: PathBuf::from(&path_str),
+                    relative_path: normalized_path,
                     absolute_path: abs_path,
                 });
             }
         }
-
-        // 版本历史已移除，返回空列表
-        let versions: Vec<ExportVersion> = Vec::new();
 
         // 查询偏好设置
         let preferences = self.collect_all_preferences(conn)?;
@@ -589,7 +549,6 @@ impl NotesExporter {
         Ok(SubjectBundle {
             notes,
             attachments,
-            versions,
             preferences,
         })
     }
@@ -618,48 +577,11 @@ impl NotesExporter {
         Ok(prefs)
     }
 
-    fn render_markdown_note(
-        &self,
-        note: &ExportNote,
-        subject: &str,
-        subject_slug: &str,
-        folder_path: Option<&String>,
-    ) -> String {
-        let mut md_content = String::new();
-
-        md_content.push_str("---\n");
-        md_content.push_str(&format!("id: {}\n", note.id));
-        md_content.push_str(&format!("title: {}\n", yaml_quote(&note.title)));
-        md_content.push_str(&format!("subject: {}\n", yaml_quote(subject)));
-        md_content.push_str(&format!("created: {}\n", note.created_at));
-        md_content.push_str(&format!("updated: {}\n", note.updated_at));
-        if note.is_favorite {
-            md_content.push_str("favorite: true\n");
-        }
-        if let Some(path) = folder_path {
-            if !path.is_empty() {
-                md_content.push_str(&format!("folder_path: {}\n", yaml_quote(path)));
-            }
-        }
-        if !note.tags.is_empty() {
-            md_content.push_str("tags:\n");
-            for tag in note.tags.iter() {
-                md_content.push_str(&format!("  - {}\n", yaml_quote(tag)));
-            }
-        }
-        md_content.push_str("---\n\n");
-
-        let content_trimmed = note.content_md.trim();
-        if !content_trimmed.starts_with('#') {
-            md_content.push_str(&format!("# {}\n\n", note.title));
-        }
-
-        let rewritten_content =
-            rewrite_content_paths_for_export(&note.content_md, subject, subject_slug);
-        md_content.push_str(&rewritten_content);
-
-        md_content
-    }
+    // ★ 2026-07-19 遗留清理：render_markdown_note / render_version_markdown /
+    // collect_subject_bundle / collect_preferences / build_folder_paths /
+    // build_md_path / serialize_ndjson / rewrite_content_paths_for_export 等
+    // 按 subject 分组的旧导出格式（schema_version < 2）产出链已整体删除，
+    // 静态确认仓库内无调用方；导入侧仍保留对旧归档路径格式的解析兼容。
 
     fn export_single_zip(&self, options: SingleNoteExportOptions) -> Result<ExportSummary> {
         log::info!("使用统一 ZIP 格式导出单条笔记");
@@ -710,19 +632,18 @@ impl NotesExporter {
                 continue;
             }
             let zip_entry = format!("assets/{}", relative);
-            // A6-23: 流式读取附件，避免一次性载入内存
-            let bytes = match fs::read(&attachment.absolute_path) {
-                Ok(buf) => buf,
+            // A6-23 + 2026-07-19 硬化：附件以 io::copy 流式写入 zip
+            let mut src = match fs::File::open(&attachment.absolute_path) {
+                Ok(f) => f,
                 Err(err) => {
                     log::warn!("读取附件失败，跳过 {}: {}", zip_entry, err);
                     continue;
                 }
             };
-            zip.start_file(&zip_entry, file_options.clone())
-                .map_err(|e| {
-                    AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
-                })?;
-            zip.write_all(&bytes).map_err(|e| {
+            zip.start_file(&zip_entry, file_options).map_err(|e| {
+                AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
+            })?;
+            io::copy(&mut src, &mut zip).map_err(|e| {
                 AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
             })?;
         }
@@ -735,44 +656,27 @@ impl NotesExporter {
         let id_prefix = &note.id;
         let md_filename = build_md_path_flat(folder_paths.get(&note.id), &safe_title, id_prefix);
         let md_content = self.render_markdown_note_flat(note, folder_paths.get(&note.id));
-        zip.start_file(&md_filename, file_options.clone())
+        zip.start_file(&md_filename, file_options)
             .map_err(|e| AppError::file_system(format!("写入笔记 {} 失败: {}", md_filename, e)))?;
         zip.write_all(md_content.as_bytes())
             .map_err(|e| AppError::file_system(format!("写入笔记 {} 失败: {}", md_filename, e)))?;
 
-        // 版本历史（_versions 目录）
-        if options.include_versions && !bundle.versions.is_empty() {
-            for version in bundle.versions.iter() {
-                let version_filename =
-                    format!("_versions/{}_{}.md", version.note_id, version.version_id);
-                let version_content = self.render_version_markdown_flat(version);
-                zip.start_file(&version_filename, file_options.clone())
-                    .map_err(|e| {
-                        AppError::file_system(format!("写入版本 {} 失败: {}", version_filename, e))
-                    })?;
-                zip.write_all(version_content.as_bytes()).map_err(|e| {
-                    AppError::file_system(format!("写入版本 {} 失败: {}", version_filename, e))
-                })?;
-            }
-        }
-
+        // ★ 2026-07-19：版本历史已移除（V20260214），options.include_versions
+        // 恒为空操作，不再产出 `_versions/` 目录。
         let readme = format!(
             "# 笔记导出\n\n\
             导出时间：{}\n\
             导出格式：统一 ZIP 格式（单条笔记）\n\
             笔记标题：{}\n\
-            版本数量：{}\n\
             附件数量：{}\n\n\
             ## 目录结构\n\n\
             - `notes/` 目录：笔记文件\n\
-            - `_versions/` 目录：版本历史（可选）\n\
-            - `assets/` 目录：附件文件\n\n\
+            - `assets/` 目录：附件文件（笔记正文中的 `notes_assets/<x>` 对应归档内 `assets/<x>`）\n\n\
             ## 跨软件兼容性\n\n\
             本备份格式兼容常见 Markdown 编辑器。\n\
             ",
             Utc::now().format("%Y-%m-%d %H:%M:%S"),
             note.title,
-            bundle.versions.len(),
             bundle.attachments.len(),
         );
         zip.start_file("README.md", file_options)
@@ -788,249 +692,6 @@ impl NotesExporter {
             note_count: 1,
             attachment_count: bundle.attachments.len(),
         })
-    }
-
-    fn collect_subject_bundle(
-        &self,
-        conn: &rusqlite::Connection,
-        subject: &str,
-        _include_versions: bool,
-        note_filter: Option<&HashSet<String>>,
-    ) -> Result<SubjectBundle> {
-        log::info!("collect_subject_bundle 开始查询学科 {} 的笔记", subject);
-
-        let mut notes_stmt = conn.prepare(
-            "SELECT id, title, content_md, tags, created_at, updated_at, COALESCE(is_favorite, 0)
-             FROM notes
-             WHERE subject = ?1 AND deleted_at IS NULL
-             ORDER BY datetime(updated_at) DESC",
-        ).map_err(|e| AppError::database(format!("准备笔记查询失败: {}", e)))?;
-
-        log::info!("笔记查询SQL准备完成");
-
-        let rows = notes_stmt
-            .query_map([subject], |row| {
-                let id: String = row.get(0)?;
-                let title: String = row.get(1)?;
-                let content_md: String = row.get(2)?;
-                let tags_json: String = row.get(3)?;
-                let created_at: String = row.get(4)?;
-                let updated_at: String = row.get(5)?;
-                let is_favorite: i64 = row.get(6)?;
-                let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-                Ok((
-                    id,
-                    title,
-                    content_md,
-                    tags,
-                    created_at,
-                    updated_at,
-                    is_favorite != 0,
-                ))
-            })
-            .map_err(|e| AppError::database(format!("遍历笔记失败: {}", e)))?;
-
-        log::info!("开始遍历笔记查询结果");
-
-        let mut notes: Vec<ExportNote> = Vec::new();
-        let mut note_ids: HashSet<String> = HashSet::new();
-        for (idx, row) in rows.enumerate() {
-            let (id, title, content_md, tags, created_at, updated_at, is_favorite) =
-                row.map_err(|e| AppError::database(e.to_string()))?;
-            if let Some(filter) = note_filter {
-                if !filter.contains(&id) {
-                    continue;
-                }
-            }
-            note_ids.insert(id.clone());
-            notes.push(ExportNote {
-                id: id.clone(),
-                title: title.clone(),
-                content_md,
-                tags,
-                created_at,
-                updated_at,
-                is_favorite,
-                attachments: Vec::new(),
-            });
-            if (idx + 1) % 10 == 0 {
-                log::info!("已读取 {} 条笔记", idx + 1);
-            }
-        }
-
-        log::info!("笔记遍历完成，共 {} 条", notes.len());
-
-        if notes.is_empty() {
-            log::info!("学科 {} 没有笔记，返回空bundle", subject);
-            return Ok(SubjectBundle::default());
-        }
-
-        log::info!("开始查询附件");
-
-        let mut asset_stmt = conn
-            .prepare(
-                "SELECT note_id, path, size, mime
-             FROM assets
-             WHERE subject = ?1",
-            )
-            .map_err(|e| AppError::database(format!("准备附件查询失败: {}", e)))?;
-
-        log::info!("附件查询SQL准备完成");
-
-        let asset_rows = asset_stmt
-            .query_map([subject], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<i64>>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                ))
-            })
-            .map_err(|e| AppError::database(format!("遍历附件失败: {}", e)))?;
-        let mut attachments_per_note: HashMap<String, Vec<ExportAttachment>> = HashMap::new();
-        let mut attachment_payloads: Vec<ExportAttachmentInternal> = Vec::new();
-        let assets_root = self.file_manager.get_writable_app_data_dir();
-
-        log::info!("开始遍历附件记录，资源根目录：{}", assets_root.display());
-        let mut attachment_count = 0;
-        for (idx, row) in asset_rows.enumerate() {
-            let (note_id, stored_path, size, mime) =
-                row.map_err(|e| AppError::database(e.to_string()))?;
-            if !note_ids.contains(&note_id) {
-                continue;
-            }
-            if stored_path.trim().is_empty() {
-                continue;
-            }
-            let relative_path = Path::new(&stored_path);
-            if is_path_traversal(relative_path) {
-                log::warn!("跳过可能越界的附件路径: {}", stored_path);
-                continue;
-            }
-            let disk_path = assets_root.join(relative_path);
-
-            if (idx + 1) % 5 == 0 {
-                log::info!("正在读取第 {} 个附件: {}", idx + 1, disk_path.display());
-            }
-
-            // A6-23: 仅校验文件存在，不在此读盘；附件字节延迟到 zip 写入时逐个读取
-            if !disk_path.exists() {
-                log::warn!("附件文件不存在，跳过: {}", disk_path.to_string_lossy());
-                continue;
-            }
-            attachment_count += 1;
-            let normalized_path = strip_notes_assets_prefix(relative_path)
-                .unwrap_or_else(|| relative_path.to_path_buf());
-            let relative_string = normalized_path
-                .iter()
-                .map(|c| c.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join("/");
-            let record = ExportAttachment {
-                relative_path: relative_string,
-                mime: mime.clone(),
-                size,
-            };
-            attachments_per_note
-                .entry(note_id.clone())
-                .or_default()
-                .push(record);
-            attachment_payloads.push(ExportAttachmentInternal {
-                relative_path: normalized_path,
-                absolute_path: disk_path,
-            });
-        }
-        log::info!("附件处理完成，共读取 {} 个附件文件", attachment_count);
-
-        // 写附件信息回笔记
-        for note in notes.iter_mut() {
-            if let Some(list) = attachments_per_note.remove(&note.id) {
-                note.attachments = list;
-            }
-        }
-
-        log::info!("附件信息已关联到笔记");
-
-        // 版本历史已移除，返回空列表
-        let versions: Vec<ExportVersion> = Vec::new();
-
-        log::info!("开始收集偏好设置");
-        let preferences = self.collect_preferences(conn, subject)?;
-        log::info!("偏好设置收集完成，共 {} 项", preferences.len());
-
-        log::info!("SubjectBundle 构建完成");
-        Ok(SubjectBundle {
-            notes,
-            attachments: attachment_payloads,
-            versions,
-            preferences,
-        })
-    }
-
-    fn collect_preferences(
-        &self,
-        conn: &rusqlite::Connection,
-        subject: &str,
-    ) -> Result<BTreeMap<String, Value>> {
-        const PREF_PREFIXES: &[&str] = &[
-            "notes_folders",
-            "notes_tree_state",
-            "notes_tabs",
-            "notes_find_flags",
-        ];
-        log::info!("collect_preferences 开始，学科：{}", subject);
-        let mut out: BTreeMap<String, Value> = BTreeMap::new();
-        for (idx, prefix) in PREF_PREFIXES.iter().enumerate() {
-            let key = format!("{}:{}", prefix, subject);
-            let full_key = format!("notes.pref.{}", key);
-            log::info!(
-                "正在读取偏好 {}/{}: {}",
-                idx + 1,
-                PREF_PREFIXES.len(),
-                full_key
-            );
-
-            // 直接使用传入的连接，避免再次获取锁导致死锁
-            use rusqlite::OptionalExtension;
-            let stored = match conn
-                .query_row(
-                    "SELECT value FROM settings WHERE key = ?1",
-                    [&full_key],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-            {
-                Ok(Some(v)) => {
-                    log::info!("成功读取偏好 {}，长度：{} 字符", key, v.len());
-                    v
-                }
-                Ok(None) => {
-                    log::info!("偏好 {} 不存在，跳过", key);
-                    continue;
-                }
-                Err(e) => {
-                    log::warn!("查询偏好 {} 失败: {}", key, e);
-                    continue;
-                }
-            };
-            if stored.trim().is_empty() {
-                log::info!("偏好 {} 为空，跳过", key);
-                continue;
-            }
-            log::info!("解析偏好 {} 的JSON数据", key);
-            match serde_json::from_str::<Value>(&stored) {
-                Ok(value) => {
-                    log::info!("成功解析偏好 {} 为JSON", key);
-                    out.insert(key, value);
-                }
-                Err(err) => {
-                    log::warn!("解析偏好 {} 的JSON失败: {}，存储原始数据", key, err);
-                    out.insert(key, json!({ "raw": stored }));
-                }
-            }
-        }
-        log::info!("collect_preferences 完成，共收集 {} 个偏好", out.len());
-        Ok(out)
     }
 
     fn collect_all_notes_bundle_vfs(
@@ -1103,25 +764,31 @@ impl NotesExporter {
             if !note_ids.contains(&note_id) {
                 continue;
             }
-            let abs_path = self.file_manager.get_app_data_dir().join(&path_str);
+            let stored_path = Path::new(&path_str);
+            if is_path_traversal(stored_path) {
+                log::warn!("跳过可能越界的附件路径: {}", path_str);
+                continue;
+            }
+            let abs_path = self.file_manager.get_app_data_dir().join(stored_path);
             if abs_path.exists() {
+                // ★ 2026-07-19：剥离 notes_assets/ 前缀，保证 zip 条目为
+                // assets/<subject>/...，与导入侧解析约定一致（见
+                // collect_all_notes_bundle 同款修复的详细说明）。
+                let normalized_path = strip_notes_assets_prefix(stored_path)
+                    .unwrap_or_else(|| stored_path.to_path_buf());
                 // A6-23: 不再在此读盘，改为 zip 写入时逐个流式读取
                 attachments.push(ExportAttachmentInternal {
-                    relative_path: PathBuf::from(&path_str),
+                    relative_path: normalized_path,
                     absolute_path: abs_path,
                 });
             }
         }
-
-        // 版本历史已移除，返回空列表
-        let versions: Vec<ExportVersion> = Vec::new();
 
         let preferences = self.collect_all_preferences(&conn)?;
 
         Ok(SubjectBundle {
             notes: export_notes,
             attachments,
-            versions,
             preferences,
         })
     }
@@ -1131,7 +798,6 @@ impl NotesExporter {
 struct SubjectBundle {
     notes: Vec<ExportNote>,
     attachments: Vec<ExportAttachmentInternal>,
-    versions: Vec<ExportVersion>,
     preferences: BTreeMap<String, Value>,
 }
 
@@ -1140,24 +806,6 @@ struct ExportAttachmentInternal {
     relative_path: PathBuf,
     /// A6-23: 只保存附件磁盘绝对路径，写入 zip 时再逐个读盘，避免一次性把所有附件字节载入内存。
     absolute_path: PathBuf,
-}
-
-#[derive(Clone)]
-struct BundleAttachment {
-    relative_path: PathBuf,
-    absolute_path: PathBuf,
-    size: Option<i64>,
-    mime: Option<String>,
-}
-
-fn serialize_ndjson<T: Serialize>(items: &[T]) -> Result<Vec<u8>> {
-    let mut buffer = Vec::new();
-    for item in items {
-        serde_json::to_writer(&mut buffer, item)
-            .map_err(|e| AppError::internal(format!("序列化导出数据失败: {}", e)))?;
-        buffer.push(b'\n');
-    }
-    Ok(buffer)
 }
 
 fn slugify_subject(subject: &str) -> String {
@@ -1219,13 +867,12 @@ fn yaml_quote(value: &str) -> String {
 
 fn strip_yaml_quotes(s: &str) -> String {
     let trimmed = s.trim();
-    if trimmed.len() >= 2 {
-        if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-            || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
-        {
-            let inner = &trimmed[1..trimmed.len() - 1];
-            return inner.replace(r#"\""#, "\"").replace(r"\\", "\\");
-        }
+    if trimmed.len() >= 2
+        && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+    {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        return inner.replace(r#"\""#, "\"").replace(r"\\", "\\");
     }
     trimmed.to_string()
 }
@@ -1285,24 +932,102 @@ fn strip_notes_assets_prefix(path: &Path) -> Option<PathBuf> {
 
 fn is_path_traversal(path: &Path) -> bool {
     path.is_absolute()
-        || path
-            .components()
-            .any(|component| matches!(component, Component::ParentDir))
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
 }
 
-fn rewrite_content_paths_for_export(content: &str, subject: &str, subject_slug: &str) -> String {
-    let mut result = content.replace(
-        &format!("notes_assets/{}/", subject),
-        &format!("assets/{}/", subject_slug),
-    );
-    let backslash_prefix = format!("notes_assets\\{}\\", subject);
-    if result.contains(&backslash_prefix) {
-        result = result.replace(
-            &backslash_prefix,
-            &format!("assets/{}{}", subject_slug, "/"),
-        );
+/// ★ 审阅 14 P0-1：归档相对路径穿越检测（导入侧）。
+/// 统一 `/` 与 `\`，拒绝绝对路径、盘符前缀、`..` 分段与空段。
+fn is_unsafe_archive_relative(path: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    if normalized.is_empty() {
+        return true;
     }
-    result
+    // Windows 盘符（C:/...）或 UNC 风格（//server/...）
+    if normalized.starts_with('/') || normalized.starts_with("//") {
+        return true;
+    }
+    if let Some(first) = normalized.split('/').next() {
+        if first.len() >= 2 && first.as_bytes().get(1) == Some(&b':') {
+            return true;
+        }
+    }
+    let as_path = Path::new(&normalized);
+    if is_path_traversal(as_path) {
+        return true;
+    }
+    // 显式拒绝空段（`a//b`）与纯 `.` 段以外的异常
+    for segment in normalized.split('/') {
+        if segment.is_empty() || segment == ".." {
+            return true;
+        }
+    }
+    false
+}
+
+/// ★ 审阅 14 P0-1：在 `base` 下安全拼接相对路径；越界返回 None。
+/// 落盘前用组件归一化保证结果位于 base 内（不依赖 canonicalize，因目标可能尚不存在）。
+fn resolve_safe_path_under(base: &Path, relative: &str) -> Option<PathBuf> {
+    if is_unsafe_archive_relative(relative) {
+        return None;
+    }
+    let mut resolved = base.to_path_buf();
+    for component in Path::new(&relative.replace('\\', "/")).components() {
+        match component {
+            Component::Normal(part) => resolved.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return None;
+            }
+        }
+    }
+    // 组件拼接后必须仍以 base 为前缀（防止 join 行为异常）
+    if !resolved.starts_with(base) {
+        return None;
+    }
+    Some(resolved)
+}
+
+/// ★ 审阅 14 P0-1：导入附件写盘前的统一校验入口。
+fn resolve_import_attachment_disk_path(
+    assets_base_dir: &Path,
+    relative_path: &str,
+) -> Option<PathBuf> {
+    let notes_assets_root = assets_base_dir.join("notes_assets");
+    // relative_path 形如 notes_assets/<subject>/...
+    let under_notes = relative_path
+        .strip_prefix("notes_assets/")
+        .or_else(|| relative_path.strip_prefix("notes_assets\\"))?;
+    if is_unsafe_archive_relative(under_notes) {
+        return None;
+    }
+    let disk_path = resolve_safe_path_under(&notes_assets_root, under_notes)?;
+    // 再校验完整路径仍在 app data 根内
+    if !disk_path.starts_with(assets_base_dir) {
+        return None;
+    }
+    Some(disk_path)
+}
+
+/// ★ 2026-07-19 硬化：把 zip 条目流式写入磁盘（io::copy），返回写入字节数。
+/// 大附件不再整体读入内存；写入失败时尽力清理半成品文件。
+fn write_zip_entry_to_disk<R: Read>(entry: &mut R, disk_path: &Path) -> io::Result<u64> {
+    if let Some(parent) = disk_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut out = fs::File::create(disk_path)?;
+    match io::copy(entry, &mut out) {
+        Ok(written) => Ok(written),
+        Err(e) => {
+            drop(out);
+            let _ = fs::remove_file(disk_path);
+            Err(e)
+        }
+    }
 }
 
 fn rewrite_content_paths_for_import(content: &str, subject: &str, subject_slug: &str) -> String {
@@ -1318,50 +1043,6 @@ fn rewrite_content_paths_for_import(content: &str, subject: &str, subject_slug: 
         );
     }
     result
-}
-
-fn build_folder_paths(
-    subject: &str,
-    note_ids: &HashSet<String>,
-    preferences: &BTreeMap<String, Value>,
-) -> HashMap<String, String> {
-    let pref_key = format!("notes_folders:{}", subject);
-    if let Some(val) = preferences.get(&pref_key) {
-        let mut scoped = BTreeMap::new();
-        scoped.insert(pref_key, val.clone());
-        return build_folder_paths_core(note_ids, &scoped);
-    }
-    build_folder_paths_core(note_ids, preferences)
-}
-
-fn build_md_path(
-    subject_slug: &str,
-    folder_path: Option<&String>,
-    safe_title: &str,
-    id_prefix: &str,
-) -> String {
-    let mut segments: Vec<String> = Vec::new();
-    segments.push(subject_slug.to_string());
-
-    if let Some(path) = folder_path {
-        if !path.is_empty() {
-            for segment in path.split('/') {
-                let sanitized = sanitize_filename(segment);
-                if !sanitized.is_empty() {
-                    segments.push(sanitized);
-                }
-            }
-        }
-    }
-
-    let filename = if safe_title.is_empty() {
-        format!("{}.md", id_prefix)
-    } else {
-        format!("{}_{}.md", safe_title, id_prefix)
-    };
-    segments.push(filename);
-
-    segments.join("/")
 }
 
 fn build_folder_paths_flat(
@@ -1682,6 +1363,11 @@ impl NotesImporter {
         // 检测导入格式：尝试读取 manifest.json 并检查 schema_version
         let manifest_result: Option<(u32, Manifest)> =
             zip.by_name("manifest.json").ok().and_then(|mut f| {
+                // ★ 2026-07-19 硬化：manifest 声明尺寸超限视为损坏/恶意归档
+                if f.size() > MAX_IMPORT_TEXT_BYTES {
+                    log::warn!("manifest.json 声明尺寸异常（{} 字节），忽略", f.size());
+                    return None;
+                }
                 let mut content = String::new();
                 f.read_to_string(&mut content).ok()?;
                 let manifest: Manifest = serde_json::from_str(&content).ok()?;
@@ -1817,6 +1503,16 @@ impl NotesImporter {
 
             let path_slug = path_parts[0];
 
+            // ★ 2026-07-19 硬化：.md 条目整体读入内存，声明尺寸超限直接跳过
+            if file.size() > MAX_IMPORT_TEXT_BYTES {
+                log::warn!(
+                    "跳过异常大笔记条目 {}（声明 {} 字节）",
+                    file_name,
+                    file.size()
+                );
+                continue;
+            }
+
             // 读取文件内容
             let mut content = String::new();
             if let Err(e) = file.read_to_string(&mut content) {
@@ -1832,19 +1528,21 @@ impl NotesImporter {
 
             let normalized_content = rewrite_content_paths_for_import(&note_content, "", path_slug);
 
-            // 报告进度
+            // 报告进度（大归档按百分比步进节流，避免事件风暴）
             processed_notes += 1;
-            Self::report_progress(
-                &options,
-                ImportProgress {
-                    stage: ImportStage::ImportingNotes,
-                    progress: ((processed_notes as f64 / total_md_files.max(1) as f64) * 50.0)
-                        as u8,
-                    current_item: Some(metadata.title.clone()),
-                    processed: processed_notes,
-                    total: total_md_files,
-                },
-            );
+            if should_report_progress(processed_notes, total_md_files) {
+                Self::report_progress(
+                    &options,
+                    ImportProgress {
+                        stage: ImportStage::ImportingNotes,
+                        progress: ((processed_notes as f64 / total_md_files.max(1) as f64) * 50.0)
+                            as u8,
+                        current_item: Some(metadata.title.clone()),
+                        processed: processed_notes,
+                        total: total_md_files,
+                    },
+                );
+            }
 
             // 检查笔记是否存在及其状态
             let existing_note: Option<(bool, String)> = tx
@@ -1998,7 +1696,18 @@ impl NotesImporter {
             }
 
             let path_after_assets = file_name.strip_prefix("assets/").unwrap_or("");
-            let parts: Vec<&str> = path_after_assets.split('/').collect();
+            // ★ 审阅 14 P0-1：条目名穿越校验（拒绝 ../、绝对路径、盘符、反斜杠变体）
+            if is_unsafe_archive_relative(path_after_assets) {
+                log::warn!("[notes_import] 跳过越界附件条目: {}", file_name);
+                continue;
+            }
+            let mut parts: Vec<&str> = path_after_assets.split('/').collect();
+            // ★ 2026-07-19 向后兼容：历史版本导出的条目为
+            // assets/notes_assets/<subject>/...（双前缀，未剥离 notes_assets），
+            // 此处去掉多余的 notes_assets 段，恢复正确的磁盘相对路径。
+            if parts.first() == Some(&"notes_assets") && parts.len() >= 3 {
+                parts.remove(0);
+            }
             if parts.len() < 2 {
                 continue;
             }
@@ -2009,62 +1718,70 @@ impl NotesImporter {
             // subject 已废弃，使用空字符串
             let subject = String::new();
 
-            let mut bytes = Vec::new();
-            if let Err(e) = file.read_to_end(&mut bytes) {
-                log::warn!("读取附件 {} 失败: {}", file_name, e);
-                continue;
-            }
-
             let relative_path = format!("notes_assets/{}/{}", subject_slug, relative_in_subject);
-            let disk_path = assets_base_dir.join(&relative_path);
+            let Some(disk_path) =
+                resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
+            else {
+                log::warn!(
+                    "[notes_import] 跳过越界附件落盘路径: {} -> {}",
+                    file_name,
+                    relative_path
+                );
+                continue;
+            };
 
-            if let Some(parent) = disk_path.parent() {
-                fs::create_dir_all(parent).ok();
-            }
+            // ★ 2026-07-19 硬化：附件流式落盘（io::copy），大附件不再整体读入内存
+            match write_zip_entry_to_disk(&mut file, &disk_path) {
+                Ok(written_bytes) => {
+                    // 记录已写入的附件路径，用于错误回滚
+                    written_attachment_paths.push(disk_path.clone());
 
-            if fs::write(&disk_path, &bytes).is_ok() {
-                // 记录已写入的附件路径，用于错误回滚
-                written_attachment_paths.push(disk_path.clone());
-
-                // 尝试关联到笔记（不再按学科分组）
-                let guessed_note_id = relative_in_subject.split('/').next().map(|s| s.to_string());
-                if let Some(note_id) = guessed_note_id.as_ref().and_then(|id| {
-                    if note_ids.contains(id) {
-                        Some(id.clone())
-                    } else {
-                        None
+                    // 尝试关联到笔记（不再按学科分组）
+                    let guessed_note_id =
+                        relative_in_subject.split('/').next().map(|s| s.to_string());
+                    if let Some(note_id) = guessed_note_id.as_ref().and_then(|id| {
+                        if note_ids.contains(id) {
+                            Some(id.clone())
+                        } else {
+                            None
+                        }
+                    }) {
+                        tx.execute(
+                            "INSERT OR IGNORE INTO assets (subject, note_id, path, size, mime, created_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                            rusqlite::params![
+                                &subject,
+                                &note_id,
+                                &relative_path,
+                                written_bytes as i64,
+                                Option::<String>::None,
+                                Utc::now().to_rfc3339(),
+                            ],
+                        ).ok();
                     }
-                }) {
-                    tx.execute(
-                        "INSERT OR IGNORE INTO assets (subject, note_id, path, size, mime, created_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                        rusqlite::params![
-                            &subject,
-                            &note_id,
-                            &relative_path,
-                            bytes.len() as i64,
-                            Option::<String>::None,
-                            Utc::now().to_rfc3339(),
-                        ],
-                    ).ok();
+                    total_attachments += 1;
                 }
-                total_attachments += 1;
+                Err(e) => {
+                    log::warn!("写入附件 {} 失败: {}", file_name, e);
+                }
             }
 
-            // 报告进度
+            // 报告进度（节流）
             processed_attachments += 1;
-            Self::report_progress(
-                &options,
-                ImportProgress {
-                    stage: ImportStage::ImportingAttachments,
-                    progress: 50
-                        + ((processed_attachments as f64 / asset_file_count.max(1) as f64) * 40.0)
-                            as u8,
-                    current_item: Some(relative_in_subject.clone()),
-                    processed: processed_attachments,
-                    total: asset_file_count,
-                },
-            );
+            if should_report_progress(processed_attachments, asset_file_count) {
+                Self::report_progress(
+                    &options,
+                    ImportProgress {
+                        stage: ImportStage::ImportingAttachments,
+                        progress: 50
+                            + ((processed_attachments as f64 / asset_file_count.max(1) as f64)
+                                * 40.0) as u8,
+                        current_item: Some(relative_in_subject.clone()),
+                        processed: processed_attachments,
+                        total: asset_file_count,
+                    },
+                );
+            }
         }
 
         Self::report_progress(
@@ -2081,11 +1798,20 @@ impl NotesImporter {
         // 导入偏好设置（从 manifest.preferences）
         for pref in manifest.preferences.iter() {
             if let Ok(mut file) = zip.by_name(&pref.file) {
+                if file.size() > MAX_IMPORT_TEXT_BYTES {
+                    log::warn!(
+                        "跳过异常大偏好条目 {}（声明 {} 字节）",
+                        pref.file,
+                        file.size()
+                    );
+                    continue;
+                }
                 let mut content = String::new();
                 if file.read_to_string(&mut content).is_ok() {
                     let full_key = format!("notes.pref.{}", pref.key);
                     tx.execute(
-                        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                         rusqlite::params![full_key, content, Utc::now().to_rfc3339()],
                     ).ok();
                     log::info!("导入偏好设置：{}", pref.key);
@@ -2099,7 +1825,8 @@ impl NotesImporter {
             let key = "notes.pref.notes_folders".to_string();
             let serialized = serde_json::to_string(&pref_value).unwrap_or_default();
             tx.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                 rusqlite::params![key, serialized, Utc::now().to_rfc3339()],
             )
             .ok();
@@ -2241,6 +1968,16 @@ impl NotesImporter {
 
             let path_slug = path_parts[0];
 
+            // ★ 2026-07-19 硬化：.md 条目整体读入内存，声明尺寸超限直接跳过
+            if file.size() > MAX_IMPORT_TEXT_BYTES {
+                log::warn!(
+                    "[VFS Import] 跳过异常大笔记条目 {}（声明 {} 字节）",
+                    file_name,
+                    file.size()
+                );
+                continue;
+            }
+
             let mut content = String::new();
             if let Err(e) = file.read_to_string(&mut content) {
                 log::warn!("读取文件 {} 失败: {}", file_name, e);
@@ -2251,17 +1988,19 @@ impl NotesImporter {
             let normalized_content = rewrite_content_paths_for_import(&note_content, "", path_slug);
 
             processed_notes += 1;
-            Self::report_progress(
-                &options,
-                ImportProgress {
-                    stage: ImportStage::ImportingNotes,
-                    progress: ((processed_notes as f64 / total_md_files.max(1) as f64) * 50.0)
-                        as u8,
-                    current_item: Some(metadata.title.clone()),
-                    processed: processed_notes,
-                    total: total_md_files,
-                },
-            );
+            if should_report_progress(processed_notes, total_md_files) {
+                Self::report_progress(
+                    &options,
+                    ImportProgress {
+                        stage: ImportStage::ImportingNotes,
+                        progress: ((processed_notes as f64 / total_md_files.max(1) as f64) * 50.0)
+                            as u8,
+                        current_item: Some(metadata.title.clone()),
+                        processed: processed_notes,
+                        total: total_md_files,
+                    },
+                );
+            }
 
             // 检查 VFS 中是否已存在该笔记
             let existing_vfs_note = VfsNoteRepo::get_note_with_conn(&vfs_conn, &metadata.id)
@@ -2270,9 +2009,15 @@ impl NotesImporter {
 
             // 跟踪实际使用的笔记 ID（新建时 VFS 会生成新 ID）
             let final_note_id: String;
+            // ★ 2026-07-19 元数据完整性：frontmatter 的 favorite 此前在 VFS
+            // 导入中被丢弃（VfsCreate/UpdateNoteParams 不含该字段）。记录
+            // 期望值，写入成功后用既有 set_favorite_with_conn 补齐（仅在与
+            // 现状不一致时调用，避免无谓刷新 updated_at）。
+            let mut favorite_sync: Option<bool> = None;
 
             match existing_vfs_note {
                 Some(existing) => {
+                    let existing_favorite = existing.is_favorite;
                     match options.conflict_strategy {
                         ImportConflictStrategy::Skip => {
                             log::info!("[VFS Import] 笔记 {} 已存在，跳过", metadata.id);
@@ -2304,6 +2049,9 @@ impl NotesImporter {
                                     overwritten += 1;
                                     total_notes += 1;
                                     final_note_id = metadata.id.clone();
+                                    if existing_favorite != metadata.is_favorite {
+                                        favorite_sync = Some(metadata.is_favorite);
+                                    }
                                 }
                                 Err(e) => {
                                     log::warn!("[VFS Import] 合并笔记 {} 失败: {}", metadata.id, e);
@@ -2328,6 +2076,9 @@ impl NotesImporter {
                                     overwritten += 1;
                                     total_notes += 1;
                                     final_note_id = metadata.id.clone();
+                                    if existing_favorite != metadata.is_favorite {
+                                        favorite_sync = Some(metadata.is_favorite);
+                                    }
                                 }
                                 Err(e) => {
                                     log::warn!("[VFS Import] 更新笔记 {} 失败: {}", metadata.id, e);
@@ -2349,12 +2100,23 @@ impl NotesImporter {
                             log::info!("[VFS Import] 创建笔记: {} -> {}", metadata.id, vfs_note.id);
                             total_notes += 1;
                             final_note_id = vfs_note.id;
+                            if metadata.is_favorite {
+                                favorite_sync = Some(true);
+                            }
                         }
                         Err(e) => {
                             log::warn!("[VFS Import] 创建笔记 {} 失败: {}", metadata.id, e);
                             continue;
                         }
                     }
+                }
+            }
+
+            if let Some(want_favorite) = favorite_sync {
+                if let Err(e) =
+                    VfsNoteRepo::set_favorite_with_conn(&vfs_conn, &final_note_id, want_favorite)
+                {
+                    log::warn!("[VFS Import] 同步收藏状态失败 {}: {}", final_note_id, e);
                 }
             }
 
@@ -2399,7 +2161,17 @@ impl NotesImporter {
             }
 
             let path_after_assets = file_name.strip_prefix("assets/").unwrap_or("");
-            let parts: Vec<&str> = path_after_assets.split('/').collect();
+            // ★ 审阅 14 P0-1：条目名穿越校验
+            if is_unsafe_archive_relative(path_after_assets) {
+                log::warn!("[notes_import] 跳过越界附件条目: {}", file_name);
+                continue;
+            }
+            let mut parts: Vec<&str> = path_after_assets.split('/').collect();
+            // ★ 2026-07-19 向后兼容：历史版本导出的条目为
+            // assets/notes_assets/<subject>/...（双前缀），去掉多余段。
+            if parts.first() == Some(&"notes_assets") && parts.len() >= 3 {
+                parts.remove(0);
+            }
             if parts.len() < 2 {
                 continue;
             }
@@ -2407,49 +2179,65 @@ impl NotesImporter {
             let subject_slug = parts[0];
             let relative_in_subject = parts[1..].join("/");
 
-            let mut bytes = Vec::new();
-            if let Err(e) = file.read_to_end(&mut bytes) {
-                log::warn!("读取附件 {} 失败: {}", file_name, e);
-                continue;
-            }
-
             let relative_path = format!("notes_assets/{}/{}", subject_slug, relative_in_subject);
-            let disk_path = assets_base_dir.join(&relative_path);
+            let Some(disk_path) =
+                resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
+            else {
+                log::warn!(
+                    "[notes_import] 跳过越界附件落盘路径: {} -> {}",
+                    file_name,
+                    relative_path
+                );
+                continue;
+            };
 
-            if let Some(parent) = disk_path.parent() {
-                fs::create_dir_all(parent).ok();
-            }
-
-            if fs::write(&disk_path, &bytes).is_ok() {
-                written_attachment_paths.push(disk_path.clone());
-                total_attachments += 1;
+            // ★ 2026-07-19 硬化：附件流式落盘，大附件不再整体读入内存
+            match write_zip_entry_to_disk(&mut file, &disk_path) {
+                Ok(_written) => {
+                    written_attachment_paths.push(disk_path.clone());
+                    total_attachments += 1;
+                }
+                Err(e) => {
+                    log::warn!("写入附件 {} 失败: {}", file_name, e);
+                }
             }
 
             processed_attachments += 1;
-            Self::report_progress(
-                &options,
-                ImportProgress {
-                    stage: ImportStage::ImportingAttachments,
-                    progress: 50
-                        + ((processed_attachments as f64 / asset_file_count.max(1) as f64) * 40.0)
-                            as u8,
-                    current_item: Some(relative_in_subject.clone()),
-                    processed: processed_attachments,
-                    total: asset_file_count,
-                },
-            );
+            if should_report_progress(processed_attachments, asset_file_count) {
+                Self::report_progress(
+                    &options,
+                    ImportProgress {
+                        stage: ImportStage::ImportingAttachments,
+                        progress: 50
+                            + ((processed_attachments as f64 / asset_file_count.max(1) as f64)
+                                * 40.0) as u8,
+                        current_item: Some(relative_in_subject.clone()),
+                        processed: processed_attachments,
+                        total: asset_file_count,
+                    },
+                );
+            }
         }
 
         // 导入偏好设置（写入旧 DB 的 settings 表，偏好设置不在 VFS 中）
         if let Ok(legacy_conn) = self.db.get_conn_safe() {
             for pref in manifest.preferences.iter() {
                 if let Ok(mut file) = zip.by_name(&pref.file) {
+                    if file.size() > MAX_IMPORT_TEXT_BYTES {
+                        log::warn!(
+                            "[VFS Import] 跳过异常大偏好条目 {}（声明 {} 字节）",
+                            pref.file,
+                            file.size()
+                        );
+                        continue;
+                    }
                     let mut pref_content = String::new();
                     if file.read_to_string(&mut pref_content).is_ok() {
                         let full_key = format!("notes.pref.{}", pref.key);
                         legacy_conn
                             .execute(
-                                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                                "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                                 rusqlite::params![full_key, pref_content, Utc::now().to_rfc3339()],
                             )
                             .ok();
@@ -2465,7 +2253,8 @@ impl NotesImporter {
                 let serialized = serde_json::to_string(&pref_value).unwrap_or_default();
                 legacy_conn
                     .execute(
-                        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                         rusqlite::params![key, serialized, Utc::now().to_rfc3339()],
                     )
                     .ok();
@@ -2529,7 +2318,7 @@ impl NotesImporter {
         let mut slug_to_subject: HashMap<String, String> = HashMap::new();
 
         for i in 0..zip.len() {
-            let mut file = zip.by_index(i).map_err(|e| {
+            let file = zip.by_index(i).map_err(|e| {
                 AppError::file_system(format!("读取归档文件索引 {} 失败: {}", i, e))
             })?;
 
@@ -2552,12 +2341,8 @@ impl NotesImporter {
                 continue;
             }
 
-            // 读取文件内容并解析学科名
-            let mut content = String::new();
-            file.read_to_string(&mut content).map_err(|e| {
-                AppError::file_system(format!("读取文件 {} 失败: {}", file_name, e))
-            })?;
-
+            // ★ 2026-07-19：学科名仅由路径 slug 推断，此前这里会把整个 .md
+            // 条目读入内存后丢弃，纯属浪费，已移除该读取。
             // 从文件名推断学科名：尝试从已有数据库中查找匹配的学科
             // 如果找不到，就使用 slug 本身
             let real_subject = self
@@ -2597,6 +2382,16 @@ impl NotesImporter {
             }
 
             let subject_slug = path_parts[0];
+
+            // ★ 2026-07-19 硬化：.md 条目整体读入内存，声明尺寸超限直接跳过
+            if file.size() > MAX_IMPORT_TEXT_BYTES {
+                log::warn!(
+                    "跳过异常大笔记条目 {}（声明 {} 字节）",
+                    file_name,
+                    file.size()
+                );
+                continue;
+            }
 
             // 读取文件内容
             let mut content = String::new();
@@ -2716,6 +2511,11 @@ impl NotesImporter {
 
             // 解析路径：assets/subject_slug/...
             let path_after_assets = file_name.strip_prefix("assets/").unwrap_or("");
+            // ★ 审阅 14 P0-1：条目名穿越校验
+            if is_unsafe_archive_relative(path_after_assets) {
+                log::warn!("[notes_import] 跳过越界附件条目: {}", file_name);
+                continue;
+            }
             let parts: Vec<&str> = path_after_assets.split('/').collect();
             if parts.len() < 2 {
                 log::warn!("跳过格式不正确的附件: {}", file_name);
@@ -2733,22 +2533,21 @@ impl NotesImporter {
                 .cloned()
                 .unwrap_or_else(|| subject_slug.to_string());
 
-            // 读取附件内容
-            let mut bytes = Vec::new();
-            file.read_to_end(&mut bytes).map_err(|e| {
-                AppError::file_system(format!("读取附件 {} 失败: {}", file_name, e))
-            })?;
-
             // 保存附件到磁盘
             let relative_path = format!("notes_assets/{}/{}", subject, relative_in_subject);
-            let disk_path = assets_base_dir.join(&relative_path);
+            let Some(disk_path) =
+                resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
+            else {
+                log::warn!(
+                    "[notes_import] 跳过越界附件落盘路径: {} -> {}",
+                    file_name,
+                    relative_path
+                );
+                continue;
+            };
 
-            if let Some(parent) = disk_path.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| AppError::file_system(format!("创建附件目录失败: {}", e)))?;
-            }
-
-            fs::write(&disk_path, &bytes)
+            // ★ 2026-07-19 硬化：附件流式落盘，大附件不再整体读入内存
+            let written_bytes = write_zip_entry_to_disk(&mut file, &disk_path)
                 .map_err(|e| AppError::file_system(format!("写入附件失败: {}", e)))?;
 
             // 记录数据库 assets（最佳努力推断 note_id）
@@ -2769,7 +2568,7 @@ impl NotesImporter {
                         &subject,
                         &note_id,
                         &relative_path,
-                        bytes.len() as i64,
+                        written_bytes as i64,
                         Option::<String>::None,
                         Utc::now().to_rfc3339(),
                     ],
@@ -2793,7 +2592,8 @@ impl NotesImporter {
             let serialized = serde_json::to_string(&pref_value)
                 .map_err(|e| AppError::internal(e.to_string()))?;
             tx.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                 rusqlite::params![key, serialized, Utc::now().to_rfc3339()],
             )
             .map_err(|e| AppError::database(format!("保存文件夹偏好失败: {}", e)))?;
@@ -3055,4 +2855,153 @@ struct MarkdownMetadata {
     updated_at: String,
     is_favorite: bool,
     folder_path: Option<String>,
+}
+
+#[cfg(test)]
+mod zip_slip_tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+    use zip::write::FileOptions;
+    use zip::ZipWriter;
+
+    fn write_zip_entry(zip: &mut ZipWriter<fs::File>, name: &str, data: &[u8]) {
+        zip.start_file(name, FileOptions::default()).unwrap();
+        zip.write_all(data).unwrap();
+    }
+
+    /// 模拟三条导入路径共用的落盘逻辑：校验后写文件。
+    fn try_import_asset_entry(base: &Path, entry_after_assets: &str, bytes: &[u8]) -> bool {
+        if is_unsafe_archive_relative(entry_after_assets) {
+            return false;
+        }
+        let parts: Vec<&str> = entry_after_assets.split('/').collect();
+        if parts.len() < 2 {
+            return false;
+        }
+        let subject_slug = parts[0];
+        let relative_in_subject = parts[1..].join("/");
+        let relative_path = format!("notes_assets/{}/{}", subject_slug, relative_in_subject);
+        let Some(disk_path) = resolve_import_attachment_disk_path(base, &relative_path) else {
+            return false;
+        };
+        if let Some(parent) = disk_path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
+        fs::write(&disk_path, bytes).is_ok()
+    }
+
+    #[test]
+    fn rejects_parent_dir_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(!try_import_asset_entry(
+            base,
+            "../evil/payload.txt",
+            b"evil"
+        ));
+        assert!(!try_import_asset_entry(
+            base,
+            "math/../../../evil.txt",
+            b"evil"
+        ));
+        assert!(!base.join("evil").exists());
+        assert!(!base.join("evil.txt").exists());
+    }
+
+    #[test]
+    fn rejects_windows_drive_and_absolute() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(!try_import_asset_entry(base, "C:/evil/x.txt", b"evil"));
+        assert!(!try_import_asset_entry(base, "C:\\evil\\x.txt", b"evil"));
+        assert!(!try_import_asset_entry(base, "/etc/passwd", b"evil"));
+        assert!(!try_import_asset_entry(base, "//server/share/x", b"evil"));
+    }
+
+    #[test]
+    fn rejects_mixed_separator_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(!try_import_asset_entry(
+            base,
+            "math\\..\\..\\evil.txt",
+            b"evil"
+        ));
+        assert!(!try_import_asset_entry(
+            base,
+            "math/..\\../outside.bin",
+            b"evil"
+        ));
+    }
+
+    #[test]
+    fn accepts_legitimate_asset_entry() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(try_import_asset_entry(
+            base,
+            "math/note-uuid/img.png",
+            b"pngdata"
+        ));
+        let expected = base
+            .join("notes_assets")
+            .join("math")
+            .join("note-uuid")
+            .join("img.png");
+        assert!(expected.exists());
+        assert_eq!(fs::read(&expected).unwrap(), b"pngdata");
+    }
+
+    #[test]
+    fn is_unsafe_archive_relative_covers_variants() {
+        assert!(is_unsafe_archive_relative("../evil"));
+        assert!(is_unsafe_archive_relative("a/../../b"));
+        assert!(is_unsafe_archive_relative("C:\\evil"));
+        assert!(is_unsafe_archive_relative("/abs"));
+        assert!(is_unsafe_archive_relative("a\\..\\b"));
+        assert!(!is_unsafe_archive_relative("math/note/img.png"));
+        assert!(!is_unsafe_archive_relative("math/note/sub/img.png"));
+    }
+
+    #[test]
+    fn zip_with_malicious_entries_does_not_escape_base() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("payload.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            write_zip_entry(&mut zip, "assets/math/note1/ok.png", b"ok");
+            write_zip_entry(&mut zip, "assets/../evil.txt", b"evil");
+            write_zip_entry(&mut zip, "assets/math/../../outside.bin", b"out");
+            zip.finish().unwrap();
+        }
+
+        let base = tmp.path().join("appdata");
+        fs::create_dir_all(&base).unwrap();
+
+        let archive = fs::File::open(&zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(archive).unwrap();
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).unwrap();
+            let name = file.name().to_string();
+            if !name.starts_with("assets/") || file.is_dir() {
+                continue;
+            }
+            let after = name.strip_prefix("assets/").unwrap_or("");
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).unwrap();
+            let _ = try_import_asset_entry(&base, after, &bytes);
+        }
+
+        assert!(base
+            .join("notes_assets")
+            .join("math")
+            .join("note1")
+            .join("ok.png")
+            .exists());
+        assert!(!base.join("evil.txt").exists());
+        assert!(!tmp.path().join("evil.txt").exists());
+        assert!(!base.join("outside.bin").exists());
+    }
 }

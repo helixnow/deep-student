@@ -11,6 +11,10 @@
  * 3. 暗色模式使用 :root.dark .chat-v2 或 .dark .chat-v2 选择器
  */
 
+/* 共享动效基建（token / keyframes / 工具类 / reduced-motion 兜底）
+   必须最先引入：其兜底扫射靠后续文件的源序与特异性覆盖 */
+@import './motion.css';
+
 /* 基础聊天样式 */
 @import './chat.css';
 
@@ -20,8 +24,9 @@
 /* Markdown 渲染样式 */
 @import './markdown.css';
 
-/* 分析模式样式 */
-@import './analysis.css';
+/* 2026-07 三轮清理：analysis.css 已是空壳（旧版 ReviewAnalysis 页面样式随
+   页面移除而删除），不再 import。文件本身保留——
+   tests/vitest/semanticTokenContract.test.ts 直接读取它校验硬编码颜色。 */
 
 /* 思维链样式 - 从 renderers 目录导入 */
 @import '../components/renderers/ThinkingChain.css';

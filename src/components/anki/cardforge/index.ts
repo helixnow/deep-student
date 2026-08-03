@@ -110,6 +110,34 @@ export {
 };
 
 // ============================================================================
+// 任务状态规范化工具（新增导出：大小写不敏感的状态归一化，供
+// ankiCardsBlock / anki-tasks 等调用方统一 'Failed' vs 'failed' 口径）
+// ============================================================================
+
+export {
+  normalizeTaskStatus,
+  taskStatusEquals,
+  isFailedLikeTaskStatus,
+  isTerminalTaskStatus,
+  isActiveTaskStatus,
+  ALL_TASK_STATUSES,
+  FAILED_LIKE_TASK_STATUSES,
+  TERMINAL_TASK_STATUSES,
+  ACTIVE_TASK_STATUSES,
+} from './engines';
+
+// ============================================================================
+// 导出规整与导出前校验（新增导出）
+// ============================================================================
+
+export {
+  normalizeToolExportCards,
+  validateCardsForExport,
+  filterExportableCards,
+} from './engines';
+export type { ExportableCardLike } from './engines';
+
+// ============================================================================
 // PromptKit 导出
 // ============================================================================
 
@@ -181,6 +209,13 @@ export type {
   CardGeneratedPayload,
   TaskProgressPayload,
   DocumentCompletePayload,
+  RateLimitWarningPayload,
+
+  // 导出前校验
+  ExportCardIssueCode,
+  ExportCardIssueLevel,
+  ExportCardValidationIssue,
+  ExportCardsValidationResult,
 
   // 错误相关
   CardForgeError,

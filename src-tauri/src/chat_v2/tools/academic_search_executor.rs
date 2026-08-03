@@ -24,9 +24,8 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{json, Value};
 use std::time::Duration;
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 // ============================================================================
@@ -346,7 +345,7 @@ impl AcademicSearchExecutor {
                 Ok(Event::Start(ref e)) => {
                     let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     // 去掉命名空间前缀
-                    let local = tag_name.split(':').last().unwrap_or(&tag_name);
+                    let local = tag_name.split(':').next_back().unwrap_or(&tag_name);
 
                     match local {
                         "entry" => {
@@ -403,7 +402,7 @@ impl AcademicSearchExecutor {
                 }
                 Ok(Event::Empty(ref e)) => {
                     let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    let local = tag_name.split(':').last().unwrap_or(&tag_name);
+                    let local = tag_name.split(':').next_back().unwrap_or(&tag_name);
 
                     if local == "link" && in_entry {
                         let mut is_pdf = false;
@@ -435,37 +434,35 @@ impl AcademicSearchExecutor {
                         }
                     }
                 }
-                Ok(Event::Text(ref e)) => {
-                    if in_entry {
-                        let text = e.unescape().unwrap_or_default().to_string();
-                        if in_author_name {
-                            authors.push(text.trim().to_string());
-                        } else {
-                            match current_tag.as_str() {
-                                "id" => paper_id = text.trim().to_string(),
-                                "title" => {
-                                    // arXiv 标题可能跨行
-                                    if title.is_empty() {
-                                        title = text.trim().replace('\n', " ");
-                                    } else {
-                                        title.push(' ');
-                                        title.push_str(text.trim());
-                                    }
+                Ok(Event::Text(ref e)) if in_entry => {
+                    let text = e.unescape().unwrap_or_default().to_string();
+                    if in_author_name {
+                        authors.push(text.trim().to_string());
+                    } else {
+                        match current_tag.as_str() {
+                            "id" => paper_id = text.trim().to_string(),
+                            "title" => {
+                                // arXiv 标题可能跨行
+                                if title.is_empty() {
+                                    title = text.trim().replace('\n', " ");
+                                } else {
+                                    title.push(' ');
+                                    title.push_str(text.trim());
                                 }
-                                "summary" => {
-                                    summary = text.trim().replace('\n', " ");
-                                }
-                                "published" => {
-                                    published = text.trim().to_string();
-                                }
-                                _ => {}
                             }
+                            "summary" => {
+                                summary = text.trim().replace('\n', " ");
+                            }
+                            "published" => {
+                                published = text.trim().to_string();
+                            }
+                            _ => {}
                         }
                     }
                 }
                 Ok(Event::End(ref e)) => {
                     let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    let local = tag_name.split(':').last().unwrap_or(&tag_name);
+                    let local = tag_name.split(':').next_back().unwrap_or(&tag_name);
 
                     match local {
                         "entry" => {
@@ -720,10 +717,7 @@ impl AcademicSearchExecutor {
             .unwrap_or(raw_papers.len() as u64);
 
         // 转换为统一格式
-        let papers: Vec<Value> = raw_papers
-            .iter()
-            .map(|p| Self::convert_openalex_work(p))
-            .collect();
+        let papers: Vec<Value> = raw_papers.iter().map(Self::convert_openalex_work).collect();
 
         log::info!(
             "[AcademicSearch] OpenAlex search: {} results (total {}) for '{}'",
@@ -762,7 +756,7 @@ impl AcademicSearchExecutor {
         let abstract_text = work
             .get("abstract_inverted_index")
             .and_then(|v| v.as_object())
-            .map(|idx| Self::reconstruct_abstract(idx))
+            .map(Self::reconstruct_abstract)
             .unwrap_or_default();
 
         // DOI
@@ -985,6 +979,11 @@ impl ToolExecutor for AcademicSearchExecutor {
 
     fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
         ToolSensitivity::Low
+    }
+
+    fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
+        // arxiv_search / scholar_search 均为只读外部 API 查询，可并行 + 自动重试
+        ToolConcurrency::ReadOnly
     }
 
     fn name(&self) -> &'static str {

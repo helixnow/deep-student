@@ -1,0 +1,468 @@
+/**
+ * Workbench Liquid Glass design tokens（P4 专属）
+ * ---------------------------------------------------------------------------
+ * 对标 macOS Tahoe Liquid Glass（薄玻璃标定）：低 fill + 中 blur +
+ * brightness + 顶缘 ~0.55 高光 + rim/sheen；圆角分档；焦点阴影两档；
+ * 全部动效仅 transform/opacity。真折射为 opt-in（`.wb-glass-lens` +
+ * `core/liquidGlassLens.ts`，仅小表面）；不做 Clear 图标管线。
+ *
+ * 变量体系对齐 src/styles/theme-colors.css：
+ *   - 基础灰度来自 shadcn 变量（--card / --background / --border / --primary）
+ *   - 暗色主题挂 `:root.dark`（与 theme-colors.css 一致）
+ *   - 三档材质由 `<html data-wb-material="full|reduced|minimal">` 驱动
+ *     （core/materialTier.ts 写入），降级发生在 token 层，
+ *     workbench.css 中的结构规则不感知档位。
+ *
+ * 消费方（P3/P5/P6/P11）只使用 workbench.css 中的类名，不直接读这些 token。
+ *
+ * O1 增补（2026-07-08，命名契约见 docs/dev/workbench-progress/O1.md）：
+ *   - @import motion.css：spring/缓动曲线库 + 命名 keyframes + 三态过渡；
+ *   - z-index 统一刻度表 --wb-z-*（全员禁止硬编码层级）；
+ *   - 焦点强度分档阴影 --wb-shadow-lifted/-popover/-overlay + 焦点环；
+ *   - 玻璃材质精修：多层 sheen（斜向光泽+底缘折射+边缘立体光+grain）、
+ *     --wb-glass-blur-strong 厚档、--wb-glass-edge 内缘四边高光；
+ *   - 材质切档交叉淡化（html[data-wb-material-switching]，materialTier.ts 编排）。
+ */
+@import './motion.css';
+
+:where(:root) {
+  /* ==== 玻璃材质（薄玻璃：中 blur + 低 fill + 强 rim/sheen） ========= */
+  /* Regular fill 落在 0.15–0.35；strong 略抬以保证 Dock/菜单可读 */
+  --wb-glass-bg: hsl(var(--card) / 0.20);
+  --wb-glass-bg-strong: hsl(var(--card) / 0.28);
+  /* Regular ~16–24；附 brightness 提亮散射，减牛奶磨砂感 */
+  --wb-glass-blur: blur(18px) saturate(1.8) brightness(1.08);
+  /* Dock / 中央 overlay 厚一档，仍远低于旧 42px */
+  --wb-glass-blur-strong: blur(24px) saturate(1.85) brightness(1.08);
+  /* 顶缘 specular：~0.55，避免旧 0.72 塑料亮 */
+  --wb-glass-highlight: rgba(255, 255, 255, 0.55);
+  /* 微噪点 grain（去饱和 SVG turbulence，平铺），并入 sheen 栈；单独暴露供自定义组合 */
+  --wb-glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+  /* 多层光学栈：斜向主光泽 + 底缘折射回光 + 左右缘立体光 + grain。
+   * 消费方式不变：background-image: var(--wb-glass-sheen) */
+  --wb-glass-sheen:
+    linear-gradient(
+      118deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 255, 255, 0.06) 34%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    radial-gradient(
+      130% 70% at 50% 102%,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0) 48%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.11) 0%,
+      rgba(255, 255, 255, 0) 4%,
+      rgba(255, 255, 255, 0) 96%,
+      rgba(255, 255, 255, 0.11) 100%
+    ),
+    var(--wb-glass-grain);
+  --wb-glass-border: color-mix(in hsl, hsl(var(--border)) 52%, transparent 48%);
+  /* 内缘四边高光 inset 栈（薄玻璃靠 rim 立边，略强于旧档） */
+  --wb-glass-edge:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset -1px 0 0 rgba(255, 255, 255, 0.08);
+
+  /* ==== 圆角阶梯（统一档位；组件禁止再写字面量圆角） ================== */
+  --wb-radius-xs: 6px;   /* menubar item / kbd 键帽 */
+  --wb-radius-sm: 8px;   /* 小控件 / chip / 菜单行 */
+  --wb-radius-md: 12px;  /* dock item / compact 窗 / 小面板 */
+  --wb-radius-lg: 14px;  /* 菜单 / dock 弹层 / switcher cell */
+  --wb-radius-xl: 18px;  /* 窗 / overlay / Spotlight 面板 */
+  --wb-radius-2xl: 22px; /* dock 药丸 / switcher bar */
+
+  /* ==== 窗口 chrome（圆角分档，别名指向阶梯） ======================== */
+  /* compact/min：无 toolbar 或紧凑面；默认窗走 toolbar 档（多数有标题栏）。
+   * 窗本体 20px：对标 Tahoe 更软的窗角（介于 xl/2xl 之间；maximized 时
+   * 由 WindowShell.css 收束为 0） */
+  --wb-window-radius-compact: var(--wb-radius-md);
+  --wb-window-radius: 20px;
+  --wb-window-radius-toolbar: 20px;
+  /* 菜单 / HUD 浮层；cheat/sheet 与窗 toolbar 档对齐 */
+  --wb-menu-radius: var(--wb-radius-lg);
+  --wb-overlay-radius: var(--wb-radius-xl);
+  /* 内容区一律不透明（设计文档 §6.5） */
+  --wb-window-bg: var(--surface-elevated, hsl(var(--card)));
+  --wb-window-border: color-mix(in hsl, hsl(var(--border)) 72%, transparent 28%);
+  /* 外圈 1px 亮描边模拟玻璃壳厚度，暗色下换白色微光 */
+  --wb-window-rim: rgba(255, 255, 255, 0.55);
+
+  /* ==== 窗口侧栏统一契约（以对话窗口为唯一基准） ====================
+   * 所有工作台窗口的一级侧栏必须引用这组 token，禁止再写字面量。
+   * 行配方复用 app.css 的 desktop-shell-nav-row（32px / 14px /
+   * --shell-nav-row-radius）；本层只定义宽度与软分隔线。
+   * 挂在 workbench.tokens.css：WorkbenchDesktop 必载，避免先开
+   * 资源库/笔记时 SystemWindowShared 尚未挂载而丢 token。 */
+  --wb-sidebar-width: 272px;
+  --wb-sidebar-width-medium: 240px;
+  --wb-sidebar-seam: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+
+  /* 焦点强度分档阴影（多层：0.5px 描边环 + 环境光 + 接触阴影）
+   * idle < focused < lifted（拖拽抬升）；popover/overlay 供悬浮玻璃件 */
+  --wb-shadow-focused:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.10),
+    0 26px 76px hsl(var(--shadow-base, 0 0% 0%) / 0.27),
+    0 9px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.15);
+  --wb-shadow-idle:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.07),
+    0 10px 30px hsl(var(--shadow-base, 0 0% 0%) / 0.14),
+    0 3px 9px hsl(var(--shadow-base, 0 0% 0%) / 0.08);
+  /* 拖拽抬升中（O2）：比 focused 更深更远 */
+  --wb-shadow-lifted:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.12),
+    0 38px 110px hsl(var(--shadow-base, 0 0% 0%) / 0.32),
+    0 14px 38px hsl(var(--shadow-base, 0 0% 0%) / 0.18);
+  /* 保留 token 供浮层等复用；窗口拖拽禁止切换到此档（见 workbench.css） */
+  --wb-shadow-drag:
+    0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.18);
+  /* Dock 弹层 / 菜单 / tooltip（O5/O6） */
+  --wb-shadow-popover:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.10),
+    0 14px 44px hsl(var(--shadow-base, 0 0% 0%) / 0.22),
+    0 4px 12px hsl(var(--shadow-base, 0 0% 0%) / 0.12);
+  /* 切换条 / 速查表等中央玻璃件（O8/O12） */
+  --wb-shadow-overlay:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.10),
+    0 32px 96px hsl(var(--shadow-base, 0 0% 0%) / 0.30),
+    0 10px 28px hsl(var(--shadow-base, 0 0% 0%) / 0.16);
+
+  /* 焦点环（O19/全员 focus-visible；minimal 档保留，属 a11y 不降级） */
+  --wb-focus-ring-color: hsl(var(--primary) / 0.65);
+  --wb-focus-ring: 0 0 0 2px var(--wb-focus-ring-color);
+
+  --wb-titlebar-height: 38px;
+  /* 标题栏 = 窗口顶部的一层薄玻璃 tint（叠在不透明内容之上） */
+  --wb-titlebar-bg: color-mix(in hsl, hsl(var(--card)) 55%, transparent 45%);
+  --wb-titlebar-border: color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  --wb-titlebar-fg: var(--text-primary, hsl(var(--foreground)));
+  --wb-titlebar-fg-idle: var(--text-muted, hsl(var(--muted-foreground)));
+
+  /* ==== 三键（macOS 红黄绿） ======================================== */
+  --wb-traffic-size: 12px;
+  --wb-traffic-gap: 8px;
+  /* 红绿灯区宽度：三键 + gap + titlebar 左右 padding，供内嵌工具栏避让 */
+  --wb-macos-traffic-lights-inset: 72px;
+  --wb-traffic-close: #ff5f57;
+  --wb-traffic-close-border: #e0443e;
+  --wb-traffic-min: #febc2e;
+  --wb-traffic-min-border: #d89e24;
+  --wb-traffic-zoom: #28c840;
+  --wb-traffic-zoom-border: #1dad2c;
+  /* 非焦点窗口三键统一褪成灰 */
+  --wb-traffic-idle: color-mix(in hsl, hsl(var(--muted-foreground)) 38%, hsl(var(--card)) 62%);
+  --wb-traffic-idle-border: color-mix(in hsl, hsl(var(--muted-foreground)) 52%, hsl(var(--card)) 48%);
+  --wb-traffic-glyph: rgba(0, 0, 0, 0.55);
+
+  /* ==== Dock ======================================================== */
+  --wb-dock-bg: var(--wb-glass-bg-strong);
+  --wb-dock-blur: var(--wb-glass-blur-strong);
+  --wb-dock-radius: var(--wb-radius-2xl);
+  --wb-dock-border: var(--wb-glass-border);
+  --wb-dock-shadow:
+    0 0 0 0.5px hsl(var(--shadow-base, 0 0% 0%) / 0.08),
+    0 18px 44px hsl(var(--shadow-base, 0 0% 0%) / 0.20),
+    0 4px 12px hsl(var(--shadow-base, 0 0% 0%) / 0.10);
+  --wb-dock-padding: 7px;
+  --wb-dock-gap: 6px;
+  --wb-dock-item-size: 44px;
+  --wb-dock-item-radius: var(--wb-radius-md);
+  --wb-dock-item-hover-bg: var(--interactive-hover, rgba(0, 0, 0, 0.08));
+  /* 默认不整键放大（toolbar 式 1.18 已弃）；悬停图标保持静止，仅 tooltip 显示应用名 */
+  --wb-dock-item-hover-scale: 1;
+  --wb-dock-indicator: color-mix(in hsl, hsl(var(--foreground)) 62%, transparent 38%);
+  --wb-dock-badge-bg: hsl(var(--destructive));
+  --wb-dock-badge-fg: hsl(var(--destructive-foreground));
+  --wb-dock-divider: color-mix(in hsl, hsl(var(--border)) 80%, transparent 20%);
+
+  /* ==== 吸附预览（主题色描边 + 8% 填充，设计文档 §6.2） ============== */
+  --wb-snap-stroke: color-mix(in hsl, hsl(var(--primary)) 72%, transparent 28%);
+  --wb-snap-fill: hsl(var(--primary) / 0.08);
+  --wb-snap-radius: var(--wb-window-radius);
+
+  /* ==== 俯瞰背景 ==================================================== */
+  --wb-expose-backdrop-bg: hsl(var(--background) / 0.58);
+  --wb-expose-backdrop-blur: blur(20px) saturate(1.4);
+
+  /* ==== z-index 统一刻度表（O1；全员禁止硬编码层级，O20 校验） ========
+   * React 内联样式直接写 zIndex: 'var(--wb-z-dock)'（字符串）。
+   * 层序裁决沿用 P11：expose backdrop(5) < 窗口层(10) < 中缝 < 吸附预览
+   * < Dock(9000) < 学习状态菜单栏(9050) < 学习中心弹层(9150)
+   * < Dock 飞出层(9200) < 全屏 overlay < 切换条 < 模态 < HUD < 拖放层。 */
+  --wb-z-wallpaper: 0;
+  --wb-z-desktop-ui: 1;
+  --wb-z-expose-backdrop: 5;
+  --wb-z-window-layer: 10;
+  --wb-z-tiling-divider: 5000;
+  --wb-z-snap-preview: 8500;
+  --wb-z-dock: 9000;
+  /* 学习状态菜单栏（SB1 / docs 07）：窗口层之上；介于 Dock(9000) 与 Dock 飞出层(9200) 之间 */
+  --wb-z-menubar: 9050;
+  --wb-z-menubar-flyout: 9150; /* 学习中心弹层：菜单栏之上、Dock 飞出层之下 */
+  --wb-z-dock-flyout: 9200;
+  --wb-z-overlay: 9500;
+  --wb-z-switcher: 9600;
+  --wb-z-modal: 9700;
+  --wb-z-hud: 9800;
+  --wb-z-drag-layer: 9900;
+  /* 收尾轮补录（O20 2026-07-09）：组件级命名层级正式入表 */
+  --wb-z-desktop-menu: 9650; /* 桌面右键菜单：switcher 之上、modal 之下 */
+  --wb-z-cheatsheet: var(--wb-z-modal); /* 快捷键速查表 = 模态层 */
+  --wb-z-window-content: 0; /* 窗口内局部层级：内容区，约束编辑器内部高 z-index */
+  --wb-z-window-resize: 5; /* 窗口内局部层级：缩放把手（窗口自身 stacking context 内） */
+  --wb-z-window-titlebar: 10; /* 窗口内局部层级：标题栏及其菜单，高于内容与缩放把手 */
+
+  /* ==== 学习状态菜单栏（SB1；应用级玻璃顶条） ======================== */
+  /* The outer app shell deliberately collapses its legacy titlebar to 0 in
+   * Workbench mode. Keep this independent so the Workbench menu bar remains
+   * the single 40px layout boundary for every window arrangement. */
+  --wb-menubar-height: 40px;
+
+  /* 对标 Tahoe 透明菜单栏：fill 降到近透明（保留 blur 维持文字可读），
+   * 底缘分隔弱化；reduced/minimal 档在下方降级块单独回填实底 */
+  --wb-menubar-bg: hsl(var(--card) / 0.10);
+  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 30%, transparent 70%);
+  --wb-menubar-sheen: var(--wb-glass-sheen);
+  --wb-menubar-blur: var(--wb-glass-blur);
+  --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 78%, transparent 22%);
+  --wb-menubar-fg-strong: hsl(var(--foreground));
+  --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(0, 0, 0, 0.08));
+  --wb-menubar-item-radius: var(--wb-radius-xs);
+
+  /* ==== 动效（全部 transform/opacity） ============================== */
+  --wb-anim-open-duration: 160ms;
+  --wb-anim-minimize-duration: 220ms;
+  /* 焦点阴影 idle↔focused 过渡（勿接拖窗抬起阴影切换） */
+  --wb-shadow-transition-duration: 140ms;
+  --wb-dock-transition-duration: 160ms;
+  /* 吸附预览淡入/区间切换（单一真相源；SnapPreview.css 直接消费） */
+  --wb-snap-fade-duration: 130ms;
+  --wb-ease: cubic-bezier(0.32, 0.72, 0.28, 1);
+  --wb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 最小化动画的收敛点（WindowShell 可注入 Dock 图标坐标） */
+  --wb-minimize-origin-x: 50%;
+  --wb-minimize-origin-y: 130%;
+
+  /* ==== 壁纸预设（明亮主题调校） ==================================== */
+  /* aurora — 极光晨空（默认）：冰蓝顶光 + 紫罗兰晕 + 薄荷底光的对角光带 */
+  --wb-wallpaper-aurora:
+    radial-gradient(85% 65% at 18% -8%, hsl(197 88% 82%) 0%, transparent 58%),
+    radial-gradient(70% 60% at 96% 22%, hsl(258 80% 84%) 0%, transparent 60%),
+    radial-gradient(68% 55% at 4% 88%, hsl(180 68% 79% / 0.8) 0%, transparent 62%),
+    radial-gradient(90% 65% at 68% 108%, hsl(222 75% 78%) 0%, transparent 58%),
+    linear-gradient(158deg, hsl(210 68% 88%) 0%, hsl(230 58% 84%) 48%, hsl(250 48% 82%) 100%);
+  /* horizon — 晨昏线：金色日光自地平线升起，粉紫天幕纵向分层 */
+  --wb-wallpaper-horizon:
+    radial-gradient(72% 55% at 50% 104%, hsl(40 96% 74%) 0%, hsl(22 90% 77% / 0.55) 40%, transparent 70%),
+    radial-gradient(110% 62% at 82% -12%, hsl(256 52% 86%) 0%, transparent 60%),
+    linear-gradient(178deg, hsl(232 50% 88%) 0%, hsl(286 38% 87%) 36%, hsl(338 64% 85%) 60%, hsl(16 82% 81%) 84%, hsl(34 90% 77%) 100%);
+  /* graphite — 石墨：银灰顶光滑向深灰角影，冷钢质感（专注模式） */
+  --wb-wallpaper-graphite:
+    radial-gradient(110% 80% at 30% -12%, hsl(214 18% 96%) 0%, transparent 60%),
+    radial-gradient(80% 60% at -6% 92%, hsl(218 14% 82%) 0%, transparent 58%),
+    radial-gradient(90% 70% at 102% 108%, hsl(222 16% 74%) 0%, transparent 62%),
+    linear-gradient(165deg, hsl(216 15% 92%) 0%, hsl(220 14% 84%) 100%);
+  /* 自定义图片之上的可读性 scrim */
+  --wb-wallpaper-scrim: linear-gradient(
+    180deg,
+    hsl(var(--background) / 0.06) 0%,
+    hsl(var(--background) / 0.18) 100%
+  );
+}
+
+/* ==== 暗色主题（对齐 theme-colors.css 的 :root.dark 机制） =========== */
+:root.dark {
+  /* 暗色 fill 略高于亮色，保图标/菜单对比；仍远薄于旧 0.50/0.64 */
+  --wb-glass-bg: hsl(var(--card) / 0.32);
+  --wb-glass-bg-strong: hsl(var(--card) / 0.42);
+  --wb-glass-blur: blur(18px) saturate(1.75) brightness(0.92);
+  --wb-glass-blur-strong: blur(24px) saturate(1.8) brightness(0.92);
+  --wb-glass-highlight: rgba(255, 255, 255, 0.22);
+  --wb-glass-sheen:
+    linear-gradient(
+      118deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.035) 34%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    radial-gradient(
+      130% 70% at 50% 102%,
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0) 48%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0) 4%,
+      rgba(255, 255, 255, 0) 96%,
+      rgba(255, 255, 255, 0.07) 100%
+    ),
+    var(--wb-glass-grain);
+  --wb-glass-border: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  --wb-glass-edge:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.07),
+    inset 1px 0 0 rgba(255, 255, 255, 0.05),
+    inset -1px 0 0 rgba(255, 255, 255, 0.05);
+
+  --wb-window-border: color-mix(in hsl, hsl(var(--border)) 85%, transparent 15%);
+  --wb-window-rim: rgba(255, 255, 255, 0.10);
+  --wb-shadow-focused:
+    0 0 0 0.5px rgba(0, 0, 0, 0.42),
+    0 28px 80px rgba(0, 0, 0, 0.56),
+    0 9px 26px rgba(0, 0, 0, 0.36);
+  --wb-shadow-idle:
+    0 0 0 0.5px rgba(0, 0, 0, 0.34),
+    0 12px 32px rgba(0, 0, 0, 0.38),
+    0 3px 10px rgba(0, 0, 0, 0.26);
+  --wb-shadow-lifted:
+    0 0 0 0.5px rgba(0, 0, 0, 0.46),
+    0 40px 120px rgba(0, 0, 0, 0.62),
+    0 16px 42px rgba(0, 0, 0, 0.42);
+  --wb-shadow-drag:
+    0 8px 24px rgba(0, 0, 0, 0.4);
+  --wb-shadow-popover:
+    0 0 0 0.5px rgba(0, 0, 0, 0.40),
+    0 16px 48px rgba(0, 0, 0, 0.48),
+    0 4px 14px rgba(0, 0, 0, 0.32);
+  --wb-shadow-overlay:
+    0 0 0 0.5px rgba(0, 0, 0, 0.42),
+    0 34px 104px rgba(0, 0, 0, 0.58),
+    0 12px 32px rgba(0, 0, 0, 0.38);
+  --wb-focus-ring-color: hsl(var(--primary) / 0.75);
+
+  --wb-titlebar-bg: color-mix(in hsl, hsl(var(--card)) 45%, transparent 55%);
+  --wb-titlebar-border: color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+
+  --wb-traffic-glyph: rgba(0, 0, 0, 0.62);
+
+  --wb-dock-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.40),
+    0 20px 50px rgba(0, 0, 0, 0.50),
+    0 5px 14px rgba(0, 0, 0, 0.32);
+  --wb-dock-item-hover-bg: var(--interactive-hover, rgba(255, 255, 255, 0.10));
+  --wb-dock-indicator: color-mix(in hsl, hsl(var(--foreground)) 72%, transparent 28%);
+
+  --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 82%, transparent 18%);
+  --wb-menubar-fg-strong: hsl(var(--foreground));
+  --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(255, 255, 255, 0.10));
+  /* 暗色透明菜单栏：fill 略高于亮色保对比 */
+  --wb-menubar-bg: hsl(var(--card) / 0.18);
+  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+
+  --wb-snap-stroke: color-mix(in hsl, hsl(var(--primary)) 80%, transparent 20%);
+  --wb-snap-fill: hsl(var(--primary) / 0.10);
+
+  --wb-expose-backdrop-bg: hsl(var(--background) / 0.66);
+
+  /* 暗色壁纸：同名预设的夜间调校 */
+  /* aurora — 夜空极光：青绿光带在深蓝夜空上发光 */
+  --wb-wallpaper-aurora:
+    radial-gradient(80% 60% at 20% -10%, hsl(190 85% 34% / 0.55) 0%, transparent 60%),
+    radial-gradient(65% 55% at 94% 20%, hsl(262 70% 36% / 0.5) 0%, transparent 62%),
+    radial-gradient(55% 45% at 10% 80%, hsl(165 75% 26% / 0.45) 0%, transparent 60%),
+    radial-gradient(85% 60% at 66% 110%, hsl(220 70% 28% / 0.5) 0%, transparent 60%),
+    linear-gradient(158deg, hsl(222 55% 13%) 0%, hsl(232 50% 9%) 55%, hsl(248 42% 8%) 100%);
+  /* horizon — 暮色余晖：地平线残阳 + 夜幕降临的纵向层次 */
+  --wb-wallpaper-horizon:
+    radial-gradient(70% 48% at 50% 106%, hsl(28 88% 42%) 0%, hsl(12 72% 30% / 0.6) 42%, transparent 72%),
+    radial-gradient(110% 60% at 80% -12%, hsl(255 42% 18% / 0.8) 0%, transparent 62%),
+    linear-gradient(178deg, hsl(236 44% 12%) 0%, hsl(275 34% 12%) 40%, hsl(330 42% 14%) 65%, hsl(8 52% 17%) 86%, hsl(24 66% 20%) 100%);
+  /* graphite — 夜石墨：微弱月光顶缘 + 炭黑纵深 */
+  --wb-wallpaper-graphite:
+    radial-gradient(110% 75% at 30% -12%, hsl(215 16% 24%) 0%, transparent 60%),
+    radial-gradient(80% 60% at -6% 92%, hsl(220 14% 12%) 0%, transparent 58%),
+    radial-gradient(90% 70% at 102% 108%, hsl(226 16% 8%) 0%, transparent 62%),
+    linear-gradient(165deg, hsl(218 14% 15%) 0%, hsl(224 12% 8%) 100%);
+  --wb-wallpaper-scrim: linear-gradient(
+    180deg,
+    hsl(var(--background) / 0.10) 0%,
+    hsl(var(--background) / 0.30) 100%
+  );
+}
+
+/* ==== 材质档位降级（token 层统一处理，结构规则不感知） ================
+ * reduced：零 backdrop-filter，玻璃改为高不透明纯色（Linux/WebKitGTK 默认）
+ * minimal：全不透明 + 全部动效时长归零（prefers-reduced-motion）
+ * ==================================================================== */
+
+:root[data-wb-material='reduced'],
+:root[data-wb-material='minimal'] {
+  --wb-glass-blur: none;
+  --wb-glass-blur-strong: none;
+  --wb-dock-blur: none;
+  --wb-expose-backdrop-blur: none;
+}
+
+:root[data-wb-material='reduced'] {
+  --wb-glass-bg: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
+  --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
+  --wb-titlebar-bg: color-mix(in hsl, hsl(var(--card)) 92%, transparent 8%);
+  --wb-expose-backdrop-bg: hsl(var(--background) / 0.82);
+  /* 透明菜单栏在无 blur 档不可读：回填实底 */
+  --wb-menubar-bg: var(--wb-glass-bg);
+  --wb-menubar-border: var(--wb-glass-border);
+}
+
+:root[data-wb-material='minimal'] {
+  --wb-glass-bg: hsl(var(--card));
+  --wb-glass-bg-strong: hsl(var(--card));
+  --wb-glass-highlight: transparent;
+  --wb-glass-sheen: none;
+  --wb-glass-grain: none;
+  --wb-glass-edge: none;
+  --wb-titlebar-bg: hsl(var(--card));
+  --wb-expose-backdrop-bg: hsl(var(--background) / 0.92);
+  --wb-wallpaper-scrim: none;
+  --wb-menubar-bg: hsl(var(--card));
+  --wb-menubar-border: var(--wb-glass-border);
+
+  /* 焦点环不降级（a11y）；motion.css 的 --wb-motion-* 已在其自身 minimal 块归零 */
+  --wb-anim-open-duration: 0ms;
+  --wb-anim-minimize-duration: 0ms;
+  --wb-shadow-transition-duration: 0ms;
+  --wb-dock-transition-duration: 0ms;
+  --wb-snap-fade-duration: 0ms;
+  --wb-dock-item-hover-scale: 1;
+}
+
+/* ==== 材质切档交叉淡化（O1） =========================================
+ * materialTier.ts 在切档时给 <html> 短暂加 data-wb-material-switching
+ * （~300ms 后移除），期间玻璃面的 background/box-shadow 走过渡而非硬切。
+ * blur 的 none↔blur() 不可插值（离散切换），由底色交叉淡化视觉掩蔽。
+ * 目标档为 minimal 或 prefers-reduced-motion 时 --wb-motion-tier-fade
+ * 已归零 → 自动硬切。O2–O19 新建的玻璃面复用 .wb-glass 即自动参与。 */
+html[data-wb-material-switching] :where(
+  .wb-glass,
+  .wb-window,
+  .wb-titlebar,
+  .wb-dock,
+  .wb-expose-backdrop,
+  .wb-snap-preview
+),
+/* 顶栏玻璃画在 ::before（避免本体成为弹层的 backdrop root），单独列出 */
+html[data-wb-material-switching] .wb-menubar::before {
+  transition:
+    background-color var(--wb-motion-tier-fade) var(--wb-ease),
+    box-shadow var(--wb-motion-tier-fade) var(--wb-ease),
+    opacity var(--wb-motion-tier-fade) var(--wb-ease);
+}
+
+/* 系统级降透明偏好：即便停留在 full 档也去掉 blur（与 theme-colors.css 同策略） */
+@media (prefers-reduced-transparency: reduce) {
+  :where(:root) {
+    --wb-glass-blur: none;
+    --wb-glass-blur-strong: none;
+    --wb-dock-blur: none;
+    --wb-expose-backdrop-blur: none;
+    --wb-glass-bg: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
+    --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
+    --wb-menubar-bg: var(--wb-glass-bg);
+    --wb-menubar-border: var(--wb-glass-border);
+  }
+}

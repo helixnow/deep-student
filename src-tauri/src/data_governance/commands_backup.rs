@@ -1,27 +1,22 @@
 // ==================== 备份相关命令 ====================
 
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 use tauri::{Manager, State};
 use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
-use super::backup::{
-    export_backup_to_zip, AssetBackupConfig, AssetType, AssetTypeStats, BackupManager,
-    BackupSelection, TieredAssetConfig, ZipExportOptions,
-};
+use super::backup::{AssetType, AssetTypeStats, BackupManager};
 use super::schema_registry::DatabaseId;
 use super::sync::{
     classification::{sync_classification_registry, SyncCategory},
     ChangeOperation, MergeStrategy, SyncChangeWithData, SyncManager,
 };
-use crate::backup_common::BACKUP_GLOBAL_LIMITER;
+use crate::backup_common::{DataGovernanceOperationGuard, DataGovernanceOperationKind};
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
     BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
 };
-use crate::utils::text::safe_truncate_chars;
 
 #[cfg(feature = "data_governance")]
 use super::commands::try_save_audit_log;
@@ -54,8 +49,41 @@ pub(super) fn get_active_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, Str
 }
 
 /// 获取备份目录
-pub(super) fn get_backup_dir(app_data_dir: &PathBuf) -> PathBuf {
-    app_data_dir.join("backups")
+pub(super) fn get_backup_dir(app_data_dir: &Path) -> PathBuf {
+    crate::backup_config::default_recovery_backup_dir(app_data_dir)
+}
+
+const RECOVERY_KIND_DISASTER: &str = "disaster_recovery";
+const RECOVERY_KIND_PARTIAL_ARCHIVE: &str = "partial_archive";
+
+fn classify_recovery_kind(manifest: &super::backup::BackupManifest) -> (&'static str, bool) {
+    if manifest.validate_for_slot_restore().is_ok() {
+        (RECOVERY_KIND_DISASTER, true)
+    } else {
+        (RECOVERY_KIND_PARTIAL_ARCHIVE, false)
+    }
+}
+
+/// 恢复预算必须使用 checked arithmetic；清单大小一旦溢出就不能证明空间充足。
+pub(super) fn checked_restore_disk_budget<I>(
+    file_sizes: I,
+    asset_size: u64,
+) -> Result<(u64, u64), String>
+where
+    I: IntoIterator<Item = u64>,
+{
+    let files_size = file_sizes.into_iter().try_fold(0u64, |total, size| {
+        total
+            .checked_add(size)
+            .ok_or_else(|| "恢复备份文件大小统计溢出，已拒绝继续".to_string())
+    })?;
+    let backup_size = files_size
+        .checked_add(asset_size)
+        .ok_or_else(|| "恢复备份总大小统计溢出，已拒绝继续".to_string())?;
+    let required_bytes = backup_size
+        .checked_mul(2)
+        .ok_or_else(|| "恢复磁盘预算计算溢出，已拒绝继续".to_string())?;
+    Ok((backup_size, required_bytes))
 }
 
 /// [P0-11/M12] 打开同步路径专用的数据库连接，统一设置 busy_timeout。
@@ -93,6 +121,7 @@ pub(super) fn resolve_database_path(db_id: &DatabaseId, active_dir: &Path) -> Pa
 }
 
 /// 多库应用结果
+#[derive(Debug)]
 pub(super) struct ApplyToDbsResult {
     pub(super) total_success: usize,
     pub(super) total_skipped: usize,
@@ -160,7 +189,9 @@ pub(super) fn infer_database_from_table(table_name: &str) -> Option<&'static str
         | "question_bank_stats"
         | "review_plans"
         | "review_history"
-        | "review_stats" => Some("vfs"),
+        | "review_stats"
+        | "mastery_events"
+        | "mastery_states" => Some("vfs"),
         // llm_usage 数据库
         "llm_usage_logs" | "llm_usage_daily" => Some("llm_usage"),
         // __change_log 是系统表，不应被同步回放
@@ -341,6 +372,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
         applied_keys: std::collections::HashSet::new(),
         total_conflicts: 0,
     };
+    let mut rebuild_mastery_profile = false;
 
     let id_column_map = build_id_column_map();
 
@@ -367,11 +399,13 @@ pub(super) fn apply_downloaded_changes_to_databases(
             None => match infer_database_from_table(&change.table_name) {
                 Some(name) => name.to_string(),
                 None => {
-                    warn!(
-                        "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
+                    let message = format!(
+                        "Legacy 变更表名 '{}' 无法推断目标数据库 (record_id={})",
                         change.table_name, change.record_id
                     );
-                    agg.total_skipped += 1;
+                    error!("[data_governance] {}，拒绝确认同步包", message);
+                    agg.total_failed += 1;
+                    agg.db_errors.push(("unknown".to_string(), message));
                     continue;
                 }
             },
@@ -387,23 +421,27 @@ pub(super) fn apply_downloaded_changes_to_databases(
         let db_path = match db_id {
             Some(id) => resolve_database_path(&id, active_dir),
             None => {
-                warn!(
-                    "[data_governance] 未知数据库名称 '{}', 跳过 {} 条变更",
+                let message = format!(
+                    "未知数据库名称 '{}'，{} 条变更没有可持久化的目标或隔离区",
                     db_name,
                     db_changes.len()
                 );
-                agg.total_skipped += db_changes.len();
+                error!("[data_governance] {}，拒绝确认同步包", message);
+                agg.total_failed += db_changes.len();
+                agg.db_errors.push((db_name.clone(), message));
                 continue;
             }
         };
 
         if !db_path.exists() {
-            warn!(
-                "[data_governance] 数据库文件不存在: {}, 跳过 {} 条变更",
+            let message = format!(
+                "目标数据库文件不存在: {}，{} 条变更无法应用或持久隔离",
                 db_path.display(),
                 db_changes.len()
             );
-            agg.total_skipped += db_changes.len();
+            error!("[data_governance] {}，拒绝确认同步包", message);
+            agg.total_failed += db_changes.len();
+            agg.db_errors.push((db_name.clone(), message));
             continue;
         }
 
@@ -455,6 +493,10 @@ pub(super) fn apply_downloaded_changes_to_databases(
             .iter()
             .find_map(|change| change.source_device_id.as_deref())
             .filter(|id| !id.trim().is_empty());
+        let rebuild_mastery_states = db_name == "vfs"
+            && owned_changes
+                .iter()
+                .any(|change| change.table_name == "mastery_events");
 
         // 所有策略统一走冲突保护路径（冲突落败方写入 __sync_conflicts）
         let result = SyncManager::apply_downloaded_changes_with_conflict_guard(
@@ -490,6 +532,12 @@ pub(super) fn apply_downloaded_changes_to_databases(
                     apply_result.failure_count,
                     apply_result.skipped_count
                 );
+                if rebuild_mastery_states {
+                    crate::mastery::MasteryService::recompute_all_states_with_conn(&conn).map_err(
+                        |error| format!("同步 mastery_events 后重建 mastery_states 失败: {error}"),
+                    )?;
+                    rebuild_mastery_profile = true;
+                }
             }
             Err(e) => {
                 let err_msg = format!("{}", e);
@@ -525,6 +573,16 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 );
             }
         }
+    }
+
+    if rebuild_mastery_profile {
+        let vfs = std::sync::Arc::new(
+            crate::vfs::database::VfsDatabase::new(active_dir)
+                .map_err(|error| format!("打开 VFS 以回流 mastery 画像失败: {error}"))?,
+        );
+        crate::mastery::MasteryService::new(vfs)
+            .sync_all_learner_profiles()
+            .map_err(|error| format!("同步 mastery learner profile 失败: {error}"))?;
     }
 
     if !agg.db_errors.is_empty() {
@@ -628,6 +686,51 @@ mod tests {
             .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
             .unwrap();
         assert_eq!(timeout_ms, 5000);
+    }
+
+    fn routing_test_change(database_name: &str) -> SyncChangeWithData {
+        SyncChangeWithData {
+            change_log_id: None,
+            table_name: "notes".to_string(),
+            record_id: "note-routing".to_string(),
+            operation: ChangeOperation::Insert,
+            changed_at: "2026-07-10T12:00:00Z".to_string(),
+            data: Some(json!({
+                "id": "note-routing",
+                "title": "routing",
+                "updated_at": "2026-07-10T12:00:00Z"
+            })),
+            database_name: Some(database_name.to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("remote-device".to_string()),
+            source_seq: Some(1),
+        }
+    }
+
+    #[test]
+    fn missing_target_database_rejects_package_before_cursor_ack() {
+        let active_dir = tempfile::TempDir::new().unwrap();
+        let error = apply_downloaded_changes_to_databases(
+            &[routing_test_change("vfs")],
+            active_dir.path(),
+            MergeStrategy::KeepLatest,
+        )
+        .expect_err("缺失目标库必须让应用阶段失败，调用方因此不能提交游标");
+
+        assert!(error.contains("目标数据库文件不存在"));
+    }
+
+    #[test]
+    fn unknown_target_database_rejects_package_before_cursor_ack() {
+        let active_dir = tempfile::TempDir::new().unwrap();
+        let error = apply_downloaded_changes_to_databases(
+            &[routing_test_change("unknown_database")],
+            active_dir.path(),
+            MergeStrategy::KeepLatest,
+        )
+        .expect_err("未知目标库必须让应用阶段失败，调用方因此不能提交游标");
+
+        assert!(error.contains("未知数据库名称"));
     }
 
     #[test]
@@ -780,6 +883,19 @@ mod tests {
             .unwrap();
         assert_eq!(title, "local-existing");
     }
+
+    #[test]
+    fn restore_disk_budget_uses_checked_arithmetic() {
+        assert_eq!(checked_restore_disk_budget([10, 20], 5).unwrap(), (35, 70));
+        assert!(checked_restore_disk_budget([u64::MAX], 1).is_err());
+        assert!(checked_restore_disk_budget([u64::MAX / 2 + 1], 0).is_err());
+    }
+
+    #[test]
+    fn governance_backup_directory_is_outside_slots() {
+        let base = PathBuf::from("/tmp/deep-student");
+        assert_eq!(get_backup_dir(&base), base.join("recovery").join("backups"));
+    }
 }
 
 pub(super) fn validate_backup_id(raw_backup_id: &str) -> Result<String, String> {
@@ -848,7 +964,7 @@ pub(super) fn ensure_existing_path_within_backup_dir(
 pub(super) async fn acquire_backup_global_permit(
     job_ctx: &BackupJobContext,
     waiting_message: &str,
-) -> Option<tokio::sync::OwnedSemaphorePermit> {
+) -> Option<DataGovernanceOperationGuard> {
     // 向前端暴露“正在等待”状态（不阻塞 UI）
     job_ctx.mark_running(
         BackupJobPhase::Queued,
@@ -858,7 +974,10 @@ pub(super) async fn acquire_backup_global_permit(
         0,
     );
 
-    let fut = BACKUP_GLOBAL_LIMITER.clone().acquire_owned();
+    let fut = DataGovernanceOperationGuard::acquire(
+        DataGovernanceOperationKind::Backup,
+        Some(job_ctx.job_id.clone()),
+    );
     tokio::pin!(fut);
 
     loop {
@@ -878,6 +997,170 @@ pub(super) async fn acquire_backup_global_permit(
                 };
             }
             _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {}
+        }
+    }
+}
+
+#[derive(Default)]
+struct BackupBarrierOwnership {
+    database: bool,
+    database_manager: bool,
+    vfs: bool,
+    chat: bool,
+    usage: bool,
+    workspaces: bool,
+}
+
+fn exit_backup_snapshot_barrier(
+    app: &tauri::AppHandle,
+    ownership: &BackupBarrierOwnership,
+) -> Result<(), String> {
+    let Some(state) = app.try_state::<crate::commands::AppState>() else {
+        return Err("应用数据库状态已不可用，无法退出备份屏障".to_string());
+    };
+    let mut errors = Vec::new();
+    if ownership.database {
+        if let Err(e) = state.database.exit_maintenance_mode() {
+            errors.push(format!("主数据库: {}", e));
+        }
+    }
+    if ownership.database_manager {
+        if let Err(e) = state.database_manager.exit_maintenance_mode() {
+            errors.push(format!("数据库连接池: {}", e));
+        }
+    }
+    if ownership.vfs {
+        if let Some(vfs) = &state.vfs_db {
+            if let Err(e) = vfs.exit_maintenance_mode() {
+                errors.push(format!("VFS: {}", e));
+            }
+        }
+    }
+    if ownership.chat {
+        if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
+            if let Err(e) = chat.exit_maintenance_mode() {
+                errors.push(format!("Chat V2: {}", e));
+            }
+        }
+    }
+    if ownership.usage {
+        if let Some(usage) = app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>() {
+            if let Err(e) = usage.exit_maintenance_mode() {
+                errors.push(format!("LLM Usage: {}", e));
+            }
+        }
+    }
+    if ownership.workspaces {
+        if let Some(workspaces) =
+            app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+        {
+            if let Err(e) = workspaces.exit_maintenance_mode() {
+                errors.push(format!("工作区: {}", e));
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("退出备份快照屏障失败: {}", errors.join("; ")))
+    }
+}
+
+/// Freeze every persisted database before assigning one snapshot epoch.
+/// Once the pools have checkpointed and detached, the sequential SQLite
+/// Backup API calls and asset scan observe a stable application-wide cut.
+pub(crate) struct BackupSnapshotBarrier {
+    app: tauri::AppHandle,
+    ownership: BackupBarrierOwnership,
+}
+
+impl BackupSnapshotBarrier {
+    pub(crate) fn enter(app: &tauri::AppHandle) -> Result<Self, String> {
+        let state = app
+            .try_state::<crate::commands::AppState>()
+            .ok_or_else(|| "应用数据库状态尚未初始化".to_string())?;
+        if state.database.is_in_maintenance_mode() {
+            // 启动失败建立的 fail-close 已经冻结业务写入。备份可借用该屏障直接
+            // 读取磁盘快照，但 ownership 为空，Drop 绝不能解除原维护模式。
+            return Ok(Self {
+                app: app.clone(),
+                ownership: BackupBarrierOwnership::default(),
+            });
+        }
+        let mut ownership = BackupBarrierOwnership::default();
+        let entered = (|| -> Result<(), String> {
+            state
+                .database
+                .enter_maintenance_mode()
+                .map_err(|e| format!("主数据库进入备份快照屏障失败: {}", e))?;
+            ownership.database = true;
+            state
+                .database_manager
+                .enter_maintenance_mode()
+                .map_err(|e| format!("数据库连接池进入备份快照屏障失败: {}", e))?;
+            ownership.database_manager = true;
+            if let Some(vfs) = &state.vfs_db {
+                vfs.enter_maintenance_mode()
+                    .map_err(|e| format!("VFS 进入备份快照屏障失败: {}", e))?;
+                ownership.vfs = true;
+            }
+            if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
+                chat.enter_maintenance_mode()
+                    .map_err(|e| format!("Chat V2 进入备份快照屏障失败: {}", e))?;
+                ownership.chat = true;
+            }
+            if let Some(usage) =
+                app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
+            {
+                usage
+                    .enter_maintenance_mode()
+                    .map_err(|e| format!("LLM Usage 进入备份快照屏障失败: {}", e))?;
+                ownership.usage = true;
+            }
+            if let Some(workspaces) =
+                app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+            {
+                workspaces
+                    .enter_maintenance_mode()
+                    .map_err(|e| format!("工作区进入备份快照屏障失败: {}", e))?;
+                ownership.workspaces = true;
+            }
+            Ok(())
+        })();
+        if let Err(error) = entered {
+            return match exit_backup_snapshot_barrier(app, &ownership) {
+                Ok(()) => Err(error),
+                Err(rollback_error) => Err(format!(
+                    "{}；且回滚快照屏障失败（应用保持 fail-close）: {}",
+                    error, rollback_error
+                )),
+            };
+        }
+        Ok(Self {
+            app: app.clone(),
+            ownership,
+        })
+    }
+
+    pub(crate) fn release(mut self) -> Result<(), String> {
+        match exit_backup_snapshot_barrier(&self.app, &self.ownership) {
+            Ok(()) => {
+                self.ownership = BackupBarrierOwnership::default();
+                Ok(())
+            }
+            // 保留 ownership；self 在返回后进入 Drop，再进行一次恢复尝试。
+            Err(error) => Err(error),
+        }
+    }
+}
+
+impl Drop for BackupSnapshotBarrier {
+    fn drop(&mut self) {
+        if let Err(error) = exit_backup_snapshot_barrier(&self.app, &self.ownership) {
+            tracing::error!(
+                "[data_governance] 备份快照屏障释放失败，应用保持 fail-close: {}",
+                error
+            );
         }
     }
 }
@@ -918,29 +1201,38 @@ pub async fn data_governance_get_backup_list(
     // 转换为响应格式
     let backups: Vec<BackupInfoResponse> = manifests
         .iter()
-        .map(|m| {
-            let db_size: u64 = m.files.iter().map(|f| f.size).sum();
+        .map(|m| -> Result<BackupInfoResponse, String> {
             let asset_size: u64 = m.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-            let size = db_size + asset_size;
+            let (size, _) =
+                checked_restore_disk_budget(m.files.iter().map(|file| file.size), asset_size)?;
             let databases: Vec<String> = m
                 .files
                 .iter()
                 .filter_map(|f| f.database_id.clone())
                 .collect();
+            let (recovery_kind, restorable) = classify_recovery_kind(m);
 
-            BackupInfoResponse {
+            Ok(BackupInfoResponse {
                 path: m.backup_id.clone(),
                 created_at: m.created_at.clone(),
                 size,
                 backup_type: if m.is_incremental {
                     "incremental".to_string()
                 } else {
-                    "full".to_string()
+                    match m.snapshot_kind {
+                        super::backup::SnapshotKind::Full => "full".to_string(),
+                        super::backup::SnapshotKind::PartialOverlay => {
+                            "partial_overlay".to_string()
+                        }
+                        super::backup::SnapshotKind::LegacyUnknown => "legacy_unknown".to_string(),
+                    }
                 },
+                recovery_kind: recovery_kind.to_string(),
+                restorable,
                 databases,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     info!(
         "[data_governance] 备份列表获取成功: {} 个备份",
@@ -969,11 +1261,10 @@ pub async fn data_governance_delete_backup(
     info!("[data_governance] 删除备份: {}", validated_backup_id);
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Backup, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     let app_data_dir = get_app_data_dir(&app)?;
     let backup_dir = get_backup_dir(&app_data_dir);
@@ -1040,16 +1331,25 @@ pub async fn data_governance_check_disk_space_for_restore(
         .find(|m| m.backup_id == validated_backup_id)
         .ok_or_else(|| format!("未找到备份: {}", validated_backup_id))?;
 
-    let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
     let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-    let backup_size = db_size + asset_size;
+    let (backup_size, required_bytes) =
+        checked_restore_disk_budget(manifest.files.iter().map(|file| file.size), asset_size)?;
 
-    // 所需空间 = 备份大小 × 2（解压 + 恢复预留）
-    let required_bytes = backup_size.saturating_mul(2);
-
-    // 获取应用数据目录所在磁盘的可用空间
+    // 必须查询实际恢复目标槽所在卷。目标槽或 DataSpaceManager 不可用时无法
+    // 证明查询的是正确卷，按 fail-close 处理，禁止回退到根卷或当前工作目录。
+    let data_space = crate::data_space::get_data_space_manager()
+        .ok_or_else(|| "数据空间管理器未初始化，无法确定恢复目标卷".to_string())?;
+    let restore_target = data_space.inactive_dir();
+    if !restore_target.is_dir() {
+        return Err(format!(
+            "恢复目标槽目录不存在或不是目录，无法确定目标卷: {}",
+            sanitize_path_for_user(&restore_target)
+        ));
+    }
+    let restore_target =
+        std::fs::canonicalize(&restore_target).map_err(|e| format!("解析恢复目标卷失败: {}", e))?;
     let available_bytes =
-        crate::backup_common::get_available_disk_space(&app_data_dir).map_err(|e| {
+        crate::backup_common::get_available_disk_space(&restore_target).map_err(|e| {
             error!("[data_governance] 获取可用磁盘空间失败: {}", e);
             format!("获取可用磁盘空间失败: {}", e)
         })?;
@@ -1097,11 +1397,10 @@ pub async fn data_governance_verify_backup(
     let manager = BackupManager::new(backup_dir.clone());
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Verify, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     // 获取备份列表并查找指定的备份
     let manifests = manager
@@ -1190,11 +1489,10 @@ pub async fn data_governance_auto_verify_latest_backup(
     let manager = BackupManager::new(backup_dir.clone());
 
     // 全局互斥：避免与正在运行的备份/恢复/ZIP 导入导出并发
-    let _permit = BACKUP_GLOBAL_LIMITER
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
+    let _operation =
+        DataGovernanceOperationGuard::acquire(DataGovernanceOperationKind::Verify, None)
+            .await
+            .map_err(|e| format!("获取全局备份锁失败: {}", e))?;
 
     // 获取备份列表并找到最新的备份
     let manifests = manager
@@ -1348,6 +1646,9 @@ pub struct BackupInfoResponse {
     pub created_at: String,
     pub size: u64,
     pub backup_type: String,
+    /// `disaster_recovery` 可替换完整槽；`partial_archive` 仅供检查/导出。
+    pub recovery_kind: String,
+    pub restorable: bool,
     pub databases: Vec<String>,
 }
 
@@ -1402,8 +1703,8 @@ pub struct DiskSpaceCheckResponse {
 ///
 /// ## 参数
 /// - `app`: Tauri AppHandle
-/// - `backup_type`: 备份类型，"full"（完整）或 "incremental"（增量）
-/// - `base_version`: 增量备份的基础版本（仅增量备份需要）
+/// - `backup_type`: 备份类型，仅支持 `"full"`（完整）。`"incremental"` 已下线并立即返回错误。
+/// - `base_version`: 保留参数兼容旧调用方（增量已下线，传入无效）
 /// - `include_assets`: 是否包含资产文件备份
 /// - `asset_types`: 要备份的资产类型列表（可选，默认全部）
 ///
@@ -1422,7 +1723,10 @@ pub async fn data_governance_run_backup(
     asset_types: Option<Vec<String>>,
 ) -> Result<BackupJobStartResponse, String> {
     let backup_type = backup_type.unwrap_or_else(|| "full".to_string());
-    let include_assets = include_assets.unwrap_or(false);
+    if backup_type == "incremental" {
+        return Err(super::backup::INCREMENTAL_BACKUP_REMOVED_MESSAGE.to_string());
+    }
+    let include_assets = include_assets.unwrap_or(true);
     info!(
         "[data_governance] 启动后台备份任务: type={}, include_assets={}",
         backup_type, include_assets
@@ -1435,16 +1739,11 @@ pub async fn data_governance_run_backup(
 
     #[cfg(feature = "data_governance")]
     {
-        let audit_backup_type = if backup_type == "incremental" {
-            super::audit::BackupType::Incremental
-        } else {
-            super::audit::BackupType::Full
-        };
         try_save_audit_log(
             &app,
             AuditLog::new(
                 AuditOperation::Backup {
-                    backup_type: audit_backup_type,
+                    backup_type: super::audit::BackupType::Full,
                     file_count: 0,
                     total_size: 0,
                 },
@@ -1506,6 +1805,13 @@ async fn execute_backup_with_progress(
             Some(p) => p,
             None => return,
         };
+
+    // 防御：在 set_params 之前拒绝 incremental；文案与
+    // INCREMENTAL_BACKUP_REMOVED_MESSAGE / BackupJobManager 封禁常量对齐（UI 侧可 i18n 映射）。
+    if backup_type == "incremental" {
+        job_ctx.fail(super::backup::INCREMENTAL_BACKUP_REMOVED_MESSAGE.to_string());
+        return;
+    }
 
     // 设置任务参数（用于持久化和恢复）
     job_ctx.set_params(BackupJobParams {
@@ -1575,7 +1881,14 @@ async fn execute_backup_with_progress(
 
     // 创建备份管理器
     let mut manager = BackupManager::new(backup_dir);
-    manager.set_app_data_dir(app_data_dir.clone());
+    let active_data_dir = match get_active_data_dir(&app) {
+        Ok(dir) => dir,
+        Err(e) => {
+            job_ctx.fail(format!("获取活动数据目录失败: {}", e));
+            return;
+        }
+    };
+    manager.set_app_data_dir(active_data_dir);
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
     // 设置逐数据库进度回调（页面级细粒度）
@@ -1638,72 +1951,78 @@ async fn execute_backup_with_progress(
         return;
     }
 
-    // 根据备份类型执行备份
-    let result = match backup_type.as_str() {
-        "incremental" => {
-            let base = match base_version {
-                Some(v) => v,
-                None => {
-                    job_ctx.fail("增量备份需要指定 base_version 参数".to_string());
-                    return;
-                }
-            };
-
-            // 阶段 3: 复制数据库
-            job_ctx.mark_running(
-                BackupJobPhase::Compress,
-                30.0,
-                Some("正在执行增量备份...".to_string()),
-                0,
-                4,
-            );
-
-            manager.backup_incremental(&base)
-        }
-        _ => {
-            if include_assets {
-                // 构建资产备份配置
-                let asset_config = if let Some(types) = asset_types {
-                    let parsed_types: Vec<AssetType> = types
-                        .iter()
-                        .filter_map(|s| AssetType::from_str(s))
-                        .collect();
-                    if parsed_types.is_empty() {
-                        AssetBackupConfig::default()
-                    } else {
-                        AssetBackupConfig {
-                            asset_types: parsed_types,
-                            ..Default::default()
-                        }
-                    }
-                } else {
-                    AssetBackupConfig::default()
-                };
-
-                // 阶段 3: 复制数据库和资产
-                job_ctx.mark_running(
-                    BackupJobPhase::Compress,
-                    30.0,
-                    Some("正在备份数据库和资产文件...".to_string()),
-                    0,
-                    4,
-                );
-
-                manager.backup_with_assets(Some(asset_config))
+    // 构建资产备份配置。完整复制、哈希和资产扫描都是阻塞 I/O，必须离开
+    // async runtime；为保证数据库与资产属于同一 snapshot，屏障覆盖整个 staging 阶段。
+    let asset_config = if include_assets {
+        let mut config = if let Some(types) = asset_types {
+            let parsed_types: Vec<AssetType> = types
+                .iter()
+                .filter_map(|s| AssetType::from_str(s))
+                .collect();
+            if parsed_types.is_empty() {
+                AssetBackupConfig::default()
             } else {
-                // 阶段 3: 复制数据库
-                job_ctx.mark_running(
-                    BackupJobPhase::Compress,
-                    30.0,
-                    Some("正在备份数据库...".to_string()),
-                    0,
-                    4,
-                );
-
-                manager.backup_full()
+                AssetBackupConfig {
+                    asset_types: parsed_types,
+                    ..Default::default()
+                }
             }
+        } else {
+            AssetBackupConfig::default()
+        };
+        if config.asset_types == AssetType::all() {
+            config.max_file_size = u64::MAX;
+            config.max_total_size = u64::MAX;
+        }
+        Some(config)
+    } else {
+        None
+    };
+
+    let blocking_app = app.clone();
+    let blocking_job = job_ctx.clone();
+    let blocking_result = tokio::task::spawn_blocking(move || {
+        let snapshot_barrier = BackupSnapshotBarrier::enter(&blocking_app)
+            .map_err(|error| format!("无法建立一致备份快照: {}", error))?;
+        blocking_job.mark_running(
+            BackupJobPhase::Compress,
+            30.0,
+            Some(if include_assets {
+                "一致性屏障内：正在 staging 数据库、资产并计算哈希...".to_string()
+            } else {
+                "一致性屏障内：正在 staging 数据库并计算哈希...".to_string()
+            }),
+            0,
+            4,
+        );
+        let result = match asset_config {
+            Some(config) => manager.backup_with_assets(Some(config)),
+            None => manager.backup_full(),
+        };
+        snapshot_barrier.release()?;
+        Ok::<_, String>((manager, result))
+    })
+    .await;
+    let (manager, result) = match blocking_result {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => {
+            job_ctx.fail(error);
+            return;
+        }
+        Err(error) => {
+            job_ctx.fail(format!("备份阻塞任务异常终止: {}", error));
+            return;
         }
     };
+
+    let result = result.and_then(|manifest| {
+        // 请求包含全部资产时，调用方期待的是灾备恢复点，任何覆盖缺口都必须失败。
+        // 显式不含资产的备份仍可作为 partial archive 发布，但不得进入槽恢复。
+        if include_assets {
+            manifest.validate_for_slot_restore()?;
+        }
+        Ok(manifest)
+    });
 
     if job_ctx.is_cancelled() {
         job_ctx.cancelled(Some("用户取消备份".to_string()));
@@ -1724,9 +2043,19 @@ async fn execute_backup_with_progress(
     match result {
         Ok(manifest) => {
             // 计算备份大小
-            let db_size: u64 = manifest.files.iter().map(|f| f.size).sum();
             let asset_size: u64 = manifest.assets.as_ref().map(|a| a.total_size).unwrap_or(0);
-            let backup_size = db_size + asset_size;
+            let (backup_size, _) = match checked_restore_disk_budget(
+                manifest.files.iter().map(|file| file.size),
+                asset_size,
+            ) {
+                Ok(budget) => budget,
+                Err(error) => {
+                    job_ctx.fail(error);
+                    return;
+                }
+            };
+            let db_size = backup_size - asset_size;
+            let (recovery_kind, restorable) = classify_recovery_kind(&manifest);
 
             let databases_backed_up: Vec<String> = manifest
                 .files
@@ -1744,11 +2073,6 @@ async fn execute_backup_with_progress(
 
             #[cfg(feature = "data_governance")]
             {
-                let audit_backup_type = if backup_type == "incremental" {
-                    super::audit::BackupType::Incremental
-                } else {
-                    super::audit::BackupType::Full
-                };
                 let asset_files = manifest.assets.as_ref().map(|a| a.total_files).unwrap_or(0);
                 let file_count = manifest.files.len() + asset_files;
 
@@ -1756,7 +2080,7 @@ async fn execute_backup_with_progress(
                     &app,
                     AuditLog::new(
                         AuditOperation::Backup {
-                            backup_type: audit_backup_type,
+                            backup_type: super::audit::BackupType::Full,
                             file_count,
                             total_size: backup_size,
                         },
@@ -1845,6 +2169,8 @@ async fn execute_backup_with_progress(
                     "backup_size": backup_size,
                     "db_files": manifest.files.len(),
                     "asset_files": manifest.assets.as_ref().map(|a| a.total_files).unwrap_or(0),
+                    "recovery_kind": recovery_kind,
+                    "restorable": restorable,
                     "auto_verify": {
                         "is_valid": verify_is_valid,
                         "errors": verify_errors,
@@ -1866,16 +2192,11 @@ async fn execute_backup_with_progress(
             error!("[data_governance] 后台备份失败: {}", e);
             #[cfg(feature = "data_governance")]
             {
-                let audit_backup_type = if backup_type == "incremental" {
-                    super::audit::BackupType::Incremental
-                } else {
-                    super::audit::BackupType::Full
-                };
                 try_save_audit_log(
                     &app,
                     AuditLog::new(
                         AuditOperation::Backup {
-                            backup_type: audit_backup_type,
+                            backup_type: super::audit::BackupType::Full,
                             file_count: 0,
                             total_size: 0,
                         },
@@ -2339,7 +2660,14 @@ async fn execute_tiered_backup_with_progress(
 
     // 创建备份管理器
     let mut manager = BackupManager::new(backup_dir.clone());
-    manager.set_app_data_dir(app_data_dir.clone());
+    let active_data_dir = match get_active_data_dir(&app) {
+        Ok(dir) => dir,
+        Err(e) => {
+            job_ctx.fail(format!("获取活动数据目录失败: {}", e));
+            return;
+        }
+    };
+    manager.set_app_data_dir(active_data_dir);
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
     // 阶段 3: 压缩/备份数据库 (15-80%)
@@ -2397,8 +2725,37 @@ async fn execute_tiered_backup_with_progress(
         );
     }
 
-    // 执行实际的分层备份
-    let result = match manager.backup_tiered(&selection) {
+    // 分层 staging 同样包含 SQLite copy、文件哈希与资产复制，全部放入
+    // spawn_blocking；当前清单模型要求资产和数据库共享 epoch，因此保持长屏障。
+    let blocking_app = app.clone();
+    let blocking_job = job_ctx.clone();
+    let blocking_result = tokio::task::spawn_blocking(move || {
+        let snapshot_barrier = BackupSnapshotBarrier::enter(&blocking_app)
+            .map_err(|error| format!("无法建立一致备份快照: {}", error))?;
+        blocking_job.mark_running(
+            BackupJobPhase::Compress,
+            20.0,
+            Some("一致性屏障内：正在 staging 分层数据并计算哈希...".to_string()),
+            0,
+            total_databases as u64,
+        );
+        let result = manager.backup_tiered(&selection);
+        snapshot_barrier.release()?;
+        Ok::<_, String>((manager, result))
+    })
+    .await;
+    let (manager, result) = match blocking_result {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => {
+            job_ctx.fail(error);
+            return;
+        }
+        Err(error) => {
+            job_ctx.fail(format!("分层备份阻塞任务异常终止: {}", error));
+            return;
+        }
+    };
+    let result = match result {
         Ok(r) => r,
         Err(e) => {
             error!("[data_governance] 分层备份失败: {}", e);
@@ -2459,7 +2816,23 @@ async fn execute_tiered_backup_with_progress(
 
     // 构建结果统计
     let duration_ms = start.elapsed().as_millis() as u64;
-    let total_size: u64 = result.manifest.files.iter().map(|f| f.size).sum();
+    let asset_size = result
+        .manifest
+        .assets
+        .as_ref()
+        .map(|assets| assets.total_size)
+        .unwrap_or(0);
+    let (total_size, _) = match checked_restore_disk_budget(
+        result.manifest.files.iter().map(|file| file.size),
+        asset_size,
+    ) {
+        Ok(budget) => budget,
+        Err(error) => {
+            job_ctx.fail(error);
+            return;
+        }
+    };
+    let (recovery_kind, restorable) = classify_recovery_kind(&result.manifest);
 
     // 分层备份成功后自动验证完整性
     let auto_verify_result = manager.verify(&result.manifest);
@@ -2512,6 +2885,8 @@ async fn execute_tiered_backup_with_progress(
         "total_files": result.manifest.files.len(),
         "total_size": total_size,
         "skipped_files_count": result.skipped_files.len(),
+        "recovery_kind": recovery_kind,
+        "restorable": restorable,
         "auto_verify": {
             "is_valid": verify_is_valid,
             "errors": verify_errors,

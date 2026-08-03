@@ -2,8 +2,8 @@ use chrono::Utc;
 use sentry::protocol::Event;
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 use std::sync::OnceLock;
@@ -14,8 +14,8 @@ static CRASH_HOOK_INIT: Once = Once::new();
 const MAX_CRASH_LOGS: usize = 20;
 
 /// 初始化崩溃日志记录器，并注册 panic hook。
-pub fn init_crash_logging(app_data_dir: PathBuf) {
-    let crash_dir = app_data_dir.join("logs").join("crash");
+pub fn init_crash_logging(log_root: PathBuf) {
+    let crash_dir = log_root.join("crash");
 
     if let Err(err) = fs::create_dir_all(&crash_dir) {
         eprintln!("[CrashLogger] 创建崩溃日志目录失败: {}", err);
@@ -37,7 +37,6 @@ pub fn init_crash_logging(app_data_dir: PathBuf) {
                 }
             }));
 
-            // Sentry 上报，单独 catch
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let payload = format!("{}", panic_info);
                 let fingerprint = if let Some(loc) = panic_info.location() {
@@ -48,28 +47,17 @@ pub fn init_crash_logging(app_data_dir: PathBuf) {
                 } else {
                     vec![Cow::Borrowed("rust-panic"), Cow::Borrowed("unknown")]
                 };
-
-                sentry::capture_event(Event {
+                let hub = sentry::Hub::main();
+                hub.capture_event(Event {
                     message: Some(scrub_pii(&payload)),
                     level: sentry::Level::Fatal,
-                    release: Some(Cow::Owned(format!(
-                        "{}+{}",
-                        env!("CARGO_PKG_VERSION"),
-                        env!("BUILD_NUMBER"),
-                    ))),
+                    release: Some(Cow::Borrowed(env!("SENTRY_RELEASE"))),
                     fingerprint: Cow::Owned(fingerprint),
-                    extra: {
-                        let mut map = std::collections::BTreeMap::new();
-                        map.insert("git_hash".into(), env!("GIT_HASH").into());
-                        map.insert("build_number".into(), env!("BUILD_NUMBER").into());
-                        map
-                    },
                     ..Default::default()
                 });
-
-                sentry::Hub::current()
-                    .client()
-                    .map(|c| c.flush(Some(std::time::Duration::from_secs(2))));
+                if let Some(client) = hub.client() {
+                    client.flush(Some(std::time::Duration::from_secs(2)));
+                }
             }));
 
             previous_hook(panic_info);
@@ -106,8 +94,8 @@ fn cleanup_old_crash_logs(dir: &Path) {
 }
 
 /// 脱敏：移除文件路径中的用户名部分
-fn scrub_pii(input: &str) -> String {
-    let result = input.to_string();
+pub(crate) fn scrub_pii(input: &str) -> String {
+    let result = crate::debug_log_service::redact_sensitive_text(input);
     #[cfg(target_os = "windows")]
     {
         let re = regex::Regex::new(r"(?i)[A-Z]:\\Users\\[^\\]+\\").ok();
@@ -178,5 +166,14 @@ fn write_crash_log(
     let backtrace = Backtrace::force_capture();
     buffer.push_str(&format!("{:?}\n", backtrace));
 
-    fs::write(path, buffer)
+    let mut options = OpenOptions::new();
+    options.create(true).write(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(scrub_pii(&buffer).as_bytes())?;
+    file.sync_all()
 }

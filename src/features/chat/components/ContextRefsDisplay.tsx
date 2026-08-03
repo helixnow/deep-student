@@ -20,23 +20,9 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';  // 用于 ContextRefItem 获取 locale
-import {
-  FileText,
-  ClipboardText,
-  Image,
-  Paperclip,
-  MagnifyingGlass,
-  FileXls,
-  BookOpen,
-  File,
-  PenNib,
-  Translate,
-  ArrowsOut,
-  CircleNotch,
-} from '@phosphor-icons/react';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowsOut, CircleNotch } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { contextTypeRegistry } from '../context';
 import type { ContextRef, ContextSnapshot } from '../context/types';
@@ -114,21 +100,11 @@ function isRichDocument(mimeType: string, fileName: string): boolean {
  * 通过 CHAT_OPEN_ATTACHMENT_PREVIEW 事件触发
  */
 function openInChatPanel(file: FilePreview): void {
-  // 推断资源类型
-  const resourceType = 'file'; // 附件统一使用 file 类型
-  
-  console.log('[ContextRefsDisplay] openInChatPanel:', {
-    sourceId: file.sourceId,
-    fileName: file.name,
-    mimeType: file.mimeType,
-    resourceType,
-  });
-  
-  // 发送事件让 ChatV2Page 在右侧面板打开附件
+  // 发送事件让 ChatV2Page 在右侧面板打开附件（附件统一使用 file 类型）
   window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
     detail: {
       id: file.sourceId,
-      type: resourceType,
+      type: 'file',
       title: file.name,
     }
   }));
@@ -198,23 +174,27 @@ const ContextRefItem: React.FC<ContextRefItemProps> = ({
   }, [typeLabel, path, ref_.displayName, ref_.resourceId]);
 
   return (
-    <div
+    // ★ 低-13：div+onClick → button，补齐键盘可达与语义
+    <button
+      type="button"
       className={cn(
         "relative w-16 h-16 rounded-xl overflow-hidden border border-border/40",
         "bg-background hover:bg-[var(--interactive-hover)] transition-colors shadow-sm",
         "flex flex-col items-center justify-center cursor-pointer",
-        "group shrink-0"
+        "group shrink-0 text-left",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       )}
       title={tooltipText}
+      aria-label={tooltipText}
       onClick={onClick}
     >
       <div className="shrink-0 drop-shadow-sm mt-1 transform group-hover:scale-110 transition-transform duration-200">
         <IconComponent size={32} />
       </div>
-      <span className="text-[9px] text-foreground/80 font-medium truncate w-full text-center px-1 mt-0.5">
+      <span className="text-2xs text-foreground/80 font-medium truncate w-full text-center px-1 mt-0.5">
         {displayText}
       </span>
-    </div>
+    </button>
   );
 };
 
@@ -229,13 +209,17 @@ interface ImageRefItemProps {
 
 const ImageRefItem: React.FC<ImageRefItemProps> = ({ preview, onClick }) => {
   return (
-    <div
+    // ★ 低-13：div+onClick → button，补齐键盘可达与语义
+    <button
+      type="button"
       className={cn(
         "relative w-16 h-16 rounded-xl overflow-hidden border border-border/40",
         "bg-background hover:bg-[var(--interactive-hover)] transition-colors shadow-sm",
-        "group cursor-pointer shrink-0"
+        "group cursor-pointer shrink-0",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       )}
       title={preview.name}
+      aria-label={preview.name}
       onClick={onClick}
     >
       <img
@@ -247,7 +231,7 @@ const ImageRefItem: React.FC<ImageRefItemProps> = ({ preview, onClick }) => {
       <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
         <ArrowsOut size={20} className="text-white drop-shadow-md" />
       </div>
-    </div>
+    </button>
   );
 };
 
@@ -264,23 +248,27 @@ const FileRefItem: React.FC<FileRefItemProps> = ({ preview, onClick }) => {
   const FileIcon = getFileTypeIconByMime(preview.mimeType);
 
   return (
-    <div
+    // ★ 低-13：div+onClick → button，补齐键盘可达与语义
+    <button
+      type="button"
       className={cn(
         "relative w-16 h-16 rounded-xl overflow-hidden border border-border/40",
         "bg-background hover:bg-[var(--interactive-hover)] transition-colors shadow-sm",
         "flex flex-col items-center justify-center cursor-pointer",
-        "group shrink-0"
+        "group shrink-0 text-left",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       )}
       title={preview.name}
+      aria-label={preview.name}
       onClick={onClick}
     >
       <div className="shrink-0 drop-shadow-sm mt-1 transform group-hover:scale-110 transition-transform duration-200">
         <FileIcon size={32} />
       </div>
-      <span className="text-[9px] text-foreground/80 font-medium truncate w-full text-center px-1 mt-0.5">
+      <span className="text-2xs text-foreground/80 font-medium truncate w-full text-center px-1 mt-0.5">
         {preview.name}
       </span>
-    </div>
+    </button>
   );
 };
 
@@ -453,18 +441,19 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
       
       {/* 展开/折叠按钮 */}
       {needsCollapse && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="!h-auto !px-2 !py-0.5 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
+          // ★ 低-13：去掉 !py-0.5 压缩，恢复 sm 尺寸的默认高度（触控更易命中）
+          className="!px-2 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
           {isExpanded ? (
             <span>{t('contextRefs.collapse')}</span>
           ) : (
             <span>{t('contextRefs.showMore', { count: hiddenCount })}</span>
           )}
-        </NotionButton>
+        </DsButton>
       )}
 
       {/* ★ 图片预览器 */}

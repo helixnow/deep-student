@@ -81,11 +81,17 @@ pub mod event_types {
     /// 工具审批响应
     pub const TOOL_APPROVAL_RESPONSE: &str = "tool_approval_response";
 
+    // ========== Plan gate（Ask/Plan/Craft 会话档）==========
+    /// Plan 模式写工具挂起：等待用户确认计划批次（区别于普通 tool_approval）
+    pub const PLAN_GATE: &str = "plan_gate";
+
     // ========== 系统提示事件 ==========
     /// 工具递归限制提示（达到最大递归次数时）
     pub const TOOL_LIMIT: &str = "tool_limit";
     /// 技能瞬态注入审计（hidden transient skill messages）
     pub const SKILL_INJECTION_AUDIT: &str = "skill_injection_audit";
+    /// 🆕 工作区消息注入（契约 C11：主代理插话在子代理对话中实时渲染）
+    pub const WORKSPACE_INJECTION: &str = "workspace_injection";
 }
 
 // ============================================================
@@ -115,6 +121,12 @@ pub mod session_event_type {
     /// 注：原 `title_updated` 事件已废弃 —— 自动生成路径从未发射，
     /// 所有标题/简介更新统一走 `summary_updated`。
     pub const SUMMARY_UPDATED: &str = "summary_updated";
+    /// 🆕 自动压缩失败/被放弃（payload: {"reason": "<code>"}）
+    /// 仅自动触发（检查点/兜底）路径发射；手动压缩结果走命令返回值。
+    pub const COMPACTION_FAILED: &str = "compaction_failed";
+    /// 🆕 FIFO 截断实际丢弃了历史消息
+    /// （payload: {"droppedMessages": N, "estimatedDroppedTokens": M}）
+    pub const CONTEXT_TRIMMED: &str = "context_trimmed";
 }
 
 // ============================================================
@@ -428,6 +440,13 @@ impl BackendEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionEvent {
+    /// 🆕 递增序列号（会话级通道独立计数，从 0 开始）
+    /// 用于前端检测会话级事件的乱序/丢失。与块级事件的 sequence_id
+    /// 各自独立计数（避免两个通道互相制造「空洞」误报丢事件）。
+    /// Option 仅为反序列化旧事件兼容；后端发射时恒为 Some。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence_id: Option<u64>,
+
     /// 会话 ID
     pub session_id: String,
 
@@ -437,6 +456,11 @@ pub struct SessionEvent {
     /// 关联的消息 ID（可选）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
+
+    /// Backend stream registration generation. Clients use this to reject terminal events from a
+    /// cancelled run after an immediate retry has reused the same message ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_generation: Option<u64>,
 
     /// Skill 状态版本
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -480,16 +504,28 @@ pub struct SessionEvent {
     /// 简介（summary_updated 事件时提供）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+
+    /// 🆕 通用附加数据（compaction_failed / context_trimmed 等事件使用）。
+    /// `skip_serializing_if` 保持既有事件序列化形态不变（向后兼容）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<Value>,
 }
 
 impl SessionEvent {
+    pub fn with_stream_generation(mut self, stream_generation: Option<u64>) -> Self {
+        self.stream_generation = stream_generation;
+        self
+    }
+
     /// 创建流式开始事件
     /// `model_id` 是模型标识符（如 "Qwen/Qwen3-8B"），用于前端显示
     pub fn stream_start(session_id: &str, message_id: &str, model_id: Option<&str>) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_START.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: model_id.map(|s| s.to_string()),
@@ -501,6 +537,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -512,9 +549,11 @@ impl SessionEvent {
         retry_max: u32,
     ) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_RECONNECT.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -526,15 +565,18 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
     /// 创建流式完成事件
     pub fn stream_complete(session_id: &str, message_id: &str, duration_ms: u64) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -546,6 +588,7 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
@@ -563,9 +606,11 @@ impl SessionEvent {
         usage: Option<TokenUsage>,
     ) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -577,15 +622,18 @@ impl SessionEvent {
             usage,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
     /// 创建流式错误事件
     pub fn stream_error(session_id: &str, message_id: &str, error: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_ERROR.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -597,15 +645,18 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
     /// 创建流式取消事件
     pub fn stream_cancelled(session_id: &str, message_id: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_CANCELLED.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -617,15 +668,18 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
     /// 创建保存完成事件
     pub fn save_complete(session_id: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_COMPLETE.to_string(),
             message_id: None,
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -637,15 +691,18 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
         }
     }
 
     /// 创建保存错误事件
     pub fn save_error(session_id: &str, error: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_ERROR.to_string(),
             message_id: None,
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -657,15 +714,79 @@ impl SessionEvent {
             usage: None,
             title: None,
             description: None,
+            payload: None,
+        }
+    }
+
+    /// 创建自动压缩失败事件
+    ///
+    /// 契约（与前端逐字约定）：eventType = "compaction_failed"，
+    /// payload = `{"reason": "<code>"}`（code 见 `CompactionSkipReason::as_code`）。
+    pub fn compaction_failed(session_id: &str, reason: &str) -> Self {
+        Self {
+            sequence_id: None,
+            session_id: session_id.to_string(),
+            event_type: session_event_type::COMPACTION_FAILED.to_string(),
+            message_id: None,
+            stream_generation: None,
+            skill_state_version: None,
+            replay_mode: None,
+            model_id: None,
+            retry_attempt: None,
+            retry_max: None,
+            error: None,
+            duration_ms: None,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            usage: None,
+            title: None,
+            description: None,
+            payload: Some(serde_json::json!({ "reason": reason })),
+        }
+    }
+
+    /// 创建 FIFO 截断可见化事件
+    ///
+    /// 契约（与前端逐字约定）：eventType = "context_trimmed"，
+    /// payload = `{"droppedMessages": N, "estimatedDroppedTokens": M}`
+    /// （estimatedDroppedTokens 可选，仅在有估算值时携带）。
+    pub fn context_trimmed(
+        session_id: &str,
+        dropped_messages: usize,
+        estimated_dropped_tokens: Option<usize>,
+    ) -> Self {
+        let mut payload = serde_json::json!({ "droppedMessages": dropped_messages });
+        if let Some(tokens) = estimated_dropped_tokens {
+            payload["estimatedDroppedTokens"] = serde_json::json!(tokens);
+        }
+        Self {
+            sequence_id: None,
+            session_id: session_id.to_string(),
+            event_type: session_event_type::CONTEXT_TRIMMED.to_string(),
+            message_id: None,
+            stream_generation: None,
+            skill_state_version: None,
+            replay_mode: None,
+            model_id: None,
+            retry_attempt: None,
+            retry_max: None,
+            error: None,
+            duration_ms: None,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            usage: None,
+            title: None,
+            description: None,
+            payload: Some(payload),
         }
     }
 
     /// 创建摘要更新事件（包含标题和简介）
     pub fn summary_updated(session_id: &str, title: &str, description: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::SUMMARY_UPDATED.to_string(),
             message_id: None,
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -677,6 +798,7 @@ impl SessionEvent {
             usage: None,
             title: Some(title.to_string()),
             description: Some(description.to_string()),
+            payload: None,
         }
     }
 }
@@ -713,8 +835,38 @@ impl SessionEvent {
 static SESSION_SEQUENCE_COUNTERS: LazyLock<DashMap<String, Arc<AtomicU64>>> =
     LazyLock::new(DashMap::new);
 
+/// 🆕 会话级（session channel）事件独立序列号计数器。
+/// 与块级计数器分开：若共用一个计数器，任一通道的消费方都会观察到
+/// 序列号「空洞」而误报丢事件。
+static SESSION_EVENT_SEQUENCE_COUNTERS: LazyLock<DashMap<String, Arc<AtomicU64>>> =
+    LazyLock::new(DashMap::new);
+
+/// 🆕 window.emit 失败累计计数（跨会话，诊断用）
+static EMIT_FAILURE_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// 读取累计 emit 失败次数（诊断/测试用）
+pub fn emit_failure_count() -> u64 {
+    EMIT_FAILURE_COUNT.load(Ordering::Relaxed)
+}
+
+/// 只读诊断命令：读取跨会话累计的事件发射（window.emit）失败次数。
+///
+/// 用于前端诊断面板 / 排障时确认「事件丢失」是否来自 IPC 发射失败。
+/// 计数为进程级累计值，重启后归零。
+#[tauri::command]
+pub async fn chat_v2_get_emit_failure_count() -> Result<u64, String> {
+    Ok(emit_failure_count())
+}
+
 fn get_or_create_session_counter(session_id: &str) -> Arc<AtomicU64> {
     SESSION_SEQUENCE_COUNTERS
+        .entry(session_id.to_string())
+        .or_insert_with(|| Arc::new(AtomicU64::new(0)))
+        .clone()
+}
+
+fn get_or_create_session_event_counter(session_id: &str) -> Arc<AtomicU64> {
+    SESSION_EVENT_SEQUENCE_COUNTERS
         .entry(session_id.to_string())
         .or_insert_with(|| Arc::new(AtomicU64::new(0)))
         .clone()
@@ -725,15 +877,31 @@ pub fn next_session_sequence_id(session_id: &str) -> u64 {
     counter.fetch_add(1, Ordering::SeqCst)
 }
 
+/// 清理会话的事件序列计数器（块级 + 会话级）。
+///
+/// 调用时机：硬删除、清空回收站、软删除（进回收站）。
+///
+/// 膨胀防护策略：计数器条目随会话删除即时回收；仍存活会话的条目数量
+/// 与「本次进程运行期间实际发生过流式的会话数」同阶（每条 ~几十字节），
+/// 属可接受上界，无需 TTL/LRU。若未来出现海量短生命周期会话场景，
+/// 可在此追加基于最近使用时间的定期清扫。
 pub fn clear_session_sequence_counter(session_id: &str) {
     SESSION_SEQUENCE_COUNTERS.remove(session_id);
+    SESSION_EVENT_SEQUENCE_COUNTERS.remove(session_id);
 }
 
 pub struct ChatV2EventEmitter {
-    window: Window,
+    /// `None` only in unit tests that exercise pipeline logic without a real
+    /// Tauri window; production always holds `Some`. Emits become no-ops when
+    /// absent so behaviour-level tests can assert executor/gate effects.
+    window: Option<Window>,
     session_id: String,
+    /// One backend registration generation shared by every lifecycle event from this emitter.
+    stream_generation: Option<u64>,
     /// 递增序列号生成器（从 0 开始，按会话共享）
     sequence_counter: Arc<AtomicU64>,
+    /// 🆕 会话级事件序列号生成器（独立于块级计数器，按会话共享）
+    session_event_sequence_counter: Arc<AtomicU64>,
     /// 工具块事件元数据注册表（用于补齐 skill_state_version / round_id）
     block_event_meta: Arc<DashMap<String, BlockEventMeta>>,
 }
@@ -749,11 +917,33 @@ impl ChatV2EventEmitter {
     /// 创建新的事件发射器
     pub fn new(window: Window, session_id: String) -> Self {
         Self {
-            window,
+            window: Some(window),
             session_id: session_id.clone(),
+            stream_generation: None,
             sequence_counter: get_or_create_session_counter(&session_id),
+            session_event_sequence_counter: get_or_create_session_event_counter(&session_id),
             block_event_meta: Arc::new(DashMap::new()),
         }
+    }
+
+    /// Test-only constructor: no Tauri window, all emits become no-ops.
+    /// Used by behaviour-level pipeline tests that assert gate/executor
+    /// effects rather than emitted events.
+    #[cfg(test)]
+    pub fn new_windowless_for_test(session_id: String) -> Self {
+        Self {
+            window: None,
+            session_id: session_id.clone(),
+            stream_generation: None,
+            sequence_counter: get_or_create_session_counter(&session_id),
+            session_event_sequence_counter: get_or_create_session_event_counter(&session_id),
+            block_event_meta: Arc::new(DashMap::new()),
+        }
+    }
+
+    pub fn with_stream_generation(mut self, stream_generation: Option<u64>) -> Self {
+        self.stream_generation = stream_generation;
+        self
     }
 
     /// 获取会话 ID
@@ -762,7 +952,17 @@ impl ChatV2EventEmitter {
     }
 
     /// 获取 Window 引用（供 LLM 调用使用）
+    ///
+    /// 生产环境始终持有 window；仅无窗口测试构造器会缺失，此时 panic 以
+    /// 暴露误用（测试路径不应调用需要真实 window 的 LLM 能力）。
     pub fn window(&self) -> Window {
+        self.window
+            .clone()
+            .expect("ChatV2EventEmitter::window() called on a windowless test emitter")
+    }
+
+    /// Optional window for tool execution (windowless integration tests return `None`).
+    pub fn try_window(&self) -> Option<Window> {
         self.window.clone()
     }
 
@@ -826,18 +1026,39 @@ impl ChatV2EventEmitter {
     // ========== 内部发射方法 ==========
 
     /// 发射块级事件（内部方法）
+    ///
+    /// 🔧 P0 修复：emit 失败不再静默丢弃 —— 立即重试一次（Tauri emit 失败
+    /// 多为瞬时 IPC/序列化抖动），仍失败则记录错误日志并累计失败计数。
     fn emit(&self, mut event: BackendEvent) {
         let event_name = self.block_event_channel();
         if event.session_id.is_none() {
             event.session_id = Some(self.session_id.clone());
         }
 
-        if let Err(e) = self.window.emit(&event_name, &event) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        if let Err(e) = window.emit(&event_name, &event) {
             log::error!(
-                "[ChatV2::events] Failed to emit block event: {} - {:?}",
+                "[ChatV2::events] Failed to emit block event (attempt 1/2): {} type={} phase={} seq={} - {:?}",
                 event_name,
+                event.r#type,
+                event.phase,
+                event.sequence_id,
                 e
             );
+            if let Err(e2) = window.emit(&event_name, &event) {
+                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                log::error!(
+                    "[ChatV2::events] Block event DROPPED after retry: {} type={} phase={} seq={} - {:?} (total_dropped={})",
+                    event_name,
+                    event.r#type,
+                    event.phase,
+                    event.sequence_id,
+                    e2,
+                    total
+                );
+            }
         } else {
             log::debug!(
                 "[ChatV2::events] Emitted block event: {} type={} phase={} seq={}",
@@ -850,19 +1071,48 @@ impl ChatV2EventEmitter {
     }
 
     /// 发射会话级事件（内部方法）
-    fn emit_session(&self, event: SessionEvent) {
+    ///
+    /// 🆕 补齐 sequence_id（会话级通道独立递增计数），前端可据此检测
+    /// 乱序/丢失；emit 失败重试一次并计数（同块级事件策略）。
+    fn emit_session(&self, mut event: SessionEvent) {
         let event_name = self.session_event_channel();
-        if let Err(e) = self.window.emit(&event_name, &event) {
+        if event.stream_generation.is_none() {
+            event.stream_generation = self.stream_generation;
+        }
+        if event.sequence_id.is_none() {
+            event.sequence_id = Some(
+                self.session_event_sequence_counter
+                    .fetch_add(1, Ordering::SeqCst),
+            );
+        }
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        if let Err(e) = window.emit(&event_name, &event) {
             log::error!(
-                "[ChatV2::events] Failed to emit session event: {} - {:?}",
+                "[ChatV2::events] Failed to emit session event (attempt 1/2): {} type={} seq={:?} - {:?}",
                 event_name,
+                event.event_type,
+                event.sequence_id,
                 e
             );
+            if let Err(e2) = window.emit(&event_name, &event) {
+                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                log::error!(
+                    "[ChatV2::events] Session event DROPPED after retry: {} type={} seq={:?} - {:?} (total_dropped={})",
+                    event_name,
+                    event.event_type,
+                    event.sequence_id,
+                    e2,
+                    total
+                );
+            }
         } else {
             log::debug!(
-                "[ChatV2::events] Emitted session event: {} type={}",
+                "[ChatV2::events] Emitted session event: {} type={} seq={:?}",
                 event_name,
-                event.event_type
+                event.event_type,
+                event.sequence_id
             );
         }
     }
@@ -1310,6 +1560,26 @@ impl ChatV2EventEmitter {
         self.emit_session(event);
     }
 
+    /// 🆕 发射自动压缩失败事件（仅自动路径；手动压缩结果走命令返回值）
+    pub fn emit_compaction_failed(&self, reason: &str) {
+        let event = SessionEvent::compaction_failed(&self.session_id, reason);
+        self.emit_session(event);
+    }
+
+    /// 🆕 发射 FIFO 截断可见化事件（仅在实际丢弃消息时调用）
+    pub fn emit_context_trimmed(
+        &self,
+        dropped_messages: usize,
+        estimated_dropped_tokens: Option<usize>,
+    ) {
+        let event = SessionEvent::context_trimmed(
+            &self.session_id,
+            dropped_messages,
+            estimated_dropped_tokens,
+        );
+        self.emit_session(event);
+    }
+
     // ========== 变体生命周期事件 ==========
 
     /// 发射 variant_start 事件
@@ -1538,9 +1808,11 @@ mod tests {
     #[test]
     fn test_session_event_serialization() {
         let event = SessionEvent {
+            sequence_id: Some(7),
             session_id: "sess_123".to_string(),
             event_type: "stream_complete".to_string(),
             message_id: Some("msg_456".to_string()),
+            stream_generation: Some(42),
             skill_state_version: None,
             replay_mode: None,
             model_id: None, // stream_complete 事件不需要 model_id
@@ -1552,12 +1824,15 @@ mod tests {
             usage: None,
             title: None, // stream_complete 事件不需要 title
             description: None,
+            payload: None,
         };
 
         let json = serde_json::to_string(&event).unwrap();
 
         // 验证使用 camelCase
         assert!(json.contains("\"sessionId\""));
+        assert!(json.contains("\"sequenceId\":7"));
+        assert!(json.contains("\"streamGeneration\":42"));
         assert!(json.contains("\"eventType\""));
         assert!(json.contains("\"messageId\""));
         assert!(json.contains("\"durationMs\""));
@@ -1565,6 +1840,26 @@ mod tests {
         // 验证 None 字段不被序列化
         assert!(!json.contains("\"error\""));
         assert!(!json.contains("\"usage\""));
+    }
+
+    #[test]
+    fn lifecycle_events_keep_one_stream_generation_contract() {
+        let generation = Some(73);
+        let events = vec![
+            SessionEvent::stream_start("sess", "msg", None).with_stream_generation(generation),
+            SessionEvent::stream_reconnect("sess", "msg", 1, 2).with_stream_generation(generation),
+            SessionEvent::stream_complete("sess", "msg", 10).with_stream_generation(generation),
+            SessionEvent::stream_error("sess", "msg", "failed").with_stream_generation(generation),
+            SessionEvent::stream_cancelled("sess", "msg").with_stream_generation(generation),
+        ];
+
+        for event in events {
+            assert_eq!(event.stream_generation, generation);
+            assert_eq!(
+                serde_json::to_value(event).unwrap()["streamGeneration"],
+                serde_json::json!(73)
+            );
+        }
     }
 
     #[test]
@@ -1689,6 +1984,47 @@ mod tests {
 
         assert_eq!(event.event_type, session_event_type::SAVE_COMPLETE);
         assert!(event.message_id.is_none());
+    }
+
+    /// 🆕 compaction_failed 事件：事件名与 payload 键名是与前端逐字约定的契约
+    #[test]
+    fn test_session_event_compaction_failed_contract() {
+        let event = SessionEvent::compaction_failed("sess_abc", "summaryFailed");
+        assert_eq!(event.event_type, "compaction_failed");
+        assert_eq!(event.session_id, "sess_abc");
+
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["eventType"], "compaction_failed");
+        assert_eq!(json["payload"]["reason"], "summaryFailed");
+    }
+
+    /// 🆕 context_trimmed 事件：payload 键名逐字契约；estimatedDroppedTokens 可选
+    #[test]
+    fn test_session_event_context_trimmed_contract() {
+        let event = SessionEvent::context_trimmed("sess_abc", 5, Some(1234));
+        assert_eq!(event.event_type, "context_trimmed");
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["eventType"], "context_trimmed");
+        assert_eq!(json["payload"]["droppedMessages"], 5);
+        assert_eq!(json["payload"]["estimatedDroppedTokens"], 1234);
+
+        // 无估算值时不携带 estimatedDroppedTokens 键
+        let event = SessionEvent::context_trimmed("sess_abc", 3, None);
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["payload"]["droppedMessages"], 3);
+        assert!(json["payload"].get("estimatedDroppedTokens").is_none());
+    }
+
+    /// 🆕 向后兼容：payload 为 None 的既有事件序列化中不出现 payload 键
+    #[test]
+    fn test_session_event_payload_absent_for_legacy_events() {
+        let event = SessionEvent::stream_complete("sess_abc", "msg_def", 100);
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("\"payload\""));
+        // 旧事件（无 payload 字段）也能反序列化
+        let legacy = r#"{"sessionId":"s","eventType":"stream_complete","timestamp":1}"#;
+        let parsed: SessionEvent = serde_json::from_str(legacy).unwrap();
+        assert!(parsed.payload.is_none());
     }
 
     #[test]

@@ -11,7 +11,7 @@
 //!
 //! ## 资产优先级
 //!
-//! - P0（高优先级）：images, notes_assets, documents, vfs_blobs, subjects, workspaces, textbooks
+//! - P0（高优先级）：images, notes_assets, documents, vfs_blobs, subjects, workspaces, textbooks, pdf_ocr_sessions
 //! - P1（低优先级）：audio, videos
 
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,8 @@ pub enum AssetType {
     Videos,
     /// 教材资产
     Textbooks,
+    /// PDF/OCR 原始文件与处理中间资产
+    PdfOcrSessions,
 }
 
 /// 复制文件（带重试与大小校验）
@@ -121,6 +123,7 @@ impl AssetType {
             AssetType::Audio => "audio",
             AssetType::Videos => "videos",
             AssetType::Textbooks => "textbooks",
+            AssetType::PdfOcrSessions => "pdf_ocr_sessions",
         }
     }
 
@@ -136,6 +139,7 @@ impl AssetType {
             AssetType::Audio => "音频",
             AssetType::Videos => "视频",
             AssetType::Textbooks => "教材",
+            AssetType::PdfOcrSessions => "PDF/OCR 会话文件",
         }
     }
 
@@ -151,7 +155,8 @@ impl AssetType {
             | AssetType::VfsBlobs
             | AssetType::Subjects
             | AssetType::Workspaces
-            | AssetType::Textbooks => 0,
+            | AssetType::Textbooks
+            | AssetType::PdfOcrSessions => 0,
             AssetType::Audio | AssetType::Videos => 1,
         }
     }
@@ -168,6 +173,7 @@ impl AssetType {
             AssetType::Audio,
             AssetType::Videos,
             AssetType::Textbooks,
+            AssetType::PdfOcrSessions,
         ]
     }
 
@@ -181,6 +187,7 @@ impl AssetType {
             AssetType::Subjects,
             AssetType::Workspaces,
             AssetType::Textbooks,
+            AssetType::PdfOcrSessions,
         ]
     }
 
@@ -201,6 +208,7 @@ impl AssetType {
             "audio" => Some(AssetType::Audio),
             "videos" => Some(AssetType::Videos),
             "textbooks" => Some(AssetType::Textbooks),
+            "pdf_ocr_sessions" => Some(AssetType::PdfOcrSessions),
             _ => None,
         }
     }
@@ -257,6 +265,106 @@ fn safe_join_under_root(
     }
 
     Ok(root.join(clean))
+}
+
+fn safe_existing_file_under_root(
+    root: &Path,
+    unsafe_relative_path: &str,
+) -> Result<std::path::PathBuf, AssetBackupError> {
+    let joined = safe_join_under_root(root, unsafe_relative_path)?;
+    let root_metadata = fs::symlink_metadata(root)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(AssetBackupError::InvalidConfig(format!(
+            "资产根路径必须是普通目录: {}",
+            root.display()
+        )));
+    }
+
+    let normalized = AssetType::sanitize_relative_path(unsafe_relative_path)?;
+    let relative = Path::new(&normalized);
+    let component_count = relative.components().count();
+    let mut current = root.to_path_buf();
+    for (index, component) in relative.components().enumerate() {
+        let Component::Normal(component) = component else {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "不安全的资产路径: {}",
+                unsafe_relative_path
+            )));
+        };
+        current.push(component);
+        let metadata = fs::symlink_metadata(&current)?;
+        if metadata.file_type().is_symlink() {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产路径不允许包含符号链接: {}",
+                unsafe_relative_path
+            )));
+        }
+        let is_last = index + 1 == component_count;
+        if (!is_last && !metadata.is_dir()) || (is_last && !metadata.is_file()) {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产路径不是普通文件: {}",
+                unsafe_relative_path
+            )));
+        }
+    }
+    debug_assert_eq!(joined, current);
+    Ok(current)
+}
+
+fn prepare_asset_destination_under_root(
+    root: &Path,
+    unsafe_relative_path: &str,
+) -> Result<std::path::PathBuf, AssetBackupError> {
+    fs::create_dir_all(root)?;
+    let root_metadata = fs::symlink_metadata(root)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(AssetBackupError::InvalidConfig(format!(
+            "资产恢复根路径必须是普通目录: {}",
+            root.display()
+        )));
+    }
+
+    let normalized = AssetType::sanitize_relative_path(unsafe_relative_path)?;
+    let relative = Path::new(&normalized);
+    let component_count = relative.components().count();
+    let mut current = root.to_path_buf();
+    for (index, component) in relative.components().enumerate() {
+        let Component::Normal(component) = component else {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "不安全的资产目标路径: {}",
+                unsafe_relative_path
+            )));
+        };
+        current.push(component);
+        let is_last = index + 1 == component_count;
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(AssetBackupError::InvalidConfig(format!(
+                    "资产恢复目标不允许包含符号链接: {}",
+                    unsafe_relative_path
+                )))
+            }
+            Ok(metadata) if !is_last && !metadata.is_dir() => {
+                return Err(AssetBackupError::InvalidConfig(format!(
+                    "资产恢复目标父路径不是目录: {}",
+                    current.display()
+                )))
+            }
+            Ok(metadata) if is_last && !metadata.is_file() => {
+                return Err(AssetBackupError::InvalidConfig(format!(
+                    "资产恢复目标不是普通文件: {}",
+                    current.display()
+                )))
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !is_last => {
+                fs::create_dir(&current)?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && is_last => {}
+            Err(e) => return Err(AssetBackupError::Io(e)),
+        }
+    }
+    Ok(current)
 }
 
 /// 资产备份配置
@@ -341,6 +449,12 @@ pub struct AssetBackupResult {
     pub skipped_files: usize,
     /// 跳过原因统计
     pub skip_reasons: HashMap<String, usize>,
+    /// 因策略过滤或非常规条目而未能完整覆盖的资产域。
+    ///
+    /// `skipped_files` 是全局计数，不能作为每个持久域的 coverage 证据；
+    /// 此字段让 manifest v3 只把真正受影响的资产域标为 failed。
+    #[serde(default)]
+    pub incomplete_asset_types: Vec<AssetType>,
     /// 按资产类型统计
     pub by_asset_type: HashMap<String, AssetTypeStats>,
     /// 备份开始时间
@@ -486,31 +600,46 @@ pub fn is_sensitive_file(path: &Path) -> bool {
 // 文件校验和计算
 // ============================================================================
 
-/// 计算文件的 SHA256 校验和
-fn calculate_file_checksum(path: &Path) -> Result<String, AssetBackupError> {
+fn calculate_file_checksum_exact(
+    path: &Path,
+    expected_size: u64,
+) -> Result<String, AssetBackupError> {
     let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::new(file).take(expected_size.saturating_add(1));
     let mut hasher = Sha256::new();
-
+    let mut total_read = 0u64;
     let mut buffer = [0u8; 8192];
     loop {
         let bytes_read = reader.read(&mut buffer)?;
         if bytes_read == 0 {
             break;
         }
+        total_read = total_read.saturating_add(bytes_read as u64);
+        if total_read > expected_size {
+            return Err(AssetBackupError::ChecksumError(
+                "资产文件在校验期间增长".to_string(),
+            ));
+        }
         hasher.update(&buffer[..bytes_read]);
     }
-
-    let result = hasher.finalize();
-    Ok(hex::encode(result))
+    if total_read != expected_size {
+        return Err(AssetBackupError::ChecksumError(format!(
+            "资产文件在校验期间大小变化: expected={}, actual={}",
+            expected_size, total_read
+        )));
+    }
+    Ok(hex::encode(hasher.finalize()))
 }
 
-/// 获取文件修改时间
-fn get_file_modified_time(path: &Path) -> Option<String> {
-    fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
+/// 获取文件修改时间。元数据读取失败必须向上传播，完整备份不能静默丢文件。
+fn get_file_modified_time(metadata: &fs::Metadata) -> Result<Option<String>, AssetBackupError> {
+    match metadata.modified() {
+        Ok(time) => Ok(Some(
+            chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339(),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::Unsupported => Ok(None),
+        Err(error) => Err(AssetBackupError::Io(error)),
+    }
 }
 
 // ============================================================================
@@ -549,11 +678,21 @@ pub fn backup_assets(
         ));
     }
 
-    // 创建目标目录
-    if !dest_dir.exists() {
-        fs::create_dir_all(dest_dir).map_err(|e| {
-            AssetBackupError::DestinationCreationFailed(format!("{:?}: {}", dest_dir, e))
-        })?;
+    // 创建并验证目标目录。`exists()` 会吞掉权限错误，也会允许跟随目录符号链接。
+    match fs::symlink_metadata(dest_dir) {
+        Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir_all(dest_dir).map_err(|e| {
+                AssetBackupError::DestinationCreationFailed(format!("{:?}: {}", dest_dir, e))
+            })?;
+        }
+        Ok(_) => {
+            return Err(AssetBackupError::DestinationCreationFailed(format!(
+                "{:?}: 目标必须是普通目录",
+                dest_dir
+            )))
+        }
+        Err(error) => return Err(AssetBackupError::Io(error)),
     }
 
     let mut result = AssetBackupResult {
@@ -562,6 +701,7 @@ pub fn backup_assets(
         total_size: 0,
         skipped_files: 0,
         skip_reasons: HashMap::new(),
+        incomplete_asset_types: Vec::new(),
         by_asset_type: HashMap::new(),
         started_at,
         completed_at: String::new(),
@@ -575,10 +715,21 @@ pub fn backup_assets(
     for asset_type in &sorted_types {
         let src_path = app_data_dir.join(asset_type.relative_path());
 
-        // 检查源目录是否存在
-        if !src_path.exists() {
-            debug!("资产目录不存在，跳过: {:?} ({:?})", asset_type, src_path);
-            continue;
+        // 不使用 `exists()`：它会把权限/IO 错误折叠成 false，导致完整备份
+        // 静默漏掉整个资产域。
+        match fs::symlink_metadata(&src_path) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(AssetBackupError::InvalidConfig(format!(
+                    "资产根不是普通目录: {}",
+                    src_path.display()
+                )))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                debug!("资产目录不存在，跳过: {:?} ({:?})", asset_type, src_path);
+                continue;
+            }
+            Err(error) => return Err(AssetBackupError::Io(error)),
         }
 
         // 创建资产类型的目标目录
@@ -627,82 +778,114 @@ fn backup_directory_recursive(
     config: &AssetBackupConfig,
     result: &mut AssetBackupResult,
 ) -> Result<(), AssetBackupError> {
-    let entries = match fs::read_dir(current_dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            warn!("无法读取目录 {:?}: {}", current_dir, e);
-            return Ok(());
-        }
-    };
+    let entries = fs::read_dir(current_dir).map_err(|error| {
+        AssetBackupError::Io(std::io::Error::new(
+            error.kind(),
+            format!("无法读取资产目录 {}: {}", current_dir.display(), error),
+        ))
+    })?;
 
     for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(e) => {
-                warn!("读取目录项失败: {}", e);
-                continue;
-            }
-        };
+        let entry = entry.map_err(|error| {
+            AssetBackupError::Io(std::io::Error::new(
+                error.kind(),
+                format!("读取资产目录项失败 {}: {}", current_dir.display(), error),
+            ))
+        })?;
 
         let path = entry.path();
-        let metadata = match fs::metadata(&path) {
-            Ok(m) => m,
-            Err(e) => {
-                warn!("获取文件元数据失败 {:?}: {}", path, e);
+        let link_metadata = fs::symlink_metadata(&path).map_err(|error| {
+            AssetBackupError::Io(std::io::Error::new(
+                error.kind(),
+                format!("读取资产条目元数据失败 {}: {}", path.display(), error),
+            ))
+        })?;
+
+        // 检查是否为符号链接。检查本身失败不得当作“不是链接”继续。
+        if link_metadata.file_type().is_symlink() {
+            if config.skip_symlinks {
+                debug!("跳过符号链接: {:?}", path);
                 result.skipped_files += 1;
+                if !result.incomplete_asset_types.contains(&asset_type) {
+                    result.incomplete_asset_types.push(asset_type);
+                }
                 *result
                     .skip_reasons
-                    .entry("metadata_error".to_string())
+                    .entry("symlink".to_string())
                     .or_insert(0) += 1;
                 continue;
             }
-        };
-
-        // 检查是否为符号链接
-        if config.skip_symlinks
-            && fs::symlink_metadata(&path)
-                .map(|m| m.file_type().is_symlink())
-                .unwrap_or(false)
-        {
-            debug!("跳过符号链接: {:?}", path);
-            result.skipped_files += 1;
-            *result
-                .skip_reasons
-                .entry("symlink".to_string())
-                .or_insert(0) += 1;
-            continue;
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产备份不允许跟随符号链接: {}",
+                path.display()
+            )));
         }
+
+        let metadata = entry.metadata().map_err(|error| {
+            AssetBackupError::Io(std::io::Error::new(
+                error.kind(),
+                format!("读取资产文件元数据失败 {}: {}", path.display(), error),
+            ))
+        })?;
 
         if metadata.is_dir() {
             // 递归处理子目录
-            let relative_path = path.strip_prefix(src_base).unwrap_or(&path);
+            let relative_path = path.strip_prefix(src_base).map_err(|_| {
+                AssetBackupError::InvalidConfig(format!(
+                    "资产目录越出声明根路径: {}",
+                    path.display()
+                ))
+            })?;
             let dest_subdir = dest_base.join(relative_path);
             fs::create_dir_all(&dest_subdir)?;
 
             backup_directory_recursive(&path, dest_base, src_base, asset_type, config, result)?;
         } else if metadata.is_file() {
+            // 工作区 SQLite 数据库由 SQLite Backup API 单独生成一致性快照；
+            // 这里不能再原始复制 db/WAL/SHM。
+            if asset_type == AssetType::Workspaces {
+                let name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("");
+                if name.ends_with(".db") || name.ends_with("-wal") || name.ends_with("-shm") {
+                    continue;
+                }
+            }
+
             // 处理文件
             if let Err(skip_reason) = should_backup_file(&path, &metadata, config) {
                 result.skipped_files += 1;
+                if !result.incomplete_asset_types.contains(&asset_type) {
+                    result.incomplete_asset_types.push(asset_type);
+                }
                 *result.skip_reasons.entry(skip_reason).or_insert(0) += 1;
                 continue;
             }
 
             // 检查总大小限制
             let file_size = metadata.len();
-            if result.total_size + file_size > config.max_total_size {
+            let next_total_size = result.total_size.checked_add(file_size).ok_or_else(|| {
+                AssetBackupError::InvalidConfig("资产备份总大小计数溢出".to_string())
+            })?;
+            if next_total_size > config.max_total_size {
                 warn!(
                     "达到总大小限制，停止备份: current={}, limit={}",
                     result.total_size, config.max_total_size
                 );
                 return Err(AssetBackupError::TotalSizeLimitExceeded {
-                    current: result.total_size + file_size,
+                    current: next_total_size,
                     limit: config.max_total_size,
                 });
             }
 
             // 计算相对路径
-            let relative_path = path.strip_prefix(src_base).unwrap_or(&path);
+            let relative_path = path.strip_prefix(src_base).map_err(|_| {
+                AssetBackupError::InvalidConfig(format!(
+                    "资产文件越出声明根路径: {}",
+                    path.display()
+                ))
+            })?;
             let dest_path = dest_base.join(relative_path);
 
             // 确保目标目录存在
@@ -711,27 +894,50 @@ fn backup_directory_recursive(
             }
 
             // 复制文件
-            fs::copy(&path, &dest_path).map_err(|e| AssetBackupError::CopyFailed {
+            let copied = fs::copy(&path, &dest_path).map_err(|e| AssetBackupError::CopyFailed {
                 src_path: path.to_string_lossy().to_string(),
                 dest_path: dest_path.to_string_lossy().to_string(),
                 message: e.to_string(),
             })?;
+            if copied != file_size {
+                return Err(AssetBackupError::CopyFailed {
+                    src_path: path.to_string_lossy().to_string(),
+                    dest_path: dest_path.to_string_lossy().to_string(),
+                    message: format!(
+                        "复制字节数不匹配: expected={}, actual={}",
+                        file_size, copied
+                    ),
+                });
+            }
+            let copied_size = fs::metadata(&dest_path)?.len();
+            if copied_size != file_size {
+                return Err(AssetBackupError::CopyFailed {
+                    src_path: path.to_string_lossy().to_string(),
+                    dest_path: dest_path.to_string_lossy().to_string(),
+                    message: format!(
+                        "目标文件大小不匹配: expected={}, actual={}",
+                        file_size, copied_size
+                    ),
+                });
+            }
 
             // 计算校验和（如果需要）
             let checksum = if config.compute_checksum {
-                match calculate_file_checksum(&dest_path) {
-                    Ok(hash) => Some(hash),
-                    Err(e) => {
-                        warn!("计算校验和失败 {:?}: {}", dest_path, e);
-                        None
-                    }
+                let destination_checksum = calculate_file_checksum_exact(&dest_path, file_size)?;
+                let source_checksum = calculate_file_checksum_exact(&path, file_size)?;
+                if source_checksum != destination_checksum {
+                    return Err(AssetBackupError::ChecksumError(format!(
+                        "资产复制前后内容不一致: {}",
+                        path.display()
+                    )));
                 }
+                Some(destination_checksum)
             } else {
                 None
             };
 
             // 获取修改时间
-            let modified_at = get_file_modified_time(&path);
+            let modified_at = get_file_modified_time(&metadata)?;
 
             // 记录备份的文件
             let relative_str = relative_path.to_string_lossy().replace('\\', "/");
@@ -749,15 +955,25 @@ fn backup_directory_recursive(
                 is_directory: false,
             });
 
-            result.total_size += file_size;
+            result.total_size = next_total_size;
 
             // 更新资产类型统计
             let stats = result
                 .by_asset_type
                 .entry(asset_type.as_str().to_string())
                 .or_default();
-            stats.file_count += 1;
-            stats.total_size += file_size;
+            stats.file_count = stats
+                .file_count
+                .checked_add(1)
+                .ok_or_else(|| AssetBackupError::InvalidConfig("资产文件计数溢出".to_string()))?;
+            stats.total_size = stats.total_size.checked_add(file_size).ok_or_else(|| {
+                AssetBackupError::InvalidConfig("资产类型大小计数溢出".to_string())
+            })?;
+        } else {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产条目不是普通文件或目录: {}",
+                path.display()
+            )));
         }
     }
 
@@ -843,13 +1059,8 @@ pub fn restore_assets(
         }
 
         // 防御 Zip Slip 和跨平台路径问题
-        let src_path = safe_join_under_root(backup_dir, &asset.relative_path)?;
-        let dest_path = safe_join_under_root(app_data_dir, &asset.original_path)?;
-
-        // 安全校验完成后再创建目录，避免越权目录被提前创建
-        if let Some(parent) = dest_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        let src_path = safe_existing_file_under_root(backup_dir, &asset.relative_path)?;
+        let dest_path = prepare_asset_destination_under_root(app_data_dir, &asset.original_path)?;
 
         // 复制文件（失败即终止，避免“恢复成功但资源缺失”）
         copy_file_with_retry(&src_path, &dest_path)?;
@@ -877,18 +1088,33 @@ pub fn restore_assets_from_dir(
 
     let mut restored_count = 0;
 
+    let root_metadata = fs::symlink_metadata(assets_dir)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(AssetBackupError::InvalidConfig(format!(
+            "资产恢复根必须是普通目录: {}",
+            assets_dir.display()
+        )));
+    }
+
     // 遍历 assets/ 下的每个资产类型子目录（如 textbooks/, vfs_blobs/ 等）
     for entry in fs::read_dir(assets_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if !path.is_dir() {
-            continue;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产恢复根包含非目录条目: {}",
+                path.display()
+            )));
         }
 
-        let asset_type_name = match path.file_name() {
-            Some(name) => name.to_string_lossy().to_string(),
-            None => continue,
-        };
+        let asset_type_name = path
+            .file_name()
+            .ok_or_else(|| {
+                AssetBackupError::InvalidConfig(format!("资产恢复目录缺少名称: {}", path.display()))
+            })?
+            .to_string_lossy()
+            .to_string();
 
         // 递归复制该资产类型目录下的所有文件
         let dest_base = app_data_dir.join(&asset_type_name);
@@ -903,26 +1129,42 @@ pub fn restore_assets_from_dir(
 
 /// 递归复制目录
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<usize, AssetBackupError> {
-    let mut count = 0;
+    let mut count: usize = 0;
     fs::create_dir_all(dest)?;
 
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let src_path = entry.path();
-        let file_name = match src_path.file_name() {
-            Some(name) => name.to_owned(),
-            None => continue,
-        };
+        let file_name = src_path
+            .file_name()
+            .ok_or_else(|| {
+                AssetBackupError::InvalidConfig(format!(
+                    "资产恢复条目缺少名称: {}",
+                    src_path.display()
+                ))
+            })?
+            .to_owned();
         let dest_path = dest.join(&file_name);
+        let metadata = fs::symlink_metadata(&src_path)?;
 
-        if src_path.is_dir() {
+        if metadata.file_type().is_symlink() {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产恢复源不允许符号链接: {}",
+                src_path.display()
+            )));
+        } else if metadata.is_dir() {
             count += copy_dir_recursive(&src_path, &dest_path)?;
-        } else {
+        } else if metadata.is_file() {
             if let Some(parent) = dest_path.parent() {
                 fs::create_dir_all(parent)?;
             }
             copy_file_with_retry(&src_path, &dest_path)?;
             count += 1;
+        } else {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产恢复源包含非常规条目: {}",
+                src_path.display()
+            )));
         }
     }
 
@@ -957,7 +1199,7 @@ where
         }
 
         // 防御 Zip Slip 和跨平台路径问题
-        let src_path = match safe_join_under_root(backup_dir, &asset.relative_path) {
+        let src_path = match safe_existing_file_under_root(backup_dir, &asset.relative_path) {
             Ok(p) => p,
             Err(_) => {
                 return Err(AssetBackupError::InvalidConfig(
@@ -965,18 +1207,15 @@ where
                 ))
             }
         };
-        let dest_path = match safe_join_under_root(app_data_dir, &asset.original_path) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err(AssetBackupError::InvalidConfig(
-                    "资产目标路径非法".to_string(),
-                ))
-            }
-        };
-
-        if let Some(parent) = dest_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        let dest_path =
+            match prepare_asset_destination_under_root(app_data_dir, &asset.original_path) {
+                Ok(p) => p,
+                Err(_) => {
+                    return Err(AssetBackupError::InvalidConfig(
+                        "资产目标路径非法".to_string(),
+                    ))
+                }
+            };
 
         copy_file_with_retry(&src_path, &dest_path)?;
         restored_count += 1;
@@ -1005,22 +1244,37 @@ where
         assets_dir, app_data_dir
     );
 
-    // 先统计总文件数
-    let total = count_files_recursive(assets_dir);
+    let root_metadata = fs::symlink_metadata(assets_dir)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(AssetBackupError::InvalidConfig(format!(
+            "资产恢复根必须是普通目录: {}",
+            assets_dir.display()
+        )));
+    }
+
+    // 先统计总文件数；扫描错误必须阻止恢复，不能用错误的进度掩盖漏文件。
+    let total = count_files_recursive(assets_dir)?;
 
     let mut restored_count = 0;
 
     for entry in fs::read_dir(assets_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if !path.is_dir() {
-            continue;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产恢复根包含非目录条目: {}",
+                path.display()
+            )));
         }
 
-        let asset_type_name = match path.file_name() {
-            Some(name) => name.to_string_lossy().to_string(),
-            None => continue,
-        };
+        let asset_type_name = path
+            .file_name()
+            .ok_or_else(|| {
+                AssetBackupError::InvalidConfig(format!("资产恢复目录缺少名称: {}", path.display()))
+            })?
+            .to_string_lossy()
+            .to_string();
 
         let dest_base = app_data_dir.join(&asset_type_name);
         let count = copy_dir_recursive_with_progress(
@@ -1038,19 +1292,40 @@ where
 }
 
 /// 递归统计目录中的文件数量
-pub fn count_files_recursive(dir: &Path) -> usize {
-    let mut count = 0;
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                count += count_files_recursive(&path);
-            } else if path.is_file() {
-                count += 1;
-            }
+pub fn count_files_recursive(dir: &Path) -> Result<usize, AssetBackupError> {
+    let root_metadata = fs::symlink_metadata(dir)?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(AssetBackupError::InvalidConfig(format!(
+            "资产扫描根必须是普通目录: {}",
+            dir.display()
+        )));
+    }
+    let mut count: usize = 0;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产扫描不允许符号链接: {}",
+                path.display()
+            )));
+        } else if metadata.is_dir() {
+            count = count
+                .checked_add(count_files_recursive(&path)?)
+                .ok_or_else(|| AssetBackupError::InvalidConfig("资产文件计数溢出".to_string()))?;
+        } else if metadata.is_file() {
+            count = count
+                .checked_add(1)
+                .ok_or_else(|| AssetBackupError::InvalidConfig("资产文件计数溢出".to_string()))?;
+        } else {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产扫描包含非常规条目: {}",
+                path.display()
+            )));
         }
     }
-    count
+    Ok(count)
 }
 
 /// 递归复制目录（带进度回调）
@@ -1070,13 +1345,24 @@ where
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let src_path = entry.path();
-        let file_name = match src_path.file_name() {
-            Some(name) => name.to_owned(),
-            None => continue,
-        };
+        let file_name = src_path
+            .file_name()
+            .ok_or_else(|| {
+                AssetBackupError::InvalidConfig(format!(
+                    "资产恢复条目缺少名称: {}",
+                    src_path.display()
+                ))
+            })?
+            .to_owned();
         let dest_path = dest.join(&file_name);
+        let metadata = fs::symlink_metadata(&src_path)?;
 
-        if src_path.is_dir() {
+        if metadata.file_type().is_symlink() {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产恢复源不允许符号链接: {}",
+                src_path.display()
+            )));
+        } else if metadata.is_dir() {
             count += copy_dir_recursive_with_progress(
                 &src_path,
                 &dest_path,
@@ -1084,7 +1370,7 @@ where
                 total,
                 on_progress,
             )?;
-        } else {
+        } else if metadata.is_file() {
             if let Some(parent) = dest_path.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -1094,6 +1380,11 @@ where
             if !on_progress(*restored_count, total) {
                 return Err(AssetBackupError::Cancelled);
             }
+        } else {
+            return Err(AssetBackupError::InvalidConfig(format!(
+                "资产恢复源包含非常规条目: {}",
+                src_path.display()
+            )));
         }
     }
 
@@ -1127,17 +1418,17 @@ pub fn verify_assets(
             continue;
         }
 
-        let file_path = backup_dir.join(&asset.relative_path);
-
-        // 检查文件存在
-        if !file_path.exists() {
-            errors.push(AssetVerifyError {
-                path: asset.relative_path.clone(),
-                error_type: "file_not_found".to_string(),
-                message: format!("文件不存在: {:?}", file_path),
-            });
-            continue;
-        }
+        let file_path = match safe_existing_file_under_root(backup_dir, &asset.relative_path) {
+            Ok(path) => path,
+            Err(e) => {
+                errors.push(AssetVerifyError {
+                    path: asset.relative_path.clone(),
+                    error_type: "unsafe_path".to_string(),
+                    message: e.to_string(),
+                });
+                continue;
+            }
+        };
 
         // 检查文件大小
         let metadata = fs::metadata(&file_path)?;
@@ -1156,7 +1447,7 @@ pub fn verify_assets(
 
         // 检查校验和（如果有）
         if let Some(expected_checksum) = &asset.checksum {
-            match calculate_file_checksum(&file_path) {
+            match calculate_file_checksum_exact(&file_path, asset.size) {
                 Ok(actual_checksum) => {
                     if &actual_checksum != expected_checksum {
                         errors.push(AssetVerifyError {
@@ -1224,8 +1515,16 @@ pub fn scan_assets(
 
     for asset_type in types {
         let dir_path = app_data_dir.join(asset_type.relative_path());
-        if !dir_path.exists() {
-            continue;
+        match fs::symlink_metadata(&dir_path) {
+            Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Ok(_) => {
+                return Err(AssetBackupError::InvalidConfig(format!(
+                    "资产扫描根不是普通目录: {}",
+                    dir_path.display()
+                )))
+            }
+            Err(error) => return Err(AssetBackupError::Io(error)),
         }
 
         let type_stats = scan_directory_stats(&dir_path)?;
@@ -1243,13 +1542,23 @@ fn scan_directory_stats(dir: &Path) -> Result<AssetTypeStats, AssetBackupError> 
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            let metadata = entry.metadata()?;
+            let metadata = fs::symlink_metadata(&path)?;
 
-            if metadata.is_dir() {
+            if metadata.file_type().is_symlink() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("资产扫描不允许符号链接: {}", path.display()),
+                ));
+            } else if metadata.is_dir() {
                 scan_recursive(&path, stats)?;
             } else if metadata.is_file() {
                 stats.file_count += 1;
                 stats.total_size += metadata.len();
+            } else {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("资产扫描包含非常规条目: {}", path.display()),
+                ));
             }
         }
         Ok(())
@@ -1284,12 +1593,17 @@ mod tests {
         assert_eq!(AssetType::Images.relative_path(), "images");
         assert_eq!(AssetType::Images.priority(), 0);
         assert_eq!(AssetType::Videos.priority(), 1);
+        assert_eq!(
+            AssetType::PdfOcrSessions.relative_path(),
+            "pdf_ocr_sessions"
+        );
+        assert_eq!(AssetType::PdfOcrSessions.priority(), 0);
 
         let all = AssetType::all();
-        assert_eq!(all.len(), 9);
+        assert_eq!(all.len(), 10);
 
         let p0 = AssetType::p0_assets();
-        assert_eq!(p0.len(), 7);
+        assert_eq!(p0.len(), 8);
 
         let p1 = AssetType::p1_assets();
         assert_eq!(p1.len(), 2);
@@ -1309,7 +1623,7 @@ mod tests {
     #[test]
     fn test_backup_config_defaults() {
         let config = AssetBackupConfig::default();
-        assert_eq!(config.asset_types.len(), 9);
+        assert_eq!(config.asset_types.len(), 10);
         assert!(config.compute_checksum);
         assert!(config.skip_symlinks);
         assert!(config.skip_sensitive_files);
@@ -1325,16 +1639,18 @@ mod tests {
         fs::create_dir_all(&images_dir).unwrap();
         create_test_file(&images_dir, "test.png", b"fake png data");
         create_test_file(&images_dir, "subdir/nested.jpg", b"fake jpg data");
+        let pdf_ocr_dir = app_data_dir.path().join("pdf_ocr_sessions");
+        create_test_file(&pdf_ocr_dir, "session-1/original.pdf", b"fake pdf data");
 
         // 执行备份
         let config = AssetBackupConfig {
-            asset_types: vec![AssetType::Images],
+            asset_types: vec![AssetType::Images, AssetType::PdfOcrSessions],
             ..Default::default()
         };
 
         let result = backup_assets(app_data_dir.path(), backup_dir.path(), &config).unwrap();
 
-        assert_eq!(result.total_files, 2);
+        assert_eq!(result.total_files, 3);
         assert!(result.total_size > 0);
         assert_eq!(result.skipped_files, 0);
 
@@ -1344,15 +1660,91 @@ mod tests {
 
         // 删除原文件
         fs::remove_dir_all(&images_dir).unwrap();
+        fs::remove_dir_all(&pdf_ocr_dir).unwrap();
 
         // 恢复
         let restored =
             restore_assets(backup_dir.path(), app_data_dir.path(), &result.files).unwrap();
-        assert_eq!(restored, 2);
+        assert_eq!(restored, 3);
 
         // 验证恢复后的文件
         assert!(images_dir.join("test.png").exists());
         assert!(images_dir.join("subdir/nested.jpg").exists());
+        assert!(pdf_ocr_dir.join("session-1/original.pdf").exists());
+    }
+
+    #[test]
+    fn test_verify_assets_rejects_relative_path_traversal() {
+        let parent = TempDir::new().unwrap();
+        let backup_dir = parent.path().join("backup");
+        fs::create_dir_all(&backup_dir).unwrap();
+        fs::write(parent.path().join("outside.bin"), b"outside").unwrap();
+        let assets = vec![BackedUpAsset {
+            asset_type: AssetType::Documents,
+            relative_path: "../outside.bin".to_string(),
+            original_path: "documents/outside.bin".to_string(),
+            size: 7,
+            checksum: None,
+            modified_at: None,
+            is_directory: false,
+        }];
+
+        let errors = verify_assets(&backup_dir, &assets).unwrap();
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_type, "unsafe_path");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_verify_assets_rejects_symlinked_source() {
+        let backup_dir = TempDir::new().unwrap();
+        let external = TempDir::new().unwrap();
+        fs::create_dir_all(backup_dir.path().join("assets/documents")).unwrap();
+        fs::write(external.path().join("outside.bin"), b"outside").unwrap();
+        std::os::unix::fs::symlink(
+            external.path().join("outside.bin"),
+            backup_dir.path().join("assets/documents/link.bin"),
+        )
+        .unwrap();
+        let assets = vec![BackedUpAsset {
+            asset_type: AssetType::Documents,
+            relative_path: "assets/documents/link.bin".to_string(),
+            original_path: "documents/link.bin".to_string(),
+            size: 7,
+            checksum: None,
+            modified_at: None,
+            is_directory: false,
+        }];
+
+        let errors = verify_assets(backup_dir.path(), &assets).unwrap();
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_type, "unsafe_path");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_restore_assets_rejects_symlinked_destination_parent() {
+        let backup_dir = TempDir::new().unwrap();
+        let app_data_dir = TempDir::new().unwrap();
+        let external = TempDir::new().unwrap();
+        create_test_file(backup_dir.path(), "assets/documents/file.bin", b"payload");
+        std::os::unix::fs::symlink(external.path(), app_data_dir.path().join("documents")).unwrap();
+        let assets = vec![BackedUpAsset {
+            asset_type: AssetType::Documents,
+            relative_path: "assets/documents/file.bin".to_string(),
+            original_path: "documents/file.bin".to_string(),
+            size: 7,
+            checksum: None,
+            modified_at: None,
+            is_directory: false,
+        }];
+
+        let result = restore_assets(backup_dir.path(), app_data_dir.path(), &assets);
+
+        assert!(matches!(result, Err(AssetBackupError::InvalidConfig(_))));
+        assert!(!external.path().join("file.bin").exists());
     }
 
     #[test]
@@ -1378,6 +1770,7 @@ mod tests {
         assert_eq!(result.total_files, 1);
         assert_eq!(result.skipped_files, 2);
         assert!(result.skip_reasons.contains_key("sensitive_file"));
+        assert_eq!(result.incomplete_asset_types, vec![AssetType::Documents]);
     }
 
     #[test]
@@ -1402,6 +1795,34 @@ mod tests {
         assert_eq!(result.total_files, 1);
         assert_eq!(result.skipped_files, 1);
         assert!(result.skip_reasons.contains_key("file_too_large"));
+        assert_eq!(result.incomplete_asset_types, vec![AssetType::Images]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_unreadable_asset_metadata_aborts_backup() {
+        let app_data_dir = TempDir::new().unwrap();
+        let backup_dir = TempDir::new().unwrap();
+        let documents = app_data_dir.path().join("documents");
+        fs::create_dir_all(&documents).unwrap();
+        // A self-referential link produces ELOOP when metadata follows it. This
+        // is deterministic even when tests run as root, unlike chmod-based tests.
+        std::os::unix::fs::symlink("loop", documents.join("loop")).unwrap();
+
+        let result = backup_assets(
+            app_data_dir.path(),
+            backup_dir.path(),
+            &AssetBackupConfig {
+                asset_types: vec![AssetType::Documents],
+                skip_symlinks: false,
+                ..Default::default()
+            },
+        );
+
+        assert!(matches!(
+            result,
+            Err(AssetBackupError::Io(_) | AssetBackupError::InvalidConfig(_))
+        ));
     }
 
     #[test]

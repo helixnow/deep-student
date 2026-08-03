@@ -59,6 +59,33 @@ export { TaskController, createTaskController } from './TaskController';
 export { default as taskController } from './TaskController';
 
 // ============================================================================
+// 任务状态规范化工具（大小写不敏感，前后端状态统一入口）
+// ============================================================================
+
+export {
+  normalizeTaskStatus,
+  taskStatusEquals,
+  isFailedLikeTaskStatus,
+  isTerminalTaskStatus,
+  isActiveTaskStatus,
+  ALL_TASK_STATUSES,
+  FAILED_LIKE_TASK_STATUSES,
+  TERMINAL_TASK_STATUSES,
+  ACTIVE_TASK_STATUSES,
+} from './taskStatus';
+
+// ============================================================================
+// 导出规整与导出前校验
+// ============================================================================
+
+export {
+  normalizeToolExportCards,
+  validateCardsForExport,
+  filterExportableCards,
+} from './exportNormalize';
+export type { ExportableCardLike } from './exportNormalize';
+
+// ============================================================================
 // 类型导出（从 types 模块重新导出，方便使用）
 // ============================================================================
 
@@ -98,6 +125,12 @@ export type {
   CardGeneratedPayload,
   TaskProgressPayload,
   DocumentCompletePayload,
+  RateLimitWarningPayload,
+  // 导出前校验
+  ExportCardIssueCode,
+  ExportCardIssueLevel,
+  ExportCardValidationIssue,
+  ExportCardsValidationResult,
   // 错误相关
   CardForgeError,
   CardForgeErrorCode,

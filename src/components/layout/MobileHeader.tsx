@@ -1,15 +1,17 @@
 /**
  * MobileHeader - 移动端顶部导航栏
  *
- * 提供移动端页面顶部的标准导航栏
- * 支持返回按钮、标题、右侧操作按钮
+ * @deprecated 已废弃（2026-07-08 移动端 UI/UX 审计）：所有视图必须使用
+ * useMobileHeader(viewId, config) 注册到 App 级 UnifiedMobileHeader，
+ * 禁止在页面内自绘第二条顶栏。本组件已从 @/components/layout 公共导出移除，
+ * 文件保留仅因 migrationFoundation.source.test.ts 引用其源码做规范断言。
  */
 
 import React, { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CaretLeft, List } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 
 export interface MobileHeaderProps {
@@ -65,7 +67,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       {/* 左侧：返回/菜单按钮 */}
       <div className="flex items-center">
         {showBack && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onBack}
@@ -73,19 +75,19 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             aria-label={t('common:mobile_header.back')}
           >
             <CaretLeft size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
 
         {showMenu && !showBack && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
             className={shellIconButtonClassName}
-            aria-label="展开侧边栏"
+            aria-label={t('common:mobile_header.open_sidebar')}
           >
             <List size={21} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 

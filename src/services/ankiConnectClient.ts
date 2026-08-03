@@ -16,11 +16,11 @@ export interface AnkiSyncReport {
 export interface AnkiConnectSettings {
   anki_connect_enabled: boolean;
   anki_connect_auto_import_enabled: boolean;
-  anki_connect_default_deck: string; // legacy default deck
-  anki_connect_default_model: string; // legacy default model
+  anki_connect_default_deck: string; // 后端 chatanki 导出实际消费的 key
+  anki_connect_default_model: string; // 后端 chatanki 导出实际消费的 key
   anki_connect_delete_apkg_after_import: boolean;
   anki_connect_open_folder_on_failure: boolean;
-  anki_connect_export_deck?: string; // preferred export deck name
+  anki_connect_export_deck?: string; // legacy key，仅用于向 anki_connect_default_deck 的一次性迁移读取
   // optional for instant import
   anki_connect_auto_create_deck?: boolean;
   anki_connect_batch_size?: number;
@@ -37,23 +37,40 @@ const strToBool = (v: unknown, def = false) => {
 
 const getStr = (v: unknown, def: string) => typeof v === 'string' && v.trim() ? v : def;
 
+/** 所有真实 AnkiConnect 请求前置检查：开关关闭时直接拒绝 */
+async function ensureEnabled(): Promise<void> {
+  const enabled = await invoke('get_setting', { key: 'anki_connect_enabled' }).catch(() => 'false');
+  if (!strToBool(enabled, false)) {
+    throw new Error(i18next.t('anki:connect.disabled'));
+  }
+}
+
 export const ankiConnectClient = {
   async check(): Promise<boolean> {
+    await ensureEnabled();
     return await invoke<boolean>('check_anki_connect_status');
   },
   async listDecks(): Promise<string[]> {
+    await ensureEnabled();
     return await invoke<string[]>('get_anki_deck_names');
   },
   async listModels(): Promise<string[]> {
+    await ensureEnabled();
     return await invoke<string[]>('get_anki_model_names');
   },
   async createDeck(name: string): Promise<void> {
+    await ensureEnabled();
     await invoke('create_anki_deck', { deckName: name });
   },
-  async importPackage(apkgPath: string): Promise<boolean> {
-    return await invoke<boolean>('import_anki_package', { path: apkgPath });
+  async importPackage(apkgPath: string, options?: { deleteAfter?: boolean }): Promise<boolean> {
+    await ensureEnabled();
+    return await invoke<boolean>('import_anki_package', {
+      path: apkgPath,
+      deleteAfter: options?.deleteAfter ?? false,
+    });
   },
   async addCards(params: { cards: AnkiCard[]; deckName: string; noteType: string }): Promise<AnkiSyncReport> {
+    await ensureEnabled();
     const { cards, deckName, noteType } = params;
     if (!Array.isArray(cards) || cards.length === 0) {
       throw new Error(i18next.t('anki:connect.no_cards_provided'));
@@ -75,7 +92,7 @@ export const ankiConnectClient = {
     const [enabled, autoImport, defDeck, defModel, delAfter, openOnFail, exportDeck, autoCreate, batchSize, retryTimes, tagPrefix, mediaMode] = await Promise.all([
       invoke('get_setting', { key: 'anki_connect_enabled' }).catch(() => 'false') as Promise<string>,
       invoke('get_setting', { key: 'anki_connect_auto_import_enabled' }).catch(() => 'true') as Promise<string>,
-      invoke('get_setting', { key: 'anki_connect_default_deck' }).catch(() => 'Default') as Promise<string>,
+      invoke('get_setting', { key: 'anki_connect_default_deck' }).catch(() => '') as Promise<string>,
       invoke('get_setting', { key: 'anki_connect_default_model' }).catch(() => 'Basic') as Promise<string>,
       invoke('get_setting', { key: 'anki_connect_delete_apkg_after_import' }).catch(() => 'true') as Promise<string>,
       invoke('get_setting', { key: 'anki_connect_open_folder_on_failure' }).catch(() => 'true') as Promise<string>,
@@ -89,7 +106,8 @@ export const ankiConnectClient = {
     return {
       anki_connect_enabled: strToBool(enabled, false),
       anki_connect_auto_import_enabled: strToBool(autoImport, true),
-      anki_connect_default_deck: getStr(defDeck, 'Default'),
+      // 迁移：新 key 为空时回退读旧 key anki_connect_export_deck（一次性显示，保存即写新 key）
+      anki_connect_default_deck: getStr(defDeck, '') || getStr(exportDeck, '') || 'Default',
       anki_connect_default_model: getStr(defModel, 'Basic'),
       anki_connect_delete_apkg_after_import: strToBool(delAfter, true),
       anki_connect_open_folder_on_failure: strToBool(openOnFail, true),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Shield, Warning, CheckCircle, ArrowClockwise, Gear } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
@@ -63,7 +63,7 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
     return (
       <div className={`flex items-center space-x-2 p-3 bg-gray-50 rounded-lg ${className}`}>
         <ArrowClockwise size={16} className="animate-spin text-gray-500" />
-        <span className="text-sm text-gray-600">{t('securityStatus.checking', '检查安全状态...')}</span>
+        <span className="text-sm text-gray-600">{t('securityStatus.checking')}</span>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
     return (
       <div className={`flex items-center space-x-2 p-3 bg-red-50 rounded-lg ${className}`}>
         <Warning size={16} className="text-red-500" />
-        <span className="text-sm text-red-600">{t('securityStatus.unavailable', '无法获取安全状态')}</span>
+        <span className="text-sm text-red-600">{t('securityStatus.unavailable')}</span>
       </div>
     );
   }
@@ -108,42 +108,42 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
             <h3 className={`text-sm font-medium ${textClass}`}>
-              {t('securityStatus.title', '安全存储状态')}
+              {t('securityStatus.title')}
             </h3>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)]" title={t('securityStatus.refresh', '刷新状态')} aria-label="refresh">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)]" title={t('securityStatus.refresh')} aria-label="refresh">
               <ArrowClockwise className={`w-3 h-3 ${loading ? 'animate-spin' : ''} ${textClass}`} />
-            </NotionButton>
+            </DsButton>
           </div>
           
           <div className={`mt-1 text-xs ${textClass} space-y-1`}>
             <div className="flex items-center justify-between">
-              <span>{t('securityStatus.system_storage', '系统安全存储:')}</span>
+              <span>{t('securityStatus.system_storage')}</span>
               <span className="font-medium">
                 {status.keychain_available
-                  ? t('securityStatus.available', '✓ 可用')
-                  : t('securityStatus.not_available', '✗ 不可用')}
+                  ? t('securityStatus.available')
+                  : t('securityStatus.not_available')}
               </span>
             </div>
             
             <div className="flex items-center justify-between">
-              <span>{t('securityStatus.data_migration', '敏感数据迁移:')}</span>
+              <span>{t('securityStatus.data_migration')}</span>
               <span className="font-medium">
                 {status.migration_completed
-                  ? t('securityStatus.completed', '✓ 已完成')
-                  : t('securityStatus.pending_migration', '⚠ 待迁移')}
+                  ? t('securityStatus.completed')
+                  : t('securityStatus.pending_migration')}
               </span>
             </div>
             
             {status.sensitive_keys_count > 0 && (
               <div className="flex items-center justify-between">
-                <span>{t('securityStatus.sensitive_keys', '敏感键数量:')}</span>
+                <span>{t('securityStatus.sensitive_keys')}</span>
                 <span className="font-medium">{status.sensitive_keys_count}</span>
               </div>
             )}
             
             {status.last_migration_time && (
               <div className="flex items-center justify-between">
-                <span>{t('securityStatus.last_migration', '上次迁移:')}</span>
+                <span>{t('securityStatus.last_migration')}</span>
                 <span className="font-medium">
                   {new Date(status.last_migration_time).toLocaleString()}
                 </span>
@@ -154,7 +154,7 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
           {/* 警告信息 */}
           {status.warnings && status.warnings.length > 0 && (
             <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-              <div className="font-medium text-yellow-800 mb-1">{t('securityStatus.warnings_title', '注意事项:')}</div>
+              <div className="font-medium text-yellow-800 mb-1">{t('securityStatus.warnings_title')}</div>
               {status.warnings.map((warning, index) => (
                 <div key={index} className="text-yellow-700">• {warning}</div>
               ))}
@@ -163,9 +163,9 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
           
           {!status.keychain_available && (
             <div className="mt-3 text-xs text-yellow-700">
-              <div className="font-medium mb-1">{t('securityStatus.fallback_title', '解决方案:')}</div>
-              <div>{t('securityStatus.fallback_line1', '• 系统安全存储不可用，将使用数据库回退存储')}</div>
-              <div>{t('securityStatus.fallback_line2', '• API密钥将以加密形式存储在本地数据库中')}</div>
+              <div className="font-medium mb-1">{t('securityStatus.fallback_title')}</div>
+              <div>{t('securityStatus.fallback_line1')}</div>
+              <div>{t('securityStatus.fallback_line2')}</div>
             </div>
           )}
         </div>

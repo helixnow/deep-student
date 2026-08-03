@@ -10,8 +10,9 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { TodoSidebar } from './TodoSidebar';
+import { WorkbenchSidebarSurface } from '@/features/workbench/components/sidebar';
 
 interface TodoShellSidebarProps {
   isSmallScreen: boolean;
@@ -31,7 +32,9 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
     : { paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' };
 
   return (
-    <div
+    <WorkbenchSidebarSurface
+      ariaLabel={t('todo:sidebar.title')}
+      data-todo-shell-sidebar
       data-shell-layer={!isSmallScreen ? 'navigation' : undefined}
       data-shell-surface={!isSmallScreen ? 'navigation' : undefined}
       className={cn(
@@ -43,7 +46,7 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
       {/* 返回按钮 */}
       <div className={cn('shrink-0 px-2 py-1', isCollapsed ? 'opacity-0' : 'space-y-0.5')}>
         {!isCollapsed && onBack ? (
-          <NotionButton
+          <DsButton
             variant="nav"
             size="md"
             onClick={onBack}
@@ -53,7 +56,7 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
             <span className="truncate">
               {t('common:actions.backToHome', { defaultValue: '返回主页' })}
             </span>
-          </NotionButton>
+          </DsButton>
         ) : null}
       </div>
 
@@ -61,6 +64,6 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
       <div className={cn('flex-1 min-h-0 overflow-hidden', isCollapsed && 'pointer-events-none opacity-0')}>
         <TodoSidebar />
       </div>
-    </div>
+    </WorkbenchSidebarSurface>
   );
 };

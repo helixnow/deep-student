@@ -14,6 +14,8 @@ import type {
   ExportAnkiCardsResult,
 } from '../types';
 import { emitDebug } from '../utils/emitDebug';
+import { reportFrontendError } from '@/logging/errorReporter';
+import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import {
   ChatMessage,
   RagSourceInfo,
@@ -36,7 +38,8 @@ export type Tag = { id: string; name: string; color?: string };
 export type ProblemCard = { id: string; content_problem: string; content_insight?: string; notes?: string };
 export type CreateTagRequest = { name: string; color?: string; parent_id?: string; tag_type?: string; description?: string };
 export type LegacyCreateTagRequest = CreateTagRequest & { parent_tag_id?: string };
-import heic2any from 'heic2any';
+// ★ 2026-07-08（审计 30-P1-4）：heic2any 体积可观且仅在用户上传 HEIC 图片时才需要，
+// 改为使用点动态 import()，避免经 tauriApi barrel 被静态拖入首屏 chunk
 import { getErrorMessage } from './errorUtils';
 import { debugLogger } from './debugLogger';
 import { DEBUG_TIMELINE_GLOBAL_KEYS } from '../config/debugPanel';
@@ -177,7 +180,18 @@ export async function invokeWithDebug<T>(cmd: string, args?: any, meta?: Record<
     return res;
   } catch (e: any) {
     const duration = Date.now() - started;
-    try { emitDebug({ channel: 'tauri_invoke', eventName: `${cmd}:error`, payload: { durationMs: duration, error: (e?.message || String(e)), meta } }); } catch {}
+    // TD-11：优先提取结构化 CommandError envelope，日志/上报带稳定 code 与 traceId；
+    // legacy 字符串错误维持原有 message 提取（对象载荷不再退化成 "[object Object]"）
+    const envelope = parseCommandErrorEnvelope(e);
+    const errorMessage = envelope
+      ? `${envelope.code}: ${envelope.message}`
+      : (e?.message || String(e));
+    try { emitDebug({ channel: 'tauri_invoke', eventName: `${cmd}:error`, payload: { durationMs: duration, error: errorMessage, errorCode: envelope?.code, traceId: envelope?.traceId, meta } }); } catch {}
+    void reportFrontendError(envelope ? new Error(`[${cmd}] ${errorMessage}`) : e, {
+      kind: 'PLUGIN_ERROR',
+      component: 'tauri-invoke',
+      extra: { command: cmd, durationMs: duration, meta, errorCode: envelope?.code, traceId: envelope?.traceId },
+    }).catch(() => undefined);
     throw e;
   }
 }
@@ -311,7 +325,8 @@ export function stripNullsDeep<T>(input: T): T {
 
 // 工具函数：将File对象转换为Base64字符串
 export const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
+      void (async () => {
         tauriDebugLog(`[Base64] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
 
         let fileToProcess = file;
@@ -331,6 +346,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
             tauriDebugLog(`[HEIC] Detected HEIC image: ${file.name}, converting to JPG...`);
             tauriDebugLog(`[HEIC] File details:`, { name: file.name, size: file.size, type: file.type });
             try {
+                const { default: heic2any } = await import('heic2any');
                 const conversionResult = await heic2any({
                     blob: file,
                     toType: "image/jpeg",
@@ -443,6 +459,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
             console.error(`[Base64] FileReader error:`, error);
             reject(error);
         };
+      })().catch(reject);
     });
 };
 

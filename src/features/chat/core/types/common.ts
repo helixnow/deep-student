@@ -52,6 +52,7 @@ export type BlockType =
   | 'subagent_embed'   // 子代理嵌入
   | 'subagent_retry'   // 子代理重试提醒块
   | 'sleep'            // 协调器休眠
+  | 'workbench_ops'    // ACR 桌面操控工具卡（R1-09）
   // 系统提示块
   | 'tool_limit'    // 工具递归限制提示
   // 知识图谱（后端 graph_search 工具映射）
@@ -66,16 +67,14 @@ export type BlockType =
 
 /**
  * 输入框面板状态
+ *
+ * 注意：历史上的 'rag' / 'search' / 'learn' 三个面板 key 已彻底移除
+ * （对应独立面板 UI 早已下线，仅剩无渲染路径的幽灵状态）。
+ * 旧持久化数据中的同名残留 key 会在会话恢复时被过滤（见 restoreActions）。
  */
 export interface PanelStates {
-  /** RAG 知识库面板 */
-  rag: boolean;
   /** MCP 工具面板 */
   mcp: boolean;
-  /** 搜索引擎面板 */
-  search: boolean;
-  /** 学习模式面板 */
-  learn: boolean;
   /** 模型选择面板 */
   model: boolean;
   /** 高级设置面板 */
@@ -87,10 +86,7 @@ export interface PanelStates {
 }
 
 export const COMPOSER_PANEL_KEYS = [
-  'rag',
   'mcp',
-  'search',
-  'learn',
   'model',
   'advanced',
   'attachment',
@@ -102,10 +98,7 @@ export const COMPOSER_PANEL_KEYS = [
  */
 export function createDefaultPanelStates(): PanelStates {
   return {
-    rag: false,
     mcp: false,
-    search: false,
-    learn: false,
     model: false,
     advanced: false,
     attachment: false,
@@ -171,9 +164,6 @@ export interface ChatParams {
   // ★ 2026-01 简化：VFS RAG 作为唯一知识检索方案，移除 vfsRagEnabled 开关
   // ragTopK 和 ragEnableReranking 直接用于 VFS RAG 检索
 
-  /** 🆕 关闭工具白名单检查（允许所有工具绕过技能白名单限制） */
-  disableToolWhitelist?: boolean;
-
   /**
    * 🆕 图片压缩策略（用于多模态消息）
    * - 'low': 最大 768px，JPEG 60%，适用于大量图片/PDF 概览
@@ -203,7 +193,6 @@ export function createDefaultChatParams(): ChatParams {
     disableTools: false,
     model2OverrideId: null,
     maxToolRecursion: 30,
-    disableToolWhitelist: false,
   };
 }
 
@@ -288,6 +277,8 @@ export interface AttachmentMeta {
   id: string;
   name: string;
   type: 'image' | 'document' | 'audio' | 'video' | 'other';
+  /** VFS 中的规范资源类型；附件业务表本身仍使用 att_xxx sourceId。 */
+  resourceType?: 'image' | 'file';
   mimeType: string;
   size: number;
   /** 图片/文档的预览 URL 或 base64 */

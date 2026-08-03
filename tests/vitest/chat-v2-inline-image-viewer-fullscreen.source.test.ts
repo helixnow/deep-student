@@ -33,9 +33,12 @@ describe('chat inline image viewer fullscreen contract', () => {
     expect(source).toContain("max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top-fallback, 0px))");
   });
 
-  it('prevents mouse wheel from changing preview zoom', () => {
-    expect(source).toContain('onWheel={(e) => {');
+  it('prevents plain mouse wheel from changing preview zoom', () => {
+    // wheel 必须以非 passive 的原生监听注册（React 根节点 wheel 为 passive，
+    // onWheel 里 preventDefault 不生效），且仅 ctrl/meta（触控板捏合）才缩放
+    expect(source).toContain("stage.addEventListener('wheel', handleWheel, { passive: false })");
     expect(source).toContain('e.preventDefault();');
+    expect(source).toContain('if (e.ctrlKey || e.metaKey)');
   });
 
   it('only renders contextual prev and next buttons instead of disabled edge controls', () => {

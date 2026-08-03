@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
@@ -73,7 +73,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     } catch (error) {
       console.error('[ChatV2Page] Failed to load ungrouped count:', getErrorMessage(error));
     }
-  }, []);
+  }, [setUngroupedSessionCount]);
 
   const createHiddenDraftSession = useCallback(async (groupId?: string | null): Promise<ChatSession> => {
     const scope = getDraftSessionScope('chat', groupId ?? null);
@@ -87,25 +87,42 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     return session;
   }, []);
 
+  // 同一 scope 的并发获取共享同一个 Promise，避免快速连点/启动竞态创建出
+  // 多个隐藏 draft（后创建的覆盖 localStorage，先创建的成为孤儿空会话泄漏在库里）
+  const draftSessionPromisesRef = useRef(new Map<string, Promise<ChatSession>>());
+
   const getOrCreateHiddenDraftSession = useCallback(async (groupId?: string | null): Promise<ChatSession> => {
     const scope = getDraftSessionScope('chat', groupId ?? null);
-    const storedDraftId = getStoredDraftSessionId(scope);
 
-    if (storedDraftId) {
-      try {
-        const storedDraft = await invoke<ChatSession | null>('chat_v2_get_session', {
-          sessionId: storedDraftId,
-        });
-        if (storedDraft && getHiddenDraftSessionScope(storedDraft.metadata) === scope) {
-          return storedDraft;
-        }
-      } catch (error) {
-        console.warn('[ChatV2Page] Failed to reuse hidden draft session:', getErrorMessage(error));
-      }
-      clearHiddenDraftSessionId(scope);
+    const inFlight = draftSessionPromisesRef.current.get(scope);
+    if (inFlight) {
+      return inFlight;
     }
 
-    return createHiddenDraftSession(groupId);
+    const promise = (async () => {
+      const storedDraftId = getStoredDraftSessionId(scope);
+
+      if (storedDraftId) {
+        try {
+          const storedDraft = await invoke<ChatSession | null>('chat_v2_get_session', {
+            sessionId: storedDraftId,
+          });
+          if (storedDraft && getHiddenDraftSessionScope(storedDraft.metadata) === scope) {
+            return storedDraft;
+          }
+        } catch (error) {
+          console.warn('[ChatV2Page] Failed to reuse hidden draft session:', getErrorMessage(error));
+        }
+        clearHiddenDraftSessionId(scope);
+      }
+
+      return createHiddenDraftSession(groupId);
+    })().finally(() => {
+      draftSessionPromisesRef.current.delete(scope);
+    });
+
+    draftSessionPromisesRef.current.set(scope, promise);
+    return promise;
   }, [createHiddenDraftSession]);
 
   const getCurrentHiddenDraftSessionScope = useCallback(() => {
@@ -133,11 +150,11 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       requestChatInputFocus(session.id);
     } catch (error) {
       console.error('[ChatV2Page] Failed to create session:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.createSessionFailed', '创建会话失败，请稍后重试'));
+      showGlobalNotification('error', t('page.createSessionFailed'));
     } finally {
       setIsLoading(false);
     }
-  }, [getCurrentHiddenDraftSessionScope, getOrCreateHiddenDraftSession, t]);
+  }, [getCurrentHiddenDraftSessionScope, getOrCreateHiddenDraftSession, setCurrentSessionId, setIsLoading, t]);
 
   // P1-06: 创建分析模式会话
   // 打开文件对话框让用户选择图片，然后创建 analysis 模式会话
@@ -218,17 +235,25 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       console.log('[ChatV2Page] Created analysis session:', session.id, 'with', images.length, 'images');
     } catch (error) {
       console.error('[ChatV2Page] Failed to create analysis session:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.createAnalysisSessionFailed', '创建分析会话失败，请稍后重试'));
+      showGlobalNotification('error', t('page.createAnalysisSessionFailed'));
     } finally {
       setIsLoading(false);
     }
-  }, [t]);
+  }, [loadUngroupedCount, setCurrentSessionId, setIsLoading, setSessions, setTotalSessionCount, t]);
 
   // ========== 移动端状态 ==========
   // 🚀 性能优化：使用 useDeferredValue 实现乐观更新
   // - currentSessionId 立即更新（侧边栏高亮立即响应）
   // - deferredSessionId 延迟更新（ChatContainer 重渲染在后台进行）
   const loadSessions = useCallback(async () => {
+    // ★ 性能（首屏瀑布消除）：启动 draft 会话的获取/创建不依赖列表结果，
+    // 与列表加载并行发起。原实现串行等待列表返回后才发起 draft 请求，
+    // 首屏可交互时间多付一跳后端往返。
+    const draftSessionPromise = getOrCreateHiddenDraftSession();
+    // 列表加载失败走 catch 分支时，这里的错误由下方 await 统一处理；
+    // 提前挂一个空 catch 防止 unhandled rejection 噪音
+    draftSessionPromise.catch(() => {});
+
     try {
       // 并行获取：所有已分组会话 + 未分组首页 + 计数
       const [groupedResult, ungroupedResult, totalCount, ungroupedCount] = await Promise.all([
@@ -263,7 +288,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       let sessionToSelect: string | null = null;
 
       try {
-        const draftSession = await getOrCreateHiddenDraftSession();
+        const draftSession = await draftSessionPromise;
         sessionToSelect = draftSession.id;
       } catch (e) {
         console.warn('[ChatV2Page] Failed to create startup draft session:', e);
@@ -275,11 +300,14 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setCurrentSessionId(sessionToSelect);
     } catch (error) {
       console.error('[ChatV2Page] Failed to load sessions:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.loadSessionsFailed', '加载会话失败，请刷新后重试'));
+      showGlobalNotification('error', t('page.loadSessionsFailed'));
     } finally {
       setIsInitialLoading(false);
     }
-  }, [getOrCreateHiddenDraftSession, t]);
+  }, [
+    getOrCreateHiddenDraftSession, PAGE_SIZE, setCurrentSessionId, setHasMoreSessions,
+    setIsInitialLoading, setSessions, setTotalSessionCount, setUngroupedSessionCount, t,
+  ]);
 
   // P1-22: 加载更多会话（无限滚动分页）
   // 🔧 分组懒加载修复：只加载更多未分组会话，已分组会话在初始加载时已全量获取
@@ -306,11 +334,11 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setHasMoreSessions(result.length >= PAGE_SIZE);
     } catch (error) {
       console.error('[ChatV2Page] Failed to load more sessions:', getErrorMessage(error));
-      showGlobalNotification('warning', t('page.loadMoreSessionsFailed', '加载更多会话失败，请重试'));
+      showGlobalNotification('warning', t('page.loadMoreSessionsFailed'));
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMoreSessions, t]);
+  }, [isLoadingMore, hasMoreSessions, PAGE_SIZE, sessionsRef, setHasMoreSessions, setIsLoadingMore, setSessions, t]);
 
   // ========== 🔧 P1修复：基于消息数量判断是否为空对话 ==========
   // 问题：原逻辑基于标题判断，但标题是后端异步生成的，导致有消息也不能新建
@@ -361,10 +389,14 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         }
       } catch (error) {
         console.error('[ChatV2Page] Failed to delete session:', getErrorMessage(error));
-        showGlobalNotification('error', t('page.deleteSessionFailed', '删除会话失败，请稍后重试'));
+        showGlobalNotification('error', t('page.deleteSessionFailed'));
       }
     },
-    [getOrCreateHiddenDraftSession, loadUngroupedCount, t] // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
+    // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
+    [
+      getOrCreateHiddenDraftSession, loadUngroupedCount, LAST_SESSION_KEY, sessionsRef,
+      setCurrentSessionId, setSessions, setTotalSessionCount, setUngroupedSessionCount, t,
+    ]
   );
 
   // 🆕 2026-01-20: 点击 Worker Agent 查看输出 - 切换到对应会话

@@ -1,8 +1,9 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { Minus, ArrowsOut } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { toggleDevtools } from '@/dev/devtools';
+import { Minus, ArrowsOut, X } from '@phosphor-icons/react';
 // ★ 图谱模块已废弃 - IrecAutoNotePlugin 已移除
 // import IrecAutoNotePlugin from './plugins/IrecAutoNotePlugin';
 // ★ ExamSheetWorkbench 已废弃（2026-02 清理）- ExamSheetLifecyclePlugin 已移除
@@ -48,8 +49,7 @@ import DstuDebugPlugin from './plugins/DstuDebugPlugin';
 import AttachmentInjectionDebugPlugin from './plugins/AttachmentInjectionDebugPlugin';
 import AttachmentOcrRequestAuditPlugin from './plugins/AttachmentOcrRequestAuditPlugin';
 import MediaProcessingDebugPlugin from './plugins/MediaProcessingDebugPlugin';
-// ★ 多模态索引已禁用，暂时隐藏调试插件入口。恢复时取消注释即可。
-// import PdfMultimodalDebugPlugin from './plugins/PdfMultimodalDebugPlugin';
+import PdfMultimodalDebugPlugin from './plugins/PdfMultimodalDebugPlugin';
 import FinderDragDropDebugPlugin from './plugins/FinderDragDropDebugPlugin';
 import SelectionBoxDebugPlugin from './plugins/SelectionBoxDebugPlugin';
 // ★ 图谱模块已废弃 - GraphSidebarDebugPlugin 已移除
@@ -237,16 +237,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     descriptionDefault: '监听 PDF/图片上传、OCR 流水线、注入模式选择，以及前端构造和后端接收的请求体摘要，校验多模态/文本模型是否收到预期内容。',
     groupId: 'chat-timeline',
   },
-  // ★ 多模态索引已禁用，暂时隐藏 PDF 多模态调试插件。恢复时取消注释即可。
-  // {
-  //   id: 'pdf-multimodal-debug',
-  //   labelKey: 'debug_panel.plugin_pdf_multimodal',
-  //   descriptionKey: 'debug_panel.plugin_pdf_multimodal_desc',
-  //   Component: PdfMultimodalDebugPlugin,
-  //   labelDefault: 'PDF 多模态调试',
-  //   descriptionDefault: '专门调试 PDF 图片模式注入问题，追踪 isMultimodal、includeImage、multimodalBlocks 等关键状态。',
-  //   groupId: 'chat-timeline',
-  // },
+  {
+    id: 'pdf-multimodal-debug',
+    labelKey: 'debug_panel.plugin_pdf_multimodal',
+    descriptionKey: 'debug_panel.plugin_pdf_multimodal_desc',
+    Component: PdfMultimodalDebugPlugin,
+    labelDefault: 'PDF 多模态调试',
+    descriptionDefault: '专门调试 PDF 图片模式注入问题，追踪 isMultimodal、includeImage、multimodalBlocks 等关键状态。',
+    groupId: 'chat-timeline',
+  },
   {
     id: 'media-processing-debug',
     labelKey: 'debug_panel.plugin_media_processing',
@@ -558,6 +557,10 @@ const STORAGE_KEYS = {
   SIZE: 'DSTU_DBG_SIZE',
 };
 
+/** 面板最小宽度：360px，小视口（如 320–359px 手机）退让为 视口宽-16，避免横向溢出 */
+const getMinPanelWidth = () => Math.min(360, Math.max(240, (window.innerWidth || 1024) - 16));
+const MIN_PANEL_HEIGHT = 240;
+
 const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, currentStreamId }) => {
   const { t } = useTranslation('common');
   const [portalEl, setPortalEl] = React.useState<HTMLElement | null>(null);
@@ -715,8 +718,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
     };
   }, []);
 
+  // 拖动/缩放统一走 Pointer Events：触屏（手指/触控笔）与鼠标共用一条路径
   React.useEffect(() => {
-    const handleMove = (ev: MouseEvent) => {
+    const handleMove = (ev: PointerEvent) => {
       if (dragging) {
         setPos(prev => {
           const next = {
@@ -729,8 +733,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
         const dx = ev.clientX - sizeStart.current.sx;
         const dy = ev.clientY - sizeStart.current.sy;
         setSize(prev => ({
-          w: Math.max(360, sizeStart.current.sw + dx),
-          h: Math.max(240, sizeStart.current.sh + dy),
+          w: Math.max(getMinPanelWidth(), sizeStart.current.sw + dx),
+          h: Math.max(MIN_PANEL_HEIGHT, sizeStart.current.sh + dy),
         }));
       }
     };
@@ -754,11 +758,13 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       setResizing(false);
     };
 
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
     };
   }, [dragging, resizing, pos, size]);
 
@@ -775,7 +781,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
         return prev;
       });
       setSize(prev => {
-        const nw = Math.min(Math.max(360, prev.w ?? 360), Math.max(360, vw - 24));
+        // 最小宽度随视口退让（320–359px 手机上固定 360px 会横向溢出）
+        const minW = getMinPanelWidth();
+        const nw = Math.min(Math.max(minW, prev.w ?? minW), Math.max(minW, vw - 24));
         const nh = Math.min(Math.max(220, prev.h ?? 220), Math.max(220, vh - 24));
         if (nw !== prev.w || nh !== prev.h) {
           return { w: nw, h: nh };
@@ -844,7 +852,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
 
   const panel = (
     <div
-      className="dstu-dbg-root fixed z-[2147483647]"
+      className="dstu-dbg-root fixed"
       style={{ 
         left: pos.x, 
         top: pos.y, 
@@ -858,7 +866,12 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       <div className={`dstu-dbg flex flex-col ${collapsed ? '' : 'h-full'} bg-[hsl(var(--card)/0.97)] backdrop-blur-xl border border-[hsl(var(--border))] rounded-xl shadow-2xl shadow-[hsl(var(--foreground)/0.1)]`}>
         <div
           className={`dbg-header flex items-center justify-between px-3 py-2 ${collapsed ? '' : 'border-b border-[hsl(var(--border))]'} cursor-move bg-[hsl(var(--muted)/0.3)] rounded-t-xl ${collapsed ? 'rounded-b-xl' : ''}`}
-          onMouseDown={ev => {
+          // touch-action:none：触摸拖动面板时不触发页面滚动
+          style={{ touchAction: 'none' }}
+          onPointerDown={ev => {
+            // 仅鼠标左键 / 触摸 / 触控笔起手
+            if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+            try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 捕获失败不影响拖动（window 监听兜底） */ }
             setDragging(true);
             dragStart.current = { dx: ev.clientX - pos.x, dy: ev.clientY - pos.y };
           }}
@@ -874,16 +887,16 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
           <div className="flex items-center gap-2">
             <div className="text-xs font-semibold text-[hsl(var(--foreground))] tracking-tight">Analysis Panel</div>
             {!collapsed && (
-              <div className="inline-flex gap-1.5 ml-1 flex-wrap" onMouseDown={ev => ev.stopPropagation()}>
-                <NotionButton
+              <div className="inline-flex gap-1.5 ml-1 flex-wrap" onPointerDown={ev => ev.stopPropagation()}>
+                <DsButton
                   onClick={() => setActivePluginId(HOME_PLUGIN_ID)}
                   variant={isHome ? 'primary' : 'ghost'}
                   size="sm"
                   className="text-[10px] h-6 px-2"
                 >
                   {t('debug_panel.home')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   onClick={() => {
                     window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'llm-playground' } }));
                   }}
@@ -893,23 +906,12 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   title="LLM 输出模拟游乐场"
                 >
                   LLM Playground
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   onClick={async () => {
-                    try {
-                      const { WebviewWindow } = await import('@tauri-apps/api/window');
-                      const webview: any = WebviewWindow.getCurrent();
-                      if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
-                        await webview.closeDevtools?.();
-                      } else {
-                        await webview.openDevtools?.();
-                      }
-                    } catch {
-                      try {
-                        const { WebviewWindow } = await import('@tauri-apps/api/window');
-                        const webview: any = WebviewWindow.getCurrent();
-                        await webview.toggleDevtools?.();
-                      } catch { /* not available */ }
+                    const opened = await toggleDevtools();
+                    if (opened === null) {
+                      console.warn('[DebugPanel] DevTools 不可用：当前构建未启用 devtools');
                     }
                   }}
                   variant="ghost"
@@ -918,14 +920,14 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   title="打开/关闭 WebView DevTools (F12)"
                 >
                   DevTools
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1.5" onMouseDown={ev => ev.stopPropagation()}>
+          <div className="flex items-center gap-1.5" onPointerDown={ev => ev.stopPropagation()}>
             {!collapsed && (
               <>
-              <NotionButton
+              <DsButton
                 onClick={handleToggleMasterSwitch}
                 variant={masterSwitchEnabled ? 'success' : 'ghost'}
                 size="sm"
@@ -939,8 +941,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   ? t('debug_panel.logs_on', '日志开') 
                   : t('debug_panel.logs_off', '日志关')
                 }
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 onClick={toggleUILab}
                 variant={uiLabEnabled ? 'warning' : 'ghost'}
                 size="sm"
@@ -951,21 +953,21 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 }
               >
                 {uiLabEnabled ? 'UI Lab 开' : 'UI Lab 关'}
-              </NotionButton>
+              </DsButton>
               </>
             )}
             {collapsed ? (
-              <NotionButton
+              <DsButton
                 onClick={() => setCollapsed(false)}
                 variant="ghost"
                 size="sm"
                 className="text-[10px] h-6 px-2"
-                title={t('debug_panel.expand', '展开')}
+                title={t('debug_panel.expand')}
               >
                 <ArrowsOut size={12} />
-              </NotionButton>
+              </DsButton>
             ) : (
-              <NotionButton
+              <DsButton
                 onClick={() => setCollapsed(true)}
                 variant="ghost"
                 size="sm"
@@ -973,13 +975,24 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 title={t('debug_panel.minimize', '最小化')}
               >
                 <Minus size={12} />
-              </NotionButton>
+              </DsButton>
             )}
+            {/* 关闭按钮：触屏没有 Alt+Shift+D 快捷键，必须有可点的关闭入口 */}
+            <DsButton
+              onClick={onClose}
+              variant="ghost"
+              size="sm"
+              className="text-[10px] h-6 px-2"
+              title={t('debug_panel.close', '关闭')}
+              aria-label={t('debug_panel.close', '关闭')}
+            >
+              <X size={12} />
+            </DsButton>
           </div>
         </div>
         {!collapsed && (
           <>
-            <div className="flex-1 flex flex-col overflow-auto" onMouseDown={ev => ev.stopPropagation()}>
+            <div className="flex-1 flex flex-col overflow-auto" onPointerDown={ev => ev.stopPropagation()}>
           {isHome ? (
             <div className="flex-1 flex flex-col p-3 gap-3 bg-[hsl(var(--background))]">
               {!masterSwitchEnabled && (
@@ -1038,7 +1051,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                         {t('debug_panel.group_count', { count: items.length })}
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {/* 列数按面板实际宽度（size.w）计算，而非视口断点——面板可被拖成窄条 */}
+                    <div className={`grid gap-3 ${size.w >= 1100 ? 'grid-cols-3' : size.w >= 680 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                       {items.map(plugin => (
                         <div
                           key={`home-card-${plugin.id}`}
@@ -1084,7 +1098,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                           </div>
                           
                           <div className="relative flex gap-2 mt-auto pt-1">
-                            <NotionButton
+                            <DsButton
                               onClick={ev => {
                                 ev.stopPropagation();
                                 toggleFavorite(plugin.id);
@@ -1096,8 +1110,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               {favoriteIds.has(plugin.id)
                                 ? t('debug_panel.favorite_short', '已收藏')
                                 : t('debug_panel.favorite_action', '收藏')}
-                            </NotionButton>
-                            <NotionButton
+                            </DsButton>
+                            <DsButton
                               onClick={ev => {
                                 ev.stopPropagation();
                                 activatePlugin(plugin.id);
@@ -1108,7 +1122,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               className="flex-1 text-[10px] h-7"
                             >
                               {t('debug_panel.open_plugin', '打开')}
-                            </NotionButton>
+                            </DsButton>
                           </div>
                         </div>
                       ))}
@@ -1146,16 +1160,22 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
             })
           )}
         </div>
+        {/* 缩放把手：外层为放大的命中区（28px，coarse 指针 40px），内层保留 12px 视觉角标 */}
         <div
-          className="dbg-resize absolute right-1.5 bottom-1.5 w-3 h-3 cursor-nwse-resize border-r-2 border-b-2 border-[hsl(var(--border))] hover:border-[hsl(var(--primary)/0.6)] transition-colors duration-200 rounded-br"
-          onMouseDown={ev => {
+          className="dbg-resize absolute right-0 bottom-0 flex h-7 w-7 cursor-nwse-resize items-end justify-end p-1.5 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+          style={{ touchAction: 'none' }}
+          onPointerDown={ev => {
+            if (ev.pointerType === 'mouse' && ev.button !== 0) return;
             ev.preventDefault();
             ev.stopPropagation();
+            try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* 捕获失败不影响缩放（window 监听兜底） */ }
             setResizing(true);
             sizeStart.current = { sw: size.w, sh: size.h, sx: ev.clientX, sy: ev.clientY };
           }}
           title="拖动以调整大小"
-        />
+        >
+          <div className="h-3 w-3 rounded-br border-b-2 border-r-2 border-[hsl(var(--border))] transition-colors duration-200 hover:border-[hsl(var(--primary)/0.6)]" />
+        </div>
           </>
         )}
       </div>

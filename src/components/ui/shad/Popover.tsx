@@ -109,17 +109,91 @@ interface PopoverContentProps extends React.HTMLAttributes<HTMLDivElement> {
   collisionPadding?: number; // 与屏幕边缘的最小距离，默认 8
 }
 
-export function PopoverContent({ className, align = 'center', side = 'bottom', sideOffset = 8, portal = true, collisionPadding = 8, style, ...rest }: PopoverContentProps) {
+export interface PopoverPositionInput {
+  triggerRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom' | 'width'>;
+  contentWidth: number;
+  contentHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  align: 'start' | 'center' | 'end';
+  side: 'top' | 'bottom';
+  sideOffset: number;
+  collisionPadding: number;
+}
+
+export interface PopoverPosition {
+  left: number;
+  top: number;
+  translateX: number;
+}
+
+const clampToViewport = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), Math.max(min, max));
+
+/** Resolves placement once, including the case where neither side can fully fit. */
+export function resolvePopoverPosition({
+  triggerRect,
+  contentWidth,
+  contentHeight,
+  viewportWidth,
+  viewportHeight,
+  align,
+  side,
+  sideOffset,
+  collisionPadding,
+}: PopoverPositionInput): PopoverPosition {
+  let anchoredLeft = triggerRect.left;
+  if (align === 'center') {
+    anchoredLeft = triggerRect.left + triggerRect.width / 2 - contentWidth / 2;
+  } else if (align === 'end') {
+    anchoredLeft = triggerRect.right - contentWidth;
+  }
+
+  const left = clampToViewport(
+    anchoredLeft,
+    collisionPadding,
+    viewportWidth - collisionPadding - contentWidth,
+  );
+
+  const above = triggerRect.top - contentHeight - sideOffset;
+  const below = triggerRect.bottom + sideOffset;
+  const fitsAbove = above >= collisionPadding;
+  const fitsBelow = below + contentHeight <= viewportHeight - collisionPadding;
+  const anchoredTop = side === 'bottom'
+    ? (fitsBelow || !fitsAbove ? below : above)
+    : (fitsAbove || !fitsBelow ? above : below);
+
+  return {
+    left,
+    top: clampToViewport(
+      anchoredTop,
+      collisionPadding,
+      viewportHeight - collisionPadding - contentHeight,
+    ),
+    // `left` is already the visible content edge, not an anchor point.
+    translateX: 0,
+  };
+}
+
+export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(function PopoverContent(
+  { className, align = 'center', side = 'bottom', sideOffset = 8, portal = true, collisionPadding = 8, style, ...rest },
+  forwardedRef,
+) {
   const ctx = React.useContext(PopoverContext);
-  const [position, setPosition] = React.useState<{ left: number; top: number; translateX: number } | null>(null);
+  const [position, setPosition] = React.useState<PopoverPosition | null>(null);
   const localContentRef = React.useRef<HTMLDivElement | null>(null);
 
-  const assignContentRef = (node: HTMLDivElement | null) => {
+  const assignContentRef = React.useCallback((node: HTMLDivElement | null) => {
     localContentRef.current = node;
     if (ctx?.contentRef) {
       (ctx.contentRef as any).current = node;
     }
-  };
+    if (typeof forwardedRef === 'function') {
+      forwardedRef(node);
+    } else if (forwardedRef) {
+      forwardedRef.current = node;
+    }
+  }, [ctx?.contentRef, forwardedRef]);
 
   // 计算位置并处理边界碰撞
   const updatePosition = React.useCallback(() => {
@@ -129,86 +203,80 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    // 水平对齐
-    let left = rect.left;
-    let translateX = 0;
-    if (align === 'center') {
-      left = rect.left + rect.width / 2;
-      translateX = -50;
-    } else if (align === 'end') {
-      left = rect.right;
-      translateX = -100;
-    }
+    // offset* is unaffected by ui-zoom-fade-in scale/translate. Using the
+    // transformed rect here makes overflow collision placement visibly jump.
+    const nextPosition = resolvePopoverPosition({
+      triggerRect: rect,
+      contentWidth: localContentRef.current.offsetWidth,
+      contentHeight: localContentRef.current.offsetHeight,
+      viewportWidth,
+      viewportHeight,
+      align,
+      side,
+      sideOffset,
+      collisionPadding,
+    });
 
-    const contentRect = localContentRef.current.getBoundingClientRect();
-    const contentWidth = contentRect.width;
-    const contentHeight = contentRect.height;
-
-    // 水平碰撞检测
-    const actualLeft = left + (contentWidth * translateX / 100);
-    if (actualLeft < collisionPadding) {
-      left = collisionPadding;
-      translateX = 0;
-    } else if (actualLeft + contentWidth > viewportWidth - collisionPadding) {
-      left = viewportWidth - collisionPadding;
-      translateX = -100;
-    }
-
-    // 垂直碰撞检测：自动翻转方向
-    let finalTop: number;
-    if (side === 'bottom') {
-      finalTop = rect.bottom + sideOffset;
-      if (finalTop + contentHeight > viewportHeight - collisionPadding) {
-        const flippedTop = rect.top - contentHeight - sideOffset;
-        if (flippedTop >= collisionPadding) {
-          finalTop = flippedTop;
-        }
-      }
-    } else {
-      finalTop = rect.top - contentHeight - sideOffset;
-      if (finalTop < collisionPadding) {
-        const flippedTop = rect.bottom + sideOffset;
-        if (flippedTop + contentHeight <= viewportHeight - collisionPadding) {
-          finalTop = flippedTop;
-        }
-      }
-    }
-
-    setPosition({ left, top: finalTop, translateX });
+    setPosition((current) => (
+      current
+      && current.left === nextPosition.left
+      && current.top === nextPosition.top
+      && current.translateX === nextPosition.translateX
+        ? current
+        : nextPosition
+    ));
   }, [ctx?.containerRef, align, side, sideOffset, collisionPadding]);
 
   // 初始定位 + 滚动/resize 跟随
   React.useLayoutEffect(() => {
-    if (!ctx?.open || !portal || typeof window === 'undefined' || !ctx.containerRef.current) {
+    if (!ctx?.open || !portal || typeof window === 'undefined') {
       setPosition(null);
       return;
     }
 
-    // 等内容渲染后计算初始位置
-    requestAnimationFrame(updatePosition);
-
     // 监听滚动和 resize，让 popover 跟随触发器
     const handleScroll = () => updatePosition();
     const handleResize = () => updatePosition();
+    const scrollParents: EventTarget[] = [];
+    let resizeObserver: ResizeObserver | null = null;
 
-    // 监听所有可滚动祖先
-    const scrollParents: EventTarget[] = [window];
-    let el: HTMLElement | null = ctx.containerRef.current;
-    while (el) {
-      if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
-        scrollParents.push(el);
+    // Portal 子树的 ref 可能晚于父层 layout effect 就绪，因此在下一帧统一
+    // 连接定位、滚动祖先和尺寸监听。
+    const frameId = requestAnimationFrame(() => {
+      updatePosition();
+
+      const contentNode = localContentRef.current;
+      const triggerNode = ctx.containerRef.current;
+      if (!contentNode || !triggerNode) return;
+
+      scrollParents.push(window);
+      let el: HTMLElement | null = triggerNode;
+      while (el) {
+        if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
+          scrollParents.push(el);
+        }
+        el = el.parentElement;
       }
-      el = el.parentElement;
-    }
+      scrollParents.forEach((parent) => {
+        parent.addEventListener('scroll', handleScroll, { passive: true });
+      });
 
-    scrollParents.forEach((p) => p.addEventListener('scroll', handleScroll, { passive: true }));
+      // 折叠、异步内容和字体加载都会改变尺寸；变化后必须重新锚定。
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(() => updatePosition());
+        resizeObserver.observe(contentNode);
+        resizeObserver.observe(triggerNode);
+      }
+    });
     window.addEventListener('resize', handleResize, { passive: true });
 
     return () => {
-      scrollParents.forEach((p) => p.removeEventListener('scroll', handleScroll));
+      cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      scrollParents.forEach((parent) => parent.removeEventListener('scroll', handleScroll));
       window.removeEventListener('resize', handleResize);
     };
-  }, [ctx?.open, portal, updatePosition]);
+  }, [ctx?.open, ctx?.containerRef, portal, updatePosition]);
 
   if (!ctx || !ctx.open) return null;
 
@@ -229,7 +297,7 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
         role="dialog"
         ref={assignContentRef}
           className={cn(
-            'fixed min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none animate-in fade-in-0 zoom-in-95 shadow-none',
+            'fixed min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none ui-zoom-fade-in shadow-none',
             className
           )}
         style={{
@@ -252,7 +320,7 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
       role="dialog"
       ref={assignContentRef}
       className={cn(
-        'absolute mt-2 min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none animate-in fade-in-0 zoom-in-95 shadow-none',
+        'absolute mt-2 min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none ui-zoom-fade-in shadow-none',
         alignmentClass,
         className
       )}
@@ -260,4 +328,5 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
       {...rest}
     />
   );
-}
+});
+PopoverContent.displayName = 'PopoverContent';

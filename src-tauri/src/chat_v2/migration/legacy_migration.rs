@@ -851,40 +851,42 @@ pub fn check_migration_status(
             .query_row(
                 "SELECT COUNT(*) FROM chat_messages WHERE migrated_to_v2 = 0 OR migrated_to_v2 IS NULL",
                 [],
-                |row| row.get(0),
+                |row| row.get::<_, i64>(0),
             )
-            .unwrap_or(0);
+            .unwrap_or(0) as usize;
 
         // 统计已迁移消息
         result.migrated_messages = data_conn
             .query_row(
                 "SELECT COUNT(*) FROM chat_messages WHERE migrated_to_v2 = 1",
                 [],
-                |row| row.get(0),
+                |row| row.get::<_, i64>(0),
             )
-            .unwrap_or(0);
+            .unwrap_or(0) as usize;
 
         // 统计未迁移会话数
         result.pending_sessions = data_conn
             .query_row(
                 "SELECT COUNT(DISTINCT mistake_id) FROM chat_messages WHERE migrated_to_v2 = 0 OR migrated_to_v2 IS NULL",
                 [],
-                |row| row.get(0),
+                |row| row.get::<_, i64>(0),
             )
-            .unwrap_or(0);
+            .unwrap_or(0) as usize;
     } else {
         // 所有消息都未迁移
         result.pending_messages = data_conn
-            .query_row("SELECT COUNT(*) FROM chat_messages", [], |row| row.get(0))
-            .unwrap_or(0);
+            .query_row("SELECT COUNT(*) FROM chat_messages", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap_or(0) as usize;
 
         result.pending_sessions = data_conn
             .query_row(
                 "SELECT COUNT(DISTINCT mistake_id) FROM chat_messages",
                 [],
-                |row| row.get(0),
+                |row| row.get::<_, i64>(0),
             )
-            .unwrap_or(0);
+            .unwrap_or(0) as usize;
     }
 
     result.needs_migration = result.pending_messages > 0;
@@ -892,13 +894,13 @@ pub fn check_migration_status(
     // 判断是否可回滚：需要同时满足两个条件
     // 1. 旧表有标记为已迁移的消息
     // 2. Chat V2 中确实存在迁移的会话
-    let migrated_sessions_in_v2: usize = chat_v2_conn
+    let migrated_sessions_in_v2 = chat_v2_conn
         .query_row(
             "SELECT COUNT(*) FROM chat_v2_sessions WHERE json_extract(metadata_json, '$.migratedFrom') = 'chat_messages'",
             [],
-            |row| row.get(0),
+            |row| row.get::<_, i64>(0),
         )
-        .unwrap_or(0);
+        .unwrap_or(0) as usize;
     result.can_rollback = result.migrated_messages > 0 && migrated_sessions_in_v2 > 0;
 
     // 获取上次迁移时间（从 chat_v2_sessions 元数据中查询）

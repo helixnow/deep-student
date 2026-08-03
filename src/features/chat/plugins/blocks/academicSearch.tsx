@@ -45,8 +45,13 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
   const data = block.toolOutput as BackendAcademicSearchResult | undefined;
 
   // 将后端 SourceInfo 转换为前端 RetrievalSource
+  // 🔧 P0 修复：基础 type 保持 'web_search'（引用/来源面板的联合类型约束），
+  // 但通过 metadata._sourceKind 标记学术来源，SourceCard 据此显示学术图标与标签
   const sources = useMemo(() => {
-    return convertBackendSources(data?.sources, 'web_search', block.id);
+    return convertBackendSources(data?.sources, 'web_search', block.id).map((source) => ({
+      ...source,
+      metadata: { ...source.metadata, _sourceKind: 'academic' },
+    }));
   }, [data?.sources, block.id]);
 
   const searchSource = data?.source;
@@ -112,11 +117,11 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
         <div
           className={cn(
             'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-blue-500/10',
-            'dark:bg-blue-500/20'
+            'w-6 h-6 rounded bg-primary/10',
+            'dark:bg-primary/20'
           )}
         >
-          <GraduationCap size={16} className="text-blue-600 dark:text-blue-400" />
+          <GraduationCap size={16} className="text-primary" />
         </div>
 
         {/* 标题 */}
@@ -129,8 +134,8 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
           <span
             className={cn(
               'px-2 py-0.5 rounded-full',
-              'bg-blue-500/10 text-blue-600 text-xs',
-              'dark:bg-blue-500/20 dark:text-blue-400'
+              'bg-primary/10 text-primary text-xs',
+              'dark:bg-primary/20'
             )}
           >
             {sourceLabel}
@@ -146,7 +151,7 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
         )}
 
         {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-red-600 dark:text-red-400">
+          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
             <WarningCircle size={12} />
             <span>{t('blocks.academicSearch.error')}</span>
           </span>
@@ -184,7 +189,7 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
         {/* 错误状态 */}
         {isError && (
           <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <div className="flex items-center gap-2 text-destructive">
               <WarningCircle size={20} />
               <span className="text-sm">
                 {block.error || t('blocks.academicSearch.errorMessage')}

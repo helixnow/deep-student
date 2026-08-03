@@ -53,12 +53,14 @@
  * `.foo-button:hover { transform: scale(1.05) }`. We need to win against
  * that single-class specificity, hence the `!important`. Components that
  * genuinely want a hover scale opt back in via `[data-allow-hover-scale]`. */
-:where(button, a, [role="button"]):hover:not([data-allow-hover-scale]) {
+/* 排除 Tailwind translate 类：以 -translate-x-1/2 等做居中/定位的按钮，
+ * transform 是布局性的，清掉会导致按钮跳位（2026-07 移动端审计 H-1 附带收窄）。 */
+:where(button, a, [role="button"]):hover:not([data-allow-hover-scale], [class*="translate-"]) {
   transform: none !important;
 }
 
 /* Active state: subtle press-down feedback, native to macOS HIG. */
-:where(button, [role="button"]):active:not([disabled], [data-allow-hover-scale]) {
+:where(button, [role="button"]):active:not([disabled], [data-allow-hover-scale], [class*="translate-"]) {
   transform: translateY(0.5px);
 }
 
@@ -115,12 +117,24 @@
 @media (hover: none) and (pointer: coarse) {
 
   /*
-   * No hover scale on ANY element.  On touch there is no
-   * "hover preview" that benefits from a subtle grow; scale
-   * only makes distortion and jank.
+   * No hover scale on touch — but ONLY the scale component.
+   *
+   * ⚠️ 2026-07 修复（移动端审计 H-1）：这里曾是 `*:hover { transform: none
+   * !important }`。触屏 sticky hover 会让"最后点按的元素"持续匹配 :hover，
+   * 而 `transform: none !important` 连 translate 一起清掉，摧毁一切依赖
+   * transform 的定位：Switch 选中态拇指（translateX）、`-translate-x-1/2`
+   * 居中弹层、framer-motion / PullToRefresh 的内联位移动画等。
+   *
+   * 现在只中和 Tailwind hover 变换的 scale 分量（通过 --tw-scale-* 变量，
+   * translate/rotate 分量原样保留）。非 Tailwind 的组件级 hover scale 由：
+   *   - 上方全局规则（:where(button,a,[role=button]):hover → transform:none）
+   *   - 下方针对 .chat-v2 等已知场景的精确重置
+   * 分别兜底。切勿恢复 `*:hover { transform: none !important }`。
    */
-  *:hover {
-    transform: none !important;
+  [class*="hover:scale-"],
+  [class*="group-hover:scale-"] {
+    --tw-scale-x: 1 !important;
+    --tw-scale-y: 1 !important;
   }
 
   /*

@@ -139,7 +139,7 @@
 }
 
 .shortcut-settings-item-custom-badge {
-  font-size: 10px;
+  font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
   background-color: hsl(var(--primary) / 0.1);
@@ -266,5 +266,23 @@
   
   .shortcut-settings-item-actions {
     opacity: 1;
+  }
+}
+
+/* ★ 2026-07-08 移动端审计：触屏设备（含 ≥640px 平板）无 hover，操作按钮常显 */
+@media (pointer: coarse) {
+  .shortcut-settings-item-actions {
+    opacity: 1;
+  }
+
+  /* 触屏：分类下拉 / 搜索输入抬到 44px 触控高度；16px 防 iOS 聚焦缩放 */
+  .shortcut-settings-category-select {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .shortcut-settings-search-input {
+    min-height: 44px;
+    font-size: 16px !important;
   }
 }

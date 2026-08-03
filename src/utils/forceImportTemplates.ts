@@ -6,6 +6,25 @@
 import { invoke } from '@tauri-apps/api/core';
 import { CustomAnkiTemplate } from '../types';
 
+const EXPECTED_BUILTIN_TEMPLATE_IDS = [
+  'design-lab',
+  'design-manuscript',
+  'design-redaction',
+  'design-glass',
+  'design-swiss',
+  'design-polaroid',
+  'design-architect',
+  'design-lexicon',
+  'design-botanical',
+  'design-eink',
+  'design-monograph',
+  'design-footnote',
+  'design-marginalia',
+  'design-seminar',
+  'design-nomenclature',
+  'design-exam',
+];
+
 interface ForceImportResult {
   success: number;
   failed: number;
@@ -91,20 +110,11 @@ export async function checkComplexTemplatesStatus(): Promise<{
   try {
     const existingTemplates = await invoke<CustomAnkiTemplate[]>('get_all_custom_templates');
     
-    // 内置模板名称列表（基于我们提取的6个模板）
-    const expectedTemplates = [
-      '极简卡片',
-      '编程代码卡片', 
-      '填空题卡片',
-      '选择题卡片',
-      '语言学习卡片',
-      '法律条文卡片'
-    ];
-    
-    const existingNames = existingTemplates.map(t => t.name);
-    const missingTemplates = expectedTemplates.filter(name => !existingNames.includes(name));
-    const builtinTemplatesInDB = existingNames.filter(name => 
-      expectedTemplates.includes(name)
+    const expectedTemplates = [...EXPECTED_BUILTIN_TEMPLATE_IDS];
+    const existingIds = existingTemplates.map(t => t.id);
+    const missingTemplates = expectedTemplates.filter(id => !existingIds.includes(id));
+    const builtinTemplatesInDB = existingIds.filter(id =>
+      expectedTemplates.includes(id)
     );
     
     return {

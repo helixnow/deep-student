@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { imageDefinition, isImageContentBlock, isTextContentBlock, type Resource } from '@/features/chat/context';
+import zhChatV2 from '@/locales/zh-CN/chatV2.json';
+import enChatV2 from '@/locales/en-US/chatV2.json';
 
 function makeImageResource(content: string, mimeType = 'image/png'): Resource {
   return {
@@ -25,7 +27,7 @@ function makeImageResource(content: string, mimeType = 'image/png'): Resource {
 }
 
 describe('imageDefinition payload integrity', () => {
-  it('keeps image+ocr mixed payload available for context injection', () => {
+  it('defaults to the original image without implicitly injecting OCR', () => {
     const resource = makeImageResource(
       'data:image/png;base64,aGVsbG8=<image_ocr>OCR内容</image_ocr>'
     );
@@ -37,7 +39,28 @@ describe('imageDefinition payload integrity', () => {
     expect(imageBlock).toBeDefined();
     expect((imageBlock as any).mediaType).toBe('image/png');
     expect((imageBlock as any).base64).toBe('aGVsbG8=');
-    expect(textBlocks.some((b) => (b as any).text.includes('<image_ocr'))).toBe(true);
+    expect(textBlocks.some((b) => (b as any).text.includes('<image_ocr'))).toBe(false);
+  });
+
+  it('injects OCR only when explicitly selected', () => {
+    const resource = makeImageResource(
+      'data:image/png;base64,aGVsbG8=<image_ocr>OCR内容</image_ocr>'
+    );
+    const blocks = imageDefinition.formatToBlocks(resource, {
+      isMultimodal: true,
+      injectModes: { image: ['image', 'ocr'] },
+    } as any);
+
+    expect(blocks.some(isImageContentBlock)).toBe(true);
+    expect(blocks.filter(isTextContentBlock).some((b) => (b as any).text.includes('<image_ocr'))).toBe(true);
+  });
+
+  it('keeps the original image for a text-model turn so Rust can compile the fallback', () => {
+    const resource = makeImageResource('data:image/png;base64,aGVsbG8=');
+    const blocks = imageDefinition.formatToBlocks(resource, { isMultimodal: false } as any);
+
+    expect(blocks).toHaveLength(1);
+    expect(isImageContentBlock(blocks[0])).toBe(true);
   });
 
   it('returns a single image block in image-only mode for clean data URL', () => {
@@ -61,6 +84,14 @@ describe('imageDefinition payload integrity', () => {
 
     expect(blocks).toHaveLength(1);
     expect(isTextContentBlock(blocks[0])).toBe(true);
-    expect((blocks[0] as any).text).toContain('[Invalid image content]');
+    const text = (blocks[0] as any).text as string;
+    // i18n namespaces load asynchronously and other suites may switch the
+    // process-global locale. Assert against the real supported translations
+    // instead of depending on execution order.
+    expect([
+      zhChatV2.contextDef.image.invalid,
+      enChatV2.contextDef.image.invalid,
+    ].some((placeholder) => text.includes(placeholder))).toBe(true);
+    expect(text).toContain('<image name="img-test.png">');
   });
 });

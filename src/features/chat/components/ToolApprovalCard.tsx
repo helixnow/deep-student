@@ -1,22 +1,35 @@
 /**
- * 工具审批卡片组件
+ * 工具审批卡片组件（遗留）
  *
- * 显示敏感工具的审批请求，让用户决定是否允许执行。
+ * @deprecated 生产审批路径已收敛到 `input-bar/BlockingApprovalBar`（输入栏内联审批栏）。
+ * 本组件不再挂载于任何生产渲染路径，仅因类型复用（`ApprovalRequestData` 被
+ * `input-bar/types.ts` 引用）与既有测试保留。新特性请只加在 BlockingApprovalBar；
+ * 待类型迁移到 core/types 后可整体删除本文件（需消息渲染/输入栏分区配合改
+ * `components/index.ts` 与测试）。
+ *
+ * 超时语义已与 BlockingApprovalBar 对齐：后端是超时权威（emit approval_timeout），
+ * 前端倒计时归零只进入禁用等待态，不再代发 reject。
  *
  * 设计文档：src/features/chat/docs/29-ChatV2-Agent能力增强改造方案.md 第 4.6 节
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Check, X, Clock, Warning, CaretDown, CaretUp } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import {
+  getExternalToolProviderName,
+  getReadableToolName,
+} from '@/features/chat/utils/toolDisplayName';
+import { getLocalizedApprovalDescription } from '@/features/chat/utils/approvalDescription';
+import type { PermissionPreset, ShellRuntimeApprovalScope } from '@/features/chat/core/types/store';
 
 // ============================================================================
 // 类型定义
@@ -27,10 +40,12 @@ export interface ApprovalRequestData {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
+  permissionPreset?: PermissionPreset;
   description: string;
   timeoutSeconds: number;
   resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
   resolvedReason?: string;
+  runtimeScope?: ShellRuntimeApprovalScope;
 }
 
 export interface ToolApprovalCardProps {
@@ -61,14 +76,16 @@ const ArgumentsPreview: React.FC<{
 
   return (
     <>
-      <pre className={cn(
-        'mt-1 overflow-auto rounded bg-muted p-2 text-xs',
-        isExpanded ? 'max-h-64' : 'max-h-32',
-      )}>
-        {displayText}
-      </pre>
+      <CustomScrollArea
+        orientation="both"
+        fullHeight={false}
+        className={cn('mt-1 rounded bg-muted', isExpanded ? 'max-h-64' : 'max-h-32')}
+        viewportClassName={isExpanded ? 'max-h-64' : 'max-h-32'}
+      >
+        <pre className="p-2 text-xs">{displayText}</pre>
+      </CustomScrollArea>
       {needsTruncation && (
-        <NotionButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
+        <DsButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
           {isExpanded ? (
             <>
               <CaretUp size={12} />
@@ -80,7 +97,7 @@ const ArgumentsPreview: React.FC<{
               {t('approval.expandArgs')}
             </>
           )}
-        </NotionButton>
+        </DsButton>
       )}
     </>
   );
@@ -101,14 +118,49 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
   const [isResponding, setIsResponding] = useState(false);
   const [hasResponded, setHasResponded] = useState(false);
   const [isArgsExpanded, setIsArgsExpanded] = useState(false);
+  const [isReasonOpen, setIsReasonOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  // 同步互斥锁：state 更新是异步的，快速双击会让两次点击都读到 isResponding=false，
+  // 用 ref 在同一事件循环内立即拦截第二次提交
+  const respondingRef = useRef(false);
   const resolvedStatus = request.resolvedStatus;
   const isResolved = Boolean(resolvedStatus);
+  // 倒计时归零：后端权威超时已（或即将）触发，前端只展示等待态
+  const isTimedOutLocally = !isResolved && request.timeoutSeconds > 0 && remainingSeconds <= 0;
 
   // 获取工具的国际化显示名称
   const displayToolName = useMemo(
-    () => getReadableToolName(request.toolName, t),
-    [request.toolName, t]
+    () => getReadableToolName(request.toolName, t, {
+      providerName: getExternalToolProviderName(request.arguments),
+    }),
+    [request.toolName, request.arguments, t]
   );
+  const localizedDescription = useMemo(
+    () => getLocalizedApprovalDescription(
+      request.toolName,
+      request.arguments,
+      request.description,
+      t,
+    ),
+    [request.toolName, request.arguments, request.description, t],
+  );
+
+  const shellScope = request.runtimeScope?.kind === 'shell' ? request.runtimeScope : null;
+  const shellCommandLabel = useMemo(() => {
+    if (!shellScope) return '';
+    if (shellScope.hasShellOperators || shellScope.usesScriptRunner) {
+      return `hash:${shellScope.commandHash.slice(0, 8)}`;
+    }
+    return shellScope.commandPrefix;
+  }, [shellScope]);
+  const shellFlags = useMemo(() => {
+    if (!shellScope) return [] as string[];
+    const flags: string[] = [];
+    if (shellScope.networkAllowed) flags.push('net');
+    if (shellScope.hasShellOperators) flags.push('ops');
+    if (shellScope.usesScriptRunner) flags.push('runner');
+    return flags;
+  }, [shellScope]);
 
   // 发送响应到后端（必须在 useEffect 之前定义）
 
@@ -117,26 +169,37 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
     setRemainingSeconds(request.timeoutSeconds);
     setHasResponded(false);
     setIsResponding(false);
+    setIsReasonOpen(false);
+    setRejectReason('');
+    respondingRef.current = false;
   }, [request.toolCallId, request.timeoutSeconds]);
 
-  const handleResponse = useCallback(
-    async (approved: boolean, reason?: string, remember: boolean = false, rememberSession: boolean = false) => {
-      if (hasResponded || isResponding || isResolved) return;
+  const rememberDisabled = Boolean(request.runtimeScope?.rememberDisabled)
+    || request.permissionPreset !== 'relaxed'
+    || request.sensitivity !== 'medium';
 
+  const handleResponse = useCallback(
+    async (approved: boolean, reason?: string, rememberSession = false) => {
+      if (respondingRef.current || hasResponded || isResponding || isResolved || isTimedOutLocally) return;
+
+      respondingRef.current = true;
       setIsResponding(true);
       try {
         await invoke('chat_v2_tool_approval_respond', {
           sessionId,
           toolCallId: request.toolCallId,
-          toolName: request.toolName, // 🆕 用于"记住选择"功能
+          toolName: request.toolName,
           approved,
           reason: reason ?? null,
-          remember,
-          rememberSession, // 🆕 三档分级：本会话允许该工具
+          remember: false,
+          rememberSession,
           arguments: request.arguments,
         });
         setHasResponded(true);
+        setIsReasonOpen(false);
       } catch (error: unknown) {
+        // 发送失败允许用户重试
+        respondingRef.current = false;
         const errorMessage = getErrorMessage(error);
         console.error('[ToolApprovalCard] Failed to send response:', errorMessage);
         if (errorMessage.toLowerCase().includes('approval_expired')) {
@@ -156,27 +219,39 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
         setIsResponding(false);
       }
     },
-    [sessionId, request.toolCallId, request.toolName, request.arguments, hasResponded, isResponding, isResolved, t]
+    [sessionId, request.toolCallId, request.toolName, request.arguments, hasResponded, isResponding, isResolved, isTimedOutLocally, t]
   );
 
-  // 倒计时逻辑
-  useEffect(() => {
-    if (hasResponded || isResolved || remainingSeconds <= 0) return;
+  // 带理由拒绝（Enter/「发送」按钮）；'user_rejected' 为无理由哨兵值
+  const handleRejectWithReason = useCallback(() => {
+    const trimmed = rejectReason.trim();
+    handleResponse(false, trimmed || 'user_rejected');
+  }, [handleResponse, rejectReason]);
 
-    const timer = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          // 超时自动拒绝
-          handleResponse(false, 'timeout');
-          return 0;
-        }
-        return prev - 1;
-      });
+  // 直接拒绝（Esc/「直接拒绝」按钮，不带理由）
+  const handleRejectImmediately = useCallback(() => {
+    handleResponse(false, 'user_rejected');
+  }, [handleResponse]);
+
+  // 已决态展示用户填写的拒绝理由（过滤哨兵值）
+  const resolvedUserReason = useMemo(() => {
+    if (resolvedStatus !== 'rejected') return null;
+    const reason = request.resolvedReason?.trim();
+    if (!reason || reason === 'user_rejected' || reason === 'timeout') return null;
+    return reason;
+  }, [resolvedStatus, request.resolvedReason]);
+
+  // 倒计时逻辑（每秒递减；归零后不代发 reject——后端超时权威会 emit approval_timeout，
+  // 由事件处理器解析成 resolvedStatus='timeout'，与 BlockingApprovalBar 语义一致）
+  useEffect(() => {
+    if (hasResponded || isResolved || request.timeoutSeconds <= 0 || remainingSeconds <= 0) return;
+
+    const timer = setTimeout(() => {
+      setRemainingSeconds((prev) => Math.max(0, prev - 1));
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [hasResponded, handleResponse, isResolved]);
+    return () => clearTimeout(timer);
+  }, [remainingSeconds, hasResponded, isResolved, request.timeoutSeconds]);
 
   const resolution = useMemo(() => {
     if (!resolvedStatus) return null;
@@ -191,41 +266,49 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
       return {
         label: t('approval.resolution.rejected'),
         icon: X,
-        className: 'text-red-700 dark:text-red-400',
+        className: 'text-danger',
       };
     }
     if (resolvedStatus === 'timeout') {
       return {
         label: t('approval.resolution.timeout'),
         icon: Clock,
-        className: 'text-yellow-700 dark:text-yellow-400',
+        className: 'text-warning',
       };
     }
     if (resolvedStatus === 'expired') {
       return {
         label: t('approval.resolution.expired'),
         icon: Warning,
-        className: 'text-orange-700 dark:text-orange-400',
+        className: 'text-warning',
       };
     }
     return {
       label: t('approval.resolution.error'),
       icon: Warning,
-      className: 'text-red-700 dark:text-red-400',
+      className: 'text-danger',
     };
   }, [resolvedStatus, t]);
 
   // 敏感等级颜色映射
   const sensitivityColors: Record<string, string> = {
     low: 'bg-success/10 text-success',
-    medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-    high: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    medium: 'bg-warning/10 text-warning',
+    high: 'bg-danger/10 text-danger',
   };
+
+  // 卡片仍处于等待用户操作的状态（已决/已发送后不再显示倒计时）
+  const isAwaitingDecision = !isResolved && !hasResponded;
 
   return (
     <Card
+      data-wb-blur-surface
       className={cn(
-        'border-2 border-yellow-400 dark:border-yellow-600 bg-yellow-50/85 dark:bg-yellow-950/45 backdrop-blur-md supports-[backdrop-filter]:backdrop-blur-md',
+        'border-2 backdrop-blur-md supports-[backdrop-filter]:backdrop-blur-md',
+        // 高风险操作用醒目的红色边框区分（低/中风险保持黄色警示）
+        request.sensitivity === 'high'
+          ? 'border-danger/50 bg-warning/10'
+          : 'border-warning/50 bg-warning/10',
         className
       )}
     >
@@ -236,12 +319,25 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge className={sensitivityColors[request.sensitivity]}>
-              {t(`approval.sensitivity.${request.sensitivity}`, request.sensitivity)}
+              {t(`approval.sensitivity.${request.sensitivity}`)}
             </Badge>
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <Clock size={16} />
-            <span>{remainingSeconds}s</span>
-            </div>
+            {isAwaitingDecision && request.timeoutSeconds > 0 && (
+              isTimedOutLocally ? (
+                <div className="flex items-center gap-1 text-sm text-warning" role="status">
+                  <Clock size={16} />
+                  <span>{t('approval.timedOutWaiting')}</span>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-1 text-sm text-muted-foreground"
+                  role="timer"
+                  aria-label={t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })}
+                >
+                  <Clock size={16} />
+                  <span>{remainingSeconds}s</span>
+                </div>
+              )
+            )}
           </div>
         </div>
       </CardHeader>
@@ -262,8 +358,33 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           <span className="text-sm font-medium text-muted-foreground">
             {t('approval.description')}:
           </span>
-          <p className="mt-1 text-sm">{request.description}</p>
+          <p className="mt-1 text-sm">{localizedDescription}</p>
         </div>
+
+        {shellScope && (
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={t('approval.runtimeRoot')}>
+              {shellScope.rootId}
+            </span>
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={t('approval.runtimeCwd')}>
+              {shellScope.cwd}
+            </span>
+            <span
+              className="max-w-[14rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
+              title={shellScope.commandPrefix}
+            >
+              {shellCommandLabel}
+            </span>
+            {shellFlags.map((flag) => (
+              <span
+                key={flag}
+                className="rounded bg-warning/10 px-1.5 py-0.5 text-warning"
+              >
+                {flag}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* 参数预览 - ★ L-023: 大内容截断显示，可手动展开 */}
         <div>
@@ -279,11 +400,18 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
         </div>
       </CardContent>
 
-      <CardFooter className="flex justify-end gap-2 pt-2">
+      <CardFooter className="flex flex-wrap justify-end gap-2 pt-2">
         {resolution ? (
-          <div className={cn('flex items-center gap-2 text-sm font-medium', resolution.className)}>
-            <resolution.icon size={16} />
-            <span>{resolution.label}</span>
+          <div className="flex w-full flex-col items-end gap-1">
+            <div className={cn('flex items-center gap-2 text-sm font-medium', resolution.className)}>
+              <resolution.icon size={16} />
+              <span>{resolution.label}</span>
+            </div>
+            {resolvedUserReason && (
+              <p className="max-w-full truncate text-xs text-muted-foreground" title={resolvedUserReason}>
+                {t('approval.userReasonLabel')}: {resolvedUserReason}
+              </p>
+            )}
           </div>
         ) : hasResponded ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -292,63 +420,92 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           </div>
         ) : (
           <>
-            {/* 低频档：始终允许/始终拒绝（持久化白名单，设置页可管理） */}
-            <NotionButton
-              variant="outline"
-              size="sm"
-              onClick={() => handleResponse(true, undefined, true)}
-              disabled={isResponding}
-              className="text-success hover:text-success/80"
-            >
-              {t('approval.alwaysAllow')}
-            </NotionButton>
-
-            <NotionButton
-              variant="outline"
-              size="sm"
-              onClick={() => handleResponse(false, 'user_rejected', true)}
-              disabled={isResponding}
-              className="text-red-600 hover:text-red-700 dark:text-red-400"
-            >
-              {t('approval.alwaysDeny')}
-            </NotionButton>
-
             <div className="flex-1" />
 
-            {/* 拒绝按钮 */}
-            <NotionButton
+            {/* 拒绝按钮：首次点击展开理由输入行，不立即发送 */}
+            <DsButton
               variant="outline"
               size="sm"
-              onClick={() => handleResponse(false, 'user_rejected')}
-              disabled={isResponding}
-              className="text-red-600 hover:text-red-700 dark:text-red-400"
+              onClick={() => setIsReasonOpen((prev) => !prev)}
+              disabled={isResponding || isTimedOutLocally}
+              className="text-danger hover:text-danger"
             >
               <X size={16} className="mr-1" />
               {t('approval.reject')}
-            </NotionButton>
+            </DsButton>
 
-            {/* 🆕 三档分级中间档：本会话允许该工具（重复任务不再反复弹卡） */}
-            <NotionButton
-              variant="outline"
-              size="sm"
-              onClick={() => handleResponse(true, undefined, false, true)}
-              disabled={isResponding}
-              className="text-success hover:text-success/80"
-            >
-              {t('approval.allowSession', '本会话允许')}
-            </NotionButton>
+            {!rememberDisabled && (
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={() => handleResponse(true, undefined, true)}
+                disabled={isResponding || isTimedOutLocally}
+                className="text-success hover:text-success/80"
+              >
+                {shellScope
+                  ? t('approval.allowScope')
+                  : t('approval.allowSession')}
+              </DsButton>
+            )}
 
             {/* 批准按钮（仅此次） */}
-            <NotionButton
+            <DsButton
               size="sm"
               onClick={() => handleResponse(true)}
-              disabled={isResponding}
+              disabled={isResponding || isTimedOutLocally}
               autoFocus
               className="bg-success text-success-foreground"
             >
               <Check size={16} className="mr-1" />
               {t('approval.approve')}
-            </NotionButton>
+            </DsButton>
+
+            {/* 拒绝理由输入（内联展开，非模态） */}
+            {isReasonOpen && (
+              <div className="flex w-full items-center gap-1.5">
+                <input
+                  type="text"
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleRejectWithReason();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      handleRejectImmediately();
+                    }
+                  }}
+                  placeholder={t('approval.rejectReasonPlaceholder')}
+                  autoFocus
+                  disabled={isResponding || isTimedOutLocally}
+                  className={cn(
+                    'flex-1 min-w-0 px-2 py-1 text-xs rounded-md border border-border/50',
+                    'bg-background placeholder:text-muted-foreground/50',
+                    'focus:outline-none focus:ring-1 focus:ring-[color:var(--input-shell-focus)]',
+                    isResponding && 'opacity-50 cursor-not-allowed'
+                  )}
+                />
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRejectImmediately}
+                  disabled={isResponding || isTimedOutLocally}
+                  className="shrink-0 text-xs text-muted-foreground hover:text-danger"
+                >
+                  {t('approval.rejectDirectly')}
+                </DsButton>
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRejectWithReason}
+                  disabled={isResponding || isTimedOutLocally}
+                  className="shrink-0 text-xs text-danger hover:text-danger"
+                >
+                  {t('approval.rejectSend')}
+                </DsButton>
+              </div>
+            )}
           </>
         )}
       </CardFooter>

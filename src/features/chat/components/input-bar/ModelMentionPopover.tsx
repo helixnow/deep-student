@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkle, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 
 // ============================================================================
@@ -137,12 +138,14 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
           't-dropdown',
           isClosing && 'is-closing',
           open && 'is-open',
-          'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+          // P2-1: 窄屏时收窄到视口内（固定 w-72 会在小屏溢出）
+          'absolute w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
           'bottom-full mb-3 left-0',
           className
         )}
         style={{ zIndex: Z_INDEX.inputBarPopover }}
         data-origin="bottom-left"
+        data-wb-blur-surface
         role="listbox"
         aria-label={t('chatV2:modelMention.suggestions')}
       >
@@ -172,14 +175,15 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
         't-dropdown',
         isClosing && 'is-closing',
         open && 'is-open',
-        // 基础样式
-        'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+        // 基础样式（P2-1: 窄屏时收窄到视口内，键盘上方仍完整可见）
+        'absolute w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
         // 定位：在输入框上方
         'bottom-full mb-3 left-0',
         className
       )}
       style={{ zIndex: Z_INDEX.inputBarPopover }}
       data-origin="bottom-left"
+      data-wb-blur-surface
       role="listbox"
       aria-label={t('chatV2:modelMention.suggestions')}
       aria-activedescendant={activeDescendantId}
@@ -199,9 +203,11 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
 
       {/* 模型列表 */}
       {/* 🔧 max-h-48 (192px) → max-h-72 (288px) 以显示更多模型 */}
-      <div
-        ref={listRef}
-        className="max-h-72 overflow-y-auto p-1"
+      <CustomScrollArea
+        viewportRef={listRef}
+        fullHeight={false}
+        className="max-h-72"
+        viewportClassName="max-h-72 p-1"
       >
         {suggestions.map((model, index) => (
           <div
@@ -219,7 +225,12 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
                 ? 'bg-accent text-accent-foreground'
                 : 'hover:bg-[var(--interactive-hover)] text-foreground'
             )}
-            onClick={() => onSelect(model)}
+            // ★ M2 修复：pointerdown 早于 textarea blur，避免移动端点选时键盘先收起
+            // 造成布局位移点击落空（与 SkillSlashPopover 的处理一致）
+            onPointerDown={(e) => {
+              e.preventDefault();
+              onSelect(model);
+            }}
             onMouseEnter={() => onSelectedIndexChange(index)}
           >
             {/* 模型图标 */}
@@ -246,22 +257,22 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
             )}
           </div>
         ))}
-      </div>
+      </CustomScrollArea>
 
       {/* 底部提示 */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-[10px] text-muted-foreground">
+      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-2xs text-muted-foreground">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-0.5">
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">↑</kbd>
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">↓</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">↑</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">↓</kbd>
             <span className="ml-0.5">{t('chatV2:modelMention.navigate')}</span>
           </span>
           <span className="inline-flex items-center gap-0.5">
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">↵</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">↵</kbd>
             <span className="ml-0.5">{t('chatV2:modelMention.confirm')}</span>
           </span>
           <span className="inline-flex items-center gap-0.5">
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">Esc</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">Esc</kbd>
             <span className="ml-0.5">{t('chatV2:modelMention.dismiss')}</span>
           </span>
         </div>

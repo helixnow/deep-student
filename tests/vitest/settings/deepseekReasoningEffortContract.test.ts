@@ -11,7 +11,7 @@ describe('DeepSeek V4 reasoning effort settings contract', () => {
   const blockEnd = source.indexOf('{isDeepseekV31 && formData.supportsTools', blockStart);
   const deepSeekEffortBlock = source.slice(blockStart, blockEnd);
   const saveBlockStart = source.indexOf("if (sanitized.modelAdapter === 'deepseek') {");
-  const saveBlockEnd = source.indexOf('} else if (hasThinkingDefaults)', saveBlockStart);
+  const saveBlockEnd = source.indexOf('if (!profileReasoningControl.canDisable', saveBlockStart);
   const deepSeekSaveBlock = source.slice(saveBlockStart, saveBlockEnd);
   const inferenceBlockStart = source.indexOf('const isDeepSeek = next.modelAdapter ===');
   const inferenceBlockEnd = source.indexOf('return next;', inferenceBlockStart);

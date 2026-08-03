@@ -1,0 +1,613 @@
+/**
+ * ACR 视觉原语样式 — R1-10 / R3-03 / ACR 4.1（美术升级轮）
+ * 窗口光环 / AgentStrip / 实体 flash / Dock 角标。见 docs/dev/acr/DESIGN.md §4.2。
+ *
+ * 纪律（不可破）：
+ * - 一切动画只动 transform / opacity（渐变、box-shadow 均静态 paint 一次，动 opacity 淡入淡出）；
+ * - reduced-motion 全路径静态替代；forced-colors 全路径系统色重映射；
+ * - 不唯颜色：acting=实线呼吸+实心点，paused=虚线琥珀+方点，reviewing=静态实线+空心环。
+ *
+ * ACR 4.1 美术语言「双色微光」：
+ * - 统一身份色：--acr-a（primary）→ --acr-b（info）双色渐变贯穿光环/flash/caret/角标；
+ * - 光环三层深度（Apple Intelligence 分层描边手法的合规化）：
+ *   ::after 渐变描边核（conic，mask 抠 2px 环）+ ::before 内侧泛光，反相位呼吸；
+ * - 缓动 token：--acr-ease-out 丝滑收尾；--acr-ease-spring 轻弹簧（仅一次性入场）；
+ * - 循环动画统一 2.2s 从容周期（--acr-breathe-ms）。
+ */
+
+:root {
+  /* ---- ACR 4.1 统一身份色（双色微光；随主题/暗色自动翻转） ---- */
+  --acr-a: var(--primary);
+  --acr-b: var(--info, 210 90% 55%);
+
+  /* ---- 缓动 token ---- */
+  --acr-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --acr-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- 时长阶梯 ---- */
+  /* 光环 / Strip 点 / AI caret 呼吸周期（全系统统一节奏） */
+  --acr-breathe-ms: 2200ms;
+  --acr-halo-breathe-ms: var(--acr-breathe-ms); /* 兼容旧引用 */
+
+  /* 实体 flash：DESIGN §4.2 区间 600–900ms，取中位 */
+  --acr-flash-ms: 750ms;
+
+  /* reduced-motion 下静态高亮保留时长（JS 兜底清理对齐） */
+  --acr-flash-static-ms: 400ms;
+
+  /* 一次性入场（点火/滑入/角标） */
+  --acr-enter-ms: 340ms;
+
+  /* Strip 高度入退场（host 行高过渡；AgentStrip.tsx 同源读取此值） */
+  --acr-strip-collapse-ms: 200ms;
+
+  /* Strip 状态语义色（amber 与光环暂停态同源；success 走主题 token） */
+  --acr-paused-hue: hsl(var(--warning, 38 92% 50%));
+  --acr-done-hue: hsl(var(--success, 152 60% 36%));
+}
+
+/* ==========================================================================
+ * 窗口光环（双伪元素三层深度；全部动画只动 opacity）
+ * acting = 渐变描边核(::after) + 内侧泛光(::before) 反相位呼吸 + 点火淡入
+ * paused = 虚线琥珀（形态差，不唯颜色）· reviewing = 静态实线
+ * ========================================================================== */
+
+.wb-window[data-agent-active]::after,
+.wb-window[data-agent-paused]::after,
+.wb-window[data-agent-reviewing]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 40;
+  box-sizing: border-box;
+}
+
+/* acting 描边核（回退层）：mask 不可用的环境保持 R1 实线呼吸光环 */
+.wb-window[data-agent-active]::after {
+  outline: 2px solid hsl(var(--acr-a) / 85%);
+  outline-offset: -2px;
+  animation:
+    acr-halo-ignite var(--acr-enter-ms) var(--acr-ease-out) both,
+    acr-halo-breathe var(--acr-breathe-ms) ease-in-out var(--acr-enter-ms) infinite;
+}
+
+/* acting 描边核（增强层）：双色 conic 渐变，mask 抠出 2px 环
+ * （渐变 paint 一次，呼吸只动 opacity）。mask 失效时若不抠环，
+ * conic 会糊满整窗——因此渐变技法必须锁在 @supports 内。 */
+@supports (mask-composite: exclude) or (-webkit-mask-composite: xor) {
+  .wb-window[data-agent-active]::after {
+    outline: none;
+    border: 2px solid transparent;
+    background:
+      conic-gradient(
+        from 215deg,
+        hsl(var(--acr-a) / 92%),
+        hsl(var(--acr-b) / 80%) 28%,
+        hsl(var(--acr-a) / 88%) 52%,
+        hsl(var(--acr-b) / 78%) 76%,
+        hsl(var(--acr-a) / 92%)
+      )
+      border-box;
+    -webkit-mask:
+      linear-gradient(#000 0 0) padding-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) padding-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+}
+
+/* acting 内侧泛光：屏缘泛光（窗口 overflow:hidden，外发光会被裁——刻意用 inset）。
+ * 反相位（负延迟半周期）让「核亮时晕暗、核暗时晕亮」，光有流动感而零逐帧 paint。 */
+.wb-window[data-agent-active]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 39;
+  box-shadow:
+    inset 0 0 34px hsl(var(--acr-a) / 11%),
+    inset 0 0 10px hsl(var(--acr-b) / 10%);
+  /* 反相位（负延迟半周期）：核亮时晕暗、核暗时晕亮 → 光有往复流动感 */
+  animation: acr-halo-breathe var(--acr-breathe-ms) ease-in-out calc(-1 * var(--acr-breathe-ms) / 2) infinite;
+}
+
+.wb-window[data-agent-paused]::after {
+  outline: 2px dashed hsl(var(--warning) / 95%);
+  outline-offset: -2px;
+  box-shadow: 0 0 10px hsl(var(--warning) / 22%);
+  opacity: 1;
+  animation: none;
+}
+
+/* ACR 4.0：reviewing（等待用户确认）——静态实线主题色，无呼吸；
+ * 与 acting（呼吸）/ paused（虚线琥珀）形态区分，与 Strip 空心点语义一致 */
+.wb-window[data-agent-reviewing]::after {
+  outline: 2px solid hsl(var(--primary) / 55%);
+  outline-offset: -2px;
+  box-shadow: 0 0 10px hsl(var(--primary) / 16%);
+  opacity: 1;
+  animation: none;
+}
+
+/* 点火：presence 出现的一次性淡入（从无到有，避免光环生硬弹出） */
+@keyframes acr-halo-ignite {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 0.55;
+  }
+}
+
+@keyframes acr-halo-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+ * AgentStrip
+ * ========================================================================== */
+
+/* 演出优化轮：host 行高入退场（grid rows 0fr↔1fr），消除条插入/移除时内容区硬跳。
+ * 刻意的纪律例外：这是每 run 首尾各一次的 200ms 布局过渡（28px 小元素），
+ * 不属于循环动画；相比内容区瞬跳 28px，一次性 relayout 是更优的体感取舍。
+ * 旧 WebView 不支持 grid-template-rows 过渡时自动退化为瞬切（与旧行为一致）。 */
+.acr-agent-strip-host {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: acr-strip-host-in var(--acr-strip-collapse-ms) var(--acr-ease-out) both;
+  transition: grid-template-rows var(--acr-strip-collapse-ms) var(--acr-ease-out);
+}
+
+/* 退场：撤掉入场动画的 fill 占位，让 transition 接管收拢 */
+.acr-agent-strip-host[data-closing] {
+  animation: none;
+  grid-template-rows: 0fr;
+}
+
+.acr-agent-strip-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@keyframes acr-strip-host-in {
+  from {
+    grid-template-rows: 0fr;
+  }
+
+  to {
+    grid-template-rows: 1fr;
+  }
+}
+
+.acr-agent-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  /* 顶缘细高光 + 双色 tint 微渐变：与标题栏薄玻璃质感对齐（静态，非动画） */
+  background:
+    linear-gradient(100deg, hsl(var(--acr-a) / 12%) 0%, hsl(var(--acr-b) / 9%) 60%, hsl(var(--acr-a) / 7%) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--wb-glass-highlight, rgba(255, 255, 255, 0.55)) 40%, transparent);
+  font-size: 12px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+  user-select: none;
+  /* ACR 4.1：入场滑入（一次性，transform+opacity） */
+  animation: acr-strip-enter 240ms var(--acr-ease-out) both;
+}
+
+@keyframes acr-strip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.acr-agent-strip[data-status='pausedByUser'] {
+  background:
+    linear-gradient(180deg, hsl(var(--warning) / 14%) 0%, hsl(var(--warning) / 9%) 100%);
+  border-bottom: 1px dashed hsl(var(--warning) / 55%);
+}
+
+/* 终态短暂保留（S-REV-02 撤销窗口）：完成绿 tint / 停止中性 tint */
+.acr-agent-strip[data-status='done'] {
+  background:
+    linear-gradient(180deg, hsl(var(--success, 152 60% 36%) / 12%) 0%, hsl(var(--success, 152 60% 36%) / 7%) 100%);
+}
+
+.acr-agent-strip[data-status='aborted'] {
+  background:
+    linear-gradient(180deg, hsl(var(--muted) / 55%) 0%, hsl(var(--muted) / 35%) 100%);
+}
+
+/* ACR 4.0：label 区容器 —— aria-live 的 label 与 aria-hidden 的倒计时并排 */
+.acr-agent-strip-labelarea {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.acr-agent-strip-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ACR 4.1：acting 时 label 微光扫过（transform-only；伪元素叠加，无 DOM 改动） */
+.acr-agent-strip[data-status='acting'] .acr-agent-strip-label::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      100deg,
+      transparent 32%,
+      hsl(var(--acr-a) / 10%) 44%,
+      hsl(var(--foreground) / 13%) 50%,
+      hsl(var(--acr-b) / 10%) 56%,
+      transparent 68%
+    );
+  transform: translateX(-100%);
+  animation: acr-strip-shimmer 3s ease-in-out 600ms infinite;
+}
+
+@keyframes acr-strip-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  /* 扫过后停驻在右侧到周期结束：留白比循环更克制 */
+  55%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ACR 4.0：直落原因括注（静态弱化文本，只降 opacity，不动布局） */
+.acr-agent-strip-placement {
+  opacity: 0.62;
+}
+
+/* ACR 4.0：自动中止倒计时（tabular-nums 由 Strip 根继承，数字变化零布局跳动） */
+.acr-agent-strip-countdown {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--acr-paused-hue);
+  opacity: 0.9;
+}
+
+.acr-agent-strip-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: hsl(var(--acr-a));
+  box-sizing: border-box;
+}
+
+.acr-agent-strip-dot[data-state='acting'] {
+  /* 静态光晕 + opacity 呼吸（呼吸只动 opacity，光晕随之淡入淡出） */
+  box-shadow: 0 0 6px hsl(var(--acr-a) / 45%);
+  animation: acr-halo-breathe var(--acr-breathe-ms) ease-in-out infinite;
+}
+
+/* ACR 4.1：acting 点的雷达 ping 扩散环（scale+opacity，与呼吸同周期） */
+.acr-agent-strip-dot[data-state='acting']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1.5px solid hsl(var(--acr-a) / 70%);
+  opacity: 0;
+  animation: acr-dot-ping var(--acr-breathe-ms) var(--acr-ease-out) infinite;
+}
+
+@keyframes acr-dot-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+
+  70%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.acr-agent-strip-dot[data-state='reviewing'] {
+  /* 空心圆环：待确认（静态，形态区分于实心操作点） */
+  background: transparent;
+  border: 1.5px solid hsl(var(--primary));
+  animation: none;
+  opacity: 1;
+}
+
+.acr-agent-strip-dot[data-state='paused'] {
+  /* 方点 + 琥珀：形态与颜色双通道 */
+  border-radius: 1px;
+  background: var(--acr-paused-hue);
+  animation: none;
+  opacity: 1;
+}
+
+.acr-agent-strip-dot[data-state='done'] {
+  background: var(--acr-done-hue);
+  animation: none;
+  opacity: 1;
+}
+
+.acr-agent-strip-dot[data-state='aborted'] {
+  background: hsl(var(--muted-foreground));
+  animation: none;
+  opacity: 1;
+}
+
+.acr-agent-strip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.acr-agent-strip-actions .acr-agent-strip-btn {
+  height: 22px;
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  border-radius: 8px;
+}
+
+/* 键盘可达性：焦点环走 workbench token（a11y，不随材质档降级） */
+.acr-agent-strip-actions .acr-agent-strip-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65));
+}
+
+/* ==========================================================================
+ * 实体 flash（R3-02：::before + opacity，避免 background 整行重绘）
+ * ACR 4.1：双色渐变 tint + 「闪-驻-隐」双段曲线（更有落点感，仍只动 opacity）
+ * ========================================================================== */
+
+[data-agent-flash] {
+  position: relative;
+  isolation: isolate;
+}
+
+[data-agent-flash]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(105deg, hsl(var(--acr-a) / 34%), hsl(var(--acr-b) / 28%));
+  animation: acr-flash-fade var(--acr-flash-ms) var(--acr-ease-out) forwards;
+}
+
+@keyframes acr-flash-fade {
+  0% {
+    opacity: 1;
+  }
+
+  /* 快速收到半亮后缓慢释放：闪-驻-隐 */
+  30% {
+    opacity: 0.55;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+ * ACR 4.0：Dock 后台完成角标（agent 在非聚焦窗完成 run → 绿点；聚焦后清除）
+ * ACR 4.1：弹性入场（scale+opacity，keyframe 内建轻微过冲）
+ * ========================================================================== */
+
+.wb-dock-agent-badge {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--acr-done-hue);
+  box-shadow: 0 0 0 2px hsl(var(--background) / 0.9);
+  pointer-events: none;
+  animation: acr-dock-badge-in 320ms var(--acr-ease-out) both;
+}
+
+@keyframes acr-dock-badge-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  62% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ==========================================================================
+ * prefers-reduced-motion：禁用动画，保留静态描边 / 瞬时高亮
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-window[data-agent-active]::after,
+  .wb-window[data-agent-active]::before,
+  .acr-agent-strip-dot[data-state='acting'] {
+    animation: none;
+    opacity: 1;
+  }
+
+  .acr-agent-strip,
+  .acr-agent-strip-dot[data-state='acting']::after,
+  .acr-agent-strip[data-status='acting'] .acr-agent-strip-label::after {
+    animation: none;
+  }
+
+  /* 高度入退场直落（瞬切，与旧行为一致） */
+  .acr-agent-strip-host {
+    animation: none;
+    transition: none;
+  }
+
+  /* ping 环 / shimmer 静态隐藏（装饰性，无信息量） */
+  .acr-agent-strip-dot[data-state='acting']::after,
+  .acr-agent-strip[data-status='acting'] .acr-agent-strip-label::after {
+    opacity: 0;
+  }
+
+  [data-agent-flash]::before {
+    animation: none;
+    opacity: 0.72;
+  }
+
+  /* ACR 4.0：Dock 角标直接显示，不淡入 */
+  .wb-dock-agent-badge {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+ * forced-colors：光环/条/flash 不依赖自定义色
+ * ========================================================================== */
+
+@media (forced-colors: active) {
+  .wb-window[data-agent-active]::after {
+    border: none;
+    background: none;
+    -webkit-mask: none;
+    mask: none;
+    outline: 2px solid Highlight;
+    box-shadow: none;
+    animation: none;
+    opacity: 1;
+  }
+
+  /* 泛光层在系统强制色下无意义，整层隐藏 */
+  .wb-window[data-agent-active]::before {
+    content: none;
+  }
+
+  .wb-window[data-agent-paused]::after {
+    outline: 2px dashed GrayText;
+    box-shadow: none;
+  }
+
+  /* ACR 4.0：reviewing 光环走系统 Highlight（静态实线） */
+  .wb-window[data-agent-reviewing]::after {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+  }
+
+  /* ACR 4.0：倒计时/括注不依赖自定义色 */
+  .acr-agent-strip-countdown,
+  .acr-agent-strip-placement {
+    color: GrayText;
+    opacity: 1;
+  }
+
+  /* ACR 4.0：Dock 角标用系统色，直接显示 */
+  .wb-dock-agent-badge {
+    forced-color-adjust: none;
+    background: Highlight;
+    box-shadow: none;
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .acr-agent-strip,
+  .acr-agent-strip[data-status='pausedByUser'],
+  .acr-agent-strip[data-status='done'],
+  .acr-agent-strip[data-status='aborted'] {
+    forced-color-adjust: none;
+    background: Canvas;
+    border-bottom: 1px solid CanvasText;
+    box-shadow: none;
+    color: CanvasText;
+    animation: none;
+  }
+
+  .acr-agent-strip[data-status='pausedByUser'] {
+    border-bottom: 1px dashed GrayText;
+  }
+
+  /* ACR 4.1：装饰层（shimmer / ping）在强制色下移除 */
+  .acr-agent-strip[data-status='acting'] .acr-agent-strip-label::after,
+  .acr-agent-strip-dot[data-state='acting']::after {
+    content: none;
+  }
+
+  .acr-agent-strip-dot[data-state='acting'] {
+    background: Highlight;
+    box-shadow: none;
+    animation: none;
+  }
+
+  .acr-agent-strip-dot[data-state='reviewing'] {
+    background: Canvas;
+    border-color: Highlight;
+  }
+
+  .acr-agent-strip-dot[data-state='done'] {
+    background: CanvasText;
+  }
+
+  .acr-agent-strip-dot[data-state='paused'],
+  .acr-agent-strip-dot[data-state='aborted'] {
+    background: GrayText;
+  }
+
+  [data-agent-flash]::before {
+    animation: none;
+    opacity: 0;
+  }
+
+  [data-agent-flash] {
+    outline: 2px solid Highlight;
+  }
+}

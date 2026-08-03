@@ -17,9 +17,9 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
+use super::office_output::{deliver_office_bytes, OfficeOperation};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::document_parser::DocumentParser;
 
@@ -223,41 +223,23 @@ impl DocxToolExecutor {
             }));
         }
 
-        // 保存替换后的文件到 VFS
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-        use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
-
-        let blob = VfsBlobRepo::store_blob(
-            vfs_db,
+        let mut output = deliver_office_bytes(
+            ctx,
+            &call.arguments,
             &new_bytes,
-            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            Some("docx"),
-        )
-        .map_err(|e| format!("VFS Blob 存储失败: {}", e))?;
-
-        // ★ GAP4 修复：使用 create_file_in_folder 确保文件在学习资源中可见
-        let vfs_file = VfsFileRepo::create_file_in_folder(
-            vfs_db,
-            &blob.hash,
+            "docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             file_name,
-            new_bytes.len() as i64,
-            "document",
-            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            Some(&blob.hash),
-            None, // original_path
-            None, // folder_id = None → 根"全部文件"视图
-        )
-        .map_err(|e| format!("VFS 文件创建失败: {}", e))?;
-
-        Ok(json!({
-            "success": true,
-            "source_resource_id": resource_id,
-            "new_file_id": vfs_file.id,
-            "file_name": file_name,
-            "file_size": new_bytes.len(),
-            "replacements_made": total_count,
-            "message": format!("已完成 {} 处替换，保存为「{}」", total_count, file_name),
-        }))
+            None,
+            OfficeOperation::ReplaceText,
+            Some(resource_id),
+        )?;
+        output["replacements_made"] = json!(total_count);
+        output["message"] = json!(format!(
+            "已完成 {} 处替换，保存为「{}」",
+            total_count, file_name
+        ));
+        Ok(output)
     }
 
     /// 从 JSON spec 生成 DOCX 文件并保存到 VFS
@@ -286,44 +268,23 @@ impl DocxToolExecutor {
                 .map_err(|e| format!("DOCX 生成失败: {}", e))?;
 
         let file_size = docx_bytes.len();
-
-        // 保存到 VFS：先存 blob，再创建 file 记录
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-
-        use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
-
-        // 1. 存储 Blob
-        let blob = VfsBlobRepo::store_blob(
-            vfs_db,
+        let mut output = deliver_office_bytes(
+            ctx,
+            &call.arguments,
             &docx_bytes,
-            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            Some("docx"),
-        )
-        .map_err(|e| format!("VFS Blob 存储失败: {}", e))?;
-
-        // 2. 创建文件记录（始终使用 create_file_in_folder 确保 folder_item 可见）
-        // ★ GAP4 修复：不指定 folder_id 时传 None，文件出现在根"全部文件"视图
-        let vfs_file = VfsFileRepo::create_file_in_folder(
-            vfs_db,
-            &blob.hash,
+            "docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             file_name,
-            file_size as i64,
-            "document",
-            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-            Some(&blob.hash),
-            None, // original_path
             folder_id,
-        )
-        .map_err(|e| format!("VFS 文件创建失败: {}", e))?;
-
-        Ok(json!({
-            "success": true,
-            "file_id": vfs_file.id,
-            "file_name": file_name,
-            "file_size": file_size,
-            "format": "docx",
-            "message": format!("已生成 DOCX 文件「{}」({}KB)", file_name, file_size / 1024),
-        }))
+            OfficeOperation::Create,
+            None,
+        )?;
+        output["message"] = json!(format!(
+            "已生成 DOCX 文件「{}」({}KB)",
+            file_name,
+            file_size / 1024
+        ));
+        Ok(output)
     }
 
     /// 从 VFS 加载 DOCX 文件字节
@@ -488,6 +449,18 @@ impl ToolExecutor for DocxToolExecutor {
             // 写入/编辑操作中敏感
             "docx_create" | "docx_replace_text" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        match strip_tool_namespace(tool_name) {
+            // 只读子集：结构化读取/表格提取/元数据，可并行 + 自动重试
+            // （docx_to_spec 会生成新 spec 产物，不视为纯只读）
+            "docx_read_structured" | "docx_extract_tables" | "docx_get_metadata" => {
+                ToolConcurrency::ReadOnly
+            }
+            // create/replace_text/to_spec 等有副作用，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 

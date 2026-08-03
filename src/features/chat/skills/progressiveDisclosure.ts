@@ -11,6 +11,12 @@
 
 import type { ToolSchema } from './types';
 import { skillRegistry } from './registry';
+import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
+import {
+  getSkillRuntimeAdmission,
+  isSkillPromptVisible,
+  type SkillRuntimeAdmissionCode,
+} from './runtimeAdmission';
 
 // ============================================================================
 // 常量
@@ -123,6 +129,19 @@ export interface LoadedSkillInfo {
   loadedAt: number;
 }
 
+export interface SkillLoadRejection {
+  skillId: string;
+  code: SkillRuntimeAdmissionCode | 'dependency_unavailable';
+  message: string;
+}
+
+export interface SkillSessionLoadResult {
+  loaded: LoadedSkillInfo[];
+  alreadyLoaded: string[];
+  notFound: string[];
+  rejected: SkillLoadRejection[];
+}
+
 /**
  * 会话级别的已加载 Skills 状态
  *
@@ -232,11 +251,7 @@ export function isSkillLoaded(sessionId: string, skillId: string): boolean {
 export function loadSkillsToSession(
   sessionId: string,
   skillIds: string[]
-): {
-  loaded: LoadedSkillInfo[];
-  alreadyLoaded: string[];
-  notFound: string[];
-} {
+): SkillSessionLoadResult {
   // 确保会话状态存在（通过 LRU helper 管理）
   if (!loadedSkillsMap.has(sessionId)) {
     setLoadedSkillsForSession(sessionId, new Map());
@@ -246,37 +261,71 @@ export function loadSkillsToSession(
   const loaded: LoadedSkillInfo[] = [];
   const alreadyLoaded: string[] = [];
   const notFound: string[] = [];
+  const rejectedById = new Map<string, SkillLoadRejection>();
+  let removedRejectedSkill = false;
 
   // 收集所有需要加载的 skills（包括依赖）
   const toLoad: string[] = [];
   const visited = new Set<string>();
 
   // 递归收集依赖（含循环依赖检测）
-  function collectDependencies(id: string, path: string[] = []): void {
+  function collectDependencies(id: string, path: string[] = []): boolean {
     // 检测循环依赖
     if (path.includes(id)) {
       console.warn(LOG_PREFIX, `Circular dependency detected: ${path.join(' → ')} → ${id}`);
-      return;
+      rejectedById.set(id, {
+        skillId: id,
+        code: 'dependency_unavailable',
+        message: `Skill "${id}" cannot be loaded because its dependency graph is circular`,
+      });
+      return false;
     }
 
-    if (visited.has(id)) return;
+    if (visited.has(id)) return !rejectedById.has(id);
     visited.add(id);
 
     const skill = skillRegistry.get(id);
     if (!skill) {
       console.warn(LOG_PREFIX, `Skill not found: ${id}`);
-      return;
+      if (!notFound.includes(id)) notFound.push(id);
+      return false;
+    }
+
+    const admission = getSkillRuntimeAdmission(skill);
+    if (!admission.allowed) {
+      rejectedById.set(id, {
+        skillId: id,
+        code: admission.code!,
+        message: admission.message!,
+      });
+      if (sessionSkills.delete(id)) {
+        removedRejectedSkill = true;
+      }
+      return false;
     }
 
     // 先加载依赖，传递当前路径
+    let dependenciesAvailable = true;
     if (skill.dependencies && skill.dependencies.length > 0) {
       for (const depId of skill.dependencies) {
-        collectDependencies(depId, [...path, id]);
+        if (!collectDependencies(depId, [...path, id])) {
+          dependenciesAvailable = false;
+        }
       }
+    }
+
+    if (!dependenciesAvailable) {
+      rejectedById.set(id, {
+        skillId: id,
+        code: 'dependency_unavailable',
+        message: `Skill "${id}" cannot be loaded because one or more dependencies are unavailable`,
+      });
+      return false;
     }
 
     // 再加载自身
     toLoad.push(id);
+    return true;
   }
 
   // 收集所有请求的 skills 及其依赖
@@ -325,11 +374,23 @@ export function loadSkillsToSession(
   }
 
   // 通知订阅者
-  if (loaded.length > 0) {
+  if (loaded.length > 0 || removedRejectedSkill) {
     notifyListeners(sessionId);
   }
+  if (loaded.length > 0) {
+    // 使用遥测：记录工具加载（仅统计显式请求的技能，依赖不计）
+    void import('./skillUsageStats')
+      .then(({ recordSkillToolLoad }) => {
+        for (const info of loaded) {
+          if (skillIds.includes(info.id)) {
+            recordSkillToolLoad(info.id);
+          }
+        }
+      })
+      .catch(() => { /* telemetry optional */ });
+  }
 
-  return { loaded, alreadyLoaded, notFound };
+  return { loaded, alreadyLoaded, notFound, rejected: Array.from(rejectedById.values()) };
 }
 
 /**
@@ -350,7 +411,7 @@ export function syncLoadedSkillsFromBackend(
   }
 
   if (normalizedSkillIds.length === 0) {
-    return { loaded: [], alreadyLoaded: [], notFound: [] };
+    return { loaded: [], alreadyLoaded: [], notFound: [], rejected: [] };
   }
 
   return loadSkillsToSession(sessionId, normalizedSkillIds);
@@ -422,17 +483,27 @@ export function handleLoadSkillsToolCall(
         status: 'error',
         loaded_skill_ids: [],
         loaded_tool_names: [],
+        loaded_tools: [],
         skill_state_version: 0,
         message: '请指定要加载的技能 ID 列表',
       },
     });
   }
 
-  const { loaded, alreadyLoaded, notFound } = loadSkillsToSession(sessionId, skillIds);
+  const { loaded, alreadyLoaded, notFound, rejected } = loadSkillsToSession(sessionId, skillIds);
   const sessionLoadedSkills = getLoadedSkills(sessionId);
   const loadedSkillIds = sessionLoadedSkills.map(skill => skill.id);
+  const loadedTools = Array.from(new Map(
+    sessionLoadedSkills
+      .flatMap(skill =>
+        skill.tools
+          .filter(tool => tool.name)
+          .map(tool => ({ name: tool.name, skill_id: skill.id }))
+      )
+      .map(tool => [`${tool.skill_id}\u0000${tool.name}`, tool]),
+  ).values());
   const loadedToolNames = Array.from(new Set(
-    sessionLoadedSkills.flatMap(skill => skill.tools.map(tool => tool.name).filter(Boolean))
+    loadedTools.map(tool => tool.name)
   ));
 
   const messageParts: string[] = [];
@@ -445,15 +516,22 @@ export function handleLoadSkillsToolCall(
   if (notFound.length > 0) {
     messageParts.push(`Missing: ${notFound.join(', ')}`);
   }
+  if (rejected.length > 0) {
+    messageParts.push(rejected.map((item) => item.message).join(' '));
+  }
   if (messageParts.length === 0) {
     messageParts.push('No new skills were loaded.');
   }
 
   return JSON.stringify({
     result: {
-      status: 'success',
+      status: loaded.length === 0 && alreadyLoaded.length === 0 && rejected.length > 0
+        ? 'error'
+        : 'success',
       loaded_skill_ids: loadedSkillIds,
       loaded_tool_names: loadedToolNames,
+      loaded_tools: loadedTools,
+      rejected_skills: rejected,
       skill_state_version: 0,
       message: messageParts.join(' '),
     },
@@ -465,9 +543,25 @@ export function handleLoadSkillsToolCall(
 // ============================================================================
 
 /**
+ * 格式化 requires 门控缺失说明（与 registry.generateMetadataPrompt 语义对齐）
+ */
+function formatRequiresMissingReason(skillId: string): string {
+  const gate = getRequiresGate(skillId);
+  const missing = [
+    ...(gate?.missingBins ?? []).map((name) => `缺少命令 ${name}`),
+    ...(gate?.missingEnv ?? []).map((name) => `缺少环境变量 ${name}`),
+    ...(gate?.missingPythonPackages ?? []).map((name) => `缺少 Python 包 ${name}`),
+  ].join('、');
+  return missing || '依赖不满足';
+}
+
+/**
  * 生成 available_skills XML 元数据
  *
- * 用于注入到 System Prompt 中，告知 LLM 可用的技能列表
+ * 用于注入到 System Prompt 中，告知 LLM 可用的技能列表。
+ * 与 `skillRegistry.generateMetadataPrompt` 一致：
+ * - `disableAutoInvoke` 技能不出现
+ * - requires 未满足的技能标注为不可用（不要加载）
  *
  * @param excludeLoaded 是否排除已加载的 Skills
  * @param sessionId 会话 ID（用于检查已加载状态）
@@ -476,7 +570,7 @@ export function generateAvailableSkillsPrompt(
   excludeLoaded = false,
   sessionId?: string
 ): string {
-  const skills = skillRegistry.getAll();
+  const skills = skillRegistry.getAll().filter(isSkillPromptVisible);
 
   // 过滤掉 disableAutoInvoke 的 Skills
   let filteredSkills = skills.filter(s => !s.disableAutoInvoke);
@@ -489,17 +583,39 @@ export function generateAvailableSkillsPrompt(
     filteredSkills = filteredSkills.filter(s => !loadedIds.has(s.id));
   }
 
-  if (filteredSkills.length === 0) {
+  // 加载期 requires 门控：与 registry.generateMetadataPrompt 保持同一语义
+  const availableSkills = filteredSkills.filter((skill) =>
+    isSkillRequiresSatisfied(skill.id)
+  );
+  const gatedSkills = filteredSkills.filter(
+    (skill) => !isSkillRequiresSatisfied(skill.id)
+  );
+
+  if (availableSkills.length === 0 && gatedSkills.length === 0) {
     return '';
   }
 
   const lines: string[] = ['<available_skills>'];
 
-  for (const skill of filteredSkills) {
+  for (const skill of availableSkills) {
     const toolCount = skill.embeddedTools?.length ?? 0;
     lines.push(`  <skill id="${escapeXmlAttr(skill.id)}" tools="${toolCount}">`);
     lines.push(`    ${escapeXmlText(skill.description)}`);
     lines.push(`  </skill>`);
+  }
+
+  if (gatedSkills.length > 0) {
+    lines.push('');
+    lines.push('  <!-- 以下技能因本机缺少运行依赖暂不可用（不要加载） -->');
+    for (const skill of gatedSkills) {
+      const toolCount = skill.embeddedTools?.length ?? 0;
+      const reason = formatRequiresMissingReason(skill.id);
+      lines.push(
+        `  <skill id="${escapeXmlAttr(skill.id)}" tools="${toolCount}" available="false" reason="${escapeXmlAttr(reason)}">`
+      );
+      lines.push(`    ${escapeXmlText(skill.description)}`);
+      lines.push(`  </skill>`);
+    }
   }
 
   lines.push('</available_skills>');
@@ -538,7 +654,7 @@ export const DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG: ProgressiveDisclosureConfig 
   preloadAllTools: false,
 };
 
-let currentConfig: ProgressiveDisclosureConfig = { ...DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG };
+const currentConfig: ProgressiveDisclosureConfig = { ...DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG };
 
 /**
  * 获取当前配置

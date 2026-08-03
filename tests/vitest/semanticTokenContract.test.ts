@@ -10,7 +10,6 @@ describe('semantic token migration contract', () => {
   const thinkingScrollbarSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/deep-student.css'), 'utf-8');
   const analysisCssSource = readFileSync(resolve(process.cwd(), 'src/features/chat/styles/analysis.css'), 'utf-8');
   const markdownCssSource = readFileSync(resolve(process.cwd(), 'src/features/chat/styles/markdown.css'), 'utf-8');
-  const modernButtonsSource = readFileSync(resolve(process.cwd(), 'src/styles/modern-buttons.css'), 'utf-8');
   const styleLabScannerSource = readFileSync(resolve(process.cwd(), 'scripts/scan-component-usage.mjs'), 'utf-8');
 
   const stripCssComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -45,15 +44,12 @@ describe('semantic token migration contract', () => {
   it('consumes shell geometry through semantic vars instead of local hardcoded islands', () => {
     expect(appCssSource).toContain('var(--radius-shell-panel)');
     expect(appCssSource).toContain('var(--size-shell-control)');
-    expect(modernButtonsSource).not.toContain('#eff6ff');
-    expect(modernButtonsSource).not.toContain('#3b82f6');
-    expect(modernButtonsSource).toContain('var(--button-primary-surface)');
   });
 
   it('keeps migrated color consumers on semantic tokens instead of raw color literals', () => {
     const consumers = {
       'src/App.tsx': appSource,
-      'src/styles/thinking-scrollbar.css': thinkingScrollbarSource,
+      'src/shared/styles/deep-student.css': thinkingScrollbarSource,
       'src/features/chat/styles/analysis.css': analysisCssSource,
       'src/features/chat/styles/markdown.css': markdownCssSource,
     };

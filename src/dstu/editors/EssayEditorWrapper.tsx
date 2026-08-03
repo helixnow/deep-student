@@ -203,7 +203,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
 
   // 作文编辑器 UI
   return (
-    <div className={cn('flex flex-col h-full', props.className)}>
+    <div className={cn('flex min-h-0 flex-col h-full', props.className)}>
       {/* 工具栏 */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
         <div className="flex items-center gap-2">
@@ -244,7 +244,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
       </div>
 
       {/* 作文内容 */}
-      <CustomScrollArea className="flex-1" viewportClassName="p-4 space-y-4">
+      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-4 space-y-4">
         {/* M-050: 数据解析异常警告横幅 */}
         {isParseError && (
           <div className="flex items-start gap-3 p-3 bg-warning/10 border border-warning/30 rounded-md">

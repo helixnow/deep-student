@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TauriAPI } from '../utils/tauriApi';
 import type { VendorConfig, ModelProfile, ApiConfig, ModelAssignments } from '../types';
 import { getErrorMessage } from '../utils/errorUtils';
+import { vendorHasUsableCredentials } from '../utils/vendorAuth';
+import { useEventRegistry } from './useEventRegistry';
 
 const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   model2_config_id: null,
@@ -16,8 +18,10 @@ const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   vl_embedding_model_config_id: null,
   vl_reranker_model_config_id: null,
   memory_decision_model_config_id: null,
+  review_analysis_model_config_id: null,
   voice_input_asr_model_config_id: null,
   image_generation_model_config_id: null,
+  compaction_model_config_id: null,
   translation_display_mode: null,
 };
 
@@ -43,17 +47,31 @@ const getUuid = () => {
   return `vendor-${Math.random().toString(36).slice(2)}`;
 };
 
-const hasValidApiKey = (apiKey: string | undefined | null): boolean => {
-  if (!apiKey) return false;
-  const trimmed = apiKey.trim();
-  if (trimmed.length === 0) return false;
-  if (trimmed === '***') return false;
-  const isAllAsterisks = trimmed.split('').every(c => c === '*');
-  if (isAllAsterisks) return false;
-  return true;
+interface OpenAICodexAvailabilityStatus {
+  hasUsableSession?: unknown;
+  has_usable_session?: unknown;
+  phase?: unknown;
+  state?: unknown;
+}
+
+export const codexStatusHasUsableSession = (
+  status: OpenAICodexAvailabilityStatus | null | undefined,
+): boolean => {
+  if (!status) return false;
+  const explicit = typeof status.hasUsableSession === 'boolean'
+    ? status.hasUsableSession
+    : status.has_usable_session;
+  if (typeof explicit === 'boolean') return explicit;
+  return status.phase === 'authenticated'
+    || status.phase === 'refreshing'
+    || status.state === 'signed_in';
 };
 
-const buildResolvedConfigs = (vendors: VendorConfig[], profiles: ModelProfile[]): ApiConfig[] => {
+export const buildResolvedConfigs = (
+  vendors: VendorConfig[],
+  profiles: ModelProfile[],
+  openAICodexAuthenticated = false,
+): ApiConfig[] => {
   const vendorMap = new Map<string, VendorConfig>();
   vendors.forEach(v => {
     vendorMap.set(v.id, v);
@@ -65,8 +83,8 @@ const buildResolvedConfigs = (vendors: VendorConfig[], profiles: ModelProfile[])
       if (!vendor) {
         return null;
       }
-      const hasApiKey = hasValidApiKey(vendor.apiKey);
-      const profileEnabled = Boolean(profile.enabled) && profile.status !== 'disabled' && hasApiKey;
+      const hasCredentials = vendorHasUsableCredentials(vendor, openAICodexAuthenticated);
+      const profileEnabled = Boolean(profile.enabled) && profile.status !== 'disabled' && hasCredentials;
       
       return {
         id: profile.id,
@@ -74,6 +92,7 @@ const buildResolvedConfigs = (vendors: VendorConfig[], profiles: ModelProfile[])
         vendorId: vendor.id,
         vendorName: vendor.name,
         providerType: vendor.providerType,
+        authMode: vendor.authMode,
         apiKey: vendor.apiKey ?? '',
         baseUrl: vendor.baseUrl,
         model: profile.model,
@@ -128,24 +147,33 @@ export const useVendorModels = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openAICodexAuthenticated, setOpenAICodexAuthenticated] = useState(false);
+  const loadSequenceRef = useRef(0);
 
   const loadAll = useCallback(async () => {
+    const sequence = ++loadSequenceRef.current;
     setLoading(true);
     try {
-      const [vendorData, profileData, assignmentData] = await Promise.all([
+      const [vendorData, profileData, assignmentData, codexStatus] = await Promise.all([
         TauriAPI.getVendorConfigs(),
         TauriAPI.getModelProfiles(),
         TauriAPI.getModelAssignments(),
+        typeof TauriAPI.invoke === 'function'
+          ? TauriAPI.invoke<OpenAICodexAvailabilityStatus>('openai_codex_auth_status').catch(() => null)
+          : Promise.resolve(null),
       ]);
+      if (sequence !== loadSequenceRef.current) return;
       setVendors(vendorData ?? []);
       setModelProfiles(profileData ?? []);
       setModelAssignments(normalizeAssignments(assignmentData ?? undefined));
+      setOpenAICodexAuthenticated(codexStatusHasUsableSession(codexStatus));
       setError(null);
     } catch (err: unknown) {
+      if (sequence !== loadSequenceRef.current) return;
       console.error('[useVendorModels] Failed to load vendor/model configs:', err);
       setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (sequence === loadSequenceRef.current) setLoading(false);
     }
   }, []);
 
@@ -153,29 +181,35 @@ export const useVendorModels = () => {
     void loadAll();
   }, [loadAll]);
 
-  useEffect(() => {
-    const reload = () => {
-      void loadAll();
-    };
-    window.addEventListener('api_configurations_changed', reload as EventListener);
-    window.addEventListener('siliconflow-apikey-changed', reload as EventListener);
-    return () => {
-      window.removeEventListener('api_configurations_changed', reload as EventListener);
-      window.removeEventListener('siliconflow-apikey-changed', reload as EventListener);
-    };
+  const reload = useCallback((event: Event) => {
+    const detail = (event as CustomEvent<{
+      source?: unknown;
+      status?: OpenAICodexAvailabilityStatus;
+    }>).detail;
+    if (detail?.source === 'openai_codex_auth') {
+      setOpenAICodexAuthenticated(codexStatusHasUsableSession(detail.status));
+    }
+    void loadAll();
   }, [loadAll]);
+  useEventRegistry(
+    [
+      { target: 'window', type: 'api_configurations_changed', listener: reload },
+      { target: 'window', type: 'siliconflow-apikey-changed', listener: reload },
+    ],
+    [reload],
+  );
 
   // 监听外部模型分配变更（Chat V2 修改默认模型后广播），仅刷新 assignments 避免过时状态
-  useEffect(() => {
-    const reloadAssignments = async () => {
-      try {
-        const fresh = await TauriAPI.getModelAssignments();
-        setModelAssignments(normalizeAssignments(fresh ?? undefined));
-      } catch {}
-    };
-    window.addEventListener('model_assignments_changed', reloadAssignments);
-    return () => window.removeEventListener('model_assignments_changed', reloadAssignments);
+  const reloadAssignments = useCallback(async () => {
+    try {
+      const fresh = await TauriAPI.getModelAssignments();
+      setModelAssignments(normalizeAssignments(fresh ?? undefined));
+    } catch {}
   }, []);
+  useEventRegistry(
+    [{ target: 'window', type: 'model_assignments_changed', listener: reloadAssignments }],
+    [reloadAssignments],
+  );
 
   const clearAssignmentsForProfiles = useCallback(
     async (profileIds: string[]) => {
@@ -205,8 +239,9 @@ export const useVendorModels = () => {
       setSaving(true);
       try {
         await TauriAPI.saveVendorConfigs(next);
-        setVendors(next);
-        dispatchVendorModelChange(next, modelProfiles);
+        const masked = await TauriAPI.getVendorConfigs();
+        setVendors(masked);
+        dispatchVendorModelChange(masked, modelProfiles);
         setError(null);
       } catch (err: unknown) {
         console.error('[useVendorModels] Failed to save vendor configs:', err);
@@ -293,8 +328,8 @@ export const useVendorModels = () => {
   );
 
   const resolvedApiConfigs = useMemo(
-    () => buildResolvedConfigs(vendors, modelProfiles),
-    [vendors, modelProfiles]
+    () => buildResolvedConfigs(vendors, modelProfiles, openAICodexAuthenticated),
+    [vendors, modelProfiles, openAICodexAuthenticated]
   );
 
   return {
@@ -302,6 +337,7 @@ export const useVendorModels = () => {
     modelProfiles,
     modelAssignments,
     resolvedApiConfigs,
+    openAICodexAuthenticated,
     loading,
     saving,
     error,

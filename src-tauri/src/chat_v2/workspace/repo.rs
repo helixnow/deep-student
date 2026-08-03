@@ -14,6 +14,23 @@ fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
     }
 }
 
+/// 将 snake_case unit 枚举序列化为不带引号的存库字符串。
+/// unit 枚举的 JSON 序列化实践中不会失败；防御性兜底走 Debug 小写，绝不 panic
+/// （原实现使用 `.unwrap()`，任何 Serialize 异常都会拉崩整个命令线程）。
+fn enum_to_db_str<T: serde::Serialize + std::fmt::Debug>(value: &T) -> String {
+    match serde_json::to_string(value) {
+        Ok(s) => s.trim_matches('"').to_string(),
+        Err(e) => {
+            log::error!(
+                "[WorkspaceRepo] enum serialize failed ({}), falling back to Debug: {:?}",
+                e,
+                value
+            );
+            format!("{:?}", value).to_lowercase()
+        }
+    }
+}
+
 use super::database::WorkspaceDatabase;
 use super::types::*;
 
@@ -34,7 +51,7 @@ impl WorkspaceRepo {
             params![
                 workspace.id,
                 workspace.name,
-                serde_json::to_string(&workspace.status).unwrap().trim_matches('"'),
+                enum_to_db_str(&workspace.status),
                 workspace.creator_session_id,
                 workspace.created_at.to_rfc3339(),
                 workspace.updated_at.to_rfc3339(),
@@ -50,7 +67,7 @@ impl WorkspaceRepo {
             "SELECT id, name, status, creator_session_id, created_at, updated_at, metadata_json FROM workspace LIMIT 1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([], |row| Self::row_to_workspace(row));
+        let result = stmt.query_row([], Self::row_to_workspace);
         match result {
             Ok(ws) => Ok(Some(ws)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -62,10 +79,7 @@ impl WorkspaceRepo {
         let conn = self.db.get_connection()?;
         conn.execute(
             "UPDATE workspace SET status = ?1, updated_at = ?2",
-            params![
-                serde_json::to_string(&status).unwrap().trim_matches('"'),
-                Utc::now().to_rfc3339(),
-            ],
+            params![enum_to_db_str(&status), Utc::now().to_rfc3339(),],
         )
         .map_err(|e| format!("Failed to update workspace status: {}", e))?;
         Ok(())
@@ -79,9 +93,9 @@ impl WorkspaceRepo {
             params![
                 agent.session_id,
                 agent.workspace_id,
-                serde_json::to_string(&agent.role).unwrap().trim_matches('"'),
+                enum_to_db_str(&agent.role),
                 agent.skill_id,
-                serde_json::to_string(&agent.status).unwrap().trim_matches('"'),
+                enum_to_db_str(&agent.status),
                 agent.joined_at.to_rfc3339(),
                 agent.last_active_at.to_rfc3339(),
                 agent.metadata.as_ref().map(|v| v.to_string()),
@@ -96,7 +110,7 @@ impl WorkspaceRepo {
             "SELECT session_id, workspace_id, role, skill_id, status, joined_at, last_active_at, metadata_json FROM agent WHERE session_id = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([session_id], |row| Self::row_to_agent(row));
+        let result = stmt.query_row([session_id], Self::row_to_agent);
         match result {
             Ok(agent) => Ok(Some(agent)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -111,7 +125,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let agents = stmt
-            .query_map([], |row| Self::row_to_agent(row))
+            .query_map([], Self::row_to_agent)
             .map_err(|e| format!("Failed to query agents: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -123,13 +137,28 @@ impl WorkspaceRepo {
         let conn = self.db.get_connection()?;
         conn.execute(
             "UPDATE agent SET status = ?1, last_active_at = ?2 WHERE session_id = ?3",
-            params![
-                serde_json::to_string(&status).unwrap().trim_matches('"'),
-                Utc::now().to_rfc3339(),
-                session_id,
-            ],
+            params![enum_to_db_str(&status), Utc::now().to_rfc3339(), session_id,],
         )
         .map_err(|e| format!("Failed to update agent status: {}", e))?;
+        Ok(())
+    }
+
+    pub fn update_agent_metadata(
+        &self,
+        session_id: &str,
+        metadata: Option<&serde_json::Value>,
+    ) -> Result<(), String> {
+        let conn = self.db.get_connection()?;
+        let metadata_json = metadata.map(|value| value.to_string());
+        let changes = conn
+            .execute(
+                "UPDATE agent SET metadata_json = ?1, last_active_at = ?2 WHERE session_id = ?3",
+                rusqlite::params![metadata_json, Utc::now().to_rfc3339(), session_id],
+            )
+            .map_err(|e| e.to_string())?;
+        if changes == 0 {
+            return Err(format!("Agent not found: {session_id}"));
+        }
         Ok(())
     }
 
@@ -150,9 +179,9 @@ impl WorkspaceRepo {
                 message.workspace_id,
                 message.sender_session_id,
                 message.target_session_id,
-                serde_json::to_string(&message.message_type).unwrap().trim_matches('"'),
+                enum_to_db_str(&message.message_type),
                 message.content,
-                serde_json::to_string(&message.status).unwrap().trim_matches('"'),
+                enum_to_db_str(&message.status),
                 message.created_at.to_rfc3339(),
                 message.metadata.as_ref().map(|v| v.to_string()),
             ],
@@ -166,7 +195,7 @@ impl WorkspaceRepo {
             "SELECT id, workspace_id, sender_session_id, target_session_id, message_type, content, status, created_at, metadata_json FROM message WHERE id = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([message_id], |row| Self::row_to_message(row));
+        let result = stmt.query_row([message_id], Self::row_to_message);
         match result {
             Ok(msg) => Ok(Some(msg)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -182,7 +211,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let messages = stmt
-            .query_map([limit], |row| Self::row_to_message(row))
+            .query_map([limit], Self::row_to_message)
             .map_err(|e| format!("Failed to query messages: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -216,10 +245,7 @@ impl WorkspaceRepo {
         let conn = self.db.get_connection()?;
         conn.execute(
             "UPDATE message SET status = ?1 WHERE id = ?2",
-            params![
-                serde_json::to_string(&status).unwrap().trim_matches('"'),
-                message_id,
-            ],
+            params![enum_to_db_str(&status), message_id,],
         )
         .map_err(|e| format!("Failed to update message status: {}", e))?;
         Ok(())
@@ -278,6 +304,19 @@ impl WorkspaceRepo {
         Ok(items)
     }
 
+    /// 🆕 契约 C12：统计某会话 inbox 中待消费（unread）的消息数
+    pub fn count_unread_inbox(&self, session_id: &str) -> Result<usize, String> {
+        let conn = self.db.get_connection()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM inbox WHERE session_id = ?1 AND status = 'unread'",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Failed to count unread inbox: {}", e))?;
+        Ok(count as usize)
+    }
+
     pub fn mark_inbox_processed(&self, inbox_ids: &[i64]) -> Result<(), String> {
         if inbox_ids.is_empty() {
             return Ok(());
@@ -310,6 +349,33 @@ impl WorkspaceRepo {
         Ok(())
     }
 
+    /// 获取指定会话未读 inbox 对应的完整消息（按到达顺序）
+    ///
+    /// 用于睡眠激活后的初始唤醒条件检查：判断 coordinator 的 inbox 中
+    /// 是否已有满足唤醒条件的消息（如 result）。
+    pub fn get_unread_inbox_messages(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<WorkspaceMessage>, String> {
+        let conn = self.db.get_connection()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id, m.workspace_id, m.sender_session_id, m.target_session_id, \
+                 m.message_type, m.content, m.status, m.created_at, m.metadata_json \
+                 FROM inbox i JOIN message m ON m.id = i.message_id \
+                 WHERE i.session_id = ?1 AND i.status = 'unread' ORDER BY i.id ASC",
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let messages = stmt
+            .query_map([session_id], Self::row_to_message)
+            .map_err(|e| format!("Failed to query unread inbox messages: {}", e))?
+            .filter_map(log_and_skip_err)
+            .collect();
+
+        Ok(messages)
+    }
+
     /// 获取所有 agent 的 unread inbox 项（用于恢复内存状态）
     pub fn get_all_unread_inbox(&self) -> Result<Vec<InboxItem>, String> {
         let conn = self.db.get_connection()?;
@@ -321,7 +387,7 @@ impl WorkspaceRepo {
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let items = stmt
-            .query_map([], |row| Self::row_to_inbox_item(row))
+            .query_map([], Self::row_to_inbox_item)
             .map_err(|e| format!("Failed to query all unread inbox: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -337,7 +403,7 @@ impl WorkspaceRepo {
             params![
                 doc.id,
                 doc.workspace_id,
-                serde_json::to_string(&doc.doc_type).unwrap().trim_matches('"'),
+                enum_to_db_str(&doc.doc_type),
                 doc.title,
                 doc.content,
                 doc.version,
@@ -354,7 +420,7 @@ impl WorkspaceRepo {
             "SELECT id, workspace_id, doc_type, title, content, version, updated_by, updated_at FROM document WHERE id = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([doc_id], |row| Self::row_to_document(row));
+        let result = stmt.query_row([doc_id], Self::row_to_document);
         match result {
             Ok(doc) => Ok(Some(doc)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -369,7 +435,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let docs = stmt
-            .query_map([], |row| Self::row_to_document(row))
+            .query_map([], Self::row_to_document)
             .map_err(|e| format!("Failed to query documents: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -400,7 +466,7 @@ impl WorkspaceRepo {
             "SELECT workspace_id, key, value_json, updated_by, updated_at FROM context WHERE key = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([key], |row| Self::row_to_context(row));
+        let result = stmt.query_row([key], Self::row_to_context);
         match result {
             Ok(ctx) => Ok(Some(ctx)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -415,7 +481,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let contexts = stmt
-            .query_map([], |row| Self::row_to_context(row))
+            .query_map([], Self::row_to_context)
             .map_err(|e| format!("Failed to query contexts: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();

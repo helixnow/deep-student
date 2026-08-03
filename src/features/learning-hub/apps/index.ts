@@ -10,21 +10,6 @@
 // 统一应用面板（推荐使用）
 export { UnifiedAppPanel, type UnifiedAppPanelProps, type ContentViewProps } from './UnifiedAppPanel';
 
-/**
- * 应用类型枚举
- */
-export type AppType = 'note' | 'textbook' | 'exam' | 'translation' | 'essay';
-
-/**
- * 应用打开参数
- */
-export interface AppOpenParams {
-  /** 应用类型 */
-  type: AppType;
-  /** 资源 ID */
-  id: string;
-  /** 文件路径（教材专用） */
-  filePath?: string;
-  /** 文件名（教材专用） */
-  fileName?: string;
-}
+// ★ 2026-07-08：移除无消费者且类型覆盖过时的 AppType / AppOpenParams
+// （只列了 5 类，缺 image/file/mindmap；实际路由类型以 ../types 的 ResourceType 为准。
+// 桌面快捷方式的 AppType 定义在 stores/desktopStore.ts，与此无关）

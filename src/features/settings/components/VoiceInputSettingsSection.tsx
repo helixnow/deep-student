@@ -1,7 +1,7 @@
 /**
  * 听写设置区块
  *
- * Notion 风格：标题 + 精简描述 + GroupTitle/SettingRow 模式。
+ * 简洁风格：标题 + 精简描述 + GroupTitle/SettingRow 模式。
  * 视觉层次：
  *   1. 状态条（随时可见的"是否可录音 + 申请权限"）
  *   2. ASR 模型分配（一行，异常状态用内联琥珀提示）
@@ -26,7 +26,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -52,11 +52,12 @@ import {
   requestVoiceRecordingPermission,
   type VoiceRecordingSupport,
 } from '@/voice-input/support';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 type SettingsTabId = 'apis' | 'models' | 'statistics';
 
 function openSettingsTab(tab: SettingsTabId): void {
-  window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab } }));
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab });
 }
 
 function serializeVocabularyDraft(entries: string[] | undefined): string {
@@ -99,7 +100,7 @@ const GroupTitle: React.FC<{ title: string; description?: string; rightSlot?: Re
     <div className="min-w-0">
       <h3 className="text-base font-semibold text-foreground leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
       )}
     </div>
     {rightSlot && <div className="flex-shrink-0 flex items-center gap-1">{rightSlot}</div>}
@@ -111,11 +112,12 @@ const SettingRow: React.FC<{
   description?: string;
   children: React.ReactNode;
 }> = ({ title, description, children }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <div className="text-sm text-foreground/90 leading-tight">{title}</div>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -135,7 +137,7 @@ const Subsection: React.FC<{
       <div className="min-w-0">
         <div className="text-sm text-foreground/90 leading-tight">{title}</div>
         {description && (
-          <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+          <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">
             {description}
           </p>
         )}
@@ -216,7 +218,7 @@ function StatusBar({
         <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', dotClass)} />
         <span className={cn('text-sm truncate', labelClass)}>{label}</span>
       </div>
-      <NotionButton
+      <DsButton
         type="button"
         variant="ghost"
         size="sm"
@@ -225,7 +227,7 @@ function StatusBar({
       >
         {requestingAccess ?           <CircleNotch size={14} className="animate-spin" /> : null}
         {t('settings:voice_input.request_access', { defaultValue: 'Request microphone access' })}
-      </NotionButton>
+      </DsButton>
     </div>
   );
 }
@@ -261,7 +263,7 @@ function ModelStatusHint({
   };
 
   return (
-    <div className="mx-1 my-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+    <div className="mx-1 my-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
       <div className="flex items-start gap-2">
         <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
         <span>{map[assignedModel.status]}</span>
@@ -334,7 +336,7 @@ function HistoryEntryCard({
   return (
     <div className="py-2.5 px-1 rounded">
       <div className="mb-1 flex items-start justify-between gap-3">
-        <div className="text-[11px] text-muted-foreground/70">
+        <div className="text-xs text-muted-foreground/70">
           {formatVoiceHistoryTime(entry.createdAt)}
           {entry.providerId ? ` · ${entry.providerId}` : ''}
           {entry.model ? ` · ${entry.model}` : ''}
@@ -342,10 +344,10 @@ function HistoryEntryCard({
             ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s`
             : ''}
         </div>
-        <NotionButton type="button" variant="ghost" size="sm" onClick={() => onCopy(entry)}>
+        <DsButton type="button" variant="ghost" size="sm" onClick={() => onCopy(entry)}>
           <Copy size={14} />
           {copyLabel}
-        </NotionButton>
+        </DsButton>
       </div>
       <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
         {entry.text}
@@ -581,7 +583,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
         })}
         rightSlot={
           <>
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -589,8 +591,8 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             >
               <GearSix size={14} />
               {t('settings:voice_input.open_model_settings', { defaultValue: 'Open Model Assignments' })}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -598,8 +600,8 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             >
               <Wrench size={14} />
               {t('settings:voice_input.open_api_settings', { defaultValue: 'Open API Settings' })}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -607,7 +609,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             >
               <ChartBar size={14} />
               {t('settings:voice_input.open_usage_statistics', { defaultValue: 'Open Usage Statistics' })}
-            </NotionButton>
+            </DsButton>
           </>
         }
       />
@@ -696,6 +698,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
           })}
         >
           <Textarea
+            className="scroll-area--native"
             disabled={saving}
             value={vocabularyDraft}
             onChange={(event) => setVocabularyDraft(event.target.value)}
@@ -705,7 +708,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               defaultValue: 'Photosynthesis\nAnkylosing spondylitis\nDeepStudent',
             })}
           />
-          <div className="mt-1.5 text-[11px] text-muted-foreground/70">
+          <div className="mt-1.5 text-xs text-muted-foreground/70">
             {t('settings:voice_input.dictionary_count', {
               defaultValue: '{{count}} phrase hints',
               count: vocabularyCount,
@@ -726,7 +729,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
           }
           rightSlot={
             historyEntries.length > 0 ? (
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -734,7 +737,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               >
                 <Trash size={14} />
                 {t('settings:voice_input.history_clear', { defaultValue: 'Clear' })}
-              </NotionButton>
+              </DsButton>
             ) : null
           }
         >
@@ -754,7 +757,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
 
         {/* 诊断（默认折叠） */}
         <div className="px-1">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => setDiagnosticsOpen((prev) => !prev)}
@@ -768,7 +771,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               )}
             />
             {t('settings:voice_input.diagnostics_title', { defaultValue: 'Diagnostics' })}
-          </NotionButton>
+          </DsButton>
           {diagnosticsOpen && (
             <div className="pl-5 pb-2 space-y-2">
               <div className="grid gap-1.5 grid-cols-2 xl:grid-cols-4">
@@ -826,7 +829,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                 />
               </div>
               <div className="flex items-center gap-2">
-                <NotionButton
+                <DsButton
                   type="button"
                   variant="ghost"
                   size="sm"
@@ -837,9 +840,9 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}
-                </NotionButton>
+                </DsButton>
               </div>
-              <p className="text-[11px] leading-5 text-muted-foreground/70">
+              <p className="text-xs leading-5 text-muted-foreground/70">
                 {t('settings:voice_input.runtime_hint', {
                   defaultValue:
                     'If recording support is unavailable, the app build is still missing platform microphone capability, the runtime is not exposing getUserMedia, or OS permission is blocked.',
@@ -856,7 +859,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
 function DiagnosticItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground/60">{label}</div>
       <div className="mt-0.5 text-xs text-foreground/80">{value}</div>
     </div>
   );

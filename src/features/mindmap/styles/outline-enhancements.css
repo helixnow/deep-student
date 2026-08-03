@@ -1,0 +1,264 @@
+/* A9 / V7：大纲交互增强（checkbox / 折叠徽章 / 空态 / reduced-motion） */
+
+.outline-task-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border-radius: 3px;
+  border: 1.5px solid var(--mm-text-muted);
+  background: transparent;
+  box-sizing: border-box;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    border-color var(--notes-hover-transition, 120ms ease);
+}
+
+.outline-task-checkbox:hover {
+  border-color: var(--mm-text);
+}
+
+.outline-task-checkbox[aria-checked='true'],
+.outline-task-checkbox:checked {
+  background-color: var(--mm-primary);
+  border-color: var(--mm-primary);
+}
+
+.outline-task-checkbox[aria-checked='true']::after,
+.outline-task-checkbox:checked::after {
+  content: '';
+  width: 3px;
+  height: 7px;
+  /* 勾选符号用 primary-foreground：暗色模式下 primary 是浅色，白色对勾会看不清 */
+  border: solid hsl(var(--primary-foreground));
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.outline-node-row.focused .outline-task-checkbox:not(:checked):not([aria-checked='true']) {
+  border-color: var(--mm-primary);
+}
+
+/* 折叠 +N：布局微调；胶囊形态与 hover 过渡在 mindmap.css */
+.outline-node-row .outline-collapse-count {
+  margin-left: 2px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* 独立六点拖拽手柄：hover/键盘可见，与 bullet 的选中/聚焦语义解耦 */
+.outline-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--mm-text-muted);
+  opacity: 0;
+  cursor: grab;
+  /* dnd-kit PointerSensor 需要：阻止触摸滚动抢占拖拽 */
+  touch-action: none;
+  transition:
+    opacity var(--notes-hover-transition, 120ms ease),
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.outline-node-row:hover .outline-drag-handle,
+.outline-node-row.focused .outline-drag-handle,
+.outline-drag-handle:focus-visible {
+  opacity: 1;
+}
+
+.outline-drag-handle:hover {
+  background-color: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+.outline-drag-handle:active {
+  cursor: grabbing;
+}
+
+.outline-drag-handle:focus-visible {
+  outline: 2px solid var(--mm-primary);
+  outline-offset: 1px;
+}
+
+/* 折叠三角从 div 改为 button 后的原生样式重置（视觉沿用 mindmap.css） */
+button.collapse-toggle {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button.collapse-toggle.is-collapsed {
+  /* 与 mindmap.css 的胶囊形态保持一致（上面的 padding:0 重置会覆盖它） */
+  padding: 0 4px;
+}
+
+button.collapse-toggle:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--mm-primary);
+  outline-offset: 1px;
+}
+
+/* 千级节点性能：视口外行跳过布局与绘制。
+   拖拽期间由 OutlineView 移除 .outline-cv，保证 dnd 测量精度；
+   contain-intrinsic-size 记住上次渲染高度，34px 为单行首屏估值 */
+.outline-cv > .outline-node-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
+}
+
+/* 焦点路径：焦点节点子树的那条缩进参考线用主色提亮（E01 C2.4） */
+.outline-node-row .indent-guide.focus-path {
+  background-color: color-mix(in srgb, var(--mm-primary) 45%, transparent);
+}
+
+.mindmap-container:hover .outline-node-row .indent-guide.focus-path {
+  background-color: color-mix(in srgb, var(--mm-primary) 60%, transparent);
+}
+
+/* 拖拽落点层级徽章：贴在插入线右端，标注投影目标层级（E01 C3.2） */
+.drop-indicator .drop-indicator-level {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 5px;
+  border-radius: var(--mm-radius-pill, 999px);
+  background: var(--mm-primary);
+  color: hsl(var(--primary-foreground));
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* 幽灵新行：常驻弱显示，hover/聚焦时浮现（E01 C2.7） */
+.outline-ghost-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-top: 2px;
+  padding: 4px 8px 4px 42px;
+  border-radius: var(--mm-radius-row, 6px);
+  color: var(--mm-text-muted);
+  font-size: 13px;
+  cursor: text;
+  opacity: 0.45;
+  transition:
+    opacity var(--mm-hover-transition, 120ms ease),
+    background-color var(--mm-hover-transition, 120ms ease);
+}
+
+/* 批量操作栏浮在列表底部时，为最后几行预留可滚入的空间。 */
+.outline-has-multiselect {
+  padding-bottom: calc(
+    88px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px))
+  ) !important;
+}
+
+.outline-ghost-row:hover,
+.outline-ghost-row:focus-visible {
+  opacity: 1;
+  background: var(--mm-bg-hover);
+}
+
+.outline-ghost-row:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.outline-ghost-bullet {
+  width: var(--mm-bullet-size, 6px);
+  height: var(--mm-bullet-size, 6px);
+  border-radius: 50%;
+  border: 1px dashed var(--mm-text-muted);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.outline-ghost-label {
+  user-select: none;
+}
+
+/* 触控设备：悬停操作栏依赖 hover 不可达——聚焦/选中行常显，
+   并把按钮撑到触控目标下限（E01 C3.6） */
+@media (pointer: coarse) {
+  .outline-node-row {
+    min-height: 44px;
+  }
+
+  .outline-node-row.focused .node-actions,
+  .outline-node-row.selected .node-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .outline-node-row .action-btn {
+    width: 28px;
+    height: 28px;
+    position: relative;
+  }
+
+  .outline-drag-handle {
+    width: 24px;
+    height: 24px;
+    position: relative;
+  }
+
+  /* ::after 扩展命中区（不改变视觉尺寸）：28px 视觉 + 8px 外扩 ≈ 44px 命中，
+     与 mindmap.css 的 .mm-action-btn::after 同一范式 */
+  .outline-node-row .action-btn::after,
+  .outline-drag-handle::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  .outline-ghost-row {
+    min-height: var(--size-shell-touch-target, 36px);
+    opacity: 0.7;
+  }
+}
+
+/* mindmap.css 入场动画未覆盖大纲 reduced-motion，此处补齐 */
+@media (prefers-reduced-motion: reduce) {
+  .outline-node-row.entering,
+  .outline-content-enter {
+    animation: none !important;
+  }
+
+  .outline-task-checkbox,
+  .outline-collapse-count,
+  .outline-empty-action,
+  .outline-drag-handle,
+  .outline-ghost-row,
+  .indent-guide {
+    transition: none;
+  }
+}
+.node-note-first-line {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}

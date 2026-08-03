@@ -12,6 +12,7 @@
  * - memory: 用户记忆检索
  * - web_search: 网络搜索
  * - tool_approval_request: 🆕 工具审批请求（文档 29 P1-3）
+ * - workspace_injection: 🆕 工作区消息注入（C11 主代理插话可见化）
  *
  * 使用方式：
  * ```typescript
@@ -43,6 +44,9 @@ import './toolLimit';
 // ✅ Anki 卡片事件（CardForge 2.0 集成）
 import './ankiCards';
 
+// 🆕 C11: 工作区消息注入事件（主代理 → 运行中子代理的插话可见化）
+import './workspaceInjection';
+
 // ============================================================================
 // 导出 handlers 供测试使用
 // ============================================================================
@@ -71,3 +75,6 @@ export { toolLimitEventHandler } from './toolLimit';
 
 // ✅ Anki 卡片事件处理器（CardForge 2.0 集成）
 export { ankiCardsEventHandler } from './ankiCards';
+
+// 🆕 C11: 工作区消息注入事件处理器
+export { workspaceInjectionEventHandler } from './workspaceInjection';

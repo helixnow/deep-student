@@ -60,6 +60,12 @@
   will-change: transform, opacity;
 }
 
+/* 打开时焦点先落在菜单容器上（键盘入口），容器本身不显示焦点环 */
+.app-menu-content:focus,
+.app-menu-sub-content:focus {
+  outline: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-menu-content,
   .app-menu-sub-content {
@@ -106,8 +112,7 @@
 }
 
 .app-menu-search:focus-within {
-  border-color: hsl(var(--primary) / 0.55);
-  background-color: var(--menu-shell-surface);
+  border-color: hsl(var(--border));
 }
 
 .app-menu-search-icon {
@@ -119,11 +124,20 @@
 
 .app-menu-search-input {
   flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
   border: none;
   background: transparent;
   font-size: var(--menu-shell-font-size);
   color: var(--menu-shell-foreground);
   outline: none;
+  box-shadow: none;
+}
+
+.app-menu-search-input:focus,
+.app-menu-search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .app-menu-search-input::placeholder {
@@ -149,6 +163,11 @@
   color: var(--menu-shell-muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+/* 内容型分组标签（如模型选择菜单里的供应商名）保留原始大小写 */
+.app-menu-group--natural-case > .app-menu-group-label {
+  text-transform: none;
 }
 
 /* ============ Item 菜单项 ============ */
@@ -298,10 +317,10 @@
   box-shadow: var(--menu-shell-shadow);
   backdrop-filter: var(--menu-shell-backdrop-filter);
   -webkit-backdrop-filter: var(--menu-shell-backdrop-filter);
-  animation: notion-submenu-in 0.12s ease-out;
+  animation: card-submenu-in 0.12s ease-out;
 }
 
-@keyframes notion-submenu-in {
+@keyframes card-submenu-in {
   from {
     opacity: 0;
     transform: translateX(-4px);
@@ -446,7 +465,8 @@
   color: var(--menu-shell-foreground);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  /* 显式属性过渡（原 transition: all 会连带 layout 属性） */
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .app-menu-option-item:hover {
@@ -504,5 +524,13 @@
 
   .app-menu-item-shortcut {
     display: none;
+  }
+}
+
+/* 触屏设备（无 hover）：菜单项触控目标 ≥40px（移动端契约），
+   用 pointer:coarse 而非视口宽度判定，覆盖 640-767px 触屏平板 */
+@media (hover: none) and (pointer: coarse) {
+  .app-menu-item {
+    min-height: 40px;
   }
 }

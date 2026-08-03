@@ -186,10 +186,42 @@ impl ReviewPlanService {
         user_answer: Option<String>,
         time_spent_seconds: Option<u32>,
     ) -> Result<ProcessReviewResult> {
+        self.process_review_with_expected(plan_id, quality, user_answer, time_spent_seconds, None)
+    }
+
+    /// 处理复习结果，并在提交时校验 agent 读取到的计划版本。
+    ///
+    /// `expected_updated_at` 为 `None` 时保留桌面端旧调用的行为；Agent
+    /// 工具必须传入 `Some`，以避免基于过期计划重复记录复习历史。
+    pub fn process_review_with_expected(
+        &self,
+        plan_id: &str,
+        quality: u8,
+        user_answer: Option<String>,
+        time_spent_seconds: Option<u32>,
+        expected_updated_at: Option<&str>,
+    ) -> Result<ProcessReviewResult> {
+        // ★ 防御性夹取：Tauri 命令层已校验 quality<=5，但 agent 工具等其他调用方
+        // 可能绕过命令层直接调服务；越界值会让 SM-2 的 EF 公式产出异常增量。
+        let quality = quality.min(5);
+
         // 1. 获取当前复习计划
         let plan = VfsReviewPlanRepo::get_plan(&self.vfs_db, plan_id)
             .with_context(|| format!("Failed to get review plan: {}", plan_id))?
             .ok_or_else(|| anyhow::anyhow!("Review plan not found: {}", plan_id))?;
+
+        if let Some(expected_updated_at) = expected_updated_at {
+            if plan.updated_at != expected_updated_at {
+                return Err(crate::vfs::error::VfsError::Conflict {
+                    key: "review_plan.updated_at".to_string(),
+                    message: format!(
+                        "REVIEW_CONFLICT: review plan {} changed after revision {} was read",
+                        plan_id, expected_updated_at
+                    ),
+                }
+                .into());
+            }
+        }
 
         // 2. 使用 SM-2 算法计算新参数
         let (new_interval, new_ease_factor, new_repetitions) = calculate_next_review(
@@ -226,6 +258,7 @@ impl ReviewPlanService {
             },
             consecutive_failures,
             is_difficult,
+            expected_updated_at: expected_updated_at.unwrap_or(&plan.updated_at).to_string(),
         };
 
         let history_params = RecordReviewHistoryParams {
@@ -328,7 +361,10 @@ impl ReviewPlanService {
             until_date: until_date.map(|s| s.to_string()),
             status: None,
             difficult_only: None,
-            limit: Some(100),
+            // ★ 修复：原上限 100 会让 >100 条到期时前端"全部待复习"静默截断
+            // （视图直接用 plans.length 计数且不读 has_more/total）。
+            // 提升到 500 覆盖正常复习积压；更大规模由带 filter 的分页接口承载。
+            limit: Some(500),
             offset: None,
         };
 
@@ -406,9 +442,21 @@ impl ReviewPlanService {
                     plans.push(plan);
                 }
                 Err(e) => {
-                    // 检查是否是已存在的错误
-                    let error_msg = e.to_string();
-                    if error_msg.contains("already exists") || error_msg.contains("AlreadyExists") {
+                    // 检查是否是已存在的错误。
+                    // ★ 修复：create_review_plan 用 with_context 包装过错误，anyhow 的
+                    // to_string() 只显示最外层 context（"Failed to create review plan..."），
+                    // 原先的字符串匹配永远不命中，导致已存在的计划被误计为 failed。
+                    // 改为 downcast 到 VfsError::AlreadyExists（穿透 context 链），
+                    // 并保留全链字符串匹配作为兜底。
+                    let is_already_exists = e
+                        .downcast_ref::<crate::vfs::error::VfsError>()
+                        .map(|ve| matches!(ve, crate::vfs::error::VfsError::AlreadyExists { .. }))
+                        .unwrap_or(false)
+                        || e.chain().any(|cause| {
+                            let msg = cause.to_string();
+                            msg.contains("already exists") || msg.contains("AlreadyExists")
+                        });
+                    if is_already_exists {
                         skipped += 1;
                         debug!(
                             "[ReviewPlanService] Review plan already exists for question_id={}",
@@ -527,6 +575,23 @@ impl ReviewPlanService {
         Ok(plan)
     }
 
+    /// 暂停复习计划，并校验计划版本。
+    pub fn suspend_plan_if_unchanged(
+        &self,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<ReviewPlan> {
+        let plan = VfsReviewPlanRepo::suspend_plan_if_unchanged(
+            &self.vfs_db,
+            plan_id,
+            expected_updated_at,
+        )
+        .with_context(|| format!("Failed to suspend review plan: {}", plan_id))?;
+
+        info!("[ReviewPlanService] Suspended review plan: {}", plan_id);
+        Ok(plan)
+    }
+
     /// 恢复复习计划
     pub fn resume_plan(&self, plan_id: &str) -> Result<ReviewPlan> {
         let plan = VfsReviewPlanRepo::resume_plan(&self.vfs_db, plan_id)
@@ -537,6 +602,20 @@ impl ReviewPlanService {
         Ok(plan)
     }
 
+    /// 恢复复习计划，并校验计划版本。
+    pub fn resume_plan_if_unchanged(
+        &self,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<ReviewPlan> {
+        let plan =
+            VfsReviewPlanRepo::resume_plan_if_unchanged(&self.vfs_db, plan_id, expected_updated_at)
+                .with_context(|| format!("Failed to resume review plan: {}", plan_id))?;
+
+        info!("[ReviewPlanService] Resumed review plan: {}", plan_id);
+        Ok(plan)
+    }
+
     /// 删除复习计划
     pub fn delete_plan(&self, plan_id: &str) -> Result<()> {
         VfsReviewPlanRepo::delete_plan(&self.vfs_db, plan_id)
@@ -544,6 +623,15 @@ impl ReviewPlanService {
 
         info!("[ReviewPlanService] Deleted review plan: {}", plan_id);
 
+        Ok(())
+    }
+
+    /// 删除复习计划，并校验计划版本。
+    pub fn delete_plan_if_unchanged(&self, plan_id: &str, expected_updated_at: &str) -> Result<()> {
+        VfsReviewPlanRepo::delete_plan_if_unchanged(&self.vfs_db, plan_id, expected_updated_at)
+            .with_context(|| format!("Failed to delete review plan: {}", plan_id))?;
+
+        info!("[ReviewPlanService] Deleted review plan: {}", plan_id);
         Ok(())
     }
 
@@ -893,6 +981,7 @@ mod tests {
                 source_ref: None,
                 images: None,
                 parent_id: None,
+                structured_data: None,
             },
         )
         .expect("create question");

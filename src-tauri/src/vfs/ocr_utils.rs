@@ -69,7 +69,7 @@ pub fn parse_ocr_pages_json(json_str: &str) -> Vec<Option<String>> {
                 .max()
                 .map(|v| v as usize + 1)
         })
-        .unwrap_or_else(|| pages.len());
+        .unwrap_or(pages.len());
 
     let mut result = vec![None; total_pages.max(pages.len())];
 

@@ -1,0 +1,373 @@
+/**
+ * BrowserAppWindow.css — 内置浏览器 chrome（wb-browser-*）
+ * ---------------------------------------------------------------------------
+ * 仅消费现有 workbench / theme tokens，不改 tokens 数值。
+ * Chrome surrounds a native page slot. The slot itself stays rectangular
+ * because child WebViews do not participate in CSS clipping/compositing.
+ */
+
+.wb-browser-root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  box-sizing: border-box;
+  background: var(--wb-window-bg, hsl(var(--card)));
+  color: hsl(var(--foreground));
+}
+
+.wb-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wb-browser-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.wb-browser-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--wb-menu-radius, 14px);
+  background: transparent;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: background-color 120ms var(--wb-ease, ease);
+}
+
+.wb-browser-icon-btn:hover:not(:disabled) {
+  background: hsl(var(--muted) / 55%);
+}
+
+.wb-browser-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wb-browser-icon-btn:focus-visible {
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
+  outline-offset: 1px;
+}
+
+/* 触屏：28px 工具栏按钮放大到 40px 命中区 */
+@media (pointer: coarse) {
+  .wb-browser-icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+.wb-browser-address {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
+  border-radius: var(--wb-radius-sm, 8px);
+  background-color: var(--wb-glass-bg, hsl(var(--card) / 20%));
+  background-image: var(--wb-glass-sheen, none);
+  backdrop-filter: var(--wb-glass-blur, none);
+  box-shadow: var(--wb-glass-edge, none);
+}
+
+.wb-browser-address:focus-within {
+  border-color: var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
+}
+
+.wb-browser-lock {
+  display: inline-flex;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.7;
+  flex: 0 0 auto;
+}
+
+.wb-browser-lock.is-insecure {
+  color: hsl(var(--destructive));
+  opacity: 1;
+}
+
+.wb-browser-address-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  outline: none;
+}
+
+.wb-browser-address-input::placeholder {
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.75;
+}
+
+.wb-browser-spinner {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border: 2px solid hsl(var(--muted-foreground) / 25%);
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: wb-browser-spin 0.7s linear infinite;
+}
+
+@keyframes wb-browser-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==== 地址栏底缘加载跑马（Safari 式进度反馈；仅 transform/opacity） ==== */
+
+.wb-browser-address-progress {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms var(--wb-ease, ease);
+}
+
+.wb-browser-address[data-loading='true'] .wb-browser-address-progress {
+  opacity: 1;
+}
+
+.wb-browser-address-progress-runner {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: hsl(var(--primary) / 75%);
+  transform: translateX(-120%);
+}
+
+.wb-browser-address[data-loading='true'] .wb-browser-address-progress-runner {
+  animation: wb-browser-progress-run 1.1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes wb-browser-progress-run {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(370%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-browser-spinner {
+    animation: none;
+    border-top-color: hsl(var(--muted-foreground) / 45%);
+  }
+
+  .wb-browser-address[data-loading='true'] .wb-browser-address-progress-runner {
+    animation: none;
+    transform: none;
+    width: 100%;
+    background: hsl(var(--primary) / 45%);
+  }
+}
+
+.wb-browser-agent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: var(--wb-menu-radius, 14px);
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 45%));
+  background: hsl(var(--muted) / 35%);
+  font-size: 12px;
+}
+
+.wb-browser-agent.is-agent {
+  background: hsl(var(--primary) / 10%);
+  border-color: color-mix(in hsl, hsl(var(--primary)) 40%, transparent 60%);
+}
+
+.wb-browser-agent-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: hsl(var(--foreground));
+}
+
+.wb-browser-takeover {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 10px;
+  margin: 0;
+  border: none;
+  border-radius: 8px;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 120ms var(--wb-ease, ease);
+}
+
+.wb-browser-takeover:hover {
+  opacity: 0.9;
+}
+
+.wb-browser-takeover:focus-visible {
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
+  outline-offset: 1px;
+}
+
+.wb-browser-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--wb-radius-sm, 8px);
+  background: hsl(var(--destructive) / 12%);
+  color: hsl(var(--destructive));
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.wb-browser-error > svg {
+  flex: 0 0 auto;
+}
+
+.wb-browser-error-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wb-browser-page-frame {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
+  border-radius: 4px;
+  background: hsl(var(--background));
+}
+
+.wb-browser-page-slot {
+  position: absolute;
+  inset: 1px;
+}
+
+.wb-browser-empty,
+.wb-browser-detached {
+  position: absolute;
+  inset: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  background: hsl(var(--background));
+  font-size: 13px;
+}
+
+/* 空态：图标 + 标题纵向留白排布（此前横向挤成一行） */
+.wb-browser-empty {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wb-browser-empty-icon {
+  opacity: 0.5;
+}
+
+.wb-browser-empty-title {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.wb-browser-detached {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+}
+
+.wb-browser-hint-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+}
+
+.wb-browser-hint-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  margin: 0;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 120ms var(--wb-ease, ease);
+}
+
+/* 窄窗分级走 data-wb-sys-size（useWbSysSize 写在 .wb-browser-root 上）：
+   原 @media (width <= 700px) 按视口宽度判定，工作台窗口宽度与视口无关，属死代码 */
+.wb-browser-root[data-wb-sys-size='compact'] {
+  padding: 8px;
+}
+
+.wb-browser-root[data-wb-sys-size='compact'] .wb-browser-nav .wb-browser-icon-btn:last-child {
+  display: none;
+}
+
+.wb-browser-root[data-wb-sys-size='compact'] .wb-browser-agent {
+  min-height: 28px;
+  padding-block: 4px;
+}
+
+.wb-browser-root[data-wb-sys-size='compact'] .wb-browser-detached {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.wb-browser-hint-action:hover {
+  background: hsl(var(--muted) / 45%);
+}
+
+.wb-browser-hint-action:focus-visible {
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
+  outline-offset: 1px;
+}

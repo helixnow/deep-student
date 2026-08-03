@@ -1,10 +1,34 @@
 use crate::backup_common::{check_disk_space, copy_directory_safe, log_and_skip_entry_err};
 use crate::models::AppError;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use tauri::Manager;
 use tracing::{error, info, warn};
+
+const LEGACY_MIGRATION_PENDING_FILE: &str = ".legacy_migration_pending";
+const LEGACY_MIGRATION_COMPLETE_FILE: &str = ".legacy_migration_complete";
+const PURGE_MARKER_FILE: &str = ".purge_on_next_start";
+const RECOVERY_DIR: &str = "recovery";
+const RECOVERY_BACKUPS_DIR: &str = "backups";
+const SLOT_BACKUP_MIGRATION_JOURNAL: &str = ".slot_backup_migration.json";
+const STARTUP_RECOVERY_INCIDENTS_DIR: &str = "incidents";
+const STARTUP_RECOVERY_CURRENT_FILE: &str = "current-startup-incident.json";
+const STARTUP_RECOVERY_MANIFEST_FILE: &str = "manifest.json";
+const STARTUP_RECOVERY_JOURNAL_FILE: &str = "journal.json";
+const STARTUP_RECOVERY_LEGACY_DIR: &str = "legacy-root";
+const STARTUP_RECOVERY_SLOT_A_ARCHIVE: &str = "slotA-before-legacy";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RestoreCutoverLease {
+    pub target_slot: String,
+    pub backup_id: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub activation_committed: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Slot {
@@ -48,6 +72,8 @@ impl Slot {
 struct SlotState {
     active: String,
     pending: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    restore_cutover_pending: Option<RestoreCutoverLease>,
 }
 
 impl Default for SlotState {
@@ -55,8 +81,904 @@ impl Default for SlotState {
         Self {
             active: "slotA".to_string(),
             pending: None,
+            restore_cutover_pending: None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartupRecoveryCandidate {
+    pub id: String,
+    pub exists: bool,
+    pub has_data: bool,
+    pub has_database: bool,
+    pub size_bytes: u64,
+    pub latest_modified: Option<String>,
+    pub database_filenames: Vec<String>,
+    #[serde(default)]
+    pub core_database_filenames: Vec<String>,
+    #[serde(default)]
+    pub valid_core_database_filenames: Vec<String>,
+    #[serde(default)]
+    pub selectable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_block_reason: Option<String>,
+    pub recommended: bool,
+    pub recommendation_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartupRecoveryIncident {
+    pub incident_id: String,
+    pub created_at: String,
+    pub resolved: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_candidate: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failed_operation: Option<String>,
+    #[serde(default)]
+    pub retry_requires_restart: bool,
+    pub candidates: Vec<StartupRecoveryCandidate>,
+    #[serde(default)]
+    legacy_entries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StartupRecoveryStatus {
+    pub recovery_required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incident: Option<StartupRecoveryIncident>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StartupRecoveryResolveResponse {
+    pub resolved: bool,
+    pub restart_required: bool,
+    pub selected_candidate: String,
+    pub incident_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StartupRecoveryPointer {
+    incident_id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct StartupRecoveryJournal {
+    #[serde(default)]
+    quarantined: BTreeSet<String>,
+    #[serde(default)]
+    restored_to_slot_a: BTreeSet<String>,
+    #[serde(default)]
+    slot_a_archived: bool,
+}
+
+pub struct StartupRecoveryState {
+    base_dir: PathBuf,
+    incident: Mutex<Option<StartupRecoveryIncident>>,
+}
+
+impl StartupRecoveryState {
+    pub fn new(base_dir: PathBuf, incident: Option<StartupRecoveryIncident>) -> Self {
+        Self {
+            base_dir,
+            incident: Mutex::new(incident),
+        }
+    }
+
+    pub fn failed(base_dir: PathBuf, operation: &str, error: impl ToString) -> Self {
+        Self::new(
+            base_dir,
+            Some(startup_recovery_failure_incident(operation, error)),
+        )
+    }
+
+    pub fn is_recovery_required(&self) -> bool {
+        self.incident
+            .lock()
+            .map(|incident| incident.as_ref().is_some_and(|item| !item.resolved))
+            .unwrap_or(true)
+    }
+
+    pub fn set_failure(&self, operation: &str, error: impl ToString) {
+        match self.incident.lock() {
+            Ok(mut incident) => {
+                *incident = Some(startup_recovery_failure_incident(operation, error));
+            }
+            Err(poisoned) => {
+                *poisoned.into_inner() = Some(startup_recovery_failure_incident(operation, error));
+            }
+        }
+    }
+
+    fn status(&self) -> std::io::Result<StartupRecoveryStatus> {
+        let incident = self
+            .incident
+            .lock()
+            .map_err(|_| std::io::Error::other("启动恢复状态锁已损坏"))?
+            .clone();
+        Ok(StartupRecoveryStatus {
+            recovery_required: incident.as_ref().is_some_and(|item| !item.resolved),
+            incident,
+        })
+    }
+
+    fn incidents(&self) -> std::io::Result<Vec<StartupRecoveryIncident>> {
+        let incidents_dir = self
+            .base_dir
+            .join(RECOVERY_DIR)
+            .join(STARTUP_RECOVERY_INCIDENTS_DIR);
+        if !incidents_dir.is_dir() {
+            return Ok(Vec::new());
+        }
+
+        let mut incidents = Vec::new();
+        for entry in fs::read_dir(&incidents_dir)? {
+            let entry = entry?;
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let manifest = entry.path().join(STARTUP_RECOVERY_MANIFEST_FILE);
+            if !manifest.is_file() {
+                continue;
+            }
+            match read_json_file::<StartupRecoveryIncident>(&manifest, "启动恢复事件清单") {
+                Ok(incident) => incidents.push(incident),
+                Err(error) => warn!(
+                    "[DataSpace] 跳过无法读取的恢复事件 {}: {}",
+                    manifest.display(),
+                    error
+                ),
+            }
+        }
+        incidents.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+        Ok(incidents)
+    }
+
+    fn resolve(&self, candidate_id: &str) -> std::io::Result<StartupRecoveryResolveResponse> {
+        let mut guard = self
+            .incident
+            .lock()
+            .map_err(|_| std::io::Error::other("启动恢复状态锁已损坏"))?;
+        let incident = guard.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "当前没有待处理的启动恢复事件")
+        })?;
+        let response =
+            match resolve_startup_recovery_incident(&self.base_dir, incident, candidate_id) {
+                Ok(response) => response,
+                Err(error) => {
+                    record_startup_recovery_error(
+                        &self.base_dir,
+                        incident,
+                        "resolve_selection",
+                        &error,
+                    );
+                    return Err(error);
+                }
+            };
+        *guard = None;
+        Ok(response)
+    }
+
+    fn retry_preflight(&self) -> StartupRecoveryStatus {
+        if let Ok(current) = self.status() {
+            if current
+                .incident
+                .as_ref()
+                .and_then(|incident| incident.failed_operation.as_deref())
+                .is_some_and(startup_failure_requires_restart)
+            {
+                return current;
+            }
+        }
+        let next = match prepare_startup_recovery(&self.base_dir) {
+            Ok(incident) => incident,
+            Err(error) => Some(startup_recovery_failure_incident(
+                "startup_preflight",
+                error,
+            )),
+        };
+        if let Ok(mut current) = self.incident.lock() {
+            *current = next.clone();
+        }
+        StartupRecoveryStatus {
+            recovery_required: next.as_ref().is_some_and(|incident| !incident.resolved),
+            incident: next,
+        }
+    }
+
+    fn incident_directory(&self, incident_id: &str) -> std::io::Result<PathBuf> {
+        if incident_id.is_empty()
+            || incident_id.contains('/')
+            || incident_id.contains('\\')
+            || incident_id == "."
+            || incident_id == ".."
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "恢复事件 id 无效",
+            ));
+        }
+        let incidents_root = self
+            .base_dir
+            .join(RECOVERY_DIR)
+            .join(STARTUP_RECOVERY_INCIDENTS_DIR);
+        let candidate = incidents_root.join(incident_id);
+        if !candidate.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "恢复事件目录不存在",
+            ));
+        }
+        let canonical_root = fs::canonicalize(&incidents_root)?;
+        let canonical_candidate = fs::canonicalize(&candidate)?;
+        if !canonical_candidate.starts_with(&canonical_root) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "恢复事件目录越界",
+            ));
+        }
+        Ok(canonical_candidate)
+    }
+}
+
+fn startup_failure_requires_restart(operation: &str) -> bool {
+    matches!(
+        operation,
+        "data_space_init" | "active_data_directory" | "startup_cleanup" | "startup_cleanup_marker"
+    )
+}
+
+fn startup_recovery_failure_incident(
+    operation: &str,
+    error: impl ToString,
+) -> StartupRecoveryIncident {
+    StartupRecoveryIncident {
+        incident_id: format!("startup-preflight-{}", uuid::Uuid::new_v4()),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        resolved: false,
+        resolved_at: None,
+        selected_candidate: None,
+        recovery_error: Some(error.to_string()),
+        failed_operation: Some(operation.to_string()),
+        retry_requires_restart: startup_failure_requires_restart(operation),
+        candidates: Vec::new(),
+        legacy_entries: Vec::new(),
+    }
+}
+
+pub fn prepare_startup_recovery(
+    base_dir: &Path,
+) -> std::io::Result<Option<StartupRecoveryIncident>> {
+    let recovery_dir = base_dir.join(RECOVERY_DIR);
+    let pointer_path = recovery_dir.join(STARTUP_RECOVERY_CURRENT_FILE);
+
+    if pointer_path.exists() {
+        let pointer: StartupRecoveryPointer =
+            read_json_file(&pointer_path, "启动恢复 current pointer")?;
+        let incident_dir = startup_incident_dir(base_dir, &pointer.incident_id);
+        let manifest_path = incident_dir.join(STARTUP_RECOVERY_MANIFEST_FILE);
+        let mut incident: StartupRecoveryIncident =
+            read_json_file(&manifest_path, "启动恢复事件清单")?;
+        if incident.incident_id != pointer.incident_id {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "启动恢复 current pointer 与事件清单不匹配",
+            ));
+        }
+        if incident.resolved {
+            remove_file_if_exists(&pointer_path)?;
+            sync_directory(&recovery_dir)?;
+            return Ok(None);
+        }
+        if let Err(error) = quarantine_legacy_entries(base_dir, &mut incident) {
+            record_startup_recovery_error(base_dir, &mut incident, "quarantine_legacy", &error);
+            return Ok(Some(incident));
+        }
+        if let Some(candidate_id) = incident.selected_candidate.clone() {
+            match resolve_startup_recovery_incident(base_dir, &mut incident, &candidate_id) {
+                Ok(_) => return Ok(None),
+                Err(error) => {
+                    record_startup_recovery_error(
+                        base_dir,
+                        &mut incident,
+                        "resume_selection",
+                        &error,
+                    );
+                    return Ok(Some(incident));
+                }
+            }
+        }
+        return Ok(Some(incident));
+    }
+
+    let manager = DataSpaceManager::new(base_dir.to_path_buf());
+    if manager.legacy_migration_complete_path().exists()
+        || manager.legacy_migration_pending_path().exists()
+    {
+        return Ok(None);
+    }
+
+    let legacy_entries = legacy_root_entry_names(base_dir)?;
+    if legacy_entries.is_empty() {
+        return Ok(None);
+    }
+    let slot_a = manager.slot_dir(Slot::A);
+    let slot_b = manager.slot_dir(Slot::B);
+    let slot_b_has_data = DataSpaceManager::dir_has_data(&slot_b);
+    let slot_a_collision = legacy_entries.iter().any(|name| slot_a.join(name).exists());
+    if !slot_b_has_data && !slot_a_collision {
+        return Ok(None);
+    }
+
+    fs::create_dir_all(&recovery_dir)?;
+    let incidents_dir = recovery_dir.join(STARTUP_RECOVERY_INCIDENTS_DIR);
+    fs::create_dir_all(&incidents_dir)?;
+    sync_directory(&recovery_dir)?;
+    let incident_id = format!(
+        "{}-{}",
+        chrono::Utc::now().format("%Y%m%dT%H%M%S%6fZ"),
+        uuid::Uuid::new_v4()
+    );
+    let incident_dir = startup_incident_dir(base_dir, &incident_id);
+    fs::create_dir(&incident_dir)?;
+    fs::create_dir(incident_dir.join(STARTUP_RECOVERY_LEGACY_DIR))?;
+    sync_directory(&incidents_dir)?;
+
+    let mut incident = StartupRecoveryIncident {
+        incident_id: incident_id.clone(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        resolved: false,
+        resolved_at: None,
+        selected_candidate: None,
+        recovery_error: None,
+        failed_operation: None,
+        retry_requires_restart: false,
+        candidates: inspect_startup_candidates(base_dir, &incident_id)?,
+        legacy_entries,
+    };
+    atomic_write_json(
+        &incident_dir.join(STARTUP_RECOVERY_MANIFEST_FILE),
+        &incident,
+    )?;
+    atomic_write_json(
+        &incident_dir.join(STARTUP_RECOVERY_JOURNAL_FILE),
+        &StartupRecoveryJournal::default(),
+    )?;
+    atomic_write_json(
+        &pointer_path,
+        &StartupRecoveryPointer {
+            incident_id: incident_id.clone(),
+        },
+    )?;
+
+    if let Err(error) = quarantine_legacy_entries(base_dir, &mut incident) {
+        record_startup_recovery_error(base_dir, &mut incident, "quarantine_legacy", &error);
+    }
+    Ok(Some(incident))
+}
+
+fn record_startup_recovery_error(
+    base_dir: &Path,
+    incident: &mut StartupRecoveryIncident,
+    operation: &str,
+    error: &std::io::Error,
+) {
+    incident.recovery_error = Some(error.to_string());
+    incident.failed_operation = Some(operation.to_string());
+    incident.retry_requires_restart = startup_failure_requires_restart(operation);
+    let manifest =
+        startup_incident_dir(base_dir, &incident.incident_id).join(STARTUP_RECOVERY_MANIFEST_FILE);
+    if manifest.parent().is_some_and(Path::is_dir) {
+        if let Err(write_error) = atomic_write_json(&manifest, incident) {
+            warn!(
+                "[DataSpace] 无法持久化恢复错误 {}: {}",
+                manifest.display(),
+                write_error
+            );
+        }
+    }
+}
+
+fn startup_incident_dir(base_dir: &Path, incident_id: &str) -> PathBuf {
+    base_dir
+        .join(RECOVERY_DIR)
+        .join(STARTUP_RECOVERY_INCIDENTS_DIR)
+        .join(incident_id)
+}
+
+fn legacy_root_entry_names(base_dir: &Path) -> std::io::Result<Vec<String>> {
+    if !base_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut names = Vec::new();
+    for entry in fs::read_dir(base_dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let display = name.to_str().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "旧版数据根目录包含非 UTF-8 文件名，无法建立恢复清单",
+            )
+        })?;
+        if display != "slots"
+            && display != "logs"
+            && display != RECOVERY_DIR
+            && display != PURGE_MARKER_FILE
+        {
+            names.push(display.to_string());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+fn quarantine_legacy_entries(
+    base_dir: &Path,
+    incident: &mut StartupRecoveryIncident,
+) -> std::io::Result<()> {
+    let incident_dir = startup_incident_dir(base_dir, &incident.incident_id);
+    let legacy_dir = incident_dir.join(STARTUP_RECOVERY_LEGACY_DIR);
+    fs::create_dir_all(&legacy_dir)?;
+    let journal_path = incident_dir.join(STARTUP_RECOVERY_JOURNAL_FILE);
+    let mut journal = read_recovery_journal(&journal_path)?;
+
+    for name in &incident.legacy_entries {
+        if journal.quarantined.contains(name) {
+            continue;
+        }
+        move_path_preserving(&base_dir.join(name), &legacy_dir.join(name))?;
+        journal.quarantined.insert(name.clone());
+        atomic_write_json(&journal_path, &journal)?;
+    }
+
+    incident.candidates = inspect_startup_candidates(base_dir, &incident.incident_id)?;
+    atomic_write_json(&incident_dir.join(STARTUP_RECOVERY_MANIFEST_FILE), incident)
+}
+
+fn read_recovery_journal(path: &Path) -> std::io::Result<StartupRecoveryJournal> {
+    if path.exists() {
+        read_json_file(path, "启动恢复操作日志")
+    } else {
+        let journal = StartupRecoveryJournal::default();
+        atomic_write_json(path, &journal)?;
+        Ok(journal)
+    }
+}
+
+fn inspect_startup_candidates(
+    base_dir: &Path,
+    incident_id: &str,
+) -> std::io::Result<Vec<StartupRecoveryCandidate>> {
+    let incident_dir = startup_incident_dir(base_dir, incident_id);
+    let mut candidates = vec![
+        inspect_startup_candidate("legacy", &incident_dir.join(STARTUP_RECOVERY_LEGACY_DIR))?,
+        inspect_startup_candidate("slotA", &base_dir.join("slots").join("slotA"))?,
+        inspect_startup_candidate("slotB", &base_dir.join("slots").join("slotB"))?,
+    ];
+
+    let valid_active = fs::read(base_dir.join("slots").join("state.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SlotState>(&bytes).ok())
+        .map(|state| state.active)
+        .filter(|active| active == "slotA" || active == "slotB");
+    let recommendation = valid_active
+        .as_deref()
+        .and_then(|active| {
+            candidates
+                .iter()
+                .find(|candidate| candidate.id == active && candidate.selectable)
+                .map(|_| {
+                    (
+                        active.to_string(),
+                        "state.json 中记录的活动插槽有效".to_string(),
+                    )
+                })
+        })
+        .or_else(|| {
+            let valid_candidates: Vec<&StartupRecoveryCandidate> = candidates
+                .iter()
+                .filter(|candidate| candidate.selectable)
+                .collect();
+            (valid_candidates.len() == 1).then(|| {
+                (
+                    valid_candidates[0].id.clone(),
+                    "仅此候选检测到受支持的核心数据库".to_string(),
+                )
+            })
+        });
+
+    for candidate in &mut candidates {
+        if let Some((recommended_id, reason)) = &recommendation {
+            candidate.recommended = candidate.id == *recommended_id;
+            candidate.recommendation_reason = if candidate.recommended {
+                reason.clone()
+            } else {
+                format!("推荐候选为 {recommended_id}")
+            };
+        } else {
+            candidate.recommended = false;
+            candidate.recommendation_reason = "候选时间线存在歧义，需要人工选择".to_string();
+        }
+    }
+    Ok(candidates)
+}
+
+fn inspect_startup_candidate(id: &str, path: &Path) -> std::io::Result<StartupRecoveryCandidate> {
+    let exists = path.exists();
+    let has_data = DataSpaceManager::dir_has_data(path);
+    let mut size_bytes = 0u64;
+    let mut latest_modified = None;
+    let mut database_filenames = Vec::new();
+    if path.is_dir() {
+        inspect_candidate_tree(
+            path,
+            path,
+            &mut size_bytes,
+            &mut latest_modified,
+            &mut database_filenames,
+        )?;
+    }
+    database_filenames.sort();
+    let core_database_filenames: Vec<String> = database_filenames
+        .iter()
+        .filter(|filename| is_known_core_database(filename))
+        .cloned()
+        .collect();
+    let valid_core_database_filenames: Vec<String> = core_database_filenames
+        .iter()
+        .filter(|filename| is_valid_sqlite_database(&path.join(filename)))
+        .cloned()
+        .collect();
+    let selectable = !valid_core_database_filenames.is_empty();
+    Ok(StartupRecoveryCandidate {
+        id: id.to_string(),
+        exists,
+        has_data,
+        has_database: !database_filenames.is_empty(),
+        size_bytes,
+        latest_modified: latest_modified.map(|time| {
+            let time: chrono::DateTime<chrono::Utc> = time.into();
+            time.to_rfc3339()
+        }),
+        database_filenames,
+        core_database_filenames,
+        valid_core_database_filenames,
+        selectable,
+        selection_block_reason: (!selectable)
+            .then(|| "未检测到 Deep Student 核心数据库".to_string()),
+        recommended: false,
+        recommendation_reason: String::new(),
+    })
+}
+
+fn is_known_core_database(relative: &str) -> bool {
+    matches!(
+        relative.replace('\\', "/").to_ascii_lowercase().as_str(),
+        "mistakes.db" | "chat_v2.db" | "llm_usage.db" | "databases/vfs.db"
+    )
+}
+
+fn is_valid_sqlite_database(path: &Path) -> bool {
+    let connection = match rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ) {
+        Ok(connection) => connection,
+        Err(error) => {
+            warn!(
+                "[DataSpace] 核心数据库无法只读打开 {}: {}",
+                path.display(),
+                error
+            );
+            return false;
+        }
+    };
+    match connection.query_row("PRAGMA quick_check(1)", [], |row| row.get::<_, String>(0)) {
+        Ok(result) if result.eq_ignore_ascii_case("ok") => true,
+        Ok(result) => {
+            warn!(
+                "[DataSpace] 核心数据库完整性检查失败 {}: {}",
+                path.display(),
+                result
+            );
+            false
+        }
+        Err(error) => {
+            warn!(
+                "[DataSpace] 核心数据库完整性检查无法完成 {}: {}",
+                path.display(),
+                error
+            );
+            false
+        }
+    }
+}
+
+fn inspect_candidate_tree(
+    root: &Path,
+    directory: &Path,
+    size_bytes: &mut u64,
+    latest_modified: &mut Option<std::time::SystemTime>,
+    database_filenames: &mut Vec<String>,
+) -> std::io::Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if let Ok(modified) = metadata.modified() {
+            if latest_modified.is_none_or(|current| modified > current) {
+                *latest_modified = Some(modified);
+            }
+        }
+        if metadata.is_dir() {
+            inspect_candidate_tree(root, &path, size_bytes, latest_modified, database_filenames)?;
+        } else if metadata.is_file() {
+            *size_bytes = size_bytes.saturating_add(metadata.len());
+            let filename = entry.file_name().to_string_lossy().to_lowercase();
+            if filename.ends_with(".db")
+                || filename.ends_with(".sqlite")
+                || filename.ends_with(".sqlite3")
+            {
+                database_filenames.push(
+                    path.strip_prefix(root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn resolve_startup_recovery_incident(
+    base_dir: &Path,
+    incident: &mut StartupRecoveryIncident,
+    candidate_id: &str,
+) -> std::io::Result<StartupRecoveryResolveResponse> {
+    if incident.resolved {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "启动恢复事件已经解决",
+        ));
+    }
+    if !matches!(candidate_id, "legacy" | "slotA" | "slotB") {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "候选 id 必须是 legacy、slotA 或 slotB",
+        ));
+    }
+    if let Some(started_candidate) = incident.selected_candidate.as_deref() {
+        if started_candidate != candidate_id {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("恢复事件已开始选择 {started_candidate}，不能改选 {candidate_id}"),
+            ));
+        }
+    }
+
+    incident.candidates = inspect_startup_candidates(base_dir, &incident.incident_id)?;
+    incident.recovery_error = None;
+    incident.failed_operation = None;
+    incident.retry_requires_restart = false;
+    if incident.selected_candidate.is_none() {
+        let selected = incident
+            .candidates
+            .iter()
+            .find(|candidate| candidate.id == candidate_id)
+            .ok_or_else(|| std::io::Error::other("恢复候选不存在"))?;
+        if !selected.selectable {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("恢复候选 {candidate_id} 不包含受支持的核心数据库，拒绝将其激活"),
+            ));
+        }
+        incident.selected_candidate = Some(candidate_id.to_string());
+        atomic_write_json(
+            &startup_incident_dir(base_dir, &incident.incident_id)
+                .join(STARTUP_RECOVERY_MANIFEST_FILE),
+            incident,
+        )?;
+    }
+
+    if candidate_id == "legacy" {
+        restore_legacy_candidate(base_dir, incident)?;
+    } else {
+        activate_startup_slot(base_dir, candidate_id)?;
+    }
+
+    incident.resolved = true;
+    incident.resolved_at = Some(chrono::Utc::now().to_rfc3339());
+    let incident_dir = startup_incident_dir(base_dir, &incident.incident_id);
+    atomic_write_json(&incident_dir.join(STARTUP_RECOVERY_MANIFEST_FILE), incident)?;
+    let pointer_path = base_dir
+        .join(RECOVERY_DIR)
+        .join(STARTUP_RECOVERY_CURRENT_FILE);
+    remove_file_if_exists(&pointer_path)?;
+    sync_directory(&base_dir.join(RECOVERY_DIR))?;
+
+    Ok(StartupRecoveryResolveResponse {
+        resolved: true,
+        restart_required: true,
+        selected_candidate: candidate_id.to_string(),
+        incident_id: incident.incident_id.clone(),
+    })
+}
+
+fn activate_startup_slot(base_dir: &Path, candidate_id: &str) -> std::io::Result<()> {
+    let manager = DataSpaceManager::new(base_dir.to_path_buf());
+    fs::create_dir_all(manager.slots_dir())?;
+    let state = SlotState {
+        active: candidate_id.to_string(),
+        pending: None,
+        restore_cutover_pending: None,
+    };
+    manager.write_state(&state)?;
+    finish_legacy_migration(&manager)
+}
+
+fn restore_legacy_candidate(
+    base_dir: &Path,
+    incident: &StartupRecoveryIncident,
+) -> std::io::Result<()> {
+    let manager = DataSpaceManager::new(base_dir.to_path_buf());
+    fs::create_dir_all(manager.slots_dir())?;
+    let incident_dir = startup_incident_dir(base_dir, &incident.incident_id);
+    let archive_dir = incident_dir.join(STARTUP_RECOVERY_SLOT_A_ARCHIVE);
+    let slot_a = manager.slot_dir(Slot::A);
+    let journal_path = incident_dir.join(STARTUP_RECOVERY_JOURNAL_FILE);
+    let mut journal = read_recovery_journal(&journal_path)?;
+
+    if !journal.slot_a_archived {
+        if slot_a.exists() {
+            move_path_preserving(&slot_a, &archive_dir)?;
+        }
+        journal.slot_a_archived = true;
+        atomic_write_json(&journal_path, &journal)?;
+    }
+    fs::create_dir_all(&slot_a)?;
+    sync_directory(manager.slots_dir().as_path())?;
+
+    let legacy_dir = incident_dir.join(STARTUP_RECOVERY_LEGACY_DIR);
+    for name in &incident.legacy_entries {
+        if journal.restored_to_slot_a.contains(name) {
+            continue;
+        }
+        move_path_preserving(&legacy_dir.join(name), &slot_a.join(name))?;
+        journal.restored_to_slot_a.insert(name.clone());
+        atomic_write_json(&journal_path, &journal)?;
+    }
+
+    manager.write_state(&SlotState {
+        active: "slotA".to_string(),
+        pending: None,
+        restore_cutover_pending: None,
+    })?;
+    finish_legacy_migration(&manager)
+}
+
+fn finish_legacy_migration(manager: &DataSpaceManager) -> std::io::Result<()> {
+    fs::create_dir_all(manager.slots_dir())?;
+    atomic_write_bytes(&manager.legacy_migration_complete_path(), b"1")?;
+    remove_file_if_exists(&manager.legacy_migration_pending_path())?;
+    sync_directory(&manager.slots_dir())
+}
+
+fn move_path_preserving(source: &Path, destination: &Path) -> std::io::Result<()> {
+    if destination.exists() {
+        if source.exists() {
+            if !paths_equal(source, destination)? {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "恢复移动发现同名异内容条目，拒绝覆盖: {} -> {}",
+                        source.display(),
+                        destination.display()
+                    ),
+                ));
+            }
+            remove_path(source)?;
+            if let Some(parent) = source.parent() {
+                sync_directory(parent)?;
+            }
+        }
+        return Ok(());
+    }
+    if !source.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "恢复移动的源和目标均不存在: {} -> {}",
+                source.display(),
+                destination.display()
+            ),
+        ));
+    }
+    let destination_parent = destination
+        .parent()
+        .ok_or_else(|| std::io::Error::other("恢复移动目标缺少父目录"))?;
+    fs::create_dir_all(destination_parent)?;
+    if fs::rename(source, destination).is_ok() {
+        sync_directory(destination_parent)?;
+        if let Some(source_parent) = source.parent() {
+            sync_directory(source_parent)?;
+        }
+        return Ok(());
+    }
+
+    let temporary = destination_parent.join(format!(
+        ".moving-{}",
+        destination
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+    ));
+    if temporary.exists() {
+        remove_path(&temporary)?;
+    }
+    copy_path_durable(source, &temporary)?;
+    if !paths_equal(source, &temporary)? {
+        remove_path(&temporary)?;
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("恢复移动复制校验失败: {}", source.display()),
+        ));
+    }
+    fs::rename(&temporary, destination)?;
+    sync_directory(destination_parent)?;
+    remove_path(source)?;
+    if let Some(source_parent) = source.parent() {
+        sync_directory(source_parent)?;
+    }
+    Ok(())
+}
+
+fn read_json_file<T: for<'de> Deserialize<'de>>(
+    path: &Path,
+    description: &str,
+) -> std::io::Result<T> {
+    serde_json::from_slice(&fs::read(path)?).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("解析{description}失败: {error}"),
+        )
+    })
+}
+
+fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("持久化路径缺少父目录"))?;
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".durable-")
+        .suffix(".tmp")
+        .tempfile_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .into_temp_path()
+        .persist(path)
+        .map_err(|error| error.error)?;
+    sync_directory(parent)
 }
 
 pub struct DataSpaceManager {
@@ -74,6 +996,12 @@ impl DataSpaceManager {
     fn state_path(&self) -> PathBuf {
         self.slots_dir().join("state.json")
     }
+    fn legacy_migration_pending_path(&self) -> PathBuf {
+        self.slots_dir().join(LEGACY_MIGRATION_PENDING_FILE)
+    }
+    fn legacy_migration_complete_path(&self) -> PathBuf {
+        self.slots_dir().join(LEGACY_MIGRATION_COMPLETE_FILE)
+    }
     pub fn slot_dir(&self, slot: Slot) -> PathBuf {
         self.slots_dir().join(slot.name())
     }
@@ -86,6 +1014,10 @@ impl DataSpaceManager {
 
     pub fn base_dir(&self) -> &Path {
         &self.base_dir
+    }
+
+    pub fn recovery_backups_dir(&self) -> PathBuf {
+        self.base_dir.join(RECOVERY_DIR).join(RECOVERY_BACKUPS_DIR)
     }
 
     pub fn ensure_layout(&self) -> std::io::Result<()> {
@@ -101,64 +1033,131 @@ impl DataSpaceManager {
             // 使用原子写入，即使首次写入也要保证安全
             self.write_state(&st)?;
         }
-        // 一次性迁移：若为首次启用双空间且 slotA/slotB 为空，将 base_dir 下现有数据迁移到 slotA
+        // 一次性迁移：把旧版根目录数据迁入 slotA。
+        //
+        // 不能只依赖“slotA/slotB 都为空”：旧实现发生部分失败后 slotA 已非空，
+        // 后续启动会永久跳过剩余数据。现在使用 pending/complete journal：
+        // - pending 存在表示上次迁移未完成，且应用没有继续打开业务库；
+        // - complete 仅在所有根目录条目迁移完成后写入；
+        // - 老版本留下的部分迁移会继续处理仍位于根目录、且目标不存在的条目；
+        // - 源/目标同时存在且没有本版本 pending 证明时 fail-close，避免覆盖用户
+        //   在残缺 slotA 上继续产生的新数据。
         let slot_a = self.slot_dir(Slot::A);
         let slot_b = self.slot_dir(Slot::B);
-        let slot_a_empty = fs::read_dir(&slot_a)
-            .map(|mut it| it.next().is_none())
-            .unwrap_or(true);
         let slot_b_empty = fs::read_dir(&slot_b)
             .map(|mut it| it.next().is_none())
             .unwrap_or(true);
-        if slot_a_empty && slot_b_empty {
+        let complete_path = self.legacy_migration_complete_path();
+        if !complete_path.exists() {
+            let pending_path = self.legacy_migration_pending_path();
+            let retrying_owned_attempt = pending_path.exists();
+            let mut legacy_entries = Vec::new();
+            for entry in fs::read_dir(&self.base_dir)? {
+                let entry = entry?;
+                let should_migrate = {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    name != "slots"
+                        && name != "logs"
+                        && name != RECOVERY_DIR
+                        && name != PURGE_MARKER_FILE
+                };
+                if should_migrate {
+                    legacy_entries.push(entry);
+                }
+            }
+
+            if legacy_entries.is_empty() {
+                fs::write(&complete_path, b"1")?;
+                if pending_path.exists() {
+                    fs::remove_file(&pending_path)?;
+                }
+                self.migrate_legacy_slot_backups()?;
+                return Ok(());
+            }
+
+            if !slot_b_empty && !retrying_owned_attempt {
+                return Err(std::io::Error::other(format!(
+                    "检测到旧版根目录仍有 {} 个数据条目，但 slotB 已包含数据；为避免把不同时间线静默合并，已停止启动，请先备份并人工确认",
+                    legacy_entries.len()
+                )));
+            }
+
+            fs::write(&pending_path, b"1")?;
             info!("[DataSpace] 检测到首次启用双空间模式，开始数据迁移到 slotA...");
             let mut migration_errors: Vec<String> = Vec::new();
 
-            if let Ok(iter) = fs::read_dir(&self.base_dir) {
-                for en in iter.filter_map(log_and_skip_entry_err) {
-                    let p = en.path();
-                    if p.file_name().and_then(|n| n.to_str()) == Some("slots") {
+            for en in legacy_entries {
+                let p = en.path();
+                let dst = slot_a.join(en.file_name());
+
+                if dst.exists() {
+                    if retrying_owned_attempt {
+                        let cleanup = if dst.is_dir() {
+                            fs::remove_dir_all(&dst)
+                        } else {
+                            fs::remove_file(&dst)
+                        };
+                        if let Err(e) = cleanup {
+                            let msg = format!(
+                                "[DataSpace] 清理上次未完成迁移的目标失败 {:?}: {}",
+                                dst, e
+                            );
+                            error!("{}", msg);
+                            migration_errors.push(msg);
+                            continue;
+                        }
+                    } else {
+                        let msg = format!(
+                            "[DataSpace] 旧版部分迁移存在源/目标冲突 {:?} -> {:?}，拒绝覆盖可能已更新的数据",
+                            p, dst
+                        );
+                        error!("{}", msg);
+                        migration_errors.push(msg);
                         continue;
                     }
-                    let dst = slot_a.join(en.file_name());
-                    // 尝试重命名，失败则复制
-                    if fs::rename(&p, &dst).is_err() {
-                        if p.is_dir() {
-                            // P1 修复: 使用安全版本复制，防止符号链接攻击
-                            match copy_directory_safe(&p, &slot_a) {
-                                Ok(_) => {
-                                    if let Err(e) = fs::remove_dir_all(&p) {
-                                        warn!("[DataSpace] 迁移后清理源目录失败 {:?}: {}", p, e);
-                                    }
-                                }
-                                Err(e) => {
-                                    let msg = format!("[DataSpace] 复制目录失败 {:?}: {}", p, e);
+                }
+
+                // 尝试重命名，失败则复制
+                if fs::rename(&p, &dst).is_err() {
+                    if p.is_dir() {
+                        // P1 修复: 使用安全版本复制，防止符号链接攻击
+                        match copy_directory_safe(&p, &slot_a) {
+                            Ok(_) => {
+                                if let Err(e) = fs::remove_dir_all(&p) {
+                                    let msg =
+                                        format!("[DataSpace] 迁移后清理源目录失败 {:?}: {}", p, e);
                                     error!("{}", msg);
                                     migration_errors.push(msg);
                                 }
                             }
-                        } else {
-                            if let Err(e) = fs::create_dir_all(&slot_a) {
-                                let msg =
-                                    format!("[DataSpace] 创建目标目录失败 {:?}: {}", slot_a, e);
+                            Err(e) => {
+                                let msg = format!("[DataSpace] 复制目录失败 {:?}: {}", p, e);
                                 error!("{}", msg);
                                 migration_errors.push(msg);
-                                continue;
                             }
-                            match fs::copy(&p, &dst) {
-                                Ok(_) => {
-                                    if let Err(e) = fs::remove_file(&p) {
-                                        warn!("[DataSpace] 迁移后清理源文件失败 {:?}: {}", p, e);
-                                    }
-                                }
-                                Err(e) => {
-                                    let msg = format!(
-                                        "[DataSpace] 复制文件失败 {:?} -> {:?}: {}",
-                                        p, dst, e
-                                    );
+                        }
+                    } else {
+                        if let Err(e) = fs::create_dir_all(&slot_a) {
+                            let msg = format!("[DataSpace] 创建目标目录失败 {:?}: {}", slot_a, e);
+                            error!("{}", msg);
+                            migration_errors.push(msg);
+                            continue;
+                        }
+                        match fs::copy(&p, &dst) {
+                            Ok(_) => {
+                                if let Err(e) = fs::remove_file(&p) {
+                                    let msg =
+                                        format!("[DataSpace] 迁移后清理源文件失败 {:?}: {}", p, e);
                                     error!("{}", msg);
                                     migration_errors.push(msg);
                                 }
+                            }
+                            Err(e) => {
+                                let msg =
+                                    format!("[DataSpace] 复制文件失败 {:?} -> {:?}: {}", p, dst, e);
+                                error!("{}", msg);
+                                migration_errors.push(msg);
                             }
                         }
                     }
@@ -173,18 +1172,105 @@ impl DataSpaceManager {
                     migration_errors.len(),
                     error_summary
                 );
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!(
-                        "数据迁移失败 ({} 个错误): {}",
-                        migration_errors.len(),
-                        error_summary
-                    ),
-                ));
+                return Err(std::io::Error::other(format!(
+                    "数据迁移失败 ({} 个错误): {}",
+                    migration_errors.len(),
+                    error_summary
+                )));
             } else {
+                fs::write(&complete_path, b"1")?;
+                fs::remove_file(&pending_path)?;
                 info!("[DataSpace] 数据迁移完成");
             }
         }
+        self.migrate_legacy_slot_backups()?;
+        Ok(())
+    }
+
+    /// 把旧版槽内备份移到不参与 A/B 切槽的 recovery/backups。
+    ///
+    /// 每个顶层产物都按 copy -> byte verify -> fsync -> journal -> delete-source
+    /// 的顺序迁移。任一步崩溃后重跑都会先核对既有目标，因此不会覆盖另一份
+    /// 同名但内容不同的备份，也不会在目标未持久化前删除唯一源。
+    fn migrate_legacy_slot_backups(&self) -> std::io::Result<()> {
+        use std::collections::BTreeSet;
+
+        let recovery_dir = self.base_dir.join(RECOVERY_DIR);
+        let destination_root = self.recovery_backups_dir();
+        fs::create_dir_all(&destination_root)?;
+        sync_directory(&recovery_dir)?;
+
+        let journal_path = recovery_dir.join(SLOT_BACKUP_MIGRATION_JOURNAL);
+        let mut journal: BTreeSet<String> = if journal_path.exists() {
+            serde_json::from_slice(&fs::read(&journal_path)?).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("解析槽内备份迁移日志失败: {}", error),
+                )
+            })?
+        } else {
+            BTreeSet::new()
+        };
+
+        for slot in [Slot::A, Slot::B] {
+            let source_root = self.slot_dir(slot).join("backups");
+            if !source_root.is_dir() {
+                continue;
+            }
+
+            for entry in fs::read_dir(&source_root)? {
+                let entry = entry?;
+                let source = entry.path();
+                let destination = destination_root.join(entry.file_name());
+                let journal_key =
+                    format!("{}/{}", slot.name(), entry.file_name().to_string_lossy());
+
+                if destination.exists() {
+                    if !paths_equal(&source, &destination)? {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            format!(
+                                "槽内备份迁移发现同名异内容产物，拒绝覆盖: {} -> {}",
+                                source.display(),
+                                destination.display()
+                            ),
+                        ));
+                    }
+                } else {
+                    let temporary = destination_root.join(format!(
+                        ".migrating-{}-{}",
+                        slot.name(),
+                        entry.file_name().to_string_lossy()
+                    ));
+                    if temporary.exists() {
+                        remove_path(&temporary)?;
+                    }
+                    copy_path_durable(&source, &temporary)?;
+                    if !paths_equal(&source, &temporary)? {
+                        remove_path(&temporary)?;
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("槽内备份复制校验失败: {}", source.display()),
+                        ));
+                    }
+                    fs::rename(&temporary, &destination)?;
+                    sync_directory(&destination_root)?;
+                }
+
+                if journal.insert(journal_key) {
+                    atomic_write_json(&journal_path, &journal)?;
+                    sync_directory(&recovery_dir)?;
+                }
+                remove_path(&source)?;
+                sync_directory(&source_root)?;
+            }
+
+            if fs::read_dir(&source_root)?.next().is_none() {
+                fs::remove_dir(&source_root)?;
+                sync_directory(&self.slot_dir(slot))?;
+            }
+        }
+
         Ok(())
     }
 
@@ -227,6 +1313,10 @@ impl DataSpaceManager {
                         // 将恢复的状态写回 state.json，防止下次启动时再次走恢复流程
                         if let Err(e) = self.write_state(&st) {
                             error!("[DataSpace] 恢复后回写 state.json 失败: {}", e);
+                        } else if let Err(e) = fs::remove_file(&tmp_path) {
+                            if e.kind() != std::io::ErrorKind::NotFound {
+                                warn!("[DataSpace] 清理旧 state.json.tmp 失败: {}", e);
+                            }
                         }
                         return Ok(st);
                     }
@@ -291,6 +1381,7 @@ impl DataSpaceManager {
         SlotState {
             active: active.to_string(),
             pending: None,
+            restore_cutover_pending: None,
         }
     }
 
@@ -359,12 +1450,8 @@ impl DataSpaceManager {
         );
 
         // 使用 backup_common 的磁盘空间检查（含 20% 余量）
-        check_disk_space(target_dir, source_size).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("磁盘空间检查失败: {}", e.message),
-            )
-        })?;
+        check_disk_space(target_dir, source_size)
+            .map_err(|e| std::io::Error::other(format!("磁盘空间检查失败: {}", e.message)))?;
 
         Ok(())
     }
@@ -465,25 +1552,26 @@ impl DataSpaceManager {
         self.atomic_write_state_file(&s)
     }
 
-    /// 原子写入 state.json：先写临时文件并 fsync，再 rename 替换，防止崩溃/断电导致文件损坏
+    /// 原子写入 state.json：同目录随机临时文件 fsync 后持久化覆盖。
+    ///
+    /// `TempPath::persist` 在 Windows 使用可覆盖既有目标的原子持久化语义，避免
+    /// `std::fs::rename` 因 state.json 已存在而失败；崩溃前旧 state 仍保持完整。
     fn atomic_write_state_file(&self, content: &str) -> std::io::Result<()> {
         use std::io::Write;
 
         let target = self.state_path();
-        let tmp = self.slots_dir().join("state.json.tmp");
+        let mut temporary = tempfile::Builder::new()
+            .prefix(".state-")
+            .suffix(".tmp")
+            .tempfile_in(self.slots_dir())?;
+        temporary.write_all(content.as_bytes())?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .into_temp_path()
+            .persist(&target)
+            .map_err(|error| error.error)?;
 
-        // 1. 写入临时文件
-        {
-            let mut file = fs::File::create(&tmp)?;
-            file.write_all(content.as_bytes())?;
-            // 2. fsync 确保数据刷盘
-            file.sync_all()?;
-        }
-
-        // 3. 原子性 rename：在 POSIX 系统上 rename 是原子操作
-        fs::rename(&tmp, &target)?;
-
-        // 4. fsync 父目录，确保目录条目更新持久化（防止断电后目录项丢失）
+        // fsync 父目录，确保目录条目更新持久化（防止断电后目录项丢失）
         #[cfg(unix)]
         {
             if let Ok(dir) = fs::File::open(self.slots_dir()) {
@@ -494,36 +1582,50 @@ impl DataSpaceManager {
         Ok(())
     }
 
-    pub fn initialize_on_start(&self) {
-        if self.ensure_layout().is_err() {
-            return;
-        }
-        if let Ok(mut st) = self.read_state() {
-            if let Some(pending) = st.pending.take() {
-                // 在应用 pending 切换之前，验证目标 slot 目录有效
-                if let Some(target_slot) = Slot::from_name(&pending) {
-                    let target_dir = self.slot_dir(target_slot);
-                    if target_dir.is_dir() && Self::dir_has_data(&target_dir) {
-                        info!(
-                            "[DataSpace] 启动时应用 pending 切换: {} -> {}",
-                            st.active, pending
-                        );
-                        st.active = pending;
-                    } else {
-                        error!(
-                            "[DataSpace] pending 切换目标 {} 目录无效或为空，取消切换，保持 {}",
-                            pending, st.active
-                        );
-                    }
+    pub fn initialize_on_start(&self) -> std::io::Result<()> {
+        self.ensure_layout()?;
+        let mut st = self.read_state()?;
+        if let Some(pending) = st.pending.take() {
+            // 在应用 pending 切换之前，验证目标 slot 目录有效
+            if let Some(target_slot) = Slot::from_name(&pending) {
+                let target_dir = self.slot_dir(target_slot);
+                if target_dir.is_dir() && Self::dir_has_data(&target_dir) {
+                    info!(
+                        "[DataSpace] 启动时应用 pending 切换: {} -> {}",
+                        st.active, pending
+                    );
+                    st.active = pending;
                 } else {
                     error!(
-                        "[DataSpace] pending 切换目标名称无效: {}，取消切换",
-                        pending
+                        "[DataSpace] pending 切换目标 {} 目录无效或为空，取消切换，保持 {}",
+                        pending, st.active
                     );
                 }
-                let _ = self.write_state(&st);
+            } else {
+                error!(
+                    "[DataSpace] pending 切换目标名称无效: {}，取消切换",
+                    pending
+                );
+            }
+            self.write_state(&st)?;
+        }
+        if let Some(lease) = &st.restore_cutover_pending {
+            if st.active != lease.target_slot {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "恢复维护租约目标 {} 未激活（当前 {}），拒绝在不确定数据槽上启动",
+                        lease.target_slot, st.active
+                    ),
+                ));
             }
         }
+        // pending 已原子提交后，匹配当前活动槽的 rollback 才失去恢复价值。
+        // 失败恢复只会在非活动槽留下 trash，因此这里不会误删尚未提交的回滚点。
+        if let Some(active_slot) = Slot::from_name(&st.active) {
+            self.cleanup_restore_trash(active_slot)?;
+        }
+        Ok(())
     }
 
     pub fn active_slot(&self) -> Slot {
@@ -553,6 +1655,116 @@ impl DataSpaceManager {
     }
     pub fn inactive_dir(&self) -> PathBuf {
         self.slot_dir(self.inactive_slot())
+    }
+
+    /// 删除指定生产槽此前遗留的恢复 rollback 目录。
+    ///
+    /// 每次新恢复只保留本次刚生成的一份 rollback；成功提交后调用方还会删除
+    /// 该份目录，从而避免完整数据槽副本无限累积。
+    pub fn cleanup_restore_trash(&self, target: Slot) -> std::io::Result<usize> {
+        if target.is_test_slot() {
+            return Ok(0);
+        }
+        let prefix = format!("{}.trash-", target.name());
+        let mut removed = 0usize;
+        for entry in fs::read_dir(self.slots_dir())? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with(&prefix) {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                fs::remove_dir_all(&path)?;
+            } else {
+                fs::remove_file(&path)?;
+            }
+            removed += 1;
+        }
+        Ok(removed)
+    }
+
+    /// 恢复前清空目标插槽（审阅 15-backup-dataspace P1-2）。
+    ///
+    /// 非活跃插槽通常保留着上一次切换前的完整旧数据空间；恢复只覆盖备份中
+    /// 存在的文件，备份未包含的内容（如精简备份不含 `llm_usage.db`、资产目录、
+    /// 旧的 `ws_*.db`）会原样残留，切换后用户得到"备份数据 + 旧插槽残留"的
+    /// 混合体。恢复写入前应先调用本方法清场。
+    ///
+    /// 行为：
+    /// 1. 拒绝清空当前**活跃**插槽（防误用——活跃插槽数据库被连接池持有）；
+    /// 2. 若目标插槽有残留内容，整体移动到 `slots/<slot>.trash-<时间戳>`
+    ///    作为兜底（rename 快速且失败可回退），再重建空目录；
+    /// 3. rename 失败（如跨设备/被占用）时回退为逐条删除；逐条删除仍有
+    ///    失败则返回错误，不允许在脏插槽上继续恢复；
+    /// 4. 目标插槽本就为空时直接成功（幂等）。
+    ///
+    /// 返回残留内容被移动到的 trash 目录（若有残留），供完成消息展示与
+    /// 后续清理策略处置。
+    pub fn clear_slot_for_restore(&self, target: Slot) -> std::io::Result<Option<PathBuf>> {
+        if !target.is_test_slot() && target == self.active_slot() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("拒绝清空活跃插槽 {}：恢复必须写入非活跃插槽", target.name()),
+            ));
+        }
+
+        let target_dir = self.slot_dir(target);
+        if !target_dir.is_dir() || !Self::dir_has_data(&target_dir) {
+            // 无残留，确保目录存在即可
+            fs::create_dir_all(&target_dir)?;
+            return Ok(None);
+        }
+
+        // 1. 优先整体移动到 trash 目录（保留兜底，可手动找回）
+        let trash_dir = self.slots_dir().join(format!(
+            "{}.trash-{}-{}",
+            target.name(),
+            chrono::Utc::now().format("%Y%m%d%H%M%S%6f"),
+            uuid::Uuid::new_v4()
+        ));
+        match fs::rename(&target_dir, &trash_dir) {
+            Ok(()) => {
+                info!(
+                    "[DataSpace] 恢复前已清空插槽 {}：残留数据移动到 {:?}",
+                    target.name(),
+                    trash_dir
+                );
+                fs::create_dir_all(&target_dir)?;
+                return Ok(Some(trash_dir));
+            }
+            Err(e) => {
+                warn!(
+                    "[DataSpace] 移动插槽 {} 残留数据到 trash 失败（回退为逐条删除）: {}",
+                    target.name(),
+                    e
+                );
+            }
+        }
+
+        // 2. 回退：逐条删除插槽内容（不删除插槽目录本身）
+        let mut errors: Vec<String> = Vec::new();
+        for entry in fs::read_dir(&target_dir)?.filter_map(log_and_skip_entry_err) {
+            let p = entry.path();
+            let result = if p.is_dir() {
+                fs::remove_dir_all(&p)
+            } else {
+                fs::remove_file(&p)
+            };
+            if let Err(e) = result {
+                errors.push(format!("{:?}: {}", p, e));
+            }
+        }
+        if !errors.is_empty() {
+            return Err(std::io::Error::other(format!(
+                "清空插槽 {} 失败（{} 个条目无法删除，禁止在脏插槽上恢复）: {}",
+                target.name(),
+                errors.len(),
+                errors.join("; ")
+            )));
+        }
+        info!("[DataSpace] 恢复前已清空插槽 {}（逐条删除）", target.name());
+        Ok(None)
     }
 
     /// 标记下次重启时切换到目标 slot。
@@ -586,6 +1798,104 @@ impl DataSpaceManager {
         let mut st = self.read_state().unwrap_or_default();
         st.pending = Some(target.name().to_string());
         self.write_state(&st)
+    }
+
+    /// 原子登记恢复切槽及其跨进程维护租约。
+    pub fn mark_restore_cutover_pending(
+        &self,
+        target: Slot,
+        backup_id: &str,
+    ) -> std::io::Result<()> {
+        let target_dir = self.slot_dir(target);
+        if !target_dir.is_dir() || !Self::dir_has_data(&target_dir) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("恢复目标插槽 {} 不存在或为空", target.name()),
+            ));
+        }
+        if backup_id.trim().is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "恢复维护租约缺少 backup_id",
+            ));
+        }
+
+        let mut state = self.read_state()?;
+        if let Some(existing) = &state.restore_cutover_pending {
+            if existing.target_slot != target.name() || existing.backup_id != backup_id {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "已有恢复维护租约: backup={}, target={}",
+                        existing.backup_id, existing.target_slot
+                    ),
+                ));
+            }
+        }
+        state.pending = Some(target.name().to_string());
+        state.restore_cutover_pending = Some(RestoreCutoverLease {
+            target_slot: target.name().to_string(),
+            backup_id: backup_id.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            activation_committed: false,
+        });
+        self.write_state(&state)
+    }
+
+    pub fn restore_cutover_pending(&self) -> std::io::Result<Option<RestoreCutoverLease>> {
+        Ok(self.read_state()?.restore_cutover_pending)
+    }
+
+    /// 激活后的迁移、校验和身份轮换均完成后，先把租约推进到 committed。
+    pub fn mark_restore_activation_committed(
+        &self,
+        active_dir: &Path,
+        backup_id: &str,
+    ) -> std::io::Result<()> {
+        let mut state = self.read_state()?;
+        let active_slot = Slot::from_name(&state.active).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "活动槽名称无效")
+        })?;
+        if self.slot_dir(active_slot) != active_dir {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "恢复维护租约的活动槽路径不匹配",
+            ));
+        }
+        let lease = state.restore_cutover_pending.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "恢复维护租约不存在")
+        })?;
+        if lease.target_slot != state.active || lease.backup_id != backup_id {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "恢复维护租约与已激活槽不匹配",
+            ));
+        }
+        lease.activation_committed = true;
+        self.write_state(&state)
+    }
+
+    /// 仅允许新进程在恢复槽已激活且 activation committed 后解除持久租约。
+    pub fn complete_restore_cutover(&self, active_dir: &Path) -> std::io::Result<bool> {
+        let mut state = self.read_state()?;
+        let Some(lease) = state.restore_cutover_pending.as_ref() else {
+            return Ok(false);
+        };
+        let active_slot = Slot::from_name(&state.active).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "活动槽名称无效")
+        })?;
+        if lease.target_slot != state.active
+            || self.slot_dir(active_slot) != active_dir
+            || !lease.activation_committed
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "恢复槽尚未完成激活、迁移与校验，拒绝解除维护租约",
+            ));
+        }
+        state.restore_cutover_pending = None;
+        self.write_state(&state)?;
+        Ok(true)
     }
 
     // ========================================================================
@@ -638,12 +1948,142 @@ impl DataSpaceManager {
     }
 }
 
+fn remove_path(path: &Path) -> std::io::Result<()> {
+    if path.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+fn sync_directory(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::File::open(path)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+fn copy_path_durable(source: &Path, destination: &Path) -> std::io::Result<()> {
+    let metadata = fs::symlink_metadata(source)?;
+    if metadata.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("拒绝迁移符号链接备份条目: {}", source.display()),
+        ));
+    }
+    if metadata.is_dir() {
+        fs::create_dir_all(destination)?;
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            copy_path_durable(&entry.path(), &destination.join(entry.file_name()))?;
+        }
+        sync_directory(destination)
+    } else if metadata.is_file() {
+        fs::copy(source, destination)?;
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(destination)?
+            .sync_all()
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("不支持的备份条目类型: {}", source.display()),
+        ))
+    }
+}
+
+fn paths_equal(left: &Path, right: &Path) -> std::io::Result<bool> {
+    use std::io::Read;
+
+    let left_meta = fs::symlink_metadata(left)?;
+    let right_meta = fs::symlink_metadata(right)?;
+    if left_meta.file_type().is_symlink() || right_meta.file_type().is_symlink() {
+        return Ok(false);
+    }
+    if left_meta.is_file() && right_meta.is_file() {
+        if left_meta.len() != right_meta.len() {
+            return Ok(false);
+        }
+        let mut left_file = fs::File::open(left)?;
+        let mut right_file = fs::File::open(right)?;
+        let mut left_buffer = [0u8; 64 * 1024];
+        let mut right_buffer = [0u8; 64 * 1024];
+        loop {
+            let left_read = left_file.read(&mut left_buffer)?;
+            let right_read = right_file.read(&mut right_buffer)?;
+            if left_read != right_read || left_buffer[..left_read] != right_buffer[..right_read] {
+                return Ok(false);
+            }
+            if left_read == 0 {
+                return Ok(true);
+            }
+        }
+    }
+    if !left_meta.is_dir() || !right_meta.is_dir() {
+        return Ok(false);
+    }
+
+    let mut left_names = fs::read_dir(left)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let mut right_names = fs::read_dir(right)?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    left_names.sort();
+    right_names.sort();
+    if left_names != right_names {
+        return Ok(false);
+    }
+    for name in left_names {
+        if !paths_equal(&left.join(&name), &right.join(&name))? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("持久化路径缺少父目录"))?;
+    let payload = serde_json::to_vec_pretty(value).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("序列化持久化数据失败: {}", error),
+        )
+    })?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".durable-")
+        .suffix(".tmp")
+        .tempfile_in(parent)?;
+    temporary.write_all(&payload)?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .into_temp_path()
+        .persist(path)
+        .map_err(|error| error.error)?;
+    sync_directory(parent)
+}
+
 static DATA_SPACE: OnceLock<DataSpaceManager> = OnceLock::new();
 
-pub fn init_data_space_manager(base_dir: PathBuf) {
+pub fn init_data_space_manager(base_dir: PathBuf) -> std::io::Result<()> {
     let mgr = DataSpaceManager::new(base_dir);
-    mgr.initialize_on_start();
-    let _ = DATA_SPACE.set(mgr);
+    mgr.initialize_on_start()?;
+    DATA_SPACE.set(mgr).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "DataSpaceManager 已初始化",
+        )
+    })
 }
 
 pub fn get_data_space_manager() -> Option<&'static DataSpaceManager> {
@@ -707,6 +2147,198 @@ impl SlotIntegrityReport {
 }
 
 #[tauri::command]
+pub fn get_startup_recovery_status(
+    state: tauri::State<'_, StartupRecoveryState>,
+) -> Result<StartupRecoveryStatus, AppError> {
+    state
+        .status()
+        .map_err(|error| AppError::internal(format!("读取启动恢复状态失败: {error}")))
+}
+
+#[tauri::command]
+pub fn retry_startup_recovery_preflight(
+    state: tauri::State<'_, StartupRecoveryState>,
+) -> Result<StartupRecoveryStatus, AppError> {
+    Ok(state.retry_preflight())
+}
+
+#[tauri::command]
+pub fn open_startup_recovery_incident_folder(
+    state: tauri::State<'_, StartupRecoveryState>,
+    incident_id: String,
+) -> Result<(), AppError> {
+    let directory = state
+        .incident_directory(&incident_id)
+        .map_err(|error| AppError::file_system(format!("定位恢复事件目录失败: {error}")))?;
+
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+    command
+        .arg(&directory)
+        .spawn()
+        .map_err(|error| AppError::file_system(format!("打开恢复事件目录失败: {error}")))?;
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return Err(AppError::validation(
+        "移动端不支持直接打开恢复事件目录".to_string(),
+    ));
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn export_startup_recovery_incident(
+    state: tauri::State<'_, StartupRecoveryState>,
+    incident_id: String,
+    destination: String,
+) -> Result<String, AppError> {
+    let source = state
+        .incident_directory(&incident_id)
+        .map_err(|error| AppError::file_system(format!("定位恢复事件目录失败: {error}")))?;
+    let destination = PathBuf::from(destination);
+    let export_destination = destination.clone();
+    tauri::async_runtime::spawn_blocking(move || export_incident_zip(&source, &export_destination))
+        .await
+        .map_err(|error| AppError::internal(format!("恢复事件导出任务异常: {error}")))?
+        .map_err(|error| AppError::file_system(format!("导出恢复事件失败: {error}")))?;
+    Ok(destination.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn export_startup_recovery_report(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, StartupRecoveryState>,
+    destination: String,
+) -> Result<String, AppError> {
+    let component_health = {
+        #[cfg(feature = "data_governance")]
+        {
+            app.try_state::<crate::data_governance::StartupComponentHealthState>()
+                .map(|health| health.snapshot())
+        }
+        #[cfg(not(feature = "data_governance"))]
+        {
+            Option::<serde_json::Value>::None
+        }
+    };
+    let payload = serde_json::json!({
+        "format_version": 1,
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+        "startup_recovery": state.status()
+            .map_err(|error| AppError::internal(format!("读取恢复状态失败: {error}")))?,
+        "incidents": state.incidents().unwrap_or_default(),
+        "component_health": component_health,
+    });
+    let destination = PathBuf::from(destination);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| AppError::file_system(format!("创建诊断报告目录失败: {error}")))?;
+    }
+    let bytes = serde_json::to_vec_pretty(&payload)
+        .map_err(|error| AppError::internal(format!("生成诊断报告失败: {error}")))?;
+    fs::write(&destination, bytes)
+        .map_err(|error| AppError::file_system(format!("写入诊断报告失败: {error}")))?;
+    Ok(destination.to_string_lossy().to_string())
+}
+
+fn export_incident_zip(source: &Path, destination: &Path) -> std::io::Result<()> {
+    use walkdir::WalkDir;
+    use zip::write::FileOptions;
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let partial = destination.with_extension("zip.partial");
+    let backup = destination.with_extension("zip.previous");
+    if partial.exists() {
+        fs::remove_file(&partial)?;
+    }
+    let file = fs::File::create(&partial)?;
+    let mut archive = zip::ZipWriter::new(file);
+    let options = FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+    let write_result = (|| -> std::io::Result<()> {
+        for entry in WalkDir::new(source).follow_links(false) {
+            let entry = entry.map_err(std::io::Error::other)?;
+            let relative = entry
+                .path()
+                .strip_prefix(source)
+                .map_err(std::io::Error::other)?;
+            if relative.as_os_str().is_empty() {
+                continue;
+            }
+            let name = relative.to_string_lossy().replace('\\', "/");
+            let file_type = entry.file_type();
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                archive.add_directory(format!("{name}/"), options)?;
+                continue;
+            }
+            if file_type.is_file() {
+                archive.start_file(name, options)?;
+                let mut input = fs::File::open(entry.path())?;
+                std::io::copy(&mut input, &mut archive)?;
+            }
+        }
+        let output = archive.finish()?;
+        output.sync_all()?;
+        Ok(())
+    })();
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&partial);
+        return Err(error);
+    }
+
+    if backup.exists() {
+        fs::remove_file(&backup)?;
+    }
+    if destination.exists() {
+        fs::rename(destination, &backup)?;
+    }
+    if let Err(error) = fs::rename(&partial, destination) {
+        if backup.exists() {
+            let _ = fs::rename(&backup, destination);
+        }
+        return Err(error);
+    }
+    if backup.exists() {
+        fs::remove_file(backup)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_startup_recovery_incidents(
+    state: tauri::State<'_, StartupRecoveryState>,
+) -> Result<Vec<StartupRecoveryIncident>, AppError> {
+    state
+        .incidents()
+        .map_err(|error| AppError::file_system(format!("读取启动恢复记录失败: {error}")))
+}
+
+#[tauri::command]
+pub fn resolve_startup_recovery(
+    state: tauri::State<'_, StartupRecoveryState>,
+    candidate_id: String,
+) -> Result<StartupRecoveryResolveResponse, AppError> {
+    if !matches!(candidate_id.as_str(), "legacy" | "slotA" | "slotB") {
+        return Err(AppError::validation(
+            "候选 id 必须是 legacy、slotA 或 slotB".to_string(),
+        ));
+    }
+    state
+        .resolve(&candidate_id)
+        .map_err(|error| AppError::file_system(format!("解决启动恢复事件失败: {error}")))
+}
+
+#[tauri::command]
 pub fn get_data_space_info() -> Result<DataSpaceInfo, AppError> {
     let mgr = get_data_space_manager()
         .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
@@ -760,14 +2392,17 @@ pub fn purge_all_database_files() -> Result<String, AppError> {
     Ok("已标记：下次启动将清空所有数据（备份保留），即将重启应用以完成清空。".to_string())
 }
 
-/// ★ F13：立即清空活动数据目录（移动端用——移动端经 WebView reload 生效，无独立进程重启）。
-/// 返回删除报告。保留 `backups`/`temp_restore`/`migration_core_backups`。
+/// 旧版移动端即时清理入口。
+///
+/// WebView reload 不会重建 Rust 进程中的 SQLite 连接池；直接 unlink 活动数据库后，
+/// 旧连接仍可能继续读写已删除 inode。该路径因此 fail-close，统一要求通过
+/// `purge_all_database_files` 写 marker 后完整重启进程。
 #[tauri::command]
 pub fn purge_active_data_dir_now() -> Result<String, AppError> {
-    let mgr = get_data_space_manager()
-        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
-    let report = crate::startup_cleanup::purge_active_data_dir(&mgr.active_dir())?;
-    Ok(report.details)
+    Err(AppError::validation(
+        "为保证数据库连接安全，移动端清空数据需要完整退出并重新打开应用，不能仅刷新页面"
+            .to_string(),
+    ))
 }
 
 // ============================================================================
@@ -852,7 +2487,6 @@ pub fn get_slot_directory(slot_name: String) -> Result<String, AppError> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::Write;
     use tempfile::TempDir;
 
     /// 创建一个隔离的 DataSpaceManager，使用临时目录
@@ -874,6 +2508,28 @@ mod tests {
         let dir = mgr.slot_dir(slot);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("main.db"), "sqlite-fake-content").unwrap();
+    }
+
+    fn create_recovery_db(path: &Path, marker: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let connection = rusqlite::Connection::open(path).unwrap();
+        connection
+            .execute("CREATE TABLE recovery_marker (value TEXT NOT NULL)", [])
+            .unwrap();
+        connection
+            .execute("INSERT INTO recovery_marker (value) VALUES (?1)", [marker])
+            .unwrap();
+    }
+
+    fn read_recovery_marker(path: &Path) -> String {
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .unwrap()
+            .query_row("SELECT value FROM recovery_marker LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
     }
 
     // -----------------------------------------------------------------------
@@ -907,6 +2563,7 @@ mod tests {
         let state = SlotState {
             active: "slotB".to_string(),
             pending: Some("slotA".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).expect("write_state 应成功");
 
@@ -927,6 +2584,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: None,
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -955,6 +2613,7 @@ mod tests {
         let valid_state = SlotState {
             active: "slotB".to_string(),
             pending: None,
+            ..SlotState::default()
         };
         let valid_json = serde_json::to_string_pretty(&valid_state).unwrap();
         fs::write(&tmp_path, &valid_json).unwrap();
@@ -1039,6 +2698,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: Some("slotB".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -1063,6 +2723,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: Some("slotZ_nonexistent".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -1086,6 +2747,7 @@ mod tests {
         let state = SlotState {
             active: "slotA".to_string(),
             pending: Some("slotB".to_string()),
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
 
@@ -1298,10 +2960,123 @@ mod tests {
         let state = SlotState {
             active: "slotB".to_string(),
             pending: None,
+            ..SlotState::default()
         };
         mgr.write_state(&state).unwrap();
         assert_eq!(mgr.active_slot(), Slot::B);
         assert_eq!(mgr.inactive_slot(), Slot::A);
+    }
+
+    // -----------------------------------------------------------------------
+    // 补充: clear_slot_for_restore 测试（审阅 15 P1-2）
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_clear_slot_for_restore_moves_residual_to_trash() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+
+        // 活跃为 slotA，向非活跃 slotB 放入残留数据
+        populate_slot_with_db(&mgr, Slot::B);
+        let residual_sub = mgr.slot_dir(Slot::B).join("images");
+        fs::create_dir_all(&residual_sub).unwrap();
+        fs::write(residual_sub.join("old.jpg"), "stale").unwrap();
+
+        let trash = mgr
+            .clear_slot_for_restore(Slot::B)
+            .expect("清空非活跃插槽应成功");
+
+        // 插槽应存在且为空
+        let slot_b = mgr.slot_dir(Slot::B);
+        assert!(slot_b.is_dir(), "清空后插槽目录应仍存在");
+        assert!(
+            fs::read_dir(&slot_b).unwrap().next().is_none(),
+            "清空后插槽应为空"
+        );
+
+        // 残留数据应被移动到 trash 目录
+        let trash = trash.expect("有残留时应返回 trash 目录");
+        assert!(trash.is_dir(), "trash 目录应存在");
+        assert!(
+            trash.join("main.db").exists(),
+            "残留数据库应保留在 trash 中"
+        );
+        assert!(
+            trash.join("images").join("old.jpg").exists(),
+            "残留资产应保留在 trash 中"
+        );
+    }
+
+    #[test]
+    fn test_clear_slot_for_restore_rejects_active_slot() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+
+        // 默认活跃 slotA
+        populate_slot(&mgr, Slot::A);
+        let result = mgr.clear_slot_for_restore(Slot::A);
+        assert!(result.is_err(), "清空活跃插槽应被拒绝");
+        assert!(
+            mgr.slot_dir(Slot::A).join("placeholder.txt").exists(),
+            "活跃插槽数据不应被动过"
+        );
+    }
+
+    #[test]
+    fn test_clear_slot_for_restore_empty_slot_is_noop() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+
+        let trash = mgr
+            .clear_slot_for_restore(Slot::B)
+            .expect("空插槽清空应成功");
+        assert!(trash.is_none(), "空插槽不应产生 trash 目录");
+        assert!(mgr.slot_dir(Slot::B).is_dir(), "插槽目录应仍存在");
+    }
+
+    #[test]
+    fn restore_cutover_lease_survives_restart_until_activation_commit() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+        populate_slot_with_db(&mgr, Slot::B);
+
+        mgr.mark_restore_cutover_pending(Slot::B, "backup-1")
+            .unwrap();
+        let before = mgr.restore_cutover_pending().unwrap().unwrap();
+        assert_eq!(before.target_slot, "slotB");
+        assert!(!before.activation_committed);
+
+        mgr.initialize_on_start().unwrap();
+        assert_eq!(mgr.active_slot(), Slot::B);
+        assert!(
+            mgr.complete_restore_cutover(&mgr.active_dir()).is_err(),
+            "迁移校验提交前不得解除维护租约"
+        );
+
+        mgr.mark_restore_activation_committed(&mgr.active_dir(), "backup-1")
+            .unwrap();
+        assert!(mgr.complete_restore_cutover(&mgr.active_dir()).unwrap());
+        assert!(mgr.restore_cutover_pending().unwrap().is_none());
+    }
+
+    #[test]
+    fn legacy_slot_backups_are_durably_migrated_and_idempotent() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+        let source = mgr.slot_dir(Slot::A).join("backups").join("backup-1");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("manifest.json"),
+            b"{\"backup_id\":\"backup-1\"}",
+        )
+        .unwrap();
+
+        mgr.migrate_legacy_slot_backups().unwrap();
+        let destination = mgr.recovery_backups_dir().join("backup-1");
+        assert!(destination.join("manifest.json").is_file());
+        assert!(!source.exists());
+
+        mgr.migrate_legacy_slot_backups().unwrap();
+        assert!(destination.join("manifest.json").is_file());
     }
 
     // -----------------------------------------------------------------------
@@ -1340,5 +3115,222 @@ mod tests {
         let summary = unhealthy.summary();
         assert!(summary.contains("异常"), "异常报告应包含 '异常'");
         assert!(summary.contains("不存在"), "应显示具体问题");
+    }
+
+    #[test]
+    fn startup_recovery_detects_conflict_and_quarantines_legacy_root() {
+        let tmp = TempDir::new().unwrap();
+        let manager = DataSpaceManager::new(tmp.path().to_path_buf());
+        fs::create_dir_all(manager.slot_dir(Slot::A)).unwrap();
+        fs::create_dir_all(manager.slot_dir(Slot::B)).unwrap();
+        create_recovery_db(&manager.slot_dir(Slot::B).join("chat_v2.db"), "slot-b");
+        create_recovery_db(&tmp.path().join("mistakes.db"), "legacy");
+
+        let incident = prepare_startup_recovery(tmp.path())
+            .unwrap()
+            .expect("冲突应建立恢复事件");
+        let incident_dir = startup_incident_dir(tmp.path(), &incident.incident_id);
+
+        assert!(!tmp.path().join("mistakes.db").exists());
+        assert_eq!(
+            read_recovery_marker(&incident_dir.join("legacy-root").join("mistakes.db")),
+            "legacy"
+        );
+        let legacy = incident
+            .candidates
+            .iter()
+            .find(|candidate| candidate.id == "legacy")
+            .unwrap();
+        assert!(legacy.has_data);
+        assert!(legacy.has_database);
+        assert!(legacy.selectable);
+        assert_eq!(legacy.core_database_filenames, vec!["mistakes.db"]);
+        assert_eq!(legacy.valid_core_database_filenames, vec!["mistakes.db"]);
+        assert!(incident_dir.join(STARTUP_RECOVERY_MANIFEST_FILE).is_file());
+        assert!(incident_dir.join(STARTUP_RECOVERY_JOURNAL_FILE).is_file());
+    }
+
+    #[test]
+    fn startup_recovery_can_select_existing_slot_without_merging_legacy() {
+        let tmp = TempDir::new().unwrap();
+        let manager = DataSpaceManager::new(tmp.path().to_path_buf());
+        fs::create_dir_all(manager.slot_dir(Slot::A)).unwrap();
+        fs::create_dir_all(manager.slot_dir(Slot::B)).unwrap();
+        create_recovery_db(&manager.slot_dir(Slot::B).join("chat_v2.db"), "slot-b");
+        create_recovery_db(&tmp.path().join("mistakes.db"), "legacy");
+
+        let incident = prepare_startup_recovery(tmp.path()).unwrap().unwrap();
+        let incident_id = incident.incident_id.clone();
+        let state = StartupRecoveryState::new(tmp.path().to_path_buf(), Some(incident));
+        let response = state.resolve("slotB").unwrap();
+
+        assert!(response.resolved);
+        assert!(response.restart_required);
+        assert_eq!(response.selected_candidate, "slotB");
+        let selected_state: SlotState =
+            read_json_file(&manager.state_path(), "测试插槽状态").unwrap();
+        assert_eq!(selected_state.active, "slotB");
+        assert!(selected_state.pending.is_none());
+        assert!(selected_state.restore_cutover_pending.is_none());
+        assert!(manager.legacy_migration_complete_path().is_file());
+        assert!(
+            startup_incident_dir(tmp.path(), &incident_id)
+                .join("legacy-root")
+                .join("mistakes.db")
+                .is_file(),
+            "选择插槽后隔离的旧时间线必须保留"
+        );
+        let history = state.incidents().unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(history[0].resolved);
+        assert_eq!(history[0].selected_candidate.as_deref(), Some("slotB"));
+    }
+
+    #[test]
+    fn startup_recovery_can_restore_legacy_and_archive_slot_a() {
+        let tmp = TempDir::new().unwrap();
+        let manager = DataSpaceManager::new(tmp.path().to_path_buf());
+        fs::create_dir_all(manager.slot_dir(Slot::A)).unwrap();
+        fs::create_dir_all(manager.slot_dir(Slot::B)).unwrap();
+        create_recovery_db(
+            &manager.slot_dir(Slot::A).join("llm_usage.db"),
+            "slot-a-old",
+        );
+        create_recovery_db(&manager.slot_dir(Slot::B).join("chat_v2.db"), "slot-b");
+        create_recovery_db(&tmp.path().join("mistakes.db"), "legacy-selected");
+
+        let incident = prepare_startup_recovery(tmp.path()).unwrap().unwrap();
+        let incident_id = incident.incident_id.clone();
+        let state = StartupRecoveryState::new(tmp.path().to_path_buf(), Some(incident));
+        state.resolve("legacy").unwrap();
+
+        assert_eq!(
+            read_recovery_marker(&manager.slot_dir(Slot::A).join("mistakes.db")),
+            "legacy-selected"
+        );
+        assert_eq!(
+            read_recovery_marker(
+                &startup_incident_dir(tmp.path(), &incident_id)
+                    .join(STARTUP_RECOVERY_SLOT_A_ARCHIVE)
+                    .join("llm_usage.db")
+            ),
+            "slot-a-old"
+        );
+        assert_eq!(
+            read_recovery_marker(&manager.slot_dir(Slot::B).join("chat_v2.db")),
+            "slot-b",
+            "legacy 恢复不得改动 slotB"
+        );
+        assert_eq!(manager.read_state().unwrap().active, "slotA");
+    }
+
+    #[test]
+    fn startup_recovery_reinspection_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let manager = DataSpaceManager::new(tmp.path().to_path_buf());
+        fs::create_dir_all(manager.slot_dir(Slot::A)).unwrap();
+        fs::create_dir_all(manager.slot_dir(Slot::B)).unwrap();
+        create_recovery_db(&manager.slot_dir(Slot::B).join("chat_v2.db"), "slot-b");
+        create_recovery_db(&tmp.path().join("mistakes.db"), "legacy");
+
+        let first = prepare_startup_recovery(tmp.path()).unwrap().unwrap();
+        let second = prepare_startup_recovery(tmp.path()).unwrap().unwrap();
+
+        assert_eq!(first.incident_id, second.incident_id);
+        assert_eq!(
+            read_recovery_marker(
+                &startup_incident_dir(tmp.path(), &second.incident_id)
+                    .join("legacy-root")
+                    .join("mistakes.db")
+            ),
+            "legacy"
+        );
+        assert!(!tmp.path().join("mistakes.db").exists());
+
+        let mut interrupted_resolution = second;
+        interrupted_resolution.selected_candidate = Some("slotB".to_string());
+        atomic_write_json(
+            &startup_incident_dir(tmp.path(), &interrupted_resolution.incident_id)
+                .join(STARTUP_RECOVERY_MANIFEST_FILE),
+            &interrupted_resolution,
+        )
+        .unwrap();
+        assert!(
+            prepare_startup_recovery(tmp.path()).unwrap().is_none(),
+            "已持久化的选择应在重启检查时自动完成"
+        );
+        assert_eq!(manager.read_state().unwrap().active, "slotB");
+    }
+
+    #[test]
+    fn startup_recovery_rejects_candidates_without_known_core_databases() {
+        let tmp = TempDir::new().unwrap();
+        let manager = DataSpaceManager::new(tmp.path().to_path_buf());
+        fs::create_dir_all(manager.slot_dir(Slot::A)).unwrap();
+        fs::create_dir_all(manager.slot_dir(Slot::B)).unwrap();
+        fs::write(manager.slot_dir(Slot::B).join("cache.db"), b"not-core").unwrap();
+        fs::write(tmp.path().join("unrelated.db"), b"not-core").unwrap();
+
+        let incident = prepare_startup_recovery(tmp.path()).unwrap().unwrap();
+        assert!(incident
+            .candidates
+            .iter()
+            .all(|candidate| !candidate.selectable));
+        let state = StartupRecoveryState::new(tmp.path().to_path_buf(), Some(incident));
+        let error = state.resolve("slotB").unwrap_err();
+        assert!(error.to_string().contains("核心数据库"));
+        assert!(state
+            .status()
+            .unwrap()
+            .incident
+            .unwrap()
+            .recovery_error
+            .is_some());
+    }
+
+    #[test]
+    fn startup_recovery_resolution_error_remains_visible_and_retryable() {
+        let tmp = TempDir::new().unwrap();
+        let manager = DataSpaceManager::new(tmp.path().to_path_buf());
+        fs::create_dir_all(manager.slot_dir(Slot::A)).unwrap();
+        fs::create_dir_all(manager.slot_dir(Slot::B)).unwrap();
+        let selected = manager.slot_dir(Slot::B).join("chat_v2.db");
+        fs::write(&selected, b"slot-b").unwrap();
+        create_recovery_db(&tmp.path().join("mistakes.db"), "legacy");
+
+        let incident = prepare_startup_recovery(tmp.path()).unwrap().unwrap();
+        fs::remove_file(selected).unwrap();
+        let state = StartupRecoveryState::new(tmp.path().to_path_buf(), Some(incident));
+        assert!(state.resolve("slotB").is_err());
+
+        let status = state.status().unwrap();
+        let incident = status.incident.unwrap();
+        assert!(status.recovery_required);
+        assert_eq!(
+            incident.failed_operation.as_deref(),
+            Some("resolve_selection")
+        );
+        assert!(incident.recovery_error.is_some());
+    }
+
+    #[test]
+    fn startup_recovery_can_expose_an_ephemeral_preflight_failure() {
+        let tmp = TempDir::new().unwrap();
+        let state = StartupRecoveryState::failed(
+            tmp.path().to_path_buf(),
+            "startup_preflight",
+            "synthetic failure",
+        );
+        let status = state.status().unwrap();
+        assert!(status.recovery_required);
+        let incident = status.incident.unwrap();
+        assert_eq!(
+            incident.failed_operation.as_deref(),
+            Some("startup_preflight")
+        );
+        assert_eq!(
+            incident.recovery_error.as_deref(),
+            Some("synthetic failure")
+        );
     }
 }

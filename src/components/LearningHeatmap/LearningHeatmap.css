@@ -1,41 +1,231 @@
 /**
- * 学习热力图组件样式
- * 仅保留必要的 SVG 样式覆盖和动画
+ * 学习热力图 — 自绘 macOS 风格样式
+ *
+ * 颜色全部派生自主题 CSS 变量（--primary / --foreground / --popover），
+ * 亮暗模式与调色板切换无需任何 JS 参与。
  */
 
-/* 月份和星期标签 - 覆盖 react-heat-map 默认样式 */
-.learning-heatmap-chart text,
-.learning-heatmap-chart svg text {
-  fill: hsl(var(--muted-foreground)) !important;
-  font-size: 10px !important;
-  font-weight: 500 !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+/* ---------------------------------------------------------------- 网格 */
+
+.lh-grid {
+  display: grid;
+  grid-auto-flow: column;
+  width: max-content;
+  animation: lh-fade-in 0.35s ease both;
 }
 
-/* 热力图单元格 */
-.heatmap-cell {
-  transition: all 0.2s ease;
+.lh-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  /* macOS 凹槽（well）质感：极浅底色 + 内侧发丝线 */
+  background: hsl(var(--foreground) / 0.055);
+  box-shadow: inset 0 0 0 0.5px hsl(var(--foreground) / 0.05);
+  transition:
+    transform 0.13s cubic-bezier(0.3, 0.7, 0.4, 1),
+    box-shadow 0.13s ease;
 }
 
-/* 滚动条美化 */
-.learning-heatmap-chart {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--border)) transparent;
+.lh-cell[data-level='1'] { background: hsl(var(--primary) / 0.22); }
+.lh-cell[data-level='2'] { background: hsl(var(--primary) / 0.45); }
+.lh-cell[data-level='3'] { background: hsl(var(--primary) / 0.72); }
+.lh-cell[data-level='4'] { background: hsl(var(--primary)); }
+
+.lh-cell[data-level='1'],
+.lh-cell[data-level='2'],
+.lh-cell[data-level='3'],
+.lh-cell[data-level='4'] {
+  box-shadow: inset 0 0 0 0.5px hsl(var(--foreground) / 0.08);
 }
 
-.learning-heatmap-chart::-webkit-scrollbar {
-  height: 4px;
+.lh-grid .lh-cell:hover {
+  transform: scale(1.35);
+  box-shadow:
+    0 2px 6px hsl(var(--foreground) / 0.18),
+    inset 0 0 0 0.5px hsl(var(--background) / 0.5);
+  position: relative;
+  z-index: 1;
 }
 
-.learning-heatmap-chart::-webkit-scrollbar-track {
-  background: transparent;
+/* 今日：系统焦点环样式的双层光环 */
+.lh-cell.is-today {
+  box-shadow:
+    0 0 0 1.5px hsl(var(--background)),
+    0 0 0 3px hsl(var(--primary) / 0.65);
 }
 
-.learning-heatmap-chart::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 2px;
+.lh-cell-future {
+  visibility: hidden;
 }
 
-.learning-heatmap-chart::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+/* 📱 触屏：格子放大便于点按（与 index.tsx 的 CELL_COARSE=15 保持一致） */
+@media (pointer: coarse) {
+  .lh-cell {
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+  }
+}
+
+.lh-cell-static {
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------- 标签文字 */
+
+.lh-week-labels,
+.lh-month-labels,
+.lh-legend-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground) / 0.85);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.lh-week-labels > div {
+  text-align: right;
+  min-width: 18px;
+}
+
+.lh-month-labels {
+  position: relative;
+}
+
+.lh-month-labels > span {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ Tooltip */
+
+.lh-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  min-width: 170px;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  /* macOS 毛玻璃 popover */
+  background: hsl(var(--popover) / 0.82);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  backdrop-filter: blur(20px) saturate(1.8);
+  border: 0.5px solid hsl(var(--border) / 0.8);
+  box-shadow:
+    0 10px 28px hsl(var(--foreground) / 0.14),
+    0 1px 3px hsl(var(--foreground) / 0.08);
+  pointer-events: none;
+  z-index: 9999;
+  transition: left 0.12s ease, top 0.12s ease;
+  animation: lh-pop-in 0.16s cubic-bezier(0.2, 0.9, 0.35, 1.15) both;
+}
+
+.lh-tooltip.lh-tooltip-below {
+  transform: translate(-50%, 0);
+  animation-name: lh-pop-in-below;
+}
+
+.lh-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lh-tooltip-date {
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--popover-foreground));
+  white-space: nowrap;
+}
+
+.lh-tooltip-badge {
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+  padding: 1px 6px;
+  border-radius: 99px;
+}
+
+.lh-tooltip-details {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 0.5px solid hsl(var(--border) / 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lh-tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: hsl(var(--popover-foreground) / 0.75);
+}
+
+.lh-tooltip-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: hsl(var(--popover-foreground));
+}
+
+.lh-tooltip-empty {
+  margin-top: 4px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.8);
+}
+
+/* ------------------------------------------------------------ 骨架屏 */
+
+.lh-cell-skeleton {
+  animation: lh-breathe 1.6s ease-in-out infinite;
+}
+
+/* -------------------------------------------------------------- 动画 */
+
+@keyframes lh-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes lh-pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% + 4px)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
+@keyframes lh-pop-in-below {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes lh-breathe {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lh-cell,
+  .lh-tooltip,
+  .lh-grid,
+  .lh-cell-skeleton {
+    animation: none;
+    transition: none;
+  }
 }

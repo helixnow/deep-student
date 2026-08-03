@@ -17,8 +17,9 @@
 }
 
 .streaming-blocks {
-  display: flex;
-  flex-direction: column;
+  /* A block formatting context contains the first/last margins while letting
+   * adjacent stream blocks collapse margins like one Markdown document. */
+  display: flow-root;
 }
 
 /* ─── Block base ─────────────────────────────────────────────────────────── */
@@ -26,6 +27,40 @@
 .stream-block {
   position: relative;
   opacity: 1;
+}
+
+/* Each streamed Markdown block has its own root, so the generic first/last
+ * child reset removes an inner <hr>'s margin. Keep the section gap on this
+ * stream block instead, where it cannot be reset or collapsed away. */
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="paragraph"],
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="list"],
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="html"] {
+  margin: calc(var(--chat-md-paragraph-gap) * 0.5) 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="heading"] {
+  margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="blockquote"],
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="math"] {
+  margin: calc(var(--chat-md-block-gap) * 0.5) 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="table"] {
+  margin: calc(var(--chat-md-table-gap) * 0.575) 0 calc(var(--chat-md-table-gap) * 0.8);
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="hr"] {
+  margin: calc(var(--chat-md-block-gap) * 0.675) 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block:first-child {
+  margin-top: 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block:last-child {
+  margin-bottom: 0;
 }
 
 /* flowtoken 片段已经有自己的 token 级动效，外层不做任何入场淡入 */
@@ -36,7 +71,7 @@
 
 /* 全新非活跃块轻微入场，不与活跃块动画冲突 */
 .stream-block[data-new="true"]:not([data-active="true"]) {
-  animation: stream-block-fade-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: stream-block-fade-in 160ms var(--ease-standard) both;
 }
 
 @keyframes stream-block-fade-in {
@@ -77,7 +112,9 @@
   padding: 0.75rem;
   border-radius: var(--radius-shell-toolbar);
   border: 1px solid hsl(var(--border) / 0.3);
-  border-left: 2px solid var(--brand-primary);
+
+  /* --brand-primary 是裸 HSL 分量，必须包 hsl() 才是合法颜色 */
+  border-left: 2px solid hsl(var(--brand-primary));
   background: hsl(var(--card));
 }
 

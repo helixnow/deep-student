@@ -11,15 +11,17 @@
  * - 拖拽句柄
  */
 
-import React, { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import { createPortal } from 'react-dom';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
-import { editorViewCtx, commandsCtx } from '@milkdown/kit/core';
+import { EditorView } from '@codemirror/view';
+import { editorViewCtx, commandsCtx, parserCtx } from '@milkdown/kit/core';
 import { TextSelection } from '@milkdown/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
-import { NodeSelection } from '@milkdown/kit/prose/state';
 import { toggleMark, setBlockType, wrapIn } from '@milkdown/prose/commands';
-import { MarkType, NodeType } from '@milkdown/prose/model';
+import { Slice } from '@milkdown/prose/model';
 import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/commonmark';
+import { linkTooltipAPI } from '@milkdown/kit/component/link-tooltip';
 import i18next from 'i18next';
 
 // Crepe 样式（亮色 + 暗色主题）
@@ -31,13 +33,20 @@ import 'katex/contrib/mhchem';
 
 // 本地模块
 import type { CrepeEditorProps, CrepeEditorApi } from './types';
-import { createImageBlockConfig, createImageUploader, pickImageWithTauriDialog } from './features/imageUpload';
+import { readCssTimeMs } from '@/shared/utils/cssTime';
+import { agentHighlightKey, type AgentHighlightMeta } from './plugins/agentHighlight';
+import {
+  createImageBlockConfig,
+  createImageUploader,
+  createTransientBlobUrlRegistry,
+  pickImageWithTauriDialog,
+} from './features/imageUpload';
 import { applyCrepePlugins } from './plugins';
+import { appendCalloutToggleSlashItems } from './plugins/slashMenuExtras';
 import { createMermaidObserver } from './features/mermaidPreview';
 import { emitCrepeDebug, captureDOMSnapshot } from '../../debug-panel/plugins/CrepeEditorDebugPlugin';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { debugMasterSwitch, debugLog } from '../../debug-panel/debugMasterSwitch';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { 
   emitImageUploadDebug, 
   captureDOMInfo, 
@@ -45,8 +54,112 @@ import {
   captureImageBlockSnapshot 
 } from '../../debug-panel/plugins/CrepeImageUploadDebugPlugin';
 import './CrepeEditor.css';
+// A6：破图占位 + lightbox 样式（lightbox 插件注册后交互生效；破图样式始终可用）
+import './plugins/imageLightbox/imageLightbox.css';
 import { useCrepeBlockDrag } from './hooks/useCrepeBlockDrag';
 import { useSlashMenuCustomScrollbar } from './hooks/useSlashMenuCustomScrollbar';
+import { createAgentInsertTransaction } from './useCrepeEditor';
+import { scrollSelectionIntoEditorViewport } from './scrollSelectionIntoEditorViewport';
+import { AgentScrollFollower } from './agentScrollFollow';
+import { resolveFlashSnippet } from './agentDiffFlash';
+import { showGlobalNotification } from '../UnifiedNotification';
+import { isNonEmptyHref } from './plugins/imageLightbox/nonEmptyHref';
+import {
+  deleteCrepeBlock,
+  duplicateCrepeBlock,
+  turnCrepeBlockInto,
+  type CrepeBlockTurnInto,
+} from './blockMenuCommands';
+import {
+  findCrepeBlockMenuTypeaheadIndex,
+  getNextCrepeBlockMenuIndex,
+  isCrepeBlockMenuDocCurrent,
+  shouldDismissCrepeBlockMenuForKey,
+} from './blockMenuState';
+
+type BlockMenuState = { pos: number; x: number; y: number; doc: unknown } | null;
+type BlockMenuAction = CrepeBlockTurnInto | 'duplicate' | 'delete';
+
+/** turn-into 目标（渲染顺序即键盘导航顺序） */
+const BLOCK_MENU_TURN_INTO_ACTIONS: readonly CrepeBlockTurnInto[] = [
+  'paragraph',
+  'heading-1',
+  'heading-2',
+  'heading-3',
+  'bullet-list',
+  'ordered-list',
+  'task-list',
+  'quote',
+  'code-block',
+  'callout',
+  'toggle',
+];
+
+/** 键盘 ↑↓/Enter 导航遍历的完整动作序列（turn-into + duplicate + delete） */
+const BLOCK_MENU_ACTIONS: readonly BlockMenuAction[] = [
+  ...BLOCK_MENU_TURN_INTO_ACTIONS,
+  'duplicate',
+  'delete',
+];
+
+function getBlockMenuActionLabel(action: BlockMenuAction): string {
+  switch (action) {
+    case 'paragraph': return i18next.t('notes:blockMenu.paragraph', 'Text');
+    case 'heading-1': return i18next.t('notes:blockMenu.heading1', 'Heading 1');
+    case 'heading-2': return i18next.t('notes:blockMenu.heading2', 'Heading 2');
+    case 'heading-3': return i18next.t('notes:blockMenu.heading3', 'Heading 3');
+    case 'bullet-list': return i18next.t('notes:blockMenu.bulletList', 'Bulleted list');
+    case 'ordered-list': return i18next.t('notes:blockMenu.orderedList', 'Numbered list');
+    case 'task-list': return i18next.t('notes:blockMenu.taskList', 'To-do list');
+    case 'quote': return i18next.t('notes:blockMenu.quote', 'Quote');
+    case 'code-block': return i18next.t('notes:blockMenu.codeBlock', 'Code block');
+    case 'callout': return i18next.t('notes:blockMenu.callout', 'Callout');
+    case 'toggle': return i18next.t('notes:blockMenu.toggle', 'Toggle list');
+    case 'duplicate': return i18next.t('notes:blockMenu.duplicate', 'Duplicate');
+    case 'delete': return i18next.t('notes:blockMenu.delete', 'Delete');
+  }
+}
+
+/**
+ * E1-6：调试全局仅在 dev 或 debug 总开关打开时挂载，
+ * 生产环境默认不暴露 window.__MILKDOWN_*，避免持有已销毁 view 的引用。
+ */
+const shouldExposeDebugGlobals = (): boolean =>
+  Boolean(import.meta.env?.DEV) || debugMasterSwitch.isEnabled();
+
+/** 初始化期间挂到 crepe 实例上的清理函数键（DOM 监听 / observer / interval） */
+const CREPE_STASHED_CLEANUP_KEYS = [
+  '__viewChangeCleanup',
+  '__mermaidCleanup',
+  '__debugDragCleanup',
+  '__imageUploadCleanup',
+] as const;
+
+/** 统一执行 stashed 清理；effect cleanup 与 api.destroy() 都必须走这里，避免 observer 泄漏。 */
+const runStashedCrepeCleanups = (crepe: unknown): void => {
+  if (!crepe) return;
+  for (const key of CREPE_STASHED_CLEANUP_KEYS) {
+    const cleanup = (crepe as any)[key];
+    if (typeof cleanup === 'function') {
+      try {
+        cleanup();
+      } catch { /* 销毁阶段 best-effort */ }
+    }
+    (crepe as any)[key] = undefined;
+  }
+};
+
+/** 仅当全局仍指向本实例时清空，避免误清并行实例挂载的引用。 */
+const clearMilkdownDebugGlobals = (crepe: unknown, view: unknown): void => {
+  const w = window as any;
+  if (crepe && w.__MILKDOWN_CREPE__ === crepe) {
+    w.__MILKDOWN_CREPE__ = undefined;
+  }
+  if (view && w.__MILKDOWN_VIEW__ === view) {
+    w.__MILKDOWN_VIEW__ = undefined;
+    w.__MILKDOWN_CTX__ = undefined;
+  }
+};
 
 /**
  * Crepe 编辑器组件
@@ -63,6 +176,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     placeholder,
     className = '',
     noteId,
+    plugins: pluginsOptions,
   } = props;
 
   const wrapperRef = useRef<HTMLDivElement>(null); // 外层包装
@@ -70,21 +184,27 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const crepeRef = useRef<Crepe | null>(null);
   const viewRef = useRef<any>(null); // 存储 ProseMirror view 引用
   const dropIndicatorRef = useRef<HTMLDivElement>(null); // 拖拽插入条
-  const dragStateRef = useRef<{
-    isDragging: boolean;
-    sourcePos: number;
-    sourceNode: any;
-    targetInsertPos: number;
-    insertBefore: boolean;
-  } | null>(null); // 内部块拖拽状态
+  const blockMenuElRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
+  const [blockMenu, setBlockMenu] = useState<BlockMenuState>(null);
+  const [blockMenuActive, setBlockMenuActive] = useState(-1);
+  const blockMenuActiveRef = useRef(-1); // keydown 监听内读取，避免闭包过期
   const [initPhase, setInitPhase] = useState('pending'); // 🔧 调试：追踪初始化阶段
   const onChangeRef = useRef(onChange);
+  const onReadyRef = useRef(onReady);
+  const onDestroyRef = useRef(onDestroy);
+  const onFocusRef = useRef(onFocus);
+  const onBlurRef = useRef(onBlur);
+  const placeholderRef = useRef(placeholder);
+  const pluginsOptionsRef = useRef(pluginsOptions);
   const defaultValueRef = useRef(defaultValue);
   const exposeTimeoutsRef = useRef<number[]>([]);
+  // ACR 4.0：AI 打字机演出的节流滚动跟随（每实例一个，unmount 时 dispose）
+  const agentFollowerRef = useRef<AgentScrollFollower | null>(null);
+  const agentPulseTimerRef = useRef<number | null>(null);
 
   // 🔧 使用基于 Pointer Events 的块拖拽（替代失效的原生 Drag & Drop）
-  const { handlers: blockDragHandlers, cleanup: cleanupBlockDrag, dragState: blockDragState } = useCrepeBlockDrag({
+  const { handlers: blockDragHandlers, cleanup: cleanupBlockDrag } = useCrepeBlockDrag({
     crepeRef,
     containerRef,
     wrapperRef,
@@ -96,9 +216,180 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     wrapperRef,
     enabled: true,
   });
+
+  useEffect(() => {
+    if (!isReady || readonly) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    let pending: { handle: Element; x: number; y: number; pointerId: number } | null = null;
+    const getMenuHandle = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return null;
+      const handle = target.closest('.milkdown-block-handle');
+      const operation = target.closest('.operation-item');
+      if (!handle || !operation) return null;
+      const items = Array.from(handle.querySelectorAll('.operation-item'));
+      return items.indexOf(operation) === 1 ? handle : null;
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const handle = getMenuHandle(event.target);
+      pending = handle ? { handle, x: event.clientX, y: event.clientY, pointerId: event.pointerId } : null;
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      const current = pending;
+      pending = null;
+      if (!current || current.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - current.x, event.clientY - current.y) >= 8) return;
+      const target = event.target;
+      const handle = getMenuHandle(target) ?? current.handle;
+
+      const view = viewRef.current;
+      if (!view) return;
+      const rect = handle.getBoundingClientRect();
+      // 探测点钳入编辑器内容区，句柄悬停在内容区外（窄栏/缩进块）时 posAtCoords 也能命中
+      const editorRect = (view.dom as HTMLElement).getBoundingClientRect();
+      const probeX = Math.min(
+        Math.max(rect.right + 24, editorRect.left + 4),
+        Math.max(editorRect.left + 4, editorRect.right - 4),
+      );
+      const hit = view.posAtCoords({ left: probeX, top: rect.top + rect.height / 2 });
+      if (!hit) return;
+      const $pos = view.state.doc.resolve(Math.max(0, hit.inside >= 0 ? hit.inside : hit.pos));
+      const pos = $pos.depth > 0 ? $pos.before(1) : hit.pos;
+      event.preventDefault();
+      event.stopPropagation();
+      // 先按句柄位置放置；渲染后由 useLayoutEffect 按菜单实测尺寸钳入视口
+      setBlockMenu({
+        pos,
+        x: rect.right + 6,
+        y: Math.max(8, rect.top),
+        doc: view.state.doc,
+      });
+    };
+    container.addEventListener('pointerdown', onPointerDown, true);
+    container.addEventListener('pointerup', onPointerUp, true);
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown, true);
+      container.removeEventListener('pointerup', onPointerUp, true);
+    };
+  }, [isReady, readonly]);
+
+  // 菜单开/关（对象变化）时重置键盘高亮
+  useEffect(() => {
+    blockMenuActiveRef.current = -1;
+    setBlockMenuActive(-1);
+  }, [blockMenu]);
+
+  // 按菜单实测尺寸钳入视口，替代固定高度估算（菜单项增减后无需回调整数值）
+  useLayoutEffect(() => {
+    const el = blockMenuElRef.current;
+    if (!blockMenu || !el) return;
+    const rect = el.getBoundingClientRect();
+    const left = Math.max(8, Math.min(blockMenu.x, window.innerWidth - rect.width - 8));
+    const top = Math.max(8, Math.min(blockMenu.y, window.innerHeight - rect.height - 8));
+    if (left !== blockMenu.x) el.style.left = `${left}px`;
+    if (top !== blockMenu.y) el.style.top = `${top}px`;
+  }, [blockMenu]);
+
+  const setBlockMenuActiveIndex = useCallback((index: number) => {
+    blockMenuActiveRef.current = index;
+    setBlockMenuActive(index);
+  }, []);
+
+  const runBlockAction = useCallback((action: BlockMenuAction) => {
+    const view = viewRef.current;
+    const menu = blockMenu;
+    if (!view || !menu) return;
+    if (!isCrepeBlockMenuDocCurrent(view.state.doc, menu.doc)) {
+      setBlockMenu(null);
+      return;
+    }
+    if (action === 'duplicate') duplicateCrepeBlock(view, menu.pos);
+    else if (action === 'delete') deleteCrepeBlock(view, menu.pos);
+    else turnCrepeBlockInto(view, menu.pos, action);
+    setBlockMenu(null);
+  }, [blockMenu]);
+
+  useEffect(() => {
+    if (!blockMenu) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent) {
+        // 键盘导航：↑↓ 循环、Home/End 跳首尾、Enter 执行高亮项（未高亮时按原契约关闭菜单）
+        const navIndex = getNextCrepeBlockMenuIndex({
+          key: event.key,
+          activeIndex: blockMenuActiveRef.current,
+          itemCount: BLOCK_MENU_ACTIONS.length,
+        });
+        if (navIndex !== null) {
+          event.preventDefault();
+          event.stopPropagation();
+          setBlockMenuActiveIndex(navIndex);
+          return;
+        }
+        if (event.key === 'Enter' && blockMenuActiveRef.current >= 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          runBlockAction(BLOCK_MENU_ACTIONS[blockMenuActiveRef.current]);
+          return;
+        }
+        // typeahead 先于 dismiss：单个可打印字符先尝试按 label 前缀命中
+        if (
+          event.key.length === 1
+          && !event.metaKey && !event.ctrlKey && !event.altKey
+          && !event.isComposing
+        ) {
+          const typeaheadIndex = findCrepeBlockMenuTypeaheadIndex(
+            BLOCK_MENU_ACTIONS.map(getBlockMenuActionLabel),
+            event.key,
+            blockMenuActiveRef.current,
+          );
+          if (typeaheadIndex !== null) {
+            event.preventDefault();
+            event.stopPropagation();
+            setBlockMenuActiveIndex(typeaheadIndex);
+            return;
+          }
+        }
+        const editorTarget = event.target instanceof Element
+          && Boolean(event.target.closest('.ProseMirror'));
+        if (!shouldDismissCrepeBlockMenuForKey({
+          key: event.key,
+          editorTarget,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          isComposing: event.isComposing,
+        })) return;
+      } else if (event.target instanceof Element && event.target.closest('.crepe-block-menu')) {
+        return;
+      }
+      setBlockMenu(null);
+    };
+    const closeOnBeforeInput = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('.ProseMirror')) {
+        setBlockMenu(null);
+      }
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close, true);
+    window.addEventListener('beforeinput', closeOnBeforeInput, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close, true);
+      window.removeEventListener('beforeinput', closeOnBeforeInput, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [blockMenu, runBlockAction, setBlockMenuActiveIndex]);
   
-  // 保持回调引用最新
+  // 保持回调/配置引用最新（初始化 effect 只依赖 noteId，闭包内一律经 ref 读取）
   onChangeRef.current = onChange;
+  onReadyRef.current = onReady;
+  onDestroyRef.current = onDestroy;
+  onFocusRef.current = onFocus;
+  onBlurRef.current = onBlur;
+  placeholderRef.current = placeholder;
+  pluginsOptionsRef.current = pluginsOptions;
 
   // 同步 defaultValue 到 ref（不触发编辑器重新初始化）
   useEffect(() => {
@@ -133,12 +424,14 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       
       setMarkdown: (markdown: string) => {
         const crepe = crepeRef.current;
-        if (!crepe) return;
+        if (!crepe) return false;
         try {
-          // @ts-ignore Milkdown 版本类型差异，运行时兼容
-          crepe.editor.action(replaceAll(markdown));
+          // Milkdown 版本类型差异，运行时兼容
+          (crepe.editor as any).action(replaceAll(markdown));
+          return true;
         } catch (e) {
           debugLog.error('[CrepeEditor] setMarkdown failed:', e);
+          return false;
         }
       },
 
@@ -154,6 +447,17 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           };
         } catch {
           return null;
+        }
+      },
+
+      hasFocus: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return false;
+        try {
+          const view = crepe.editor.ctx.get(editorViewCtx);
+          return Boolean(view?.hasFocus?.());
+        } catch {
+          return false;
         }
       },
 
@@ -208,7 +512,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         crepeRef.current?.setReadonly(value);
       },
       
-      scrollToHeading: (text: string, level: number, normalizedText?: string) => {
+      scrollToHeading: (
+        text: string,
+        level: number,
+        normalizedText?: string,
+        matchesHeading?: (docHeadingText: string) => boolean
+      ) => {
         const crepe = crepeRef.current;
         if (!crepe) {
           emitOutlineDebugLog({
@@ -346,11 +655,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           
           doc.descendants((node, pos) => {
             // 检查是否是标题节点
-            if (node.type.name === 'heading' && node.attrs?.level === level) {
-              const nodeText = node.textContent.toLowerCase().trim();
+            if (node.type.name === 'heading' && (level < 1 || node.attrs?.level === level)) {
+              const rawText = node.textContent;
+              const nodeText = rawText.toLowerCase().trim();
               
-              // 精确匹配优先
-              if (nodeText === searchText) {
+              // 精确匹配优先（调用方谓词可注入全半角/中文标点规范化）
+              if (matchesHeading ? matchesHeading(rawText) : nodeText === searchText) {
                 targetPos = pos;
                 return false; // 精确匹配，立即停止
               }
@@ -447,7 +757,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               }
               
               // 方式3: 在编辑器容器中按文本和级别查找标题
-              if (!headingElement && containerRef.current) {
+              if (!headingElement && containerRef.current && level >= 1 && level <= 6) {
                 const selector = `h${level}`;
                 const candidates = containerRef.current.querySelectorAll(selector);
                 for (const el of candidates) {
@@ -471,6 +781,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               
               if (headingElement) {
                 headingElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 定位闪烁：帮助用户在长文档中锁定跳转目标（reduced-motion 由 CSS 关停）
+                headingElement.classList.remove('crepe-heading-locate-flash');
+                // 强制 reflow 以便连续点击同一标题时重新播放动画
+                void (headingElement as HTMLElement).offsetWidth;
+                headingElement.classList.add('crepe-heading-locate-flash');
+                const flashTarget = headingElement;
+                window.setTimeout(() => {
+                  flashTarget.classList.remove('crepe-heading-locate-flash');
+                }, 1300);
                 emitOutlineDebugLog({
                   category: 'dom',
                   action: 'crepe:scrollToHeading:domScroll',
@@ -525,6 +844,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       destroy: async () => {
         const crepe = crepeRef.current;
         if (crepe) {
+          runStashedCrepeCleanups(crepe);
+          clearMilkdownDebugGlobals(crepe, viewRef.current);
           await crepe.destroy();
           crepeRef.current = null;
           viewRef.current = null;
@@ -553,6 +874,258 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] insertAtCursor failed:', e);
+        }
+      },
+
+      // ===== ACR agent API（R1-12）——不抢焦点、不进用户 undo =====
+      agentInsert: (text: string, pos: number) => {
+        const crepe = crepeRef.current;
+        if (!crepe || !text) return null;
+        let result: { from: number; to: number; cursor: number } | null = null;
+        try {
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+
+            const { state, dispatch } = view;
+            const { transaction: tr, from, to, cursor } = createAgentInsertTransaction(state, text, pos);
+            tr.setMeta('addToHistory', false);
+            // 记录完整结构插入范围；块边界插入时再把 caret 拉回文本块内。
+            tr.setMeta(agentHighlightKey, {
+              type: 'insert',
+              from,
+              to,
+            } satisfies AgentHighlightMeta);
+            dispatch(tr);
+            if (cursor !== to) {
+              dispatch(view.state.tr.setMeta(agentHighlightKey, {
+                type: 'caret',
+                pos: cursor,
+              } satisfies AgentHighlightMeta));
+            }
+            result = { from, to, cursor };
+            // ACR 4.0：打字机演出的节流滚动跟随（AI 光标越出视口时温和滚入）
+            const follower = agentFollowerRef.current
+              ?? (agentFollowerRef.current = new AgentScrollFollower());
+            follower.followPos(view, cursor);
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentInsert failed:', e);
+        }
+        return result;
+      },
+
+      agentInsertMarkdown: (markdown: string, pos: number) => {
+        const crepe = crepeRef.current;
+        if (!crepe || !markdown) return null;
+        try {
+          let result: { from: number; to: number; cursor: number } | null = null;
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+
+            const parsed = ctx.get(parserCtx)(markdown);
+            if (!parsed) return;
+            const insertPos = Math.max(0, Math.min(pos, view.state.doc.content.size));
+            const tr = view.state.tr.replace(
+              insertPos,
+              insertPos,
+              new Slice(parsed.content, 0, 0),
+            );
+            const from = tr.mapping.map(insertPos, -1);
+            const to = tr.mapping.map(insertPos, 1);
+            tr.setMeta('addToHistory', false);
+            tr.setMeta(agentHighlightKey, {
+              type: 'insert',
+              from,
+              to,
+            } satisfies AgentHighlightMeta);
+            view.dispatch(tr);
+            result = { from, to, cursor: to };
+            // ACR 4.0：结构化插入同样参与滚动跟随
+            const follower = agentFollowerRef.current
+              ?? (agentFollowerRef.current = new AgentScrollFollower());
+            follower.followPos(view, to);
+          });
+          return result;
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentInsertMarkdown failed:', e);
+          return null;
+        }
+      },
+
+      agentSignal: (meta: AgentHighlightMeta) => {
+        const crepe = crepeRef.current;
+        if (!crepe) return;
+        try {
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+            const tr = view.state.tr.setMeta(agentHighlightKey, meta);
+            view.dispatch(tr);
+            // ACR 4.0：caret 落点（run 起始/重定位）也做一次跟随
+            if (meta.type === 'caret') {
+              const follower = agentFollowerRef.current
+                ?? (agentFollowerRef.current = new AgentScrollFollower());
+              follower.followPos(view, meta.pos);
+            }
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentSignal failed:', e);
+        }
+      },
+
+      // ACR 4.0：破坏类直改（note_replace/note_set）后的变更区域演出
+      agentFlashChange: (previousMarkdown: string, nextMarkdown: string) => {
+        const crepe = crepeRef.current;
+        if (!crepe) return false;
+        const located = resolveFlashSnippet(previousMarkdown, nextMarkdown);
+        if (!located) return false; // 两文一致，无需演出
+
+        let performed = false;
+        try {
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+
+            // 在文档 textblock 中检索差异片段 → 高亮承载段落并滚入视口
+            let blockFrom = -1;
+            let blockTo = -1;
+            if (located.snippet) {
+              view.state.doc.descendants((node: any, pos: number) => {
+                if (blockFrom >= 0) return false;
+                if (node.isTextblock && typeof node.textContent === 'string'
+                  && node.textContent.includes(located.snippet)) {
+                  blockFrom = pos + 1;
+                  blockTo = pos + node.nodeSize - 1;
+                  return false;
+                }
+                return true;
+              });
+            }
+
+            if (blockFrom >= 0 && blockTo > blockFrom) {
+              view.dispatch(view.state.tr.setMeta(agentHighlightKey, {
+                type: 'flash',
+                from: blockFrom,
+                to: blockTo,
+              } satisfies AgentHighlightMeta));
+              const follower = agentFollowerRef.current
+                ?? (agentFollowerRef.current = new AgentScrollFollower());
+              follower.followPos(view, blockFrom, true);
+              performed = true;
+              return;
+            }
+
+            // 退化路径：整个内容区一次轻微 opacity 脉冲（reduced-motion 下 CSS 关停）
+            const wrapper = wrapperRef.current;
+            if (wrapper) {
+              wrapper.classList.remove('crepe-agent-pulse');
+              // 强制重排以便连续调用能重启动画
+              void wrapper.offsetWidth;
+              wrapper.classList.add('crepe-agent-pulse');
+              if (agentPulseTimerRef.current != null) {
+                window.clearTimeout(agentPulseTimerRef.current);
+              }
+              // 时长单源：CSS --acr-doc-pulse-ms + 缓冲（旧值 900 与 CSS 0.6s 双源漂移）
+              agentPulseTimerRef.current = window.setTimeout(() => {
+                agentPulseTimerRef.current = null;
+                wrapper.classList.remove('crepe-agent-pulse');
+              }, readCssTimeMs('--acr-doc-pulse-ms', 600) + 250);
+              performed = true;
+            }
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentFlashChange failed:', e);
+        }
+        return performed;
+      },
+
+      getDocEndPos: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return 0;
+        try {
+          const view = crepe.editor.ctx.get(editorViewCtx);
+          return view?.state?.doc?.content?.size ?? 0;
+        } catch {
+          try {
+            let size = 0;
+            crepe.editor.action((ctx) => {
+              const view = ctx.get(editorViewCtx);
+              size = view?.state?.doc?.content?.size ?? 0;
+            });
+            return size;
+          } catch {
+            return 0;
+          }
+        }
+      },
+
+      resolveHeadingPos: (heading: string) => {
+        const crepe = crepeRef.current;
+        if (!crepe || !heading.trim()) return null;
+        try {
+          let result: number | null = null;
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view?.state?.doc) return;
+
+            const doc = view.state.doc;
+            const searchText = heading.toLowerCase().trim();
+            let bestMatch: { pos: number; nodeSize: number; score: number } | null = null;
+
+            doc.descendants((node: { type: { name: string }; textContent: string; nodeSize: number }, pos: number) => {
+              if (node.type.name !== 'heading') return true;
+              const nodeText = node.textContent.toLowerCase().trim();
+              if (nodeText === searchText) {
+                bestMatch = { pos, nodeSize: node.nodeSize, score: 1 };
+                return false;
+              }
+              let score = 0;
+              if (searchText && nodeText.includes(searchText)) {
+                score = searchText.length / Math.max(nodeText.length, 1);
+              } else if (searchText && searchText.includes(nodeText) && nodeText) {
+                score = (nodeText.length / searchText.length) * 0.8;
+              }
+              if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+                bestMatch = { pos, nodeSize: node.nodeSize, score };
+              }
+              return true;
+            });
+
+            if (!bestMatch) return;
+            // 标题节点之后：pos + nodeSize 为紧随其后的插入点
+            result = Math.min(bestMatch.pos + bestMatch.nodeSize, doc.content.size);
+          });
+          return result;
+        } catch (e) {
+          debugLog.error('[CrepeEditor] resolveHeadingPos failed:', e);
+          return null;
         }
       },
       
@@ -849,22 +1422,44 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       
       insertLink: (href?: string, text?: string) => {
         const view = viewRef.current;
+        const crepe = crepeRef.current;
         if (!view) return;
         try {
           const markType = view.state.schema.marks.link;
-          if (markType) {
-            const { from, to, empty } = view.state.selection;
-            if (empty) {
-              const linkText = text || href || 'link';
-              const linkMark = markType.create({ href: href || '' });
-              const tr = view.state.tr.insertText(linkText, from);
-              tr.addMark(from, from + linkText.length, linkMark);
-              view.dispatch(tr);
-            } else {
-              toggleMark(markType, { href: href || '' })(view.state, view.dispatch);
+          if (!markType) return;
+
+          const trimmedHref = isNonEmptyHref(href) ? href!.trim() : '';
+
+          // 无有效 href：绝不插入空链接；打开 LinkTooltip 编辑流程（工具栏调用方不传 href）
+          if (!trimmedHref) {
+            if (crepe) {
+              crepe.editor.action((ctx) => {
+                const { from, to } = view.state.selection;
+                const api = ctx.get(linkTooltipAPI.key);
+                api.addLink(from, to);
+              });
+              view.focus();
+              return;
             }
+            showGlobalNotification(
+              'info',
+              i18next.t('notes:crepe.link.href_required'),
+            );
             view.focus();
+            return;
           }
+
+          const { from, empty } = view.state.selection;
+          if (empty) {
+            const linkText = text || trimmedHref;
+            const linkMark = markType.create({ href: trimmedHref });
+            const tr = view.state.tr.insertText(linkText, from);
+            tr.addMark(from, from + linkText.length, linkMark);
+            view.dispatch(tr);
+          } else {
+            toggleMark(markType, { href: trimmedHref })(view.state, view.dispatch);
+          }
+          view.focus();
         } catch (e) {
           debugLog.error('[CrepeEditor] insertLink failed:', e);
         }
@@ -910,6 +1505,26 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           debugLog.error('[CrepeEditor] insertTable failed:', e);
         }
       },
+
+      // 📱 触屏无 hover 块句柄：在当前选区顶层块处打开块操作菜单
+      // （复用块句柄的 setBlockMenu 渲染路径；渲染后 useLayoutEffect 会按实测尺寸钳入视口）
+      openBlockMenuAtSelection: () => {
+        const view = viewRef.current;
+        if (!view || view.isDestroyed) return;
+        try {
+          const { $from } = view.state.selection;
+          const pos = $from.depth > 0 ? $from.before(1) : $from.pos;
+          const coords = view.coordsAtPos(Math.min(pos + 1, view.state.doc.content.size));
+          setBlockMenu({
+            pos,
+            x: coords.left,
+            y: Math.max(8, coords.bottom + 6),
+            doc: view.state.doc,
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] openBlockMenuAtSelection failed:', e);
+        }
+      },
     };
   }, []);
 
@@ -947,9 +1562,21 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         let lastHeight = 0;
         let stableCount = 0;
         const STABLE_THRESHOLD = 3; // 连续 3 帧尺寸不变才认为稳定
-        
+        // E2-6：容器长期 0×0（如隐藏面板）时不再永久 rAF 空转，超时后强制初始化
+        const WAIT_TIMEOUT_MS = 3000;
+        const startedAt = performance.now();
+
         const checkSize = () => {
           if (destroyed) {
+            resolve();
+            return;
+          }
+          if (performance.now() - startedAt >= WAIT_TIMEOUT_MS) {
+            emitCrepeDebug('init', 'warning', '等待容器尺寸超时，强制继续初始化', {
+              noteId,
+              width: container.offsetWidth,
+              height: container.offsetHeight,
+            });
             resolve();
             return;
           }
@@ -1041,8 +1668,11 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           }
         }
 
+        // 本实例降级上传产生的 blob URL，销毁时统一 revoke
+        const blobUrlRegistry = createTransientBlobUrlRegistry();
+
         // 创建 Crepe 实例
-        let crepe = new Crepe({
+        const crepe = new Crepe({
           root: container,
           defaultValue: processedDefaultValue,
           features: {
@@ -1059,13 +1689,28 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             [CrepeFeature.Latex]: true,
           },
           featureConfigs: {
-            // 图片上传配置
-            [CrepeFeature.ImageBlock]: createImageBlockConfig(noteId),
+            // 代码块：自动换行（保留语言选择 / 复制按钮等默认配置）
+            [CrepeFeature.CodeMirror]: {
+              extensions: [EditorView.lineWrapping],
+            },
+
+            // 图片上传配置 + 破图占位
+            [CrepeFeature.ImageBlock]: {
+              ...createImageBlockConfig(noteId, blobUrlRegistry),
+              onImageLoadError: (event: Event) => {
+                const img = event.target;
+                if (!(img instanceof HTMLImageElement)) return;
+                img.classList.add('crepe-image--broken');
+                if (!img.alt) {
+                  img.alt = i18next.t('notes:crepe.image.load_failed');
+                }
+              },
+            },
             
-            // 占位符配置
+            // 占位符配置：block 模式在聚焦的空段落展示 "输入 /" 提示（对齐常见笔记编辑器）
             [CrepeFeature.Placeholder]: {
-              text: placeholder || i18next.t('notes:editor.placeholder.body'),
-              mode: 'doc',
+              text: placeholderRef.current || i18next.t('notes:editor.placeholder.body'),
+              mode: 'block',
             },
             
             // 斜杠命令配置（使用 i18n 国际化）
@@ -1095,6 +1740,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 table: { label: i18next.t('notes:slashMenu.advancedGroup.table') },
                 math: { label: i18next.t('notes:slashMenu.advancedGroup.math') },
               },
+              // A3/A4：slash 菜单追加 callout / toggle（见 docs/revamp/03|04）
+              buildMenu: (builder) => {
+                appendCalloutToggleSlashItems(builder);
+              },
             },
             
             // 工具栏配置（使用默认）
@@ -1113,8 +1762,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
 
         emitCrepeDebug('init', 'debug', 'Crepe 实例已创建');
 
-        // 应用扩展插件（automd、查找高亮等，必须在 create() 之前）
-        applyCrepePlugins(crepe);
+        // 应用扩展插件（automd、查找高亮、wikilink/callout/toggle 等，必须在 create() 之前）
+        applyCrepePlugins(crepe, pluginsOptionsRef.current);
 
         // 设置只读状态
         if (readonly) {
@@ -1142,8 +1791,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         setIsReady(true);
         setInitPhase('ready');
         
-        // 暴露 crepe 实例到全局以便调试
-        (window as any).__MILKDOWN_CREPE__ = crepe;
+        // 暴露 crepe 实例到全局以便调试（仅 dev / debug 开关；E1-6）
+        if (shouldExposeDebugGlobals()) {
+          (window as any).__MILKDOWN_CREPE__ = crepe;
+        }
         
         // 🔧 安全的 editor.action 包装函数：捕获编辑器销毁时的 "Context 'nodes' not found" 错误
         const safeEditorAction = (callback: (ctx: any) => void) => {
@@ -1164,6 +1815,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         // 同时安装轻量内容监听器：避免 plugin-listener 在 IME 合成态触发大量 debounce 定时器/markdown 序列化导致卡顿。
         let viewHooked = false;
         let lastMarkdown = '';
+        // E1-3 性能：记录上次整篇序列化时的 doc 引用；doc 未变（引用相等）时跳过 getMarkdown，
+        // 避免大文档下选区/装饰类事务触发不必要的 O(n) 序列化。
+        let lastSerializedDoc: unknown = null;
         let changeTimer: number | null = null;
         let isComposing = false;
         let zwsInsertedInComposition = false;
@@ -1173,12 +1827,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           if (changeTimer != null) window.clearTimeout(changeTimer);
           changeTimer = window.setTimeout(() => {
             if (destroyed || !crepeRef.current || isComposing) return;
+            const currentDoc = viewRef.current?.state?.doc ?? null;
+            if (currentDoc && currentDoc === lastSerializedDoc) return;
             let markdown = '';
             try {
               markdown = (crepeRef.current.getMarkdown() || '').split(ZWS).join('');
             } catch {
               return;
             }
+            if (currentDoc) lastSerializedDoc = currentDoc;
             if (markdown === lastMarkdown) return;
             const prev = lastMarkdown;
             lastMarkdown = markdown;
@@ -1208,8 +1865,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 // 使用字符串 key 获取 view（这是 Milkdown ctx 的正确用法）
                 const view = ctx.get('editorView') as any;
                 if (view && view.state && view.dispatch) {
-                  (window as any).__MILKDOWN_VIEW__ = view;
-                  (window as any).__MILKDOWN_CTX__ = ctx;
+                  if (shouldExposeDebugGlobals()) {
+                    (window as any).__MILKDOWN_VIEW__ = view;
+                    (window as any).__MILKDOWN_CTX__ = ctx;
+                  }
                   viewRef.current = view; // 缓存到 ref 供 scrollToHeading 使用
                   if (!viewHooked) {
                     viewHooked = true;
@@ -1219,6 +1878,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                       lastMarkdown = '';
                     }
                     lastMarkdown = lastMarkdown.split(ZWS).join('');
+                    lastSerializedDoc = view.state?.doc ?? null;
 
                     // 🔧 修复：使用 updateState 来监听文档变化
                     // dispatchTransaction 是 EditorView 的构造配置，不是实例方法
@@ -1230,12 +1890,13 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                         const oldState = view.state;
                         originalUpdateState(newState);
                         if (destroyed) return;
-                        
-                        // 检查文档是否变化
+
+                        // E1-3 快速短路：选区/装饰类事务保持同一 doc 对象，直接跳过（O(1)）
+                        if (oldState?.doc === newState?.doc) return;
+                        // IME 合成期间不调度序列化（compositionend 后的 docChanged 事务会补上）
+                        if (view.composing) return;
+
                         const docChanged = !oldState?.doc?.eq?.(newState?.doc);
-                        const isCompositionTr = Boolean(view.composing);
-                        
-                        if (isCompositionTr) return;
                         if (docChanged) scheduleEmitChange();
                       };
                     } else {
@@ -1319,18 +1980,25 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                     };
                     const handleFocus = () => {
                       if (destroyed) return;
-                      onFocus?.();
+                      onFocusRef.current?.();
                       if (debugMasterSwitch.isEnabled()) {
                         emitCrepeDebug('editor', 'info', '编辑器获得焦点', undefined, captureDOMSnapshot(container));
                       }
                     };
                     const handleBlur = () => {
                       if (destroyed) return;
-                      onBlur?.();
+                      onBlurRef.current?.();
                       if (debugMasterSwitch.isEnabled()) {
                         emitCrepeDebug('editor', 'debug', '编辑器失去焦点');
                       }
                     };
+
+                    const originalHandleScrollToSelection = view.props?.handleScrollToSelection;
+                    const handleScrollToSelection = (editorView: any) => {
+                      if (originalHandleScrollToSelection?.(editorView)) return true;
+                      return scrollSelectionIntoEditorViewport(editorView);
+                    };
+                    view.setProps?.({ handleScrollToSelection });
 
                     const dom = view.dom as HTMLElement | null;
                     dom?.addEventListener('compositionstart', handleCompositionStart, true);
@@ -1353,6 +2021,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                         }
                       } catch { /* inputCleanup 可能已被回收 */ }
                       try {
+                        if (view.props?.handleScrollToSelection === handleScrollToSelection) {
+                          view.setProps?.({ handleScrollToSelection: originalHandleScrollToSelection });
+                        }
                         dom?.removeEventListener('compositionstart', handleCompositionStart, true);
                         dom?.removeEventListener('compositionend', handleCompositionEnd, true);
                         dom?.removeEventListener('focus', handleFocus, true);
@@ -1370,8 +2041,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 try {
                   const view = ctx.get(editorViewCtx);
                   if (view) {
-                    (window as any).__MILKDOWN_VIEW__ = view;
-                    (window as any).__MILKDOWN_CTX__ = ctx;
+                    if (shouldExposeDebugGlobals()) {
+                      (window as any).__MILKDOWN_VIEW__ = view;
+                      (window as any).__MILKDOWN_CTX__ = ctx;
+                    }
                     viewRef.current = view; // 缓存到 ref 供 scrollToHeading 使用
                   }
                 } catch (e2) {
@@ -1417,7 +2090,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           if ((crepe as any).__mermaidCleanup) return;
           const mermaidNode = container.querySelector('pre code.language-mermaid, code.language-mermaid, .language-mermaid, .mermaid');
           if (!mermaidNode) return;
-          const cleanupMermaid = createMermaidObserver(container, 800);
+          const cleanupMermaid = createMermaidObserver(container, 300);
           (crepe as any).__mermaidCleanup = cleanupMermaid;
         };
 
@@ -1466,518 +2139,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           };
         }
         
-        // 🔧 关键修复：确保 block handle 的拖拽按钮设置了 draggable 属性
-        // Milkdown 的 BlockService 可能没有正确设置 draggable，需要手动补充
-        const ensureBlockHandlesDraggable = () => {
-          const blockHandles = container.querySelectorAll('.milkdown-block-handle');
-          blockHandles.forEach((handle) => {
-            // 找到拖拽按钮（第二个 operation-item，索引为 1）
-            const operationItems = handle.querySelectorAll('.operation-item');
-            if (operationItems.length >= 2) {
-              const dragButton = operationItems[1] as HTMLElement;
-              if (!dragButton.hasAttribute('draggable')) {
-                dragButton.setAttribute('draggable', 'true');
-              }
-            }
-            // 整个 handle 也设置为可拖拽
-            if (!handle.hasAttribute('draggable')) {
-              (handle as HTMLElement).setAttribute('draggable', 'true');
-            }
-          });
-        };
-        
-        // 初始执行一次
-        ensureBlockHandlesDraggable();
-        
-        // 使用 MutationObserver 监听新创建的 block handle
-        const blockHandleObserver = new MutationObserver((mutations) => {
-          let needsUpdate = false;
-          mutations.forEach((mutation) => {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-              mutation.addedNodes.forEach((node) => {
-                if (node instanceof HTMLElement) {
-                  if (node.classList?.contains('milkdown-block-handle') || 
-                      node.querySelector?.('.milkdown-block-handle')) {
-                    needsUpdate = true;
-                  }
-                }
-              });
-            }
-          });
-          if (needsUpdate) {
-            ensureBlockHandlesDraggable();
-          }
-        });
-        
-        blockHandleObserver.observe(container, {
-          childList: true,
-          subtree: true,
-        });
-        
-        (crepe as any).__blockHandleObserver = blockHandleObserver;
-        
-        // 修复 BlockService 的 mousedown 事件处理
-        // 问题：BlockService.#handleMouseDown 没有被正确触发
-        // 解决方案：使用事件委托在 container 级别监听事件
-        const handleMouseDown = (e: MouseEvent) => {
-          const target = e.target as Element;
-          // 检查是否在 block handle 上
-          const blockHandle = target.closest('.milkdown-block-handle');
-          if (!blockHandle) return;
-          
-          // 检查是否在加号按钮上（第一个 operation-item）- 如果是则跳过
-          const operationItem = target.closest('.operation-item');
-          if (operationItem) {
-            const allItems = blockHandle.querySelectorAll('.operation-item');
-            const itemIndex = Array.from(allItems).indexOf(operationItem);
-            // 跳过加号按钮（第一个 operation-item，索引为 0）
-            if (itemIndex === 0) return;
-          }
-          
-          // 手动触发 BlockService 的选区创建逻辑
-          safeEditorAction((ctx) => {
-            try {
-              const view = ctx.get('editorView') as any;
-              if (!view) return;
-              
-              const rect = blockHandle.getBoundingClientRect();
-              const x = rect.left + rect.width / 2;
-              const y = rect.top + rect.height / 2;
-              
-              // 找到对应位置的节点
-              const pos = view.posAtCoords({ left: x + 100, top: y });
-              if (!pos || pos.inside < 0) return;
-              
-              // 找到根节点
-              let $pos = view.state.doc.resolve(pos.inside);
-              while ($pos.depth > 1) {
-                $pos = view.state.doc.resolve($pos.before($pos.depth));
-              }
-              
-              const node = view.state.doc.nodeAt($pos.pos);
-              if (!node) return;
-              
-              // 创建 NodeSelection
-              if (NodeSelection.isSelectable(node)) {
-                const nodeSelection = NodeSelection.create(view.state.doc, $pos.pos);
-                view.dispatch(view.state.tr.setSelection(nodeSelection));
-                view.focus();
-                
-                // 保存选区以便 dragstart 时使用
-                (crepe as any).__pendingDragSelection = nodeSelection;
-              }
-            } catch (e) {
-              debugLog.warn('[CrepeEditor] Block handle mousedown fix failed:', e);
-            }
-          });
-        };
-        
-        const handleDragStart = (e: DragEvent) => {
-          const target = e.target as Element;
-          debugLog.log('[CrepeEditor] DragStart triggered on:', {
-            tagName: target.tagName,
-            className: target.className,
-            draggable: (target as HTMLElement).draggable,
-          });
-          
-          const blockHandle = target.closest('.milkdown-block-handle');
-          if (!blockHandle) {
-            debugLog.log('[CrepeEditor] DragStart: Not from block handle, skipping');
-            return;
-          }
-          
-          debugLog.log('[CrepeEditor] DragStart: Processing block handle drag');
-          
-          // 在 dragstart 中完成所有操作：创建 NodeSelection + 设置 dataTransfer
-          safeEditorAction((ctx) => {
-            try {
-              const view = ctx.get('editorView') as any;
-              if (!view) {
-                debugLog.warn('[CrepeEditor] DragStart: No view available');
-                return;
-              }
-              
-              // 1. 首先创建 NodeSelection（如果还没有）
-              let selection = view.state.selection;
-              let sourcePos = -1;
-              let sourceNode = null;
-              
-              if (!selection.constructor.name.includes('NodeSelection')) {
-                // 找到 block handle 对应的节点
-                const rect = blockHandle.getBoundingClientRect();
-                const x = rect.left + rect.width / 2;
-                const y = rect.top + rect.height / 2;
-                
-                const pos = view.posAtCoords({ left: x + 100, top: y });
-                if (pos && pos.inside >= 0) {
-                  let $pos = view.state.doc.resolve(pos.inside);
-                  while ($pos.depth > 1) {
-                    $pos = view.state.doc.resolve($pos.before($pos.depth));
-                  }
-                  
-                  const node = view.state.doc.nodeAt($pos.pos);
-                  if (node && NodeSelection.isSelectable(node)) {
-                    selection = NodeSelection.create(view.state.doc, $pos.pos);
-                    view.dispatch(view.state.tr.setSelection(selection));
-                    sourcePos = $pos.pos;
-                    sourceNode = node;
-                  }
-                }
-              } else {
-                // 已经是 NodeSelection
-                sourcePos = selection.from;
-                sourceNode = view.state.doc.nodeAt(sourcePos);
-              }
-              
-              // 2. 检查是否有有效的 NodeSelection
-              if (!selection.constructor.name.includes('NodeSelection')) return;
-              
-              const slice = selection.content();
-              if (!slice) return;
-              
-              // 3. 保存拖拽状态到 ref（用于 drop 时恢复）
-              dragStateRef.current = {
-                isDragging: true,
-                sourcePos,
-                sourceNode,
-                targetInsertPos: -1,
-                insertBefore: true,
-              };
-              
-              // 4. 设置 dataTransfer
-              if (e.dataTransfer) {
-                e.dataTransfer.effectAllowed = 'move';
-                const { dom, text } = view.serializeForClipboard(slice);
-                e.dataTransfer.clearData();
-                e.dataTransfer.setData('text/html', dom.innerHTML);
-                e.dataTransfer.setData('text/plain', text);
-                // 添加自定义类型标识这是内部块拖拽
-                e.dataTransfer.setData('application/x-milkdown-block', JSON.stringify({
-                  sourcePos,
-                  nodeSize: sourceNode?.nodeSize || 0,
-                }));
-                
-                // 设置拖拽图像
-                const selectedNode = container.querySelector('.ProseMirror-selectednode');
-                if (selectedNode) {
-                  e.dataTransfer.setDragImage(selectedNode, 0, 0);
-                }
-                
-                // 设置 view.dragging
-                view.dragging = {
-                  slice,
-                  move: true,
-                };
-                
-                // 设置 data-dragging 属性
-                view.dom.dataset.dragging = 'true';
-              }
-              
-              debugLog.log('[CrepeEditor] Block drag started:', { sourcePos, nodeType: sourceNode?.type?.name });
-            } catch (e2) {
-              debugLog.warn('[CrepeEditor] Block handle dragstart fix failed:', e2);
-              dragStateRef.current = null;
-            }
-          });
-        };
-        
-        // 使用事件委托
-        container.addEventListener('mousedown', handleMouseDown, { capture: true });
-        container.addEventListener('dragstart', handleDragStart, { capture: true });
-        
-        // 处理 dragover 事件，显示手动的 drop indicator
-        // 在 Tauri 环境中，需要正确区分内部拖拽和外部文件拖拽
-        const handleDragOver = (e: DragEvent) => {
-          // 检测是否是内部块拖拽
-          const types = Array.from(e.dataTransfer?.types || []);
-          const isFileDrag = types.includes('Files') || types.includes('application/x-moz-file');
-          const isInternalBlockDrag = types.includes('application/x-milkdown-block') || 
-                                      (dragStateRef.current?.isDragging && !isFileDrag);
-          
-          // 如果是内部块拖拽，显示 drop indicator 并计算插入位置
-          if (isInternalBlockDrag) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.dataTransfer) {
-              e.dataTransfer.dropEffect = 'move';
-            }
-            
-            // 更新 drop indicator 位置
-            const indicator = dropIndicatorRef.current;
-            const wrapper = wrapperRef.current;
-            if (indicator && wrapper) {
-              const wrapperRect = wrapper.getBoundingClientRect();
-              const y = e.clientY;
-              
-              // 使用 ProseMirror 的 posAtCoords 获取精确位置
-              safeEditorAction((ctx) => {
-                try {
-                  const view = ctx.get('editorView') as any;
-                  if (!view) return;
-                  
-                  // 找到鼠标位置最近的块元素
-                  const proseMirror = wrapper.querySelector('.ProseMirror');
-                  if (!proseMirror) return;
-                  
-                  const blocks = proseMirror.querySelectorAll(':scope > *');
-                  let closestBlock: Element | null = null;
-                  let closestDistance = Infinity;
-                  let insertBefore = true;
-                  let closestBlockIndex = -1;
-                  
-                  blocks.forEach((block, index) => {
-                    const rect = block.getBoundingClientRect();
-                    const blockMiddle = rect.top + rect.height / 2;
-                    const distance = Math.abs(y - blockMiddle);
-                    
-                    if (distance < closestDistance) {
-                      closestDistance = distance;
-                      closestBlock = block;
-                      insertBefore = y < blockMiddle;
-                      closestBlockIndex = index;
-                    }
-                  });
-                  
-                  if (closestBlock) {
-                    const blockRect = closestBlock.getBoundingClientRect();
-                    const indicatorY = insertBefore 
-                      ? blockRect.top - wrapperRect.top 
-                      : blockRect.bottom - wrapperRect.top;
-                    
-                    indicator.style.top = `${indicatorY}px`;
-                    indicator.style.display = 'block';
-                    
-                    // 计算 ProseMirror 文档中的插入位置
-                    // 获取目标块在文档中的位置
-                    let targetPos = 0;
-                    let currentBlockIndex = 0;
-                    view.state.doc.forEach((node: any, offset: number) => {
-                      if (currentBlockIndex === closestBlockIndex) {
-                        targetPos = insertBefore ? offset : offset + node.nodeSize;
-                      }
-                      currentBlockIndex++;
-                    });
-                    
-                    // 更新拖拽状态中的目标位置
-                    if (dragStateRef.current) {
-                      dragStateRef.current.targetInsertPos = targetPos;
-                      dragStateRef.current.insertBefore = insertBefore;
-                    }
-                  } else {
-                    indicator.style.display = 'none';
-                  }
-                } catch (err) {
-                  debugLog.warn('[CrepeEditor] dragover position calc failed:', err);
-                }
-              });
-            }
-          } else {
-            // 隐藏 indicator（外部文件拖入或非内部拖拽）
-            const indicator = dropIndicatorRef.current;
-            if (indicator) {
-              indicator.style.display = 'none';
-            }
-          }
-        };
-        
-        // 处理 dragleave 事件，隐藏 indicator
-        const handleDragLeave = (e: DragEvent) => {
-          // 只有当离开 wrapper 时才隐藏
-          const relatedTarget = e.relatedTarget as Node | null;
-          const wrapper = wrapperRef.current;
-          if (wrapper && !wrapper.contains(relatedTarget)) {
-            const indicator = dropIndicatorRef.current;
-            if (indicator) {
-              indicator.style.display = 'none';
-            }
-          }
-        };
-        
-        // 处理 dragend 事件，清理拖拽状态
-        const handleDragEnd = () => {
-          // 隐藏 drop indicator
-          const indicator = dropIndicatorRef.current;
-          if (indicator) {
-            indicator.style.display = 'none';
-          }
-          
-          // 清理拖拽状态
-          dragStateRef.current = null;
-          
-          safeEditorAction((ctx) => {
-            try {
-              const view = ctx.get('editorView') as any;
-              if (view?.dom) {
-                delete view.dom.dataset.dragging;
-              }
-              if (view) {
-                view.dragging = null;
-              }
-            } catch { /* 非关键：dragend 清理失败不影响编辑器功能 */ }
-          });
-        };
-        
-        // 🔧 核心修复：处理 drop 事件
-        // 策略：让 ProseMirror 处理 drop，我们只负责清理和提供备用方案
-        const handleDrop = (e: DragEvent) => {
-          // 隐藏 drop indicator
-          const indicator = dropIndicatorRef.current;
-          if (indicator) {
-            indicator.style.display = 'none';
-          }
-          
-          // 检测是否是内部块拖拽
-          const types = Array.from(e.dataTransfer?.types || []);
-          const isFileDrag = types.includes('Files') || types.includes('application/x-moz-file');
-          const dragState = dragStateRef.current;
-          
-          debugLog.log('[CrepeEditor] Drop event:', { 
-            types, 
-            isFileDrag, 
-            hasDragState: !!dragState,
-            isDragging: dragState?.isDragging,
-            sourcePos: dragState?.sourcePos,
-            targetPos: dragState?.targetInsertPos,
-          });
-          
-          // 如果不是内部块拖拽，让其他处理器处理
-          if (!dragState?.isDragging || isFileDrag) {
-            dragStateRef.current = null;
-            return; // 不阻止，让 ProseMirror 或其他处理器处理
-          }
-          
-          // 检查 ProseMirror 是否会处理这个 drop
-          // 通过检查 view.dragging 是否存在
-          let proseMirrorWillHandle = false;
-          safeEditorAction((ctx) => {
-            try {
-              const view = ctx.get('editorView') as any;
-              if (view?.dragging?.slice) {
-                proseMirrorWillHandle = true;
-                debugLog.log('[CrepeEditor] ProseMirror will handle drop');
-              }
-            } catch { /* 非关键：dragging 状态检查失败时 fallback 到自定义处理 */ }
-          });
-          
-          // 如果 ProseMirror 会处理，让它处理，我们只清理状态
-          if (proseMirrorWillHandle) {
-            // 使用 setTimeout 延迟清理，让 ProseMirror 有时间处理
-            setTimeout(() => {
-              dragStateRef.current = null;
-            }, 100);
-            return; // 不阻止事件
-          }
-          
-          // ProseMirror 不会处理，我们手动处理
-          const { sourcePos, targetInsertPos } = dragState;
-          
-          // 验证位置有效性
-          if (sourcePos < 0 || targetInsertPos < 0) {
-            debugLog.warn('[CrepeEditor] Invalid drag positions:', { sourcePos, targetInsertPos });
-            dragStateRef.current = null;
-            return;
-          }
-          
-          // 如果源位置和目标位置相同，不执行操作
-          if (sourcePos === targetInsertPos) {
-            debugLog.log('[CrepeEditor] Same position, skip move');
-            dragStateRef.current = null;
-            return;
-          }
-          
-          // 阻止默认行为，由我们手动处理
-          e.preventDefault();
-          e.stopPropagation();
-          
-          debugLog.log('[CrepeEditor] Executing manual block move:', { sourcePos, targetInsertPos });
-          
-          // 执行块移动操作
-          safeEditorAction((ctx) => {
-            try {
-              const view = ctx.get('editorView') as any;
-              if (!view) {
-                debugLog.warn('[CrepeEditor] No view available for drop');
-                return;
-              }
-              
-              const { state } = view;
-              const sourceNode = state.doc.nodeAt(sourcePos);
-              
-              if (!sourceNode) {
-                debugLog.warn('[CrepeEditor] Source node not found at pos:', sourcePos);
-                return;
-              }
-              
-              const sourceNodeSize = sourceNode.nodeSize;
-              let tr = state.tr;
-              
-              if (targetInsertPos > sourcePos) {
-                // 向下移动：先插入后删除
-                const nodeToInsert = sourceNode.copy(sourceNode.content);
-                tr = tr.insert(targetInsertPos, nodeToInsert);
-                tr = tr.delete(sourcePos, sourcePos + sourceNodeSize);
-              } else {
-                // 向上移动：先删除后插入
-                const nodeToInsert = sourceNode.copy(sourceNode.content);
-                tr = tr.delete(sourcePos, sourcePos + sourceNodeSize);
-                tr = tr.insert(targetInsertPos, nodeToInsert);
-              }
-              
-              view.dispatch(tr.scrollIntoView());
-              view.focus();
-              
-              debugLog.log('[CrepeEditor] Block move completed successfully');
-            } catch (err) {
-              debugLog.error('[CrepeEditor] Block move failed:', err);
-            } finally {
-              dragStateRef.current = null;
-              try {
-                const view = ctx.get('editorView') as any;
-                if (view) {
-                  view.dragging = null;
-                  if (view.dom) {
-                    delete view.dom.dataset.dragging;
-                  }
-                }
-              } catch { /* 非关键：拖拽完成后状态清理失败不影响编辑器 */ }
-            }
-          });
-        };
-        
-        // 在 wrapper 上绑定拖拽事件（drop indicator 在 wrapper 中）
-        const wrapper = wrapperRef.current;
-        if (wrapper) {
-          wrapper.addEventListener('dragover', handleDragOver);
-          wrapper.addEventListener('dragleave', handleDragLeave);
-          wrapper.addEventListener('dragend', handleDragEnd);
-          // 使用 capture 确保我们的处理器优先于 ProseMirror 内置的处理器
-          wrapper.addEventListener('drop', handleDrop, { capture: true });
-        }
-        
-        (crepe as any).__blockHandleCleanup = () => {
-          container.removeEventListener('mousedown', handleMouseDown, { capture: true });
-          container.removeEventListener('dragstart', handleDragStart, { capture: true });
-          if (wrapper) {
-            wrapper.removeEventListener('dragover', handleDragOver);
-            wrapper.removeEventListener('dragleave', handleDragLeave);
-            wrapper.removeEventListener('dragend', handleDragEnd);
-            wrapper.removeEventListener('drop', handleDrop, { capture: true });
-          }
-          // 断开 MutationObserver
-          if ((crepe as any).__blockHandleObserver) {
-            (crepe as any).__blockHandleObserver.disconnect();
-            (crepe as any).__blockHandleObserver = null;
-          }
-          // 确保清理拖拽状态
-          dragStateRef.current = null;
-        };
-
         // Tauri 图片上传修复：拦截图片上传区域的点击，使用 Tauri dialog 替代浏览器原生 file input
         // Milkdown ImageInput 使用 <label class="uploader" for={uuid}> 关联隐藏的 <input type="file">
         // 我们需要拦截 label 的点击，阻止它触发 file input，改用 Tauri dialog
         const isTauriEnv = typeof window !== 'undefined' &&
           Boolean((window as any).__TAURI_INTERNALS__);
-        const uploader = createImageUploader(noteId);
+        const uploader = createImageUploader(noteId, blobUrlRegistry);
 
         const imageDebugEnabled = debugMasterSwitch.isEnabled();
         if (imageDebugEnabled) {
@@ -2216,7 +2383,11 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           
           // 使用 Tauri dialog 选择图片
           const file = await pickImageWithTauriDialog();
-          
+
+          // 异步等待期间本实例可能已销毁（切换笔记会重建编辑器），
+          // 销毁后 crepeRef.current 已指向新实例，绝不能再写入
+          if (destroyed) return;
+
           if (!file) {
             emitImageUploadDebug('dialog_result', 'warning', '用户取消选择或未选择文件', {
               result: null,
@@ -2238,7 +2409,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             
             // 调用上传函数获取 URL
             const url = await uploader(file);
-            
+
+            if (destroyed) return;
+
             emitImageUploadDebug('upload_complete', 'success', '文件上传完成', {
               url,
               fileName: file.name,
@@ -2252,8 +2425,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               imageBlockClass: (imageBlock as HTMLElement)?.className,
             });
             
-            // 查找当前图片节点并更新其 src
-            // 使用 crepeRef.current 获取最新的实例（异步操作期间编辑器可能重新初始化）
+            // 已通过 destroyed 检查，crepeRef.current 仍指向本实例
             const currentCrepe = crepeRef.current;
             if (!currentCrepe) {
               emitImageUploadDebug('error', 'error', '编辑器已销毁，无法更新节点', {});
@@ -2352,10 +2524,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           }
         };
         
-        // 🔧 调试：暂时禁用图片上传点击拦截器，排查编辑器点击问题
-        // 使用 capture: true 在捕获阶段拦截，确保在 label 触发 file input 之前处理
-        // container.addEventListener('click', handleImageUploadClick, { capture: true });
-        debugLog.log('[CrepeEditor] 🔧 DEBUG: Image upload click handler DISABLED for debugging');
+        // Tauri 下点击空 ImageBlock 走 Tauri dialog 选图。
+        // 使用 capture: true 在捕获阶段拦截，确保在 label 触发 file input 之前处理。
+        container.addEventListener('click', handleImageUploadClick, { capture: true });
         
         // 在 Tauri 环境中阻止 DOM 原生 drop 事件到达 Milkdown 的图片区域
         // 这样 Milkdown 的 onUpload 不会被触发（我们用 Tauri API 处理）
@@ -2462,7 +2633,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 const { extractFileName } = await import('@/utils/fileManager');
                 const fileName = extractFileName(filePath) || 'image.png';
                 const file = new File([blob], fileName, { type: blob.type || 'image/png' });
-                
+
+                if (destroyed || dragDropSetupAborted) return;
+
                 emitImageUploadDebug('file_convert', 'success', '文件读取成功', {
                   fileName: file.name,
                   fileSize: file.size,
@@ -2471,13 +2644,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 
                 // 上传文件
                 const url = await uploader(file);
-                
+
+                // 上传期间本实例可能已销毁；此后 crepeRef.current 指向新实例，禁止写入
+                if (destroyed || dragDropSetupAborted) return;
+
                 emitImageUploadDebug('upload_complete', 'success', '拖放图片上传完成', {
                   url,
                   fileName: file.name,
                 });
                 
-                // 更新图片节点（使用 crepeRef.current 获取最新实例）
                 const currentCrepe = crepeRef.current;
                 if (!currentCrepe) {
                   emitImageUploadDebug('error', 'error', '编辑器已销毁，无法更新拖放节点', {});
@@ -2780,13 +2955,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             clearInterval(imageTrackInterval);
             imageTrackInterval = null;
           }
+          // 降级上传的 blob URL 不会被 GC 回收，实例销毁时统一释放
+          blobUrlRegistry.releaseAll();
         };
 
         // 通知就绪
         const api = buildApi();
         // 🔧 包裹 onReady 回调，防止回调内部的错误导致初始化失败
         try {
-          onReady?.(api);
+          onReadyRef.current?.(api);
         } catch (onReadyError) {
           // onReady 回调错误不应该影响编辑器初始化状态
           debugLog.warn('[CrepeEditor] onReady callback error (non-fatal):', onReadyError);
@@ -2810,40 +2987,26 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       emitCrepeDebug('lifecycle', 'info', '开始清理编辑器', { noteId });
       destroyed = true;
       clearExposeTimeouts();
+      // ACR 4.0：解绑滚动跟随监听 / 清掉未完成的内容脉冲
+      agentFollowerRef.current?.dispose();
+      agentFollowerRef.current = null;
+      if (agentPulseTimerRef.current != null) {
+        window.clearTimeout(agentPulseTimerRef.current);
+        agentPulseTimerRef.current = null;
+      }
       if (crepeRef.current) {
-        // 清理轻量内容监听器
-        const viewChangeCleanup = (crepeRef.current as any).__viewChangeCleanup;
-        if (typeof viewChangeCleanup === 'function') {
-          viewChangeCleanup();
-        }
-        // 清理 Mermaid 观察器
-        const mermaidCleanup = (crepeRef.current as any).__mermaidCleanup;
-        if (typeof mermaidCleanup === 'function') {
-          mermaidCleanup();
-        }
-        // 清理 block handle 修复
-        const blockHandleCleanup = (crepeRef.current as any).__blockHandleCleanup;
-        if (typeof blockHandleCleanup === 'function') {
-          blockHandleCleanup();
-        }
-        // 清理拖拽调试监听
-        const debugDragCleanup = (crepeRef.current as any).__debugDragCleanup;
-        if (typeof debugDragCleanup === 'function') {
-          debugDragCleanup();
-        }
-        // 清理图片上传修复
-        const imageUploadCleanup = (crepeRef.current as any).__imageUploadCleanup;
-        if (typeof imageUploadCleanup === 'function') {
-          imageUploadCleanup();
-        }
+        // 内容监听器 / mermaid observer / 调试拖拽 / 图片上传修复 统一清理
+        runStashedCrepeCleanups(crepeRef.current);
         // 清理基于 Pointer Events 的块拖拽
         cleanupBlockDrag();
         // 组件卸载时的销毁回调（避免依赖 plugin-listener 的 destroy 事件）
         try {
-          onDestroy?.();
+          onDestroyRef.current?.();
         } catch (err) {
           debugLog.warn('[CrepeEditor] onDestroy callback failed:', err);
         }
+        // E1-6：仅当全局仍指向本实例时清空调试全局，避免多实例切换后指向已销毁 view
+        clearMilkdownDebugGlobals(crepeRef.current, viewRef.current);
         crepeRef.current.destroy().catch((e) => {
           debugLog.error('[CrepeEditor] Failed to destroy editor:', e);
           emitCrepeDebug('error', 'error', `编辑器销毁失败: ${e}`);
@@ -2884,8 +3047,49 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       <div
         ref={dropIndicatorRef}
         className="crepe-drop-indicator"
-        style={{ display: 'none' }}
       />
+      {/* Portal 到 body：编辑器可能位于带 transform 的移动端滑动轨道内，
+          position:fixed 会相对轨道定位导致菜单错位（外点关闭仍按 .crepe-block-menu 类判定，不受影响） */}
+      {blockMenu && createPortal(
+        <div
+          ref={blockMenuElRef}
+          className="crepe-block-menu"
+          role="menu"
+          aria-label={i18next.t('notes:blockMenu.label', 'Block actions')}
+          style={{ left: blockMenu.x, top: blockMenu.y }}
+        >
+          <div className="crepe-block-menu__label">{i18next.t('notes:blockMenu.turnInto', 'Turn into')}</div>
+          {BLOCK_MENU_ACTIONS.map((action, index) => {
+            const isActive = blockMenuActive === index;
+            const button = (
+              <button
+                key={action}
+                type="button"
+                role="menuitem"
+                data-active={isActive || undefined}
+                data-destructive={action === 'delete' || undefined}
+                // 键盘高亮：无 CSS 所有权，用内联 hover token 兜底
+                style={isActive ? { backgroundColor: 'var(--interactive-hover)' } : undefined}
+                onMouseEnter={() => setBlockMenuActiveIndex(index)}
+                onClick={() => runBlockAction(action)}
+              >
+                {getBlockMenuActionLabel(action)}
+              </button>
+            );
+            // duplicate 前插入分隔线（turn-into 组结束）
+            if (action === 'duplicate') {
+              return (
+                <React.Fragment key={action}>
+                  <div className="crepe-block-menu__separator" />
+                  {button}
+                </React.Fragment>
+              );
+            }
+            return button;
+          })}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 });

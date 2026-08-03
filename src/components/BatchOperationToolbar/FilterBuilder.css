@@ -9,7 +9,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  /* 走全局浮层阶梯（此前硬编码 1000 低于 --z-overlay/--z-modal，会被其他浮层盖住） */
+  z-index: var(--z-modal);
 }
 
 .filter-builder {
@@ -17,7 +18,7 @@
   border-radius: 12px;
   width: 90%;
   max-width: 700px;
-  max-height: 80vh;
+  max-height: 80dvh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-content-elevated);
@@ -218,45 +219,20 @@
   gap: 12px;
 }
 
-.btn-primary,
-.btn-secondary {
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-
-.btn-primary {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-}
-
-.btn-primary:hover {
-  background: hsl(var(--primary));
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-content-soft);
-}
-
-.btn-secondary {
-  background: hsl(var(--muted));
-  color: var(--text-primary);
-  border: 1px solid hsl(var(--border));
-}
-
-.btn-secondary:hover {
-  background: hsl(var(--accent));
-  border-color: var(--border-strong);
+/* 触屏：输入控件 16px，避免 iOS 聚焦时自动放大页面（覆盖上方 14px） */
+@media (pointer: coarse) {
+  .filter-type-select,
+  .filter-operator-select,
+  .filter-value-input {
+    font-size: 16px;
+  }
 }
 
 /* 响应式设计 */
 @media (max-width: 767.98px) {
   .filter-builder {
     width: 95%;
-    max-height: 90vh;
+    max-height: 90dvh;
   }
   
   .filter-row {
@@ -280,62 +256,7 @@
   }
 }
 
-/* 暗色模式支持 */
-@media (prefers-color-scheme: dark) {
-  .filter-builder {
-    background: hsl(var(--card));
-    color: hsl(var(--foreground));
-  }
-  
-  .filter-builder-header {
-    border-bottom-color: hsl(var(--border));
-  }
-  
-  .filter-builder-footer {
-    border-top-color: hsl(var(--border));
-  }
-  
-  .filter-item {
-    background: hsl(var(--background));
-    border-color: hsl(var(--border));
-  }
-  
-  .filter-type-select,
-  .filter-operator-select,
-  .filter-value-input {
-    background: hsl(var(--background));
-    border-color: hsl(var(--border));
-    color: hsl(var(--foreground));
-  }
-  
-  .add-filter-btn {
-    background: hsl(var(--background));
-    border-color: hsl(var(--border));
-    color: hsl(var(--muted-foreground));
-  }
-  
-  .add-filter-btn:hover {
-    background: hsl(var(--muted));
-    border-color: hsl(var(--muted-foreground));
-    color: hsl(var(--foreground));
-  }
-  
-  .close-btn:hover {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-  
-  .btn-secondary {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-    border-color: hsl(var(--border));
-  }
-  
-  .btn-secondary:hover {
-    background: hsl(var(--accent));
-    border-color: hsl(var(--muted-foreground));
-  }
-}
+/* 暗色由 :root.dark 下的 token 翻转自动生效，无需 prefers-color-scheme 覆盖 */
 
 /* 动画效果 */
 .filter-item {
@@ -364,25 +285,25 @@
   font-style: italic;
 }
 
-/* 日期输入框样式 */
-input[type="date"] {
+/* 日期输入框样式（收敛到 .filter-builder 作用域，避免污染全局 input/select） */
+.filter-builder input[type="date"] {
   position: relative;
   padding-right: 30px;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
+.filter-builder input[type="date"]::-webkit-calendar-picker-indicator {
   position: absolute;
   right: 8px;
   cursor: pointer;
   opacity: 0.6;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator:hover {
+.filter-builder input[type="date"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 
 /* 选择框下拉箭头样式 */
-select {
+.filter-builder select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;

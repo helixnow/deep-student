@@ -366,6 +366,29 @@ describe('Store Actions', () => {
       expect(block?.status).toBe('success');
       expect(block?.endedAt).toBeDefined();
     });
+
+    it('should surface structured tool errors on the block', async () => {
+      const state = getState();
+      await state.sendMessage('Test');
+
+      const assistantMessageId = getState().messageOrder[1];
+      const blockId = state.createBlock(assistantMessageId, 'mcp_tool');
+
+      state.setBlockResult(blockId, {
+        result: {
+          success: false,
+          error: "Current Skill policy does not allow tool 'builtin-read_file'",
+        },
+      });
+
+      const block = getState().blocks.get(blockId);
+      expect(block?.status).toBe('error');
+      expect(block?.error).toBe("Current Skill policy does not allow tool 'builtin-read_file'");
+      expect(block?.toolOutput).toEqual({
+        success: false,
+        error: "Current Skill policy does not allow tool 'builtin-read_file'",
+      });
+    });
   });
 
   // ==========================================================================
@@ -623,13 +646,13 @@ describe('Store Actions', () => {
     it('setPanelState should update panel state', () => {
       const state = getState();
 
-      expect(getState().panelStates.rag).toBe(false);
+      expect(getState().panelStates.attachment).toBe(false);
 
-      state.setPanelState('rag', true);
-      expect(getState().panelStates.rag).toBe(true);
+      state.setPanelState('attachment', true);
+      expect(getState().panelStates.attachment).toBe(true);
 
-      state.setPanelState('rag', false);
-      expect(getState().panelStates.rag).toBe(false);
+      state.setPanelState('attachment', false);
+      expect(getState().panelStates.attachment).toBe(false);
     });
 
     it('setPanelState should keep composer panels mutually exclusive when opening', () => {

@@ -7,10 +7,10 @@
  * - 支持键盘导航
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { VariantStatusIcon } from './VariantStatusIcon';
 import type { Variant, VariantStatus } from '../../core/types/message';
 
@@ -82,10 +82,17 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
 }) => {
   const { t } = useTranslation('chatV2');
 
-  // 当前激活索引
-  const activeIndex = useMemo(() => {
-    return variants.findIndex((v) => v.id === activeVariantId);
-  }, [variants, activeVariantId]);
+  // Tab 按钮引用（键盘导航时让焦点跟随激活项，保持 roving tabindex 语义）
+  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  // roving tabindex 兜底：激活变体不存在或不可切换时，把 Tab 停靠点交给第一个可切换的标签，
+  // 否则整个 tablist 会因为所有 tabIndex=-1 而无法通过键盘到达
+  const hasActiveTab = variants.some(
+    (v) => v.id === activeVariantId && isVariantSwitchable(v.status)
+  );
+  const fallbackTabIndex = hasActiveTab
+    ? -1
+    : variants.findIndex((v) => isVariantSwitchable(v.status));
 
   // 处理切换
   const handleSwitch = useCallback(
@@ -125,7 +132,10 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
 
       if (targetIndex >= 0) {
         e.preventDefault();
-        onSwitch(variants[targetIndex].id);
+        const targetId = variants[targetIndex].id;
+        onSwitch(targetId);
+        // 焦点跟随新激活的标签（否则原按钮 tabIndex 变为 -1 后焦点会丢失）
+        tabRefs.current.get(targetId)?.focus();
       }
     },
     [disabled, variants, onSwitch]
@@ -141,6 +151,8 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
       className={cn(
         'flex items-center gap-1 p-1 rounded-lg',
         'bg-muted/50 dark:bg-muted/30',
+        // 变体较多时横向滚动，避免溢出撑破父容器
+        'max-w-full overflow-x-auto scrollbar-none',
         className
       )}
       role="tablist"
@@ -152,16 +164,23 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
         const isDisabled = disabled || !isSwitchable;
 
         return (
-          <NotionButton
+          <DsButton
             key={variant.id}
+            ref={(el) => {
+              if (el) {
+                tabRefs.current.set(variant.id, el);
+              } else {
+                tabRefs.current.delete(variant.id);
+              }
+            }}
             variant="ghost"
             size="sm"
             role="tab"
             aria-selected={isActive}
             aria-disabled={isDisabled}
-            tabIndex={isActive ? 0 : -1}
+            tabIndex={isActive || index === fallbackTabIndex ? 0 : -1}
             className={cn(
-              'gap-1.5',
+              'gap-1.5 shrink-0',
               isActive
                 ? 'bg-background text-foreground shadow-none'
                 : isDisabled
@@ -183,7 +202,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
             <span className="truncate max-w-[100px]">
               {getModelDisplayName(variant.modelId)}
             </span>
-          </NotionButton>
+          </DsButton>
         );
       })}
     </div>

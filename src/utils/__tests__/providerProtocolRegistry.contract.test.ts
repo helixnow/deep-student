@@ -8,6 +8,7 @@ type ProviderProtocolRecord = {
   default_protocol: string;
   official?: boolean;
   supports_openai_responses?: boolean;
+  notes?: string;
 };
 
 type ProviderProtocolRegistryDocument = {
@@ -66,5 +67,34 @@ describe('providerProtocolRegistry contract', () => {
       default_protocol: 'openai_chat_completions',
       supports_openai_responses: false,
     });
+  });
+
+  it('keeps the 2026-07 refresh expectations shared with Rust', () => {
+    const byType = new Map(registry.providers.map((provider) => [provider.provider_type, provider]));
+
+    // 幻影协议清理：无 Responses 端点的厂商不得再暴露 openai_responses。
+    for (const providerType of ['deepseek', 'zhipu', 'moonshot', 'minimax', 'mimo', 'nvidia', 'siliconflow', 'mistral']) {
+      expect(byType.get(providerType)?.allowed_protocols, providerType).not.toContain('openai_responses');
+    }
+
+    // qwen/doubao：supports=true 仅解锁可选项，default 保持 chat completions。
+    for (const providerType of ['qwen', 'doubao']) {
+      const record = byType.get(providerType);
+      expect(record?.supports_openai_responses, providerType).toBe(true);
+      expect(record?.default_protocol, providerType).toBe('openai_chat_completions');
+      expect(record?.allowed_protocols, providerType).toContain('openai_responses');
+    }
+
+    // Grok/xAI 已迁移到官方主推的 Responses；其余新增条目保持 Chat Completions。
+    for (const providerType of ['grok', 'xai']) {
+      expect(byType.get(providerType), providerType).toBeDefined();
+      expect(byType.get(providerType)?.default_protocol, providerType).toBe('openai_responses');
+    }
+    for (const providerType of ['ernie', 'mistral']) {
+      expect(byType.get(providerType), providerType).toBeDefined();
+      expect(byType.get(providerType)?.default_protocol, providerType).toBe('openai_chat_completions');
+    }
+
+    expect(registry.updated_at).toBe('2026-07-20');
   });
 });

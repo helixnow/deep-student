@@ -21,26 +21,241 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
-
-/// 记录并跳过迭代中的错误，避免静默丢弃
-fn log_and_skip_err_walkdir(
-    result: Result<walkdir::DirEntry, walkdir::Error>,
-) -> Option<walkdir::DirEntry> {
-    match result {
-        Ok(v) => Some(v),
-        Err(e) => {
-            warn!("[ZipExport] Directory walk error (skipped): {}", e);
-            None
-        }
-    }
-}
 use zip::write::FileOptions;
 use zip::CompressionMethod;
 use zip::ZipWriter;
+
+use super::{assets, BackupKeyPolicy, BackupManager, BackupManifest};
+
+pub(crate) fn is_portable_excluded_relative_path(relative_path: &Path) -> bool {
+    if crate::backup_common::is_crypto_secret_backup_relative_path(relative_path) {
+        return true;
+    }
+    let normalized = relative_path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    if normalized == "databases/audit.db" {
+        return true;
+    }
+    super::persistent_domain_registry()
+        .into_iter()
+        .filter(|domain| domain.encrypted)
+        .any(|domain| {
+            let root = domain.archive_root.to_ascii_lowercase();
+            normalized == root
+                || normalized
+                    .strip_prefix(&root)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+        })
+}
+
+/// Produce a manifest for an unencrypted portable archive without mutating the
+/// local backup. Local encryption material and the auxiliary audit database are
+/// intentionally excluded from portable ZIP files.
+pub(crate) fn portable_manifest_bytes(backup_dir: &Path) -> Result<Vec<u8>, ZipExportError> {
+    let manifest_path = backup_dir.join("manifest.json");
+    let mut manifest = BackupManifest::load_from_file(&manifest_path)
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    if manifest.snapshot_kind == super::SnapshotKind::LegacyCandidate {
+        manifest
+            .upgrade_legacy_candidate_to_v3_overlay()
+            .map_err(|error| {
+                ZipExportError::ExportFailed(format!("旧版备份未通过升级前严格验证: {}", error))
+            })?;
+    }
+    manifest.key_policy = BackupKeyPolicy::ExcludedPortable;
+    manifest
+        .files
+        .retain(|file| !is_portable_excluded_relative_path(Path::new(&file.path)));
+    if let Some(coverage) = &mut manifest.coverage {
+        let excluded_domains = super::persistent_domain_registry()
+            .into_iter()
+            .filter(|domain| domain.encrypted || domain.id == "audit")
+            .map(|domain| domain.id)
+            .collect::<Vec<_>>();
+        for domain_id in excluded_domains {
+            if let Some(domain) = coverage.domains.get_mut(&domain_id) {
+                domain.status = super::CoverageStatus::Excluded;
+                domain.paths.clear();
+                domain.file_count = 0;
+                domain.total_size = 0;
+                domain.detail = Some("excluded from unencrypted portable archive".to_string());
+            }
+        }
+    }
+    if let Some(asset_result) = &mut manifest.assets {
+        asset_result.files.retain(|asset| {
+            !is_portable_excluded_relative_path(Path::new(&asset.relative_path))
+                && !is_portable_excluded_relative_path(Path::new(&asset.original_path))
+        });
+        asset_result.total_files = asset_result.files.len();
+        asset_result.total_size = asset_result.files.iter().map(|asset| asset.size).sum();
+    }
+    // An unencrypted portable archive intentionally excludes local crypto and
+    // audit material, so it must never retain a Full label.
+    manifest.mark_partial();
+    manifest
+        .validate_untrusted()
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    if manifest.coverage.is_some() {
+        manifest
+            .validate_coverage_ledger(false)
+            .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    }
+    serde_json::to_vec_pretty(&manifest)
+        .map_err(|error| ZipExportError::ExportFailed(format!("序列化便携清单失败: {}", error)))
+}
+
+fn validate_imported_backup_dir(target_dir: &Path) -> Result<(), ZipExportError> {
+    let manifest_path = target_dir.join("manifest.json");
+    let manifest = BackupManifest::load_from_file(&manifest_path)
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    let legacy_portable = manifest.snapshot_kind == super::SnapshotKind::LegacyCandidate
+        && manifest.key_policy == BackupKeyPolicy::LegacyUnknown;
+    if legacy_portable {
+        manifest
+            .validate_legacy_candidate_for_upgrade()
+            .map_err(|error| {
+                ZipExportError::ExportFailed(format!("旧版 ZIP 未通过升级前严格验证: {}", error))
+            })?;
+    }
+    if manifest.key_policy != BackupKeyPolicy::ExcludedPortable && !legacy_portable {
+        return Err(ZipExportError::ExportFailed(
+            "未加密 ZIP 必须声明 key_policy=excluded_portable".to_string(),
+        ));
+    }
+    if manifest.snapshot_kind == super::SnapshotKind::Full {
+        manifest
+            .validate_for_slot_restore()
+            .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    }
+
+    let manager = BackupManager::new(
+        target_dir
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
+    );
+    manager
+        .verify_internal(&manifest, target_dir)
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    if let Some(asset_result) = &manifest.assets {
+        let errors = assets::verify_assets(target_dir, &asset_result.files)
+            .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+        if !errors.is_empty() {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 资产校验失败: {}",
+                errors
+                    .iter()
+                    .map(|error| format!("{}: {}", error.path, error.message))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )));
+        }
+    }
+
+    let mut allowed_files = std::collections::HashSet::from([
+        "manifest.json".to_string(),
+        "checksums.sha256".to_string(),
+    ]);
+    allowed_files.extend(manifest.files.iter().map(|file| file.path.clone()));
+    if let Some(asset_result) = &manifest.assets {
+        allowed_files.extend(
+            asset_result
+                .files
+                .iter()
+                .filter(|asset| !asset.is_directory)
+                .map(|asset| asset.relative_path.clone()),
+        );
+    }
+    let mut actual_files = std::collections::HashSet::new();
+    for entry in WalkDir::new(target_dir) {
+        let entry = entry.map_err(|error| {
+            ZipExportError::ExportFailed(format!("遍历导入目录失败: {}", error))
+        })?;
+        if entry.depth() == 0 || entry.file_type().is_dir() {
+            continue;
+        }
+        if entry.file_type().is_symlink() || !entry.file_type().is_file() {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 解压结果包含非常规文件: {}",
+                entry.path().display()
+            )));
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(target_dir)
+            .map_err(|_| ZipExportError::ExportFailed("无法计算导入文件相对路径".to_string()))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if !allowed_files.contains(&relative) {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 包含清单未声明的文件: {}",
+                relative
+            )));
+        }
+        if relative != "checksums.sha256" {
+            actual_files.insert(relative);
+        }
+    }
+
+    let checksums_path = target_dir.join("checksums.sha256");
+    match std::fs::symlink_metadata(&checksums_path) {
+        Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_file() => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Ok(_) => {
+            return Err(ZipExportError::ExportFailed(
+                "校验和条目必须是普通文件".to_string(),
+            ))
+        }
+        Err(error) => return Err(ZipExportError::Io(error)),
+    }
+    {
+        let file = File::open(&checksums_path)?;
+        let mut declared = std::collections::HashSet::new();
+        for (index, line) in BufReader::new(file).lines().enumerate() {
+            if index >= ARCHIVE_POLICY.max_files {
+                return Err(ZipExportError::ExportFailed(
+                    "校验和文件条目数超限".to_string(),
+                ));
+            }
+            let line = line?;
+            let (expected, path) = line.split_once("  ").ok_or_else(|| {
+                ZipExportError::ExportFailed(format!("校验和文件格式无效: line {}", index + 1))
+            })?;
+            if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "校验和格式无效: line {}",
+                    index + 1
+                )));
+            }
+            if !actual_files.contains(path) || !declared.insert(path.to_string()) {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "校验和路径缺失或重复: {}",
+                    path
+                )));
+            }
+            let actual = calculate_file_sha256(&target_dir.join(path))?;
+            if !actual.eq_ignore_ascii_case(expected) {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "ZIP 校验和不匹配: {}",
+                    path
+                )));
+            }
+        }
+        if declared != actual_files {
+            return Err(ZipExportError::ExportFailed(
+                "校验和文件未覆盖 ZIP 中的全部文件".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
 
 /// ZIP 导出选项
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,10 +374,301 @@ pub enum ZipExportError {
     ExportFailed(String),
 }
 
-/// ZIP 导入安全阈值（防止 zip bomb）
-const MAX_IMPORT_FILES: usize = 100_000;
-const MAX_IMPORT_UNCOMPRESSED_BYTES: u64 = 20 * 1024 * 1024 * 1024; // 20 GiB
-const MAX_IMPORT_COMPRESSION_RATIO: f64 = 200.0;
+/// Shared limits for both ZIP production and consumption.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArchivePolicy {
+    pub max_files: usize,
+    pub max_uncompressed_bytes: u64,
+    pub max_compression_ratio: f64,
+}
+
+pub(crate) const ARCHIVE_POLICY: ArchivePolicy = ArchivePolicy {
+    max_files: 100_000,
+    max_uncompressed_bytes: 20 * 1024 * 1024 * 1024,
+    max_compression_ratio: 200.0,
+};
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArchiveStats {
+    pub entries: usize,
+    pub uncompressed_bytes: u64,
+    pub compressed_bytes: u64,
+}
+
+impl ArchivePolicy {
+    fn validate_counts(&self, entries: usize, uncompressed: u64) -> Result<(), ZipExportError> {
+        if entries > self.max_files {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 文件数量超限: {} > {}",
+                entries, self.max_files
+            )));
+        }
+        if uncompressed > self.max_uncompressed_bytes {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 解压总量超限: {} > {} bytes",
+                uncompressed, self.max_uncompressed_bytes
+            )));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn ensure_zip_output_outside_source(
+    source_dir: &Path,
+    output_path: &Path,
+) -> Result<(), ZipExportError> {
+    let canonical_source = std::fs::canonicalize(source_dir)?;
+    let output_parent = output_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let canonical_parent = std::fs::canonicalize(output_parent)?;
+    let file_name = output_path
+        .file_name()
+        .ok_or_else(|| ZipExportError::ExportFailed("ZIP 输出路径缺少文件名".to_string()))?;
+    let resolved_output = canonical_parent.join(file_name);
+
+    if resolved_output.starts_with(&canonical_source) {
+        return Err(ZipExportError::ExportFailed(format!(
+            "ZIP 输出路径不能位于备份源目录内: {}",
+            output_path.display()
+        )));
+    }
+    match std::fs::symlink_metadata(output_path) {
+        Ok(_) => {
+            let canonical_output = std::fs::canonicalize(output_path)?;
+            if canonical_output.starts_with(&canonical_source) {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "ZIP 输出路径不能指向备份源目录内: {}",
+                    output_path.display()
+                )));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(ZipExportError::Io(error)),
+    }
+    Ok(())
+}
+
+fn validate_import_target_root(target_dir: &Path) -> Result<(), ZipExportError> {
+    std::fs::create_dir_all(target_dir)?;
+    let metadata = std::fs::symlink_metadata(target_dir)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(ZipExportError::ExportFailed(format!(
+            "ZIP 解压目标必须是普通目录: {}",
+            target_dir.display()
+        )));
+    }
+    Ok(())
+}
+
+fn prepare_import_destination(
+    target_dir: &Path,
+    relative_path: &Path,
+    is_directory: bool,
+) -> Result<PathBuf, ZipExportError> {
+    use std::path::Component;
+
+    if relative_path.as_os_str().is_empty()
+        || relative_path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(ZipExportError::ExportFailed(format!(
+            "ZIP 包含不安全路径: {}",
+            relative_path.display()
+        )));
+    }
+
+    let mut destination = target_dir.to_path_buf();
+    let component_count = relative_path.components().count();
+    for (index, component) in relative_path.components().enumerate() {
+        destination.push(component.as_os_str());
+        let is_last = index + 1 == component_count;
+        match std::fs::symlink_metadata(&destination) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "ZIP 解压目标路径不允许包含符号链接: {}",
+                    relative_path.display()
+                )))
+            }
+            Ok(metadata) if !is_last && !metadata.is_dir() => {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "ZIP 解压目标父路径不是目录: {}",
+                    destination.display()
+                )))
+            }
+            Ok(metadata) if is_last && is_directory && !metadata.is_dir() => {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "ZIP 目录条目与现有文件冲突: {}",
+                    destination.display()
+                )))
+            }
+            Ok(metadata) if is_last && !is_directory && !metadata.is_file() => {
+                return Err(ZipExportError::ExportFailed(format!(
+                    "ZIP 文件条目与现有目录冲突: {}",
+                    destination.display()
+                )))
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && (!is_last || is_directory) => {
+                std::fs::create_dir(&destination)?;
+                let metadata = std::fs::symlink_metadata(&destination)?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(ZipExportError::ExportFailed(format!(
+                        "ZIP 解压目录创建后校验失败: {}",
+                        destination.display()
+                    )));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && is_last => {}
+            Err(e) => return Err(ZipExportError::Io(e)),
+        }
+    }
+    Ok(destination)
+}
+
+fn copy_with_actual_size_budget<R: Read, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    total_written: &mut u64,
+    max_total: u64,
+) -> Result<u64, ZipExportError> {
+    let remaining = max_total.saturating_sub(*total_written);
+    let mut limited = reader.take(remaining.saturating_add(1));
+    let copied = std::io::copy(&mut limited, writer)?;
+    if copied > remaining {
+        return Err(ZipExportError::ExportFailed(format!(
+            "ZIP 实际解压总量超限: > {} bytes",
+            max_total
+        )));
+    }
+    *total_written = (*total_written).saturating_add(copied);
+    Ok(copied)
+}
+
+fn extract_zip_file_atomically<R: Read>(
+    reader: &mut R,
+    destination: &Path,
+    total_written: &mut u64,
+    expected_size: u64,
+) -> Result<u64, ZipExportError> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| ZipExportError::ExportFailed("ZIP 解压目标缺少父目录".to_string()))?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    let copied = copy_with_actual_size_budget(
+        reader,
+        temp.as_file_mut(),
+        total_written,
+        ARCHIVE_POLICY.max_uncompressed_bytes,
+    )?;
+    if copied != expected_size {
+        return Err(ZipExportError::ExportFailed(format!(
+            "ZIP 条目实际大小与中央目录不一致: {} expected={}, actual={}",
+            destination.display(),
+            expected_size,
+            copied
+        )));
+    }
+    temp.as_file().sync_all()?;
+    temp.persist(destination)
+        .map_err(|e| ZipExportError::Io(e.error))?;
+    Ok(copied)
+}
+
+pub(crate) fn preflight_export_source(
+    backup_dir: &Path,
+    portable_manifest_len: u64,
+    include_checksums: bool,
+) -> Result<ArchiveStats, ZipExportError> {
+    let mut entries = 0usize;
+    let mut uncompressed_bytes = 0u64;
+    let mut checksum_line_bytes = 0u64;
+    let mut file_paths = std::collections::HashSet::new();
+    for entry in WalkDir::new(backup_dir).into_iter().filter_entry(|entry| {
+        entry.depth() == 0
+            || entry
+                .path()
+                .strip_prefix(backup_dir)
+                .is_ok_and(|path| !is_portable_excluded_relative_path(path))
+    }) {
+        let entry = entry.map_err(|error| {
+            ZipExportError::ExportFailed(format!("遍历备份目录失败: {}", error))
+        })?;
+        if entry.depth() == 0 {
+            continue;
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(backup_dir)
+            .map_err(|_| ZipExportError::ExportFailed("无法计算导出相对路径".to_string()))?;
+        if is_portable_excluded_relative_path(relative)
+            || relative
+                .to_string_lossy()
+                .replace('\\', "/")
+                .eq_ignore_ascii_case("checksums.sha256")
+        {
+            continue;
+        }
+        if entry.file_type().is_symlink()
+            || (!entry.file_type().is_file() && !entry.file_type().is_dir())
+        {
+            return Err(ZipExportError::ExportFailed(format!(
+                "备份目录包含非常规文件: {}",
+                entry.path().display()
+            )));
+        }
+        let normalized = relative.to_string_lossy().replace('\\', "/");
+        if !file_paths.insert(normalized.clone()) {
+            return Err(ZipExportError::ExportFailed(format!(
+                "导出源包含重复路径: {}",
+                normalized
+            )));
+        }
+        entries = entries.saturating_add(1);
+        if entry.file_type().is_file() {
+            let size = if normalized == "manifest.json" {
+                portable_manifest_len
+            } else {
+                entry
+                    .metadata()
+                    .map_err(|error| {
+                        ZipExportError::ExportFailed(format!(
+                            "读取导出文件元数据失败 {}: {}",
+                            entry.path().display(),
+                            error
+                        ))
+                    })?
+                    .len()
+            };
+            uncompressed_bytes = uncompressed_bytes
+                .checked_add(size)
+                .ok_or_else(|| ZipExportError::ExportFailed("导出文件总大小溢出".to_string()))?;
+            if include_checksums {
+                checksum_line_bytes = checksum_line_bytes
+                    .checked_add(64 + 2 + normalized.len() as u64 + 1)
+                    .ok_or_else(|| {
+                        ZipExportError::ExportFailed("校验和文件大小溢出".to_string())
+                    })?;
+            }
+        }
+    }
+    if include_checksums && checksum_line_bytes > 0 {
+        entries = entries.saturating_add(1);
+        // Generated content has no trailing newline.
+        uncompressed_bytes = uncompressed_bytes
+            .checked_add(checksum_line_bytes.saturating_sub(1))
+            .ok_or_else(|| ZipExportError::ExportFailed("导出文件总大小溢出".to_string()))?;
+    }
+    ARCHIVE_POLICY.validate_counts(entries, uncompressed_bytes)?;
+    Ok(ArchiveStats {
+        entries,
+        uncompressed_bytes,
+        compressed_bytes: 0,
+    })
+}
+
 /// 将备份目录导出为 ZIP
 ///
 /// ## 参数
@@ -185,11 +691,20 @@ pub fn export_backup_to_zip(
 ) -> Result<ZipExportResult, ZipExportError> {
     let start = std::time::Instant::now();
 
-    // 验证备份目录
-    if !backup_dir.exists() {
-        return Err(ZipExportError::BackupNotFound(
-            backup_dir.to_string_lossy().to_string(),
-        ));
+    // 验证备份目录；不要用 `exists()` 吞掉权限和元数据错误。
+    match std::fs::symlink_metadata(backup_dir) {
+        Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(ZipExportError::BackupNotFound(
+                backup_dir.to_string_lossy().to_string(),
+            ))
+        }
+        Ok(_) => {
+            return Err(ZipExportError::ExportFailed(
+                "备份路径必须是普通目录，不能是文件或符号链接".to_string(),
+            ))
+        }
+        Err(error) => return Err(ZipExportError::Io(error)),
     }
 
     // 验证压缩级别
@@ -198,6 +713,13 @@ pub fn export_backup_to_zip(
             options.compression_level,
         ));
     }
+
+    let portable_manifest = portable_manifest_bytes(backup_dir)?;
+    preflight_export_source(
+        backup_dir,
+        portable_manifest.len() as u64,
+        options.include_checksums,
+    )?;
 
     // 确定输出路径
     let zip_path = match &options.output_path {
@@ -212,15 +734,20 @@ pub fn export_backup_to_zip(
             parent.join(format!("{}.zip", dir_name))
         }
     };
+    ensure_zip_output_outside_source(backup_dir, &zip_path)?;
 
     info!(
         "开始导出 ZIP: {:?} -> {:?}, 压缩级别: {}",
         backup_dir, zip_path, options.compression_level
     );
 
-    // 创建 ZIP 文件
-    let zip_file = File::create(&zip_path)?;
-    let mut zip_writer = ZipWriter::new(zip_file);
+    // 在目标同目录写临时文件，完成并同步后再原子持久化，避免失败留下半包。
+    let output_parent = zip_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let temp_output = tempfile::NamedTempFile::new_in(output_parent)?;
+    let mut zip_writer = ZipWriter::new(temp_output.reopen()?);
 
     // 配置压缩选项
     let compression_method = if options.compression_level == 0 {
@@ -237,10 +764,16 @@ pub fn export_backup_to_zip(
     let mut checksums: Vec<(String, String)> = Vec::new();
 
     // 遍历备份目录
-    for entry in WalkDir::new(backup_dir)
-        .into_iter()
-        .filter_map(log_and_skip_err_walkdir)
-    {
+    for entry in WalkDir::new(backup_dir).into_iter().filter_entry(|entry| {
+        entry.depth() == 0
+            || entry
+                .path()
+                .strip_prefix(backup_dir)
+                .is_ok_and(|path| !is_portable_excluded_relative_path(path))
+    }) {
+        let entry = entry.map_err(|error| {
+            ZipExportError::ExportFailed(format!("遍历备份目录失败: {}", error))
+        })?;
         let path = entry.path();
         let relative_path = path
             .strip_prefix(backup_dir)
@@ -251,9 +784,21 @@ pub fn export_backup_to_zip(
             continue;
         }
 
-        let relative_path_str = relative_path.to_string_lossy().replace('\\', "/");
+        if is_portable_excluded_relative_path(relative_path) {
+            continue;
+        }
 
-        if entry.file_type().is_dir() {
+        let relative_path_str = relative_path.to_string_lossy().replace('\\', "/");
+        if relative_path_str.eq_ignore_ascii_case("checksums.sha256") {
+            continue;
+        }
+
+        if entry.file_type().is_symlink() {
+            return Err(ZipExportError::ExportFailed(format!(
+                "导出期间发现符号链接: {}",
+                path.display()
+            )));
+        } else if entry.file_type().is_dir() {
             // 添加目录
             debug!("添加目录: {}", relative_path_str);
             zip_writer.add_directory(&relative_path_str, file_options)?;
@@ -261,21 +806,64 @@ pub fn export_backup_to_zip(
             // 添加文件
             debug!("添加文件: {}", relative_path_str);
 
-            let mut file = File::open(path)?;
-            let metadata = file.metadata()?;
-            let file_size = metadata.len();
-            total_size += file_size;
-            file_count += 1;
+            let is_manifest = relative_path_str == "manifest.json";
+            let file_size = if is_manifest {
+                portable_manifest.len() as u64
+            } else {
+                let metadata = std::fs::symlink_metadata(path)?;
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(ZipExportError::ExportFailed(format!(
+                        "导出文件在读取前变为非常规条目: {}",
+                        path.display()
+                    )));
+                }
+                metadata.len()
+            };
+            total_size = total_size
+                .checked_add(file_size)
+                .ok_or_else(|| ZipExportError::ExportFailed("导出总大小溢出".to_string()))?;
+            file_count = file_count
+                .checked_add(1)
+                .ok_or_else(|| ZipExportError::ExportFailed("导出文件计数溢出".to_string()))?;
 
             // 计算校验和（如果需要）
             if options.include_checksums {
-                let checksum = calculate_file_sha256(path)?;
+                let checksum = if is_manifest {
+                    crate::backup_common::calculate_bytes_hash(&portable_manifest)
+                } else {
+                    calculate_file_sha256(path)?
+                };
                 checksums.push((relative_path_str.clone(), checksum));
             }
 
             // 写入 ZIP（流式，避免大文件 read_to_end 导致内存峰值）
             zip_writer.start_file(&relative_path_str, file_options)?;
-            std::io::copy(&mut file, &mut zip_writer)?;
+            if is_manifest {
+                zip_writer.write_all(&portable_manifest)?;
+            } else {
+                let mut file = File::open(path)?;
+                let opened = file.metadata()?;
+                if !opened.is_file() || opened.len() != file_size {
+                    return Err(ZipExportError::ExportFailed(format!(
+                        "导出文件在打开期间发生变化: {}",
+                        path.display()
+                    )));
+                }
+                let copied = std::io::copy(&mut file, &mut zip_writer)?;
+                if copied != file_size {
+                    return Err(ZipExportError::ExportFailed(format!(
+                        "导出文件读取大小变化: {} expected={}, actual={}",
+                        path.display(),
+                        file_size,
+                        copied
+                    )));
+                }
+            }
+        } else {
+            return Err(ZipExportError::ExportFailed(format!(
+                "导出期间发现非常规条目: {}",
+                path.display()
+            )));
         }
     }
 
@@ -293,7 +881,13 @@ pub fn export_backup_to_zip(
     }
 
     // 完成 ZIP 文件
-    zip_writer.finish()?;
+    let finished_file = zip_writer.finish()?;
+    finished_file.sync_all()?;
+    drop(finished_file);
+    validate_archive_path(temp_output.path())?;
+    temp_output
+        .persist(&zip_path)
+        .map_err(|e| ZipExportError::Io(e.error))?;
 
     // 获取压缩后的大小
     let compressed_size = std::fs::metadata(&zip_path)?.len();
@@ -349,41 +943,97 @@ fn calculate_file_sha256(path: &Path) -> Result<String, ZipExportError> {
     Ok(hex::encode(result))
 }
 
-fn validate_import_archive(archive: &mut zip::ZipArchive<File>) -> Result<(), ZipExportError> {
-    if archive.len() > MAX_IMPORT_FILES {
-        return Err(ZipExportError::ExportFailed(format!(
-            "ZIP 文件数量超限: {} > {}",
-            archive.len(),
-            MAX_IMPORT_FILES
-        )));
-    }
+fn validate_import_archive(
+    archive: &mut zip::ZipArchive<File>,
+) -> Result<ArchiveStats, ZipExportError> {
+    let archive_len = archive.len();
+    ARCHIVE_POLICY.validate_counts(archive_len, 0)?;
 
     let mut total_uncompressed: u64 = 0;
-    for i in 0..archive.len() {
+    let mut total_compressed: u64 = 0;
+    let mut paths = std::collections::HashSet::new();
+    for i in 0..archive_len {
         let file = archive.by_index(i)?;
+        let Some(enclosed_name) = file.enclosed_name() else {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 包含越界或空路径: {}",
+                file.name()
+            )));
+        };
+        if enclosed_name.as_os_str().is_empty() {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 包含越界或空路径: {}",
+                file.name()
+            )));
+        }
+        if is_portable_excluded_relative_path(enclosed_name) {
+            return Err(ZipExportError::ExportFailed(format!(
+                "未加密 ZIP 禁止包含密钥或本地审计材料: {}",
+                file.name()
+            )));
+        }
+        let normalized = enclosed_name.to_string_lossy().replace('\\', "/");
+        if normalized.contains('\r') || normalized.contains('\n') {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 路径包含换行符: {:?}",
+                normalized
+            )));
+        }
+        if !paths.insert(normalized.clone()) {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 包含重复路径: {}",
+                normalized
+            )));
+        }
         let file_size = file.size();
         let compressed_size = file.compressed_size();
         total_uncompressed = total_uncompressed.saturating_add(file_size);
+        total_compressed = total_compressed.saturating_add(compressed_size);
 
-        if total_uncompressed > MAX_IMPORT_UNCOMPRESSED_BYTES {
+        ARCHIVE_POLICY.validate_counts(archive_len, total_uncompressed)?;
+
+        if file_size > 0 && compressed_size == 0 {
             return Err(ZipExportError::ExportFailed(format!(
-                "ZIP 解压总量超限: {} bytes",
-                total_uncompressed
+                "ZIP 非空条目压缩大小为零: {}",
+                normalized
             )));
         }
-
         if compressed_size > 0 {
             let ratio = file_size as f64 / compressed_size as f64;
-            if ratio > MAX_IMPORT_COMPRESSION_RATIO {
+            if ratio > ARCHIVE_POLICY.max_compression_ratio {
                 return Err(ZipExportError::ExportFailed(format!(
                     "ZIP 压缩比异常: {:.1} > {:.1}",
-                    ratio, MAX_IMPORT_COMPRESSION_RATIO
+                    ratio, ARCHIVE_POLICY.max_compression_ratio
                 )));
             }
         }
     }
 
-    Ok(())
+    if total_uncompressed > 0 && total_compressed == 0 {
+        return Err(ZipExportError::ExportFailed(
+            "ZIP 总压缩大小异常为零".to_string(),
+        ));
+    }
+    if total_compressed > 0 {
+        let ratio = total_uncompressed as f64 / total_compressed as f64;
+        if ratio > ARCHIVE_POLICY.max_compression_ratio {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 总压缩比异常: {:.1} > {:.1}",
+                ratio, ARCHIVE_POLICY.max_compression_ratio
+            )));
+        }
+    }
+    Ok(ArchiveStats {
+        entries: archive_len,
+        uncompressed_bytes: total_uncompressed,
+        compressed_bytes: total_compressed,
+    })
+}
+
+pub(crate) fn validate_archive_path(path: &Path) -> Result<ArchiveStats, ZipExportError> {
+    let file = File::open(path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    validate_import_archive(&mut archive)
 }
 
 /// 从 ZIP 文件导入备份
@@ -405,34 +1055,33 @@ pub fn import_backup_from_zip(zip_path: &Path, target_dir: &Path) -> Result<usiz
     let mut archive = zip::ZipArchive::new(zip_file)?;
     validate_import_archive(&mut archive)?;
 
-    // 确保目标目录存在
-    std::fs::create_dir_all(target_dir)?;
+    validate_import_target_root(target_dir)?;
 
     let mut file_count = 0;
+    let mut actual_uncompressed = 0u64;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = target_dir.join(file.mangled_name());
+        let relative_path = file.enclosed_name().ok_or_else(|| {
+            ZipExportError::ExportFailed(format!("ZIP 包含越界路径: {}", file.name()))
+        })?;
+        let outpath = prepare_import_destination(target_dir, relative_path, file.is_dir())?;
 
         if file.is_dir() {
-            std::fs::create_dir_all(&outpath)?;
+            continue;
         } else {
-            if let Some(parent) = outpath.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let mut outfile = File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
+            let expected_size = file.size();
+            extract_zip_file_atomically(
+                &mut file,
+                &outpath,
+                &mut actual_uncompressed,
+                expected_size,
+            )?;
             file_count += 1;
         }
     }
 
-    // 验证 manifest.json 存在（缺失则视为无效备份）
-    let manifest_path = target_dir.join("manifest.json");
-    if !manifest_path.exists() {
-        return Err(ZipExportError::ExportFailed(
-            "备份目录中缺少 manifest.json 文件".to_string(),
-        ));
-    }
+    validate_imported_backup_dir(target_dir)?;
 
     info!("ZIP 导入完成: {} 个文件", file_count);
 
@@ -578,12 +1227,12 @@ where
         )));
     }
 
-    // 确保目标目录存在
-    std::fs::create_dir_all(target_dir)?;
+    validate_import_target_root(target_dir)?;
 
     // 阶段 2: 解压文件（5% - 80%）
     let mut file_count = 0;
     let mut skipped_count: usize = 0;
+    let mut actual_uncompressed = 0u64;
     let extract_progress_range = 75.0; // 5% to 80%
 
     for i in 0..total_files {
@@ -595,8 +1244,11 @@ where
         }
 
         let mut file = archive.by_index(i)?;
-        let outpath = target_dir.join(file.mangled_name());
-        let file_name = file.mangled_name().to_string_lossy().to_string();
+        let relative_path = file.enclosed_name().ok_or_else(|| {
+            ZipExportError::ExportFailed(format!("ZIP 包含越界路径: {}", file.name()))
+        })?;
+        let file_name = relative_path.to_string_lossy().to_string();
+        let outpath = prepare_import_destination(target_dir, relative_path, file.is_dir())?;
 
         // 计算当前进度（安全除法，避免除零）
         let current_progress = if total_files > 0 {
@@ -606,11 +1258,15 @@ where
         };
 
         // 断点续传：跳过已存在且大小匹配的文件（但数据库文件不能跳过，因为大小可能相同但内容不同）
-        if skip_existing && !file.is_dir() && outpath.exists() {
+        if skip_existing && !file.is_dir() {
             let is_db_file = file_name.to_ascii_lowercase().ends_with(".db");
             if !is_db_file {
-                if let Ok(metadata) = std::fs::metadata(&outpath) {
-                    if metadata.len() == file.size() {
+                match std::fs::symlink_metadata(&outpath) {
+                    Ok(metadata)
+                        if !metadata.file_type().is_symlink()
+                            && metadata.is_file()
+                            && metadata.len() == file.size() =>
+                    {
                         skipped_count += 1;
                         file_count += 1;
                         progress_callback(ZipImportProgress {
@@ -628,6 +1284,15 @@ where
                         });
                         continue;
                     }
+                    Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                        return Err(ZipExportError::ExportFailed(format!(
+                            "断点续传目标不是普通文件: {}",
+                            outpath.display()
+                        )));
+                    }
+                    Ok(_) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(ZipExportError::Io(error)),
                 }
             }
         }
@@ -642,13 +1307,15 @@ where
         });
 
         if file.is_dir() {
-            std::fs::create_dir_all(&outpath)?;
+            continue;
         } else {
-            if let Some(parent) = outpath.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let mut outfile = File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
+            let expected_size = file.size();
+            extract_zip_file_atomically(
+                &mut file,
+                &outpath,
+                &mut actual_uncompressed,
+                expected_size,
+            )?;
             file_count += 1;
         }
     }
@@ -678,13 +1345,7 @@ where
         )));
     }
 
-    // 验证 manifest.json 存在
-    let manifest_path = target_dir.join("manifest.json");
-    if !manifest_path.exists() {
-        return Err(ZipExportError::ExportFailed(
-            "备份目录中缺少 manifest.json 文件".to_string(),
-        ));
-    }
+    validate_imported_backup_dir(target_dir)?;
 
     progress_callback(ZipImportProgress {
         phase: ZipImportPhase::Verify,
@@ -717,36 +1378,57 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_governance::backup::{
+        persistent_domain_registry, BackupFile, CoverageStatus, SnapshotKind,
+    };
+    use rusqlite::Connection;
     use tempfile::TempDir;
 
     fn create_test_backup_dir() -> TempDir {
         let dir = TempDir::new().unwrap();
-
-        // 创建测试文件
         let backup_dir = dir.path();
 
-        // 创建子目录
-        std::fs::create_dir_all(backup_dir.join("databases")).unwrap();
+        let mut manifest = BackupManifest::new("1.0.0-test");
+        for database_id in ["vfs", "chat_v2", "mistakes", "llm_usage"] {
+            let path = backup_dir.join(format!("{}.db", database_id));
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE test_data (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+                     INSERT INTO test_data(value) VALUES ('portable-backup-test');",
+                )
+                .unwrap();
+            drop(connection);
 
-        // 创建测试数据库文件
-        std::fs::write(
-            backup_dir.join("databases/vfs.db"),
-            "test database content for vfs",
-        )
-        .unwrap();
+            manifest.add_file(BackupFile {
+                path: format!("{}.db", database_id),
+                size: std::fs::metadata(&path).unwrap().len(),
+                sha256: crate::backup_common::calculate_file_hash(&path).unwrap(),
+                database_id: Some(database_id.to_string()),
+            });
+            manifest
+                .record_coverage(
+                    &format!("database:{}", database_id),
+                    CoverageStatus::Complete,
+                    vec![format!("{}.db", database_id)],
+                    None,
+                )
+                .unwrap();
+        }
 
-        std::fs::write(
-            backup_dir.join("databases/chat_v2.db"),
-            "test database content for chat_v2",
-        )
-        .unwrap();
-
-        // 创建清单文件
-        std::fs::write(
-            backup_dir.join("manifest.json"),
-            r#"{"version": "1.0.0", "files": []}"#,
-        )
-        .unwrap();
+        // Empty/absent domains are explicit evidence in manifest v3.
+        for domain in persistent_domain_registry()
+            .into_iter()
+            .filter(|domain| !domain.id.starts_with("database:"))
+        {
+            manifest
+                .record_coverage(&domain.id, CoverageStatus::Absent, Vec::new(), None)
+                .unwrap();
+        }
+        manifest.mark_full().unwrap();
+        manifest
+            .save_to_file(&backup_dir.join("manifest.json"))
+            .unwrap();
 
         dir
     }
@@ -782,6 +1464,209 @@ mod tests {
 
         assert_eq!(result.zip_path, output_path);
         assert!(output_path.exists());
+    }
+
+    #[test]
+    fn test_export_excludes_crypto_secrets() {
+        let backup_dir = create_test_backup_dir();
+        std::fs::create_dir_all(backup_dir.path().join("crypto/.secure")).unwrap();
+        std::fs::create_dir_all(backup_dir.path().join(".secure")).unwrap();
+        std::fs::create_dir_all(backup_dir.path().join("Crypto")).unwrap();
+        std::fs::create_dir_all(backup_dir.path().join(".SECURE")).unwrap();
+        std::fs::write(backup_dir.path().join("crypto/.secure/.key_seed"), b"seed").unwrap();
+        std::fs::write(backup_dir.path().join("crypto/.master_key"), b"master").unwrap();
+        std::fs::write(
+            backup_dir.path().join(".secure/credential.enc"),
+            b"credential",
+        )
+        .unwrap();
+        std::fs::write(backup_dir.path().join(".master_key"), b"master").unwrap();
+        std::fs::write(backup_dir.path().join(".key_seed"), b"seed").unwrap();
+        std::fs::write(backup_dir.path().join("Crypto/upper.key"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join(".SECURE/upper.enc"), b"secret").unwrap();
+
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("sanitized.zip");
+        export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let file = File::open(output_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_string())
+            .collect();
+        assert!(names.iter().all(|name| {
+            name != ".master_key"
+                && name != ".key_seed"
+                && !name.to_ascii_lowercase().starts_with("crypto/")
+                && !name.to_ascii_lowercase().starts_with(".secure/")
+        }));
+        assert!(names.iter().any(|name| name == "manifest.json"));
+        assert!(backup_dir.path().join("crypto/.secure/.key_seed").is_file());
+        assert!(backup_dir.path().join("crypto/.master_key").is_file());
+        assert!(backup_dir.path().join(".secure/credential.enc").is_file());
+        assert!(backup_dir.path().join(".master_key").is_file());
+        assert!(backup_dir.path().join(".key_seed").is_file());
+        assert!(backup_dir.path().join("Crypto/upper.key").is_file());
+        assert!(backup_dir.path().join(".SECURE/upper.enc").is_file());
+    }
+
+    #[test]
+    fn test_unencrypted_export_excludes_user_skills() {
+        let backup_dir = create_test_backup_dir();
+        let skill_path = backup_dir
+            .path()
+            .join("persistent/user_skills/demo/SKILL.md");
+        std::fs::create_dir_all(skill_path.parent().unwrap()).unwrap();
+        std::fs::write(&skill_path, b"executable user skill").unwrap();
+
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("without-skills.zip");
+        export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let file = File::open(output_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let names = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_string())
+            .collect::<Vec<_>>();
+        assert!(names
+            .iter()
+            .all(|name| !name.starts_with("persistent/user_skills/")));
+        assert!(
+            skill_path.is_file(),
+            "portable export must not mutate source"
+        );
+    }
+
+    #[test]
+    fn test_export_excludes_encrypted_user_skills_domain() {
+        let backup_dir = create_test_backup_dir();
+        let skill_path = backup_dir
+            .path()
+            .join("persistent/user_skills/example/SKILL.md");
+        std::fs::create_dir_all(skill_path.parent().unwrap()).unwrap();
+        std::fs::write(&skill_path, b"# executable user skill").unwrap();
+
+        let manifest_path = backup_dir.path().join("manifest.json");
+        let mut manifest = BackupManifest::load_from_file(&manifest_path).unwrap();
+        let relative = "persistent/user_skills/example/SKILL.md";
+        manifest.add_file(BackupFile {
+            path: relative.to_string(),
+            size: std::fs::metadata(&skill_path).unwrap().len(),
+            sha256: crate::backup_common::calculate_file_hash(&skill_path).unwrap(),
+            database_id: None,
+        });
+        manifest
+            .record_coverage(
+                "user-skills",
+                CoverageStatus::Complete,
+                vec![relative.to_string()],
+                Some("untrusted executable package".to_string()),
+            )
+            .unwrap();
+        manifest.mark_full().unwrap();
+        manifest.save_to_file(&manifest_path).unwrap();
+
+        let output_dir = TempDir::new().unwrap();
+        let output = output_dir.path().join("portable.zip");
+        let result = export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let file = File::open(&result.zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let names = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_string())
+            .collect::<Vec<_>>();
+        assert!(names
+            .iter()
+            .all(|name| !name.starts_with("persistent/user_skills/")));
+
+        let imported = TempDir::new().unwrap();
+        import_backup_from_zip(&result.zip_path, imported.path()).unwrap();
+        let portable =
+            BackupManifest::load_from_file(&imported.path().join("manifest.json")).unwrap();
+        assert_eq!(
+            portable
+                .coverage
+                .unwrap()
+                .domains
+                .get("user-skills")
+                .unwrap()
+                .status,
+            CoverageStatus::Excluded
+        );
+    }
+
+    #[test]
+    fn test_export_rejects_output_inside_source_without_overwriting_it() {
+        let backup_dir = create_test_backup_dir();
+        let output_path = backup_dir.path().join("existing.zip");
+        std::fs::write(&output_path, b"existing-output").unwrap();
+
+        let result = export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        );
+
+        assert!(matches!(result, Err(ZipExportError::ExportFailed(_))));
+        assert_eq!(std::fs::read(output_path).unwrap(), b"existing-output");
+    }
+
+    #[test]
+    fn test_actual_copy_budget_rejects_more_bytes_than_declared_budget() {
+        let mut reader = std::io::Cursor::new(vec![1u8; 11]);
+        let mut output = Vec::new();
+        let mut total = 0u64;
+
+        let result = copy_with_actual_size_budget(&mut reader, &mut output, &mut total, 10);
+
+        assert!(matches!(result, Err(ZipExportError::ExportFailed(_))));
+        assert_eq!(total, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_import_rejects_symlinked_destination_parent() {
+        let archive_dir = TempDir::new().unwrap();
+        let archive_path = archive_dir.path().join("symlink-target.zip");
+        let archive_file = File::create(&archive_path).unwrap();
+        let mut writer = ZipWriter::new(archive_file);
+        let options = FileOptions::default().compression_method(CompressionMethod::Stored);
+        writer.start_file("manifest.json", options).unwrap();
+        writer.write_all(b"{}").unwrap();
+        writer.start_file("linked/payload.bin", options).unwrap();
+        writer.write_all(b"payload").unwrap();
+        writer.finish().unwrap();
+
+        let target = TempDir::new().unwrap();
+        let external = TempDir::new().unwrap();
+        std::os::unix::fs::symlink(external.path(), target.path().join("linked")).unwrap();
+
+        let result = import_backup_from_zip(&archive_path, target.path());
+
+        assert!(matches!(result, Err(ZipExportError::ExportFailed(_))));
+        assert!(!external.path().join("payload.bin").exists());
     }
 
     #[test]
@@ -846,6 +1731,7 @@ mod tests {
         let backup_dir = create_test_backup_dir();
         let options = ZipExportOptions::default();
         let export_result = export_backup_to_zip(backup_dir.path(), &options).unwrap();
+        let stats = validate_archive_path(&export_result.zip_path).unwrap();
 
         // 导入到新目录
         let import_dir = TempDir::new().unwrap();
@@ -853,8 +1739,38 @@ mod tests {
             import_backup_from_zip(&export_result.zip_path, import_dir.path()).unwrap();
 
         assert!(file_count > 0);
+        assert_eq!(file_count, stats.entries);
         assert!(import_dir.path().join("manifest.json").exists());
-        assert!(import_dir.path().join("databases/vfs.db").exists());
+        assert!(import_dir.path().join("vfs.db").exists());
+        assert!(import_dir.path().join("checksums.sha256").exists());
+        let imported_manifest =
+            BackupManifest::load_from_file(&import_dir.path().join("manifest.json")).unwrap();
+        assert_eq!(
+            imported_manifest.snapshot_kind,
+            SnapshotKind::PartialOverlay
+        );
+        assert_eq!(
+            imported_manifest
+                .coverage
+                .as_ref()
+                .unwrap()
+                .domains
+                .get("crypto")
+                .unwrap()
+                .status,
+            CoverageStatus::Excluded
+        );
+        assert_eq!(
+            imported_manifest
+                .coverage
+                .as_ref()
+                .unwrap()
+                .domains
+                .get("user-skills")
+                .unwrap()
+                .status,
+            CoverageStatus::Excluded
+        );
 
         // 清理
         std::fs::remove_file(&export_result.zip_path).ok();

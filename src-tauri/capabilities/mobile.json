@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "mobile",
-  "description": "Capability for mobile platforms",
+  "description": "Capability for mobile platforms. NOTE(2026-07-08, review 33 P1-1/P1-2): the http allow list includes https://*/* because users can configure arbitrary custom OpenAI-compatible LLM endpoints and MCP server URLs (same load-bearing rationale as desktop F16). Plaintext http is deliberately NOT a blanket wildcard on mobile: it is limited to loopback plus RFC1918 private ranges (10.*, 172.16-31.*, 192.168.*) to cover LAN/self-hosted services while keeping cleartext traffic off the public internet. notification:default is required for todo reminders / pomodoro / card-generation notifications (Android also needs POST_NOTIFICATIONS in the manifest, injected by the Android build workflows).",
   "platforms": ["android", "iOS"],
   "windows": ["main"],
   "permissions": [
+    "allow-application-commands",
     "core:default",
     "core:event:default",
     "core:window:default",
@@ -51,6 +52,7 @@
     "fs:allow-temp-write-recursive",
     "core:webview:allow-print",
     "core:webview:allow-set-webview-zoom",
+    "notification:default",
     "opener:default",
     "opener:allow-open-url",
     "opener:allow-default-urls",
@@ -109,8 +111,27 @@
         { "url": "https://context7.com/*" },
         { "url": "https://mcp.api-inference.modelscope.net/*" },
         { "url": "https://modelscope.cn/*" },
+        { "url": "https://*/*" },
         { "url": "http://127.0.0.1:*/*" },
-        { "url": "http://localhost:*/*" }
+        { "url": "http://localhost:*/*" },
+        { "url": "http://10.*:*/*" },
+        { "url": "http://192.168.*:*/*" },
+        { "url": "http://172.16.*:*/*" },
+        { "url": "http://172.17.*:*/*" },
+        { "url": "http://172.18.*:*/*" },
+        { "url": "http://172.19.*:*/*" },
+        { "url": "http://172.20.*:*/*" },
+        { "url": "http://172.21.*:*/*" },
+        { "url": "http://172.22.*:*/*" },
+        { "url": "http://172.23.*:*/*" },
+        { "url": "http://172.24.*:*/*" },
+        { "url": "http://172.25.*:*/*" },
+        { "url": "http://172.26.*:*/*" },
+        { "url": "http://172.27.*:*/*" },
+        { "url": "http://172.28.*:*/*" },
+        { "url": "http://172.29.*:*/*" },
+        { "url": "http://172.30.*:*/*" },
+        { "url": "http://172.31.*:*/*" }
       ]
     }
   ]

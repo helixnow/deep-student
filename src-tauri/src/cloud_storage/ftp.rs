@@ -1,16 +1,20 @@
 //! FTP/FTPS 存储实现
 //!
 //! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）和明文 FTP
+//! 使用 tokio 运行时 + rustls TLS 后端
 
-use async_std::io::{ReadExt, WriteExt};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rustls::{ClientConfig, RootCertStore};
 use sha2::{Digest, Sha256};
+use std::io::Cursor;
 use std::path::Path;
 use std::time::Duration;
-use suppaftp::async_native_tls::TlsConnector;
 use suppaftp::list::File as FtpListFile;
-use suppaftp::{AsyncFtpStream, AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
+use suppaftp::tokio::AsyncRustlsConnector;
+use suppaftp::tokio::{AsyncFtpStream, AsyncRustlsFtpStream};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
+use tokio_rustls::TlsConnector;
 use uuid::Uuid;
 
 use super::config::FtpConfig;
@@ -51,16 +55,18 @@ impl<'a, R> ProgressReader<'a, R> {
     }
 }
 
-impl<R: async_std::io::Read + Unpin> async_std::io::Read for ProgressReader<'_, R> {
+impl<R: AsyncRead + Unpin> AsyncRead for ProgressReader<'_, R> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         let this = self.get_mut();
+        let before = buf.filled().len();
         let result = Pin::new(&mut this.inner).poll_read(cx, buf);
-        if let Poll::Ready(Ok(n)) = &result {
-            let done = this.transferred.fetch_add(*n as u64, Ordering::Relaxed) + *n as u64;
+        if let Poll::Ready(Ok(())) = &result {
+            let n = buf.filled().len() - before;
+            let done = this.transferred.fetch_add(n as u64, Ordering::Relaxed) + n as u64;
             if let Some(ref cb) = this.callback {
                 cb(done, this.total_size);
             }
@@ -111,7 +117,10 @@ impl FtpStorage {
         tokio::time::timeout(Duration::from_secs(45), self.create_client_inner())
             .await
             .map_err(|_| {
-                AppError::network(format!("FTP 连接超时（45 秒）: {}:{}", self.host, self.port))
+                AppError::network(format!(
+                    "FTP 连接超时（45 秒）: {}:{}",
+                    self.host, self.port
+                ))
             })?
     }
 
@@ -121,18 +130,21 @@ impl FtpStorage {
         tracing::debug!("[FtpStorage] 正在连接到 {}", address);
 
         if self.use_tls {
-            // FTPS: 使用 AsyncNativeTlsFtpStream 作为基础类型，
-            // 使得 into_secure 的 Stream 类型参数匹配
-            let stream = AsyncNativeTlsFtpStream::connect(&address)
+            // FTPS: 使用 AsyncRustlsFtpStream 作为基础类型
+            let stream = AsyncRustlsFtpStream::connect(&address)
                 .await
                 .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
 
             tracing::debug!("[FtpStorage] 正在升级到 TLS...");
+            let root_store = RootCertStore {
+                roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+            };
+            let config = ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth();
+            let tls_connector = TlsConnector::from(Arc::new(config));
             let mut secure_stream = stream
-                .into_secure(
-                    AsyncNativeTlsConnector::from(TlsConnector::new()),
-                    &self.host,
-                )
+                .into_secure(AsyncRustlsConnector::from(tls_connector), &self.host)
                 .await
                 .map_err(|e| AppError::network(format!("FTP TLS 升级失败：{}", e)))?;
 
@@ -218,9 +230,11 @@ impl FtpStorage {
 
     fn is_not_found_error(error: &AppError) -> bool {
         let err = error.to_string().to_lowercase();
-        err.contains("550")
+        (err.contains("501") && err.contains("no such directory"))
+            || (err.contains("550") && err.contains("not retrievable"))
             || err.contains("not found")
             || err.contains("no such file")
+            || err.contains("no such directory")
             || err.contains("不存在")
     }
 
@@ -240,7 +254,7 @@ impl FtpStorage {
         &self,
         client: &mut FtpClient,
         final_name: &str,
-        reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+        reader: &mut (impl AsyncRead + std::marker::Unpin),
         file_size: u64,
         progress: Option<&UploadProgressCallback>,
     ) -> Result<()> {
@@ -322,17 +336,17 @@ impl FtpStorage {
 /// FTP 客户端枚举（支持明文和安全连接）
 enum FtpClient {
     Plain(AsyncFtpStream),
-    Secure(AsyncNativeTlsFtpStream),
+    Secure(AsyncRustlsFtpStream),
 }
 
 impl FtpClient {
     async fn stream_to_file(
-        reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+        reader: &mut (impl AsyncRead + std::marker::Unpin),
         temp_path: &Path,
         total_size: u64,
         progress: Option<&DownloadProgressCallback>,
     ) -> Result<String> {
-        let mut file = async_std::fs::File::create(temp_path)
+        let mut file = tokio::fs::File::create(temp_path)
             .await
             .map_err(|e| AppError::file_system(format!("创建临时下载文件失败：{}", e)))?;
         let mut hasher = Sha256::new();
@@ -391,11 +405,11 @@ impl FtpClient {
         Ok(())
     }
 
-    /// suppaftp 6.0.7: put_file(filename, reader) 接收远程文件名和一个 async_std::io::Read + Unpin 的 reader
+    /// suppaftp v7 tokio: put_file(filename, reader) 接收远程文件名和一个 tokio::io::AsyncRead + Unpin 的 reader
     async fn put_file(
         &mut self,
         filename: &str,
-        reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+        reader: &mut (impl AsyncRead + std::marker::Unpin),
     ) -> Result<u64> {
         match self {
             FtpClient::Plain(stream) => stream
@@ -409,7 +423,7 @@ impl FtpClient {
         }
     }
 
-    /// suppaftp 6.0.7: 使用 retr_as_stream 获取数据流后用 ReadExt 逐块读取
+    /// suppaftp v7 tokio: 使用 retr_as_stream 获取数据流后用 ReadExt 逐块读取
     async fn retr_to_vec(&mut self, filename: &str) -> Result<Vec<u8>> {
         match self {
             FtpClient::Plain(stream) => {
@@ -498,7 +512,7 @@ impl FtpClient {
         }
     }
 
-    /// suppaftp 6.0.7: list 返回 Result<Vec<String>>
+    /// suppaftp v7: list 返回 Result<Vec<String>>
     async fn list(&mut self, path: Option<&str>) -> Result<Vec<String>> {
         match self {
             FtpClient::Plain(stream) => stream
@@ -539,7 +553,7 @@ impl FtpClient {
         Ok(())
     }
 
-    /// suppaftp 6.0.7: 删除文件的方法名是 rm
+    /// suppaftp v7: 删除文件的方法名是 rm
     async fn rm(&mut self, path: &str) -> Result<()> {
         match self {
             FtpClient::Plain(stream) => stream
@@ -553,7 +567,7 @@ impl FtpClient {
         }
     }
 
-    /// suppaftp 6.0.7: size 返回 FtpResult<usize>，转为 u64
+    /// suppaftp v7: size 返回 FtpResult<usize>，转为 u64
     async fn size(&mut self, path: &str) -> Result<u64> {
         match self {
             FtpClient::Plain(stream) => stream
@@ -569,7 +583,7 @@ impl FtpClient {
         }
     }
 
-    /// suppaftp 6.0.7: mdtm 返回 FtpResult<NaiveDateTime>，转为 DateTime<Utc>
+    /// suppaftp v7: mdtm 返回 FtpResult<NaiveDateTime>，转为 DateTime<Utc>
     async fn mdtm(&mut self, path: &str) -> Result<DateTime<Utc>> {
         match self {
             FtpClient::Plain(stream) => stream
@@ -646,7 +660,7 @@ impl CloudStorage for FtpStorage {
                 client.cwd(&Self::absolute_path(&full_parent)).await?;
             }
 
-            let mut cursor = async_std::io::Cursor::new(data);
+            let mut cursor = Cursor::new(data);
             self.upload_reader_atomic(&mut client, filename, &mut cursor, data.len() as u64, None)
                 .await?;
 
@@ -704,7 +718,7 @@ impl CloudStorage for FtpStorage {
                 .map_err(|e| AppError::file_system(format!("创建临时文件失败: {}", e)))?;
             let temp_path = temp_file.path().to_path_buf();
 
-            let checksum = client
+            let _checksum = client
                 .retr_to_file(filename, &temp_path, size, None)
                 .await?;
 
@@ -730,8 +744,12 @@ impl CloudStorage for FtpStorage {
             let mut files = Vec::new();
             let start = prefix.trim_matches('/').to_string();
             let mut dirs = vec![start];
+            let mut visited_dirs = std::collections::HashSet::new();
 
             while let Some(relative_dir) = dirs.pop() {
+                if !visited_dirs.insert(relative_dir.clone()) {
+                    continue;
+                }
                 let full_dir = Self::join_paths(&self.root, &relative_dir);
                 let full_dir_abs = Self::absolute_path(&full_dir);
                 let raw_entries = match client.mlsd(Some(&full_dir_abs)).await {
@@ -746,16 +764,26 @@ impl CloudStorage for FtpStorage {
                                 if Self::is_not_found_error(&list_err) {
                                     continue;
                                 }
-                                return Err(mlsd_err);
+                                return Err(list_err);
                             }
                         }
                     }
                 };
 
                 for raw in raw_entries {
-                    let Some(entry) = Self::parse_list_entry(&raw) else {
-                        tracing::warn!("[FtpStorage] 无法解析 LIST/MLSD 条目: {}", raw);
+                    let trimmed = raw.trim();
+                    if trimmed.is_empty()
+                        || trimmed
+                            .strip_prefix("total ")
+                            .is_some_and(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
+                    {
                         continue;
+                    }
+                    let Some(entry) = Self::parse_list_entry(&raw) else {
+                        return Err(AppError::network(format!(
+                            "FTP 列表包含无法解析的条目，已拒绝把不完整结果当作成功: {}",
+                            raw
+                        )));
                     };
                     if entry.name == "." || entry.name == ".." || entry.name.starts_with('.') {
                         continue;
@@ -777,7 +805,7 @@ impl CloudStorage for FtpStorage {
             client.quit().await?;
 
             // 按修改时间降序排列
-            files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+            files.sort_by_key(|b| std::cmp::Reverse(b.last_modified));
             Ok(files)
         })
         .await
@@ -802,13 +830,12 @@ impl CloudStorage for FtpStorage {
                 }
             }
 
-            // suppaftp 6.0.7: 删除文件使用 rm
+            // suppaftp v7: 删除文件使用 rm
             match client.rm(filename).await {
                 Ok(_) => {}
                 Err(e) => {
                     // 文件不存在也算成功
-                    let err_str = e.to_string();
-                    if !err_str.contains("550") && !err_str.contains("not found") {
+                    if !Self::is_not_found_error(&e) {
                         return Err(e);
                     }
                 }
@@ -915,11 +942,17 @@ impl CloudStorage for FtpStorage {
                 client.cwd(&Self::absolute_path(&full_parent)).await?;
             }
 
-            let mut file = async_std::fs::File::open(local_path)
+            let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
-            self.upload_reader_atomic(&mut client, filename, &mut file, file_size, progress_ref.as_ref())
-                .await?;
+            self.upload_reader_atomic(
+                &mut client,
+                filename,
+                &mut file,
+                file_size,
+                progress_ref.as_ref(),
+            )
+            .await?;
 
             client.quit().await?;
 
@@ -972,11 +1005,11 @@ impl CloudStorage for FtpStorage {
             }
 
             // 写入临时文件
-            let temp_file = tempfile::Builder::new()
+            let temp_path = tempfile::Builder::new()
                 .prefix("ftp-download-")
                 .tempfile_in(local_path.parent().unwrap_or_else(|| Path::new(".")))
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            let temp_path = temp_file.path().to_path_buf();
+                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?
+                .into_temp_path();
 
             let checksum = client
                 .retr_to_file(filename, &temp_path, total_size, progress.as_ref())
@@ -998,10 +1031,12 @@ impl CloudStorage for FtpStorage {
                 cb(total_size, total_size);
             }
 
-            // 原子重命名
-            tokio::fs::rename(&temp_path, local_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("保存文件失败：{}", e)))?;
+            std::fs::File::open(&temp_path)
+                .and_then(|file| file.sync_all())
+                .map_err(|e| AppError::file_system(format!("同步下载文件失败：{}", e)))?;
+            temp_path
+                .persist(local_path)
+                .map_err(|e| AppError::file_system(format!("保存文件失败：{}", e.error)))?;
 
             Ok(checksum)
         })
@@ -1044,8 +1079,39 @@ mod tests {
     }
 
     #[test]
+    fn test_pyftpdlib_not_retrievable_is_not_found() {
+        let error = AppError::file_system(
+            "FTP SIZE 失败：Invalid response: [550] 550 /missing/file.txt is not retrievable.",
+        );
+
+        assert!(FtpStorage::is_not_found_error(&error));
+    }
+
+    #[test]
     fn ftp_contract_source_guards() {
         let source = include_str!("ftp.rs");
+        let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
+
+        assert!(
+            production_source.contains("suppaftp::tokio::AsyncRustlsConnector"),
+            "FTP FTPS must use rustls"
+        );
+        assert!(
+            production_source.contains("suppaftp::tokio::{AsyncFtpStream, AsyncRustlsFtpStream}"),
+            "FTP must stay on suppaftp tokio backend"
+        );
+        assert!(
+            !production_source.contains("async-std"),
+            "FTP must not depend on async-std"
+        );
+        assert!(
+            !production_source.contains("native-tls"),
+            "FTP must not depend on native-tls"
+        );
+        assert!(
+            !production_source.contains("openssl"),
+            "FTP must not depend on openssl"
+        );
 
         assert!(
             source.contains("async fn upload_reader_atomic"),

@@ -11,12 +11,21 @@ vi.mock('i18next', () => ({
   },
 }));
 
+const mockActivate = vi.fn(() => true);
+
+vi.mock('@/features/workbench', () => ({
+  workbenchBus: {
+    activate: (...args: unknown[]) => mockActivate(...args),
+  },
+}));
+
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { eventRegistry } from '@/features/chat/registry/eventRegistry';
 import '@/features/chat/plugins/events/approval';
 
-function createMockStore(): ChatStore {
+function createMockStore(sessionId = 'sess-1'): ChatStore {
   const store = {
+    sessionId,
     pendingApprovalRequest: null,
     pendingBlockingInteraction: null,
     setPendingApproval: vi.fn((request) => {
@@ -65,6 +74,14 @@ describe('ApprovalEventHandler', () => {
 
     expect(store.setPendingApproval).toHaveBeenCalledTimes(1);
     expect(store.pendingBlockingInteraction?.toolCallId).toBe('call-1');
+    // ACR R2-05: High 审批首次展示时 focus chat 窗
+    expect(mockActivate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        typeId: 'chat',
+        instanceKey: 'sess-1',
+        action: 'focus',
+      })
+    );
 
     handler!.onEnd!(store, 'approval_call-1', { toolCallId: 'call-1', approved: true });
     expect(store.pendingBlockingInteraction?.resolvedStatus).toBe('approved');
@@ -72,6 +89,119 @@ describe('ApprovalEventHandler', () => {
     vi.advanceTimersByTime(1000);
     expect(store.clearPendingApproval).toHaveBeenCalled();
     expect(store.pendingBlockingInteraction?.toolCallId).toBe('call-2');
+    // 队列出队的 High 审批也会 focus
+    expect(mockActivate).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps interleaved approval queues isolated between chat stores', () => {
+    const handler = eventRegistry.get('tool_approval_request')!;
+    const storeA = createMockStore('sess-a');
+    const storeB = createMockStore('sess-b');
+
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-1',
+      toolName: 'tool-a-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A1',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-2',
+      toolName: 'tool-a-2',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A2',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeB, 'msg-b', {
+      toolCallId: 'b-1',
+      toolName: 'tool-b-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'B1',
+      timeoutSeconds: 30,
+    });
+
+    handler.onEnd!(storeB, 'approval_b-1', { toolCallId: 'b-1', approved: true });
+    handler.onEnd!(storeA, 'approval_a-1', { toolCallId: 'a-1', approved: false });
+    vi.advanceTimersByTime(1000);
+
+    expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
+    expect(storeB.pendingBlockingInteraction).toBeNull();
+    expect(storeA.setPendingApproval).toHaveBeenLastCalledWith(
+      expect.objectContaining({ toolCallId: 'a-2' })
+    );
+    expect(storeB.setPendingApproval).not.toHaveBeenCalledWith(
+      expect.objectContaining({ toolCallId: 'a-2' })
+    );
+  });
+
+  it('does not cancel another chat store resolution timer during concurrent cleanup', () => {
+    const handler = eventRegistry.get('tool_approval_request')!;
+    const storeA = createMockStore('sess-a');
+    const storeB = createMockStore('sess-b');
+
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-1',
+      toolName: 'tool-a-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A1',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-2',
+      toolName: 'tool-a-2',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A2',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeB, 'msg-b', {
+      toolCallId: 'b-1',
+      toolName: 'tool-b-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'B1',
+      timeoutSeconds: 30,
+    });
+
+    handler.onEnd!(storeA, 'approval_a-1', { toolCallId: 'a-1', approved: true });
+    vi.advanceTimersByTime(500);
+    handler.onEnd!(storeB, 'approval_b-1', { toolCallId: 'b-1', approved: true });
+
+    vi.advanceTimersByTime(500);
+    expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
+    expect(storeA.clearPendingApproval).toHaveBeenCalledTimes(1);
+    expect(storeB.pendingBlockingInteraction).toMatchObject({
+      toolCallId: 'b-1',
+      resolvedStatus: 'approved',
+    });
+    expect(storeB.clearPendingApproval).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+    expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
+    expect(storeA.clearPendingApproval).toHaveBeenCalledTimes(1);
+    expect(storeB.pendingBlockingInteraction).toBeNull();
+    expect(storeB.clearPendingApproval).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not focus chat window for medium sensitivity', () => {
+    const handler = eventRegistry.get('tool_approval_request');
+    const store = createMockStore();
+
+    handler!.onStart!(store, 'msg-1', {
+      toolCallId: 'call-med',
+      toolName: 'medium_tool',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'desc',
+      timeoutSeconds: 30,
+    });
+
+    expect(mockActivate).not.toHaveBeenCalled();
+    expect(store.setPendingApproval).toHaveBeenCalledTimes(1);
   });
 
   it('marks timeout on end and notifies user', () => {
@@ -125,5 +255,93 @@ describe('ApprovalEventHandler', () => {
     );
 
     vi.advanceTimersByTime(1000);
+  });
+
+  it('propagates custom user rejection reason into resolvedReason', () => {
+    const handler = eventRegistry.get('tool_approval_request');
+    const store = createMockStore();
+
+    handler!.onStart!(store, 'msg-1', {
+      toolCallId: 'call-reject-reason',
+      toolName: 'danger_tool',
+      arguments: {},
+      sensitivity: 'high',
+      description: 'desc',
+      timeoutSeconds: 30,
+    });
+
+    handler!.onEnd!(store, 'approval_call-reject-reason', {
+      toolCallId: 'call-reject-reason',
+      approved: false,
+      reason: '请改用只读命令查看文件',
+    });
+
+    expect(store.pendingBlockingInteraction?.resolvedStatus).toBe('rejected');
+    expect(store.pendingBlockingInteraction?.resolvedReason).toBe('请改用只读命令查看文件');
+
+    vi.advanceTimersByTime(1000);
+  });
+
+  it('keeps sentinel user_rejected reason as resolvedReason without misclassifying status', () => {
+    const handler = eventRegistry.get('tool_approval_request');
+    const store = createMockStore();
+
+    handler!.onStart!(store, 'msg-1', {
+      toolCallId: 'call-reject-plain',
+      toolName: 'danger_tool',
+      arguments: {},
+      sensitivity: 'high',
+      description: 'desc',
+      timeoutSeconds: 30,
+    });
+
+    handler!.onEnd!(store, 'approval_call-reject-plain', {
+      toolCallId: 'call-reject-plain',
+      approved: false,
+      reason: 'user_rejected',
+    });
+
+    expect(store.pendingBlockingInteraction?.resolvedStatus).toBe('rejected');
+    expect(store.pendingBlockingInteraction?.resolvedReason).toBe('user_rejected');
+
+    vi.advanceTimersByTime(1000);
+  });
+
+  it('preserves runtime scope metadata for inline approval UI', () => {
+    const handler = eventRegistry.get('tool_approval_request');
+    const store = createMockStore();
+
+    handler!.onStart!(store, 'msg-1', {
+      toolCallId: 'call-shell',
+      toolName: 'builtin-local_shell_execute',
+      arguments: { command: 'git status --short' },
+      sensitivity: 'high',
+      description: 'desc',
+      timeoutSeconds: 30,
+      runtimeScope: {
+        kind: 'shell',
+        toolSource: 'builtin',
+        toolName: 'local_shell_execute',
+        rootId: 'workspace',
+        cwd: '.',
+        commandPrefix: 'git status',
+        commandHash: '1234567890abcdef',
+        riskLevel: 'high',
+        hasShellOperators: false,
+        usesScriptRunner: false,
+        firstToken: 'git',
+      },
+    });
+
+    expect(store.pendingBlockingInteraction).toMatchObject({
+      kind: 'tool_approval',
+      toolCallId: 'call-shell',
+      runtimeScope: {
+        kind: 'shell',
+        rootId: 'workspace',
+        cwd: '.',
+        commandPrefix: 'git status',
+      },
+    });
   });
 });

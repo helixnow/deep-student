@@ -1,9 +1,12 @@
 import type { IStyleTheme } from '../../registry/types';
+import { MINIMAL_DARK_PALETTE } from './palettes';
 
 /**
  * 极简主题 - 暗色变体
  *
- * 保持极简风格（纯色、无装饰），将黑白反转以适配暗色模式。
+ * 保持极简风格（纯色、无装饰）。根节点使用半透明主题色底 + 浅字，
+ * 避免旧版白底黑字在暗色模式下突兀。
+ * 结构参数（fontSize / padding / borderRadius / 边宽）与 minimal 亮色严格镜像。
  */
 export const minimalDarkTheme: IStyleTheme = {
   id: 'minimal-dark',
@@ -11,8 +14,8 @@ export const minimalDarkTheme: IStyleTheme = {
   hidden: true,
   node: {
     root: {
-      background: '#FFFFFF',
-      foreground: '#000000',
+      background: 'hsl(var(--primary) / 0.22)',
+      foreground: 'hsl(var(--foreground))',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 16,
@@ -20,16 +23,16 @@ export const minimalDarkTheme: IStyleTheme = {
       padding: '8px 16px',
     },
     branch: {
-      background: '#252525',
-      foreground: 'rgba(255, 255, 255, 0.9)',
-      border: '1px solid rgba(255, 255, 255, 0.12)',
+      background: 'hsl(var(--secondary))',
+      foreground: 'hsl(var(--foreground) / 0.9)',
+      border: '1px solid hsl(var(--foreground) / 0.12)',
       borderRadius: 4,
       fontSize: 14,
       padding: '6px 12px',
     },
     leaf: {
       background: 'transparent',
-      foreground: 'rgba(255, 255, 255, 0.85)',
+      foreground: 'hsl(var(--foreground) / 0.85)',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 14,
@@ -38,10 +41,11 @@ export const minimalDarkTheme: IStyleTheme = {
   },
   edge: {
     type: 'bezier',
-    stroke: 'rgba(255, 255, 255, 0.12)',
+    stroke: 'hsl(var(--foreground) / 0.12)',
     strokeWidth: 1,
   },
+  palette: MINIMAL_DARK_PALETTE,
   canvas: {
-    background: '#1a1a1a',
+    background: 'var(--mm-bg)',
   },
 };

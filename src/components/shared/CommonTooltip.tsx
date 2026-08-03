@@ -3,11 +3,24 @@ import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useOverlayCoordinator } from './OverlayCoordinator';
+import { CustomScrollArea } from '../custom-scroll-area';
 import './CommonTooltip.css';
 
 export type TooltipPosition = 'top' | 'bottom' | 'left' | 'right';
 export type TooltipTheme = 'dark' | 'light' | 'auto';
 export const DEFAULT_TOOLTIP_DELAY_MS = 500;
+const DEFAULT_TOOLTIP_OUT_DURATION_MS = 50;
+
+const readTooltipDurationMs = (property: string, fallback: number) => {
+  if (typeof window === 'undefined') return fallback;
+
+  const value = window.getComputedStyle(document.documentElement).getPropertyValue(property).trim();
+  const match = value.match(/^([\d.]+)(ms|s)$/);
+  if (!match) return fallback;
+
+  const duration = Number(match[1]);
+  return Number.isFinite(duration) ? duration * (match[2] === 's' ? 1000 : 1) : fallback;
+};
 
 export interface CommonTooltipProps {
   /** 提示内容 */
@@ -30,7 +43,7 @@ export interface CommonTooltipProps {
   className?: string;
   /**
    * 快捷键角标：在提示文案右侧渲染 kbd 键位（如 "⌘K" 或 ["⌘", "K"]）。
-   * 用于让键位提示渗透到各处 Tooltip（借鉴 OpenCode 界面处处标键位）。
+   * 用于让键位提示渗透到各处 Tooltip。
    */
   shortcut?: string | string[];
   /** 子元素 */
@@ -66,10 +79,13 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
 }) => {
   const tooltipId = useId();
   const [isVisible, setIsVisible] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(false);
   // 触屏支持：记录最近一次 pointer 类型，touch tap 时切换 tooltip（无自身点击行为的元素）
   const lastPointerTypeRef = useRef<string>('');
   const { dismissTooltips, tooltipDismissVersion, tooltipsSuppressed } = useOverlayCoordinator();
@@ -84,31 +100,42 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     }
   }, []);
 
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
   // 计算tooltip位置
   const calculatePosition = useCallback(() => {
     if (!triggerRef.current || !tooltipRef.current) return;
 
     const triggerRect = triggerRef.current.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
+    // Entry transforms do not alter layout dimensions, so use offset* for
+    // collision math and avoid feeding transient animation scale into it.
+    const tooltipWidth = tooltipRef.current.offsetWidth || tooltipRect.width;
+    const tooltipHeight = tooltipRef.current.offsetHeight || tooltipRect.height;
     
     let top = 0;
     let left = 0;
 
     switch (position) {
       case 'top':
-        top = triggerRect.top - tooltipRect.height - offset;
-        left = triggerRect.left + (triggerRect.width - tooltipRect.width) / 2;
+        top = triggerRect.top - tooltipHeight - offset;
+        left = triggerRect.left + (triggerRect.width - tooltipWidth) / 2;
         break;
       case 'bottom':
         top = triggerRect.bottom + offset;
-        left = triggerRect.left + (triggerRect.width - tooltipRect.width) / 2;
+        left = triggerRect.left + (triggerRect.width - tooltipWidth) / 2;
         break;
       case 'left':
-        top = triggerRect.top + (triggerRect.height - tooltipRect.height) / 2;
-        left = triggerRect.left - tooltipRect.width - offset;
+        top = triggerRect.top + (triggerRect.height - tooltipHeight) / 2;
+        left = triggerRect.left - tooltipWidth - offset;
         break;
       case 'right':
-        top = triggerRect.top + (triggerRect.height - tooltipRect.height) / 2;
+        top = triggerRect.top + (triggerRect.height - tooltipHeight) / 2;
         left = triggerRect.right + offset;
         break;
     }
@@ -118,27 +145,35 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    // 水平边界
-    if (left < padding) {
-      left = padding;
-    } else if (left + tooltipRect.width > viewportWidth - padding) {
-      left = viewportWidth - tooltipRect.width - padding;
-    }
-
-    // 垂直边界
-    if (top < padding) {
-      top = padding;
-    } else if (top + tooltipRect.height > viewportHeight - padding) {
-      top = viewportHeight - tooltipRect.height - padding;
-    }
+    const maxLeft = Math.max(padding, viewportWidth - tooltipWidth - padding);
+    const maxTop = Math.max(padding, viewportHeight - tooltipHeight - padding);
+    left = Math.min(Math.max(left, padding), maxLeft);
+    top = Math.min(Math.max(top, padding), maxTop);
 
     setTooltipPos({ top, left });
   }, [offset, position]);
 
+  const showTooltip = useCallback(() => {
+    clearCloseTimer();
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      setIsMounted(true);
+    }
+    setIsVisible(true);
+  }, [clearCloseTimer]);
+
   const dismissTooltip = useCallback(() => {
     clearShowTimer();
     setIsVisible(false);
-  }, [clearShowTimer]);
+    if (!isMountedRef.current) return;
+
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      isMountedRef.current = false;
+      setIsMounted(false);
+    }, readTooltipDurationMs('--tt-out-dur', DEFAULT_TOOLTIP_OUT_DURATION_MS));
+  }, [clearCloseTimer, clearShowTimer]);
 
   // 鼠标进入
   const handleMouseEnter = () => {
@@ -148,11 +183,11 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     if (delay > 0) {
       timerRef.current = setTimeout(() => {
         if (isTooltipDisabled) return;
-        setIsVisible(true);
+        showTooltip();
         timerRef.current = null;
       }, delay);
     } else {
-      setIsVisible(true);
+      showTooltip();
     }
   };
 
@@ -207,8 +242,9 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   useEffect(() => {
     return () => {
       clearShowTimer();
+      clearCloseTimer();
     };
-  }, [clearShowTimer]);
+  }, [clearCloseTimer, clearShowTimer]);
 
   useEffect(() => {
     dismissTooltip();
@@ -290,11 +326,11 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   } as any);
 
   // 渲染tooltip内容
-  const tooltipContent = isVisible && content && (
+  const tooltipContent = isMounted && content && (
     <div
       ref={tooltipRef}
       id={tooltipId}
-      className={`common-tooltip common-tooltip--${position} common-tooltip--${theme} ${showArrow ? 'common-tooltip--with-arrow' : ''} ${className}`}
+      className={`common-tooltip common-tooltip--${position} common-tooltip--${theme} ${isVisible ? 'common-tooltip--visible' : ''} ${showArrow ? 'common-tooltip--with-arrow' : ''} ${className}`}
       style={{
         position: 'fixed',
         top: tooltipPos.top,
@@ -304,8 +340,13 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
       }}
       role="tooltip"
       aria-hidden={!isVisible}
+      onWheel={(event) => event.stopPropagation()}
     >
-      <div className="common-tooltip__content">
+      <CustomScrollArea
+        className="common-tooltip__content"
+        viewportClassName="common-tooltip__viewport"
+        fullHeight={false}
+      >
         {shortcut ? (
           <span className="common-tooltip__row">
             <span>{content}</span>
@@ -318,7 +359,7 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
         ) : (
           content
         )}
-      </div>
+      </CustomScrollArea>
       {showArrow && <div className="common-tooltip__arrow" />}
     </div>
   );

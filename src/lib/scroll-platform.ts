@@ -9,6 +9,8 @@ export interface ScrollPlatform {
   readonly isIOSWebView: boolean;
   readonly isTauri: boolean;
   readonly isTouchPrimary: boolean;
+  /** macOS desktop (WebKit or Chromium) — native scrollbars never jump on track click. */
+  readonly isMac: boolean;
   /** iOS defaults to native scrollbars to preserve rubber-band + inertia. */
   readonly preferNativeScrollbars: boolean;
 }
@@ -17,6 +19,7 @@ const EMPTY: ScrollPlatform = {
   isIOSWebView: false,
   isTauri: false,
   isTouchPrimary: false,
+  isMac: false,
   preferNativeScrollbars: false,
 };
 
@@ -39,10 +42,15 @@ export function detectScrollPlatform(): ScrollPlatform {
     // matchMedia may throw in sandboxed test envs; treat as false.
   }
 
+  const isMac =
+    /Mac|iPhone|iPad|iPod/.test(ua) ||
+    (typeof navigator.platform === "string" && /Mac|iPhone|iPad|iPod/.test(navigator.platform));
+
   return {
     isIOSWebView: isIOS,
     isTauri,
     isTouchPrimary,
+    isMac,
     preferNativeScrollbars: isIOS,
   };
 }

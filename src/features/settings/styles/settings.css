@@ -8,6 +8,122 @@
   box-sizing: border-box;
 }
 
+/* 移动端设置采用统一 bottom sheet：一级入口和二级内容共享同一套纸面、顶栏与安全区。 */
+body .settings-mobile-sheet {
+  position: fixed;
+  isolation: isolate;
+
+  --settings-mobile-sheet-header-height: calc(56px + var(--mobile-safe-area-top, env(safe-area-inset-top, 0)));
+
+  background: var(--surface-muted);
+  color: var(--mobile-sheet-foreground);
+  overflow: hidden;
+  box-shadow: var(--mobile-sheet-shadow);
+
+  /* Sheet primitives use `translate` for their entrance/exit animation;
+     drag offset lives on `transform` so the two motions do not overwrite each other. */
+  transform: translate3d(0, var(--settings-sheet-drag-offset, 0), 0);
+  transition: transform var(--settings-sheet-drag-transition, 0ms) cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* Settings Sheet 上方的露出区保留上一视图轮廓，并用轻微黑色遮罩压低对比度。 */
+body .settings-mobile-sheet-overlay {
+  background: hsl(0deg 0% 0% / 14%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body .settings-mobile-sheet-overlay {
+    background: hsl(0deg 0% 0% / 22%);
+  }
+}
+
+.settings-mobile-sheet-header {
+  display: grid;
+  grid-template-columns: var(--touch-target-size, 44px) minmax(0, 1fr) var(--touch-target-size, 44px);
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 56px;
+  height: var(--settings-mobile-sheet-header-height);
+  gap: 0.5rem;
+  padding: var(--mobile-safe-area-top, env(safe-area-inset-top, 0px)) calc(0.75rem + var(--mobile-safe-area-right, env(safe-area-inset-right, 0px))) 0 calc(0.75rem + var(--mobile-safe-area-left, env(safe-area-inset-left, 0px)));
+  border-bottom: 0;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  background: linear-gradient(
+    to bottom,
+    var(--surface-muted) 0%,
+    var(--surface-muted) 42%,
+    color-mix(in srgb, var(--surface-muted) 58%, transparent 42%) 72%,
+    transparent 100%
+  );
+  color: var(--mobile-sheet-foreground);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.settings-mobile-sheet-header:active {
+  cursor: grabbing;
+}
+
+.settings-mobile-sheet-header h1 {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 1.125rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-mobile-sheet-header-action {
+  display: inline-flex;
+  width: var(--touch-target-size, 44px);
+  min-width: var(--touch-target-size, 44px);
+  height: var(--touch-target-size, 44px);
+  align-items: center;
+  justify-content: center;
+  color: var(--mobile-sheet-muted-foreground);
+  border-radius: 9999px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  body .settings-mobile-sheet-header-action:hover {
+    background: transparent;
+    color: var(--mobile-sheet-muted-foreground);
+  }
+
+  body .settings-mobile-sheet-header-action:active {
+    background: var(--interactive-hover);
+    color: var(--mobile-sheet-foreground);
+  }
+}
+
+body .settings-mobile-sheet-body {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: var(--mobile-sheet-foreground);
+  scroll-padding-bottom: calc(1.5rem + var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+body .settings-mobile-sheet-layout-content {
+  background: transparent;
+}
+
+body .settings-mobile-sheet-scroll-viewport {
+  scroll-padding-bottom: calc(1.5rem + var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body .settings-mobile-sheet {
+    transition: none;
+  }
+}
+
 /* 移动端设置页面溢出控制 */
 @media (max-width: 767.98px) {
   .settings {
@@ -155,7 +271,7 @@
   left: 0;
   height: 2px;
   background: hsl(var(--primary)); /* 主题指示条 */
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--resize-dur, 300ms) var(--ease-material), width var(--resize-dur, 300ms) var(--ease-material);
   z-index: 2; /* 提高层级确保在边框之上 */
   transform-origin: left center;
   border-radius: 0;
@@ -175,13 +291,6 @@
   padding: 0;
   margin: 0;
   overflow-x: auto; /* 允许水平滚动，防止标签挤压 */
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
-}
-
-/* 隐藏滚动条但保留功能 */
-.tab-buttons::-webkit-scrollbar {
-  display: none;
 }
 
 /* 标签按钮 */
@@ -573,54 +682,6 @@
   box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.1);
 }
 
-.btn-primary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  border: none;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.1);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: hsl(var(--primary) / 0.9);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 6px hsl(var(--shadow-base) / 0.1);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  background: hsl(var(--secondary));
-  color: hsl(var(--secondary-foreground));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: hsl(var(--accent));
-  border-color: hsl(var(--ring));
-  color: hsl(var(--accent-foreground));
-}
-
 .save-button-content {
   display: flex;
   align-items: center;
@@ -754,4 +815,107 @@
 
 .settings-select-trigger > span:first-of-type[data-placeholder] {
   opacity: 0.6;
+}
+
+/* ============ 设置页 range 滑块（PDF / OCR 参数） ============ */
+
+/*
+ * 滑块 input 使用了 appearance-none：WebKit 下若不自定义 ::-webkit-slider-thumb，
+ * 滑块柄会直接不渲染（accent-color 在 appearance:none 下也不生效）。
+ * 这里统一补 thumb 样式，并在触屏（pointer:coarse）下放大便于拖动。
+ */
+.settings-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.25);
+  cursor: pointer;
+}
+
+.settings-range-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.25);
+  cursor: pointer;
+}
+
+.settings-range-slider:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+  .settings-range-slider::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+
+  .settings-range-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* ============ 模型卡片内联编辑展开/收起 ============ */
+
+/*
+ * grid-template-rows 0fr→1fr 实现内容高度动画（内容高度未知也能平滑过渡）；
+ * 时长/缓动消费 transitions-dev tokens（--panel-open-dur / --panel-close-dur / --panel-ease）。
+ * visibility 参与过渡：收起动画结束后才隐藏（离散插值），保证退场完整可见，
+ * 完全收起后从可访问性树/焦点链中移除。
+ */
+.settings-inline-editor {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0s linear var(--panel-close-dur, 350ms);
+}
+
+.settings-inline-editor[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0s;
+}
+
+.settings-inline-editor > .settings-inline-editor-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 内容展开时从上方轻微落位、收起时轻微上浮，与高度变化形成"抽屉拉开"质感 */
+.settings-inline-editor .settings-inline-editor-body {
+  translate: 0 -8px;
+  transition: translate var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.settings-inline-editor[data-open='true'] .settings-inline-editor-body {
+  translate: 0 0;
+  transition: translate var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-inline-editor,
+  .settings-inline-editor[data-open='true'] {
+    transition: none;
+  }
+
+  .settings-inline-editor .settings-inline-editor-body,
+  .settings-inline-editor[data-open='true'] .settings-inline-editor-body {
+    translate: 0 0;
+    transition: none;
+  }
 }

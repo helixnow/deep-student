@@ -45,9 +45,26 @@ impl SyncPhase {
     }
 }
 
+/// 同一次同步操作的可机器判定结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncOutcome {
+    InProgress,
+    Succeeded,
+    Failed,
+    Partial,
+    Unknown,
+}
+
 /// 同步进度
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncProgress {
+    /// 一次同步从 preparing 到终态保持不变的关联 ID。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    /// 结构化结果；旧前端可安全忽略。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<SyncOutcome>,
     /// 当前阶段
     pub phase: SyncPhase,
     /// 进度百分比 (0-100)
@@ -69,6 +86,8 @@ pub struct SyncProgress {
 impl Default for SyncProgress {
     fn default() -> Self {
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::InProgress),
             phase: SyncPhase::Preparing,
             percent: 0.0,
             current: 0,
@@ -85,6 +104,8 @@ impl SyncProgress {
     /// 创建准备中状态的进度
     pub fn preparing() -> Self {
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::InProgress),
             phase: SyncPhase::Preparing,
             percent: 0.0,
             current: 0,
@@ -99,6 +120,8 @@ impl SyncProgress {
     /// 创建检测变更状态的进度
     pub fn detecting_changes() -> Self {
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::InProgress),
             phase: SyncPhase::DetectingChanges,
             percent: 5.0,
             current: 0,
@@ -119,6 +142,8 @@ impl SyncProgress {
         };
 
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::InProgress),
             phase: SyncPhase::Uploading,
             percent,
             current,
@@ -139,6 +164,8 @@ impl SyncProgress {
         };
 
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::InProgress),
             phase: SyncPhase::Downloading,
             percent,
             current,
@@ -159,6 +186,8 @@ impl SyncProgress {
         };
 
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::InProgress),
             phase: SyncPhase::Applying,
             percent,
             current,
@@ -173,6 +202,8 @@ impl SyncProgress {
     /// 创建完成状态的进度
     pub fn completed() -> Self {
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::Succeeded),
             phase: SyncPhase::Completed,
             percent: 100.0,
             current: 0,
@@ -187,6 +218,8 @@ impl SyncProgress {
     /// 创建失败状态的进度
     pub fn failed(error: String) -> Self {
         Self {
+            operation_id: None,
+            outcome: Some(SyncOutcome::Failed),
             phase: SyncPhase::Failed,
             percent: 0.0,
             current: 0,
@@ -214,6 +247,16 @@ impl SyncProgress {
     /// 更新进度百分比
     pub fn with_percent(mut self, percent: f32) -> Self {
         self.percent = percent.clamp(0.0, 100.0);
+        self
+    }
+
+    pub fn with_operation_id(mut self, operation_id: impl Into<String>) -> Self {
+        self.operation_id = Some(operation_id.into());
+        self
+    }
+
+    pub fn with_outcome(mut self, outcome: SyncOutcome) -> Self {
+        self.outcome = Some(outcome);
         self
     }
 }
@@ -447,6 +490,24 @@ mod tests {
         let failed = SyncProgress::failed("test error".to_string());
         assert_eq!(failed.phase, SyncPhase::Failed);
         assert_eq!(failed.error, Some("test error".to_string()));
+        assert_eq!(failed.outcome, Some(SyncOutcome::Failed));
+    }
+
+    #[test]
+    fn legacy_progress_deserializes_without_operation_metadata() {
+        let progress: SyncProgress = serde_json::from_value(serde_json::json!({
+            "phase": "preparing",
+            "percent": 0.0,
+            "current": 0,
+            "total": 0,
+            "current_item": null,
+            "speed_bytes_per_sec": null,
+            "eta_seconds": null,
+            "error": null
+        }))
+        .unwrap();
+        assert_eq!(progress.operation_id, None);
+        assert_eq!(progress.outcome, None);
     }
 
     #[test]

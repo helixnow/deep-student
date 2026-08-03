@@ -2,7 +2,7 @@ use chrono::Utc;
 use regex::Regex;
 use rusqlite::{params, OptionalExtension, Transaction};
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::database::Database;
 use crate::models::AppError;
@@ -10,6 +10,19 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::note_repo::VfsNoteRepo;
 use crate::vfs::types::{VfsCreateNoteParams, VfsNote, VfsUpdateNoteParams};
 use log::warn;
+
+// ==================== 笔记链接提取用静态正则 ====================
+// 模式均为编译期字面量，编译失败属程序缺陷，expect 携带定位说明；
+// LazyLock 避免每次 extract_note_links 调用重复编译正则。
+static WIKI_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[\[([^\]]+)\]\]").expect("wiki 链接正则字面量非法"));
+static MARKDOWN_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[[^\]]*\]\(([^)]+)\)").expect("markdown 链接正则字面量非法"));
+static NOTES_SCHEME_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"notes://([^\s\]\)]+)").expect("notes:// 正则字面量非法"));
+// 允许 http/https 链接，排除空白、尖括号、方括号、右括号、引号等
+static PLAIN_HTTP_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r##"https?://[^\s<>\]\)"']+"##).expect("http 链接正则字面量非法"));
 
 /// 从笔记内容中提取纯文本（支持 ProseMirror JSON 和 Markdown）
 fn extract_clean_text_from_note_content(content: &str) -> String {
@@ -103,6 +116,9 @@ pub struct NotesManager {
 }
 
 impl NotesManager {
+    /// ⚠️ DEPRECATED（legacy 非 VFS 构造器）：不带 VFS 数据库时所有读写都会
+    /// 落到主库旧 `notes` 表（生产已迁移 VFS，见 lib.rs 统一使用
+    /// [`Self::new_with_vfs`]）。仅为旧调用方/测试保留，请勿在新代码中使用。
     pub fn new(db: Arc<Database>) -> Result<Self> {
         let mgr = Self { db, vfs_db: None };
         #[cfg(feature = "lance")]
@@ -283,6 +299,13 @@ impl NotesManager {
 
     #[cfg(feature = "lance")]
     fn ensure_notes_lance_migrated(&self) -> Result<()> {
+        // ★ 2026-07-19（P3-1）：VFS 模式下 Lance `notes_search` 表已停写停读
+        // （search_notes_lance 直接短路到 VFS FTS 检索），启动时把全部笔记
+        // 灌入 Lance 纯属浪费，且 lance_notes_table 内部的
+        // async_runtime::block_on 存在启动阻塞风险，直接跳过。
+        if self.vfs_db.is_some() {
+            return Ok(());
+        }
         if let Ok(Some(flag)) = self.db.get_setting("notes.lance.migrated") {
             if flag == "1" {
                 return Ok(());
@@ -302,6 +325,11 @@ impl NotesManager {
 
     #[cfg(feature = "lance")]
     fn sync_note_to_lance(&self, note: &NoteItem) -> Result<()> {
+        // ★ 2026-07-19（P3-1）：VFS 模式下 Lance notes_search 已废弃，
+        // 门禁防止误用（内部含 block_on，误调用会阻塞调用线程）。
+        if self.vfs_db.is_some() {
+            return Ok(());
+        }
         let table = self.lance_notes_table()?;
         let note_clone = note.clone();
         async_runtime::block_on(async move {
@@ -337,6 +365,10 @@ impl NotesManager {
 
     #[cfg(feature = "lance")]
     fn remove_note_from_lance(&self, note_id: &str) -> Result<()> {
+        // ★ 2026-07-19（P3-1）：同 sync_note_to_lance，VFS 模式下直接短路。
+        if self.vfs_db.is_some() {
+            return Ok(());
+        }
         let table = self.lance_notes_table()?;
         let id = note_id.to_string();
         async_runtime::block_on(async move {
@@ -350,8 +382,7 @@ impl NotesManager {
         let mut internal: HashSet<String> = HashSet::new();
         let mut external: HashSet<String> = HashSet::new();
 
-        let wiki = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
-        for cap in wiki.captures_iter(content) {
+        for cap in WIKI_LINK_RE.captures_iter(content) {
             if let Some(m) = cap.get(1) {
                 let t = m.as_str().trim();
                 if !t.is_empty() {
@@ -360,8 +391,7 @@ impl NotesManager {
             }
         }
 
-        let markdown_links = Regex::new(r"\[[^\]]*\]\(([^)]+)\)").unwrap();
-        for cap in markdown_links.captures_iter(content) {
+        for cap in MARKDOWN_LINK_RE.captures_iter(content) {
             if let Some(m) = cap.get(1) {
                 let url = m.as_str().trim();
                 if url.is_empty() {
@@ -380,8 +410,7 @@ impl NotesManager {
             }
         }
 
-        let notes_scheme = Regex::new(r"notes://([^\s\]\)]+)").unwrap();
-        for cap in notes_scheme.captures_iter(content) {
+        for cap in NOTES_SCHEME_RE.captures_iter(content) {
             if let Some(m) = cap.get(1) {
                 let t = m.as_str().trim();
                 if !t.is_empty() {
@@ -390,9 +419,7 @@ impl NotesManager {
             }
         }
 
-        // 允许 http/https 链接，排除空白、尖括号、方括号、右括号、引号等
-        let plain_http = Regex::new(r##"https?://[^\s<>\]\)"']+"##).unwrap();
-        for cap in plain_http.captures_iter(content) {
+        for cap in PLAIN_HTTP_RE.captures_iter(content) {
             if let Some(m) = cap.get(0) {
                 external.insert(m.as_str().to_string());
             }
@@ -405,6 +432,8 @@ impl NotesManager {
         (internal_vec, external_vec)
     }
 
+    /// ⚠️ legacy 非 VFS 死路径专用（查询主库旧 `notes` 表），仅被
+    /// [`Self::rebuild_note_links_tx`] 调用。VFS 模式下不可达。
     fn resolve_note_id_by_title_tx(tx: &Transaction<'_>, title: &str) -> Result<Option<String>> {
         let mut stmt = tx
             .prepare(
@@ -436,6 +465,9 @@ impl NotesManager {
         Ok(None)
     }
 
+    /// ⚠️ DEPRECATED（legacy 非 VFS 死路径）：维护主库旧 `note_links` 表。
+    /// VFS 模式（生产默认）不维护反向链接，此函数仅被同样已 VFS 门禁的
+    /// legacy create/update/restore 路径调用。请勿在新代码中使用。
     fn rebuild_note_links_tx(
         &self,
         tx: &Transaction<'_>,
@@ -477,6 +509,8 @@ impl NotesManager {
         Ok(())
     }
 
+    /// ⚠️ legacy 非 VFS 死路径专用（维护主库旧 `note_links` 表）。
+    /// VFS 模式下不可达；VFS 链接图由 L 代理在 vfs.db 侧另行建设。
     fn update_inbound_link_targets_tx(
         &self,
         tx: &Transaction<'_>,
@@ -680,6 +714,10 @@ impl NotesManager {
     }
 
     /// ★ A6-22：VFS 模式下的笔记搜索（供 canvas AI 工具使用）
+    ///
+    /// ★ 2026-07-19（P1-1/P1-2）：改走 `VfsNoteRepo::search_notes_with_snippets`，
+    /// FTS5（bm25 排序）优先、LIKE 兜底，元数据 + 正文摘要单查询取回，
+    /// 消灭原先"每条命中单独 get_note_content"的 N+1。
     #[cfg(feature = "lance")]
     fn search_notes_vfs(
         &self,
@@ -690,19 +728,12 @@ impl NotesManager {
             .vfs_db
             .as_ref()
             .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-        let tokens = Self::tokenize_keyword(keyword);
-        let tokens_lower: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
-        let notes = VfsNoteRepo::list_notes(vfs_db, Some(keyword), limit.max(1) as u32, 0)
+        let hits = VfsNoteRepo::search_notes_with_snippets(vfs_db, keyword, limit.max(1) as u32)
             .map_err(|e| AppError::database(format!("VFS 搜索笔记失败: {}", e)))?;
-        let mut out = Vec::with_capacity(notes.len());
-        for note in notes {
-            let snippet = VfsNoteRepo::get_note_content(vfs_db, &note.id)
-                .ok()
-                .flatten()
-                .and_then(|content| self.build_note_snippet(&content, &tokens_lower));
-            out.push((note.id, note.title, snippet));
-        }
-        Ok(out)
+        Ok(hits
+            .into_iter()
+            .map(|(note, snippet)| (note.id, note.title, snippet))
+            .collect())
     }
 
     #[cfg(feature = "lance")]
@@ -755,7 +786,7 @@ impl NotesManager {
         if let Some(vfs_db) = self.vfs_db.as_ref() {
             let conn = vfs_db
                 .get_conn_safe()
-                .map_err(|e| AppError::database(format!("Failed to get VFS connection: {}", e)))?;
+                .map_err(|e| AppError::database(format!("获取 VFS 数据库连接失败: {}", e)))?;
             let mut stmt = conn
                 .prepare(
                     "SELECT n.id, n.title, COALESCE(r.data, ''), n.tags, n.created_at, n.updated_at, COALESCE(n.is_favorite, 0)
@@ -764,7 +795,7 @@ impl NotesManager {
                      WHERE n.deleted_at IS NULL
                      ORDER BY datetime(n.updated_at) DESC",
                 )
-                .map_err(|e| AppError::database(format!("Failed to prepare VFS query: {}", e)))?;
+                .map_err(|e| AppError::database(format!("准备 VFS 笔记查询失败: {}", e)))?;
             let rows = stmt
                 .query_map([], |row| {
                     let tags_json: String = row.get(3)?;
@@ -779,7 +810,7 @@ impl NotesManager {
                         is_favorite: row.get::<_, i64>(6)? != 0,
                     })
                 })
-                .map_err(|e| AppError::database(format!("Failed to execute VFS query: {}", e)))?;
+                .map_err(|e| AppError::database(format!("执行 VFS 笔记查询失败: {}", e)))?;
             let mut out = Vec::new();
             for r in rows {
                 out.push(r.map_err(|e| AppError::database(e.to_string()))?);
@@ -820,21 +851,38 @@ impl NotesManager {
     }
 
     /// Lightweight list: no content_md
+    ///
+    /// ★ 2026-07-19（P2-1）：为防止超大笔记库一次性载入全部元数据，
+    /// 默认上限 [`Self::DEFAULT_LIST_META_LIMIT`]；需要自定义上限时使用
+    /// [`Self::list_notes_meta_limited`]。无参调用行为向后兼容。
     pub fn list_notes_meta(&self) -> Result<Vec<NoteItem>> {
+        self.list_notes_meta_limited(Self::DEFAULT_LIST_META_LIMIT)
+    }
+
+    /// list_notes_meta 的默认返回上限（P2-1）
+    pub const DEFAULT_LIST_META_LIMIT: u32 = 5000;
+
+    /// Lightweight list with an explicit row cap (no content_md)
+    pub fn list_notes_meta_limited(&self, limit: u32) -> Result<Vec<NoteItem>> {
+        let limit = limit.max(1) as i64;
         if let Some(vfs_db) = self.vfs_db.as_ref() {
             let conn = vfs_db
                 .get_conn_safe()
-                .map_err(|e| AppError::database(format!("Failed to get VFS connection: {}", e)))?;
+                .map_err(|e| AppError::database(format!("获取 VFS 数据库连接失败: {}", e)))?;
+            // ★ 2026-07 性能：VFS 的 updated_at 恒为固定格式 UTC ISO8601，
+            // 字典序即时间序；去掉 datetime() 包装让排序命中
+            // idx_notes_updated_not_deleted 部分索引，避免全表排序。
             let mut stmt = conn
                 .prepare(
                     "SELECT n.id, n.title, n.tags, n.created_at, n.updated_at, COALESCE(n.is_favorite, 0)
                      FROM notes n
                      WHERE n.deleted_at IS NULL
-                     ORDER BY datetime(n.updated_at) DESC",
+                     ORDER BY n.updated_at DESC
+                     LIMIT ?1",
                 )
-                .map_err(|e| AppError::database(format!("Failed to prepare VFS query: {}", e)))?;
+                .map_err(|e| AppError::database(format!("准备 VFS 笔记查询失败: {}", e)))?;
             let rows = stmt
-                .query_map([], |row| {
+                .query_map(params![limit], |row| {
                     let tags_json: String = row.get(2)?;
                     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
                     Ok(NoteItem {
@@ -847,7 +895,7 @@ impl NotesManager {
                         is_favorite: row.get::<_, i64>(5)? != 0,
                     })
                 })
-                .map_err(|e| AppError::database(format!("Failed to execute VFS query: {}", e)))?;
+                .map_err(|e| AppError::database(format!("执行 VFS 笔记查询失败: {}", e)))?;
             let mut out = Vec::new();
             for r in rows {
                 out.push(r.map_err(|e| AppError::database(e.to_string()))?);
@@ -863,11 +911,12 @@ impl NotesManager {
             .prepare(
                 "SELECT id, title, tags, created_at, updated_at, COALESCE(is_favorite, 0)
                  FROM notes WHERE (deleted_at IS NULL)
-                 ORDER BY datetime(updated_at) DESC",
+                 ORDER BY datetime(updated_at) DESC
+                 LIMIT ?1",
             )
             .map_err(|e| AppError::database(format!("Failed to prepare query: {}", e)))?;
         let rows = stmt
-            .query_map([], |row| {
+            .query_map(params![limit], |row| {
                 let tags_json: String = row.get(2)?;
                 let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
                 Ok(NoteItem {
@@ -923,144 +972,240 @@ impl NotesManager {
         row.ok_or_else(|| AppError::not_found("Note not found or deleted"))
     }
 
-    pub fn list_notes_advanced(&self, opt: ListOptions) -> Result<(Vec<NoteItem>, i64)> {
-        if let Some(vfs_db) = self.vfs_db.as_ref() {
-            let conn = vfs_db
-                .get_conn_safe()
-                .map_err(|e| AppError::database(format!("Failed to get VFS connection: {}", e)))?;
+    /// 将用户关键词构造成 notes_fts（trigram tokenizer）的 MATCH 查询。
+    ///
+    /// 与 `VfsNoteRepo::build_fts_match_query` 保持一致：整个关键词作为一个
+    /// 带引号的 phrase（内部 `"` 双写转义），子串匹配语义与 `LIKE '%kw%'` 对齐；
+    /// trigram 要求 >= 3 字符才能命中索引，不足时返回 None，由调用方回退 LIKE。
+    fn build_notes_fts_match_query(keyword: &str) -> Option<String> {
+        let trimmed = keyword.trim();
+        if trimmed.chars().count() < 3 {
+            return None;
+        }
+        Some(format!("\"{}\"", trimmed.replace('"', "\"\"")))
+    }
 
-            let mut where_clauses: Vec<String> = Vec::new();
-            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-            let mut param_idx = 1;
+    /// list_notes_advanced 的 VFS 实现。
+    ///
+    /// `fts_match` 为 Some 时关键词走 notes_fts JOIN（bm25 相关度排序，标题
+    /// 权重 5:1 高于正文，与 VfsNoteRepo 一致）；为 None 时关键词走
+    /// title/正文 LIKE。其余过滤条件（标签、时间、附件、软删除）两种模式共用。
+    fn list_notes_advanced_vfs(
+        &self,
+        vfs_db: &Arc<VfsDatabase>,
+        opt: &ListOptions,
+        fts_match: Option<&str>,
+    ) -> Result<(Vec<NoteItem>, i64)> {
+        let conn = vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取 VFS 数据库连接失败: {}", e)))?;
 
-            let escape_like = |s: &str| -> String {
-                s.replace('\\', r"\\")
-                    .replace('%', r"\%")
-                    .replace('_', r"\_")
-            };
+        let mut join_sql = String::from(" LEFT JOIN resources r ON r.id = n.resource_id");
+        let mut where_clauses: Vec<String> = Vec::new();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut param_idx = 1;
 
-            match (opt.include_deleted, opt.only_deleted) {
-                (_, true) => where_clauses.push("n.deleted_at IS NOT NULL".to_string()),
-                (false, _) => where_clauses.push("n.deleted_at IS NULL".to_string()),
-                (true, false) => {}
-            }
+        let escape_like = |s: &str| -> String {
+            s.replace('\\', r"\\")
+                .replace('%', r"\%")
+                .replace('_', r"\_")
+        };
 
-            if let Some(keyword) = opt.keyword.as_deref() {
-                let escaped = escape_like(keyword);
-                where_clauses.push(format!(
-                    "(n.title LIKE ?{} ESCAPE '\\' OR r.data LIKE ?{} ESCAPE '\\')",
-                    param_idx,
-                    param_idx + 1
-                ));
-                let pattern = format!("%{}%", escaped);
-                params_vec.push(Box::new(pattern.clone()));
-                params_vec.push(Box::new(pattern));
-                param_idx += 2;
-            }
+        match (opt.include_deleted, opt.only_deleted) {
+            (_, true) => where_clauses.push("n.deleted_at IS NOT NULL".to_string()),
+            (false, _) => where_clauses.push("n.deleted_at IS NULL".to_string()),
+            (true, false) => {}
+        }
 
-            if let Some(tags) = opt.tags.as_ref() {
-                for tag in tags.iter().filter(|t| !t.trim().is_empty()) {
-                    let escaped = escape_like(tag.trim());
-                    where_clauses.push(format!("n.tags LIKE ?{} ESCAPE '\\'", param_idx));
-                    params_vec.push(Box::new(format!("%\"{}\"%", escaped)));
-                    param_idx += 1;
-                }
-            }
-
-            if let Some(date_start) = opt.date_start.as_deref() {
-                where_clauses.push(format!(
-                    "datetime(n.updated_at) >= datetime(?{})",
-                    param_idx
-                ));
-                params_vec.push(Box::new(date_start.to_string()));
-                param_idx += 1;
-            }
-            if let Some(date_end) = opt.date_end.as_deref() {
-                where_clauses.push(format!(
-                    "datetime(n.updated_at) <= datetime(?{})",
-                    param_idx
-                ));
-                params_vec.push(Box::new(date_end.to_string()));
-                param_idx += 1;
-            }
-
-            let where_sql = if where_clauses.is_empty() {
-                String::new()
-            } else {
-                format!(" WHERE {}", where_clauses.join(" AND "))
-            };
-
-            let sort_col = match opt.sort_by.as_deref() {
-                Some("created_at") => "n.created_at",
-                Some("title") => "n.title",
-                _ => "n.updated_at",
-            };
-            let sort_dir = match opt.sort_dir.as_deref() {
-                Some("asc") => "ASC",
-                _ => "DESC",
-            };
-
-            let page = opt.page.max(0);
-            let page_size = opt.page_size.max(1);
-            let limit = page_size as i64;
-            let offset = (page * page_size) as i64;
-
-            let count_sql = format!(
-                "SELECT COUNT(*) FROM notes n LEFT JOIN resources r ON r.id = n.resource_id{}",
-                where_sql
-            );
-            let mut count_stmt = conn.prepare(&count_sql).map_err(|e| {
-                AppError::database(format!("Failed to prepare VFS count query: {}", e))
-            })?;
-            let count_params: Vec<&dyn rusqlite::ToSql> =
-                params_vec.iter().map(|p| p.as_ref()).collect();
-            let total: i64 = count_stmt
-                .query_row(count_params.as_slice(), |row| row.get(0))
-                .map_err(|e| {
-                    AppError::database(format!("Failed to execute VFS count query: {}", e))
-                })?;
-
-            let sql = format!(
-                "SELECT n.id, n.title, COALESCE(r.data, ''), n.tags, n.created_at, n.updated_at, COALESCE(n.is_favorite, 0)
-                 FROM notes n
-                 LEFT JOIN resources r ON r.id = n.resource_id
-                 {} ORDER BY {} {} LIMIT ?{} OFFSET ?{}",
-                where_sql,
-                sort_col,
-                sort_dir,
+        let mut order_by_relevance = false;
+        if let Some(match_query) = fts_match {
+            // FTS 路径：notes_fts.rowid 与 notes.rowid 对齐（见迁移触发器）
+            join_sql.push_str(" JOIN notes_fts ON notes_fts.rowid = n.rowid");
+            where_clauses.push(format!("notes_fts MATCH ?{}", param_idx));
+            params_vec.push(Box::new(match_query.to_string()));
+            param_idx += 1;
+            // 用户未显式指定排序字段时，按 bm25 相关度排序
+            order_by_relevance = opt.sort_by.is_none();
+        } else if let Some(keyword) = opt.keyword.as_deref() {
+            let escaped = escape_like(keyword);
+            where_clauses.push(format!(
+                "(n.title LIKE ?{} ESCAPE '\\' OR r.data LIKE ?{} ESCAPE '\\')",
                 param_idx,
                 param_idx + 1
-            );
-            params_vec.push(Box::new(limit));
-            params_vec.push(Box::new(offset));
+            ));
+            let pattern = format!("%{}%", escaped);
+            params_vec.push(Box::new(pattern.clone()));
+            params_vec.push(Box::new(pattern));
+            param_idx += 2;
+        }
 
-            let mut stmt = conn.prepare(&sql).map_err(|e| {
-                AppError::database(format!("Failed to prepare VFS list query: {}", e))
-            })?;
-            let params_refs: Vec<&dyn rusqlite::ToSql> =
-                params_vec.iter().map(|p| p.as_ref()).collect();
-            let rows = stmt
-                .query_map(params_refs.as_slice(), |row| {
-                    let tags_json: String = row.get(3)?;
-                    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-                    Ok(NoteItem {
-                        id: row.get(0)?,
-                        title: row.get(1)?,
-                        content_md: row.get(2)?,
-                        tags,
-                        created_at: row.get(4)?,
-                        updated_at: row.get(5)?,
-                        is_favorite: row.get::<_, i64>(6)? != 0,
-                    })
-                })
-                .map_err(|e| {
-                    AppError::database(format!("Failed to execute VFS list query: {}", e))
-                })?;
-            let mut out = Vec::new();
-            for r in rows {
-                out.push(r.map_err(|e| AppError::database(e.to_string()))?);
+        // ★ 2026-07-19：标签过滤精确匹配（历史 `tags LIKE %"tag"%` 有假阳性）。
+        // 活跃笔记查询走规范化 note_tags 表（触发器维护 + idx_note_tags_tag
+        // 索引，见 V20260722__note_tags.sql）；include_deleted / only_deleted
+        // 查询仍走 json_each（note_tags 不含软删除笔记），json_valid 守卫
+        // 防止历史非法 JSON 中断查询。
+        let tags_via_note_tags = !opt.include_deleted && !opt.only_deleted;
+        if let Some(tags) = opt.tags.as_ref() {
+            for tag in tags.iter().filter(|t| !t.trim().is_empty()) {
+                if tags_via_note_tags {
+                    where_clauses.push(format!(
+                        "EXISTS (SELECT 1 FROM note_tags nt WHERE nt.note_id = n.id AND nt.tag = ?{})",
+                        param_idx
+                    ));
+                } else {
+                    where_clauses.push(format!(
+                        "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(COALESCE(n.tags, '[]')) THEN COALESCE(n.tags, '[]') ELSE '[]' END) je WHERE TRIM(je.value) = ?{})",
+                        param_idx
+                    ));
+                }
+                params_vec.push(Box::new(tag.trim().to_string()));
+                param_idx += 1;
             }
-            return Ok((out, total));
+        }
+
+        // ★ 2026-07-19（P1-5）：实现 VFS 路径的 has_assets 过滤。
+        // 笔记附件存放在文件系统 notes_assets/{subject}/{note_id}/ 下，
+        // 数据库中无附件登记表；正文引用附件时必然包含 "notes_assets/"
+        // 相对路径（imageUpload/资产解析均以此为约定），据此用正文
+        // LIKE 判断，代价与本查询已有的 r.data JOIN 同量级。
+        if let Some(want_assets) = opt.has_assets {
+            let cond = "COALESCE(r.data, '') LIKE '%notes_assets/%'";
+            where_clauses.push(if want_assets {
+                cond.to_string()
+            } else {
+                format!("NOT ({})", cond)
+            });
+        }
+
+        if let Some(date_start) = opt.date_start.as_deref() {
+            where_clauses.push(format!(
+                "datetime(n.updated_at) >= datetime(?{})",
+                param_idx
+            ));
+            params_vec.push(Box::new(date_start.to_string()));
+            param_idx += 1;
+        }
+        if let Some(date_end) = opt.date_end.as_deref() {
+            where_clauses.push(format!(
+                "datetime(n.updated_at) <= datetime(?{})",
+                param_idx
+            ));
+            params_vec.push(Box::new(date_end.to_string()));
+            param_idx += 1;
+        }
+
+        let where_sql = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!(" WHERE {}", where_clauses.join(" AND "))
+        };
+
+        let sort_col = match opt.sort_by.as_deref() {
+            Some("created_at") => "n.created_at",
+            Some("title") => "n.title",
+            _ => "n.updated_at",
+        };
+        let sort_dir = match opt.sort_dir.as_deref() {
+            Some("asc") => "ASC",
+            _ => "DESC",
+        };
+        let order_sql = if order_by_relevance {
+            // 标题权重 5:1 高于正文，与 VfsNoteRepo::search_notes_fts_* 一致
+            "bm25(notes_fts, 5.0, 1.0), n.updated_at DESC, n.id ASC".to_string()
+        } else {
+            format!("{} {}", sort_col, sort_dir)
+        };
+
+        let page = opt.page.max(0);
+        let page_size = opt.page_size.max(1);
+        let limit = page_size;
+        let offset = page * page_size;
+
+        let count_sql = format!("SELECT COUNT(*) FROM notes n{}{}", join_sql, where_sql);
+        let mut count_stmt = conn
+            .prepare(&count_sql)
+            .map_err(|e| AppError::database(format!("准备 VFS 笔记计数查询失败: {}", e)))?;
+        let count_params: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let total: i64 = count_stmt
+            .query_row(count_params.as_slice(), |row| row.get(0))
+            .map_err(|e| AppError::database(format!("执行 VFS 笔记计数查询失败: {}", e)))?;
+
+        let sql = format!(
+            "SELECT n.id, n.title, COALESCE(r.data, ''), n.tags, n.created_at, n.updated_at, COALESCE(n.is_favorite, 0)
+             FROM notes n{}
+             {} ORDER BY {} LIMIT ?{} OFFSET ?{}",
+            join_sql,
+            where_sql,
+            order_sql,
+            param_idx,
+            param_idx + 1
+        );
+        params_vec.push(Box::new(limit));
+        params_vec.push(Box::new(offset));
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| AppError::database(format!("准备 VFS 笔记列表查询失败: {}", e)))?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                let tags_json: String = row.get(3)?;
+                let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+                Ok(NoteItem {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    content_md: row.get(2)?,
+                    tags,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                    is_favorite: row.get::<_, i64>(6)? != 0,
+                })
+            })
+            .map_err(|e| AppError::database(format!("执行 VFS 笔记列表查询失败: {}", e)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| AppError::database(e.to_string()))?);
+        }
+        Ok((out, total))
+    }
+
+    pub fn list_notes_advanced(&self, opt: ListOptions) -> Result<(Vec<NoteItem>, i64)> {
+        if let Some(vfs_db) = self.vfs_db.as_ref() {
+            // ★ 2026-07-19：VFS 分支关键词检索优先走 notes_fts（trigram 索引，
+            // 见 V20260721__notes_fts.sql），与 VfsNoteRepo::search_notes_* 同一
+            // 套索引与查询构造语义：
+            //   - >= 3 字符：FTS MATCH（子串语义与 LIKE '%kw%' 对齐）+ bm25 排序；
+            //   - < 3 字符 / FTS 查询失败 / FTS 无命中：回退到原 LIKE 路径，
+            //     保证结果不弱于历史实现（回收站笔记等仍可被 LIKE 命中，
+            //     因为 notes_fts 不索引软删除行）。
+            let fts_usable = !opt.include_deleted && !opt.only_deleted;
+            let fts_query = if fts_usable {
+                opt.keyword
+                    .as_deref()
+                    .and_then(Self::build_notes_fts_match_query)
+            } else {
+                None
+            };
+            if let Some(match_query) = fts_query.as_deref() {
+                match self.list_notes_advanced_vfs(vfs_db, &opt, Some(match_query)) {
+                    Ok((items, total)) if total > 0 => return Ok((items, total)),
+                    Ok(_) => {
+                        log::debug!(
+                            "[NotesManager] list_notes_advanced FTS 无命中，回退 LIKE：{:?}",
+                            opt.keyword
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[NotesManager] list_notes_advanced FTS 查询失败（{}），回退 LIKE",
+                            e
+                        );
+                    }
+                }
+            }
+            return self.list_notes_advanced_vfs(vfs_db, &opt, None);
         }
 
         let conn = self
@@ -1217,6 +1362,8 @@ impl NotesManager {
         self.create_note_with_id(&id, title, content_md, tags)
     }
 
+    /// ⚠️ DEPRECATED（legacy 非 VFS 死路径）：直接写主库旧 `notes` 表。
+    /// VFS 模式下调用直接报错（见函数体首行门禁）。请勿在新代码中使用。
     pub fn create_note_with_id(
         &self,
         id: &str,
@@ -1349,7 +1496,7 @@ impl NotesManager {
             title: new_title.to_string(),
             content_md: new_content.to_string(),
             tags: tags_vec,
-            created_at: created_at,
+            created_at,
             updated_at: now.clone(),
             is_favorite: is_favorite_raw != 0,
         };
@@ -1415,6 +1562,12 @@ impl NotesManager {
     }
 
     pub fn restore_note(&self, id: &str) -> Result<bool> {
+        // ★ 2026-07-19（P3-1）：与 create/update/delete 对齐，VFS 模式下委托
+        // VFS 恢复路径（含标题冲突重命名 + folder_items 联动 + 重索引标记）。
+        // 此前该函数会误写主库旧 notes 表（VFS 模式下的死数据）。
+        if self.vfs_db.is_some() {
+            return self.restore_note_vfs(id);
+        }
         let conn = self
             .db
             .get_conn_safe()
@@ -1454,6 +1607,9 @@ impl NotesManager {
         Ok(false)
     }
 
+    /// ⚠️ DEPRECATED（legacy 非 VFS 死路径）：维护主库旧 `note_tags` 表。
+    /// VFS 模式下的规范化标签表位于 vfs.db（V20260722__note_tags.sql），
+    /// 由触发器随 notes 表写入自动维护，与本函数无关。请勿在新代码中使用。
     pub(crate) fn sync_note_tags(
         &self,
         conn: &rusqlite::Connection,
@@ -1479,42 +1635,101 @@ impl NotesManager {
 
 // ==================== Canvas AI 工具方法 ====================
 impl NotesManager {
+    /// 规范化章节查询串：允许调用方传 "Section"、"## Section"、"##Section"
+    /// 等形式。返回（期望的标题层级，规范化后的小写标题文本）；
+    /// 无 `#` 前缀时层级为 None（任意层级均可匹配）。
+    fn normalize_heading_query(query: &str) -> (Option<usize>, String) {
+        let trimmed = query.trim();
+        let level = trimmed.chars().take_while(|&c| c == '#').count();
+        if level > 0 && level <= 6 {
+            (Some(level), trimmed[level..].trim().to_lowercase())
+        } else {
+            (None, trimmed.to_lowercase())
+        }
+    }
+
+    /// 去掉 ATX 标题的关闭井号序列（`## Title ##` -> `Title`）。
+    /// 仅当尾部 `#` 前有空白时才视为关闭序列（`## C#` 中的 `#` 属于正文）。
+    fn strip_atx_closing(text: &str) -> &str {
+        let trimmed = text.trim_end();
+        let stripped = trimmed.trim_end_matches('#');
+        if stripped.len() != trimmed.len() {
+            let before_hashes = stripped.trim_end();
+            if before_hashes.len() < stripped.len() && !before_hashes.is_empty() {
+                return before_hashes;
+            }
+        }
+        trimmed
+    }
+
+    /// 判断某行是否为代码围栏（``` 或 ~~~）开/闭行，返回围栏标记
+    fn fence_marker(line: &str) -> Option<&'static str> {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") {
+            Some("```")
+        } else if trimmed.starts_with("~~~") {
+            Some("~~~")
+        } else {
+            None
+        }
+    }
+
+    /// 定位章节边界：返回 (标题行下标, 标题层级, 章节结束行下标（不含）)。
+    ///
+    /// 鲁棒性约定（Canvas AI 工具共享）：
+    /// - 标题匹配忽略大小写、忽略 ATX 关闭井号（`## Title ##`）；
+    /// - 查询带 `#` 前缀时要求层级一致，不带则任意层级均可命中；
+    /// - 代码围栏（```/~~~）内的 `#` 行不视为标题（无论定位还是判定章节结束）。
+    fn find_section_bounds(lines: &[&str], section_title: &str) -> Option<(usize, usize, usize)> {
+        let (want_level, want_text) = Self::normalize_heading_query(section_title);
+        if want_text.is_empty() {
+            return None;
+        }
+
+        let mut fence: Option<&str> = None;
+        let mut start_idx: Option<usize> = None;
+        let mut section_level = 0usize;
+
+        for (i, line) in lines.iter().enumerate() {
+            if let Some(marker) = Self::fence_marker(line) {
+                match fence {
+                    Some(open) if open == marker => fence = None,
+                    None => fence = Some(marker),
+                    _ => {}
+                }
+                continue;
+            }
+            if fence.is_some() {
+                continue;
+            }
+            let trimmed = line.trim();
+            if let Some(level) = Self::get_heading_level(trimmed) {
+                if let Some(start) = start_idx {
+                    // 已定位到章节，遇到同级或更高级标题即为结束
+                    if level <= section_level {
+                        return Some((start, section_level, i));
+                    }
+                    continue;
+                }
+                if want_level.is_some() && want_level != Some(level) {
+                    continue;
+                }
+                let heading_text = Self::strip_atx_closing(trimmed[level..].trim()).to_lowercase();
+                if heading_text == want_text {
+                    start_idx = Some(i);
+                    section_level = level;
+                }
+            }
+        }
+
+        start_idx.map(|start| (start, section_level, lines.len()))
+    }
+
     /// 从 Markdown 内容中提取指定章节
     /// 章节由标题行（#、##、###等）界定
     fn extract_section_content(content: &str, section_title: &str) -> Option<String> {
         let lines: Vec<&str> = content.lines().collect();
-        let section_lower = section_title.trim().to_lowercase();
-
-        // 查找章节标题
-        let mut start_idx: Option<usize> = None;
-        let mut section_level: Option<usize> = None;
-
-        for (i, line) in lines.iter().enumerate() {
-            let trimmed = line.trim();
-            if let Some(level) = Self::get_heading_level(trimmed) {
-                let heading_text = trimmed.trim_start_matches('#').trim().to_lowercase();
-                if heading_text == section_lower || trimmed.to_lowercase() == section_lower {
-                    start_idx = Some(i);
-                    section_level = Some(level);
-                    break;
-                }
-            }
-        }
-
-        let start = start_idx?;
-        let level = section_level?;
-
-        // 查找章节结束（遇到同级或更高级标题）
-        let mut end_idx = lines.len();
-        for (i, line) in lines.iter().enumerate().skip(start + 1) {
-            let trimmed = line.trim();
-            if let Some(next_level) = Self::get_heading_level(trimmed) {
-                if next_level <= level {
-                    end_idx = i;
-                    break;
-                }
-            }
-        }
+        let (start, _level, end_idx) = Self::find_section_bounds(&lines, section_title)?;
 
         // 提取章节内容（不包含标题行本身）
         let section_lines: Vec<&str> = lines[start + 1..end_idx].to_vec();
@@ -1545,38 +1760,7 @@ impl NotesManager {
         append_content: &str,
     ) -> Option<String> {
         let lines: Vec<&str> = content.lines().collect();
-        let section_lower = section_title.trim().to_lowercase();
-
-        // 查找章节标题
-        let mut start_idx: Option<usize> = None;
-        let mut section_level: Option<usize> = None;
-
-        for (i, line) in lines.iter().enumerate() {
-            let trimmed = line.trim();
-            if let Some(level) = Self::get_heading_level(trimmed) {
-                let heading_text = trimmed.trim_start_matches('#').trim().to_lowercase();
-                if heading_text == section_lower || trimmed.to_lowercase() == section_lower {
-                    start_idx = Some(i);
-                    section_level = Some(level);
-                    break;
-                }
-            }
-        }
-
-        let start = start_idx?;
-        let level = section_level?;
-
-        // 查找章节结束位置
-        let mut end_idx = lines.len();
-        for (i, line) in lines.iter().enumerate().skip(start + 1) {
-            let trimmed = line.trim();
-            if let Some(next_level) = Self::get_heading_level(trimmed) {
-                if next_level <= level {
-                    end_idx = i;
-                    break;
-                }
-            }
-        }
+        let (_start, _level, end_idx) = Self::find_section_bounds(&lines, section_title)?;
 
         // 在章节末尾插入内容
         let mut result_lines: Vec<String> =
@@ -1670,6 +1854,13 @@ impl NotesManager {
             is_regex
         );
 
+        // ★ 2026-07-19：空搜索串守卫。空字符串 / 空正则会在每个字符间隙命中
+        // （`"ab".matches("")` 计数为 3），替换结果等同于在全文插入 replace，
+        // 且计数完全失真，直接拒绝。
+        if search.is_empty() {
+            return Err(AppError::validation("搜索内容不能为空"));
+        }
+
         // 使用 VFS 系统获取笔记
         let note = self.get_note_vfs(note_id)?;
 
@@ -1739,7 +1930,7 @@ impl NotesManager {
             .as_ref()
             .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
         let notes = VfsNoteRepo::list_notes(vfs_db, search, limit, offset)
-            .map_err(|e| AppError::database(format!("VFS list_notes failed: {}", e)))?;
+            .map_err(|e| AppError::database(format!("VFS 列出笔记失败: {}", e)))?;
 
         // 转换为 NoteItem（不含内容）
         let items: Vec<NoteItem> = notes
@@ -1771,7 +1962,7 @@ impl NotesManager {
         };
 
         let vfs_note = VfsNoteRepo::create_note(vfs_db, params)
-            .map_err(|e| AppError::database(format!("VFS create_note failed: {}", e)))?;
+            .map_err(|e| AppError::database(format!("VFS 创建笔记失败: {}", e)))?;
 
         log::info!("[NotesManager::VFS] Created note: {}", vfs_note.id);
 
@@ -1808,13 +1999,19 @@ impl NotesManager {
         // 与旧 SQLite 路径(update_note)一致；一律包装成 database 会让前端无法识别冲突
         let vfs_note = VfsNoteRepo::update_note(vfs_db, note_id, params).map_err(|e| match &e {
             crate::vfs::error::VfsError::Conflict { .. } => AppError::conflict(e.to_string()),
-            _ => AppError::database(format!("VFS update_note failed: {}", e)),
+            _ => AppError::database(format!("VFS 更新笔记失败: {}", e)),
         })?;
 
-        // 获取更新后的内容
-        let content = VfsNoteRepo::get_note_content(vfs_db, note_id)
-            .map_err(|e| AppError::database(format!("VFS get_note_content failed: {}", e)))?
-            .unwrap_or_default();
+        // 获取更新后的内容。
+        // ★ 2026-07 性能：本次调用已携带正文时，更新成功后的内容必然等于
+        // 传入值（repo 内 hash 相同则复用旧资源，内容不变），无需再整篇回读
+        //（大笔记每次自动保存省一次全量 DB 读取 + 拷贝）。
+        let content = match content_md {
+            Some(c) => c.to_string(),
+            None => VfsNoteRepo::get_note_content(vfs_db, note_id)
+                .map_err(|e| AppError::database(format!("VFS 读取笔记内容失败: {}", e)))?
+                .unwrap_or_default(),
+        };
 
         log::info!("[NotesManager::VFS] Updated note: {}", note_id);
 
@@ -1828,8 +2025,8 @@ impl NotesManager {
             .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
         let (vfs_note, content) = VfsNoteRepo::get_note_with_content(vfs_db, note_id)
-            .map_err(|e| AppError::database(format!("VFS get_note_with_content failed: {}", e)))?
-            .ok_or_else(|| AppError::not_found("Note not found in VFS"))?;
+            .map_err(|e| AppError::database(format!("VFS 读取笔记失败: {}", e)))?
+            .ok_or_else(|| AppError::not_found("笔记不存在或已被删除"))?;
 
         Ok(Self::vfs_note_to_note_item(vfs_note, content))
     }
@@ -1844,7 +2041,7 @@ impl NotesManager {
             .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
         VfsNoteRepo::delete_note_with_folder_item(vfs_db, note_id)
-            .map_err(|e| AppError::database(format!("VFS delete_note failed: {}", e)))?;
+            .map_err(|e| AppError::database(format!("VFS 删除笔记失败: {}", e)))?;
 
         log::info!("[NotesManager::VFS] Deleted note: {}", note_id);
 
@@ -1859,7 +2056,7 @@ impl NotesManager {
             .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
         VfsNoteRepo::restore_note(vfs_db, note_id)
-            .map_err(|e| AppError::database(format!("VFS restore_note failed: {}", e)))?;
+            .map_err(|e| AppError::database(format!("VFS 恢复笔记失败: {}", e)))?;
 
         log::info!("[NotesManager::VFS] Restored note: {}", note_id);
 
@@ -1874,7 +2071,7 @@ impl NotesManager {
             .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
         VfsNoteRepo::set_favorite(vfs_db, note_id, favorite)
-            .map_err(|e| AppError::database(format!("VFS set_favorite failed: {}", e)))?;
+            .map_err(|e| AppError::database(format!("VFS 设置收藏状态失败: {}", e)))?;
 
         // 返回更新后的笔记
         self.get_note_vfs(note_id)
@@ -2044,6 +2241,70 @@ Some content."#;
         let some_pos = new_content.find("Some content").unwrap();
         let appended_pos = new_content.find("Appended text").unwrap();
         assert!(some_pos < appended_pos);
+    }
+
+    #[test]
+    fn test_extract_section_ignores_headings_inside_code_fence() {
+        let content = r#"# Title
+
+## Shell
+```bash
+# 这是注释，不是标题
+echo hi
+```
+tail text
+
+## Next
+other"#;
+
+        // 围栏内的 "# 这是注释" 不应被当成标题（否则 Shell 章节会被提前截断）
+        let section = NotesManager::extract_section_content(content, "## Shell");
+        assert!(section.is_some());
+        let s = section.unwrap();
+        assert!(s.contains("echo hi"));
+        assert!(s.contains("tail text"));
+        assert!(!s.contains("other"));
+
+        // 围栏内注释行不可作为章节被定位
+        assert!(NotesManager::extract_section_content(content, "这是注释，不是标题").is_none());
+    }
+
+    #[test]
+    fn test_extract_section_with_atx_closing_hashes() {
+        let content = "# Doc\n\n## Closed ##\nbody line\n\n## C#\ncsharp line\n";
+
+        let closed = NotesManager::extract_section_content(content, "Closed");
+        assert_eq!(closed.as_deref(), Some("body line"));
+
+        // "C#" 的尾部 # 属于正文，不是关闭序列
+        let csharp = NotesManager::extract_section_content(content, "C#");
+        assert_eq!(csharp.as_deref(), Some("csharp line"));
+    }
+
+    #[test]
+    fn test_section_query_level_must_match_when_specified() {
+        let content = "# Root\n\n## Sub\nlevel2 body\n";
+        // 显式指定错误层级时不命中
+        assert!(NotesManager::extract_section_content(content, "### Sub").is_none());
+        // 层级正确 / 不指定层级均命中
+        assert!(NotesManager::extract_section_content(content, "## Sub").is_some());
+        assert!(NotesManager::extract_section_content(content, "Sub").is_some());
+    }
+
+    #[test]
+    fn test_build_notes_fts_match_query() {
+        // < 3 字符（trigram 无法命中索引）返回 None，由调用方回退 LIKE
+        assert_eq!(NotesManager::build_notes_fts_match_query("ab"), None);
+        assert_eq!(NotesManager::build_notes_fts_match_query("  a "), None);
+        // >= 3 字符：整体作为带引号 phrase，内部引号双写
+        assert_eq!(
+            NotesManager::build_notes_fts_match_query("微积分"),
+            Some("\"微积分\"".to_string())
+        );
+        assert_eq!(
+            NotesManager::build_notes_fts_match_query(r#"say "hi""#),
+            Some("\"say \"\"hi\"\"\"".to_string())
+        );
     }
 
     #[test]

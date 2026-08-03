@@ -7,25 +7,44 @@ import { SettingSection } from './SettingsCommon';
 import { VoiceInputSettingsSection } from './VoiceInputSettingsSection';
 import { MemorySettingsSection } from './MemorySettingsSection';
 import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
+import { WorkbenchSettingsSection } from './WorkbenchSettingsSection';
+import { AnkiConnectSettingsSection } from './AnkiConnectSettingsSection';
+import { SystemPermissionsSection } from './SystemPermissionsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
 import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
 import { debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
-import { isAndroid } from '@/utils/platform';
+import { isAndroid, isMobilePlatform } from '@/utils/platform';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
 import {
+  ensureSystemNotificationPermission,
   getSystemNotificationPolicy,
   setSystemNotificationPolicy,
   type SystemNotificationPolicy,
 } from '@/utils/systemNotification';
 import type { VoiceInputAssignedModel } from '@/voice-input/types';
+import {
+  getQuickAssistantConfig,
+  QUICK_ASSISTANT_BACKGROUND_KEY,
+  QUICK_ASSISTANT_CLIPBOARD_KEY,
+  QUICK_ASSISTANT_ENABLED_KEY,
+  QUICK_ASSISTANT_SHORTCUT,
+  saveQuickAssistantSetting,
+  type QuickAssistantConfig,
+} from '@/quick-assistant/config';
+import { openQuickAssistantWindow } from '@/quick-assistant/window';
+import {
+  chooseAndExportDiagnostics,
+  revealDiagnostics,
+} from '@/logging/exportDiagnostics';
 
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 
@@ -56,14 +75,41 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
   const [sentryEnabled, setSentryEnabled] = useState<boolean | null>(null);
+  const [sentryUpdating, setSentryUpdating] = useState(false);
   const [showAgreementPreview, setShowAgreementPreview] = useState(false);
   const [debugLogEnabled, setDebugLogEnabled] = useState(() => debugMasterSwitch.isEnabled());
   const [debugPersistLogs, setDebugPersistLogs] = useState<boolean | null>(null);
   const [filterConfig, setFilterConfig] = useState<CopyFilterConfig>(getDefaultConfig);
   const [debugLogsInfo, setDebugLogsInfo] = useState<{ count: number; total_size_display: string } | null>(null);
   const [debugLogsClearing, setDebugLogsClearing] = useState(false);
+  const [diagnosticsExporting, setDiagnosticsExporting] = useState(false);
+  const [includeDetailedDiagnostics, setIncludeDetailedDiagnostics] = useState(false);
   const { mode, loading: queueModeLoading, setMode } = useQueueSettings();
   const [notificationPolicy, setNotificationPolicy] = useState<SystemNotificationPolicy>(() => getSystemNotificationPolicy());
+  const [quickAssistantConfig, setQuickAssistantConfig] = useState<QuickAssistantConfig | null>(null);
+  // P1-11：快速助手（系统快捷小窗）仅桌面端 Rust 实现，移动平台隐藏整块假入口
+  const quickAssistantSupported = !isMobilePlatform();
+
+  useEffect(() => {
+    if (!quickAssistantSupported) return;
+    void getQuickAssistantConfig().then(setQuickAssistantConfig);
+  }, [quickAssistantSupported]);
+
+  const updateQuickAssistant = async (
+    key: string,
+    field: keyof QuickAssistantConfig,
+    value: boolean,
+  ) => {
+    if (!quickAssistantConfig) return;
+    const previous = quickAssistantConfig;
+    setQuickAssistantConfig({ ...previous, [field]: value });
+    try {
+      await saveQuickAssistantSetting(key, value);
+    } catch (error) {
+      setQuickAssistantConfig(previous);
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -126,29 +172,75 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   }, [refreshDebugLogsInfo]);
 
   const languageOptions = React.useMemo(() => [
-    { value: 'zh-CN', label: t('settings:language.chinese', '中文') },
+    { value: 'zh-CN', label: t('settings:language.chinese') },
     { value: 'en-US', label: t('settings:language.english', 'English') },
   ], [t]);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="general-settings">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="general-settings">
       <SettingSection
-        title={t('settings:tabs.general', '常规')}
-        description={t('settings:study_ui_descriptions.general', '管理语言、交互习惯、输入方式和个人偏好。')}
+        title={t('settings:tabs.general')}
+        description={t('settings:study_ui_descriptions.general')}
         className="overflow-visible"
         hideHeader
       >
+        {quickAssistantSupported && (
         <SettingsGroup
-          title={t('settings:tabs.general', '常规')}
-          description={t('settings:study_ui_descriptions.general', '管理语言、交互习惯、输入方式和个人偏好。')}
+          title={t('settings:quick_assistant.title', '快速学习')}
+          description={t('settings:quick_assistant.description', '在其他应用中捕获内容、快速处理并沉淀到学习系统。')}
+          className="mb-3"
+        >
+          <SwitchRow
+            title={t('settings:quick_assistant.enabled', '启用系统快捷小窗')}
+            description={t('settings:quick_assistant.enabled_description', { shortcut: QUICK_ASSISTANT_SHORTCUT, defaultValue: `使用 ${QUICK_ASSISTANT_SHORTCUT} 随时呼出快速学习。` })}
+            checked={quickAssistantConfig?.enabled ?? false}
+            loading={quickAssistantConfig === null}
+            onCheckedChange={(value) => void updateQuickAssistant(QUICK_ASSISTANT_ENABLED_KEY, 'enabled', value)}
+          />
+          <SwitchRow
+            title={t('settings:quick_assistant.clipboard', '呼出时读取剪贴板')}
+            description={t('settings:quick_assistant.clipboard_description', '仅在本机读取，用于识别当前复制的题目、段落或公式。')}
+            checked={quickAssistantConfig?.readClipboard ?? false}
+            loading={quickAssistantConfig === null}
+            disabled={!quickAssistantConfig?.enabled}
+            onCheckedChange={(value) => void updateQuickAssistant(QUICK_ASSISTANT_CLIPBOARD_KEY, 'readClipboard', value)}
+          />
+          <SwitchRow
+            title={t('settings:quick_assistant.background', '关闭主窗口后继续运行')}
+            description={t('settings:quick_assistant.background_description', '主窗口关闭时隐藏到后台，使系统快捷键仍可呼出小窗。')}
+            checked={quickAssistantConfig?.backgroundEnabled ?? false}
+            loading={quickAssistantConfig === null}
+            disabled={!quickAssistantConfig?.enabled}
+            onCheckedChange={(value) => void updateQuickAssistant(QUICK_ASSISTANT_BACKGROUND_KEY, 'backgroundEnabled', value)}
+          />
+          <SettingRow
+            title={t('settings:quick_assistant.preview', '预览快速学习')}
+            description={t('settings:quick_assistant.preview_description', '打开小窗，检查剪贴板捕获、搜索、复习和学习状态。')}
+          >
+            <DsButton
+              variant="default"
+              size="sm"
+              disabled={!quickAssistantConfig?.enabled}
+              onClick={() => void openQuickAssistantWindow()}
+            >
+              {t('settings:quick_assistant.open', '打开小窗')}
+            </DsButton>
+          </SettingRow>
+        </SettingsGroup>
+        )}
+
+        {quickAssistantSupported && <SystemPermissionsSection />}
+
+        <SettingsGroup
+          title={t('settings:tabs.general')}
+          description={t('settings:study_ui_descriptions.general')}
         >
             <SettingRow
               title={t('settings:language.title')}
-              description={t('common:status.current', '当前') + ': ' + (i18n.language === 'zh-CN' ? t('settings:language.chinese', '中文') : t('settings:language.english', 'English'))}
               className="items-center"
             >
               <SegmentedControl
-                ariaLabel={t('settings:language.select_label', '选择语言')}
+                ariaLabel={t('settings:language.select_label')}
                 value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'}
                 onValueChange={(nextValue) => {
                   void i18n.changeLanguage(nextValue);
@@ -184,40 +276,56 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             <MarkdownEditorWindowSettings />
 
             <SettingRow
-              title={t('settings:system_notification.title', '系统通知')}
-              description={t('settings:system_notification.desc', '番茄钟、待办提醒、制卡等任务的系统通知策略。「仅后台」表示应用在前台时不打扰。')}
+              title={t('settings:system_notification.title')}
+              description={t('settings:system_notification.desc')}
               className="items-center"
             >
               <SegmentedControl
-                ariaLabel={t('settings:system_notification.title', '系统通知')}
+                ariaLabel={t('settings:system_notification.title')}
                 value={notificationPolicy}
                 onValueChange={(next) => {
                   const policy = next as SystemNotificationPolicy;
                   setNotificationPolicy(policy);
                   setSystemNotificationPolicy(policy);
+                  // 用户此刻主动订阅通知：当场把系统权限要下来。若等首个通知
+                  // 在后台触发时才请求，请求框不会被看到，通知会被静默丢弃。
+                  if (policy !== 'never') {
+                    void ensureSystemNotificationPermission().then((state) => {
+                      if (state === 'denied') {
+                        showGlobalNotification(
+                          'warning',
+                          t('settings:system_authorization.notifications.denied_hint'),
+                        );
+                      }
+                    });
+                  }
                 }}
                 size="compact"
                 options={[
-                  { value: 'background', label: t('settings:system_notification.background', '仅后台') },
-                  { value: 'always', label: t('settings:system_notification.always', '总是') },
-                  { value: 'never', label: t('settings:system_notification.never', '从不') },
+                  { value: 'background', label: t('settings:system_notification.background') },
+                  { value: 'always', label: t('settings:system_notification.always') },
+                  { value: 'never', label: t('settings:system_notification.never') },
                 ]}
               />
             </SettingRow>
 
             <SettingRow
-              title={t('settings:developer.preview_agreement.title', '预览隐私协议')}
-              description={t('settings:developer.preview_agreement.desc', '打开首次安装时显示的用户协议与隐私政策弹窗，用于预览效果。')}
+              title={t('settings:developer.preview_agreement.title')}
+              description={t('settings:developer.preview_agreement.desc')}
             >
-              <NotionButton
+              <DsButton
                 variant="default"
                 size="sm"
                 onClick={() => setShowAgreementPreview(true)}
               >
-                {t('settings:developer.preview_agreement.button', '打开预览')}
-              </NotionButton>
+                {t('settings:developer.preview_agreement.button')}
+              </DsButton>
             </SettingRow>
         </SettingsGroup>
+
+        <div className="mt-8">
+          <AnkiConnectSettingsSection />
+        </div>
 
         <div className="mt-8 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4">
           <VoiceInputSettingsSection embedded assignedModel={voiceInputAssignedModel} />
@@ -225,18 +333,91 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
         <div className="mt-8 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4">
           <div className="px-1 mb-3 mt-0">
-            <h3 className="text-base font-semibold text-foreground">{t('settings:memory.title', '记忆设置')}</h3>
+            <h3 className="text-base font-semibold text-foreground">{t('settings:memory.title')}</h3>
           </div>
           <MemorySettingsSection embedded />
         </div>
+
+        <WorkbenchSettingsSection className="mt-8" />
+
+        <SettingsGroup
+          title={t('settings:diagnostics.title', 'Diagnostics and feedback')}
+          className="mt-8"
+        >
+          <SettingRow
+            title={t('settings:diagnostics.export.title', 'Export diagnostic bundle')}
+            description={
+              isMobilePlatform()
+                ? t(
+                    'settings:diagnostics.export.mobile_unsupported',
+                    'Mobile sharing is not available in this version. Error reporting still works automatically when enabled.',
+                  )
+                : t(
+                    'settings:diagnostics.export.description',
+                    'Collects current and legacy logs into a redacted ZIP. Databases and documents are never included.',
+                  )
+            }
+          >
+            {!isMobilePlatform() && (
+              <DsButton
+                variant="primary"
+                size="sm"
+                disabled={diagnosticsExporting}
+                onClick={async () => {
+                  setDiagnosticsExporting(true);
+                  try {
+                    const result = await chooseAndExportDiagnostics(includeDetailedDiagnostics);
+                    if (!result) return;
+                    showGlobalNotification(
+                      result.skippedCount > 0 ? 'warning' : 'success',
+                      result.skippedCount > 0
+                        ? t('settings:diagnostics.export.partial', {
+                            count: result.fileCount,
+                            skipped: result.skippedCount,
+                            defaultValue: `Exported ${result.fileCount} files; ${result.skippedCount} could not be included`,
+                          })
+                        : t('settings:diagnostics.export.success', {
+                            count: result.fileCount,
+                            defaultValue: `Diagnostic bundle exported (${result.fileCount} files)`,
+                          }),
+                    );
+                    void revealDiagnostics(result).catch(() => undefined);
+                  } catch (error: unknown) {
+                    showGlobalNotification('error', getErrorMessage(error));
+                  } finally {
+                    setDiagnosticsExporting(false);
+                  }
+                }}
+              >
+                {diagnosticsExporting
+                  ? <CircleNotch size={12} className="animate-spin" />
+                  : t('settings:diagnostics.export.action', 'Export ZIP')}
+              </DsButton>
+            )}
+          </SettingRow>
+          {!isMobilePlatform() && (
+            <SwitchRow
+              title={t(
+                'settings:diagnostics.include_debug.title',
+                'Include detailed AI request logs',
+              )}
+              description={t(
+                'settings:diagnostics.include_debug.description',
+                'Off by default. These logs may contain study content; review the ZIP before sharing.',
+              )}
+              checked={includeDetailedDiagnostics}
+              onCheckedChange={setIncludeDetailedDiagnostics}
+            />
+          )}
+        </SettingsGroup>
 
         <SettingsGroup
           title={t('settings:cards.developer_options_title')}
           className="mt-8"
         >
           <SettingRow
-            title={t('settings:developer.topbar_top_margin.title', '顶部栏顶部边距高度')}
-            description={t('settings:developer.topbar_top_margin.desc', '调整顶部边距高度')}
+            title={t('settings:developer.topbar_top_margin.title')}
+            description={t('settings:developer.topbar_top_margin.desc')}
           >
             <div className="flex items-center gap-2">
               <Input
@@ -267,16 +448,16 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }
                 }}
                 placeholder={isAndroid() ? '30' : '0'}
-                className="!w-20 h-8 text-xs bg-transparent"
+                className="!w-20 h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!w-24 [@media(pointer:coarse)]:text-base text-xs bg-transparent"
                 min="0"
               />
-              <span className="text-[11px] text-muted-foreground/70">{t('settings:developer.units.px')}</span>
+              <span className="text-xs text-muted-foreground/70">{t('settings:developer.units.px')}</span>
             </div>
           </SettingRow>
 
           <SwitchRow
-            title={t('settings:developer.debug_log_switch.title', '调试日志总开关')}
-            description={t('settings:developer.debug_log_switch.desc', '关闭后，前端控制台不会输出调试日志，可避免生产环境性能问题。开启后，调试面板插件才会正常工作。')}
+            title={t('settings:developer.debug_log_switch.title')}
+            description={t('settings:developer.debug_log_switch.desc')}
             checked={debugLogEnabled}
             onCheckedChange={(newValue) => {
               if (newValue) {
@@ -289,9 +470,9 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
           <SettingRow
             title={t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
-            description={t('settings:developer.description', '调试模式、日志与实验性开关')}
+            description={t('settings:developer.description')}
           >
-            <NotionButton
+            <DsButton
               variant="default"
               size="sm"
               onClick={() => {
@@ -308,48 +489,48 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               }}
             >
               {t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
-            </NotionButton>
+            </DsButton>
           </SettingRow>
 
           <SettingRow
-            title={t('settings:developer.log_type', '日志类型')}
-            description={t('settings:developer.log_type_hint', '选择并打开对应类型的日志文件夹')}
+            title={t('settings:developer.log_type')}
+            description={t('settings:developer.log_type_hint')}
           >
             <div className="flex items-center gap-2">
               <AppSelect
                 value={logTypeForOpen}
                 onValueChange={setLogTypeForOpen}
-                placeholder={t('settings:developer.log_type_placeholder', '选择')}
+                placeholder={t('settings:developer.log_type_placeholder')}
                 options={[
-                  { value: 'backend', label: t('settings:developer.log_types.backend', '后端') },
-                  { value: 'frontend', label: t('settings:developer.log_types.frontend', '前端') },
-                  { value: 'debug', label: t('settings:developer.log_types.debug', '调试') },
-                  { value: 'crash', label: t('settings:developer.log_types.crash', '崩溃') },
+                  { value: 'backend', label: t('settings:developer.log_types.backend') },
+                  { value: 'frontend', label: t('settings:developer.log_types.frontend') },
+                  { value: 'debug', label: t('settings:developer.log_types.debug') },
+                  { value: 'crash', label: t('settings:developer.log_types.crash') },
                 ]}
                 size="sm"
                 variant="ghost"
-                className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                className="h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!min-w-[6rem] text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={80}
               />
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={async () => {
                   try {
                     await tauriInvoke('open_logs_folder', { logType: logTypeForOpen });
                   } catch {
-                    showGlobalNotification('error', t('settings:developer.open_logs_failed', '打开日志文件夹失败'));
+                    showGlobalNotification('error', t('settings:developer.open_logs_failed'));
                   }
                 }}
               >
-                {t('settings:developer.open_logs', '打开')}
-              </NotionButton>
+                {t('settings:developer.open_logs')}
+              </DsButton>
             </div>
           </SettingRow>
 
           <SwitchRow
-            title={t('settings:developer.show_raw_request.title', '显示消息请求体')}
-            description={t('settings:developer.show_raw_request.desc', '开启后，Chat V2 中每条助手消息下方将显示完整的 API 请求体，便于调试。')}
+            title={t('settings:developer.show_raw_request.title')}
+            description={t('settings:developer.show_raw_request.desc')}
             checked={showRawRequest}
             loading={!showRawRequestLoaded}
             onCheckedChange={async (newValue) => {
@@ -358,7 +539,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               if (!invoke) return;
               try {
                 await invoke('save_setting', { key: 'dev.show_raw_request', value: String(newValue) });
-                showGlobalNotification('success', t('settings:save_notifications.saved', '已保存'));
+                showGlobalNotification('success', t('settings:save_notifications.saved'));
                 try {
                   window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { showRawRequest: newValue } }));
                 } catch {
@@ -386,7 +567,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <div className="py-2.5 px-1">
                 <div className="pt-1.5 pb-1 px-1">
                   <h3 className="text-sm text-foreground/90 leading-tight">{t('settings:developer.copy_filter.title')}</h3>
-                  <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{t('settings:developer.copy_filter.desc')}</p>
+                  <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">{t('settings:developer.copy_filter.desc')}</p>
                 </div>
                 <div className="mt-1.5 space-y-1.5 pl-1">
                   <div className="flex items-center justify-between gap-3 rounded px-1 py-1">
@@ -401,7 +582,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -418,7 +599,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -434,7 +615,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -452,9 +633,9 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                             const v = parseInt(e.target.value, 10);
                             if (!isNaN(v) && v >= 100) saveConfig({ ...filterConfig, messageTruncateLength: v });
                           }}
-                          className="h-7 w-20 text-xs"
+                          className="h-7 [@media(pointer:coarse)]:h-10 w-20 text-xs"
                         />
-                        <span className="text-[10px] text-muted-foreground/60">{t('common:unit.chars')}</span>
+                        <span className="text-2xs text-muted-foreground/60">{t('common:unit.chars')}</span>
                       </div>
                     </div>
                   )}
@@ -469,7 +650,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -488,7 +669,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               setDebugPersistLogs(newValue);
               try {
                 await tauriInvoke('save_setting', { key: 'debug.persist_logs', value: String(newValue) });
-                showGlobalNotification('success', t('settings:save_notifications.saved', '已保存'));
+                showGlobalNotification('success', t('settings:save_notifications.saved'));
               } catch (error: unknown) {
                 showGlobalNotification('error', getErrorMessage(error));
               }
@@ -503,7 +684,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 : t('settings:developer.debug_logs.loading')}
             >
               <div className="flex items-center gap-2">
-                <NotionButton
+                <DsButton
                   variant="default"
                   size="sm"
                   onClick={async () => {
@@ -517,8 +698,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }}
                 >
                   {t('settings:developer.debug_logs.open')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="sm"
                   disabled={debugLogsClearing}
@@ -536,48 +717,50 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }}
                 >
                   {debugLogsClearing ? <CircleNotch size={12} className="animate-spin" /> : t('settings:developer.debug_logs.clear_all')}
-                </NotionButton>
+                </DsButton>
               </div>
             </SettingRow>
           )}
         </SettingsGroup>
 
         <SettingsGroup
-          title={t('common:legal.settingsSection.title', '隐私与数据')}
+          title={t('common:legal.settingsSection.title')}
           className="mt-8"
         >
             <SwitchRow
-              title={t('common:legal.settingsSection.sentryToggle.title', '匿名错误报告')}
-              description={t('common:legal.settingsSection.sentryToggle.description', '允许发送匿名崩溃报告以帮助改善软件质量')}
+              title={t('common:legal.settingsSection.sentryToggle.title')}
+              description={t('common:legal.settingsSection.sentryToggle.description')}
               checked={sentryEnabled ?? false}
-              loading={sentryEnabled === null}
+              loading={sentryEnabled === null || sentryUpdating}
               onCheckedChange={async (newValue) => {
-                if (sentryEnabled === null) return;
+                if (sentryEnabled === null || sentryUpdating) return;
                 setSentryEnabled(newValue);
+                setSentryUpdating(true);
                 try {
-                  await tauriInvoke('save_setting', {
-                    key: SENTRY_CONSENT_KEY,
-                    value: String(newValue),
+                  await tauriInvoke('set_backend_sentry_enabled', {
+                    enabled: newValue,
                   });
+                  window.dispatchEvent(new CustomEvent('systemSettingsChanged', {
+                    detail: { sentryConsent: newValue },
+                  }));
                   showGlobalNotification(
                     'success',
                     newValue
-                      ? t('common:legal.settingsSection.sentryToggle.enabled', '已开启')
-                      : t('common:legal.settingsSection.sentryToggle.disabled', '已关闭')
+                      ? t('common:legal.settingsSection.sentryToggle.enabled')
+                      : t('common:legal.settingsSection.sentryToggle.disabled')
                   );
-                  if (newValue) {
-                    showGlobalNotification('info', t('settings:save_notifications.restart_hint', '部分设置需重启应用后生效'));
-                  }
                 } catch (error: unknown) {
                   showGlobalNotification('error', getErrorMessage(error));
                   setSentryEnabled(!newValue);
+                } finally {
+                  setSentryUpdating(false);
                 }
               }}
             />
 
             <div className="px-1 py-3">
               <h4 className="text-sm font-medium text-foreground mb-2">
-                {t('common:legal.settingsSection.dataFlow.title', '数据流向说明')}
+                {t('common:legal.settingsSection.dataFlow.title')}
               </h4>
               <div className="space-y-2">
                 {[
@@ -603,19 +786,23 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
             <div className="mt-3 pt-3 border-t border-border/40">
               <SettingRow
-                title={t('common:legal.dataRights.manageData', '管理我的数据')}
-                description={t('common:legal.dataRights.manageDataDesc', '导出、备份或删除您的所有数据')}
+                title={t('common:legal.dataRights.manageData')}
+                description={t('common:legal.dataRights.manageDataDesc')}
               >
-                <NotionButton
+                <DsButton
                   variant="default"
                   size="sm"
                   onClick={() => {
+                    // Settings 已挂载时靠 SETTINGS_NAVIGATE_TAB 事件即时切换；
+                    // pending 值兜底 Settings 尚未挂载的竞态（与 openArchivedSessionsSettings 同模式）
                     setPendingSettingsTab('data-governance');
-                    window.dispatchEvent(new CustomEvent('settingsTabChange', { detail: 'data-governance' }));
+                    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, {
+                      tab: 'data-governance',
+                    });
                   }}
                 >
-                  {t('common:legal.dataRights.goToDataGovernance', '前往数据治理')}
-                </NotionButton>
+                  {t('common:legal.dataRights.goToDataGovernance')}
+                </DsButton>
               </SettingRow>
             </div>
         </SettingsGroup>

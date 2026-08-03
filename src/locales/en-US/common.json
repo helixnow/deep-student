@@ -3,7 +3,8 @@
     "name": "Deep Student",
     "title": "Deep Student",
     "description": "AI-powered intelligent learning assistant",
-    "version": "Version"
+    "version": "Version",
+    "default_header": "New chat"
   },
   "contextMenu": {
     "cut": "Cut",
@@ -125,7 +126,9 @@
     "expandAll": "Expand All",
     "scrollLeft": "Scroll Left",
     "scrollRight": "Scroll Right",
-    "clear_all": "Clear All"
+    "clear_all": "Clear All",
+    "backToHome": "Back to home",
+    "dismiss": "Dismiss"
   },
   "labels": {
     "optional": "Optional",
@@ -147,7 +150,8 @@
   "card3DPreview": {
     "errorRenderingCard": "Error rendering card",
     "noCardsToPreview": "No cards to preview",
-    "flipCard": "Flip card"
+    "flipCard": "Flip card",
+    "instructions": "← → or A/D: Navigate • F: Flip • Space or P: Play/Pause • 1-9: Jump to card • Home/End: First/Last"
   },
   "copy": "Copy",
   "copied": "Copied to clipboard",
@@ -233,6 +237,8 @@
     "calling_tool": "Calling tool"
   },
   "notifications": {
+    "repeated": "Repeated {{count}} times",
+    "copy_error": "Copy error details",
     "batch": {
       "success": "{{operation}} completed successfully. Processed {{success}} items",
       "failed": "{{operation}} failed. {{failed}} items failed",
@@ -278,6 +284,7 @@
   "confirm_empty_trash": "Empty trash? This action cannot be undone.",
   "confirm_delete_permanently": "Permanently delete this note? This action cannot be undone.",
   "loading": "Loading...",
+  "refreshing": "Refreshing",
   "empty": "No data",
   "untitled": "Untitled",
   "comingSoon": "Coming Soon",
@@ -294,6 +301,7 @@
   "page": "Page",
   "prev": "Previous",
   "next": "Next",
+  "cancelled": "Cancelled",
   "cancel": "Cancel",
   "confirm": "Confirm",
   "messages": {
@@ -734,9 +742,11 @@
     "pdf_reader": "PDF Reader",
     "sandbox_workbench": "Sandbox Workbench",
     "todo": "Todo",
-    "tree_test": "Tree Test",
     "crepe_demo": "Crepe Demo",
-    "chat_v2_test": "Chat V2 Test"
+    "chat_v2_test": "Chat V2 Test",
+    "toggle_sidebar": "Toggle sidebar",
+    "resize_sidebar": "Resize sidebar",
+    "llm_playground": "LLM Playground"
   },
   "time": {
     "now": "Just now",
@@ -1151,7 +1161,8 @@
       "save_failed": "Failed to save AnkiConnect settings",
       "unavailable": "AnkiConnect unavailable",
       "connection_success": "Connection successful: Retrieved {{deckCount}} decks and {{modelCount}} note types",
-      "connection_failed": "AnkiConnect connection failed. Please ensure Anki is running and plugin 2055492159 is installed"
+      "connection_failed": "AnkiConnect connection failed. Please ensure Anki is running and plugin 2055492159 is installed",
+      "test_connection_short": "Test Connection"
     },
     "error_pdf_format_incompatible": "PDF file format is incompatible",
     "console_anki_connect_connection_failed": "AnkiConnect connection failed:",
@@ -1234,6 +1245,12 @@
     "adapter_grok_desc": "Grok series, grok-3-mini supports reasoning_effort",
     "adapter_minimax": "MiniMax",
     "adapter_minimax_desc": "MiniMax series, supports reasoning_split",
+    "adapter_mimo": "Xiaomi MiMo",
+    "adapter_mimo_desc": "MiMo series, supports thinking.type and reasoning_content",
+    "adapter_ernie": "Baidu ERNIE",
+    "adapter_ernie_desc": "ERNIE 5.x / X1.1 via Qianfan v2, reasoning_content compatible",
+    "adapter_mistral": "Mistral",
+    "adapter_mistral_desc": "Mistral Large/Medium/Small, reasoning_effort support",
     "openai_o1_series": "OpenAI o1 Series",
     "claude_3_5_sonnet": "Claude 3.5 Sonnet",
     "add_config": "Add API Configuration",
@@ -1841,7 +1858,7 @@
       "table": "Table",
       "math": "Math"
     },
-    "notionMenu": {
+    "blockMenu": {
       "groups": {
         "assistant": "Assistant",
         "suggested": "Suggested",
@@ -2178,7 +2195,8 @@
         },
         "pageLabel": "Page {{page}}",
         "viewOriginal": "View Original",
-        "noThumbnail": "No Thumbnail"
+        "noThumbnail": "No Thumbnail",
+        "noSnippet": "No text summary"
       }
     },
     "multimodal": {
@@ -2192,7 +2210,7 @@
       "indexError": "Index failed, please retry",
       "rebuildError": "Rebuild failed, please retry",
       "indexTooltip": "Index this resource to multimodal knowledge base for mixed image-text retrieval",
-      "indexResultTooltip": "Indexed {{pages}} pages, skipped {{skipped}}, took {{duration}}s"
+      "indexResultTooltip": "Indexed {{pages}} pages, {{failed}} failed · dimension {{dimension}}"
     },
     "edit_save_failed": "Message edit save failed, please retry",
     "thinking": {
@@ -3366,9 +3384,11 @@
       "viewport_transform_samples": "Viewport transform samples: {{count}}",
       "edge_dimming_samples": "Edge-dimming samples: {{count}}"
     },
-    "search_events_placeholder": "Search events or payload"
+    "search_events_placeholder": "Search events or payload",
+    "expand": "Expand"
   },
   "window_controls": {
+    "drag": "Drag window",
     "minimize": "Minimize",
     "maximize": "Maximize",
     "restore": "Restore",
@@ -3381,8 +3401,10 @@
   },
   "mobile_header": {
     "back": "Back",
+    "forward": "Forward",
     "open_menu": "Open menu",
     "open_sidebar": "Open sidebar",
+    "open_session_settings": "Open current conversation settings",
     "menu": "Menu"
   },
   "sidebar": {
@@ -3395,6 +3417,7 @@
   "header": {
     "refreshing_text": "Refreshing",
     "refresh": "Refresh",
+    "update": "Check for updates",
     "export": "Export"
   },
   "tag_tree": {
@@ -3486,6 +3509,23 @@
       "confirm_hint": "Execute again within {{seconds}} seconds to confirm this action.",
       "prompt_unsupported": "Input dialog is not supported in the current environment. Please use an alternative input method."
     }
+  },
+  "welcome_onboarding": {
+    "title": "Welcome to DeepStudent",
+    "subtitle": "A local-first AI learning workbench. Your data stays on your own device.",
+    "language_label": "Language / 界面语言",
+    "lang_zh": "简体中文",
+    "lang_en": "English",
+    "feature_hub_title": "Learning Hub",
+    "feature_hub_desc": "Import PDFs, textbooks and notes, and manage all your study materials in one place.",
+    "feature_chat_title": "AI Chat & Problem Solving",
+    "feature_chat_desc": "Multi-model chat, question analysis and knowledge-base retrieval in one flow.",
+    "feature_anki_title": "Flashcards & Review",
+    "feature_anki_desc": "Generate Anki cards with AI, with a built-in spaced-repetition review loop.",
+    "ai_setup_title": "Connect an AI service to get started",
+    "ai_setup_desc": "One-click setup with SiliconFlow, or connect OpenAI, Claude, Gemini, Ollama or any compatible provider.",
+    "cta_configure": "Set up AI service",
+    "cta_skip": "Just look around first"
   },
   "onboarding": {
     "analysis_intro": "Click the Study Workspace icon in the sidebar to enter the analysis home. Walk through a sample question end-to-end and remember to save the result.",
@@ -3595,10 +3635,20 @@
   "maintenance": {
     "banner_title": "Maintenance Mode",
     "banner_description": "The system is undergoing maintenance. Some features are temporarily unavailable.",
+    "partial_degradation_title": "Some data features need attention",
+    "partial_degradation_description": "Affected components: {{components}}. Other data and features remain available.",
+    "component_unavailable": "Temporarily unavailable",
+    "component_unavailable_description": "This feature's data component could not be upgraded safely, so only this feature has been paused.",
+    "blocked_by_dependency": "Required component {{dependency}} is currently unavailable.",
+    "other_features_available": "Other unaffected features remain available",
+    "chat_unavailable": "Chat data is temporarily unavailable",
+    "recovery_required": "Some data services remain safely locked. Restart the app to finish recovery before editing data.",
     "blocked_chat_send": "Cannot send messages during maintenance mode. Please try again later.",
     "blocked_note_save": "Cannot save notes during maintenance mode. Please try again later.",
     "blocked_file_upload": "Cannot upload files during maintenance mode. Please try again later.",
-    "go_to_data_governance": "View Details"
+    "go_to_data_governance": "View Details",
+    "restart_now": "Restart now",
+    "restart_failed": "Could not restart the app"
   },
   "aiContentLabel": {
     "label": "AI Generated",
@@ -3607,7 +3657,6 @@
     "ariaLabel": "AI-generated content"
   },
   "aiDisclaimer": {
-    "chatHint": "AI-generated content may contain errors. Please verify carefully.",
     "cardHint": "AI-generated card content may contain errors. Please verify before use."
   },
   "legal": {
@@ -3752,13 +3801,19 @@
     "show_details": "Show Error Details",
     "hide_details": "Hide Details",
     "copy_error": "Copy Error Log",
-    "copied": "Copied"
+    "copied": "Copied",
+    "export_diagnostics": "Export Diagnostics",
+    "exporting_diagnostics": "Exporting…",
+    "diagnostics_exported": "Diagnostic bundle exported",
+    "diagnostics_partial": "Diagnostic bundle exported, but {{count}} files were omitted",
+    "diagnostics_failed": "Failed to export diagnostic bundle"
   },
   "frontend_errors": {
     "window_error": "Window Error",
     "unhandled_promise_rejection": "Unhandled Promise Rejection"
   },
   "search_engines": {
+    "bing_rss": "Bing RSS (Free)",
     "zhipu": "Zhipu AI Search",
     "bocha": "Bocha AI Search",
     "unnamed_mcp": "Unnamed MCP Item"
@@ -3897,5 +3952,42 @@
   "model_selector": {
     "total_model_count": "{{count}} models total",
     "cached": "Cached"
+  },
+  "question_bank": {
+    "source_images": "Original imported images",
+    "crop_hint": "Drag on the image to select an area, then click \"Crop and add\" to attach it to the question",
+    "no_source_images": "This exam has no original imported images",
+    "crop_selected": "Crop area selected",
+    "drag_to_crop": "Drag to select a crop area",
+    "clear_selection": "Clear",
+    "crop_and_add": "Crop and add",
+    "crop_success": "Image cropped successfully",
+    "crop_failed": "Crop failed: {{error}}"
+  },
+  "a11y": {
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search": "Search",
+    "home": "Home",
+    "back": "Back",
+    "next": "Next",
+    "prev": "Previous",
+    "previous": "Previous",
+    "open": "Open",
+    "refresh": "Refresh",
+    "menu": "Menu",
+    "settings": "Settings"
+  },
+  "workflow": {
+    "progress": {
+      "processing": "Workflow in progress",
+      "stage_done": "Stage completed",
+      "stage_active": "Stage in progress",
+      "stage_pending": "Stage pending",
+      "percentage": "{{value}}%"
+    }
   }
 }

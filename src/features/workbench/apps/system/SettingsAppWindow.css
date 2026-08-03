@@ -1,0 +1,32 @@
+/** SettingsAppWindow — 真实内容常驻，长列表由设置模块虚拟化。 */
+
+[data-wb-settings-host] {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--wb-window-bg, hsl(var(--background)));
+}
+
+[data-wb-settings-layer] {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* 跟手期停动画：animation-play-state 不继承，必须点名子元素 */
+:root[data-wb-dragging] [data-wb-settings-host] .feature-status-dot,
+:root[data-wb-settling] [data-wb-settings-host] .feature-status-dot,
+:root[data-wb-dragging] [data-wb-settings-host] .settings-loading::after,
+:root[data-wb-settling] [data-wb-settings-host] .settings-loading::after,
+:root[data-wb-dragging] [data-wb-settings-host] .wb-sys-fade,
+:root[data-wb-settling] [data-wb-settings-host] .wb-sys-fade {
+  animation-play-state: paused;
+}
+
+:root[data-wb-dragging] [data-wb-settings-host] .tab-indicator,
+:root[data-wb-settling] [data-wb-settings-host] .tab-indicator {
+  will-change: auto;
+  transition: none;
+}

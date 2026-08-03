@@ -4,9 +4,13 @@
 #[cfg(not(target_os = "android"))]
 pub mod auth;
 pub mod client;
+#[cfg(not(target_os = "android"))]
+pub mod commands;
 pub mod config;
 pub mod global;
 pub mod http_transport;
+#[cfg(not(target_os = "android"))]
+pub mod oauth_callback;
 pub mod protocol_version;
 pub mod rmcp;
 pub mod sse_transport;

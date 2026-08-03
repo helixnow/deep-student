@@ -44,6 +44,7 @@ import {
   SYNC_PROGRESS_EVENT,
   isSyncPhaseTerminal,
 } from "../types/dataGovernance";
+import type { StartupComponentIssue } from '@/types/dataGovernance';
 
 // ==================== 维护模式 API ====================
 
@@ -53,8 +54,16 @@ import {
  */
 export async function getMaintenanceStatus(): Promise<{
   is_in_maintenance_mode: boolean;
+  blocked_components: string[];
+  component_health?: { components: StartupComponentIssue[] } | null;
+  component_issues?: StartupComponentIssue[];
 }> {
-  return invoke<{ is_in_maintenance_mode: boolean }>(
+  return invoke<{
+    is_in_maintenance_mode: boolean;
+    blocked_components: string[];
+    component_health?: { components: StartupComponentIssue[] } | null;
+    component_issues?: StartupComponentIssue[];
+  }>(
     "data_governance_get_maintenance_status",
   );
 }
@@ -171,6 +180,14 @@ export interface BackupConfig {
   backupTiers?: BackupTier[];
 }
 
+export interface AutoBackupStatus {
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  nextDueAt: string | null;
+  lastJobId: string | null;
+}
+
 /**
  * 获取备份配置
  */
@@ -186,6 +203,10 @@ export async function setBackupConfig(config: BackupConfig): Promise<void> {
   return invoke<void>("set_backup_config", { config });
 }
 
+export async function getAutoBackupStatus(): Promise<AutoBackupStatus> {
+  return invoke<AutoBackupStatus>("get_auto_backup_status");
+}
+
 // ==================== 备份 API ====================
 
 /**
@@ -194,20 +215,19 @@ export async function setBackupConfig(config: BackupConfig): Promise<void> {
  * 立即返回任务 ID，备份在后台执行。
  * 进度通过 `backup-job-progress` 事件发送。
  *
- * @param backupType 备份类型：'full'（完整）或 'incremental'（增量）
- * @param baseVersion 增量备份的基础版本（仅增量备份需要）
+ * 增量备份（incremental）创建入口已下线；仅支持完整备份。
+ *
+ * @param backupType 备份类型，仅支持 `'full'`（默认）
  * @param includeAssets 是否包含资产文件
  * @param assetTypes 要备份的资产类型列表
  */
 export async function runBackup(
-  backupType?: "full" | "incremental",
-  baseVersion?: string,
+  backupType?: "full",
   includeAssets?: boolean,
   assetTypes?: string[],
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_run_backup", {
     backupType,
-    baseVersion,
     includeAssets,
     assetTypes,
   });
@@ -1227,6 +1247,18 @@ export interface DiskSpaceCheckResponse {
   backup_size: number;
 }
 
+function isTauriCommandNotFound(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const code = "code" in error ? String((error as { code?: unknown }).code) : "";
+    if (code === "COMMAND_NOT_FOUND" || code === "TAURI_COMMAND_NOT_FOUND") {
+      return true;
+    }
+  }
+
+  const message = (error instanceof Error ? error.message : String(error)).trim();
+  return /^(?:command not found|unknown command)(?::|\s+-|$)/i.test(message);
+}
+
 export interface SlotMigrationTestResponse {
   success: boolean;
   report: string;
@@ -1251,14 +1283,18 @@ export async function checkDiskSpaceForRestore(
         backupId,
       },
     );
-  } catch {
-    // 如果后端尚未实现该命令，返回"空间足够"以不阻塞流程
-    return {
-      has_enough_space: true,
-      available_bytes: 0,
-      required_bytes: 0,
-      backup_size: 0,
-    };
+  } catch (error) {
+    // 仅兼容确实缺少命令的旧后端。权限、I/O、清单损坏等检查错误必须
+    // fail-close，不能伪装成“空间足够”继续执行破坏性恢复。
+    if (isTauriCommandNotFound(error)) {
+      return {
+        has_enough_space: true,
+        available_bytes: 0,
+        required_bytes: 0,
+        backup_size: 0,
+      };
+    }
+    throw error;
   }
 }
 
@@ -1337,6 +1373,7 @@ export async function countRecordConflicts(): Promise<Record<string, number>> {
  * @param tableName 业务表名
  * @param recordId 记录主键
  * @param resolution "keep_local" | "keep_cloud" | "merged"
+ * @param expectedConflictIds 用户实际看到的冲突 generation，后台变化时后端拒绝旧决策
  * @param mergedDataJson 当 resolution = "merged" 时提供的合并后行 JSON
  */
 export async function resolveRecordConflict(
@@ -1344,14 +1381,19 @@ export async function resolveRecordConflict(
   tableName: string,
   recordId: string,
   resolution: "keep_local" | "keep_cloud" | "merged",
+  expectedConflictIds: number[],
   mergedDataJson?: string,
 ): Promise<void> {
+  if (expectedConflictIds.length === 0) {
+    throw new Error('expectedConflictIds must not be empty');
+  }
   return invoke<void>("data_governance_resolve_record_conflict", {
     databaseName,
     tableName,
     recordId,
     resolution,
     mergedDataJson,
+    expectedConflictIds,
   });
 }
 
@@ -1510,6 +1552,7 @@ export const DataGovernanceApi = {
   // 备份配置
   getBackupConfig,
   setBackupConfig,
+  getAutoBackupStatus,
 
   // 备份管理
   runBackup,

@@ -35,8 +35,32 @@ require_cmd cargo
 require_cmd xcrun
 require_cmd xcodebuild
 
-# Prefer local @tauri-apps/cli via npx to ensure correct version
-TAURI_CLI="npx --yes @tauri-apps/cli@latest"
+# 使用 package-lock.json 锁定的本地 @tauri-apps/cli（npm ci 后可用），
+# 禁止 @latest 隐式漂移；--no-install 确保绝不临时拉取未锁定版本。
+TAURI_CLI="npx --no-install tauri"
+
+# ── 签名模式（显式，默认拒绝隐式未签名产物）─────────────────────────
+# 生产签名: 设置 APPLE_SIGNING_IDENTITY（可选 APPLE_ID/APPLE_PASSWORD/
+#           APPLE_TEAM_ID 以启用公证），tauri 会自动 codesign/公证。
+# 显式未签名: DS_ALLOW_UNSIGNED=1 —— 仅限本地开发验证，产物带 ad-hoc
+#           签名，不得分发。
+if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+  echo "[sign] Production signing enabled (identity: ${APPLE_SIGNING_IDENTITY})"
+  if [[ -n "${APPLE_ID:-}" && -n "${APPLE_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+    echo "[sign] Notarization enabled (APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID set)"
+  else
+    echo "[sign][warn] Notarization DISABLED (APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID not fully set)"
+  fi
+elif [[ "${DS_ALLOW_UNSIGNED:-}" == "1" ]]; then
+  echo "[sign][warn] UNSIGNED build explicitly requested (DS_ALLOW_UNSIGNED=1)."
+  echo "[sign][warn] Artifacts will be ad-hoc signed and MUST NOT be distributed."
+else
+  echo "[error] No signing configuration."
+  echo "  - For production builds: export APPLE_SIGNING_IDENTITY (plus APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID for notarization)."
+  echo "  - For local unsigned builds: rerun with DS_ALLOW_UNSIGNED=1."
+  echo "  Official releases are built and signed by .github/workflows/release.yml."
+  exit 1
+fi
 
 echo "\n[2/6] Installing Rust targets (if missing)..."
 rustup target add aarch64-apple-darwin || true
@@ -102,8 +126,8 @@ fi
 if npm run | grep -q "build:ios"; then
   npm run build:ios
 else
-  # Fallback to direct CLI
-  npx --yes @tauri-apps/cli@latest icon --output src-tauri/icons_ios_current public/app-icon.png || true
+  # Fallback to direct CLI (locked local version, no implicit @latest)
+  $TAURI_CLI icon --output src-tauri/icons_ios_current public/app-icon.png || true
   $TAURI_CLI ios build --ci
 fi
 

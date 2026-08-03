@@ -7,8 +7,8 @@
 import React, { type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Lightning, Pencil, Trash, Globe, FolderOpen, Package, Check, ArrowCounterClockwise, Wrench, Download, Star, DotsThree, Copy } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { Lightning, Pencil, Trash, Check, ArrowCounterClockwise, Download, Star, DotsThree, Copy } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -18,9 +18,15 @@ import {
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
+import type { SkillDefinition } from '@/features/chat/skills/types';
 import { useSkillFavorites } from '@/features/chat/skills/hooks/useSkillFavorites';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
+import {
+  isSkillDisabled,
+  setSkillDisabled,
+  SKILL_ENABLED_CHANGED_EVENT,
+} from '@/features/chat/skills/skillEnableStorage';
+import { SkillPackageSummary } from './SkillPackageSummary';
 
 // ============================================================================
 // 类型定义
@@ -64,19 +70,6 @@ export interface SkillsListProps {
 // ============================================================================
 
 /** 位置图标映射 */
-const LocationIcon: React.FC<{ location: SkillLocation }> = ({ location }) => {
-  switch (location) {
-    case 'global':
-      return <Globe size={12} />;
-    case 'project':
-      return <FolderOpen size={12} />;
-    case 'builtin':
-      return <Package size={12} />;
-    default:
-      return <Lightning size={12} />;
-  }
-};
-
 // ============================================================================
 // 组件
 // ============================================================================
@@ -104,6 +97,14 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   // 触屏无 hover:收藏星标/「启用」标签需常显
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
+  // 停用覆盖存在 localStorage，变更后靠 tick 强制重算 isSkillDisabled（仿 trustTick 模式）
+  const [, setEnableTick] = React.useState(0);
+  React.useEffect(() => {
+    const handleEnabledChanged = () => setEnableTick((v) => v + 1);
+    window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, handleEnabledChanged);
+    return () => window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, handleEnabledChanged);
+  }, []);
+
   // 选中卡片时自动滚动到可视区域
   React.useEffect(() => {
     if (!selectedSkillId) return;
@@ -120,22 +121,23 @@ export const SkillsList: React.FC<SkillsListProps> = ({
           <Lightning size={32} className="text-muted-foreground/50" />
         </div>
         <p className="study-shell-empty-state__title">
-          {t('skills:selector.empty', '暂无可用技能')}
+          {t('skills:selector.empty')}
         </p>
         <p className="study-shell-empty-state__description">
-          {t('skills:selector.emptyHint', '点击"新建"按钮创建第一个技能')}
+          {t('skills:selector.emptyHint')}
         </p>
       </div>
     );
   }
 
   return (
-    <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-3', className)}>
+    <div className={cn('grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5', className)}>
       {skills.map((skill) => {
         const isDefaultEnabled = defaultSkillIds.includes(skill.id);
         const isSelected = selectedSkillId === skill.id;
         const isBuiltin = skill.isBuiltin === true;
         const isCustomized = skill.isCustomized === true;
+        const isDisabledSkill = isSkillDisabled(skill.id);
 
         // 当前卡片是否正在编辑（用于隐藏）
         const isEditing = editingSkillId === skill.id;
@@ -143,6 +145,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
         return (
           <motion.div
             key={skill.id}
+            data-agent-entity={`skills:${skill.id}`}
             layoutId={`skill-card-${skill.id}`}
             ref={(el) => {
               cardRefs.current[skill.id] = el;
@@ -153,7 +156,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             }}
             className={cn(
               'study-shell-secondary-card group relative flex flex-col p-4',
-              'transition-[border-color,box-shadow] duration-200',
+              // ui-press：触控按压反馈（独立 scale 属性，不干扰 framer layout transform）
+              'ui-press transition-[border-color,box-shadow] duration-200',
               isSelected && 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]',
               isEditing && 'opacity-0 pointer-events-none'
             )}
@@ -168,19 +172,19 @@ export const SkillsList: React.FC<SkillsListProps> = ({
           >
             {/* 顶部区域：标题与操作 */}
             <div className="flex items-start justify-between gap-3 mb-2">
-              <div className="min-w-0 flex-1 flex flex-col gap-1">
+              <div className={cn('min-w-0 flex-1 flex flex-col gap-1', isDisabledSkill && 'opacity-60')}>
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-medium text-sm text-foreground truncate leading-tight">
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
-                  {/* 收藏按钮 - hover 或已收藏时显示;触屏常显 */}
-                  <NotionButton variant="utility" size="icon" iconOnly
+                  {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（触控目标经负 margin 扩大且不撑高行） */}
+                  <DsButton variant="ghost" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
-                    className={cn('!h-auto !w-auto !p-0 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
+                    className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
                     aria-label="favorite"
                   >
                     <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 
                 {/* 元信息行：版本与作者 */}
@@ -206,100 +210,131 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     }}
                     className={cn(
                       "flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer border select-none",
+                      // 移动端触控目标：加高 + 负 margin 抵消行高膨胀
+                      "max-lg:min-h-9 max-lg:px-2.5 max-lg:-my-1.5",
                       isDefaultEnabled 
-                        ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-[color:var(--button-primary-border)]"
+                        ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-transparent"
                         : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"
                     )}
-                    title={isDefaultEnabled ? t('skills:management.is_default', '默认启用') : t('skills:management.set_default', '设为默认')}
+                    title={isDefaultEnabled ? t('skills:management.is_default') : t('skills:management.set_default')}
                  >
-                    {isDefaultEnabled ? t('skills:management.default_abbr', '默认') : <span className={cn('transition-opacity', isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>{t('skills:management.enable', '启用')}</span>}
+                    {isDefaultEnabled ? t('skills:management.default_abbr') : <span className={cn('transition-opacity', isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>{t('skills:management.enable')}</span>}
                  </div>
               </div>
             </div>
 
             {/* 内容描述 */}
-            <div className="flex-1 min-h-[3rem]">
+            <div className={cn('flex-1 min-h-[3rem]', isDisabledSkill && 'opacity-60')}>
               <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-3">
-                {getLocalizedSkillDescription(skill.id, skill.description, t) || t('skills:management.no_description', '暂无描述')}
+                {getLocalizedSkillDescription(skill.id, skill.description, t) || t('skills:management.no_description')}
               </p>
             </div>
 
             {/* 底部标签栏 */}
             <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[color:var(--shell-workspace-border)]">
-              <div className="flex items-center gap-2">
+              <div className={cn('flex min-w-0 items-center gap-2', isDisabledSkill && 'opacity-60')}>
                 {/* 位置标签 */}
-                <div className={cn(
-                  "study-shell-badge flex items-center gap-1 text-[10px] px-1.5 py-0.5 select-none",
-                  skill.location === 'builtin' 
-                    ? ""
-                    : "study-shell-badge--primary"
-                )}>
-                  <LocationIcon location={skill.location} />
-                  <span>{t(`skills:location.${skill.location}`, skill.location)}</span>
-                </div>
+                <SkillPackageSummary skill={skill} variant="card" />
 
-                {/* 工具数量 */}
-                {skill.embeddedTools && skill.embeddedTools.length > 0 && (
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 px-1.5 py-0.5">
-                    <Wrench size={10} />
-                    <span>{skill.embeddedTools.length}</span>
+                {/* 停用标记 */}
+                {isDisabledSkill && (
+                  <div
+                    className="study-shell-badge study-shell-badge--borderless text-[10px]"
+                    title={t('skills:package.disabled_hint')}
+                  >
+                    {t('skills:package.disabled_badge')}
                   </div>
                 )}
-                
+
                 {/* 自定义标记 */}
                 {isBuiltin && isCustomized && (
-                  <div className="study-shell-badge study-shell-badge--warning text-[10px]">
-                    {t('skills:management.customized', '已修改')}
+                  <div className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-[10px]">
+                    {t('skills:management.customized')}
                   </div>
                 )}
               </div>
 
               {/* 右下角操作按钮 */}
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
+                {/* 停用/启用开关（即时生效，无确认框） */}
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                  onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
+                  title={
+                    isDisabledSkill
+                      ? t('skills:package.enable')
+                      : t('skills:package.disable')
+                  }
+                  aria-label={isDisabledSkill ? 'enable-skill' : 'disable-skill'}
+                >
+                  {isDisabledSkill
+                    ? t('skills:package.enable')
+                    : t('skills:package.disable')}
+                </DsButton>
+                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
                   <Pencil size={14} />
-                </NotionButton>
+                </DsButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
+                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
                       <DotsThree size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </AppMenuTrigger>
-                  <AppMenuContent align="end" className="min-w-[160px]">
-                    <AppMenuItem onClick={() => onToggleDefault(skill)}>
-                      <Check size={14} className="mr-2" />
-                      {isDefaultEnabled ? t('skills:management.unset_default', '取消默认') : t('skills:management.set_default', '设为默认')}
+                  <AppMenuContent align="end" width={180}>
+                    <AppMenuItem
+                      icon={<Check size={16} />}
+                      onClick={() => onToggleDefault(skill)}
+                    >
+                      {isDefaultEnabled ? t('skills:management.unset_default') : t('skills:management.set_default')}
                     </AppMenuItem>
-                    <AppMenuItem onClick={() => toggleFavorite(skill.id)}>
-                      <Star size={14} className={cn('mr-2', isFavorite(skill.id) && 'fill-current text-amber-500')} />
-                      {isFavorite(skill.id) ? t('skills:favorite.remove', '取消收藏') : t('skills:favorite.add', '收藏')}
+                    <AppMenuItem
+                      icon={
+                        <Star
+                          size={16}
+                          className={cn(isFavorite(skill.id) && 'fill-current text-[color:hsl(var(--warning))]')}
+                        />
+                      }
+                      onClick={() => toggleFavorite(skill.id)}
+                    >
+                      {isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                     </AppMenuItem>
                     {onExport && (
-                      <AppMenuItem onClick={() => onExport(skill)}>
-                        <Download size={14} className="mr-2" />
-                        {t('skills:management.export', '导出')}
+                      <AppMenuItem
+                        icon={<Download size={16} />}
+                        onClick={() => onExport(skill)}
+                      >
+                        {t('skills:management.export')}
                       </AppMenuItem>
                     )}
-                    <AppMenuItem onClick={() => { navigator.clipboard.writeText(skill.id); }}>
-                      <Copy size={14} className="mr-2" />
-                      {t('skills:management.copy_id', '复制 ID')}
+                    <AppMenuItem
+                      icon={<Copy size={16} />}
+                      onClick={() => { void navigator.clipboard.writeText(skill.id); }}
+                    >
+                      {t('skills:management.copy_id')}
                     </AppMenuItem>
                     {isBuiltin && isCustomized && onResetToOriginal && (
                       <>
                         <AppMenuSeparator />
-                        <AppMenuItem onClick={() => onResetToOriginal(skill)}>
-                          <ArrowCounterClockwise size={14} className="mr-2" />
-                          {t('skills:management.reset_to_default', '恢复默认')}
+                        <AppMenuItem
+                          icon={<ArrowCounterClockwise size={16} />}
+                          onClick={() => onResetToOriginal(skill)}
+                        >
+                          {t('skills:management.reset_to_default')}
                         </AppMenuItem>
                       </>
                     )}
                     {!isBuiltin && (
                       <>
                         <AppMenuSeparator />
-                        <AppMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(skill)}>
-                          <Trash size={14} className="mr-2" />
-                          {t('common:actions.delete', '删除')}
+                        <AppMenuItem
+                          icon={<Trash size={16} />}
+                          destructive
+                          onClick={() => onDelete(skill)}
+                        >
+                          {t('common:actions.delete')}
                         </AppMenuItem>
                       </>
                     )}

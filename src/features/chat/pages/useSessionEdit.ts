@@ -8,10 +8,9 @@ import { buildPinnedSessionMetadata } from '../utils/sessionPin';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import type { ChatSession } from '../types/session';
 import type { DropResult } from '@hello-pangea/dnd';
-import type { DragEndEvent } from '@dnd-kit/core';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { showArchiveSessionToast } from '../utils/archiveSessionToast';
-import type { TFunction } from 'i18next';
+import i18n, { type TFunction } from 'i18next';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -64,6 +63,10 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     updateGroup, createGroup, archiveGroup, reorderGroups,
     loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups,
   } = deps;
+  // 分组拖拽排序已收敛到桌面 ModernSidebar 的 HTML5 DnD（dnd-kit 路径随 SortableGroupItem 移除）
+  void reorderGroups;
+  void groupDragDisabled;
+  void visibleGroups;
 
   // 开始编辑会话名称
   const startEditSession = useCallback((session: ChatSession, e: React.MouseEvent) => {
@@ -73,7 +76,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingSessionId(session.id);
     setEditingTitle(getSessionTitleText(session.title, ''));
     resetDeleteConfirmation();
-  }, [resetDeleteConfirmation]);
+  }, [resetDeleteConfirmation, setEditingSessionId, setEditingTitle, setRenameError, setRenamingSessionId]);
 
   // 保存会话名称
   const saveSessionTitle = useCallback(async (sessionId: string) => {
@@ -116,7 +119,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     } finally {
       setRenamingSessionId(null);
     }
-  }, [editingTitle, t]);
+  }, [editingTitle, sessionsRef, setEditingSessionId, setEditingTitle, setRenameError, setRenamingSessionId, setSessions, t]);
 
   // 取消编辑
   const cancelEditSession = useCallback(() => {
@@ -124,7 +127,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setRenameError(null);
     setEditingSessionId(null);
     setEditingTitle('');
-  }, []);
+  }, [setEditingSessionId, setEditingTitle, setRenameError, setRenamingSessionId]);
 
   const togglePinSession = useCallback(async (sessionId: string, pinned: boolean, metadata?: ChatSession['metadata']) => {
     try {
@@ -186,7 +189,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setGroupEditorOpen(true);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setSessionSheetOpen, setViewMode]);
 
   const openEditGroup = useCallback((group: SessionGroup) => {
     setEditingGroup(group);
@@ -194,7 +197,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setGroupEditorOpen(true);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setSessionSheetOpen, setViewMode]);
 
   const openRenameGroup = useCallback((group: SessionGroup) => {
     setEditingGroup(group);
@@ -202,7 +205,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setGroupEditorOpen(true);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setSessionSheetOpen, setViewMode]);
 
   const closeGroupEditor = useCallback(() => {
     setGroupEditorOpen(false);
@@ -212,7 +215,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     groupPickerAddRef.current = null;
     setGroupPinnedIds(new Set());
     setMobileResourcePanelOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [groupPickerAddRef, setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setGroupPinnedIds, setMobileResourcePanelOpen]);
 
   const handleSubmitGroup = useCallback(async (payload: CreateGroupRequest | UpdateGroupRequest) => {
     try {
@@ -224,6 +227,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       closeGroupEditor();
     } catch (error) {
       console.error('[ChatV2Page] Failed to save group:', getErrorMessage(error));
+      // 向上抛出，让 GroupEditorPanel 展示保存失败提示并保持编辑器打开
+      throw error;
     }
   }, [closeGroupEditor, createGroup, editingGroup, updateGroup]);
 
@@ -236,33 +241,59 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       // Update groupId in store
       const storeUpdate: Record<string, unknown> = { groupId: groupId ?? null };
 
-      // P0-3 fix: Update groupSystemPromptSnapshot in metadata when moving between groups
+      // P0-3 fix: Update group snapshots in metadata when moving between groups
+      // (groupSystemPromptSnapshot + groupDefaultRuntimeRootIdSnapshot)
       const currentMetadata = store.getState().sessionMetadata;
       if (groupId) {
         const group = groupCache.get(groupId);
+        let nextMetadata: Record<string, unknown> | null = currentMetadata
+          ? { ...currentMetadata }
+          : null;
+        let changed = false;
+
         if (group?.systemPrompt) {
-          storeUpdate.sessionMetadata = {
-            ...(currentMetadata ?? {}),
+          nextMetadata = {
+            ...(nextMetadata ?? {}),
             groupSystemPromptSnapshot: group.systemPrompt,
           };
-        } else {
-          // New group has no systemPrompt — remove stale snapshot
-          if (currentMetadata?.groupSystemPromptSnapshot) {
-            const { groupSystemPromptSnapshot: _, ...rest } = currentMetadata;
-            storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
-          }
+          changed = true;
+        } else if (nextMetadata?.groupSystemPromptSnapshot) {
+          const { groupSystemPromptSnapshot: _, ...rest } = nextMetadata;
+          nextMetadata = Object.keys(rest).length > 0 ? rest : null;
+          changed = true;
         }
-      } else {
-        // Moved to ungrouped — remove stale snapshot
-        if (currentMetadata?.groupSystemPromptSnapshot) {
-          const { groupSystemPromptSnapshot: _, ...rest } = currentMetadata;
-          storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
+
+        if (group?.defaultRuntimeRootId) {
+          nextMetadata = {
+            ...(nextMetadata ?? {}),
+            groupDefaultRuntimeRootIdSnapshot: group.defaultRuntimeRootId,
+          };
+          changed = true;
+        } else if (nextMetadata?.groupDefaultRuntimeRootIdSnapshot) {
+          const { groupDefaultRuntimeRootIdSnapshot: _, ...rest } = nextMetadata;
+          nextMetadata = Object.keys(rest).length > 0 ? rest : null;
+          changed = true;
         }
+
+        if (changed) {
+          storeUpdate.sessionMetadata = nextMetadata;
+        }
+      } else if (
+        currentMetadata?.groupSystemPromptSnapshot ||
+        currentMetadata?.groupDefaultRuntimeRootIdSnapshot
+      ) {
+        // Moved to ungrouped — remove stale snapshots
+        const {
+          groupSystemPromptSnapshot: _sp,
+          groupDefaultRuntimeRootIdSnapshot: _rr,
+          ...rest
+        } = currentMetadata;
+        storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
       }
 
       store.setState(storeUpdate);
     }
-  }, []);
+  }, [setSessions]);
 
   const confirmArchiveGroup = useCallback(async () => {
     if (!pendingArchiveGroup) return;
@@ -273,6 +304,15 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       console.error('[ChatV2Page] Failed to archive group:', getErrorMessage(error));
     }
   }, [archiveGroup, pendingArchiveGroup, setPendingArchiveGroup]);
+
+  // 归档分组（直接执行版）：供侧栏等已自带行内二次确认的表面使用
+  const archiveGroupDirect = useCallback(async (group: SessionGroup) => {
+    try {
+      await archiveGroup(group.id);
+    } catch (error) {
+      console.error('[ChatV2Page] Failed to archive group:', getErrorMessage(error));
+    }
+  }, [archiveGroup]);
 
   const moveSessionToGroup = useCallback(async (sessionId: string, groupId?: string) => {
     try {
@@ -287,26 +327,11 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     }
   }, [applySessionGroupUpdate, loadUngroupedCount]);
 
-  const handleGroupReorder = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    if (groupDragDisabled) return;
-
-    const oldIndex = visibleGroups.findIndex((g) => g.id === active.id);
-    const newIndex = visibleGroups.findIndex((g) => g.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const reordered = [...visibleGroups];
-    const [moved] = reordered.splice(oldIndex, 1);
-    reordered.splice(newIndex, 0, moved);
-    reorderGroups(reordered.map((group) => group.id));
-  }, [groupDragDisabled, reorderGroups, visibleGroups]);
-
   const handleDragEnd = useCallback((result: DropResult) => {
     const { destination, source, draggableId } = result;
     if (!destination) return;
 
-    // SESSION-level drag only (group drag handled by @dnd-kit)
+    // SESSION-level drag only（分组排序走桌面 ModernSidebar 的 HTML5 拖拽）
     if (destination.droppableId === source.droppableId) return;
     const sessionId = draggableId.replace(/^session:/, '');
     if (destination.droppableId === 'session-ungrouped') {
@@ -320,7 +345,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   }, [moveSessionToGroup]);
 
   // 格式化时间
-  const formatTime = (isoString: string): string => {
+  const formatTime = useCallback((isoString: string): string => {
     const date = new Date(isoString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -332,8 +357,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     if (diffMins < 60) return t('common.minutesAgo', { count: diffMins } as any) as string;
     if (diffHours < 24) return t('common.hoursAgo', { count: diffHours } as any) as string;
     if (diffDays < 7) return t('common.daysAgo', { count: diffDays } as any) as string;
-    return date.toLocaleDateString();
-  };
+    return date.toLocaleDateString(i18n.resolvedLanguage ?? i18n.language);
+  }, [t]);
 
   return {
     startEditSession,
@@ -348,8 +373,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     handleSubmitGroup,
     applySessionGroupUpdate,
     confirmArchiveGroup,
+    archiveGroupDirect,
     moveSessionToGroup,
-    handleGroupReorder,
     handleDragEnd,
     formatTime,
   };

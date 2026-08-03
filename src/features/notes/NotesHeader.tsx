@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
     FloppyDisk,
@@ -6,9 +6,7 @@ import {
     SidebarSimple,
     CaretRight,
     Calendar,
-    Tag,
     FileText,
-    Folder,
     FileArchive,
     Printer,
     Link,
@@ -17,7 +15,7 @@ import {
     ArrowRight,
     FolderOpen,
 } from "@phosphor-icons/react";
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Separator } from "@/components/ui/shad/Separator";
 import {
     AppMenu,
@@ -59,11 +57,95 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
         updateNoteTags,
         setSidebarRevealId,
         setLibraryOpen,
-        deleteItems
+        deleteItems,
+        editor,
+        saveNoteContent,
     } = useNotes();
 
     // Map tab IDs to NoteItems for the TabsBar
     const tabs = openTabs.map(id => notes.find(n => n.id === id)).filter((n): n is NonNullable<typeof n> => !!n);
+
+    // 面包屑：当前笔记的文件夹路径（getPathToNote 末项为笔记本身）
+    const breadcrumb = useMemo(
+        () => (active ? getPathToNote(active.id, folders, notes) : []),
+        [active, folders, notes],
+    );
+
+    // 更多菜单（受控）：删除采用内联两步确认，需保持菜单打开
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const confirmResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (!menuOpen) setConfirmingDelete(false);
+        return () => {
+            if (confirmResetTimer.current) {
+                clearTimeout(confirmResetTimer.current);
+                confirmResetTimer.current = null;
+            }
+        };
+    }, [menuOpen]);
+
+    const handleDeleteClick = useCallback(() => {
+        if (!active) return;
+        if (!confirmingDelete) {
+            // 第一步：进入确认态，3 秒后自动还原
+            setConfirmingDelete(true);
+            if (confirmResetTimer.current) clearTimeout(confirmResetTimer.current);
+            confirmResetTimer.current = setTimeout(() => setConfirmingDelete(false), 3000);
+            return;
+        }
+        if (confirmResetTimer.current) {
+            clearTimeout(confirmResetTimer.current);
+            confirmResetTimer.current = null;
+        }
+        setConfirmingDelete(false);
+        setMenuOpen(false);
+        void deleteItems([active.id]);
+    }, [active, confirmingDelete, deleteItems]);
+
+    // 真实强制保存：读取编辑器当前 Markdown 并落盘（与命令面板 NOTES_FORCE_SAVE 一致）
+    const [saving, setSaving] = useState(false);
+    const handleForceSave = useCallback(async () => {
+        if (!active) {
+            showGlobalNotification('error', t('notes:notifications.noActiveNote'));
+            return;
+        }
+        if (!editor) {
+            // 编辑器尚未就绪时退回原提示
+            showGlobalNotification('info', t('notes:common.auto_save_enabled'));
+            return;
+        }
+        setSaving(true);
+        try {
+            const content = editor.getMarkdown() || '';
+            await saveNoteContent(active.id, content);
+            showGlobalNotification('success', t('notes:actions.save_success'));
+        } catch (error: unknown) {
+            // saveNoteContent 内部已发出失败通知，这里仅记录
+            console.error('[NotesHeader] Force save failed', error);
+        } finally {
+            setSaving(false);
+        }
+    }, [active, editor, saveNoteContent, t]);
+
+    // P2-12：移动平台不支持库导出（后端依赖桌面文件系统对话框）。
+    // 移动端改为「复制 Markdown」，桌面保留导出入口。
+    const onMobilePlatform = isMobilePlatform();
+
+    const handleCopyMarkdown = async () => {
+        if (!active) {
+            showGlobalNotification('error', t('notes:notifications.noActiveNote'));
+            return;
+        }
+        const markdown = editor?.getMarkdown?.() ?? active.content_md ?? '';
+        const copied = await copyTextToClipboard(markdown);
+        if (copied) {
+            showGlobalNotification('success', t('notes:header.copy_markdown_success', '已复制 Markdown'));
+        } else {
+            showGlobalNotification('error', t('notes:header.copy_markdown_failed', '复制失败'));
+        }
+    };
 
     const handleExport = async () => {
         if (isMobilePlatform()) {
@@ -71,12 +153,12 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
             return;
         }
         try {
-            showGlobalNotification('info', t('notes:header.exporting', 'Exporting notes...'));
+            showGlobalNotification('info', t('notes:header.exporting'));
             const res = await NotesAPI.exportNotes({});
             showGlobalNotification('success', t('notes:header.export_success', 'Exported to: {{path}}', { path: res.output_path }));
         } catch (error: unknown) {
             console.error("Export failed", error);
-            showGlobalNotification('error', t('notes:header.export_failed', 'Export failed') + ": " + getErrorMessage(error));
+            showGlobalNotification('error', t('notes:header.export_failed') + ": " + getErrorMessage(error));
         }
     };
 
@@ -89,7 +171,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
         // 创建一个临时的打印容器
         const printContent = document.querySelector('.crepe-editor-wrapper');
         if (!printContent) {
-            showGlobalNotification('error', t('notes:header.print_failed', 'Print failed: No content to print'));
+            showGlobalNotification('error', t('notes:header.print_failed'));
             return;
         }
         
@@ -116,7 +198,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
             outputPath = await fileManager.pickSavePath({
                 title: t('notes:header.export_single_title'),
                 defaultFileName,
-                filters: [{ name: t('notes:header.export_filter_name', 'Markdown Note Export'), extensions: ['zip'] }],
+                filters: [{ name: t('notes:header.export_filter_name'), extensions: ['zip'] }],
             }) ?? undefined;
             if (!outputPath) {
                 return;
@@ -148,14 +230,14 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                 {/* Mobile Menu Toggle */}
                 {onMobileMenuClick && (
                     <>
-                        <NotionButton 
+                        <DsButton 
                             variant="ghost" 
                             iconOnly size="sm" 
-                            className="h-7 w-7 shrink-0 text-muted-foreground/70 hover:text-foreground md:hidden"
+                            className="h-7 w-7 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 shrink-0 text-muted-foreground/70 hover:text-foreground md:hidden"
                             onClick={onMobileMenuClick}
                         >
                             <SidebarSimple className="h-4 w-4" />
-                        </NotionButton>
+                        </DsButton>
                         <Separator className="h-4 w-px mx-1 bg-border/40 md:hidden" />
                     </>
                 )}
@@ -174,8 +256,38 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
             {/* Toolbar (only visible if active note) */}
             {active && (
                 <div className="flex items-center h-12 px-4 gap-3 border-t border-border/20">
-                    {/* Spacer to push actions to right */}
-                    <div className="flex-1" />
+                    {/* 面包屑：文件夹路径 + 笔记标题 */}
+                    <nav
+                        aria-label={t('notes:menu.reveal_in_sidebar')}
+                        className="flex items-center gap-1 min-w-0 flex-1 text-xs text-muted-foreground/70"
+                    >
+                        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" aria-hidden="true" />
+                        {breadcrumb.map((segment, index) => {
+                            const isLast = index === breadcrumb.length - 1;
+                            return (
+                                <React.Fragment key={segment.id}>
+                                    {index > 0 && (
+                                        <CaretRight className="h-3 w-3 shrink-0 text-muted-foreground/40" aria-hidden="true" />
+                                    )}
+                                    {/* 触屏下扩大面包屑命中区（父容器 h-12，垂直方向有富余） */}
+                                    <button
+                                        type="button"
+                                        className={
+                                            isLast
+                                                ? "truncate max-w-[220px] font-medium text-foreground/80 cursor-default"
+                                                : "truncate max-w-[140px] rounded px-0.5 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-1.5 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
+                                        }
+                                        title={segment.title}
+                                        onClick={() => {
+                                            if (!isLast) setSidebarRevealId(segment.id);
+                                        }}
+                                    >
+                                        {segment.title}
+                                    </button>
+                                </React.Fragment>
+                            );
+                        })}
+                    </nav>
 
                     {/* Meta Info (Date, etc.) - Optional, hidden on small screens */}
                     <div className="hidden lg:flex items-center gap-3 text-[10px] text-muted-foreground/50">
@@ -197,39 +309,56 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
 
 
                     <div className="flex items-center gap-1 ml-2">
-                        <NotionButton
+                        {/* 触屏（pointer:coarse）下放大到 40px 触控高度 */}
+                        <DsButton
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hidden sm:flex"
-                            onClick={() => showGlobalNotification('info', t('notes:common.auto_save_enabled'))}
+                            className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hidden sm:flex"
+                            disabled={saving}
+                            onClick={() => { void handleForceSave(); }}
                         >
                             <span className="flex items-center gap-1.5">
-                            {t('notes:actions.save')}
+                                <FloppyDisk className="h-3.5 w-3.5" />
+                                {saving ? t('notes:editor.save_status.saving') : t('notes:actions.save')}
                             </span>
-                        </NotionButton>
-                        <NotionButton
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                            onClick={() => setLibraryOpen(true)}
-                        >
-                            <span className="flex items-center gap-1.5">
-                                <FileArchive className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">{t('notes:toolbar.export_library')}</span>
-                                <span className="sm:hidden">{t('notes:toolbar.export_library')}</span>
-                            </span>
-                        </NotionButton>
+                        </DsButton>
+                        {onMobilePlatform ? (
+                            // P2-12：移动平台库导出不可用（依赖桌面文件对话框），改「复制 Markdown」
+                            <DsButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                                onClick={() => { void handleCopyMarkdown(); }}
+                            >
+                                <span className="flex items-center gap-1.5">
+                                    <Copy className="h-3.5 w-3.5" />
+                                    <span>{t('notes:header.copy_markdown', '复制 Markdown')}</span>
+                                </span>
+                            </DsButton>
+                        ) : (
+                            <DsButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                                onClick={() => setLibraryOpen(true)}
+                            >
+                                <span className="flex items-center gap-1.5">
+                                    <FileArchive className="h-3.5 w-3.5" />
+                                    <span>{t('notes:toolbar.export_library')}</span>
+                                </span>
+                            </DsButton>
+                        )}
 
                         <Separator className="h-4 w-px mx-1 bg-border/40" />
 
-                        <AppMenu>
+                        <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
                             <AppMenuTrigger asChild>
-                                <NotionButton variant="ghost" iconOnly size="sm" className="h-7 w-7 text-muted-foreground">
+                                <DsButton variant="ghost" iconOnly size="sm" className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground">
                                     <DotsThreeVertical className="h-3.5 w-3.5" />
-                                </NotionButton>
+                                </DsButton>
                             </AppMenuTrigger>
                             <AppMenuContent align="end" width={240}>
-                                <AppMenuGroup label={t('notes:menu.page_actions', '页面操作')}>
+                                <AppMenuGroup label={t('notes:menu.page_actions')}>
                                     <AppMenuItem
                                         icon={<Link className="h-4 w-4" />}
                                         shortcut="⌥⌘L"
@@ -237,11 +366,11 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                             if (active) {
                                                 const noteUrl = `note://${active.id}`;
                                                 copyTextToClipboard(noteUrl);
-                                                showGlobalNotification('success', t('notes:menu.link_copied', '链接已复制'));
+                                                showGlobalNotification('success', t('notes:menu.link_copied'));
                                             }
                                         }}
                                     >
-                                        {t('notes:menu.copy_link', '拷贝链接')}
+                                        {t('notes:menu.copy_link')}
                                     </AppMenuItem>
                                     <AppMenuItem 
                                         icon={<ArrowRight className="h-4 w-4" />}
@@ -252,35 +381,51 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                             }
                                         }}
                                     >
-                                        {t('notes:menu.reveal_in_sidebar', '在侧边栏中显示')}
+                                        {t('notes:menu.reveal_in_sidebar')}
                                     </AppMenuItem>
-                                    <AppMenuItem
-                                        icon={<Trash className="h-4 w-4" />}
-                                        destructive
-                                        onClick={() => {
-                                            if (active) {
-                                                deleteItems([active.id]);
-                                            }
-                                        }}
+                                    {/* 删除：内联两步确认（第一次点击进入红色确认态，不弹 Modal，不自动关闭菜单） */}
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        className={
+                                            confirmingDelete
+                                                ? "app-menu-item app-menu-item-destructive bg-destructive/10 font-medium"
+                                                : "app-menu-item app-menu-item-destructive"
+                                        }
+                                        onClick={handleDeleteClick}
                                     >
-                                        {t('notes:menu.move_to_trash', '移至垃圾箱')}
-                                    </AppMenuItem>
+                                        <span className="app-menu-item-icon"><Trash className="h-4 w-4" /></span>
+                                        <span className="app-menu-item-content">
+                                            {confirmingDelete
+                                                ? t('notes:tree.delete_confirm.title')
+                                                : t('notes:menu.move_to_trash')}
+                                        </span>
+                                    </button>
                                 </AppMenuGroup>
 
                                 <AppMenuSeparator />
 
-                                <AppMenuGroup label={t('notes:menu.export_import', '导入导出')}>
-                                    <AppMenuItem icon={<FileArchive className="h-4 w-4" />} onClick={handleExport}>
-                                        {t('notes:toolbar.export')}
-                                    </AppMenuItem>
-                                    <AppMenuItem icon={<FileText className="h-4 w-4" />} onClick={handleExportCurrentNote}>
-                                        {t('notes:header.export_single')}
-                                    </AppMenuItem>
+                                <AppMenuGroup label={t('notes:menu.export_import')}>
+                                    {onMobilePlatform ? (
+                                        // P2-12：移动端隐藏必然失败的导出项，提供复制 Markdown
+                                        <AppMenuItem icon={<Copy className="h-4 w-4" />} onClick={() => { void handleCopyMarkdown(); }}>
+                                            {t('notes:header.copy_markdown', '复制 Markdown')}
+                                        </AppMenuItem>
+                                    ) : (
+                                        <>
+                                            <AppMenuItem icon={<FileArchive className="h-4 w-4" />} onClick={handleExport}>
+                                                {t('notes:toolbar.export')}
+                                            </AppMenuItem>
+                                            <AppMenuItem icon={<FileText className="h-4 w-4" />} onClick={handleExportCurrentNote}>
+                                                {t('notes:header.export_single')}
+                                            </AppMenuItem>
+                                        </>
+                                    )}
                                 </AppMenuGroup>
 
                                 <AppMenuSeparator />
 
-                                <AppMenuGroup label={t('notes:menu.history', '历史')}>
+                                <AppMenuGroup label={t('notes:menu.history')}>
                                     <AppMenuItem 
                                         icon={<Printer className="h-4 w-4" />}
                                         shortcut="⌘P"

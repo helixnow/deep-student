@@ -37,12 +37,14 @@ use crate::chat_v2::types::LoadSessionResponse;
 #[tauri::command]
 pub async fn chat_v2_load_session(
     session_id: String,
+    tail_limit: Option<u32>,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<LoadSessionResponse, String> {
     let t0 = Instant::now();
     log::info!(
-        "[ChatV2::handlers] chat_v2_load_session: session_id={}",
-        session_id
+        "[ChatV2::handlers] chat_v2_load_session: session_id={}, tail_limit={:?}",
+        session_id,
+        tail_limit
     );
 
     // 验证会话 ID 格式
@@ -57,28 +59,35 @@ pub async fn chat_v2_load_session(
         );
     }
 
-    // 从数据库加载会话完整数据
-    let response = load_session_from_db(&session_id, &db)?;
+    // 从数据库加载会话数据（tail_limit 存在时只取最近 N 条，用于首屏加速）
+    let response = load_session_from_db(&session_id, tail_limit, &db)?;
 
     let elapsed_ms = t0.elapsed().as_millis();
     log::info!(
-        "[ChatV2::handlers] Loaded session: session_id={}, messages={}, blocks={}, elapsed_ms={}",
+        "[ChatV2::handlers] Loaded session: session_id={}, messages={}, blocks={}, total={:?}, elapsed_ms={}",
         session_id,
         response.messages.len(),
         response.blocks.len(),
+        response.total_message_count,
         elapsed_ms
     );
 
     Ok(response)
 }
 
-/// 从数据库加载会话完整数据
+/// 从数据库加载会话数据
 fn load_session_from_db(
     session_id: &str,
+    tail_limit: Option<u32>,
     db: &ChatV2Database,
 ) -> Result<LoadSessionResponse, ChatV2Error> {
-    // 调用 ChatV2Repo::load_session_full_v2 加载完整会话数据
-    ChatV2Repo::load_session_full_v2(db, session_id)
+    match tail_limit {
+        Some(limit) if limit > 0 => {
+            let conn = db.get_conn_safe()?;
+            ChatV2Repo::load_session_tail_with_conn(&conn, session_id, limit)
+        }
+        _ => ChatV2Repo::load_session_full_v2(db, session_id),
+    }
 }
 
 #[cfg(test)]

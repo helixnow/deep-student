@@ -147,8 +147,8 @@ vi.mock('@/components/ui/PulseDot', () => ({
   PulseDot: () => null,
 }));
 
-vi.mock('@/components/ui/NotionButton', () => ({
-  NotionButton: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+vi.mock('@/components/ui/DsButton', () => ({
+  DsButton: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button {...props}>{children}</button>
   ),
 }));

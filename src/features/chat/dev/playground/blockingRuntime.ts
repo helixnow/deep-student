@@ -1,6 +1,7 @@
 import type { StoreApi } from 'zustand';
 
 import type { ChatStore } from '../../core/types';
+import type { ShellRuntimeApprovalScope } from '../../core/types/store';
 import { generateId } from '../../core/store/createChatStore';
 
 type BlockingInteraction = NonNullable<ChatStore['pendingBlockingInteraction']>;
@@ -15,6 +16,7 @@ export interface PlaygroundAskUserResponse {
 export interface PlaygroundToolApprovalResponse {
   approved: boolean;
   remember: boolean;
+  rememberSession?: boolean;
   reason?: string;
 }
 
@@ -48,6 +50,7 @@ export interface PlaygroundToolApprovalTemplate {
   sensitivity: 'low' | 'medium' | 'high';
   description?: string;
   timeoutSeconds?: number;
+  runtimeScope?: ShellRuntimeApprovalScope;
 }
 
 export interface PlaygroundToolLimitTemplate {
@@ -141,6 +144,7 @@ export function createPlaygroundToolApprovalInteraction(
     sensitivity: template.sensitivity,
     description: template.description ?? '',
     timeoutSeconds: template.timeoutSeconds ?? 45,
+    runtimeScope: template.runtimeScope,
     respond: async ({ approved, remember, reason }) => {
       store.getState().updateBlock(blockId, {
         status: approved ? 'success' : 'error',

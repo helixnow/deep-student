@@ -18,6 +18,13 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/stores/questionBankStore', () => ({
   useQuestionBankStore: (selector: (state: typeof storeState) => unknown) => selector(storeState),
+  // 真实签名: (value: unknown, expectedExamId: string) => QbankPracticeHandoff | PracticeHandoffHydrationFailure
+  // 组件走 hydratePracticeSession 分支时会调用；mock 默认返回校验失败，避免缺导出直接抛错
+  validateQbankPracticeHandoff: vi.fn((_value: unknown, _expectedExamId: string) => ({
+    ok: false as const,
+    code: 'INVALID_PRACTICE_HANDOFF' as const,
+    hint: 'mocked validator',
+  })),
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({

@@ -1,0 +1,253 @@
+# ============================================================================
+# 数据库迁移夜间全量门禁（main/nightly 层）
+#
+# 分层设计（详见 scripts/migration-ci/README.md）：
+#   PR/branch push : ci.yml migration-gate（静态 + 生产测试 + 代表性 fixture）
+#   main/nightly   : 本 workflow —— 全量 fixture 升级 + 故障注入 + 规模入口
+#   release/rebuild: reusable-migration-gate.yml（fail-closed）
+#
+# fixture 来自私有归档 secret（MIGRATION_FIXTURE_URL / _SHA256 / _TOKEN）。
+# secret 缺失时本层显式 skip（带 ::warning:: 与 job summary 记录），不视为失败；
+# release 层则 fail-closed，绝不允许无 fixture 出包。
+#
+# 失败通知（审查 F16）：定时任务红了没人盯 Actions 页 —— 任一 gate 失败时
+# 自动创建/评论 issue（label: migration-nightly-failure）。
+# ============================================================================
+
+name: Migration Nightly
+
+on:
+  schedule:
+    # 每日 19:30 UTC = 次日 03:30 Asia/Shanghai
+    - cron: '30 19 * * *'
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/migrations/**'
+      - 'src-tauri/src/data_governance/migration/**'
+      - 'src-tauri/src/data_governance/migration_tests.rs'
+      - 'src-tauri/src/data_governance/migration_compat_tests.rs'
+      - 'src-tauri/tests/fixtures/migrations/**'
+      - 'src-tauri/tests/migration_fixture_upgrade_gate.rs'
+      - 'scripts/check-migrations.mjs'
+      - 'scripts/migration-ci/**'
+      - '.github/workflows/migration-nightly.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: 0
+  DEEP_STUDENT_BUILD_NUMBER: '14635'
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 全量 fixture：upgrade + fault（故障注入）两种模式
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  full-fixture-gate:
+    name: Full Fixture Gate (upgrade + fault)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+
+      - name: Static migration gate
+        run: node scripts/check-migrations.mjs
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+          shared-key: tests
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+
+      - name: Production migration tests (non-zero count enforced)
+        id: tests
+        run: |
+          bash scripts/migration-ci/run-migration-tests.sh \
+            --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
+
+      - name: Fetch full fixture tier
+        id: fixtures
+        env:
+          MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
+          MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
+          MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
+        run: |
+          bash scripts/migration-ci/fetch-fixtures.sh \
+            --tier full --dest "$RUNNER_TEMP/migration-fixtures" --mode skip
+
+      - name: Record explicit skip (fixtures unavailable)
+        if: steps.fixtures.outputs.fixtures_available != 'true'
+        run: |
+          {
+            echo "## Migration nightly: full fixture gate SKIPPED"
+            echo ""
+            echo "MIGRATION_FIXTURE_URL secret 不可用且无 checked-in fixtures。"
+            echo "这是一次显式的非阻塞跳过；release 层仍会 fail-closed。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Full fixture upgrades
+        if: steps.fixtures.outputs.fixtures_available == 'true'
+        run: |
+          bash scripts/migration-ci/run-fixture-upgrades.sh \
+            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
+            --mode upgrade \
+            --report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl"
+
+      - name: Fault-injection gate (corrupted DBs must surface failure)
+        if: steps.fixtures.outputs.fixtures_available == 'true'
+        run: |
+          bash scripts/migration-ci/run-fixture-upgrades.sh \
+            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
+            --mode fault \
+            --report "$RUNNER_TEMP/migration-reports/full-fault.jsonl"
+
+      - name: Generate nightly compatibility report
+        if: steps.fixtures.outputs.fixtures_available == 'true'
+        run: |
+          node scripts/migration-ci/generate-report.mjs \
+            --out "$RUNNER_TEMP/migration-reports/migration-compatibility-report.json" \
+            --candidate-commit "${{ github.sha }}" \
+            --platform "linux-x86_64" \
+            --fixture-tier full \
+            --fixture-hash "${{ steps.fixtures.outputs.fixture_hash }}" \
+            --test-count-file "$RUNNER_TEMP/migration-test-count.json" \
+            --harness-report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl" \
+            --harness-report "$RUNNER_TEMP/migration-reports/full-fault.jsonl" \
+            --fail-on-empty
+
+      - name: Upload nightly report
+        if: steps.fixtures.outputs.fixtures_available == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: migration-nightly-full-report
+          path: ${{ runner.temp }}/migration-reports/
+          retention-days: 30
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 规模入口：大数据量 fixture + 每 case 墙钟预算
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  scale-fixture-gate:
+    name: Scale Fixture Gate (wall-clock budget)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+          shared-key: tests
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+
+      - name: Fetch scale fixture tier
+        id: fixtures
+        env:
+          MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
+          MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
+          MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
+        run: |
+          bash scripts/migration-ci/fetch-fixtures.sh \
+            --tier scale --dest "$RUNNER_TEMP/migration-fixtures" --mode skip
+
+      - name: Record explicit skip (fixtures unavailable)
+        if: steps.fixtures.outputs.fixtures_available != 'true'
+        run: |
+          {
+            echo "## Migration nightly: scale fixture gate SKIPPED"
+            echo ""
+            echo "MIGRATION_FIXTURE_URL secret 不可用（或归档缺 scale/ tier）。"
+            echo "这是一次显式的非阻塞跳过。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scale fixture upgrades (per-case budget 600s)
+        if: steps.fixtures.outputs.fixtures_available == 'true'
+        run: |
+          bash scripts/migration-ci/run-fixture-upgrades.sh \
+            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
+            --mode scale \
+            --max-seconds 600 \
+            --report "$RUNNER_TEMP/migration-reports/scale.jsonl"
+
+      - name: Upload scale report
+        if: steps.fixtures.outputs.fixtures_available == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: migration-nightly-scale-report
+          path: ${{ runner.temp }}/migration-reports/
+          retention-days: 30
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 失败通知：nightly 红了自动开 issue（已有未关闭的则追加评论）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  notify-failure:
+    name: Notify Failure
+    needs: [full-fixture-gate, scale-fixture-gate]
+    if: always() && (needs.full-fixture-gate.result == 'failure' || needs.scale-fixture-gate.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Create or comment failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FULL_RESULT: ${{ needs.full-fixture-gate.result }}
+          SCALE_RESULT: ${{ needs.scale-fixture-gate.result }}
+        run: |
+          LABEL="migration-nightly-failure"
+          TITLE="Migration nightly failed"
+          BODY="Migration nightly run failed on \`${GITHUB_REF_NAME}\`.
+
+          - full-fixture-gate: ${FULL_RESULT}
+          - scale-fixture-gate: ${SCALE_RESULT}
+          - run: ${RUN_URL}"
+
+          gh label create "$LABEL" --description "Automated migration nightly failure reports" --color D93F0B 2>/dev/null || true
+
+          EXISTING=$(gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
+          if [[ -n "$EXISTING" ]]; then
+            echo "Commenting on existing issue #${EXISTING}"
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            echo "Creating new failure issue"
+            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+          fi

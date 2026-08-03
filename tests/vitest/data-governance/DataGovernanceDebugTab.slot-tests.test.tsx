@@ -7,6 +7,18 @@ const mockRunSlotDCloneDbTest = vi.hoisted(() => vi.fn());
 const mockShowGlobalNotification = vi.hoisted(() => vi.fn());
 const mockShowMigrationStatus = vi.hoisted(() => vi.fn());
 const mockClearMigrationStatus = vi.hoisted(() => vi.fn());
+const mockSetComponentHealth = vi.hoisted(() => vi.fn());
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, defaultValue?: string | Record<string, unknown>) => {
+      if (typeof defaultValue === 'string') return defaultValue;
+      return key;
+    },
+    i18n: { language: 'zh-CN', changeLanguage: vi.fn() },
+  }),
+  initReactI18next: { type: '3rdParty', init: () => undefined },
+}));
 
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: {
@@ -19,12 +31,20 @@ vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: mockShowGlobalNotification,
 }));
 
-vi.mock('@/stores/systemStatusStore', () => ({
-  useSystemStatusStore: () => ({
+vi.mock('@/stores/systemStatusStore', () => {
+  const state = {
     showMigrationStatus: mockShowMigrationStatus,
     clearMigrationStatus: mockClearMigrationStatus,
-  }),
-}));
+    setComponentHealth: mockSetComponentHealth,
+    componentHealth: [],
+  };
+  return {
+    useSystemStatusStore: Object.assign(
+      (selector?: (value: typeof state) => unknown) => selector ? selector(state) : state,
+      { getState: () => state },
+    ),
+  };
+});
 
 import { DebugTab } from '@/features/settings';
 

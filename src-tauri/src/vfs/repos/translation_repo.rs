@@ -34,6 +34,80 @@ fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
     }
 }
 
+/// 翻译完整查询列（含 resources.data 正文），配合 `row_to_translation` 使用。
+///
+/// 列顺序: id, resource_id, title, src_lang, tgt_lang, engine, model,
+///        is_favorite, quality_rating, created_at, updated_at, metadata_json, content_json
+const SELECT_TRANSLATION_WITH_CONTENT: &str = r#"
+    SELECT t.id, t.resource_id, t.title, t.src_lang, t.tgt_lang, t.engine, t.model,
+           t.is_favorite, t.quality_rating, t.created_at, t.updated_at, t.metadata_json,
+           r.data as content_json
+    FROM translations t
+    LEFT JOIN resources r ON t.resource_id = r.id
+"#;
+
+/// 翻译轻量查询列（不 JOIN resources，content_json 恒为 NULL），
+/// 供只需元数据的列表场景使用，避免拉取完整双语正文大字段。
+const SELECT_TRANSLATION_META_ONLY: &str = r#"
+    SELECT t.id, t.resource_id, t.title, t.src_lang, t.tgt_lang, t.engine, t.model,
+           t.is_favorite, t.quality_rating, t.created_at, t.updated_at, t.metadata_json,
+           NULL as content_json
+    FROM translations t
+"#;
+
+/// translations 表 TEXT ISO-8601 时间戳（毫秒精度，UTC）
+fn now_iso() -> String {
+    chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
+}
+
+/// 当前设备 ID（进程内缓存，避免每次突变都读取磁盘/环境变量）。
+/// 用于维护 translations/folder_items 的 device_id 同步列。
+fn current_device_id() -> &'static str {
+    static DEVICE_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DEVICE_ID.get_or_init(crate::cloud_storage::get_device_id)
+}
+
+/// 在 SAVEPOINT 中执行多步写操作，保证原子性。
+///
+/// 使用 SAVEPOINT（而非 BEGIN）以便在外层事务内可嵌套调用。
+/// `name` 必须是代码内常量标识符，不接受外部输入。
+fn with_savepoint<T>(
+    conn: &Connection,
+    name: &str,
+    f: impl FnOnce() -> VfsResult<T>,
+) -> VfsResult<T> {
+    conn.execute(&format!("SAVEPOINT {}", name), [])
+        .map_err(|e| {
+            warn!(
+                "[VFS::TranslationRepo] Failed to create savepoint {}: {}",
+                name, e
+            );
+            VfsError::Database(format!("Failed to create savepoint {}: {}", name, e))
+        })?;
+
+    match f() {
+        Ok(v) => {
+            conn.execute(&format!("RELEASE {}", name), [])
+                .map_err(|e| {
+                    warn!(
+                        "[VFS::TranslationRepo] Failed to release savepoint {}: {}",
+                        name, e
+                    );
+                    VfsError::Database(format!("Failed to release savepoint {}: {}", name, e))
+                })?;
+            Ok(v)
+        }
+        Err(e) => {
+            // 回滚到 savepoint 后仍需 RELEASE，否则 savepoint 残留在事务栈中
+            let _ = conn.execute(&format!("ROLLBACK TO {}", name), []);
+            let _ = conn.execute(&format!("RELEASE {}", name), []);
+            Err(e)
+        }
+    }
+}
+
 /// VFS 翻译表 Repo
 pub struct VfsTranslationRepo;
 
@@ -57,35 +131,34 @@ impl VfsTranslationRepo {
 
     /// 列出翻译（使用现有连接）
     /// 🔧 P0-08 修复: JOIN resources 表获取 source_text 和 translated_text
+    /// ★ 2026-07-19: 补上 deleted_at IS NULL 软删除过滤；
+    ///   搜索同时匹配 title 与正文，并复用主查询的 LEFT JOIN（去掉冗余 EXISTS 子查询）
     pub fn list_translations_with_conn(
         conn: &Connection,
         search: Option<&str>,
         limit: u32,
         offset: u32,
     ) -> VfsResult<Vec<VfsTranslation>> {
-        let mut sql = String::from(
-            r#"
-            SELECT t.id, t.resource_id, t.title, t.src_lang, t.tgt_lang, t.engine, t.model,
-                   t.is_favorite, t.quality_rating, t.created_at, t.updated_at, t.metadata_json,
-                   r.data as content_json
-            FROM translations t
-            LEFT JOIN resources r ON t.resource_id = r.id
-            WHERE 1=1
-            "#,
+        let mut sql = format!(
+            "{} WHERE t.deleted_at IS NULL",
+            SELECT_TRANSLATION_WITH_CONTENT
         );
 
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         let mut param_idx = 1;
 
-        // 搜索过滤（在 resources.data 中搜索）
+        // 搜索过滤：标题或正文（resources.data）任一匹配即命中。
+        // LIKE 通配符统一经 escape_like_pattern 转义，参数绑定防注入。
         if let Some(q) = search {
             sql.push_str(&format!(
-                " AND EXISTS (SELECT 1 FROM resources r WHERE r.id = t.resource_id AND r.data LIKE ?{} ESCAPE '\\')",
-                param_idx
+                " AND (t.title LIKE ?{idx} ESCAPE '\\' OR r.data LIKE ?{idx2} ESCAPE '\\')",
+                idx = param_idx,
+                idx2 = param_idx + 1
             ));
             let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
+            params_vec.push(Box::new(search_pattern.clone()));
             params_vec.push(Box::new(search_pattern));
-            param_idx += 1;
+            param_idx += 2;
         }
 
         sql.push_str(&format!(
@@ -109,6 +182,59 @@ impl VfsTranslationRepo {
         Ok(translations)
     }
 
+    /// 列出翻译（轻量版，不拉取正文）
+    ///
+    /// ★ 2026-07-19 新增：不 JOIN resources，`source_text`/`translated_text` 恒为 None。
+    /// 列表场景只需元数据时使用，避免加载完整双语正文大字段。
+    /// 注意：轻量版不支持正文搜索（无正文可搜），`search` 仅匹配 title。
+    pub fn list_translations_light(
+        db: &VfsDatabase,
+        search: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<Vec<VfsTranslation>> {
+        let conn = db.get_conn_safe()?;
+        Self::list_translations_light_with_conn(&conn, search, limit, offset)
+    }
+
+    /// 列出翻译（轻量版，使用现有连接）
+    pub fn list_translations_light_with_conn(
+        conn: &Connection,
+        search: Option<&str>,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<Vec<VfsTranslation>> {
+        let mut sql = format!(
+            "{} WHERE t.deleted_at IS NULL",
+            SELECT_TRANSLATION_META_ONLY
+        );
+
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut param_idx = 1;
+
+        if let Some(q) = search {
+            sql.push_str(&format!(" AND t.title LIKE ?{} ESCAPE '\\'", param_idx));
+            let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
+            params_vec.push(Box::new(search_pattern));
+            param_idx += 1;
+        }
+
+        sql.push_str(&format!(
+            " ORDER BY t.created_at DESC LIMIT ?{} OFFSET ?{}",
+            param_idx,
+            param_idx + 1
+        ));
+        params_vec.push(Box::new(limit));
+        params_vec.push(Box::new(offset));
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_translation)?;
+
+        Ok(rows.filter_map(log_and_skip_err).collect())
+    }
+
     // ========================================================================
     // 查询单个
     // ========================================================================
@@ -124,20 +250,43 @@ impl VfsTranslationRepo {
 
     /// 根据 ID 获取翻译（使用现有连接）
     /// 🔧 P0-08 修复: JOIN resources 表获取 source_text 和 translated_text
+    /// ★ 2026-07-19: 已软删除的翻译对普通读路径不可见（deleted_at IS NULL）。
+    ///   回收站等确需读取已删数据的场景使用 `get_translation_including_deleted*`。
     pub fn get_translation_with_conn(
         conn: &Connection,
         translation_id: &str,
     ) -> VfsResult<Option<VfsTranslation>> {
-        let mut stmt = conn.prepare(
-            r#"
-            SELECT t.id, t.resource_id, t.title, t.src_lang, t.tgt_lang, t.engine, t.model,
-                   t.is_favorite, t.quality_rating, t.created_at, t.updated_at, t.metadata_json,
-                   r.data as content_json
-            FROM translations t
-            LEFT JOIN resources r ON t.resource_id = r.id
-            WHERE t.id = ?1
-            "#,
-        )?;
+        let sql = format!(
+            "{} WHERE t.id = ?1 AND t.deleted_at IS NULL",
+            SELECT_TRANSLATION_WITH_CONTENT
+        );
+        let mut stmt = conn.prepare(&sql)?;
+
+        let translation = stmt
+            .query_row(params![translation_id], Self::row_to_translation)
+            .optional()?;
+
+        Ok(translation)
+    }
+
+    /// 根据 ID 获取翻译（含已软删除记录）
+    ///
+    /// ★ 2026-07-19 新增：供回收站详情等确需读取已删数据的调用方显式使用。
+    pub fn get_translation_including_deleted(
+        db: &VfsDatabase,
+        translation_id: &str,
+    ) -> VfsResult<Option<VfsTranslation>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_translation_including_deleted_with_conn(&conn, translation_id)
+    }
+
+    /// 根据 ID 获取翻译（含已软删除记录，使用现有连接）
+    pub fn get_translation_including_deleted_with_conn(
+        conn: &Connection,
+        translation_id: &str,
+    ) -> VfsResult<Option<VfsTranslation>> {
+        let sql = format!("{} WHERE t.id = ?1", SELECT_TRANSLATION_WITH_CONTENT);
+        let mut stmt = conn.prepare(&sql)?;
 
         let translation = stmt
             .query_row(params![translation_id], Self::row_to_translation)
@@ -159,49 +308,29 @@ impl VfsTranslationRepo {
 
     /// 获取翻译内容（使用现有连接）
     ///
-    /// ★ 2026-01-26 修复：使用 LEFT JOIN 并回退到 source_text/translated_text
-    /// 解决 resources.data 为空时返回 None 的问题
+    /// ★ 2026-07-19 修复：移除"回退到 source_text/translated_text"的假回退——
+    /// 翻译正文只存在于 resources.data（`translations` 表没有正文列），
+    /// 旧回退调用 `get_translation_with_conn` 后仍然从同一份 resources.data 解析，
+    /// 永远得不到不同结果，属于死代码。现在直接返回 resources.data
+    /// （无关联资源或翻译已软删除时返回 None）。
     pub fn get_translation_content_with_conn(
         conn: &Connection,
         translation_id: &str,
     ) -> VfsResult<Option<String>> {
-        // 首先尝试从 resources.data 获取
-        let content: Option<String> = conn
+        let content: Option<Option<String>> = conn
             .query_row(
                 r#"
                 SELECT r.data
                 FROM translations t
                 LEFT JOIN resources r ON t.resource_id = r.id
-                WHERE t.id = ?1
+                WHERE t.id = ?1 AND t.deleted_at IS NULL
                 "#,
                 params![translation_id],
                 |row| row.get(0),
             )
             .optional()?;
 
-        // 如果 resources.data 有内容，直接返回
-        if let Some(ref c) = content {
-            if !c.is_empty() {
-                return Ok(content);
-            }
-        }
-
-        // ★ 回退：从 translation 记录中构造内容
-        // 某些旧数据可能没有关联的 resources 记录
-        if let Some(translation) = Self::get_translation_with_conn(conn, translation_id)? {
-            let source = translation.source_text.unwrap_or_default();
-            let translated = translation.translated_text.unwrap_or_default();
-
-            if !source.is_empty() || !translated.is_empty() {
-                let content_json = serde_json::json!({
-                    "source": source,
-                    "translated": translated
-                });
-                return Ok(Some(content_json.to_string()));
-            }
-        }
-
-        Ok(None)
+        Ok(content.flatten().filter(|c| !c.is_empty()))
     }
 
     // ========================================================================
@@ -261,16 +390,7 @@ impl VfsTranslationRepo {
             serde_json::to_string(&content).map_err(|e| VfsError::Serialization(e.to_string()))?;
 
         // ★ SAVEPOINT 事务保护：包裹 create_or_reuse / INSERT translations / UPDATE resources 三步操作
-        conn.execute("SAVEPOINT create_translation", [])
-            .map_err(|e| {
-                warn!(
-                    "[VFS::TranslationRepo] Failed to create savepoint for create_translation: {}",
-                    e
-                );
-                VfsError::Database(format!("Failed to create savepoint: {}", e))
-            })?;
-
-        let result = (|| -> VfsResult<VfsTranslation> {
+        with_savepoint(conn, "create_translation", || {
             // 2. 创建资源
             // ★ 2026-06-12（审阅问题 S1）：使用 translation_id 作为盐值，与笔记一致。
             // 旧实现使用无盐内容哈希，两条内容相同的翻译会共享同一 resource 行，
@@ -289,15 +409,16 @@ impl VfsTranslationRepo {
             )?;
 
             // 3. 创建翻译记录
-            let now = chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string();
+            // ★ 2026-07-19: 写入 device_id / local_version 同步列（此前从未维护，
+            // 多端冲突检测拿不到行级版本）。新记录版本从 1 开始（DEFAULT 0 = 未变更基线）。
+            let now = now_iso();
 
             conn.execute(
                 r#"
                 INSERT INTO translations (id, resource_id, title, src_lang, tgt_lang, engine, model,
-                                          is_favorite, quality_rating, created_at, updated_at, metadata_json)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, ?8, ?9, NULL)
+                                          is_favorite, quality_rating, created_at, updated_at, metadata_json,
+                                          device_id, local_version)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, ?8, ?9, NULL, ?10, 1)
                 "#,
                 params![
                     translation_id,
@@ -309,6 +430,7 @@ impl VfsTranslationRepo {
                     params.model,
                     now,
                     now,
+                    current_device_id(),
                 ],
             )?;
 
@@ -335,28 +457,7 @@ impl VfsTranslationRepo {
                 source_text: Some(params.source),
                 translated_text: Some(params.translated),
             })
-        })();
-
-        match result {
-            Ok(translation) => {
-                conn.execute("RELEASE create_translation", [])
-                    .map_err(|e| {
-                        warn!(
-                            "[VFS::TranslationRepo] Failed to release savepoint create_translation: {}",
-                            e
-                        );
-                        VfsError::Database(format!("Failed to release savepoint: {}", e))
-                    })?;
-                Ok(translation)
-            }
-            Err(e) => {
-                // 回滚到 savepoint，忽略回滚本身的错误
-                let _ = conn.execute("ROLLBACK TO create_translation", []);
-                // 释放 savepoint（即使回滚后也需要释放，否则 savepoint 会残留）
-                let _ = conn.execute("RELEASE create_translation", []);
-                Err(e)
-            }
-        }
+        })
     }
 
     /// 创建翻译记录（兼容旧 API）
@@ -420,14 +521,25 @@ impl VfsTranslationRepo {
     }
 
     /// 收藏/取消收藏翻译（使用现有连接）
+    ///
+    /// ★ 2026-07-19: 同步 bump updated_at / local_version / device_id（此前不更新，
+    /// 增量同步会误判"无变更"）；已软删除的翻译不可修改。
     pub fn set_favorite_with_conn(
         conn: &Connection,
         translation_id: &str,
         favorite: bool,
     ) -> VfsResult<()> {
         let updated = conn.execute(
-            "UPDATE translations SET is_favorite = ?1 WHERE id = ?2",
-            params![favorite as i32, translation_id],
+            "UPDATE translations
+             SET is_favorite = ?1, updated_at = ?2,
+                 local_version = COALESCE(local_version, 0) + 1, device_id = ?3
+             WHERE id = ?4 AND deleted_at IS NULL",
+            params![
+                favorite as i32,
+                now_iso(),
+                current_device_id(),
+                translation_id
+            ],
         )?;
 
         if updated == 0 {
@@ -463,9 +575,13 @@ impl VfsTranslationRepo {
             });
         }
 
+        // ★ 2026-07-19: 同步 bump updated_at / local_version / device_id；软删除不可修改
         let updated = conn.execute(
-            "UPDATE translations SET quality_rating = ?1 WHERE id = ?2",
-            params![rating, translation_id],
+            "UPDATE translations
+             SET quality_rating = ?1, updated_at = ?2,
+                 local_version = COALESCE(local_version, 0) + 1, device_id = ?3
+             WHERE id = ?4 AND deleted_at IS NULL",
+            params![rating, now_iso(), current_device_id(), translation_id],
         )?;
 
         if updated == 0 {
@@ -491,44 +607,63 @@ impl VfsTranslationRepo {
     }
 
     /// 删除翻译记录（软删除，使用现有连接）
+    ///
+    /// ★ 2026-07-19 P0 修复：软删翻译时级联软删 folder_items（与
+    /// `delete_translation_with_folder_item` 行为对齐）。此前本方法只软删
+    /// translations，trash_handlers 走此入口会在文件夹树留下"幽灵"条目。
+    /// 两步操作包在 SAVEPOINT 中保证原子性。
     pub fn delete_translation_with_conn(conn: &Connection, translation_id: &str) -> VfsResult<()> {
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+        with_savepoint(conn, "delete_translation", || {
+            let now = now_iso();
 
-        let updated = conn.execute(
-            "UPDATE translations SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
-            params![now, translation_id],
-        )?;
+            let updated = conn.execute(
+                "UPDATE translations
+                 SET deleted_at = ?1, updated_at = ?1,
+                     local_version = COALESCE(local_version, 0) + 1, device_id = ?2
+                 WHERE id = ?3 AND deleted_at IS NULL",
+                params![now, current_device_id(), translation_id],
+            )?;
 
-        if updated == 0 {
-            // ★ P0 修复：幂等处理 - 检查是否已被软删除
-            let already_deleted: bool = conn
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL)",
-                    params![translation_id],
-                    |row| row.get(0),
-                )
-                .unwrap_or(false);
+            if updated == 0 {
+                // ★ P0 修复：幂等处理 - 检查是否已被软删除
+                let already_deleted: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL)",
+                        params![translation_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(false);
 
-            if already_deleted {
-                info!(
-                    "[VFS::TranslationRepo] Translation already deleted (idempotent): {}",
-                    translation_id
-                );
-            } else {
-                return Err(VfsError::NotFound {
-                    resource_type: "Translation".to_string(),
-                    id: translation_id.to_string(),
-                });
+                if already_deleted {
+                    info!(
+                        "[VFS::TranslationRepo] Translation already deleted (idempotent): {}",
+                        translation_id
+                    );
+                } else {
+                    return Err(VfsError::NotFound {
+                        resource_type: "Translation".to_string(),
+                        id: translation_id.to_string(),
+                    });
+                }
             }
-        }
 
-        info!(
-            "[VFS::TranslationRepo] Soft deleted translation: {}",
-            translation_id
-        );
-        Ok(())
+            // 级联软删 folder_items（幂等：已软删的条目不受影响）
+            // 注意：folder_items.deleted_at 是 TEXT 列，updated_at 是 INTEGER 毫秒列
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            conn.execute(
+                "UPDATE folder_items
+                 SET deleted_at = ?1, updated_at = ?2,
+                     local_version = COALESCE(local_version, 0) + 1, device_id = ?3
+                 WHERE item_type = 'translation' AND item_id = ?4 AND deleted_at IS NULL",
+                params![now, now_ms, current_device_id(), translation_id],
+            )?;
+
+            info!(
+                "[VFS::TranslationRepo] Soft deleted translation (with folder_items cascade): {}",
+                translation_id
+            );
+            Ok(())
+        })
     }
 
     // ========================================================================
@@ -548,60 +683,64 @@ impl VfsTranslationRepo {
     /// ★ P0 修复：同时清理 folder_items 和 resources 记录
     /// ★ 2026-06-12（审阅问题 S1）：删除 resource 前检查是否仍被其他翻译引用。
     /// 历史数据中无盐哈希的资源可能被多条翻译共享，直接删除会导致其他翻译内容丢失。
+    /// ★ 2026-07-19 P0 修复：folder_items → translations → 索引产物/resources 的多步
+    /// 硬删包进 SAVEPOINT，任一步失败整体回滚，不再留下半删状态。
     pub fn purge_translation_with_conn(conn: &Connection, translation_id: &str) -> VfsResult<()> {
-        // 1. 获取 resource_id（purge 后无法再查）
-        let resource_id: Option<String> = conn
-            .query_row(
-                "SELECT resource_id FROM translations WHERE id = ?1",
+        with_savepoint(conn, "purge_translation", || {
+            // 1. 获取 resource_id（purge 后无法再查）
+            let resource_id: Option<String> = conn
+                .query_row(
+                    "SELECT resource_id FROM translations WHERE id = ?1",
+                    params![translation_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten();
+
+            // 2. ★ P0 修复：删除 folder_items（防止孤儿记录）
+            conn.execute(
+                "DELETE FROM folder_items WHERE item_type = 'translation' AND item_id = ?1",
                 params![translation_id],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .optional()?
-            .flatten();
-
-        // 2. ★ P0 修复：删除 folder_items（防止孤儿记录）
-        conn.execute(
-            "DELETE FROM folder_items WHERE item_type = 'translation' AND item_id = ?1",
-            params![translation_id],
-        )?;
-
-        // 3. 删除 translations 记录
-        let deleted = conn.execute(
-            "DELETE FROM translations WHERE id = ?1",
-            params![translation_id],
-        )?;
-
-        if deleted == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "Translation".to_string(),
-                id: translation_id.to_string(),
-            });
-        }
-
-        // 4. 清理关联的 resource（仅在没有其他翻译引用时删除）
-        if let Some(rid) = resource_id {
-            let remaining: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM translations WHERE resource_id = ?1",
-                params![rid],
-                |row| row.get(0),
             )?;
-            if remaining == 0 {
-                // ★ 2026-06-12（第二轮审阅）：同时清理索引产物（units/segments/Lance 向量）
-                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
-                conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
-            } else {
-                info!(
-                    "[VFS::TranslationRepo] Resource {} still referenced by {} translations, kept",
-                    rid, remaining
-                );
-            }
-        }
 
-        info!(
-            "[VFS::TranslationRepo] Purged translation: {} (with folder_items, resources)",
-            translation_id
-        );
-        Ok(())
+            // 3. 删除 translations 记录
+            let deleted = conn.execute(
+                "DELETE FROM translations WHERE id = ?1",
+                params![translation_id],
+            )?;
+
+            if deleted == 0 {
+                return Err(VfsError::NotFound {
+                    resource_type: "Translation".to_string(),
+                    id: translation_id.to_string(),
+                });
+            }
+
+            // 4. 清理关联的 resource（仅在没有其他翻译引用时删除）
+            if let Some(rid) = resource_id {
+                let remaining: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM translations WHERE resource_id = ?1",
+                    params![rid],
+                    |row| row.get(0),
+                )?;
+                if remaining == 0 {
+                    // ★ 2026-06-12（第二轮审阅）：同时清理索引产物（units/segments/Lance 向量）
+                    super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
+                    conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+                } else {
+                    info!(
+                        "[VFS::TranslationRepo] Resource {} still referenced by {} translations, kept",
+                        rid, remaining
+                    );
+                }
+            }
+
+            info!(
+                "[VFS::TranslationRepo] Purged translation: {} (with folder_items, resources)",
+                translation_id
+            );
+            Ok(())
+        })
     }
 
     // ========================================================================
@@ -665,14 +804,10 @@ impl VfsTranslationRepo {
             |row| row.get(0),
         )?;
 
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+        let now = now_iso();
         let now_ms = chrono::Utc::now().timestamp_millis();
 
-        conn.execute("SAVEPOINT update_translation_content", [])?;
-
-        let result = (|| -> VfsResult<()> {
+        with_savepoint(conn, "update_translation_content", || {
             if sharers > 0 {
                 // 共享资源：创建新的加盐资源并切换指针，保持共享内容不变
                 let new_resource = VfsResourceRepo::create_or_reuse_with_conn_and_hash(
@@ -685,8 +820,16 @@ impl VfsTranslationRepo {
                     None,
                 )?;
                 conn.execute(
-                    "UPDATE translations SET resource_id = ?1, updated_at = ?2 WHERE id = ?3",
-                    params![new_resource.resource_id, now, translation_id],
+                    "UPDATE translations
+                     SET resource_id = ?1, updated_at = ?2,
+                         local_version = COALESCE(local_version, 0) + 1, device_id = ?3
+                     WHERE id = ?4",
+                    params![
+                        new_resource.resource_id,
+                        now,
+                        current_device_id(),
+                        translation_id
+                    ],
                 )?;
                 info!(
                     "[VFS::TranslationRepo] Detached shared resource for translation {}: {} -> {}",
@@ -695,12 +838,18 @@ impl VfsTranslationRepo {
             } else {
                 // 独占资源：就地更新内容 + 哈希 + 索引状态
                 conn.execute(
-                    "UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3, index_state = 'pending' WHERE id = ?4",
+                    "UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3,
+                        index_state = 'pending', index_error = NULL,
+                        index_retry_count = 0, index_next_retry_at = 0
+                     WHERE id = ?4",
                     params![content_str, salted_hash, now_ms, resource_id],
                 )?;
                 conn.execute(
-                    "UPDATE translations SET updated_at = ?1 WHERE id = ?2",
-                    params![now, translation_id],
+                    "UPDATE translations
+                     SET updated_at = ?1,
+                         local_version = COALESCE(local_version, 0) + 1, device_id = ?2
+                     WHERE id = ?3",
+                    params![now, current_device_id(), translation_id],
                 )?;
                 debug!(
                     "[VFS::TranslationRepo] Updated translation content in place: {} (resource: {})",
@@ -708,19 +857,7 @@ impl VfsTranslationRepo {
                 );
             }
             Ok(())
-        })();
-
-        match result {
-            Ok(()) => {
-                conn.execute("RELEASE update_translation_content", [])?;
-                Ok(())
-            }
-            Err(e) => {
-                let _ = conn.execute("ROLLBACK TO update_translation_content", []);
-                let _ = conn.execute("RELEASE update_translation_content", []);
-                Err(e)
-            }
-        }
+        })
     }
 
     // ========================================================================
@@ -752,36 +889,43 @@ impl VfsTranslationRepo {
     ///
     /// ★ P0 修复：恢复翻译时同步恢复 folder_items 记录，
     /// 确保恢复后的翻译在 Learning Hub 中可见
+    /// ★ 2026-07-19: 两步恢复包进 SAVEPOINT；同步 bump local_version / device_id
     pub fn restore_translation_with_conn(conn: &Connection, translation_id: &str) -> VfsResult<()> {
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
-        let now_ms = chrono::Utc::now().timestamp_millis();
+        with_savepoint(conn, "restore_translation", || {
+            let now = now_iso();
+            let now_ms = chrono::Utc::now().timestamp_millis();
 
-        // 1. 恢复翻译
-        let updated = conn.execute(
-            "UPDATE translations SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NOT NULL",
-            params![now, translation_id],
-        )?;
+            // 1. 恢复翻译
+            let updated = conn.execute(
+                "UPDATE translations
+                 SET deleted_at = NULL, updated_at = ?1,
+                     local_version = COALESCE(local_version, 0) + 1, device_id = ?2
+                 WHERE id = ?3 AND deleted_at IS NOT NULL",
+                params![now, current_device_id(), translation_id],
+            )?;
 
-        if updated == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "Translation".to_string(),
-                id: translation_id.to_string(),
-            });
-        }
+            if updated == 0 {
+                return Err(VfsError::NotFound {
+                    resource_type: "Translation".to_string(),
+                    id: translation_id.to_string(),
+                });
+            }
 
-        // 2. ★ P0 修复：恢复 folder_items 记录
-        let folder_items_restored = conn.execute(
-            "UPDATE folder_items SET deleted_at = NULL, updated_at = ?1 WHERE item_type = 'translation' AND item_id = ?2 AND deleted_at IS NOT NULL",
-            params![now_ms, translation_id],
-        )?;
+            // 2. ★ P0 修复：恢复 folder_items 记录
+            let folder_items_restored = conn.execute(
+                "UPDATE folder_items
+                 SET deleted_at = NULL, updated_at = ?1,
+                     local_version = COALESCE(local_version, 0) + 1, device_id = ?2
+                 WHERE item_type = 'translation' AND item_id = ?3 AND deleted_at IS NOT NULL",
+                params![now_ms, current_device_id(), translation_id],
+            )?;
 
-        info!(
-            "[VFS::TranslationRepo] Restored translation: {}, folder_items restored: {}",
-            translation_id, folder_items_restored
-        );
-        Ok(())
+            info!(
+                "[VFS::TranslationRepo] Restored translation: {}, folder_items restored: {}",
+                translation_id, folder_items_restored
+            );
+            Ok(())
+        })
     }
 
     /// 列出已删除的翻译（回收站）
@@ -803,18 +947,12 @@ impl VfsTranslationRepo {
         limit: u32,
         offset: u32,
     ) -> VfsResult<Vec<VfsTranslation>> {
-        let sql = r#"
-            SELECT t.id, t.resource_id, t.title, t.src_lang, t.tgt_lang, t.engine, t.model,
-                   t.is_favorite, t.quality_rating, t.created_at, t.updated_at, t.metadata_json,
-                   r.data as content_json
-            FROM translations t
-            LEFT JOIN resources r ON t.resource_id = r.id
-            WHERE t.deleted_at IS NOT NULL
-            ORDER BY t.deleted_at DESC
-            LIMIT ?1 OFFSET ?2
-        "#;
+        let sql = format!(
+            "{} WHERE t.deleted_at IS NOT NULL ORDER BY t.deleted_at DESC LIMIT ?1 OFFSET ?2",
+            SELECT_TRANSLATION_WITH_CONTENT
+        );
 
-        let mut stmt = conn.prepare(sql)?;
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params![limit, offset], Self::row_to_translation)?;
 
         let translations: Vec<VfsTranslation> = rows.filter_map(log_and_skip_err).collect();
@@ -888,18 +1026,22 @@ impl VfsTranslationRepo {
     }
 
     /// 更新翻译标题（使用现有连接）
+    ///
+    /// ★ 2026-07-19: 已软删除的翻译不可重命名（deleted_at IS NULL）；
+    /// 同步 bump local_version / device_id
     pub fn update_title_with_conn(
         conn: &Connection,
         translation_id: &str,
         new_title: &str,
     ) -> VfsResult<VfsTranslation> {
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+        let now = now_iso();
 
         let updated = conn.execute(
-            "UPDATE translations SET title = ?1, updated_at = ?2 WHERE id = ?3",
-            params![new_title, now, translation_id],
+            "UPDATE translations
+             SET title = ?1, updated_at = ?2,
+                 local_version = COALESCE(local_version, 0) + 1, device_id = ?3
+             WHERE id = ?4 AND deleted_at IS NULL",
+            params![new_title, now, current_device_id(), translation_id],
         )?;
 
         if updated == 0 {
@@ -940,15 +1082,15 @@ impl VfsTranslationRepo {
     /// 在指定文件夹中创建翻译（使用现有连接）
     ///
     /// ★ CONC-01 修复：使用事务保护，防止步骤 2 成功但步骤 3 失败导致"孤儿资源"
+    /// ★ 2026-07-19: 由 BEGIN IMMEDIATE 改为 SAVEPOINT——语义等价（顶层 SAVEPOINT
+    /// 即隐式事务），且当调用方已持有事务时可安全嵌套，不再与内层
+    /// `create_translation_with_conn` 的 SAVEPOINT 产生 BEGIN/ROLLBACK 叠加问题。
     pub fn create_translation_in_folder_with_conn(
         conn: &Connection,
         params: VfsCreateTranslationParams,
         folder_id: Option<&str>,
     ) -> VfsResult<VfsTranslation> {
-        // 开始事务
-        conn.execute("BEGIN IMMEDIATE", [])?;
-
-        let result = (|| -> VfsResult<VfsTranslation> {
+        with_savepoint(conn, "create_translation_in_folder", || {
             // 1. 检查文件夹存在性
             if let Some(fid) = folder_id {
                 if !VfsFolderRepo::folder_exists_with_conn(conn, fid)? {
@@ -976,19 +1118,7 @@ impl VfsTranslationRepo {
             );
 
             Ok(translation)
-        })();
-
-        match result {
-            Ok(translation) => {
-                conn.execute("COMMIT", [])?;
-                Ok(translation)
-            }
-            Err(e) => {
-                // 回滚事务，忽略回滚本身的错误
-                let _ = conn.execute("ROLLBACK", []);
-                Err(e)
-            }
-        }
+        })
     }
 
     /// 删除翻译（同时删除 folder_items 记录）
@@ -1004,32 +1134,13 @@ impl VfsTranslationRepo {
 
     /// 删除翻译（使用现有连接，同时软删除 folder_items 记录）
     ///
-    /// ★ P0 修复：将 folder_items 的硬删除改为软删除，
-    /// 确保恢复翻译时可以同步恢复 folder_items 记录
+    /// ★ 2026-07-19: `delete_translation_with_conn` 本身已在事务内级联软删
+    /// folder_items，本方法保留为兼容别名，直接委托。
     pub fn delete_translation_with_folder_item_with_conn(
         conn: &Connection,
         translation_id: &str,
     ) -> VfsResult<()> {
-        // 1. 软删除翻译
-        Self::delete_translation_with_conn(conn, translation_id)?;
-
-        // 2. 软删除 folder_items 记录（而不是硬删除）
-        // ★ P0 修复：deleted_at 是 TEXT 列，updated_at 是 INTEGER 列，必须分开处理
-        let now_str = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
-        let now_ms = chrono::Utc::now().timestamp_millis();
-        conn.execute(
-            "UPDATE folder_items SET deleted_at = ?1, updated_at = ?2 WHERE item_type = 'translation' AND item_id = ?3 AND deleted_at IS NULL",
-            params![now_str, now_ms, translation_id],
-        )?;
-
-        debug!(
-            "[VFS::TranslationRepo] Soft deleted translation {} and its folder_items",
-            translation_id
-        );
-
-        Ok(())
+        Self::delete_translation_with_conn(conn, translation_id)
     }
 
     /// 按文件夹列出翻译
@@ -1047,25 +1158,26 @@ impl VfsTranslationRepo {
 
     /// 按文件夹列出翻译（使用现有连接）
     /// 🔧 P0-08 修复: JOIN resources 表获取 source_text 和 translated_text
+    /// ★ 2026-07-19: 过滤软删除的翻译与软删除的 folder_items 挂载记录
     pub fn list_translations_by_folder_with_conn(
         conn: &Connection,
         folder_id: Option<&str>,
         limit: u32,
         offset: u32,
     ) -> VfsResult<Vec<VfsTranslation>> {
-        let sql = r#"
-            SELECT t.id, t.resource_id, t.title, t.src_lang, t.tgt_lang, t.engine, t.model,
-                   t.is_favorite, t.quality_rating, t.created_at, t.updated_at, t.metadata_json,
-                   r.data as content_json
-            FROM translations t
-            LEFT JOIN resources r ON t.resource_id = r.id
+        let sql = format!(
+            r#"{}
             JOIN folder_items fi ON fi.item_type = 'translation' AND fi.item_id = t.id
             WHERE fi.folder_id IS ?1
+              AND t.deleted_at IS NULL
+              AND fi.deleted_at IS NULL
             ORDER BY fi.sort_order ASC, t.created_at DESC
             LIMIT ?2 OFFSET ?3
-        "#;
+            "#,
+            SELECT_TRANSLATION_WITH_CONTENT
+        );
 
-        let mut stmt = conn.prepare(sql)?;
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params![folder_id, limit, offset], Self::row_to_translation)?;
 
         let translations: Vec<VfsTranslation> = rows.filter_map(log_and_skip_err).collect();
@@ -1114,7 +1226,10 @@ mod tests {
         crate::vfs::database::setup_migrated_test_db()
     }
 
-    fn make_params(source: &str, translated: &str) -> crate::vfs::types::VfsCreateTranslationParams {
+    fn make_params(
+        source: &str,
+        translated: &str,
+    ) -> crate::vfs::types::VfsCreateTranslationParams {
         crate::vfs::types::VfsCreateTranslationParams {
             title: None,
             source: source.to_string(),
@@ -1180,7 +1295,10 @@ mod tests {
 
         let conn = db.get_conn_safe().unwrap();
         let (data, new_hash, index_state) = resource_row(&conn, &rid).unwrap();
-        assert!(data.contains("hello world"), "data should be updated in place");
+        assert!(
+            data.contains("hello world"),
+            "data should be updated in place"
+        );
         assert_ne!(old_hash, new_hash, "hash must be recomputed");
         assert_eq!(index_state, "pending", "index_state must reset to pending");
     }
@@ -1189,8 +1307,10 @@ mod tests {
     #[test]
     fn test_update_shared_resource_uses_copy_on_write() {
         let (_tmp, db) = setup_test_db();
-        let t1 = VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
-        let t2 = VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
+        let t1 =
+            VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
+        let t2 =
+            VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
         let r1 = t1.resource_id.clone();
         let r2 = t2.resource_id.clone();
 
@@ -1202,7 +1322,8 @@ mod tests {
                 params![r1, t2.id],
             )
             .unwrap();
-            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2]).unwrap();
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2])
+                .unwrap();
         }
 
         VfsTranslationRepo::update_translation_content(&db, &t2.id, "edited", "已编辑").unwrap();
@@ -1241,7 +1362,8 @@ mod tests {
                 params![r1, t2.id],
             )
             .unwrap();
-            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2]).unwrap();
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2])
+                .unwrap();
         }
 
         VfsTranslationRepo::purge_translation(&db, &t1.id).unwrap();

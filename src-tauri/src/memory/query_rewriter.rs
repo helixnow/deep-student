@@ -13,6 +13,7 @@ use crate::llm_manager::LLMManager;
 /// 查询重写结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct QueryRewriteResult {
     /// 优化后的主查询
     pub optimized_query: String,
@@ -22,17 +23,6 @@ pub struct QueryRewriteResult {
     pub key_concepts: Vec<String>,
     /// 是否进行了重写
     pub was_rewritten: bool,
-}
-
-impl Default for QueryRewriteResult {
-    fn default() -> Self {
-        Self {
-            optimized_query: String::new(),
-            sub_queries: vec![],
-            key_concepts: vec![],
-            was_rewritten: false,
-        }
-    }
 }
 
 impl QueryRewriteResult {

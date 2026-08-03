@@ -18,8 +18,13 @@ use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
 use super::arg_utils::get_json_array_arg;
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use super::workbench_bridge::{
+    acr_bridge_call, apply_ops_timeout_ms, is_bridge_cancelled, is_valid_apply_receipt,
+    uncertain_apply_receipt, PROBE_TIMEOUT_MS,
+};
+use super::workbench_executor::is_workbench_agent_delegation_enabled;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::dstu::handler_utils::{
@@ -96,6 +101,16 @@ struct MindMapNodeSnapshot {
     parent_id: Option<String>,
     path: String,
     signature: String,
+}
+
+/// mindmap_import 导入统计：节点计数 + 被丢弃能力项如实上报（不静默）
+#[derive(Debug, Default)]
+struct MindMapImportStats {
+    node_count: usize,
+    dropped_images: usize,
+    dropped_summaries: usize,
+    dropped_boundaries: usize,
+    dropped_hyperlinks: usize,
 }
 
 impl BuiltinResourceExecutor {
@@ -1056,7 +1071,7 @@ impl BuiltinResourceExecutor {
                 }
 
                 // 按更新时间排序
-                all_results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                all_results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
                 all_results.truncate(limit as usize);
                 (all_results, errors)
             }
@@ -1965,18 +1980,21 @@ impl BuiltinResourceExecutor {
                 }
 
                 // 确保有 version 字段
-                if !doc.get("version").is_some() {
+                if doc.get("version").is_none() {
                     if let Some(obj) = doc.as_object_mut() {
                         obj.insert("version".to_string(), json!("1.0"));
                     }
                 }
 
                 // 确保有 meta 字段
-                if !doc.get("meta").is_some() {
+                if doc.get("meta").is_none() {
                     if let Some(obj) = doc.as_object_mut() {
                         obj.insert("meta".to_string(), json!({"createdAt": ""}));
                     }
                 }
+
+                // ★ P3：校验/归一化文档级关联线（associations）
+                Self::sanitize_mindmap_associations(&mut doc);
 
                 doc.to_string()
             }
@@ -1987,6 +2005,117 @@ impl BuiltinResourceExecutor {
                 );
                 content_str.to_string()
             }
+        }
+    }
+
+    /// 递归收集树中全部节点 ID（带深度限制，供关联线端点校验）
+    fn collect_mindmap_node_ids(
+        node: &Value,
+        depth: usize,
+        output: &mut std::collections::HashSet<String>,
+    ) {
+        if depth > Self::MAX_MINDMAP_DEPTH {
+            return;
+        }
+        if let Some(id) = node.get("id").and_then(|v| v.as_str()) {
+            if !id.trim().is_empty() {
+                output.insert(id.to_string());
+            }
+        }
+        if let Some(children) = node.get("children").and_then(|v| v.as_array()) {
+            for child in children {
+                Self::collect_mindmap_node_ids(child, depth + 1, output);
+            }
+        }
+    }
+
+    /// ★ P3：校验/归一化文档级关联线（associations）
+    ///
+    /// - 仅保留 source/target 均为树中存在节点且非自指的连线；
+    /// - 缺失/重复 id 自动补全（assoc_ 前缀），保留 label/style；
+    /// - 非数组或过滤后为空时移除该字段。
+    fn sanitize_mindmap_associations(doc: &mut Value) {
+        let node_ids: std::collections::HashSet<String> = match doc.get("root") {
+            Some(root) => {
+                let mut ids = std::collections::HashSet::new();
+                Self::collect_mindmap_node_ids(root, 0, &mut ids);
+                ids
+            }
+            None => return,
+        };
+
+        let Some(obj) = doc.as_object_mut() else {
+            return;
+        };
+        // 先取出所有权再校验，避免借用冲突；末尾按结果决定是否写回
+        let Some(assoc_value) = obj.remove("associations") else {
+            return;
+        };
+        let items: Vec<Value> = match assoc_value {
+            Value::Array(items) => items,
+            _ => {
+                log::warn!(
+                    "[BuiltinResourceExecutor] mindmap associations is not an array; dropping field"
+                );
+                return;
+            }
+        };
+
+        let mut cleaned: Vec<Value> = Vec::new();
+        let mut used_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut generated: usize = 0;
+        for item in &items {
+            let source = item
+                .get("source")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let target = item
+                .get("target")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let (Some(source), Some(target)) = (source, target) else {
+                continue;
+            };
+            if source == target || !node_ids.contains(source) || !node_ids.contains(target) {
+                continue;
+            }
+
+            let mut id = item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_default();
+            while id.is_empty() || used_ids.contains(&id) {
+                generated += 1;
+                id = format!("assoc_g{}", generated);
+            }
+            used_ids.insert(id.clone());
+
+            let mut assoc = json!({
+                "id": id,
+                "source": source,
+                "target": target,
+            });
+            if let Some(label) = item
+                .get("label")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                assoc["label"] = json!(label);
+            }
+            if let Some(style) = item.get("style").filter(|v| v.is_object()) {
+                assoc["style"] = style.clone();
+            }
+            cleaned.push(assoc);
+        }
+
+        if !cleaned.is_empty() {
+            obj.insert("associations".to_string(), Value::Array(cleaned));
         }
     }
 
@@ -2102,7 +2231,7 @@ impl BuiltinResourceExecutor {
         {
             let node = mindmap_to_dstu_node(&mindmap);
             emit_watch_event(
-                &ctx.window,
+                ctx.window_ref(),
                 DstuWatchEvent::created(&node.path, node.clone()),
             );
         }
@@ -2316,9 +2445,14 @@ impl BuiltinResourceExecutor {
             version_source: Some("chat_update".to_string()),
         };
 
-        // 更新知识导图
-        let mindmap = VfsMindMapRepo::update_mindmap(vfs_db, mindmap_id, params)
-            .map_err(|e| format!("Failed to update mindmap: {}", e))?;
+        // ★ 2026-07（B4 双快照消除）：snapshot_after=true——repo 在同一事务内
+        // 为更新后的最终内容创建 chat_update 版本并随返回值带回，citation 的
+        // mv_* 直接复用该版本；不再在更新成功后额外 create_version（旧实现会
+        // 产生「更新前旧内容 + 更新后新内容」两条 chat 永久快照）。
+        // 版本写入失败 fail-closed：更新整体回滚并报错（B3）。
+        let (mindmap, after_version) =
+            VfsMindMapRepo::update_mindmap_returning_version(vfs_db, mindmap_id, params, true)
+                .map_err(|e| format!("Failed to update mindmap: {}", e))?;
 
         let duration = start_time.elapsed().as_millis() as u64;
 
@@ -2333,7 +2467,7 @@ impl BuiltinResourceExecutor {
         {
             let node = mindmap_to_dstu_node(&mindmap);
             emit_watch_event(
-                &ctx.window,
+                ctx.window_ref(),
                 DstuWatchEvent::updated(&node.path, node.clone()),
             );
         }
@@ -2352,35 +2486,17 @@ impl BuiltinResourceExecutor {
             "durationMs": duration,
         });
 
-        // ★ 2026-02-13：为更新后的新内容创建版本快照，返回 versionId 供 LLM 在引用中使用
-        // 这样 [思维导图:mv_xxx:标题] 是不可变引用，指向本次更新后的具体内容
-        match VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
-            Ok(Some(new_content)) => {
-                match VfsMindMapRepo::create_version(
-                    vfs_db,
-                    mindmap_id,
-                    &new_content,
-                    &mindmap.title,
-                    None,
-                    Some("chat_update"),
-                ) {
-                    Ok(version) => {
-                        result["versionId"] = json!(version.version_id);
-                        result["citation"] = json!(format!(
-                            "[思维导图:{}:{}]",
-                            version.version_id, mindmap.title
-                        ));
-                        result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看更新后的导图。");
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "[BuiltinResourceExecutor] Failed to create post-update version for mindmap {}: {}",
-                            mindmap_id, e
-                        );
-                    }
-                }
-            }
-            _ => {}
+        // ★ 2026-02-13 / 2026-07 改造：versionId 复用更新事务内产生的版本快照，
+        // [思维导图:mv_xxx:标题] 是不可变引用，指向本次更新后的具体内容
+        if let Some(version) = after_version {
+            result["versionId"] = json!(version.version_id);
+            result["citation"] = json!(format!(
+                "[思维导图:{}:{}]",
+                version.version_id, mindmap.title
+            ));
+            result["hint"] = json!(
+                "请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看更新后的导图。"
+            );
         }
 
         Ok(result)
@@ -2463,7 +2579,7 @@ impl BuiltinResourceExecutor {
         // ★ 2026-02 修复：发射 DSTU watch 事件，通知 Learning Hub 自动刷新列表
         {
             let path = format!("/mindmaps/{}", mindmap_id);
-            emit_watch_event(&ctx.window, DstuWatchEvent::deleted(&path));
+            emit_watch_event(ctx.window_ref(), DstuWatchEvent::deleted(&path));
         }
 
         let mut result = json!({
@@ -2484,13 +2600,1549 @@ impl BuiltinResourceExecutor {
     }
 
     // ========================================================================
+    // 知识导图文件导入 — execute_mindmap_import + 解析辅助方法
+    // ========================================================================
+
+    /// 导入文件大小上限（32MB，与前端 MAX_XMIND_CONTENT_BYTES 对齐）
+    const MAX_MINDMAP_IMPORT_BYTES: u64 = 32 * 1024 * 1024;
+    /// 导入节点数上限（与前端 MAX_IMPORT_NODES 对齐）
+    const MAX_MINDMAP_IMPORT_NODES: usize = 10_000;
+
+    /// 深度/节点数守卫（每转换一个节点调用一次）
+    fn mindmap_import_claim_node(
+        stats: &mut MindMapImportStats,
+        depth: usize,
+    ) -> Result<(), String> {
+        if depth > Self::MAX_MINDMAP_DEPTH {
+            return Err(format!(
+                "导入内容层级过深，超过最大限制（{} 层）",
+                Self::MAX_MINDMAP_DEPTH
+            ));
+        }
+        stats.node_count += 1;
+        if stats.node_count > Self::MAX_MINDMAP_IMPORT_NODES {
+            return Err(format!(
+                "导入节点数超过最大限制（{}）",
+                Self::MAX_MINDMAP_IMPORT_NODES
+            ));
+        }
+        Ok(())
+    }
+
+    /// 顺序分配节点 ID（root 固定为 "root"，其余 n1, n2, ...）
+    fn mindmap_import_alloc_id(counter: &mut usize, force_root: bool) -> String {
+        if force_root {
+            return "root".to_string();
+        }
+        *counter += 1;
+        format!("n{}", *counter)
+    }
+
+    /// 去除 HTML 标签（导图包 HTML 备注降级为纯文本用；轻量状态机，不引入新依赖）
+    fn strip_html_tags(input: &str) -> String {
+        let mut out = String::with_capacity(input.len());
+        let mut in_tag = false;
+        for ch in input.chars() {
+            match ch {
+                '<' => in_tag = true,
+                '>' => in_tag = false,
+                c if !in_tag => out.push(c),
+                _ => {}
+            }
+        }
+        out.trim().to_string()
+    }
+
+    /// 将附件 ID（file_/att_/res_）解析为 VfsFile；返回 (file, 会话归属校验候选 ID 列表)
+    fn resolve_mindmap_import_file(
+        vfs_db: &Arc<VfsDatabase>,
+        raw_id: &str,
+    ) -> Result<(crate::vfs::types::VfsFile, Vec<String>), String> {
+        let trimmed = raw_id.trim();
+        let source_id: String = if trimmed.starts_with("file_") || trimmed.starts_with("att_") {
+            trimmed.to_string()
+        } else if trimmed.starts_with("res_") {
+            let resource = VfsResourceRepo::get_resource(vfs_db, trimmed)
+                .map_err(|e| format!("Failed to resolve resource '{}': {}", trimmed, e))?
+                .ok_or_else(|| format!("Resource not found: {}", trimmed))?;
+            match resource.source_id.as_deref() {
+                Some(sid) if sid.starts_with("file_") || sid.starts_with("att_") => sid.to_string(),
+                _ => Self::resolve_source_id_by_resource_id(vfs_db, "files", trimmed).ok_or_else(
+                    || {
+                        format!(
+                            "Resource '{}' does not resolve to a file_/att_ attachment",
+                            trimmed
+                        )
+                    },
+                )?,
+            }
+        } else {
+            return Err(format!(
+                "Unsupported resource id '{}': mindmap_import 仅支持 file_/att_ 附件或映射到文件的 res_ 资源",
+                trimmed
+            ));
+        };
+
+        let file = VfsFileRepo::get_file(vfs_db, &source_id)
+            .map_err(|e| format!("Failed to query import file '{}': {}", source_id, e))?
+            .ok_or_else(|| format!("Import file not found: {}", trimmed))?;
+
+        let mut candidate_ids: Vec<String> = vec![trimmed.to_string()];
+        if !candidate_ids.iter().any(|id| id == &file.id) {
+            candidate_ids.push(file.id.clone());
+        }
+        if let Some(resource_id) = file.resource_id.as_deref() {
+            if !resource_id.is_empty() && !candidate_ids.iter().any(|id| id == resource_id) {
+                candidate_ids.push(resource_id.to_string());
+            }
+        }
+        Ok((file, candidate_ids))
+    }
+
+    /// 会话归属校验：附件必须出现在当前会话的上下文快照中（对齐 chatanki_import_apkg 范式）
+    fn verify_mindmap_import_resource_in_session(
+        chat_db: &crate::chat_v2::database::ChatV2Database,
+        session_id: &str,
+        candidate_ids: &[String],
+    ) -> Result<bool, String> {
+        let conn = chat_db
+            .get_conn_safe()
+            .map_err(|e| format!("Failed to open chat database: {}", e))?;
+        let messages =
+            crate::chat_v2::repo::ChatV2Repo::get_session_messages_with_conn(&conn, session_id)
+                .map_err(|e| format!("Failed to load session messages: {}", e))?;
+
+        for msg in messages.iter().rev() {
+            let Some(meta) = &msg.meta else { continue };
+            let Some(snapshot) = &meta.context_snapshot else {
+                continue;
+            };
+            for context_ref in &snapshot.user_refs {
+                if candidate_ids
+                    .iter()
+                    .any(|id| id == &context_ref.resource_id)
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// 带大小上限地读取文件字节
+    fn read_mindmap_import_path_bounded(path: &std::path::Path) -> Result<Vec<u8>, String> {
+        let metadata = std::fs::metadata(path)
+            .map_err(|e| format!("Failed to read import file metadata: {}", e))?;
+        if metadata.len() > Self::MAX_MINDMAP_IMPORT_BYTES {
+            return Err(format!(
+                "导入文件超过大小上限（{} MB）",
+                Self::MAX_MINDMAP_IMPORT_BYTES / (1024 * 1024)
+            ));
+        }
+        std::fs::read(path).map_err(|e| format!("Failed to read import file: {}", e))
+    }
+
+    /// 读取附件字节：VFS blob（blob_hash → sha256）优先，回退原始导入路径
+    fn load_mindmap_import_bytes(
+        vfs_db: &Arc<VfsDatabase>,
+        file: &crate::vfs::types::VfsFile,
+    ) -> Result<Vec<u8>, String> {
+        if let Some(blob_hash) = file.blob_hash.as_deref() {
+            if let Some(blob_path) = VfsBlobRepo::get_blob_path(vfs_db, blob_hash)
+                .map_err(|e| format!("Failed to resolve import blob '{}': {}", file.id, e))?
+            {
+                return Self::read_mindmap_import_path_bounded(&blob_path);
+            }
+        }
+
+        if !file.sha256.trim().is_empty() {
+            if let Some(blob_path) = VfsBlobRepo::get_blob_path(vfs_db, &file.sha256)
+                .map_err(|e| format!("Failed to resolve import blob '{}': {}", file.id, e))?
+            {
+                return Self::read_mindmap_import_path_bounded(&blob_path);
+            }
+        }
+
+        if let Some(original_path) = file.original_path.as_deref() {
+            if !crate::unified_file_manager::is_virtual_uri(original_path) {
+                let path = std::path::Path::new(original_path);
+                let has_parent_traversal = path
+                    .components()
+                    .any(|component| matches!(component, std::path::Component::ParentDir));
+                if !has_parent_traversal && path.is_file() {
+                    return Self::read_mindmap_import_path_bounded(path);
+                }
+            }
+        }
+
+        Err(format!(
+            "Import file '{}' has no readable VFS blob or original path",
+            file.id
+        ))
+    }
+
+    /// 按扩展名 + 内容嗅探识别导入格式
+    fn detect_mindmap_import_format(file_name: &str, bytes: &[u8]) -> &'static str {
+        let extension = file_name
+            .rsplit_once('.')
+            .map(|(_, ext)| ext.to_ascii_lowercase())
+            .unwrap_or_default();
+        match extension.as_str() {
+            "xmind" => return "xmind",
+            "mmap" => return "mmap",
+            "opml" => return "opml",
+            "mm" => return "mm",
+            "md" | "markdown" => return "markdown",
+            "txt" => return "text",
+            "json" => return "json",
+            _ => {}
+        }
+
+        // zip 魔数 PK\x03\x04：可能是 xmind 或 mmap，交给调用方按顺序尝试
+        if bytes.len() >= 4 && bytes[0..4] == [0x50, 0x4b, 0x03, 0x04] {
+            return "zip";
+        }
+        let head_len = bytes.len().min(2048);
+        let head = String::from_utf8_lossy(&bytes[..head_len]);
+        let trimmed = head.trim_start();
+        if trimmed.starts_with('{') {
+            return "json";
+        }
+        if trimmed.starts_with('<') {
+            let lower = trimmed.to_ascii_lowercase();
+            if lower.contains("<opml") {
+                return "opml";
+            }
+            if lower.contains("<map") {
+                return "mm";
+            }
+            return "opml";
+        }
+        "markdown"
+    }
+
+    /// zip 包内按名读取文本条目（带解压大小上限）；条目不存在返回 Ok(None)
+    fn read_mindmap_zip_entry(
+        archive: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>,
+        entry_name: &str,
+    ) -> Result<Option<String>, String> {
+        use std::io::Read;
+        let mut entry = match archive.by_name(entry_name) {
+            Ok(entry) => entry,
+            Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+            Err(e) => return Err(format!("Failed to read zip entry '{}': {}", entry_name, e)),
+        };
+        if entry.size() > Self::MAX_MINDMAP_IMPORT_BYTES {
+            return Err(format!(
+                "zip 条目 '{}' 超过解压大小上限（{} MB）",
+                entry_name,
+                Self::MAX_MINDMAP_IMPORT_BYTES / (1024 * 1024)
+            ));
+        }
+        let mut buffer: Vec<u8> = Vec::new();
+        (&mut entry)
+            .take(Self::MAX_MINDMAP_IMPORT_BYTES + 1)
+            .read_to_end(&mut buffer)
+            .map_err(|e| format!("Failed to decompress zip entry '{}': {}", entry_name, e))?;
+        if buffer.len() as u64 > Self::MAX_MINDMAP_IMPORT_BYTES {
+            return Err(format!(
+                "zip 条目 '{}' 超过解压大小上限（{} MB）",
+                entry_name,
+                Self::MAX_MINDMAP_IMPORT_BYTES / (1024 * 1024)
+            ));
+        }
+        Ok(Some(String::from_utf8_lossy(&buffer).into_owned()))
+    }
+
+    /// 把原始关联线端点（源文件内部 topic id）重映射为导入后的节点 id；
+    /// 端点缺失/自指的连线丢弃。
+    fn remap_import_associations(
+        raw_links: &[(String, String, Option<String>)],
+        id_map: &HashMap<String, String>,
+        assoc_counter: &mut usize,
+    ) -> Vec<Value> {
+        let mut associations: Vec<Value> = Vec::new();
+        for (end1, end2, label) in raw_links {
+            let source = id_map.get(end1);
+            let target = id_map.get(end2);
+            let (Some(source), Some(target)) = (source, target) else {
+                continue;
+            };
+            if source == target {
+                continue;
+            }
+            *assoc_counter += 1;
+            let mut assoc = json!({
+                "id": format!("assoc_{}", assoc_counter),
+                "source": source,
+                "target": target,
+            });
+            if let Some(label) = label {
+                let label = label.trim();
+                if !label.is_empty() {
+                    assoc["label"] = json!(label);
+                }
+            }
+            associations.push(assoc);
+        }
+        associations
+    }
+
+    // ------------------------------------------------------------------
+    // Markdown / 纯文本缩进大纲解析
+    // ------------------------------------------------------------------
+
+    /// 解析 Markdown 列表 / 纯缩进大纲为节点森林后合成根节点。
+    /// 支持：`#` 标题层级、`- * +` 无序列表、`1. / 1)` 有序列表、
+    /// GFM 任务项 `[ ]`/`[x]`、无项目符号的纯缩进大纲（2 空格或 Tab 一级）。
+    fn parse_outline_text_to_mindmap(
+        text: &str,
+        fallback_title: &str,
+        stats: &mut MindMapImportStats,
+    ) -> Result<Value, String> {
+        fn attach_outline_node(
+            stack: &mut Vec<(usize, Value)>,
+            top_level: &mut Vec<Value>,
+            node: Value,
+        ) {
+            if let Some((_, parent)) = stack.last_mut() {
+                if let Some(children) = parent.get_mut("children").and_then(|c| c.as_array_mut()) {
+                    children.push(node);
+                }
+            } else {
+                top_level.push(node);
+            }
+        }
+
+        let mut counter: usize = 0;
+        let mut items: Vec<(usize, Value)> = Vec::new();
+        // 最近一个标题的深度（`#`=0）；标题之后的列表项挂在标题下
+        let mut heading_base: Option<usize> = None;
+
+        for raw_line in text.lines() {
+            if raw_line.trim().is_empty() {
+                continue;
+            }
+
+            // 计算缩进宽度：Tab 记 2 空格
+            let mut indent_width: usize = 0;
+            for ch in raw_line.chars() {
+                match ch {
+                    ' ' => indent_width += 1,
+                    '\t' => indent_width += 2,
+                    _ => break,
+                }
+            }
+            let content = raw_line.trim_start();
+
+            // 标题行：# ~ ######
+            let hash_count = content.chars().take_while(|c| *c == '#').count();
+            if (1..=6).contains(&hash_count)
+                && content.chars().nth(hash_count).is_some_and(|c| c == ' ')
+            {
+                let depth = hash_count - 1;
+                let text_value = content[hash_count..].trim();
+                Self::mindmap_import_claim_node(stats, depth)?;
+                items.push((
+                    depth,
+                    json!({
+                        "id": Self::mindmap_import_alloc_id(&mut counter, false),
+                        "text": if text_value.is_empty() { "未命名主题" } else { text_value },
+                        "children": [],
+                    }),
+                ));
+                heading_base = Some(depth);
+                continue;
+            }
+
+            // 列表项前缀：- * + • ‣ ◦ 或 1. / 1)
+            let mut rest = content;
+            let mut is_list_item = false;
+            for bullet in ["- ", "* ", "+ ", "• ", "‣ ", "◦ "] {
+                if let Some(stripped) = rest.strip_prefix(bullet) {
+                    rest = stripped;
+                    is_list_item = true;
+                    break;
+                }
+            }
+            if !is_list_item {
+                let digit_len = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+                if digit_len > 0 {
+                    let after_digits = &rest[digit_len..];
+                    if let Some(stripped) = after_digits
+                        .strip_prefix(". ")
+                        .or_else(|| after_digits.strip_prefix(") "))
+                    {
+                        rest = stripped;
+                        is_list_item = true;
+                    }
+                }
+            }
+
+            // GFM 任务项
+            let mut completed: Option<bool> = None;
+            if is_list_item {
+                if let Some(stripped) = rest.strip_prefix("[ ] ") {
+                    completed = Some(false);
+                    rest = stripped;
+                } else if let Some(stripped) = rest
+                    .strip_prefix("[x] ")
+                    .or_else(|| rest.strip_prefix("[X] "))
+                {
+                    completed = Some(true);
+                    rest = stripped;
+                }
+            }
+
+            let text_value = rest.trim();
+            if text_value.is_empty() {
+                continue;
+            }
+
+            // 深度 = 标题基准 + 缩进层级（2 空格一级）
+            let indent_level = indent_width / 2;
+            let depth = match heading_base {
+                Some(base) => base + 1 + indent_level,
+                None => indent_level,
+            };
+            Self::mindmap_import_claim_node(stats, depth)?;
+            let mut node = json!({
+                "id": Self::mindmap_import_alloc_id(&mut counter, false),
+                "text": text_value,
+                "children": [],
+            });
+            if let Some(completed) = completed {
+                node["completed"] = json!(completed);
+            }
+            items.push((depth, node));
+        }
+
+        if items.is_empty() {
+            return Err("导入内容为空：没有解析到任何大纲条目".to_string());
+        }
+
+        // 栈式装配：depth 小于等于栈顶时出栈挂接
+        let mut top_level: Vec<Value> = Vec::new();
+        let mut stack: Vec<(usize, Value)> = Vec::new();
+        for (depth, node) in items {
+            while stack.last().map(|(d, _)| *d >= depth).unwrap_or(false) {
+                let (_, done) = match stack.pop() {
+                    Some(entry) => entry,
+                    None => break,
+                };
+                attach_outline_node(&mut stack, &mut top_level, done);
+            }
+            stack.push((depth, node));
+        }
+        while let Some((_, done)) = stack.pop() {
+            attach_outline_node(&mut stack, &mut top_level, done);
+        }
+
+        if top_level.len() == 1 {
+            let mut root = top_level.remove(0);
+            root["id"] = json!("root");
+            Ok(root)
+        } else {
+            Self::mindmap_import_claim_node(stats, 0)?;
+            Ok(json!({
+                "id": "root",
+                "text": fallback_title,
+                "children": top_level,
+            }))
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // OPML 解析
+    // ------------------------------------------------------------------
+
+    fn opml_outline_to_value(
+        node: roxmltree::Node<'_, '_>,
+        depth: usize,
+        stats: &mut MindMapImportStats,
+        counter: &mut usize,
+    ) -> Result<Value, String> {
+        Self::mindmap_import_claim_node(stats, depth)?;
+        let text = node
+            .attribute("text")
+            .or_else(|| node.attribute("title"))
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("未命名主题");
+        let note = node
+            .attribute("_note")
+            .or_else(|| node.attribute("note"))
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let completed = match node.attribute("_complete") {
+            Some("true") => Some(true),
+            Some("false") => Some(false),
+            _ => match node.attribute("_status") {
+                Some("checked") => Some(true),
+                Some("unchecked") => Some(false),
+                _ => None,
+            },
+        };
+
+        let mut children: Vec<Value> = Vec::new();
+        for child in node.children() {
+            if child.is_element() && child.tag_name().name().eq_ignore_ascii_case("outline") {
+                children.push(Self::opml_outline_to_value(
+                    child,
+                    depth + 1,
+                    stats,
+                    counter,
+                )?);
+            }
+        }
+
+        let mut value = json!({
+            "id": Self::mindmap_import_alloc_id(counter, false),
+            "text": text,
+            "children": children,
+        });
+        if let Some(note) = note {
+            value["note"] = json!(note);
+        }
+        if let Some(completed) = completed {
+            value["completed"] = json!(completed);
+        }
+        Ok(value)
+    }
+
+    fn parse_opml_to_mindmap(
+        text: &str,
+        fallback_title: &str,
+        stats: &mut MindMapImportStats,
+    ) -> Result<Value, String> {
+        let doc = roxmltree::Document::parse(text).map_err(|e| format!("OPML 解析失败: {}", e))?;
+        let body = doc
+            .descendants()
+            .find(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("body"))
+            .ok_or_else(|| "无效的 OPML：缺少 body 元素".to_string())?;
+        let outlines: Vec<roxmltree::Node<'_, '_>> = body
+            .children()
+            .filter(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("outline"))
+            .collect();
+        if outlines.is_empty() {
+            return Err("无效的 OPML：没有 outline 元素".to_string());
+        }
+
+        let mut counter: usize = 0;
+        if outlines.len() == 1 {
+            let mut root = Self::opml_outline_to_value(outlines[0], 0, stats, &mut counter)?;
+            root["id"] = json!("root");
+            return Ok(root);
+        }
+
+        Self::mindmap_import_claim_node(stats, 0)?;
+        let mut children: Vec<Value> = Vec::new();
+        for outline in outlines {
+            children.push(Self::opml_outline_to_value(
+                outline,
+                1,
+                stats,
+                &mut counter,
+            )?);
+        }
+        let title = doc
+            .descendants()
+            .find(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("title"))
+            .and_then(|n| n.text())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(fallback_title);
+        Ok(json!({
+            "id": "root",
+            "text": title,
+            "children": children,
+        }))
+    }
+
+    // ------------------------------------------------------------------
+    // .mm XML 解析
+    // ------------------------------------------------------------------
+
+    /// 提取 .mm richcontent 文本；NODE 折叠为单行，NOTE 保留行结构
+    fn mm_richcontent_text(node: roxmltree::Node<'_, '_>, content_type: &str) -> Option<String> {
+        let rich = node.children().find(|child| {
+            child.is_element()
+                && child.tag_name().name().eq_ignore_ascii_case("richcontent")
+                && child
+                    .attribute("TYPE")
+                    .or_else(|| child.attribute("type"))
+                    .map(|t| t.eq_ignore_ascii_case(content_type))
+                    .unwrap_or(false)
+        })?;
+        // 只收集文本节点，避免元素节点 text() 与其文本子节点重复计入
+        let raw: String = rich
+            .descendants()
+            .filter(|d| d.is_text())
+            .filter_map(|d| d.text())
+            .collect::<Vec<&str>>()
+            .join(" ");
+        if content_type.eq_ignore_ascii_case("NODE") {
+            let collapsed = raw.split_whitespace().collect::<Vec<&str>>().join(" ");
+            if collapsed.is_empty() {
+                None
+            } else {
+                Some(collapsed)
+            }
+        } else {
+            let lines: Vec<&str> = raw
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .collect();
+            if lines.is_empty() {
+                None
+            } else {
+                Some(lines.join("\n"))
+            }
+        }
+    }
+
+    fn mm_node_to_value(
+        node: roxmltree::Node<'_, '_>,
+        depth: usize,
+        stats: &mut MindMapImportStats,
+        counter: &mut usize,
+        id_map: &mut HashMap<String, String>,
+        raw_links: &mut Vec<(String, String, Option<String>)>,
+        force_root: bool,
+    ) -> Result<Value, String> {
+        Self::mindmap_import_claim_node(stats, depth)?;
+        let assigned_id = Self::mindmap_import_alloc_id(counter, force_root);
+        let attr_text = node
+            .attribute("TEXT")
+            .or_else(|| node.attribute("text"))
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let text = attr_text
+            .map(str::to_string)
+            .or_else(|| Self::mm_richcontent_text(node, "NODE"))
+            .unwrap_or_else(|| "未命名主题".to_string());
+        let note = Self::mm_richcontent_text(node, "NOTE");
+
+        // 源 ID → 实际节点 ID；无源 ID 时登记自映射，供 arrowlink 端点重映射
+        let original_id = node
+            .attribute("ID")
+            .or_else(|| node.attribute("id"))
+            .map(str::to_string)
+            .unwrap_or_else(|| assigned_id.clone());
+        id_map
+            .entry(original_id.clone())
+            .or_insert_with(|| assigned_id.clone());
+
+        // 完成态图标：button_ok → 已完成，button_cancel → 未完成任务
+        let mut completed: Option<bool> = None;
+        for icon in node.children().filter(|child| {
+            child.is_element() && child.tag_name().name().eq_ignore_ascii_case("icon")
+        }) {
+            match icon.attribute("BUILTIN") {
+                Some("button_ok") => {
+                    completed = Some(true);
+                    break;
+                }
+                Some("button_cancel") => completed = Some(false),
+                _ => {}
+            }
+        }
+
+        // <arrowlink DESTINATION="…"/>：自由连线 → 关联线
+        for arrow in node.children().filter(|child| {
+            child.is_element() && child.tag_name().name().eq_ignore_ascii_case("arrowlink")
+        }) {
+            if let Some(destination) = arrow
+                .attribute("DESTINATION")
+                .or_else(|| arrow.attribute("destination"))
+            {
+                raw_links.push((
+                    original_id.clone(),
+                    destination.to_string(),
+                    arrow.attribute("MIDDLE_LABEL").map(str::to_string),
+                ));
+            }
+        }
+
+        let mut children: Vec<Value> = Vec::new();
+        for child in node.children() {
+            if child.is_element() && child.tag_name().name().eq_ignore_ascii_case("node") {
+                children.push(Self::mm_node_to_value(
+                    child,
+                    depth + 1,
+                    stats,
+                    counter,
+                    id_map,
+                    raw_links,
+                    false,
+                )?);
+            }
+        }
+
+        let mut value = json!({
+            "id": assigned_id,
+            "text": text,
+            "children": children,
+        });
+        if let Some(note) = note {
+            value["note"] = json!(note);
+        }
+        if let Some(completed) = completed {
+            value["completed"] = json!(completed);
+        }
+        Ok(value)
+    }
+
+    fn parse_mm_to_mindmap(
+        text: &str,
+        fallback_title: &str,
+        stats: &mut MindMapImportStats,
+    ) -> Result<(Value, Vec<Value>), String> {
+        let doc =
+            roxmltree::Document::parse(text).map_err(|e| format!(".mm XML 解析失败: {}", e))?;
+        let map_element = doc.root_element();
+        if !map_element.tag_name().name().eq_ignore_ascii_case("map") {
+            return Err("无效的 .mm 文件：缺少 map 根元素".to_string());
+        }
+        let root_nodes: Vec<roxmltree::Node<'_, '_>> = map_element
+            .children()
+            .filter(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("node"))
+            .collect();
+        if root_nodes.is_empty() {
+            return Err("无效的 .mm 文件：没有 node 元素".to_string());
+        }
+
+        let mut counter: usize = 0;
+        let mut id_map: HashMap<String, String> = HashMap::new();
+        let mut raw_links: Vec<(String, String, Option<String>)> = Vec::new();
+
+        let root = if root_nodes.len() == 1 {
+            Self::mm_node_to_value(
+                root_nodes[0],
+                0,
+                stats,
+                &mut counter,
+                &mut id_map,
+                &mut raw_links,
+                true,
+            )?
+        } else {
+            Self::mindmap_import_claim_node(stats, 0)?;
+            let mut children: Vec<Value> = Vec::new();
+            for node in root_nodes {
+                children.push(Self::mm_node_to_value(
+                    node,
+                    1,
+                    stats,
+                    &mut counter,
+                    &mut id_map,
+                    &mut raw_links,
+                    false,
+                )?);
+            }
+            json!({
+                "id": "root",
+                "text": fallback_title,
+                "children": children,
+            })
+        };
+
+        let mut assoc_counter: usize = 0;
+        let associations = Self::remap_import_associations(&raw_links, &id_map, &mut assoc_counter);
+        Ok((root, associations))
+    }
+
+    // ------------------------------------------------------------------
+    // .xmind zip：content.json 优先，回退 content.xml
+    // ------------------------------------------------------------------
+
+    fn xmind_json_topic_to_value(
+        topic: &Value,
+        depth: usize,
+        stats: &mut MindMapImportStats,
+        counter: &mut usize,
+        id_map: &mut HashMap<String, String>,
+        force_root: bool,
+    ) -> Result<Value, String> {
+        Self::mindmap_import_claim_node(stats, depth)?;
+        let assigned_id = Self::mindmap_import_alloc_id(counter, force_root);
+        if let Some(original_id) = topic.get("id").and_then(|v| v.as_str()) {
+            id_map
+                .entry(original_id.to_string())
+                .or_insert_with(|| assigned_id.clone());
+        }
+
+        // 丢弃项计数（图片/概要/外框/超链接在本应用模型中不支持）
+        if topic.get("image").is_some() {
+            stats.dropped_images += 1;
+        }
+        if topic
+            .get("href")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+        {
+            stats.dropped_hyperlinks += 1;
+        }
+        if let Some(summaries) = topic.get("summaries").and_then(|v| v.as_array()) {
+            stats.dropped_summaries += summaries.len();
+        } else if let Some(summary_topics) = topic
+            .get("children")
+            .and_then(|c| c.get("summary"))
+            .and_then(|v| v.as_array())
+        {
+            stats.dropped_summaries += summary_topics.len();
+        }
+        if let Some(boundaries) = topic.get("boundaries").and_then(|v| v.as_array()) {
+            stats.dropped_boundaries += boundaries.len();
+        }
+
+        let text = topic
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("未命名主题");
+
+        let note = topic.get("notes").and_then(|notes| {
+            notes
+                .get("plain")
+                .and_then(|p| p.get("content"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    notes
+                        .get("html")
+                        .and_then(|h| h.get("content"))
+                        .and_then(|v| v.as_str())
+                        .map(Self::strip_html_tags)
+                        .filter(|s| !s.is_empty())
+                })
+        });
+
+        // 任务 marker：task-done → 已完成；其余 task-* → 未完成任务
+        let mut completed: Option<bool> = None;
+        if let Some(markers) = topic.get("markers").and_then(|v| v.as_array()) {
+            for marker in markers {
+                if let Some(marker_id) = marker.get("markerId").and_then(|v| v.as_str()) {
+                    if marker_id.starts_with("task-") {
+                        completed = Some(marker_id == "task-done");
+                        break;
+                    }
+                }
+            }
+        }
+
+        let mut children: Vec<Value> = Vec::new();
+        if let Some(attached) = topic
+            .get("children")
+            .and_then(|c| c.get("attached"))
+            .and_then(|v| v.as_array())
+        {
+            for child in attached {
+                children.push(Self::xmind_json_topic_to_value(
+                    child,
+                    depth + 1,
+                    stats,
+                    counter,
+                    id_map,
+                    false,
+                )?);
+            }
+        }
+
+        let mut value = json!({
+            "id": assigned_id,
+            "text": text,
+            "children": children,
+        });
+        if let Some(note) = note {
+            value["note"] = json!(note);
+        }
+        if let Some(completed) = completed {
+            value["completed"] = json!(completed);
+        }
+        Ok(value)
+    }
+
+    fn xmind_xml_child_elements<'a, 'input>(
+        node: roxmltree::Node<'a, 'input>,
+        local_name: &str,
+    ) -> Vec<roxmltree::Node<'a, 'input>> {
+        node.children()
+            .filter(|child| {
+                child.is_element() && child.tag_name().name().eq_ignore_ascii_case(local_name)
+            })
+            .collect()
+    }
+
+    fn xmind_xml_topic_to_value(
+        topic: roxmltree::Node<'_, '_>,
+        depth: usize,
+        stats: &mut MindMapImportStats,
+        counter: &mut usize,
+        id_map: &mut HashMap<String, String>,
+        force_root: bool,
+    ) -> Result<Value, String> {
+        Self::mindmap_import_claim_node(stats, depth)?;
+        let assigned_id = Self::mindmap_import_alloc_id(counter, force_root);
+        if let Some(original_id) = topic.attribute("id") {
+            id_map
+                .entry(original_id.to_string())
+                .or_insert_with(|| assigned_id.clone());
+        }
+
+        // 丢弃项计数：<xhtml:img>（localName=img）、boundaries、summaries、xlink:href
+        stats.dropped_images += Self::xmind_xml_child_elements(topic, "img").len();
+        for container in Self::xmind_xml_child_elements(topic, "summaries") {
+            stats.dropped_summaries += Self::xmind_xml_child_elements(container, "summary").len();
+        }
+        for container in Self::xmind_xml_child_elements(topic, "boundaries") {
+            stats.dropped_boundaries += Self::xmind_xml_child_elements(container, "boundary").len();
+        }
+        if topic.attributes().any(|attr| attr.name() == "href") {
+            stats.dropped_hyperlinks += 1;
+        }
+
+        let text = Self::xmind_xml_child_elements(topic, "title")
+            .first()
+            .and_then(|n| n.text())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("未命名主题");
+
+        let note = Self::xmind_xml_child_elements(topic, "notes")
+            .first()
+            .and_then(|notes| {
+                notes
+                    .descendants()
+                    .find(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("plain"))
+                    .and_then(|n| {
+                        // 只收集文本节点，避免元素与其文本子节点重复计入
+                        let raw: String = n
+                            .descendants()
+                            .filter(|d| d.is_text())
+                            .filter_map(|d| d.text())
+                            .collect::<Vec<&str>>()
+                            .join("");
+                        let trimmed = raw.trim().to_string();
+                        if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed)
+                        }
+                    })
+            });
+
+        // marker-refs → 任务完成态
+        let mut completed: Option<bool> = None;
+        for refs_container in Self::xmind_xml_child_elements(topic, "marker-refs") {
+            for marker_ref in Self::xmind_xml_child_elements(refs_container, "marker-ref") {
+                if let Some(marker_id) = marker_ref.attribute("marker-id") {
+                    if marker_id.starts_with("task-") {
+                        completed = Some(marker_id == "task-done");
+                        break;
+                    }
+                }
+            }
+        }
+
+        let mut children: Vec<Value> = Vec::new();
+        for children_container in Self::xmind_xml_child_elements(topic, "children") {
+            for topics_group in Self::xmind_xml_child_elements(children_container, "topics") {
+                let group_type = topics_group.attribute("type").unwrap_or("attached");
+                if group_type != "attached" {
+                    continue;
+                }
+                for child_topic in Self::xmind_xml_child_elements(topics_group, "topic") {
+                    children.push(Self::xmind_xml_topic_to_value(
+                        child_topic,
+                        depth + 1,
+                        stats,
+                        counter,
+                        id_map,
+                        false,
+                    )?);
+                }
+            }
+        }
+
+        let mut value = json!({
+            "id": assigned_id,
+            "text": text,
+            "children": children,
+        });
+        if let Some(note) = note {
+            value["note"] = json!(note);
+        }
+        if let Some(completed) = completed {
+            value["completed"] = json!(completed);
+        }
+        Ok(value)
+    }
+
+    fn parse_xmind_to_mindmap(
+        bytes: &[u8],
+        fallback_title: &str,
+        stats: &mut MindMapImportStats,
+    ) -> Result<(Value, Vec<Value>), String> {
+        let cursor = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(cursor)
+            .map_err(|e| format!("无效的 .xmind 文件（zip 解包失败）: {}", e))?;
+
+        // .xmind：content.json
+        if let Some(content_json) = Self::read_mindmap_zip_entry(&mut archive, "content.json")? {
+            let raw: Value = serde_json::from_str(&content_json)
+                .map_err(|e| format!("无效的 .xmind content.json: {}", e))?;
+            let sheet_values: Vec<Value> = match raw {
+                Value::Array(items) => items,
+                other => vec![other],
+            };
+            let sheets: Vec<&Value> = sheet_values
+                .iter()
+                .filter(|sheet| {
+                    sheet
+                        .get("rootTopic")
+                        .map(|t| t.is_object())
+                        .unwrap_or(false)
+                })
+                .collect();
+            if sheets.is_empty() {
+                return Err("无效的 .xmind：缺少根主题".to_string());
+            }
+
+            let mut counter: usize = 0;
+            let mut id_map: HashMap<String, String> = HashMap::new();
+            // sheet 级关联线（拓扑转换完成后统一按 id_map 重映射）
+            let raw_links: Vec<(String, String, Option<String>)> = sheets
+                .iter()
+                .flat_map(|sheet| {
+                    sheet
+                        .get("relationships")
+                        .and_then(|v| v.as_array())
+                        .map(|rels| {
+                            rels.iter()
+                                .filter_map(|rel| {
+                                    let end1 = rel.get("end1Id").and_then(|v| v.as_str())?;
+                                    let end2 = rel.get("end2Id").and_then(|v| v.as_str())?;
+                                    Some((
+                                        end1.to_string(),
+                                        end2.to_string(),
+                                        rel.get("title")
+                                            .and_then(|v| v.as_str())
+                                            .map(str::to_string),
+                                    ))
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                })
+                .collect();
+
+            let root = if sheets.len() == 1 {
+                let root_topic = sheets[0]
+                    .get("rootTopic")
+                    .ok_or_else(|| "无效的 .xmind：缺少根主题".to_string())?;
+                Self::xmind_json_topic_to_value(
+                    root_topic,
+                    0,
+                    stats,
+                    &mut counter,
+                    &mut id_map,
+                    true,
+                )?
+            } else {
+                Self::mindmap_import_claim_node(stats, 0)?;
+                let mut children: Vec<Value> = Vec::new();
+                for sheet in &sheets {
+                    let root_topic = sheet
+                        .get("rootTopic")
+                        .ok_or_else(|| "无效的 .xmind：缺少根主题".to_string())?;
+                    children.push(Self::xmind_json_topic_to_value(
+                        root_topic,
+                        1,
+                        stats,
+                        &mut counter,
+                        &mut id_map,
+                        false,
+                    )?);
+                }
+                json!({
+                    "id": "root",
+                    "text": fallback_title,
+                    "note": format!("合并自 {} 个 .xmind 画布", sheets.len()),
+                    "children": children,
+                })
+            };
+
+            let mut assoc_counter: usize = 0;
+            let associations =
+                Self::remap_import_associations(&raw_links, &id_map, &mut assoc_counter);
+            return Ok((root, associations));
+        }
+
+        // .xmind XML：content.xml
+        if let Some(content_xml) = Self::read_mindmap_zip_entry(&mut archive, "content.xml")? {
+            let doc = roxmltree::Document::parse(&content_xml)
+                .map_err(|e| format!("无效的 .xmind content.xml: {}", e))?;
+            let sheet_elements: Vec<roxmltree::Node<'_, '_>> = doc
+                .descendants()
+                .filter(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("sheet"))
+                .collect();
+            let root_topics: Vec<roxmltree::Node<'_, '_>> = sheet_elements
+                .iter()
+                .filter_map(|sheet| {
+                    Self::xmind_xml_child_elements(*sheet, "topic")
+                        .first()
+                        .copied()
+                })
+                .collect();
+            if root_topics.is_empty() {
+                return Err("无效的 .xmind：缺少根主题".to_string());
+            }
+
+            let mut counter: usize = 0;
+            let mut id_map: HashMap<String, String> = HashMap::new();
+            let raw_links: Vec<(String, String, Option<String>)> = sheet_elements
+                .iter()
+                .flat_map(|sheet| Self::xmind_xml_child_elements(*sheet, "relationships"))
+                .flat_map(|container| Self::xmind_xml_child_elements(container, "relationship"))
+                .filter_map(|rel| {
+                    let end1 = rel.attribute("end1")?;
+                    let end2 = rel.attribute("end2")?;
+                    let label = Self::xmind_xml_child_elements(rel, "title")
+                        .first()
+                        .and_then(|n| n.text())
+                        .map(str::to_string);
+                    Some((end1.to_string(), end2.to_string(), label))
+                })
+                .collect();
+
+            let root = if root_topics.len() == 1 {
+                Self::xmind_xml_topic_to_value(
+                    root_topics[0],
+                    0,
+                    stats,
+                    &mut counter,
+                    &mut id_map,
+                    true,
+                )?
+            } else {
+                Self::mindmap_import_claim_node(stats, 0)?;
+                let mut children: Vec<Value> = Vec::new();
+                for topic in &root_topics {
+                    children.push(Self::xmind_xml_topic_to_value(
+                        *topic,
+                        1,
+                        stats,
+                        &mut counter,
+                        &mut id_map,
+                        false,
+                    )?);
+                }
+                json!({
+                    "id": "root",
+                    "text": fallback_title,
+                    "note": format!("合并自 {} 个 .xmind 画布", root_topics.len()),
+                    "children": children,
+                })
+            };
+
+            let mut assoc_counter: usize = 0;
+            let associations =
+                Self::remap_import_associations(&raw_links, &id_map, &mut assoc_counter);
+            return Ok((root, associations));
+        }
+
+        Err("无效的 .xmind 文件：缺少 content.json 或 content.xml".to_string())
+    }
+
+    // ------------------------------------------------------------------
+    // .mmap zip：Document.xml，OneTopic/SubTopics 结构
+    // ------------------------------------------------------------------
+
+    fn mmap_topic_to_value(
+        topic: roxmltree::Node<'_, '_>,
+        depth: usize,
+        stats: &mut MindMapImportStats,
+        counter: &mut usize,
+        force_root: bool,
+    ) -> Result<Value, String> {
+        Self::mindmap_import_claim_node(stats, depth)?;
+        let text = Self::xmind_xml_child_elements(topic, "Text")
+            .first()
+            .and_then(|text_el| text_el.attribute("PlainText"))
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("未命名主题");
+
+        let mut children: Vec<Value> = Vec::new();
+        for sub_topics in Self::xmind_xml_child_elements(topic, "SubTopics") {
+            for child_topic in Self::xmind_xml_child_elements(sub_topics, "Topic") {
+                children.push(Self::mmap_topic_to_value(
+                    child_topic,
+                    depth + 1,
+                    stats,
+                    counter,
+                    false,
+                )?);
+            }
+        }
+
+        Ok(json!({
+            "id": Self::mindmap_import_alloc_id(counter, force_root),
+            "text": text,
+            "children": children,
+        }))
+    }
+
+    fn parse_mmap_to_mindmap(
+        bytes: &[u8],
+        stats: &mut MindMapImportStats,
+    ) -> Result<Value, String> {
+        let cursor = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(cursor)
+            .map_err(|e| format!("无效的 .mmap 文件（zip 解包失败）: {}", e))?;
+        let document_xml = Self::read_mindmap_zip_entry(&mut archive, "Document.xml")?
+            .ok_or_else(|| "无效的 .mmap 文件：缺少 Document.xml".to_string())?;
+        let doc = roxmltree::Document::parse(&document_xml)
+            .map_err(|e| format!("无效的 .mmap Document.xml: {}", e))?;
+        let one_topic = doc
+            .descendants()
+            .find(|n| n.is_element() && n.tag_name().name().eq_ignore_ascii_case("OneTopic"))
+            .ok_or_else(|| "无效的 .mmap 文件：缺少 OneTopic 元素".to_string())?;
+        let root_topic = Self::xmind_xml_child_elements(one_topic, "Topic")
+            .first()
+            .copied()
+            .ok_or_else(|| "无效的 .mmap 文件：OneTopic 下缺少 Topic".to_string())?;
+
+        let mut counter: usize = 0;
+        Self::mmap_topic_to_value(root_topic, 0, stats, &mut counter, true)
+    }
+
+    /// 执行知识导图文件导入
+    ///
+    /// ★ 2026-07 新增：把当前会话上传的思维导图附件（xmind/opml/mm/mmap/md/txt/json）
+    /// 解析为 MindMapDocument 后复用 mindmap_create 的落库路径。
+    /// 附件寻址范式对齐 chatanki_import_apkg：会话归属校验 → 读 VFS blob 字节。
+    async fn execute_mindmap_import(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+
+        let raw_resource_id = call
+            .arguments
+            .get("resourceId")
+            .or_else(|| call.arguments.get("resource_id"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or(
+                "Missing required parameter 'resourceId'. 请传入当前会话上传的思维导图附件资源 ID（file_/att_/res_）。",
+            )?;
+        let custom_title = call
+            .arguments
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from);
+        let folder_id = call
+            .arguments
+            .get("targetFolderId")
+            .or_else(|| call.arguments.get("folder_id"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty() && *s != "root");
+
+        let start_time = Instant::now();
+
+        // 1. 附件寻址：file_/att_/res_ → VfsFile
+        let (file, candidate_ids) = Self::resolve_mindmap_import_file(vfs_db, raw_resource_id)?;
+
+        // 2. 会话归属校验（fail-closed：chat 数据库不可用时拒绝导入）
+        let chat_db = ctx
+            .chat_v2_db
+            .as_ref()
+            .ok_or("Chat database not available for import resource ownership check")?;
+        let owned = Self::verify_mindmap_import_resource_in_session(
+            chat_db,
+            &ctx.session_id,
+            &candidate_ids,
+        )?;
+        if !owned {
+            return Err(format!(
+                "Resource '{}' is not available in the current chat session. 只能导入当前会话上下文中的附件。",
+                raw_resource_id
+            ));
+        }
+
+        // 3. 读取字节（VFS blob 优先，回退原始路径；32MB 上限）
+        let bytes = Self::load_mindmap_import_bytes(vfs_db, &file)?;
+
+        // 4. 识别格式并解析为节点树 + 关联线
+        let fallback_title = file
+            .file_name
+            .rsplit_once('.')
+            .map(|(stem, _)| stem)
+            .filter(|stem| !stem.trim().is_empty())
+            .unwrap_or(&file.file_name)
+            .to_string();
+        let detected = Self::detect_mindmap_import_format(&file.file_name, &bytes);
+        let mut stats = MindMapImportStats::default();
+
+        let (root, associations, resolved_format): (Value, Vec<Value>, &'static str) =
+            match detected {
+                "xmind" => {
+                    let (root, assoc) =
+                        Self::parse_xmind_to_mindmap(&bytes, &fallback_title, &mut stats)?;
+                    (root, assoc, "xmind")
+                }
+                "mmap" => {
+                    let root = Self::parse_mmap_to_mindmap(&bytes, &mut stats)?;
+                    (root, Vec::new(), "mmap")
+                }
+                "zip" => {
+                    // 无扩展名 zip：先按 .xmind 解析，失败再按 .mmap 解析
+                    match Self::parse_xmind_to_mindmap(&bytes, &fallback_title, &mut stats) {
+                        Ok((root, assoc)) => (root, assoc, "xmind"),
+                        Err(xmind_error) => {
+                            stats = MindMapImportStats::default();
+                            let root = Self::parse_mmap_to_mindmap(&bytes, &mut stats).map_err(
+                                |mmap_error| {
+                                    format!(
+                                        "无法识别的 zip 导图文件。.xmind 解析: {}；.mmap 解析: {}",
+                                        xmind_error, mmap_error
+                                    )
+                                },
+                            )?;
+                            (root, Vec::new(), "mmap")
+                        }
+                    }
+                }
+                "opml" => {
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    let root = Self::parse_opml_to_mindmap(&text, &fallback_title, &mut stats)?;
+                    (root, Vec::new(), "opml")
+                }
+                "mm" => {
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    let (root, assoc) =
+                        Self::parse_mm_to_mindmap(&text, &fallback_title, &mut stats)?;
+                    (root, assoc, "mm")
+                }
+                "json" => {
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    let parsed: Value = serde_json::from_str(&text)
+                        .map_err(|e| format!("无效的导图 JSON: {}", e))?;
+                    let root = parsed
+                        .get("root")
+                        .cloned()
+                        .ok_or_else(|| "无效的导图 JSON：缺少 root 字段".to_string())?;
+                    // 深度/节点数守卫 + 缺失 id 补全
+                    let mut root = root;
+                    let mut counter: usize = 0;
+                    Self::validate_and_fill_json_import_node(
+                        &mut root,
+                        0,
+                        &mut stats,
+                        &mut counter,
+                    )?;
+                    let associations = parsed
+                        .get("associations")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+                    (root, associations, "json")
+                }
+                // "markdown" | "text"
+                _ => {
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    let root =
+                        Self::parse_outline_text_to_mindmap(&text, &fallback_title, &mut stats)?;
+                    (
+                        root,
+                        Vec::new(),
+                        if detected == "text" {
+                            "text"
+                        } else {
+                            "markdown"
+                        },
+                    )
+                }
+            };
+
+        // 5. 组装 MindMapDocument 并复用 create 修复/校验路径
+        //    （fix_mindmap_content 会归一化字段并过滤非法关联线）
+        let title = custom_title.unwrap_or_else(|| {
+            root.get("text")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| fallback_title.clone())
+        });
+        let mut doc = json!({
+            "version": "1.0",
+            "root": root,
+            "meta": { "createdAt": chrono::Utc::now().to_rfc3339() },
+        });
+        if !associations.is_empty() {
+            doc["associations"] = json!(associations);
+        }
+        let content = Self::fix_mindmap_content(&doc.to_string());
+        // 关联线经 fix 过滤后重新计数（如实上报）
+        let association_count = serde_json::from_str::<Value>(&content)
+            .ok()
+            .and_then(|v| {
+                v.get("associations")
+                    .and_then(|a| a.as_array())
+                    .map(|a| a.len())
+            })
+            .unwrap_or(0);
+
+        log::info!(
+            "[BuiltinResourceExecutor] mindmap_import: resource={}, format={}, nodes={}, associations={}",
+            raw_resource_id,
+            resolved_format,
+            stats.node_count,
+            association_count
+        );
+
+        // 6. 复用 mindmap_create 的落库路径
+        let params = VfsCreateMindMapParams {
+            title: title.clone(),
+            description: None,
+            content,
+            default_view: "mindmap".to_string(),
+            theme: None,
+        };
+        let mindmap = VfsMindMapRepo::create_mindmap_in_folder(vfs_db, params, folder_id)
+            .map_err(|e| format!("Failed to create mindmap from import: {}", e))?;
+
+        // 发射 DSTU watch 事件，通知 Learning Hub 自动刷新列表
+        {
+            let node = mindmap_to_dstu_node(&mindmap);
+            emit_watch_event(
+                ctx.window_ref(),
+                DstuWatchEvent::created(&node.path, node.clone()),
+            );
+        }
+
+        // 初始版本快照 → versionId 供 LLM 引用（与 mindmap_create 一致）
+        let version_id = match VfsMindMapRepo::get_mindmap_content(vfs_db, &mindmap.id) {
+            Ok(Some(initial_content)) => {
+                match VfsMindMapRepo::create_version(
+                    vfs_db,
+                    &mindmap.id,
+                    &initial_content,
+                    &mindmap.title,
+                    None,
+                    Some("chat_create"),
+                ) {
+                    Ok(version) => Some(version.version_id),
+                    Err(e) => {
+                        log::warn!(
+                            "[BuiltinResourceExecutor] Failed to create initial version for imported mindmap {}: {}",
+                            mindmap.id, e
+                        );
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+
+        let duration = start_time.elapsed().as_millis() as u64;
+
+        log::info!(
+            "[BuiltinResourceExecutor] mindmap_import completed: id={} in {}ms",
+            mindmap.id,
+            duration
+        );
+
+        let mut result = json!({
+            "success": true,
+            "mindmap": {
+                "id": mindmap.id,
+                "title": mindmap.title,
+                "description": mindmap.description,
+                "defaultView": mindmap.default_view,
+                "theme": mindmap.theme,
+                "createdAt": mindmap.created_at,
+                "updatedAt": mindmap.updated_at,
+            },
+            "importStats": {
+                "format": resolved_format,
+                "sourceFileName": file.file_name,
+                "nodeCount": stats.node_count,
+                "associationCount": association_count,
+                "droppedImages": stats.dropped_images,
+                "droppedSummaries": stats.dropped_summaries,
+                "droppedBoundaries": stats.dropped_boundaries,
+                "droppedHyperlinks": stats.dropped_hyperlinks,
+            },
+            "notice": "样式/主题/图片等信息不导入；请根据 importStats 如实向用户汇报被忽略的内容。",
+            "durationMs": duration,
+        });
+
+        if let Some(ref vid) = version_id {
+            result["versionId"] = json!(vid);
+            result["citation"] = json!(format!("[思维导图:{}:{}]", vid, title));
+            result["hint"] =
+                json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看导图。");
+        }
+
+        Ok(result)
+    }
+
+    /// JSON 导入：递归校验深度/节点数并补全缺失的节点 id
+    fn validate_and_fill_json_import_node(
+        node: &mut Value,
+        depth: usize,
+        stats: &mut MindMapImportStats,
+        counter: &mut usize,
+    ) -> Result<(), String> {
+        Self::mindmap_import_claim_node(stats, depth)?;
+        let obj = node
+            .as_object_mut()
+            .ok_or_else(|| "无效的导图 JSON：节点必须是对象".to_string())?;
+        let has_valid_id = obj
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+        if !has_valid_id {
+            let assigned = if depth == 0 {
+                "root".to_string()
+            } else {
+                Self::mindmap_import_alloc_id(counter, false)
+            };
+            obj.insert("id".to_string(), json!(assigned));
+        }
+        if let Some(children) = obj.get_mut("children").and_then(|v| v.as_array_mut()) {
+            for child in children.iter_mut() {
+                Self::validate_and_fill_json_import_node(child, depth + 1, stats, counter)?;
+            }
+        }
+        Ok(())
+    }
+
+    // ========================================================================
     // 细粒度节点编辑 — execute_mindmap_edit_nodes + 辅助方法
     // ========================================================================
 
     /// 执行细粒度节点编辑
     ///
     /// 支持批量操作：update_node / add_node / delete_node / move_node
-    /// 无需传入完整 JSON，比 mindmap_update 更高效
+    /// 无需传入完整 JSON，比 mindmap_update 更高效。
+    ///
+    /// ACR R1-05：开窗且 probe∈{clean,dirty,hot} 时委托前端 apply_ops 实时演出；
+    /// closed/frozen/disabled 或桥错误回落既有 OCC 后端路径。
+    /// 设计文档：`docs/dev/acr/DESIGN.md` §1.1 / §5.1
     async fn execute_mindmap_edit_nodes(
         &self,
         call: &ToolCall,
@@ -2508,7 +4160,19 @@ impl BuiltinResourceExecutor {
         let operations = get_json_array_arg(&call.arguments, "operations")
             .ok_or("Missing or invalid 'operations' parameter (expected array)")?;
 
-        if operations.is_empty() {
+        // ★ P3：可选顶层 associations —— 整体替换文档级关联线（[] 清除；不传保持现状）
+        let associations_arg: Option<Vec<Value>> = match call.arguments.get("associations") {
+            None | Some(Value::Null) => None,
+            Some(Value::Array(items)) => Some(items.clone()),
+            Some(_) => {
+                return Err(
+                    "Invalid 'associations' parameter: expected an array of {source, target, label?} objects"
+                        .to_string(),
+                );
+            }
+        };
+
+        if operations.is_empty() && associations_arg.is_none() {
             return Ok(json!({
                 "success": true,
                 "appliedCount": 0,
@@ -2517,10 +4181,21 @@ impl BuiltinResourceExecutor {
         }
 
         log::info!(
-            "[BuiltinResourceExecutor] mindmap_edit_nodes: id={}, ops={}",
+            "[BuiltinResourceExecutor] mindmap_edit_nodes: id={}, ops={}, associations={:?}",
             mindmap_id,
-            operations.len()
+            operations.len(),
+            associations_arg.as_ref().map(|a| a.len())
         );
+
+        // ★ ACR R1-05：probe → 可委托则 apply_ops；否则回落后端。
+        // 携带 associations 时前端 apply_ops 协议不含该操作，直接走后端路径。
+        if associations_arg.is_none() {
+            if let Some(frontend_result) =
+                Self::try_mindmap_edit_via_acr(ctx, mindmap_id, &operations).await
+            {
+                return frontend_result;
+            }
+        }
 
         let start_time = Instant::now();
 
@@ -2569,8 +4244,21 @@ impl BuiltinResourceExecutor {
             }
         }
 
+        // 3.5 ★ P3：应用顶层 associations（整体替换 + 端点存在性校验）
+        let mut associations_updated = false;
+        if let Some(new_associations) = associations_arg {
+            if let Some(obj) = doc.as_object_mut() {
+                obj.insert("associations".to_string(), Value::Array(new_associations));
+                // 复用统一校验：过滤端点不存在/自指的连线，补全缺失 id
+                Self::sanitize_mindmap_associations(&mut doc);
+                associations_updated = true;
+            } else {
+                errors.push("associations failed: mindmap document is not an object".to_string());
+            }
+        }
+
         // 4. 保存修改后的内容（乐观并发控制）
-        if applied > 0 {
+        if applied > 0 || associations_updated {
             let new_content = doc.to_string();
 
             let params = VfsUpdateMindMapParams {
@@ -2591,7 +4279,7 @@ impl BuiltinResourceExecutor {
             {
                 let node = mindmap_to_dstu_node(&updated_mindmap);
                 emit_watch_event(
-                    &ctx.window,
+                    ctx.window_ref(),
                     DstuWatchEvent::updated(&node.path, node.clone()),
                 );
             }
@@ -2611,7 +4299,13 @@ impl BuiltinResourceExecutor {
             "success": errors.is_empty(),
             "appliedCount": applied,
             "totalOperations": total,
+            "associationsUpdated": associations_updated,
             "durationMs": duration,
+            // ACR R1-05：回落平面说明（STANDARDS §4 降级不可静默；对齐 R1-03）
+            "mode": "backend",
+            "plane": "backend",
+            "delegated": false,
+            "message": "导图未打开/桌面未就绪，已直接写入后端（OCC + 版本快照）",
         });
 
         if !errors.is_empty() {
@@ -2619,43 +4313,417 @@ impl BuiltinResourceExecutor {
         }
 
         // ★ 2026-02-13：为编辑后的新内容创建版本快照，返回 versionId 供 LLM 在引用中使用
-        if applied > 0 {
-            match VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
-                Ok(Some(new_content)) => {
-                    // 获取当前标题
-                    let title = VfsMindMapRepo::get_mindmap(vfs_db, mindmap_id)
-                        .ok()
-                        .flatten()
-                        .map(|m| m.title)
-                        .unwrap_or_else(|| "思维导图".to_string());
+        if applied > 0 || associations_updated {
+            if let Ok(Some(new_content)) = VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
+                // 获取当前标题
+                let title = VfsMindMapRepo::get_mindmap(vfs_db, mindmap_id)
+                    .ok()
+                    .flatten()
+                    .map(|m| m.title)
+                    .unwrap_or_else(|| "思维导图".to_string());
 
-                    match VfsMindMapRepo::create_version(
-                        vfs_db,
-                        mindmap_id,
-                        &new_content,
-                        &title,
-                        None,
-                        Some("chat_edit_nodes"),
-                    ) {
-                        Ok(version) => {
-                            result["versionId"] = json!(version.version_id);
-                            result["citation"] =
-                                json!(format!("[思维导图:{}:{}]", version.version_id, title));
-                            result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看编辑后的导图。");
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[BuiltinResourceExecutor] Failed to create post-edit version for mindmap {}: {}",
-                                mindmap_id, e
-                            );
-                        }
+                match VfsMindMapRepo::create_version(
+                    vfs_db,
+                    mindmap_id,
+                    &new_content,
+                    &title,
+                    None,
+                    Some("chat_edit_nodes"),
+                ) {
+                    Ok(version) => {
+                        result["versionId"] = json!(version.version_id);
+                        result["citation"] =
+                            json!(format!("[思维导图:{}:{}]", version.version_id, title));
+                        result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看编辑后的导图。");
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[BuiltinResourceExecutor] Failed to create post-edit version for mindmap {}: {}",
+                            mindmap_id, e
+                        );
                     }
                 }
-                _ => {}
             }
         }
 
         Ok(result)
+    }
+
+    /// ACR R1-05：probe 后尝试前端委托；返回 `Some` 表示已处理（含失败回执），
+    /// `None` 表示应回落既有后端 OCC 路径。
+    async fn try_mindmap_edit_via_acr(
+        ctx: &ExecutionContext,
+        mindmap_id: &str,
+        operations: &[Value],
+    ) -> Option<Result<Value, String>> {
+        match is_workbench_agent_delegation_enabled(ctx).await {
+            Ok(true) => {}
+            Ok(false) => {
+                log::debug!(
+                    "[BuiltinResourceExecutor] mindmap ACR dual gate disabled; use backend data plane"
+                );
+                return None;
+            }
+            Err(error) => {
+                log::warn!(
+                    "[BuiltinResourceExecutor] mindmap ACR dual gate unavailable; fail closed to backend: {}",
+                    error
+                );
+                return None;
+            }
+        }
+
+        let probe_args = json!({
+            "target": {
+                "typeId": "mindmap",
+                "resourceId": mindmap_id,
+            }
+        });
+
+        let probe_resp = match acr_bridge_call(ctx, "probe", probe_args, PROBE_TIMEOUT_MS).await {
+            Ok(resp) => resp,
+            Err(e) if is_bridge_cancelled(&e) => {
+                // R2-01：取消禁止回落后端双写
+                return Some(Ok(json!({
+                    "status": "cancelled",
+                    "mode": "frontend",
+                    "applied": 0,
+                    "totalOps": operations.len(),
+                    "entityIds": [mindmap_id],
+                    "done": [],
+                    "undone": operations.iter().map(|_| "cancelled before probe").collect::<Vec<_>>(),
+                    "message": "用户取消；未写入。请根据 done/undone 继续，勿原样重试。",
+                    "plane": "frontend",
+                    "delegated": true,
+                })));
+            }
+            Err(e) => {
+                log::info!(
+                    "[BuiltinResourceExecutor] mindmap ACR probe bridge error, fallback backend: {}",
+                    e
+                );
+                return None;
+            }
+        };
+
+        if !probe_resp.ok {
+            log::info!(
+                "[BuiltinResourceExecutor] mindmap ACR probe not ok, fallback backend: {:?}",
+                probe_resp.error
+            );
+            return None;
+        }
+
+        let state = probe_resp
+            .data
+            .as_ref()
+            .and_then(|d| d.get("state"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let probe_window_id = probe_resp
+            .data
+            .as_ref()
+            .and_then(|data| data.get("windowId"))
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string);
+
+        match state {
+            "clean" | "dirty" | "hot" => {}
+            "closed" | "frozen" | "disabled" | "" => {
+                log::info!(
+                    "[BuiltinResourceExecutor] mindmap ACR probe state='{}', fallback backend",
+                    state
+                );
+                return None;
+            }
+            other => {
+                log::info!(
+                    "[BuiltinResourceExecutor] mindmap ACR probe unknown state='{}', fallback backend",
+                    other
+                );
+                return None;
+            }
+        }
+        let Some(probe_window_id) = probe_window_id else {
+            log::warn!(
+                "[BuiltinResourceExecutor] mindmap probe eligible but missing exact windowId"
+            );
+            return Some(Err(json!({
+                "code": "BRIDGE_PROTOCOL_ERROR",
+                "message": "mindmap probe 未返回精确 windowId",
+                "hint": "重新 probe；不得对同资源的其他窗口粗粒度委托",
+                "retryable": false,
+            })
+            .to_string()));
+        };
+
+        if ctx.is_cancelled() {
+            return Some(Ok(json!({
+                "status": "cancelled",
+                "mode": "frontend",
+                "applied": 0,
+                "totalOps": operations.len(),
+                "entityIds": [mindmap_id],
+                "done": [],
+                "undone": operations.iter().map(|_| "cancelled before apply_ops submission").collect::<Vec<_>>(),
+                "message": "用户在提交写入前取消；未改动导图，不可自动重试。",
+                "retryable": false,
+                "plane": "frontend",
+                "delegated": true,
+            })));
+        }
+
+        let ops: Vec<Value> = operations
+            .iter()
+            .map(Self::mindmap_operation_to_agent_op)
+            .collect();
+        let destructive = ops.iter().any(|op| {
+            op.get("destructive")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        });
+
+        let apply_args = json!({
+            "target": {
+                "typeId": "mindmap",
+                "resourceId": mindmap_id,
+                "windowId": probe_window_id,
+            },
+            "ops": ops,
+            "pacing": "normal",
+            "destructive": destructive,
+        });
+
+        // R2-01：DESIGN §6 — 30s + N×pacing，clamp ≤120s（取代固定 60s）
+        let apply_timeout = apply_ops_timeout_ms(ops.len(), Some("normal"));
+        let apply_resp = match acr_bridge_call(ctx, "apply_ops", apply_args, apply_timeout).await {
+            Ok(resp) => resp,
+            // apply_ops 已提交后不能伪造 applied=0；取消先由桥层有界
+            // drain 权威终态，无回执时与其他桥故障一样返回 resultUnknown。
+            Err(e) => {
+                log::warn!(
+                    "[BuiltinResourceExecutor] mindmap ACR apply_ops bridge error; no backend fallback: {}",
+                    e
+                );
+                let labels = ops
+                    .iter()
+                    .map(|op| {
+                        op.get("label")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("op")
+                            .to_string()
+                    })
+                    .collect();
+                return Some(Ok(uncertain_apply_receipt(
+                    vec![mindmap_id.to_string()],
+                    labels,
+                    &e,
+                )));
+            }
+        };
+
+        if !apply_resp.ok {
+            let error = apply_resp
+                .error
+                .unwrap_or_else(|| "ACR apply_ops returned ok=false".to_string());
+            log::warn!(
+                "[BuiltinResourceExecutor] mindmap ACR apply_ops not ok; no backend fallback: {}",
+                error
+            );
+            if serde_json::from_str::<Value>(&error)
+                .ok()
+                .and_then(|value| value.get("code").cloned())
+                .is_some()
+            {
+                return Some(Err(error));
+            }
+            let labels = ops
+                .iter()
+                .map(|op| {
+                    op.get("label")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("op")
+                        .to_string()
+                })
+                .collect();
+            return Some(Ok(uncertain_apply_receipt(
+                vec![mindmap_id.to_string()],
+                labels,
+                &error,
+            )));
+        }
+
+        let receipt_labels = || {
+            ops.iter()
+                .map(|op| {
+                    op.get("label")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("op")
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+        };
+        let Some(mut receipt) = apply_resp.data else {
+            return Some(Ok(uncertain_apply_receipt(
+                vec![mindmap_id.to_string()],
+                receipt_labels(),
+                "ACR apply_ops returned no receipt",
+            )));
+        };
+        if !is_valid_apply_receipt(&receipt) {
+            return Some(Ok(uncertain_apply_receipt(
+                vec![mindmap_id.to_string()],
+                receipt_labels(),
+                "ACR apply_ops returned malformed receipt",
+            )));
+        }
+
+        if let Some(obj) = receipt.as_object_mut() {
+            // ACR R2-02：suggestion 模式勿改写成 frontend/成功落盘语义
+            let mode = obj
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let suggestion_pending = obj
+                .get("suggestionPending")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+                || mode == "suggestion";
+
+            if suggestion_pending {
+                obj.insert("mode".to_string(), json!("suggestion"));
+                obj.insert("plane".to_string(), json!("suggestion"));
+                obj.insert("delegated".to_string(), json!(true));
+                // 未改文档：success 仍 true（工具协议完成），LLM 看 suggestionPending
+                obj.insert("success".to_string(), json!(true));
+                let msg = obj
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if msg.is_empty() {
+                    obj.insert(
+                        "message".to_string(),
+                        json!(
+                            "存在未保存编辑，已提交建议（未改文档）；请等待用户空闲或改走后端路径"
+                        ),
+                    );
+                }
+            } else {
+                obj.entry("mode".to_string())
+                    .or_insert_with(|| json!("frontend"));
+                let msg = obj
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if msg.is_empty() {
+                    obj.insert(
+                        "message".to_string(),
+                        json!("已在前端导图窗口实时应用并自动保存（debounceSave + OCC）"),
+                    );
+                } else if !msg.contains("自动保存") && !msg.contains("实时") {
+                    obj.insert(
+                        "message".to_string(),
+                        json!(format!("{}（前端实时应用 + 自动保存）", msg)),
+                    );
+                }
+                obj.insert("success".to_string(), json!(true));
+                obj.insert("delegated".to_string(), json!(true));
+                obj.insert("plane".to_string(), json!("frontend"));
+            }
+        }
+
+        log::info!(
+            "[BuiltinResourceExecutor] mindmap_edit_nodes delegated to frontend: id={}, ops={}",
+            mindmap_id,
+            operations.len()
+        );
+
+        Some(Ok(receipt))
+    }
+
+    /// 将 mindmap_edit_nodes 的单条 operation 转为冻结 AgentOp（DESIGN §2.3）
+    fn mindmap_operation_to_agent_op(op: &Value) -> Value {
+        let kind = op
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let destructive = matches!(kind.as_str(), "delete_node" | "move_node");
+        let label = Self::mindmap_op_label(op, &kind);
+
+        // anchor：定位信息原样放入（node_id / parent_id / new_parent_id）
+        let mut anchor = serde_json::Map::new();
+        for key in ["node_id", "parent_id", "new_parent_id"] {
+            if let Some(v) = op.get(key) {
+                if !v.is_null() {
+                    anchor.insert(key.to_string(), v.clone());
+                }
+            }
+        }
+
+        // payload：patch / data / index 等变更内容
+        let mut payload = serde_json::Map::new();
+        for key in ["patch", "data", "index"] {
+            if let Some(v) = op.get(key) {
+                if !v.is_null() {
+                    payload.insert(key.to_string(), v.clone());
+                }
+            }
+        }
+
+        json!({
+            "kind": kind,
+            "anchor": if anchor.is_empty() { Value::Null } else { Value::Object(anchor) },
+            "payload": Value::Object(payload),
+            "destructive": destructive,
+            "label": label,
+        })
+    }
+
+    /// 生成中文步骤名（progress / done 列表用）
+    fn mindmap_op_label(op: &Value, kind: &str) -> String {
+        match kind {
+            "add_node" => {
+                let text = op
+                    .get("data")
+                    .and_then(|d| d.get("text"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("新节点");
+                let short = safe_truncate_chars(text, 24);
+                format!("添加节点「{}」", short)
+            }
+            "update_node" => {
+                let id = op.get("node_id").and_then(|v| v.as_str()).unwrap_or("?");
+                if let Some(text) = op
+                    .get("patch")
+                    .and_then(|p| p.get("text"))
+                    .and_then(|v| v.as_str())
+                {
+                    let short = safe_truncate_chars(text, 24);
+                    format!("更新节点「{}」", short)
+                } else {
+                    format!("更新节点 {}", id)
+                }
+            }
+            "delete_node" => {
+                let id = op.get("node_id").and_then(|v| v.as_str()).unwrap_or("?");
+                format!("删除节点 {}", id)
+            }
+            "move_node" => {
+                let id = op.get("node_id").and_then(|v| v.as_str()).unwrap_or("?");
+                let parent = op
+                    .get("new_parent_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                format!("移动节点 {} → {}", id, parent)
+            }
+            other => format!("导图操作 {}", other),
+        }
     }
 
     /// 列出思维导图版本
@@ -3268,7 +5336,10 @@ impl BuiltinResourceExecutor {
     /// id 冲突时重新生成（LLM 多轮编辑常复制旧节点 JSON 再 add，会带来重复 id，
     /// 破坏前端 findNodeById / React key 的唯一性假设）。`existing` 随新分配的 id
     /// 一起增长，避免新子树内部自冲突。
-    fn ensure_unique_subtree_ids(node: &mut Value, existing: &mut std::collections::HashSet<String>) {
+    fn ensure_unique_subtree_ids(
+        node: &mut Value,
+        existing: &mut std::collections::HashSet<String>,
+    ) {
         let current = node
             .get("id")
             .and_then(|v| v.as_str())
@@ -3319,6 +5390,7 @@ impl ToolExecutor for BuiltinResourceExecutor {
                 | "mindmap_edit_nodes"
                 | "mindmap_versions"
                 | "mindmap_diff_versions"
+                | "mindmap_import"
         )
     }
 
@@ -3350,6 +5422,7 @@ impl ToolExecutor for BuiltinResourceExecutor {
             "mindmap_edit_nodes" => self.execute_mindmap_edit_nodes(call, ctx).await,
             "mindmap_versions" => self.execute_mindmap_versions(call, ctx).await,
             "mindmap_diff_versions" => self.execute_mindmap_diff_versions(call, ctx).await,
+            "mindmap_import" => self.execute_mindmap_import(call, ctx).await,
             _ => Err(format!("Unknown builtin resource tool: {}", tool_name)),
         };
 
@@ -3420,7 +5493,9 @@ impl ToolExecutor for BuiltinResourceExecutor {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
             // 删除操作是破坏性的，需要更高敏感度
-            "mindmap_delete" => ToolSensitivity::High,
+            // mindmap_edit_nodes 可混入 delete_node/move_node；当前审批契约只按
+            // 工具名分级，因此整个混合工具 fail-closed 提升到 High。
+            "mindmap_delete" | "mindmap_edit_nodes" => ToolSensitivity::High,
             // ★ 2026-02-09: mindmap_update 降为 Low
             // 理由：用户主动让 AI 更新导图，且已有乐观并发控制（expected_updated_at）保护
             // ★ 2026-02-09: resource_read/resource_search 降为 Low
@@ -3430,6 +5505,22 @@ impl ToolExecutor for BuiltinResourceExecutor {
             // 其他操作是只读或创建/更新，低敏感
             _ => ToolSensitivity::Low,
         }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        let stripped = strip_tool_namespace(tool_name);
+        match stripped {
+            // 读类工具：纯只读 VFS 查询，可并行 + 自动重试
+            "resource_list" | "resource_read" | "resource_search" | "folder_list" => {
+                ToolConcurrency::ReadOnly
+            }
+            // mindmap_* 含创建/更新/删除等写操作，保持串行（默认）
+            _ => ToolConcurrency::Serial,
+        }
+    }
+
+    fn manages_cancellation(&self, tool_name: &str) -> bool {
+        strip_tool_namespace(tool_name) == "mindmap_edit_nodes"
     }
 
     fn name(&self) -> &'static str {
@@ -3460,6 +5551,7 @@ mod tests {
         assert!(executor.can_handle("builtin-mindmap_delete"));
         assert!(executor.can_handle("builtin-mindmap_versions"));
         assert!(executor.can_handle("builtin-mindmap_diff_versions"));
+        assert!(executor.can_handle("builtin-mindmap_import"));
 
         // 不处理其他 builtin 工具
         assert!(!executor.can_handle("builtin-rag_search"));
@@ -3643,6 +5735,12 @@ mod tests {
             executor.sensitivity_level("builtin-mindmap_delete"),
             ToolSensitivity::High
         );
+        assert_eq!(
+            executor.sensitivity_level("builtin-mindmap_edit_nodes"),
+            ToolSensitivity::High
+        );
+        assert!(executor.manages_cancellation("builtin-mindmap_edit_nodes"));
+        assert!(!executor.manages_cancellation("builtin-resource_read"));
     }
 
     /// ★ M-062: 验证 essay 节点的敏感字段被正确移除
@@ -3733,6 +5831,74 @@ mod tests {
             note_meta.get("isFavorite").and_then(|v| v.as_bool()),
             Some(false),
             "note isFavorite should be preserved"
+        );
+    }
+
+    /// ACR R1-05：operations → AgentOp 转换形状（供 R1-11 对齐）
+    #[test]
+    fn mindmap_operation_to_agent_op_shapes() {
+        let add = json!({
+            "type": "add_node",
+            "parent_id": "n1",
+            "data": { "text": "新子节点" },
+            "index": 0
+        });
+        let add_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&add);
+        assert_eq!(add_op["kind"], "add_node");
+        assert_eq!(add_op["destructive"], false);
+        assert_eq!(add_op["anchor"]["parent_id"], "n1");
+        assert_eq!(add_op["payload"]["data"]["text"], "新子节点");
+        assert_eq!(add_op["payload"]["index"], 0);
+        assert!(add_op["label"].as_str().unwrap().contains("添加节点"));
+
+        let update = json!({
+            "type": "update_node",
+            "node_id": "n2",
+            "patch": { "text": "改名", "completed": true }
+        });
+        let update_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&update);
+        assert_eq!(update_op["kind"], "update_node");
+        assert_eq!(update_op["destructive"], false);
+        assert_eq!(update_op["anchor"]["node_id"], "n2");
+        assert_eq!(update_op["payload"]["patch"]["text"], "改名");
+        assert!(update_op["anchor"].get("parent_id").is_none());
+
+        let delete = json!({
+            "type": "delete_node",
+            "node_id": "n3"
+        });
+        let delete_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&delete);
+        assert_eq!(delete_op["kind"], "delete_node");
+        assert_eq!(delete_op["destructive"], true);
+        assert_eq!(delete_op["anchor"]["node_id"], "n3");
+        assert!(delete_op["payload"].as_object().unwrap().is_empty());
+
+        let move_op_src = json!({
+            "type": "move_node",
+            "node_id": "n4",
+            "new_parent_id": "n5",
+            "index": 2
+        });
+        let move_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&move_op_src);
+        assert_eq!(move_op["kind"], "move_node");
+        assert_eq!(move_op["destructive"], true);
+        assert_eq!(move_op["anchor"]["node_id"], "n4");
+        assert_eq!(move_op["anchor"]["new_parent_id"], "n5");
+        assert_eq!(move_op["payload"]["index"], 2);
+        assert!(move_op["label"].as_str().unwrap().contains("移动节点"));
+    }
+
+    #[test]
+    fn mindmap_op_label_chinese() {
+        let add = json!({ "type": "add_node", "data": { "text": "光合作用" } });
+        assert_eq!(
+            BuiltinResourceExecutor::mindmap_op_label(&add, "add_node"),
+            "添加节点「光合作用」"
+        );
+        let del = json!({ "type": "delete_node", "node_id": "abc" });
+        assert_eq!(
+            BuiltinResourceExecutor::mindmap_op_label(&del, "delete_node"),
+            "删除节点 abc"
         );
     }
 }

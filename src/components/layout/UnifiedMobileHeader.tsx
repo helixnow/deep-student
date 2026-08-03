@@ -8,19 +8,25 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { CaretLeft, List } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { CaretLeft, CaretRight, List } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeaderContextSafe } from './MobileHeaderContext';
-import { isAndroid } from '@/utils/platform';
+import { isMobilePlatform } from '@/utils/platform';
 
 export interface UnifiedMobileHeaderProps {
   /** 是否可以返回（有历史记录） */
   canGoBack?: boolean;
   /** 返回回调 */
   onBack?: () => void;
+  /** 是否可以前进（回退后产生的前向历史） */
+  canGoForward?: boolean;
+  /** 前进回调 */
+  onForward?: () => void;
   /** 额外的 className */
   className?: string;
+  /** 额外的内联样式（App.tsx 用于传入 Z_INDEX token 等，避免类名魔法数） */
+  style?: React.CSSProperties;
   /** D-1: 当前视图未注册 useMobileHeader 时的兜底标题（取导航标签），避免顶栏空白 */
   fallbackTitle?: string;
 }
@@ -28,12 +34,25 @@ export interface UnifiedMobileHeaderProps {
 export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   canGoBack = false,
   onBack,
+  canGoForward = false,
+  onForward,
   className,
+  style,
   fallbackTitle,
 }) => {
   const { t } = useTranslation(['common']);
   const ctx = useMobileHeaderContextSafe();
-  const config = ctx?.config ?? { title: '', titleNode: undefined, subtitle: undefined, rightActions: undefined, showMenu: false, onMenuClick: undefined, showBackArrow: false, suppressGlobalBackButton: false };
+  const config = ctx?.config ?? {
+    title: '',
+    titleNode: undefined,
+    subtitle: undefined,
+    rightActions: undefined,
+    showMenu: false,
+    floatingMenuButton: false,
+    onMenuClick: undefined,
+    showBackArrow: false,
+    suppressGlobalBackButton: false,
+  };
 
   if (config.hidden) {
     return null;
@@ -45,30 +64,74 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   // 3. canGoBack - 显示全局返回按钮
   const showBackArrowButton = config.showBackArrow && config.onMenuClick;
   const showMenuButton = !showBackArrowButton && config.showMenu && config.onMenuClick;
-  const showBackButton = !config.suppressGlobalBackButton && !showBackArrowButton && !showMenuButton && canGoBack;
+  const showGlobalNavigation =
+    !config.suppressGlobalBackButton && !showBackArrowButton && !showMenuButton;
+  const showBackButton = showGlobalNavigation && canGoBack && Boolean(onBack);
+  // 进入全局历史导航语境后保留前进按钮槽位：后退产生前向历史时按钮只切换
+  // disabled，不再让标题和右侧操作横向跳动。页内返回箭头/菜单模式仍不显示。
+  const showForwardButton =
+    showGlobalNavigation && Boolean(onForward) && (showBackButton || canGoForward);
+
+  if (config.floatingMenuButton && showMenuButton) {
+    return (
+      <div
+        data-mobile-shell="floating-sidebar-trigger"
+        className={cn(
+          "pointer-events-none flex w-full items-start justify-start px-3",
+          className
+        )}
+        style={{
+          paddingTop: 'calc(var(--mobile-safe-area-top, 0px) + 0.375rem)',
+          paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+          paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
+          ...style,
+        }}
+      >
+        <DsButton
+          variant="ghost"
+          size="icon"
+          onClick={config.onMenuClick}
+          className={cn(shellIconButtonClassName, 'pointer-events-auto')}
+          data-mobile-floating-menu-button
+          aria-label={t('common:mobile_header.open_sidebar')}
+        >
+          <List size={21} weight="regular" />
+        </DsButton>
+      </div>
+    );
+  }
 
   return (
     <header
-      // Android WebView 上 data-tauri-drag-region 会干扰触摸点击事件，因此不设置
-      {...(!isAndroid() ? { 'data-tauri-drag-region': true } : {})}
+      // 移动平台（Android/iOS）上 data-tauri-drag-region 会干扰触摸点击事件，
+      // 且移动端本无窗口拖拽需求；仅桌面窄窗口场景保留拖拽区
+      {...(!isMobilePlatform() ? { 'data-tauri-drag-region': true } : {})}
       data-mobile-shell="header"
       className={cn(
         // 基础布局
         "flex w-full flex-shrink-0 items-center gap-2 px-3",
-        // 样式
-        "border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)]/95 backdrop-blur-md",
+        // 样式 — 不用 backdrop-blur，避免与下方工具栏/遮罩叠出「顶栏阴影」
+        "mobile-shell-header border-b border-transparent bg-transparent shadow-none",
         className
       )}
       style={{
         paddingTop: 'var(--mobile-safe-area-top, 0px)',
+        // 横屏刘海/挖孔机型：左右叠加安全区（px-3 = 12px 基础内边距）
+        paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+        paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
         height: 'var(--mobile-header-total-height, 56px)',
         minHeight: 'var(--mobile-header-total-height, 56px)',
+        ...style,
       }}
     >
       {/* 左侧：返回箭头、菜单按钮或全局返回按钮 */}
-      <div className="flex min-w-[var(--touch-target-size)] items-center lg:min-w-10">
+      <nav
+        className="flex min-w-[var(--touch-target-size)] shrink-0 items-center lg:min-w-10"
+        aria-label={t('common:navigation_label')}
+        data-no-drag
+      >
         {showBackArrowButton && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={config.onMenuClick}
@@ -76,21 +139,21 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             aria-label={t('common:mobile_header.back')}
           >
             <CaretLeft size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
         {showMenuButton && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={config.onMenuClick}
             className={shellIconButtonClassName}
-            aria-label={t('common:mobile_header.open_sidebar', '展开侧边栏')}
+            aria-label={t('common:mobile_header.open_sidebar')}
           >
             <List size={21} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
         {showBackButton && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onBack}
@@ -98,9 +161,21 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             aria-label={t('common:mobile_header.back')}
           >
             <CaretLeft size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
-      </div>
+        {showForwardButton && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            onClick={onForward}
+            disabled={!canGoForward}
+            className={cn(shellIconButtonClassName, showBackButton ? '-ml-0.5' : '-ml-1')}
+            aria-label={t('common:mobile_header.forward')}
+          >
+            <CaretRight size={20} weight="regular" />
+          </DsButton>
+        )}
+      </nav>
 
       {/* 中间：标题区域 */}
       <div className="flex-1 min-w-0 flex flex-col items-center justify-center overflow-hidden">
@@ -119,8 +194,11 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         )}
       </div>
 
-      {/* 右侧：操作按钮 */}
-      <div className="flex min-w-[var(--touch-target-size)] items-center justify-end gap-1">
+      {/* 右侧：操作按钮。
+          约定：≤2 个动作（每个 ≥44px 触控目标）。头部无溢出收纳机制，
+          超过 2 个会挤压中间标题区并在 320-375px 窄屏溢出；
+          更多动作请收进页面内的「更多」菜单，而不是继续往这里塞。 */}
+      <div className="flex min-w-[var(--touch-target-size)] shrink-0 items-center justify-end gap-1" data-no-drag>
         {config.rightActions}
       </div>
     </header>

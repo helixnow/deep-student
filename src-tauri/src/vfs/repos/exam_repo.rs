@@ -527,10 +527,7 @@ impl VfsExamRepo {
             Err(e) => {
                 let _ = conn.execute("ROLLBACK TO copy_exam", []);
                 let _ = conn.execute("RELEASE copy_exam", []);
-                log::error!(
-                    "[VFS::ExamRepo] Failed to copy exam {}: {}",
-                    src_exam_id, e
-                );
+                log::error!("[VFS::ExamRepo] Failed to copy exam {}: {}", src_exam_id, e);
                 Err(e)
             }
         }
@@ -860,10 +857,9 @@ impl VfsExamRepo {
         let conn = db.get_conn_safe()?;
         Self::purge_exam_sheet_with_conn(&conn, db.blobs_dir(), exam_id)?;
         // ★ 2026-06-12（审阅问题 S4）：事务提交后清扫 ref_count=0 的 blob
-        if let Err(e) = super::blob_repo::VfsBlobRepo::cleanup_unreferenced_with_conn(
-            &conn,
-            db.blobs_dir(),
-        ) {
+        if let Err(e) =
+            super::blob_repo::VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir())
+        {
             warn!(
                 "[VFS::ExamRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
                 e
@@ -1281,6 +1277,86 @@ impl VfsExamRepo {
 
         info!("[VFS::ExamRepo] Updated preview_json for exam {}", exam_id);
         Ok(())
+    }
+
+    /// ACR 4.0 P1：带乐观并发校验（OCC）的 preview_json 更新。
+    ///
+    /// 仅当 `updated_at` 仍等于调用方读取时的 `expected_updated_at` 才写入
+    /// （沿用 questions 表写路径的 revision/updated_at 比对模式）。
+    /// 返回 `Ok(false)` 表示基线已过期（并发修改），调用方应返回结构化 CONFLICT。
+    pub fn update_preview_json_if_unchanged(
+        db: &VfsDatabase,
+        exam_id: &str,
+        preview_json: Value,
+        expected_updated_at: &str,
+    ) -> VfsResult<bool> {
+        let conn = db.get_conn_safe()?;
+        Self::update_preview_json_with_conn_if_unchanged(
+            &conn,
+            exam_id,
+            preview_json,
+            expected_updated_at,
+        )
+    }
+
+    /// 带 OCC 的 preview_json 更新（使用现有连接）；语义见 `update_preview_json_if_unchanged`。
+    pub fn update_preview_json_with_conn_if_unchanged(
+        conn: &Connection,
+        exam_id: &str,
+        preview_json: Value,
+        expected_updated_at: &str,
+    ) -> VfsResult<bool> {
+        let preview_str = serde_json::to_string(&preview_json).map_err(|e| {
+            VfsError::Serialization(format!("Failed to serialize preview_json: {}", e))
+        })?;
+
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let affected = conn.execute(
+            r#"
+            UPDATE exam_sheets
+            SET preview_json = ?1, updated_at = ?2
+            WHERE id = ?3 AND updated_at = ?4
+            "#,
+            params![preview_str, now, exam_id, expected_updated_at],
+        )?;
+        if affected == 0 {
+            // 区分「不存在」与「基线过期」
+            let exists: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM exam_sheets WHERE id = ?1",
+                    params![exam_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            return match exists {
+                Some(_) => Ok(false),
+                None => Err(VfsError::NotFound {
+                    resource_type: "ExamSheet".to_string(),
+                    id: exam_id.to_string(),
+                }),
+            };
+        }
+
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(resource_id) = resource_id {
+            let _ =
+                VfsResourceRepo::update_resource_data_with_conn(conn, &resource_id, &preview_str)?;
+        }
+
+        info!(
+            "[VFS::ExamRepo] Updated preview_json (OCC) for exam {}",
+            exam_id
+        );
+        Ok(true)
     }
 
     // ========================================================================
@@ -1761,7 +1837,7 @@ impl VfsExamRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::get_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     pub fn get_mm_index_state(db: &VfsDatabase, exam_id: &str) -> VfsResult<Option<String>> {
@@ -1771,7 +1847,7 @@ impl VfsExamRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -1793,7 +1869,7 @@ impl VfsExamRepo {
     /// 设置题目集的多模态索引状态
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService` 替代
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     pub fn set_mm_index_state(
         db: &VfsDatabase,
         exam_id: &str,
@@ -1805,7 +1881,7 @@ impl VfsExamRepo {
     }
 
     /// ⚠️ 已废弃
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     #[allow(deprecated)]
     pub fn set_mm_index_state_with_conn(
         conn: &Connection,
@@ -1840,7 +1916,7 @@ impl VfsExamRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::sync_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     pub fn save_mm_index_metadata(
@@ -1862,7 +1938,7 @@ impl VfsExamRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -2060,7 +2136,9 @@ mod tests {
 
         let copied_q: Vec<(String, Option<String>)> = {
             let mut stmt = conn
-                .prepare("SELECT content, answer FROM questions WHERE exam_id = ?1 ORDER BY content")
+                .prepare(
+                    "SELECT content, answer FROM questions WHERE exam_id = ?1 ORDER BY content",
+                )
                 .unwrap();
             stmt.query_map(params![copy.id], |row| Ok((row.get(0)?, row.get(1)?)))
                 .unwrap()
@@ -2085,7 +2163,11 @@ mod tests {
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(rc, 1, "{} blob 在原卷 purge 后必须为 1（副本仍持有）", label);
+            assert_eq!(
+                rc, 1,
+                "{} blob 在原卷 purge 后必须为 1（副本仍持有）",
+                label
+            );
         }
         let copy_q_count: i64 = conn
             .query_row(

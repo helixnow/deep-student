@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="fs_back" x1="75" x2="75" y1="24" y2="90" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14607E" offset="0"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
+  </linearGradient>
+  <path d="M22 34a10 10 0 0 1 10-10h26l12 12h48a10 10 0 0 1 10 10v60H22V34z" fill="url(#fs_back)"/>
+  <rect x="38" y="44" width="74" height="52" rx="6" fill="#FDFFFE"/>
+  <rect x="46" y="54" width="36" height="6" rx="3" fill="#9BC3CE"/>
+  <rect x="46" y="66" width="46" height="6" rx="3" fill="#B8D6DC"/>
+  <linearGradient id="fs_front" x1="75" x2="75" y1="58" y2="126" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#2BB3A3" offset="0"/>
+    <stop stop-color="#127487" offset="1"/>
+  </linearGradient>
+  <path d="M14 62a8 8 0 0 1 8-8h106a8 8 0 0 1 7.8 9.8l-11 52a10 10 0 0 1-9.8 8H26a10 10 0 0 1-9.8-8l-11-52A8 8 0 0 1 14 62z" fill="url(#fs_front)"/>
+  <path d="M22 54h106a8 8 0 0 1 7.7 6H14.3a8 8 0 0 1 7.7-6z" fill="#fff" opacity=".22"/>
+  <linearGradient id="fs_badge" x1="118" x2="118" y1="96" y2="120" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <circle cx="118" cy="108" r="13" fill="url(#fs_badge)"/>
+  <path d="M118 102v12M112 108h12" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -5,7 +5,7 @@
  */
 
 import type { StoreApi } from 'zustand';
-import type { ChatStore } from '../../core/types/store';
+import type { ChatStore, PermissionPreset } from '../../core/types/store';
 import type { AttachmentMeta, PanelStates } from '../../core/types/common';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ContextRef } from '../../resources/types';
@@ -14,6 +14,7 @@ import type { BlockingInteraction } from '../../core/types/store';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
 import type { ContextWindowUsage } from './contextWindowUsage';
+import type { ContextCompactionInfo } from './contextCompactionInfo';
 import type { SessionUsageSummary } from '@/api/llmUsageApi';
 
 // ============================================================================
@@ -42,8 +43,12 @@ export interface ModelMentionState {
  * 由 useModelMentions Hook 返回，传递给 InputBarUI
  */
 export interface ModelMentionActions {
-  /** 选择建议（添加到 chip 列表，返回清理后的输入值） */
-  selectSuggestion: (model: ModelInfo) => string;
+  /**
+   * 选择建议（添加到 chip 列表）。
+   * 返回移除 `@query` 片段后的输入值与光标位置（光标精确回到 mention 起点，
+   * 多行草稿不受影响）。
+   */
+  selectSuggestion: (model: ModelInfo) => { value: string; caret: number };
   /** 移除已选中的模型 */
   removeSelectedModel: (modelId: string) => void;
   /** 设置选中索引 */
@@ -52,8 +57,8 @@ export interface ModelMentionActions {
   moveSelectionUp: () => void;
   /** 向下移动选择 */
   moveSelectionDown: () => void;
-  /** 确认选择（添加到 chip 列表，返回清理后的输入值，无选中项返回 null） */
-  confirmSelection: () => string | null;
+  /** 确认选择（同 selectSuggestion；无选中项返回 null，调用方应放行原按键语义） */
+  confirmSelection: () => { value: string; caret: number } | null;
   /** 关闭自动完成 */
   closeAutoComplete: () => void;
   /** 更新光标位置 */
@@ -199,6 +204,13 @@ export interface InputBarUIProps {
   /** 设置面板状态 */
   onSetPanelState: (panel: keyof PanelStates, open: boolean) => void;
 
+  /** 用户显式触发当前会话上下文压缩 */
+  onCompactContext?: () => void | Promise<void>;
+  isCompactingContext?: boolean;
+  compactContextStatus?: 'success' | 'not-needed' | 'skipped' | 'error' | null;
+  /** 懒读当前会话的 active compaction 元数据（上下文用量弹层展示用） */
+  getCompactionInfo?: () => ContextCompactionInfo | null;
+
   // ========== UI 配置 ==========
 
   /** 占位符文本 */
@@ -227,16 +239,14 @@ export interface InputBarUIProps {
 
   // ========== 模式插件面板渲染 ==========
 
-  /** 渲染 RAG 面板（模式插件提供） */
-  renderRagPanel?: () => React.ReactNode;
   /** 渲染模型选择面板（模式插件提供） */
   renderModelPanel?: (options?: { hideHeader?: boolean; onClose?: () => void }) => React.ReactNode;
   /** 渲染高级设置面板（模式插件提供） */
   renderAdvancedPanel?: () => React.ReactNode;
   /** 渲染 MCP 工具面板（模式插件提供） */
   renderMcpPanel?: () => React.ReactNode;
-  /** 渲染技能选择面板 */
-  renderSkillPanel?: () => React.ReactNode;
+  /** 渲染技能选择面板；variant=menu 用于加号菜单次级飞出层 */
+  renderSkillPanel?: (opts?: { variant?: 'panel' | 'menu' }) => React.ReactNode;
   /** 打开当前对话模型面板（统一入口，承接单模型 / 对比 / 重试） */
   onOpenRuntimeModelPanel?: (mode?: 'single' | 'compare') => void;
 
@@ -288,6 +298,8 @@ export interface InputBarUIProps {
   thinkingStateLabel?: string;
   /** 当前生效模型是否不支持推理模式 */
   thinkingUnsupported?: boolean;
+  /** 当前模型是否允许完全关闭推理；false 时仅允许切换强度 */
+  thinkingCanDisable?: boolean;
   /** 当前模型支持的运行时推理深度选项；为空且没有 runtime 模型菜单时按钮保持 toggle-only */
   thinkingDepthOptions?: DeepSeekReasoningOption[];
   /** 当前归一化后的运行时推理深度 */
@@ -328,6 +340,17 @@ export interface InputBarUIProps {
   pendingApprovalRequest?: BlockingInteraction | null;
   /** 会话 ID（用于审批响应） */
   sessionId?: string;
+
+  /** Ask / Plan / Craft */
+  authorityMode?: 'ask' | 'plan' | 'craft';
+  onAuthorityModeChange?: (mode: 'ask' | 'plan' | 'craft') => void | Promise<void>;
+  permissionPreset?: PermissionPreset;
+  onPermissionPresetChange?: (preset: PermissionPreset) => void | Promise<void>;
+  authorityAskBlockedHint?: boolean;
+
+  /** 知识库主动检索开关（加号菜单 → 知识库） */
+  knowledgeBaseProactive?: boolean;
+  onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
 
   // ========== PDF 页码引用（精准提问） ==========
 

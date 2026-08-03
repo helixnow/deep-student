@@ -33,13 +33,13 @@ describe('backupAndExportZip API', () => {
 
     expect(mockInvoke).toHaveBeenCalledTimes(1);
     expect(mockInvoke).toHaveBeenCalledWith('data_governance_backup_and_export_zip', {
-      output_path: '/tmp/export.zip',
-      compression_level: 6,
-      add_to_backup_list: true,
-      use_tiered: true,
+      outputPath: '/tmp/export.zip',
+      compressionLevel: 6,
+      addToBackupList: true,
+      useTiered: true,
       tiers: ['core', 'important'],
-      include_assets: true,
-      asset_types: ['images'],
+      includeAssets: true,
+      assetTypes: ['images'],
     });
   });
 });

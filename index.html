@@ -6,6 +6,122 @@
     <!-- A11Y: 允许用户缩放（WCAG 1.4.4），上限 5 倍；viewport-fit=cover 保留安全区域支持 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <title>Deep Student</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --boot-bg: #0f1317;
+        --boot-logo-opacity: 0.68;
+        --boot-shine-opacity: 0.42;
+        --boot-shimmer-dur: 2800ms;
+        --boot-shimmer-delay: 650ms;
+      }
+
+      html[data-boot-theme="light"] {
+        color-scheme: light;
+        --boot-bg: #f7f8fa;
+        --boot-logo-opacity: 0.62;
+        --boot-shine-opacity: 0.28;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: var(--boot-bg);
+        overflow: hidden;
+      }
+
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+
+      .boot-loading {
+        display: grid;
+        min-height: 100dvh;
+        place-items: center;
+        box-sizing: border-box;
+        padding: 24px;
+        background: var(--boot-bg);
+      }
+
+      .boot-loading__logo-wrap {
+        position: relative;
+        width: clamp(44px, 11vw, 60px);
+        aspect-ratio: 1;
+      }
+
+      .boot-loading__logo {
+        display: block;
+        width: 100%;
+        height: 100%;
+        opacity: var(--boot-logo-opacity);
+        filter: invert(1);
+      }
+
+      html[data-boot-theme="light"] .boot-loading__logo {
+        filter: none;
+      }
+
+      .boot-loading__logo--shine {
+        position: absolute;
+        inset: 0;
+        opacity: var(--boot-shine-opacity);
+        filter: invert(1);
+        /* A restrained diagonal sweep keeps the mark legible while communicating startup progress. */
+        -webkit-mask-image: linear-gradient(
+          120deg,
+          transparent 0%,
+          transparent 43%,
+          black 50%,
+          transparent 57%,
+          transparent 100%
+        );
+        -webkit-mask-size: 260% 260%;
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: 125% 125%;
+        mask-image: linear-gradient(
+          120deg,
+          transparent 0%,
+          transparent 43%,
+          black 50%,
+          transparent 57%,
+          transparent 100%
+        );
+        mask-size: 260% 260%;
+        mask-repeat: no-repeat;
+        mask-position: 125% 125%;
+        animation: boot-shimmer var(--boot-shimmer-dur) linear var(--boot-shimmer-delay) infinite;
+        pointer-events: none;
+      }
+
+      html[data-boot-theme="light"] .boot-loading__logo--shine {
+        filter: invert(1);
+      }
+
+      @keyframes boot-shimmer {
+        0%,
+        14% {
+          -webkit-mask-position: 125% 125%;
+          mask-position: 125% 125%;
+        }
+        64%,
+        100% {
+          -webkit-mask-position: -25% -25%;
+          mask-position: -25% -25%;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-loading__logo--shine {
+          animation: none !important;
+          display: none;
+        }
+      }
+    </style>
+    <!-- ★ 启动前主题预判：外部文件以兼容 CSP script-src 'self'；为 boot 占位符选择深浅色 logo -->
+    <script src="/boot-theme.js"></script>
     <!-- ★ 2026-02-04: 最早的全局错误过滤器 - 过滤 Tauri HTTP 插件的已知 bug -->
     <script>
       (function() {
@@ -30,7 +146,32 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        class="boot-loading"
+        role="status"
+        aria-label="Deep Student loading"
+        data-dstu-react-placeholder="true"
+      >
+        <div class="boot-loading__logo-wrap">
+          <img
+            class="boot-loading__logo"
+            src="/logo-black.svg"
+            alt="Deep Student"
+            width="60"
+            height="60"
+          />
+          <img
+            class="boot-loading__logo boot-loading__logo--shine"
+            src="/logo-black.svg"
+            alt=""
+            aria-hidden="true"
+            width="60"
+            height="60"
+          />
+        </div>
+      </div>
+    </div>
     <!-- Shared portal root to stabilize overlays and prevent DOM reparenting issues -->
     <div id="unified-modal-root"></div>
     <script type="module" src="/src/main.tsx"></script>

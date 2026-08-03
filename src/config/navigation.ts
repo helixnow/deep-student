@@ -39,8 +39,8 @@ export type NavItem = {
 
 /**
  * 创建统一的导航项配置
- * 确保Topbar和MobileNavDrawer使用相同的导航项
- * 
+ * 桌面侧栏（ModernSidebar）与移动抽屉导航（MobileSidebarNavigation）共用同一份配置
+ *
  * @param t - i18next翻译函数
  * @returns 导航项数组
  */
@@ -60,7 +60,7 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
     },
     // ★ 待办事项放在学习资源后面
     {
-      name: t('sidebar:navigation.todo', '待办'),
+      name: t('sidebar:navigation.todo'),
       view: 'todo',
       icon: StudyTodoIcon,
     },
@@ -83,7 +83,7 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
     ...(includeUILab
       ? [
           {
-            name: t('sidebar:navigation.ui_lab', '样式调试'),
+            name: t('sidebar:navigation.ui_lab'),
             view: 'ui-lab' as NavViewType,
             icon: StudyBlocksIcon,
           },
@@ -100,17 +100,32 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
 };
 
 /**
- * 导航项总数（用于布局计算）
+ * 移动抽屉导航分组：
+ * - study（学习）：会话 / 学习资源 / 待办 —— 高频学习入口
+ * - manage（管理）：技能 / 制卡 / 模板 / (UI Lab) / 设置 —— 低频管理入口
  */
-export const NAV_ITEMS_COUNT = 7;
+export type MobileNavSectionId = 'study' | 'manage';
+
+export const MOBILE_NAV_SECTION_OF_VIEW: Record<NavViewType, MobileNavSectionId> = {
+  'chat-v2': 'study',
+  'learning-hub': 'study',
+  'todo': 'study',
+  'skills-management': 'manage',
+  'task-dashboard': 'manage',
+  'template-management': 'manage',
+  'ui-lab': 'manage',
+  'settings': 'manage',
+};
+
+/** 传给 createNavItems 的最小 t 桩：返回 defaultValue（或 key），仅用于计数等纯结构场景 */
+const structuralT = ((key: string, defaultValue?: string) => defaultValue ?? key) as unknown as TFunction;
 
 /**
- * 估算单个导航项的平均宽度（像素）
- * 用于溢出检测的粗略计算
+ * 导航项总数（用于布局计算）。
+ * 从 createNavItems 派生（默认不含 UI Lab），避免新增/删除导航项时忘记同步。
+ * 需要含 UI Lab 的精确数量时请直接使用 createNavItems(t, includeUILab).length。
  */
-export const ESTIMATED_NAV_ITEM_WIDTH = 100;
+export const NAV_ITEMS_COUNT = createNavItems(structuralT).length;
 
-/**
- * Topbar的固定元素宽度估算（Logo + 分隔符 + 控制按钮等）
- */
-export const TOPBAR_FIXED_ELEMENTS_WIDTH = 200;
+// ESTIMATED_NAV_ITEM_WIDTH / TOPBAR_FIXED_ELEMENTS_WIDTH 已随 Topbar.tsx 一并删除
+// （2026-07）：仅旧版顶栏溢出检测使用，全仓已无消费者。

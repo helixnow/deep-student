@@ -422,7 +422,7 @@ impl ContextSnapshot {
 
 /// 创建资源的输入参数
 ///
-/// 用于 resource_create_or_reuse 命令。
+/// 历史 CreateResource 入参形状（resource_* 命令已注销；VFS 侧有等价结构）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateResourceParams {

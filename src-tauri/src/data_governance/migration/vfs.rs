@@ -595,6 +595,311 @@ pub const V20260615_TODO_CYCLE_CHECK_FULL_GRAPH: MigrationDef = MigrationDef::ne
 )
 .idempotent();
 
+/// V20260714: add explicit vector index profiles and generation metadata.
+pub const V20260714_ADD_VECTOR_INDEX_PROFILES: MigrationDef = MigrationDef::new(
+    20260714,
+    "add_vector_index_profiles",
+    include_str!("../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"),
+)
+.with_expected_tables(&["vfs_index_profiles"])
+.with_expected_columns(&[
+    ("vfs_index_profiles", "id"),
+    ("vfs_index_profiles", "model_fingerprint"),
+    ("vfs_index_profiles", "model_config_id"),
+    ("vfs_index_profiles", "model_name"),
+    ("vfs_index_profiles", "dimension"),
+    ("vfs_index_profiles", "modality"),
+    ("vfs_index_profiles", "embedding_protocol"),
+    ("vfs_index_profiles", "schema_version"),
+    ("vfs_index_profiles", "lance_table_name"),
+    ("vfs_index_profiles", "active_generation"),
+    ("vfs_index_profiles", "state"),
+    ("vfs_index_profiles", "ann_metric"),
+    ("vfs_index_profiles", "ann_index_version"),
+    ("vfs_index_profiles", "created_at"),
+    ("vfs_index_profiles", "updated_at"),
+    ("vfs_embedding_dims", "active_profile_id"),
+    ("vfs_embedding_dims", "model_fingerprint"),
+    ("vfs_embedding_dims", "embedding_protocol"),
+    ("vfs_embedding_dims", "active_generation"),
+    ("vfs_embedding_dims", "ann_metric"),
+    ("vfs_embedding_dims", "ann_index_version"),
+    ("vfs_index_segments", "index_profile_id"),
+    ("vfs_index_segments", "generation"),
+    ("vfs_index_units", "text_profile_id"),
+    ("vfs_index_units", "text_generation"),
+    ("vfs_index_units", "mm_profile_id"),
+    ("vfs_index_units", "mm_generation"),
+    ("resources", "index_generation"),
+    ("resources", "mm_index_generation"),
+    ("resources", "index_next_retry_at"),
+    ("resources", "mm_index_next_retry_at"),
+    ("__lance_orphan_queue", "next_retry_at"),
+    ("__lance_orphan_queue", "last_error"),
+])
+.with_expected_indexes(&[
+    "idx_vfs_index_profiles_route",
+    "idx_vfs_index_profiles_model",
+    "idx_vfs_index_segments_profile_generation",
+    "idx_vfs_index_units_text_profile",
+    "idx_vfs_index_units_mm_profile",
+    "idx_resources_index_retry_due",
+    "idx_resources_mm_index_retry_due",
+    "idx_lance_orphan_retry_due",
+]);
+
+/// V20260715: deduplicate todo side effects across automation retries/recovery.
+pub const V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS: MigrationDef = MigrationDef::new(
+    20260715,
+    "automation_todo_delivery_receipts",
+    include_str!("../../../migrations/vfs/V20260715__automation_todo_delivery_receipts.sql"),
+)
+.with_expected_tables(&["automation_todo_deliveries"])
+.with_expected_indexes(&["idx_automation_todo_deliveries_item"])
+.idempotent();
+
+/// V20260718: mastery intermediate layer (events + aggregated states)
+pub const V20260718_ADD_MASTERY_TABLES: MigrationDef = MigrationDef::new(
+    20260718,
+    "add_mastery_tables",
+    include_str!("../../../migrations/vfs/V20260718__add_mastery_tables.sql"),
+)
+.with_expected_tables(&["mastery_events", "mastery_states"])
+.with_expected_columns(&[
+    ("mastery_events", "id"),
+    ("mastery_events", "created_at"),
+    ("mastery_events", "source"),
+    ("mastery_events", "concept_key"),
+    ("mastery_events", "item_id"),
+    ("mastery_events", "outcome"),
+    ("mastery_events", "weight"),
+    ("mastery_states", "concept_key"),
+    ("mastery_states", "score"),
+    ("mastery_states", "streak"),
+    ("mastery_states", "total"),
+    ("mastery_states", "wrong_count"),
+    ("mastery_states", "last_signal_at"),
+])
+.with_expected_indexes(&[
+    "idx_mastery_events_concept_time",
+    "idx_mastery_events_item_time",
+    "idx_mastery_states_score",
+])
+.idempotent();
+
+/// V20260719: optional signal strength on mastery_events (A-P1 FSRS rating differentiation)
+pub const V20260719_MASTERY_EVENTS_SIGNAL: MigrationDef = MigrationDef::new(
+    20260719,
+    "mastery_events_signal",
+    include_str!("../../../migrations/vfs/V20260719__mastery_events_signal.sql"),
+)
+.with_expected_columns(&[("mastery_events", "signal")])
+.idempotent();
+
+/// V20260720: sync append-only mastery evidence; states remain derived.
+pub const V20260720_MASTERY_EVENTS_SYNC: MigrationDef = MigrationDef::new(
+    20260720,
+    "mastery_events_sync",
+    include_str!("../../../migrations/vfs/V20260720__mastery_events_sync.sql"),
+)
+.with_expected_columns(&[
+    ("mastery_events", "device_id"),
+    ("mastery_events", "local_version"),
+    ("mastery_events", "updated_at"),
+    ("mastery_events", "deleted_at"),
+])
+.with_expected_indexes(&[
+    "idx_mastery_events_local_version",
+    "idx_mastery_events_updated_at",
+    "idx_mastery_events_device_version",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__change_log_mastery_events_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__change_log_mastery_events_update'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__change_log_mastery_events_delete'",
+])
+.idempotent();
+
+/// V20260721: backfill pomodoro_records.updated_at (= created_at) for LWW sync coverage.
+pub const V20260721_POMODORO_BACKFILL_UPDATED_AT: MigrationDef = MigrationDef::new(
+    20260721,
+    "pomodoro_backfill_updated_at",
+    include_str!("../../../migrations/vfs/V20260721__pomodoro_backfill_updated_at.sql"),
+)
+.with_expected_queries(&[
+    "SELECT 1 FROM pomodoro_records WHERE updated_at IS NULL AND created_at IS NOT NULL LIMIT 0",
+])
+.idempotent();
+
+/// V20260722: 笔记规范化标签表 note_tags（触发器随 notes.tags JSON 同步维护 + 回填）。
+/// 回填使用无 WHERE 的 DELETE 清空映射表后全量重建，属预期行为（幂等重建）。
+pub const V20260722_NOTE_TAGS: MigrationDef = MigrationDef::new(
+    20260722,
+    "note_tags",
+    include_str!("../../../migrations/vfs/V20260722__note_tags.sql"),
+)
+.with_expected_tables(&["note_tags"])
+.with_expected_indexes(&["idx_note_tags_tag"])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_tags_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_tags_update'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_tags_delete'",
+])
+.idempotent();
+
+/// V20260723: 修复历史翻译软删除的 folder_items 幽灵挂载，并补齐列表索引。
+pub const V20260723_TRANSLATION_SOFT_DELETE_REPAIR_AND_INDEXES: MigrationDef = MigrationDef::new(
+    20260723,
+    "translation_soft_delete_repair_and_indexes",
+    include_str!(
+        "../../../migrations/vfs/V20260723__translation_soft_delete_repair_and_indexes.sql"
+    ),
+)
+.with_expected_indexes(&[
+    "idx_translations_created_alive",
+    "idx_folder_items_translation_folder_sort_active",
+])
+.idempotent();
+
+/// V20260724: 笔记全文检索 notes_fts（FTS5 contentless + trigram，触发器维护 + 回填）。
+pub const V20260724_NOTES_FTS: MigrationDef = MigrationDef::new(
+    20260724,
+    "notes_fts",
+    include_str!("../../../migrations/vfs/V20260724__notes_fts.sql"),
+)
+.with_expected_tables(&["notes_fts"])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_update'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_delete'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_resource_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_notes_fts_resource_data_update'",
+])
+.idempotent();
+
+/// V20260725: 笔记链接图 note_links（wikilink / note:// 双链，触发器维护解析状态）。
+/// 派生数据表（可由正文全量重建，见 notes_rebuild_links），不进 __change_log 同步。
+pub const V20260725_NOTE_LINKS: MigrationDef = MigrationDef::new(
+    20260725,
+    "note_links",
+    include_str!("../../../migrations/vfs/V20260725__note_links.sql"),
+)
+.with_expected_tables(&["note_links"])
+.with_expected_indexes(&[
+    "idx_note_links_target_id",
+    "idx_note_links_unresolved",
+    "idx_notes_title_nocase",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_links_on_note_delete'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_links_resolve_on_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_note_links_resolve_on_update'",
+])
+.idempotent();
+
+/// V20260726: mindmaps.content_updated_at — OCC 内容锁与元数据时间戳解耦（B5）。
+/// 仅内容实际变化时推进；收藏/重命名等元数据操作不再造成编辑端乐观锁伪冲突。
+/// 回填 = updated_at（幂等，仅作用于 NULL 行）。
+pub const V20260726_MINDMAP_CONTENT_UPDATED_AT: MigrationDef = MigrationDef::new(
+    20260726,
+    "mindmap_content_updated_at",
+    include_str!("../../../migrations/vfs/V20260726__mindmap_content_updated_at.sql"),
+)
+.with_expected_columns(&[("mindmaps", "content_updated_at")])
+.with_expected_queries(&[
+    "SELECT 1 FROM mindmaps WHERE content_updated_at IS NULL AND updated_at IS NOT NULL LIMIT 0",
+])
+.idempotent();
+
+/// V20260727: partial index on todo_items.completed_at for local-day "today completed" stats.
+/// （原 V20260723，与并行合入的 translation 迁移版本号冲突，重命名顺延；内容未变。）
+pub const V20260727_TODO_COMPLETED_AT_INDEX: MigrationDef = MigrationDef::new(
+    20260727,
+    "todo_completed_at_index",
+    include_str!("../../../migrations/vfs/V20260727__todo_completed_at_index.sql"),
+)
+.with_expected_indexes(&["idx_todo_items_completed_at"])
+.idempotent();
+
+/// V20260728: todo_items.reminder 部分索引（提醒调度器高频轮询）
+/// 与 (todo_list_id, parent_id, sort_order) 复合部分索引（清单视图排序、
+/// 每次创建/移动/重复派生的 MAX(sort_order) 查询）。
+pub const V20260728_TODO_REMINDER_INDEX_AND_LIST_SORT: MigrationDef = MigrationDef::new(
+    20260728,
+    "todo_reminder_index_and_list_sort",
+    include_str!("../../../migrations/vfs/V20260728__todo_reminder_index_and_list_sort.sql"),
+)
+.with_expected_indexes(&["idx_todo_items_reminder", "idx_todo_items_list_parent_sort"])
+.idempotent();
+
+/// V20260801: 待办/番茄钟统计与批量操作的查询索引（只增索引）。
+/// - (status, due_date) 复合部分索引服务 today/overdue/upcoming/counts 谓词；
+/// - work 记录 created_at 部分索引服务全部番茄钟统计聚合的时间窗扫描；
+/// - (todo_item_id, created_at) 部分索引服务任务关联查询的过滤 + 排序。
+pub const V20260801_TODO_POMODORO_STATS_INDEXES: MigrationDef = MigrationDef::new(
+    20260801,
+    "todo_pomodoro_stats_indexes",
+    include_str!("../../../migrations/vfs/V20260801__todo_pomodoro_stats_indexes.sql"),
+)
+.with_expected_indexes(&[
+    "idx_todo_items_status_due",
+    "idx_pomodoro_records_work_created",
+    "idx_pomodoro_records_item_created",
+])
+.idempotent();
+
+/// V20260806: mindmap_versions 复合查询索引（只增索引）。
+/// (mindmap_id, created_at DESC, version_id DESC) 覆盖自动保存合并窗口检查、
+/// 版本列表分页与保留策略清理的 `WHERE mindmap_id = ? ORDER BY ...` 形态。
+pub const V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX: MigrationDef = MigrationDef::new(
+    20260806,
+    "mindmap_versions_lookup_index",
+    include_str!("../../../migrations/vfs/V20260806__mindmap_versions_lookup_index.sql"),
+)
+.with_expected_indexes(&["idx_mindmap_versions_mindmap_created"])
+.idempotent();
+
+/// V20260807: questions.structured_data 列（新题型结构化答案契约，
+/// true_false/matching/ordering/numeric 与增强填空题）。不参与 FTS 索引。
+/// 裸 ALTER ADD COLUMN 不可重复执行，故不标 idempotent。
+pub const V20260807_QUESTION_STRUCTURED_DATA: MigrationDef = MigrationDef::new(
+    20260807,
+    "question_structured_data",
+    include_str!("../../../migrations/vfs/V20260807__question_structured_data.sql"),
+)
+.with_expected_columns(&[("questions", "structured_data")]);
+
+/// V20260808: blob/asset 文件删除两阶段日志。
+///
+/// 旧队列表继续作为仅包含 ready 项的同步 outbox；DELETE 触发器在云端发布成功、
+/// drain 删除 outbox 行时把持久 journal 原子推进到 published。
+pub const V20260808_FILE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::new(
+    20260808,
+    "file_deletion_intent_journal",
+    include_str!("../../../migrations/vfs/V20260808__file_deletion_intent_journal.sql"),
+)
+.with_expected_tables(&["__file_deletion_journal"])
+.with_expected_columns(&[
+    ("__file_deletion_journal", "operation_id"),
+    ("__file_deletion_journal", "target_kind"),
+    ("__file_deletion_journal", "entity_key"),
+    ("__file_deletion_journal", "local_path"),
+    ("__file_deletion_journal", "expected_hash"),
+    ("__file_deletion_journal", "state"),
+    ("__file_deletion_journal", "prepared_at"),
+    ("__file_deletion_journal", "ready_at"),
+    ("__file_deletion_journal", "published_at"),
+])
+.with_expected_indexes(&[
+    "idx__file_deletion_journal_recovery",
+    "idx__file_deletion_journal_target",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__blob_deletion_queue_published'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__asset_deletion_queue_published'",
+])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -636,7 +941,30 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS,
     V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX,
     V20260615_TODO_CYCLE_CHECK_FULL_GRAPH,
+    V20260714_ADD_VECTOR_INDEX_PROFILES,
+    V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS,
+    V20260718_ADD_MASTERY_TABLES,
+    V20260719_MASTERY_EVENTS_SIGNAL,
+    V20260720_MASTERY_EVENTS_SYNC,
+    V20260721_POMODORO_BACKFILL_UPDATED_AT,
+    V20260722_NOTE_TAGS,
+    V20260723_TRANSLATION_SOFT_DELETE_REPAIR_AND_INDEXES,
+    V20260724_NOTES_FTS,
+    V20260725_NOTE_LINKS,
+    V20260726_MINDMAP_CONTENT_UPDATED_AT,
+    V20260727_TODO_COMPLETED_AT_INDEX,
+    V20260728_TODO_REMINDER_INDEX_AND_LIST_SORT,
+    V20260801_TODO_POMODORO_STATS_INDEXES,
+    V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX,
+    V20260807_QUESTION_STRUCTURED_DATA,
+    V20260808_FILE_DELETION_INTENT_JOURNAL,
 ];
+
+/// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
+///
+/// 数据库统计和版本断言应复用此常量，避免新增迁移时维护重复版本号。
+pub const VFS_SCHEMA_VERSION: u32 =
+    VFS_MIGRATIONS[VFS_MIGRATIONS.len() - 1].refinery_version as u32;
 
 /// VFS 迁移集合
 pub const VFS_MIGRATION_SET: MigrationSet = MigrationSet {
@@ -679,31 +1007,42 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "vfs_index_units",
     "vfs_index_segments",
     "vfs_embedding_dims",
+    "vfs_index_profiles",
     // 作答历史
     "answer_submissions",
     // Todo / Pomodoro
     "todo_lists",
     "todo_items",
+    "automation_todo_deliveries",
     "pomodoro_records",
+    // 掌握度中间层
+    "mastery_events",
+    "mastery_states",
+    // 笔记规范化标签（V20260722）
+    "note_tags",
+    // 笔记链接图（V20260725，派生数据，不参与同步）
+    "note_links",
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
+    "__file_deletion_journal",
     "__lance_orphan_queue",
     // FTS5 虚拟表
     "questions_fts",
+    "notes_fts",
 ];
 
 /// VFS 数据库中的视图
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 35;
+pub const VFS_TABLE_COUNT: usize = 42;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
 
-/// VFS 数据库 FTS5 虚拟表总数
-pub const VFS_FTS_TABLE_COUNT: usize = 1;
+/// VFS 数据库 FTS5 虚拟表总数（questions_fts + notes_fts）
+pub const VFS_FTS_TABLE_COUNT: usize = 2;
 
 // ============================================================================
 // 测试
@@ -712,6 +1051,7 @@ pub const VFS_FTS_TABLE_COUNT: usize = 1;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
 
     #[test]
     fn test_vfs_migration_set_structure() {
@@ -740,7 +1080,18 @@ mod tests {
         // + V20260613 (pomodoro_timestamps_and_constraints)
         // + V20260614 (todo_parent_check_softdelete_fix)
         // + V20260615 (todo_cycle_check_full_graph)
-        assert_eq!(VFS_MIGRATION_SET.count(), 39);
+        // + V20260714 (add_vector_index_profiles)
+        // + V20260715 (automation_todo_delivery_receipts)
+        // + V20260718 (add_mastery_tables)
+        // + V20260719 (mastery_events_signal)
+        assert_eq!(
+            VFS_MIGRATION_SET.migrations.as_ptr(),
+            VFS_MIGRATIONS.as_ptr()
+        );
+        assert_eq!(VFS_MIGRATION_SET.count(), VFS_MIGRATIONS.len());
+        assert!(VFS_MIGRATIONS
+            .windows(2)
+            .all(|pair| pair[0].refinery_version < pair[1].refinery_version));
     }
 
     #[test]
@@ -750,11 +1101,11 @@ mod tests {
         assert!(V20260130_INIT.idempotent);
         // V001 init 迁移的最终保留表清单排除 V20260214 删除的 notes_versions
         assert_eq!(V20260130_INIT.expected_tables.len(), 25);
-        // 验证 FTS5 虚拟表和视图的 smoke test 查询已配置
-        assert_eq!(
-            V20260130_INIT.expected_queries.len(),
-            VFS_FTS_TABLE_COUNT + VFS_VIEW_COUNT
-        );
+        // 验证 FTS5 虚拟表和视图的 smoke test 查询已配置。
+        // 注意：这里锚定的是 init 时点的对象（questions_fts + trash_view），
+        // 不能挂钩 VFS_FTS_TABLE_COUNT 等 head 状态常量——
+        // notes_fts 等后续迁移新增的 FTS 表不属于 init 的 smoke 范围。
+        assert_eq!(V20260130_INIT.expected_queries.len(), 2);
     }
 
     #[test]
@@ -835,6 +1186,75 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260615);
+        assert_eq!(
+            VFS_MIGRATION_SET.latest_version(),
+            VFS_SCHEMA_VERSION as i32
+        );
+    }
+
+    #[test]
+    fn vector_profile_migration_backfills_legacy_image_as_multimodal_deterministically() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE vfs_embedding_dims (
+                dimension INTEGER NOT NULL, modality TEXT NOT NULL,
+                lance_table_name TEXT NOT NULL, record_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL,
+                model_config_id TEXT, model_name TEXT,
+                PRIMARY KEY (dimension, modality));
+             CREATE TABLE vfs_index_units (
+                id TEXT PRIMARY KEY, text_embedding_dim INTEGER, mm_embedding_dim INTEGER,
+                text_required INTEGER NOT NULL DEFAULT 0, text_state TEXT NOT NULL DEFAULT 'disabled',
+                text_error TEXT, mm_required INTEGER NOT NULL DEFAULT 0,
+                mm_state TEXT NOT NULL DEFAULT 'disabled', mm_error TEXT);
+             CREATE TABLE vfs_index_segments (
+                id TEXT PRIMARY KEY, embedding_dim INTEGER NOT NULL, modality TEXT NOT NULL);
+             CREATE TABLE resources (
+                id TEXT PRIMARY KEY, index_state TEXT, index_error TEXT,
+                index_retry_count INTEGER DEFAULT 0, mm_index_state TEXT,
+                mm_index_error TEXT, mm_index_retry_count INTEGER DEFAULT 0);
+             CREATE TABLE __lance_orphan_queue (
+                lance_row_id TEXT PRIMARY KEY, enqueued_at INTEGER NOT NULL DEFAULT 0);
+             INSERT INTO vfs_embedding_dims VALUES
+                (512, 'image', 'legacy_image_512', 1, 1, 1, 'cfg-image', 'image-model'),
+                (1024, 'image', 'legacy_image_1024', 1, 1, 1, 'cfg-image', 'image-model'),
+                (1024, 'multimodal', 'legacy_mm_1024', 1, 1, 1, 'cfg-mm', 'mm-model');
+             INSERT INTO vfs_index_units
+                (id, mm_embedding_dim, mm_required, mm_state)
+             VALUES ('unit-image-only', 512, 1, 'indexed'),
+                    ('unit-both', 1024, 1, 'indexed');",
+        )
+        .unwrap();
+
+        conn.execute_batch(include_str!(
+            "../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"
+        ))
+        .unwrap();
+
+        let image_protocol: String = conn
+            .query_row(
+                "SELECT embedding_protocol FROM vfs_embedding_dims
+                 WHERE dimension = 512 AND modality = 'image'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(image_protocol, "multimodal-embedding-v1");
+        let image_profile: String = conn
+            .query_row(
+                "SELECT mm_profile_id FROM vfs_index_units WHERE id = 'unit-image-only'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(image_profile, "profile_legacy_image_512");
+        let preferred_profile: String = conn
+            .query_row(
+                "SELECT mm_profile_id FROM vfs_index_units WHERE id = 'unit-both'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(preferred_profile, "profile_legacy_multimodal_1024");
     }
 }

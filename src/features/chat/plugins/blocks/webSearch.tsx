@@ -79,10 +79,10 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         'transition-colors'
       )}
     >
-      {/* 头部 */}
+      {/* 头部（min-w-0/truncate 收缩保护，防窄屏溢出） */}
       <div
         className={cn(
-          'flex items-center gap-2 px-3 py-2',
+          'flex min-w-0 items-center gap-2 px-3 py-2',
           'border-b border-border/30'
         )}
       >
@@ -90,15 +90,14 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         <div
           className={cn(
             'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-green-500/10',
-            'dark:bg-green-500/20'
+            'w-6 h-6 rounded bg-success/10'
           )}
         >
-          <Globe size={16} className="text-green-600 dark:text-green-400" />
+          <Globe size={16} className="text-success" />
         </div>
 
         {/* 标题 */}
-        <span className="font-medium text-sm text-foreground">
+        <span className="min-w-0 truncate font-medium text-sm text-foreground">
           {t('blocks.webSearch.title')}
         </span>
 
@@ -106,9 +105,8 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         {searchEngine && isSuccess && (
           <span
             className={cn(
-              'px-2 py-0.5 rounded-full',
-              'bg-green-500/10 text-green-600 text-xs',
-              'dark:bg-green-500/20 dark:text-green-400'
+              'min-w-0 max-w-[40%] truncate px-2 py-0.5 rounded-full',
+              'bg-success/10 text-success text-xs'
             )}
           >
             {searchEngine}
@@ -117,21 +115,21 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
 
         {/* 状态指示器 */}
         {(isPending || isRunning) && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-1 ml-auto text-xs text-muted-foreground">
             <CircleNotch size={12} className="animate-spin" />
             <span>{t('blocks.webSearch.searching')}</span>
           </span>
         )}
 
         {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-red-600 dark:text-red-400">
+          <span className="flex shrink-0 items-center gap-1 ml-auto text-xs text-destructive">
             <WarningCircle size={12} />
             <span>{t('blocks.webSearch.error')}</span>
           </span>
         )}
 
         {isSuccess && statsText && (
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
             {statsText}
           </span>
         )}
@@ -162,7 +160,7 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         {/* 错误状态 */}
         {isError && (
           <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <div className="flex items-center gap-2 text-destructive">
               <WarningCircle size={20} />
               <span className="text-sm">
                 {block.error || t('blocks.webSearch.errorMessage')}

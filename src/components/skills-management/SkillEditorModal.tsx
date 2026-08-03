@@ -7,9 +7,9 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionDialog } from '../ui/NotionDialog';
+import { DsDialog } from '../ui/DsDialog';
 import { Input } from '../ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
@@ -19,9 +19,12 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { FileText, Gear, X, Wrench } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
+import { showGlobalNotification } from '../UnifiedNotification';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/features/chat/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
+import { SkillPackageSummary } from './SkillPackageSummary';
 
 // ============================================================================
 // 类型定义
@@ -40,6 +43,11 @@ export interface SkillEditorModalProps {
   onSave: (data: SkillFormData) => Promise<void>;
   /** 嵌入模式：不使用 Dialog 包裹（用于移动端） */
   embeddedMode?: boolean;
+  /**
+   * 嵌入模式下暴露「带脏检查的关闭」入口（供页面顶栏返回箭头调用）。
+   * 挂载时填充、卸载时清空。
+   */
+  requestCloseRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 export interface SkillFormData {
@@ -63,7 +71,7 @@ export interface SkillFormData {
   relatedSkills?: string[];
   /** 依赖技能（结构化） */
   dependencies?: string[];
-  /** 允许的工具白名单 */
+  /** Legacy allowed-tools metadata; preserved for package compatibility only. */
   allowedTools?: string[];
   /** Markdown 内容 */
   content: string;
@@ -117,31 +125,31 @@ function validateForm(
   // ID 验证（仅创建模式，与后端目录/元数据要求保持一致）
   if (!isEdit) {
     if (!trimmedId) {
-      errors.id = t('skills:validation.id_required', '请输入技能 ID');
+      errors.id = t('skills:validation.id_required');
     } else if (!/^[a-z0-9-]+$/.test(trimmedId)) {
-      errors.id = t('skills:validation.id_invalid', '技能 ID 只能包含小写字母、数字和连字符（a-z, 0-9, -）');
+      errors.id = t('skills:validation.id_invalid');
     } else if (trimmedId.length > 64) {
-      errors.id = t('skills:validation.id_invalid', '技能 ID 不能超过 64 个字符');
+      errors.id = t('skills:validation.id_invalid');
     }
   }
 
   // 名称验证
   // 支持中英文等自然语言名称，仅限制长度并过滤保留字
   if (!trimmedName) {
-    errors.name = t('skills:validation.name_required', '请输入技能名称');
+    errors.name = t('skills:validation.name_required');
   } else if (trimmedName.length > 64) {
-    errors.name = t('skills:validation.name_too_long', '名称不能超过 64 个字符');
+    errors.name = t('skills:validation.name_too_long');
   } else if (!isBuiltinSkill) {
     if (/(deep-student|deepstudent)/i.test(trimmedName)) {
-      errors.name = t('skills:validation.name_reserved', '名称不能包含 deep-student 等保留字');
+      errors.name = t('skills:validation.name_reserved');
     }
   }
 
   // 描述验证（后端上限 1024）
   if (!trimmedDesc) {
-    errors.description = t('skills:validation.description_required', '请输入技能描述');
+    errors.description = t('skills:validation.description_required');
   } else if (trimmedDesc.length > 1024) {
-    errors.description = t('skills:validation.description_too_long', '描述不能超过 1024 个字符');
+    errors.description = t('skills:validation.description_too_long');
   }
 
   return errors;
@@ -158,6 +166,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   location,
   onSave,
   embeddedMode = false,
+  requestCloseRef,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
   const isEdit = Boolean(skill);
@@ -287,6 +296,12 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       onOpenChange(false);
     } catch (error) {
       console.error('[SkillEditor] 保存失败:', error);
+      // 操作闭环：保存失败必须有可见反馈（成功通知由 onSave 内部发出）
+      showGlobalNotification(
+        'error',
+        t('skills:management.save_failed'),
+        String(error),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -294,14 +309,40 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
   // 处理取消
   const handleCancel = useCallback(() => {
-    if (isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
+    if (isDirty && !unifiedConfirm(t('skills:editor.unsaved_changes_confirm'))) {
       return;
     }
     onOpenChange(false);
   }, [isDirty, onOpenChange, t]);
 
+  // 保持最新的取消逻辑，供返回键 / 页面顶栏返回箭头调用（注册保持稳定）
+  const handleCancelRef = useRef(handleCancel);
+  handleCancelRef.current = handleCancel;
+
+  // 嵌入模式（移动端子屏）：
+  // 1. Android 返回键 = 带脏检查的取消。注册在 MobileSlidingLayout 的
+  //    overlay handler 之后（同优先级后注册者先执行），否则滑动布局会先
+  //    收回右屏、绕过未保存更改确认。
+  // 2. 向页面暴露 requestCloseRef，顶栏返回箭头复用同一取消逻辑。
+  useEffect(() => {
+    if (!embeddedMode || !open) return;
+    const unregister = registerBackHandler(() => {
+      handleCancelRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+    if (requestCloseRef) {
+      requestCloseRef.current = () => handleCancelRef.current();
+    }
+    return () => {
+      unregister();
+      if (requestCloseRef) {
+        requestCloseRef.current = null;
+      }
+    };
+  }, [embeddedMode, open, requestCloseRef]);
+
   const handleModalOpenChange = useCallback((nextOpen: boolean) => {
-    if (!nextOpen && isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
+    if (!nextOpen && isDirty && !unifiedConfirm(t('skills:editor.unsaved_changes_confirm'))) {
       return;
     }
     onOpenChange(nextOpen);
@@ -334,10 +375,10 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
         <div className="flex-none flex items-center justify-between px-4 pt-4 pb-2">
           <h2 className="text-lg font-semibold text-foreground">
             {isEdit
-              ? t('skills:management.edit', '编辑技能')
-              : t('skills:management.create', '新建技能')}
+              ? t('skills:management.edit')
+              : t('skills:management.create')}
           </h2>
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="icon"
@@ -345,7 +386,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
  className="w-8 h-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <X size={18} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -359,24 +400,24 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           <TabsList className="bg-muted/20 border border-border/30 rounded-xl px-1.5 py-1 h-auto gap-2 shadow-sm">
             <TabsTrigger
               value="basic"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Gear size={14} className="mr-1.5" />
-              {t('skills:editor.tab_basic', '基本信息')}
+              {t('skills:editor.tab_basic')}
             </TabsTrigger>
             <TabsTrigger
               value="content"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <FileText size={14} className="mr-1.5" />
-              {t('skills:editor.tab_content', '技能内容')}
+              {t('skills:editor.tab_content')}
             </TabsTrigger>
             <TabsTrigger
               value="tools"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Wrench size={14} className="mr-1.5" />
-              {t('skills:editor.tab_tools', '绑定工具')}
+              {t('skills:editor.tab_tools')}
               {formData.embeddedTools && formData.embeddedTools.length > 0 && (
                 <span className="ml-1.5 text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
                   {formData.embeddedTools.length}
@@ -397,12 +438,12 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               {!isEdit && (
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                    {t('skills:editor.id', '技能 ID')} *
+                    {t('skills:editor.id')} *
                   </Label>
                   <Input
                     value={formData.id}
                     onChange={(e) => updateField('id', (e.target as HTMLInputElement).value)}
-                    placeholder={t('skills:editor.id_placeholder', '例如：code-reviewer')}
+                    placeholder={t('skills:editor.id_placeholder')}
                     className={cn(
                       'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                       errors.id && 'border-destructive'
@@ -412,7 +453,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     <p className="text-xs text-destructive">{errors.id}</p>
                   )}
                   <p className="text-[10px] text-muted-foreground/60">
-                    {t('skills:editor.id_hint', '只能包含字母、数字、连字符和下划线')}
+                    {t('skills:editor.id_hint')}
                   </p>
                 </div>
               )}
@@ -420,13 +461,16 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               {/* 名称 */}
               <div className="space-y-2">
                 <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                  {t('skills:editor.name', '名称')} *
+                  {t('skills:editor.name')} *
                 </Label>
+                {skill && (
+                  <SkillPackageSummary skill={skill} variant="editor" />
+                )}
                 <Input
                   value={formData.name}
                   onChange={(e) => updateField('name', (e.target as HTMLInputElement).value)}
                   onBlur={suggestId}
-                  placeholder={t('skills:editor.name_placeholder', '小写字母/数字/连字符')}
+                  placeholder={t('skills:editor.name_placeholder')}
                   className={cn(
                     'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                     errors.name && 'border-destructive'
@@ -440,7 +484,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               {/* 描述 */}
               <div className="space-y-2">
                 <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                  {t('skills:editor.description', '描述')} *
+                  {t('skills:editor.description')} *
                 </Label>
                 <Textarea
                   ref={descriptionRef}
@@ -449,7 +493,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     updateField('description', (e.target as HTMLTextAreaElement).value);
                     if (embeddedMode) autoGrow(e.target as HTMLTextAreaElement);
                   }}
-                  placeholder={t('skills:editor.description_placeholder', '简要描述技能功能')}
+                  placeholder={t('skills:editor.description_placeholder')}
                   rows={embeddedMode ? undefined : 2}
                   className={cn(
                     'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors',
@@ -469,7 +513,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                    {t('skills:editor.version', '版本')}
+                    {t('skills:editor.version')}
                   </Label>
                   <Input
                     value={formData.version}
@@ -480,12 +524,12 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                    {t('skills:editor.author', '作者')}
+                    {t('skills:editor.author')}
                   </Label>
                   <Input
                     value={formData.author}
                     onChange={(e) => updateField('author', (e.target as HTMLInputElement).value)}
-                    placeholder={t('skills:editor.author_placeholder', '可选')}
+                    placeholder={t('skills:editor.author_placeholder')}
                     className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10"
 />
                 </div>
@@ -494,7 +538,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               {/* 优先级 */}
               <div className="space-y-2">
                 <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                  {t('skills:editor.priority', '优先级')}
+                  {t('skills:editor.priority')}
                 </Label>
                 <Input
                   type="number"
@@ -510,7 +554,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10 w-24"
 />
                 <p className="text-[10px] text-muted-foreground/60">
-                  {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
+                  {t('skills:editor.priority_hint')}
                 </p>
               </div>
 
@@ -518,70 +562,56 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                    {t('skills:editor.skill_type', '技能类型')}
+                    {t('skills:editor.skill_type')}
                   </Label>
                   <div className="grid grid-cols-2 gap-2">
-                    <NotionButton
+                    <DsButton
                       type="button"
                       variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'standalone')}
                       className="w-full"
                     >
-                      {t('skills:editor.skill_type_standalone', '独立')}
-                    </NotionButton>
-                    <NotionButton
+                      {t('skills:editor.skill_type_standalone')}
+                    </DsButton>
+                    <DsButton
                       type="button"
                       variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'composite')}
                       className="w-full"
                     >
-                      {t('skills:editor.skill_type_composite', '组合')}
-                    </NotionButton>
+                      {t('skills:editor.skill_type_composite')}
+                    </DsButton>
                   </div>
                   <p className="text-[10px] text-muted-foreground/60">
-                    {t('skills:editor.skill_type_hint', 'standalone=独立技能，composite=组合技能')}
+                    {t('skills:editor.skill_type_hint')}
                   </p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                    {t('skills:editor.dependencies', '依赖技能')}
+                    {t('skills:editor.dependencies')}
                   </Label>
                   <TagInput
                     value={formData.dependencies ?? []}
                     onChange={(next) => updateField('dependencies', next)}
-                    placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
+                    placeholder={t('skills:editor.skill_list_placeholder')}
 />
                   <p className="text-[10px] text-muted-foreground/60">
-                    {t('skills:editor.dependencies_hint', '硬依赖：激活此技能时自动加载')}
+                    {t('skills:editor.dependencies_hint')}
                   </p>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                  {t('skills:editor.related_skills', '关联技能')}
+                  {t('skills:editor.related_skills')}
                 </Label>
                 <TagInput
                   value={formData.relatedSkills ?? []}
                   onChange={(next) => updateField('relatedSkills', next)}
-                  placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
+                  placeholder={t('skills:editor.skill_list_placeholder')}
 />
                 <p className="text-[10px] text-muted-foreground/60">
-                  {t('skills:editor.related_skills_hint', '软关联：仅用于推荐，不会自动加载')}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                  {t('skills:editor.allowed_tools', '允许工具')}
-                </Label>
-                <TagInput
-                  value={formData.allowedTools ?? []}
-                  onChange={(next) => updateField('allowedTools', next)}
-                  placeholder={t('skills:editor.allowed_tools_placeholder', '用逗号分隔，例如 builtin-web_search, server-a::fetch')}
-/>
-                <p className="text-[10px] text-muted-foreground/60">
-                  {t('skills:editor.allowed_tools_hint', '权限白名单：支持工具名以及 server::tool 的外部服务器粒度约束')}
+                  {t('skills:editor.related_skills_hint')}
                 </p>
               </div>
 
@@ -589,10 +619,10 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 hover:border-border/60 transition-colors">
                 <div className="space-y-1">
                   <Label className="text-sm font-medium cursor-pointer">
-                    {t('skills:editor.disable_auto_invoke', '禁用自动激活')}
+                    {t('skills:editor.disable_auto_invoke')}
                   </Label>
                   <p className="text-xs text-muted-foreground/70">
-                    {t('skills:editor.disable_auto_invoke_hint', '开启后需手动激活此技能')}
+                    {t('skills:editor.disable_auto_invoke_hint')}
                   </p>
                 </div>
                 <Switch
@@ -606,7 +636,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             <TabsContent value="content" className="mt-0 focus-visible:outline-none h-full flex flex-col">
               <div className="space-y-2 flex-1 flex flex-col min-h-0">
                 <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider flex-none">
-                  {t('skills:editor.content', '指令内容')}
+                  {t('skills:editor.content')}
                 </Label>
                 <Textarea
                   ref={contentRef}
@@ -615,14 +645,14 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     updateField('content', (e.target as HTMLTextAreaElement).value);
                     if (embeddedMode) autoGrow(e.target as HTMLTextAreaElement);
                   }}
-                  placeholder={t('skills:editor.content_placeholder', '编写技能的详细指令...')}
+                  placeholder={t('skills:editor.content_placeholder')}
                   className={cn(
                     'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors font-mono text-sm',
                     embeddedMode ? 'overflow-hidden resize-none min-h-[200px]' : 'resize-none flex-1 min-h-[300px]'
                   )}
 />
                 <p className="text-[10px] text-muted-foreground/60 flex-none">
-                  {t('skills:editor.content_hint', '使用 Markdown 格式编写技能指令')}
+                  {t('skills:editor.content_hint')}
                 </p>
               </div>
             </TabsContent>
@@ -640,6 +670,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
       {/* 底部按钮 */}
       <div
+        data-wb-blur-surface
         className="flex-none px-4 pt-3 border-t border-border/40 flex items-center justify-end gap-2 bg-gradient-to-t from-background via-background/95 to-background/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md"
         style={{
           paddingBottom: embeddedMode
@@ -647,24 +678,24 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             : '14px',
         }}
       >
-        <NotionButton
+        <DsButton
           type="button"
           variant="ghost"
           onClick={handleCancel}
           disabled={isSaving}
           className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
-          {t('common:actions.cancel', '取消')}
-        </NotionButton>
-        <NotionButton
+          {t('common:actions.cancel')}
+        </DsButton>
+        <DsButton
           type="submit"
           disabled={isSaving}
           className="min-w-[100px] shadow-md hover:shadow-lg transition-colors"
         >
           {isSaving
-            ? t('common:actions.saving', '保存中...')
-            : t('common:actions.save', '保存')}
-        </NotionButton>
+            ? t('common:actions.saving')
+            : t('common:actions.save')}
+        </DsButton>
       </div>
     </form>
   );
@@ -680,7 +711,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 
   // 模态框模式：使用 Dialog 包裹
   return (
-    <NotionDialog
+    <DsDialog
       open={open}
       onOpenChange={handleModalOpenChange}
       closeOnOverlay={false}
@@ -689,7 +720,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       className="p-0 overflow-hidden"
     >
       {formContent}
-    </NotionDialog>
+    </DsDialog>
   );
 };
 

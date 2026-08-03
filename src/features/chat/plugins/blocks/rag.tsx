@@ -89,11 +89,11 @@ const RagBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming
         <div
           className={cn(
             'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-blue-500/10',
-            'dark:bg-blue-500/20'
+            'w-6 h-6 rounded bg-primary/10',
+            'dark:bg-primary/20'
           )}
         >
-          <FileText size={16} className="text-blue-600 dark:text-blue-400" />
+          <FileText size={16} className="text-primary" />
         </div>
 
         {/* 标题 */}
@@ -103,15 +103,15 @@ const RagBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming
 
         {/* 状态指示器 */}
         {(isPending || isRunning) && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
-            <CircleNotch size={12} className="animate-spin" />
+          <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground" role="status">
+            <CircleNotch size={12} className="animate-spin" aria-hidden="true" />
             <span>{t('blocks.rag.searching')}</span>
           </span>
         )}
 
         {isError && (
-          <span className="flex items-center gap-1 ml-auto text-xs text-red-600 dark:text-red-400">
-            <WarningCircle size={12} />
+          <span className="flex items-center gap-1 ml-auto text-xs text-destructive">
+            <WarningCircle size={12} aria-hidden="true" />
             <span>{t('blocks.rag.error')}</span>
           </span>
         )}
@@ -137,9 +137,9 @@ const RagBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming
 
         {/* 加载状态 */}
         {(isPending || isRunning) && (
-          <div className="flex items-center justify-center py-6">
+          <div className="flex items-center justify-center py-6" role="status">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <CircleNotch size={20} className="animate-spin" />
+              <CircleNotch size={20} className="animate-spin" aria-hidden="true" />
               <span className="text-sm">{t('blocks.rag.loadingDocs')}</span>
             </div>
           </div>
@@ -147,10 +147,10 @@ const RagBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming
 
         {/* 错误状态 */}
         {isError && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <WarningCircle size={20} />
-              <span className="text-sm">
+          <div className="flex items-center justify-center py-6" role="alert">
+            <div className="flex items-center gap-2 text-destructive">
+              <WarningCircle size={20} className="shrink-0" aria-hidden="true" />
+              <span className="text-sm break-words">
                 {block.error || t('blocks.rag.errorMessage')}
               </span>
             </div>

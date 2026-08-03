@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import i18n from '@/i18n';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 vi.mock('@/utils/clipboardUtils', () => ({
@@ -32,9 +33,13 @@ describe('ErrorBoundary copy action', () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.getByText(i18n.t('common:error_boundary.title'))).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /复制错误日志|Copy Error Log/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: i18n.t('common:error_boundary.copy_error'),
+      })
+    );
 
     await waitFor(() => {
       expect(copyTextToClipboard).toHaveBeenCalledTimes(1);

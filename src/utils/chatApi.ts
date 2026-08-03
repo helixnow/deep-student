@@ -3,7 +3,21 @@ import { getErrorMessage } from './errorUtils';
 import { debugLogger } from './debugLogger';
 import { withGraphId, invokeWithDebug } from './shared';
 import type { GraphQueryParams, ForceGraphData } from './shared';
-import type { AnkiLibraryCard, AnkiLibraryListResponse, ListAnkiCardsParams, ExportAnkiCardsResult } from '../types';
+import type {
+  AnkiLibraryCard,
+  AnkiLibraryCardPatch,
+  AnkiLibraryListResponse,
+  ExportAnkiCardsResult,
+  FsrsCardMutationResult,
+  FsrsStats,
+  ListAnkiCardsParams,
+} from '../types';
+import {
+  applyReviewCardEdit,
+  getReviewCardEditValues,
+  type EditableReviewCard,
+  type ReviewEditTemplate,
+} from '@/features/flashcards/reviewCardEditFields';
 import { getAppDataDir } from './systemApi';
 
 // ★ irec 向量索引缓存已移除（灵感图谱废弃，2025-01 清理）
@@ -59,7 +73,7 @@ export async function readFileAsText(path: string): Promise<string> {
     return await invoke<string>('read_file_text', { path });
   } catch (error) {
     console.error('Failed to read file:', error);
-    throw new Error(`Failed to read file: ${error}`);
+    throw new Error(`Failed to read file: ${getErrorMessage(error)}`);
   }
 }
 
@@ -72,7 +86,7 @@ export async function copyFile(sourcePath: string, destPath: string): Promise<vo
     await invoke<void>('copy_file', { sourcePath, destPath, source_path: sourcePath, dest_path: destPath });
   } catch (error) {
     console.error('Failed to copy file:', error);
-    throw new Error(`Failed to copy file: ${error}`);
+    throw new Error(`Failed to copy file: ${getErrorMessage(error)}`);
   }
 }
 
@@ -87,7 +101,7 @@ export async function readFileAsBytes(path: string): Promise<Uint8Array> {
     return new Uint8Array(buffer);
   } catch (error) {
     console.error('Failed to read binary file:', error);
-    throw new Error(`Failed to read binary file: ${error}`);
+    throw new Error(`Failed to read binary file: ${getErrorMessage(error)}`);
   }
 }
 
@@ -129,12 +143,87 @@ export async function listAnkiLibraryCards(
   params: ListAnkiCardsParams
 ): Promise<AnkiLibraryListResponse> {
   const request = {
-    template_id: params?.template_id,
+    templateId: params?.template_id,
     search: params?.search,
     page: params?.page,
-    page_size: params?.page_size,
+    pageSize: params?.page_size,
   };
   return invoke<AnkiLibraryListResponse>('list_anki_library_cards', { request });
+}
+
+export async function enqueueAnkiLibraryCard(cardId: string): Promise<unknown> {
+  return invoke('fsrs_enqueue_cards', { ankiCardIds: [cardId] });
+}
+
+export async function suspendFsrsCard(cardStateId: string): Promise<FsrsCardMutationResult> {
+  return invoke<FsrsCardMutationResult>('fsrs_suspend_card', { cardStateId });
+}
+
+export async function unsuspendFsrsCard(cardStateId: string): Promise<FsrsCardMutationResult> {
+  return invoke<FsrsCardMutationResult>('fsrs_unsuspend_card', { cardStateId });
+}
+
+export async function undoFsrsLastReview(
+  cardStateId: string,
+  expectedLogId: string,
+): Promise<unknown> {
+  return invoke('fsrs_undo_last_review', { cardStateId, expectedLogId });
+}
+
+/**
+ * 库内编辑保存：复用复习会话的字段别名映射（reviewCardEditFields），
+ * 把 front/back 编辑写回模板真正渲染的字段（如 Question/explanation），
+ * 而不是硬写 fields.Front/Back 导致模板卡编辑不生效。
+ */
+export async function updateAnkiLibraryCard(
+  card: AnkiLibraryCard,
+  patch: AnkiLibraryCardPatch,
+  template?: ReviewEditTemplate | null,
+): Promise<void> {
+  const editable: EditableReviewCard = {
+    ankiCardId: card.id,
+    front: card.front,
+    back: card.back,
+    text: card.text,
+    tags: card.tags,
+    images: card.images,
+    templateId: card.template_id ?? null,
+    extraFields: { ...(card.fields ?? {}), ...(card.extra_fields ?? {}) },
+  };
+  const current = getReviewCardEditValues(editable, template);
+  const edit = applyReviewCardEdit(
+    editable,
+    {
+      front: patch.front ?? current.front,
+      back: patch.back ?? current.back,
+    },
+    template,
+  );
+  await invoke<void>('update_anki_card', {
+    card: {
+      id: card.id,
+      task_id: card.task_id,
+      front: edit.front,
+      back: edit.back,
+      text: patch.text ?? edit.text,
+      tags: patch.tags ?? card.tags,
+      images: card.images,
+      fields: { ...edit.extraFields },
+      extra_fields: { ...edit.extraFields },
+      template_id: card.template_id ?? null,
+      is_error_card: card.is_error_card ?? false,
+      error_content: card.error_content ?? null,
+    },
+  });
+}
+
+export async function getFsrsStats(): Promise<FsrsStats> {
+  return invoke<FsrsStats>('fsrs_get_stats');
+}
+
+/** 危险操作：清除该卡全部复习日志并重建全新调度状态（返回新 stateId）。 */
+export async function resetFsrsCardProgress(cardStateId: string): Promise<unknown> {
+  return invoke('fsrs_reset_card_progress', { cardStateId });
 }
 
 export async function updateAnkiCard(request: {
@@ -192,6 +281,65 @@ export async function exportAnkiCards(options: {
 }
 
 // ==================== 教材库（兼容壳，建议迁移到 textbookDstuAdapter） ====================
+
+/** 教材多模态自动索引的最大并发数，避免批量导入时索引风暴。 */
+const TEXTBOOK_AUTO_INDEX_CONCURRENCY = 2;
+
+/** 单本教材的自动索引结果（供调用方/日志观测，不抛错以免影响导入主流程）。 */
+export interface TextbookAutoIndexFailure {
+  id: string;
+  name: string;
+  error: string;
+}
+
+/**
+ * 后台批量索引教材（并发上限 {@link TEXTBOOK_AUTO_INDEX_CONCURRENCY}）。
+ *
+ * 失败不会中断队列：逐本收集失败项，结束后统一弹出一条 warning 通知并打日志。
+ */
+async function autoIndexTextbooksInBackground(
+  textbooks: Array<{ id: string; name: string }>
+): Promise<TextbookAutoIndexFailure[]> {
+  if (textbooks.length === 0) return [];
+
+  const failures: TextbookAutoIndexFailure[] = [];
+  try {
+    const { multimodalRagService } = await import('@/services/multimodalRagService');
+    const capability = await multimodalRagService.getCapabilityStatus();
+    if (!capability.available) return [];
+
+    const queue = [...textbooks];
+    const worker = async () => {
+      for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+        try {
+          await multimodalRagService.indexTextbook(item.id);
+        } catch (indexError) {
+          failures.push({
+            id: item.id,
+            name: item.name,
+            error: getErrorMessage(indexError),
+          });
+        }
+      }
+    };
+    const workerCount = Math.min(TEXTBOOK_AUTO_INDEX_CONCURRENCY, queue.length);
+    await Promise.all(Array.from({ length: workerCount }, worker));
+
+    if (failures.length > 0) {
+      console.warn('[chatApi] Textbook auto-indexing failed:', failures);
+      const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+      showGlobalNotification(
+        'warning',
+        `${failures.length}/${textbooks.length} textbook(s) failed multimodal indexing: ${failures.map((f) => f.name).join(', ')}`
+      );
+    }
+  } catch (error) {
+    // 能力探测/动态导入失败：跳过自动索引，不影响导入主流程。
+    console.warn('[chatApi] Textbook auto-indexing skipped:', error);
+  }
+  return failures;
+}
+
 /**
  * @deprecated 请改用 `textbookDstuAdapter.addTextbooks()`。
  * 该兼容壳不支持传入 `folderId`，仅为历史调用保留。
@@ -208,23 +356,8 @@ const results = list.map((r: any) => ({
   addedAt: r.created_at || r.updated_at || new Date().toISOString(),
 }));
 
-// 🆕 教材导入后自动触发多模态索引（异步执行，不阻塞主流程）
-// ★ 多模态索引已禁用，跳过自动索引。恢复 MULTIMODAL_INDEX_ENABLED = true 后取消注释即可
-// for (const textbook of results) {
-//   (async () => {
-//     try {
-//       const { multimodalRagService } = await import('@/services/multimodalRagService');
-//       const configured = await multimodalRagService.isConfigured();
-//       if (!configured) {
-//         return;
-//       }
-//       const indexResult = await multimodalRagService.indexTextbook(textbook.id);
-//     } catch (indexError) {
-//       // 静默失败，不影响主流程
-//       console.warn('[TauriApi] Auto-indexing textbook failed:', indexError);
-//     }
-//   })();
-// }
+// 教材导入后按运行时能力异步补充多模态索引（并发受限），不阻塞导入主流程。
+void autoIndexTextbooksInBackground(results.map((r) => ({ id: r.id, name: r.name })));
 
 return results;
 }
@@ -244,18 +377,19 @@ export async function rebuildChatFts(): Promise<number> {
 
 /**
  * 回填用户消息嵌入向量
- * TODO: 需要在后端实现 backfill_user_message_embeddings 命令
+ *
+ * @deprecated 后端 `backfill_user_message_embeddings` 命令尚未实现。
+ * 此前该函数恒返回 0 造成"假成功"（UI 显示维护完成但什么都没发生）；
+ * 现在改为显式抛出 not-implemented 错误，调用方可通过 `code === 'NOT_IMPLEMENTED'` 识别。
+ * 后端实现后请恢复为真实 invoke 调用。
  */
 export async function backfillUserMessageEmbeddings(_params: Record<string, unknown>): Promise<number> {
-  try {
-    console.info('[TauriAPI] backfillUserMessageEmbeddings start');
-    // 暂时返回 0，后端命令尚未实现
-    console.warn('[TauriAPI] backfillUserMessageEmbeddings: backend command not yet implemented');
-    return 0;
-  } catch (e) {
-    console.error('[TauriAPI] backfillUserMessageEmbeddings error', e);
-    throw e;
-  }
+  console.warn('[TauriAPI] backfillUserMessageEmbeddings rejected: backend command not implemented');
+  const error = new Error(
+    'backfillUserMessageEmbeddings is not implemented: backend command "backfill_user_message_embeddings" does not exist yet'
+  ) as Error & { code: string };
+  error.code = 'NOT_IMPLEMENTED';
+  throw error;
 }
 
 export async function searchChatFulltext(params: { query: string; role?: 'user'|'assistant'; limit?: number }): Promise<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>> {
@@ -332,4 +466,3 @@ export async function getChatIndexStats(): Promise<{ total_fts: number; total_ve
 }
 
 // ★ 2026-06-13（round 2）：research_* 报告类死包装已删除（后端命令未注册、前端无调用方）
-// 错题自动保存 stub（runtimeAutosaveCommit / updateMistake）已迁至 testApi.ts，仅供 dev 面板使用。

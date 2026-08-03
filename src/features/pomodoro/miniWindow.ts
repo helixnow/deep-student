@@ -5,9 +5,12 @@
  * 切到其他应用（网页/PDF）也能看到倒计时。
  *
  * 事件协议（全局广播）：
- * - pomodoro-mini:state   主窗口 → 小窗：{ mode, status, timeLeft, taskTitle, strictMode }
- * - pomodoro-mini:command 小窗 → 主窗口：{ action: 'pause' | 'resume' | 'stop' }
+ * - pomodoro-mini:state   主窗口 → 小窗：{ mode, status, timeLeft, taskTitle, strictMode, progress?, countUp? }
+ * - pomodoro-mini:command 小窗 → 主窗口：{ action: 'pause' | 'resume' | 'stop' | 'finish' }
  * - pomodoro-mini:ready   小窗 → 主窗口：挂载完成，请求立即广播一次状态
+ *
+ * 向后兼容约定：事件名与既有字段不变；state 只增可选字段，command 只增 action 值
+ * （旧小窗遇到未知字段/新主窗遇到旧 command 均无副作用）。
  */
 import { emit } from '@tauri-apps/api/event';
 import type { PomodoroMode, PomodoroStatus } from './types';
@@ -23,17 +26,22 @@ export interface PomodoroMiniState {
   timeLeft: number;
   taskTitle: string | null;
   strictMode: boolean;
+  /** 当前阶段进度 0–1（正计时相对设定时长封顶）；旧版主窗口不发送 */
+  progress?: number;
+  /** 当前工作阶段是否正计时（小窗据此显示"完成"按钮）；旧版主窗口不发送 */
+  countUp?: boolean;
 }
 
 export interface PomodoroMiniCommand {
-  action: 'pause' | 'resume' | 'stop';
+  /** pause/resume/stop 为既有动作；finish = 正计时手动完成（旧版主窗口会忽略） */
+  action: 'pause' | 'resume' | 'stop' | 'finish';
 }
 
 function isTauri(): boolean {
   return typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
 }
 
-/** 打开（或聚焦）置顶小窗 */
+/** 打开（或聚焦）置顶小窗；返回 false 表示失败（调用方负责 UI 反馈） */
 export async function openPomodoroMiniWindow(): Promise<boolean> {
   if (!isTauri()) return false;
   try {
@@ -45,7 +53,8 @@ export async function openPomodoroMiniWindow(): Promise<boolean> {
     }
     const win = new WebviewWindow(POMODORO_MINI_LABEL, {
       url: 'index.html?window=pomodoro-mini',
-      width: 248,
+      // 264：容纳 hover 滑出的完整控制簇（完成/暂停/停止/置顶/关闭）仍留出任务名空间
+      width: 264,
       height: 56,
       resizable: false,
       decorations: false,

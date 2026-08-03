@@ -12,17 +12,12 @@ use crate::models::{
 use image::GenericImageView;
 
 /// 带时间戳的日志宏
+///
+/// 使用本地时区（此前用 UTC 秒数直接格式化，日志时间与本地墙钟差一个时区，
+/// 且依赖已废弃的 NaiveDateTime::from_timestamp_millis）。
 macro_rules! log_with_time {
     ($level:tt, $($arg:tt)*) => {{
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        let _millis = now.as_millis() % 1000;
-        // 转换 u128 到 i64，截断到秒
-        let seconds = (now.as_millis() / 1000) as i64;
-        let time_str = chrono::NaiveDateTime::from_timestamp_millis(seconds * 1000)
-            .map(|dt| dt.format("%H:%M:%S").to_string())
-            .unwrap_or_else(|| "??:??:??".to_string());
+        let time_str = chrono::Local::now().format("%H:%M:%S").to_string();
         println!("{} [{}] [exam-sheet] {}", time_str, stringify!($level), format_args!($($arg)*));
     }};
 }
@@ -43,6 +38,14 @@ pub struct ExamSheetService {
     file_manager: Arc<FileManager>,
     llm_manager: Arc<LLMManager>,
     vfs_db: Arc<VfsDatabase>, // ★ VFS 数据库
+    /// 整卷更新的进程内 per-session 互斥锁。
+    ///
+    /// update_exam_sheet_cards 是"读取整个 preview JSON → 内存修改 → 整体回写"
+    /// 的读-改-写流程，exam_sheets 表没有可用的版本字段做 compare-and-swap
+    /// （upsert 无条件覆盖 preview_json），并发调用会互相覆盖丢失更新。
+    /// 桌面端为单进程单实例，进程内互斥即可消除该竞态。
+    /// 条目为 session_id → Mutex，单条开销极小且会话数量有限，不做主动回收。
+    session_update_locks: dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>,
 }
 
 pub struct ExamSheetUpdateOutcome {
@@ -83,6 +86,7 @@ impl ExamSheetService {
             file_manager,
             llm_manager,
             vfs_db,
+            session_update_locks: dashmap::DashMap::new(),
         })
     }
 
@@ -241,6 +245,14 @@ impl ExamSheetService {
         if !cards_requested && !rename_requested {
             return Err(AppError::validation("没有需要更新的内容"));
         }
+
+        // 整卷读-改-写期间持有 per-session 互斥锁，防止并发调用互相覆盖 preview JSON
+        let update_lock = self
+            .session_update_locks
+            .entry(session_id.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone();
+        let _update_guard = update_lock.lock().await;
 
         // ★ 从 VFS 获取整卷会话
         let mut detail = self
@@ -405,7 +417,7 @@ impl ExamSheetService {
                     }
                 }
 
-                let bbox_clone = bbox_candidate.clone();
+                let bbox_clone = bbox_candidate;
                 tokio::task::spawn_blocking(move || -> Result<(), AppError> {
                     let img = image::open(&page_abs)
                         .map_err(|e| AppError::file_system(format!("加载试卷图片失败: {}", e)))?;
@@ -582,10 +594,10 @@ impl ExamSheetService {
                 if img_width > 0 && img_height > 0 {
                     let new_pixels = if let Some(resolved) = update.resolved_bbox.as_ref() {
                         Some(resolved_bbox_to_pixels(resolved, img_width, img_height))
-                    } else if let Some(normalized) = update.bbox.as_ref() {
-                        Some(normalized_bbox_to_pixels(normalized, img_width, img_height))
                     } else {
-                        None
+                        update.bbox.as_ref().map(|normalized| {
+                            normalized_bbox_to_pixels(normalized, img_width, img_height)
+                        })
                     };
 
                     if let Some(pixels) = new_pixels {
@@ -606,7 +618,7 @@ impl ExamSheetService {
                             };
 
                             let existing_resolved =
-                                card.resolved_bbox.clone().unwrap_or_else(|| ExamCardBBox {
+                                card.resolved_bbox.clone().unwrap_or(ExamCardBBox {
                                     x: 0.0,
                                     y: 0.0,
                                     width: 0.0,
@@ -996,7 +1008,7 @@ fn clamp_bbox(bbox: &ExamCardBBox, width: u32, height: u32) -> BBoxPixels {
 
 fn values_look_normalized(bbox: &ExamCardBBox) -> bool {
     fn is_norm(v: f32) -> bool {
-        v.is_finite() && v >= -0.05 && v <= 1.05
+        v.is_finite() && (-0.05..=1.05).contains(&v)
     }
     is_norm(bbox.x) && is_norm(bbox.y) && is_norm(bbox.width) && is_norm(bbox.height)
 }
@@ -1302,6 +1314,7 @@ impl ExamSheetService {
             let question_type = q.question_type.as_ref().map(|t| match t.as_str() {
                 "single_choice" => QuestionType::SingleChoice,
                 "multiple_choice" => QuestionType::MultipleChoice,
+                "indefinite_choice" => QuestionType::IndefiniteChoice,
                 "fill_blank" => QuestionType::FillBlank,
                 "short_answer" => QuestionType::ShortAnswer,
                 "essay" => QuestionType::Essay,

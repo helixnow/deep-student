@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { Input } from '@/components/ui/shad/Input';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -66,15 +66,24 @@ const SIDEBAR_STYLES = {
     footer: { padding: 'p-4' },
     actions: { gap: 'gap-1', opacity: 'opacity-100', btnPadding: 'p-2', iconSize: 'w-4 h-4' },
   },
-  /** 移动滑动模式样式（紧凑布局） */
+  /**
+   * 移动滑动模式样式。
+   *
+   * ⚠️ 这是移动壳的**真实路径**：小屏强制 panel 内联（见 effectiveMode），
+   * 由 MobileSlidingLayout 以 width='full' + onClose 渲染，走的就是本档；
+   * 上面的 mobile 档只在（已废弃于小屏的）drawer/sheet 模式生效。
+   * 2026-07 移动端审计 M-4：本档曾是纯紧凑桌面尺寸（行 ~36px、操作按钮
+   * ~20px、13px 文字），触控完全不达标。现按触控基线修正：
+   * 行 min-h 44、16px 正文（顺带阻止 iOS 聚焦自动放大）、操作按钮 ≥36px。
+   */
   mobileSliding: {
     header: { height: 'var(--touch-target-size)', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
-    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
-    button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
-    item: { padding: 'gap-2.5 px-3 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
+    search: { iconSize: 'w-4 h-4', inputPadding: 'pl-9 pr-3 py-2 text-base' },
+    button: { padding: 'p-2', iconSize: 'w-5 h-5' },
+    item: { padding: 'gap-3 px-3 py-2.5 mx-1 min-h-[44px]', iconSize: 'w-5 h-5', textSize: 'text-[15px]', indicator: 'w-[3px] h-5' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
-    footer: { padding: 'p-2' },
-    actions: { gap: 'gap-0.5', opacity: 'opacity-100', btnPadding: 'p-1', iconSize: 'w-3 h-3' },
+    footer: { padding: 'p-3' },
+    actions: { gap: 'gap-1', opacity: 'opacity-100', btnPadding: 'p-2', iconSize: 'w-4 h-4' },
   },
 } as const;
 
@@ -125,7 +134,7 @@ export const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
   enableSwipeClose = true,
   sheetDefaultHeight = 0.6,
   drawerSide = 'left',
-  autoResponsive = true,
+  // autoResponsive 已废弃（小屏一律强制 panel 内联，见 effectiveMode），不再读取
   onClose,
 }) => {
   // 判断是否为全宽模式（移动端侧边栏填满容器）- 增加类型守卫和大小写处理
@@ -156,13 +165,17 @@ export const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
     [onSearchQueryChange]
   );
 
-  // 计算有效的显示模式
+  // 计算有效的显示模式。
+  // 移动端 UI 规范（2026-07）：小屏禁止模态浮层（Sheet/Drawer 均为 Radix 模态），
+  // 一律走 panel 内联模式——移动端页面由 MobileSlidingLayout 统一抽屉承载侧栏，
+  // UnifiedSidebar 在其中以 width='full' + onClose 的移动滑动模式内联渲染。
+  // 旧的 autoResponsive「小屏自动降级 sheet」路径已废弃。
   const effectiveMode: SidebarDisplayMode = useMemo(() => {
-    if (autoResponsive && isSmallScreen && displayMode === 'panel') {
-      return 'sheet';
+    if (isSmallScreen) {
+      return 'panel';
     }
     return displayMode;
-  }, [autoResponsive, isSmallScreen, displayMode]);
+  }, [isSmallScreen, displayMode]);
 
   // 🔧 P1-007 性能优化：使用 ref 模式稳定 closeMobile 函数引用
   // 避免因依赖变化导致不必要的重渲染
@@ -306,9 +319,9 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
     return (
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
-          <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label="expand">
+          <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
             <CaretRight size={16} weight="regular" />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
@@ -319,9 +332,9 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       {/* 移动端模式：显示关闭按钮行（但移动滑动模式下不显示，因为顶栏已有切换按钮） */}
       {isMobileMode && !isMobileSlidingMode && (
         <div className="flex items-center gap-3 px-3 py-3 border-b border-[color:var(--shell-navigation-border)]">
-          <NotionButton variant="utility" size="icon" iconOnly onClick={closeMobile} className={cn(shellIconButtonClassName, 'shrink-0')} aria-label={t('close')}>
+          <DsButton variant="utility" size="icon" iconOnly onClick={closeMobile} className={cn(shellIconButtonClassName, 'shrink-0')} aria-label={t('close')}>
             <X size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
           {title && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               {Icon && <Icon size={20} className="text-primary shrink-0" />}
@@ -345,7 +358,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
                 styles.search.iconSize
               )} weight="regular" />
               <Input
-                type="text"
+                type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchPlaceholder || t('search')}
@@ -370,24 +383,24 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {extraActions}
 
           {showRefresh && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label="refresh">
+            <DsButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
               <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
 
           {showCreate && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label="create">
+            <DsButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
               <Plus className={styles.button.iconSize} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
 
           {rightActions}
 
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
-            <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label="collapse">
+            <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
               <CaretLeft size={16} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
         </div>
@@ -446,9 +459,9 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
       )}>
         <p>{error}</p>
         {onRetry && (
-          <NotionButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2">
+          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2">
             {t('retry')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );
@@ -477,9 +490,9 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
           )}>{emptyDescription}</p>
         )}
         {emptyActionText && onEmptyAction && (
-          <NotionButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
+          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
             {emptyActionText}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );
@@ -488,9 +501,10 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
   return (
     <CustomScrollArea
       className={cn('flex-1 min-h-0', className)}
-      viewportClassName={styles.content.viewportPadding}
+      // OverlayScrollbars 会清零 viewport padding，边距放在内层
+      viewportClassName="h-full w-full min-h-0"
     >
-      <div className={styles.content.spacing}>
+      <div className={cn(styles.content.viewportPadding, styles.content.spacing)}>
         {children}
       </div>
     </CustomScrollArea>
@@ -521,6 +535,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
   className,
   children,
 }) => {
+  const { t } = useTranslation('common');
   const { displayMode, isMobileSlidingMode, closeMobile } = useUnifiedSidebar();
   // 是否为移动端模式（drawer/sheet 或 移动滑动模式）
   const isMobileMode = displayMode === 'sheet' || displayMode === 'drawer' || isMobileSlidingMode;
@@ -566,7 +581,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
           className={cn(
             'flex-shrink-0 transition-colors',
             styles.item.iconSize,
-            isSelected ? 'text-foreground' : 'text-muted-foreground'
+            'text-[color:inherit]'
           )}
 />
       );
@@ -651,15 +666,32 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
       {!isEditing && (showEdit || showDelete || extraActions) && (
         <div className={cn('flex transition-opacity', styles.actions.gap, styles.actions.opacity)}>
           {extraActions}
+          {/* M-6：在组件内统一阻断冒泡——否则点击会冒泡到行容器的 handleClick，
+              移动端表现为"点编辑/删除 → 行被选中且抽屉直接关闭"。
+              调用方无需（但可以重复）自行 stopPropagation。 */}
           {showEdit && onEditClick && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onEditClick} className={styles.actions.btnPadding} aria-label="edit">
+            <DsButton
+              variant="utility"
+              size="icon"
+              iconOnly
+              onClick={(e) => { e.stopPropagation(); onEditClick(e); }}
+              className={styles.actions.btnPadding}
+              aria-label={t('actions.edit')}
+            >
               <PencilSimple className={styles.actions.iconSize} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
           {showDelete && onDeleteClick && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onDeleteClick} className={styles.actions.btnPadding} aria-label="delete">
+            <DsButton
+              variant="utility"
+              size="icon"
+              iconOnly
+              onClick={(e) => { e.stopPropagation(); onDeleteClick(e); }}
+              className={styles.actions.btnPadding}
+              aria-label={t('actions.delete')}
+            >
               <Trash className={styles.actions.iconSize} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

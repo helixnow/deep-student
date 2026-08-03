@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import {
   ReactFlow,
   Controls,
@@ -8,41 +7,187 @@ import {
   BackgroundVariant,
   useReactFlow,
   ReactFlowProvider,
+  ViewportPortal,
   Node,
+  type Edge,
   type NodeChange,
   type Connection,
+  type OnNodeDrag,
+  type OnSelectionChangeParams,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useMindMapStore } from '../../store';
+import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import { LayoutRegistry, StyleRegistry } from '../../registry';
 import { ensureInitialized } from '../../init';
 import { DEFAULT_LAYOUT_CONFIG, REACTFLOW_CONFIG, ROOT_NODE_STYLE, calculateBaseNodeHeight } from '../../constants';
+import { WHEEL_MODE_PAN_PROPS, WHEEL_MODE_ZOOM_PROPS } from '../../constants/layout';
 import { nodeTypes as defaultNodeTypes } from './nodes';
-import { edgeTypes as defaultEdgeTypes } from './edges';
+import { edgeTypes as defaultEdgeTypes, type AssociationEdgeData } from './edges';
+import './edges/associationEdge.css';
 import { useMindMapKeyboard } from '../../hooks/useMindMapKeyboard';
-import { useMindMapClipboard } from '../../hooks/useMindMapClipboard';
+import { useAnimatedNodes } from '../../hooks/useAnimatedNodes';
+import { useMarqueeSelection } from '../../hooks/useMarqueeSelection';
+import { useCanvasDragMode, useCanvasWheelMode } from '../../hooks/useCanvasDragMode';
+import { useMomentumPan } from '../../hooks/useMomentumPan';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { CanvasContextMenu } from './CanvasContextMenu';
+import { MobileNodeToolbar, type MobileToolbarPanel } from './MobileNodeToolbar';
+import { CanvasZoomIndicator } from './CanvasZoomIndicator';
 import { MindMapResourcePicker } from './MindMapResourcePicker';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
+import {
+  resolveDropTarget,
+  dropOrientationForDirection,
+  DROP_TARGET_RADIUS,
+  type DropMode,
+  type DropCandidate,
+} from '../../utils/dropTarget';
+import {
+  computeDropPreview,
+  dropPreviewEquals,
+  type DropPreviewRect,
+} from '../../utils/dragLayoutPreview';
+import '../../styles/canvas-enhancements.css';
+import '../../styles/canvas-interactions.css';
+import {
+  filterCompletedTree,
+  resolveVisibleFocusId,
+} from '../../utils/hideCompleted';
 import { useTranslation } from 'react-i18next';
+import { House, Hand, Selection, Plus, CornersOut, MouseScroll, Pencil, Trash, X } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { cn } from '@/lib/utils';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import type { LayoutDirection, MindMapNode } from '../../types';
 import type { ILayoutEngine } from '../../registry/types';
+import { getAncestors } from '../../utils/node/traverse';
+import {
+  DEFAULT_MINDMAP_VIEWPORT,
+  normalizeMindMapViewport,
+} from '../../utils/viewport';
+import {
+  collectCanvasDragSubtreeIds,
+  resolveCanvasDragNodeIds,
+} from '../../utils/canvasDragSelection';
 
-type DropMode = 'child' | 'sibling-before' | 'sibling-after';
-// 临时诊断开关：关闭所有与 hover 模糊相关的可疑动画/透明度联动。
-const DISABLE_HOVER_BLUR_FACTORS = false;
+/** 节点是否与画布视口有任何交集（屏幕坐标）。完全在外才返回 false。 */
+function isNodeIntersectingViewport(
+  flowToScreen: (pos: { x: number; y: number }) => { x: number; y: number },
+  nodePos: { x: number; y: number },
+  nodeWidth: number,
+  nodeHeight: number,
+  viewportRect: DOMRect,
+): boolean {
+  const { left, right, top, bottom } = getNodeScreenBounds(
+    flowToScreen,
+    nodePos,
+    nodeWidth,
+    nodeHeight,
+  );
+  return !(
+    right < viewportRect.left ||
+    left > viewportRect.right ||
+    bottom < viewportRect.top ||
+    top > viewportRect.bottom
+  );
+}
 
-const MindMapCanvasInner: React.FC = () => {
+/** 节点是否完全落在视口内（新建/进入编辑时保证可见用）。 */
+function isNodeFullyInViewport(
+  flowToScreen: (pos: { x: number; y: number }) => { x: number; y: number },
+  nodePos: { x: number; y: number },
+  nodeWidth: number,
+  nodeHeight: number,
+  viewportRect: DOMRect,
+  padding = 8,
+): boolean {
+  const { left, right, top, bottom } = getNodeScreenBounds(
+    flowToScreen,
+    nodePos,
+    nodeWidth,
+    nodeHeight,
+  );
+  return (
+    left >= viewportRect.left + padding &&
+    right <= viewportRect.right - padding &&
+    top >= viewportRect.top + padding &&
+    bottom <= viewportRect.bottom - padding
+  );
+}
+
+function getNodeScreenBounds(
+  flowToScreen: (pos: { x: number; y: number }) => { x: number; y: number },
+  nodePos: { x: number; y: number },
+  nodeWidth: number,
+  nodeHeight: number,
+) {
+  const topLeft = flowToScreen(nodePos);
+  const bottomRight = flowToScreen({
+    x: nodePos.x + nodeWidth,
+    y: nodePos.y + nodeHeight,
+  });
+  return {
+    left: Math.min(topLeft.x, bottomRight.x),
+    right: Math.max(topLeft.x, bottomRight.x),
+    top: Math.min(topLeft.y, bottomRight.y),
+    bottom: Math.max(topLeft.y, bottomRight.y),
+  };
+}
+
+export interface MindMapCanvasHandle {
+  getViewport: () => { x: number; y: number; zoom: number };
+  setViewport: (viewport: { x: number; y: number; zoom: number }) => void;
+}
+
+export interface MindMapCanvasProps {
+  /** 从大纲切回时恢复的视口；有值则跳过初始 fitView，避免冲掉保真视口 */
+  initialViewport?: { x: number; y: number; zoom: number } | null;
+  /** Increment to start an association from the focused/selected node. */
+  associationModeRequest?: number;
+}
+
+const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasProps>(function MindMapCanvasInner(
+  { initialViewport = null, associationModeRequest = 0 },
+  ref,
+) {
   ensureInitialized();
   const { t } = useTranslation('mindmap');
 
   const document = useMindMapStore(s => s.document);
+  const hideCompleted = useMindMapStore(s => s.hideCompleted);
+  const viewRootId = useMindMapStore(s => s.viewRootId);
+  const setViewRootId = useMindMapStore(s => s.setViewRootId);
   const setFocusedNodeId = useMindMapStore(s => s.setFocusedNodeId);
   const focusedNodeId = useMindMapStore(s => s.focusedNodeId);
   const selection = useMindMapStore(s => s.selection);
+  const agentEnteringIds = useMindMapStore(s => s.agentEnteringIds);
+  /** ACR 4.0 A4：delete 退场 / update 内容更新高亮（与 entering 语义区分） */
+  const agentExitingIds = useMindMapStore(s => s.agentExitingIds);
+  const agentUpdatedIds = useMindMapStore(s => s.agentUpdatedIds);
+  /** ACR R2-02：driver 演出结束 requestAgentFitView → 一次 fitView（禁每 op） */
+  const agentFitViewNonce = useMindMapStore(s => s.agentFitViewNonce);
   const setSelection = useMindMapStore(s => s.setSelection);
+  const storeApi = useMindMapStoreApi();
+  // 保守框选：左键拖空白仍平移；Shift+拖框选（不改既有平移习惯）
+  // 空白拖拽行为：用户可在画布控制条切换「框选 / 平移」（全局偏好，跨实例同步）。
+  // 触屏强制平移：否则单指拖动会变成框选、无法移动画布。
+  // - select（框选）：拖空白框选，平移用 Space/中键/右键拖
+  // - pan（平移）：拖空白平移，框选用 Shift+拖
+  // 响应式：外接/断开鼠标、二合一设备切换时实时更新
+  const isCoarsePointer = useCoarsePointer();
+  const [dragMode, setDragMode] = useCanvasDragMode();
+  // 滚轮/触控板语义偏好：默认双指平移 + pinch / Cmd/Ctrl+滚轮缩放（对齐平台习惯）；
+  // 旧「滚轮直接缩放」保留为可选偏好（localStorage，跨实例同步）
+  const [wheelMode, setWheelMode] = useCanvasWheelMode();
+  const wheelProps = wheelMode === 'zoom' ? WHEEL_MODE_ZOOM_PROPS : WHEEL_MODE_PAN_PROPS;
+  const marqueeProps = useMarqueeSelection(storeApi, {
+    variant: isCoarsePointer || dragMode === 'pan' ? 'conservative' : 'aggressive',
+  });
   const layoutId = useMindMapStore(s => s.layoutId);
   const layoutDirection = useMindMapStore(s => s.layoutDirection);
   const edgeType = useMindMapStore(s => s.edgeType);
@@ -53,12 +198,86 @@ const MindMapCanvasInner: React.FC = () => {
   const isExporting = useMindMapStore(s => s.isExporting);
   const reactFlowInstance = useReactFlow();
   const { fitView, setCenter, getNodes, getZoom } = reactFlowInstance;
-  const hasFitView = useRef(false);
-  const prevFocusedNodeId = useRef<string | null>(null);
+  const safeInitialViewport = useMemo(
+    () => normalizeMindMapViewport(initialViewport),
+    [initialViewport],
+  );
+  // 惯性平移：指针拖拽平移松手后减速滑行（尊重 prefers-reduced-motion；
+  // 滚轮平移交给系统自带惯性，不叠加）
+  const momentumPan = useMomentumPan(reactFlowInstance, { enabled: !isExporting });
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [isCanvasReady, setIsCanvasReady] = useState(false);
+  // 有恢复视口时视为已 fit，避免挂载时 fitView 冲掉保真状态
+  const hasFitView = useRef(!!safeInitialViewport);
+  const skipMountLayoutFitRef = useRef(!!safeInitialViewport);
+  // 有恢复视口时同步 seed，避免首帧 focus effect 在 setViewport 前 setCenter
+  const prevFocusedNodeId = useRef<string | null>(
+    safeInitialViewport ? focusedNodeId : null,
+  );
   const isCanvasActive = useMindMapIsActive();
 
+  useEffect(() => {
+    const element = canvasContainerRef.current;
+    if (!element) return;
+
+    const updateReadiness = () => {
+      const rect = element.getBoundingClientRect();
+      setIsCanvasReady(
+        window.document.visibilityState !== 'hidden' && rect.width > 1 && rect.height > 1,
+      );
+    };
+
+    updateReadiness();
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateReadiness);
+    observer?.observe(element);
+    window.document.addEventListener('visibilitychange', updateReadiness);
+    window.addEventListener('resize', updateReadiness);
+    return () => {
+      observer?.disconnect();
+      window.document.removeEventListener('visibilitychange', updateReadiness);
+      window.removeEventListener('resize', updateReadiness);
+    };
+  }, []);
+
+  const fitVisibleNodes = useCallback((duration: number, padding = 0.2): boolean => {
+    const rect = canvasContainerRef.current?.getBoundingClientRect();
+    if (
+      !isCanvasReady ||
+      window.document.visibilityState === 'hidden' ||
+      !rect ||
+      rect.width <= 1 ||
+      rect.height <= 1
+    ) return false;
+    fitView({ padding, duration });
+    return true;
+  }, [fitView, isCanvasReady]);
+
+  React.useImperativeHandle(ref, () => ({
+    getViewport: () => (
+      normalizeMindMapViewport(reactFlowInstance.getViewport())
+      ?? { ...DEFAULT_MINDMAP_VIEWPORT }
+    ),
+    setViewport: (viewport) => {
+      const safeViewport = normalizeMindMapViewport(viewport);
+      if (safeViewport) {
+        reactFlowInstance.setViewport(safeViewport, { duration: 0 });
+      }
+    },
+  }), [reactFlowInstance]);
+
+  // 画布专属导航/编辑快捷键；剪贴板已上提到 MindMapContentView，大纲视图也可共用
   useMindMapKeyboard();
-  useMindMapClipboard();
+
+  // 隐藏已完成时，焦点若落在不可见节点则上移到可见祖先
+  useEffect(() => {
+    if (!hideCompleted || !focusedNodeId) return;
+    const next = resolveVisibleFocusId(document.root, focusedNodeId, true);
+    if (next && next !== focusedNodeId) {
+      setFocusedNodeId(next);
+    }
+  }, [hideCompleted, focusedNodeId, document.root, setFocusedNodeId]);
 
   // 注册 ReactFlow 实例到 store，供图片导出使用
   const setReactFlowGetter = useMindMapStore(s => s.setReactFlowGetter);
@@ -69,14 +288,50 @@ const MindMapCanvasInner: React.FC = () => {
   }, [reactFlowInstance, setReactFlowGetter]);
 
   const addNodeRef = useMindMapStore(s => s.addNodeRef);
+  const addNode = useMindMapStore(s => s.addNode);
+
+  // 触屏底部节点工具条的展开面板（样式 / 更多）
+  const [mobileToolbarPanel, setMobileToolbarPanel] = useState<MobileToolbarPanel>(null);
 
   const [contextMenu, setContextMenu] = useState<{
     isOpen: boolean;
     position: { x: number; y: number };
     nodeId: string | null;
-  }>({ isOpen: false, position: { x: 0, y: 0 }, nodeId: null });
+    associationId: string | null;
+    /** 画布空白处右键 */
+    pane: boolean;
+  }>({ isOpen: false, position: { x: 0, y: 0 }, nodeId: null, associationId: null, pane: false });
+
+  // 📱 P1 修复：右键/长按菜单是 fixed 定位（z-index 9050），宿主 tab 被保活隐藏
+  // 或三屏滑动移出视口后菜单会脱离画布残留在屏幕上拦截点击。
+  // 宿主失活或容器离开视口时立即关闭。
+  useEffect(() => {
+    if (!contextMenu.isOpen) return undefined;
+    if (!isCanvasActive) {
+      setContextMenu(prev => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+      return undefined;
+    }
+    const container = canvasContainerRef.current;
+    if (!container) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry && !entry.isIntersecting) {
+        setContextMenu(prev => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [contextMenu.isOpen, isCanvasActive]);
 
   const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
+  /** 右键「添加关联线」后的连线模式：源节点 id */
+  const [associatingFromId, setAssociatingFromId] = useState<string | null>(null);
+  const [selectedAssociationId, setSelectedAssociationId] = useState<string | null>(null);
+  const [editingAssociationId, setEditingAssociationId] = useState<string | null>(null);
+
+  const addAssociation = useMindMapStore(s => s.addAssociation);
+  const updateAssociationLabel = useMindMapStore(s => s.updateAssociationLabel);
+  const removeAssociation = useMindMapStore(s => s.removeAssociation);
 
   const handleResourcePickerSelect = useCallback((ref: import('../../types').MindMapNodeRef) => {
     if (resourcePickerNodeId) {
@@ -90,12 +345,49 @@ const MindMapCanvasInner: React.FC = () => {
 
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropMode, setDropMode] = useState<DropMode>('child');
+  // 滞回读取用 ref，避免 onNodeDrag 闭包依赖 drop 状态导致重建
+  const dropTargetIdRef = useRef<string | null>(null);
+  const dropModeRef = useRef<DropMode>('child');
   const [isDragging, setIsDragging] = useState(false);
   const dragNodeIdRef = useRef<string | null>(null);
+  const dragRootIdsRef = useRef<string[]>([]);
+  const dragSubtreeIdsRef = useRef<Set<string>>(new Set());
+  // 拖拽 ghost 插槽预览：仅目标/模式变化时更新（dropPreviewEquals 去重），非每帧 setState
+  const [dropPreview, setDropPreview] = useState<DropPreviewRect | null>(null);
+  const dropPreviewRef = useRef<DropPreviewRect | null>(null);
+  // 多选拖拽数量角标：>1 时跟随被拖节点右上角
+  const [dragCount, setDragCount] = useState(0);
+  const dragNodeSizeRef = useRef<{ width: number; height: number }>({ width: 100, height: 36 });
   const [dragPositionOverride, setDragPositionOverride] = useState<Record<string, { x: number; y: number }>>({});
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  // rAF 合帧：mousemove 只写 pending，每帧最多一次 setState，避免 flushSync 卡顿
+  const pendingDragOverrideRef = useRef<Record<string, { x: number; y: number }> | null>(null);
+  const dragRafRef = useRef<number | null>(null);
   // 拖拽子树：记录所有后代节点相对于被拖节点的偏移
   const dragSubtreeOffsetsRef = useRef<Record<string, { dx: number; dy: number }>>({});
+
+  const flushPendingDragOverride = useCallback(() => {
+    dragRafRef.current = null;
+    const pending = pendingDragOverrideRef.current;
+    if (!pending) return;
+    pendingDragOverrideRef.current = null;
+    setDragPositionOverride(pending);
+  }, []);
+
+  const scheduleDragOverride = useCallback((next: Record<string, { x: number; y: number }>) => {
+    pendingDragOverrideRef.current = next;
+    if (dragRafRef.current != null) return;
+    dragRafRef.current = requestAnimationFrame(flushPendingDragOverride);
+  }, [flushPendingDragOverride]);
+
+  const cancelPendingDragOverride = useCallback(() => {
+    if (dragRafRef.current != null) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+    }
+    pendingDragOverrideRef.current = null;
+  }, []);
+
+  useEffect(() => () => cancelPendingDragOverride(), [cancelPendingDragOverride]);
 
   // 获取当前布局引擎
   const layoutEngine = useMemo<ILayoutEngine | undefined>(() => {
@@ -105,6 +397,23 @@ const MindMapCanvasInner: React.FC = () => {
     }
     return engine;
   }, [layoutId]);
+
+  // 布局引擎实际生效的方向（无效方向回退引擎默认，与下方布局计算逻辑一致）
+  const effectiveLayoutDirection = useMemo<LayoutDirection>(() => {
+    const direction = layoutDirection as LayoutDirection;
+    if (!layoutEngine) return direction;
+    return layoutEngine.directions.includes(direction)
+      ? direction
+      : layoutEngine.defaultDirection;
+  }, [layoutEngine, layoutDirection]);
+
+  // 兄弟排列轴：left/right/both 布局兄弟上下排列（vertical），up/down 布局左右排列（horizontal）。
+  // 决定拖放 sibling-before/after 的判定轴与指示线方向。
+  const dropOrientation = dropOrientationForDirection(effectiveLayoutDirection);
+  const dropOrientationRef = useRef(dropOrientation);
+  dropOrientationRef.current = dropOrientation;
+  const effectiveLayoutDirectionRef = useRef(effectiveLayoutDirection);
+  effectiveLayoutDirectionRef.current = effectiveLayoutDirection;
 
   // 使用注册系统获取布局引擎并计算布局
   const { nodes: layoutNodes, edges } = useMemo(() => {
@@ -138,8 +447,17 @@ const MindMapCanvasInner: React.FC = () => {
       measuredNodeHeights,
     };
 
+    let layoutRoot = document.root;
+    if (viewRootId) {
+      const focused = findNodeById(document.root, viewRootId);
+      if (focused) layoutRoot = focused;
+    }
+    if (hideCompleted) {
+      layoutRoot = filterCompletedTree(layoutRoot);
+    }
+
     const layoutResult = layoutEngine.calculate(
-      document.root,
+      layoutRoot,
       layoutConfig,
       validDirection as LayoutDirection
     );
@@ -147,8 +465,23 @@ const MindMapCanvasInner: React.FC = () => {
     // ============================================================================
     // 彩虹分支颜色已禁用——节点和连线统一使用主题默认色，避免视觉干扰
 
-    return layoutResult;
-  }, [document, layoutId, layoutDirection, layoutEngine, styleId, measuredNodeHeights]);
+    // ★ 像素对齐：布局引擎（居中/等分计算）常输出小数坐标，节点落在亚像素
+    // 边界上会让文字被重采样发糊；静止位置取整对布局精度无感知影响。
+    const pixelAlignedNodes = layoutResult.nodes.map((n) =>
+      Number.isInteger(n.position.x) && Number.isInteger(n.position.y)
+        ? n
+        : { ...n, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } }
+    );
+
+    return { nodes: pixelAlignedNodes, edges: layoutResult.edges };
+  }, [document, hideCompleted, viewRootId, layoutId, layoutDirection, layoutEngine, styleId, measuredNodeHeights]);
+
+  const breadcrumbPath = useMemo(() => {
+    if (!viewRootId) return [] as MindMapNode[];
+    const ancestors = getAncestors(document.root, viewRootId);
+    const target = findNodeById(document.root, viewRootId);
+    return target ? [...ancestors, target] : ancestors;
+  }, [document.root, viewRootId]);
 
   // 动态合并节点组件（默认 + 布局引擎自定义）
   const nodeTypes = useMemo(() => {
@@ -177,45 +510,249 @@ const MindMapCanvasInner: React.FC = () => {
       isOpen: true,
       position,
       nodeId,
+      associationId: null,
+      pane: false,
     });
     // 右键菜单不触发视角居中：提前同步 prevFocusedNodeId 使居中 effect 跳过
     prevFocusedNodeId.current = nodeId;
     setFocusedNodeId(nodeId);
     setSelection([nodeId]);
+    setSelectedAssociationId(null);
   }, [setFocusedNodeId, setSelection]);
 
-  // 将 focusedNodeId 同步到节点的 selected 属性
-  const nodes = useMemo(() => {
+  const openAssociationContextMenu = useCallback((associationId: string, position: { x: number; y: number }) => {
+    setContextMenu({
+      isOpen: true,
+      position,
+      nodeId: null,
+      associationId,
+      pane: false,
+    });
+    setSelectedAssociationId(associationId);
+    setFocusedNodeId(null);
+    setSelection([]);
+  }, [setFocusedNodeId, setSelection]);
+
+  const clearAssociationMode = useCallback(() => {
+    setAssociatingFromId(null);
+  }, []);
+
+  // 关联线模式跟手预览：指针的 flow 坐标（rAF 节流采样，退出模式即清空）
+  const [associationPointer, setAssociationPointer] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!associatingFromId) {
+      setAssociationPointer(null);
+      return;
+    }
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    let raf: number | null = null;
+    let pending: { x: number; y: number } | null = null;
+    const onPointerMove = (e: PointerEvent) => {
+      pending = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      if (raf != null) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        if (pending) setAssociationPointer(pending);
+      });
+    };
+    container.addEventListener('pointermove', onPointerMove);
+    return () => {
+      container.removeEventListener('pointermove', onPointerMove);
+      if (raf != null) cancelAnimationFrame(raf);
+      setAssociationPointer(null);
+    };
+  }, [associatingFromId, reactFlowInstance]);
+
+  // 关联线预览的源节点中心（flow 坐标）
+  const associationSourceCenter = useMemo(() => {
+    if (!associatingFromId) return null;
+    const source = layoutNodes.find((n) => n.id === associatingFromId);
+    if (!source) return null;
+    const width = (source.width as number | undefined) ?? source.measured?.width ?? 100;
+    const height = (source.height as number | undefined) ?? source.measured?.height ?? 36;
+    return {
+      x: source.position.x + width / 2,
+      y: source.position.y + height / 2,
+    };
+  }, [associatingFromId, layoutNodes]);
+
+  const handleStartAssociation = useCallback((nodeId: string) => {
+    setAssociatingFromId(nodeId);
+    setSelectedAssociationId(null);
+    setEditingAssociationId(null);
+    setFocusedNodeId(nodeId);
+    setSelection([nodeId]);
+  }, [setFocusedNodeId, setSelection]);
+
+  const handledAssociationRequestRef = useRef(0);
+  useEffect(() => {
+    if (associationModeRequest <= 0 || associationModeRequest === handledAssociationRequestRef.current) return;
+    handledAssociationRequestRef.current = associationModeRequest;
+    const sourceId = focusedNodeId || selection[0];
+    if (sourceId) handleStartAssociation(sourceId);
+  }, [associationModeRequest, focusedNodeId, handleStartAssociation, selection]);
+
+  const handleAssociationLabelChange = useCallback((associationId: string, label: string) => {
+    updateAssociationLabel(associationId, label);
+  }, [updateAssociationLabel]);
+
+  const handleAssociationLabelEditEnd = useCallback(() => {
+    setEditingAssociationId(null);
+  }, []);
+
+  const handleAssociationLabelEditStart = useCallback((associationId: string) => {
+    setEditingAssociationId(associationId);
+    setSelectedAssociationId(associationId);
+    setFocusedNodeId(null);
+    setSelection([]);
+  }, [setFocusedNodeId, setSelection]);
+
+  // layout data → 附带稳定 onOpenMenu 的 data；layout 对象引用不变时复用，避免选中变化击穿节点 memo
+  const enrichedDataCacheRef = useRef(new WeakMap<object, Record<string, unknown>>());
+
+  // 将 focusedNodeId 同步到节点的 selected 属性。
+  // onOpenMenu 直接复用稳定的 openNodeContextMenu，避免每节点新建箭头。
+  // ★ P2-10 拖拽重渲染面：本 memo 不依赖每帧变化的 dragPositionOverride，
+  // 拖拽中只有 dropTargetId/dropMode 变化时才全量重建；位置 override 由下方
+  // 第二段轻量 memo 叠加（未被拖拽的节点复用对象引用，RF memo 不击穿）。
+  const enrichedNodes = useMemo(() => {
+    const selectionSet = selection.length > 0 ? new Set(selection) : null;
+    const cache = enrichedDataCacheRef.current;
     return layoutNodes.map(node => {
       const isBeingDragged = isDragging && node.id === dragNodeIdRef.current;
       const isSubtreeOfDragged = isDragging && node.id in dragSubtreeOffsetsRef.current;
       const isDropTarget = node.id === dropTargetId;
       let className: string | undefined;
       if (isDropTarget) {
-        className = dropMode === 'child' ? 'mm-drop-target' :
-          dropMode === 'sibling-before' ? 'mm-drop-sibling-before' :
-            'mm-drop-sibling-after';
+        if (dropMode === 'child') {
+          className = 'mm-drop-target mm-drop-child';
+        } else {
+          // 方向类名契约：--vertical 兄弟上下排列（水平插入线，默认视觉）；
+          // --horizontal 兄弟左右排列（up/down 布局，垂直插入线，见 canvas-enhancements.css）
+          const orientationClass =
+            dropOrientation === 'horizontal'
+              ? 'mm-drop-sibling--horizontal'
+              : 'mm-drop-sibling--vertical';
+          className =
+            dropMode === 'sibling-before'
+              ? `mm-drop-target mm-drop-sibling-before ${orientationClass}`
+              : `mm-drop-target mm-drop-sibling-after ${orientationClass}`;
+        }
       } else if (isBeingDragged || isSubtreeOfDragged) {
         className = 'mm-dragging';
       }
+      // ACR R1-11：Agent 入场动画（复用 nodeSlideIn）
+      if (agentEnteringIds.has(node.id)) {
+        className = className ? `${className} agent-entering` : 'agent-entering';
+      }
+      // ACR 4.0 A4：delete 退场动画（driver 删除前标记，动画结束后才真正删除）
+      if (agentExitingIds.has(node.id)) {
+        className = className ? `${className} agent-exiting` : 'agent-exiting';
+      }
+      // ACR 4.0 A4：update 内容更新高亮（背景一次渐隐 flash，不做位移）
+      if (agentUpdatedIds.has(node.id)) {
+        className = className ? `${className} agent-updated` : 'agent-updated';
+      }
 
-      const posOverride = dragPositionOverride[node.id];
+      const layoutData = node.data as object;
+      let data = cache.get(layoutData);
+      if (!data || data.onOpenMenu !== openNodeContextMenu) {
+        data = { ...node.data, onOpenMenu: openNodeContextMenu };
+        cache.set(layoutData, data);
+      }
 
       return {
         ...node,
-        ...(posOverride ? { position: posOverride } : {}),
-        data: {
-          ...node.data,
-          onOpenMenu: (nodeId: string, position: { x: number; y: number }) =>
-            openNodeContextMenu(nodeId, position),
-        },
-        selected: selection.includes(node.id) || (selection.length === 0 && node.id === focusedNodeId),
+        data,
+        selected: selectionSet
+          ? selectionSet.has(node.id)
+          : node.id === focusedNodeId,
         // 拖拽期间后代节点不可单独拖拽
         draggable: node.id !== document.root.id && !isSubtreeOfDragged,
         className,
       };
     });
-  }, [layoutNodes, focusedNodeId, selection, document.root.id, dropTargetId, dropMode, isDragging, dragPositionOverride, openNodeContextMenu]);
+  }, [layoutNodes, focusedNodeId, selection, agentEnteringIds, agentExitingIds, agentUpdatedIds, document.root.id, dropTargetId, dropMode, dropOrientation, isDragging, openNodeContextMenu]);
+
+  // 拖拽位置 override 叠加：每帧只为被拖子树节点新建对象，其余节点引用不变
+  const nodes = useMemo(() => {
+    if (Object.keys(dragPositionOverride).length === 0) return enrichedNodes;
+    return enrichedNodes.map(node => {
+      const posOverride = dragPositionOverride[node.id];
+      return posOverride ? { ...node, position: posOverride } : node;
+    });
+  }, [enrichedNodes, dragPositionOverride]);
+
+  // 新节点生长起点：父节点中心（树边 target→source 反查），新建节点
+  // 从父节点滑向目标位置 + CSS 淡入缩放，呈现「从枝上长出」手感。
+  // agent 演出节点走自己的 agent-entering keyframe，不叠加位置插值。
+  const parentIdByNodeId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const edge of edges) map.set(edge.target, edge.source);
+    return map;
+  }, [edges]);
+
+  const layoutNodeById = useMemo(
+    () => new Map(layoutNodes.map((n) => [n.id, n])),
+    [layoutNodes],
+  );
+
+  const getSpawnOrigin = useCallback((node: Node) => {
+    if (node.className && /\bagent-(?:entering|exiting)\b/.test(node.className)) {
+      return undefined;
+    }
+    const parentId = parentIdByNodeId.get(node.id);
+    if (!parentId) return undefined;
+    const parent = layoutNodeById.get(parentId);
+    if (!parent) return undefined;
+    const parentW = (parent.width as number | undefined) ?? parent.measured?.width ?? 100;
+    const parentH = (parent.height as number | undefined) ?? parent.measured?.height ?? 36;
+    const nodeW = (node.width as number | undefined) ?? node.measured?.width ?? 100;
+    const nodeH = (node.height as number | undefined) ?? node.measured?.height ?? 36;
+    return {
+      x: parent.position.x + parentW / 2 - nodeW / 2,
+      y: parent.position.y + parentH / 2 - nodeH / 2,
+    };
+  }, [parentIdByNodeId, layoutNodeById]);
+
+  // 布局平滑过渡；拖拽中禁用，避免把拖拽位移当成布局插值
+  const animatedNodes = useAnimatedNodes(nodes, {
+    duration: 200,
+    enabled: !isDragging,
+    getSpawnOrigin,
+  });
+
+  // 关联线模式下忽略框选同步；框选节点时清掉关联线选中
+  const onMarqueeSelectionChange = useCallback(
+    (params: OnSelectionChangeParams) => {
+      if (associatingFromId) return;
+      if (params.nodes.length > 0) {
+        setSelectedAssociationId(null);
+      }
+      marqueeProps.onSelectionChange(params);
+    },
+    [associatingFromId, marqueeProps],
+  );
+
+  // 框选进行中：RF 选框元素挂实时计数（data-attribute，徽标由
+  // canvas-interactions.css 的 ::after 渲染，不额外插 DOM 层级）
+  const [isMarqueeActive, setIsMarqueeActive] = useState(false);
+  const onSelectionStart = useCallback(() => setIsMarqueeActive(true), []);
+  const onSelectionEnd = useCallback(() => setIsMarqueeActive(false), []);
+
+  useEffect(() => {
+    if (!isMarqueeActive) return;
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    const selectionEl = container.querySelector<HTMLElement>('.react-flow__selection');
+    if (!selectionEl) return;
+    if (selection.length > 0) {
+      selectionEl.setAttribute('data-mm-selection-count', String(selection.length));
+    } else {
+      selectionEl.removeAttribute('data-mm-selection-count');
+    }
+  }, [isMarqueeActive, selection]);
 
   // 根据 edgeType 设置默认边选项
   const defaultEdgeType = useMemo(() => {
@@ -232,96 +769,478 @@ const MindMapCanvasInner: React.FC = () => {
     return edgeTypeMap[edgeType] || 'curved';
   }, [edgeType]);
 
-  const styledEdges = useMemo(() => {
-    if (DISABLE_HOVER_BLUR_FACTORS || isExporting) {
-      return edges.map(edge => ({
-        ...edge,
-        style: {
-          ...edge.style,
-          opacity: 1,
-        },
-      }));
-    }
+  // 布局树边 + 文档 associations（布局引擎只吃树，此处叠加 RF 边）
+  const allEdges = useMemo(() => {
+    const visibleNodeIds = new Set(layoutNodes.map((n) => n.id));
+    const treeEdges = edges.map((edge) => ({
+      ...edge,
+      selectable: false,
+      data: { ...(edge.data as object | undefined), kind: 'tree' as const },
+    }));
 
-    if (!hoveredNodeId) return edges;
-    return edges.map(edge => {
-      const isConnected = edge.source === hoveredNodeId || edge.target === hoveredNodeId;
-      if (isConnected) {
-        return {
-          ...edge,
-          style: {
-            ...edge.style,
-            strokeWidth: 2.5,
-            opacity: 1,
-          },
-          className: 'mm-edge-highlighted',
+    const associations = document.associations ?? [];
+    const associationEdges: Edge[] = associations
+      .filter((a) => visibleNodeIds.has(a.source) && visibleNodeIds.has(a.target))
+      .map((a) => {
+        const data: AssociationEdgeData = {
+          kind: 'association',
+          associationId: a.id,
+          label: a.label,
+          editing: editingAssociationId === a.id,
+          onLabelChange: handleAssociationLabelChange,
+          onLabelEditEnd: handleAssociationLabelEditEnd,
+          onLabelEditStart: handleAssociationLabelEditStart,
         };
-      }
+        return {
+          id: a.id,
+          source: a.source,
+          target: a.target,
+          type: 'association',
+          selectable: true,
+          selected: selectedAssociationId === a.id,
+          style: a.style
+            ? {
+                stroke: a.style.stroke,
+                strokeWidth: a.style.strokeWidth,
+                strokeDasharray: a.style.strokeDasharray,
+              }
+            : undefined,
+          data,
+        } satisfies Edge;
+      });
+
+    return [...treeEdges, ...associationEdges];
+  }, [
+    edges,
+    layoutNodes,
+    document.associations,
+    editingAssociationId,
+    selectedAssociationId,
+    handleAssociationLabelChange,
+    handleAssociationLabelEditEnd,
+    handleAssociationLabelEditStart,
+  ]);
+
+  // 节点 → 根的祖先链树边集合（"parent->child" 键），焦点/悬停路径高亮共用
+  const pathEdgeKeysFor = useCallback((nodeId: string | null): Set<string> | null => {
+    if (!nodeId) return null;
+    const ancestors = getAncestors(document.root, nodeId);
+    if (ancestors.length === 0) return null;
+    const path = [...ancestors.map((n) => n.id), nodeId];
+    const keys = new Set<string>();
+    for (let i = 0; i < path.length - 1; i++) {
+      keys.add(`${path[i]}->${path[i + 1]}`);
+    }
+    return keys;
+  }, [document.root]);
+
+  const ancestorPathEdgeKeys = useMemo(
+    () => pathEdgeKeysFor(focusedNodeId),
+    [pathEdgeKeysFor, focusedNodeId],
+  );
+
+  // 悬停节点 → 根的路径高亮（比焦点路径弱一档；触屏无 hover、拖拽中不参与）
+  const [hoverPathNodeId, setHoverPathNodeId] = useState<string | null>(null);
+  const onNodeMouseEnter = useCallback((_: React.MouseEvent, node: Node) => {
+    if (isCoarsePointer) return;
+    setHoverPathNodeId(node.id);
+  }, [isCoarsePointer]);
+  const onNodeMouseLeave = useCallback(() => {
+    setHoverPathNodeId((cur) => (cur === null ? cur : null));
+  }, []);
+
+  const hoverPathEdgeKeys = useMemo(
+    () => (isDragging || !hoverPathNodeId || hoverPathNodeId === focusedNodeId
+      ? null
+      : pathEdgeKeysFor(hoverPathNodeId)),
+    [pathEdgeKeysFor, hoverPathNodeId, focusedNodeId, isDragging],
+  );
+
+  const styledEdges = useMemo(() => {
+    return allEdges.map((edge) => {
+      const isAssociation = (edge.data as { kind?: string } | undefined)?.kind === 'association';
+      const edgeKey = `${edge.source}->${edge.target}`;
+      // 祖先链树边高亮：主色描边 + 类名（样式见 canvas-enhancements.css），提升导航可读性
+      const isAncestorPath = !isAssociation && !!ancestorPathEdgeKeys?.has(edgeKey);
+      // 悬停路径：比焦点路径弱一档的主色混合，帮助扫视时快速看清分支归属
+      const isHoverPath =
+        !isAssociation && !isAncestorPath && !!hoverPathEdgeKeys?.has(edgeKey);
+      // 边强调通道（edgeEmphasis 契约）：焦点节点的直接出边加粗，
+      // 与祖先链一起构成「所在分支」的完整视觉
+      const isEmphasized =
+        !isAssociation && !isAncestorPath && !!focusedNodeId && edge.source === focusedNodeId;
+      const pathClass = isAncestorPath
+        ? 'mm-edge-ancestor-path'
+        : isHoverPath
+          ? 'mm-edge-hover-path'
+          : null;
       return {
         ...edge,
+        className: pathClass
+          ? edge.className
+            ? `${edge.className} ${pathClass}`
+            : pathClass
+          : edge.className,
+        data: isEmphasized
+          ? { ...(edge.data as object | undefined), emphasized: true }
+          : edge.data,
         style: {
           ...edge.style,
-          opacity: 0.25,
+          opacity: isAssociation ? (edge.selected ? 1 : 0.72) : 1,
+          ...(isAncestorPath
+            ? { stroke: 'var(--mm-primary)', strokeWidth: 2.25 }
+            : {}),
+          ...(isHoverPath
+            ? {
+                stroke: 'color-mix(in srgb, var(--mm-primary) 60%, var(--mm-edge))',
+                strokeWidth: 2,
+              }
+            : {}),
         },
       };
     });
-  }, [edges, hoveredNodeId]);
+  }, [allEdges, ancestorPathEdgeKeys, hoverPathEdgeKeys, focusedNodeId]);
+
+  // MiniMap 分支着色：视图根的一级分支各取主题色板一色（整支继承），便于缩略图定位分支。
+  // 主画布保持主题默认色（彩虹分支已禁用），仅缩略图用色板做导航提示。
+  const minimapBranchColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    const palette = (StyleRegistry.get(styleId) || StyleRegistry.getDefault())?.palette;
+    if (!palette || palette.length === 0) return map;
+    let branchRoot = document.root;
+    if (viewRootId) {
+      const focused = findNodeById(document.root, viewRootId);
+      if (focused) branchRoot = focused;
+    }
+    branchRoot.children.forEach((branch, index) => {
+      const color = palette[index % palette.length];
+      const stack: MindMapNode[] = [branch];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        map.set(current.id, color);
+        for (const child of current.children) stack.push(child);
+      }
+    });
+    return map;
+  }, [document.root, viewRootId, styleId]);
+
+  // 选中/焦点节点在缩略图中用主色突出，其余按分支色，无色板主题回退弱色
+  const minimapNodeColor = useCallback((node: Node) => {
+    if (node.selected) return 'var(--mm-primary)';
+    return minimapBranchColorById.get(node.id) ?? 'var(--mm-text-muted)';
+  }, [minimapBranchColorById]);
+
+  // 切回导图：恢复上次视口；并 seed prevFocused，避免挂载 focus effect 冲掉视口
+  useEffect(() => {
+    if (!safeInitialViewport) return;
+    reactFlowInstance.setViewport(safeInitialViewport, { duration: 0 });
+    if (focusedNodeId) {
+      prevFocusedNodeId.current = focusedNodeId;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时恢复一次
+  }, []);
 
   // 初始 fitView（修复: 添加 cleanup 防止内存泄漏）
   useEffect(() => {
-    if (nodes.length === 0) return;
+    if (nodes.length === 0 || !isCanvasReady) return;
     if (!hasFitView.current) {
-      hasFitView.current = true;
       const timer = setTimeout(() => {
-        // 空间锚定：如果有 focusedNodeId，跳过初始 fitView，让后续的 setCenter effect 接管
-        if (focusedNodeId) return;
-        fitView({ padding: 0.2, duration: 0 });
+        if (fitVisibleNodes(0)) hasFitView.current = true;
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [nodes.length, fitView, focusedNodeId]);
+  }, [nodes.length, isCanvasReady, fitVisibleNodes]);
+
+  // 旧状态或零尺寸 fitView 可能留下非法 viewport；画布恢复可见时主动归一化。
+  useEffect(() => {
+    if (!isCanvasReady) return;
+    const current = normalizeMindMapViewport(reactFlowInstance.getViewport());
+    if (!current) {
+      reactFlowInstance.setViewport(
+        safeInitialViewport ?? { ...DEFAULT_MINDMAP_VIEWPORT },
+        { duration: 0 },
+      );
+    }
+  }, [isCanvasReady, reactFlowInstance, safeInitialViewport]);
+
+  /**
+   * 轻量保证节点可见：不全图 fitView，仅必要时 setCenter。
+   * - intersecting：与现有聚焦策略一致，仅完全在屏外才居中
+   * - fully：新建/进入编辑时，部分裁切也居中，保证可编辑区域完整可见
+   */
+  const ensureNodeVisible = useCallback((
+    nodeId: string,
+    mode: 'intersecting' | 'fully' = 'intersecting',
+  ) => {
+    if (!isCanvasReady) return;
+    const targetNode = getNodes().find(n => n.id === nodeId);
+    if (!targetNode) return;
+
+    const nodeWidth = targetNode.measured?.width || targetNode.width || 100;
+    const nodeHeight = targetNode.measured?.height || targetNode.height || 36;
+    const viewportEl = canvasContainerRef.current;
+    const viewportRect = viewportEl?.getBoundingClientRect();
+    if (!viewportRect || viewportRect.width <= 1 || viewportRect.height <= 1) return;
+
+    const ok = mode === 'fully'
+      ? isNodeFullyInViewport(
+          reactFlowInstance.flowToScreenPosition,
+          targetNode.position,
+          nodeWidth,
+          nodeHeight,
+          viewportRect,
+        )
+      : isNodeIntersectingViewport(
+          reactFlowInstance.flowToScreenPosition,
+          targetNode.position,
+          nodeWidth,
+          nodeHeight,
+          viewportRect,
+        );
+
+    if (ok) return;
+
+    const centerX = targetNode.position.x + nodeWidth / 2;
+    const centerY = targetNode.position.y + nodeHeight / 2;
+    // 保持用户当前缩放，不再强制抬到 0.8（会破坏双模视口保真）
+    setCenter(centerX, centerY, {
+      zoom: normalizeMindMapViewport({ x: 0, y: 0, zoom: getZoom() })?.zoom ?? 1,
+      duration: 250,
+    });
+  }, [getNodes, getZoom, isCanvasReady, setCenter, reactFlowInstance]);
 
   // 当布局变化时重新适应视图（修复: 添加 cleanup 防止内存泄漏）
   useEffect(() => {
+    if (!isCanvasReady) return;
+    // 视口保真挂载：跳过首次 layout effect，避免冲掉 setViewport
+    if (skipMountLayoutFitRef.current) {
+      skipMountLayoutFitRef.current = false;
+      return;
+    }
     if (nodes.length > 0 && hasFitView.current) {
+      // 空间锚定：有 focusedNodeId 时不整图 fitView，但新布局的包围盒可能
+      // 与旧视口完全错开（用户「丢失」画布）——等布局动画收敛后校验焦点
+      // 节点是否仍可见，完全在屏外才轻量 setCenter（B5）。
+      if (focusedNodeId) {
+        const focusTimer = setTimeout(() => {
+          ensureNodeVisible(focusedNodeId, 'intersecting');
+        }, 260);
+        return () => clearTimeout(focusTimer);
+      }
       const timer = setTimeout(() => {
-        // 空间锚定：如果有 focusedNodeId，跳过重新 fitView
-        if (focusedNodeId) return;
-        fitView({ padding: 0.2, duration: 300 });
+        fitVisibleNodes(300);
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [layoutId, layoutDirection, fitView, focusedNodeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅布局/方向/就绪时重跑；focusedNodeId 变化本身不应触发（否则清除焦点会意外整图 fit）
+  }, [layoutId, layoutDirection, isCanvasReady, fitVisibleNodes, ensureNodeVisible]);
 
+  // 聚焦居中：仅当节点完全在视口外时才 setCenter。
+  // 单击扫视可见节点不再拽视口；键盘导航 / 大纲切回 / 加载定位仍会在节点不可见时居中。
+  // 双击编辑 / 右键菜单通过提前写 prevFocusedNodeId 跳过本 effect（勿破坏）。
+  // 新建后的「保证完全可见」由下方 editingNodeId effect（fully 模式）负责。
+  // ACR：agent 节流后的 setFocusedNodeId 同样走此路径（ensureNodeVisible，非 fitView）。
   useEffect(() => {
     if (
       focusedNodeId &&
       focusedNodeId !== prevFocusedNodeId.current
     ) {
-      // 允许同步，即便是在首屏加载时
       const timer = setTimeout(() => {
-        const targetNode = getNodes().find(n => n.id === focusedNodeId);
-        if (targetNode) {
-          const nodeWidth = targetNode.measured?.width || 100;
-          const nodeHeight = targetNode.measured?.height || 36;
-          const centerX = targetNode.position.x + nodeWidth / 2;
-          const centerY = targetNode.position.y + nodeHeight / 2;
-
-          const currentZoom = getZoom();
-          setCenter(centerX, centerY, {
-            zoom: Math.max(currentZoom, 0.8),
-            duration: 300
-          });
-          prevFocusedNodeId.current = focusedNodeId;
-        }
+        ensureNodeVisible(focusedNodeId, 'intersecting');
+        prevFocusedNodeId.current = focusedNodeId;
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [focusedNodeId, getNodes, getZoom, setCenter]);
+    if (!focusedNodeId) {
+      prevFocusedNodeId.current = null;
+    }
+  }, [focusedNodeId, ensureNodeVisible]);
+
+  // ACR R2-02：批量演出结束一次 fitView（DESIGN §4.3 normal 档）
+  const prevAgentFitViewNonce = useRef(agentFitViewNonce);
+  useEffect(() => {
+    if (agentFitViewNonce === prevAgentFitViewNonce.current) return;
+    prevAgentFitViewNonce.current = agentFitViewNonce;
+    if (agentFitViewNonce <= 0) return;
+    const timer = setTimeout(() => {
+      fitVisibleNodes(300);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [agentFitViewNonce, fitVisibleNodes]);
 
   const setEditingNodeId = useMindMapStore(s => s.setEditingNodeId);
   const setEditingNoteNodeId = useMindMapStore(s => s.setEditingNoteNodeId);
   const moveNode = useMindMapStore(s => s.moveNode);
+  const moveNodes = useMindMapStore(s => s.moveNodes);
+  const editingNodeId = useMindMapStore(s => s.editingNodeId);
+  const editingNoteNodeId = useMindMapStore(s => s.editingNoteNodeId);
+
+  // ============================================================================
+  // 触屏交互：单击选中 → 再次单击编辑；长按（~450ms）打开底部操作面板
+  // ============================================================================
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  // 长按/触屏 contextmenu 触发后吞掉紧随的 click，避免误入编辑
+  const suppressNodeClickRef = useRef(false);
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressOriginRef.current = null;
+  }, []);
+
+  useEffect(() => () => cancelLongPress(), [cancelLongPress]);
+
+  const suppressNextNodeClick = useCallback(() => {
+    suppressNodeClickRef.current = true;
+    // 长按后浏览器不一定派发 click；超时自动恢复防止吞掉下一次正常点击
+    window.setTimeout(() => {
+      suppressNodeClickRef.current = false;
+    }, 350);
+  }, []);
+
+  const openMobileNodeActions = useCallback((nodeId: string) => {
+    // 打开操作面板不触发视角居中
+    prevFocusedNodeId.current = nodeId;
+    setSelection([nodeId]);
+    setFocusedNodeId(nodeId);
+    setMobileToolbarPanel('more');
+  }, [setFocusedNodeId, setSelection]);
+
+  const handleContainerTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!isCoarsePointer || reciteMode || associatingFromId) return;
+    if (e.touches.length !== 1) {
+      cancelLongPress();
+      return;
+    }
+    const target = e.target as HTMLElement;
+    // 编辑态文本框里的长按留给系统文本选择
+    if (target.closest?.('textarea, input, [contenteditable="true"]')) return;
+    const nodeEl = target.closest?.('.react-flow__node');
+    const nodeId = nodeEl?.getAttribute('data-id');
+    if (!nodeId) return;
+    const touch = e.touches[0];
+    longPressOriginRef.current = { x: touch.clientX, y: touch.clientY };
+    if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      suppressNextNodeClick();
+      openMobileNodeActions(nodeId);
+    }, 450);
+  }, [
+    isCoarsePointer,
+    reciteMode,
+    associatingFromId,
+    cancelLongPress,
+    suppressNextNodeClick,
+    openMobileNodeActions,
+  ]);
+
+  const handleContainerTouchMove = useCallback((e: React.TouchEvent) => {
+    const origin = longPressOriginRef.current;
+    if (!origin || longPressTimerRef.current == null) return;
+    const touch = e.touches[0];
+    if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 10) {
+      cancelLongPress();
+    }
+  }, [cancelLongPress]);
+
+  const handleContainerTouchEnd = useCallback(() => {
+    cancelLongPress();
+  }, [cancelLongPress]);
+
+  // 触屏空白画布快捷操作：新建主题（复用 pane 菜单动作）
+  const handleAddTopic = useCallback(() => {
+    const newId = addNode(document.root.id);
+    if (newId) {
+      setFocusedNodeId(newId);
+      requestAnimationFrame(() => setEditingNodeId(newId));
+    }
+  }, [addNode, document.root.id, setFocusedNodeId, setEditingNodeId]);
+
+  // 触屏底部工具条：单选节点且非编辑/背诵/连线/拖拽中时显示
+  const showMobileToolbar =
+    isCanvasActive &&
+    isCoarsePointer &&
+    !!focusedNodeId &&
+    selection.length <= 1 &&
+    !editingNodeId &&
+    !editingNoteNodeId &&
+    !reciteMode &&
+    !associatingFromId &&
+    !isDragging;
+
+  // 工具条隐藏时重置展开面板（选中切换到另一节点时面板保留，便于连续调样式）
+  useEffect(() => {
+    if (!showMobileToolbar) setMobileToolbarPanel(null);
+  }, [showMobileToolbar]);
+
+  // 底部工具条（含展开面板）出现后，若覆盖当前节点则只上移必要距离，
+  // 不执行 fitView，避免触屏点选后画布突然大幅缩放。
+  useEffect(() => {
+    if (!showMobileToolbar || !focusedNodeId) return;
+    const frame = requestAnimationFrame(() => {
+      const container = canvasContainerRef.current;
+      const toolbar = container?.querySelector<HTMLElement>('.mm-mobile-node-toolbar');
+      if (!container || !toolbar) return;
+      const escaped =
+        typeof CSS !== 'undefined' && CSS.escape
+          ? CSS.escape(focusedNodeId)
+          : focusedNodeId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const node = container.querySelector<HTMLElement>(
+        `.react-flow__node[data-id="${escaped}"]`,
+      );
+      if (!node) return;
+      const nodeRect = node.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const overlap = nodeRect.bottom - (toolbarRect.top - 12);
+      if (overlap <= 0) return;
+      const viewport = reactFlowInstance.getViewport();
+      void reactFlowInstance.setViewport(
+        { ...viewport, y: viewport.y - overlap },
+        {
+          duration: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+            ? 0
+            : 160,
+        },
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    focusedNodeId,
+    mobileToolbarPanel,
+    reactFlowInstance,
+    showMobileToolbar,
+  ]);
+
+  const closeMobileToolbar = useCallback(() => {
+    setMobileToolbarPanel(null);
+    setFocusedNodeId(null);
+    setSelection([]);
+  }, [setFocusedNodeId, setSelection]);
+
+  // 进入编辑（含连续建点新建）：节点未完全在视口内时轻量居中，不 fitView。
+  // 新建节点需等布局写入 ReactFlow，故短延迟 + 一次重试。
+  useEffect(() => {
+    if (!editingNodeId) return;
+    let cancelled = false;
+    const run = (attempt: number) => {
+      if (cancelled) return;
+      const exists = getNodes().some(n => n.id === editingNodeId);
+      if (!exists && attempt < 1) {
+        window.setTimeout(() => run(attempt + 1), 60);
+        return;
+      }
+      ensureNodeVisible(editingNodeId, 'fully');
+    };
+    const timer = window.setTimeout(() => run(0), 80);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [editingNodeId, ensureNodeVisible, getNodes]);
 
   const onConnect = useCallback((connection: Connection) => {
     const sourceId = connection.source;
@@ -341,6 +1260,27 @@ const MindMapCanvasInner: React.FC = () => {
   }, [document.root, moveNode, setFocusedNodeId, setSelection]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // 长按 / 触屏 contextmenu 已处理过本次手势，吞掉紧随的 click
+    if (suppressNodeClickRef.current) {
+      suppressNodeClickRef.current = false;
+      return;
+    }
+
+    // 关联线模式：点击目标节点创建（不走 Handle / onConnect，避免与 reparent 冲突）
+    if (associatingFromId) {
+      event.stopPropagation();
+      if (node.id !== associatingFromId) {
+        addAssociation(associatingFromId, node.id);
+      }
+      clearAssociationMode();
+      setSelectedAssociationId(null);
+      setSelection([node.id]);
+      setFocusedNodeId(node.id);
+      return;
+    }
+
+    setSelectedAssociationId(null);
+    setEditingAssociationId(null);
     const isMultiSelect = event.metaKey || event.ctrlKey || event.shiftKey;
     if (isMultiSelect) {
       setSelection(
@@ -348,17 +1288,52 @@ const MindMapCanvasInner: React.FC = () => {
           ? selection.filter(id => id !== node.id)
           : [...selection, node.id]
       );
-    } else {
-      setSelection([node.id]);
+      setFocusedNodeId(node.id);
+      return;
     }
+
+    // 触屏：已是唯一选中节点时再次单击进入编辑（桌面仍走双击）
+    if (isCoarsePointer && !reciteMode) {
+      const state = storeApi.getState();
+      const wasSoleSelection =
+        state.focusedNodeId === node.id &&
+        state.selection.length === 1 &&
+        state.selection[0] === node.id &&
+        state.editingNodeId !== node.id;
+      if (wasSoleSelection) {
+        // 与双击进编辑相同：提前同步 prevFocusedNodeId，跳过居中动画
+        prevFocusedNodeId.current = node.id;
+        setSelection([node.id]);
+        setFocusedNodeId(node.id);
+        setEditingNodeId(node.id);
+        return;
+      }
+    }
+
+    setSelection([node.id]);
     setFocusedNodeId(node.id);
-  }, [selection, setFocusedNodeId, setSelection]);
+  }, [
+    associatingFromId,
+    addAssociation,
+    clearAssociationMode,
+    selection,
+    setFocusedNodeId,
+    setSelection,
+    isCoarsePointer,
+    reciteMode,
+    storeApi,
+    setEditingNodeId,
+  ]);
 
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
     if (reciteMode) {
       // 背诵模式下双击不进入编辑
       return;
     }
+    // 双通道防重：默认节点（RootNode/BranchNode）双击在 DOM 层 stopPropagation，
+    // 编辑入口由 NodeContent 内部双击负责；本回调仅兜底未拦截的自定义布局节点。
+    // 若节点内通道已进入编辑，跳过重复写入，避免打断输入框聚焦/选区。
+    if (storeApi.getState().editingNodeId === node.id) return;
     // 提前同步 prevFocusedNodeId，阻止居中 effect 触发动画。
     // 进入编辑会导致节点尺寸微变 → 布局重算 → 节点位置更新，
     // 如果此时居中动画正在进行，会被打断后重启导致严重卡顿。
@@ -366,42 +1341,129 @@ const MindMapCanvasInner: React.FC = () => {
     setSelection([node.id]);
     setFocusedNodeId(node.id);
     setEditingNodeId(node.id);
-  }, [setEditingNodeId, setFocusedNodeId, setSelection, reciteMode]);
+  }, [setEditingNodeId, setFocusedNodeId, setSelection, reciteMode, storeApi]);
 
   const onPaneClick = useCallback(() => {
+    if (associatingFromId) {
+      clearAssociationMode();
+      return;
+    }
     setFocusedNodeId(null);
     setSelection([]);
     setEditingNodeId(null);
     setEditingNoteNodeId(null);
+    setSelectedAssociationId(null);
+    setEditingAssociationId(null);
     setContextMenu(prev => ({ ...prev, isOpen: false }));
+  }, [
+    associatingFromId,
+    clearAssociationMode,
+    setFocusedNodeId,
+    setSelection,
+    setEditingNodeId,
+    setEditingNoteNodeId,
+  ]);
+
+  const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    const kind = (edge.data as { kind?: string } | undefined)?.kind;
+    if (kind !== 'association') return;
+    event.stopPropagation();
+    const associationId =
+      (edge.data as AssociationEdgeData | undefined)?.associationId ?? edge.id;
+    setSelectedAssociationId(associationId);
+    setFocusedNodeId(null);
+    setSelection([]);
+    setEditingNodeId(null);
+    setEditingNoteNodeId(null);
   }, [setFocusedNodeId, setSelection, setEditingNodeId, setEditingNoteNodeId]);
 
-  const onNodeMouseEnter = useCallback((_: React.MouseEvent, node: Node) => {
-    if (DISABLE_HOVER_BLUR_FACTORS) return;
-    setHoveredNodeId(node.id);
-  }, []);
-
-  const onNodeMouseLeave = useCallback(() => {
-    if (DISABLE_HOVER_BLUR_FACTORS) return;
-    setHoveredNodeId(null);
-  }, []);
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (reciteMode) return;
+    const kind = (edge.data as { kind?: string } | undefined)?.kind;
+    if (kind !== 'association') return;
+    const associationId =
+      (edge.data as AssociationEdgeData | undefined)?.associationId ?? edge.id;
+    openAssociationContextMenu(associationId, { x: event.clientX, y: event.clientY });
+  }, [openAssociationContextMenu, reciteMode]);
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
     if (reciteMode) return; // 背诵模式下禁用右键菜单
+    // 触屏：长按派生的 contextmenu 走底部内联工具条，不弹 Portal 菜单
+    if (isCoarsePointer) {
+      cancelLongPress();
+      suppressNextNodeClick();
+      openMobileNodeActions(node.id);
+      return;
+    }
     openNodeContextMenu(node.id, { x: event.clientX, y: event.clientY });
-  }, [openNodeContextMenu, reciteMode]);
+  }, [
+    openNodeContextMenu,
+    reciteMode,
+    isCoarsePointer,
+    cancelLongPress,
+    suppressNextNodeClick,
+    openMobileNodeActions,
+  ]);
 
-  const onPaneContextMenu = useCallback((event: React.MouseEvent) => {
-    event.preventDefault();
+  // 右键拖拽平移（aggressive 框选模式下 panOnDrag 含右键）松开时浏览器仍会派发
+  // contextmenu；记录按下位置，位移超过阈值视为平移手势，不弹空白菜单。
+  const rightButtonDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const handleContainerMouseDownCapture = useCallback((event: React.MouseEvent) => {
+    if (event.button === 2) {
+      rightButtonDownPosRef.current = { x: event.clientX, y: event.clientY };
+    }
   }, []);
 
-  const onNodeDragStart = useCallback((_: React.MouseEvent, node: Node) => {
+  // 画布空白处右键：提供新建主题 / 粘贴 / 适应视图 / 展开折叠等画布级操作
+  const onPaneContextMenu = useCallback((event: React.MouseEvent | MouseEvent) => {
+    event.preventDefault();
+    if (reciteMode) return;
+    // 触屏：空白长按不弹 Portal 菜单（快捷操作常驻画布左下角）
+    if (isCoarsePointer) return;
+    const downPos = rightButtonDownPosRef.current;
+    rightButtonDownPosRef.current = null;
+    if (
+      downPos &&
+      Math.hypot(event.clientX - downPos.x, event.clientY - downPos.y) > 5
+    ) {
+      return;
+    }
+    setContextMenu({
+      isOpen: true,
+      position: { x: event.clientX, y: event.clientY },
+      nodeId: null,
+      associationId: null,
+      pane: true,
+    });
+  }, [reciteMode, isCoarsePointer]);
+
+  const onNodeDragStart = useCallback<OnNodeDrag>((_, node) => {
     if (node.id === document.root.id) return;
-    setSelection([node.id]);
+    // 拖拽选中不强制居中
+    prevFocusedNodeId.current = node.id;
+    const dragRootIds = resolveCanvasDragNodeIds(document.root, selection, node.id);
+    if (!selection.includes(node.id)) setSelection([node.id]);
     setFocusedNodeId(node.id);
     dragNodeIdRef.current = node.id;
+    dragRootIdsRef.current = dragRootIds;
+    const draggedTreeIds = collectCanvasDragSubtreeIds(document.root, dragRootIds);
+    dragSubtreeIdsRef.current = draggedTreeIds;
+    dropTargetIdRef.current = null;
+    dropModeRef.current = 'child';
+    setDropTargetId(null);
+    setDropMode('child');
     setIsDragging(true);
+    // 多选拖拽角标 + 角标定位所需的节点尺寸
+    setDragCount(dragRootIds.length);
+    dragNodeSizeRef.current = {
+      width: node.measured?.width || 100,
+      height: node.measured?.height || 36,
+    };
+    dropPreviewRef.current = null;
+    setDropPreview(null);
 
     // 收集所有后代节点的相对偏移，使子树跟随拖拽
     // ★ A6-25：先建 id→layoutNode 索引，避免每个后代各做一次 O(n) 的 allNodes.find
@@ -410,48 +1472,41 @@ const MindMapCanvasInner: React.FC = () => {
     const offsets: Record<string, { dx: number; dy: number }> = {};
     const overrides: Record<string, { x: number; y: number }> = { [node.id]: node.position };
 
-    const collectDescendants = (parentId: string) => {
-      const mmNode = findNodeById(document.root, parentId);
-      if (!mmNode?.children) return;
-      for (const child of mmNode.children) {
-        const layoutNode = layoutNodeById.get(child.id);
-        if (layoutNode) {
-          offsets[child.id] = {
-            dx: layoutNode.position.x - node.position.x,
-            dy: layoutNode.position.y - node.position.y,
-          };
-          overrides[child.id] = layoutNode.position;
-        }
-        collectDescendants(child.id);
-      }
-    };
-    collectDescendants(node.id);
+    for (const draggedId of draggedTreeIds) {
+      if (draggedId === node.id) continue;
+      const layoutNode = layoutNodeById.get(draggedId);
+      if (!layoutNode) continue;
+      offsets[draggedId] = {
+        dx: layoutNode.position.x - node.position.x,
+        dy: layoutNode.position.y - node.position.y,
+      };
+      overrides[draggedId] = layoutNode.position;
+    }
 
     dragSubtreeOffsetsRef.current = offsets;
+    cancelPendingDragOverride();
     setDragPositionOverride(overrides);
-  }, [document.root, setFocusedNodeId, setSelection, getNodes]);
+  }, [document.root, selection, setFocusedNodeId, setSelection, getNodes, cancelPendingDragOverride]);
 
   const onNodesChange = useCallback((_changes: NodeChange[]) => {
     // 位置同步由 onNodeDrag 处理，此处无需操作
   }, []);
 
-  const onNodeDrag = useCallback((_: React.MouseEvent, draggedNode: Node) => {
+  const onNodeDrag = useCallback<OnNodeDrag>((_, draggedNode) => {
     if (!dragNodeIdRef.current) return;
     const dragId = dragNodeIdRef.current;
     const dragPos = draggedNode.position;
     const offsets = dragSubtreeOffsetsRef.current;
 
-    // 同步更新父节点 + 所有后代节点的位置——flushSync 确保同帧渲染
+    // rAF 合帧更新子树位置（去掉 flushSync，mousemove 不再同步强制渲染）
     const next: Record<string, { x: number; y: number }> = { [dragId]: dragPos };
     for (const [childId, offset] of Object.entries(offsets)) {
       next[childId] = { x: dragPos.x + offset.dx, y: dragPos.y + offset.dy };
     }
-    flushSync(() => { setDragPositionOverride(next); });
+    scheduleDragOverride(next);
 
-    // 寻找最近的放置目标
+    // 寻找最近的放置目标（用最新 dragPos，不依赖 override 是否已 flush）
     const allNodes = getNodes();
-    let closestId: string | null = null;
-    let closestDist = Infinity;
 
     const dragW = draggedNode.measured?.width || 100;
     const dragH = draggedNode.measured?.height || 36;
@@ -461,82 +1516,121 @@ const MindMapCanvasInner: React.FC = () => {
     // ★ A6-25：每次 drag move 只算一次拖拽子树 id 集合（O(子树)），
     // 替代旧实现对每个候选节点调用 isDescendantOf（每个候选 O(全树)，整体 O(n²)，
     // 500+ 节点大图拖拽时每次 mousemove 高达数十万次节点访问，明显卡顿）。
-    const dragSubtree = findNodeById(document.root, dragId);
-    const dragSubtreeIds = new Set<string>();
-    if (dragSubtree) {
-      const stack: MindMapNode[] = [dragSubtree];
-      while (stack.length > 0) {
-        const cur = stack.pop()!;
-        dragSubtreeIds.add(cur.id);
-        for (const child of cur.children) stack.push(child);
-      }
-    }
+    const dragSubtreeIds = dragSubtreeIdsRef.current;
 
+    // 候选预筛：中心距超出落点半径的节点永远选不中（含滞回保持），先用包围盒剔除，
+    // 大图拖拽时每帧只为半径内的少量节点构造候选对象。
+    const candidates: DropCandidate[] = [];
     for (const n of allNodes) {
       if (n.id === dragId) continue;
       if (n.id in offsets) continue; // 跳过子树节点（拖拽开始时快照）
       if (dragSubtreeIds.has(n.id)) continue; // 防御：拖拽中文档被外部更新时的新后代
 
-      const nCenterX = n.position.x + (n.measured?.width || 100) / 2;
-      const nCenterY = n.position.y + (n.measured?.height || 36) / 2;
-      const dist = Math.hypot(dragCenterX - nCenterX, dragCenterY - nCenterY);
-
-      if (dist < closestDist && dist < 150) {
-        closestDist = dist;
-        closestId = n.id;
+      const width = n.measured?.width || 100;
+      const height = n.measured?.height || 36;
+      if (
+        Math.abs(dragCenterX - (n.position.x + width / 2)) > DROP_TARGET_RADIUS ||
+        Math.abs(dragCenterY - (n.position.y + height / 2)) > DROP_TARGET_RADIUS
+      ) {
+        continue;
       }
+
+      candidates.push({
+        id: n.id,
+        x: n.position.x,
+        y: n.position.y,
+        width,
+        height,
+      });
     }
 
-    setDropTargetId(closestId);
+    const resolved = resolveDropTarget({
+      dragCenterX,
+      dragCenterY,
+      candidates,
+      previousTargetId: dropTargetIdRef.current,
+      previousMode: dropModeRef.current,
+      orientation: dropOrientationRef.current,
+    });
 
-    if (closestId) {
-      const target = allNodes.find(n => n.id === closestId);
+    if (resolved.targetId !== dropTargetIdRef.current) {
+      dropTargetIdRef.current = resolved.targetId;
+      setDropTargetId(resolved.targetId);
+    }
+    if (resolved.targetId) {
+      if (resolved.mode !== dropModeRef.current) {
+        dropModeRef.current = resolved.mode;
+        setDropMode(resolved.mode);
+      }
+    } else if (dropModeRef.current !== 'child') {
+      dropModeRef.current = 'child';
+      setDropMode('child');
+    }
+
+    // ghost 插槽预览：算出预计插入位置的指示线；仅几何变化时 setState
+    let nextPreview: DropPreviewRect | null = null;
+    if (resolved.targetId) {
+      const target = candidates.find((c) => c.id === resolved.targetId);
       if (target) {
-        const targetH = target.measured?.height || 36;
-        const targetCenterY = target.position.y + targetH / 2;
-        const relY = dragCenterY - targetCenterY;
-        const threshold = targetH * 0.3;
-
-        if (relY < -threshold) {
-          setDropMode('sibling-before');
-        } else if (relY > threshold) {
-          setDropMode('sibling-after');
-        } else {
-          setDropMode('child');
-        }
+        nextPreview = computeDropPreview({
+          target,
+          mode: resolved.mode,
+          orientation: dropOrientationRef.current,
+          layoutDirection: effectiveLayoutDirectionRef.current,
+          dragCenterX,
+          dragCenterY,
+        });
       }
     }
-  }, [document.root, getNodes]);
+    if (!dropPreviewEquals(dropPreviewRef.current, nextPreview)) {
+      dropPreviewRef.current = nextPreview;
+      setDropPreview(nextPreview);
+    }
+  }, [getNodes, scheduleDragOverride]);
 
-  const onNodeDragStop = useCallback((_: React.MouseEvent, _draggedNode: Node) => {
+  const onNodeDragStop = useCallback<OnNodeDrag>(() => {
     const draggedId = dragNodeIdRef.current;
+    const draggedRootIds = dragRootIdsRef.current;
     dragNodeIdRef.current = null;
+    dragRootIdsRef.current = [];
+    dragSubtreeIdsRef.current = new Set();
     dragSubtreeOffsetsRef.current = {};
+    cancelPendingDragOverride();
     setIsDragging(false);
     setDragPositionOverride({});
+    setDragCount(0);
+    dropPreviewRef.current = null;
+    setDropPreview(null);
 
-    if (draggedId && dropTargetId && draggedId !== dropTargetId) {
-      if (!isDescendantOf(document.root, draggedId, dropTargetId)) {
-        if (dropMode === 'child') {
-          moveNode(draggedId, dropTargetId, 0);
+    // 用 ref 而非 React state，避免最后一帧滞回未 flush 时落到旧目标
+    const finalTargetId = dropTargetIdRef.current;
+    const finalMode = dropModeRef.current;
+
+    if (draggedId && finalTargetId && draggedId !== finalTargetId) {
+      if (!isDescendantOf(document.root, draggedId, finalTargetId)) {
+        if (finalMode === 'child') {
+          moveNodes(draggedRootIds.length > 0 ? draggedRootIds : [draggedId], finalTargetId, 0);
         } else {
-          const parent = findParentNode(document.root, dropTargetId);
+          const parent = findParentNode(document.root, finalTargetId);
           if (parent) {
-            const idx = parent.children.findIndex(c => c.id === dropTargetId);
-            const insertIdx = dropMode === 'sibling-before' ? idx : idx + 1;
-            moveNode(draggedId, parent.id, insertIdx);
+            const idx = parent.children.findIndex(c => c.id === finalTargetId);
+            const insertIdx = finalMode === 'sibling-before' ? idx : idx + 1;
+            moveNodes(draggedRootIds.length > 0 ? draggedRootIds : [draggedId], parent.id, insertIdx);
           } else {
-            moveNode(draggedId, dropTargetId, 0);
+            moveNodes(draggedRootIds.length > 0 ? draggedRootIds : [draggedId], finalTargetId, 0);
           }
         }
       }
     }
 
+    dropTargetIdRef.current = null;
+    dropModeRef.current = 'child';
     setDropTargetId(null);
     setDropMode('child');
-  }, [dropTargetId, dropMode, document.root, moveNode]);
+  }, [document.root, moveNodes, cancelPendingDragOverride]);
 
-  // Ctrl+0 / Cmd+0: 适应视图（注册在 document，stopPropagation 防止 global.zoom-reset 冲突）
+  // Ctrl+0 / Cmd+0: 适应视图；关联线模式 Esc；选中关联线 Delete
+  // Esc/Delete 用 capture：抢在 useMindMapKeyboard（document bubble + stopPropagation）之前
   useEffect(() => {
     // ★ 标签页保活：非活跃实例不注册，防止隐藏标签页抢占快捷键
     if (!isCanvasActive) return;
@@ -547,28 +1641,75 @@ const MindMapCanvasInner: React.FC = () => {
       if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         e.stopPropagation();
-        fitView({ padding: 0.2, duration: 300 });
+        fitVisibleNodes(300);
+        return;
+      }
+
+      if (e.key === 'Escape' && associatingFromId) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearAssociationMode();
+        return;
+      }
+
+      if (
+        (e.key === 'Delete' || e.key === 'Backspace') &&
+        selectedAssociationId &&
+        !editingAssociationId &&
+        !reciteMode
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeAssociation(selectedAssociationId);
+        setSelectedAssociationId(null);
       }
     };
 
     // 使用 window.document 避免与组件内 MindMapDocument 变量 shadowing
-    window.document.addEventListener('keydown', handleKeyDown);
-    return () => window.document.removeEventListener('keydown', handleKeyDown);
-  }, [fitView, isCanvasActive]);
+    window.document.addEventListener('keydown', handleKeyDown, true);
+    return () => window.document.removeEventListener('keydown', handleKeyDown, true);
+  }, [
+    fitVisibleNodes,
+    isCanvasActive,
+    associatingFromId,
+    clearAssociationMode,
+    selectedAssociationId,
+    editingAssociationId,
+    removeAssociation,
+    reciteMode,
+  ]);
+
+  // 关联创建/选中工具条属于画布内临时操作态，Android 返回应先退出该状态，
+  // 不应直接离开导图或工作台。
+  useEffect(() => {
+    if (!isCanvasActive || (!associatingFromId && !selectedAssociationId)) return;
+    return registerBackHandler(() => {
+      if (associatingFromId) {
+        clearAssociationMode();
+      } else {
+        setSelectedAssociationId(null);
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [
+    associatingFromId,
+    clearAssociationMode,
+    isCanvasActive,
+    selectedAssociationId,
+  ]);
 
   // ★ 移动端虚拟键盘：进入节点编辑后若节点位于键盘遮挡区，向上平移画布。
   // ReactFlow 画布不是文档流，浏览器不会自动滚动聚焦元素，需手动调整 viewport。
-  const editingNodeIdForKeyboard = useMindMapStore(s => s.editingNodeId);
   useEffect(() => {
-    if (!editingNodeIdForKeyboard) return;
+    if (!editingNodeId) return;
     if (!window.matchMedia?.('(pointer: coarse)').matches) return;
     const vv = window.visualViewport;
     if (!vv) return;
 
-    const ensureNodeVisible = () => {
+    const ensureAboveKeyboard = () => {
       const node = reactFlowInstance
         .getNodes()
-        .find((n) => n.id === editingNodeIdForKeyboard);
+        .find((n) => n.id === editingNodeId);
       if (!node) return;
       const center = {
         x: node.position.x + (node.measured?.width ?? 0) / 2,
@@ -584,60 +1725,246 @@ const MindMapCanvasInner: React.FC = () => {
     };
 
     // 键盘弹出会触发 visualViewport resize；进入编辑稍后也主动检查一次
-    vv.addEventListener('resize', ensureNodeVisible);
-    const timer = window.setTimeout(ensureNodeVisible, 350);
+    vv.addEventListener('resize', ensureAboveKeyboard);
+    const timer = window.setTimeout(ensureAboveKeyboard, 350);
     return () => {
-      vv.removeEventListener('resize', ensureNodeVisible);
+      vv.removeEventListener('resize', ensureAboveKeyboard);
       window.clearTimeout(timer);
     };
-  }, [editingNodeIdForKeyboard, reactFlowInstance]);
+  }, [editingNodeId, reactFlowInstance]);
 
   return (
-    <div className={`w-full h-full overflow-hidden bg-[var(--mm-bg)] ${DISABLE_HOVER_BLUR_FACTORS ? 'mm-blur-safety-mode' : ''} ${isExporting ? 'mm-exporting' : ''}`}>
+    <div
+      ref={canvasContainerRef}
+      className={cn(
+        'w-full h-full overflow-hidden bg-[var(--mm-bg)] relative',
+        isExporting && 'mm-exporting',
+        !isCoarsePointer && `mm-canvas-mode-${dragMode}`,
+        showMobileToolbar && 'mm-has-mobile-toolbar',
+        showMobileToolbar && mobileToolbarPanel && 'mm-has-mobile-toolbar-panel',
+      )}
+      onMouseDownCapture={handleContainerMouseDownCapture}
+      /* 任何新交互（指针按下/滚轮）立即接管画布：终止进行中的惯性滑行 */
+      onPointerDownCapture={momentumPan.cancelMomentum}
+      onWheelCapture={momentumPan.cancelMomentum}
+      /* capture 相位：节点上的 d3-drag 会 stopPropagation，冒泡相位收不到触摸事件 */
+      onTouchStartCapture={handleContainerTouchStart}
+      onTouchMoveCapture={handleContainerTouchMove}
+      onTouchEndCapture={handleContainerTouchEnd}
+      onTouchCancelCapture={handleContainerTouchEnd}
+    >
+      {breadcrumbPath.length > 1 && (
+        <div className="mm-canvas-breadcrumb">
+          <DsButton
+            variant="ghost"
+            onClick={() => setViewRootId(null)}
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)]"
+            title={t('outline.exitFocusMode')}
+          >
+            <House size={14} />
+          </DsButton>
+          {breadcrumbPath.map((node, index) => (
+            <React.Fragment key={node.id}>
+              <span className="text-[var(--mm-text-muted)]">/</span>
+              <DsButton
+                variant="ghost"
+                onClick={() => setViewRootId(node.id)}
+                className={cn(
+                  "px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] truncate max-w-[100px]",
+                  index === breadcrumbPath.length - 1
+                    ? "text-[var(--mm-text)] font-medium"
+                    : "",
+                )}
+              >
+                {node.text || t('outline.untitled')}
+              </DsButton>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+      {associatingFromId && (
+        <div className="mm-association-hint" role="status">
+          <span>{t('association.pickTarget', { defaultValue: '点击目标节点' })}</span>
+          {isCoarsePointer ? (
+            <DsButton
+              variant="ghost"
+              className="mm-association-cancel"
+              onClick={clearAssociationMode}
+            >
+              {t('association.cancel', { defaultValue: '取消' })}
+            </DsButton>
+          ) : (
+            <kbd>Esc</kbd>
+          )}
+        </div>
+      )}
       <ReactFlow
-        nodes={nodes}
+        nodes={animatedNodes}
         edges={styledEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
-        onPaneClick={onPaneClick}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
+        onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu}
         onPaneContextMenu={onPaneContextMenu}
+        onEdgeClick={onEdgeClick}
+        onEdgeContextMenu={onEdgeContextMenu}
         onNodeDragStart={onNodeDragStart}
         onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         defaultEdgeOptions={{ type: defaultEdgeType }}
-        fitView
+        fitView={false}
         fitViewOptions={{ padding: REACTFLOW_CONFIG.fitViewPadding }}
+        defaultViewport={safeInitialViewport ?? DEFAULT_MINDMAP_VIEWPORT}
         minZoom={REACTFLOW_CONFIG.minZoom}
         maxZoom={REACTFLOW_CONFIG.maxZoom}
-        nodesDraggable={!reciteMode}
+        nodeDragThreshold={REACTFLOW_CONFIG.nodeDragThreshold}
+        nodesDraggable={!reciteMode && !associatingFromId}
         nodesConnectable={REACTFLOW_CONFIG.nodesConnectable}
         elementsSelectable={REACTFLOW_CONFIG.elementsSelectable}
-        panOnScroll={REACTFLOW_CONFIG.panOnScroll}
-        zoomOnScroll={REACTFLOW_CONFIG.zoomOnScroll}
+        edgesFocusable={!reciteMode}
+        // 滚轮/触控板语义（useCanvasWheelMode 偏好，localStorage 持久化）：
+        // - pan（默认）：双指滚动/滚轮平移，pinch 或 Cmd/Ctrl+滚轮缩放（平台习惯）
+        // - zoom（旧行为）：滚轮直接缩放
+        // Shift+滚动横向平移为 RF 内置；空白拖拽的框选/平移 dragMode 不受影响。
+        panOnScroll={wheelProps.panOnScroll}
+        zoomOnScroll={wheelProps.zoomOnScroll}
+        zoomOnPinch={REACTFLOW_CONFIG.zoomOnPinch}
+        zoomActivationKeyCode={wheelProps.zoomActivationKeyCode}
         zoomOnDoubleClick={false}
+        // 惯性平移：指针平移松手后减速滑行（尊重 prefers-reduced-motion；
+        // 滚轮平移交给系统惯性，hook 内部排除 WheelEvent）
+        onMoveStart={momentumPan.onMoveStart}
+        onMove={momentumPan.onMove}
+        onMoveEnd={momentumPan.onMoveEnd}
+        // 框选进行中标记：给选框挂实时计数徽标
+        onSelectionStart={onSelectionStart}
+        onSelectionEnd={onSelectionEnd}
         proOptions={{ hideAttribution: true }}
         onlyRenderVisibleElements={!isExporting}
+        selectionOnDrag={!associatingFromId && marqueeProps.selectionOnDrag}
+        selectionMode={marqueeProps.selectionMode}
+        panOnDrag={marqueeProps.panOnDrag}
+        selectionKeyCode={associatingFromId ? null : marqueeProps.selectionKeyCode}
+        panActivationKeyCode={marqueeProps.panActivationKeyCode}
+        onSelectionChange={onMarqueeSelectionChange}
       >
         <Controls
           showInteractive={false}
-          className="!shadow-[var(--mm-shadow)] !rounded-lg !border !border-[var(--mm-border)] !bg-[var(--mm-bg-elevated)]"
+          className="mm-canvas-controls"
         />
-        <MiniMap
-          nodeColor={() => '#6b7280'}
-          nodeStrokeWidth={3}
-          maskColor="rgba(0, 0, 0, 0.15)"
-          style={{ width: 120, height: 80, backgroundColor: 'var(--mm-bg-elevated)' }}
-          className="!shadow-[var(--mm-shadow)] !rounded-lg !border !border-[var(--mm-border)]"
-          pannable
-          zoomable
-        />
+        {/* 触屏：常驻「适应画布 / 新建主题」快捷钮（复用 pane 菜单动作），
+            选中节点出底部工具条时隐藏避免拥挤 */}
+        {isCoarsePointer && !reciteMode && !showMobileToolbar && (
+          <div
+            className="mm-canvas-touch-actions"
+            role="group"
+            aria-label={t('canvas.touchActions', { defaultValue: '画布快捷操作' })}
+          >
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="mm-canvas-touch-button"
+              onClick={() => fitVisibleNodes(300)}
+              title={t('contextMenu.fitView', { defaultValue: '适应视图' })}
+            >
+              <CornersOut size={15} />
+              <span>{t('contextMenu.fitView', { defaultValue: '适应视图' })}</span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="mm-canvas-touch-button"
+              onClick={handleAddTopic}
+              title={t('contextMenu.addTopic', { defaultValue: '新建主题' })}
+            >
+              <Plus size={15} />
+              <span>{t('contextMenu.addTopic', { defaultValue: '新建主题' })}</span>
+            </DsButton>
+            <span className="mm-canvas-mode-divider" aria-hidden="true" />
+            <CanvasZoomIndicator />
+          </div>
+        )}
+        {/* 触屏固定为平移；鼠标设备明确展示两个互斥的空白拖拽模式。 */}
+        {!isCoarsePointer && (
+          <div
+            className="mm-canvas-mode-switch"
+            role="group"
+            aria-label={t('canvas.dragModeGroup', { defaultValue: '画布拖拽模式' })}
+          >
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className={cn('mm-canvas-mode-button', dragMode === 'select' && 'is-active')}
+              onClick={() => setDragMode('select')}
+              title={t('canvas.dragModeSelect', {
+                defaultValue: '框选模式：拖拽空白框选（Space/中键/右键拖拽平移）',
+              })}
+              aria-pressed={dragMode === 'select'}
+            >
+              <Selection size={15} weight={dragMode === 'select' ? 'bold' : 'regular'} />
+              <span>{t('canvas.selectMode', { defaultValue: '框选' })}</span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className={cn('mm-canvas-mode-button', dragMode === 'pan' && 'is-active')}
+              onClick={() => setDragMode('pan')}
+              title={t('canvas.dragModePan', {
+                defaultValue: '拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）',
+              })}
+              aria-pressed={dragMode === 'pan'}
+            >
+              <Hand size={15} weight={dragMode === 'pan' ? 'fill' : 'regular'} />
+              <span>{t('canvas.panMode', { defaultValue: '拖动画布' })}</span>
+            </DsButton>
+            <span className="mm-canvas-mode-divider" aria-hidden="true" />
+            {/* 滚轮语义偏好：默认双指平移（平台习惯），可切回旧「滚轮缩放」 */}
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'mm-canvas-mode-button mm-canvas-wheel-toggle',
+                wheelMode === 'zoom' && 'is-active',
+              )}
+              onClick={() => setWheelMode(wheelMode === 'zoom' ? 'pan' : 'zoom')}
+              title={
+                wheelMode === 'zoom'
+                  ? t('canvas.wheelModeZoom', {
+                      defaultValue: '滚轮缩放（已开启）：滚轮/双指滑动直接缩放；点击切换为双指平移',
+                    })
+                  : t('canvas.wheelModePan', {
+                      defaultValue: '双指平移（默认）：滚轮/双指滑动平移，捏合或 Cmd/Ctrl+滚轮缩放；点击切换为滚轮缩放',
+                    })
+              }
+              aria-pressed={wheelMode === 'zoom'}
+            >
+              <MouseScroll size={15} weight={wheelMode === 'zoom' ? 'fill' : 'regular'} />
+              <span>{t('canvas.wheelZoom', { defaultValue: '滚轮缩放' })}</span>
+            </DsButton>
+            <span className="mm-canvas-mode-divider" aria-hidden="true" />
+            {/* 缩放百分比指示：实时读数，点击恢复 100% */}
+            <CanvasZoomIndicator />
+          </div>
+        )}
+        {/* 小图（≤10 节点）一屏可尽收，隐藏 MiniMap 减少 chrome 与每帧刷新（E02 C12）；
+            导出时 exporters 已按类名排除，无需在此判断 isExporting */}
+        {layoutNodes.length > 10 && (
+          <MiniMap
+            nodeColor={minimapNodeColor}
+            nodeStrokeWidth={3}
+            maskColor="hsl(var(--foreground) / 0.08)"
+            style={{ width: 104, height: 68, backgroundColor: 'var(--mm-bg-elevated)' }}
+            className="mm-canvas-minimap"
+            pannable
+            zoomable
+          />
+        )}
         <Background
           variant={BackgroundVariant.Dots}
           gap={20}
@@ -645,14 +1972,94 @@ const MindMapCanvasInner: React.FC = () => {
           color="var(--mm-text-muted)"
           style={{ opacity: 0.3 }}
         />
+        {/* 拖拽 ghost 插槽指示线 + 多选拖拽数量角标（flow 坐标浮层，非模态） */}
+        {(dropPreview || (isDragging && dragCount > 1)) && (
+          <ViewportPortal>
+            {dropPreview && (
+              <div
+                className={cn(
+                  'mm-drop-insert-line',
+                  dropPreview.axis === 'h'
+                    ? 'mm-drop-insert-line--h'
+                    : 'mm-drop-insert-line--v',
+                  dropPreview.kind === 'child-link' && 'mm-drop-insert-line--child-link',
+                )}
+                style={{
+                  left: dropPreview.left,
+                  top: dropPreview.top,
+                  width: dropPreview.width,
+                  height: dropPreview.height,
+                }}
+              />
+            )}
+            {isDragging && dragCount > 1 && dragNodeIdRef.current &&
+              dragPositionOverride[dragNodeIdRef.current] && (
+              <span
+                className="mm-canvas-drag-count-badge"
+                style={{
+                  left:
+                    dragPositionOverride[dragNodeIdRef.current].x +
+                    dragNodeSizeRef.current.width,
+                  top: dragPositionOverride[dragNodeIdRef.current].y,
+                }}
+              >
+                {dragCount}
+              </span>
+            )}
+          </ViewportPortal>
+        )}
+        {/* 关联线模式：源节点 → 指针的跟手虚线预览 */}
+        {associatingFromId && associationSourceCenter && associationPointer && (
+          <ViewportPortal>
+            <svg
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: 1,
+                height: 1,
+                overflow: 'visible',
+                pointerEvents: 'none',
+              }}
+            >
+              <line
+                className="mm-association-preview-line"
+                x1={associationSourceCenter.x}
+                y1={associationSourceCenter.y}
+                x2={associationPointer.x}
+                y2={associationPointer.y}
+              />
+            </svg>
+          </ViewportPortal>
+        )}
       </ReactFlow>
 
       <CanvasContextMenu
         isOpen={contextMenu.isOpen}
         position={contextMenu.position}
         nodeId={contextMenu.nodeId}
+        associationId={contextMenu.associationId}
+        paneMenu={contextMenu.pane}
+        onFitView={() => fitVisibleNodes(300)}
+        onExitFocusMode={viewRootId ? () => setViewRootId(null) : null}
         onClose={() => setContextMenu(prev => ({ ...prev, isOpen: false }))}
         onOpenResourcePicker={(nid) => setResourcePickerNodeId(nid)}
+        onFocusBranch={(nid) => {
+          setViewRootId(nid);
+          requestAnimationFrame(() => {
+            fitVisibleNodes(200, REACTFLOW_CONFIG.fitViewPadding);
+          });
+        }}
+        onStartAssociation={handleStartAssociation}
+        onEditAssociationLabel={(id) => {
+          setEditingAssociationId(id);
+          setSelectedAssociationId(id);
+        }}
+        onDeleteAssociation={(id) => {
+          removeAssociation(id);
+          setSelectedAssociationId((cur) => (cur === id ? null : cur));
+          setEditingAssociationId((cur) => (cur === id ? null : cur));
+        }}
       />
       <MindMapResourcePicker
         isOpen={!!resourcePickerNodeId}
@@ -661,37 +2068,77 @@ const MindMapCanvasInner: React.FC = () => {
         onSelect={handleResourcePickerSelect}
         onClose={handleResourcePickerClose}
       />
-      {document.root.children.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-          <div className="mt-24 flex flex-col items-center gap-4 max-w-[280px] text-center animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--mm-primary-soft)] flex items-center justify-center">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--mm-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <line x1="12" y1="5" x2="12" y2="3" />
-                <line x1="17" y1="7" x2="19" y2="5" />
-                <line x1="19" y1="12" x2="21" y2="12" />
-                <line x1="17" y1="17" x2="19" y2="19" />
-                <line x1="12" y1="19" x2="12" y2="21" />
-                <line x1="7" y1="17" x2="5" y2="19" />
-                <line x1="5" y1="12" x2="3" y2="12" />
-                <line x1="7" y1="7" x2="5" y2="5" />
-              </svg>
-            </div>
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium text-[var(--mm-text-secondary)]">{t('canvas.emptyTitle')}</p>
-              <p className="text-xs text-[var(--mm-text-muted)] leading-relaxed">
-                {t('canvas.emptyHintBefore')} <kbd className="px-1.5 py-0.5 mx-0.5 rounded bg-[var(--mm-bg-hover)] border border-[var(--mm-border)] text-[11px] font-mono">Enter</kbd> {t('canvas.emptyHintAfter')}
-              </p>
-            </div>
+
+      {/* 触屏：选中关联线的底部内联工具条。
+          关联线的编辑/删除原本只有右键菜单与 Delete 键两条通路，触屏均不可达；
+          复用 mm-mobile-node-toolbar 样式（≥44px 按钮、safe-area、上滑入场、
+          reduced-motion 降级均由既有 CSS 承担） */}
+      {isCoarsePointer && !reciteMode && selectedAssociationId && !editingAssociationId && (
+        <div
+          className="mm-mobile-node-toolbar"
+          role="toolbar"
+          aria-label={t('association.menuLabel', { defaultValue: '关联线菜单' })}
+        >
+          <div className="mm-mobile-toolbar-row">
+            <DsButton
+              variant="ghost"
+              className="mm-mobile-toolbar-btn"
+              onClick={() => setEditingAssociationId(selectedAssociationId)}
+            >
+              <Pencil size={18} />
+              <span>{t('association.editLabel', { defaultValue: '编辑标签' })}</span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              className="mm-mobile-toolbar-btn destructive"
+              onClick={() => {
+                removeAssociation(selectedAssociationId);
+                setSelectedAssociationId(null);
+              }}
+            >
+              <Trash size={18} />
+              <span>{t('association.delete', { defaultValue: '删除关联线' })}</span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              className="mm-mobile-toolbar-btn"
+              onClick={() => setSelectedAssociationId(null)}
+              aria-label={t('association.closeActions', { defaultValue: '关闭操作栏' })}
+            >
+              <X size={18} />
+              <span>{t('association.closeActions', { defaultValue: '关闭' })}</span>
+            </DsButton>
           </div>
         </div>
       )}
+
+      {/* 触屏：选中节点的底部内联工具条（替代 Portal 右键菜单路径） */}
+      {showMobileToolbar && focusedNodeId && (
+        <MobileNodeToolbar
+          nodeId={focusedNodeId}
+          panel={mobileToolbarPanel}
+          onPanelChange={setMobileToolbarPanel}
+          onClose={closeMobileToolbar}
+          onOpenResourcePicker={(nid) => setResourcePickerNodeId(nid)}
+          onStartAssociation={handleStartAssociation}
+          onFocusBranch={(nid) => {
+            setViewRootId(nid);
+            requestAnimationFrame(() => {
+              fitVisibleNodes(200, REACTFLOW_CONFIG.fitViewPadding);
+            });
+          }}
+        />
+      )}
     </div>
   );
-};
+});
 
-export const MindMapCanvas: React.FC = () => (
-  <ReactFlowProvider>
-    <MindMapCanvasInner />
-  </ReactFlowProvider>
+export const MindMapCanvas = React.forwardRef<MindMapCanvasHandle, MindMapCanvasProps>(
+  function MindMapCanvas(props, ref) {
+    return (
+      <ReactFlowProvider>
+        <MindMapCanvasInner ref={ref} {...props} />
+      </ReactFlowProvider>
+    );
+  },
 );

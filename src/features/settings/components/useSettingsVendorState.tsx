@@ -28,7 +28,8 @@ const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNA
 const invoke = isTauri ? tauriInvoke : null;
 
 export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
-  const { resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor } = deps;
+  // P2-13：closeRightPanel 单一来源——直接使用 Settings.tsx 传入的实现，不再本地重复定义
+  const { resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor, closeRightPanel } = deps;
 
   const apiConfigsForApisTab = resolvedApiConfigs;
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
@@ -117,9 +118,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     // 前端只检查是否完全没有配置（空字符串且没有 vendorId）
     const apiKeyTrimmed = (api.apiKey || '').trim();
     const hasVendorId = !!api.vendorId;
+    const usesNoApiKey = api.authMode === 'none';
     
     // 如果 apiKey 是空且没有 vendorId，才报错（占位符如 *** 由后端处理）
-    if (!apiKeyTrimmed && !hasVendorId) {
+    if (!usesNoApiKey && !apiKeyTrimmed && !hasVendorId) {
       showGlobalNotification('error', t('settings:notifications.api_key_required'));
       return;
     }
@@ -147,9 +149,16 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           apiProtocol: api.apiProtocol,
           supports_openai_responses: api.supportsOpenAIResponses,
           supportsOpenAIResponses: api.supportsOpenAIResponses,
+          provider_type: api.providerType,
+          providerType: api.providerType,
+          auth_mode: api.authMode,
+          authMode: api.authMode,
+          model_adapter: api.modelAdapter,
+          modelAdapter: api.modelAdapter,
           model: api.model, // 传递用户指定的模型名称
           vendor_id: vendorId, // 传递供应商 ID 以便后端获取真实密钥
           vendorId: vendorId,
+          headers: api.headers,
         });
         
         if (result) {
@@ -157,7 +166,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           showGlobalNotification(
             'success',
             t('settings:notifications.api_test_success', { name: api.name, model: api.model }),
-            t('settings:notifications.api_test_latency', { latency: latencyMs, defaultValue: '耗时 {{latency}} ms' })
+            t('settings:notifications.api_test_latency', { latency: latencyMs})
           );
         } else {
           showGlobalNotification('error', t('settings:notifications.api_test_failed', { name: api.name, model: api.model }));
@@ -323,7 +332,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       setSelectedVendorId(saved.id);
       showGlobalNotification('success', t('common:config_saved'));
       // noApiKey 供应商：编辑保存后自动获取模型列表
-      if (saved.noApiKey) {
+      if (saved.authMode === 'none' || saved.noApiKey) {
         triggerPostSaveAutoFlow(saved);
       }
     } catch (error) {
@@ -347,7 +356,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       showGlobalNotification('success', t('common:config_saved'));
       // noApiKey 供应商：创建后自动获取模型列表
-      if (saved.noApiKey) {
+      if (saved.authMode === 'none' || saved.noApiKey) {
         triggerPostSaveAutoFlow(saved);
       }
     } catch (error) {
@@ -356,9 +365,14 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   };
 
-  const handleDeleteVendor = (vendor: VendorConfig) => {
+  const handleDeleteVendor = (vendor: VendorConfig, options?: { skipConfirm?: boolean }) => {
     if (vendor.isBuiltin) {
       showGlobalNotification('error', t('settings:vendor_panel.cannot_delete_builtin'));
+      return;
+    }
+    // 移动端行内二次确认路径：确认已在行内完成，直接执行删除（P0-5）
+    if (options?.skipConfirm) {
+      void performDeleteVendor(vendor);
       return;
     }
     setVendorDeleteDialog(vendor);
@@ -413,6 +427,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, apiKey: '' };
       await upsertVendor(updated);
+
+      // 仅清除主 key；仍有备用 key 时供应商依然可用，不应禁用模型或清空分配。
+      if (vendor.apiKeys?.some(key => key.trim())) {
+        return;
+      }
 
       // 清空 Key 后：禁用该供应商所有模型 + 清除模型分配 + 重新分配
       const vendorProfileIds = new Set(
@@ -481,20 +500,25 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   };
 
-  const confirmDeleteVendor = async () => {
-    if (!vendorDeleteDialog) return;
+  // 供应商删除的实际执行体（桌面对话框确认 / 移动行内二次确认共用）
+  const performDeleteVendor = async (vendor: VendorConfig) => {
     try {
-      await deleteVendor(vendorDeleteDialog.id);
+      await deleteVendor(vendor.id);
       showGlobalNotification('success', t('settings:notifications.vendor_deleted'));
-      if (selectedVendorId === vendorDeleteDialog.id) {
+      if (selectedVendorId === vendor.id) {
         setSelectedVendorId(null);
       }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.vendor_delete_failed', { error: errorMessage }));
-    } finally {
-      setVendorDeleteDialog(null);
     }
+  };
+
+  const confirmDeleteVendor = async () => {
+    if (!vendorDeleteDialog) return;
+    const vendor = vendorDeleteDialog;
+    setVendorDeleteDialog(null);
+    await performDeleteVendor(vendor);
   };
 
   const handleOpenModelEditor = (vendor: VendorConfig, profile?: ModelProfile) => {
@@ -542,6 +566,13 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           headers: vendor.headers,
         };
     setModelEditor({ vendor, profile, api: draftApi });
+    // 移动端：同步切到三屏右侧面板（不依赖 useEffect 时序，避免 Sheet/Dialog 抢层）
+    if (isSmallScreen) {
+      setInlineEditState(null);
+      setIsAddingNewModel(false);
+      setRightPanelType('modelEditor');
+      setScreenPosition('right');
+    }
   };
 
   const handleSaveModelProfile = async (api: ApiConfig) => {
@@ -579,6 +610,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
   // 桌面端内联新增模型
   const handleAddModelInline = (vendor: VendorConfig) => {
+    // 移动端：新增模型走统一三屏右侧面板，而非桌面 inline Sheet
+    if (isSmallScreen) {
+      handleOpenModelEditor(vendor);
+      return;
+    }
     const baseAdapter = providerTypeFromConfig(vendor.providerType, vendor.providerType);
     const isGeneralAdapter = baseAdapter === 'general';
     const tempId = `new_model_${Date.now()}`;
@@ -626,12 +662,6 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
   };
 
   // ===== 移动端三屏布局相关 hooks =====
-  // 关闭右侧面板的通用函数
-  const closeRightPanel = useCallback(() => {
-    setRightPanelType('none');
-    setScreenPosition('center');
-  }, []);
-
   // 当打开编辑器时自动切换到右侧面板
   useEffect(() => {
     if (isSmallScreen && modelEditor) {
@@ -654,20 +684,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     handleCloseModelEditor();
   }, [handleSaveModelProfile, handleCloseModelEditor]);
 
-  const handleDeleteModelProfile = (profile: ModelProfile) => {
-    if (profile.isBuiltin) {
-      showGlobalNotification('error', t('settings:common_labels.builtin_cannot_delete'));
-      return;
-    }
-    const referencingKeys = (Object.keys(modelAssignments) as Array<keyof ModelAssignments>).filter(
-      key => modelAssignments[key] === profile.id
-    );
-    setModelDeleteDialog({ profile, referencingKeys });
-  };
-
-  const confirmDeleteModelProfile = async () => {
-    if (!modelDeleteDialog) return;
-    const { profile, referencingKeys } = modelDeleteDialog;
+  // 模型删除的实际执行体（桌面对话框确认 / 移动行内二次确认共用）
+  const performDeleteModelProfile = async (
+    profile: ModelProfile,
+    referencingKeys: Array<keyof ModelAssignments>
+  ) => {
     try {
       if (referencingKeys.length > 0) {
         const clearedAssignments: ModelAssignments = { ...modelAssignments };
@@ -681,9 +702,30 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.api_delete_failed', { error: errorMessage }));
-    } finally {
-      setModelDeleteDialog(null);
     }
+  };
+
+  const handleDeleteModelProfile = (profile: ModelProfile, options?: { skipConfirm?: boolean }) => {
+    if (profile.isBuiltin) {
+      showGlobalNotification('error', t('settings:common_labels.builtin_cannot_delete'));
+      return;
+    }
+    const referencingKeys = (Object.keys(modelAssignments) as Array<keyof ModelAssignments>).filter(
+      key => modelAssignments[key] === profile.id
+    );
+    // 移动端行内二次确认路径：确认已在行内完成，直接执行删除（P0-5）
+    if (options?.skipConfirm) {
+      void performDeleteModelProfile(profile, referencingKeys);
+      return;
+    }
+    setModelDeleteDialog({ profile, referencingKeys });
+  };
+
+  const confirmDeleteModelProfile = async () => {
+    if (!modelDeleteDialog) return;
+    const { profile, referencingKeys } = modelDeleteDialog;
+    setModelDeleteDialog(null);
+    await performDeleteModelProfile(profile, referencingKeys);
   };
 
   const handleToggleModelProfile = async (profile: ModelProfile, enabled: boolean) => {
@@ -768,8 +810,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         ? defaults.enableThinking ?? (extCaps.supportsThinkingTokens || extCaps.supportsHybridReasoning || caps.isReasoning)
         : false;
 
-      const modelAdapter = vendor.providerType?.toLowerCase() === 'gemini' ? 'google' : caps.modelAdapter;
-      const geminiApiVersion = vendor.providerType?.toLowerCase() === 'gemini' ? 'v1beta' : undefined;
+      // 「选 Google 类型获取模型 404」修复：google 与 gemini 均按 Gemini 原生适配器处理
+      const vendorProviderTypeLower = vendor.providerType?.toLowerCase();
+      const isGoogleVendor = vendorProviderTypeLower === 'gemini' || vendorProviderTypeLower === 'google';
+      const modelAdapter = isGoogleVendor ? 'google' : caps.modelAdapter;
+      const geminiApiVersion = isGoogleVendor ? 'v1beta' : undefined;
 
       const profile: ModelProfile = {
         id: `vm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1037,8 +1082,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       vl_embedding_model_config_id: null,
       vl_reranker_model_config_id: null,
       memory_decision_model_config_id: mapping[t('settings:mapping_keys.memory_decision_configured')] || null,
+      review_analysis_model_config_id: null,
       voice_input_asr_model_config_id: mapping[t('settings:mapping_keys.voice_input_asr_configured')] || null,
       image_generation_model_config_id: mapping[t('settings:mapping_keys.image_generation_configured')] || null,
+      // 压缩专用模型不属于供应商映射，保持现状不变
+      compaction_model_config_id: null,
       // 显示模式不属于供应商映射，保持现状不变（持久化层 #[serde(default)] 兜底为 null）
       translation_display_mode: null,
     };

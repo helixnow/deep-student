@@ -36,7 +36,7 @@ export const UserMessageBubble: React.FC<UserMessageBubbleProps> = ({
   children,
   className,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflow, setIsOverflow] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -89,12 +89,12 @@ export const UserMessageBubble: React.FC<UserMessageBubbleProps> = ({
           {isExpanded ? (
             <>
               <CaretUp size={14} />
-              <span>{t('messageItem.bubble.collapse', '收起')}</span>
+              <span>{t('messageItem.bubble.collapse')}</span>
             </>
           ) : (
             <>
               <CaretDown size={14} />
-              <span>{t('messageItem.bubble.expand', '展开全文')}</span>
+              <span>{t('messageItem.bubble.expand')}</span>
             </>
           )}
         </button>

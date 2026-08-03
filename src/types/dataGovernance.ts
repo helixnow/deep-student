@@ -1,3 +1,12 @@
+export type StartupComponentStatus = 'healthy' | 'degraded' | 'blocked';
+
+export interface StartupComponentIssue {
+  component: string;
+  status: StartupComponentStatus;
+  reason: string | null;
+  dependency: string | null;
+}
+
 /**
  * 数据治理系统类型定义
  *
@@ -204,8 +213,24 @@ export interface AuditLogPagedResponse {
 
 // ==================== 备份相关类型 ====================
 
-/** 备份类型 */
-export type BackupType = 'full' | 'incremental';
+/**
+ * 备份类型。
+ * `incremental` 仅用于识别历史空壳增量包（创建入口已下线，不可恢复）。
+ */
+export type BackupType = 'full' | 'partial_overlay' | 'legacy_unknown' | 'incremental';
+
+/**
+ * 与 Rust `INCREMENTAL_BACKUP_REMOVED_MESSAGE` /
+ * `INCREMENTAL_BACKUP_DISABLED_MESSAGE` 字节级对齐（创建封禁）。
+ */
+export const INCREMENTAL_BACKUP_REMOVED_MESSAGE =
+  'Incremental backup has been removed; use full backup or cloud sync';
+
+/**
+ * 与 Rust `INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE` 字节级对齐（legacy 包拒恢复）。
+ */
+export const INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE =
+  'Legacy incremental backup cannot be restored; use a full backup or cloud sync';
 
 /** 备份结果响应 */
 export interface BackupResultResponse {
@@ -251,6 +276,10 @@ export interface BackupInfoResponse {
   size: number;
   /** 备份类型 */
   backup_type: BackupType;
+  /** 完整槽恢复点或仅用于检查/导出的部分归档（旧后端可能缺失）。 */
+  recovery_kind?: 'disaster_recovery' | 'partial_archive';
+  /** 是否满足完整槽恢复契约（旧后端可能缺失）。 */
+  restorable?: boolean;
   /** 包含的数据库列表 */
   databases: string[];
 }
@@ -327,7 +356,7 @@ export interface RestoreResultResponse {
 export type BackupTier = 'core' | 'important' | 'rebuildable' | 'large_assets';
 
 /** Translation function type for i18n integration — uses i18next TFunction for compatibility */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export type DataGovernanceTFn = (...args: any[]) => any;
 
 /** 获取备份层级显示名称（i18n） */
@@ -515,7 +544,9 @@ export type AssetType =
   | 'subjects'
   | 'workspaces'
   | 'audio'
-  | 'videos';
+  | 'videos'
+  | 'textbooks'
+  | 'pdf_ocr_sessions';
 
 /** 资产类型信息 */
 export interface AssetTypeInfo {
@@ -540,6 +571,8 @@ export function getAssetTypeDisplayName(type: AssetType | string, t: DataGoverna
     workspaces: 'data:governance.asset_type.workspaces',
     audio: 'data:governance.asset_type.audio',
     videos: 'data:governance.asset_type.videos',
+    textbooks: 'data:governance.asset_type.textbooks',
+    pdf_ocr_sessions: 'data:governance.asset_type.pdf_ocr_sessions',
   };
   const key = (keys as Record<string, string>)[type];
   return key ? t(key) : type;
@@ -616,7 +649,15 @@ export interface BackedUpAsset {
 // ==================== UI 相关类型 ====================
 
 /** Dashboard Tab 类型 */
-export type DashboardTab = 'overview' | 'archive' | 'backup' | 'sync' | 'audit' | 'cache' | 'debug';
+export type DashboardTab =
+  | 'overview'
+  | 'recovery'
+  | 'archive'
+  | 'backup'
+  | 'sync'
+  | 'audit'
+  | 'cache'
+  | 'debug';
 
 /**
  * 数据库 ID 类型（治理范围内的数据库）
@@ -625,6 +666,10 @@ export type DashboardTab = 'overview' | 'archive' | 'backup' | 'sync' | 'audit' 
  *
  * 明确豁免（不纳入数据治理）：
  * - message_queue.db — 运行时临时队列，重启后自动重建
+ * - browser.db — 内置浏览器元数据（`{active_slot}/browser.db`）；懒加载；模块内迁移；
+ *   不进 DatabaseId / RowSync / 默认备份（对齐 message_queue）
+ * - browser-profiles/ — WebView profile 目录（cookie/缓存；非 SQLite）；
+ *   `{active_slot}/browser-profiles/default/`；清 Cookie 与清历史分离；禁用浏览器保留文件
  * - ws_*.db — 工作空间独立数据库，随工作空间生命周期管理
  * - resources.db — 已废弃的兼容期资源数据库，仅读不写
  */

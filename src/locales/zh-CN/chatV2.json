@@ -18,7 +18,23 @@
     "listenerRegistrationFailedMessage": "事件监听器注册失败",
     "listenerRegistrationFailed": "监听器注册失败",
     "sessionLoadFailedMessage": "已自动创建新会话，如有需要请检查网络或重启应用",
-    "sessionLoadFailed": "会话加载失败"
+    "sessionLoadFailed": "会话加载失败",
+    "streamInterrupted": "流式响应中断",
+    "abortFailed": "中断失败",
+    "abortFailedMessage": "无法可靠中断生成，已强制重置本地状态",
+    "killSwitchBlocked": "Agent 已断电，无法发送。请在桌面操控中心恢复后再试。"
+  },
+  "killSwitch": {
+    "tripped": "Agent 已断电",
+    "resumeHint": "请在 AI 桌面操控中恢复 Agent"
+  },
+  "sourcePanel": {
+    "retrieving": "正在检索来源…",
+    "retrievalFailed": "{{scopes}} 检索失败",
+    "retrievalFailedGeneric": "部分来源检索失败",
+    "loadMore": "加载更多（还有 {{count}} 条）",
+    "showAllCard": "查看全部 {{count}} 条",
+    "thumbnailUnavailable": "缩略图不可用"
   },
   "success": {
     "listenerRetrySuccessMessage": "事件监听器重试成功",
@@ -32,6 +48,9 @@
     "copy": "复制",
     "copySuccess": "已复制代码到剪贴板",
     "copySuccessTitle": "复制成功",
+    "copyFailed": "复制失败，请重试",
+    "copyFailedTitle": "复制失败",
+    "errorWithDetail": "{{message}}：{{detail}}",
     "render": "渲染",
     "run": "运行",
     "source": "源码",
@@ -50,11 +69,17 @@
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "fitView": "适配视图",
-    "resetView": "重置视图"
+    "resetView": "重置视图",
+    "sandboxTitle": "HTML 沙箱",
+    "openSandbox": "在沙箱中打开"
   },
   "common": {
     "close": "关闭",
     "cancel": "取消",
+    "clearSearch": "清除搜索",
+    "removeNamed": "移除 {{name}}",
+    "closeNamed": "关闭 {{name}}",
+    "retryNamed": "重试 {{name}}",
     "justNow": "刚刚",
     "minutesAgo": "{{count}}分钟前",
     "hoursAgo": "{{count}}小时前",
@@ -74,7 +99,18 @@
       "suggestion5": "根据我上传的高中英语资料，生成一套复习用的Anki闪卡。"
     },
     "scrollToBottom": "回到底部",
-    "waiting": "正在思考..."
+    "waiting": "正在思考...",
+    "waitingLabel": "正在思考",
+    "srNewMessages": "收到新消息，共 {{count}} 条",
+    "search": {
+      "open": "搜索聊天",
+      "placeholder": "搜索聊天...",
+      "close": "关闭聊天搜索",
+      "previous": "上一个匹配项",
+      "next": "下一个匹配项",
+      "results": "{{current}}/{{count}}",
+      "noResults": "无匹配"
+    }
   },
   "messageItem": {
     "actions": {
@@ -101,6 +137,7 @@
       "contentUnchanged": "内容未修改",
       "retryDeleteConfirm": "重试将删除后续 {{count}} 条消息，是否继续？",
       "retryDeletingSubsequent": "因重试已移除后续 {{count}} 条消息",
+      "retryConfirmAction": "继续重试",
       "saveAsNote": "保存为笔记",
       "saveAsNoteSuccess": "已保存为笔记：{{title}}",
       "saveAsNoteFailed": "保存笔记失败",
@@ -108,9 +145,13 @@
       "exportMarkdownSuccess": "已导出 Markdown 文件",
       "exportMarkdownFailed": "导出失败",
       "noContentToExport": "无可导出的内容",
+      "noteDefaultTitle": "聊天笔记 {{date}}",
       "branch": "从此处分支",
       "branchSuccess": "已创建分支会话",
       "branchFailed": "分支失败"
+    },
+    "touchBar": {
+      "ariaLabel": "消息快捷操作"
     },
     "failure": {
       "retry": "重试",
@@ -128,8 +169,13 @@
       "retry": "重试",
       "retryParallel": "并行重试 ({{count}})"
     },
+    "bubble": {
+      "expand": "展开全文",
+      "collapse": "收起"
+    },
     "rawRequest": {
       "title": "API 请求体",
+      "titleWithModel": "API 请求体 — {{model}}",
       "copy": "复制",
       "copySuccess": "已复制请求体",
       "copyFailed": "复制失败",
@@ -141,10 +187,20 @@
       "stats": {
         "bodyChars": "{{kb}}K 字符",
         "messages": "{{count}} 条消息",
+        "messages_one": "{{count}} 条消息",
+        "messages_other": "{{count}} 条消息",
         "images": "{{count}} 张图片",
+        "images_one": "{{count}} 张图片",
+        "images_other": "{{count}} 张图片",
         "tools": "{{count}} 个工具",
+        "tools_one": "{{count}} 个工具",
+        "tools_other": "{{count}} 个工具",
         "toolCalls": "{{count}} 次调用",
-        "toolResults": "{{count}} 个结果"
+        "toolCalls_one": "{{count}} 次调用",
+        "toolCalls_other": "{{count}} 次调用",
+        "toolResults": "{{count}} 个结果",
+        "toolResults_one": "{{count}} 个结果",
+        "toolResults_other": "{{count}} 个结果"
       }
     },
     "loadingFiles": "加载文件中...",
@@ -172,17 +228,35 @@
       "creating": "创建引用"
     },
     "modeSeparator": "、",
+    "runtimeModelSwitchCurrent": "{{label}}，当前：{{current}}",
     "thinkingEnabled": "推理模式已开启",
     "thinkingDisabled": "点击开启推理模式",
     "toggleThinking": "切换推理模式",
     "thinking": "推理模式",
     "thinkingDepthMenu": "选择推理深度",
     "thinkingDepthTitle": "推理强度",
+    "thinkingDepthEfficient": "更高效",
+    "thinkingDepthSmart": "更智能",
     "thinkingOn": "开启",
     "thinkingOff": "关闭",
     "thinkingUnsupported": "不支持推理",
     "thinkingUnsupportedDescription": "该模型不支持推理",
+    "thinkingDepth": {
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "超高"
+    },
+    "thinkingState": {
+      "unsupported": "推理: 不支持",
+      "off": "推理: 关闭",
+      "on": "推理: {{depth}}"
+    },
     "runtimeModelTitle": "模型",
+    "runtimeModelCompareMode": "进入多选模式...",
+    "runtimeModelOtherProvider": "其他",
+    "runtimeModelNoResults": "未找到匹配模型",
     "chooseRuntimeModel": "选择模型",
     "thinkingDepthExpensive": "更慢",
     "ankiTools": "Anki 制卡",
@@ -278,6 +352,27 @@
     },
     "camera": "拍照",
     "resourceLibrary": "资源库",
+    "plusMenu": {
+      "trigger": "添加与会话选项",
+      "attachmentsCount": "附件（{{count}}）",
+      "mcpServersCount": "MCP（{{count}}）",
+      "mcpServerGeneratedName": "MCP 服务器 #{{suffix}}",
+      "addFile": "添加文件",
+      "mode": "模式",
+      "connectors": "连接器",
+      "openConnectors": "管理连接器",
+      "connectorsHint": "选择 MCP / 外部工具连接",
+      "modeDefaultDescription": "做一做模式会按当前执行档位运行；问一问和想一想的模式约束始终优先。",
+      "knowledgeBase": "知识库",
+      "kbProactive": "主动检索",
+      "kbProactiveHint": "开启后要求模型回答前优先检索你的笔记、教材等本地资料",
+      "compactContext": "压缩上下文",
+      "compactingContext": "正在压缩上下文…",
+      "compactionComplete": "上下文压缩完成",
+      "compactionNotNeeded": "暂无可压缩内容",
+      "compactionSkipped": "本次未压缩",
+      "compactionFailed": "压缩失败，请重试"
+    },
     "pasteNotReady": "正在初始化，请稍后再试",
     "retryStarted": "已重新启动处理",
     "retryFailed": "重试失败: {{error}}",
@@ -286,7 +381,49 @@
       "pdf": "PDF",
       "image": "图片"
     },
-    "processingTimeout": "处理超时，请重试"
+    "processingTimeout": "处理超时，请重试",
+    "sendMessage": "发送消息",
+    "stopping": "正在停止...",
+    "sendGuard": {
+      "streaming": "正在回复中，请等待完成或点击停止",
+      "notReady": "当前会话暂时无法发送，请稍后再试"
+    },
+    "longPaste": {
+      "notice": "已粘贴长文本（{{chars}} 字符）",
+      "convert": "转为附件",
+      "dismiss": "保留文本",
+      "autoConverted": "文本过长（{{chars}} 字符），已自动转为附件"
+    },
+    "flashcardHint": {
+      "document": "可以让我把这份文档做成闪卡",
+      "apkg": "检测到 Anki 牌组，可以让我导入到卡片库",
+      "dismiss": "知道了"
+    },
+    "mediaHint": {
+      "audio": "AI 无法直接收听音频，仅能看到文件名；可以让我调用转写工具获取文字内容",
+      "video": "AI 无法直接观看视频，仅能看到文件名",
+      "dismiss": "知道了"
+    },
+    "mindmapHint": {
+      "notice": "检测到思维导图文件，可以让我导入为思维导图",
+      "dismiss": "知道了"
+    },
+    "errorAttachmentsExcluded": "{{count}} 个失败附件未随消息发送：{{names}}",
+    "chip": {
+      "ready": "已就绪",
+      "error": "失败",
+      "pages": "{{count}} 页",
+      "pages_one": "{{count}} 页",
+      "pages_other": "{{count}} 页",
+      "truncated": "将截断",
+      "truncatedTitle": "文件超过 100KB，注入时仅保留前 100KB 内容；如需完整内容可让 AI 使用检索工具",
+      "title": "{{name}} · {{status}}",
+      "titleTruncated": "{{name}} · {{status}} · {{truncation}}"
+    },
+    "slashCommand": {
+      "title": "技能命令",
+      "active": "已激活"
+    }
   },
   "queue": {
     "settings": {
@@ -299,19 +436,24 @@
     "bubble": {
       "steer": "引导",
       "delete": "删除",
-      "iconLabel": "排队消息"
+      "iconLabel": "排队消息",
+      "attachmentsOnly": "仅附件",
+      "empty": "空消息"
     },
     "steeredBadge": "已引导对话",
     "error": {
       "retry": "重试",
       "skip": "跳过",
       "clearAll": "全部清空",
-      "tooltipPrefix": "失败："
+      "tooltipPrefix": "失败：",
+      "tooltip": "失败：{{error}}",
+      "unknown": "未知错误"
     },
     "fullTooltip": "队列已满，请稍候"
   },
   "input": {
-    "attachmentUploadFailed": "附件上传失败，请重试"
+    "attachmentUploadFailed": "附件上传失败，请重试",
+    "attachmentUploadFailedDetail": "附件上传失败：{{detail}}"
   },
   "anki": {
     "loadingPanel": "加载 Anki 面板..."
@@ -324,13 +466,54 @@
     "compactionSummary": {
       "title": "上下文已压缩 · 学习状态摘要",
       "expandHint": "点击展开",
-      "footnote": "此摘要替代了更早的对话内容在模型视图中的位置。原始消息仍保存在数据库中。"
+      "footnote": "此摘要替代了更早的对话内容在模型视图中的位置。原始消息仍保存在数据库中。",
+      "copy": "复制摘要",
+      "copied": "已复制",
+      "messageCount": "压缩 {{count}} 条消息",
+      "tokenChange": "约 {{before}} → {{after}} tokens",
+      "summaryPasses": "{{count}} 轮增量摘要",
+      "undo": "撤销压缩",
+      "undoHint": "恢复到上一个压缩视图；不会删除原始消息或审计记录",
+      "undone": "已撤销",
+      "undoFailed": "无法撤销：这可能已不是当前生效的压缩。",
+      "locateOriginal": "定位原文",
+      "originalNotLoaded": "原文当前未显示；可撤销压缩以恢复原始上下文视图。",
+      "originalMissing": "原文消息不在当前会话中（可能已被删除）。"
     },
     "generic": {
       "type": "类型",
       "input": "输入",
       "output": "输出",
-      "error": "错误"
+      "error": "错误",
+      "unknownType": "未知块类型",
+      "copy": "复制",
+      "status": {
+        "pending": "等待中",
+        "running": "执行中",
+        "success": "已完成",
+        "error": "失败"
+      }
+    },
+    "templatePreview": {
+      "loading": "正在生成模板预览...",
+      "error": "模板预览失败",
+      "nonVisualFallback": "模板工具输出（非可视化）",
+      "noOutput": "（无输出）"
+    },
+    "todoList": {
+      "blockError": "任务列表更新失败",
+      "emptyRunning": "任务列表准备中..."
+    },
+    "multimodalRag": {
+      "title": "多模态检索",
+      "searching": "检索中...",
+      "loading": "正在检索图文资料...",
+      "error": "检索失败",
+      "errorMessage": "多模态检索失败，请重试",
+      "noResults": "未找到相关资料",
+      "statsSimple": "{{count}} 条结果",
+      "statsSimple_one": "{{count}} 条结果",
+      "statsSimple_other": "{{count}} 条结果"
     },
     "retrieval": {
       "sourcesCount": "条来源",
@@ -342,8 +525,42 @@
       "sourceTypes": {
         "rag": "文档知识库",
         "memory": "用户记忆",
-        "web_search": "网络搜索"
+        "web_search": "网络搜索",
+        "multimodal": "多模态知识库",
+        "academic": "学术论文"
       }
+    },
+    "paperSave": {
+      "title": "论文下载",
+      "preparing": "准备下载论文…",
+      "stage": {
+        "resolving": "解析地址",
+        "downloading": "下载中",
+        "deduplicating": "去重检查",
+        "storing": "存储中",
+        "processing": "文本提取",
+        "indexing": "建立索引",
+        "done": "完成",
+        "error": "失败"
+      },
+      "sourceTitle": "下载源: {{source}}",
+      "dedup": "去重",
+      "dedupTitle": "已存在于资料库",
+      "saved": "已保存",
+      "retry": "重试",
+      "retryTitle": "重试下载",
+      "switchSource": "切换下载源",
+      "retryFailed": "重试失败",
+      "downloadFailed": "下载失败",
+      "blockError": "论文下载失败",
+      "summaryDone_one": "{{done}}/{{total}} 篇完成",
+      "summaryDone_other": "{{done}}/{{total}} 篇完成",
+      "summaryDone": "{{done}}/{{total}} 篇完成",
+      "summaryFailedSuffix_one": "，{{count}} 篇失败",
+      "summaryFailedSuffix_other": "，{{count}} 篇失败",
+      "summaryFailedSuffix": "，{{count}} 篇失败",
+      "summaryWithFailures": "{{done}}/{{total}} 篇完成，{{count}} 篇失败",
+      "downloading": "下载中 {{done}}/{{total}}"
     },
     "rag": {
       "title": "文档知识库",
@@ -354,7 +571,9 @@
       "errorMessage": "文档检索失败，请重试",
       "noResults": "未找到相关文档",
       "stats": "显示 {{shown}} / {{total}} 条结果",
-      "statsSimple": "{{count}} 条结果"
+      "statsSimple": "{{count}} 条结果",
+      "statsSimple_one": "{{count}} 条结果",
+      "statsSimple_other": "{{count}} 条结果"
     },
     "memory": {
       "title": "用户记忆",
@@ -364,6 +583,8 @@
       "errorMessage": "记忆检索失败，请重试",
       "noResults": "未找到相关记忆",
       "statsSimple": "{{count}} 条记忆",
+      "statsSimple_one": "{{count}} 条记忆",
+      "statsSimple_other": "{{count}} 条记忆",
       "types": {
         "conversation": "对话记忆",
         "long_term": "长期记忆",
@@ -378,7 +599,9 @@
       "errorMessage": "网络搜索失败，请重试",
       "noResults": "未找到相关结果",
       "stats": "显示 {{shown}} / {{total}} 条结果",
-      "statsSimple": "{{count}} 条结果"
+      "statsSimple": "{{count}} 条结果",
+      "statsSimple_one": "{{count}} 条结果",
+      "statsSimple_other": "{{count}} 条结果"
     },
     "academicSearch": {
       "title": "学术搜索",
@@ -388,13 +611,16 @@
       "errorMessage": "学术搜索失败，请重试",
       "noResults": "未找到相关论文",
       "stats": "显示 {{shown}} / {{total}} 篇论文",
-      "statsSimple": "{{count}} 篇论文"
+      "statsSimple": "{{count}} 篇论文",
+      "statsSimple_one": "{{count}} 篇论文",
+      "statsSimple_other": "{{count}} 篇论文"
     },
     "mcpTool": {
       "title": "工具调用",
       "unknownTool": "未知工具",
       "input": "输入参数",
       "output": "输出结果",
+      "copyOutput": "复制输出",
       "noOutput": "无输出",
       "showFullJson": "显示完整 JSON",
       "executing": "执行中...",
@@ -411,12 +637,55 @@
       "status": {
         "pending": "等待执行",
         "running": "执行中",
+        "started": "已启动，正在后台处理",
         "success": "执行完成",
         "error": "执行失败"
       },
       "loadedSkills": "已加载技能",
       "loadedTools": "已加载工具",
-      "viewSourceFile": "查看源文件"
+      "toolOutputImage": "工具输出图片",
+      "moreRows": "还有 {{count}} 行",
+      "viewSourceFile": "查看源文件",
+      "openRuntimeSettings": "去授权运行目录",
+      "generatingArgs": "生成参数中...",
+      "expandLongOutput": "展开全部（约 {{count}} 字）",
+      "collapseLongOutput": "收起长输出"
+    },
+    "workbenchOps": {
+      "title": "桌面操作",
+      "openTarget": "打开目标窗",
+      "undo": "撤销",
+      "steps": "执行步骤",
+      "done": "已完成",
+      "pending": "未执行",
+      "target": "目标",
+      "noTarget": "无目标窗口",
+      "message": "说明",
+      "applied": "已应用 {{applied}}/{{total}}",
+      "undoExpired": "撤销窗口已过期",
+      "undoExpiredHint": "撤销窗口已过期：撤销令牌已失效或操作账本已被清理，本次操作无法再撤销。",
+      "undoApplied": "已撤销可恢复更改",
+      "undoing": "正在撤销…",
+      "undoRetry": "部分撤销，重试",
+      "undoUnavailable": "不可撤销",
+      "undoIncompleteExhausted": "撤销未完全完成（无法重试）",
+      "verified": "操作后状态已验证",
+      "verificationFailed": "{{count}} 个后置条件未满足",
+      "undoPersistent": "此操作可使用持久撤销，应用重启后仍可恢复。",
+      "undoSession": "此操作可在当前应用会话中撤销。",
+      "undoPersistentShort": "跨重启可撤销 · 成功后一次性失效",
+      "undoSessionShort": "仅当前会话 · 成功后一次性失效",
+      "undoHighRisk": "撤销按 High 风险处理：本次点击仅确认这一次撤销，授权不会被记忆。",
+      "resultUnknownTitle": "操作终态未知",
+      "resultUnknownHint": "请先重新观察或读取目标状态，再决定后续步骤；不要原样重试，也不要转为后台写入。",
+      "status": {
+        "running": "执行中",
+        "success": "已完成",
+        "partial": "部分完成",
+        "cancelled": "已取消",
+        "unknown": "终态未知",
+        "error": "失败"
+      }
     },
     "imageGen": {
       "title": "图片生成",
@@ -430,7 +699,10 @@
       "generationFailed": "生成失败",
       "unknownError": "未知错误",
       "retry": "重试",
+      "retryUnavailable": "无法自动重试，请重新发送该消息",
       "fullscreen": "全屏预览",
+      "expandInline": "放大查看",
+      "collapse": "收起",
       "download": "下载",
       "openInNewTab": "新标签页打开",
       "close": "关闭"
@@ -455,9 +727,30 @@
       "collapse": "收起",
       "showMore": "加载更多（剩余 {{remaining}} 张）",
       "showAll": "显示全部（{{total}} 张）",
+      "showMoreBig": "再加载 {{count}} 张",
+      "selectCard": "选择第 {{index}} 张卡片",
+      "selectAll": "全选卡片",
+      "invertSelection": "反选",
+      "selectedCount": "已选 {{count}} 张",
+      "deleteSelected": "删除所选",
+      "saveSelected": "保存所选",
+      "exportSelected": "导出所选",
+      "deckName": "牌组",
+      "deckNamePlaceholder": "牌组名称",
+      "deckNameHint": "保存、导出、同步这批卡片时使用该牌组。",
+      "quoteText": "卡片#{{index}}（id: {{id}}）",
       "save": "保存",
+      "addToLibrary": "加入卡片库",
+      "addedToLibrary": "已加入卡片库",
       "export": "导出",
       "sync": "同步",
+      "moreActions": "更多卡片操作",
+      "reviewBatch": "复习这批",
+      "reviewBatchNeedsRealIds": "卡片生成完成并保存、取得真实 ID 后才能复习这批卡片",
+      "pause": "暂停",
+      "resume": "继续",
+      "cancel": "取消",
+      "retryFailedSegments": "重试失败分段",
       "synced": "已同步",
       "syncToAnki": "同步到 Anki",
       "syncStatus": {
@@ -475,7 +768,9 @@
         },
         "metrics": {
           "cards": "卡片",
-          "segments": "分段"
+          "segments": "分段",
+          "cardsValue": "卡片：{{count}}",
+          "segmentsValue": "分段：{{completed}}/{{total}}"
         },
         "route": "路线",
         "routeValues": {
@@ -487,12 +782,14 @@
           "label": "AnkiConnect",
           "checking": "检查中",
           "connected": "已连接",
-          "notConnected": "未连接"
+          "notConnected": "未连接",
+          "refresh": "刷新 AnkiConnect 状态"
         },
         "segments": {
           "pending": "待处理",
           "processing": "处理中",
           "paused": "暂停",
+          "completedWithErrors": "已完成，部分分段失败",
           "failed": "失败",
           "truncated": "截断",
           "cancelled": "取消"
@@ -508,6 +805,7 @@
           "paused": "已暂停，可稍后继续。",
           "cancelled": "已取消生成。",
           "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。",
+          "recovered": "自动生成未完成，已通过备用方式补齐 {{count}} 张可用卡片。",
           "limitReached": "已达到设定的卡片数量上限（{{limit}} 张），生成正常结束。"
         }
       },
@@ -518,27 +816,54 @@
         "startFailed": "启动制卡失败。请重试或调整模板/设置。",
         "pipelineTimeout": "生成耗时过长，已停止自动更新。可稍后用 chatanki_status 查询或重新生成。",
         "contextRefInvalid": "附件引用数据无效，请移除并重新添加附件后重试。",
+        "generationFailed": "自动生成失败，且没有产出可用卡片。请检查模型配置或错误详情。",
         "partialSegmentsFailed": "部分分段失败。请在面板中重试失败分段。",
         "waitInvalidArgs": "chatanki_wait 需要 ankiBlockId 或 documentId，请补充后重试。",
         "waitNotFound": "尚未找到卡片块，请稍等或用 documentId 调用 chatanki_status。",
         "waitTimeout": "等待超时。可稍后用 chatanki_status 查询，或延长超时时间重试。",
+        "documentIdRequired": "缺少 documentId，请补充制卡文档 ID 后重试。",
+        "databaseUnavailable": "卡片数据库当前不可用，请稍后重试。",
+        "updateArgsRequired": "更新卡片需要 cardId、expectedVersion 和至少一个修改字段。",
+        "deleteArgsRequired": "删除卡片需要 cardId 和 expectedVersion。",
+        "addArgsRequired": "补卡需要 documentId，并提供 1 到 100 张卡片。",
+        "cardContentRequired": "卡片必须包含非空正反面，或包含非空的 Cloze 文本。",
+        "reviewSelectorRequired": "加入复习时必须且只能提供 documentId 或 cardIds。",
+        "retemplateSelectorRequired": "更换模板时必须且只能提供 documentId 或 cardIds。",
+        "templateDatabaseUnavailable": "模板数据库当前不可用，请稍后重试。",
         "statusNotFound": "未找到该文档任务，请稍候或重新发起生成。",
+        "watchdogFailedWithoutCards": "生成失败，且没有产出可用卡片。",
+        "watchdogCancelledWithoutCards": "生成已取消，且没有产出可用卡片。",
+        "watchdogCompletedWithoutCards": "生成已结束，但没有产出可用卡片。",
+        "watchdogUnknownWithoutCards": "生成在未知状态下停止，且没有产出可用卡片。",
         "ankiConnectUnavailable": "AnkiConnect 不可用。请打开 Anki 并启用 AnkiConnect 后重试。",
         "missingClozeNoteType": "Anki 缺少 Cloze 笔记类型。请在 Anki 中创建后重试。",
         "ankiSyncEmpty": "未导入任何卡片。请检查 Anki 是否运行、笔记类型是否存在、卡片字段是否为空。"
       },
       "warnings": {
+        "generationRecovered": "自动生成出现问题，已通过备用方式提供 {{count}} 张可用卡片。",
         "imageTruncated": "仅使用了前 {{shown}} 张图片（上限 {{limit}}，共 {{total}} 张）。建议拆分附件后重试。",
         "contextRefInvalid": "{{count}} 个附件无法解析，必要时移除并重新添加。",
         "textTruncated": "文档内容超过 {{limitMB}}MB 上限，仅处理了前 {{limitMB}}MB 部分。建议拆分文档分批制卡。",
         "templateLoadPartial": "{{count}} 个模板加载失败，已跳过并继续生成。请检查模板是否被删除，或去模板设置重新启用后重试。",
-        "overLimitCardsRemoved": "并发生成超出上限 {{limit}} 张，已移除多余的 {{count}} 张卡片。"
+        "overLimitCardsRetained": "并发生成超出上限 {{limit}} 张，超额的 {{count}} 张卡片已保留在库中但未纳入本批结果。"
       },
       "action": {
         "saveFailed": "保存失败",
         "savedCount": "已保存 {{count}} 张卡片",
+        "savedCount_one": "已保存 {{count}} 张卡片",
+        "savedCount_other": "已保存 {{count}} 张卡片",
         "savedCountWithHint": "已保存 {{count}} 张卡片。下一步：打开面板复核或导出。",
+        "savedCountWithHint_one": "已保存 {{count}} 张卡片。下一步：打开面板复核或导出。",
+        "savedCountWithHint_other": "已保存 {{count}} 张卡片。下一步：打开面板复核或导出。",
+        "savePartialTitle": "部分保存完成",
+        "savePartialDetail": "新增 {{saved}} 张，已存在更新 {{duplicated}} 张，跳过 {{skipped}} 张，失败 {{failed}} 张。",
+        "saveAllSkippedTitle": "卡片均已存在",
+        "saveAllSkippedDetail": "{{skipped}} 张因内容重复已跳过，{{duplicated}} 张已按原 id 更新；未新增卡片。",
+        "skippedDiagnosticDetail": "已跳过 {{count}} 张诊断卡，未写入卡片库。",
+        "skippedDiagnosticDetail_one": "已跳过 {{count}} 张诊断卡，未写入卡片库。",
+        "skippedDiagnosticDetail_other": "已跳过 {{count}} 张诊断卡，未写入卡片库。",
         "saveFailedWithHint": "保存失败。请重试，或改用面板导出。",
+        "saveFailedDetail": "保存失败：{{detail}}",
         "exportFailed": "导出失败",
         "exportFailedNoPath": "导出失败：未返回文件路径",
         "apkgExported": "APKG 已导出",
@@ -551,12 +876,28 @@
         "syncAllDuplicatesTitle": "卡片均已存在",
         "syncAllDuplicatesDetail": "{{count}} 张卡片均已存在于 Anki 中（重复跳过），未新增卡片。",
         "syncedCount": "已同步 {{count}} 张到 Anki",
+        "syncedCount_one": "已同步 {{count}} 张到 Anki",
+        "syncedCount_other": "已同步 {{count}} 张到 Anki",
         "syncedCountWithHint": "已同步 {{count}} 张到 Anki。下一步：打开 Anki 复核。",
+        "syncedCountWithHint_one": "已同步 {{count}} 张到 Anki。下一步：打开 Anki 复核。",
+        "syncedCountWithHint_other": "已同步 {{count}} 张到 Anki。下一步：打开 Anki 复核。",
         "syncFailedWithHint": "同步失败。请确认 Anki 正在运行且 AnkiConnect 已启用后重试。",
         "persistFailed": "卡片编辑保存失败，切换会话后可能丢失。请重试编辑。",
         "dbSyncFailed": "卡片改动未能同步到卡片库，AI 导出/同步结果可能不包含此改动。",
         "exportCancelled": "已取消导出",
-        "exportSkippedErrors": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。"
+        "exportSkippedErrors": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。",
+        "exportSkippedErrorsWithNote": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。{{note}}",
+        "apkgExportedWithNote": "APKG 已导出。{{note}}",
+        "paused": "已暂停生成",
+        "resumed": "已继续生成",
+        "cancelled": "已取消生成",
+        "pauseFailed": "暂停失败",
+        "resumeFailed": "继续失败",
+        "cancelFailed": "取消失败",
+        "retrySegmentsStarted": "已重新提交 {{count}} 个失败分段",
+        "retrySegmentsPartial": "共 {{total}} 个分段，其中 {{failed}} 个重试提交失败",
+        "retrySegmentsFailed": "{{failed}} 个失败分段均未能重新提交",
+        "exportNewCardsNote": "导出的卡片导入 Anki 后将作为新卡（复习进度不随包携带）。"
       }
     }
   },
@@ -600,7 +941,9 @@
     "pageAlt": "第 {{page}} 页",
     "pageLabel": "第 {{page}} 页",
     "stillPreparing": "教材图片仍在准备中，请稍候再试",
-    "pagesInjected": "已注入 {{count}} 张教材页面"
+    "pagesInjected": "已注入 {{count}} 张教材页面",
+    "pagesInjected_one": "已注入 {{count}} 张教材页面",
+    "pagesInjected_other": "已注入 {{count}} 张教材页面"
   },
   "bridge": {
     "linkingInProgress": "正在建立会话关联，请稍候",
@@ -669,8 +1012,6 @@
     "enableThinkingDesc": "让模型展示推理过程",
     "disableTools": "禁用工具",
     "disableToolsDesc": "不调用外部工具",
-    "disableToolWhitelist": "关闭工具白名单",
-    "disableToolWhitelistDesc": "允许所有工具绕过技能白名单限制",
     "reset": "重置为默认值",
     "maxToolRecursion": "工具递归限制",
     "maxToolRecursionHint": "AI 连续调用工具的最大次数，防止无限循环",
@@ -682,6 +1023,7 @@
     "placeholder": "输入系统提示词，定制 AI 的行为和角色...",
     "copy": "复制",
     "clear": "清空",
+    "undoClear": "撤销清空",
     "saveAsTemplate": "保存为模板",
     "newTemplateName": "新模板",
     "personas": {
@@ -784,18 +1126,26 @@
     "groupActions": "分组操作",
     "editGroup": "编辑分组",
     "renameGroup": "重命名分组",
+    "groupUnsavedChangesConfirm": "要放弃分组中尚未保存的更改吗？",
     "archiveGroup": "归档分组",
     "archiveGroupTitle": "归档分组",
     "archiveGroupDesc": "归档后该分组会从当前分组列表中隐藏，其中的会话不会被删除。确定要归档“{{name}}”吗？",
     "archiveGroupConfirm": "确认归档",
     "groupName": "分组名称",
-    "groupNamePlaceholder": "请输入分组名称",
+    "groupNamePlaceholder": "一句话描述要完成的任务",
     "groupIcon": "分组图标",
     "groupIconPlaceholder": "如：📁 或 folder",
     "groupDescription": "分组描述",
     "groupDescriptionPlaceholder": "可选，描述该分组用途",
     "groupSystemPrompt": "分组 System Prompt",
     "groupSystemPromptPlaceholder": "可选，进入该分组会话时默认注入的系统指令",
+    "groupDefaultRuntimeRoot": "默认项目目录",
+    "groupDefaultRuntimeRootHint": "为该任务选择或新建文件夹，并绑定为可读写 workspace。文件操作仍受目录边界和审批保护。",
+    "groupDefaultRuntimeRootNone": "未绑定",
+    "groupDefaultRuntimeRootBrowse": "选夹 / 建夹…",
+    "groupDefaultRuntimeRootBrowseTitle": "选择或新建任务工作区",
+    "groupDefaultRuntimeRootAuthorizeFailed": "绑定任务工作区失败",
+    "groupDefaultRuntimeRootLoadFailed": "加载可绑定目录失败",
     "groupDefaultSkills": "默认技能",
     "groupPinnedResources": "关联来源",
     "groupPinnedResourcePlaceholder": "输入资源 ID（如 note_xxx、tb_xxx）后回车添加",
@@ -817,16 +1167,21 @@
     "moveToGroup": "移动到分组",
     "untitled": "未命名会话",
     "deleteSession": "删除会话",
+    "deleteSessionConfirm": "永久删除该会话？此操作不可恢复",
+    "archiveGroupConfirmInline": "归档「{{name}}」？其中的会话不会被删除",
+    "clearSearch": "清除搜索",
     "renameSession": "重命名线程",
     "pinSession": "置顶线程",
     "unpinSession": "取消置顶",
+    "pinGroup": "置顶分组",
+    "unpinGroup": "取消置顶分组",
     "archiveSession": "归档线程",
     "archivedSessionsEntry": "已归档会话",
     "confirmArchiveSession": "确认归档线程",
     "archiveSessionToast": "已归档。查看已归档的会话：设置",
     "archiveSessionToastMessage": "已归档。查看已归档的会话：",
     "archiveSessionToastSettingsAction": "设置",
-    "pinnedSession": "",
+    "pinnedSession": "置顶",
     "sessionContextMenu": "线程操作菜单",
     "saveSessionName": "保存",
     "cancelEdit": "取消",
@@ -837,6 +1192,7 @@
     "sessionNamePlaceholder": "输入会话名称",
     "welcome": "欢迎使用 DeepStudent",
     "newChat": "新对话",
+    "mobileDrawerSubtitle": "从这里开始学习",
     "selectOrCreate": "选择一个会话或创建新会话开始聊天",
     "timeGroups": {
       "today": "今天",
@@ -850,6 +1206,11 @@
     "searchPlaceholder": "搜索会话...",
     "switchingSession": "切换会话中...",
     "deleteSessionFailed": "删除会话失败",
+    "createSessionFailed": "创建会话失败，请稍后重试",
+    "createAnalysisSessionFailed": "创建分析会话失败，请稍后重试",
+    "loadSessionsFailed": "加载会话失败，请刷新后重试",
+    "loadMoreSessionsFailed": "加载更多会话失败，请重试",
+    "exportSession": "导出会话",
     "analysis_session_title": "题目分析",
     "selectSessionFirst": "请先选择一个会话",
     "loading": "加载中...",
@@ -862,7 +1223,14 @@
     "primaryNavigation": "主入口",
     "resourceUnsupported": "该资源类型暂不支持在学习中心打开",
     "groupSaveFailed": "保存分组失败",
-    "openNoteFailed": "打开笔记失败"
+    "openNoteFailed": "打开笔记失败",
+    "openInLearningHub": "在学习中心打开",
+    "collapseSandboxWorkbench": "收起沙箱工作台",
+    "expandSandboxWorkbench": "展开沙箱工作台",
+    "emptyPage": {
+      "subtitle": "开始新对话，探索学习资料、整理笔记、随时提问",
+      "hint": "提示：随时按 Ctrl / ⌘ + N 新建对话"
+    }
   },
   "pdfRef": {
     "openFailedTitle": "无法打开 PDF 引用",
@@ -905,6 +1273,7 @@
     "sessionCost": "本会话费用",
     "tokens": "tokens",
     "inputEstimate": "估算输入 token 数量",
+    "tokensValue": "{{count}} tokens",
     "source": {
       "api": "API 精确值",
       "tiktoken": "Tiktoken 估算",
@@ -912,14 +1281,116 @@
       "mixed": "混合来源"
     }
   },
+  "contextUsagePopover": {
+    "limit": "上下文上限",
+    "compactionStatus": "压缩状态",
+    "compactionActive": "已生效",
+    "compactionTokens": "压缩前后",
+    "compactDisabledStreaming": "生成中不可压缩"
+  },
+  "compaction": {
+    "manualSkipped": "本次未压缩：{{reason}}",
+    "manualFailed": "上下文压缩失败：{{reason}}，请稍后重试",
+    "autoFailedTitle": "自动压缩失败",
+    "autoFailed": "自动压缩失败，较早的历史可能被截断（{{reason}}）",
+    "contextTrimmedTitle": "上下文已满",
+    "contextTrimmed": "上下文已满，最早的 {{count}} 条消息未参与本轮对话",
+    "reason": {
+      "sessionTooShort": "会话消息太少，无需压缩",
+      "usableTooSmall": "可压缩的内容太少",
+      "lockBusy": "另一个压缩任务正在进行，请稍后再试",
+      "streaming": "会话正在生成中，稍后再试",
+      "summaryFailed": "摘要生成失败",
+      "cancelled": "压缩已取消",
+      "staleLineage": "会话上下文已变化，请重试",
+      "invalidResponse": "返回结果异常",
+      "unknown": "未知原因"
+    }
+  },
   "agentPanel": {
     "plan": "计划",
+    "environment": "环境信息",
+    "local": "本地",
+    "activityCount": "{{count}} 项活动",
+    "blockedCount": "{{count}} 项拦截",
+    "environmentBoundary": "工作边界",
+    "sandbox": "沙盒",
+    "network": "网络",
+    "networkEnabled": "已启用",
+    "networkDisabled": "已关闭",
+    "recentActivity": "近期活动 {{count}}",
     "sources": "来源",
-    "artifacts": "产物"
+    "artifacts": "产物",
+    "workspaceFiles": "工作区文件",
+    "browserDownloads": "浏览器下载",
+    "loadMoreFiles": "加载更多",
+    "fileTreeTruncated": "文件列表已截断",
+    "loadingFiles": "加载中…",
+    "runtime": "运行时",
+    "changes": "变更",
+    "changeCoverageIncomplete": "变更记录或回滚覆盖不完整，不能视为完整成功",
+    "runtimeActions": {
+      "list": "列目录",
+      "read": "读取",
+      "write": "写入",
+      "check": "命令",
+      "blocked": "拦截"
+    },
+    "changeActions": {
+      "create": "新建",
+      "update": "更新",
+      "delete": "删除",
+      "append": "追加",
+      "write": "写入"
+    },
+    "goAuthorize": "去授权运行目录",
+    "authorizationTitle": "{{label}} — {{action}}",
+    "revealInFolder": "在文件管理器中显示：{{path}}",
+    "revealFailed": "无法定位文件",
+    "reverted": "已撤销",
+    "revertWrite": "撤销写入（删除该产物文件）",
+    "revertDone": "已撤销该产物写入",
+    "revertFailed": "撤销失败",
+    "preview": "预览",
+    "previewClose": "收起预览",
+    "previewFailed": "预览失败",
+    "previewTruncated": "内容过长，已截断",
+    "revertRestore": "恢复原内容",
+    "revertDeleteNew": "删除新文件",
+    "revertWorkspace": "撤销该工作区变更",
+    "revertWorkspaceDone": "已撤销该工作区变更",
+    "restoreDone": "已恢复原内容",
+    "saveAsNote": "保存到笔记库",
+    "savedAsNote": "已存为笔记",
+    "openSavedNote": "打开笔记",
+    "saveAsNoteFailed": "存为笔记失败",
+    "saveAsNoteTruncated": "产物内容过长，已截断保存",
+    "collapsePanel": "折叠面板"
+  },
+  "shellOutput": {
+    "title": "本地命令",
+    "showFull": "显示全部（{{kb}} KB）",
+    "copyCommand": "复制命令",
+    "copyStdout": "复制 stdout",
+    "copyStderr": "复制 stderr",
+    "exitCode": "退出码 {{code}}",
+    "timedOut": "已超时",
+    "truncated": "输出过长，已截断",
+    "noOutput": "命令没有输出",
+    "policy": "执行策略",
+    "netOn": "网络：允许",
+    "netOff": "网络：禁止",
+    "envAllowlist": "环境变量：白名单",
+    "envExplicit": "自定义变量 {{count}}",
+    "hint": {
+      "timeout": "命令执行超时并已被终止。可缩小任务范围或提高 timeout_ms 后重试。",
+      "nonZeroWithStderr": "命令以非 0 退出码结束，请查看上方 stderr 了解原因。",
+      "nonZero": "命令以非 0 退出码结束，可能是参数错误、缺少依赖或路径不存在。"
+    }
   },
   "timeline": {
     "thinking": {
-      "inProgress": "正在思考...",
+      "inProgress": "正在思考 {{seconds}} 秒…",
       "completed": "已思考 {{seconds}} 秒",
       "stopped": "已停止思考",
       "contentLabel": "推理详情",
@@ -944,12 +1415,14 @@
       "preparing": "正在准备...",
       "pending": "等待执行",
       "running": "执行中...",
+      "groupSummary": "已调用 {{count}} 个工具",
       "success": "执行完成",
       "completed": "执行完成",
       "failed": "执行失败",
       "input": "输入参数",
       "output": "输出结果",
       "noOutput": "无输出",
+      "liveOutput": "实时输出",
       "contentLabel": "工具详情",
       "moreParams": "还有 {{count}} 个参数...",
       "arrayResult": "数组（{{count}} 项）",
@@ -960,8 +1433,23 @@
       "loadedSkills": "已加载技能",
       "loadedTools": "已加载工具"
     },
+    "shell": {
+      "checking": "正在检查",
+      "checked": "已检查",
+      "blocked": "已拦截",
+      "running": "正在运行",
+      "ran": "已运行",
+      "failed": "运行失败",
+      "pending": "等待运行",
+      "preflight": "Shell 检查",
+      "commandUnavailable": "命令内容不可用",
+      "commandPreparing": "参数生成中…",
+      "commandInterrupted": "命令已中断（未收到参数）"
+    },
     "noteTool": {
       "read": "读取笔记",
+      "create": "创建笔记",
+      "list": "列出笔记",
       "append": "追加内容",
       "replace": "替换内容",
       "set": "设置内容",
@@ -973,6 +1461,7 @@
       "addedContent": "追加的内容",
       "afterContent": "操作后内容",
       "search": "查找",
+      "searchNotes": "搜索笔记",
       "emptyString": "(空)",
       "before": "修改前",
       "after": "修改后",
@@ -990,6 +1479,7 @@
     },
     "todoList": {
       "tasksDone": "个任务完成",
+      "progress": "{{done}} / {{total}} 个任务完成",
       "allDone": "所有任务已完成",
       "inProgress": "执行中"
     }
@@ -1031,6 +1521,7 @@
     "label": "注入",
     "selectMode": "选择模式",
     "allModes": "全部",
+    "joiner": "+",
     "image": {
       "title": "图片注入模式",
       "image": "图片",
@@ -1065,11 +1556,14 @@
     "confirm": "确认",
     "resolve_failed_single": "资源「{{name}}」解析失败",
     "resolve_failed_multiple": "{{count}} 个资源解析失败",
+    "resolve_failed_single_with_detail": "资源「{{name}}」解析失败：{{error}}",
+    "resolve_failed_multiple_with_detail": "{{count}} 个资源解析失败：{{names}}。{{error}}",
     "source_ids_empty": "sourceIds 不能为空",
     "resource_deleted_or_moved": "资源已被删除或移动",
     "resolve_failed_skipped": "{{count}} 个资源解析失败，已跳过",
     "unnamed_resource": "未命名资源",
-    "more_warnings": "；等 {{count}} 条警告"
+    "more_warnings": "；等 {{count}} 条警告",
+    "warningsSummary": "{{warnings}}；等 {{count}} 条警告"
   },
   "variant": {
     "switcher": "变体切换",
@@ -1090,20 +1584,48 @@
     "stopAll": "全部停止",
     "retrying": "正在重试",
     "retryFailed": "重试失败",
+    "retryFailedWithDetail": "重试失败：{{error}}",
     "deleted": "已删除",
     "deleteFailed": "删除失败",
+    "deleteFailedWithDetail": "删除失败：{{error}}",
     "cancelFailed": "取消失败",
     "switchFailed": "切换变体失败",
     "retryAll": "全部重试",
     "deleteMessage": "删除整个消息",
     "unknownModel": "未知模型",
-    "switchToVariant": "切换到变体 {{index}}"
+    "switchToVariant": "切换到变体 {{index}}",
+    "prevVariant": "上一个变体",
+    "nextVariant": "下一个变体"
+  },
+  "selectionToolbar": {
+    "ariaLabel": "选中文本操作",
+    "copy": "复制",
+    "copied": "已复制",
+    "explain": "解释",
+    "translate": "翻译",
+    "addToChat": "添加到聊天",
+    "makeCards": "制卡",
+    "makeCardsEmpty": "请先选中要制卡的文本",
+    "makeCardsTooShort": "选中文本太短，请至少选择 {{count}} 个字符",
+    "makeCardsStarted": "已开始制卡，可在任务台查看进度",
+    "makeCardsFailed": "制卡启动失败",
+    "makeCardsDeckName": "划词制卡",
+    "makeCardsRequirements": "根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。",
+    "openTaskDashboard": "打开任务台"
+  },
+  "explainPopover": {
+    "thinking": "思考中...",
+    "prompt": "请用简洁清晰的语言解释以下内容。如果是专业术语，给出定义和通俗解释；如果是一段话，概括其核心含义。用中文回答。\n\n\"{{text}}\""
   },
   "browser": {
     "title": "会话浏览",
+    "titleWithCount": "会话浏览（{{count}}）",
     "back": "返回",
     "refresh": "刷新",
     "openBrowser": "打开浏览视图",
+    "exportSession": "导出会话",
+    "exportSuccess": "已导出 {{messageCount}} 条消息到 {{path}}",
+    "exportFailed": "导出失败：{{error}}",
     "allSessions": "所有对话",
     "noResults": "未找到匹配的会话",
     "tryDifferentKeyword": "尝试其他搜索关键词",
@@ -1111,6 +1633,11 @@
     "createdAt": "创建时间",
     "groupByTime": "按时间分组",
     "groupByGroup": "按分组浏览",
+    "groupByWorkspace": "按工作区浏览",
+    "defaultWorkspace": "默认运行目录",
+    "taskStatus": { "running": "进行中", "blocked": "已阻塞", "completed": "已完成", "unknown": "暂无状态" },
+    "taskArtifacts": "{{count}} 个产物",
+    "taskChanges": "{{count}} 项变更",
     "staleTopic": "待修复分组",
     "staleTopicDescription": "原分组已不可用的会话。",
     "ungrouped": "未分组"
@@ -1130,17 +1657,79 @@
     "showLess": "收起",
     "addPlaceholder": "添加标签"
   },
+  "authority": {
+    "modes": {
+      "ask": "问一问",
+      "plan": "想一想",
+      "craft": "做一做"
+    },
+    "modeSubtitles": {
+      "ask": "只读问答",
+      "plan": "先规划"
+    },
+    "hints": {
+      "ask": "只读模式优先：写工具会被拒绝，不受执行档位放宽影响",
+      "plan": "计划模式优先：写操作先确认计划再执行，不受执行档位放宽影响",
+      "craft": "按当前执行档位调用工具"
+    },
+    "permissionPreset": {
+      "label": "做一做执行档位",
+      "modes": {
+        "cautious": "谨慎",
+        "relaxed": "宽松",
+        "full_access": "完全访问",
+        "danger_full_access": "危险完全访问"
+      },
+      "hints": {
+        "cautious": "中高风险操作逐项确认，危险授权从不记住。",
+        "relaxed": "低风险和中风险操作静默执行；高风险操作仍逐项审批。",
+        "full_access": "工具与 shell 免逐步确认，并取消本地 shell 的 runtime root、宿主机文件与网络沙箱限制；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。",
+        "danger_full_access": "危险：沙箱内工具与 shell 免逐步确认，并取消本地 shell 的宿主机文件与网络限制；技能信任/MCP 安装/runtime root 等特权仍单次确认；灾难命令拒绝。"
+      },
+      "shortHints": {
+        "cautious": "中高风险逐项确认",
+        "relaxed": "中低风险静默执行，仅 High 审批",
+        "full_access": "宿主机文件与网络完全访问",
+        "danger_full_access": "宿主机文件与网络无限制"
+      },
+      "modePriority": "此档位只控制做一做；问一问/想一想模式本身的限制始终优先。",
+      "fullAccessActive": "完全访问",
+      "fullAccessDowngradeHint": "完全访问已开启，本地 shell 可访问当前用户有权访问的宿主机文件与网络。点击降为宽松以恢复审批和沙箱边界。",
+      "dangerActive": "危险访问",
+      "dangerDowngradeHint": "危险完全访问已开启。点击降为宽松，立即恢复 runtime roots、操作系统沙箱与网络边界。",
+      "dangerConfirmTitle": "开启危险完全访问？",
+      "dangerConfirmDescription": "这会让普通工具和全部外部 MCP 免审批，并允许本地 shell 不受文件与网络沙箱限制。可识别的灾难命令仍会拒绝，无法静态判定的动态脚本仍可能破坏宿主机；外部 MCP 的内部行为也不受本地 shell guard 约束。仅在你明确理解风险时继续。",
+      "dangerConfirmAction": "确认开启危险完全访问"
+    },
+    "switchToPlan": "切换到想一想",
+    "askBlocked": "当前为问一问模式，写操作已被拒绝",
+    "planGate": {
+      "title": "确认执行计划",
+      "fallbackSummary": "模型准备执行写操作",
+      "tool": "工具",
+      "countdown": "{{seconds}} 秒后自动拒绝",
+      "timedOut": "已超时，计划已自动拒绝",
+      "approve": "确认执行",
+      "reject": "拒绝"
+    }
+  },
   "approval": {
     "title": "工具执行确认",
     "toolName": "工具名称",
     "description": "操作描述",
     "arguments": "参数",
-    "approve": "批准",
-    "reject": "拒绝",
+    "approve": "本次允许",
     "allowSession": "本会话允许",
-    "alwaysAllow": "始终允许",
-    "alwaysDeny": "始终拒绝",
+    "allowScope": "允许此范围",
+    "reject": "本次拒绝",
+    "rejectReasonPlaceholder": "可选：告诉 AI 为什么拒绝或希望它怎么做",
+    "rejectDirectly": "直接拒绝",
+    "rejectSend": "发送",
+    "userReasonLabel": "用户说明",
+    "runtimeRoot": "运行目录",
+    "runtimeCwd": "工作目录",
     "timeout": "审批超时",
+    "timedOutWaiting": "已超时，等待系统自动拒绝",
     "resolution": {
       "approved": "已批准",
       "rejected": "已拒绝",
@@ -1161,10 +1750,64 @@
     },
     "expandArgs": "展开完整参数",
     "collapseArgs": "收起参数",
+    "scopeExpand": "详情",
+    "scopeCollapse": "收起详情",
+    "countdownPaused": "已暂停",
+    "aria": {
+      "requested": "工具 {{tool}} 等待审批，{{seconds}} 秒后将自动拒绝",
+      "countdownWarning": "还剩 {{seconds}} 秒，超时将自动拒绝",
+      "countdownPaused": "自动拒绝倒计时已暂停",
+      "autoRejectCountdown": "{{seconds}} 秒后自动拒绝"
+    },
     "sensitivity": {
       "low": "低风险",
       "medium": "中风险",
       "high": "高风险"
+    },
+    "descriptions": {
+      "shell": "将执行命令：{{command}}",
+      "noteSet": "将完全替换笔记 {{noteId}} 的内容",
+      "noteReplace": "将替换笔记中匹配“{{search}}”的内容",
+      "fileWrite": "将写入文件：{{path}}",
+      "artifactWrite": "将写入会话产物文件：{{path}}",
+      "fileManagerCommit": "将在 {{root}} 中执行已预览的文件批处理计划 {{plan}}",
+      "fileManagerRestore": "将从工作区回收区恢复文件：{{path}}",
+      "fileDelete": "将删除文件：{{path}}",
+      "browserOpen": "将在内置浏览器中打开：{{url}}",
+      "browserNavigate": "将导航至：{{url}}",
+      "browserClick": "将点击网页元素：{{element}}（ref={{ref}}）",
+      "browserFileUpload": "将向网页上传 {{count}} 个已授权文件：{{element}}",
+      "browserType": "将向网页元素输入文本：{{element}}（ref={{ref}}；内容已隐藏）",
+      "browserOperation": "将执行浏览器操作：{{tool}}",
+      "mediaTranscribe": "将把已授权音频文件 {{file}} 发送至外部 ASR 提供商 SiliconFlow，并将转写结果写入任务产物",
+      "skillEnable": "将启用技能：{{skillId}}",
+      "skillDisable": "将停用技能：{{skillId}}（保留技能文件，可随时重新启用）",
+      "skillRemove": "将删除技能包：{{skillId}}（不可恢复；内置技能不受影响）",
+      "skillTrust": "将信任技能 {{skillId}}（信任绑定当前包指纹）",
+      "skillTrustWithReason": "将信任技能 {{skillId}}（信任绑定当前包指纹）：{{reason}}",
+      "mcpUpdate": "将修改 MCP 服务器配置：{{serverId}}",
+      "mcpUpdateWithFields": "将修改 MCP 服务器配置：{{serverId}}（字段：{{fields}}；修改后自动连测，失败回滚）",
+      "mcpEnable": "将启用 MCP 服务器：{{serverId}}",
+      "mcpDisable": "将停用 MCP 服务器：{{serverId}}（断开连接，保留配置与已填密钥）",
+      "mcpRemove": "将删除 MCP 服务器：{{serverId}}（transport：{{transport}}；连同已填密钥一并删除，不可恢复）",
+      "customAgentList": "将查看待审阅的子代理 persona 提案列表",
+      "customAgentReject": "将拒绝子代理 persona 提案：{{proposalId}}",
+      "customAgentPropose": "将起草子代理 persona 提案：{{fileName}}（写入 pending 提案区，不落盘 agents/，生效需后续审批）",
+      "customAgentApply": "将写入自定义子代理 persona：workspaces/agents/{{fileName}}",
+      "customAgentApplyWithSummary": "将写入自定义子代理 persona {{fileName}}：{{summary}}",
+      "customAgentRemove": "将删除自定义子代理 persona：{{fileName}}（不可恢复）",
+      "customAgentRemoveWithTitle": "将删除自定义子代理 persona：{{fileName}}（{{title}}，不可恢复）",
+      "generic": "将执行工具：{{tool}}"
+    }
+  },
+  "skillInstall": {
+    "approval": {
+      "sha256Prefix": "技能包 SHA-256 前缀",
+      "risk": {
+        "low": "扫描：低风险",
+        "medium": "扫描：中风险",
+        "high": "扫描：高风险"
+      }
     }
   },
   "completion": {
@@ -1176,6 +1819,7 @@
   },
   "renderer": {
     "aiThinkingProcess": "AI 思考过程",
+    "imageLoadFailed": "图片加载失败",
     "incompleteMathFormula": "检测到未完成的数学公式，已暂时关闭公式渲染",
     "uncertain": "不确定"
   },
@@ -1193,11 +1837,19 @@
     "web_search": "网络搜索",
     "multimodal": "多模态"
   },
+  "ragPanel": {
+    "topkHelper": "返回最相关的 {{value}} 个片段，越大越全面但速度稍慢",
+    "multimodalTopkLabel": "多模态 Top-K",
+    "multimodalTopkHelper": "图片、图表等多模态片段的返回数量",
+    "nextRunHint": "参数将在下一次检索时生效",
+    "streamingLocked": "回复生成中，检索参数暂时锁定"
+  },
   "tool_limit": {
     "title": "工具调用限制",
     "hint": "提示：点击继续按钮或在输入框中发送「继续」即可让 AI 继续执行任务",
     "continue": "继续执行",
-    "continuing": "执行中..."
+    "continuing": "执行中...",
+    "continueFailed": "继续执行失败，请重试。"
   },
   "chat": {
     "operation_in_progress": "操作正在进行中，请稍后再试",
@@ -1264,6 +1916,22 @@
     "hint": "选择模型后点击重试按钮",
     "retry": "重试"
   },
+  "modelPicker": {
+    "title": "选择模型",
+    "retryTitle": "选择模型重试",
+    "retryHintEmpty": "选择模型后点击重试",
+    "retryHint": "已选择 {{count}} 个模型",
+    "compareHint": "已选择 {{count}} 个模型进行对比",
+    "singleHint": "当前会话模型",
+    "setAsDefault": "设为系统默认",
+    "parallelMode": "并行模式",
+    "compareToggle": "对比模式",
+    "compareToggleHint": "同时使用多个模型回答",
+    "searchPlaceholder": "搜索名称或模型 ID...",
+    "noMatches": "未找到匹配的模型",
+    "empty": "暂无可用模型",
+    "goToSettings": "去设置添加模型"
+  },
   "workspace": {
     "title": "工作区",
     "toggle": "工作区面板",
@@ -1276,6 +1944,8 @@
     "defaultName": "协作任务",
     "coordinator": "协调者",
     "workers": "Worker",
+    "workersCount": "Worker（{{count}}）",
+    "messagesCount": "消息（{{count}}）",
     "viewFull": "查看完整",
     "loadError": "加载失败",
     "refreshFailed": "工作区同步失败: {{message}}",
@@ -1286,6 +1956,17 @@
     "task": "任务",
     "response": "响应",
     "moreMessages": "还有 {{count}} 条消息",
+    "failedHint": "该代理执行失败。展开下方会话输出或点击“查看完整会话”了解失败原因。",
+    "elapsed": {
+      "runningHint": "运行耗时（实时）",
+      "finalHint": "总耗时（近似）"
+    },
+    "summary": {
+      "finished": "{{done}}/{{total}} 已完成",
+      "running": "{{count}} 运行中",
+      "failed": "{{count}} 失败",
+      "cancelled": "{{count}} 已取消"
+    },
     "agent": {
       "coordinator": "协调者",
       "worker": "执行者",
@@ -1294,17 +1975,23 @@
     "status": {
       "noWorkspace": "暂无工作区",
       "agents": "参与者",
+      "agentsCount": "参与者（{{count}}）",
       "noAgents": "暂无参与者",
       "agentsDone": "已完成",
       "recentMessages": "最近消息",
+      "recentMessagesCount": "最近消息（{{count}}）",
       "createdAt": "创建于",
       "historicalWorkspace": "历史工作区",
       "workspaceSwitched": "工作区已切换",
       "historicalSnapshot": "此为历史快照，当前活跃工作区已变更",
       "idle": "空闲",
+      "queued": "排队中",
       "running": "运行中",
       "completed": "已完成",
-      "failed": "失败"
+      "failed": "失败",
+      "cancelled": "已取消",
+      "interrupted": "已中断",
+      "closed": "已关闭"
     },
     "skill": {
       "loading": "加载中...",
@@ -1355,10 +2042,23 @@
     "unableToResolveSessionId": "无法解析工作区命令的请求者会话 ID",
     "online": "网络已恢复，正在同步工作区...",
     "offline": "网络已断开，部分操作不可用",
+    "workerStartFailed": "Worker \"{{name}}\" 启动失败: {{error}}",
+    "coordinatorAwakened": "主代理已被子代理 {{agent}} 唤醒，继续执行中...",
+    "subagentRetry": "子代理 {{agent}} 未发送结果，正在重新触发...",
+    "subagentRetryExhausted": "子代理 {{agent}} 多次重试后仍未产出结果",
+    "subagentRetryExhaustedTitle": "子代理多次重试后仍未产出结果",
     "subagentRetryDefault": "子代理完成任务但未发送结果消息，正在重新触发...",
     "subagentRetryFailed": "子代理重试失败",
     "subagentRetryResolved": "子代理已重新发送结果",
     "subagentRetryTitle": "子代理重试",
+    "subagentWakeNotice": "后台子代理 {{agent}} 已完成，唤醒主代理处理结果",
+    "warning": {
+      "inbox_full_rejected": "子代理 {{agent}} 收件箱已满，新消息被拒绝，请等待其完成后重试",
+      "run_agent_conflict_requeue_failed": "子代理 {{agent}} 正在运行，部分任务消息未能重新入队，请等待完成后手动重试",
+      "run_agent_requeue_failed": "子代理 {{agent}} 的部分任务消息未能重新入队，请稍后手动重试该任务",
+      "retry_limit_exceeded": "消息重试次数已达上限（{{retry}}/{{max}}）",
+      "agent_cancelled": "子代理 {{agent}} 的执行已被取消"
+    },
     "cancelled": "已请求停止执行",
     "cancelNoop": "当前没有可取消的执行",
     "cancelFailed": "停止失败: {{error}}",
@@ -1405,21 +2105,29 @@
     },
     "wakeSuccess": "已发送唤醒请求",
     "wakeNoop": "唤醒未生效（可能已被唤醒）",
-    "wakeFailed": "唤醒失败: {{msg}}"
+    "wakeFailed": "唤醒失败: {{msg}}",
+    "toggleSize": "切换尺寸"
   },
   "subagent": {
     "title": "子代理",
     "status": {
       "running": "执行中...",
+      "queued": "排队中",
       "completed": "已完成",
       "failed": "失败",
-      "idle": "等待中"
+      "idle": "等待中",
+      "cancelled": "已取消",
+      "interrupted": "已中断",
+      "closed": "已关闭"
     },
     "unknownSkill": "子代理",
     "noSessionId": "子代理会话 ID 缺失",
     "collapse": "收缩",
     "expand": "展开",
     "viewFull": "查看完整会话"
+  },
+  "subagentSession": {
+    "readOnlyNotice": "子代理会话（只读）· 由主代理触发，消息不可编辑或重发"
   },
   "debug": {
     "copyDebugInfo": "复制调试信息",
@@ -1428,6 +2136,7 @@
     "copyFailed": "复制失败"
   },
   "readiness": {
+    "not_ready": "当前会话尚未就绪",
     "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。",
     "model2_auto_assigned": "已自动分配 {{count}} 个模型：{{models}}。可前往「设置 → 模型分配」查看或更改。",
     "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。"
@@ -1463,6 +2172,7 @@
     "chatComponentError": "聊天组件出现错误",
     "unknownErrorRefresh": "发生了未知错误，请尝试刷新页面",
     "retry": "重试",
+    "reloadSession": "重新加载会话",
     "viewErrorDetails": "查看错误详情"
   },
   "mindmapCitation": {
@@ -1471,7 +2181,10 @@
   },
   "documentViewer": {
     "defaultTitle": "文档预览",
-    "search": "搜索"
+    "search": "搜索",
+    "previewHint": "提示：按 ESC 关闭，+/- 调整字号",
+    "noWrap": "取消自动换行",
+    "wrap": "自动换行"
   },
   "imageViewer": {
     "imageAlt": "图片 {{index}}",
@@ -1496,10 +2209,12 @@
     "locationGlobal": "全局",
     "locationProject": "项目",
     "locationBuiltin": "内置",
+    "locationCount": "{{location}} {{count}}",
     "loadedSummary": "已加载 {{count}} 个技能 ({{details}})"
   },
   "templateTool": {
     "previewTitle": "模板预览",
+    "renderIssues": "发现 {{count}} 个渲染问题",
     "diffTitle": "模板变更对比",
     "forkTitle": "模板已分叉",
     "createTitle": "模板已创建",
@@ -1510,6 +2225,8 @@
     "showJson": "JSON",
     "hideJson": "视图",
     "fieldsCount": "{{count}} 个字段",
+    "fieldsCount_one": "{{count}} 个字段",
+    "fieldsCount_other": "{{count}} 个字段",
     "active": "激活",
     "inactive": "未激活",
     "builtin": "内置",
@@ -1527,7 +2244,13 @@
     "recommended": "推荐",
     "optionReasonLabel": "查看该选项原因",
     "confirmSelection": "确认选择",
-    "customPlaceholder": "或输入自定义回答..."
+    "customPlaceholder": "或输入自定义回答...",
+    "ignore": "忽略",
+    "responded": "已回答",
+    "submit": "提交",
+    "send": "发送回答",
+    "submitFailed": "提交回答失败",
+    "submitRetryHint": "请重新选择或再次提交。"
   },
   "pageRef": {
     "clearAll": "清空页码引用",

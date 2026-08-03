@@ -8,7 +8,6 @@
  */
 
 import type { ModePlugin, ModeConfig } from '../../registry/modeRegistry';
-import { RagPanel } from './RagPanel';
 import { ModelPanel } from './ModelPanel';
 
 // ============================================================================
@@ -52,8 +51,8 @@ export const chatModePlugin: ModePlugin = {
     return chatModeConfig.enabledTools || [];
   },
 
-  // RAG 面板
-  renderRagPanel: RagPanel,
+  // RAG 设置已迁入对话控制面板（AdvancedPanel），不再注册独立 RAG 面板
+  // （注册会让 ⌘⇧K 打开无渲染出口的"幽灵面板"）
 
   // 模型选择面板
   renderModelPanel: ModelPanel,

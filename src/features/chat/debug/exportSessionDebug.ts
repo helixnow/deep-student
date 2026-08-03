@@ -15,6 +15,7 @@ import type { ChatStore, Block, Message } from '../core/types';
 import { useWorkspaceStore } from '../workspace/workspaceStore';
 import type { WorkspaceMessage, WorkspaceAgent } from '../workspace/types';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import i18n from 'i18next';
 
 // ============================================================================
 // 类型定义
@@ -187,7 +188,7 @@ export interface SubagentPreheatLogEntry {
 /** 🆕 P25: 子代理运行时事件日志 */
 export interface SubagentEventLogEntry {
   timestamp: string;
-  eventType: 'worker_ready' | 'worker_ready_dup' | 'worker_ready_retry' | 'coord_wake' | 'preheat_start' | 'preheat_done' | 'run_agent' | 'run_agent_result' | 'inbox_empty' | 'event_received' | 'error';
+  eventType: 'worker_ready' | 'worker_ready_dup' | 'worker_ready_retry' | 'coord_wake' | 'preheat_start' | 'preheat_done' | 'run_agent' | 'run_agent_result' | 'runtime_observer_ready' | 'runtime_completion' | 'inbox_empty' | 'event_received' | 'error';
   agentSessionId?: string;
   workspaceId?: string;
   details?: string;
@@ -716,9 +717,10 @@ export function formatDebugInfoAsText(info: SessionDebugInfo): string {
             : task.initialTask;
           lines.push(`      任务: ${taskPreview}`);
         }
-        lines.push(`      创建: ${new Date(task.createdAt).toLocaleTimeString()}`);
-        if (task.startedAt) lines.push(`      启动: ${new Date(task.startedAt).toLocaleTimeString()}`);
-        if (task.completedAt) lines.push(`      完成: ${new Date(task.completedAt).toLocaleTimeString()}`);
+        const locale = i18n.resolvedLanguage ?? i18n.language;
+        lines.push(`      创建: ${new Date(task.createdAt).toLocaleTimeString(locale)}`);
+        if (task.startedAt) lines.push(`      启动: ${new Date(task.startedAt).toLocaleTimeString(locale)}`);
+        if (task.completedAt) lines.push(`      完成: ${new Date(task.completedAt).toLocaleTimeString(locale)}`);
         if (task.resultSummary) lines.push(`      结果: ${task.resultSummary}`);
       }
       lines.push('');
@@ -728,7 +730,9 @@ export function formatDebugInfoAsText(info: SessionDebugInfo): string {
     if (info.workspace.messages.length > 0) {
       lines.push('📨 工作区消息日志:');
       for (const wsMsg of info.workspace.messages) {
-        const time = new Date(wsMsg.createdAt).toLocaleTimeString();
+        const time = new Date(wsMsg.createdAt).toLocaleTimeString(
+          i18n.resolvedLanguage ?? i18n.language
+        );
         const target = wsMsg.targetSessionId ? ` → ${wsMsg.targetSessionId.slice(-6)}` : ' (广播)';
         lines.push(`   [${time}] [${wsMsg.messageType}] ${wsMsg.senderSessionId.slice(-6)}${target}`);
         // 缩进消息内容
@@ -774,12 +778,16 @@ export function formatDebugInfoAsText(info: SessionDebugInfo): string {
           preheat_done: '✅',
           run_agent: '▶️',
           run_agent_result: '📤',
+          runtime_observer_ready: '👁️',
+          runtime_completion: '✅',
           inbox_empty: '📭',
           event_received: '📨',
           error: '❌',
         };
         const icon = eventIcons[log.eventType] || '📋';
-        const time = new Date(log.timestamp).toLocaleTimeString();
+        const time = new Date(log.timestamp).toLocaleTimeString(
+          i18n.resolvedLanguage ?? i18n.language
+        );
         const agent = log.agentSessionId ? log.agentSessionId.slice(-12) : 'N/A';
         lines.push(`   ${icon} [${time}] [${log.eventType}] agent=${agent}`);
         if (log.details) {

@@ -27,11 +27,13 @@ import {
   Database,
   Trash,
   CircleNotch,
+  ShieldCheck,
 } from '@phosphor-icons/react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SettingSection } from './SettingsCommon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -57,6 +59,7 @@ import type {
   MigrationStatusResponse,
   BackupInfoResponse,
   BackupVerifyResponse,
+  AutoVerifyResponse,
   SyncStatusResponse,
   ConflictDetectionResponse,
   SyncProgress,
@@ -66,6 +69,8 @@ import type {
   MergeStrategy,
 } from '@/types/dataGovernance';
 import {
+  INCREMENTAL_BACKUP_REMOVED_MESSAGE,
+  INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
   isSyncPhaseTerminal,
 } from '@/types/dataGovernance';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -77,6 +82,12 @@ import { BackupTab, type BackupJobOperation } from './data-governance/BackupTab'
 import { SyncTab } from './data-governance/SyncTab';
 import { AuditTab } from './data-governance/AuditTab';
 import { ChatSessionArchiveTab } from './data-governance/ChatSessionArchiveTab';
+import { RecoveryCenter } from '@/features/data-recovery/RecoveryCenter';
+import {
+  createPartialDegradationDebugIssues,
+  setRecoveryDebugScenario,
+  type RecoveryDebugScenario,
+} from '@/features/data-recovery/debugRecoveryScenarios';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -84,10 +95,11 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 export const DebugTab: React.FC = () => {
   const { t } = useTranslation(['data', 'common']);
-  const { showMigrationStatus, clearMigrationStatus } = useSystemStatusStore(
+  const { showMigrationStatus, clearMigrationStatus, setComponentHealth } = useSystemStatusStore(
     useShallow((state) => ({
       showMigrationStatus: state.showMigrationStatus,
       clearMigrationStatus: state.clearMigrationStatus,
+      setComponentHealth: state.setComponentHealth,
     }))
   );
   const [flowRunning, setFlowRunning] = useState(false);
@@ -98,6 +110,41 @@ export const DebugTab: React.FC = () => {
   const flowTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [showPurgeDialog, setShowPurgeDialog] = useState(false);
   const [isPurgeRunning, setIsPurgeRunning] = useState(false);
+  const componentHealthBeforePreviewRef = useRef(
+    useSystemStatusStore.getState().componentHealth,
+  );
+  const partialPreviewActiveRef = useRef(false);
+
+  const openRecoveryScenario = useCallback((scenario: RecoveryDebugScenario) => {
+    if (!import.meta.env.DEV) return;
+    setRecoveryDebugScenario(scenario);
+    window.location.reload();
+  }, []);
+
+  const previewPartialDegradation = useCallback(() => {
+    if (!import.meta.env.DEV) return;
+    if (!partialPreviewActiveRef.current) {
+      componentHealthBeforePreviewRef.current =
+        useSystemStatusStore.getState().componentHealth;
+      partialPreviewActiveRef.current = true;
+    }
+    setComponentHealth(createPartialDegradationDebugIssues());
+    showMigrationStatus({
+      level: 'error',
+      message: t('data:governance.debug_partial_degradation_message'),
+      details: t('data:governance.debug_partial_degradation_details'),
+    });
+    showGlobalNotification(
+      'info',
+      t('data:governance.debug_partial_degradation_hint'),
+    );
+  }, [setComponentHealth, showMigrationStatus, t]);
+
+  const clearPartialDegradationPreview = useCallback(() => {
+    setComponentHealth(componentHealthBeforePreviewRef.current);
+    clearMigrationStatus();
+    partialPreviewActiveRef.current = false;
+  }, [clearMigrationStatus, setComponentHealth]);
 
   const handlePurgeAllData = useCallback(async () => {
     if (isPurgeRunning) return;
@@ -267,24 +314,89 @@ export const DebugTab: React.FC = () => {
         </p>
       </div>
 
+      <div className="rounded-[var(--radius-shell-panel)] border border-warning/25 bg-warning/5 p-4">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 shrink-0 text-warning" size={20} />
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-semibold text-foreground">
+              {t('data:governance.debug_recovery_scenarios_title')}
+            </h4>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {t('data:governance.debug_recovery_scenarios_desc')}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={() => openRecoveryScenario('startup-conflict')}
+            data-testid="debug-startup-conflict"
+          >
+            <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_startup_conflict')}
+          </DsButton>
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={() => openRecoveryScenario('startup-preflight-failure')}
+            data-testid="debug-startup-preflight-failure"
+          >
+            <Warning className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_preflight_failure')}
+          </DsButton>
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={() => openRecoveryScenario('core-migration-failure')}
+            data-testid="debug-core-migration-failure"
+          >
+            <Database className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_core_failure')}
+          </DsButton>
+          <DsButton
+            variant="secondary"
+            size="sm"
+            disabled={!import.meta.env.DEV}
+            onClick={previewPartialDegradation}
+            data-testid="debug-partial-degradation"
+          >
+            <Warning className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_preview_partial_failure')}
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={clearPartialDegradationPreview}
+            className="sm:col-span-2"
+          >
+            <XCircle className="mr-1.5 h-3.5 w-3.5" />
+            {t('data:governance.debug_clear_partial_failure')}
+          </DsButton>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <NotionButton variant="warning" size="sm" onClick={triggerWarning}>
+        <DsButton variant="warning" size="sm" onClick={triggerWarning}>
           <Warning className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_trigger_warning')}
-        </NotionButton>
-        <NotionButton variant="danger" size="sm" onClick={triggerError}>
+        </DsButton>
+        <DsButton variant="danger" size="sm" onClick={triggerError}>
           <XCircle className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_trigger_error')}
-        </NotionButton>
-        <NotionButton variant="primary" size="sm" onClick={triggerInfo}>
+        </DsButton>
+        <DsButton variant="primary" size="sm" onClick={triggerInfo}>
           <Database className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_trigger_info')}
-        </NotionButton>
-        <NotionButton variant="ghost" size="sm" onClick={clearMigrationStatus}>
+        </DsButton>
+        <DsButton variant="ghost" size="sm" onClick={clearMigrationStatus}>
           <XCircle className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_clear_toast')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="default"
           size="sm"
           onClick={simulateFlow}
@@ -295,7 +407,7 @@ export const DebugTab: React.FC = () => {
           {flowRunning
             ? t('data:governance.debug_flow_in_progress')
             : t('data:governance.debug_simulate_flow')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       <div className="space-y-2">
@@ -303,7 +415,7 @@ export const DebugTab: React.FC = () => {
           {t('data:governance.debug_slot_test_title')}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <NotionButton
+          <DsButton
             variant="default"
             size="sm"
             onClick={runSlotCEmptyDbTest}
@@ -314,8 +426,8 @@ export const DebugTab: React.FC = () => {
             {slotCTestRunning
               ? t('data:governance.debug_slot_test_running')
               : t('data:governance.debug_run_slot_c_test')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="default"
             size="sm"
             onClick={runSlotDCloneDbTest}
@@ -326,7 +438,7 @@ export const DebugTab: React.FC = () => {
             {slotDTestRunning
               ? t('data:governance.debug_slot_test_running')
               : t('data:governance.debug_run_slot_d_test')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -356,9 +468,9 @@ export const DebugTab: React.FC = () => {
               : t('data:governance.debug_slot_no_log')}
           </p>
           {slotCResult && (
-            <pre className="text-xs rounded-md border border-border/40 bg-muted/20 p-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">
-              {slotCResult.report}
-            </pre>
+            <CustomScrollArea className="h-48 rounded-md border border-border/40 bg-muted/20" viewportClassName="p-2">
+              <pre className="whitespace-pre-wrap break-words text-xs">{slotCResult.report}</pre>
+            </CustomScrollArea>
           )}
         </div>
 
@@ -387,9 +499,9 @@ export const DebugTab: React.FC = () => {
               : t('data:governance.debug_slot_no_log')}
           </p>
           {slotDResult && (
-            <pre className="text-xs rounded-md border border-border/40 bg-muted/20 p-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">
-              {slotDResult.report}
-            </pre>
+            <CustomScrollArea className="h-48 rounded-md border border-border/40 bg-muted/20" viewportClassName="p-2">
+              <pre className="whitespace-pre-wrap break-words text-xs">{slotDResult.report}</pre>
+            </CustomScrollArea>
           )}
         </div>
       </div>
@@ -413,7 +525,7 @@ export const DebugTab: React.FC = () => {
           <p className="text-sm text-muted-foreground">
             {t('data:governance.purge_all_data_desc')}
           </p>
-          <NotionButton
+          <DsButton
             variant="danger"
             size="sm"
             onClick={() => setShowPurgeDialog(true)}
@@ -425,10 +537,10 @@ export const DebugTab: React.FC = () => {
               <Trash className="h-4 w-4 mr-2" />
             )}
             {t('data:governance.purge_all_data_button')}
-          </NotionButton>
+          </DsButton>
         </div>
 
-        <NotionAlertDialog
+        <DsAlertDialog
           open={showPurgeDialog}
           onOpenChange={(open) => { if (!open) setShowPurgeDialog(false); }}
           title={t('data:governance.purge_confirm_title')}
@@ -444,6 +556,21 @@ export const DebugTab: React.FC = () => {
     </div>
   );
 };
+
+/** Map Rust English backup rejection strings to i18n (identity for en-US). */
+function localizeBackupJobError(
+  message: string | undefined,
+  t: (key: string) => string,
+): string {
+  if (!message) return t('data:governance.backup_failed');
+  if (message === INCREMENTAL_BACKUP_REMOVED_MESSAGE) {
+    return t('data:governance.incremental_create_removed');
+  }
+  if (message === INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE) {
+    return t('data:governance.restore_incremental_not_supported');
+  }
+  return message;
+}
 
 // ==================== 主 Dashboard 组件 ====================
 
@@ -462,9 +589,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   tabTarget = null,
 }) => {
   const { t } = useTranslation(['data', 'common']);
-  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
+  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
+      requireMaintenanceRestart: state.requireMaintenanceRestart,
       exitMaintenanceMode: state.exitMaintenanceMode,
     }))
   );
@@ -514,6 +642,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 审计日志分页
   const AUDIT_PAGE_SIZE = 50;
   const auditFilterRef = useRef<{ operationType?: AuditOperationType; status?: AuditStatus }>({});
+  const auditRequestGeneration = useRef(0);
 
   // 云端同步状态（进度事件）
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
@@ -555,6 +684,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 备份验证结果详细信息
   const [verifyResult, setVerifyResult] = useState<BackupVerifyResponse | null>(null);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
+
+  // 最新备份自动验证（概览页「验证最新备份」按钮）
+  const [lastAutoVerifyResult, setLastAutoVerifyResult] = useState<AutoVerifyResponse | null>(null);
+  const [isAutoVerifying, setIsAutoVerifying] = useState(false);
 
   // 云存储配置（由 CloudStorageSection 维护：localStorage + 安全存储）
   // 从 localStorage 同步读取当前配置摘要
@@ -637,10 +770,34 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('加载可恢复任务失败:', error);
       showGlobalNotification(
         'warning',
-        t('data:governance.resumable_jobs_load_failed', '加载可恢复任务失败，请稍后重试')
+        t('data:governance.resumable_jobs_load_failed')
       );
     }
   }, [t]);
+
+  /**
+   * 以后端聚合状态为真相收敛前端维护横幅。
+   *
+   * 退出屏障可能只在某个子库失败；此时任务已经终止，但继续撤掉横幅会让用户
+   * 误以为可以写入。状态查询本身失败也保持 fail-close，提示重启恢复。
+   */
+  const reconcileMaintenanceMode = useCallback(async () => {
+    const generation = useSystemStatusStore.getState().maintenanceGeneration;
+    try {
+      const status = await DataGovernanceApi.getMaintenanceStatus();
+      // 查询期间若有新任务进入/退出维护模式，旧结果不得覆盖新状态。
+      if (useSystemStatusStore.getState().maintenanceGeneration !== generation) return;
+      if (status.is_in_maintenance_mode) {
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
+      } else {
+        exitMaintenanceMode();
+      }
+    } catch (error: unknown) {
+      console.error('查询维护屏障聚合状态失败:', error);
+      if (useSystemStatusStore.getState().maintenanceGeneration !== generation) return;
+      requireMaintenanceRestart(t('common:maintenance.recovery_required'));
+    }
+  }, [exitMaintenanceMode, requireMaintenanceRestart, t]);
 
   // 使用统一的备份任务监听 Hook
   const { startListening, stopListening } = useBackupJobListener({
@@ -649,7 +806,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     },
     onComplete: (event) => {
       setIsBackupRunning(false);
-      exitMaintenanceMode();
       stopTabLoading('backup');
       setBackupJobId(null);
       const op = currentJobOperationRef.current;
@@ -717,7 +873,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       // 检查是否需要重启（恢复操作特有）—— 显示模态对话框而非通知
       if (event.result?.requires_restart) {
+        // 恢复切槽在重启前有意保持后端屏障；横幅与不可关闭对话框必须一致。
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
         setShowRestartDialog(true);
+      } else {
+        void reconcileMaintenanceMode();
       }
 
       // 刷新可恢复任务列表
@@ -725,18 +885,21 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     },
     onError: (event) => {
       setIsBackupRunning(false);
-      exitMaintenanceMode();
       stopTabLoading('backup');
       setBackupJobId(null);
       setJobOperation(null);
-      showGlobalNotification('error', event.result?.error || event.message || t('data:governance.backup_failed'));
+      void reconcileMaintenanceMode();
+      showGlobalNotification(
+        'error',
+        localizeBackupJobError(event.result?.error || event.message, t),
+      );
     },
     onCancelled: () => {
       setIsBackupRunning(false);
-      exitMaintenanceMode();
       stopTabLoading('backup');
       setBackupJobId(null);
       setJobOperation(null);
+      void reconcileMaintenanceMode();
       showGlobalNotification('info', t('data:governance.backup_cancelled'));
       void loadResumableJobs();
     },
@@ -771,10 +934,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     } catch (error: unknown) {
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
     }
-  }, [isBackupRunning, resumableJobs, setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t]);
+  }, [isBackupRunning, resumableJobs, setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t]);
 
   // 加载同步状态
   const loadSyncStatus = useCallback(async () => {
@@ -798,14 +961,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     operationType?: AuditOperationType,
     status?: AuditStatus
   ) => {
+    const generation = ++auditRequestGeneration.current;
     auditFilterRef.current = { operationType, status };
     startTabLoading('audit');
     try {
       const result = await DataGovernanceApi.getAuditLogs(operationType, status, AUDIT_PAGE_SIZE, 0);
       const logs = Array.isArray(result) ? result : Array.isArray(result?.logs) ? result.logs : [];
-      setAuditLogs(logs);
-      setAuditTotal(typeof result?.total === 'number' ? result.total : logs.length);
-      setAuditLoadError(null);
+      if (auditRequestGeneration.current === generation) {
+        setAuditLogs(logs);
+        setAuditTotal(typeof result?.total === 'number' ? result.total : logs.length);
+        setAuditLoadError(null);
+      }
     } catch (error: unknown) {
       console.error('加载审计日志失败:', error);
       setAuditLoadError(getErrorMessage(error));
@@ -818,14 +984,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 加载更多审计日志（追加）
   const loadMoreAuditLogs = useCallback(async () => {
     const { operationType, status } = auditFilterRef.current;
+    const generation = ++auditRequestGeneration.current;
     startTabLoading('audit');
     try {
       const offset = auditLogs.length;
       const result = await DataGovernanceApi.getAuditLogs(operationType, status, AUDIT_PAGE_SIZE, offset);
       const moreLogs = Array.isArray(result) ? result : Array.isArray(result?.logs) ? result.logs : [];
-      setAuditLogs((prev) => [...prev, ...moreLogs]);
-      if (typeof result?.total === 'number') {
-        setAuditTotal(result.total);
+      if (auditRequestGeneration.current === generation) {
+        setAuditLogs((prev) => [...prev, ...moreLogs]);
+        if (typeof result?.total === 'number') {
+          setAuditTotal(result.total);
+        }
       }
     } catch (error: unknown) {
       console.error('加载更多审计日志失败:', error);
@@ -854,6 +1023,27 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       stopTabLoading('overview');
     }
   }, [startTabLoading, stopTabLoading, t]);
+
+  // 验证最新备份（调用后端 data_governance_auto_verify_latest_backup）
+  const verifyLatestBackup = useCallback(async () => {
+    if (isAutoVerifying) return;
+    setIsAutoVerifying(true);
+    try {
+      const result = await DataGovernanceApi.autoVerifyLatestBackup();
+      setLastAutoVerifyResult(result);
+      showGlobalNotification(
+        result.is_valid ? 'success' : 'warning',
+        result.is_valid
+          ? t('data:governance.auto_verify_success')
+          : t('data:governance.auto_verify_failed')
+      );
+    } catch (error: unknown) {
+      console.error('验证最新备份失败:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setIsAutoVerifying(false);
+    }
+  }, [isAutoVerifying, t]);
 
   // 一步导出备份（备份 + ZIP）
   const backupAndExportZip = useCallback(async (options: {
@@ -903,11 +1093,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('备份并导出 ZIP 失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 取消备份
   const cancelBackup = useCallback(async () => {
@@ -971,11 +1161,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('ZIP 导出失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 从 ZIP 导入（异步）
   const importZip = useCallback(async () => {
@@ -1032,11 +1222,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('ZIP 导入失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 删除备份
   const deleteBackup = useCallback(async (backupId: string) => {
@@ -1075,6 +1265,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
       return;
     }
+    const selectedBackup = backups.find((backup) => backup.path === backupId);
+    if (
+      selectedBackup &&
+      !(selectedBackup.restorable ?? selectedBackup.backup_type === 'full')
+    ) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.restore_non_full_not_supported'),
+      );
+      return;
+    }
 
     // Task 1: 恢复前磁盘空间检查
     startTabLoading('backup');
@@ -1091,8 +1292,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         return;
       }
     } catch (error: unknown) {
-      // 磁盘空间检查失败不阻塞恢复，仅记录警告
-      console.warn('磁盘空间检查失败，继续恢复:', error);
+      // 只有 API 层确认是旧后端 CommandNotFound 时才会返回兼容结果。
+      // 权限、I/O、清单损坏、目标卷不明等错误必须 fail-close。
+      console.error('磁盘空间检查失败，已阻止恢复:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+      stopTabLoading('backup');
+      return;
     }
 
     setIsBackupRunning(true);
@@ -1113,11 +1318,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('恢复备份失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [backups, setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 执行云端同步（带进度事件）
   const runCloudSync = useCallback(async (
@@ -1169,30 +1374,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       }
       setCloudSyncConfigured(true);
 
-      // 同步断层预检：云端 prune 掉了本地 since_version 需要的变更区间时，
-      // 普通双向/下载同步会导致"静默数据丢失"——云端已有变更但本地拿不到。
-      // 此时必须提示用户改走"从版本历史恢复"流程。
+      // 同步断层预检必须 fail-close。检测本身失败也不能继续，因为此时无法
+      // 证明本地游标仍被云端历史覆盖。
       if (direction !== 'upload') {
-        try {
-          const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
-          if (gap.has_gap) {
-            const since = gap.since_version;
-            const minAvail = gap.min_available_version ?? 0;
-            const warnMsg = t('data:governance.sync_prune_gap_warning', {
-              since,
-              minAvail,
-              defaultValue:
-                `检测到云端同步历史已被清理（本地需要 >=${since} 的变更，但云端最早仅 ${minAvail}）。` +
-                `继续同步将遗漏中间变更。建议改用"版本历史 → 恢复"进行全量恢复。是否仍要继续？`,
-            });
-            // 用 window.confirm 作为最简阻塞式确认；项目里没有通用 confirm hook
-            if (typeof window !== 'undefined' && !window.confirm(warnMsg)) {
-              setSyncProgress(null);
-              return;
-            }
-          }
-        } catch (gapErr: unknown) {
-          console.warn('[sync] detectPruneGap 检查失败（继续同步）:', gapErr);
+        const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
+        if (gap.has_gap) {
+          const since = gap.since_version;
+          const minAvail = gap.min_available_version ?? 0;
+          throw new Error(t('data:governance.sync_prune_gap_warning', {
+            since,
+            minAvail,
+          }));
         }
       }
 
@@ -1216,8 +1408,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         if (result.error_message || (result.skipped_changes ?? 0) > 0) {
           const skipped = result.skipped_changes ?? 0;
           const msg = result.error_message ?? t('data:governance.sync_partial_with_skipped', {
-            count: skipped,
-            defaultValue: `同步完成，但有 ${skipped} 条变更被跳过。`,
+            skipped,
           });
           showGlobalNotification('warning', msg);
         } else {
@@ -1292,7 +1483,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     if (detectInFlightRef.current) {
       showGlobalNotification(
         'warning',
-        t('data:governance.detect_conflicts_running', '冲突检测正在进行，请稍候')
+        t('data:governance.detect_conflicts_running')
       );
       return;
     }
@@ -1335,24 +1526,20 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     if (resolveInFlightRef.current) {
       showGlobalNotification(
         'warning',
-        t('data:governance.resolve_conflicts_running', '冲突解决正在进行，请稍候')
+        t('data:governance.resolve_conflicts_running')
       );
       return;
     }
     if (conflicts?.needs_migration) {
       showGlobalNotification(
         'warning',
-        t('data:governance.schema_mismatch_needs_migration', {
-          defaultValue: '检测到 Schema 不匹配，请先完成迁移后再解决冲突。',
-        })
+        t('data:governance.schema_mismatch_needs_migration')
       );
       return;
     }
     const cloudManifestJson = conflicts?.cloud_manifest_json;
     if (!cloudManifestJson) {
-      showGlobalNotification('warning', t('data:governance.sync_conflict_manifest_missing', {
-        defaultValue: '缺少云端冲突清单，请先重新检测冲突。',
-      }));
+      showGlobalNotification('warning', t('data:governance.sync_conflict_manifest_missing'));
       return;
     }
     resolveInFlightRef.current = true;
@@ -1370,7 +1557,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             'warning',
             t('data:governance.conflicts_pending_manual', {
               count: result.pending_manual_conflicts,
-              defaultValue: `仍有 ${result.pending_manual_conflicts} 条冲突待手动处理。`,
             })
           );
         } else {
@@ -1392,10 +1578,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 预取审计日志：提升切换体验（并与单测期望对齐）
   useEffect(() => {
     let mounted = true;
+    const generation = ++auditRequestGeneration.current;
     void (async () => {
       try {
         const result = await DataGovernanceApi.getAuditLogs(undefined, undefined, AUDIT_PAGE_SIZE);
-        if (mounted) {
+        if (mounted && auditRequestGeneration.current === generation) {
           const logs = Array.isArray(result) ? result : Array.isArray(result?.logs) ? result.logs : [];
           setAuditLogs(logs);
           setAuditTotal(typeof result?.total === 'number' ? result.total : logs.length);
@@ -1403,7 +1590,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         }
       } catch (error: unknown) {
         console.error('预加载审计日志失败:', error);
-        if (mounted) {
+        if (mounted && auditRequestGeneration.current === generation) {
           setAuditLoadError(getErrorMessage(error));
         }
       }
@@ -1492,12 +1679,18 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       if (isBackupRunning) return;
 
       try {
+        const maintenanceGeneration =
+          useSystemStatusStore.getState().maintenanceGeneration;
         const allJobs = await DataGovernanceApi.listBackupJobs();
         const runningJob = allJobs.find(
           (j) => j.status === 'running' || j.status === 'queued'
         );
 
-        if (runningJob && mounted) {
+        if (
+          runningJob
+          && mounted
+          && useSystemStatusStore.getState().maintenanceGeneration === maintenanceGeneration
+        ) {
           setBackupJobId(runningJob.job_id);
           setIsBackupRunning(true);
           setBackupProgress({
@@ -1518,12 +1711,34 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
           // 重新建立进度监听
           await startListening(runningJob.job_id);
+          return;
+        }
+
+        // 页面卸载期间任务可能已经结束。listener 的终态回调此时不会执行，
+        // 需要以后端维护状态为真相清理前端残留；恢复切槽成功时后端仍为 true，
+        // 因而不会误解除等待重启的安全屏障。
+        if (
+          mounted
+          && useSystemStatusStore.getState().maintenanceGeneration === maintenanceGeneration
+        ) {
+          const maintenance = await DataGovernanceApi.getMaintenanceStatus();
+          if (
+            !mounted
+            || useSystemStatusStore.getState().maintenanceGeneration !== maintenanceGeneration
+          ) {
+            return;
+          }
+          if (maintenance.is_in_maintenance_mode) {
+            enterMaintenanceMode(t('data:governance.maintenance_restore'));
+          } else {
+            exitMaintenanceMode();
+          }
         }
       } catch (error: unknown) {
         console.error('检查运行中的备份任务失败:', error);
         showGlobalNotification(
           'warning',
-          t('data:governance.reconnect_running_job_failed', '恢复后台任务监听失败，请稍后重试')
+          t('data:governance.reconnect_running_job_failed')
         );
       }
     };
@@ -1537,32 +1752,36 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
-      <TabsList className="mb-4">
-        <TabsTrigger value="overview" className="flex items-center gap-1">
+      <TabsList className="scrollbar-none mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto">
+        <TabsTrigger value="overview" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Gauge className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
         </TabsTrigger>
-        <TabsTrigger value="archive" className="flex items-center gap-1">
+        <TabsTrigger value="recovery" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+          <ShieldCheck className="h-4 w-4" />
+          <span className="hidden sm:inline">{t('data:governance.tab_recovery')}</span>
+        </TabsTrigger>
+        <TabsTrigger value="archive" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Archive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_archive')}</span>
         </TabsTrigger>
-        <TabsTrigger value="backup" className="flex items-center gap-1">
+        <TabsTrigger value="backup" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <HardDrive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_backup')}</span>
         </TabsTrigger>
-        <TabsTrigger value="sync" className="flex items-center gap-1">
+        <TabsTrigger value="sync" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Cloud className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_sync')}</span>
         </TabsTrigger>
-        <TabsTrigger value="audit" className="flex items-center gap-1">
+        <TabsTrigger value="audit" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <FileText className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_audit')}</span>
         </TabsTrigger>
-        <TabsTrigger value="cache" className="flex items-center gap-1">
+        <TabsTrigger value="cache" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Image className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_cache')}</span>
         </TabsTrigger>
-        <TabsTrigger value="debug" className="flex items-center gap-1 text-muted-foreground">
+        <TabsTrigger value="debug" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 text-muted-foreground sm:min-h-0 sm:min-w-0">
           <Bug className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
         </TabsTrigger>
@@ -1575,8 +1794,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           loading={overviewLoading}
           onRefresh={loadOverviewData}
           onRunHealthCheck={runHealthCheck}
+          lastAutoVerifyResult={lastAutoVerifyResult}
+          isVerifying={isAutoVerifying}
+          onVerifyLatestBackup={verifyLatestBackup}
           onOpenArchive={() => setActiveTab('archive')}
         />
+      </TabsContent>
+
+      <TabsContent value="recovery">
+        <RecoveryCenter mode="settings" />
       </TabsContent>
 
       <TabsContent value="archive">
@@ -1613,7 +1839,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
               showGlobalNotification('error', getErrorMessage(error));
             }
           }}
-          onRestartLater={() => setShowRestartDialog(false)}
           showRestorePromptDialog={showRestorePromptDialog}
           onRestoreNow={() => {
             setShowRestorePromptDialog(false);

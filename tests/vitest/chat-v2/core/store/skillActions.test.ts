@@ -3,6 +3,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { createSkillActions } from '@/features/chat/core/store/skillActions';
 import type { ChatStoreState, GetState, SetState } from '@/features/chat/core/store/types';
 
+const mocks = vi.hoisted(() => ({
+  notify: vi.fn(),
+  translate: vi.fn((key: string, params?: Record<string, unknown>) =>
+    `${key}:${String(params?.skillId ?? '')}`),
+}));
+
+vi.mock('i18next', () => ({
+  default: {
+    t: (...args: [string, Record<string, unknown>?]) => mocks.translate(...args),
+  },
+}));
+
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: (...args: unknown[]) => mocks.notify(...args),
+}));
+
 vi.mock('@/features/chat/skills/registry', () => ({
   skillRegistry: {
     get: (id: string) =>
@@ -13,6 +29,32 @@ vi.mock('@/features/chat/skills/registry', () => ({
             embeddedTools: [],
             dependencies: [],
           }
+        : id === 'external-skill'
+          ? {
+              id: 'external-skill',
+              name: 'External skill',
+              description: 'External skill',
+              content: '',
+              version: '1.0.0',
+              location: 'external',
+              sourcePath: '/tmp/external-skill/SKILL.md',
+              trustStatus: 'untrusted',
+              embeddedTools: [],
+              dependencies: [],
+            }
+        : id === 'parent-missing'
+          ? {
+              id: 'parent-missing',
+              name: 'Parent missing',
+              description: 'Parent missing',
+              content: '',
+              version: '1.0.0',
+              location: 'builtin',
+              sourcePath: 'builtin://parent-missing',
+              trustStatus: 'builtin',
+              embeddedTools: [],
+              dependencies: ['missing-dependency'],
+            }
         : undefined,
   },
 }));
@@ -21,6 +63,32 @@ vi.mock('@/features/chat/skills/progressiveDisclosure', () => ({
   loadSkillsToSession: vi.fn(() => ({ loaded: [], alreadyLoaded: [], notFound: [] })),
   isSkillLoaded: vi.fn(() => false),
   unloadSkill: vi.fn(),
+}));
+
+vi.mock('@/features/chat/skills/runtimeAdmission', () => ({
+  getSkillRuntimeAdmissionWithDependencies: (skill: { id: string }) => {
+    if (skill.id === 'external-skill') {
+      return {
+        allowed: false,
+        code: 'untrusted',
+        params: { skillId: skill.id },
+        message: 'untrusted',
+      };
+    }
+    if (skill.id === 'parent-missing') {
+      return {
+        allowed: false,
+        code: 'dependency_unavailable',
+        params: {
+          skillId: skill.id,
+          dependencyId: 'missing-dependency',
+          reason: 'missing',
+        },
+        message: 'missing dependency',
+      };
+    }
+    return { allowed: true };
+  },
 }));
 
 function createHarness(initialState: Partial<ChatStoreState> = {}) {
@@ -103,5 +171,36 @@ describe('skillActions structured state priority', () => {
       manualPinnedSkillIds: ['deep-student'],
       version: 1,
     });
+  });
+
+  it('localizes rejected activation from admission code and params', async () => {
+    const { actions } = createHarness();
+
+    await expect(actions.activateSkill('external-skill')).resolves.toBe(false);
+
+    expect(mocks.translate).toHaveBeenCalledWith(
+      'skills:errors.runtimeAdmission.untrusted',
+      expect.objectContaining({ skillId: 'external-skill' }),
+    );
+    expect(mocks.notify).toHaveBeenCalledWith(
+      'warning',
+      'skills:errors.runtimeAdmission.untrusted:external-skill',
+    );
+  });
+
+  it('localizes unavailable dependency failures before activation', async () => {
+    const { actions, getState } = createHarness();
+
+    await expect(actions.activateSkill('parent-missing')).resolves.toBe(false);
+
+    expect(mocks.translate).toHaveBeenCalledWith(
+      'skills:errors.runtimeAdmission.dependency_unavailable',
+      expect.objectContaining({
+        skillId: 'parent-missing',
+        dependencyId: 'missing-dependency',
+        reason: 'missing',
+      }),
+    );
+    expect(getState().activeSkillIds).toEqual([]);
   });
 });

@@ -1,0 +1,447 @@
+/*
+ * 笔记工作区搜索 —— 顶部居中悬浮命令条（对标 Quick Switcher）。
+ * 无遮罩、无 focus trap：面板悬浮于工作区顶部，点击外部 / Esc / 关闭按钮均可退出。
+ * 入场动效来自共享 .ui-drop-in（ui-motion.css，自带 prefers-reduced-motion 降级）。
+ */
+
+.notes-search-overlay {
+  position: absolute;
+  z-index: 75;
+  top: clamp(12px, 9%, 56px);
+  inset-inline: 0;
+  margin-inline: auto;
+  width: min(640px, calc(100% - 32px));
+  max-height: min(540px, calc(100% - 88px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  background: hsl(var(--popover));
+  color: hsl(var(--foreground));
+  box-shadow: var(--shadow-shell-floating, var(--notes-popup-shadow));
+}
+
+/* 面板头部 = 输入行（与回收站 / 库面板共用“头部 + 下分隔线”结构） */
+.notes-search-overlay-input-wrap {
+  min-height: 46px;
+  padding: 0 8px 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  transition: border-color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-search-overlay-input-wrap:focus-within {
+  border-bottom-color: hsl(var(--ring) / 55%);
+}
+
+.notes-search-overlay-input-wrap input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+}
+
+.notes-search-overlay-input-wrap input::placeholder {
+  color: hsl(var(--muted-foreground));
+  opacity: 0.8;
+}
+
+.notes-search-overlay-clear,
+.notes-search-overlay-close {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-search-overlay-clear:hover,
+.notes-search-overlay-close:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.notes-search-overlay-clear:focus-visible,
+.notes-search-overlay-close:focus-visible,
+.notes-search-overlay-modes button:focus-visible,
+.notes-search-overlay-result:focus-visible,
+.notes-search-overlay-message button:focus-visible {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* 模式切换行：分段按钮 + 右侧 tag: 语法提示 */
+.notes-search-overlay-modes {
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.notes-search-overlay-modes button {
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-search-overlay-modes button:hover,
+.notes-search-overlay-modes button[data-active='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.notes-search-overlay-taghint {
+  margin-left: auto;
+  color: hsl(var(--muted-foreground) / 75%);
+  font-size: 11px;
+}
+
+.notes-search-overlay-taghint code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: hsl(var(--muted) / 55%);
+  font-family: inherit;
+}
+
+.notes-search-overlay-results-wrap {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notes-search-overlay-status {
+  padding: 6px 16px 2px;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.notes-search-overlay-status:empty {
+  display: none;
+}
+
+.notes-search-overlay-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notes-search-overlay-spinner {
+  animation: notes-search-overlay-spin 850ms linear infinite;
+}
+
+.notes-search-overlay-results-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.notes-search-overlay-results {
+  min-height: 0;
+  margin: 0;
+  padding: 6px 8px 8px;
+  list-style: none;
+}
+
+.notes-search-overlay-result {
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border: 0;
+  border-radius: var(--notes-radius-row);
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-search-overlay-result:hover,
+.notes-search-overlay-result[data-active='true'] {
+  background: hsl(var(--accent));
+}
+
+.notes-search-overlay-result:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.notes-search-overlay-result-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-search-overlay-result-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.notes-search-overlay-result-title,
+.notes-search-overlay-result-path,
+.notes-search-overlay-result-snippet,
+.notes-search-overlay-result-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-search-overlay-result-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.notes-search-overlay-result-path,
+.notes-search-overlay-result-snippet,
+.notes-search-overlay-result-type {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+.notes-search-overlay-result-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.notes-search-overlay-result-crumb {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+.notes-search-overlay-result-crumb-sep {
+  flex: 0 0 auto;
+  color: hsl(var(--muted-foreground) / 55%);
+}
+
+.notes-search-overlay-result-snippet {
+  white-space: normal;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+}
+
+.notes-search-overlay-result-type {
+  max-width: 84px;
+  padding-top: 2px;
+  flex: 0 1 auto;
+  text-align: right;
+}
+
+/* 空查询快速打开：「最近打开 / 全部文件」分组小标题 */
+.notes-search-overlay-group {
+  padding: 8px 8px 3px;
+  color: hsl(var(--muted-foreground) / 80%);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.notes-search-overlay-group:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid hsl(var(--border) / 60%);
+  padding-top: 9px;
+}
+
+/* 全文搜索加载骨架：与文档树骨架同款脉冲节奏 */
+.notes-search-overlay-skeleton {
+  padding: 10px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.notes-search-overlay-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notes-search-overlay-skeleton-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: var(--notes-radius-control, 6px);
+  background: hsl(var(--muted) / 70%);
+  animation: notes-search-overlay-skeleton-pulse 1.1s ease-in-out infinite alternate;
+}
+
+.notes-search-overlay-skeleton-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+
+.notes-search-overlay-skeleton-bar {
+  height: 9px;
+  border-radius: 4px;
+  background: hsl(var(--muted) / 70%);
+  animation: notes-search-overlay-skeleton-pulse 1.1s ease-in-out infinite alternate;
+}
+
+.notes-search-overlay-skeleton-bar.is-sub {
+  height: 7px;
+  opacity: 0.65;
+}
+
+@keyframes notes-search-overlay-skeleton-pulse {
+  from { opacity: 0.45; }
+  to { opacity: 0.95; }
+}
+
+.notes-search-overlay-empty,
+.notes-search-overlay-message {
+  min-height: 108px;
+  padding: 18px 20px;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  text-align: center;
+}
+
+.notes-search-overlay-empty-hint {
+  color: hsl(var(--muted-foreground) / 70%);
+  font-size: 11px;
+}
+
+.notes-search-overlay-message {
+  color: hsl(var(--destructive));
+}
+
+.notes-search-overlay-message button {
+  justify-self: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease),
+    border-color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-search-overlay-message button:hover {
+  background: hsl(var(--accent));
+}
+
+.notes-search-overlay-footer {
+  min-height: 30px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  border-top: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+/* 触屏：结果行 / 模式切换放大到 ≥44px 触控目标 */
+@media (pointer: coarse) {
+  .notes-search-overlay-result {
+    min-height: 52px;
+  }
+
+  .notes-search-overlay-modes button {
+    height: 36px;
+  }
+
+  /* 键盘提示对触屏无意义 */
+  .notes-search-overlay-footer {
+    display: none;
+  }
+}
+
+@keyframes notes-search-overlay-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (width <= 560px) {
+  .notes-search-overlay-result-type {
+    display: none;
+  }
+
+  .notes-search-overlay-taghint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-search-overlay-clear,
+  .notes-search-overlay-close,
+  .notes-search-overlay-input-wrap,
+  .notes-search-overlay-modes button,
+  .notes-search-overlay-result,
+  .notes-search-overlay-message button {
+    transition-duration: 0.01ms;
+  }
+
+  .notes-search-overlay-spinner {
+    animation: none;
+  }
+
+  .notes-search-overlay-skeleton-icon,
+  .notes-search-overlay-skeleton-bar {
+    animation: none;
+    opacity: 0.7;
+  }
+}

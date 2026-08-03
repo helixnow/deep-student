@@ -97,7 +97,10 @@ export interface UnifiedSidebarProps {
   mobileOpen?: boolean;
   /** 移动端打开状态变化回调 */
   onMobileOpenChange?: (open: boolean) => void;
-  /** 是否自动响应式切换（在小屏幕时自动从 panel 切换到 sheet） */
+  /**
+   * @deprecated 已废弃（2026-07 移动端 UI 规范）：小屏一律强制 panel 内联模式，
+   * 不再自动降级为模态 sheet。保留仅为兼容既有调用方签名，值会被忽略。
+   */
   autoResponsive?: boolean;
   /** 是否启用滑动关闭（用于 sheet 和 drawer 模式） */
   enableSwipeClose?: boolean;

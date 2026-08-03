@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretUp, Check, MagnifyingGlass } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ProviderIcon, isGenericProviderIconPath } from '../ProviderIcon';
 import { Input } from './Input';
 import { CustomScrollArea } from '../../custom-scroll-area';
@@ -94,7 +94,7 @@ export function CollapsibleModelSelector({
 
   return (
     <div className={cn('w-full', className)}>
-      <NotionButton
+      <DsButton
         type="button"
         variant="ghost"
         className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)]', buttonClassName)}
@@ -110,11 +110,12 @@ export function CollapsibleModelSelector({
         ) : (
           <CaretDown size={16} className="opacity-70" />
         )}
-      </NotionButton>
+      </DsButton>
 
       <div 
         className={cn(
-          "grid transition-all duration-300 ease-in-out",
+          // 显式列出参与过渡的属性（transition-all 会连带 layout 属性触发重排）
+          "grid transition-[grid-template-rows,opacity,margin-top] duration-300 ease-in-out motion-reduce:transition-none",
           expanded ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
         )}
       >
@@ -127,6 +128,7 @@ export function CollapsibleModelSelector({
                 </span>
                 <Input
                   autoFocus={expanded}
+                  type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={resolvedSearchPlaceholder}

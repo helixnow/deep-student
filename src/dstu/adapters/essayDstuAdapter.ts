@@ -88,6 +88,47 @@ export interface EssayDstuModeConfig {
 }
 
 // ============================================================================
+// 损坏/旧版本数据的安全转换助手
+// ============================================================================
+
+/** 安全字符串：非字符串（旧版本写入数字/对象等）降级为 fallback */
+function toSafeString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+/** 安全有限数字：字符串数字兼容解析，非法值降级为 fallback */
+function toSafeNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+/** 安全可空数字：非法值降级为 null */
+function toSafeNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = toSafeNumber(value, Number.NaN);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** 安全时间戳（毫秒）：接受 ISO 字符串或数字，非法值降级为 fallback */
+function toSafeTimestamp(value: unknown, fallback: number = Date.now()): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+/** 安全 ISO 字符串：非法日期降级为当前时间 */
+function toSafeIsoString(value: unknown): string {
+  return new Date(toSafeTimestamp(value)).toISOString();
+}
+
+// ============================================================================
 // 类型转换
 // ============================================================================
 
@@ -99,14 +140,14 @@ export function dstuNodeToEssaySession(node: DstuNode): EssaySessionItem {
   return {
     id: node.id,
     title: node.name,
-    essay_type: (meta.essayType as string) || '',
-    grade_level: (meta.gradeLevel as string) || '',
+    essay_type: toSafeString(meta.essayType),
+    grade_level: toSafeString(meta.gradeLevel),
     is_favorite: Boolean(meta.isFavorite),
-    total_rounds: (meta.totalRounds as number) || 0,
-    latest_input_preview: meta.latestInputPreview as string | null,
-    latest_score: meta.latestScore as number | null,
-    created_at: new Date(node.createdAt).toISOString(),
-    updated_at: new Date(node.updatedAt).toISOString(),
+    total_rounds: toSafeNumber(meta.totalRounds, 0),
+    latest_input_preview: toSafeString(meta.latestInputPreview) || null,
+    latest_score: toSafeNullableNumber(meta.latestScore),
+    created_at: toSafeIsoString(node.createdAt),
+    updated_at: toSafeIsoString(node.updatedAt),
   };
 }
 
@@ -123,8 +164,8 @@ export function essaySessionToDstuNode(
     name: session.title || i18next.t('dstu:adapters.essay.untitledEssay'),
     type: 'essay',
     size: session.latest_input_preview?.length || 0,
-    createdAt: new Date(session.created_at).getTime(),
-    updatedAt: new Date(session.updated_at).getTime(),
+    createdAt: toSafeTimestamp(session.created_at),
+    updatedAt: toSafeTimestamp(session.updated_at),
     // resourceId 和 resourceHash 从后端获取，前端适配器暂不填
     previewType: 'markdown',
     metadata: {
@@ -151,8 +192,8 @@ export function gradingSessionToDstuNode(
     name: session.title || i18next.t('dstu:adapters.essay.untitledEssay'),
     type: 'essay',
     size: 0,
-    createdAt: new Date(session.created_at).getTime(),
-    updatedAt: new Date(session.updated_at).getTime(),
+    createdAt: toSafeTimestamp(session.created_at),
+    updatedAt: toSafeTimestamp(session.updated_at),
     // resourceId 和 resourceHash 从后端获取，前端适配器暂不填
     previewType: 'markdown',
     metadata: {
@@ -301,15 +342,20 @@ export const essayDstuAdapter = {
       // EssayGradingAPI.getRounds 返回 Promise<GradingRound[]>，不是 Result
       const apiRounds = await EssayGradingAPI.getRounds(sessionId);
 
-      const rounds: DstuGradingRound[] = apiRounds.map((r) => ({
-        id: r.id,
-        round_number: r.round_number,
-        input_text: r.input_text,
-        grading_result: r.grading_result,
-        overall_score: r.overall_score,
-        dimension_scores_json: r.dimension_scores_json,
-        created_at: new Date(r.created_at).getTime(),
-      }));
+      // 损坏/旧版本轮次数据的迁移兼容：字段缺失/类型漂移时逐字段降级，
+      // 并按轮次号升序排序（"最新轮次取末位"依赖该顺序）
+      const rounds: DstuGradingRound[] = (Array.isArray(apiRounds) ? apiRounds : [])
+        .filter((r): r is ApiGradingRound => r != null && typeof r === 'object')
+        .map((r, index) => ({
+          id: toSafeString(r.id) || `${sessionId}_round_${index + 1}`,
+          round_number: toSafeNumber(r.round_number, index + 1),
+          input_text: toSafeString(r.input_text),
+          grading_result: toSafeString(r.grading_result),
+          overall_score: toSafeNullableNumber(r.overall_score),
+          dimension_scores_json: toSafeString(r.dimension_scores_json) || null,
+          created_at: toSafeTimestamp(r.created_at),
+        }))
+        .sort((a, b) => a.round_number - b.round_number || a.created_at - b.created_at);
 
       const latestRound = rounds[rounds.length - 1];
 
@@ -317,8 +363,9 @@ export const essayDstuAdapter = {
       let modeId = 'practice'; // 默认值
       try {
         const nodeResult = await dstu.get(`/${sessionId}`);
-        if (nodeResult.ok && nodeResult.value?.metadata?.modeId) {
-          modeId = canonicalizeEssayModeId(nodeResult.value.metadata.modeId as string);
+        const metaModeId = nodeResult.ok ? nodeResult.value?.metadata?.modeId : undefined;
+        if (typeof metaModeId === 'string' && metaModeId.trim()) {
+          modeId = canonicalizeEssayModeId(metaModeId);
         }
       } catch {
         // DSTU 节点获取失败时使用默认值，不阻塞主流程
@@ -335,8 +382,8 @@ export const essayDstuAdapter = {
         customPrompt: session.custom_prompt || undefined,
         rounds,
         isFavorite: session.is_favorite ?? false,
-        createdAt: session.created_at ? new Date(session.created_at).getTime() : Date.now(),
-        updatedAt: session.updated_at ? new Date(session.updated_at).getTime() : Date.now(),
+        createdAt: toSafeTimestamp(session.created_at),
+        updatedAt: toSafeTimestamp(session.updated_at),
       });
     } catch (error: unknown) {
       console.error(LOG_PREFIX, 'getFullSession failed:', error);
@@ -390,8 +437,8 @@ export const essayDstuAdapter = {
         customPrompt: session.custom_prompt || undefined,
         rounds: [],
         isFavorite: session.is_favorite,
-        createdAt: new Date(session.created_at).getTime(),
-        updatedAt: new Date(session.updated_at).getTime(),
+        createdAt: toSafeTimestamp(session.created_at),
+        updatedAt: toSafeTimestamp(session.updated_at),
       });
     } catch (error: unknown) {
       console.error(LOG_PREFIX, 'createSession failed:', error);
@@ -556,7 +603,7 @@ export function useEssaysDstu(
     const result = await essayDstuAdapter.deleteEssay(id);
     if (result.ok) {
       setEssays((prev) => prev.filter((e) => e.id !== id));
-      setTotal((prev) => prev - 1);
+      setTotal((prev) => Math.max(0, prev - 1));
     }
   }, []);
 

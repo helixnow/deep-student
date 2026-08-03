@@ -140,16 +140,12 @@ impl MultimodalContentPart {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TempStreamState {
+    #[default]
     InProgress,
     Completed,
     Failed,
-}
-
-impl Default for TempStreamState {
-    fn default() -> Self {
-        TempStreamState::InProgress
-    }
 }
 
 impl TempStreamState {
@@ -313,6 +309,7 @@ pub struct ExamCardBBox {
 /// 题目类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum QuestionType {
     SingleChoice,     // 单选题
     MultipleChoice,   // 多选题
@@ -322,61 +319,44 @@ pub enum QuestionType {
     Essay,            // 论述题
     Calculation,      // 计算题
     Proof,            // 证明题
-    Other,            // 其他
-}
-
-impl Default for QuestionType {
-    fn default() -> Self {
-        QuestionType::Other
-    }
+    #[default]
+    Other, // 其他
 }
 
 /// 难度等级
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Difficulty {
-    Easy,     // 简单
-    Medium,   // 中等
-    Hard,     // 困难
+    Easy, // 简单
+    #[default]
+    Medium, // 中等
+    Hard, // 困难
     VeryHard, // 极难
-}
-
-impl Default for Difficulty {
-    fn default() -> Self {
-        Difficulty::Medium
-    }
 }
 
 /// 学习状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum QuestionStatus {
-    New,        // 新题，未做过
+    #[default]
+    New, // 新题，未做过
     InProgress, // 学习中
     Mastered,   // 已掌握
     Review,     // 需复习（做错过）
 }
 
-impl Default for QuestionStatus {
-    fn default() -> Self {
-        QuestionStatus::New
-    }
-}
-
 /// 来源类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SourceType {
-    OcrImage,     // 图片 OCR 识别
+    #[default]
+    OcrImage, // 图片 OCR 识别
     ImportFile,   // 文件导入
     ManualCreate, // 手动创建
     AiGenerated,  // AI 生成（变式）
-}
-
-impl Default for SourceType {
-    fn default() -> Self {
-        SourceType::OcrImage
-    }
 }
 
 /// 导入来源详情
@@ -526,16 +506,11 @@ pub struct ExamSheetPreviewRequest {
     pub session_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum ExamSheetOutputFormat {
     #[serde(rename = "deepseek_ocr")]
+    #[default]
     DeepseekOcr,
-}
-
-impl Default for ExamSheetOutputFormat {
-    fn default() -> Self {
-        Self::DeepseekOcr
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1192,6 +1167,9 @@ pub struct ModelAssignments {
     pub memory_decision_model_config_id: Option<String>, // 记忆决策模型（smart write 去重判断）
     pub voice_input_asr_model_config_id: Option<String>, // 语音输入 ASR 模型
     pub image_generation_model_config_id: Option<String>, // 生图模型
+    /// 🆕 上下文压缩专用模型：设置后 chat_v2 压缩摘要统一用它，
+    /// 未设置回退触发路径的模型（model2_override_id || 主模型）
+    pub compaction_model_config_id: Option<String>,
     /// 聊天内翻译弹窗的显示模式："aligned"（短语对照，默认）| "streaming"（流式纯译文）
     pub translation_display_mode: Option<String>,
 }
@@ -1380,13 +1358,21 @@ pub struct AnkiCard {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AnkiLibraryCard {
     #[serde(flatten)]
     pub card: AnkiCard,
-    #[serde(rename = "sourceType")]
     pub source_type: Option<String>,
-    #[serde(rename = "sourceId")]
     pub source_id: Option<String>,
+    pub state_id: Option<String>,
+    pub state: Option<i32>,
+    pub due_ms: Option<i64>,
+    #[serde(default)]
+    pub suspended: bool,
+    #[serde(default)]
+    pub enqueued: bool,
+    #[serde(default)]
+    pub is_due: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1694,6 +1680,9 @@ pub enum StreamedCardPayload {
     DocumentProcessingCompleted {
         document_id: String,
     }, // 整个文档所有任务处理完毕
+    DocumentProcessingCancelled {
+        document_id: String,
+    }, // 整个文档处理被用户取消（保留已生成卡片）
     RateLimitWarning {
         message: String,
         retry_after_seconds: Option<u32>,

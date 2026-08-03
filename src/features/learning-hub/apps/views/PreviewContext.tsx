@@ -21,7 +21,8 @@ import {
   ZOOM_MAX,
   FONT_MIN,
   FONT_MAX,
-  savePreviewPrefs,
+  schedulePreviewPrefsSave,
+  flushPreviewPrefsSaves,
   loadPreviewPrefs,
   clampNumber,
 } from './previewUtils';
@@ -206,6 +207,7 @@ export const PreviewProvider: React.FC<PreviewProviderProps> = ({
   const isInitialMount = useRef(true);
 
   // 统一处理偏好持久化（避免闭包问题）
+  // 防抖写入：滚轮/快捷键连续缩放期间合并为一次 localStorage 写操作
   useEffect(() => {
     // 跳过首次渲染
     if (isInitialMount.current) {
@@ -213,14 +215,21 @@ export const PreviewProvider: React.FC<PreviewProviderProps> = ({
       return;
     }
 
-    // 持久化到 localStorage
+    // 持久化到 localStorage（防抖）
     if (previewType && ['docx', 'xlsx', 'pptx'].includes(previewType)) {
-      savePreviewPrefs(previewType as 'docx' | 'xlsx' | 'pptx', {
+      schedulePreviewPrefsSave(previewType as 'docx' | 'xlsx' | 'pptx', {
         zoomScale,
         fontScale: ['docx', 'xlsx'].includes(previewType) ? fontScale : undefined,
       });
     }
   }, [previewType, zoomScale, fontScale]);
+
+  // Provider 卸载时立即写出待持久化的偏好，避免关闭预览丢失最后一次调整
+  useEffect(() => {
+    return () => {
+      flushPreviewPrefsSaves();
+    };
+  }, []);
 
   // 设置预览类型（切换时从 localStorage 恢复对应偏好）
   const setPreviewType = useCallback((type: PreviewType) => {

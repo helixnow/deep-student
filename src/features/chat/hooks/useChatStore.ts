@@ -6,7 +6,6 @@
 
 import { useCallback, useRef } from 'react';
 import { useStore, type StoreApi } from 'zustand';
-import { shallow } from 'zustand/shallow';
 import type { ChatStore, Message, Block, SessionStatus } from '../core/types';
 
 /** Store 参数类型 */
@@ -100,7 +99,14 @@ export function useMessageBlocks(store: ChatStoreApi, messageId: string): Block[
     useCallback(
       (s: ChatStore) => {
         const message = s.messageMap.get(messageId);
-        if (!message) return prevBlocksRef.current.length === 0 ? prevBlocksRef.current : [];
+        if (!message) {
+          // 缓存空数组引用：直接返回新 [] 会让 useStore 在消息缺失期间
+          // 每次 store 更新都判定为变化，导致组件持续重渲染
+          if (prevBlocksRef.current.length !== 0) {
+            prevBlocksRef.current = [];
+          }
+          return prevBlocksRef.current;
+        }
         
         const newBlocks = message.blockIds
           .map((id) => s.blocks.get(id))
@@ -127,14 +133,30 @@ export function useMessageBlocks(store: ChatStoreApi, messageId: string): Block[
  *
  * 用于消息级渲染场景：只在当前显示的块内容变化时重渲染，
  * 避免依赖 getState() 读取瞬时快照导致的漏渲染。
+ *
+ * 🚀 P1：按内容（而非数组引用）稳定 blockIds 依赖。
+ * 调用方每次 render 传入新建数组时，旧实现会不断重建 selector 并
+ * 触发 useStore 重新订阅；此处先用 ref 把「内容相同」的数组折叠为
+ * 同一引用，selector 仅在 id 集合真正变化时重建。
  */
 export function useBlocksByIds(store: ChatStoreApi, blockIds: string[]): Block[] {
   const prevBlocksRef = useRef<Block[]>([]);
 
+  // render 期间的引用折叠缓存（幂等，StrictMode 双渲染安全）
+  const stableIdsRef = useRef<string[]>(blockIds);
+  if (
+    stableIdsRef.current !== blockIds &&
+    (stableIdsRef.current.length !== blockIds.length ||
+      blockIds.some((id, i) => id !== stableIdsRef.current[i]))
+  ) {
+    stableIdsRef.current = blockIds;
+  }
+  const stableBlockIds = stableIdsRef.current;
+
   return useStore(
     store,
     useCallback((s: ChatStore) => {
-      const nextBlocks = blockIds
+      const nextBlocks = stableBlockIds
         .map((id) => s.blocks.get(id))
         .filter((block): block is Block => block !== undefined);
 
@@ -147,7 +169,7 @@ export function useBlocksByIds(store: ChatStoreApi, blockIds: string[]): Block[]
 
       prevBlocksRef.current = nextBlocks;
       return nextBlocks;
-    }, [blockIds])
+    }, [stableBlockIds])
   );
 }
 

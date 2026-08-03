@@ -11,6 +11,9 @@
     "toggle": "段落对照",
     "empty": "输入文本并翻译后，将在此显示逐段对照"
   },
+  "comparison_ux": {
+    "copy_segment": "复制该段译文"
+  },
   "tabs": {
     "translate": "文本翻译",
     "history": "历史记录",
@@ -87,6 +90,7 @@
   "popover": {
     "translating": "翻译中...",
     "unknown_error": "翻译失败",
+    "empty_result": "翻译结果为空，请重试",
     "model_hint": "当前翻译模型（在系统设置 → 模型 中修改）：{{name}}",
     "copy_source": "复制原文",
     "copy_translation": "复制译文",
@@ -172,6 +176,7 @@
     "translate_failed": "翻译失败",
     "model_not_configured": "未配置翻译模型或Model2",
     "file_too_large": "文件过大（最大200MB）",
+    "file_too_large_dynamic": "文件过大，单个文件不能超过 {{size}}MB",
     "unsupported_format": "不支持的文件格式",
     "empty_text": "请输入待翻译文本",
     "network_error": "网络错误，请检查连接",
@@ -180,10 +185,11 @@
     "no_text_to_speak": "没有可朗读的文本",
     "tts_failed": "语音合成失败：{{error}}",
     "load_failed": "加载翻译记录失败：{{error}}",
+    "load_failed_generic": "加载翻译数据失败",
     "offline": "网络连接已断开，请检查网络后重试",
     "offline_save": "离线状态下无法保存，请检查网络连接",
     "offline_rate": "离线状态下无法评分，请检查网络连接",
-    "text_too_long": "文本超过 {{max}} 字符上限，将自动截断。",
+    "text_too_long": "文本超过 {{max}} 字符上限，将自动截断",
     "ocr_timeout_retry": "OCR 识别超时，请重试",
     "copy_failed": "复制失败：{{error}}",
     "export_failed": "导出失败：{{error}}",
@@ -199,9 +205,9 @@
     "translate_cancelled": "已取消翻译",
     "update_failed": "更新失败：{{error}}",
     "ocr_processing": "正在识别图片...",
-    "ocr_success": "OCR识别成功",
+    "ocr_success": "OCR 识别成功",
     "parse_processing": "正在解析文档...",
-    "ocr_failed": "OCR识别失败：{{error}}",
+    "ocr_failed": "OCR 识别失败：{{error}}",
     "parse_success": "文档解析成功",
     "parse_failed": "文档解析失败：{{error}}",
     "saved": "已保存",
@@ -218,5 +224,123 @@
       "markdown": "Markdown",
       "text": "文本"
     }
+  },
+  "panel_ux": {
+    "clear_confirm": "确认清空？",
+    "paste_hint": "已粘贴，按 {{shortcut}} 翻译",
+    "near_limit": "接近字数上限",
+    "empty_hint": "输入原文后按 {{shortcut}} 开始翻译",
+    "rate_star": "评 {{count}} 星",
+    "alignment_sentence": "段落数不一致，已按句子启发式对齐",
+    "pending_segment": "待翻译",
+    "segments": "{{count}} 段"
+  },
+  "workbench": {
+    "layout": {
+      "label": "布局方式",
+      "split": "左右分栏",
+      "stacked": "上下分栏"
+    },
+    "toolbar": {
+      "auto_translate": "自动翻译"
+    }
+  },
+  "language_select": {
+    "trigger_label": "选择语言",
+    "search_placeholder": "搜索语言…",
+    "no_results": "无匹配语言",
+    "recent": "最近使用",
+    "all": "全部语言",
+    "auto_detect": "自动检测",
+    "detected": "自动检测 · {{language}}"
+  },
+  "contentView": {
+    "skeleton_loading": "正在加载翻译…",
+    "save_saving": "保存中…",
+    "save_saved": "已保存",
+    "save_failed": "保存失败：{{error}}",
+    "save_retry": "重试",
+    "save_error_dismiss": "忽略此保存错误",
+    "empty_hint": "新翻译已就绪，在下方输入原文即可开始翻译",
+    "empty_hint_dismiss": "关闭提示",
+    "workbench_error_title": "翻译工作台加载失败",
+    "workbench_error_desc": "可重新加载工作台；下方提供当前内容的只读预览，可先复制备份。",
+    "workbench_error_desc_empty": "可重新加载工作台，或返回后重新打开。",
+    "workbench_error_retry": "重新加载",
+    "char_count": "{{n}} 字符",
+    "empty_content": "（暂无内容）"
+  },
+  "chat_popover": {
+    "streaming": "翻译中",
+    "timeout": "翻译超时，长时间未收到响应，请重试",
+    "fallback_notice": "未能生成短语对照，已显示整段译文",
+    "segments_progress": "已翻译 {{n}} 段",
+    "swap_languages": "对调语向",
+    "cannot_swap_auto": "自动检测源语言时无法对调",
+    "copy_streaming_hint": "翻译完成后可复制",
+    "add_streaming_hint": "翻译完成后可加入聊天"
+  },
+  "prompt_panel": {
+    "style_title": "翻译风格",
+    "style_hint": "控制译文的语气与正式程度",
+    "domain_hint": "针对所选领域优化术语与行文",
+    "prompt_hint": "在默认规则之外补充翻译要求，将随每次翻译发送给模型",
+    "glossary": {
+      "empty": "暂无术语，在上方输入原文术语和目标译法后回车添加",
+      "edit": "编辑术语",
+      "remove": "删除术语",
+      "confirm_edit": "保存修改",
+      "cancel_edit": "取消编辑",
+      "duplicate_updated": "已更新术语「{{term}}」的译法"
+    },
+    "templates": {
+      "general": "通用",
+      "academic": "学术",
+      "conversational": "口语",
+      "technical": "技术文档",
+      "literary": "文学",
+      "save_as": "存为模板",
+      "name_placeholder": "模板名称",
+      "confirm_save": "保存模板",
+      "cancel_save": "取消保存",
+      "delete": "删除模板 {{name}}",
+      "saved": "模板已保存"
+    },
+    "template_prompts": {
+      "academic": "You are a professional academic translator. Translate the given text with precise terminology and a formal academic register. Preserve citations, technical terms, symbols, and formatting. Do not add explanations or notes. Only output the translated text.",
+      "conversational": "You are a skilled translator specializing in everyday conversation. Translate the given text into natural, idiomatic spoken language that sounds like a native speaker. Keep the tone friendly and casual while staying faithful to the meaning. Only output the translated text.",
+      "technical": "You are a technical documentation translator. Translate the given text accurately and consistently. Keep code snippets, commands, API names, file paths, and placeholders unchanged. Use standard technical terminology for the target language. Only output the translated text.",
+      "literary": "You are a literary translator. Translate the given text while preserving its style, rhythm, imagery, and emotional tone. Prefer expressive, faithful renderings over word-for-word literalism. Only output the translated text."
+    }
+  },
+  "workbench_core": {
+    "samples_label": "试试示例",
+    "sample_en": "The best way to predict the future is to invent it.",
+    "sample_zh": "学而不思则罔，思而不学则殆。",
+    "drop_hint_inline": "或拖入图片 / PDF / DOCX / TXT / MD 文件",
+    "detected_badge": "检测到"
+  },
+  "workbench_ui": {
+    "detected_language": "检测到：{{language}}",
+    "cancelled_partial": "翻译已取消，已保留部分译文",
+    "discard_partial": "清除部分译文",
+    "dismiss": "知道了",
+    "shortcut_translate": "翻译",
+    "shortcut_swap": "交换语言",
+    "shortcut_cancel": "取消翻译"
+  },
+  "viewer": {
+    "loading": "正在加载翻译…",
+    "non_text_content": "该翻译内容不是文本格式，无法预览",
+    "unknown_lang": "未知语言",
+    "view_mode": "双语查看方式",
+    "view_stacked": "分节",
+    "view_interleaved": "对照",
+    "empty_title": "暂无翻译内容",
+    "empty_hint": "这篇翻译还没有正文，在学习中心打开即可开始翻译",
+    "char_count": "{{n}} 字符",
+    "meta_glossary": "{{n}} 条术语",
+    "meta_quality": "{{n}} 星",
+    "meta_favorite": "已收藏"
   }
 }

@@ -12,7 +12,9 @@ import { useTranslation } from 'react-i18next';
 import { Warning, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { reportFrontendError } from '@/logging/errorReporter';
 import { blockRegistry } from '../registry';
 import type { Block, ChatStore } from '../core/types';
 import { useBlock, useIsBlockActive } from '../hooks/useChatStore';
@@ -79,8 +81,18 @@ class BlockErrorBoundary extends Component<BlockErrorBoundaryProps, BlockErrorBo
       'blockId:', this.props.block.id,
       'type:', this.props.block.type,
       'error:', getErrorMessage(error),
+      error,
       'componentStack:', errorInfo.componentStack
     );
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'chat-block-renderer',
+      extra: {
+        blockId: this.props.block.id,
+        blockType: this.props.block.type,
+        componentStack: errorInfo.componentStack,
+      },
+    }).catch(() => undefined);
   }
 
   handleReset = (): void => {
@@ -121,28 +133,30 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
       <div className="flex items-center gap-2 mb-2">
         <Warning size={14} className="text-destructive" />
         <span className="text-sm font-medium text-destructive">
-          {t('error.blockRenderFailed', '块渲染失败')}
+          {t('error.blockRenderFailed')}
         </span>
         <span className="text-xs text-muted-foreground font-mono">
           [{block.type}]
         </span>
-        <NotionButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
+        <DsButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
           <ArrowCounterClockwise size={12} />
-          {t('error.retry', '重试')}
-        </NotionButton>
+          {t('error.retry')}
+        </DsButton>
       </div>
       <div className="text-xs text-muted-foreground bg-background/50 rounded p-2 font-mono break-all">
-        {error || t('error.unknownError', '未知错误')}
+        {error || t('error.unknownError')}
       </div>
       {/* 显示块的原始内容（如果有） */}
       {block.content && (
         <details className="mt-2">
           <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-            {t('error.showContent', '显示原始内容')}
+            {t('error.showContent')}
           </summary>
-          <pre className="mt-1 text-xs text-muted-foreground bg-background/50 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap break-words">
-            {block.content}
-          </pre>
+          <CustomScrollArea fullHeight={false} className="mt-1 max-h-32 rounded" viewportClassName="max-h-32">
+            <pre className="text-xs text-muted-foreground bg-background/50 p-2 whitespace-pre-wrap break-words">
+              {block.content}
+            </pre>
+          </CustomScrollArea>
         </details>
       )}
     </div>
@@ -166,6 +180,22 @@ export interface BlockRendererProps {
 // 通用块组件（Fallback）
 // ============================================================================
 
+/** Fallback 输出预览上限（避免超大 payload 拖垮渲染） */
+const GENERIC_OUTPUT_MAX_CHARS = 4000;
+
+/** 安全序列化：循环引用/BigInt 等 JSON.stringify 会抛错的场景降级为 String() */
+function safeStringifyToolOutput(output: unknown): string {
+  try {
+    const json = JSON.stringify(output, null, 2);
+    const text = json ?? String(output);
+    return text.length > GENERIC_OUTPUT_MAX_CHARS
+      ? text.slice(0, GENERIC_OUTPUT_MAX_CHARS) + '\n…'
+      : text;
+  } catch {
+    return String(output);
+  }
+}
+
 /**
  * GenericBlock - 未知块类型的 Fallback 渲染
  */
@@ -173,20 +203,28 @@ const GenericBlock: React.FC<{ block: Block; isStreaming?: boolean }> = ({
   block,
   isStreaming,
 }) => {
+  const { t } = useTranslation('chatV2');
+  const outputPreview = useMemo(
+    () => (block.toolOutput ? safeStringifyToolOutput(block.toolOutput) : ''),
+    [block.toolOutput]
+  );
+
   return (
     <div className="p-3 bg-muted/50 rounded-md border border-border">
       <div className="text-xs text-muted-foreground mb-1">
-        Unknown block type: <code className="font-mono">{block.type}</code>
+        {t('blocks.generic.unknownType')}: <code className="font-mono">{block.type}</code>
       </div>
       {block.content && (
         <pre className="text-sm whitespace-pre-wrap break-words">
           {block.content}
         </pre>
       )}
-      {block.toolOutput && (
-        <pre className="text-sm text-muted-foreground">
-          {JSON.stringify(block.toolOutput, null, 2)}
-        </pre>
+      {outputPreview && (
+        <CustomScrollArea fullHeight={false} className="max-h-60" viewportClassName="max-h-60">
+          <pre className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+            {outputPreview}
+          </pre>
+        </CustomScrollArea>
       )}
       {isStreaming && (
         <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
@@ -205,24 +243,28 @@ const GenericBlock: React.FC<{ block: Block; isStreaming?: boolean }> = ({
  * 核心逻辑：
  * 1. 跳过来源类型块（rag, memory, web_search, multimodal_rag），这些块由 SourcePanelV2 统一渲染
  * 2. 从 blockRegistry 获取对应类型的渲染组件
- * 3. 如果未注册，使用 GenericBlock 作为 Fallback
+ * 3. 如果未注册，优先回退到注册的 'generic' 插件（i18n + 状态展示更完整），
+ *    再兜底到本地 GenericBlock
  * 4. 禁止使用 switch/case 进行类型判断
  */
-export const BlockRenderer: React.FC<BlockRendererProps> = ({
+const BlockRendererInner: React.FC<BlockRendererProps> = ({
   block,
   isStreaming = false,
   className,
 }) => {
   // 📊 细粒度打点：BlockRenderer render
   sessionSwitchPerf.mark('br_render', { blockType: block.type });
-  
+
+  // 从注册表获取渲染插件（禁止 switch/case）；hooks 必须在 early return 之前
+  const plugin = useMemo(
+    () => blockRegistry.get(block.type) ?? blockRegistry.get('generic'),
+    [block.type]
+  );
+
   // 跳过来源类型块，这些块只在 SourcePanelV2 中统一展示
   if (SOURCE_BLOCK_TYPES.has(block.type)) {
     return null;
   }
-
-  // 从注册表获取渲染插件（禁止 switch/case）
-  const plugin = useMemo(() => blockRegistry.get(block.type), [block.type]);
 
   // 获取渲染组件，未注册则使用 GenericBlock
   const Component = plugin?.component ?? GenericBlock;
@@ -235,6 +277,12 @@ export const BlockRenderer: React.FC<BlockRendererProps> = ({
     </div>
   );
 };
+
+/**
+ * 🚀 memo：父组件（消息项）重渲染时，block 引用未变的块跳过重渲染。
+ * store 对块做不可变更新，流式期间只有变化的块换引用，浅比较即可。
+ */
+export const BlockRenderer = memo(BlockRendererInner);
 
 export default BlockRenderer;
 
@@ -283,8 +331,8 @@ const BlockRendererWithStoreInner: React.FC<BlockRendererWithStoreProps> = ({
     return null;
   }
 
-  // 从注册表获取渲染插件
-  const plugin = blockRegistry.get(block.type);
+  // 从注册表获取渲染插件；未注册类型回退到注册的 'generic' 插件，再兜底本地 GenericBlock
+  const plugin = blockRegistry.get(block.type) ?? blockRegistry.get('generic');
   const Component = plugin?.component ?? GenericBlock;
 
   return (

@@ -15,18 +15,21 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use arrow_array::{
-    Array, ArrayRef, FixedSizeListArray, Float32Array, Int32Array, RecordBatch,
+    Array, ArrayRef, FixedSizeListArray, Float32Array, Int32Array, Int64Array, RecordBatch,
     RecordBatchIterator, StringArray,
 };
 use arrow_schema::{DataType, Field, Schema};
 use futures_util::TryStreamExt;
 use lancedb::index::scalar::FtsIndexBuilder;
 use lancedb::index::scalar::FullTextSearchQuery;
+use lancedb::index::scalar::{BTreeIndexBuilder, BitmapIndexBuilder};
+use lancedb::index::vector::IvfPqIndexBuilder;
 use lancedb::index::Index;
-use lancedb::query::{ExecutableQuery, QueryBase, QueryExecutionOptions};
-use lancedb::table::{OptimizeAction, OptimizeOptions};
+use lancedb::query::{ExecutableQuery, QueryBase, Select};
+use lancedb::table::{NewColumnTransform, OptimizeAction, OptimizeOptions};
 use lancedb::DistanceType;
 use lancedb::{Connection, Table};
+use rusqlite::OptionalExtension;
 use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
@@ -42,12 +45,39 @@ const VFS_LANCE_TABLE_PREFIX: &str = "vfs_emb_";
 /// FTS 版本标识
 const VFS_FTS_VERSION: &str = "2026-01-vfs-ngram-v1";
 
-/// 优化最小间隔（秒）
-const OPTIMIZE_MIN_INTERVAL_SECS: i64 = 600; // 10min
+/// 自动优化最小间隔（秒）
+///
+/// `optimize_table_by_name` 对每张表做全量 Compact + 7 天版本 Prune + 索引
+/// delta 合并，大表上是秒到分钟级的重 IO 操作。索引 worker 每 ~5s tick 一次
+/// 就调用 `maybe_optimize_all`，节流必须在本模块内部完成。取 30min 而非原注释
+/// 的 10min：本地单机写入速率有限，30min 已足以约束版本/小文件与未索引 delta
+/// 的累积，同时把常驻后台 IO 压到可忽略；600s 对全表 Compact 偏激进。
+const OPTIMIZE_MIN_INTERVAL_SECS: u64 = 1800; // 30min
 
 /// Lance 相关性得分列名
 const LANCE_RELEVANCE_COL: &str = "_relevance_score";
 const LANCE_FTS_SCORE_COL: &str = "_score";
+
+/// IVF-PQ uses 8-bit codebooks and should not be trained on tiny local tables.
+const MIN_ROWS_FOR_ANN_INDEX: usize = 256;
+const ANN_INDEX_VERSION: i32 = 1;
+const SEARCH_RESULT_COLUMNS: &[&str] = &[
+    "embedding_id",
+    "resource_id",
+    "unit_id",
+    "resource_type",
+    "folder_id",
+    "chunk_index",
+    "text",
+    "metadata",
+    "index_profile_id",
+    "generation",
+];
+
+/// Prevents a concurrent indexing batch from repopulating a table between
+/// clear_all's delete and verification steps. The lock is process-wide because
+/// VfsLanceStore can be constructed more than once for the same VFS database.
+static VFS_MUTATION_LOCK: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
 // ============================================================================
 // 类型定义
@@ -58,12 +88,15 @@ const LANCE_FTS_SCORE_COL: &str = "_score";
 pub struct VfsLanceRow {
     pub embedding_id: String,
     pub resource_id: String,
+    pub unit_id: String,
     pub resource_type: String,
     pub folder_id: Option<String>,
     pub chunk_index: i32,
     pub text: String,
     pub metadata_json: Option<String>,
     pub created_at: String,
+    pub index_profile_id: String,
+    pub generation: i64,
     pub embedding: Vec<f32>,
 }
 
@@ -72,12 +105,15 @@ pub struct VfsLanceRow {
 pub struct VfsLanceSearchResult {
     pub embedding_id: String,
     pub resource_id: String,
+    pub unit_id: String,
     pub resource_type: String,
     pub folder_id: Option<String>,
     pub chunk_index: i32,
     pub text: String,
     pub score: f32,
     pub metadata_json: Option<String>,
+    pub index_profile_id: String,
+    pub generation: i64,
     /// 页面索引（用于 PDF/教材定位，从 metadata_json 解析）
     pub page_index: Option<i32>,
     /// 来源 ID（从 metadata_json 解析）
@@ -119,6 +155,9 @@ pub struct VfsLanceStore {
     /// 仅当索引确认成功（或已存在）才入缓存；失败（如空表暂不能建索引）不缓存，
     /// 保留下次调用重试自愈的机会。
     ensured_tables: std::sync::Mutex<std::collections::HashSet<String>>,
+    /// `maybe_optimize_all` 的节流时间戳（上次尝试自动优化的时刻）。
+    /// 实例内存态：进程重启后首个 tick 会触发一次优化，属可接受行为。
+    last_optimize_at: std::sync::Mutex<Option<Instant>>,
 }
 
 impl VfsLanceStore {
@@ -136,7 +175,94 @@ impl VfsLanceStore {
             lance_base_path,
             connection: tokio::sync::OnceCell::new(),
             ensured_tables: std::sync::Mutex::new(std::collections::HashSet::new()),
+            last_optimize_at: std::sync::Mutex::new(None),
         })
+    }
+
+    /// Bind a concrete embedding model before any rows are written.  The repo
+    /// rejects replacement when a populated vector space belongs to another
+    /// model, preventing same-dimension cross-model contamination.
+    pub fn ensure_model_profile(
+        &self,
+        modality: &str,
+        dim: usize,
+        model_config_id: &str,
+        model_name: Option<&str>,
+    ) -> VfsResult<crate::vfs::repos::embedding_dim_repo::VfsIndexProfile> {
+        let protocol =
+            crate::vfs::repos::embedding_dim_repo::embedding_protocol_for_modality(modality)?;
+        let effective_model_name = model_name.unwrap_or(model_config_id);
+        let expected_fingerprint = crate::vfs::repos::embedding_dim_repo::model_fingerprint(
+            model_config_id,
+            effective_model_name,
+            protocol,
+        );
+        self.ensure_model_profile_with_fingerprint(
+            modality,
+            dim,
+            model_config_id,
+            Some(effective_model_name),
+            &expected_fingerprint,
+        )
+    }
+
+    pub fn ensure_model_profile_with_fingerprint(
+        &self,
+        modality: &str,
+        dim: usize,
+        model_config_id: &str,
+        model_name: Option<&str>,
+        expected_fingerprint: &str,
+    ) -> VfsResult<crate::vfs::repos::embedding_dim_repo::VfsIndexProfile> {
+        let conn = self.db.get_conn()?;
+        let effective_model_name = model_name.unwrap_or(model_config_id);
+        if let Some(current) =
+            crate::vfs::repos::embedding_dim_repo::get_by_key(&conn, dim as i32, modality)?
+        {
+            let same_profile = current.model_fingerprint.as_deref() == Some(expected_fingerprint);
+            // A recorded legacy profile only proves which configuration ID was
+            // used. Its display/model metadata and transport identity were not
+            // canonical, so let the repository roll it into the current strong
+            // fingerprint instead of rejecting the first rebuild as stale.
+            let expected_legacy_fingerprint = format!("legacy:model-config:{model_config_id}");
+            let legacy_profile_for_config = current.model_fingerprint.as_deref()
+                == Some(expected_legacy_fingerprint.as_str())
+                && current.model_config_id.as_deref() == Some(model_config_id);
+            if current.record_count > 0 && !same_profile && !legacy_profile_for_config {
+                return Err(VfsError::InvalidState {
+                    message: format!(
+                        "Embedding result for {}/{} is stale; writable {}:{} profile is {:?}",
+                        model_config_id,
+                        effective_model_name,
+                        modality,
+                        dim,
+                        current.model_fingerprint
+                    ),
+                });
+            }
+        }
+        let registered = crate::vfs::repos::embedding_dim_repo::register_with_model_fingerprint(
+            &conn,
+            dim as i32,
+            modality,
+            Some(model_config_id),
+            model_name,
+            Some(expected_fingerprint),
+        )?;
+        let profile_id = registered.active_profile_id.ok_or_else(|| {
+            VfsError::Other(format!(
+                "Index profile was not created for {}:{} model {}",
+                modality, dim, model_config_id
+            ))
+        })?;
+        crate::vfs::repos::embedding_dim_repo::get_active_profile(&conn, dim as i32, modality)?
+            .filter(|profile| profile.id == profile_id)
+            .ok_or_else(|| {
+                VfsError::Other(format!(
+                    "Active index profile {} could not be resolved",
+                    profile_id
+                ))
+            })
     }
 
     /// 解析 Lance 基础目录
@@ -158,6 +284,115 @@ impl VfsLanceStore {
         fs::create_dir_all(path).map_err(|e| {
             VfsError::Other(format!("创建 Lance 目录失败: {} - {}", path.display(), e))
         })
+    }
+
+    pub fn next_unit_generation(&self, unit_id: &str, modality: &str) -> VfsResult<i64> {
+        let conn = self.db.get_conn()?;
+        let column = match modality {
+            "text" => "text_generation",
+            "image" | "multimodal" => "mm_generation",
+            _ => {
+                return Err(VfsError::InvalidArgument {
+                    param: "modality".to_string(),
+                    reason: format!("Unsupported modality: {}", modality),
+                })
+            }
+        };
+        let sql = format!("SELECT {} FROM vfs_index_units WHERE id = ?1", column);
+        let current = conn
+            .query_row(&sql, rusqlite::params![unit_id], |row| row.get::<_, i64>(0))
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => VfsError::NotFound {
+                    resource_type: "IndexUnit".to_string(),
+                    id: unit_id.to_string(),
+                },
+                other => VfsError::Database(other.to_string()),
+            })?;
+        Ok(current.saturating_add(1))
+    }
+
+    fn retain_active_unit_generations(
+        &self,
+        modality: &str,
+        results: Vec<VfsLanceSearchResult>,
+    ) -> VfsResult<Vec<VfsLanceSearchResult>> {
+        use std::collections::HashMap;
+
+        let conn = self.db.get_conn()?;
+        let (profile_column, generation_column) = match modality {
+            "text" => ("text_profile_id", "text_generation"),
+            "image" | "multimodal" => ("mm_profile_id", "mm_generation"),
+            _ => return Ok(Vec::new()),
+        };
+        let state_column = if modality == "text" {
+            "index_state"
+        } else {
+            "mm_index_state"
+        };
+        let sql = format!(
+            "SELECT u.{}, u.{},
+                    CASE WHEN r.id IS NULL THEN 1
+                         WHEN r.deleted_at IS NULL AND COALESCE(r.{}, 'pending') <> 'disabled'
+                         THEN 1 ELSE 0 END
+             FROM vfs_index_units u
+             LEFT JOIN resources r ON r.id = u.resource_id
+             WHERE u.id = ?1",
+            profile_column, generation_column, state_column
+        );
+        let mut active: HashMap<String, Option<(Option<String>, i64, bool)>> = HashMap::new();
+        let mut legacy_allowed: HashMap<String, bool> = HashMap::new();
+        let mut filtered = Vec::with_capacity(results.len());
+        for result in results {
+            // Legacy rows were created before unit provenance existed.  They
+            // remain readable only as generation zero during the migration
+            // rebuild window.
+            if result.unit_id.is_empty() {
+                let allowed = *legacy_allowed
+                    .entry(result.resource_id.clone())
+                    .or_insert_with(|| {
+                        conn.query_row(
+                            &format!(
+                                "SELECT deleted_at IS NULL AND COALESCE({}, 'pending') <> 'disabled'
+                                 FROM resources WHERE id = ?1",
+                                state_column
+                            ),
+                            rusqlite::params![result.resource_id],
+                            |row| row.get::<_, bool>(0),
+                        )
+                        .optional()
+                        .ok()
+                        .flatten()
+                        .unwrap_or(true)
+                    });
+                if result.generation == 0 && allowed {
+                    filtered.push(result);
+                }
+                continue;
+            }
+            let state = active.entry(result.unit_id.clone()).or_insert_with(|| {
+                conn.query_row(&sql, rusqlite::params![result.unit_id], |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i32>(2)? != 0,
+                    ))
+                })
+                .optional()
+                .ok()
+                .flatten()
+            });
+            if state
+                .as_ref()
+                .is_some_and(|(profile_id, generation, allowed)| {
+                    *allowed
+                        && *generation == result.generation
+                        && profile_id.as_deref() == Some(result.index_profile_id.as_str())
+                })
+            {
+                filtered.push(result);
+            }
+        }
+        Ok(filtered)
     }
 
     /// 获取 Lance 连接路径
@@ -183,36 +418,231 @@ impl VfsLanceStore {
         format!("{}{}_{}", VFS_LANCE_TABLE_PREFIX, modality, dim)
     }
 
-    /// 从数据库获取已注册的维度列表
-    fn get_registered_dimensions(&self, modality: &str) -> VfsResult<Vec<usize>> {
+    /// Resolve the sole active table for a search/write route.  Tables found
+    /// only on disk are never implicitly searched because they may belong to a
+    /// retired model with the same output dimension.
+    fn active_table_name(&self, modality: &str, dim: usize) -> VfsResult<String> {
         use crate::vfs::repos::embedding_dim_repo;
 
         let conn = self.db.get_conn()?;
-        let dims = embedding_dim_repo::list_by_modality(&conn, modality)?;
-        Ok(dims.iter().map(|d| d.dimension as usize).collect())
+        Ok(embedding_dim_repo::get_by_key(&conn, dim as i32, modality)?
+            .map(|registered| registered.lance_table_name)
+            .unwrap_or_else(|| Self::table_name(modality, dim)))
     }
 
-    /// 从 Lance 目录发现某个模态的实际表维度（用于维度注册表漂移兜底）。
-    fn discover_dimensions_from_disk(&self, modality: &str) -> Vec<usize> {
-        let mut dims = Vec::new();
+    /// Discover legacy and profiled Lance tables for diagnostics/cleanup only.
+    fn discover_tables_from_disk(&self, modality: &str) -> Vec<(String, usize)> {
+        let mut tables = Vec::new();
         let prefix = format!("{}{}_", VFS_LANCE_TABLE_PREFIX, modality);
 
         let entries = match fs::read_dir(&self.lance_base_path) {
             Ok(entries) => entries,
-            Err(_) => return dims,
+            Err(_) => return tables,
         };
 
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if let Some(suffix) = name.strip_prefix(&prefix) {
-                if let Ok(dim) = suffix.parse::<usize>() {
-                    dims.push(dim);
+            let table_name = name.strip_suffix(".lance").unwrap_or(&name);
+            if let Some(suffix) = table_name.strip_prefix(&prefix) {
+                if let Some(dim_part) = suffix.split('_').next() {
+                    if let Ok(dim) = dim_part.parse::<usize>() {
+                        tables.push((table_name.to_string(), dim));
+                    }
                 }
             }
         }
 
-        dims
+        tables.sort();
+        tables.dedup();
+        tables
+    }
+
+    fn discover_dimensions_from_disk(&self, modality: &str) -> Vec<usize> {
+        self.discover_tables_from_disk(modality)
+            .into_iter()
+            .map(|(_, dim)| dim)
+            .collect()
+    }
+
+    fn cleanup_table_names(&self, modality: &str) -> VfsResult<Vec<String>> {
+        use crate::vfs::repos::embedding_dim_repo;
+
+        let conn = self.db.get_conn()?;
+        let mut names = embedding_dim_repo::list_by_modality(&conn, modality)?
+            .into_iter()
+            .map(|dim| dim.lance_table_name)
+            .collect::<Vec<_>>();
+        names.extend(
+            self.discover_tables_from_disk(modality)
+                .into_iter()
+                .map(|(name, _)| name),
+        );
+        names.sort();
+        names.dedup();
+        Ok(names)
+    }
+
+    fn table_has_only_unreferenced_retired_profiles(&self, table_name: &str) -> VfsResult<bool> {
+        let conn = self.db.get_conn()?;
+        let (profile_count, unsafe_profile_count): (i64, i64) = conn.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE
+                        WHEN p.state = 'retired'
+                         AND NOT EXISTS (
+                            SELECT 1 FROM vfs_index_segments s
+                            WHERE s.index_profile_id = p.id
+                         )
+                         AND NOT EXISTS (
+                            SELECT 1 FROM vfs_embedding_dims d
+                            WHERE d.active_profile_id = p.id
+                         )
+                         AND NOT EXISTS (
+                            SELECT 1 FROM vfs_index_units u
+                            WHERE u.text_profile_id = p.id OR u.mm_profile_id = p.id
+                         )
+                        THEN 0 ELSE 1 END), 0)
+             FROM vfs_index_profiles p
+             WHERE p.lance_table_name = ?1",
+            rusqlite::params![table_name],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let dimension_still_points_to_table: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM vfs_embedding_dims WHERE lance_table_name = ?1
+             )",
+            rusqlite::params![table_name],
+            |row| row.get(0),
+        )?;
+        Ok(profile_count > 0 && unsafe_profile_count == 0 && !dimension_still_points_to_table)
+    }
+
+    fn retired_profile_table_candidates(&self) -> VfsResult<Vec<String>> {
+        let table_names = {
+            let conn = self.db.get_conn()?;
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT lance_table_name
+                 FROM vfs_index_profiles
+                 WHERE state = 'retired'
+                 ORDER BY lance_table_name",
+            )?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        table_names
+            .into_iter()
+            .filter_map(|table_name| {
+                match self.table_has_only_unreferenced_retired_profiles(&table_name) {
+                    Ok(true) => Some(Ok(table_name)),
+                    Ok(false) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            })
+            .collect()
+    }
+
+    async fn sweep_retired_profile_tables_inner<F>(&self, mut pre_drop: F) -> VfsResult<usize>
+    where
+        F: FnMut(&str) -> VfsResult<()>,
+    {
+        // Retired profile rows remain as durable retry intents after a successful
+        // drop. Local Lance tables are directory-backed, so avoid reopening the
+        // catalog on every worker tick once all candidate directories are gone.
+        // A failed drop leaves its directory in place and remains retryable.
+        let candidates = self
+            .retired_profile_table_candidates()?
+            .into_iter()
+            .filter(|table_name| {
+                self.lance_base_path
+                    .join(format!("{table_name}.lance"))
+                    .exists()
+            })
+            .collect::<Vec<_>>();
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+        let existing_tables = self
+            .connect()
+            .await?
+            .table_names()
+            .execute()
+            .await
+            .map_err(|error| {
+                VfsError::Other(format!(
+                    "list Lance tables for retired sweep failed: {error}"
+                ))
+            })?;
+        let mut dropped = 0usize;
+        let mut first_error = None;
+        for table_name in candidates {
+            if !existing_tables.contains(&table_name) {
+                continue;
+            }
+            if let Err(error) = pre_drop(&table_name) {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+                continue;
+            }
+            match self.drop_table(&table_name).await {
+                Ok(()) => dropped += 1,
+                Err(error) if first_error.is_none() => first_error = Some(error),
+                Err(_) => {}
+            }
+        }
+        if let Some(error) = first_error {
+            Err(error)
+        } else {
+            Ok(dropped)
+        }
+    }
+
+    async fn ensure_lifecycle_columns(
+        &self,
+        table: &Table,
+        modality: &str,
+        dim: usize,
+        explicit_profile_id: Option<&str>,
+    ) -> VfsResult<()> {
+        let schema = table.schema().await.map_err(|error| {
+            VfsError::Other(format!("读取 Lance 生命周期 schema 失败: {}", error))
+        })?;
+        let profile_id = if let Some(profile_id) = explicit_profile_id {
+            profile_id.to_string()
+        } else {
+            let conn = self.db.get_conn()?;
+            crate::vfs::repos::embedding_dim_repo::get_by_key(&conn, dim as i32, modality)?
+                .and_then(|dim| dim.active_profile_id)
+                .unwrap_or_else(|| format!("profile_legacy_{}_{}", modality, dim))
+        };
+        let escaped_profile = profile_id.replace("'", "''");
+        let mut expressions: Vec<(String, String)> = Vec::new();
+        if schema.field_with_name("unit_id").is_err() {
+            expressions.push(("unit_id".to_string(), "''".to_string()));
+        }
+        if schema.field_with_name("index_profile_id").is_err() {
+            expressions.push((
+                "index_profile_id".to_string(),
+                format!("'{}'", escaped_profile),
+            ));
+        }
+        if schema.field_with_name("generation").is_err() {
+            expressions.push(("generation".to_string(), "CAST(0 AS BIGINT)".to_string()));
+        }
+        if !expressions.is_empty() {
+            table
+                .add_columns(NewColumnTransform::SqlExpressions(expressions), None)
+                .await
+                .map_err(|error| {
+                    VfsError::Other(format!(
+                        "升级 legacy Lance 表生命周期列失败 ({}:{}): {}",
+                        modality, dim, error
+                    ))
+                })?;
+        }
+        Ok(())
     }
 
     fn get_all_registered_dimensions(&self) -> VfsResult<Vec<(String, usize)>> {
@@ -266,10 +696,17 @@ impl VfsLanceStore {
         }
     }
 
+    /// Repeatedly reclaim physical tables whose profiles are durably retired and
+    /// no longer referenced by dimensions, Units, or Segment manifests. Retired
+    /// profile rows remain the retry intent when a drop fails or the app exits.
+    pub async fn sweep_retired_profile_tables(&self) -> VfsResult<usize> {
+        self.sweep_retired_profile_tables_inner(|_| Ok(())).await
+    }
+
     /// 确保向量表存在（动态创建）
     pub async fn ensure_table(&self, modality: &str, dim: usize) -> VfsResult<Table> {
         let conn = self.connect().await?;
-        let table_name = Self::table_name(modality, dim);
+        let table_name = self.active_table_name(modality, dim)?;
 
         // 快路径：本进程已确认过该表与索引，直接打开
         let already_ensured = self
@@ -285,7 +722,7 @@ impl VfsLanceStore {
                 }
                 tbl
             }
-            Err(_) => {
+            Err(lancedb::Error::TableNotFound { .. }) => {
                 // 打不开则视为表缺失：清掉可能过期的缓存标记后重建
                 if let Ok(mut set) = self.ensured_tables.lock() {
                     set.remove(&table_name);
@@ -301,33 +738,77 @@ impl VfsLanceStore {
                     .await
                     .map_err(|e| VfsError::Other(format!("创建 Lance 表失败: {}", e)))?
             }
+            Err(error) => {
+                return Err(VfsError::Other(format!(
+                    "打开 Lance 表 {} 失败: {}",
+                    table_name, error
+                )))
+            }
         };
 
-        // 确保向量索引
-        let embed_start = Instant::now();
-        let embed_res = tbl
-            .create_index(&["embedding"], Index::Auto)
-            .replace(false)
-            .execute()
-            .await;
+        self.ensure_lifecycle_columns(&tbl, modality, dim, None)
+            .await?;
 
-        let mut embed_ok = true;
-        if let Err(err) = embed_res {
-            let msg = err.to_string();
-            if !msg.contains("already exists") {
-                embed_ok = false;
-                warn!(
-                    "[VfsLanceStore] embedding index ensure failed on {}: {}",
-                    table_name, msg
-                );
-            }
-        } else {
-            debug!(
-                "[VfsLanceStore] ensured embedding index on {} in {}ms",
-                table_name,
-                embed_start.elapsed().as_millis()
+        let row_count = tbl.count_rows(None).await.map_err(|error| {
+            VfsError::Other(format!("统计 Lance 表 {} 行数失败: {}", table_name, error))
+        })?;
+
+        // Existing Index::Auto indices were trained with L2.  Never allow one
+        // to answer a cosine query: tiny tables use exact search, larger tables
+        // are rebuilt once with an explicit cosine metric.
+        let embed_ok = if row_count < MIN_ROWS_FOR_ANN_INDEX {
+            let sql_conn = self.db.get_conn()?;
+            let _ = crate::vfs::repos::embedding_dim_repo::set_ann_status(
+                &sql_conn,
+                dim as i32,
+                modality,
+                "exact",
+                ANN_INDEX_VERSION,
             );
-        }
+            true
+        } else {
+            let dim_state = {
+                let sql_conn = self.db.get_conn()?;
+                crate::vfs::repos::embedding_dim_repo::get_by_key(&sql_conn, dim as i32, modality)?
+            };
+            let must_replace = dim_state.as_ref().is_some_and(|state| {
+                state.ann_metric != "cosine" || state.ann_index_version != ANN_INDEX_VERSION
+            });
+            let embed_start = Instant::now();
+            match tbl
+                .create_index(
+                    &["embedding"],
+                    Index::IvfPq(IvfPqIndexBuilder::default().distance_type(DistanceType::Cosine)),
+                )
+                .replace(must_replace)
+                .execute()
+                .await
+            {
+                Ok(_) => {
+                    let sql_conn = self.db.get_conn()?;
+                    crate::vfs::repos::embedding_dim_repo::set_ann_status(
+                        &sql_conn,
+                        dim as i32,
+                        modality,
+                        "cosine",
+                        ANN_INDEX_VERSION,
+                    )?;
+                    debug!(
+                        "[VfsLanceStore] ensured cosine embedding index on {} in {}ms",
+                        table_name,
+                        embed_start.elapsed().as_millis()
+                    );
+                    true
+                }
+                Err(error) if !must_replace && error.to_string().contains("already exists") => true,
+                Err(error) => {
+                    return Err(VfsError::Other(format!(
+                        "创建 Cosine IVF-PQ 索引失败 (table={}, rows={}): {}",
+                        table_name, row_count, error
+                    )))
+                }
+            }
+        };
 
         // 确保 FTS 索引
         let fts_start = Instant::now();
@@ -359,8 +840,34 @@ impl VfsLanceStore {
             }
         }
 
-        // 两类索引都确认就绪才缓存；失败保留重试机会（如空表暂无法训练向量索引）
-        if embed_ok && fts_ok {
+        let mut scalar_ok = true;
+        for (column, index) in [
+            ("resource_id", Index::BTree(BTreeIndexBuilder::default())),
+            ("folder_id", Index::BTree(BTreeIndexBuilder::default())),
+            (
+                "resource_type",
+                Index::Bitmap(BitmapIndexBuilder::default()),
+            ),
+        ] {
+            if let Err(error) = tbl
+                .create_index(&[column], index)
+                .replace(false)
+                .execute()
+                .await
+            {
+                if !error.to_string().contains("already exists") {
+                    scalar_ok = false;
+                    warn!(
+                        "[VfsLanceStore] scalar index ensure failed on {}.{}: {}",
+                        table_name, column, error
+                    );
+                }
+            }
+        }
+
+        // Keep exact-search tables uncached so they can cross the ANN threshold
+        // after later writes without an application restart.
+        if embed_ok && fts_ok && scalar_ok && row_count >= MIN_ROWS_FOR_ANN_INDEX {
             if let Ok(mut set) = self.ensured_tables.lock() {
                 set.insert(table_name);
             }
@@ -374,12 +881,15 @@ impl VfsLanceStore {
         Schema::new(vec![
             Field::new("embedding_id", DataType::Utf8, false),
             Field::new("resource_id", DataType::Utf8, false),
+            Field::new("unit_id", DataType::Utf8, false),
             Field::new("resource_type", DataType::Utf8, false),
             Field::new("folder_id", DataType::Utf8, true),
             Field::new("chunk_index", DataType::Int32, false),
             Field::new("text", DataType::Utf8, false),
             Field::new("metadata", DataType::Utf8, true),
             Field::new("created_at", DataType::Utf8, false),
+            Field::new("index_profile_id", DataType::Utf8, false),
+            Field::new("generation", DataType::Int64, false),
             Field::new(
                 "embedding",
                 DataType::FixedSizeList(
@@ -416,8 +926,59 @@ impl VfsLanceStore {
         if rows.is_empty() {
             return Ok(());
         }
+        let _mutation_guard = VFS_MUTATION_LOCK.read().await;
 
         let dim = rows[0].embedding.len();
+        let profile_id = rows[0].index_profile_id.as_str();
+        if profile_id.is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "index_profile_id".to_string(),
+                reason: "Vector rows must identify their index profile".to_string(),
+            });
+        }
+        if rows.iter().any(|row| {
+            row.index_profile_id != profile_id
+                || row.embedding.len() != dim
+                || row.unit_id.is_empty()
+                || row.generation < 0
+        }) {
+            return Err(VfsError::InvalidArgument {
+                param: "rows".to_string(),
+                reason: "A Lance write batch must use one profile and dimension, with non-empty Unit IDs and non-negative generations".to_string(),
+            });
+        }
+
+        // Route by immutable profile identity instead of the mutable
+        // dimension-level pointer.  A same-dimension model switch can happen
+        // while an embedding request is in flight; resolving the table from
+        // the rows prevents those vectors from contaminating the new space.
+        let profile = {
+            let conn = self.db.get_conn()?;
+            let profile =
+                crate::vfs::repos::embedding_dim_repo::get_profile_by_id(&conn, profile_id)?
+                    .ok_or_else(|| VfsError::NotFound {
+                        resource_type: "IndexProfile".to_string(),
+                        id: profile_id.to_string(),
+                    })?;
+            let is_current_write_profile =
+                crate::vfs::repos::embedding_dim_repo::get_active_profile(
+                    &conn, dim as i32, modality,
+                )?
+                .is_some_and(|active| active.id == profile.id);
+            if profile.dimension as usize != dim
+                || profile.modality != modality
+                || !matches!(profile.state.as_str(), "active" | "building")
+                || !is_current_write_profile
+            {
+                return Err(VfsError::InvalidState {
+                    message: format!(
+                        "Index profile {} is no longer the writable {}:{} profile",
+                        profile.id, modality, dim
+                    ),
+                });
+            }
+            profile
+        };
 
         let with_metadata = rows.iter().filter(|r| r.metadata_json.is_some()).count();
         info!(
@@ -432,23 +993,44 @@ impl VfsLanceStore {
             }
         }
 
-        let tbl = self.ensure_table(modality, dim).await?;
+        let tbl = self.open_profile_table(&profile).await?;
+        let row_count_before = tbl.count_rows(None).await.map_err(|error| {
+            VfsError::Other(format!(
+                "Count rows before profile write {} failed: {}",
+                profile.lance_table_name, error
+            ))
+        })?;
 
         let (schema, batch) = self.build_batch(dim, rows)?;
         let iter = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
 
-        let mut builder = tbl.merge_insert(&["embedding_id"]);
-        builder.when_matched_update_all(None);
-        builder.when_not_matched_insert_all();
-        builder
-            .execute(Box::new(iter))
+        // ★ 2026-07：由 merge_insert(&["embedding_id"]) 改为普通 append。
+        // - 两个写入方（embedding_service / multimodal_service）每次调用都为每行
+        //   生成全新 embedding_id（`emb_{nanoid}` / 带 `nanoid!(8)` 后缀），失败
+        //   重试会重新走 index_chunks / index_resource_pages 再生成新 ID，不存在
+        //   稳定 ID 重写场景，when_matched 分支从未命中过；
+        // - embedding_id 列无 scalar index，merge 的 join 退化为逐批全表扫描，
+        //   随表增长写入越来越慢，纯付成本；
+        // - 无重复行由写入协议保证：新代 shadow-write → SQLite Segment 账本原子
+        //   切换 generation → delete_by_unit_except_ids 回收旧代；账本提交失败的
+        //   未引用行由 discard_uncommitted_rows / __lance_orphan_queue 兜底回收。
+        tbl.add(iter)
+            .execute()
             .await
-            .map_err(|e| VfsError::Other(format!("写入 Lance 表失败 (merge_insert): {}", e)))?;
+            .map_err(|e| VfsError::Other(format!("写入 Lance 表失败 (append): {}", e)))?;
+
+        if row_count_before < MIN_ROWS_FOR_ANN_INDEX
+            && row_count_before.saturating_add(rows.len()) >= MIN_ROWS_FOR_ANN_INDEX
+        {
+            if let Ok(mut ensured) = self.ensured_tables.lock() {
+                ensured.remove(&profile.lance_table_name);
+            }
+        }
 
         info!(
-            "[VfsLanceStore] Wrote {} chunks to {} (merge_insert)",
+            "[VfsLanceStore] Wrote {} chunks to {} (append)",
             rows.len(),
-            Self::table_name(modality, dim)
+            profile.lance_table_name
         );
 
         Ok(())
@@ -481,6 +1063,9 @@ impl VfsLanceStore {
         let resource_id_arr: ArrayRef = Arc::new(StringArray::from_iter_values(
             rows.iter().map(|r| r.resource_id.as_str()),
         ));
+        let unit_id_arr: ArrayRef = Arc::new(StringArray::from_iter_values(
+            rows.iter().map(|r| r.unit_id.as_str()),
+        ));
         let resource_type_arr: ArrayRef = Arc::new(StringArray::from_iter_values(
             rows.iter().map(|r| r.resource_type.as_str()),
         ));
@@ -499,6 +1084,12 @@ impl VfsLanceStore {
         let created_at_arr: ArrayRef = Arc::new(StringArray::from_iter_values(
             rows.iter().map(|r| r.created_at.as_str()),
         ));
+        let index_profile_id_arr: ArrayRef = Arc::new(StringArray::from_iter_values(
+            rows.iter().map(|r| r.index_profile_id.as_str()),
+        ));
+        let generation_arr: ArrayRef = Arc::new(Int64Array::from_iter_values(
+            rows.iter().map(|r| r.generation),
+        ));
 
         let values = Arc::new(Float32Array::from(flat)) as ArrayRef;
         let field_ref = Arc::new(Field::new("item", DataType::Float32, false));
@@ -512,12 +1103,15 @@ impl VfsLanceStore {
             vec![
                 embedding_id_arr,
                 resource_id_arr,
+                unit_id_arr,
                 resource_type_arr,
                 folder_id_arr,
                 chunk_index_arr,
                 text_arr,
                 metadata_arr,
                 created_at_arr,
+                index_profile_id_arr,
+                generation_arr,
                 embedding_arr,
             ],
         )
@@ -534,41 +1128,41 @@ impl VfsLanceStore {
     ///    （删除失败仍上报成功，前端永远看不到可重试状态）；
     /// 2. indexing.rs delete_resource_index 在 mm 向量删除失败时照删
     ///    SQLite 元数据，孤儿向量无人再清。
+    ///
     /// 所有调用方都已有 Err 处理分支（warn / 传播 / `let _ =`），行为兼容。
     pub async fn delete_by_resource(&self, modality: &str, resource_id: &str) -> VfsResult<usize> {
         let conn = self.connect().await?;
         let mut deleted = 0usize;
 
-        let mut dims = self.get_registered_dimensions(modality)?;
-        for dim in self.discover_dimensions_from_disk(modality) {
-            if !dims.contains(&dim) {
-                dims.push(dim);
-            }
-        }
-
-        dims.sort_unstable();
-        dims.dedup();
-
         let mut first_err: Option<VfsError> = None;
-        for dim in dims {
-            let table_name = Self::table_name(modality, dim);
-            if let Ok(tbl) = conn.open_table(&table_name).execute().await {
-                let expr = format!("resource_id = '{}'", resource_id.replace("'", "''"));
-                match tbl.delete(expr.as_str()).await {
-                    Ok(_) => deleted += 1,
-                    Err(e) => {
-                        warn!(
-                            "[VfsLanceStore] delete_by_resource failed on table {}: {}",
-                            table_name, e
-                        );
-                        if first_err.is_none() {
-                            first_err = Some(VfsError::Other(format!(
-                                "delete_by_resource failed on {}: {}",
+        for table_name in self.cleanup_table_names(modality)? {
+            match conn.open_table(&table_name).execute().await {
+                Ok(tbl) => {
+                    let expr = format!("resource_id = '{}'", resource_id.replace("'", "''"));
+                    match tbl.delete(expr.as_str()).await {
+                        Ok(_) => deleted += 1,
+                        Err(e) => {
+                            warn!(
+                                "[VfsLanceStore] delete_by_resource failed on table {}: {}",
                                 table_name, e
-                            )));
+                            );
+                            if first_err.is_none() {
+                                first_err = Some(VfsError::Other(format!(
+                                    "delete_by_resource failed on {}: {}",
+                                    table_name, e
+                                )));
+                            }
                         }
                     }
                 }
+                Err(lancedb::Error::TableNotFound { .. }) => {}
+                Err(error) if first_err.is_none() => {
+                    first_err = Some(VfsError::Other(format!(
+                        "open table for delete_by_resource failed on {}: {}",
+                        table_name, error
+                    )));
+                }
+                Err(_) => {}
             }
         }
 
@@ -594,23 +1188,14 @@ impl VfsLanceStore {
         let conn = self.connect().await?;
         let mut deleted = 0usize;
 
-        let mut dims = self.get_registered_dimensions(modality)?;
-        for dim in self.discover_dimensions_from_disk(modality) {
-            if !dims.contains(&dim) {
-                dims.push(dim);
-            }
-        }
-
-        dims.sort_unstable();
-        dims.dedup();
+        let keep_table = self.active_table_name(modality, keep_dim)?;
 
         // ★ 2026-06-13（第二轮审阅 F13）：同 delete_by_resource，删除失败上报错误。
         let mut first_err: Option<VfsError> = None;
-        for dim in dims {
-            if dim == keep_dim {
+        for table_name in self.cleanup_table_names(modality)? {
+            if table_name == keep_table {
                 continue;
             }
-            let table_name = Self::table_name(modality, dim);
             if let Ok(tbl) = conn.open_table(&table_name).execute().await {
                 let expr = format!("resource_id = '{}'", resource_id.replace("'", "''"));
                 match tbl.delete(expr.as_str()).await {
@@ -656,22 +1241,11 @@ impl VfsLanceStore {
         let conn = self.connect().await?;
         let mut deleted = 0usize;
 
-        let mut dims = self.get_registered_dimensions(modality)?;
-        for dim in self.discover_dimensions_from_disk(modality) {
-            if !dims.contains(&dim) {
-                dims.push(dim);
-            }
-        }
-
-        dims.sort_unstable();
-        dims.dedup();
-
         let escaped_resource_id = resource_id.replace("'", "''");
 
         // ★ 2026-06-13（第二轮审阅 F13）：同 delete_by_resource，删除失败上报错误。
         let mut first_err: Option<VfsError> = None;
-        for dim in dims {
-            let table_name = Self::table_name(modality, dim);
+        for table_name in self.cleanup_table_names(modality)? {
             if let Ok(tbl) = conn.open_table(&table_name).execute().await {
                 let expr = if keep_ids.is_empty() {
                     format!("resource_id = '{}'", escaped_resource_id)
@@ -716,6 +1290,106 @@ impl VfsLanceStore {
         Ok(deleted)
     }
 
+    /// Delete superseded generations for one Unit after SQLite has atomically
+    /// activated the new generation.  Empty unit_id rows are legacy rows and
+    /// are included during the first rebuild of a resource.
+    pub async fn delete_by_unit_except_ids(
+        &self,
+        modality: &str,
+        resource_id: &str,
+        unit_id: &str,
+        keep_ids: &[String],
+    ) -> VfsResult<usize> {
+        let conn = self.connect().await?;
+        let escaped_resource = resource_id.replace("'", "''");
+        let escaped_unit = unit_id.replace("'", "''");
+        let keep_clause = if keep_ids.is_empty() {
+            String::new()
+        } else {
+            let values = keep_ids
+                .iter()
+                .map(|id| format!("'{}'", id.replace("'", "''")))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(" AND embedding_id NOT IN ({})", values)
+        };
+        let expr = format!(
+            "resource_id = '{}' AND (unit_id = '{}' OR unit_id = ''){}",
+            escaped_resource, escaped_unit, keep_clause
+        );
+        let mut deleted = 0usize;
+        let mut first_error = None;
+        for table_name in self.cleanup_table_names(modality)? {
+            match conn.open_table(&table_name).execute().await {
+                Ok(table) => {
+                    let schema = match table.schema().await {
+                        Ok(schema) => schema,
+                        Err(error) => {
+                            if first_error.is_none() {
+                                first_error = Some(VfsError::Other(format!(
+                                    "read schema for unit cleanup failed on {}: {}",
+                                    table_name, error
+                                )));
+                            }
+                            continue;
+                        }
+                    };
+                    let missing_lifecycle_columns = ["unit_id", "index_profile_id", "generation"]
+                        .into_iter()
+                        .filter(|column| schema.field_with_name(column).is_err())
+                        .collect::<Vec<_>>();
+                    if !missing_lifecycle_columns.is_empty() {
+                        if self.table_has_only_unreferenced_retired_profiles(&table_name)? {
+                            drop(table);
+                            match self.drop_table(&table_name).await {
+                                Ok(()) => {
+                                    deleted += 1;
+                                    info!(
+                                        "[VfsLanceStore] Dropped unreferenced retired legacy table {}",
+                                        table_name
+                                    );
+                                }
+                                Err(error) if first_error.is_none() => {
+                                    first_error = Some(error);
+                                }
+                                Err(_) => {}
+                            }
+                        } else {
+                            debug!(
+                                "[VfsLanceStore] Skipping per-Unit cleanup on referenced legacy table {} missing {:?}; retirement sweep will retry whole-table reclamation after references reach zero",
+                                table_name, missing_lifecycle_columns
+                            );
+                        }
+                        continue;
+                    }
+                    match table.delete(&expr).await {
+                        Ok(_) => deleted += 1,
+                        Err(error) if first_error.is_none() => {
+                            first_error = Some(VfsError::Other(format!(
+                                "delete_by_unit_except_ids failed on {}: {}",
+                                table_name, error
+                            )));
+                        }
+                        Err(_) => {}
+                    }
+                }
+                Err(lancedb::Error::TableNotFound { .. }) => {}
+                Err(error) if first_error.is_none() => {
+                    first_error = Some(VfsError::Other(format!(
+                        "open table for unit cleanup failed on {}: {}",
+                        table_name, error
+                    )));
+                }
+                Err(_) => {}
+            }
+        }
+        if let Some(error) = first_error {
+            Err(error)
+        } else {
+            Ok(deleted)
+        }
+    }
+
     /// 按 embedding_id 批量删除向量（用于元数据写入失败后的补偿回滚）。
     pub async fn delete_by_embedding_ids(
         &self,
@@ -729,15 +1403,6 @@ impl VfsLanceStore {
         let conn = self.connect().await?;
         let mut deleted = 0usize;
 
-        let mut dims = self.get_registered_dimensions(modality)?;
-        for dim in self.discover_dimensions_from_disk(modality) {
-            if !dims.contains(&dim) {
-                dims.push(dim);
-            }
-        }
-        dims.sort_unstable();
-        dims.dedup();
-
         let in_list = embedding_ids
             .iter()
             .map(|s| format!("'{}'", s.replace("'", "''")))
@@ -750,10 +1415,9 @@ impl VfsLanceStore {
         // 此前 is_ok() 吞错导致"删除失败但出队"，孤儿向量清理保证失效。
         // 仍保持 best-effort：先尝试所有表，最后统一上报第一个错误。
         let mut first_err: Option<VfsError> = None;
-        for dim in dims {
-            let table_name = Self::table_name(modality, dim);
-            if let Ok(tbl) = conn.open_table(&table_name).execute().await {
-                match tbl.delete(expr.as_str()).await {
+        for table_name in self.cleanup_table_names(modality)? {
+            match conn.open_table(&table_name).execute().await {
+                Ok(tbl) => match tbl.delete(expr.as_str()).await {
                     Ok(_) => deleted += 1,
                     Err(e) => {
                         warn!(
@@ -767,6 +1431,19 @@ impl VfsLanceStore {
                             )));
                         }
                     }
+                },
+                Err(lancedb::Error::TableNotFound { .. }) => {}
+                Err(error) => {
+                    warn!(
+                        "[VfsLanceStore] open table for delete_by_embedding_ids failed on {}: {}",
+                        table_name, error
+                    );
+                    if first_err.is_none() {
+                        first_err = Some(VfsError::Other(format!(
+                            "open table for delete_by_embedding_ids failed on {}: {}",
+                            table_name, error
+                        )));
+                    }
                 }
             }
         }
@@ -775,6 +1452,42 @@ impl VfsLanceStore {
             return Err(e);
         }
         Ok(deleted)
+    }
+
+    /// Reclaim rows that were written to Lance but never committed to the
+    /// SQLite Segment manifest.  The deletion intent is persisted before the
+    /// async fast path so a crash or transient Lance failure cannot leak rows.
+    pub async fn discard_uncommitted_rows(
+        &self,
+        modality: &str,
+        resource_id: &str,
+        embedding_ids: &[String],
+    ) -> VfsResult<()> {
+        if embedding_ids.is_empty() {
+            return Ok(());
+        }
+        {
+            let conn = self.db.get_conn()?;
+            for embedding_id in embedding_ids {
+                crate::vfs::repos::index_segment_repo::enqueue_lance_orphan(
+                    &conn,
+                    embedding_id,
+                    Some(resource_id),
+                )?;
+            }
+        }
+
+        self.delete_by_embedding_ids(modality, embedding_ids)
+            .await?;
+
+        let conn = self.db.get_conn()?;
+        for embedding_id in embedding_ids {
+            conn.execute(
+                "DELETE FROM __lance_orphan_queue WHERE lance_row_id = ?1",
+                rusqlite::params![embedding_id],
+            )?;
+        }
+        Ok(())
     }
 
     // ========================================================================
@@ -801,7 +1514,8 @@ impl VfsLanceStore {
         .await
     }
 
-    /// 向量检索（支持 resource_ids 过滤）
+    /// Legacy dimension-only vector lookup is disabled because a bare vector does not
+    /// identify the model fingerprint/profile that produced it.
     pub async fn vector_search_full(
         &self,
         modality: &str,
@@ -811,62 +1525,326 @@ impl VfsLanceStore {
         resource_ids: Option<&[String]>,
         resource_types: Option<&[String]>,
     ) -> VfsResult<Vec<VfsLanceSearchResult>> {
-        let dim = query_embedding.len();
-        let tbl = self.ensure_table(modality, dim).await?;
-
-        let fetch_limit = (top_k * 3).max(20).min(500);
-
-        // 诊断日志：查询向量范数
-        let query_norm: f32 = query_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-        info!(
-            "[VfsLanceStore] vector_search: dim={}, query_norm={:.6}, top_k={}, fetch_limit={}",
-            dim, query_norm, top_k, fetch_limit
+        let _ = (
+            modality,
+            query_embedding,
+            top_k,
+            folder_ids,
+            resource_ids,
+            resource_types,
         );
+        Err(VfsError::InvalidState {
+            message: "dimension-only VFS vector search is disabled; use vector_search_profile_full with a planner-selected profile_id"
+                .to_string(),
+        })
+    }
 
-        let start = Instant::now();
-        debug!(
-            "[VfsLanceStore] vector_search: dim={}, top_k={}, fetch_limit={}, folders={:?}, resources={:?}, types={:?}",
-            dim, top_k, fetch_limit, folder_ids, resource_ids, resource_types
-        );
+    fn resolve_active_profile_for_search(
+        &self,
+        profile_id: &str,
+    ) -> VfsResult<crate::vfs::repos::embedding_dim_repo::VfsIndexProfile> {
+        let conn = self.db.get_conn()?;
+        let profile = crate::vfs::repos::embedding_dim_repo::get_profile_by_id(&conn, profile_id)?
+            .ok_or_else(|| VfsError::NotFound {
+                resource_type: "IndexProfile".to_string(),
+                id: profile_id.to_string(),
+            })?;
+        let referenced: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM vfs_index_segments WHERE index_profile_id = ?1)
+                    OR EXISTS(SELECT 1 FROM vfs_embedding_dims WHERE active_profile_id = ?1)",
+            rusqlite::params![profile_id],
+            |row| row.get(0),
+        )?;
+        if !matches!(profile.state.as_str(), "active" | "building" | "queryable") || !referenced {
+            return Err(VfsError::InvalidState {
+                message: format!("Index profile {} is not queryable", profile_id),
+            });
+        }
+        Ok(profile)
+    }
 
-        // 构建过滤表达式
-        let filter_expr = Self::build_filter_expr_full(folder_ids, resource_ids, resource_types);
+    async fn ensure_profile_secondary_indexes(
+        &self,
+        table: &Table,
+        table_name: &str,
+        modality: &str,
+    ) -> bool {
+        let mut all_ready = true;
+        // 仅 text profile 表需要 FTS：多模态表的 text 列通常为空（页面文本是
+        // 独立的 text Unit），为其构建/维护 ngram FTS 纯属浪费索引与优化开销。
+        if modality == "text" {
+            if let Err(error) = table
+                .create_index(&["text"], Index::FTS(self.build_fts_index_builder()))
+                .replace(false)
+                .execute()
+                .await
+            {
+                if !error.to_string().contains("already exists") {
+                    all_ready = false;
+                    warn!(
+                        "[VfsLanceStore] profile FTS index ensure failed on {}: {}",
+                        table_name, error
+                    );
+                }
+            }
+        }
+        for (column, index) in [
+            ("resource_id", Index::BTree(BTreeIndexBuilder::default())),
+            ("folder_id", Index::BTree(BTreeIndexBuilder::default())),
+            (
+                "resource_type",
+                Index::Bitmap(BitmapIndexBuilder::default()),
+            ),
+        ] {
+            if let Err(error) = table
+                .create_index(&[column], index)
+                .replace(false)
+                .execute()
+                .await
+            {
+                if !error.to_string().contains("already exists") {
+                    all_ready = false;
+                    warn!(
+                        "[VfsLanceStore] profile scalar index ensure failed on {}.{}: {}",
+                        table_name, column, error
+                    );
+                }
+            }
+        }
+        all_ready
+    }
 
-        let mut query = tbl
-            .vector_search(query_embedding)
-            .map_err(|e| VfsError::Other(format!("向量查询构建失败: {}", e)))?
-            .distance_type(DistanceType::Cosine)
-            .limit(fetch_limit);
-
-        if let Some(ref expr) = filter_expr {
-            query = query.only_if(expr.as_str());
+    async fn open_profile_table(
+        &self,
+        profile: &crate::vfs::repos::embedding_dim_repo::VfsIndexProfile,
+    ) -> VfsResult<Table> {
+        let connection = self.connect().await?;
+        let table = match connection
+            .open_table(&profile.lance_table_name)
+            .execute()
+            .await
+        {
+            Ok(table) => table,
+            Err(lancedb::Error::TableNotFound { .. })
+                if matches!(profile.state.as_str(), "active" | "building") =>
+            {
+                if let Ok(mut ensured) = self.ensured_tables.lock() {
+                    ensured.remove(&profile.lance_table_name);
+                }
+                let empty: Vec<Result<RecordBatch, arrow_schema::ArrowError>> = Vec::new();
+                let batches = RecordBatchIterator::new(
+                    empty.into_iter(),
+                    Arc::new(Self::build_schema(profile.dimension as usize)),
+                );
+                connection
+                    .create_table(&profile.lance_table_name, batches)
+                    .execute()
+                    .await
+                    .map_err(|error| {
+                        VfsError::Other(format!(
+                            "创建 profile Lance 表 {} 失败: {}",
+                            profile.lance_table_name, error
+                        ))
+                    })?
+            }
+            Err(error) => {
+                return Err(VfsError::Other(format!(
+                    "打开 profile Lance 表 {} 失败: {}",
+                    profile.lance_table_name, error
+                )))
+            }
+        };
+        if self
+            .ensured_tables
+            .lock()
+            .map(|ensured| ensured.contains(&profile.lance_table_name))
+            .unwrap_or(false)
+        {
+            return Ok(table);
         }
 
+        self.ensure_lifecycle_columns(
+            &table,
+            &profile.modality,
+            profile.dimension as usize,
+            Some(&profile.id),
+        )
+        .await?;
+
+        let row_count = table.count_rows(None).await.map_err(|error| {
+            VfsError::Other(format!(
+                "统计 profile Lance 表 {} 失败: {}",
+                profile.lance_table_name, error
+            ))
+        })?;
+        if row_count >= MIN_ROWS_FOR_ANN_INDEX {
+            let must_replace =
+                profile.ann_metric != "cosine" || profile.ann_index_version != ANN_INDEX_VERSION;
+            match table
+                .create_index(
+                    &["embedding"],
+                    Index::IvfPq(IvfPqIndexBuilder::default().distance_type(DistanceType::Cosine)),
+                )
+                .replace(must_replace)
+                .execute()
+                .await
+            {
+                Ok(_) => {
+                    let conn = self.db.get_conn()?;
+                    crate::vfs::repos::embedding_dim_repo::set_profile_ann_status(
+                        &conn,
+                        &profile.id,
+                        "cosine",
+                        ANN_INDEX_VERSION,
+                    )?;
+                }
+                Err(error) if !must_replace && error.to_string().contains("already exists") => {}
+                Err(error) => {
+                    return Err(VfsError::Other(format!(
+                        "创建 profile Cosine IVF-PQ 索引失败 {}: {}",
+                        profile.lance_table_name, error
+                    )))
+                }
+            }
+        } else {
+            let conn = self.db.get_conn()?;
+            crate::vfs::repos::embedding_dim_repo::set_profile_ann_status(
+                &conn,
+                &profile.id,
+                "exact",
+                ANN_INDEX_VERSION,
+            )?;
+        }
+        let secondary_ready = self
+            .ensure_profile_secondary_indexes(&table, &profile.lance_table_name, &profile.modality)
+            .await;
+        if secondary_ready {
+            if let Ok(mut ensured) = self.ensured_tables.lock() {
+                ensured.insert(profile.lance_table_name.clone());
+            }
+        }
+        Ok(table)
+    }
+
+    /// Materialize lifecycle columns and repair all physical indexes for a
+    /// queryable profile.  Capability discovery calls this before taking its
+    /// immutable snapshot so a migrated legacy-L2 table can become cosine
+    /// compatible instead of remaining permanently excluded from planning.
+    pub async fn ensure_profile_ready(&self, profile_id: &str) -> VfsResult<()> {
+        let profile = self.resolve_active_profile_for_search(profile_id)?;
+        self.open_profile_table(&profile).await?;
+        Ok(())
+    }
+
+    pub async fn vector_search_profile_full(
+        &self,
+        profile_id: &str,
+        query_embedding: &[f32],
+        top_k: usize,
+        folder_ids: Option<&[String]>,
+        resource_ids: Option<&[String]>,
+        resource_types: Option<&[String]>,
+    ) -> VfsResult<Vec<VfsLanceSearchResult>> {
+        let profile = self.resolve_active_profile_for_search(profile_id)?;
+        if profile.dimension as usize != query_embedding.len() {
+            return Err(VfsError::InvalidArgument {
+                param: "query_embedding".to_string(),
+                reason: format!(
+                    "Profile {} expects dimension {}, got {}",
+                    profile_id,
+                    profile.dimension,
+                    query_embedding.len()
+                ),
+            });
+        }
+        let table = self.open_profile_table(&profile).await?;
+        let row_count = table
+            .count_rows(None)
+            .await
+            .map_err(|error| VfsError::Other(format!("统计 profile 查询表失败: {}", error)))?;
+        let filter = Self::build_filter_expr_full(folder_ids, resource_ids, resource_types);
+        let mut query = table
+            .vector_search(query_embedding)
+            .map_err(|error| VfsError::Other(format!("profile 向量查询构建失败: {}", error)))?
+            .distance_type(DistanceType::Cosine)
+            .select(Select::columns(SEARCH_RESULT_COLUMNS))
+            .limit((top_k.saturating_mul(3)).max(20).min(500));
+        if row_count < MIN_ROWS_FOR_ANN_INDEX {
+            query = query.bypass_vector_index();
+        } else {
+            // IVF-PQ 命中索引时 _distance 是量化(PQ)近似距离，排序可能失真。
+            // refine_factor(2) 让 Lance 先取 2×limit 个 ANN 候选，再读取原始
+            // 向量重算真实余弦距离并重排，纠正近似排序；代价是每次查询多读
+            // 一批全精度向量（延迟小幅上升，本地盘可接受）。
+            // nprobes 保持默认（20 分区）；未来可暴露为设置项按库规模调优。
+            query = query.refine_factor(2);
+        }
+        if let Some(filter) = filter.as_deref() {
+            query = query.only_if(filter);
+        }
         let mut stream = query
             .execute()
             .await
-            .map_err(|e| VfsError::Other(format!("向量查询执行失败: {}", e)))?;
-
+            .map_err(|error| VfsError::Other(format!("profile 向量查询执行失败: {}", error)))?;
         let mut results = Vec::new();
         while let Some(batch) = stream
             .try_next()
             .await
-            .map_err(|e| VfsError::Other(format!("向量查询流读取失败: {}", e)))?
+            .map_err(|error| VfsError::Other(format!("profile 向量查询流读取失败: {}", error)))?
         {
-            let batch_results = Self::extract_search_results(&batch)?;
-            results.extend(batch_results);
+            results.extend(Self::extract_search_results(&batch)?);
         }
-
-        // 按分数排序并截断
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+        let mut results = self.retain_active_unit_generations(&profile.modality, results)?;
+        results.sort_by(|left, right| {
+            right
+                .score
+                .partial_cmp(&left.score)
+                .unwrap_or(Ordering::Equal)
+        });
         results.truncate(top_k);
+        Ok(results)
+    }
 
-        info!(
-            "[VfsLanceStore] vector_search completed: {} results in {}ms",
-            results.len(),
-            start.elapsed().as_millis()
-        );
-
+    pub async fn fts_search_profile_full(
+        &self,
+        profile_id: &str,
+        query_text: &str,
+        top_k: usize,
+        folder_ids: Option<&[String]>,
+        resource_ids: Option<&[String]>,
+        resource_types: Option<&[String]>,
+    ) -> VfsResult<Vec<VfsLanceSearchResult>> {
+        let profile = self.resolve_active_profile_for_search(profile_id)?;
+        let table = self.open_profile_table(&profile).await?;
+        let filter = Self::build_filter_expr_full(folder_ids, resource_ids, resource_types);
+        let mut query = table
+            .query()
+            .full_text_search(FullTextSearchQuery::new(query_text.to_string()))
+            .select(Select::columns(SEARCH_RESULT_COLUMNS))
+            .limit((top_k.saturating_mul(3)).max(20).min(500));
+        if let Some(filter) = filter.as_deref() {
+            query = query.only_if(filter);
+        }
+        let mut stream = query
+            .execute()
+            .await
+            .map_err(|error| VfsError::Other(format!("FTS 查询执行失败: {}", error)))?;
+        let mut results = Vec::new();
+        while let Some(batch) = stream
+            .try_next()
+            .await
+            .map_err(|error| VfsError::Other(format!("FTS 查询流读取失败: {}", error)))?
+        {
+            results.extend(Self::extract_search_results_hybrid(&batch)?);
+        }
+        let mut results = self.retain_active_unit_generations(&profile.modality, results)?;
+        results.sort_by(|left, right| {
+            right
+                .score
+                .partial_cmp(&left.score)
+                .unwrap_or(Ordering::Equal)
+        });
+        results.truncate(top_k);
         Ok(results)
     }
 
@@ -892,7 +1870,8 @@ impl VfsLanceStore {
         .await
     }
 
-    /// 混合检索（支持 resource_ids 过滤）
+    /// Legacy dimension-only hybrid lookup is disabled because a bare vector does not
+    /// identify the model fingerprint/profile that produced it.
     pub async fn hybrid_search_full(
         &self,
         modality: &str,
@@ -903,76 +1882,20 @@ impl VfsLanceStore {
         resource_ids: Option<&[String]>,
         resource_types: Option<&[String]>,
     ) -> VfsResult<Vec<VfsLanceSearchResult>> {
-        let dim = query_embedding.len();
-        let tbl = self.ensure_table(modality, dim).await?;
-
-        let fetch_limit = (top_k * 3).max(20).min(500);
-
-        // 诊断日志：查询向量范数
-        let query_norm: f32 = query_embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-        info!(
-            "[VfsLanceStore] hybrid_search: dim={}, query_norm={:.6}, top_k={}, query='{}'",
-            dim, query_norm, top_k, query_text
+        let _ = (
+            modality,
+            query_text,
+            query_embedding,
+            top_k,
+            folder_ids,
+            resource_ids,
+            resource_types,
         );
-
-        let start = Instant::now();
-        debug!(
-            "[VfsLanceStore] hybrid_search: dim={}, top_k={}, query='{}', resources={:?}",
-            dim, top_k, query_text, resource_ids
-        );
-
-        let fts_query = FullTextSearchQuery::new(query_text.to_owned());
-        let filter_expr = Self::build_filter_expr_full(folder_ids, resource_ids, resource_types);
-
-        let mut query = tbl
-            .query()
-            .full_text_search(fts_query)
-            .nearest_to(query_embedding.to_vec())
-            .map_err(|e| VfsError::Other(format!("混合查询构建失败: {}", e)))?
-            .distance_type(DistanceType::Cosine)
-            .limit(fetch_limit);
-
-        if let Some(ref expr) = filter_expr {
-            query = query.only_if(expr.as_str());
-        }
-
-        let mut stream = query
-            .execute_hybrid(QueryExecutionOptions::default())
-            .await
-            .map_err(|e| VfsError::Other(format!("混合查询执行失败: {}", e)))?;
-
-        let mut results = Vec::new();
-        while let Some(batch) = stream
-            .try_next()
-            .await
-            .map_err(|e| VfsError::Other(format!("混合查询流读取失败: {}", e)))?
-        {
-            let batch_results = Self::extract_search_results_hybrid(&batch)?;
-            results.extend(batch_results);
-        }
-
-        // 按分数排序并截断
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
-        results.truncate(top_k);
-
-        // 归一化 RRF 得分到 [0, 1] 范围，使最高分接近 1.0
-        // RRF 得分公式: 1 / (k + rank)，k=60 时最大约 0.0164
-        if !results.is_empty() {
-            let max_score = results.iter().map(|r| r.score).fold(0.0f32, f32::max);
-            if max_score > 0.0 {
-                for r in results.iter_mut() {
-                    r.score = (r.score / max_score).clamp(0.0, 1.0);
-                }
-            }
-        }
-
-        info!(
-            "[VfsLanceStore] hybrid_search completed: {} results in {}ms",
-            results.len(),
-            start.elapsed().as_millis()
-        );
-
-        Ok(results)
+        Err(VfsError::InvalidState {
+            message:
+                "dimension-only VFS hybrid search is disabled; use planner-owned profile routes"
+                    .to_string(),
+        })
     }
 
     /// 构建过滤表达式
@@ -1073,6 +1996,9 @@ impl VfsLanceStore {
         let idx_res_id = schema
             .index_of("resource_id")
             .map_err(|e| VfsError::Other(format!("缺少 resource_id 列: {}", e)))?;
+        let idx_unit_id = schema
+            .index_of("unit_id")
+            .map_err(|e| VfsError::Other(format!("缺少 unit_id 列: {}", e)))?;
         let idx_res_type = schema
             .index_of("resource_type")
             .map_err(|e| VfsError::Other(format!("缺少 resource_type 列: {}", e)))?;
@@ -1084,6 +2010,12 @@ impl VfsLanceStore {
             .index_of("text")
             .map_err(|e| VfsError::Other(format!("缺少 text 列: {}", e)))?;
         let idx_meta = schema.index_of("metadata").ok();
+        let idx_profile_id = schema
+            .index_of("index_profile_id")
+            .map_err(|e| VfsError::Other(format!("缺少 index_profile_id 列: {}", e)))?;
+        let idx_generation = schema
+            .index_of("generation")
+            .map_err(|e| VfsError::Other(format!("缺少 generation 列: {}", e)))?;
         let idx_dist = schema.index_of("_distance").ok();
 
         let emb_id_arr = batch
@@ -1096,6 +2028,11 @@ impl VfsLanceStore {
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| VfsError::Other("resource_id 列类型错误".to_string()))?;
+        let unit_id_arr = batch
+            .column(idx_unit_id)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| VfsError::Other("unit_id 列类型错误".to_string()))?;
         let res_type_arr = batch
             .column(idx_res_type)
             .as_any()
@@ -1115,6 +2052,16 @@ impl VfsLanceStore {
             .ok_or_else(|| VfsError::Other("text 列类型错误".to_string()))?;
         let meta_arr =
             idx_meta.and_then(|i| batch.column(i).as_any().downcast_ref::<StringArray>());
+        let profile_id_arr = batch
+            .column(idx_profile_id)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| VfsError::Other("index_profile_id 列类型错误".to_string()))?;
+        let generation_arr = batch
+            .column(idx_generation)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .ok_or_else(|| VfsError::Other("generation 列类型错误".to_string()))?;
 
         // 解析距离/分数
         let mut dists: Option<Vec<f32>> = None;
@@ -1152,6 +2099,7 @@ impl VfsLanceStore {
             results.push(VfsLanceSearchResult {
                 embedding_id: emb_id_arr.value(i).to_string(),
                 resource_id: res_id_arr.value(i).to_string(),
+                unit_id: unit_id_arr.value(i).to_string(),
                 resource_type: res_type_arr.value(i).to_string(),
                 folder_id: folder_arr.and_then(|arr| {
                     if arr.is_null(i) {
@@ -1164,6 +2112,8 @@ impl VfsLanceStore {
                 text: text_arr.value(i).to_string(),
                 score,
                 metadata_json,
+                index_profile_id: profile_id_arr.value(i).to_string(),
+                generation: generation_arr.value(i),
                 page_index,
                 source_id,
             });
@@ -1193,6 +2143,9 @@ impl VfsLanceStore {
         let idx_res_id = schema
             .index_of("resource_id")
             .map_err(|e| VfsError::Other(format!("缺少 resource_id 列: {}", e)))?;
+        let idx_unit_id = schema
+            .index_of("unit_id")
+            .map_err(|e| VfsError::Other(format!("缺少 unit_id 列: {}", e)))?;
         let idx_res_type = schema
             .index_of("resource_type")
             .map_err(|e| VfsError::Other(format!("缺少 resource_type 列: {}", e)))?;
@@ -1204,6 +2157,12 @@ impl VfsLanceStore {
             .index_of("text")
             .map_err(|e| VfsError::Other(format!("缺少 text 列: {}", e)))?;
         let idx_meta = schema.index_of("metadata").ok();
+        let idx_profile_id = schema
+            .index_of("index_profile_id")
+            .map_err(|e| VfsError::Other(format!("缺少 index_profile_id 列: {}", e)))?;
+        let idx_generation = schema
+            .index_of("generation")
+            .map_err(|e| VfsError::Other(format!("缺少 generation 列: {}", e)))?;
         let idx_dist = schema.index_of("_distance").ok();
         let idx_relevance = schema.index_of(LANCE_RELEVANCE_COL).ok();
         let idx_score = schema.index_of(LANCE_FTS_SCORE_COL).ok();
@@ -1218,6 +2177,11 @@ impl VfsLanceStore {
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| VfsError::Other("resource_id 列类型错误".to_string()))?;
+        let unit_id_arr = batch
+            .column(idx_unit_id)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| VfsError::Other("unit_id 列类型错误".to_string()))?;
         let res_type_arr = batch
             .column(idx_res_type)
             .as_any()
@@ -1237,6 +2201,16 @@ impl VfsLanceStore {
             .ok_or_else(|| VfsError::Other("text 列类型错误".to_string()))?;
         let meta_arr =
             idx_meta.and_then(|i| batch.column(i).as_any().downcast_ref::<StringArray>());
+        let profile_id_arr = batch
+            .column(idx_profile_id)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| VfsError::Other("index_profile_id 列类型错误".to_string()))?;
+        let generation_arr = batch
+            .column(idx_generation)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .ok_or_else(|| VfsError::Other("generation 列类型错误".to_string()))?;
 
         // 解析距离/分数
         let mut dists: Option<Vec<f32>> = None;
@@ -1299,6 +2273,7 @@ impl VfsLanceStore {
             results.push(VfsLanceSearchResult {
                 embedding_id: emb_id_arr.value(i).to_string(),
                 resource_id: res_id_arr.value(i).to_string(),
+                unit_id: unit_id_arr.value(i).to_string(),
                 resource_type: res_type_arr.value(i).to_string(),
                 folder_id: folder_arr.and_then(|arr| {
                     if arr.is_null(i) {
@@ -1311,6 +2286,8 @@ impl VfsLanceStore {
                 text: text_arr.value(i).to_string(),
                 score,
                 metadata_json,
+                index_profile_id: profile_id_arr.value(i).to_string(),
+                generation: generation_arr.value(i),
                 page_index,
                 source_id,
             });
@@ -1344,12 +2321,27 @@ impl VfsLanceStore {
 
     /// 优化指定表
     pub async fn optimize_table(&self, modality: &str, dim: usize) -> VfsResult<()> {
-        let table_name = Self::table_name(modality, dim);
+        let table_name = self.active_table_name(modality, dim)?;
+        self.optimize_table_by_name(&table_name).await
+    }
+
+    /// 按表名优化（Compact + 7 天版本 Prune + 索引 delta 合并）。
+    /// 表不存在时静默返回（可能刚被 retirement sweep 回收）。
+    async fn optimize_table_by_name(&self, table_name: &str) -> VfsResult<()> {
+        if let Ok(mut ensured) = self.ensured_tables.lock() {
+            ensured.remove(table_name);
+        }
         let conn = self.connect().await?;
 
-        let tbl = match conn.open_table(&table_name).execute().await {
+        let tbl = match conn.open_table(table_name).execute().await {
             Ok(tbl) => tbl,
-            Err(_) => return Ok(()), // 表不存在，跳过
+            Err(lancedb::Error::TableNotFound { .. }) => return Ok(()),
+            Err(error) => {
+                return Err(VfsError::Other(format!(
+                    "打开待优化 Lance 表 {} 失败: {}",
+                    table_name, error
+                )))
+            }
         };
 
         let start = Instant::now();
@@ -1401,17 +2393,72 @@ impl VfsLanceStore {
         Ok(())
     }
 
-    /// 优化所有表
+    /// 优化指定 modality 的所有活跃表（强制执行，无节流；节流版见
+    /// `maybe_optimize_all`）。
+    ///
+    /// 除 `vfs_embedding_dims` 指向的当前写入表外，还枚举 `vfs_index_profiles`
+    /// 中仍可查询（active/building/queryable）的 profile 分表：模型滚动迁移
+    /// 期间旧 profile 表继续服务查询，若只优化 dim 级指针指向的新表，旧表的
+    /// 版本与未索引 delta 会持续累积。retired 表交由
+    /// `sweep_retired_profile_tables` 整表回收，无需优化。
     pub async fn optimize_all(&self, modality: &str) -> VfsResult<usize> {
         let mut optimized = 0usize;
 
-        let dims = self.get_registered_dimensions(modality)?;
-        for dim in dims {
-            if self.optimize_table(modality, dim).await.is_ok() {
-                optimized += 1;
-            }
+        for table_name in self.optimize_table_names(modality)? {
+            self.optimize_table_by_name(&table_name).await?;
+            optimized += 1;
         }
 
+        Ok(optimized)
+    }
+
+    /// 枚举某 modality 需要优化的全部表名（dim 级活跃表 ∪ 可查询 profile 表）。
+    fn optimize_table_names(&self, modality: &str) -> VfsResult<Vec<String>> {
+        let conn = self.db.get_conn()?;
+        let mut names = crate::vfs::repos::embedding_dim_repo::list_by_modality(&conn, modality)?
+            .into_iter()
+            .map(|dim| dim.lance_table_name)
+            .collect::<Vec<_>>();
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT lance_table_name FROM vfs_index_profiles
+             WHERE modality = ?1 AND state IN ('active', 'building', 'queryable')
+             ORDER BY lance_table_name",
+        )?;
+        let profile_names = stmt
+            .query_map(rusqlite::params![modality], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        names.extend(profile_names);
+        names.sort();
+        names.dedup();
+        Ok(names)
+    }
+
+    /// 节流的自动优化入口（后台索引 worker 每个 tick 直接调用即可）。
+    ///
+    /// 距上次尝试不足 `OPTIMIZE_MIN_INTERVAL_SECS` 时直接返回 `Ok(0)`。
+    /// 节流时间戳在优化开始前先占位（而非成功后记账）：
+    /// - 并发调用只会有一个进入优化；
+    /// - 优化失败不会在下一个 ~5s tick 立即重试，避免持续失败时的重 IO 风暴。
+    ///
+    /// 覆盖 text 与 multimodal 两个 modality（与 `vfs_embedding_dims` /
+    /// `vfs_index_profiles` 实际注册的 modality 取值一致）。优化失败向调用方
+    /// 返回 Err，由调用方吞错记日志，不得影响索引主流程。
+    pub async fn maybe_optimize_all(&self) -> VfsResult<usize> {
+        {
+            let mut last = self
+                .last_optimize_at
+                .lock()
+                .map_err(|_| VfsError::Other("optimize throttle lock poisoned".to_string()))?;
+            if last.is_some_and(|at| at.elapsed().as_secs() < OPTIMIZE_MIN_INTERVAL_SECS) {
+                return Ok(0);
+            }
+            *last = Some(Instant::now());
+        }
+
+        let mut optimized = 0usize;
+        for modality in ["text", "multimodal"] {
+            optimized += self.optimize_all(modality).await?;
+        }
         Ok(optimized)
     }
 
@@ -1420,9 +2467,14 @@ impl VfsLanceStore {
         let conn = self.connect().await?;
         let mut stats = Vec::new();
 
-        let dims = self.get_registered_dimensions(modality)?;
-        for dim in dims {
-            let table_name = Self::table_name(modality, dim);
+        let table_names = {
+            let sql_conn = self.db.get_conn()?;
+            crate::vfs::repos::embedding_dim_repo::list_by_modality(&sql_conn, modality)?
+                .into_iter()
+                .map(|dim| dim.lance_table_name)
+                .collect::<Vec<_>>()
+        };
+        for table_name in table_names {
             if let Ok(tbl) = conn.open_table(&table_name).execute().await {
                 if let Ok(count) = tbl.count_rows(None).await {
                     if count > 0 {
@@ -1445,9 +2497,13 @@ impl VfsLanceStore {
         let conn = self.connect().await?;
         let mut diagnostics = Vec::new();
 
-        let dims = self.get_registered_dimensions(modality)?;
-        for dim in dims {
-            let table_name = Self::table_name(modality, dim);
+        let prefix = format!("{}{}_", VFS_LANCE_TABLE_PREFIX, modality);
+        for table_name in self.cleanup_table_names(modality)? {
+            let dimension = table_name
+                .strip_prefix(&prefix)
+                .and_then(|suffix| suffix.split('_').next())
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(0);
             if let Ok(tbl) = conn.open_table(&table_name).execute().await {
                 // 获取表 schema
                 let schema = tbl
@@ -1510,7 +2566,7 @@ impl VfsLanceStore {
 
                 diagnostics.push(LanceTableDiagnostic {
                     table_name,
-                    dimension: dim,
+                    dimension,
                     row_count,
                     columns,
                     has_metadata_column: has_metadata,
@@ -1539,27 +2595,50 @@ impl VfsLanceStore {
     ///
     /// 删除所有维度表中的全部数据
     pub async fn clear_all(&self, modality: &str) -> VfsResult<usize> {
+        let _mutation_guard = VFS_MUTATION_LOCK.write().await;
         let conn = self.connect().await?;
-        let mut deleted_tables = 0usize;
+        let prefix = format!("{}{}_", VFS_LANCE_TABLE_PREFIX, modality);
+        let mut table_names: Vec<String> = conn
+            .table_names()
+            .execute()
+            .await
+            .map_err(|e| VfsError::Other(format!("枚举 Lance 表失败: {}", e)))?
+            .into_iter()
+            .filter(|name| {
+                name.strip_prefix(&prefix)
+                    .and_then(|suffix| suffix.split('_').next())
+                    .and_then(|dimension| dimension.parse::<usize>().ok())
+                    .is_some()
+            })
+            .collect();
+        table_names.sort();
 
-        let dims = self.get_registered_dimensions(modality)?;
-        for dim in dims {
-            let table_name = Self::table_name(modality, dim);
-            if let Ok(tbl) = conn.open_table(&table_name).execute().await {
-                // 删除表中所有数据
-                if tbl.delete("true").await.is_ok() {
-                    deleted_tables += 1;
-                    info!("[VfsLanceStore] Cleared all data from table {}", table_name);
-                }
+        for table_name in &table_names {
+            let table = conn.open_table(table_name).execute().await.map_err(|e| {
+                VfsError::Other(format!("打开待清空 Lance 表 {} 失败: {}", table_name, e))
+            })?;
+            table.delete("true").await.map_err(|e| {
+                VfsError::Other(format!("清空 Lance 表 {} 失败: {}", table_name, e))
+            })?;
+            let remaining = table.count_rows(None::<String>).await.map_err(|e| {
+                VfsError::Other(format!("校验 Lance 表 {} 清空结果失败: {}", table_name, e))
+            })?;
+            if remaining != 0 {
+                return Err(VfsError::Other(format!(
+                    "Lance 表 {} 清空后仍残留 {} 行",
+                    table_name, remaining
+                )));
             }
+            info!("[VfsLanceStore] Cleared all data from table {}", table_name);
         }
 
         info!(
             "[VfsLanceStore] Cleared {} tables for modality {}",
-            deleted_tables, modality
+            table_names.len(),
+            modality
         );
 
-        Ok(deleted_tables)
+        Ok(table_names.len())
     }
 }
 
@@ -1574,6 +2653,278 @@ mod tests {
             VfsLanceStore::table_name("multimodal", 4096),
             "vfs_emb_multimodal_4096"
         );
+    }
+
+    #[tokio::test]
+    async fn dimension_only_search_apis_reject_bare_vectors() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).unwrap();
+        let vector = store
+            .vector_search_full("text", &[0.0; 64], 5, None, None, None)
+            .await
+            .expect_err("dimension-only vector lookup must be disabled");
+        assert!(vector.to_string().contains("profile_id"));
+
+        let hybrid = store
+            .hybrid_search_full("text", "query", &[0.0; 64], 5, None, None, None)
+            .await
+            .expect_err("dimension-only hybrid lookup must be disabled");
+        assert!(hybrid.to_string().contains("planner-owned"));
+    }
+
+    #[test]
+    fn stale_embedding_result_cannot_switch_the_writable_profile_back() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).unwrap();
+        let profile_a = store
+            .ensure_model_profile("text", 64, "cfg-a", Some("model-a"))
+            .unwrap();
+        let conn = store.db.get_conn_safe().unwrap();
+        conn.execute(
+            "UPDATE vfs_embedding_dims SET record_count = 1
+             WHERE dimension = 64 AND modality = 'text'",
+            [],
+        )
+        .unwrap();
+        crate::vfs::repos::embedding_dim_repo::register_with_model(
+            &conn,
+            64,
+            "text",
+            Some("cfg-b"),
+            Some("model-b"),
+        )
+        .unwrap();
+        let profile_b =
+            crate::vfs::repos::embedding_dim_repo::get_active_profile(&conn, 64, "text")
+                .unwrap()
+                .unwrap();
+        assert_ne!(profile_a.id, profile_b.id);
+        drop(conn);
+
+        let stale = store.ensure_model_profile("text", 64, "cfg-a", Some("model-a"));
+        assert!(matches!(stale, Err(VfsError::InvalidState { .. })));
+        let conn = store.db.get_conn_safe().unwrap();
+        assert_eq!(
+            crate::vfs::repos::embedding_dim_repo::get_active_profile(&conn, 64, "text")
+                .unwrap()
+                .unwrap()
+                .id,
+            profile_b.id
+        );
+    }
+
+    #[test]
+    fn legacy_profile_rolls_to_strong_fingerprint_without_a_query_gap() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).unwrap();
+        let legacy = store
+            .ensure_model_profile("text", 64, "cfg-legacy", Some("Legacy display name"))
+            .unwrap();
+        let conn = store.db.get_conn_safe().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE vfs_embedding_dims
+             SET record_count = 1,
+                 model_fingerprint = 'legacy:model-config:cfg-legacy',
+                 model_name = 'Provider - model-real'
+             WHERE dimension = 64 AND modality = 'text'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE vfs_index_profiles
+             SET model_fingerprint = 'legacy:model-config:cfg-legacy',
+                 model_name = 'Provider - model-real', ann_metric = 'legacy_l2'
+             WHERE id = ?1",
+            rusqlite::params![legacy.id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO resources
+             (id, hash, type, storage_mode, data, ref_count, index_state, created_at, updated_at)
+             VALUES ('resource-legacy-roll', 'hash-legacy-roll', 'note', 'inline',
+                     'legacy text', 0, 'indexed', ?1, ?1)",
+            rusqlite::params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_units
+             (id, resource_id, unit_index, text_content, text_required, text_state,
+              text_embedding_dim, text_profile_id, text_generation, created_at, updated_at)
+             VALUES ('unit-legacy-roll', 'resource-legacy-roll', 0, 'legacy text', 1,
+                     'indexed', 64, ?1, 0, ?2, ?2)",
+            rusqlite::params![legacy.id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_segments
+             (id, unit_id, segment_index, modality, embedding_dim, lance_row_id,
+              index_profile_id, generation, created_at, updated_at)
+             VALUES ('segment-legacy-roll', 'unit-legacy-roll', 0, 'text', 64,
+                     'embedding-legacy-roll', ?1, 0, ?2, ?2)",
+            rusqlite::params![legacy.id, now],
+        )
+        .unwrap();
+        drop(conn);
+
+        let strong_fingerprint =
+            crate::vfs::repos::embedding_dim_repo::model_fingerprint_with_transport(
+                "cfg-legacy",
+                "model-real",
+                "text-embedding-v1",
+                Some("openai-compatible"),
+                Some("custom"),
+                Some("https://example.com/v1"),
+                Some("openai"),
+                Some("openai"),
+            );
+        let strong = store
+            .ensure_model_profile_with_fingerprint(
+                "text",
+                64,
+                "cfg-legacy",
+                Some("model-real"),
+                &strong_fingerprint,
+            )
+            .unwrap();
+
+        assert_ne!(strong.id, legacy.id);
+        assert_ne!(strong.lance_table_name, legacy.lance_table_name);
+        assert_eq!(strong.model_fingerprint, strong_fingerprint);
+        assert_eq!(strong.state, "building");
+
+        let conn = store.db.get_conn_safe().unwrap();
+        let old_profile: (String, String) = conn
+            .query_row(
+                "SELECT model_fingerprint, state FROM vfs_index_profiles WHERE id = ?1",
+                rusqlite::params![legacy.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let active_binding: (String, String) = conn
+            .query_row(
+                "SELECT active_profile_id, model_fingerprint
+                 FROM vfs_embedding_dims
+                 WHERE dimension = 64 AND modality = 'text'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let pending: (String, String, String) = conn
+            .query_row(
+                "SELECT u.text_state, u.text_profile_id, r.index_state
+                 FROM vfs_index_units u
+                 JOIN resources r ON r.id = u.resource_id
+                 WHERE u.id = 'unit-legacy-roll'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            old_profile,
+            (
+                "legacy:model-config:cfg-legacy".to_string(),
+                "queryable".to_string()
+            )
+        );
+        assert_eq!(
+            active_binding,
+            (strong.id.clone(), strong_fingerprint.clone())
+        );
+        assert_eq!(
+            pending,
+            (
+                "pending".to_string(),
+                legacy.id.clone(),
+                "pending".to_string()
+            )
+        );
+        drop(conn);
+
+        let stale_legacy_batch = store.ensure_model_profile_with_fingerprint(
+            "text",
+            64,
+            "cfg-legacy",
+            Some("Provider - model-real"),
+            "legacy:model-config:cfg-legacy",
+        );
+        assert!(matches!(
+            stale_legacy_batch,
+            Err(VfsError::InvalidState { .. })
+        ));
+        let conn = store.db.get_conn_safe().unwrap();
+        let still_active: String = conn
+            .query_row(
+                "SELECT active_profile_id FROM vfs_embedding_dims
+                 WHERE dimension = 64 AND modality = 'text'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(still_active, strong.id);
+    }
+
+    #[test]
+    fn legacy_upgrade_rejects_unbound_or_mismatched_config_profiles() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).unwrap();
+        let profile = store
+            .ensure_model_profile("text", 64, "cfg-bound", Some("model-real"))
+            .unwrap();
+        let conn = store.db.get_conn_safe().unwrap();
+        conn.execute(
+            "UPDATE vfs_embedding_dims
+             SET record_count = 1,
+                 model_fingerprint = 'legacy:unbound:text:64',
+                 model_config_id = 'cfg-bound'
+             WHERE dimension = 64 AND modality = 'text'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE vfs_index_profiles
+             SET model_fingerprint = 'legacy:unbound:text:64',
+                 model_config_id = 'cfg-bound'
+             WHERE id = ?1",
+            rusqlite::params![profile.id],
+        )
+        .unwrap();
+        drop(conn);
+
+        let unbound = store.ensure_model_profile("text", 64, "cfg-bound", Some("model-real"));
+        assert!(matches!(unbound, Err(VfsError::InvalidState { .. })));
+
+        let conn = store.db.get_conn_safe().unwrap();
+        conn.execute(
+            "UPDATE vfs_embedding_dims
+             SET model_fingerprint = 'legacy:model-config:cfg-bound',
+                 model_config_id = 'cfg-other'
+             WHERE dimension = 64 AND modality = 'text'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE vfs_index_profiles
+             SET model_fingerprint = 'legacy:model-config:cfg-bound',
+                 model_config_id = 'cfg-other'
+             WHERE id = ?1",
+            rusqlite::params![profile.id],
+        )
+        .unwrap();
+        drop(conn);
+
+        let mismatched = store.ensure_model_profile("text", 64, "cfg-bound", Some("model-real"));
+        assert!(matches!(mismatched, Err(VfsError::InvalidState { .. })));
+        let conn = store.db.get_conn_safe().unwrap();
+        let active_profile_id: String = conn
+            .query_row(
+                "SELECT active_profile_id FROM vfs_embedding_dims
+                 WHERE dimension = 64 AND modality = 'text'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(active_profile_id, profile.id);
     }
 
     #[test]
@@ -1607,5 +2958,345 @@ mod tests {
             expr,
             Some("folder_id = 'folder1' AND resource_type IN ('note', 'textbook')".to_string())
         );
+    }
+
+    async fn create_legacy_table_without_lifecycle_columns(
+        store: &VfsLanceStore,
+        table_name: &str,
+    ) {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("embedding_id", DataType::Utf8, false),
+            Field::new("resource_id", DataType::Utf8, false),
+            Field::new("resource_type", DataType::Utf8, false),
+            Field::new("folder_id", DataType::Utf8, true),
+            Field::new("chunk_index", DataType::Int32, false),
+            Field::new("text", DataType::Utf8, false),
+            Field::new("metadata", DataType::Utf8, true),
+            Field::new("created_at", DataType::Utf8, false),
+            Field::new(
+                "embedding",
+                DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, false)), 64),
+                false,
+            ),
+        ]));
+        let embedding_values: ArrayRef = Arc::new(Float32Array::from(vec![0.2; 128]));
+        let embeddings: ArrayRef = Arc::new(
+            FixedSizeListArray::try_new(
+                Arc::new(Field::new("item", DataType::Float32, false)),
+                64,
+                embedding_values,
+                None,
+            )
+            .unwrap(),
+        );
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(StringArray::from(vec![
+                    "legacy-orphan",
+                    "legacy-still-live",
+                ])),
+                Arc::new(StringArray::from(vec![
+                    "legacy-resource",
+                    "legacy-resource",
+                ])),
+                Arc::new(StringArray::from(vec!["note", "note"])),
+                Arc::new(StringArray::from(vec![None::<&str>, None::<&str>])),
+                Arc::new(Int32Array::from(vec![0, 1])),
+                Arc::new(StringArray::from(vec!["old chunk", "other old chunk"])),
+                Arc::new(StringArray::from(vec![None::<&str>, None::<&str>])),
+                Arc::new(StringArray::from(vec![
+                    "2026-01-01T00:00:00Z",
+                    "2026-01-01T00:00:00Z",
+                ])),
+                embeddings,
+            ],
+        )
+        .unwrap();
+        let batches = RecordBatchIterator::new(
+            vec![Ok::<_, arrow_schema::ArrowError>(batch)].into_iter(),
+            schema,
+        );
+        store
+            .connect()
+            .await
+            .unwrap()
+            .create_table(table_name, batches)
+            .execute()
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn legacy_cleanup_preserves_queryable_tables_and_retirement_sweep_retries() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).expect("create VFS Lance store");
+        let legacy = store
+            .ensure_model_profile("text", 64, "cfg-legacy-cleanup", Some("legacy-model"))
+            .expect("create legacy profile metadata");
+        {
+            let conn = store.db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE vfs_index_profiles SET state = 'queryable' WHERE id = ?1",
+                rusqlite::params![legacy.id],
+            )
+            .unwrap();
+        }
+        create_legacy_table_without_lifecycle_columns(&store, &legacy.lance_table_name).await;
+
+        assert_eq!(
+            store
+                .delete_by_unit_except_ids(
+                    "text",
+                    "legacy-resource",
+                    "unit-current",
+                    &["new-row".to_string()],
+                )
+                .await
+                .expect("legacy per-unit cleanup must be a safe no-op"),
+            0
+        );
+        let legacy_table = store
+            .connect()
+            .await
+            .unwrap()
+            .open_table(&legacy.lance_table_name)
+            .execute()
+            .await
+            .unwrap();
+        assert_eq!(legacy_table.count_rows(None::<String>).await.unwrap(), 2);
+        drop(legacy_table);
+
+        let replacement = store
+            .ensure_model_profile("text", 64, "cfg-replacement", Some("replacement-model"))
+            .expect("roll writable profile forward");
+        assert_ne!(replacement.id, legacy.id);
+        assert!(store
+            .retired_profile_table_candidates()
+            .unwrap()
+            .contains(&legacy.lance_table_name));
+
+        let simulated_failure = store
+            .sweep_retired_profile_tables_inner(|table_name| {
+                Err(VfsError::Other(format!(
+                    "simulated table occupancy for {table_name}"
+                )))
+            })
+            .await;
+        assert!(simulated_failure.is_err());
+        assert!(store
+            .connect()
+            .await
+            .unwrap()
+            .table_names()
+            .execute()
+            .await
+            .unwrap()
+            .contains(&legacy.lance_table_name));
+        assert!(store
+            .retired_profile_table_candidates()
+            .unwrap()
+            .contains(&legacy.lance_table_name));
+
+        assert_eq!(
+            store.sweep_retired_profile_tables().await.unwrap(),
+            1,
+            "the durable retired profile must retry on the next sweep"
+        );
+        assert_eq!(store.sweep_retired_profile_tables().await.unwrap(), 0);
+        let table_names = store
+            .connect()
+            .await
+            .unwrap()
+            .table_names()
+            .execute()
+            .await
+            .unwrap();
+        assert!(!table_names.contains(&legacy.lance_table_name));
+        let conn = store.db.get_conn_safe().unwrap();
+        assert_eq!(
+            crate::vfs::repos::embedding_dim_repo::get_profile_by_id(&conn, &legacy.id)
+                .unwrap()
+                .unwrap()
+                .state,
+            "retired"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn clear_all_discovers_actual_tables_and_verifies_no_rows_remain() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).expect("create VFS Lance store");
+        let profile = store
+            .ensure_model_profile("text", 64, "cfg-clear", Some("model-clear"))
+            .expect("create writable profile");
+        {
+            let conn = store.db.get_conn_safe().unwrap();
+            let now = chrono::Utc::now().timestamp_millis();
+            conn.execute(
+                "INSERT INTO resources
+                 (id, hash, type, storage_mode, data, ref_count, created_at, updated_at)
+                 VALUES ('resource-clear', 'hash-resource-clear', 'note', 'inline', 'text', 0, ?1, ?1)",
+                rusqlite::params![now],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO vfs_index_units
+                 (id, resource_id, unit_index, text_content, text_required, text_state,
+                  text_profile_id, text_generation, created_at, updated_at)
+                 VALUES ('unit-clear', 'resource-clear', 0, 'text', 1, 'indexing', ?1, 1, ?2, ?2)",
+                rusqlite::params![profile.id, now],
+            )
+            .unwrap();
+        }
+        store
+            .write_chunks(
+                "text",
+                &[VfsLanceRow {
+                    embedding_id: "emb-clear".to_string(),
+                    resource_id: "resource-clear".to_string(),
+                    unit_id: "unit-clear".to_string(),
+                    resource_type: "note".to_string(),
+                    folder_id: None,
+                    chunk_index: 0,
+                    text: "vector that must be removed".to_string(),
+                    metadata_json: None,
+                    created_at: chrono::Utc::now().to_rfc3339(),
+                    index_profile_id: profile.id.clone(),
+                    generation: 1,
+                    embedding: vec![0.1; 64],
+                }],
+            )
+            .await
+            .expect("write VFS Lance row");
+
+        let table = store
+            .connect()
+            .await
+            .expect("connect Lance")
+            .open_table(&profile.lance_table_name)
+            .execute()
+            .await
+            .expect("open written table");
+        assert_eq!(table.count_rows(None::<String>).await.unwrap(), 1);
+
+        assert_eq!(store.clear_all("text").await.expect("clear text"), 1);
+        let cleared_table = store
+            .connect()
+            .await
+            .expect("connect Lance")
+            .open_table(&profile.lance_table_name)
+            .execute()
+            .await
+            .expect("reopen cleared table");
+        assert_eq!(cleared_table.count_rows(None::<String>).await.unwrap(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn tiny_legacy_profile_repairs_to_exact_and_unit_generation_is_authoritative() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).expect("create VFS Lance store");
+        let profile = store
+            .ensure_model_profile("text", 64, "cfg-generation", Some("model-generation"))
+            .expect("create profile");
+        {
+            let conn = store.db.get_conn_safe().unwrap();
+            let now = chrono::Utc::now().timestamp_millis();
+            conn.execute(
+                "INSERT INTO resources
+                 (id, hash, type, storage_mode, data, ref_count, index_state, created_at, updated_at)
+                 VALUES ('resource-generation', 'hash-generation', 'note', 'inline', 'text', 0, 'pending', ?1, ?1)",
+                rusqlite::params![now],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO vfs_index_units
+                 (id, resource_id, unit_index, text_content, text_required, text_state,
+                  text_profile_id, text_generation, created_at, updated_at)
+                 VALUES ('unit-generation', 'resource-generation', 0, 'text', 1, 'indexed', ?1, 1, ?2, ?2)",
+                rusqlite::params![profile.id, now],
+            )
+            .unwrap();
+        }
+
+        let make_row = |id: &str, generation: i64| VfsLanceRow {
+            embedding_id: id.to_string(),
+            resource_id: "resource-generation".to_string(),
+            unit_id: "unit-generation".to_string(),
+            resource_type: "note".to_string(),
+            folder_id: None,
+            chunk_index: generation as i32,
+            text: format!("generation {}", generation),
+            metadata_json: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            index_profile_id: profile.id.clone(),
+            generation,
+            embedding: vec![0.25; 64],
+        };
+        store
+            .write_chunks(
+                "text",
+                &[
+                    make_row("emb-generation-1", 1),
+                    make_row("emb-generation-2", 2),
+                ],
+            )
+            .await
+            .unwrap();
+
+        {
+            let conn = store.db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE vfs_index_profiles SET ann_metric = 'legacy_l2', ann_index_version = 0
+                 WHERE id = ?1",
+                rusqlite::params![profile.id],
+            )
+            .unwrap();
+        }
+        store
+            .ensured_tables
+            .lock()
+            .unwrap()
+            .remove(&profile.lance_table_name);
+        store.ensure_profile_ready(&profile.id).await.unwrap();
+        let repaired = {
+            let conn = store.db.get_conn_safe().unwrap();
+            crate::vfs::repos::embedding_dim_repo::get_profile_by_id(&conn, &profile.id)
+                .unwrap()
+                .unwrap()
+        };
+        assert_eq!(repaired.ann_metric, "exact");
+        assert_eq!(repaired.ann_index_version, ANN_INDEX_VERSION);
+        assert!(store
+            .ensured_tables
+            .lock()
+            .unwrap()
+            .contains(&profile.lance_table_name));
+        store.ensure_profile_ready(&profile.id).await.unwrap();
+
+        let generation_one = store
+            .vector_search_profile_full(&profile.id, &vec![0.25; 64], 10, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(generation_one.len(), 1);
+        assert_eq!(generation_one[0].embedding_id, "emb-generation-1");
+
+        {
+            let conn = store.db.get_conn_safe().unwrap();
+            crate::vfs::repos::index_unit_repo::set_index_profile(
+                &conn,
+                "unit-generation",
+                "text",
+                &profile.id,
+                2,
+            )
+            .unwrap();
+        }
+        let generation_two = store
+            .vector_search_profile_full(&profile.id, &vec![0.25; 64], 10, None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(generation_two.len(), 1);
+        assert_eq!(generation_two[0].embedding_id, "emb-generation-2");
     }
 }

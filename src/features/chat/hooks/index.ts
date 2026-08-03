@@ -119,13 +119,8 @@ export {
 // ============================================================================
 // 附件上下文引用管理
 // ============================================================================
-
-export {
-  useAttachmentContextRef,
-  type UseAttachmentContextRefOptions,
-  type UseAttachmentContextRefReturn,
-  type AttachmentResourceMapping,
-} from './useAttachmentContextRef';
+// ★ 2026-07 分区 B 清理：useAttachmentContextRef 为生产零引用的孤儿实现
+//（VFS 上传逻辑的实际生产路径在 input-bar/InputBarUI 内联实现），已删除。
 
 // ============================================================================
 // 文件夹上下文引用管理

@@ -1,0 +1,137 @@
+{
+  "format_version": 1,
+  "description": "Historical database fixtures for migration-compatibility CI. Each case describes one app data dir (slot) with all four core databases pinned at a historical schema tuple, seeded with deterministic SQL, optionally history-mutated, then upgraded to HEAD via the production MigrationCoordinator::run_all().",
+  "fixture_kinds": {
+    "bootstrap_sql": "Deterministic fixture: the harness replays the real (immutable) historical migration scripts up to schema_tuple via the production refinery runners, then applies the seed SQL and history_ops. No binary artifacts are stored in the repository.",
+    "release_binary": "Reserved for future fixtures captured from packaged releases: a real .db file committed (or fetched) as a binary artifact, referenced by the `binary` field. No such fixture exists yet; the harness fails loudly if it encounters this kind, instead of pretending to download artifacts."
+  },
+  "cases": [
+    {
+      "id": "legacy_20260130_first_epoch",
+      "kind": "bootstrap_sql",
+      "source_release": "first consolidated schema epoch (app builds ~2026-01-30, pre-refinery bookkeeping for chat_v2/llm_usage)",
+      "schema_tuple": { "vfs": 20260130, "chat_v2": 20260130, "mistakes": 20260130, "llm_usage": 20260130 },
+      "tags": ["oldest_legacy", "legacy_marker_tables", "ensure_legacy_baseline", "malformed_json", "data_destructive_migration", "cjk_unicode"],
+      "expected_semantics": "All seeded user data survives ~6 months of migrations: notes/questions/mistakes/usage rows intact, notes_versions table dropped by V20260214 (data intentionally discarded), legacy 'deleted' chat session re-interpreted as 'archived' by V20260502, FTS and note_tags backfilled at HEAD, malformed JSON columns tolerated end-to-end.",
+      "history_ops": [
+        { "database": "chat_v2", "op": "drop_refinery_history" },
+        { "database": "chat_v2", "op": "create_legacy_marker_table", "table": "chat_v2_migrations" },
+        { "database": "llm_usage", "op": "drop_refinery_history" },
+        { "database": "llm_usage", "op": "create_legacy_marker_table", "table": "schema_version" }
+      ],
+      "allowed_extra_tables": {
+        "chat_v2": ["chat_v2_migrations"],
+        "llm_usage": ["schema_version"]
+      },
+      "seeds": {
+        "vfs": { "file": "seeds/legacy_20260130_first_epoch/vfs.sql", "sha256": "eedbe8e79623eefa64cf81d2aa56ac4da772c670ad2bc380ec7a25453ac63fbf" },
+        "chat_v2": { "file": "seeds/legacy_20260130_first_epoch/chat_v2.sql", "sha256": "814185508441550bf450f82e39760618f20581946ace943196c5107d8fee38bd" },
+        "mistakes": { "file": "seeds/legacy_20260130_first_epoch/mistakes.sql", "sha256": "d05643dbb06367d6d5a9fd52243ae0c3c341ce6a210ccdaf622a4e96af47939d" },
+        "llm_usage": { "file": "seeds/legacy_20260130_first_epoch/llm_usage.sql", "sha256": "f8f9b30fee38a6af09e897e6710f849cbadbdb6955494df27371fccdb0b2afff" }
+      },
+      "oracles": [
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM notes WHERE deleted_at IS NULL", "expected": "2" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='notes_versions'", "expected": "0" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM note_tags", "expected": "2" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH '\"深度学习\"'", "expected": "1" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM questions", "expected": "2" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM questions_fts", "expected": "2" },
+        { "database": "chat_v2", "query": "SELECT persist_status FROM chat_v2_sessions WHERE id='sess_legacy0002'", "expected": "archived" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_blocks", "expected": "3" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_content_fts", "expected": "3" },
+        { "database": "mistakes", "query": "SELECT COUNT(*) FROM mistakes", "expected": "2" },
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM llm_usage_logs", "expected": "2" },
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM llm_usage_daily", "expected": "1" },
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='__change_log'", "expected": "1" }
+      ]
+    },
+    {
+      "id": "epoch_20260312_dirty_data",
+      "kind": "bootstrap_sql",
+      "source_release": "2026-03 schema epoch (todo/pomodoro landed, sync-coverage columns of V20260523 not yet present)",
+      "schema_tuple": { "vfs": 20260312, "chat_v2": 20260302, "mistakes": 20260209, "llm_usage": 20260202 },
+      "tags": ["mid_epoch", "dirty_data", "malformed_json", "fts_ghost_and_missing_entries", "pomodoro_updated_at_backfill", "note_tags_dedup"],
+      "expected_semantics": "Dirty user data upgrades cleanly: pomodoro rows gain sync columns (V20260523) and get updated_at backfilled from created_at (V20260721); note tags mixing numbers/whitespace/duplicates normalize to exactly 2 tags in note_tags (V20260722); chat FTS ghost entry removed and missing entry restored by the V20260719 rebuild; malformed JSON metadata survives untouched.",
+      "history_ops": [],
+      "allowed_extra_tables": {},
+      "seeds": {
+        "vfs": { "file": "seeds/epoch_20260312_dirty_data/vfs.sql", "sha256": "64a1eff25dae036025264c93a1d86d4a888fe4d1cccbaf5fb896535c142fbc59" },
+        "chat_v2": { "file": "seeds/epoch_20260312_dirty_data/chat_v2.sql", "sha256": "9b63eaa1a3b3d9f9f0999e5f34eb5b0eb0e72ecc683ccb7b4f8cb5764f71860c" },
+        "mistakes": { "file": "seeds/epoch_20260312_dirty_data/mistakes.sql", "sha256": "d3a1a8ee4ed77f301e868b2237e7f99532922aea17d3badb36670a754472a98b" },
+        "llm_usage": { "file": "seeds/epoch_20260312_dirty_data/llm_usage.sql", "sha256": "1156266db4555d9d9a2782e31b8bd05778cc3b9a4e702d25ffd6ede8e0fa9361" }
+      },
+      "oracles": [
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM pomodoro_records WHERE updated_at IS NULL", "expected": "0" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM pomodoro_records WHERE updated_at = created_at", "expected": "2" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM todo_items WHERE deleted_at IS NULL", "expected": "2" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM note_tags WHERE note_id='note_dirty0001'", "expected": "2" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH '\"三月笔记\"'", "expected": "1" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_content_fts", "expected": "3" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_content_fts WHERE rowid = (SELECT rowid FROM chat_v2_blocks WHERE id='blk_dirty0004')", "expected": "0" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_content_fts WHERE rowid = (SELECT rowid FROM chat_v2_blocks WHERE id='blk_dirty0003')", "expected": "1" },
+        { "database": "mistakes", "query": "SELECT COUNT(*) FROM mistakes", "expected": "2" },
+        { "database": "llm_usage", "query": "SELECT total_tokens FROM llm_usage_logs WHERE id='usage_dirty_0001'", "expected": "1111111110" }
+      ]
+    },
+    {
+      "id": "near_head_pathological_history",
+      "kind": "bootstrap_sql",
+      "source_release": "near-HEAD 2026-07 schema epoch with corrupted refinery bookkeeping",
+      "schema_tuple": { "vfs": 20260720, "chat_v2": 20260717, "mistakes": 20260720, "llm_usage": 20260524 },
+      "tags": ["recent_epoch", "pathological_history", "malformed_history_rows", "checksum_drift", "orphan_intermediate_table", "fts_ghost_and_missing_entries", "pomodoro_updated_at_backfill"],
+      "expected_semantics": "A near-current database with malformed migration bookkeeping (version=0/empty-checksum rows and an orphan sessions_new table) self-heals: malformed rows are purged, the orphan table is dropped, and remaining newest migrations are applied. Unknown checksum drift is intentionally covered by a separate fail-close test rather than silently repaired. Pomodoro updated_at backfill only touches NULL rows; the chat FTS rebuild fixes ghost/missing entries; automation_definitions gains trusted_profile_json.",
+      "history_ops": [
+        { "database": "chat_v2", "op": "insert_malformed_history_rows" },
+        { "database": "chat_v2", "op": "create_orphan_intermediate_table", "table": "sessions_new" }
+      ],
+      "allowed_extra_tables": {},
+      "seeds": {
+        "vfs": { "file": "seeds/near_head_pathological_history/vfs.sql", "sha256": "611979e8eea9933a6c87fedf31441129f54b0c8a54c03ef2a0b76528c210d69f" },
+        "chat_v2": { "file": "seeds/near_head_pathological_history/chat_v2.sql", "sha256": "9b82dc8c53a73853fc80d93e4949a68c2d6a78a75d1eb82d8dcd8685b064ca31" },
+        "mistakes": { "file": "seeds/near_head_pathological_history/mistakes.sql", "sha256": "5695ac666cf08418e46c36659c2ae7dba6089eede91f3ae7e4d1073c23a8240b" },
+        "llm_usage": { "file": "seeds/near_head_pathological_history/llm_usage.sql", "sha256": "bad8b608f29d21d52704a8cf01b2e1296a209f6ffc2970b747a6f2f63c52e843" }
+      },
+      "oracles": [
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM pomodoro_records WHERE updated_at IS NULL", "expected": "0" },
+        { "database": "vfs", "query": "SELECT updated_at FROM pomodoro_records WHERE id='pd_nh0000000001'", "expected": "2026-07-20T08:35:00.000Z" },
+        { "database": "vfs", "query": "SELECT updated_at FROM pomodoro_records WHERE id='pd_nh0000000003'", "expected": "2026-07-20T09:30:00.000Z" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM note_tags WHERE note_id='note_nh0000001'", "expected": "2" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM notes_fts WHERE notes_fts MATCH '\"量子计算\"'", "expected": "1" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_content_fts", "expected": "3" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_content_fts WHERE rowid = (SELECT rowid FROM chat_v2_blocks WHERE id='blk_nh0000004')", "expected": "0" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_content_fts WHERE rowid = (SELECT rowid FROM chat_v2_blocks WHERE id='blk_nh0000003')", "expected": "1" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM refinery_schema_history WHERE version = 0 OR checksum IS NULL OR checksum = ''", "expected": "0" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sessions_new'", "expected": "0" },
+        { "database": "mistakes", "query": "SELECT COUNT(*) FROM pragma_table_info('automation_definitions') WHERE name='trusted_profile_json'", "expected": "1" },
+        { "database": "mistakes", "query": "SELECT COUNT(*) FROM automation_definitions WHERE trusted_profile_json IS NULL", "expected": "1" },
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM llm_usage_logs", "expected": "1" }
+      ]
+    },
+    {
+      "id": "partial_history_gap_20260523",
+      "kind": "bootstrap_sql",
+      "source_release": "2026-05 schema epoch where the V20260523 history record was lost after its DDL had been applied (partial-migration residue)",
+      "schema_tuple": { "vfs": 20260523, "chat_v2": 20260528, "mistakes": 20260714, "llm_usage": 20260525 },
+      "tags": ["partial_history", "history_record_missing", "alter_column_pre_repair", "pomodoro_updated_at_backfill"],
+      "expected_semantics": "vfs schema is physically at V20260523 but its history row is missing. Re-running that migration verbatim would die on 'duplicate column'; the production make_alter_columns_safe defense must pre-mark it as applied (exactly one history row, no duplicates) and continue to HEAD. Seeded todo/pomodoro/automation/usage rows survive.",
+      "history_ops": [
+        { "database": "vfs", "op": "delete_history_row", "version": 20260523 }
+      ],
+      "allowed_extra_tables": {},
+      "seeds": {
+        "vfs": { "file": "seeds/partial_history_gap_20260523/vfs.sql", "sha256": "c22670e6c54fdde9398e8cff05278cd9e0d192c945cb6e48cd23423566028323" },
+        "chat_v2": { "file": "seeds/partial_history_gap_20260523/chat_v2.sql", "sha256": "b1d40509bd13463bab581855533614511877fd01ffb9d9893be970347f51c61e" },
+        "mistakes": { "file": "seeds/partial_history_gap_20260523/mistakes.sql", "sha256": "b7da7dca400d38decc8d3b2b4cef6a384936ec7a69843b1560c2bd8a28222c31" },
+        "llm_usage": { "file": "seeds/partial_history_gap_20260523/llm_usage.sql", "sha256": "879b53a24c005cce7b9da6689165e9b404e9cfca0ddf12edf748c9119bc83b29" }
+      },
+      "oracles": [
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM refinery_schema_history WHERE version = 20260523", "expected": "1" },
+        { "database": "vfs", "query": "SELECT updated_at FROM pomodoro_records WHERE id='pd_gap000000001'", "expected": "2026-05-23T08:35:00.000Z" },
+        { "database": "vfs", "query": "SELECT COUNT(*) FROM todo_items WHERE deleted_at IS NULL", "expected": "1" },
+        { "database": "chat_v2", "query": "SELECT COUNT(*) FROM chat_v2_sessions", "expected": "1" },
+        { "database": "mistakes", "query": "SELECT enabled FROM automation_definitions WHERE id='auto_gap0000001'", "expected": "0" },
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM llm_usage_logs", "expected": "1" }
+      ]
+    }
+  ]
+}

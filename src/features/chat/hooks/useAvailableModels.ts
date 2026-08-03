@@ -31,6 +31,9 @@ interface ModelConfig {
   isMultimodal?: boolean;
   /** 是否为推理模型（支持 thinking/reasoning） */
   isReasoning?: boolean;
+  /** 是否支持按回合启用或调节推理 */
+  supportsReasoning?: boolean;
+  supports_reasoning?: boolean;
   /** 是否支持工具调用 */
   supportsTools?: boolean;
   /** 是否启用 */
@@ -119,6 +122,7 @@ async function fetchAvailableModelInfos(): Promise<ModelInfo[]> {
     // 🔧 新增：模型能力字段，便于 UI 根据能力显示不同状态
     isMultimodal: config.isMultimodal,
     isReasoning: config.isReasoning,
+    supportsReasoning: config.supportsReasoning ?? config.supports_reasoning,
     supportsTools: config.supportsTools,
     enabled: config.enabled,
     // 上下文预算推断所需元信息

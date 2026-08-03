@@ -1,0 +1,536 @@
+/**
+ * AppsPanel（L4）— 全部应用发现面板
+ * ---------------------------------------------------------------------------
+ * 玻璃复用契约类 wb-glass / wb-glass-highlight；动画仅 transform / opacity。
+ * z 对齐模态层（--wb-z-modal / cheatsheet）；reduced-motion / minimal 时长归零。
+ */
+
+:where(:root) {
+  --wb-apps-duration: var(--wb-motion-spotlight, 200ms);
+  --wb-apps-ease: var(--wb-motion-ease-out, var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(:root) {
+    --wb-apps-duration: 0ms;
+  }
+}
+
+:root[data-wb-material='minimal'] {
+  --wb-apps-duration: 0ms;
+}
+
+/* ==== 根层 / 点击层 ===================================================== */
+
+.wb-apps-root {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-modal, 9700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px 88px;
+  pointer-events: none;
+}
+
+.wb-apps-root[data-wb-apps-open='true'] {
+  pointer-events: auto;
+}
+
+/*
+ * 点击层（非遮罩）：不加灰色压暗/模糊——Spotlight 语义，
+ * 面板靠自身玻璃与投影与桌面分离；元素保留仅用于点空白关闭。
+ */
+.wb-apps-backdrop {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+
+/* ==== 面板 ============================================================== */
+
+.wb-apps-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(560px, 100%);
+  min-height: 0;
+  border-radius: var(--wb-radius-xl, 18px);
+  /* 中央玻璃件走 overlay 阴影档（--wb-dock-shadow 是 Dock 条专用，层级语义不同） */
+  box-shadow: var(--wb-shadow-overlay, 0 32px 96px hsl(var(--shadow-base, 0 0% 0%) / 0.30));
+  color: var(--wb-titlebar-fg, inherit);
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition:
+    opacity var(--wb-apps-duration) var(--wb-apps-ease),
+    transform var(--wb-apps-duration) var(--wb-apps-ease);
+  /* 不常驻 will-change：与桌面玻璃/视差叠用时 WebView2 易脏区撕裂 */
+  overflow: hidden;
+}
+
+.wb-apps-root[data-wb-apps-open='true'] .wb-apps-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* ==== 头部 / 搜索 ======================================================= */
+
+.wb-apps-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 10px;
+  flex: none;
+}
+
+.wb-apps-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-apps-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 16%, transparent 84%);
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity var(--wb-apps-duration) var(--wb-apps-ease),
+    transform var(--wb-apps-duration) var(--wb-apps-ease);
+}
+
+.wb-apps-close:hover {
+  opacity: 1;
+}
+
+.wb-apps-close:active {
+  transform: scale(0.92);
+}
+
+.wb-apps-close:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: var(--wb-focus-ring);
+}
+
+.wb-apps-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 12px;
+  padding: 8px 12px;
+  flex: none;
+  border-radius: 10px;
+  /* 玻璃面搜索框：低透明墨色 inset + 发丝边框，不用实色灰底 */
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+}
+
+/* 聚焦态描边走独立伪元素的 opacity 淡入（动画纪律：仅 transform/opacity） */
+.wb-apps-search-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.14);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
+}
+
+.wb-apps-search-wrap:focus-within::after {
+  opacity: 1;
+}
+
+.wb-apps-search-icon {
+  flex: none;
+  opacity: 0.55;
+  transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
+}
+
+.wb-apps-search-wrap:focus-within .wb-apps-search-icon {
+  opacity: 0.9;
+}
+
+.wb-apps-search {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.wb-apps-search::placeholder {
+  color: hsl(var(--muted-foreground));
+  opacity: 0.85;
+}
+
+.wb-apps-view-toggle {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
+}
+
+.wb-apps-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
+}
+
+.wb-apps-view-btn[aria-pressed='true'] {
+  opacity: 1;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 18%, transparent 82%);
+  box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.35));
+}
+
+.wb-apps-view-btn:hover {
+  opacity: 0.9;
+}
+
+.wb-apps-view-btn:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: var(--wb-focus-ring);
+}
+
+/* ==== 列表 / 网格 ======================================================= */
+
+.wb-apps-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.wb-apps-body-viewport {
+  padding: 4px 12px 16px;
+}
+
+.wb-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wb-apps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wb-apps-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color var(--wb-apps-duration) var(--wb-apps-ease),
+    transform 90ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-apps-grid .wb-apps-item {
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 8px 12px;
+  text-align: center;
+}
+
+.wb-apps-list .wb-apps-item {
+  padding: 8px 10px;
+}
+
+.wb-apps-item:hover,
+.wb-apps-item[data-wb-apps-active='true'] {
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 14%, transparent 86%);
+}
+
+/* 键盘/悬停选中态：内缘 1px 微光圈，让高亮项在网格里更可辨（状态切换，非动画） */
+.wb-apps-item[data-wb-apps-active='true'] {
+  box-shadow: inset 0 0 0 1px color-mix(in hsl, hsl(var(--primary)) 32%, transparent 68%);
+}
+
+.wb-apps-item:active {
+  transform: scale(0.97);
+}
+
+.wb-apps-item:focus-visible {
+  outline: none;
+  box-shadow: var(--wb-focus-ring);
+}
+
+.wb-apps-item-icon {
+  --wb-app-icon-surface: color-mix(in hsl, hsl(var(--background)) 97%, white 3%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 52%, transparent 48%);
+  border-radius: 11px;
+  background: color-mix(in hsl, hsl(var(--background)) 90%, white 10%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 2px 5px rgba(33, 43, 54, 0.09);
+  font-size: 28px;
+  line-height: 1;
+  transition: transform var(--wb-hover-duration, 150ms) var(--wb-ease-swift, ease-out);
+}
+
+.wb-apps-item-icon > svg {
+  width: 47px;
+  height: 47px;
+  flex: none;
+  overflow: visible;
+}
+
+/* macOS 风格图标自带 squircle 底座：撤掉容器外壳，改用柔和投影 */
+.wb-apps-item-icon:has(> svg[data-workbench-app-icon]) {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.wb-apps-item-icon:has(> svg[data-workbench-app-icon]) > svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 4px hsl(var(--shadow-base, 220 12% 17%) / 0.22));
+}
+
+/* 暗色主题：图标底座去掉写死的白色提亮/白高光，避免暗玻璃上出现粉白瓷贴 */
+:root.dark .wb-apps-item-icon {
+  background: color-mix(in hsl, hsl(var(--background)) 88%, white 12%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 2px 5px rgba(0, 0, 0, 0.35);
+}
+
+/* 网格视图：选中/悬停时图标轻微上浮（仅 transform） */
+.wb-apps-grid .wb-apps-item:hover .wb-apps-item-icon,
+.wb-apps-grid .wb-apps-item[data-wb-apps-active='true'] .wb-apps-item-icon {
+  transform: translateY(-1px) scale(1.04);
+}
+
+.wb-apps-item:active .wb-apps-item-icon {
+  transform: scale(0.96);
+}
+
+.wb-apps-list .wb-apps-item-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 18px;
+}
+
+.wb-apps-list .wb-apps-item-icon > svg {
+  width: 31px;
+  height: 31px;
+}
+
+.wb-apps-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.wb-apps-list .wb-apps-item-name {
+  font-size: 13px;
+  -webkit-line-clamp: 1;
+}
+
+/* ==== 加载 / 空搜索结果 ================================================== */
+
+.wb-apps-loading,
+.wb-apps-section-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  opacity: 0.8;
+}
+
+.wb-apps-section-loading {
+  margin: 4px 10px 12px;
+  justify-content: flex-start;
+}
+
+.wb-apps-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 36px 12px;
+  text-align: center;
+}
+
+.wb-apps-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
+  box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.3));
+  opacity: 0.7;
+}
+
+.wb-apps-empty-title {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.wb-apps-empty-hint {
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+/* ==== 底部快捷键提示 ==================================================== */
+
+.wb-apps-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px 12px;
+  font-size: 11px;
+  opacity: 0.6;
+  border-top: 1px solid color-mix(in hsl, var(--wb-glass-border, hsl(var(--border))) 60%, transparent 40%);
+}
+
+.wb-apps-footer-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wb-apps-footer kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
+  box-shadow: inset 0 -1px 0 color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-apps-item:active,
+  .wb-apps-item .wb-apps-item-icon,
+  .wb-apps-grid .wb-apps-item:hover .wb-apps-item-icon,
+  .wb-apps-grid .wb-apps-item[data-wb-apps-active='true'] .wb-apps-item-icon {
+    transform: none;
+  }
+
+  .wb-apps-close:active {
+    transform: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-apps-item:active,
+:root[data-wb-material='minimal'] .wb-apps-item .wb-apps-item-icon,
+:root[data-wb-material='minimal'] .wb-apps-grid .wb-apps-item:hover .wb-apps-item-icon,
+:root[data-wb-material='minimal'] .wb-apps-close:active {
+  transform: none;
+}
+
+/* ==== 搜索结果分区（统一搜索：应用 + 命令） ============================== */
+
+.wb-apps-results {
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-apps-section {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-apps-section:first-child {
+  padding-top: 0;
+}
+
+/* 命令行：图标 + 名称/描述双行 + 右侧快捷键 */
+.wb-apps-command-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+.wb-apps-command-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-apps-command-shortcut {
+  flex: none;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  border-radius: 5px;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}

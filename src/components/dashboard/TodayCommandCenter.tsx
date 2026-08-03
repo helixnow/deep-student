@@ -78,7 +78,8 @@ const ActionCard: React.FC<ActionCardProps> = ({ icon, label, count, hint, highl
         {count}
       </span>
     </span>
-    <span className="flex items-center gap-0.5 text-[12px] text-muted-foreground/0 transition-colors group-hover:text-muted-foreground">
+    {/* 触屏无 hover：常显"前往"提示，保证入口可发现 */}
+    <span className="flex items-center gap-0.5 text-[12px] text-muted-foreground/0 transition-colors group-hover:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground/70">
       {hint}
       <ArrowRight size={12} />
     </span>

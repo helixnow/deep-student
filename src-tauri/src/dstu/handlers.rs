@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use rusqlite::OptionalExtension;
 use serde_json::Value;
-use tauri::{State, Window};
+use tauri::{Emitter, State, Window};
 
 use super::error::DstuError;
 
@@ -53,8 +53,7 @@ use super::handler_utils::{
     list_unassigned_translations,
     mindmap_to_dstu_node,
     note_to_dstu_node,
-    parse_timestamp,
-    purge_resource_by_type,
+    purge_resource_by_type_if_trashed,
     restore_resource_by_type,
     restore_resource_by_type_with_conn,
     search_all,
@@ -63,9 +62,9 @@ use super::handler_utils::{
     session_to_dstu_node,
     textbook_to_dstu_node,
     translation_to_dstu_node,
+    update_content_by_type,
+    update_mindmap_content_with_occ,
 };
-
-use super::trash_handlers::is_resource_in_trash;
 
 use crate::vfs::{
     canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
@@ -92,7 +91,7 @@ fn is_memory_system_hidden_name(name: &str) -> bool {
 // ============================================================================
 
 /// 最大内容大小: 1MB (用于防止内存耗尽攻击) - HIGH-004修复：从10MB降低到1MB
-const MAX_CONTENT_SIZE: usize = 1 * 1024 * 1024; // 1MB
+const MAX_CONTENT_SIZE: usize = 1024 * 1024; // 1MB
 
 /// 最大元数据大小: 64KB (序列化后的JSON大小)
 const MAX_METADATA_SIZE: usize = 64 * 1024; // 64KB
@@ -134,7 +133,7 @@ async fn dstu_list_folder_first(
     let mut results = Vec::new();
 
     // 🔧 P0-07 修复: 统一 root 约定，支持 null、""、"root" 作为根目录
-    let folder_id = options.folder_id.as_ref().map(|s| s.as_str());
+    let folder_id = options.folder_id.as_deref();
     let is_root = folder_id.is_none()
         || folder_id == Some("")
         || folder_id == Some("root")
@@ -771,9 +770,11 @@ pub async fn dstu_create(
             }
         }
         "textbooks" => {
-            // 教材创建需要文件上传，这里仅支持元数据创建
+            // 教材创建需要文件上传，DSTU 不承接该链路
+            // ★ 2026-07-08：修正误导性提示——原文案引用的 vfs_create_textbook 命令并不存在，
+            // 实际上传入口是 textbooks_add / vfs_upload_file
             return Err(
-                "Textbook creation requires file upload, use vfs_create_textbook instead"
+                "Textbook creation requires file upload, use textbooks_add or vfs_upload_file instead"
                     .to_string(),
             );
         }
@@ -1060,7 +1061,7 @@ pub async fn dstu_create(
             } else {
                 MAX_FILE_SIZE
             };
-            let max_base64_len = ((max_file_size + 2) / 3) * 4 + 16; // 4/3 编码开销 + 少量余量
+            let max_base64_len = max_file_size.div_ceil(3) * 4 + 16; // 4/3 编码开销 + 少量余量
             if file_base64.len() > max_base64_len {
                 log::error!(
                     "[DSTU::handlers] dstu_create: FAILED - base64 payload too large: {} bytes",
@@ -1146,7 +1147,7 @@ pub async fn dstu_create(
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
                     "pptx"
                 }
-                _ => mime_type.split('/').last().unwrap_or("bin"),
+                _ => mime_type.split('/').next_back().unwrap_or("bin"),
             };
 
             // 存储文件到 Blob
@@ -1313,7 +1314,7 @@ pub async fn dstu_update(
                 None
             };
 
-            let mut updated_note = match VfsNoteRepo::update_note(
+            let updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
                 VfsUpdateNoteParams {
@@ -1346,11 +1347,87 @@ pub async fn dstu_update(
             // 教材内容是 PDF，不支持直接更新内容
             return Err("Textbook content update not supported".to_string());
         }
-        "translations" | "translation" | "exams" | "exam" | "essays" | "essay" | "images"
-        | "image" | "files" | "file" => {
-            // TODO: 实现其他类型的 Repo 调用
+        "mindmaps" | "mindmap" => {
+            // ★ 2026-07（B1）：mindmap 分支接线乐观并发控制。
+            // 此前该分支走通用 update_content_by_type（expected_updated_at: None），
+            // Chat/DSTU 旁路可静默覆盖编辑器未保存的内容；现与 notes 分支对齐，
+            // 将前端毫秒基线接入 content_updated_at 内容锁（收藏/重命名不产生伪冲突）。
+            update_mindmap_content_with_occ(&vfs_db, &id, &content, expected_updated_at_ms)?;
+
+            match get_resource_by_type_and_id(&vfs_db, "mindmaps", &id).await {
+                Ok(Some(node)) => {
+                    log::info!(
+                        "[DSTU::handlers] dstu_update: SUCCESS - type=mindmap, id={}",
+                        id
+                    );
+                    node
+                }
+                Ok(None) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but node not found - type=mindmap, id={}",
+                        id
+                    );
+                    return Err(DstuError::not_found(&id).to_string());
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but fetch failed - type=mindmap, id={}, error={}",
+                        id,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+        "translations" | "translation" | "exams" | "exam" | "essays" | "essay" => {
+            // ★ 2026-07-08：接线 content_helpers::update_content_by_type。
+            // 该能力早已实现（2026-01-28，供 chat_v2 agent 工具使用），但命令层
+            // 一直停留在只支持 note 的旧实现，导致前端（如 EssayEditorWrapper）
+            // 经 DSTU 保存这些类型时必然报 "not yet implemented"。
+            // 各类型语义：
+            // - translation: JSON { source, translated } → resources.data
+            // - exam: preview_json 整体更新
+            // - essay: essay_session_* 更新元数据 / essay_* 更新轮次正文
+            update_content_by_type(&vfs_db, &resource_type, &id, &content)?;
+
+            // 更新成功后取回最新节点返回（与 note 分支行为一致）
+            let plural_type = match resource_type.as_str() {
+                "translation" | "translations" => "translations",
+                "exam" | "exams" => "exams",
+                _ => "essays",
+            };
+            match get_resource_by_type_and_id(&vfs_db, plural_type, &id).await {
+                Ok(Some(node)) => {
+                    log::info!(
+                        "[DSTU::handlers] dstu_update: SUCCESS - type={}, id={}",
+                        resource_type,
+                        id
+                    );
+                    node
+                }
+                Ok(None) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but node not found - type={}, id={}",
+                        resource_type,
+                        id
+                    );
+                    return Err(DstuError::not_found(&id).to_string());
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but fetch failed - type={}, id={}, error={}",
+                        resource_type,
+                        id,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+        "images" | "image" | "files" | "file" => {
+            // 二进制附件不支持直接更新内容（与 content_helpers 语义一致）
             return Err(format!(
-                "{} update not yet implemented via DSTU",
+                "{} content update not supported: binary files cannot be directly edited",
                 resource_type
             ));
         }
@@ -1619,7 +1696,7 @@ pub async fn dstu_rename(
     let node = match resource_type.as_str() {
         "notes" => {
             // 更新笔记标题
-            let mut updated_note = match VfsNoteRepo::update_note(
+            let updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
                 VfsUpdateNoteParams {
@@ -2102,26 +2179,23 @@ pub async fn dstu_copy(
                 new_file_name
             };
 
-            let new_textbook = match VfsTextbookRepo::copy_textbook(
-                &vfs_db,
-                &textbook.id,
-                &new_file_name,
-            ) {
-                Ok(t) => {
-                    log::info!(
-                        "[DSTU::handlers] dstu_copy: SUCCESS - created textbook copy, id={}",
-                        t.id
-                    );
-                    t
-                }
-                Err(e) => {
-                    log::error!(
-                        "[DSTU::handlers] dstu_copy: FAILED - copy_textbook error={}",
-                        e
-                    );
-                    return Err(e.to_string());
-                }
-            };
+            let new_textbook =
+                match VfsTextbookRepo::copy_textbook(&vfs_db, &textbook.id, &new_file_name) {
+                    Ok(t) => {
+                        log::info!(
+                            "[DSTU::handlers] dstu_copy: SUCCESS - created textbook copy, id={}",
+                            t.id
+                        );
+                        t
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[DSTU::handlers] dstu_copy: FAILED - copy_textbook error={}",
+                            e
+                        );
+                        return Err(e.to_string());
+                    }
+                };
 
             // 如果指定了目标文件夹，将新资源添加到文件夹
             if let Some(ref folder_id) = dest_folder_id {
@@ -2251,26 +2325,23 @@ pub async fn dstu_copy(
             // 旧实现仅复制 exam_sheets 行：页图 blob 引用计数不增（purge 任一份
             // 导致另一份页图被物理清扫），且不复制题目（副本是空卷）。
             let _ = exam; // 名称由 repo 统一加"(副本)"后缀（与文件复制语义一致）
-            let new_exam = match VfsExamRepo::copy_exam_sheet(
-                &vfs_db,
-                &src_id,
-                dest_folder_id.as_deref(),
-            ) {
-                Ok(e) => {
-                    log::info!(
-                        "[DSTU::handlers] dstu_copy: SUCCESS - created exam copy, id={}",
-                        e.id
-                    );
-                    e
-                }
-                Err(e) => {
-                    log::error!(
-                        "[DSTU::handlers] dstu_copy: FAILED - copy_exam_sheet error={}",
+            let new_exam =
+                match VfsExamRepo::copy_exam_sheet(&vfs_db, &src_id, dest_folder_id.as_deref()) {
+                    Ok(e) => {
+                        log::info!(
+                            "[DSTU::handlers] dstu_copy: SUCCESS - created exam copy, id={}",
+                            e.id
+                        );
                         e
-                    );
-                    return Err(e.to_string());
-                }
-            };
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[DSTU::handlers] dstu_copy: FAILED - copy_exam_sheet error={}",
+                            e
+                        );
+                        return Err(e.to_string());
+                    }
+                };
 
             exam_to_dstu_node(&new_exam)
         }
@@ -2375,10 +2446,7 @@ pub async fn dstu_copy(
                         f
                     }
                     Err(e) => {
-                        log::error!(
-                            "[DSTU::handlers] dstu_copy: FAILED - copy_file error={}",
-                            e
-                        );
+                        log::error!("[DSTU::handlers] dstu_copy: FAILED - copy_file error={}", e);
                         return Err(e.to_string());
                     }
                 }
@@ -2842,14 +2910,11 @@ fn copy_resource_to_folder(
             // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_exam_sheet 复制，
             // 正确递增页图/题图 blob 引用计数并复制题目。
             // （repo 内部已写 folder_items，不再额外添加避免重复）
-            let new_exam = match VfsExamRepo::copy_exam_sheet(
-                vfs_db,
-                &item.item_id,
-                Some(dest_folder_id),
-            ) {
-                Ok(e) => e,
-                Err(e) => return Err(e.to_string()),
-            };
+            let new_exam =
+                match VfsExamRepo::copy_exam_sheet(vfs_db, &item.item_id, Some(dest_folder_id)) {
+                    Ok(e) => e,
+                    Err(e) => return Err(e.to_string()),
+                };
 
             log::debug!(
                 "[DSTU::handlers] copy_resource_to_folder: copied exam {} -> {}",
@@ -3074,6 +3139,7 @@ pub async fn dstu_get_exam_content(
 pub async fn dstu_set_metadata(
     path: String,
     metadata: Value,
+    expected_updated_at: Option<String>,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<(), String> {
@@ -3149,9 +3215,7 @@ pub async fn dstu_set_metadata(
         }
     };
 
-    // 根据类型更新元数据
-    // 对于笔记：更新 title 和 tags
-    // 对于其他类型：TODO
+    // 根据类型更新元数据（全类型已覆盖：notes/translations/essays/textbooks/exams/files/images/mindmaps/folders）
     let node = match resource_type.as_str() {
         "notes" => {
             // 从 metadata 中提取 title 和 tags
@@ -3245,29 +3309,30 @@ pub async fn dstu_set_metadata(
             // 同时修复：只传一个字段时不再把另一字段清空，而是保留现有内容。
             if metadata.get("sourceText").is_some() || metadata.get("translatedText").is_some() {
                 // 读取现有内容，用于填充未提供的字段
-                let (cur_source, cur_translated) =
-                    match VfsTranslationRepo::get_translation_content(&vfs_db, &id) {
-                        Ok(Some(content_str)) => {
-                            match serde_json::from_str::<serde_json::Value>(&content_str) {
-                                Ok(v) => (
-                                    v.get("source")
-                                        .and_then(|s| s.as_str())
-                                        .unwrap_or("")
-                                        .to_string(),
-                                    v.get("translated")
-                                        .and_then(|s| s.as_str())
-                                        .unwrap_or("")
-                                        .to_string(),
-                                ),
-                                Err(_) => (String::new(), String::new()),
-                            }
+                let (cur_source, cur_translated) = match VfsTranslationRepo::get_translation_content(
+                    &vfs_db, &id,
+                ) {
+                    Ok(Some(content_str)) => {
+                        match serde_json::from_str::<serde_json::Value>(&content_str) {
+                            Ok(v) => (
+                                v.get("source")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                v.get("translated")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                            ),
+                            Err(_) => (String::new(), String::new()),
                         }
-                        Ok(None) => (String::new(), String::new()),
-                        Err(e) => {
-                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_translation_content error, id={}, error={}", id, e);
-                            return Err(e.to_string());
-                        }
-                    };
+                    }
+                    Ok(None) => (String::new(), String::new()),
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_translation_content error, id={}, error={}", id, e);
+                        return Err(e.to_string());
+                    }
+                };
 
                 let source = metadata
                     .get("sourceText")
@@ -3469,70 +3534,136 @@ pub async fn dstu_set_metadata(
             }
         }
         "textbooks" | "textbook" => {
-            // 更新教材阅读进度
-            if let Some(reading_progress) = metadata.get("readingProgress") {
-                if let Some(page) = reading_progress.get("page").and_then(|v| v.as_i64()) {
-                    match VfsTextbookRepo::update_reading_progress(&vfs_db, &id, page as i32) {
-                        Ok(_) => log::info!(
+            // PDF highlights are true DSTU resource metadata. Require an exact
+            // revision so the reader cannot silently overwrite Agent/UI edits.
+            let annotation_update = if let Some(highlights) = metadata.get("highlights") {
+                let highlights = highlights.as_array().ok_or_else(|| {
+                    "INVALID_ARGUMENT: textbook highlights must be an array".to_string()
+                })?;
+                if highlights.len() > 500 {
+                    return Err(
+                        "INVALID_ARGUMENT: textbook highlights cannot exceed 500 items".to_string(),
+                    );
+                }
+                let expected = expected_updated_at.as_deref().ok_or_else(|| {
+                    "CONFLICT(textbooks.annotations_conflict): expected_updated_at is required when replacing highlights"
+                        .to_string()
+                })?;
+                Some(
+                    VfsTextbookRepo::replace_highlights_if_version(
+                        &vfs_db, &id, highlights, expected,
+                    )
+                    .map_err(|error| error.to_string())?,
+                )
+            } else {
+                None
+            };
+
+            if annotation_update.is_none() {
+                // 更新教材阅读进度
+                if let Some(reading_progress) = metadata.get("readingProgress") {
+                    if let Some(page) = reading_progress.get("page").and_then(|v| v.as_i64()) {
+                        match VfsTextbookRepo::update_reading_progress(&vfs_db, &id, page as i32) {
+                            Ok(_) => log::info!(
                             "[DSTU::handlers] dstu_set_metadata: set textbook last_page={}, id={}",
                             page,
                             id
                         ),
+                            Err(e) => {
+                                log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook reading_progress error={}", e);
+                                return Err(e.to_string());
+                            }
+                        }
+                    }
+                }
+                // 更新书签：与 files/file 分支保持等价（textbook 与 file 共用
+                // files 表的 bookmarks_json）。此前该分支不处理 bookmarks，
+                // folder_items.item_type=="textbook" 的资源保存书签会静默丢失。
+                if let Some(bookmarks) = metadata.get("bookmarks") {
+                    let bookmarks = bookmarks.as_array().ok_or_else(|| {
+                        "INVALID_ARGUMENT: textbook bookmarks must be an array".to_string()
+                    })?;
+                    match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                        Ok(_) => log::info!(
+                            "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={}, id={}",
+                            bookmarks.len(),
+                            id
+                        ),
                         Err(e) => {
-                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook reading_progress error={}", e);
+                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
+                            return Err(e.to_string());
+                        }
+                    }
+                }
+                // 更新收藏状态（支持 favorite 和 isFavorite 两种 key）
+                let favorite_value = metadata
+                    .get("isFavorite")
+                    .and_then(|v| v.as_bool())
+                    .or_else(|| metadata.get("favorite").and_then(|v| v.as_bool()));
+                if let Some(favorite) = favorite_value {
+                    match VfsTextbookRepo::set_favorite(&vfs_db, &id, favorite) {
+                        Ok(_) => log::info!(
+                            "[DSTU::handlers] dstu_set_metadata: set textbook favorite={}, id={}",
+                            favorite,
+                            id
+                        ),
+                        Err(e) => {
+                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook favorite error={}", e);
+                            return Err(e.to_string());
+                        }
+                    }
+                }
+                // 更新标题/文件名
+                let title_value = metadata
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| metadata.get("fileName").and_then(|v| v.as_str()));
+                if let Some(title) = title_value {
+                    match VfsTextbookRepo::update_file_name(&vfs_db, &id, title) {
+                        Ok(_) => log::info!(
+                            "[DSTU::handlers] dstu_set_metadata: set textbook title={}, id={}",
+                            title,
+                            id
+                        ),
+                        Err(e) => {
+                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook title error={}", e);
                             return Err(e.to_string());
                         }
                     }
                 }
             }
-            // 更新收藏状态（支持 favorite 和 isFavorite 两种 key）
-            let favorite_value = metadata
-                .get("isFavorite")
-                .and_then(|v| v.as_bool())
-                .or_else(|| metadata.get("favorite").and_then(|v| v.as_bool()));
-            if let Some(favorite) = favorite_value {
-                match VfsTextbookRepo::set_favorite(&vfs_db, &id, favorite) {
-                    Ok(_) => log::info!(
-                        "[DSTU::handlers] dstu_set_metadata: set textbook favorite={}, id={}",
-                        favorite,
-                        id
-                    ),
-                    Err(e) => {
-                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook favorite error={}", e);
-                        return Err(e.to_string());
-                    }
-                }
-            }
-            // 更新标题/文件名
-            let title_value = metadata
-                .get("title")
-                .and_then(|v| v.as_str())
-                .or_else(|| metadata.get("fileName").and_then(|v| v.as_str()));
-            if let Some(title) = title_value {
-                match VfsTextbookRepo::update_file_name(&vfs_db, &id, title) {
-                    Ok(_) => log::info!(
-                        "[DSTU::handlers] dstu_set_metadata: set textbook title={}, id={}",
-                        title,
-                        id
-                    ),
-                    Err(e) => {
-                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook title error={}", e);
-                        return Err(e.to_string());
-                    }
-                }
-            }
             // 返回更新后的节点
-            let updated = match VfsTextbookRepo::get_textbook(&vfs_db, &id) {
-                Ok(Some(t)) => t,
-                Ok(None) => {
-                    log::warn!("[DSTU::handlers] dstu_set_metadata: FAILED - textbook not found after update, id={}", id);
-                    return Err("操作失败".to_string());
-                }
-                Err(e) => {
-                    log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_textbook error after update, id={}, error={}", id, e);
-                    return Err(e.to_string());
-                }
+            let updated = match annotation_update {
+                Some(updated) => updated,
+                None => match VfsTextbookRepo::get_textbook(&vfs_db, &id) {
+                    Ok(Some(t)) => t,
+                    Ok(None) => {
+                        log::warn!("[DSTU::handlers] dstu_set_metadata: FAILED - textbook not found after update, id={}", id);
+                        return Err("操作失败".to_string());
+                    }
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_textbook error after update, id={}, error={}", id, e);
+                        return Err(e.to_string());
+                    }
+                },
             };
+            if metadata.get("highlights").is_some() {
+                if let Err(error) = window.emit(
+                    "pdf-annotations:changed",
+                    serde_json::json!({
+                        "textbook_id": id,
+                        "resource_path": normalized_path,
+                        "kind": "highlights",
+                        "updated_at": updated.updated_at,
+                    }),
+                ) {
+                    log::warn!(
+                        "[DSTU::handlers] failed to emit pdf-annotations:changed for {}: {}",
+                        id,
+                        error
+                    );
+                }
+            }
             textbook_to_dstu_node(&updated)
         }
         "exams" | "exam" => {
@@ -3582,6 +3713,41 @@ pub async fn dstu_set_metadata(
             exam_to_dstu_node(&updated)
         }
         "files" | "file" | "images" | "image" => {
+            // PDF files share the `files` storage used by textbooks. Reuse these
+            // repository operations so preview metadata survives a reload.
+            if let Some(page) = metadata
+                .get("readingProgress")
+                .and_then(|progress| progress.get("page"))
+                .and_then(|value| value.as_i64())
+            {
+                match VfsTextbookRepo::update_reading_progress(&vfs_db, &id, page as i32) {
+                    Ok(_) => log::info!(
+                        "[DSTU::handlers] dstu_set_metadata: set file last_page={}, id={}",
+                        page,
+                        id
+                    ),
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file reading_progress error={}", e);
+                        return Err(e.to_string());
+                    }
+                }
+            }
+            if let Some(bookmarks) = metadata.get("bookmarks") {
+                let bookmarks = bookmarks.as_array().ok_or_else(|| {
+                    "INVALID_ARGUMENT: file bookmarks must be an array".to_string()
+                })?;
+                match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                    Ok(_) => log::info!(
+                        "[DSTU::handlers] dstu_set_metadata: set file bookmarks={}, id={}",
+                        bookmarks.len(),
+                        id
+                    ),
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
+                        return Err(e.to_string());
+                    }
+                }
+            }
             // 更新收藏状态
             if let Some(favorite) = metadata.get("isFavorite").and_then(|v| v.as_bool()) {
                 match VfsFileRepo::set_favorite(&vfs_db, &id, favorite) {
@@ -4076,32 +4242,6 @@ pub async fn dstu_purge(
         }
     };
 
-    // ★ P1 防护：验证资源已在回收站，防止对活跃资源执行永久删除
-    {
-        let trash_check_type = match resource_type.as_str() {
-            "notes" | "note" => "note",
-            "textbooks" | "textbook" => "textbook",
-            "images" | "image" | "files" | "file" | "attachments" | "attachment" => "file",
-            "exams" | "exam" => "exam",
-            "translations" | "translation" => "translation",
-            "essays" | "essay" => "essay",
-            "folders" | "folder" => "folder",
-            "mindmaps" | "mindmap" => "mindmap",
-            _ => "",
-        };
-        if !trash_check_type.is_empty() && !is_resource_in_trash(&vfs_db, trash_check_type, &id) {
-            log::warn!(
-                "[DSTU::handlers] dstu_purge: REJECTED - resource not in trash, type={}, id={}",
-                resource_type,
-                id
-            );
-            return Err(format!(
-                "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
-                id, resource_type
-            ));
-        }
-    }
-
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
     let resource_id: Option<String> = vfs_db.get_conn_safe().ok().and_then(|conn| {
         let sql = match resource_type.as_str() {
@@ -4124,8 +4264,8 @@ pub async fn dstu_purge(
         })
     });
 
-    // 使用统一的 purge_resource_by_type 处理所有类型
-    if let Err(e) = purge_resource_by_type(&vfs_db, &resource_type, &id) {
+    // 在同一个写事务内验证 deleted_at 并 purge，防止 restore 在两步之间抢占。
+    if let Err(e) = purge_resource_by_type_if_trashed(&vfs_db, &resource_type, &id) {
         log::error!(
             "[DSTU::handlers] dstu_purge: FAILED - type={}, id={}, error={}",
             resource_type,
@@ -5431,7 +5571,7 @@ pub async fn dstu_search_in_folder(
         }
 
         // 按更新时间排序
-        results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
         // 限制结果数量
         if let Some(limit) = options.limit {
@@ -5490,8 +5630,7 @@ pub async fn dstu_parse_path(path: String) -> Result<DstuParsedPath, String> {
     let normalized = normalized.trim_end_matches('/');
 
     // 检查虚拟路径
-    if normalized.starts_with("/@") {
-        let virtual_name = &normalized[2..];
+    if let Some(virtual_name) = normalized.strip_prefix("/@") {
         return Ok(DstuParsedPath::virtual_path(virtual_name));
     }
 
@@ -5682,7 +5821,7 @@ pub async fn dstu_get_resource_by_path(
     if parsed.is_virtual {
         let name = parsed.full_path.trim_start_matches("/@");
         return Ok(Some(DstuNode::folder(
-            &format!("@{}", name),
+            format!("@{}", name),
             &parsed.full_path,
             name,
         )));
@@ -6313,7 +6452,6 @@ mod tests {
     #[test]
     fn test_simple_path_format() {
         // 验证简化路径格式正确性
-        let resource_type = "notes";
         let id = "note_abc123";
 
         let simple_path = format!("/{}", id);

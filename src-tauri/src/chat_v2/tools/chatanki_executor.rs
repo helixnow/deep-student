@@ -4,9 +4,27 @@
 //!
 //! 工具：
 //! - `builtin-chatanki_run`：一键执行“文本/文件 → 卡片”全流程（推荐）。
+//! - `builtin-chatanki_import_apkg`：从当前会话资源或绝对路径导入 APKG。
 //! - `builtin-chatanki_start`：从已准备好的 content 直接开始制卡（跳过文件解析）。
 //! - `builtin-chatanki_status`：查询 documentId 的制卡进度（segments/cards/错误等）。
 //! - `builtin-chatanki_wait`：等待 anki_cards 块完成（完成/错误/超时）。
+//! - `builtin-chatanki_get_cards`：分页读回卡片内容并执行验收。
+//! - `builtin-chatanki_update_card`：带乐观锁地修改一张卡片。
+//! - `builtin-chatanki_batch_update_cards`：批量（≤100 张）带乐观锁修改卡片，逐卡返回成功/冲突。
+//! - `builtin-chatanki_delete_card`：按内容与复习版本删除当前会话拥有的一张卡片。
+//! - `builtin-chatanki_delete_cards`：批量（≤100 张）按双版本锁删除卡片，逐卡返回结果。
+//! - `builtin-chatanki_add_cards`：向当前制卡文档补充卡片。
+//! - `builtin-chatanki_enqueue_review`：将当前会话拥有的卡片加入 FSRS 复习队列。
+//! - `builtin-chatanki_review_stats`：读取库级 FSRS 复习统计。
+//! - `builtin-chatanki_undo_last_review`：带复习版本锁地撤销当前会话卡片的最后一次评分。
+//! - `builtin-chatanki_set_suspended`：带复习版本锁地暂停或恢复当前会话卡片。
+//! - `builtin-chatanki_list_library_cards`：分页搜索全库卡片及其 FSRS 状态。
+//! - `builtin-chatanki_update_library_card`：带内容版本锁地修改任意库卡片。
+//! - `builtin-chatanki_enqueue_library_review`：带内容版本锁地批量加入库卡片到复习队列。
+//! - `builtin-chatanki_set_library_suspended`：带复习版本锁地暂停或恢复库卡片。
+//! - `builtin-chatanki_undo_library_last_review`：带复习版本及日志锁撤销库卡片最后评分。
+//! - `builtin-chatanki_delete_library_card`：同时校验内容与复习版本后删除库卡片。
+//! - `builtin-chatanki_retemplate`：带批量乐观锁地切换一批卡片的模板。
 //! - `builtin-chatanki_control`：控制后台任务（暂停/恢复/重试/取消）。
 //! - `builtin-chatanki_export`：导出 documentId 的卡片（APKG/JSON）。
 //! - `builtin-chatanki_sync`：将 documentId 的卡片同步到 AnkiConnect。
@@ -15,33 +33,301 @@
 //! - `builtin-chatanki_check_anki_connect`：检查 AnkiConnect 是否可用。
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use tauri::Emitter;
 use tokio::time::{sleep, Duration};
+use tokio_util::sync::CancellationToken;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use crate::apkg_importer_service::ApkgImporterService;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::resource_types::ContextRef;
 use crate::chat_v2::types::{
     block_status, block_types, MessageBlock, MessageRole, ToolCall, ToolResultInfo,
 };
+use crate::database::{
+    AnkiCardVersionDelete, AnkiCardVersionUpdate, AnkiLibraryCardDeleteOutcome,
+    AnkiLibraryCardVersionUpdate, AnkiLibraryDiagnosticFilter, AnkiLibraryScheduleFilter,
+    AnkiLibraryScope, AnkiRetemplateBatchResult, AnkiRetemplateCardUpdate, AnkiRetemplateSelector,
+    AnkiRetemplateTarget,
+};
 use crate::enhanced_anki_service::EnhancedAnkiService;
+use crate::fsrs_review_service::{
+    FsrsAgentReviewMutationOutcome, FsrsAgentReviewStateSnapshot, FsrsEnqueueResult,
+    FsrsEnqueuedCard, FsrsLibraryEnqueueCard, FsrsLibraryEnqueueOutcome, FsrsReviewService,
+    FsrsStats,
+};
 use crate::llm_manager::ImagePayload;
 use crate::models::{
-    AnkiDocumentGenerationRequest, AnkiGenerationOptions, CreateTemplateRequest, DocumentTask,
-    FieldExtractionRule, FieldType,
+    AnkiDocumentGenerationRequest, AnkiGenerationOptions, AppError, AppErrorType,
+    CreateTemplateRequest, DocumentTask, FieldExtractionRule, FieldType,
 };
 use crate::utils::text::safe_truncate_chars;
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::repos::{VfsFileRepo, VfsResourceRepo};
+use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo, VfsResourceRepo};
 use crate::vfs::types::{VfsContextRefData, VfsResourceRef, VfsResourceType};
+
+static CHATANKI_STATE_REVISION: AtomicI64 = AtomicI64::new(0);
+
+fn next_chatanki_state_revision() -> i64 {
+    let now = chrono::Utc::now().timestamp_micros();
+    CHATANKI_STATE_REVISION
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            Some(now.max(current.saturating_add(1)))
+        })
+        .unwrap_or(0)
+        .max(now.saturating_sub(1))
+        .saturating_add(1)
+}
+
+// ============================================================================
+// Active pipeline registry (F2)
+// ============================================================================
+//
+// 进程内“真在跑”的制卡管线注册表，按 anki_cards 块 ID 索引，值为该管线的
+// 取消令牌（取消语义贯通：kill switch / 聊天取消可以停掉脱管的后台管线）。
+// 会话删除路径用它区分「活跃管线」与「崩溃/强退遗留的僵尸 running 块」：
+// 注册发生在块首次落库之前，因此任何 DB 可见但未注册的 running 块，
+// 要么其管线已退出，要么来自上一个已死亡的进程。
+
+static ACTIVE_CHATANKI_PIPELINES: OnceLock<Mutex<HashMap<String, CancellationToken>>> =
+    OnceLock::new();
+
+fn active_chatanki_pipelines() -> &'static Mutex<HashMap<String, CancellationToken>> {
+    ACTIVE_CHATANKI_PIPELINES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lock_active_chatanki_pipelines(
+) -> std::sync::MutexGuard<'static, HashMap<String, CancellationToken>> {
+    active_chatanki_pipelines()
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            log::error!(
+                "[ChatAnkiToolExecutor] active pipeline registry mutex poisoned; recovering"
+            );
+            poisoned.into_inner()
+        })
+}
+
+/// 该 anki_cards 块是否有本进程内仍在运行的后台制卡管线。
+pub(crate) fn is_chatanki_pipeline_active(anki_block_id: &str) -> bool {
+    lock_active_chatanki_pipelines().contains_key(anki_block_id)
+}
+
+/// 紧急停止（kill switch）联动：取消全部活跃制卡管线，返回本次新取消的数量。
+///
+/// 取消是**非破坏性**的：管线轮询环观察到令牌后走既有的用户取消路径
+///（停止调度协程 + 断流 + 未完成任务置 Cancelled），已生成卡片全部保留。
+pub(crate) fn cancel_all_active_chatanki_pipelines(reason: &str) -> usize {
+    let guard = lock_active_chatanki_pipelines();
+    let mut cancelled = 0usize;
+    for (anki_block_id, token) in guard.iter() {
+        if !token.is_cancelled() {
+            token.cancel();
+            cancelled += 1;
+            log::warn!(
+                "[ChatAnkiToolExecutor] cancel_all_active_chatanki_pipelines: cancelled pipeline for block {} (reason: {})",
+                anki_block_id,
+                reason
+            );
+        }
+    }
+    cancelled
+}
+
+/// RAII 注册守卫：创建时注册（携带取消令牌），Drop（含 panic 展开）时注销，
+/// 保证管线以任何方式退出后注册表不残留。
+struct ChatAnkiPipelineGuard {
+    anki_block_id: String,
+    cancel_token: CancellationToken,
+}
+
+impl ChatAnkiPipelineGuard {
+    /// `parent` 传入工具执行上下文的取消令牌时，聊天流取消（用户点停止/
+    /// emergency_stop 的 cancel_all_streams）会通过 child token 自动传播到管线。
+    fn register(anki_block_id: &str, parent: Option<&CancellationToken>) -> Self {
+        let cancel_token = parent.map(|token| token.child_token()).unwrap_or_default();
+        lock_active_chatanki_pipelines().insert(anki_block_id.to_string(), cancel_token.clone());
+        Self {
+            anki_block_id: anki_block_id.to_string(),
+            cancel_token,
+        }
+    }
+
+    fn cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
+    }
+}
+
+impl Drop for ChatAnkiPipelineGuard {
+    fn drop(&mut self) {
+        lock_active_chatanki_pipelines().remove(&self.anki_block_id);
+    }
+}
+
+// ============================================================================
+// Stale running block reaping (F2)
+// ============================================================================
+
+/// 非活跃 running/pending anki 块超过该时限无任何活动即判定为 stale。
+/// 注册表是主要信号（崩溃重启后注册表为空），时间只是防御性宽限，
+/// 避免误伤「管线刚退出、终态写入尚未完成」的窗口。
+pub(crate) const STALE_RUNNING_ANKI_BLOCK_AFTER_MS: i64 = 2 * 60 * 1000;
+
+fn parse_rfc3339_to_ms(value: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.timestamp_millis())
+}
+
+/// 计算 anki_cards 块最近一次可观测活动的毫秒时间戳。
+/// 取 started_at / first_chunk_at / tool_output.progress.lastUpdatedAt 的最大值。
+fn anki_block_last_activity_ms(
+    started_at: Option<i64>,
+    first_chunk_at: Option<i64>,
+    tool_output_json: Option<&str>,
+) -> i64 {
+    let progress_updated_at = tool_output_json
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .and_then(|output| {
+            output
+                .get("progress")
+                .and_then(|p| p.get("lastUpdatedAt"))
+                .and_then(Value::as_str)
+                .and_then(parse_rfc3339_to_ms)
+        });
+    [started_at, first_chunk_at, progress_updated_at]
+        .into_iter()
+        .flatten()
+        .max()
+        .unwrap_or(0)
+}
+
+/// stale 判定：没有活跃管线，且最近活动早于宽限阈值。
+fn is_stale_running_anki_block(now_ms: i64, last_activity_ms: i64, pipeline_active: bool) -> bool {
+    if pipeline_active {
+        return false;
+    }
+    now_ms.saturating_sub(last_activity_ms) > STALE_RUNNING_ANKI_BLOCK_AFTER_MS
+}
+
+/// F2：把会话内的僵尸 running/pending anki 块落库为 failed，返回被处理的块 ID。
+///
+/// 会话删除（软删/硬删/分组删除）前调用：崩溃/强退后遗留的 running 块
+/// 不再永久阻挡删除。仅内存态修复（前端 watchdog）不落库的问题由此兜底。
+pub(crate) fn reap_stale_running_anki_blocks(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    struct RunningAnkiBlockRow {
+        block_id: String,
+        message_id: String,
+        tool_name: Option<String>,
+        started_at: Option<i64>,
+        first_chunk_at: Option<i64>,
+        tool_output_json: Option<String>,
+    }
+
+    // 短生命周期内取完候选行并释放连接，persist 辅助函数会各自重新拿连接。
+    let candidates: Vec<RunningAnkiBlockRow> = {
+        let conn = chat_db.get_conn_safe().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT b.id, b.message_id, b.tool_name, b.started_at, b.first_chunk_at, b.tool_output_json
+                FROM chat_v2_blocks b
+                INNER JOIN chat_v2_messages m ON m.id = b.message_id
+                WHERE m.session_id = ?1
+                  AND b.block_type = 'anki_cards'
+                  AND b.status IN ('pending', 'running')
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![session_id], |row| {
+                Ok(RunningAnkiBlockRow {
+                    block_id: row.get(0)?,
+                    message_id: row.get(1)?,
+                    tool_name: row.get(2)?,
+                    started_at: row.get(3)?,
+                    first_chunk_at: row.get(4)?,
+                    tool_output_json: row.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut collected = Vec::new();
+        for row in rows {
+            collected.push(row.map_err(|e| e.to_string())?);
+        }
+        collected
+    };
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let mut reaped: Vec<String> = Vec::new();
+    for row in candidates {
+        let pipeline_active = is_chatanki_pipeline_active(&row.block_id);
+        let last_activity_ms = anki_block_last_activity_ms(
+            row.started_at,
+            row.first_chunk_at,
+            row.tool_output_json.as_deref(),
+        );
+        if !is_stale_running_anki_block(now_ms, last_activity_ms, pipeline_active) {
+            continue;
+        }
+
+        let tool_name = row
+            .tool_name
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or("chatanki_run");
+
+        // 可读原因写入块状态（新增可选字段，向后兼容）。
+        persist_anki_cards_running_patch(
+            chat_db,
+            &row.message_id,
+            &row.block_id,
+            tool_name,
+            json!({
+                "interrupted": {
+                    "reason": "stale_running_block",
+                    "detail": "Pipeline is no longer running (app crash or force quit); block marked failed so the session stays deletable.",
+                    "lastActivityAt": last_activity_ms,
+                    "detectedAt": now_ms,
+                }
+            }),
+        );
+        persist_anki_cards_terminal_block(
+            chat_db,
+            &row.message_id,
+            &row.block_id,
+            tool_name,
+            block_status::ERROR,
+            None,
+            Some("blocks.ankiCards.errors.pipelineTimeout".to_string()),
+        );
+        log::warn!(
+            "[ChatAnkiToolExecutor] reaped stale running anki block {} (session {}, last activity {}ms ago)",
+            row.block_id,
+            session_id,
+            now_ms.saturating_sub(last_activity_ms)
+        );
+        reaped.push(row.block_id);
+    }
+
+    Ok(reaped)
+}
 
 // ============================================================================
 // Args
@@ -129,6 +415,55 @@ struct ChatAnkiRunArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiImportApkgArgs {
+    #[serde(alias = "resourceId")]
+    resource_id: Option<String>,
+    path: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ChatAnkiImportApkgSource {
+    ResourceId(String),
+    AbsolutePath(PathBuf),
+}
+
+impl ChatAnkiImportApkgArgs {
+    fn normalize(self) -> Result<ChatAnkiImportApkgSource, String> {
+        let resource_id = self
+            .resource_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let path = self
+            .path
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        match (resource_id, path) {
+            (Some(resource_id), None) => {
+                if !resource_id.starts_with("file_")
+                    && !resource_id.starts_with("att_")
+                    && !resource_id.starts_with("res_")
+                {
+                    return Err(
+                        "resourceId must be a file_, att_, or res_ file resource".to_string()
+                    );
+                }
+                Ok(ChatAnkiImportApkgSource::ResourceId(resource_id))
+            }
+            (None, Some(path)) => {
+                let path = PathBuf::from(path);
+                if !path.is_absolute() {
+                    return Err("path must be absolute".to_string());
+                }
+                Ok(ChatAnkiImportApkgSource::AbsolutePath(path))
+            }
+            _ => Err("exactly one of resourceId or path is required".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatAnkiStartArgs {
     goal: String,
@@ -169,6 +504,808 @@ struct ChatAnkiWaitArgs {
     document_id: Option<String>,
     #[serde(alias = "timeoutMs")]
     timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ChatAnkiCardsFilter {
+    #[default]
+    All,
+    ErrorOnly,
+    EditedOnly,
+}
+
+impl ChatAnkiCardsFilter {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::ErrorOnly => "error_only",
+            Self::EditedOnly => "edited_only",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAnkiGetCardsArgs {
+    #[serde(alias = "documentId")]
+    document_id: String,
+    page: Option<u32>,
+    #[serde(alias = "pageSize")]
+    page_size: Option<u32>,
+    #[serde(default)]
+    filter: ChatAnkiCardsFilter,
+}
+
+fn deserialize_nullable_string_patch<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiCardPatch {
+    front: Option<String>,
+    back: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string_patch")]
+    text: Option<Option<String>>,
+    tags: Option<Vec<String>>,
+    #[serde(alias = "extra_fields")]
+    extra_fields: Option<HashMap<String, String>>,
+}
+
+impl ChatAnkiCardPatch {
+    fn is_empty(&self) -> bool {
+        self.front.is_none()
+            && self.back.is_none()
+            && self.text.is_none()
+            && self.tags.is_none()
+            && self.extra_fields.is_none()
+    }
+
+    fn apply_to(self, card: &mut crate::models::AnkiCard) {
+        // Template cards persist their render fields in `extra_fields`. Keep the
+        // canonical columns and those aliases in lockstep so an Agent edit cannot
+        // leave the preview/review/export paths rendering stale template content.
+        if let Some(extra_fields) = self.extra_fields {
+            card.extra_fields = normalize_agent_extra_fields(extra_fields);
+        }
+        if let Some(front) = self.front {
+            card.front = front.clone();
+            sync_template_aliases(
+                &mut card.extra_fields,
+                TemplateCardField::Front,
+                Some(&front),
+            );
+        }
+        if let Some(back) = self.back {
+            card.back = back.clone();
+            sync_template_aliases(&mut card.extra_fields, TemplateCardField::Back, Some(&back));
+        }
+        if let Some(text) = self.text {
+            card.text = text.clone();
+            sync_template_aliases(
+                &mut card.extra_fields,
+                TemplateCardField::Text,
+                text.as_deref(),
+            );
+        }
+        if let Some(tags) = self.tags {
+            card.tags = tags;
+            let serialized = serde_json::to_string(&card.tags).unwrap_or_else(|_| "[]".to_string());
+            sync_template_aliases(
+                &mut card.extra_fields,
+                TemplateCardField::Tags,
+                Some(&serialized),
+            );
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TemplateCardField {
+    Front,
+    Back,
+    Text,
+    Tags,
+}
+
+fn normalize_template_card_field_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+fn template_aliases(field: TemplateCardField) -> &'static [&'static str] {
+    match field {
+        TemplateCardField::Front => &[
+            "front", "question", "word", "name", "title", "term", "prompt",
+        ],
+        TemplateCardField::Back => &[
+            "back",
+            "answer",
+            "definition",
+            "explanation",
+            "desc",
+            "expl",
+            "backdetail",
+            "meaning",
+            "translation",
+        ],
+        TemplateCardField::Text => &["text"],
+        TemplateCardField::Tags => &["tags"],
+    }
+}
+
+fn sync_template_aliases(
+    extra_fields: &mut HashMap<String, String>,
+    field: TemplateCardField,
+    value: Option<&str>,
+) {
+    let aliases = template_aliases(field);
+    let matching_keys = extra_fields
+        .keys()
+        .filter(|key| aliases.contains(&normalize_template_card_field_key(key).as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for key in matching_keys {
+        if let Some(value) = value {
+            extra_fields.insert(key, value.to_string());
+        } else {
+            extra_fields.remove(&key);
+        }
+    }
+
+    let canonical = aliases[0];
+    if let Some(value) = value {
+        extra_fields.insert(canonical.to_string(), value.to_string());
+    } else {
+        extra_fields.remove(canonical);
+    }
+}
+
+fn normalize_agent_extra_fields(fields: HashMap<String, String>) -> HashMap<String, String> {
+    fields
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let normalized_key = key.trim().to_lowercase();
+            if normalized_key.is_empty() {
+                None
+            } else {
+                Some((normalized_key, value))
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAnkiUpdateCardArgs {
+    #[serde(alias = "cardId")]
+    card_id: String,
+    patch: ChatAnkiCardPatch,
+    #[serde(alias = "expectedVersion")]
+    expected_version: String,
+    /// 截断防御豁免：显式声明“我知道新值可能基于截断输出，仍要整字段覆盖”。
+    #[serde(alias = "allowTruncatedSource", default)]
+    allow_truncated_source: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiDeleteCardArgs {
+    #[serde(alias = "cardId")]
+    card_id: String,
+    #[serde(alias = "expectedVersion")]
+    expected_version: String,
+    #[serde(default, deserialize_with = "deserialize_required_nullable_i64")]
+    expected_review_version: Option<Option<i64>>,
+}
+
+impl ChatAnkiDeleteCardArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.card_id = self.card_id.trim().to_string();
+        self.expected_version = self.expected_version.trim().to_string();
+        if self.card_id.is_empty() || self.expected_version.is_empty() {
+            return Err("cardId and expectedVersion are required".to_string());
+        }
+        match self.expected_review_version {
+            None => {
+                return Err(
+                    "expectedReviewVersion is required; use null to assert the card is not enqueued"
+                        .to_string(),
+                );
+            }
+            Some(Some(version)) if version < 0 => {
+                return Err("expectedReviewVersion must be null or non-negative".to_string());
+            }
+            _ => {}
+        }
+        Ok(self)
+    }
+
+    fn expected_review_version(&self) -> Option<i64> {
+        self.expected_review_version.flatten()
+    }
+}
+
+/// 批量修改的单项：与 `chatanki_update_card` 相同的 CAS + patch 语义。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiBatchUpdateCardItem {
+    #[serde(alias = "cardId")]
+    card_id: String,
+    #[serde(alias = "expectedVersion")]
+    expected_version: String,
+    patch: ChatAnkiCardPatch,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiBatchUpdateCardsArgs {
+    #[serde(alias = "documentId")]
+    document_id: String,
+    updates: Vec<ChatAnkiBatchUpdateCardItem>,
+    /// 截断防御豁免（对整批生效）。
+    #[serde(alias = "allowTruncatedSource", default)]
+    allow_truncated_source: bool,
+}
+
+const CHATANKI_BATCH_MUTATION_LIMIT: usize = 100;
+
+impl ChatAnkiBatchUpdateCardsArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.document_id = self.document_id.trim().to_string();
+        if self.document_id.is_empty() {
+            return Err("documentId is required".to_string());
+        }
+        if self.updates.is_empty() || self.updates.len() > CHATANKI_BATCH_MUTATION_LIMIT {
+            return Err(format!(
+                "updates must contain 1..={} items",
+                CHATANKI_BATCH_MUTATION_LIMIT
+            ));
+        }
+        let mut seen_ids = HashSet::new();
+        for item in &mut self.updates {
+            item.card_id = item.card_id.trim().to_string();
+            item.expected_version = item.expected_version.trim().to_string();
+            if item.card_id.is_empty() || item.expected_version.is_empty() {
+                return Err("each update requires cardId and expectedVersion".to_string());
+            }
+            if item.patch.is_empty() {
+                return Err(format!(
+                    "update for card {} has an empty patch",
+                    item.card_id
+                ));
+            }
+            if !seen_ids.insert(item.card_id.clone()) {
+                return Err(format!("duplicate cardId in updates: {}", item.card_id));
+            }
+        }
+        Ok(self)
+    }
+}
+
+/// 批量删除的单项：与 `chatanki_delete_card` 相同的双 CAS 语义
+///（内容 version + 复习 reviewVersion，未入队时后者显式为 null）。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiDeleteCardsItem {
+    #[serde(alias = "cardId")]
+    card_id: String,
+    #[serde(alias = "expectedVersion")]
+    expected_version: String,
+    #[serde(default, deserialize_with = "deserialize_required_nullable_i64")]
+    expected_review_version: Option<Option<i64>>,
+}
+
+impl ChatAnkiDeleteCardsItem {
+    fn expected_review_version(&self) -> Option<i64> {
+        self.expected_review_version.flatten()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiDeleteCardsArgs {
+    cards: Vec<ChatAnkiDeleteCardsItem>,
+}
+
+impl ChatAnkiDeleteCardsArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        if self.cards.is_empty() || self.cards.len() > CHATANKI_BATCH_MUTATION_LIMIT {
+            return Err(format!(
+                "cards must contain 1..={} items",
+                CHATANKI_BATCH_MUTATION_LIMIT
+            ));
+        }
+        let mut seen_ids = HashSet::new();
+        for item in &mut self.cards {
+            item.card_id = item.card_id.trim().to_string();
+            item.expected_version = item.expected_version.trim().to_string();
+            if item.card_id.is_empty() || item.expected_version.is_empty() {
+                return Err("each card requires cardId and expectedVersion".to_string());
+            }
+            match item.expected_review_version {
+                None => {
+                    return Err(format!(
+                        "expectedReviewVersion is required for card {}; use null to assert the card is not enqueued",
+                        item.card_id
+                    ));
+                }
+                Some(Some(version)) if version < 0 => {
+                    return Err(format!(
+                        "expectedReviewVersion for card {} must be null or non-negative",
+                        item.card_id
+                    ));
+                }
+                _ => {}
+            }
+            if !seen_ids.insert(item.card_id.clone()) {
+                return Err(format!("duplicate cardId in cards: {}", item.card_id));
+            }
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiAddCardInput {
+    #[serde(default)]
+    front: String,
+    #[serde(default)]
+    back: String,
+    text: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default, alias = "extra_fields")]
+    extra_fields: HashMap<String, String>,
+    #[serde(alias = "templateId")]
+    template_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAnkiAddCardsArgs {
+    #[serde(alias = "documentId")]
+    document_id: String,
+    cards: Vec<ChatAnkiAddCardInput>,
+}
+
+const CHATANKI_ENQUEUE_REVIEW_CARD_LIMIT: usize = 100;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiEnqueueReviewArgs {
+    #[serde(alias = "documentId")]
+    document_id: Option<String>,
+    #[serde(alias = "cardIds")]
+    card_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatAnkiReviewSelector {
+    Document(String),
+    Cards(Vec<String>),
+}
+
+impl ChatAnkiEnqueueReviewArgs {
+    fn into_selector(self) -> Result<ChatAnkiReviewSelector, String> {
+        match (self.document_id, self.card_ids) {
+            (Some(document_id), None) => {
+                let document_id = document_id.trim().to_string();
+                if document_id.is_empty() {
+                    return Err("documentId must not be empty".to_string());
+                }
+                Ok(ChatAnkiReviewSelector::Document(document_id))
+            }
+            (None, Some(card_ids)) => {
+                if card_ids.is_empty() || card_ids.len() > CHATANKI_ENQUEUE_REVIEW_CARD_LIMIT {
+                    return Err("cardIds must contain 1 to 100 entries".to_string());
+                }
+                let mut seen = HashSet::new();
+                let mut normalized = Vec::with_capacity(card_ids.len());
+                for card_id in card_ids {
+                    let card_id = card_id.trim().to_string();
+                    if card_id.is_empty() {
+                        return Err("cardIds must not contain empty IDs".to_string());
+                    }
+                    if seen.insert(card_id.clone()) {
+                        normalized.push(card_id);
+                    }
+                }
+                Ok(ChatAnkiReviewSelector::Cards(normalized))
+            }
+            _ => Err("blocks.ankiCards.errors.reviewSelectorRequired".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChatAnkiReviewStatsArgs {}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiUndoLastReviewArgs {
+    card_id: String,
+    expected_review_version: i64,
+    expected_log_id: String,
+}
+
+impl ChatAnkiUndoLastReviewArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.card_id = self.card_id.trim().to_string();
+        self.expected_log_id = self.expected_log_id.trim().to_string();
+        if self.card_id.is_empty()
+            || self.expected_log_id.is_empty()
+            || self.expected_review_version < 0
+        {
+            return Err(
+                "cardId, non-negative expectedReviewVersion, and expectedLogId are required"
+                    .to_string(),
+            );
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiSetSuspendedArgs {
+    card_id: String,
+    expected_review_version: i64,
+    suspended: bool,
+}
+
+impl ChatAnkiSetSuspendedArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.card_id = self.card_id.trim().to_string();
+        if self.card_id.is_empty() || self.expected_review_version < 0 {
+            return Err("cardId and a non-negative expectedReviewVersion are required".to_string());
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ChatAnkiLibrarySchedule {
+    #[default]
+    All,
+    Due,
+    NotEnqueued,
+    Suspended,
+    Enqueued,
+}
+
+impl ChatAnkiLibrarySchedule {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Due => "due",
+            Self::NotEnqueued => "not_enqueued",
+            Self::Suspended => "suspended",
+            Self::Enqueued => "enqueued",
+        }
+    }
+
+    fn as_database_filter(self) -> AnkiLibraryScheduleFilter {
+        match self {
+            Self::All => AnkiLibraryScheduleFilter::All,
+            Self::Due => AnkiLibraryScheduleFilter::Due,
+            Self::NotEnqueued => AnkiLibraryScheduleFilter::NotEnqueued,
+            Self::Suspended => AnkiLibraryScheduleFilter::Suspended,
+            Self::Enqueued => AnkiLibraryScheduleFilter::Enqueued,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ChatAnkiLibraryFilter {
+    #[default]
+    All,
+    ErrorOnly,
+}
+
+impl ChatAnkiLibraryFilter {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::ErrorOnly => "error_only",
+        }
+    }
+
+    fn as_database_filter(self) -> AnkiLibraryDiagnosticFilter {
+        match self {
+            Self::All => AnkiLibraryDiagnosticFilter::All,
+            Self::ErrorOnly => AnkiLibraryDiagnosticFilter::ErrorOnly,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiListLibraryCardsArgs {
+    #[serde(alias = "query")]
+    search: Option<String>,
+    template_id: Option<String>,
+    #[serde(default)]
+    schedule: ChatAnkiLibrarySchedule,
+    #[serde(default)]
+    filter: ChatAnkiLibraryFilter,
+    page: Option<u32>,
+    page_size: Option<u32>,
+}
+
+impl ChatAnkiListLibraryCardsArgs {
+    fn normalize(mut self) -> Self {
+        self.search = self
+            .search
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.template_id = self
+            .template_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.page = Some(self.page.unwrap_or(1).max(1));
+        self.page_size = Some(self.page_size.unwrap_or(20).clamp(1, 20));
+        self
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiUpdateLibraryCardArgs {
+    card_id: String,
+    expected_version: String,
+    patch: ChatAnkiCardPatch,
+}
+
+impl ChatAnkiUpdateLibraryCardArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.card_id = self.card_id.trim().to_string();
+        self.expected_version = self.expected_version.trim().to_string();
+        if self.card_id.is_empty() || self.expected_version.is_empty() || self.patch.is_empty() {
+            return Err("cardId, expectedVersion, and a non-empty patch are required".to_string());
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiLibraryEnqueueCardInput {
+    card_id: String,
+    expected_version: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiEnqueueLibraryReviewArgs {
+    cards: Vec<ChatAnkiLibraryEnqueueCardInput>,
+}
+
+impl ChatAnkiEnqueueLibraryReviewArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        if self.cards.is_empty() || self.cards.len() > CHATANKI_ENQUEUE_REVIEW_CARD_LIMIT {
+            return Err("cards must contain 1 to 100 entries".to_string());
+        }
+        let mut seen = HashSet::with_capacity(self.cards.len());
+        for card in &mut self.cards {
+            card.card_id = card.card_id.trim().to_string();
+            card.expected_version = card.expected_version.trim().to_string();
+            if card.card_id.is_empty() || card.expected_version.is_empty() {
+                return Err("every card requires cardId and expectedVersion".to_string());
+            }
+            if !seen.insert(card.card_id.clone()) {
+                return Err("cards must not contain duplicate cardId values".to_string());
+            }
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiSetLibrarySuspendedArgs {
+    card_id: String,
+    expected_review_version: i64,
+    suspended: bool,
+}
+
+impl ChatAnkiSetLibrarySuspendedArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.card_id = self.card_id.trim().to_string();
+        if self.card_id.is_empty() || self.expected_review_version < 0 {
+            return Err("cardId and a non-negative expectedReviewVersion are required".to_string());
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiUndoLibraryLastReviewArgs {
+    card_id: String,
+    expected_review_version: i64,
+    expected_log_id: String,
+}
+
+impl ChatAnkiUndoLibraryLastReviewArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.card_id = self.card_id.trim().to_string();
+        self.expected_log_id = self.expected_log_id.trim().to_string();
+        if self.card_id.is_empty()
+            || self.expected_log_id.is_empty()
+            || self.expected_review_version < 0
+        {
+            return Err(
+                "cardId, non-negative expectedReviewVersion, and expectedLogId are required"
+                    .to_string(),
+            );
+        }
+        Ok(self)
+    }
+}
+
+fn deserialize_required_nullable_i64<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<i64>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<i64>::deserialize(deserializer).map(Some)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiDeleteLibraryCardArgs {
+    card_id: String,
+    expected_version: String,
+    #[serde(default, deserialize_with = "deserialize_required_nullable_i64")]
+    expected_review_version: Option<Option<i64>>,
+}
+
+impl ChatAnkiDeleteLibraryCardArgs {
+    fn normalize(mut self) -> Result<Self, String> {
+        self.card_id = self.card_id.trim().to_string();
+        self.expected_version = self.expected_version.trim().to_string();
+        if self.card_id.is_empty() || self.expected_version.is_empty() {
+            return Err("cardId and expectedVersion are required".to_string());
+        }
+        match self.expected_review_version {
+            None => {
+                return Err(
+                    "expectedReviewVersion is required; use null to assert the card is not enqueued"
+                        .to_string(),
+                );
+            }
+            Some(Some(version)) if version < 0 => {
+                return Err("expectedReviewVersion must be null or non-negative".to_string());
+            }
+            _ => {}
+        }
+        Ok(self)
+    }
+
+    fn expected_review_version(&self) -> Option<i64> {
+        self.expected_review_version.flatten()
+    }
+}
+
+const CHATANKI_RETEMPLATE_CARD_LIMIT: usize = 100;
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ChatAnkiRetemplateStrategy {
+    MapOnly,
+    FillMissing,
+}
+
+impl ChatAnkiRetemplateStrategy {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::MapOnly => "map_only",
+            Self::FillMissing => "fill_missing",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ChatAnkiRetemplateArgs {
+    #[serde(alias = "documentId")]
+    document_id: Option<String>,
+    #[serde(alias = "cardIds")]
+    card_ids: Option<Vec<String>>,
+    #[serde(alias = "targetTemplateId")]
+    target_template_id: String,
+    strategy: ChatAnkiRetemplateStrategy,
+    #[serde(alias = "expectedVersions")]
+    expected_versions: HashMap<String, String>,
+}
+
+#[derive(Debug)]
+struct NormalizedChatAnkiRetemplateRequest {
+    selector: AnkiRetemplateSelector,
+    target_template_id: String,
+    strategy: ChatAnkiRetemplateStrategy,
+    expected_versions: HashMap<String, String>,
+}
+
+impl ChatAnkiRetemplateArgs {
+    fn normalize(self) -> Result<NormalizedChatAnkiRetemplateRequest, String> {
+        let selector = match (self.document_id, self.card_ids) {
+            (Some(document_id), None) => {
+                let document_id = document_id.trim().to_string();
+                if document_id.is_empty() {
+                    return Err("documentId must not be empty".to_string());
+                }
+                AnkiRetemplateSelector::Document(document_id)
+            }
+            (None, Some(card_ids)) => {
+                let mut seen = HashSet::new();
+                let mut normalized = Vec::with_capacity(card_ids.len());
+                for card_id in card_ids {
+                    let card_id = card_id.trim().to_string();
+                    if card_id.is_empty() {
+                        return Err("cardIds must not contain empty IDs".to_string());
+                    }
+                    if !seen.insert(card_id.clone()) {
+                        return Err("cardIds must not contain duplicate IDs".to_string());
+                    }
+                    normalized.push(card_id);
+                }
+                if normalized.is_empty() || normalized.len() > CHATANKI_RETEMPLATE_CARD_LIMIT {
+                    return Err("cardIds must contain 1 to 100 unique entries".to_string());
+                }
+                AnkiRetemplateSelector::Cards(normalized)
+            }
+            _ => return Err("blocks.ankiCards.errors.retemplateSelectorRequired".to_string()),
+        };
+
+        let target_template_id = self.target_template_id.trim().to_string();
+        if target_template_id.is_empty() {
+            return Err("targetTemplateId must not be empty".to_string());
+        }
+        if self.expected_versions.is_empty() {
+            return Err("expectedVersions must not be empty".to_string());
+        }
+        let mut expected_versions = HashMap::with_capacity(self.expected_versions.len());
+        for (card_id, version) in self.expected_versions {
+            let card_id = card_id.trim().to_string();
+            let version = version.trim().to_string();
+            if card_id.is_empty() || version.is_empty() {
+                return Err("expectedVersions keys and values must not be empty".to_string());
+            }
+            if expected_versions.insert(card_id, version).is_some() {
+                return Err("expectedVersions contains duplicate normalized card IDs".to_string());
+            }
+        }
+
+        Ok(NormalizedChatAnkiRetemplateRequest {
+            selector,
+            target_template_id,
+            strategy: self.strategy,
+            expected_versions,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ResolvedReviewSelection {
+    card_ids: Vec<String>,
+    expected_document_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,6 +1353,9 @@ struct ChatAnkiListTemplatesArgs {
     category: Option<String>,
     #[serde(alias = "activeOnly")]
     active_only: Option<bool>,
+    page: Option<usize>,
+    #[serde(alias = "pageSize")]
+    page_size: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -267,9 +1407,27 @@ impl ChatAnkiToolExecutor {
         matches!(
             stripped,
             "chatanki_run"
+                | "chatanki_import_apkg"
                 | "chatanki_start"
                 | "chatanki_status"
                 | "chatanki_wait"
+                | "chatanki_get_cards"
+                | "chatanki_update_card"
+                | "chatanki_batch_update_cards"
+                | "chatanki_delete_card"
+                | "chatanki_delete_cards"
+                | "chatanki_add_cards"
+                | "chatanki_enqueue_review"
+                | "chatanki_review_stats"
+                | "chatanki_undo_last_review"
+                | "chatanki_set_suspended"
+                | "chatanki_list_library_cards"
+                | "chatanki_update_library_card"
+                | "chatanki_enqueue_library_review"
+                | "chatanki_set_library_suspended"
+                | "chatanki_undo_library_last_review"
+                | "chatanki_delete_library_card"
+                | "chatanki_retemplate"
                 | "chatanki_control"
                 | "chatanki_export"
                 | "chatanki_sync"
@@ -291,9 +1449,9 @@ fn verify_document_ownership(
     document_id: &str,
     session_id: &str,
 ) -> Result<(), String> {
-    match db.get_document_session_source(document_id) {
-        Ok(Some(owner_session_id)) if owner_session_id == session_id => Ok(()),
-        Ok(Some(_)) | Ok(None) => Err("blocks.ankiCards.errors.statusNotFound".to_string()),
+    match db.is_document_owned_by_session(document_id, session_id) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err("blocks.ankiCards.errors.statusNotFound".to_string()),
         Err(e) => {
             log::warn!(
                 "[ChatAnkiToolExecutor] verify_document_ownership failed for document {}: {}",
@@ -354,11 +1512,50 @@ impl ToolExecutor for ChatAnkiToolExecutor {
         let stripped_name = strip_tool_namespace(&call.name).to_string();
 
         match stripped_name.as_str() {
+            "chatanki_import_apkg" => self.execute_import_apkg(call, ctx, start_time).await,
             "chatanki_check_anki_connect" => {
                 self.execute_check_anki_connect(call, ctx, start_time).await
             }
             "chatanki_status" => self.execute_status(call, ctx, start_time).await,
             "chatanki_wait" => self.execute_wait(call, ctx, start_time).await,
+            "chatanki_get_cards" => self.execute_get_cards(call, ctx, start_time).await,
+            "chatanki_update_card" => self.execute_update_card(call, ctx, start_time).await,
+            "chatanki_batch_update_cards" => {
+                self.execute_batch_update_cards(call, ctx, start_time).await
+            }
+            "chatanki_delete_card" => self.execute_delete_card(call, ctx, start_time).await,
+            "chatanki_delete_cards" => self.execute_delete_cards(call, ctx, start_time).await,
+            "chatanki_add_cards" => self.execute_add_cards(call, ctx, start_time).await,
+            "chatanki_enqueue_review" => self.execute_enqueue_review(call, ctx, start_time).await,
+            "chatanki_review_stats" => self.execute_review_stats(call, ctx, start_time).await,
+            "chatanki_undo_last_review" => {
+                self.execute_undo_last_review(call, ctx, start_time).await
+            }
+            "chatanki_set_suspended" => self.execute_set_suspended(call, ctx, start_time).await,
+            "chatanki_list_library_cards" => {
+                self.execute_list_library_cards(call, ctx, start_time).await
+            }
+            "chatanki_update_library_card" => {
+                self.execute_update_library_card(call, ctx, start_time)
+                    .await
+            }
+            "chatanki_enqueue_library_review" => {
+                self.execute_enqueue_library_review(call, ctx, start_time)
+                    .await
+            }
+            "chatanki_set_library_suspended" => {
+                self.execute_set_library_suspended(call, ctx, start_time)
+                    .await
+            }
+            "chatanki_undo_library_last_review" => {
+                self.execute_undo_library_last_review(call, ctx, start_time)
+                    .await
+            }
+            "chatanki_delete_library_card" => {
+                self.execute_delete_library_card(call, ctx, start_time)
+                    .await
+            }
+            "chatanki_retemplate" => self.execute_retemplate(call, ctx, start_time).await,
             "chatanki_control" => self.execute_control(call, ctx, start_time).await,
             "chatanki_export" => self.execute_export(call, ctx, start_time).await,
             "chatanki_sync" => self.execute_sync(call, ctx, start_time).await,
@@ -372,11 +1569,18 @@ impl ToolExecutor for ChatAnkiToolExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match strip_tool_namespace(tool_name) {
-            // ★ 2026-02-09: chatanki_export/chatanki_sync 降为 Low
-            // 理由：制卡是创建性操作（生成新卡片），非破坏性，不应打断制卡体验流
-            // 2026-05-16 (Audit C-02): chatanki_export/sync 提升为 Medium
-            // 理由：export/sync 会将完整用户答题数据发送到外部(Anki)，存在数据泄露风险
-            "chatanki_export" | "chatanki_sync" => ToolSensitivity::Medium,
+            "chatanki_undo_last_review"
+            | "chatanki_undo_library_last_review"
+            | "chatanki_delete_library_card" => ToolSensitivity::High,
+            "chatanki_set_suspended"
+            | "chatanki_enqueue_library_review"
+            | "chatanki_set_library_suspended"
+            // 批量写工具：单次可影响 ≤100 张卡（含批量删除），定级 Medium。
+            | "chatanki_batch_update_cards"
+            | "chatanki_delete_cards" => ToolSensitivity::Medium,
+            // export/sync can send complete card data outside the local card
+            // generation flow, so both use the Medium data-egress baseline.
+            "chatanki_export" | "chatanki_sync" | "chatanki_import_apkg" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
     }
@@ -391,6 +1595,133 @@ impl ToolExecutor for ChatAnkiToolExecutor {
 // ============================================================================
 
 impl ChatAnkiToolExecutor {
+    async fn execute_import_apkg(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let source = match serde_json::from_value::<ChatAnkiImportApkgArgs>(call.arguments.clone())
+        {
+            Ok(args) => match args.normalize() {
+                Ok(source) => source,
+                Err(message) => {
+                    let error =
+                        apkg_tool_error(AppErrorType::Validation, "apkg_invalid_input", message);
+                    return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+                }
+            },
+            Err(error) => {
+                let error = apkg_tool_error(
+                    AppErrorType::Validation,
+                    "apkg_invalid_input",
+                    format!("Invalid chatanki_import_apkg arguments: {error}"),
+                );
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+
+        if let ChatAnkiImportApkgSource::ResourceId(resource_id) = &source {
+            let chat_db = match &ctx.chat_v2_db {
+                Some(database) => database,
+                None => {
+                    let error = apkg_tool_error(
+                        AppErrorType::Database,
+                        "apkg_database",
+                        "Chat database not available for APKG resource ownership check",
+                    );
+                    return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+                }
+            };
+            if let Err(error) =
+                verify_apkg_resource_in_session_context(chat_db, &ctx.session_id, resource_id)
+            {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        }
+
+        let anki_db = match &ctx.anki_db {
+            Some(database) => database.clone(),
+            None => {
+                let error = apkg_tool_error(
+                    AppErrorType::Database,
+                    "apkg_database",
+                    "Anki database not available",
+                );
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        let vfs_db = ctx.vfs_db.clone();
+        let session_id = ctx.session_id.clone();
+
+        let import_result = tokio::task::spawn_blocking(move || {
+            let service = ApkgImporterService::new(anki_db);
+            match source {
+                ChatAnkiImportApkgSource::ResourceId(resource_id) => {
+                    let vfs_db = vfs_db.ok_or_else(|| {
+                        apkg_tool_error(
+                            AppErrorType::Database,
+                            "apkg_database",
+                            "VFS database not available",
+                        )
+                    })?;
+                    let resource = resolve_apkg_resource_bytes(&vfs_db, &resource_id)?;
+                    service.import_bytes(
+                        &resource.bytes,
+                        Some(&resource.source_name),
+                        Some(&session_id),
+                    )
+                }
+                ChatAnkiImportApkgSource::AbsolutePath(path) => {
+                    service.import_path(&path, Some(&session_id))
+                }
+            }
+        })
+        .await;
+
+        let imported = match import_result {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+            Err(error) => {
+                let error = apkg_tool_error(
+                    AppErrorType::Unknown,
+                    "apkg_database",
+                    format!("APKG import task failed: {error}"),
+                );
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+
+        let mut output = match serde_json::to_value(&imported) {
+            Ok(output) => output,
+            Err(error) => {
+                let error = apkg_tool_error(
+                    AppErrorType::Unknown,
+                    "apkg_database",
+                    format!("Failed to serialize APKG import result: {error}"),
+                );
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        // 导入后体验：在工具结果中附带后续操作建议（AI 可据此继续编排），
+        // 不改变 ApkgImportResult 本身的序列化契约。
+        if let Some(object) = output.as_object_mut() {
+            object.insert(
+                "nextSteps".to_string(),
+                json!([
+                    "调用 chatanki_enqueue_review 并传入本次返回的 documentId，把导入的卡片加入复习队列",
+                    "向用户简要汇报导入结果（卡片数、模板数、媒体与告警），并询问是否立即开始复习"
+                ]),
+            );
+        }
+
+        emit_fsrs_import_changed(ctx, &imported.document_id, &imported.card_ids);
+
+        Ok(finish_chatanki_success(call, ctx, start_time, output))
+    }
+
     async fn execute_check_anki_connect(
         &self,
         call: &ToolCall,
@@ -503,18 +1834,48 @@ impl ChatAnkiToolExecutor {
             .get_cards_for_document(&document_id)
             .map_err(|e| e.to_string())?;
         let counts = compute_task_counts(&tasks);
-        let (status, error, should_retry) = derive_status_snapshot(&tasks, cards.len());
+        let (status, error, should_retry) = derive_status_snapshot(&tasks, &cards);
+        let projection =
+            (!tasks.is_empty()).then(|| project_chatanki_workflow(&tasks, &cards, None, 0));
 
-        let output = json!({
+        // A9 + 孤儿恢复：文档已达终态时把陈旧/僵尸块快照收敛为 DB 权威数据
+        //（helper 内部自行判断是否需要改写，best-effort 不阻塞状态查询）。
+        if let Some(chat_db) = &ctx.chat_v2_db {
+            match sync_terminal_anki_block_with_db(
+                chat_db,
+                Some(&ctx.emitter),
+                &ctx.session_id,
+                &document_id,
+                &tasks,
+                &cards,
+            ) {
+                Ok(_) => {}
+                Err(e) => {
+                    log::warn!(
+                        "[ChatAnkiToolExecutor] status block refresh failed for {}: {}",
+                        document_id,
+                        e
+                    );
+                }
+            }
+        }
+
+        let mut output = json!({
             "status": status,
             "documentId": document_id,
             "counts": counts,
             "cardsCount": cards.len(),
+            // 可用卡（非诊断/错误卡）数量：completed_with_errors 时必须结合该值
+            // 判断是否属于“0 可用卡”的完全失败，而不能仅凭状态名。
+            "usableCards": cards.iter().filter(|c| !c.is_error_card).count(),
             // 达到 maxCards 上限提前停止时为 true，提示 AI 这是预期行为而非异常取消
             "limitReached": tasks_limit_reached(&tasks),
             "error": error,
             "shouldRetry": should_retry,
         });
+        if let Some(projection) = projection {
+            deep_merge_value(&mut output, projection.output_patch);
+        }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         if output.get("status").and_then(|v| v.as_str()) == Some("not_found") {
@@ -553,6 +1914,2056 @@ impl ChatAnkiToolExecutor {
         Ok(result)
     }
 
+    async fn execute_get_cards(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiGetCardsArgs>(call.arguments.clone()) {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_get_cards arguments: {}", error),
+                ));
+            }
+        };
+        let document_id = args.document_id.trim();
+        if document_id.is_empty() {
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.documentIdRequired".to_string(),
+            ));
+        }
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let page = args.page.unwrap_or(1).max(1);
+        let page_size = args.page_size.unwrap_or(20).clamp(1, 50);
+        let cards = match db.get_cards_for_document_for_session(document_id, &ctx.session_id) {
+            Ok(Some(cards)) => cards,
+            Ok(None) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.statusNotFound".to_string(),
+                ));
+            }
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to load cards for document: {}", error),
+                ));
+            }
+        };
+        let (total, mut page_cards) =
+            select_chatanki_cards_page(cards, args.filter, page, page_size);
+        let page_card_ids = page_cards
+            .iter()
+            .filter_map(|card| card.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect::<Vec<_>>();
+        let review_states = match FsrsReviewService::new(db.clone())
+            .get_review_states_for_session(&page_card_ids, &ctx.session_id)
+        {
+            Ok(states) => states,
+            Err(error) if matches!(error.error_type, AppErrorType::NotFound) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.statusNotFound".to_string(),
+                ));
+            }
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        attach_review_states(&mut page_cards, review_states);
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": "ok",
+                "documentId": document_id,
+                "total": total,
+                "page": page,
+                "pageSize": page_size,
+                "filter": args.filter.as_str(),
+                "cards": page_cards,
+                // P8：get_cards 返回库中全部 live 卡（含超限保留卡）；该字段表示
+                // 其中有多少张因 maxCards 上限未展示在预览块里。
+                "hiddenOverLimitCount": lookup_hidden_over_limit_count(
+                    ctx.chat_v2_db.as_deref(),
+                    &ctx.session_id,
+                    document_id,
+                ),
+            }),
+        ))
+    }
+
+    async fn execute_update_card(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiUpdateCardArgs>(call.arguments.clone()) {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_update_card arguments: {}", error),
+                ));
+            }
+        };
+        let card_id = args.card_id.trim();
+        if card_id.is_empty() || args.expected_version.trim().is_empty() || args.patch.is_empty() {
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.updateArgsRequired".to_string(),
+            ));
+        }
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let (mut card, document_id) = match load_owned_chatanki_card(db, card_id, &ctx.session_id) {
+            Ok(owned) => owned,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+            }
+        };
+        // 截断防御：疑似把 get_cards 的截断输出当作完整字段整体回写。
+        if !args.allow_truncated_source {
+            let suspected_fields = detect_truncated_source_fields(&card, &args.patch);
+            if !suspected_fields.is_empty() {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    chatanki_truncated_source_blocked_payload(
+                        &document_id,
+                        card_id,
+                        &suspected_fields,
+                    ),
+                ));
+            }
+        }
+        args.patch.apply_to(&mut card);
+        if !card_content_is_valid(&card) {
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.cardContentRequired".to_string(),
+            ));
+        }
+
+        let (mutation_target, update_result) = match run_preflighted_card_mutation(
+            ctx.chat_v2_db.as_deref(),
+            &ctx.session_id,
+            &document_id,
+            || {
+                db.update_anki_card_if_version_for_session(
+                    &card,
+                    args.expected_version.trim(),
+                    &ctx.session_id,
+                )
+                .map_err(|error| format!("Failed to update card: {}", error))
+            },
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+            }
+        };
+
+        match update_result {
+            AnkiCardVersionUpdate::Updated(updated) => {
+                let (status, ui_sync) = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+                    ctx,
+                    &mutation_target,
+                    &document_id,
+                    json!({
+                        "documentId": document_id,
+                        "cardMutation": "upsert",
+                        "cards": [convert_backend_card(&updated)],
+                    }),
+                ));
+                emit_fsrs_cards_changed_with_cards(
+                    ctx,
+                    "card_updated",
+                    std::slice::from_ref(&updated.id),
+                    vec![convert_backend_card(&updated)],
+                );
+                Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": status,
+                        "documentId": document_id,
+                        "card": convert_card_for_tool(&updated, None),
+                        "mutationApplied": true,
+                        "retryable": false,
+                        "uiSync": ui_sync,
+                    }),
+                ))
+            }
+            AnkiCardVersionUpdate::Conflict(current) => Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                chatanki_version_conflict_payload(&document_id, &current),
+            )),
+            AnkiCardVersionUpdate::NotFound => Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.statusNotFound".to_string(),
+            )),
+        }
+    }
+
+    async fn execute_delete_card(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiDeleteCardArgs>(call.arguments.clone())
+            .map_err(|error| error.to_string())
+            .and_then(ChatAnkiDeleteCardArgs::normalize)
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_delete_card arguments: {error}"),
+                ));
+            }
+        };
+        let card_id = args.card_id.as_str();
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let (_, document_id) = match load_owned_chatanki_card(db, card_id, &ctx.session_id) {
+            Ok(owned) => owned,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+            }
+        };
+        let (mutation_target, delete_result) = match run_preflighted_card_mutation(
+            ctx.chat_v2_db.as_deref(),
+            &ctx.session_id,
+            &document_id,
+            || {
+                db.delete_anki_card_for_session(
+                    card_id,
+                    &args.expected_version,
+                    args.expected_review_version(),
+                    &ctx.session_id,
+                )
+                .map_err(|error| format!("Failed to delete card: {}", error))
+            },
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+            }
+        };
+        match delete_result {
+            AnkiCardVersionDelete::Deleted => {}
+            AnkiCardVersionDelete::Conflict(current) => {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    chatanki_version_conflict_payload(&document_id, &current),
+                ));
+            }
+            AnkiCardVersionDelete::ReviewConflict { current, review: _ } => {
+                let review_state = match FsrsReviewService::new(db.clone())
+                    .get_review_states_for_session(&[card_id.to_string()], &ctx.session_id)
+                {
+                    Ok(mut states) => states.pop(),
+                    Err(error) => {
+                        return Ok(finish_chatanki_failure(
+                            call,
+                            ctx,
+                            start_time,
+                            format!(
+                                "Failed to refresh card review state after delete conflict: {}",
+                                error
+                            ),
+                        ));
+                    }
+                };
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    chatanki_delete_review_conflict_payload(
+                        &document_id,
+                        &current,
+                        review_state.as_ref(),
+                    ),
+                ));
+            }
+            AnkiCardVersionDelete::NotFound => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.statusNotFound".to_string(),
+                ));
+            }
+        }
+        let (status, ui_sync) = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+            ctx,
+            &mutation_target,
+            &document_id,
+            json!({
+                "documentId": document_id,
+                "cardMutation": "delete",
+                "deletedCardIds": [card_id],
+            }),
+        ));
+        emit_fsrs_cards_changed(ctx, "card_deleted", &[card_id.to_string()]);
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "documentId": document_id,
+                "cardId": card_id,
+                "deleted": true,
+                "mutationApplied": true,
+                "retryable": false,
+                "uiSync": ui_sync,
+            }),
+        ))
+    }
+
+    /// 批量带乐观锁修改卡片（≤100 张）：逐卡执行与 `chatanki_update_card` 相同的
+    /// CAS + patch 语义并返回逐卡报告；成功卡片汇总为一次块 patch 同步（复用
+    /// retemplate 已验证的 preflight + persist_and_emit 模式）。
+    ///
+    /// 注意：受文件所有权约束未在 database 层新增批量原语，逐卡各自使用既有的
+    /// IMMEDIATE 事务 CAS 原语；冲突卡跳过、成功卡生效（与逐卡报告语义一致）。
+    async fn execute_batch_update_cards(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args =
+            match serde_json::from_value::<ChatAnkiBatchUpdateCardsArgs>(call.arguments.clone())
+                .map_err(|error| error.to_string())
+                .and_then(ChatAnkiBatchUpdateCardsArgs::normalize)
+            {
+                Ok(args) => args,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Invalid chatanki_batch_update_cards arguments: {}", error),
+                    ));
+                }
+            };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let document_id = args.document_id.clone();
+        if let Err(error) = verify_document_ownership(db, &document_id, &ctx.session_id) {
+            return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+        }
+        let mutation_target =
+            match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Unable to prepare card UI synchronization: {}", error),
+                    ));
+                }
+            };
+
+        let total = args.updates.len();
+        let mut results: Vec<Value> = Vec::with_capacity(total);
+        let mut updated_cards: Vec<crate::models::AnkiCard> = Vec::new();
+        let mut conflict_count = 0usize;
+        let mut blocked_count = 0usize;
+        let mut failed_count = 0usize;
+
+        for item in args.updates {
+            let card_id = item.card_id.clone();
+            let (mut card, card_document_id) =
+                match load_owned_chatanki_card(db, &card_id, &ctx.session_id) {
+                    Ok(owned) => owned,
+                    Err(error) => {
+                        failed_count += 1;
+                        results.push(json!({
+                            "cardId": card_id,
+                            "status": "not_found",
+                            "error": error,
+                        }));
+                        continue;
+                    }
+                };
+            if card_document_id != document_id {
+                failed_count += 1;
+                results.push(json!({
+                    "cardId": card_id,
+                    "status": "rejected",
+                    "error": "document_mismatch",
+                    "documentId": card_document_id,
+                }));
+                continue;
+            }
+            if !args.allow_truncated_source {
+                let suspected_fields = detect_truncated_source_fields(&card, &item.patch);
+                if !suspected_fields.is_empty() {
+                    blocked_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "blocked",
+                        "error": "truncated_source_overwrite",
+                        "fields": suspected_fields,
+                    }));
+                    continue;
+                }
+            }
+            item.patch.apply_to(&mut card);
+            if !card_content_is_valid(&card) {
+                failed_count += 1;
+                results.push(json!({
+                    "cardId": card_id,
+                    "status": "invalid",
+                    "error": "blocks.ankiCards.errors.cardContentRequired",
+                }));
+                continue;
+            }
+            match db.update_anki_card_if_version_for_session(
+                &card,
+                item.expected_version.as_str(),
+                &ctx.session_id,
+            ) {
+                Ok(AnkiCardVersionUpdate::Updated(updated)) => {
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "ok",
+                        "card": convert_card_for_tool(&updated, None),
+                    }));
+                    updated_cards.push(updated);
+                }
+                Ok(AnkiCardVersionUpdate::Conflict(current)) => {
+                    conflict_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "conflict",
+                        "error": "version_conflict",
+                        "current": convert_card_for_tool(&current, None),
+                    }));
+                }
+                Ok(AnkiCardVersionUpdate::NotFound) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "not_found",
+                        "error": "blocks.ankiCards.errors.statusNotFound",
+                    }));
+                }
+                Err(error) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "failed",
+                        "error": format!("Failed to update card: {}", error),
+                    }));
+                }
+            }
+        }
+
+        let updated_count = updated_cards.len();
+        let (ui_status, ui_sync) = if updated_count > 0 {
+            let event_cards: Vec<Value> = updated_cards.iter().map(convert_backend_card).collect();
+            let updated_ids: Vec<String> =
+                updated_cards.iter().map(|card| card.id.clone()).collect();
+            let receipt = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+                ctx,
+                &mutation_target,
+                &document_id,
+                json!({
+                    "documentId": document_id,
+                    "cardMutation": "upsert",
+                    "cards": event_cards,
+                }),
+            ));
+            emit_fsrs_cards_changed_with_cards(
+                ctx,
+                "card_updated",
+                &updated_ids,
+                updated_cards.iter().map(convert_backend_card).collect(),
+            );
+            receipt
+        } else {
+            (
+                "ok",
+                json!({ "status": "not_required", "eventAttempted": false }),
+            )
+        };
+
+        let status = if updated_count == total && ui_status == "ok" {
+            "ok"
+        } else if updated_count > 0 {
+            "partial"
+        } else if conflict_count > 0 {
+            "conflict"
+        } else if blocked_count > 0 {
+            "blocked"
+        } else {
+            "failed"
+        };
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "documentId": document_id,
+                "total": total,
+                "updated": updated_count,
+                "conflicts": conflict_count,
+                "blocked": blocked_count,
+                "failed": failed_count,
+                "results": results,
+                "mutationApplied": updated_count > 0,
+                "retryable": conflict_count > 0,
+                "uiSync": ui_sync,
+            }),
+        ))
+    }
+
+    /// 批量删除卡片（≤100 张）：逐卡执行与 `chatanki_delete_card` 相同的双 CAS
+    ///（内容 version + 复习 reviewVersion）语义，单次调用替代 N 次 delete_card；
+    /// 成功删除汇总为一次块 patch 同步。选择必须来自同一文档。
+    async fn execute_delete_cards(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiDeleteCardsArgs>(call.arguments.clone())
+            .map_err(|error| error.to_string())
+            .and_then(ChatAnkiDeleteCardsArgs::normalize)
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_delete_cards arguments: {}", error),
+                ));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+
+        // 预解析每张卡所属文档：批量删除必须来自同一文档（对齐 retemplate 语义）。
+        let mut resolved: Vec<(ChatAnkiDeleteCardsItem, String)> = Vec::new();
+        let mut early_results: Vec<Value> = Vec::new();
+        let mut document_ids: HashSet<String> = HashSet::new();
+        for item in args.cards {
+            match load_owned_chatanki_card(db, &item.card_id, &ctx.session_id) {
+                Ok((_, item_document_id)) => {
+                    document_ids.insert(item_document_id.clone());
+                    resolved.push((item, item_document_id));
+                }
+                Err(error) => {
+                    early_results.push(json!({
+                        "cardId": item.card_id,
+                        "status": "not_found",
+                        "error": error,
+                    }));
+                }
+            }
+        }
+        if document_ids.len() > 1 {
+            let mut ids: Vec<String> = document_ids.into_iter().collect();
+            ids.sort();
+            return Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                json!({
+                    "status": "rejected",
+                    "error": "cross_document_selection",
+                    "documentIds": ids,
+                    "mutationApplied": false,
+                    "retryable": false,
+                }),
+            ));
+        }
+        let document_id = document_ids.into_iter().next();
+        if document_id.is_none() {
+            // 所有卡都不可见/不属于当前会话：与单卡删除的 not-found 语义一致。
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.statusNotFound".to_string(),
+            ));
+        }
+        let document_id = document_id.expect("checked above");
+        let mutation_target =
+            match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Unable to prepare card UI synchronization: {}", error),
+                    ));
+                }
+            };
+
+        let total = resolved.len() + early_results.len();
+        let mut results = early_results;
+        let mut deleted_ids: Vec<String> = Vec::new();
+        let mut conflict_count = 0usize;
+        let mut failed_count = results.len();
+
+        for (item, _) in resolved {
+            let card_id = item.card_id.clone();
+            match db.delete_anki_card_for_session(
+                &card_id,
+                &item.expected_version,
+                item.expected_review_version(),
+                &ctx.session_id,
+            ) {
+                Ok(AnkiCardVersionDelete::Deleted) => {
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "ok",
+                        "deleted": true,
+                    }));
+                    deleted_ids.push(card_id);
+                }
+                Ok(AnkiCardVersionDelete::Conflict(current)) => {
+                    conflict_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "conflict",
+                        "error": "version_conflict",
+                        "current": convert_card_for_tool(&current, None),
+                    }));
+                }
+                Ok(AnkiCardVersionDelete::ReviewConflict { current, review: _ }) => {
+                    conflict_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "conflict",
+                        "error": "review_state_conflict",
+                        "current": convert_card_for_tool(&current, None),
+                        "guidance": "Call builtin-chatanki_get_cards to refresh reviewState before retrying.",
+                    }));
+                }
+                Ok(AnkiCardVersionDelete::NotFound) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "not_found",
+                        "error": "blocks.ankiCards.errors.statusNotFound",
+                    }));
+                }
+                Err(error) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "failed",
+                        "error": format!("Failed to delete card: {}", error),
+                    }));
+                }
+            }
+        }
+
+        let deleted_count = deleted_ids.len();
+        let (ui_status, ui_sync) = if deleted_count > 0 {
+            let receipt = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+                ctx,
+                &mutation_target,
+                &document_id,
+                json!({
+                    "documentId": document_id,
+                    "cardMutation": "delete",
+                    "deletedCardIds": deleted_ids.clone(),
+                }),
+            ));
+            emit_fsrs_cards_changed(ctx, "card_deleted", &deleted_ids);
+            receipt
+        } else {
+            (
+                "ok",
+                json!({ "status": "not_required", "eventAttempted": false }),
+            )
+        };
+
+        let status = if deleted_count == total && ui_status == "ok" {
+            "ok"
+        } else if deleted_count > 0 {
+            "partial"
+        } else if conflict_count > 0 {
+            "conflict"
+        } else {
+            "failed"
+        };
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "documentId": document_id,
+                "total": total,
+                "deleted": deleted_count,
+                "conflicts": conflict_count,
+                "failed": failed_count,
+                "deletedCardIds": deleted_ids,
+                "results": results,
+                "mutationApplied": deleted_count > 0,
+                "retryable": conflict_count > 0,
+                "uiSync": ui_sync,
+            }),
+        ))
+    }
+
+    async fn execute_add_cards(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiAddCardsArgs>(call.arguments.clone()) {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_add_cards arguments: {}", error),
+                ));
+            }
+        };
+        let document_id = args.document_id.trim();
+        if document_id.is_empty() || args.cards.is_empty() || args.cards.len() > 100 {
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.addArgsRequired".to_string(),
+            ));
+        }
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        if let Err(error) = verify_document_ownership(db, document_id, &ctx.session_id) {
+            return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+        }
+
+        let requested_count = args.cards.len();
+        let mut cards = Vec::with_capacity(requested_count);
+        for input in args.cards {
+            let now = chrono::Utc::now().to_rfc3339();
+            let card = crate::models::AnkiCard {
+                id: uuid::Uuid::new_v4().to_string(),
+                task_id: String::new(),
+                front: input.front,
+                back: input.back,
+                text: input.text,
+                tags: input.tags,
+                images: Vec::new(),
+                is_error_card: false,
+                error_content: None,
+                created_at: now.clone(),
+                updated_at: now,
+                extra_fields: normalize_agent_extra_fields(input.extra_fields),
+                template_id: input
+                    .template_id
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+            };
+            if !card_content_is_valid(&card) {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.cardContentRequired".to_string(),
+                ));
+            }
+            cards.push(card);
+        }
+
+        let (mutation_target, inserted) = match run_preflighted_card_mutation(
+            ctx.chat_v2_db.as_deref(),
+            &ctx.session_id,
+            document_id,
+            || {
+                db.insert_anki_cards_for_document(document_id, &ctx.session_id, cards)
+                    .map_err(|error| format!("Failed to add cards: {}", error))
+            },
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+            }
+        };
+        let (status, ui_sync) = if inserted.is_empty() {
+            (
+                "ok",
+                mutation_ui_sync_not_required_receipt(&mutation_target),
+            )
+        } else {
+            let event_cards: Vec<Value> = inserted.iter().map(convert_backend_card).collect();
+            let receipt = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+                ctx,
+                &mutation_target,
+                document_id,
+                json!({
+                    "documentId": document_id,
+                    "cardMutation": "upsert",
+                    "cards": event_cards,
+                }),
+            ));
+            let inserted_ids: Vec<String> = inserted.iter().map(|card| card.id.clone()).collect();
+            emit_fsrs_cards_changed(ctx, "cards_added", &inserted_ids);
+            receipt
+        };
+        let output_cards: Vec<Value> = inserted
+            .iter()
+            .map(|card| convert_card_for_tool(card, None))
+            .collect();
+        let inserted_count = inserted.len();
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "documentId": document_id,
+                "requested": requested_count,
+                "inserted": inserted_count,
+                "skipped": requested_count.saturating_sub(inserted_count),
+                "cards": output_cards,
+                "mutationApplied": inserted_count > 0,
+                "retryable": false,
+                "uiSync": ui_sync,
+            }),
+        ))
+    }
+
+    async fn execute_enqueue_review(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiEnqueueReviewArgs>(call.arguments.clone())
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_enqueue_review arguments: {}", error),
+                ));
+            }
+        };
+        let selector = match args.into_selector() {
+            Ok(selector) => selector,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let selection = match resolve_review_selection(db, &ctx.session_id, selector) {
+            Ok(selection) => selection,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+            }
+        };
+        let service = FsrsReviewService::new(db.clone());
+        let result = match service.enqueue_cards_for_session(
+            &selection.card_ids,
+            &ctx.session_id,
+            selection.expected_document_id.as_deref(),
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        emit_enqueue_review_changed(ctx, &service, &result);
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": "ok",
+                "enqueued": result.enqueued,
+                "skipped": result.skipped,
+            }),
+        ))
+    }
+
+    async fn execute_review_stats(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        if let Err(error) =
+            serde_json::from_value::<ChatAnkiReviewStatsArgs>(call.arguments.clone())
+        {
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                format!("Invalid chatanki_review_stats arguments: {}", error),
+            ));
+        }
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let stats = match FsrsReviewService::new(db.clone()).get_stats() {
+            Ok(stats) => stats,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    error.to_string(),
+                ));
+            }
+        };
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            chatanki_review_stats_output(&stats),
+        ))
+    }
+
+    async fn execute_undo_last_review(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args =
+            match serde_json::from_value::<ChatAnkiUndoLastReviewArgs>(call.arguments.clone())
+                .map_err(|error| error.to_string())
+                .and_then(ChatAnkiUndoLastReviewArgs::normalize)
+            {
+                Ok(args) => args,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Invalid chatanki_undo_last_review arguments: {error}"),
+                    ));
+                }
+            };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        if let Err(error) = verify_agent_review_card_ownership(db, &args.card_id, &ctx.session_id) {
+            return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+        }
+
+        let outcome = match FsrsReviewService::new(db.clone()).undo_last_review_for_session(
+            &args.card_id,
+            &ctx.session_id,
+            args.expected_review_version,
+            &args.expected_log_id,
+        ) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        Ok(finish_agent_review_mutation(
+            call,
+            ctx,
+            start_time,
+            &args.card_id,
+            "undo_last_review",
+            outcome,
+        ))
+    }
+
+    async fn execute_set_suspended(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiSetSuspendedArgs>(call.arguments.clone())
+            .map_err(|error| error.to_string())
+            .and_then(ChatAnkiSetSuspendedArgs::normalize)
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_set_suspended arguments: {error}"),
+                ));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        if let Err(error) = verify_agent_review_card_ownership(db, &args.card_id, &ctx.session_id) {
+            return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+        }
+
+        let outcome = match FsrsReviewService::new(db.clone()).set_suspended_for_session(
+            &args.card_id,
+            &ctx.session_id,
+            args.expected_review_version,
+            args.suspended,
+        ) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        Ok(finish_agent_review_mutation(
+            call,
+            ctx,
+            start_time,
+            &args.card_id,
+            "set_suspended",
+            outcome,
+        ))
+    }
+
+    async fn execute_list_library_cards(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args =
+            match serde_json::from_value::<ChatAnkiListLibraryCardsArgs>(call.arguments.clone()) {
+                Ok(args) => args.normalize(),
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Invalid chatanki_list_library_cards arguments: {error}"),
+                    ));
+                }
+            };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let scope = AnkiLibraryScope::agent();
+        let page = args.page.expect("normalized library page");
+        let page_size = args.page_size.expect("normalized library page size");
+        let result = match db.list_anki_agent_library_cards(
+            scope,
+            args.template_id.as_deref(),
+            args.search.as_deref(),
+            args.schedule.as_database_filter(),
+            args.filter.as_database_filter(),
+            page,
+            page_size,
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to list Anki library cards: {error}"),
+                ));
+            }
+        };
+        let card_ids = result
+            .items
+            .iter()
+            .map(|record| record.library_card.card.id.clone())
+            .collect::<Vec<_>>();
+        let review_states = match FsrsReviewService::new(db.clone())
+            .get_review_states_for_library(scope, &card_ids)
+        {
+            Ok(states) => library_review_states_by_card(states),
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        let cards = result
+            .items
+            .iter()
+            .map(|record| {
+                convert_library_record_for_tool(
+                    record,
+                    review_states.get(&record.library_card.card.id),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": "ok",
+                "total": result.total,
+                "page": result.page,
+                "pageSize": result.page_size,
+                "search": args.search,
+                "templateId": args.template_id,
+                "schedule": args.schedule.as_str(),
+                "filter": args.filter.as_str(),
+                "cards": cards,
+                "ratingAvailableToAgent": false,
+            }),
+        ))
+    }
+
+    async fn execute_update_library_card(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args =
+            match serde_json::from_value::<ChatAnkiUpdateLibraryCardArgs>(call.arguments.clone())
+                .map_err(|error| error.to_string())
+                .and_then(ChatAnkiUpdateLibraryCardArgs::normalize)
+            {
+                Ok(args) => args,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Invalid chatanki_update_library_card arguments: {error}"),
+                    ));
+                }
+            };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let scope = AnkiLibraryScope::agent();
+        let current = match db.get_anki_agent_library_card(scope, &args.card_id) {
+            Ok(Some(current)) => current,
+            Ok(None) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.statusNotFound".to_string(),
+                ));
+            }
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to load library card: {error}"),
+                ));
+            }
+        };
+        let mutation_target =
+            match preflight_library_card_mutation(ctx.chat_v2_db.as_deref(), &current.locator) {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+                }
+            };
+        let mut card = current.library_card.card.clone();
+        args.patch.apply_to(&mut card);
+        if !card_content_is_valid(&card) {
+            return Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.cardContentRequired".to_string(),
+            ));
+        }
+
+        let outcome = match db.update_anki_card_if_version_for_library(
+            scope,
+            &card,
+            &args.expected_version,
+        ) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to update library card: {error}"),
+                ));
+            }
+        };
+        match outcome {
+            AnkiLibraryCardVersionUpdate::Updated(updated) => {
+                let (status, ui_sync) = persist_library_card_mutation(
+                    ctx,
+                    &mutation_target,
+                    &updated.locator,
+                    json!({
+                        "documentId": updated.locator.document_id,
+                        "cardMutation": "upsert",
+                        "cards": [convert_backend_card(&updated.library_card.card)],
+                    }),
+                );
+                emit_fsrs_cards_changed_with_cards(
+                    ctx,
+                    "card_updated",
+                    std::slice::from_ref(&args.card_id),
+                    vec![convert_backend_card(&updated.library_card.card)],
+                );
+                let review_state =
+                    load_library_review_state(db, scope, &args.card_id, "update_library_card");
+                let (card, review_state_unavailable) =
+                    convert_library_record_with_review_load(&updated, &review_state);
+                Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": if review_state_unavailable { "partial" } else { status },
+                        "documentId": updated.locator.document_id,
+                        "card": card,
+                        "mutationApplied": true,
+                        "retryable": false,
+                        "reviewStateUnavailable": review_state_unavailable,
+                        "uiSync": ui_sync,
+                    }),
+                ))
+            }
+            AnkiLibraryCardVersionUpdate::Conflict(current) => {
+                let review_state = load_library_review_state(
+                    db,
+                    scope,
+                    &args.card_id,
+                    "update_library_card_conflict",
+                );
+                Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    chatanki_library_version_conflict_payload_with_review_load(
+                        &current,
+                        &review_state,
+                        "version_conflict",
+                    ),
+                ))
+            }
+            AnkiLibraryCardVersionUpdate::NotFound => Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.statusNotFound".to_string(),
+            )),
+        }
+    }
+
+    async fn execute_enqueue_library_review(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiEnqueueLibraryReviewArgs>(
+            call.arguments.clone(),
+        )
+        .map_err(|error| error.to_string())
+        .and_then(ChatAnkiEnqueueLibraryReviewArgs::normalize)
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_enqueue_library_review arguments: {error}"),
+                ));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let scope = AnkiLibraryScope::agent();
+        let requested = args
+            .cards
+            .into_iter()
+            .map(|card| FsrsLibraryEnqueueCard {
+                card_id: card.card_id,
+                expected_content_version: card.expected_version,
+            })
+            .collect::<Vec<_>>();
+        let card_ids = requested
+            .iter()
+            .map(|card| card.card_id.clone())
+            .collect::<Vec<_>>();
+        let service = FsrsReviewService::new(db.clone());
+        let outcome = match service.enqueue_cards_for_library(scope, &requested) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        match outcome {
+            FsrsLibraryEnqueueOutcome::Enqueued(result) => {
+                emit_enqueue_review_changed(ctx, &service, &result);
+                let (review_states, review_state_unavailable) = match service
+                    .get_review_states_for_library(scope, &card_ids)
+                {
+                    Ok(states) => (library_review_states_by_card(states), false),
+                    Err(error) => {
+                        log::warn!(
+                            "[ChatAnkiToolExecutor] Failed to refresh library review states after enqueue: {}",
+                            error
+                        );
+                        (HashMap::new(), true)
+                    }
+                };
+                let cards = card_ids
+                    .iter()
+                    .map(|card_id| {
+                        if review_state_unavailable {
+                            json!({
+                                "cardId": card_id,
+                                "reviewStateUnavailable": true,
+                            })
+                        } else {
+                            json!({
+                                "cardId": card_id,
+                                "reviewState": review_states.get(card_id),
+                            })
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": if review_state_unavailable { "partial" } else { "ok" },
+                        "enqueued": result.enqueued,
+                        "skipped": result.skipped,
+                        "cards": cards,
+                        "mutationApplied": result.enqueued > 0,
+                        "retryable": false,
+                        "reviewStateUnavailable": review_state_unavailable,
+                    }),
+                ))
+            }
+            FsrsLibraryEnqueueOutcome::Conflict { conflicts } => Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                json!({
+                    "status": "conflict",
+                    "error": "version_conflict",
+                    "conflicts": conflicts,
+                    "mutationApplied": false,
+                    "retryable": true,
+                    "guidance": "Call builtin-chatanki_list_library_cards to refresh content versions before retrying.",
+                }),
+            )),
+            FsrsLibraryEnqueueOutcome::NotFound { card_ids } => Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                json!({
+                    "status": "not_found",
+                    "error": "card_not_found",
+                    "cardIds": card_ids,
+                    "mutationApplied": false,
+                    "retryable": true,
+                    "guidance": "Call builtin-chatanki_list_library_cards to refresh the live card set before retrying.",
+                }),
+            )),
+            FsrsLibraryEnqueueOutcome::Blocked { reason, card_ids } => Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                json!({
+                    "status": "blocked",
+                    "error": reason,
+                    "cardIds": card_ids,
+                    "mutationApplied": false,
+                    "retryable": false,
+                }),
+            )),
+        }
+    }
+
+    async fn execute_set_library_suspended(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args =
+            match serde_json::from_value::<ChatAnkiSetLibrarySuspendedArgs>(call.arguments.clone())
+                .map_err(|error| error.to_string())
+                .and_then(ChatAnkiSetLibrarySuspendedArgs::normalize)
+            {
+                Ok(args) => args,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Invalid chatanki_set_library_suspended arguments: {error}"),
+                    ));
+                }
+            };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let outcome = match FsrsReviewService::new(db.clone()).set_suspended_for_library(
+            AnkiLibraryScope::agent(),
+            &args.card_id,
+            args.expected_review_version,
+            args.suspended,
+        ) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        Ok(finish_library_agent_review_mutation(
+            call,
+            ctx,
+            start_time,
+            &args.card_id,
+            "set_suspended",
+            outcome,
+        ))
+    }
+
+    async fn execute_undo_library_last_review(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args = match serde_json::from_value::<ChatAnkiUndoLibraryLastReviewArgs>(
+            call.arguments.clone(),
+        )
+        .map_err(|error| error.to_string())
+        .and_then(ChatAnkiUndoLibraryLastReviewArgs::normalize)
+        {
+            Ok(args) => args,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_undo_library_last_review arguments: {error}"),
+                ));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let outcome = match FsrsReviewService::new(db.clone()).undo_last_review_for_library(
+            AnkiLibraryScope::agent(),
+            &args.card_id,
+            args.expected_review_version,
+            &args.expected_log_id,
+        ) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Ok(finish_chatanki_app_failure(call, ctx, start_time, error));
+            }
+        };
+        Ok(finish_library_agent_review_mutation(
+            call,
+            ctx,
+            start_time,
+            &args.card_id,
+            "undo_last_review",
+            outcome,
+        ))
+    }
+
+    async fn execute_delete_library_card(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let args =
+            match serde_json::from_value::<ChatAnkiDeleteLibraryCardArgs>(call.arguments.clone())
+                .map_err(|error| error.to_string())
+                .and_then(ChatAnkiDeleteLibraryCardArgs::normalize)
+            {
+                Ok(args) => args,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Invalid chatanki_delete_library_card arguments: {error}"),
+                    ));
+                }
+            };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let scope = AnkiLibraryScope::agent();
+        let current = match db.get_anki_agent_library_card(scope, &args.card_id) {
+            Ok(Some(current)) => current,
+            Ok(None) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.statusNotFound".to_string(),
+                ));
+            }
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to load library card: {error}"),
+                ));
+            }
+        };
+        let mutation_target =
+            match preflight_library_card_mutation(ctx.chat_v2_db.as_deref(), &current.locator) {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+                }
+            };
+        let outcome = match db.delete_anki_card_for_library(
+            scope,
+            &args.card_id,
+            &args.expected_version,
+            args.expected_review_version(),
+        ) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to delete library card: {error}"),
+                ));
+            }
+        };
+        match outcome {
+            AnkiLibraryCardDeleteOutcome::Deleted { locator } => {
+                let (status, ui_sync) = persist_library_card_mutation(
+                    ctx,
+                    &mutation_target,
+                    &locator,
+                    json!({
+                        "documentId": locator.document_id,
+                        "cardMutation": "delete",
+                        "deletedCardIds": [args.card_id],
+                    }),
+                );
+                emit_fsrs_cards_changed(ctx, "card_deleted", std::slice::from_ref(&args.card_id));
+                Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": status,
+                        "documentId": locator.document_id,
+                        "cardId": args.card_id,
+                        "deleted": true,
+                        "mutationApplied": true,
+                        "retryable": false,
+                        "uiSync": ui_sync,
+                    }),
+                ))
+            }
+            AnkiLibraryCardDeleteOutcome::ContentConflict { current, review: _ } => {
+                let review_state = load_library_review_state(
+                    db,
+                    scope,
+                    &args.card_id,
+                    "delete_library_card_content_conflict",
+                );
+                Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    chatanki_library_version_conflict_payload_with_review_load(
+                        &current,
+                        &review_state,
+                        "version_conflict",
+                    ),
+                ))
+            }
+            AnkiLibraryCardDeleteOutcome::ReviewConflict { current, review: _ } => {
+                let review_state = load_library_review_state(
+                    db,
+                    scope,
+                    &args.card_id,
+                    "delete_library_card_review_conflict",
+                );
+                Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    chatanki_library_version_conflict_payload_with_review_load(
+                        &current,
+                        &review_state,
+                        "review_state_conflict",
+                    ),
+                ))
+            }
+            AnkiLibraryCardDeleteOutcome::NotFound => Ok(finish_chatanki_failure(
+                call,
+                ctx,
+                start_time,
+                "blocks.ankiCards.errors.statusNotFound".to_string(),
+            )),
+        }
+    }
+
+    async fn execute_retemplate(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let request = match serde_json::from_value::<ChatAnkiRetemplateArgs>(call.arguments.clone())
+            .map_err(|error| error.to_string())
+            .and_then(ChatAnkiRetemplateArgs::normalize)
+        {
+            Ok(request) => request,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_retemplate arguments: {}", error),
+                ));
+            }
+        };
+        let anki_db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let template_db = match ctx.main_db.as_ref().or(ctx.anki_db.as_ref()) {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.templateDatabaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let template = match template_db.get_custom_template_by_id(&request.target_template_id) {
+            Ok(Some(template)) if template.is_active => template,
+            Ok(Some(_)) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "target_template_inactive".to_string(),
+                ));
+            }
+            Ok(None) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "target_template_not_found".to_string(),
+                ));
+            }
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to load target template: {}", error),
+                ));
+            }
+        };
+        let fields = normalize_template_fields(&template.fields);
+        let rules = ensure_field_extraction_rules(&fields, &template.field_extraction_rules);
+        let required_fields: HashSet<String> = rules
+            .iter()
+            .filter(|(_, rule)| rule.is_required)
+            .map(|(field, _)| field.clone())
+            .collect();
+        let target = AnkiRetemplateTarget {
+            template_id: template.id,
+            note_type: template.note_type,
+            fields,
+            required_fields,
+        };
+
+        let document_id = match &request.selector {
+            AnkiRetemplateSelector::Document(document_id) => {
+                if let Err(error) = verify_document_ownership(anki_db, document_id, &ctx.session_id)
+                {
+                    return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+                }
+                document_id.clone()
+            }
+            AnkiRetemplateSelector::Cards(card_ids) => {
+                let mut document_ids = HashSet::new();
+                let mut missing_card_ids = Vec::new();
+                for card_id in card_ids {
+                    match anki_db.get_anki_card_for_owned_document_session(card_id, &ctx.session_id)
+                    {
+                        Ok(Some((_, document_id))) => {
+                            document_ids.insert(document_id);
+                        }
+                        Ok(None) => match anki_db.get_anki_card_with_document(card_id) {
+                            Ok(Some(_)) => {
+                                return Ok(finish_chatanki_failure(
+                                    call,
+                                    ctx,
+                                    start_time,
+                                    "blocks.ankiCards.errors.statusNotFound".to_string(),
+                                ));
+                            }
+                            Ok(None) => missing_card_ids.push(card_id.clone()),
+                            Err(error) => {
+                                return Ok(finish_chatanki_failure(
+                                    call,
+                                    ctx,
+                                    start_time,
+                                    format!("Failed to resolve selected card: {}", error),
+                                ));
+                            }
+                        },
+                        Err(error) => {
+                            return Ok(finish_chatanki_failure(
+                                call,
+                                ctx,
+                                start_time,
+                                format!("Failed to resolve selected card: {}", error),
+                            ));
+                        }
+                    }
+                }
+                if !missing_card_ids.is_empty() {
+                    missing_card_ids.sort();
+                    return Ok(finish_chatanki_success(
+                        call,
+                        ctx,
+                        start_time,
+                        retemplate_selection_changed_payload(missing_card_ids),
+                    ));
+                }
+                let mut document_ids: Vec<String> = document_ids.into_iter().collect();
+                document_ids.sort();
+                if document_ids.len() != 1 {
+                    return Ok(finish_chatanki_success(
+                        call,
+                        ctx,
+                        start_time,
+                        json!({
+                            "status": "rejected",
+                            "error": "cross_document_selection",
+                            "documentIds": document_ids,
+                            "mutationApplied": false,
+                            "retryable": false,
+                        }),
+                    ));
+                }
+                if let Err(error) =
+                    verify_document_ownership(anki_db, &document_ids[0], &ctx.session_id)
+                {
+                    return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+                }
+                document_ids.remove(0)
+            }
+        };
+
+        let mutation_target =
+            match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Unable to prepare card UI synchronization: {}", error),
+                    ));
+                }
+            };
+        let result = match anki_db.retemplate_anki_cards_for_session(
+            &request.selector,
+            &target,
+            &request.expected_versions,
+            &ctx.session_id,
+            std::slice::from_ref(&document_id),
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to retemplate cards: {}", error),
+                ));
+            }
+        };
+
+        let (target_note_type, updates) = match result {
+            AnkiRetemplateBatchResult::Updated {
+                target_note_type,
+                updates,
+            } => (target_note_type, updates),
+            rejection => {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    retemplate_rejection_payload(rejection),
+                ));
+            }
+        };
+        let event_cards: Vec<Value> = updates
+            .iter()
+            .map(|update| convert_backend_card(&update.card))
+            .collect();
+        let (status, ui_sync) = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+            ctx,
+            &mutation_target,
+            &document_id,
+            json!({
+                "documentId": document_id,
+                "cardMutation": "upsert",
+                "cards": event_cards,
+            }),
+        ));
+        let updated_ids: Vec<String> = updates
+            .iter()
+            .map(|update| update.card.id.clone())
+            .collect();
+        emit_fsrs_cards_changed_with_cards(
+            ctx,
+            "cards_retemplated",
+            &updated_ids,
+            event_cards.clone(),
+        );
+        let missing_cards = updates
+            .iter()
+            .filter(|update| !update.missing_fields.is_empty())
+            .count();
+        let cards: Vec<Value> = updates
+            .iter()
+            .map(|update| retemplate_update_for_tool(update, request.strategy))
+            .collect();
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "documentId": document_id,
+                "targetTemplateId": target.template_id,
+                "targetNoteType": target_note_type,
+                "isCloze": target_note_type.trim().eq_ignore_ascii_case("cloze"),
+                "strategy": request.strategy.as_str(),
+                "updated": cards.len(),
+                "missingCards": missing_cards,
+                "cards": cards,
+                "mutationApplied": true,
+                "retryable": false,
+                "uiSync": ui_sync,
+            }),
+        ))
+    }
+
     async fn execute_wait(
         &self,
         call: &ToolCall,
@@ -580,7 +3991,9 @@ impl ChatAnkiToolExecutor {
         let chat_db = ctx.chat_v2_db.clone();
         let anki_db = ctx.anki_db.clone();
 
-        const DEFAULT_TIMEOUT_MS: u64 = 30 * 60 * 1000;
+        // 默认 5 分钟（由 30 分钟下调）：促使 agent 分轮轮询而不是单次 wait
+        // 占死整个回合；需要更久时显式传 timeoutMs（上限 60 分钟不变）。
+        const DEFAULT_TIMEOUT_MS: u64 = 5 * 60 * 1000;
         const MAX_TIMEOUT_MS: u64 = 60 * 60 * 1000;
         const BLOCK_DISCOVERY_GRACE_MS: u64 = 8_000;
         const POLL_INTERVAL: Duration = Duration::from_millis(900);
@@ -729,14 +4142,6 @@ impl ChatAnkiToolExecutor {
                                 | crate::models::TaskStatus::Streaming
                         )
                     });
-                    let has_failed_or_truncated = tasks.iter().any(|t| {
-                        matches!(
-                            t.status,
-                            crate::models::TaskStatus::Failed
-                                | crate::models::TaskStatus::Truncated
-                        )
-                    });
-                    let user_cancelled = tasks_user_cancelled(&tasks);
                     if tasks_limit_reached(&tasks) {
                         final_limit_reached = true;
                     }
@@ -753,13 +4158,9 @@ impl ChatAnkiToolExecutor {
                             break;
                         }
                         if !is_in_progress {
-                            final_status = if user_cancelled {
-                                "cancelled".to_string()
-                            } else if has_failed_or_truncated {
-                                "completed_with_errors".to_string()
-                            } else {
-                                "completed".to_string()
-                            };
+                            final_status = classify_generation_terminal(&tasks, &cards)
+                                .as_stage()
+                                .to_string();
                             break;
                         }
                     }
@@ -803,11 +4204,28 @@ impl ChatAnkiToolExecutor {
 
                         // Best-effort parse progress info from tool_output (may only be present at the end).
                         if let Some(out) = block.tool_output.as_ref() {
-                            final_document_id = out
+                            let block_document_id = out
                                 .get("documentId")
                                 .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
-                                .or(final_document_id);
+                                .map(str::trim)
+                                .filter(|id| !id.is_empty());
+                            let requested_document_id = args
+                                .document_id
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|id| !id.is_empty());
+                            if let (Some(requested), Some(block_document_id)) =
+                                (requested_document_id, block_document_id)
+                            {
+                                if requested != block_document_id {
+                                    final_status = "invalid_args".to_string();
+                                    final_error =
+                                        Some("chatanki_wait_document_mismatch".to_string());
+                                    break;
+                                }
+                            }
+                            final_document_id =
+                                block_document_id.map(str::to_string).or(final_document_id);
                             final_progress = out.get("progress").cloned().or(final_progress);
                             final_anki_connect =
                                 out.get("ankiConnect").cloned().or(final_anki_connect);
@@ -817,8 +4235,12 @@ impl ChatAnkiToolExecutor {
                             }
                         }
 
+                        // With a stable documentId, task rows are authoritative. A block from a
+                        // different task must never short-circuit the requested document wait.
                         let status = block.status.clone();
-                        if status == block_status::SUCCESS {
+                        if (!has_document_id || anki_db.is_none())
+                            && status == block_status::SUCCESS
+                        {
                             // If we already know the documentId, try to refine "completed" vs "cancelled/completed_with_errors".
                             if let (Some(db), Some(doc_id)) =
                                 (&anki_db, final_document_id.as_deref())
@@ -827,24 +4249,15 @@ impl ChatAnkiToolExecutor {
                                     .get_tasks_for_document(doc_id)
                                     .map_err(|e| e.to_string())?;
                                 if !tasks.is_empty() {
-                                    let has_failed_or_truncated = tasks.iter().any(|t| {
-                                        matches!(
-                                            t.status,
-                                            crate::models::TaskStatus::Failed
-                                                | crate::models::TaskStatus::Truncated
-                                        )
-                                    });
-                                    let user_cancelled = tasks_user_cancelled(&tasks);
                                     if tasks_limit_reached(&tasks) {
                                         final_limit_reached = true;
                                     }
-                                    final_status = if user_cancelled {
-                                        "cancelled".to_string()
-                                    } else if has_failed_or_truncated {
-                                        "completed_with_errors".to_string()
-                                    } else {
-                                        "completed".to_string()
-                                    };
+                                    let cards = db
+                                        .get_cards_for_document(doc_id)
+                                        .map_err(|e| e.to_string())?;
+                                    final_status = classify_generation_terminal(&tasks, &cards)
+                                        .as_stage()
+                                        .to_string();
                                 } else {
                                     final_status = "completed".to_string();
                                 }
@@ -853,7 +4266,8 @@ impl ChatAnkiToolExecutor {
                             }
                             break;
                         }
-                        if status == block_status::ERROR {
+                        if (!has_document_id || anki_db.is_none()) && status == block_status::ERROR
+                        {
                             final_status = "error".to_string();
                             final_error = block.error.clone().or(final_error);
                             break;
@@ -895,14 +4309,6 @@ impl ChatAnkiToolExecutor {
                                 | crate::models::TaskStatus::Streaming
                         )
                     });
-                    let has_failed_or_truncated = tasks.iter().any(|t| {
-                        matches!(
-                            t.status,
-                            crate::models::TaskStatus::Failed
-                                | crate::models::TaskStatus::Truncated
-                        )
-                    });
-                    let user_cancelled = tasks_user_cancelled(&tasks);
                     if tasks_limit_reached(&tasks) {
                         final_limit_reached = true;
                     }
@@ -919,13 +4325,9 @@ impl ChatAnkiToolExecutor {
                             break;
                         }
                         if !is_in_progress {
-                            final_status = if user_cancelled {
-                                "cancelled".to_string()
-                            } else if has_failed_or_truncated {
-                                "completed_with_errors".to_string()
-                            } else {
-                                "completed".to_string()
-                            };
+                            final_status = classify_generation_terminal(&tasks, &cards)
+                                .as_stage()
+                                .to_string();
                             break;
                         }
                     }
@@ -984,11 +4386,14 @@ impl ChatAnkiToolExecutor {
         let should_retry = matches!(final_status.as_str(), "timeout" | "not_found");
 
         // Always return a structured result (avoid tool failure for "not found" / "timeout").
-        let tool_output = json!({
+        let mut tool_output = json!({
             "status": final_status,
             "ankiBlockId": final_anki_block_id.or_else(|| args.anki_block_id.clone()).unwrap_or_default(),
             "documentId": final_document_id,
             "cardsCount": final_cards_count.unwrap_or(0),
+            // 可用卡（非诊断/错误卡）数量；文档卡片可读取时在下方回填。
+            // completed_with_errors 且 usableCards=0 等价于完全失败，禁止当作部分成功汇报。
+            "usableCards": Value::Null,
             "progress": final_progress,
             "ankiConnect": final_anki_connect,
             // 达到 maxCards 上限提前停止时为 true，提示 AI 这是预期行为而非异常取消
@@ -996,6 +4401,42 @@ impl ChatAnkiToolExecutor {
             "error": final_error,
             "shouldRetry": should_retry,
         });
+        if !matches!(
+            final_status.as_str(),
+            "timeout" | "not_found" | "invalid_args"
+        ) {
+            if let (Some(db), Some(document_id)) = (&anki_db, final_document_id.as_deref()) {
+                let tasks = db
+                    .get_tasks_for_document(document_id)
+                    .map_err(|error| error.to_string())?;
+                let cards = db
+                    .get_cards_for_document(document_id)
+                    .map_err(|error| error.to_string())?;
+                tool_output["usableCards"] =
+                    json!(cards.iter().filter(|c| !c.is_error_card).count());
+                if !tasks.is_empty() {
+                    let projection = project_chatanki_workflow(&tasks, &cards, None, 0);
+                    deep_merge_value(&mut tool_output, projection.output_patch);
+                }
+                // A9 + 孤儿恢复：等待结束且文档已终态时，收敛陈旧/僵尸块快照。
+                if let Some(chat_db) = &chat_db {
+                    if let Err(e) = sync_terminal_anki_block_with_db(
+                        chat_db,
+                        Some(&ctx.emitter),
+                        &ctx.session_id,
+                        document_id,
+                        &tasks,
+                        &cards,
+                    ) {
+                        log::warn!(
+                            "[ChatAnkiToolExecutor] wait block refresh failed for {}: {}",
+                            document_id,
+                            e
+                        );
+                    }
+                }
+            }
+        }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         if matches!(final_status.as_str(), "invalid_args" | "not_found") {
@@ -1182,6 +4623,8 @@ impl ChatAnkiToolExecutor {
 
         let active_only = args.active_only.unwrap_or(true);
         let query = args.category.unwrap_or_default().trim().to_lowercase();
+        let page = args.page.unwrap_or(1).max(1);
+        let page_size = args.page_size.unwrap_or(20).clamp(1, 50);
 
         let mut templates = match db.get_all_custom_templates() {
             Ok(v) => v,
@@ -1211,40 +4654,8 @@ impl ChatAnkiToolExecutor {
             }
         }
 
-        let mut out: Vec<Value> = Vec::new();
-        for t in templates {
-            if active_only && !t.is_active {
-                continue;
-            }
-            if !query.is_empty() {
-                let hay = format!("{} {}\n{}", t.id, t.name, t.description).to_lowercase();
-                if !hay.contains(&query) && !t.note_type.to_lowercase().contains(&query) {
-                    continue;
-                }
-            }
-            let fields = normalize_template_fields(&t.fields);
-            let rules = ensure_field_extraction_rules(&fields, &t.field_extraction_rules);
-            let complexity_level = calculate_complexity_level(fields.len(), &t.note_type);
-            let use_case = if t.description.trim().is_empty() {
-                t.name.clone()
-            } else {
-                t.description.clone()
-            };
-            out.push(json!({
-                "id": t.id,
-                "name": t.name,
-                "description": t.description,
-                "category": "general",
-                "noteType": t.note_type,
-                "fields": fields,
-                "isActive": t.is_active,
-                "complexityLevel": complexity_level,
-                "useCaseDescription": use_case,
-                "field_extraction_rules": rules,
-                "generation_prompt": t.generation_prompt,
-                "isBuiltIn": t.is_built_in,
-            }));
-        }
+        let (total, out) =
+            select_chatanki_template_page(&templates, &query, active_only, page, page_size);
 
         let query_value: Value = if query.is_empty() {
             Value::Null
@@ -1255,6 +4666,9 @@ impl ChatAnkiToolExecutor {
             "status": "ok",
             "activeOnly": active_only,
             "query": query_value,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
             "count": out.len(),
             "templates": out,
         });
@@ -1377,7 +4791,7 @@ impl ChatAnkiToolExecutor {
                 .unwrap_or_else(|| {
                     format!(
                         "{}_chatanki_cards.json",
-                        deck_name.replace('/', "_").replace('\\', "_")
+                        deck_name.replace(['/', '\\'], "_")
                     )
                 });
 
@@ -1402,9 +4816,7 @@ impl ChatAnkiToolExecutor {
             let suggested = args
                 .suggested_name
                 .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| {
-                    format!("{}.apkg", deck_name.replace('/', "_").replace('\\', "_"))
-                });
+                .unwrap_or_else(|| format!("{}.apkg", deck_name.replace(['/', '\\'], "_")));
             let suggested = crate::cmd::anki_connect::sanitize_filename_with_extension(
                 &suggested,
                 "chatanki_cards",
@@ -1539,6 +4951,13 @@ impl ChatAnkiToolExecutor {
             "deckName": deck_name,
             "noteType": final_note_type,
             "cardsCount": cards_count,
+            // P8：导出包含库中全部非错误卡（含超限保留卡）；该字段表示其中
+            // 有多少张未展示在预览块里，导出数可能大于块内可见数。
+            "hiddenOverLimitCount": lookup_hidden_over_limit_count(
+                ctx.chat_v2_db.as_deref(),
+                &ctx.session_id,
+                &args.document_id,
+            ),
         });
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -1749,12 +5168,27 @@ impl ChatAnkiToolExecutor {
             }
         }
 
+        let card_ids: Vec<String> = cards.iter().map(|c| c.id.clone()).collect();
+
+        // 激活死设置：从 settings 读取 batch_size / retry_times / media_mode
+        let sync_options = {
+            let batch = db.get_setting("anki_connect_batch_size").ok().flatten();
+            let retry = db.get_setting("anki_connect_retry_times").ok().flatten();
+            let media = db.get_setting("anki_connect_media_mode").ok().flatten();
+            crate::anki_connect_service::AnkiConnectSyncOptions::from_setting_strings(
+                batch.as_deref(),
+                retry.as_deref(),
+                media.as_deref(),
+            )
+        };
+
         let report = match crate::anki_connect_service::add_notes_to_anki_detailed(
             cards.clone(),
             deck_name.clone(),
             note_type.clone(),
             card_note_types,
             templates_by_model,
+            sync_options,
         )
         .await
         {
@@ -1809,6 +5243,28 @@ impl ChatAnkiToolExecutor {
             None
         };
 
+        // M4：Sync 非 error 时按卡片回写 note id + export_status='synced'
+        let mut receipt_written = 0usize;
+        if status != "error" && added > 0 {
+            match db.write_anki_export_receipts(&card_ids, &report.note_ids) {
+                Ok(n) => {
+                    receipt_written = n;
+                    if n > 0 {
+                        log::info!(
+                            "[ChatAnkiToolExecutor] export receipt written for {} cards",
+                            n
+                        );
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[ChatAnkiToolExecutor] export receipt writeback failed: {}",
+                        e
+                    );
+                }
+            }
+        }
+
         let output = json!({
             "status": status,
             "documentId": args.document_id,
@@ -1821,6 +5277,7 @@ impl ChatAnkiToolExecutor {
             "failed": failed,
             // 本次自动创建的 Anki 模型（自定义模板首次同步时）
             "createdModels": report.created_models,
+            "receiptWritten": receipt_written,
             "error": error,
             "warning": warning,
         });
@@ -1844,6 +5301,17 @@ impl ChatAnkiToolExecutor {
             };
             let _ = ctx.save_tool_block(&result);
             return Ok(result);
+        }
+
+        // M4：同步成功后把预览块 syncStatus 写成 synced（DB + 实时 chunk）
+        if let Some(chat_db) = ctx.chat_v2_db.as_ref() {
+            patch_anki_cards_block_sync_status(
+                chat_db,
+                &ctx.emitter,
+                &args.document_id,
+                "synced",
+                None,
+            );
         }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -1957,7 +5425,7 @@ impl ChatAnkiToolExecutor {
         match action.as_str() {
             "pause" => {
                 if let Err(e) = enhanced
-                    .pause_document_processing(document_id.clone(), ctx.window.clone())
+                    .pause_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                 {
                     let error_msg = format!("Pause failed: {}", e);
@@ -1976,7 +5444,7 @@ impl ChatAnkiToolExecutor {
             }
             "resume" => {
                 if let Err(e) = enhanced
-                    .resume_document_processing(document_id.clone(), ctx.window.clone())
+                    .resume_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                 {
                     let error_msg = format!("Resume failed: {}", e);
@@ -2037,7 +5505,7 @@ impl ChatAnkiToolExecutor {
                         .map_err(|e| e.to_string())?;
                 }
                 enhanced
-                    .resume_document_processing(document_id.clone(), ctx.window.clone())
+                    .resume_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                     .map_err(|e| e.to_string())?;
             }
@@ -2045,7 +5513,7 @@ impl ChatAnkiToolExecutor {
                 // 统一走非破坏性取消：停止调度协程+断流+未完成任务置 Cancelled，
                 // 保留已生成卡片。（此前的手工实现只改 DB 状态，调度协程仍会继续跑剩余任务）
                 if let Err(e) = enhanced
-                    .cancel_document_processing(document_id.clone(), ctx.window.clone())
+                    .cancel_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                 {
                     let error_msg = format!("Cancel failed: {}", e);
@@ -2082,6 +5550,39 @@ impl ChatAnkiToolExecutor {
             .get_tasks_for_document(&document_id)
             .map_err(|e| e.to_string())?;
         let counts = compute_task_counts(&tasks);
+
+        // 取消语义确认：取消保留已生成卡片。取消后文档即达终态，
+        // 顺手把块快照收敛为 DB 权威数据（cancelled + 保留卡片），
+        // 与后台轮询收尾幂等（A9 + 取消无回归）。
+        if action == "cancel" {
+            if let Some(chat_db) = &ctx.chat_v2_db {
+                match db.get_cards_for_document(&document_id) {
+                    Ok(cards) => {
+                        if let Err(e) = sync_terminal_anki_block_with_db(
+                            chat_db,
+                            Some(&ctx.emitter),
+                            &ctx.session_id,
+                            &document_id,
+                            &tasks,
+                            &cards,
+                        ) {
+                            log::warn!(
+                                "[ChatAnkiToolExecutor] cancel block refresh failed for {}: {}",
+                                document_id,
+                                e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[ChatAnkiToolExecutor] cancel card reload failed for {}: {}",
+                            document_id,
+                            e
+                        );
+                    }
+                }
+            }
+        }
 
         let output = json!({
             "status": "ok",
@@ -2283,6 +5784,11 @@ impl ChatAnkiToolExecutor {
             .clone();
 
         let anki_block_id = format!("blk_{}", uuid::Uuid::new_v4());
+        let anki_block_index = ChatV2Repo::get_block_v2(&chat_db, &ctx.block_id)
+            .ok()
+            .flatten()
+            .map(|block| block.block_index.saturating_add(1))
+            .unwrap_or(1);
         // 预分配 document_id，确保 tool output 立即包含真实 ID，
         // 避免 LLM 在 chatanki_wait 超时后因无 documentId 而编造假 ID
         let pre_allocated_document_id = uuid::Uuid::new_v4().to_string();
@@ -2341,12 +5847,18 @@ impl ChatAnkiToolExecutor {
         });
 
         let initial_tool_output = json!({
+            "schemaVersion": 2,
+            "stateRevision": next_chatanki_state_revision(),
             "cards": [],
             "documentId": pre_allocated_document_id,
             "templateId": template_id_for_ui.clone(),
             "templateIds": template_ids_for_ui.clone(),
             "templateMode": template_mode_for_ui,
             "syncStatus": "pending",
+            "workflowStatus": "running",
+            "generationStatus": "running",
+            "deliveryStatus": "empty",
+            "recoveryStatus": "none",
             "businessSessionId": ctx.session_id,
             "messageStableId": ctx.message_id,
             "options": options_for_ui,
@@ -2360,6 +5872,14 @@ impl ChatAnkiToolExecutor {
             "ankiConnect": { "available": null },
             "debug": if debug_enabled { Some(json!({ "forcedRoute": forced_route.map(|r| r.as_str()), "preferredResourceIds": preferred_resource_ids })) } else { None },
         });
+
+        // F2：先注册活跃管线再落库块，保证「DB 可见的 running 块但未注册」
+        // 一定意味着管线已死（供会话删除路径识别僵尸块）。
+        // 取消语义贯通：注册令牌挂到工具执行上下文令牌下，聊天取消可传播到管线；
+        // kill switch 通过 cancel_all_active_chatanki_pipelines 枚举注册表取消。
+        let pipeline_guard =
+            ChatAnkiPipelineGuard::register(&anki_block_id, ctx.cancellation_token());
+        let pipeline_cancel_token = pipeline_guard.cancel_token();
 
         // Persist anki_cards block early so user sees progress even if pipeline takes long.
         let anki_block = MessageBlock {
@@ -2376,7 +5896,7 @@ impl ChatAnkiToolExecutor {
             started_at: Some(now_ms),
             ended_at: None,
             first_chunk_at: Some(now_ms),
-            block_index: 1,
+            block_index: anki_block_index,
         };
         upsert_block_allow_orphan(&chat_db, &anki_block)?;
 
@@ -2414,7 +5934,7 @@ impl ChatAnkiToolExecutor {
 
         // Spawn background processing pipeline.
         let emitter = ctx.emitter.clone();
-        let window = ctx.window.clone();
+        let window = ctx.window_ref().clone();
         let session_id = ctx.session_id.clone();
         let message_id = ctx.message_id.clone();
         let tool_name = strip_tool_namespace(&call.name).to_string();
@@ -2428,6 +5948,8 @@ impl ChatAnkiToolExecutor {
 
         let pre_doc_id_for_spawn = pre_allocated_document_id.clone();
         tokio::spawn(async move {
+            // 守卫随后台任务存活；任务结束（含 panic 展开）时自动注销。
+            let _pipeline_guard = pipeline_guard;
             if let Err(e) = run_chatanki_pipeline_background(BackgroundParams {
                 session_id,
                 message_id,
@@ -2451,6 +5973,7 @@ impl ChatAnkiToolExecutor {
                 preferred_resource_ids,
                 pre_allocated_document_id: pre_doc_id_for_spawn.clone(),
                 max_cards,
+                cancel_token: pipeline_cancel_token,
             })
             .await
             {
@@ -2515,6 +6038,8 @@ struct BackgroundParams {
     pre_allocated_document_id: String,
     /// 用户指定的最大卡片数量（可选）
     max_cards: Option<i32>,
+    /// 取消令牌：kill switch / 聊天取消触发时走非破坏性取消（保留已生成卡片）
+    cancel_token: CancellationToken,
 }
 
 fn derive_document_name_from_goal(goal: &str) -> String {
@@ -2577,8 +6102,148 @@ fn ensure_failed_document_session(
     Ok(())
 }
 
+/// 取消语义贯通：管线在任务落库之前就被取消时，插入一条 Cancelled 占位任务，
+/// 让 `chatanki_wait` / `chatanki_status` 能以 cancelled 终态收敛而非 not_found。
+fn ensure_cancelled_document_session(
+    db: &crate::database::Database,
+    document_id: &str,
+    session_id: &str,
+    document_name: &str,
+) -> Result<(), String> {
+    match db.get_tasks_for_document(document_id) {
+        Ok(existing) if !existing.is_empty() => return Ok(()),
+        Ok(_) => {}
+        Err(e) => {
+            return Err(format!(
+                "failed to check existing tasks for document {}: {}",
+                document_id, e
+            ));
+        }
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let task = DocumentTask {
+        id: uuid::Uuid::new_v4().to_string(),
+        document_id: document_id.to_string(),
+        original_document_name: document_name.to_string(),
+        segment_index: 0,
+        content_segment: String::new(),
+        status: crate::models::TaskStatus::Cancelled,
+        created_at: now.clone(),
+        updated_at: now,
+        error_message: Some(PIPELINE_CANCELLED_MARKER.to_string()),
+        anki_generation_options_json: "{}".to_string(),
+    };
+
+    db.insert_document_task(&task)
+        .map_err(|e| format!("failed to insert placeholder cancelled task: {}", e))?;
+    db.set_document_session_source(document_id, session_id)
+        .map_err(|e| {
+            format!(
+                "failed to set source_session_id for cancelled placeholder task: {}",
+                e
+            )
+        })?;
+    Ok(())
+}
+
+/// 管线在生成开始前（内容解析阶段/启动前）被取消时的统一收尾：
+/// 占位 Cancelled 任务 + 块落终态 + UI 事件，已生成内容不受影响。
+fn finish_pipeline_cancelled_before_generation(params: &BackgroundParams) {
+    let document_name = derive_document_name_from_goal(&params.goal);
+    if let Err(e) = ensure_cancelled_document_session(
+        &params.anki_db,
+        &params.pre_allocated_document_id,
+        &params.session_id,
+        &document_name,
+    ) {
+        log::warn!(
+            "[ChatAnkiToolExecutor] failed to persist cancelled placeholder for {}: {}",
+            params.pre_allocated_document_id,
+            e
+        );
+    }
+    let final_output = json!({
+        "cards": [],
+        "documentId": params.pre_allocated_document_id,
+        "status": "cancelled",
+        "finalStatus": "cancelled",
+        "workflowStatus": "cancelled",
+        "generationStatus": "cancelled",
+        "progress": {
+            "stage": "cancelled",
+            "messageKey": "blocks.ankiCards.progress.messages.cancelled",
+            "cardsGenerated": 0,
+            "completedRatio": 0.0,
+            "lastUpdatedAt": chrono::Utc::now().to_rfc3339(),
+        },
+    });
+    persist_anki_cards_terminal_block(
+        &params.chat_db,
+        &params.message_id,
+        &params.anki_block_id,
+        &params.tool_name,
+        block_status::SUCCESS,
+        Some(final_output.clone()),
+        None,
+    );
+    params.emitter.emit_end(
+        event_types::ANKI_CARDS,
+        &params.anki_block_id,
+        Some(final_output),
+        None,
+    );
+}
+
+/// C6：空闲超时阈值——连续无任何生成进度（新卡/任务计数/完成比例）超过该时长判定超时。
+const PIPELINE_IDLE_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+/// C6：总时长防御性硬上限（由原 30 分钟提高）；只兜底防止无限轮询，正常大文档不应触达。
+const PIPELINE_MAX_TOTAL_DURATION: Duration = Duration::from_secs(60 * 60 * 6);
+/// 写入 document_task.error_message 的超时标记（前缀 + 可读原因）。
+const PIPELINE_IDLE_TIMEOUT_MARKER: &str = "PIPELINE_IDLE_TIMEOUT";
+const PIPELINE_TOTAL_TIMEOUT_MARKER: &str = "PIPELINE_TOTAL_TIMEOUT";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PipelineTimeoutKind {
+    Idle,
+    Total,
+}
+
+impl PipelineTimeoutKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Total => "total",
+        }
+    }
+}
+
+/// C6：超时判定——总时长上限优先，其次空闲超时。调用方负责在有进度
+///（或暂停等待）时重置空闲时钟，实现“有进度就续期”。
+fn decide_pipeline_timeout(
+    idle_elapsed: Duration,
+    total_elapsed: Duration,
+) -> Option<PipelineTimeoutKind> {
+    if total_elapsed > PIPELINE_MAX_TOTAL_DURATION {
+        return Some(PipelineTimeoutKind::Total);
+    }
+    if idle_elapsed > PIPELINE_IDLE_TIMEOUT {
+        return Some(PipelineTimeoutKind::Idle);
+    }
+    None
+}
+
 async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<(), String> {
     let document_name_for_errors = derive_document_name_from_goal(&params.goal);
+    // 0) 取消语义贯通：管线尚未做任何事时就已被取消（kill switch / 聊天取消）。
+    if params.cancel_token.is_cancelled() {
+        log::warn!(
+            "[ChatAnkiToolExecutor] pipeline for {} cancelled before start",
+            params.pre_allocated_document_id
+        );
+        finish_pipeline_cancelled_before_generation(&params);
+        return Ok(());
+    }
     // 1) Check AnkiConnect early (best-effort).
     let (anki_available, anki_error) =
         match crate::anki_connect_service::check_anki_connect_availability().await {
@@ -2934,11 +6599,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     let extract_result =
                         extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
                     if extract_result.truncated {
-                        warnings.push(json!({
-                            "code": "text_truncated",
-                            "messageKey": "blocks.ankiCards.warnings.textTruncated",
-                            "messageParams": { "limitMB": MAX_REF_TEXT_BYTES / 1_000_000 }
-                        }));
+                        warnings.push(text_truncated_warning(&extract_result));
                     }
                     let merged_text = merge_with_extra(extract_result.text);
                     if merged_text.trim().is_empty() {
@@ -2989,11 +6650,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     let extract_result =
                         extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
                     if extract_result.truncated {
-                        warnings.push(json!({
-                            "code": "text_truncated",
-                            "messageKey": "blocks.ankiCards.warnings.textTruncated",
-                            "messageParams": { "limitMB": MAX_REF_TEXT_BYTES / 1_000_000 }
-                        }));
+                        warnings.push(text_truncated_warning(&extract_result));
                     }
                     let text = merge_with_extra(extract_result.text);
                     let image_payloads = collect_image_payloads(
@@ -3058,11 +6715,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         let extract_result =
                             extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
                         if extract_result.truncated {
-                            warnings.push(json!({
-                                "code": "text_truncated",
-                                "messageKey": "blocks.ankiCards.warnings.textTruncated",
-                                "messageParams": { "limitMB": MAX_REF_TEXT_BYTES / 1_000_000 }
-                            }));
+                            warnings.push(text_truncated_warning(&extract_result));
                         }
                         let merged_text = merge_with_extra(extract_result.text);
                         let fallback_route = ChatAnkiRoute::SimpleText;
@@ -3293,6 +6946,15 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             warnings_patch,
         );
     }
+    // 取消语义贯通：内容解析（可能含 VLM 调用）结束后、生成启动前再检查一次。
+    if params.cancel_token.is_cancelled() {
+        log::warn!(
+            "[ChatAnkiToolExecutor] pipeline for {} cancelled before generation start",
+            params.pre_allocated_document_id
+        );
+        finish_pipeline_cancelled_before_generation(&params);
+        return Ok(());
+    }
     let enhanced = EnhancedAnkiService::new(params.anki_db.clone(), params.llm_manager.clone());
     // 使用 goal 作为文档名称，而不是硬编码 "chatanki"
     let doc_name = derive_document_name_from_goal(&params.goal);
@@ -3383,69 +7045,40 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
     const POLL_INTERVAL: Duration = Duration::from_millis(900);
     const MAX_CARDS_PER_CHUNK: usize = 25;
     let started_at = std::time::Instant::now();
-    const MAX_TOTAL_DURATION: Duration = Duration::from_secs(60 * 30); // 30 minutes
+    // C6：由「30 分钟硬超时直接取消」改为空闲超时语义——有进度就续期，
+    // 仅在长时间零进度（或达到防御性总时长上限）时才判定超时；
+    // 超时后未完成任务落库为 Failed（可重试），而不是不可恢复的 Cancelled。
+    let mut last_progress_at = std::time::Instant::now();
+    let mut timeout_info: Option<Value> = None;
+    let mut timeout_tasks_marked = false;
     let global_card_limit = params
         .max_cards
         .and_then(|v| if v > 0 { Some(v as usize) } else { None });
     let mut limit_cancel_triggered = false;
+    let mut pipeline_cancel_triggered = false;
 
     loop {
-        if started_at.elapsed() > MAX_TOTAL_DURATION {
-            let error_key = "blocks.ankiCards.errors.pipelineTimeout".to_string();
-            // Best-effort: cancel running tasks so UI aligns with timeout state.
-            let proc = crate::document_processing_service::DocumentProcessingService::new(
-                params.anki_db.clone(),
+        // 取消语义贯通：kill switch / 聊天取消触发时走既有的非破坏性取消路径
+        //（与 chatanki_control cancel 相同：停止调度协程 + 断流 + 未完成任务置
+        // Cancelled，已生成卡片全部保留），随后由正常 cancelled 终态分支收尾。
+        if !pipeline_cancel_triggered && params.cancel_token.is_cancelled() {
+            pipeline_cancel_triggered = true;
+            log::warn!(
+                "[ChatAnkiToolExecutor] pipeline cancel requested for {} (kill switch / chat cancel); performing non-destructive cancel",
+                document_id
             );
-            match proc.get_document_tasks(&document_id) {
-                Ok(tasks) => {
-                    let streaming = crate::streaming_anki_service::StreamingAnkiService::new(
-                        params.anki_db.clone(),
-                        params.llm_manager.clone(),
-                    );
-                    for t in tasks.iter() {
-                        if matches!(
-                            t.status,
-                            crate::models::TaskStatus::Processing
-                                | crate::models::TaskStatus::Streaming
-                        ) {
-                            let _ = streaming.cancel_streaming(t.id.clone()).await;
-                        }
-                    }
-                    for t in tasks.iter() {
-                        if matches!(
-                            t.status,
-                            crate::models::TaskStatus::Pending
-                                | crate::models::TaskStatus::Processing
-                                | crate::models::TaskStatus::Streaming
-                                | crate::models::TaskStatus::Paused
-                        ) {
-                            let _ = proc.update_task_status(
-                                &t.id,
-                                crate::models::TaskStatus::Cancelled,
-                                None,
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[ChatAnkiToolExecutor] timeout cancel failed for {}: {}",
-                        document_id,
-                        e
-                    );
-                }
+            let enhanced =
+                EnhancedAnkiService::new(params.anki_db.clone(), params.llm_manager.clone());
+            if let Err(e) = enhanced
+                .cancel_document_processing(document_id.clone(), params.window.clone())
+                .await
+            {
+                log::warn!(
+                    "[ChatAnkiToolExecutor] non-destructive cancel failed for {}: {}",
+                    document_id,
+                    e
+                );
             }
-            emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
-            persist_anki_cards_terminal_block(
-                &params.chat_db,
-                &params.message_id,
-                &params.anki_block_id,
-                &params.tool_name,
-                block_status::ERROR,
-                None,
-                Some(error_key),
-            );
-            break;
         }
 
         let tasks = params
@@ -3615,26 +7248,149 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             last_ratio = Some(ratio);
         }
 
+        // C6：进度续期——出现新卡/计数变化视为有进度；暂停属于用户主动等待，
+        // 同样不计入空闲时间（恢复后空闲时钟从零起算）。
+        if counts_changed || ratio_changed || !new_cards.is_empty() || is_paused {
+            last_progress_at = std::time::Instant::now();
+        }
+
+        if is_in_progress || is_paused {
+            if let Some(kind) =
+                decide_pipeline_timeout(last_progress_at.elapsed(), started_at.elapsed())
+            {
+                if timeout_tasks_marked {
+                    // 上一轮已把未完成任务标记为 Failed，但任务表仍未收敛
+                    //（极端情况：任务状态写入失败）。退回硬终态，避免死循环。
+                    let error_key = "blocks.ankiCards.errors.pipelineTimeout".to_string();
+                    log::error!(
+                        "[ChatAnkiToolExecutor] pipeline timeout for {} did not converge after marking tasks failed; forcing terminal error",
+                        document_id
+                    );
+                    // 把已记录的可读超时原因合入块状态后再落终态。
+                    if let Some(info) = timeout_info.clone() {
+                        persist_anki_cards_running_patch(
+                            &params.chat_db,
+                            &params.message_id,
+                            &params.anki_block_id,
+                            &params.tool_name,
+                            json!({ "timeout": info }),
+                        );
+                    }
+                    emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
+                    persist_anki_cards_terminal_block(
+                        &params.chat_db,
+                        &params.message_id,
+                        &params.anki_block_id,
+                        &params.tool_name,
+                        block_status::ERROR,
+                        None,
+                        Some(error_key),
+                    );
+                    break;
+                }
+                timeout_tasks_marked = true;
+
+                let idle_ms = last_progress_at.elapsed().as_millis() as u64;
+                let total_ms = started_at.elapsed().as_millis() as u64;
+                let reason = match kind {
+                    PipelineTimeoutKind::Idle => format!(
+                        "{}: no generation progress for {}s (limit {}s); unfinished segments marked failed and retryable",
+                        PIPELINE_IDLE_TIMEOUT_MARKER,
+                        idle_ms / 1000,
+                        PIPELINE_IDLE_TIMEOUT.as_secs()
+                    ),
+                    PipelineTimeoutKind::Total => format!(
+                        "{}: pipeline exceeded total duration cap of {}s; unfinished segments marked failed and retryable",
+                        PIPELINE_TOTAL_TIMEOUT_MARKER,
+                        PIPELINE_MAX_TOTAL_DURATION.as_secs()
+                    ),
+                };
+                log::warn!(
+                    "[ChatAnkiToolExecutor] pipeline timeout ({}) for {}: idle={}ms total={}ms",
+                    kind.as_str(),
+                    document_id,
+                    idle_ms,
+                    total_ms
+                );
+                // 可读超时原因写入块状态（新增可选字段，向后兼容）。
+                timeout_info = Some(json!({
+                    "kind": kind.as_str(),
+                    "idleMs": idle_ms,
+                    "totalMs": total_ms,
+                    "idleLimitMs": PIPELINE_IDLE_TIMEOUT.as_millis() as u64,
+                    "totalLimitMs": PIPELINE_MAX_TOTAL_DURATION.as_millis() as u64,
+                    "reason": reason.clone(),
+                    "at": chrono::Utc::now().to_rfc3339(),
+                }));
+
+                // 停流 + 未完成任务落库为 Failed（trigger_task_processing 可重试），
+                // 已生成卡片全部保留；下一轮由正常终态分支带着 DB 权威卡片收尾。
+                let proc = crate::document_processing_service::DocumentProcessingService::new(
+                    params.anki_db.clone(),
+                );
+                let streaming = crate::streaming_anki_service::StreamingAnkiService::new(
+                    params.anki_db.clone(),
+                    params.llm_manager.clone(),
+                );
+                for t in tasks.iter() {
+                    if matches!(
+                        t.status,
+                        crate::models::TaskStatus::Processing
+                            | crate::models::TaskStatus::Streaming
+                    ) {
+                        if let Err(e) = streaming.cancel_streaming(t.id.clone()).await {
+                            log::warn!(
+                                "[ChatAnkiToolExecutor] timeout cancel_streaming failed for task {}: {}",
+                                t.id,
+                                e
+                            );
+                        }
+                    }
+                }
+                for t in tasks.iter() {
+                    if matches!(
+                        t.status,
+                        crate::models::TaskStatus::Pending
+                            | crate::models::TaskStatus::Processing
+                            | crate::models::TaskStatus::Streaming
+                            | crate::models::TaskStatus::Paused
+                    ) {
+                        if let Err(e) = proc.update_task_status(
+                            &t.id,
+                            crate::models::TaskStatus::Failed,
+                            Some(reason.clone()),
+                        ) {
+                            log::warn!(
+                                "[ChatAnkiToolExecutor] timeout mark-failed failed for task {}: {}",
+                                t.id,
+                                e
+                            );
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
         if !is_in_progress && !is_paused {
             // Done: emit end with full cards list.
-            // 超出 maxCards 的卡片仍按上限裁剪（保持限额语义），但不再静默：
-            // 删除数量记入 warnings，让用户和 AI 都能看到（C1/E3 修复）。
+            // 超出 maxCards 的卡片仍按上限裁剪展示（保持限额语义），但不再物理删除：
+            // 超额卡保留在库中，仅从本批 final_cards / UI 投影中隐藏（P8）。
+            // 「库里有、块里看不见」的数量显式透出为 hiddenOverLimitCount。
+            let hidden_over_limit_count = cards.len().saturating_sub(visible_card_count);
             if cards.len() > visible_card_count {
-                let removed_count = cards.len() - visible_card_count;
-                for c in cards.iter().skip(visible_card_count) {
-                    let _ = params.anki_db.delete_anki_card(&c.id);
-                }
+                let retained_count = cards.len() - visible_card_count;
                 log::info!(
-                    "[ChatAnkiToolExecutor] removed {} over-limit cards (limit={:?}) for {}",
-                    removed_count,
+                    "[ChatAnkiToolExecutor] over-limit cards retained / hidden from batch: {} (limit={:?}) for {}",
+                    retained_count,
                     global_card_limit,
                     document_id
                 );
                 warnings.push(json!({
-                    "code": "over_limit_cards_removed",
-                    "messageKey": "blocks.ankiCards.warnings.overLimitCardsRemoved",
+                    "code": "over_limit_cards_retained",
+                    "messageKey": "blocks.ankiCards.warnings.overLimitCardsRetained",
                     "messageParams": {
-                        "count": removed_count,
+                        "count": retained_count,
                         "limit": global_card_limit.unwrap_or(0),
                     }
                 }));
@@ -3644,52 +7400,61 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 .take(visible_card_count)
                 .map(convert_backend_card)
                 .collect();
-            let has_failed = tasks.iter().any(|t| {
-                matches!(
-                    t.status,
-                    crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
-                )
-            });
-            let failed_count = tasks
-                .iter()
-                .filter(|t| matches!(t.status, crate::models::TaskStatus::Failed))
-                .count();
-            let truncated_count = tasks
-                .iter()
-                .filter(|t| matches!(t.status, crate::models::TaskStatus::Truncated))
-                .count();
+
+            // R1-04：卡片写库完成点 emit fsrs://changed（DESIGN §5.6）
+            // 仅在非用户取消且确有卡片入库时通知；entityIds = anki card id
+            if !has_user_cancelled && !final_cards.is_empty() {
+                let entity_ids: Vec<String> = cards
+                    .iter()
+                    .take(visible_card_count)
+                    .map(|c| c.id.clone())
+                    .collect();
+                // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai"）
+                let payload = json!({
+                    "source": "agent",
+                    "action": "cards_persisted",
+                    "entityIds": entity_ids,
+                    "runId": params.anki_block_id,
+                });
+                if let Err(e) = params.window.emit("fsrs://changed", payload) {
+                    log::debug!(
+                        "[ChatAnkiToolExecutor] Failed to emit fsrs://changed: {}",
+                        e
+                    );
+                }
+            }
+
+            let terminal_kind = classify_generation_terminal(&tasks, &cards);
+            let has_complete_failure = terminal_kind == GenerationTerminalKind::Failed;
+            let visible_cards = &cards[..visible_card_count.min(cards.len())];
+            let projection = project_chatanki_workflow(&tasks, visible_cards, None, 0);
             // limit 取消视为正常完成（C1 修复）
-            let final_stage = if has_user_cancelled {
-                "cancelled"
-            } else {
-                "completed"
-            };
+            let final_stage = terminal_kind.as_stage();
             let template_id = params.template_id.clone();
             let template_id_for_options = template_id.clone();
             let template_ids = params.template_ids.clone();
             let template_mode = params.template_mode.as_str();
             let final_message_key = if has_user_cancelled {
                 Some("blocks.ankiCards.progress.messages.cancelled")
-            } else if has_failed {
-                Some("blocks.ankiCards.progress.messages.completedWithErrors")
             } else if has_limit_cancelled {
                 Some("blocks.ankiCards.progress.messages.limitReached")
             } else {
                 None
             };
-            let final_message_params = if has_failed {
-                Some(json!({ "failed": failed_count, "truncated": truncated_count }))
-            } else if !has_user_cancelled && has_limit_cancelled {
+            let final_message_params = if !has_user_cancelled && has_limit_cancelled {
                 Some(json!({ "limit": global_card_limit.unwrap_or(0) }))
             } else {
                 None
             };
-            let final_error_key = if !has_user_cancelled && has_failed {
-                Some("blocks.ankiCards.errors.partialSegmentsFailed".to_string())
-            } else {
-                None
-            };
-            let final_output = json!({
+            // C6：超时导致的失败用更具体的 pipelineTimeout 错误键，
+            // 便于用户/AI 与普通生成失败区分。
+            let final_error_key =
+                if timeout_info.is_some() && projection.block_status == block_status::ERROR {
+                    Some("blocks.ankiCards.errors.pipelineTimeout".to_string())
+                } else {
+                    projection.block_error.clone()
+                };
+            let mut final_output = json!({
                 "cards": final_cards,
                 "documentId": document_id,
                 "templateId": template_id,
@@ -3707,9 +7472,12 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     "enable_images": false,
                     "max_cards_per_source": 0
                 },
-                "warnings": warnings,
+                "warnings": warnings.clone(),
+                "status": final_stage,
                 // 达到 maxCards 上限提前停止时为 true（C1 修复）
                 "limitReached": has_limit_cancelled,
+                // 超出本批 maxCards、保留在库中但不在预览块展示的卡片数（P8 透明化）
+                "hiddenOverLimitCount": hidden_over_limit_count,
                 "progress": {
                     "stage": final_stage,
                     "route": route.as_str(),
@@ -3727,54 +7495,47 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 },
                 "debug": if params.debug_enabled { debug_ref } else { None },
             });
+            deep_merge_value(&mut final_output, projection.output_patch.clone());
+            let mut combined_warnings = warnings;
+            if let Some(projected) = projection
+                .output_patch
+                .get("warnings")
+                .and_then(Value::as_array)
+            {
+                for warning in projected {
+                    if !combined_warnings.contains(warning) {
+                        combined_warnings.push(warning.clone());
+                    }
+                }
+            }
+            final_output["warnings"] = Value::Array(combined_warnings);
+            if has_limit_cancelled {
+                final_output["progress"]["messageKey"] = json!(final_message_key);
+                final_output["progress"]["messageParams"] = json!(final_message_params);
+            }
+            // C6：可读超时详情（新增可选字段，向后兼容）。
+            if let Some(info) = timeout_info.clone() {
+                final_output["timeout"] = info;
+            }
 
             // Persist final block (best-effort).
-            let now_ms = chrono::Utc::now().timestamp_millis();
-            let block = MessageBlock {
-                id: params.anki_block_id.clone(),
-                message_id: params.message_id.clone(),
-                block_type: block_types::ANKI_CARDS.to_string(),
-                status: if !has_user_cancelled && has_failed {
-                    block_status::ERROR.to_string()
-                } else {
-                    block_status::SUCCESS.to_string()
-                },
-                content: None,
-                tool_name: Some(params.tool_name.clone()),
-                tool_input: None,
-                tool_output: Some(final_output.clone()),
-                citations: None,
-                error: final_error_key.clone(),
-                started_at: Some(now_ms),
-                ended_at: Some(now_ms),
-                first_chunk_at: Some(now_ms),
-                block_index: 1,
-            };
-            let _ = upsert_block_allow_orphan(&params.chat_db, &block);
+            persist_anki_cards_terminal_block(
+                &params.chat_db,
+                &params.message_id,
+                &params.anki_block_id,
+                &params.tool_name,
+                projection.block_status,
+                Some(final_output.clone()),
+                final_error_key.clone(),
+            );
 
-            if !has_user_cancelled && has_failed {
-                // Ensure UI receives a final progress snapshot before switching to error status.
-                emit_anki_cards_chunk(
-                    &params.emitter,
-                    &params.anki_block_id,
-                    json!({
-                        "documentId": document_id,
-                        "progress": {
-                            "stage": final_stage,
-                            "route": route.as_str(),
-                            "messageKey": final_message_key,
-                            "messageParams": final_message_params.clone(),
-                            "cardsGenerated": cards.len(),
-                            "counts": counts.get("counts").cloned().unwrap_or(json!({})),
-                            "completedRatio": ratio,
-                            "lastUpdatedAt": chrono::Utc::now().to_rfc3339(),
-                        }
-                    }),
-                );
+            if has_complete_failure {
+                // Send the authoritative v2 snapshot before the terminal error event.
+                emit_anki_cards_chunk(&params.emitter, &params.anki_block_id, final_output.clone());
 
                 // Notify UI as error (cards are preserved); do not emit_end to avoid flipping to success.
                 let error_key = final_error_key
-                    .unwrap_or_else(|| "blocks.ankiCards.errors.partialSegmentsFailed".to_string());
+                    .unwrap_or_else(|| "blocks.ankiCards.errors.generationFailed".to_string());
                 emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
             } else {
                 params.emitter.emit_end(
@@ -3981,7 +7742,8 @@ fn build_import_prompt(goal: &str) -> String {
    [SUMMARY]: 50字以内摘要\n\
    [CHUNK_END]\n\
 3) 不要输出任何多余解释，只输出 Markdown。\n\
-4) 遇到图表/流程图必须用 [IMAGE_DESC: ...] 条目式还原关键逻辑。\n"
+4) 遇到图表/流程图必须用 [IMAGE_DESC: ...] 条目式还原关键逻辑。\n\
+5) 输出语言与文档原文语言一致（英文文档输出英文，不要翻译）。\n"
     )
 }
 
@@ -4027,6 +7789,22 @@ fn push_with_budget(out: &mut String, text: &str, remaining: &mut usize) -> bool
     }
     *remaining = 0;
     false
+}
+
+/// 文本预算截断警告：明确列出被丢弃/已收录的文件名，让 agent 能告知用户
+/// 哪些材料没有进入本次制卡（修复静默丢弃）。
+fn text_truncated_warning(extract_result: &ExtractTextResult) -> Value {
+    json!({
+        "code": "text_truncated",
+        "messageKey": "blocks.ankiCards.warnings.textTruncated",
+        "messageParams": {
+            "limitMB": MAX_REF_TEXT_BYTES / 1_000_000,
+            "droppedCount": extract_result.dropped_files.len(),
+            "droppedFiles": extract_result.dropped_files,
+        },
+        "includedFiles": extract_result.included_files,
+        "droppedFiles": extract_result.dropped_files,
+    })
 }
 
 fn merge_optional_texts(base: String, extra: Option<String>) -> String {
@@ -4091,10 +7869,15 @@ fn collect_image_payloads(
     }
 }
 
-/// 提取结果：文本 + 是否被截断
+/// 提取结果：文本 + 是否被截断 + 逐文件收录/丢弃清单
+///（修复：此前 10MB 预算耗尽后剩余文件被静默整体丢弃，agent 无从告知用户）。
 struct ExtractTextResult {
     text: String,
     truncated: bool,
+    /// 内容（全部或部分）被收录进文本的引用名。
+    included_files: Vec<String>,
+    /// 内容因预算耗尽被整体或部分丢弃的引用名（部分收录的文件同时出现在两个清单）。
+    dropped_files: Vec<String>,
 }
 
 fn extract_text_from_refs(
@@ -4108,10 +7891,14 @@ fn extract_text_from_refs(
     let mut out = String::new();
     let mut remaining = MAX_REF_TEXT_BYTES;
     let mut truncated = false;
+    let mut included_files: Vec<String> = Vec::new();
+    let mut dropped_files: Vec<String> = Vec::new();
 
-    for r in &ref_data.refs {
+    let mut refs_iter = ref_data.refs.iter();
+    for r in refs_iter.by_ref() {
         if remaining == 0 {
             truncated = true;
+            dropped_files.push(r.name.clone());
             break;
         }
         match r.resource_type {
@@ -4146,17 +7933,23 @@ fn extract_text_from_refs(
                     let header = format!("\n\n# {}\n\n", r.name);
                     if !push_with_budget(&mut out, &header, &mut remaining) {
                         truncated = true;
+                        dropped_files.push(r.name.clone());
                         break;
                     }
                     if !push_with_budget(&mut out, &text, &mut remaining) {
+                        // 文件正文被截断：部分内容已收录，剩余部分丢失。
                         truncated = true;
+                        included_files.push(r.name.clone());
+                        dropped_files.push(r.name.clone());
                         break;
                     }
+                    included_files.push(r.name.clone());
                 }
             }
             // For non-file refs, fall back to resolver text blocks.
             _ => {
                 let blocks = resolve_vfs_ref_to_blocks(conn, blobs_dir, r, false);
+                let mut pushed_any = false;
                 for b in blocks {
                     if let ContentBlock::Text { text } = b {
                         if !text.trim().is_empty() {
@@ -4166,10 +7959,18 @@ fn extract_text_from_refs(
                             }
                             if !push_with_budget(&mut out, &text, &mut remaining) {
                                 truncated = true;
+                                pushed_any = true;
                                 break;
                             }
+                            pushed_any = true;
                         }
                     }
+                }
+                if pushed_any {
+                    included_files.push(r.name.clone());
+                }
+                if truncated {
+                    dropped_files.push(r.name.clone());
                 }
             }
         }
@@ -4177,17 +7978,262 @@ fn extract_text_from_refs(
             break;
         }
     }
+    // 预算耗尽后剩余的引用全部记为被丢弃（此前是静默丢弃）。
+    if truncated {
+        for r in refs_iter {
+            dropped_files.push(r.name.clone());
+        }
+    }
 
     if truncated {
         log::warn!(
-            "[ChatAnki] Truncated context refs text at {} bytes",
-            MAX_REF_TEXT_BYTES
+            "[ChatAnki] Truncated context refs text at {} bytes; dropped file(s): {}",
+            MAX_REF_TEXT_BYTES,
+            dropped_files.join(", ")
         );
     }
     ExtractTextResult {
         text: out.trim().to_string(),
         truncated,
+        included_files,
+        dropped_files,
     }
+}
+
+#[derive(Debug)]
+struct ResolvedApkgResource {
+    bytes: Vec<u8>,
+    source_name: String,
+}
+
+fn apkg_tool_error(
+    error_type: AppErrorType,
+    error_code: &str,
+    message: impl Into<String>,
+) -> AppError {
+    AppError::with_details(error_type, message, json!({ "errorCode": error_code }))
+}
+
+fn map_apkg_resource_resolution_error(message: String) -> AppError {
+    if message.to_ascii_lowercase().contains("not found") {
+        apkg_tool_error(AppErrorType::NotFound, "apkg_not_found", message)
+    } else {
+        apkg_tool_error(AppErrorType::Validation, "apkg_invalid_input", message)
+    }
+}
+
+fn verify_apkg_resource_in_session_context(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    session_id: &str,
+    resource_id: &str,
+) -> Result<(), AppError> {
+    let requested = vec![resource_id.to_string()];
+    let refs =
+        resolve_target_context_refs(chat_db, session_id, Some(&requested)).map_err(|error| {
+            apkg_tool_error(
+                AppErrorType::NotFound,
+                "apkg_not_found",
+                format!("APKG resource is not available in the current chat session: {error}"),
+            )
+        })?;
+    if refs
+        .iter()
+        .any(|context_ref| context_ref.resource_id == resource_id)
+    {
+        Ok(())
+    } else {
+        Err(apkg_tool_error(
+            AppErrorType::NotFound,
+            "apkg_not_found",
+            format!(
+                "APKG resource is not available in the current chat session: {}",
+                resource_id
+            ),
+        ))
+    }
+}
+
+fn resolve_apkg_resource_bytes(
+    vfs_db: &VfsDatabase,
+    raw_resource_id: &str,
+) -> Result<ResolvedApkgResource, AppError> {
+    let context_ref = resolve_context_ref_from_any_id(vfs_db, raw_resource_id)
+        .map_err(map_apkg_resource_resolution_error)?
+        .ok_or_else(|| {
+            apkg_tool_error(
+                AppErrorType::NotFound,
+                "apkg_not_found",
+                format!("APKG resource not found: {}", raw_resource_id.trim()),
+            )
+        })?;
+    let source_id = context_ref.resource_id.trim();
+    if !source_id.starts_with("file_") && !source_id.starts_with("att_") {
+        return Err(apkg_tool_error(
+            AppErrorType::Validation,
+            "apkg_invalid_input",
+            format!(
+                "Resource '{}' does not resolve to a file_/att_ attachment",
+                raw_resource_id.trim()
+            ),
+        ));
+    }
+
+    let file = VfsFileRepo::get_file(vfs_db, source_id)
+        .map_err(|error| {
+            apkg_tool_error(
+                AppErrorType::Database,
+                "apkg_database",
+                format!(
+                    "Failed to query APKG resource '{}': {error}",
+                    raw_resource_id.trim()
+                ),
+            )
+        })?
+        .ok_or_else(|| {
+            apkg_tool_error(
+                AppErrorType::NotFound,
+                "apkg_not_found",
+                format!("APKG resource not found: {}", raw_resource_id.trim()),
+            )
+        })?;
+    let source_name = if file.file_name.trim().is_empty() {
+        source_id.to_string()
+    } else {
+        file.file_name.clone()
+    };
+    let bytes = load_apkg_vfs_file_bytes(vfs_db, &file)?;
+
+    Ok(ResolvedApkgResource { bytes, source_name })
+}
+
+fn load_apkg_vfs_file_bytes(
+    vfs_db: &VfsDatabase,
+    file: &crate::vfs::types::VfsFile,
+) -> Result<Vec<u8>, AppError> {
+    if let Some(blob_hash) = file.blob_hash.as_deref() {
+        let blob_path = VfsBlobRepo::get_blob_path(vfs_db, blob_hash).map_err(|error| {
+            apkg_tool_error(
+                AppErrorType::Database,
+                "apkg_database",
+                format!("Failed to resolve APKG blob '{}': {error}", file.id),
+            )
+        })?;
+        if let Some(blob_path) = blob_path {
+            return read_apkg_file_bounded(&blob_path, &file.id);
+        }
+    }
+
+    if !file.sha256.trim().is_empty() {
+        let blob_path = VfsBlobRepo::get_blob_path(vfs_db, &file.sha256).map_err(|error| {
+            apkg_tool_error(
+                AppErrorType::Database,
+                "apkg_database",
+                format!("Failed to resolve APKG blob '{}': {error}", file.id),
+            )
+        })?;
+        if let Some(blob_path) = blob_path {
+            return read_apkg_file_bounded(&blob_path, &file.id);
+        }
+    }
+
+    if file.size > crate::apkg_importer_service::MAX_APKG_ARCHIVE_BYTES as i64 {
+        return Err(apkg_tool_error(
+            AppErrorType::Validation,
+            "apkg_limit_exceeded",
+            format!("APKG resource '{}' exceeds the import size limit", file.id),
+        ));
+    }
+
+    if let Some(original_path) = file.original_path.as_deref() {
+        if !crate::unified_file_manager::is_virtual_uri(original_path) {
+            let path = Path::new(original_path);
+            let has_parent_traversal = path
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir));
+            if !has_parent_traversal && path.is_file() {
+                let bytes = read_apkg_file_bounded(path, &file.id)?;
+                verify_apkg_original_path_sha256(file, &bytes)?;
+                return Ok(bytes);
+            }
+        }
+    }
+
+    Err(apkg_tool_error(
+        AppErrorType::NotFound,
+        "apkg_not_found",
+        format!(
+            "APKG resource '{}' has no readable original_path or VFS blob",
+            file.id
+        ),
+    ))
+}
+
+fn verify_apkg_original_path_sha256(
+    file: &crate::vfs::types::VfsFile,
+    bytes: &[u8],
+) -> Result<(), AppError> {
+    let expected = file.sha256.trim();
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Ok(());
+    }
+
+    let actual = hex::encode(Sha256::digest(bytes));
+    if actual.eq_ignore_ascii_case(expected) {
+        Ok(())
+    } else {
+        Err(apkg_tool_error(
+            AppErrorType::Validation,
+            "apkg_resource_mismatch",
+            format!(
+                "APKG resource '{}' no longer matches its recorded SHA-256",
+                file.id
+            ),
+        ))
+    }
+}
+
+fn read_apkg_file_bounded(path: &Path, source_id: &str) -> Result<Vec<u8>, AppError> {
+    let mut file = std::fs::File::open(path).map_err(|error| {
+        apkg_tool_error(
+            AppErrorType::FileSystem,
+            "apkg_io",
+            format!("Failed to open APKG resource '{source_id}': {error}"),
+        )
+    })?;
+    let metadata = file.metadata().map_err(|error| {
+        apkg_tool_error(
+            AppErrorType::FileSystem,
+            "apkg_io",
+            format!("Failed to inspect APKG resource '{source_id}': {error}"),
+        )
+    })?;
+    if metadata.len() > crate::apkg_importer_service::MAX_APKG_ARCHIVE_BYTES {
+        return Err(apkg_tool_error(
+            AppErrorType::Validation,
+            "apkg_limit_exceeded",
+            format!("APKG resource '{source_id}' exceeds the import size limit"),
+        ));
+    }
+
+    let mut bytes = Vec::with_capacity(metadata.len().min(8 * 1024 * 1024) as usize);
+    file.by_ref()
+        .take(crate::apkg_importer_service::MAX_APKG_ARCHIVE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            apkg_tool_error(
+                AppErrorType::FileSystem,
+                "apkg_io",
+                format!("Failed to read APKG resource '{source_id}': {error}"),
+            )
+        })?;
+    if bytes.len() as u64 > crate::apkg_importer_service::MAX_APKG_ARCHIVE_BYTES {
+        return Err(apkg_tool_error(
+            AppErrorType::Validation,
+            "apkg_limit_exceeded",
+            format!("APKG resource '{source_id}' exceeds the import size limit"),
+        ));
+    }
+    Ok(bytes)
 }
 
 fn resolve_target_context_refs(
@@ -4544,18 +8590,48 @@ fn resolve_template_selection(
 
     match template_mode {
         ChatAnkiTemplateMode::Single => {
-            let tid = template_id
+            let explicit_tid = template_id
                 .map(|v| v.trim().to_string())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| {
-                    "templateMode=single 时必须提供 templateId（指定单个模板）".to_string()
-                })?;
+                .filter(|v| !v.is_empty());
+            // 未显式指定模板时，优先读取用户设置的默认模板
+            //（settings 表 default_template_id，与 commands::set_default_template 同源）。
+            let (tid, from_default) = match explicit_tid {
+                Some(tid) => (tid, false),
+                None => {
+                    let default_tid = db
+                        .get_default_template()
+                        .map_err(|e| format!("读取默认模板设置失败: {}", e))?
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty());
+                    match default_tid {
+                        Some(tid) => (tid, true),
+                        None => {
+                            return Err(
+                                "templateMode=single 时必须提供 templateId（指定单个模板），或先在设置中配置默认模板"
+                                    .to_string(),
+                            );
+                        }
+                    }
+                }
+            };
             let exists = db
                 .get_custom_template_by_id(&tid)
                 .map_err(|e| format!("加载模板失败: {}", e))?
                 .is_some();
             if !exists {
+                if from_default {
+                    return Err(format!(
+                        "用户默认模板不存在或已删除: {}（请显式传 templateId 或更新默认模板设置）",
+                        tid
+                    ));
+                }
                 return Err(format!("指定模板不存在: {}", tid));
+            }
+            if from_default {
+                log::info!(
+                    "[ChatAnkiToolExecutor] templateMode=single without templateId; using user default template {}",
+                    tid
+                );
             }
             Ok(TemplateSelection {
                 template_id: Some(tid),
@@ -4852,6 +8928,67 @@ pub(crate) fn calculate_complexity_level(fields_len: usize, note_type: &str) -> 
     "very_complex"
 }
 
+fn select_chatanki_template_page(
+    templates: &[crate::models::CustomAnkiTemplate],
+    query: &str,
+    active_only: bool,
+    page: usize,
+    page_size: usize,
+) -> (usize, Vec<Value>) {
+    let filtered = templates
+        .iter()
+        .filter(|template| {
+            if active_only && !template.is_active {
+                return false;
+            }
+            if query.is_empty() {
+                return true;
+            }
+            let haystack = format!(
+                "{} {}\n{} {}",
+                template.id, template.name, template.description, template.note_type
+            )
+            .to_lowercase();
+            haystack.contains(query)
+        })
+        .collect::<Vec<_>>();
+    let total = filtered.len();
+    let offset = page.saturating_sub(1).saturating_mul(page_size);
+    let page_items = filtered
+        .into_iter()
+        .skip(offset)
+        .take(page_size)
+        .map(chatanki_template_list_item)
+        .collect();
+    (total, page_items)
+}
+
+fn chatanki_template_list_item(template: &crate::models::CustomAnkiTemplate) -> Value {
+    let fields = normalize_template_fields(&template.fields);
+    let rules = ensure_field_extraction_rules(&fields, &template.field_extraction_rules);
+    let complexity_level = calculate_complexity_level(fields.len(), &template.note_type);
+    let use_case = if template.description.trim().is_empty() {
+        template.name.clone()
+    } else {
+        template.description.clone()
+    };
+    json!({
+        "id": template.id,
+        "name": template.name,
+        "description": template.description,
+        "category": "general",
+        "noteType": template.note_type,
+        "isCloze": template.note_type.trim().eq_ignore_ascii_case("cloze"),
+        "fields": fields,
+        "isActive": template.is_active,
+        "complexityLevel": complexity_level,
+        "useCaseDescription": use_case,
+        "field_extraction_rules": rules,
+        "generation_prompt": template.generation_prompt,
+        "isBuiltIn": template.is_built_in,
+    })
+}
+
 fn default_field_extraction_rules() -> HashMap<String, FieldExtractionRule> {
     let mut rules = HashMap::new();
     rules.insert(
@@ -5041,6 +9178,1334 @@ pub(crate) fn import_builtin_templates_if_empty(
     Ok(imported)
 }
 
+fn finish_chatanki_success(
+    call: &ToolCall,
+    ctx: &ExecutionContext,
+    start_time: Instant,
+    output: Value,
+) -> ToolResultInfo {
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+    ctx.emit_tool_call_end(Some(json!({ "result": output, "durationMs": duration_ms })));
+    let result = ToolResultInfo::success(
+        Some(call.id.clone()),
+        Some(ctx.block_id.clone()),
+        call.name.clone(),
+        call.arguments.clone(),
+        output,
+        duration_ms,
+    );
+    let _ = ctx.save_tool_block(&result);
+    result
+}
+
+fn finish_chatanki_failure(
+    call: &ToolCall,
+    ctx: &ExecutionContext,
+    start_time: Instant,
+    error: String,
+) -> ToolResultInfo {
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+    ctx.emit_tool_call_error(&error);
+    let result = ToolResultInfo::failure(
+        Some(call.id.clone()),
+        Some(ctx.block_id.clone()),
+        call.name.clone(),
+        call.arguments.clone(),
+        error,
+        duration_ms,
+    );
+    let _ = ctx.save_tool_block(&result);
+    result
+}
+
+fn finish_chatanki_app_failure(
+    call: &ToolCall,
+    ctx: &ExecutionContext,
+    start_time: Instant,
+    error: AppError,
+) -> ToolResultInfo {
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+    let structured_error = serde_json::to_value(&error).unwrap_or_else(|_| {
+        json!({
+            "error_type": "Unknown",
+            "message": error.message,
+            "details": { "errorCode": "apkg_database" }
+        })
+    });
+    let error_text = structured_error
+        .get("details")
+        .and_then(|details| details.get("errorCode"))
+        .and_then(Value::as_str)
+        .map(|code| format!("[{code}] {}", error.message))
+        .unwrap_or_else(|| error.message.clone());
+
+    ctx.emit_tool_call_error(&error_text);
+    let mut result = ToolResultInfo::failure(
+        Some(call.id.clone()),
+        Some(ctx.block_id.clone()),
+        call.name.clone(),
+        call.arguments.clone(),
+        error_text,
+        duration_ms,
+    );
+    result.output = json!({ "error": structured_error });
+    let _ = ctx.save_tool_block(&result);
+    result
+}
+
+fn finish_agent_review_mutation(
+    call: &ToolCall,
+    ctx: &ExecutionContext,
+    start_time: Instant,
+    card_id: &str,
+    action: &str,
+    outcome: FsrsAgentReviewMutationOutcome,
+) -> ToolResultInfo {
+    if let Some(state) = agent_review_changed_state(&outcome) {
+        emit_agent_review_changed(ctx, action, state);
+    }
+    match outcome {
+        FsrsAgentReviewMutationOutcome::Updated { state, changed } => finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            chatanki_review_mutation_ok_payload(card_id, &state, changed),
+        ),
+        FsrsAgentReviewMutationOutcome::Conflict { current } => finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            chatanki_review_mutation_conflict_payload(card_id, &current),
+        ),
+        FsrsAgentReviewMutationOutcome::Blocked { reason, current } => finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            chatanki_review_mutation_blocked_payload(card_id, &reason, &current),
+        ),
+        FsrsAgentReviewMutationOutcome::NotFound => finish_chatanki_failure(
+            call,
+            ctx,
+            start_time,
+            "blocks.ankiCards.errors.statusNotFound".to_string(),
+        ),
+    }
+}
+
+fn finish_library_agent_review_mutation(
+    call: &ToolCall,
+    ctx: &ExecutionContext,
+    start_time: Instant,
+    card_id: &str,
+    action: &str,
+    outcome: FsrsAgentReviewMutationOutcome,
+) -> ToolResultInfo {
+    if let Some(state) = agent_review_changed_state(&outcome) {
+        emit_agent_review_changed(ctx, action, state);
+    }
+    match outcome {
+        FsrsAgentReviewMutationOutcome::Updated { state, changed } => finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            chatanki_review_mutation_ok_payload(card_id, &state, changed),
+        ),
+        FsrsAgentReviewMutationOutcome::Conflict { current } => finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            chatanki_library_review_mutation_conflict_payload(card_id, &current),
+        ),
+        FsrsAgentReviewMutationOutcome::Blocked { reason, current } => finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            chatanki_review_mutation_blocked_payload(card_id, &reason, &current),
+        ),
+        FsrsAgentReviewMutationOutcome::NotFound => finish_chatanki_failure(
+            call,
+            ctx,
+            start_time,
+            "blocks.ankiCards.errors.statusNotFound".to_string(),
+        ),
+    }
+}
+
+fn agent_review_changed_state(
+    outcome: &FsrsAgentReviewMutationOutcome,
+) -> Option<&FsrsAgentReviewStateSnapshot> {
+    match outcome {
+        FsrsAgentReviewMutationOutcome::Updated {
+            state,
+            changed: true,
+        } => Some(state),
+        _ => None,
+    }
+}
+
+fn card_content_is_valid(card: &crate::models::AnkiCard) -> bool {
+    card.text
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .is_some()
+        || (!card.front.trim().is_empty() && !card.back.trim().is_empty())
+}
+
+fn load_owned_chatanki_card(
+    db: &crate::database::Database,
+    card_id: &str,
+    session_id: &str,
+) -> Result<(crate::models::AnkiCard, String), String> {
+    let (card, document_id) = match db.get_anki_card_for_owned_document_session(card_id, session_id)
+    {
+        Ok(Some(owned)) => owned,
+        Ok(None) => return Err("blocks.ankiCards.errors.statusNotFound".to_string()),
+        Err(error) => {
+            log::warn!(
+                "[ChatAnkiToolExecutor] Failed to resolve card ownership for {}: {}",
+                card_id,
+                error
+            );
+            return Err("blocks.ankiCards.errors.statusNotFound".to_string());
+        }
+    };
+    Ok((card, document_id))
+}
+
+fn verify_agent_review_card_ownership(
+    db: &crate::database::Database,
+    card_id: &str,
+    session_id: &str,
+) -> Result<(), String> {
+    load_owned_chatanki_card(db, card_id, session_id).map(|_| ())
+}
+
+fn resolve_review_selection(
+    db: &crate::database::Database,
+    session_id: &str,
+    selector: ChatAnkiReviewSelector,
+) -> Result<ResolvedReviewSelection, String> {
+    match selector {
+        ChatAnkiReviewSelector::Document(document_id) => {
+            verify_document_ownership(db, &document_id, session_id)?;
+            Ok(ResolvedReviewSelection {
+                // The service re-resolves every live card inside its IMMEDIATE
+                // transaction, so this preflight cannot become a stale list.
+                card_ids: Vec::new(),
+                expected_document_id: Some(document_id),
+            })
+        }
+        ChatAnkiReviewSelector::Cards(card_ids) => {
+            let mut verified_documents = HashSet::new();
+            for card_id in &card_ids {
+                let (_, document_id) = load_owned_chatanki_card(db, card_id, session_id)?;
+                if verified_documents.insert(document_id.clone()) {
+                    verify_document_ownership(db, &document_id, session_id)?;
+                }
+            }
+            Ok(ResolvedReviewSelection {
+                card_ids,
+                expected_document_id: None,
+            })
+        }
+    }
+}
+
+fn build_enqueue_review_changed_payload(
+    result: &FsrsEnqueueResult,
+    loaded_cards: &[FsrsEnqueuedCard],
+    run_id: &str,
+) -> Option<Value> {
+    if result.enqueued_state_ids.is_empty() {
+        return None;
+    }
+
+    let cards_by_state_id: HashMap<&str, &FsrsEnqueuedCard> = loaded_cards
+        .iter()
+        .map(|card| (card.id.as_str(), card))
+        .collect();
+    let cards: Option<Vec<&FsrsEnqueuedCard>> = result
+        .enqueued_state_ids
+        .iter()
+        .map(|state_id| cards_by_state_id.get(state_id.as_str()).copied())
+        .collect();
+    let cards = cards?;
+    let entity_ids: Vec<&str> = cards
+        .iter()
+        .map(|card| card.anki_card_id.as_str())
+        .collect();
+    let card_state_ids: Vec<&str> = cards.iter().map(|card| card.id.as_str()).collect();
+    Some(json!({
+        "source": "agent",
+        "action": "enqueue",
+        "entityIds": entity_ids,
+        "cardStateIds": card_state_ids,
+        "cards": cards,
+        "runId": run_id,
+    }))
+}
+
+fn emit_enqueue_review_changed(
+    ctx: &ExecutionContext,
+    service: &FsrsReviewService,
+    result: &FsrsEnqueueResult,
+) {
+    let loaded_cards = match service.get_enqueued_cards(result) {
+        Ok(cards) => cards,
+        Err(error) => {
+            log::debug!(
+                "[ChatAnkiToolExecutor] Failed to load newly enqueued cards for fsrs://changed: {}",
+                error
+            );
+            return;
+        }
+    };
+    let Some(payload) = build_enqueue_review_changed_payload(result, &loaded_cards, ctx.run_id())
+    else {
+        return;
+    };
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
+        log::debug!(
+            "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after enqueue: {}",
+            error
+        );
+    }
+}
+
+fn chatanki_review_stats_output(stats: &FsrsStats) -> Value {
+    json!({
+        "status": "ok",
+        "total": stats.total,
+        "due": stats.due,
+        "new": stats.new_count,
+        "learning": stats.learning,
+        "review": stats.review,
+        "relearning": stats.relearning,
+        "suspended": stats.suspended,
+        "reviews_today": stats.reviews_today,
+    })
+}
+
+fn attach_review_states(cards: &mut [Value], review_states: Vec<FsrsAgentReviewStateSnapshot>) {
+    let mut review_states_by_card = review_states
+        .into_iter()
+        .map(|state| {
+            let card_id = state.anki_card_id.clone();
+            (card_id, serde_json::to_value(state).unwrap_or(Value::Null))
+        })
+        .collect::<HashMap<_, _>>();
+    for card in cards {
+        let review_state = card
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|card_id| review_states_by_card.remove(card_id))
+            .unwrap_or(Value::Null);
+        card["reviewState"] = review_state;
+    }
+}
+
+fn convert_library_record_for_tool(
+    record: &crate::database::AnkiLibraryCardRecord,
+    review_state: Option<&FsrsAgentReviewStateSnapshot>,
+) -> Value {
+    let mut output = convert_card_for_tool(&record.library_card.card, None);
+    if let Some(object) = output.as_object_mut() {
+        object.insert("documentId".to_string(), json!(record.locator.document_id));
+        object.insert(
+            "sourceType".to_string(),
+            json!(record.library_card.source_type),
+        );
+        object.insert("sourceId".to_string(), json!(record.library_card.source_id));
+        object.insert("enqueued".to_string(), json!(record.library_card.enqueued));
+        object.insert("isDue".to_string(), json!(record.library_card.is_due));
+        object.insert(
+            "reviewState".to_string(),
+            review_state
+                .and_then(|state| serde_json::to_value(state).ok())
+                .unwrap_or(Value::Null),
+        );
+        object.insert("ratingAvailableToAgent".to_string(), json!(false));
+    }
+    output
+}
+
+fn library_review_states_by_card(
+    states: Vec<FsrsAgentReviewStateSnapshot>,
+) -> HashMap<String, FsrsAgentReviewStateSnapshot> {
+    states
+        .into_iter()
+        .map(|state| (state.anki_card_id.clone(), state))
+        .collect()
+}
+
+enum LibraryReviewStateLoad {
+    Available(Option<FsrsAgentReviewStateSnapshot>),
+    Unavailable,
+}
+
+fn load_library_review_state(
+    db: &Arc<crate::database::Database>,
+    scope: AnkiLibraryScope,
+    card_id: &str,
+    operation: &str,
+) -> LibraryReviewStateLoad {
+    match FsrsReviewService::new(db.clone())
+        .get_review_states_for_library(scope, &[card_id.to_string()])
+    {
+        Ok(mut states) => LibraryReviewStateLoad::Available(states.pop()),
+        Err(error) => {
+            log::warn!(
+                "[ChatAnkiToolExecutor] Failed to refresh library review state after {} for {}: {}",
+                operation,
+                card_id,
+                error
+            );
+            LibraryReviewStateLoad::Unavailable
+        }
+    }
+}
+
+fn convert_library_record_with_review_load(
+    record: &crate::database::AnkiLibraryCardRecord,
+    review_load: &LibraryReviewStateLoad,
+) -> (Value, bool) {
+    match review_load {
+        LibraryReviewStateLoad::Available(review_state) => (
+            convert_library_record_for_tool(record, review_state.as_ref()),
+            false,
+        ),
+        LibraryReviewStateLoad::Unavailable => {
+            let mut card = convert_library_record_for_tool(record, None);
+            if let Some(object) = card.as_object_mut() {
+                object.remove("reviewState");
+                object.insert("reviewStateUnavailable".to_string(), json!(true));
+            }
+            (card, true)
+        }
+    }
+}
+
+fn chatanki_library_version_conflict_payload_with_review_load(
+    current: &crate::database::AnkiLibraryCardRecord,
+    review_load: &LibraryReviewStateLoad,
+    error: &str,
+) -> Value {
+    let (card, review_state_unavailable) =
+        convert_library_record_with_review_load(current, review_load);
+    json!({
+        "status": "conflict",
+        "error": error,
+        "cardId": current.library_card.card.id,
+        "current": card,
+        "mutationApplied": false,
+        "retryable": true,
+        "reviewStateUnavailable": review_state_unavailable,
+        "guidance": "Call builtin-chatanki_list_library_cards to refresh content and review versions before retrying.",
+    })
+}
+
+fn chatanki_library_version_conflict_payload(
+    current: &crate::database::AnkiLibraryCardRecord,
+    review_state: Option<&FsrsAgentReviewStateSnapshot>,
+    error: &str,
+) -> Value {
+    json!({
+        "status": "conflict",
+        "error": error,
+        "cardId": current.library_card.card.id,
+        "current": convert_library_record_for_tool(current, review_state),
+        "mutationApplied": false,
+        "retryable": true,
+        "guidance": "Call builtin-chatanki_list_library_cards to refresh content and review versions before retrying.",
+    })
+}
+
+fn chatanki_review_mutation_ok_payload(
+    card_id: &str,
+    state: &FsrsAgentReviewStateSnapshot,
+    changed: bool,
+) -> Value {
+    json!({
+        "status": "ok",
+        "cardId": card_id,
+        "changed": changed,
+        "mutationApplied": changed,
+        "retryable": false,
+        "reviewState": state,
+    })
+}
+
+fn chatanki_review_mutation_conflict_payload(
+    card_id: &str,
+    current: &FsrsAgentReviewStateSnapshot,
+) -> Value {
+    json!({
+        "status": "conflict",
+        "error": "review_state_conflict",
+        "cardId": card_id,
+        "current": current,
+        "mutationApplied": false,
+        "retryable": true,
+        "guidance": "Call builtin-chatanki_get_cards to refresh reviewState before retrying.",
+    })
+}
+
+fn chatanki_library_review_mutation_conflict_payload(
+    card_id: &str,
+    current: &FsrsAgentReviewStateSnapshot,
+) -> Value {
+    json!({
+        "status": "conflict",
+        "error": "review_state_conflict",
+        "cardId": card_id,
+        "current": current,
+        "mutationApplied": false,
+        "retryable": true,
+        "guidance": "Call builtin-chatanki_list_library_cards to refresh reviewState before retrying.",
+    })
+}
+
+fn chatanki_review_mutation_blocked_payload(
+    card_id: &str,
+    reason: &str,
+    current: &FsrsAgentReviewStateSnapshot,
+) -> Value {
+    json!({
+        "status": "blocked",
+        "error": reason,
+        "cardId": card_id,
+        "current": current,
+        "mutationApplied": false,
+        "retryable": false,
+    })
+}
+
+fn build_agent_review_changed_payload(
+    action: &str,
+    state: &FsrsAgentReviewStateSnapshot,
+    run_id: &str,
+) -> Value {
+    json!({
+        "source": "agent",
+        "action": action,
+        "entityIds": [state.anki_card_id.as_str()],
+        "cardStateIds": [state.card_state_id.as_str()],
+        "cards": [state],
+        "runId": run_id,
+    })
+}
+
+fn emit_agent_review_changed(
+    ctx: &ExecutionContext,
+    action: &str,
+    state: &FsrsAgentReviewStateSnapshot,
+) {
+    let payload = build_agent_review_changed_payload(action, state, ctx.run_id());
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
+        log::debug!(
+            "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after {}: {}",
+            action,
+            error
+        );
+    }
+}
+
+const CHATANKI_CARD_FIELD_LIMIT: usize = 2_000;
+
+/// 截断防御：get_cards 的长字段按 `CHATANKI_CARD_FIELD_LIMIT` 截断输出。若 agent
+/// 把截断文本当作完整字段整体回写（update 是整字段替换），超限部分会被静默毁掉。
+/// 判定“新值疑似基于截断源”：现存字段超过截断限，且新值长度达到截断限、比现存
+/// 内容短、并与现存内容截断前缀高度重合（等于截断前缀，或在其后追加）。
+fn patch_value_suspected_truncated_source(existing: &str, new_value: &str) -> bool {
+    let existing_chars = existing.chars().count();
+    if existing_chars <= CHATANKI_CARD_FIELD_LIMIT {
+        return false;
+    }
+    let new_chars = new_value.chars().count();
+    if new_chars < CHATANKI_CARD_FIELD_LIMIT || new_chars >= existing_chars {
+        return false;
+    }
+    let truncated_existing = safe_truncate_chars(existing, CHATANKI_CARD_FIELD_LIMIT);
+    new_value.starts_with(truncated_existing.as_str()) || truncated_existing.starts_with(new_value)
+}
+
+/// 返回 patch 中疑似“以截断输出为源”的字段路径清单（空即安全）。
+fn detect_truncated_source_fields(
+    card: &crate::models::AnkiCard,
+    patch: &ChatAnkiCardPatch,
+) -> Vec<String> {
+    let mut fields = Vec::new();
+    if let Some(front) = patch.front.as_deref() {
+        if patch_value_suspected_truncated_source(&card.front, front) {
+            fields.push("front".to_string());
+        }
+    }
+    if let Some(back) = patch.back.as_deref() {
+        if patch_value_suspected_truncated_source(&card.back, back) {
+            fields.push("back".to_string());
+        }
+    }
+    if let Some(Some(text)) = patch.text.as_ref() {
+        if let Some(existing) = card.text.as_deref() {
+            if patch_value_suspected_truncated_source(existing, text) {
+                fields.push("text".to_string());
+            }
+        }
+    }
+    if let Some(extra_fields) = patch.extra_fields.as_ref() {
+        for (key, value) in extra_fields {
+            let normalized_key = key.trim().to_lowercase();
+            let existing = card
+                .extra_fields
+                .get(&normalized_key)
+                .or_else(|| card.extra_fields.get(key));
+            if let Some(existing) = existing {
+                if patch_value_suspected_truncated_source(existing, value) {
+                    fields.push(format!("extraFields.{}", key));
+                }
+            }
+        }
+    }
+    fields
+}
+
+/// 截断防御的结构化拒绝：要求调用方重读全文或显式传 `allowTruncatedSource=true`。
+fn chatanki_truncated_source_blocked_payload(
+    document_id: &str,
+    card_id: &str,
+    fields: &[String],
+) -> Value {
+    json!({
+        "status": "blocked",
+        "error": "truncated_source_overwrite",
+        "documentId": document_id,
+        "cardId": card_id,
+        "fields": fields,
+        "mutationApplied": false,
+        "retryable": false,
+        "guidance": "Target field exceeds the get_cards truncation limit and the new value looks like it was built from truncated output; overwriting would destroy the hidden tail. Re-read the complete field content before editing, or pass allowTruncatedSource=true to overwrite explicitly.",
+    })
+}
+
+fn truncate_card_field(value: &str, path: String, truncated_fields: &mut Vec<String>) -> String {
+    if value.chars().count() <= CHATANKI_CARD_FIELD_LIMIT {
+        return value.to_string();
+    }
+    truncated_fields.push(path);
+    safe_truncate_chars(value, CHATANKI_CARD_FIELD_LIMIT)
+}
+
+fn convert_card_for_tool(card: &crate::models::AnkiCard, index: Option<usize>) -> Value {
+    let mut truncated_fields = Vec::new();
+    let front = truncate_card_field(&card.front, "front".to_string(), &mut truncated_fields);
+    let back = truncate_card_field(&card.back, "back".to_string(), &mut truncated_fields);
+    let text = card
+        .text
+        .as_deref()
+        .map(|value| truncate_card_field(value, "text".to_string(), &mut truncated_fields));
+    let tags: Vec<String> = card
+        .tags
+        .iter()
+        .enumerate()
+        .map(|(tag_index, value)| {
+            truncate_card_field(value, format!("tags[{}]", tag_index), &mut truncated_fields)
+        })
+        .collect();
+    let mut extra_fields = serde_json::Map::new();
+    for (key, value) in &card.extra_fields {
+        extra_fields.insert(
+            key.clone(),
+            json!(truncate_card_field(
+                value,
+                format!("extraFields.{}", key),
+                &mut truncated_fields,
+            )),
+        );
+    }
+    let error_content = card
+        .error_content
+        .as_deref()
+        .map(|value| truncate_card_field(value, "errorContent".to_string(), &mut truncated_fields));
+
+    json!({
+        "id": card.id,
+        "index": index,
+        "front": front,
+        "back": back,
+        "text": text,
+        "tags": tags,
+        "templateId": card.template_id,
+        "extraFields": extra_fields,
+        "isErrorCard": card.is_error_card,
+        "errorContent": error_content,
+        "updatedAt": card.updated_at,
+        "version": card.updated_at,
+        "truncated": !truncated_fields.is_empty(),
+        "truncatedFields": truncated_fields,
+    })
+}
+
+fn select_chatanki_cards_page(
+    cards: Vec<crate::models::AnkiCard>,
+    filter: ChatAnkiCardsFilter,
+    page: u32,
+    page_size: u32,
+) -> (usize, Vec<Value>) {
+    let filtered: Vec<(usize, crate::models::AnkiCard)> = cards
+        .into_iter()
+        .enumerate()
+        .filter(|(_, card)| match filter {
+            ChatAnkiCardsFilter::All => true,
+            ChatAnkiCardsFilter::ErrorOnly => card.is_error_card,
+            ChatAnkiCardsFilter::EditedOnly => card.updated_at != card.created_at,
+        })
+        .map(|(index, card)| (index + 1, card))
+        .collect();
+    let total = filtered.len();
+    let offset = (page.saturating_sub(1) as usize).saturating_mul(page_size as usize);
+    let page_cards = filtered
+        .into_iter()
+        .skip(offset)
+        .take(page_size as usize)
+        .map(|(index, card)| convert_card_for_tool(&card, Some(index)))
+        .collect();
+    (total, page_cards)
+}
+
+fn chatanki_version_conflict_payload(
+    document_id: &str,
+    current: &crate::models::AnkiCard,
+) -> Value {
+    json!({
+        "status": "conflict",
+        "error": "version_conflict",
+        "documentId": document_id,
+        "current": convert_card_for_tool(current, None),
+        "retryable": true,
+    })
+}
+
+fn chatanki_delete_review_conflict_payload(
+    document_id: &str,
+    current: &crate::models::AnkiCard,
+    review_state: Option<&FsrsAgentReviewStateSnapshot>,
+) -> Value {
+    let mut current = convert_card_for_tool(current, None);
+    current["reviewState"] = review_state
+        .and_then(|state| serde_json::to_value(state).ok())
+        .unwrap_or(Value::Null);
+    json!({
+        "status": "conflict",
+        "error": "review_state_conflict",
+        "documentId": document_id,
+        "current": current,
+        "mutationApplied": false,
+        "retryable": true,
+        "guidance": "Call builtin-chatanki_get_cards to refresh reviewState before retrying.",
+    })
+}
+
+fn retemplate_selection_changed_payload(card_ids: Vec<String>) -> Value {
+    json!({
+        "status": "conflict",
+        "error": "selection_changed",
+        "cardIds": card_ids,
+        "mutationApplied": false,
+        "retryable": true,
+        "guidance": "Call builtin-chatanki_get_cards to refresh the live card set and versions before retrying.",
+    })
+}
+
+fn retemplate_rejection_payload(result: AnkiRetemplateBatchResult) -> Value {
+    match result {
+        AnkiRetemplateBatchResult::SelectionNotFound { card_ids } => {
+            retemplate_selection_changed_payload(card_ids)
+        }
+        AnkiRetemplateBatchResult::OwnershipRejected => json!({
+            "status": "rejected",
+            "error": "blocks.ankiCards.errors.statusNotFound",
+            "mutationApplied": false,
+            "retryable": false,
+        }),
+        AnkiRetemplateBatchResult::CrossDocumentSelection { document_ids } => json!({
+            "status": "rejected",
+            "error": "cross_document_selection",
+            "documentIds": document_ids,
+            "mutationApplied": false,
+            "retryable": false,
+        }),
+        AnkiRetemplateBatchResult::DocumentSetChanged { document_ids } => json!({
+            "status": "conflict",
+            "error": "selection_changed",
+            "documentIds": document_ids,
+            "mutationApplied": false,
+            "retryable": true,
+            "guidance": "Call builtin-chatanki_get_cards to refresh the live card set and versions before retrying.",
+        }),
+        AnkiRetemplateBatchResult::ExpectedVersionsMismatch {
+            missing_version_ids,
+            unexpected_version_ids,
+        } => json!({
+            "status": "conflict",
+            "error": "expected_versions_mismatch",
+            "missingVersionIds": missing_version_ids,
+            "unexpectedVersionIds": unexpected_version_ids,
+            "mutationApplied": false,
+            "retryable": true,
+            "guidance": "expectedVersions must contain exactly one current version for every selected live card. Call builtin-chatanki_get_cards before retrying.",
+        }),
+        AnkiRetemplateBatchResult::VersionConflict { conflicts } => json!({
+            "status": "conflict",
+            "error": "version_conflict",
+            "conflicts": conflicts.into_iter().map(|conflict| json!({
+                "cardId": conflict.card_id,
+                "expectedVersion": conflict.expected_version,
+                "currentVersion": conflict.current_version,
+            })).collect::<Vec<_>>(),
+            "mutationApplied": false,
+            "retryable": true,
+            "guidance": "Call builtin-chatanki_get_cards to refresh current card contents and versions before retrying.",
+        }),
+        AnkiRetemplateBatchResult::InvalidCloze { card_ids } => json!({
+            "status": "blocked",
+            "error": "invalid_cloze_text",
+            "offendingCardIds": card_ids,
+            "mutationApplied": false,
+            "retryable": true,
+            "guidance": "Use builtin-chatanki_update_card to set each offending card's text to valid non-empty {{cN::answer}} Cloze markup, then retry.",
+        }),
+        AnkiRetemplateBatchResult::Updated { .. } => json!({
+            "status": "error",
+            "error": "unexpected_retemplate_result",
+            "mutationApplied": false,
+            "retryable": false,
+        }),
+    }
+}
+
+fn retemplate_update_for_tool(
+    update: &AnkiRetemplateCardUpdate,
+    strategy: ChatAnkiRetemplateStrategy,
+) -> Value {
+    let mut output = convert_card_for_tool(&update.card, None);
+    let missing_fields: Vec<String> = update
+        .missing_fields
+        .iter()
+        .map(|missing| missing.field.clone())
+        .collect();
+    let missing_field_details: Vec<Value> = update
+        .missing_fields
+        .iter()
+        .map(|missing| {
+            json!({
+                "field": missing.field,
+                "required": missing.required,
+            })
+        })
+        .collect();
+    if let Some(object) = output.as_object_mut() {
+        object.insert("missingFields".to_string(), json!(missing_fields));
+        object.insert(
+            "missingFieldDetails".to_string(),
+            json!(missing_field_details),
+        );
+        if strategy == ChatAnkiRetemplateStrategy::FillMissing && !update.missing_fields.is_empty()
+        {
+            object.insert(
+                "source".to_string(),
+                convert_card_for_tool(&update.source, None),
+            );
+        }
+    }
+    output
+}
+
+#[derive(Debug, Clone)]
+struct AnkiCardsMutationTarget {
+    block_id: Option<String>,
+    session_id: String,
+    document_id: String,
+}
+
+fn find_owned_anki_cards_block_id(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    session_id: &str,
+    document_id: &str,
+) -> Result<Option<String>, String> {
+    let conn = chat_db.get_conn_safe().map_err(|error| error.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT b.id, b.tool_output_json
+             FROM chat_v2_blocks b
+             INNER JOIN chat_v2_messages m ON m.id = b.message_id
+             WHERE b.block_type = 'anki_cards'
+               AND b.tool_output_json IS NOT NULL
+               AND m.session_id = ?1
+             ORDER BY b.rowid DESC",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
+    for row in rows {
+        let row = row.map_err(|error| error.to_string())?;
+        let Ok(output) = serde_json::from_str::<Value>(&row.1) else {
+            continue;
+        };
+        if output.get("documentId").and_then(Value::as_str) == Some(document_id) {
+            return Ok(Some(row.0));
+        }
+    }
+    Ok(None)
+}
+
+/// P8 透明化：读取该文档预览块终态里记录的 hiddenOverLimitCount
+///（生成时超出 maxCards、保留在库中但未进入块投影的卡片数）。
+/// 块不存在（如 APKG 导入文档）或字段缺失时返回 0。
+fn lookup_hidden_over_limit_count(
+    chat_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    session_id: &str,
+    document_id: &str,
+) -> u64 {
+    let Some(chat_db) = chat_db else {
+        return 0;
+    };
+    let Ok(Some(block_id)) = find_owned_anki_cards_block_id(chat_db, session_id, document_id)
+    else {
+        return 0;
+    };
+    ChatV2Repo::get_block_v2(chat_db, &block_id)
+        .ok()
+        .flatten()
+        .and_then(|block| {
+            block
+                .tool_output
+                .as_ref()
+                .and_then(|output| output.get("hiddenOverLimitCount"))
+                .and_then(Value::as_u64)
+        })
+        .unwrap_or(0)
+}
+
+fn preflight_card_mutation(
+    chat_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    session_id: &str,
+    document_id: &str,
+) -> Result<AnkiCardsMutationTarget, String> {
+    let chat_db = chat_db.ok_or_else(|| "chatanki_ui_preflight_no_database".to_string())?;
+    let Some(block_id) = find_owned_anki_cards_block_id(chat_db, session_id, document_id)? else {
+        return Ok(AnkiCardsMutationTarget {
+            block_id: None,
+            session_id: session_id.to_string(),
+            document_id: document_id.to_string(),
+        });
+    };
+    let block = ChatV2Repo::get_block_v2(chat_db, &block_id)
+        .map_err(|error| format!("chatanki_ui_preflight_load_failed: {}", error))?
+        .ok_or_else(|| "chatanki_ui_preflight_block_not_found".to_string())?;
+    if block.block_type != block_types::ANKI_CARDS
+        || block
+            .tool_output
+            .as_ref()
+            .and_then(|output| output.get("documentId"))
+            .and_then(Value::as_str)
+            != Some(document_id)
+    {
+        return Err("chatanki_ui_preflight_block_mismatch".to_string());
+    }
+    verify_block_ownership(chat_db, &block, session_id)?;
+    Ok(AnkiCardsMutationTarget {
+        block_id: Some(block_id),
+        session_id: session_id.to_string(),
+        document_id: document_id.to_string(),
+    })
+}
+
+fn preflight_library_card_mutation(
+    chat_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    locator: &crate::database::AnkiLibraryCardLocator,
+) -> Result<AnkiCardsMutationTarget, String> {
+    let Some(source_session_id) = locator
+        .source_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(AnkiCardsMutationTarget {
+            block_id: None,
+            session_id: String::new(),
+            document_id: locator.document_id.clone(),
+        });
+    };
+    preflight_card_mutation(chat_db, source_session_id, &locator.document_id)
+        .map_err(|error| format!("Unable to prepare library card UI synchronization: {error}"))
+}
+
+fn persist_library_card_mutation(
+    ctx: &ExecutionContext,
+    target: &AnkiCardsMutationTarget,
+    locator: &crate::database::AnkiLibraryCardLocator,
+    event_patch: Value,
+) -> (&'static str, Value) {
+    if target.session_id.is_empty() {
+        return ("ok", mutation_ui_sync_not_required_receipt(target));
+    }
+    mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+        ctx,
+        target,
+        &locator.document_id,
+        event_patch,
+    ))
+}
+
+fn run_preflighted_card_mutation<T, F>(
+    chat_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    session_id: &str,
+    document_id: &str,
+    mutation: F,
+) -> Result<(AnkiCardsMutationTarget, T), String>
+where
+    F: FnOnce() -> Result<T, String>,
+{
+    let target = preflight_card_mutation(chat_db, session_id, document_id)
+        .map_err(|error| format!("Unable to prepare card UI synchronization: {}", error))?;
+    let result = mutation()?;
+    Ok((target, result))
+}
+
+fn persist_card_mutation(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    target: &AnkiCardsMutationTarget,
+    document_id: &str,
+    event_patch: &Value,
+) -> Result<(), String> {
+    if target.document_id != document_id
+        || event_patch.get("documentId").and_then(Value::as_str) != Some(document_id)
+    {
+        return Err("chatanki_mutation_document_mismatch".to_string());
+    }
+    let block_id = target
+        .block_id
+        .as_deref()
+        .ok_or_else(|| "chatanki_mutation_block_not_required".to_string())?;
+    let mut block = ChatV2Repo::get_block_v2(chat_db, block_id)
+        .map_err(|error| format!("chatanki_mutation_block_load_failed: {}", error))?
+        .ok_or_else(|| "chatanki_mutation_block_disappeared".to_string())?;
+    if block.block_type != block_types::ANKI_CARDS
+        || block
+            .tool_output
+            .as_ref()
+            .and_then(|output| output.get("documentId"))
+            .and_then(Value::as_str)
+            != Some(document_id)
+    {
+        return Err("chatanki_mutation_block_mismatch".to_string());
+    }
+    verify_block_ownership(chat_db, &block, &target.session_id)
+        .map_err(|_| "chatanki_mutation_block_ownership_mismatch".to_string())?;
+    let mut output = block
+        .tool_output
+        .take()
+        .ok_or_else(|| "chatanki_mutation_block_output_missing".to_string())?;
+    let object = output
+        .as_object_mut()
+        .ok_or_else(|| "chatanki_mutation_block_output_invalid".to_string())?;
+    let mut persisted_cards = object
+        .get("cards")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut deleted_ids: HashSet<String> = object
+        .get("deletedCardIds")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    match event_patch.get("cardMutation").and_then(Value::as_str) {
+        Some("upsert") => {
+            for incoming in event_patch
+                .get("cards")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let incoming_id = incoming.get("id").and_then(Value::as_str);
+                if let Some(incoming_id) = incoming_id {
+                    deleted_ids.remove(incoming_id);
+                }
+                if let Some(index) = persisted_cards.iter().position(|existing| {
+                    incoming_id.is_some()
+                        && existing.get("id").and_then(Value::as_str) == incoming_id
+                }) {
+                    persisted_cards[index] = incoming.clone();
+                } else {
+                    persisted_cards.push(incoming.clone());
+                }
+            }
+        }
+        Some("delete") => {
+            deleted_ids.extend(
+                event_patch
+                    .get("deletedCardIds")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string),
+            );
+            persisted_cards.retain(|card| {
+                card.get("id")
+                    .and_then(Value::as_str)
+                    .map(|id| !deleted_ids.contains(id))
+                    .unwrap_or(true)
+            });
+        }
+        _ => return Err("chatanki_mutation_kind_invalid".to_string()),
+    }
+    object.insert("cards".to_string(), json!(persisted_cards));
+    let mut deleted_ids: Vec<String> = deleted_ids.into_iter().collect();
+    deleted_ids.sort();
+    object.insert("deletedCardIds".to_string(), json!(deleted_ids));
+    object.insert("documentId".to_string(), json!(document_id));
+    let mut metadata_patch = event_patch.clone();
+    if let Some(metadata) = metadata_patch.as_object_mut() {
+        metadata.remove("cardMutation");
+        metadata.remove("cards");
+        metadata.remove("deletedCardIds");
+        metadata.remove("_blockStatus");
+        metadata.remove("_blockError");
+    }
+    deep_merge_value(&mut output, metadata_patch);
+    if let Some(status) = event_patch.get("_blockStatus").and_then(Value::as_str) {
+        block.status = status.to_string();
+    }
+    if event_patch.get("_blockError").is_some() {
+        block.error = event_patch
+            .get("_blockError")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
+    block.tool_output = Some(output);
+    ChatV2Repo::update_block_v2(chat_db, &block)
+        .map_err(|error| format!("chatanki_mutation_block_persist_failed: {}", error))?;
+    Ok(())
+}
+
+fn persist_and_emit_card_mutation(
+    ctx: &ExecutionContext,
+    target: &AnkiCardsMutationTarget,
+    document_id: &str,
+    mut event_patch: Value,
+) -> MutationUiSyncResult {
+    if let Some(anki_db) = ctx.anki_db.as_deref() {
+        let tasks = anki_db
+            .get_tasks_for_document(document_id)
+            .map_err(|error| MutationUiSyncFailure {
+                block_id: target.block_id.clone(),
+                event_attempted: false,
+                error: format!("chatanki_mutation_tasks_load_failed: {error}"),
+            })?;
+        let cards = anki_db
+            .get_cards_for_document(document_id)
+            .map_err(|error| MutationUiSyncFailure {
+                block_id: target.block_id.clone(),
+                event_attempted: false,
+                error: format!("chatanki_mutation_cards_load_failed: {error}"),
+            })?;
+        let has_failures = tasks.iter().any(|task| {
+            matches!(
+                task.status,
+                crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
+            )
+        });
+        let mutation_kind = event_patch.get("cardMutation").and_then(Value::as_str);
+        let recovered_delta = if has_failures && mutation_kind == Some("upsert") {
+            event_patch
+                .get("cards")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let projection = project_chatanki_workflow(
+            &tasks,
+            &cards,
+            (recovered_delta > 0).then_some("manual"),
+            recovered_delta,
+        );
+        deep_merge_value(&mut event_patch, projection.output_patch);
+        event_patch["_blockStatus"] = json!(projection.block_status);
+        event_patch["_blockError"] = json!(projection.block_error);
+    }
+    persist_and_emit_card_mutation_with(
+        ctx.chat_v2_db.as_deref(),
+        target,
+        document_id,
+        event_patch,
+        |block_id, event_patch| {
+            emit_anki_cards_chunk(&ctx.emitter, block_id, event_patch);
+        },
+    )
+}
+
+fn persist_and_emit_card_mutation_with<F>(
+    chat_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    target: &AnkiCardsMutationTarget,
+    document_id: &str,
+    event_patch: Value,
+    emit: F,
+) -> MutationUiSyncResult
+where
+    F: FnOnce(&str, Value),
+{
+    let chat_db = chat_db.ok_or_else(|| MutationUiSyncFailure {
+        block_id: target.block_id.clone(),
+        event_attempted: false,
+        error: "chatanki_mutation_database_disappeared".to_string(),
+    })?;
+    let effective_target = if target.block_id.is_some() {
+        target.clone()
+    } else {
+        let Some(block_id) =
+            find_owned_anki_cards_block_id(chat_db, &target.session_id, &target.document_id)
+                .map_err(|error| MutationUiSyncFailure {
+                    block_id: None,
+                    event_attempted: false,
+                    error: format!("chatanki_mutation_block_requery_failed: {error}"),
+                })?
+        else {
+            return Ok(mutation_ui_sync_not_required_receipt(target));
+        };
+        AnkiCardsMutationTarget {
+            block_id: Some(block_id),
+            session_id: target.session_id.clone(),
+            document_id: target.document_id.clone(),
+        }
+    };
+    let block_id = effective_target
+        .block_id
+        .as_deref()
+        .expect("effective mutation target always has a block id");
+    match persist_card_mutation(chat_db, &effective_target, document_id, &event_patch) {
+        Ok(()) => {
+            emit(block_id, event_patch);
+            Ok(json!({
+                "status": "ok",
+                "blockId": block_id,
+                "eventAttempted": true,
+            }))
+        }
+        Err(error) if error.starts_with("chatanki_mutation_block_persist_failed:") => {
+            // Validation succeeded and only the final database write failed. The block is a
+            // verified UI target, so emitting still lets the live preview converge.
+            emit(block_id, event_patch);
+            Err(MutationUiSyncFailure {
+                block_id: Some(block_id.to_string()),
+                event_attempted: true,
+                error,
+            })
+        }
+        Err(error) => Err(MutationUiSyncFailure {
+            block_id: Some(block_id.to_string()),
+            event_attempted: false,
+            error,
+        }),
+    }
+}
+
+#[derive(Debug)]
+struct MutationUiSyncFailure {
+    block_id: Option<String>,
+    event_attempted: bool,
+    error: String,
+}
+
+type MutationUiSyncResult = Result<Value, MutationUiSyncFailure>;
+
+fn mutation_ui_sync_not_required_receipt(target: &AnkiCardsMutationTarget) -> Value {
+    let mut receipt = json!({
+        "status": "not_required",
+        "eventAttempted": false,
+    });
+    if let Some(block_id) = target.block_id.as_deref() {
+        receipt["blockId"] = json!(block_id);
+    }
+    receipt
+}
+
+fn mutation_ui_sync_receipt(result: MutationUiSyncResult) -> (&'static str, Value) {
+    match result {
+        Ok(receipt) => ("ok", receipt),
+        Err(failure) => (
+            "partial",
+            json!({
+                "status": "failed",
+                "blockId": failure.block_id,
+                "eventAttempted": failure.event_attempted,
+                "error": failure.error,
+            }),
+        ),
+    }
+}
+
+fn emit_fsrs_cards_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]) {
+    emit_fsrs_cards_changed_with_cards(ctx, action, entity_ids, Vec::new());
+}
+
+fn emit_fsrs_cards_changed_with_cards(
+    ctx: &ExecutionContext,
+    action: &str,
+    entity_ids: &[String],
+    cards: Vec<Value>,
+) {
+    let mut payload = fsrs_cards_changed_payload(action, entity_ids, ctx.run_id());
+    if !cards.is_empty() {
+        payload["cards"] = json!(cards);
+    }
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
+        log::debug!(
+            "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after {}: {}",
+            action,
+            error
+        );
+    }
+}
+
+fn emit_fsrs_import_changed(ctx: &ExecutionContext, document_id: &str, entity_ids: &[String]) {
+    let payload = fsrs_import_changed_payload(document_id, entity_ids, ctx.run_id());
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
+        log::debug!(
+            "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after APKG import: {}",
+            error
+        );
+    }
+}
+
+fn fsrs_import_changed_payload(document_id: &str, entity_ids: &[String], run_id: &str) -> Value {
+    json!({
+        "source": "agent",
+        "action": "import",
+        "documentId": document_id,
+        "entityIds": entity_ids,
+        "runId": run_id,
+    })
+}
+
+fn fsrs_cards_changed_payload(action: &str, entity_ids: &[String], run_id: &str) -> Value {
+    json!({
+        "source": "agent",
+        "action": action,
+        "entityIds": entity_ids,
+        "runId": run_id,
+    })
+}
+
 fn convert_backend_card(c: &crate::models::AnkiCard) -> Value {
     let extra_fields = c.extra_fields.clone();
     let fields = extra_fields.clone();
@@ -5122,6 +10587,10 @@ fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
 /// 全局卡片上限触发的取消标记（写入 document_task.error_message）。
 pub(crate) const GLOBAL_CARD_LIMIT_MARKER: &str = "GLOBAL_CARD_LIMIT_REACHED";
 
+/// kill switch / 聊天取消触发的管线取消标记（写入 document_task.error_message）。
+/// 注意：它**不能**等于 GLOBAL_CARD_LIMIT_MARKER，否则会被归类为“按上限完成”。
+pub(crate) const PIPELINE_CANCELLED_MARKER: &str = "PIPELINE_CANCELLED_BY_CONTROLLER";
+
 /// 达到 maxCards 上限导致的取消属于"按上限完成"，不是用户取消（C1 修复）。
 fn is_limit_cancelled_task(t: &crate::models::DocumentTask) -> bool {
     matches!(t.status, crate::models::TaskStatus::Cancelled)
@@ -5140,9 +10609,270 @@ fn tasks_limit_reached(tasks: &[crate::models::DocumentTask]) -> bool {
     tasks.iter().any(is_limit_cancelled_task)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenerationTerminalKind {
+    Completed,
+    CompletedWithErrors,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug)]
+struct ChatAnkiWorkflowProjection {
+    block_status: &'static str,
+    block_error: Option<String>,
+    output_patch: Value,
+}
+
+fn classify_generation_issue(error: &str) -> (&'static str, bool) {
+    let normalized = error.to_lowercase();
+    if normalized.contains("balance is insufficient")
+        || normalized.contains("余额不足")
+        || normalized.contains("额度不足")
+    {
+        ("provider_quota_exhausted", false)
+    } else if normalized.contains("403") || normalized.contains("访问被拒绝") {
+        ("provider_forbidden", false)
+    } else if normalized.contains("401")
+        || normalized.contains("api key")
+        || normalized.contains("认证失败")
+    {
+        ("provider_auth_failed", false)
+    } else {
+        ("generation_failed", true)
+    }
+}
+
+fn project_chatanki_workflow(
+    tasks: &[crate::models::DocumentTask],
+    cards: &[crate::models::AnkiCard],
+    recovery_hint: Option<&str>,
+    recovered_cards: usize,
+) -> ChatAnkiWorkflowProjection {
+    let counts = compute_task_counts(tasks);
+    let counts_value = counts.get("counts").cloned().unwrap_or_else(|| json!({}));
+    let completed_ratio = counts
+        .get("completedRatio")
+        .cloned()
+        .unwrap_or_else(|| json!(0.0));
+    let usable_cards = cards.iter().filter(|card| !card.is_error_card).count();
+    let has_in_flight = tasks.iter().any(|task| {
+        matches!(
+            task.status,
+            crate::models::TaskStatus::Pending
+                | crate::models::TaskStatus::Processing
+                | crate::models::TaskStatus::Streaming
+        )
+    });
+    let is_paused = tasks
+        .iter()
+        .any(|task| matches!(task.status, crate::models::TaskStatus::Paused));
+    let terminal_kind = classify_generation_terminal(tasks, cards);
+    let has_generation_failure = tasks.iter().any(|task| {
+        matches!(
+            task.status,
+            crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
+        )
+    });
+    let has_completed_segment = tasks
+        .iter()
+        .any(|task| matches!(task.status, crate::models::TaskStatus::Completed));
+    let recovery_status = if has_generation_failure && usable_cards > 0 {
+        recovery_hint.unwrap_or(if has_completed_segment {
+            "none"
+        } else {
+            "existing_cards"
+        })
+    } else {
+        "none"
+    };
+
+    let (workflow_status, generation_status, final_status, block_status, block_error) =
+        if has_in_flight {
+            (
+                "running",
+                "running",
+                "generating",
+                block_status::RUNNING,
+                None,
+            )
+        } else if is_paused {
+            ("paused", "paused", "paused", block_status::RUNNING, None)
+        } else {
+            match terminal_kind {
+                GenerationTerminalKind::Completed => (
+                    "completed",
+                    "completed",
+                    "completed",
+                    block_status::SUCCESS,
+                    None,
+                ),
+                GenerationTerminalKind::CompletedWithErrors => (
+                    "completed_with_warnings",
+                    if has_completed_segment {
+                        "partial"
+                    } else {
+                        "failed"
+                    },
+                    "completed_with_errors",
+                    block_status::SUCCESS,
+                    None,
+                ),
+                GenerationTerminalKind::Failed => (
+                    "failed",
+                    "failed",
+                    "error",
+                    block_status::ERROR,
+                    Some("blocks.ankiCards.errors.generationFailed".to_string()),
+                ),
+                GenerationTerminalKind::Cancelled => (
+                    "cancelled",
+                    "cancelled",
+                    "cancelled",
+                    block_status::SUCCESS,
+                    None,
+                ),
+            }
+        };
+
+    let generation_errors: Vec<&str> = tasks
+        .iter()
+        .filter(|task| {
+            matches!(
+                task.status,
+                crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
+            )
+        })
+        .filter_map(|task| {
+            task.error_message
+                .as_deref()
+                .map(str::trim)
+                .filter(|error| !error.is_empty())
+        })
+        .collect();
+    let primary_error = generation_errors.first().copied();
+    let primary_retryable = generation_errors
+        .iter()
+        .any(|error| classify_generation_issue(error).1);
+    let issues: Vec<Value> = generation_errors
+        .iter()
+        .map(|error| {
+            let (code, retryable) = classify_generation_issue(error);
+            json!({
+                "scope": "generation",
+                "code": code,
+                "severity": if usable_cards > 0 { "warning" } else { "error" },
+                "retryable": retryable,
+                "recovered": usable_cards > 0,
+                "detail": error,
+            })
+        })
+        .collect();
+    let was_recovered = workflow_status == "completed_with_warnings" && recovery_status != "none";
+    let warnings = if workflow_status == "completed_with_warnings" {
+        vec![json!({
+            "code": if was_recovered { "generation_recovered" } else { "partial_generation" },
+            "messageKey": if was_recovered {
+                "blocks.ankiCards.warnings.generationRecovered"
+            } else {
+                "blocks.ankiCards.progress.messages.completedWithErrors"
+            },
+            "messageParams": {
+                "count": usable_cards,
+                "recovered": recovered_cards,
+            }
+        })]
+    } else {
+        Vec::new()
+    };
+
+    ChatAnkiWorkflowProjection {
+        block_status,
+        block_error,
+        output_patch: json!({
+            "schemaVersion": 2,
+            "stateRevision": next_chatanki_state_revision(),
+            "workflowStatus": workflow_status,
+            "generationStatus": generation_status,
+            "deliveryStatus": if usable_cards > 0 { "ready" } else { "empty" },
+            "recoveryStatus": recovery_status,
+            "availableCards": usable_cards,
+            "recoveredCards": recovered_cards,
+            "status": final_status,
+            "finalStatus": final_status,
+            "finalError": if block_status == block_status::ERROR { primary_error } else { None },
+            "error": if block_status == block_status::ERROR { primary_error } else { None },
+            "shouldRetry": has_generation_failure && primary_retryable,
+            "issues": issues,
+            "warnings": warnings,
+            "progress": {
+                "stage": final_status,
+                "messageKey": if workflow_status == "completed_with_warnings" {
+                    Some(if was_recovered {
+                        "blocks.ankiCards.progress.messages.recovered"
+                    } else {
+                        "blocks.ankiCards.progress.messages.completedWithErrors"
+                    })
+                } else {
+                    None
+                },
+                "messageParams": if workflow_status == "completed_with_warnings" {
+                    Some(json!({ "count": usable_cards }))
+                } else {
+                    None
+                },
+                "cardsGenerated": usable_cards,
+                "counts": counts_value,
+                "completedRatio": completed_ratio,
+                "lastUpdatedAt": chrono::Utc::now().to_rfc3339(),
+            },
+        }),
+    }
+}
+
+impl GenerationTerminalKind {
+    fn as_stage(self) -> &'static str {
+        match self {
+            Self::Completed => "completed",
+            Self::CompletedWithErrors => "completed_with_errors",
+            Self::Failed => "error",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+fn classify_generation_terminal(
+    tasks: &[crate::models::DocumentTask],
+    cards: &[crate::models::AnkiCard],
+) -> GenerationTerminalKind {
+    if tasks_user_cancelled(tasks) {
+        return GenerationTerminalKind::Cancelled;
+    }
+
+    let has_failed = tasks.iter().any(|task| {
+        matches!(
+            task.status,
+            crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
+        )
+    });
+    if !has_failed {
+        return GenerationTerminalKind::Completed;
+    }
+
+    let has_successful_segment = tasks
+        .iter()
+        .any(|task| matches!(task.status, crate::models::TaskStatus::Completed));
+    let has_usable_card = cards.iter().any(|card| !card.is_error_card);
+    if has_successful_segment || has_usable_card {
+        GenerationTerminalKind::CompletedWithErrors
+    } else {
+        GenerationTerminalKind::Failed
+    }
+}
+
 fn derive_status_snapshot(
     tasks: &[crate::models::DocumentTask],
-    cards_len: usize,
+    cards: &[crate::models::AnkiCard],
 ) -> (String, Option<String>, bool) {
     let is_paused = tasks
         .iter()
@@ -5155,26 +10885,16 @@ fn derive_status_snapshot(
                 | crate::models::TaskStatus::Streaming
         )
     });
-    let has_failed_or_truncated = tasks.iter().any(|t| {
-        matches!(
-            t.status,
-            crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
-        )
-    });
-    let user_cancelled = tasks_user_cancelled(tasks);
-    let status = if tasks.is_empty() && cards_len == 0 {
+    let status = if tasks.is_empty() && cards.is_empty() {
         "not_found".to_string()
     } else if is_in_progress {
         "running".to_string()
     } else if is_paused {
         "paused".to_string()
-    } else if user_cancelled {
-        "cancelled".to_string()
-    } else if has_failed_or_truncated {
-        "completed_with_errors".to_string()
     } else {
-        // limit 取消的任务也走这里：对用户/AI 而言任务"已按上限完成"
-        "completed".to_string()
+        classify_generation_terminal(tasks, cards)
+            .as_stage()
+            .to_string()
     };
     let error = if status == "not_found" {
         Some("blocks.ankiCards.errors.statusNotFound".to_string())
@@ -5246,8 +10966,9 @@ fn compute_task_counts(tasks: &[crate::models::DocumentTask]) -> Value {
     counts.insert("truncated".to_string(), json!(truncated));
     counts.insert("cancelled".to_string(), json!(cancelled));
 
+    let terminal = completed + failed + truncated + cancelled;
     let completed_ratio = if total > 0 {
-        completed as f32 / total as f32
+        terminal as f32 / total as f32
     } else {
         0.0
     };
@@ -5270,12 +10991,217 @@ fn emit_anki_cards_chunk(
     emitter.emit_chunk(event_types::ANKI_CARDS, block_id, &chunk, None);
 }
 
+/// Best-effort：按 documentId 找到最新 anki_cards 预览块，回写 syncStatus。
+fn patch_anki_cards_block_sync_status(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    emitter: &crate::chat_v2::events::ChatV2EventEmitter,
+    document_id: &str,
+    sync_status: &str,
+    sync_error: Option<&str>,
+) {
+    let doc_id = document_id.trim();
+    if doc_id.is_empty() {
+        return;
+    }
+
+    // 先在短生命周期内扫出目标 block_id，再释放 conn，避免与 get_block_v2 争用 Mutex。
+    let target_block_id: Option<String> = (|| {
+        let conn = chat_db.get_conn_safe().ok()?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT id, tool_output_json
+                FROM chat_v2_blocks
+                WHERE block_type = 'anki_cards' AND tool_output_json IS NOT NULL
+                ORDER BY rowid DESC
+                LIMIT 40
+                "#,
+            )
+            .ok()?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .ok()?;
+        for row in rows.flatten() {
+            let (block_id, tool_output_json) = row;
+            let Ok(parsed) = serde_json::from_str::<Value>(&tool_output_json) else {
+                continue;
+            };
+            let block_doc_id = parsed
+                .get("documentId")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if block_doc_id == doc_id {
+                return Some(block_id);
+            }
+        }
+        None
+    })();
+
+    let Some(block_id) = target_block_id else {
+        return;
+    };
+
+    if let Ok(Some(mut existing)) = ChatV2Repo::get_block_v2(chat_db, &block_id) {
+        let mut tool_output = existing
+            .tool_output
+            .take()
+            .unwrap_or_else(|| json!({ "cards": [], "documentId": doc_id }));
+        if let Some(obj) = tool_output.as_object_mut() {
+            obj.insert("syncStatus".to_string(), json!(sync_status));
+            if let Some(err) = sync_error {
+                obj.insert("syncError".to_string(), json!(err));
+            } else {
+                obj.remove("syncError");
+            }
+        }
+        existing.tool_output = Some(tool_output);
+        let _ = ChatV2Repo::update_block_v2(chat_db, &existing);
+    }
+
+    emit_anki_cards_chunk(
+        emitter,
+        &block_id,
+        json!({
+            "syncStatus": sync_status,
+            "syncError": sync_error,
+        }),
+    );
+}
+
 fn emit_anki_cards_error(
     emitter: &crate::chat_v2::events::ChatV2EventEmitter,
     block_id: &str,
     error: &str,
 ) {
     emitter.emit_error(event_types::ANKI_CARDS, block_id, error, None);
+}
+
+/// A9（后端侧）+ 孤儿恢复：当文档在 DB 中已达终态，而会话内对应的
+/// anki_cards 块快照仍是旧数据（崩溃遗留的 running 块、任务台重试/补卡/
+/// 删卡后的陈旧副本）时，把块快照刷新为 DB 权威数据。
+///
+/// 保守改写条件（避免覆盖用户在块内做过、尚未回写 DB 的内容编辑）：
+/// - 块仍处于 pending/running（孤儿态，必须收敛为终态）；或
+/// - 块内卡片 ID 集合与 DB 卡片 ID 集合不一致（发生过重试生成/补卡/库内删除）。
+///
+/// 块内 `deletedCardIds`（用户在预览中删除的卡）在刷新时继续被排除，
+/// 保持用户可见状态。返回是否发生了刷新。
+fn sync_terminal_anki_block_with_db(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    emitter: Option<&crate::chat_v2::events::ChatV2EventEmitter>,
+    session_id: &str,
+    document_id: &str,
+    tasks: &[crate::models::DocumentTask],
+    cards: &[crate::models::AnkiCard],
+) -> Result<bool, String> {
+    if tasks.is_empty() {
+        return Ok(false);
+    }
+    let still_active = tasks.iter().any(|t| {
+        matches!(
+            t.status,
+            crate::models::TaskStatus::Pending
+                | crate::models::TaskStatus::Processing
+                | crate::models::TaskStatus::Streaming
+                | crate::models::TaskStatus::Paused
+        )
+    });
+    if still_active {
+        return Ok(false);
+    }
+
+    let Some(block_id) = find_owned_anki_cards_block_id(chat_db, session_id, document_id)? else {
+        return Ok(false);
+    };
+    let block = ChatV2Repo::get_block_v2(chat_db, &block_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("anki block {} disappeared during refresh", block_id))?;
+
+    let deleted_card_ids: HashSet<String> = block
+        .tool_output
+        .as_ref()
+        .and_then(|o| o.get("deletedCardIds"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let visible_db_cards: Vec<&crate::models::AnkiCard> = cards
+        .iter()
+        .filter(|c| !deleted_card_ids.contains(&c.id))
+        .collect();
+
+    let block_orphan_running =
+        block.status == block_status::PENDING || block.status == block_status::RUNNING;
+    let block_card_ids: HashSet<String> = block
+        .tool_output
+        .as_ref()
+        .and_then(|o| o.get("cards"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let db_card_ids: HashSet<String> = visible_db_cards.iter().map(|c| c.id.clone()).collect();
+    if !block_orphan_running && block_card_ids == db_card_ids {
+        return Ok(false);
+    }
+
+    let projection = project_chatanki_workflow(tasks, cards, None, 0);
+    let mut output = block
+        .tool_output
+        .clone()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({ "cards": [], "documentId": document_id }));
+    output["cards"] = Value::Array(
+        visible_db_cards
+            .iter()
+            .map(|c| convert_backend_card(c))
+            .collect(),
+    );
+    output["documentId"] = json!(document_id);
+    deep_merge_value(&mut output, projection.output_patch.clone());
+    // 新增可选字段：标记该快照已按 DB 权威数据刷新（前端/导出可据此判定新鲜度）。
+    output["cardsRefreshedFromDb"] = json!(true);
+    output["cardsRefreshedAt"] = json!(chrono::Utc::now().to_rfc3339());
+
+    let tool_name = block
+        .tool_name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("chatanki_run")
+        .to_string();
+    persist_anki_cards_terminal_block(
+        chat_db,
+        &block.message_id,
+        &block.id,
+        &tool_name,
+        projection.block_status,
+        Some(output.clone()),
+        projection.block_error.clone(),
+    );
+    if let Some(emitter) = emitter {
+        emit_anki_cards_chunk(emitter, &block.id, output);
+        if projection.block_status == block_status::ERROR {
+            if let Some(error_key) = projection.block_error.as_deref() {
+                emit_anki_cards_error(emitter, &block.id, error_key);
+            }
+        }
+    }
+    log::info!(
+        "[ChatAnkiToolExecutor] refreshed anki block {} snapshot from DB (document {}, {} cards, status {})",
+        block.id,
+        document_id,
+        db_card_ids.len(),
+        projection.block_status
+    );
+    Ok(true)
 }
 
 fn deep_merge_value(into: &mut Value, patch: Value) {
@@ -5320,6 +11246,7 @@ fn persist_anki_cards_running_patch(
         .as_ref()
         .and_then(|b| b.first_chunk_at)
         .unwrap_or(now_ms);
+    let block_index = existing.as_ref().map(|b| b.block_index).unwrap_or(1);
 
     let mut tool_output = existing
         .as_ref()
@@ -5341,7 +11268,7 @@ fn persist_anki_cards_running_patch(
         started_at: Some(started_at),
         ended_at: None,
         first_chunk_at: Some(first_chunk_at),
-        block_index: 1,
+        block_index,
     };
 
     let _ = upsert_block_allow_orphan(chat_db, &block);
@@ -5358,18 +11285,59 @@ fn persist_anki_cards_terminal_block(
 ) {
     let now_ms = chrono::Utc::now().timestamp_millis();
 
-    // Best-effort: preserve message_id/tool_output from existing row if present.
+    // Best-effort: preserve identity, ordering and timing metadata from the existing row.
     let existing = ChatV2Repo::get_block_v2(chat_db, block_id).ok().flatten();
     let message_id = existing
         .as_ref()
         .map(|b| b.message_id.clone())
         .unwrap_or_else(|| fallback_message_id.to_string());
-    let tool_output = tool_output_override
-        .or_else(|| existing.and_then(|b| b.tool_output))
+    let started_at = existing
+        .as_ref()
+        .and_then(|b| b.started_at)
+        .unwrap_or(now_ms);
+    let first_chunk_at = existing
+        .as_ref()
+        .and_then(|b| b.first_chunk_at)
+        .unwrap_or(now_ms);
+    let block_index = existing.as_ref().map(|b| b.block_index).unwrap_or(1);
+    let mut tool_output = tool_output_override
+        .or_else(|| existing.as_ref().and_then(|b| b.tool_output.clone()))
         .or_else(|| {
             // Minimal shape so UI doesn't explode after refresh.
             Some(json!({ "cards": [], "documentId": null }))
         });
+    if status == block_status::ERROR {
+        let detail = error.as_deref().unwrap_or("generation_failed");
+        let (code, retryable) = classify_generation_issue(detail);
+        if let Some(output) = tool_output.as_mut() {
+            deep_merge_value(
+                output,
+                json!({
+                    "schemaVersion": 2,
+                    "stateRevision": next_chatanki_state_revision(),
+                    "workflowStatus": "failed",
+                    "generationStatus": "failed",
+                    "deliveryStatus": "empty",
+                    "recoveryStatus": "none",
+                    "availableCards": 0,
+                    "status": "error",
+                    "finalStatus": "error",
+                    "finalError": detail,
+                    "error": detail,
+                    "shouldRetry": retryable,
+                    "issues": [{
+                        "scope": "generation",
+                        "code": code,
+                        "severity": "error",
+                        "retryable": retryable,
+                        "recovered": false,
+                        "detail": detail,
+                    }],
+                    "progress": { "stage": "error" },
+                }),
+            );
+        }
+    }
 
     let block = MessageBlock {
         id: block_id.to_string(),
@@ -5382,10 +11350,10 @@ fn persist_anki_cards_terminal_block(
         tool_output,
         citations: None,
         error,
-        started_at: Some(now_ms),
+        started_at: Some(started_at),
         ended_at: Some(now_ms),
-        first_chunk_at: Some(now_ms),
-        block_index: 1,
+        first_chunk_at: Some(first_chunk_at),
+        block_index,
     };
 
     let _ = upsert_block_allow_orphan(chat_db, &block);
@@ -5432,19 +11400,19 @@ fn upsert_block_allow_orphan(
     let tool_input_json = block
         .tool_input
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| e.to_string())?;
     let tool_output_json = block
         .tool_output
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| e.to_string())?;
     let citations_json = block
         .citations
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| e.to_string())?;
 
@@ -5583,15 +11551,2914 @@ mod tests {
         (db, dir)
     }
 
+    fn make_chat_v2_test_db() -> (crate::chat_v2::database::ChatV2Database, tempfile::TempDir) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let dir = tempdir().expect("tempdir");
+        let mut coordinator =
+            MigrationCoordinator::new(dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat v2 migrations");
+        let db = crate::chat_v2::database::ChatV2Database::new(dir.path()).expect("chat v2 db");
+        (db, dir)
+    }
+
+    fn seed_anki_cards_block(
+        chat_db: &crate::chat_v2::database::ChatV2Database,
+        session_id: &str,
+        document_id: &str,
+        cards: Vec<Value>,
+        deleted_card_ids: Vec<&str>,
+    ) -> AnkiCardsMutationTarget {
+        let session = crate::chat_v2::types::ChatSession::new(
+            session_id.to_string(),
+            "general_chat".to_string(),
+        );
+        ChatV2Repo::create_session_v2(chat_db, &session).expect("create session");
+
+        let mut message = crate::chat_v2::types::ChatMessage::new_assistant(session_id.to_string());
+        let mut block = MessageBlock::new(message.id.clone(), block_types::ANKI_CARDS, 0);
+        block.status = block_status::SUCCESS.to_string();
+        block.tool_output = Some(json!({
+            "documentId": document_id,
+            "cards": cards,
+            "deletedCardIds": deleted_card_ids,
+        }));
+        message.block_ids = vec![block.id.clone()];
+        ChatV2Repo::create_message_v2(chat_db, &message).expect("create message");
+        ChatV2Repo::create_block_v2(chat_db, &block).expect("create anki cards block");
+
+        preflight_card_mutation(Some(chat_db), session_id, document_id).expect("preflight")
+    }
+
+    fn required_mutation_block_id(target: &AnkiCardsMutationTarget) -> &str {
+        target
+            .block_id
+            .as_deref()
+            .expect("seeded mutation target must require UI synchronization")
+    }
+
+    fn seed_chatanki_document(
+        db: &crate::database::Database,
+        document_id: &str,
+        session_id: &str,
+    ) -> String {
+        let now = chrono::Utc::now().to_rfc3339();
+        let task_id = format!("task-{}", document_id);
+        let task = DocumentTask {
+            id: task_id.clone(),
+            document_id: document_id.to_string(),
+            original_document_name: document_id.to_string(),
+            segment_index: 0,
+            content_segment: "material".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now,
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        db.insert_document_task(&task).expect("insert task");
+        db.set_document_session_source(document_id, session_id)
+            .expect("set owner");
+        task_id
+    }
+
+    fn seed_additional_chatanki_task(
+        db: &crate::database::Database,
+        document_id: &str,
+        task_id: &str,
+        segment_index: u32,
+        session_id: &str,
+    ) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: task_id.to_string(),
+            document_id: document_id.to_string(),
+            original_document_name: document_id.to_string(),
+            segment_index,
+            content_segment: "additional material".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now,
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        db.insert_document_task(&task)
+            .expect("insert additional task");
+        db.set_document_session_source(document_id, session_id)
+            .expect("set additional owner");
+    }
+
+    fn make_chatanki_card(
+        id: &str,
+        task_id: &str,
+        front: &str,
+        back: &str,
+    ) -> crate::models::AnkiCard {
+        let now = chrono::Utc::now().to_rfc3339();
+        crate::models::AnkiCard {
+            id: id.to_string(),
+            task_id: task_id.to_string(),
+            front: front.to_string(),
+            back: back.to_string(),
+            text: None,
+            tags: vec!["tag".to_string()],
+            images: Vec::new(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: HashMap::new(),
+            template_id: Some("design-swiss".to_string()),
+        }
+    }
+
+    fn make_library_record(
+        card: crate::models::AnkiCard,
+        document_id: &str,
+        source_session_id: Option<&str>,
+    ) -> crate::database::AnkiLibraryCardRecord {
+        crate::database::AnkiLibraryCardRecord {
+            library_card: crate::models::AnkiLibraryCard {
+                card,
+                source_type: Some("document".to_string()),
+                source_id: Some("source-1".to_string()),
+                state_id: Some("state-library".to_string()),
+                state: Some(2),
+                due_ms: Some(1_725_000_000_000),
+                suspended: false,
+                enqueued: true,
+                is_due: true,
+            },
+            locator: crate::database::AnkiLibraryCardLocator {
+                document_id: document_id.to_string(),
+                source_session_id: source_session_id.map(str::to_string),
+            },
+        }
+    }
+
+    fn make_agent_review_snapshot(
+        card_id: &str,
+        card_state_id: &str,
+        review_version: i64,
+    ) -> FsrsAgentReviewStateSnapshot {
+        FsrsAgentReviewStateSnapshot {
+            anki_card_id: card_id.to_string(),
+            card_state_id: card_state_id.to_string(),
+            state: 2,
+            suspended: false,
+            due_ms: 1_725_000_000_000,
+            last_review_ms: Some(1_724_000_000_000),
+            review_version,
+            latest_review: Some(crate::fsrs_review_service::FsrsAgentLatestReviewSnapshot {
+                log_id: "log-latest".to_string(),
+                rating: 3,
+                review_ms: 1_724_000_000_000,
+                undoable: true,
+            }),
+        }
+    }
+
+    fn make_chatanki_template(
+        id: &str,
+        name: &str,
+        description: &str,
+        note_type: &str,
+        is_active: bool,
+    ) -> crate::models::CustomAnkiTemplate {
+        let now = chrono::Utc::now();
+        crate::models::CustomAnkiTemplate {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            author: None,
+            version: "1.0.0".to_string(),
+            preview_front: "{{Front}}".to_string(),
+            preview_back: "{{Back}}".to_string(),
+            note_type: note_type.to_string(),
+            fields: vec!["Front".to_string(), "Back".to_string()],
+            generation_prompt: "prompt".to_string(),
+            front_template: "{{Front}}".to_string(),
+            back_template: "{{Back}}".to_string(),
+            css_style: String::new(),
+            field_extraction_rules: HashMap::new(),
+            created_at: now,
+            updated_at: now,
+            is_active,
+            is_built_in: false,
+            preview_data_json: None,
+        }
+    }
+
+    fn make_chatanki_template_request(name: &str) -> CreateTemplateRequest {
+        CreateTemplateRequest {
+            name: name.to_string(),
+            description: String::new(),
+            author: None,
+            version: None,
+            preview_front: "{{Front}}".to_string(),
+            preview_back: "{{Back}}".to_string(),
+            note_type: "Basic".to_string(),
+            fields: vec!["Front".to_string(), "Back".to_string()],
+            generation_prompt: "prompt".to_string(),
+            front_template: "{{Front}}".to_string(),
+            back_template: "{{Back}}".to_string(),
+            css_style: String::new(),
+            field_extraction_rules: HashMap::new(),
+            preview_data_json: None,
+            is_active: Some(true),
+            is_built_in: Some(false),
+        }
+    }
+
+    fn make_retemplate_target(
+        template_id: &str,
+        note_type: &str,
+        fields: &[&str],
+        required_fields: &[&str],
+    ) -> AnkiRetemplateTarget {
+        AnkiRetemplateTarget {
+            template_id: template_id.to_string(),
+            note_type: note_type.to_string(),
+            fields: fields.iter().map(|field| (*field).to_string()).collect(),
+            required_fields: required_fields
+                .iter()
+                .map(|field| (*field).to_string())
+                .collect(),
+        }
+    }
+
+    fn expected_card_versions(cards: &[crate::models::AnkiCard]) -> HashMap<String, String> {
+        cards
+            .iter()
+            .map(|card| (card.id.clone(), card.updated_at.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn test_chatanki_get_cards_args_and_field_truncation() {
+        let args: ChatAnkiGetCardsArgs = serde_json::from_value(json!({
+            "documentId": "doc-get",
+            "filter": "edited_only"
+        }))
+        .expect("parse get args");
+        assert_eq!(args.page, None);
+        assert_eq!(args.page_size, None);
+        assert_eq!(args.filter, ChatAnkiCardsFilter::EditedOnly);
+
+        let mut card = make_chatanki_card("card-get", "task-get", &"x".repeat(2_010), "back");
+        card.extra_fields
+            .insert("detail".to_string(), "y".repeat(2_005));
+        let output = convert_card_for_tool(&card, Some(3));
+        assert_eq!(output.get("index").and_then(Value::as_u64), Some(3));
+        assert_eq!(
+            output
+                .get("front")
+                .and_then(Value::as_str)
+                .expect("front")
+                .chars()
+                .count(),
+            CHATANKI_CARD_FIELD_LIMIT
+        );
+        assert_eq!(output.get("truncated").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            output.get("version").and_then(Value::as_str),
+            Some(card.updated_at.as_str())
+        );
+    }
+
+    #[test]
+    fn test_chatanki_get_cards_owned_snapshot_page_boundaries_and_filters() {
+        let (db, _tmp) = make_test_db();
+        seed_chatanki_document(&db, "doc-get-page", "session-get-page");
+        let mut cards: Vec<_> = (1..=5)
+            .map(|index| {
+                make_chatanki_card(
+                    &format!("card-{}", index),
+                    "task-get-page",
+                    &format!("front-{}", index),
+                    "back",
+                )
+            })
+            .collect();
+        cards[1].is_error_card = true;
+        cards[3].is_error_card = true;
+        cards[2].updated_at = "2026-07-13T00:00:01Z".to_string();
+        cards[3].updated_at = "2026-07-13T00:00:02Z".to_string();
+        let inserted = db
+            .insert_anki_cards_for_document("doc-get-page", "session-get-page", cards)
+            .expect("insert page contract cards");
+        assert_eq!(inserted.len(), 5);
+        let cards = db
+            .get_cards_for_document_for_session("doc-get-page", "session-get-page")
+            .expect("load owned snapshot")
+            .expect("owned document");
+
+        let (total, first_page) =
+            select_chatanki_cards_page(cards.clone(), ChatAnkiCardsFilter::All, 1, 2);
+        assert_eq!(total, 5);
+        assert_eq!(first_page.len(), 2);
+        assert_eq!(first_page[0]["id"], "card-1");
+        assert_eq!(first_page[1]["id"], "card-2");
+
+        let (_, final_page) =
+            select_chatanki_cards_page(cards.clone(), ChatAnkiCardsFilter::All, 3, 2);
+        assert_eq!(final_page.len(), 1);
+        assert_eq!(final_page[0]["id"], "card-5");
+        let (_, past_end) =
+            select_chatanki_cards_page(cards.clone(), ChatAnkiCardsFilter::All, 4, 2);
+        assert!(past_end.is_empty());
+
+        let (error_total, error_cards) =
+            select_chatanki_cards_page(cards.clone(), ChatAnkiCardsFilter::ErrorOnly, 1, 10);
+        assert_eq!(error_total, 2);
+        assert_eq!(error_cards[0]["id"], "card-2");
+        assert_eq!(error_cards[0]["index"], 2);
+        assert_eq!(error_cards[1]["id"], "card-4");
+        assert_eq!(error_cards[1]["index"], 4);
+
+        let (edited_total, edited_cards) =
+            select_chatanki_cards_page(cards, ChatAnkiCardsFilter::EditedOnly, 1, 10);
+        assert_eq!(edited_total, 2);
+        assert_eq!(edited_cards[0]["id"], "card-3");
+        assert_eq!(edited_cards[1]["id"], "card-4");
+    }
+
+    #[test]
+    fn test_chatanki_get_cards_attaches_review_state_or_null() {
+        let mut cards = vec![
+            convert_card_for_tool(
+                &make_chatanki_card("card-enqueued", "task", "front", "back"),
+                Some(1),
+            ),
+            convert_card_for_tool(
+                &make_chatanki_card("card-not-enqueued", "task", "front", "back"),
+                Some(2),
+            ),
+        ];
+        attach_review_states(
+            &mut cards,
+            vec![make_agent_review_snapshot(
+                "card-enqueued",
+                "state-enqueued",
+                4,
+            )],
+        );
+
+        assert_eq!(cards[0]["reviewState"]["cardStateId"], "state-enqueued");
+        assert_eq!(cards[0]["reviewState"]["reviewVersion"], 4);
+        assert_eq!(
+            cards[0]["reviewState"]["latestReview"]["logId"],
+            "log-latest"
+        );
+        assert!(cards[1]["reviewState"].is_null());
+    }
+
+    #[test]
+    fn test_chatanki_update_card_args_preserve_explicit_null_text() {
+        let args: ChatAnkiUpdateCardArgs = serde_json::from_value(json!({
+            "cardId": "card-null",
+            "expectedVersion": "v1",
+            "patch": {
+                "text": null,
+                "extraFields": { " Question ": "value", "": "ignored" }
+            }
+        }))
+        .expect("parse update args");
+        assert!(matches!(args.patch.text.as_ref(), Some(None)));
+        assert!(!args.patch.is_empty());
+        let mut card = make_chatanki_card("card-null", "task-null", "front", "back");
+        args.patch.apply_to(&mut card);
+        assert_eq!(card.text, None);
+        assert_eq!(
+            card.extra_fields.get("question").map(String::as_str),
+            Some("value")
+        );
+        assert!(!card.extra_fields.contains_key(""));
+    }
+
+    #[test]
+    fn test_chatanki_update_card_syncs_template_aliases_with_core_fields() {
+        let mut card = make_chatanki_card(
+            "card-template-sync",
+            "task-template-sync",
+            "old front",
+            "old back",
+        );
+        card.text = Some("old {{c1::text}}".to_string());
+        card.extra_fields
+            .insert("Question".to_string(), "old front".to_string());
+        card.extra_fields
+            .insert("Definition".to_string(), "old back".to_string());
+        card.extra_fields
+            .insert("Text".to_string(), "old {{c1::text}}".to_string());
+        card.extra_fields
+            .insert("Formula".to_string(), "preserve".to_string());
+
+        let patch = serde_json::from_value::<ChatAnkiCardPatch>(json!({
+            "front": "new front",
+            "back": "new back",
+            "text": "new {{c1::text}}"
+        }))
+        .expect("parse template card patch");
+        patch.apply_to(&mut card);
+
+        assert_eq!(card.front, "new front");
+        assert_eq!(card.back, "new back");
+        assert_eq!(card.text.as_deref(), Some("new {{c1::text}}"));
+        assert_eq!(card.extra_fields["Question"], "new front");
+        assert_eq!(card.extra_fields["Definition"], "new back");
+        assert_eq!(card.extra_fields["Text"], "new {{c1::text}}");
+        assert_eq!(card.extra_fields["Formula"], "preserve");
+    }
+
+    #[test]
+    fn test_chatanki_library_list_arguments_normalize_and_cap_page_size() {
+        let args = serde_json::from_value::<ChatAnkiListLibraryCardsArgs>(json!({
+            "query": "  spaced query  ",
+            "templateId": "  design-swiss  ",
+            "schedule": "not_enqueued",
+            "filter": "error_only",
+            "page": 0,
+            "pageSize": 999
+        }))
+        .expect("parse library list args")
+        .normalize();
+        assert_eq!(args.search.as_deref(), Some("spaced query"));
+        assert_eq!(args.template_id.as_deref(), Some("design-swiss"));
+        assert_eq!(args.schedule, ChatAnkiLibrarySchedule::NotEnqueued);
+        assert_eq!(args.schedule.as_str(), "not_enqueued");
+        assert_eq!(args.filter, ChatAnkiLibraryFilter::ErrorOnly);
+        assert_eq!(args.filter.as_str(), "error_only");
+        assert_eq!(args.page, Some(1));
+        assert_eq!(args.page_size, Some(20));
+
+        let defaults = serde_json::from_value::<ChatAnkiListLibraryCardsArgs>(json!({}))
+            .expect("parse defaults")
+            .normalize();
+        assert_eq!(defaults.schedule, ChatAnkiLibrarySchedule::All);
+        assert_eq!(defaults.filter, ChatAnkiLibraryFilter::All);
+        assert_eq!(defaults.page, Some(1));
+        assert_eq!(defaults.page_size, Some(20));
+
+        assert!(
+            serde_json::from_value::<ChatAnkiListLibraryCardsArgs>(json!({
+                "schedule": "reviewed"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<ChatAnkiListLibraryCardsArgs>(json!({
+                "filter": "edited_only"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_chatanki_library_card_output_includes_locator_versions_and_truncation() {
+        let card = make_chatanki_card(
+            "card-library-output",
+            "task-library-output",
+            &"x".repeat(CHATANKI_CARD_FIELD_LIMIT + 1),
+            "back",
+        );
+        let expected_version = card.updated_at.clone();
+        let record = make_library_record(card, "doc-library-output", None);
+        let review_state =
+            make_agent_review_snapshot("card-library-output", "state-library-output", 17);
+        let output = convert_library_record_for_tool(&record, Some(&review_state));
+
+        assert_eq!(output["documentId"], "doc-library-output");
+        assert_eq!(output["version"], expected_version);
+        assert_eq!(output["updatedAt"], expected_version);
+        assert_eq!(output["reviewState"]["reviewVersion"], 17);
+        assert_eq!(output["reviewState"]["latestReview"]["logId"], "log-latest");
+        assert_eq!(output["enqueued"], true);
+        assert_eq!(output["isDue"], true);
+        assert_eq!(output["truncated"], true);
+        assert_eq!(output["ratingAvailableToAgent"], false);
+        assert_eq!(
+            output["front"]
+                .as_str()
+                .expect("truncated front")
+                .chars()
+                .count(),
+            CHATANKI_CARD_FIELD_LIMIT
+        );
+    }
+
+    #[test]
+    fn test_chatanki_library_ui_preflight_uses_source_session_or_not_required() {
+        let no_source = crate::database::AnkiLibraryCardLocator {
+            document_id: "doc-imported".to_string(),
+            source_session_id: None,
+        };
+        let imported_target = preflight_library_card_mutation(None, &no_source)
+            .expect("a source-less imported card never requires a chat database");
+        assert!(imported_target.block_id.is_none());
+        assert!(imported_target.session_id.is_empty());
+        assert_eq!(
+            mutation_ui_sync_not_required_receipt(&imported_target),
+            json!({"status": "not_required", "eventAttempted": false})
+        );
+
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let seeded = seed_anki_cards_block(
+            &chat_db,
+            "session-card-source",
+            "doc-card-source",
+            vec![json!({"id": "card-source", "front": "before"})],
+            Vec::new(),
+        );
+        let source_locator = crate::database::AnkiLibraryCardLocator {
+            document_id: "doc-card-source".to_string(),
+            source_session_id: Some("session-card-source".to_string()),
+        };
+        let target = preflight_library_card_mutation(Some(&chat_db), &source_locator)
+            .expect("library mutation locates its source session block");
+        assert_eq!(target.block_id, seeded.block_id);
+        assert_eq!(target.session_id, "session-card-source");
+        assert_eq!(target.document_id, "doc-card-source");
+    }
+
+    #[test]
+    fn test_chatanki_library_conflicts_route_refresh_to_library_tool() {
+        let record = make_library_record(
+            make_chatanki_card("card-conflict", "task-conflict", "front", "back"),
+            "doc-conflict",
+            Some("session-source"),
+        );
+        let review_state = make_agent_review_snapshot("card-conflict", "state-conflict", 23);
+        let content = chatanki_library_version_conflict_payload(
+            &record,
+            Some(&review_state),
+            "version_conflict",
+        );
+        assert_eq!(content["status"], "conflict");
+        assert_eq!(content["current"]["documentId"], "doc-conflict");
+        assert_eq!(content["current"]["reviewState"]["reviewVersion"], 23);
+        assert!(content["guidance"]
+            .as_str()
+            .expect("guidance")
+            .contains("builtin-chatanki_list_library_cards"));
+
+        let review =
+            chatanki_library_review_mutation_conflict_payload("card-conflict", &review_state);
+        assert_eq!(review["error"], "review_state_conflict");
+        assert!(review["guidance"]
+            .as_str()
+            .expect("guidance")
+            .contains("builtin-chatanki_list_library_cards"));
+    }
+
+    #[test]
+    fn test_chatanki_library_mutation_arguments_require_explicit_cas_tokens() {
+        let update = serde_json::from_value::<ChatAnkiUpdateLibraryCardArgs>(json!({
+            "cardId": " card-update ",
+            "expectedVersion": " v1 ",
+            "patch": {"front": "updated"}
+        }))
+        .expect("parse library update")
+        .normalize()
+        .expect("normalize library update");
+        assert_eq!(update.card_id, "card-update");
+        assert_eq!(update.expected_version, "v1");
+
+        let enqueue = serde_json::from_value::<ChatAnkiEnqueueLibraryReviewArgs>(json!({
+            "cards": [
+                {"cardId": " card-a ", "expectedVersion": " version-a "},
+                {"cardId": "card-b", "expectedVersion": "version-b"}
+            ]
+        }))
+        .expect("parse library enqueue")
+        .normalize()
+        .expect("normalize library enqueue");
+        assert_eq!(
+            enqueue.cards,
+            vec![
+                ChatAnkiLibraryEnqueueCardInput {
+                    card_id: "card-a".to_string(),
+                    expected_version: "version-a".to_string(),
+                },
+                ChatAnkiLibraryEnqueueCardInput {
+                    card_id: "card-b".to_string(),
+                    expected_version: "version-b".to_string(),
+                }
+            ]
+        );
+        assert!(
+            serde_json::from_value::<ChatAnkiEnqueueLibraryReviewArgs>(json!({
+                "cards": [
+                    {"cardId": "same", "expectedVersion": "v1"},
+                    {"cardId": " same ", "expectedVersion": "v1"}
+                ]
+            }))
+            .expect("parse duplicate enqueue")
+            .normalize()
+            .is_err()
+        );
+
+        let suspend = serde_json::from_value::<ChatAnkiSetLibrarySuspendedArgs>(json!({
+            "cardId": " card-suspend ",
+            "expectedReviewVersion": 9,
+            "suspended": true
+        }))
+        .expect("parse library suspend")
+        .normalize()
+        .expect("normalize library suspend");
+        assert_eq!(suspend.card_id, "card-suspend");
+        assert_eq!(suspend.expected_review_version, 9);
+
+        let undo = serde_json::from_value::<ChatAnkiUndoLibraryLastReviewArgs>(json!({
+            "cardId": " card-undo ",
+            "expectedReviewVersion": 10,
+            "expectedLogId": " log-10 "
+        }))
+        .expect("parse library undo")
+        .normalize()
+        .expect("normalize library undo");
+        assert_eq!(undo.card_id, "card-undo");
+        assert_eq!(undo.expected_review_version, 10);
+        assert_eq!(undo.expected_log_id, "log-10");
+
+        let not_enqueued = serde_json::from_value::<ChatAnkiDeleteLibraryCardArgs>(json!({
+            "cardId": " card-delete ",
+            "expectedVersion": " version-delete ",
+            "expectedReviewVersion": null
+        }))
+        .expect("parse null review CAS")
+        .normalize()
+        .expect("normalize null review CAS");
+        assert_eq!(not_enqueued.expected_review_version(), None);
+
+        let enqueued = serde_json::from_value::<ChatAnkiDeleteLibraryCardArgs>(json!({
+            "cardId": "card-delete",
+            "expectedVersion": "version-delete",
+            "expectedReviewVersion": 12
+        }))
+        .expect("parse numeric review CAS")
+        .normalize()
+        .expect("normalize numeric review CAS");
+        assert_eq!(enqueued.expected_review_version(), Some(12));
+
+        let missing = serde_json::from_value::<ChatAnkiDeleteLibraryCardArgs>(json!({
+            "cardId": "card-delete",
+            "expectedVersion": "version-delete"
+        }))
+        .expect("missing nullable field reaches semantic validation")
+        .normalize()
+        .expect_err("missing expectedReviewVersion must fail");
+        assert!(missing.contains("use null"));
+    }
+
+    #[test]
+    fn test_chatanki_delete_and_add_card_arguments() {
+        let delete_args = serde_json::from_value::<ChatAnkiDeleteCardArgs>(json!({
+            "cardId": "card-delete-args",
+            "expectedVersion": "v1",
+            "expectedReviewVersion": null
+        }))
+        .expect("parse delete args")
+        .normalize()
+        .expect("normalize delete args");
+        assert_eq!(delete_args.card_id, "card-delete-args");
+        assert_eq!(delete_args.expected_version, "v1");
+        assert_eq!(delete_args.expected_review_version(), None);
+
+        let enqueued = serde_json::from_value::<ChatAnkiDeleteCardArgs>(json!({
+            "cardId": "card-delete-enqueued",
+            "expectedVersion": "v2",
+            "expectedReviewVersion": 7
+        }))
+        .expect("parse enqueued delete args")
+        .normalize()
+        .expect("normalize enqueued delete args");
+        assert_eq!(enqueued.expected_review_version(), Some(7));
+
+        let missing_review = serde_json::from_value::<ChatAnkiDeleteCardArgs>(json!({
+            "cardId": "card-delete-missing-review",
+            "expectedVersion": "v1"
+        }))
+        .expect("missing nullable field reaches semantic validation")
+        .normalize()
+        .expect_err("missing expectedReviewVersion must fail");
+        assert!(missing_review.contains("use null"));
+        assert!(serde_json::from_value::<ChatAnkiDeleteCardArgs>(json!({
+            "cardId": "card-delete-negative-review",
+            "expectedVersion": "v1",
+            "expectedReviewVersion": -1
+        }))
+        .expect("negative review version parses")
+        .normalize()
+        .is_err());
+
+        let add_args: ChatAnkiAddCardsArgs = serde_json::from_value(json!({
+            "documentId": "doc-add-args",
+            "cards": [{
+                "front": "Question",
+                "back": "Answer",
+                "tags": ["agent"],
+                "extraFields": {" Hint ": "value"},
+                "templateId": "design-swiss"
+            }]
+        }))
+        .expect("parse add args");
+        assert_eq!(add_args.document_id, "doc-add-args");
+        assert_eq!(add_args.cards.len(), 1);
+        assert_eq!(add_args.cards[0].front, "Question");
+        assert_eq!(add_args.cards[0].back, "Answer");
+        assert_eq!(
+            normalize_agent_extra_fields(add_args.cards[0].extra_fields.clone())
+                .get("hint")
+                .map(String::as_str),
+            Some("value")
+        );
+    }
+
+    #[test]
+    fn test_chatanki_enqueue_review_arguments_require_exactly_one_selector() {
+        let document = serde_json::from_value::<ChatAnkiEnqueueReviewArgs>(json!({
+            "documentId": "  doc-review  "
+        }))
+        .expect("parse document selector")
+        .into_selector()
+        .expect("normalize document selector");
+        assert_eq!(
+            document,
+            ChatAnkiReviewSelector::Document("doc-review".to_string())
+        );
+
+        let cards = serde_json::from_value::<ChatAnkiEnqueueReviewArgs>(json!({
+            "cardIds": [" card-a ", "card-a", "card-b"]
+        }))
+        .expect("parse card selector")
+        .into_selector()
+        .expect("normalize card selector");
+        assert_eq!(
+            cards,
+            ChatAnkiReviewSelector::Cards(vec!["card-a".to_string(), "card-b".to_string()])
+        );
+
+        for invalid in [
+            json!({}),
+            json!({"documentId": "doc", "cardIds": ["card"]}),
+            json!({"documentId": "  "}),
+            json!({"cardIds": []}),
+            json!({"cardIds": [" "]}),
+        ] {
+            let args = serde_json::from_value::<ChatAnkiEnqueueReviewArgs>(invalid)
+                .expect("shape parses before semantic validation");
+            assert!(args.into_selector().is_err());
+        }
+
+        let too_many = (0..=CHATANKI_ENQUEUE_REVIEW_CARD_LIMIT)
+            .map(|index| format!("card-{index}"))
+            .collect::<Vec<_>>();
+        let error = serde_json::from_value::<ChatAnkiEnqueueReviewArgs>(json!({
+            "cardIds": too_many
+        }))
+        .expect("parse oversized selector")
+        .into_selector()
+        .expect_err("more than 100 entries must fail");
+        assert!(error.contains("1 to 100"));
+    }
+
+    #[test]
+    fn test_chatanki_agent_review_arguments_are_strict_and_normalized() {
+        let undo = serde_json::from_value::<ChatAnkiUndoLastReviewArgs>(json!({
+            "cardId": " card-undo ",
+            "expectedReviewVersion": 7,
+            "expectedLogId": " log-7 "
+        }))
+        .expect("parse undo args")
+        .normalize()
+        .expect("normalize undo args");
+        assert_eq!(undo.card_id, "card-undo");
+        assert_eq!(undo.expected_review_version, 7);
+        assert_eq!(undo.expected_log_id, "log-7");
+
+        let suspend = serde_json::from_value::<ChatAnkiSetSuspendedArgs>(json!({
+            "cardId": " card-suspend ",
+            "expectedReviewVersion": 8,
+            "suspended": true
+        }))
+        .expect("parse suspend args")
+        .normalize()
+        .expect("normalize suspend args");
+        assert_eq!(suspend.card_id, "card-suspend");
+        assert_eq!(suspend.expected_review_version, 8);
+        assert!(suspend.suspended);
+
+        for invalid in [
+            json!({"cardId": "card", "expectedReviewVersion": 1}),
+            json!({
+                "cardId": "card",
+                "expectedReviewVersion": 1,
+                "expectedLogId": "log",
+                "unexpected": true
+            }),
+            json!({
+                "cardId": "card",
+                "expectedReviewVersion": "1",
+                "expectedLogId": "log"
+            }),
+        ] {
+            assert!(serde_json::from_value::<ChatAnkiUndoLastReviewArgs>(invalid).is_err());
+        }
+        assert!(serde_json::from_value::<ChatAnkiUndoLastReviewArgs>(json!({
+            "cardId": " ",
+            "expectedReviewVersion": 1,
+            "expectedLogId": "log"
+        }))
+        .expect("shape parses")
+        .normalize()
+        .is_err());
+        assert!(serde_json::from_value::<ChatAnkiSetSuspendedArgs>(json!({
+            "cardId": "card",
+            "expectedReviewVersion": -1,
+            "suspended": false
+        }))
+        .expect("shape parses")
+        .normalize()
+        .is_err());
+        assert!(serde_json::from_value::<ChatAnkiSetSuspendedArgs>(json!({
+            "cardId": "card",
+            "expectedReviewVersion": 1,
+            "suspended": false,
+            "extra": "rejected"
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn test_chatanki_agent_review_outcomes_and_event_payload_contract() {
+        let state = make_agent_review_snapshot("card-review", "state-review", 9);
+        let ok = chatanki_review_mutation_ok_payload("card-review", &state, true);
+        assert_eq!(ok["status"], "ok");
+        assert_eq!(ok["changed"], true);
+        assert_eq!(ok["reviewState"]["reviewVersion"], 9);
+
+        let conflict = chatanki_review_mutation_conflict_payload("card-review", &state);
+        assert_eq!(conflict["status"], "conflict");
+        assert_eq!(conflict["error"], "review_state_conflict");
+        assert_eq!(conflict["current"]["cardStateId"], "state-review");
+        assert_eq!(conflict["mutationApplied"], false);
+
+        let blocked =
+            chatanki_review_mutation_blocked_payload("card-review", "diagnostic_card", &state);
+        assert_eq!(blocked["status"], "blocked");
+        assert_eq!(blocked["error"], "diagnostic_card");
+        assert_eq!(blocked["retryable"], false);
+
+        let changed = FsrsAgentReviewMutationOutcome::Updated {
+            state: state.clone(),
+            changed: true,
+        };
+        let noop = FsrsAgentReviewMutationOutcome::Updated {
+            state: state.clone(),
+            changed: false,
+        };
+        let stale = FsrsAgentReviewMutationOutcome::Conflict {
+            current: state.clone(),
+        };
+        assert!(agent_review_changed_state(&changed).is_some());
+        assert!(agent_review_changed_state(&noop).is_none());
+        assert!(agent_review_changed_state(&stale).is_none());
+
+        let event = build_agent_review_changed_payload("set_suspended", &state, "run-review");
+        assert_eq!(
+            event,
+            json!({
+                "source": "agent",
+                "action": "set_suspended",
+                "entityIds": ["card-review"],
+                "cardStateIds": ["state-review"],
+                "cards": [{
+                    "ankiCardId": "card-review",
+                    "cardStateId": "state-review",
+                    "state": 2,
+                    "suspended": false,
+                    "dueMs": 1_725_000_000_000_i64,
+                    "lastReviewMs": 1_724_000_000_000_i64,
+                    "reviewVersion": 9,
+                    "latestReview": {
+                        "logId": "log-latest",
+                        "rating": 3,
+                        "reviewMs": 1_724_000_000_000_i64,
+                        "undoable": true
+                    }
+                }],
+                "runId": "run-review"
+            })
+        );
+    }
+
+    #[test]
+    fn test_chatanki_review_selection_pre_resolves_owner_and_document_scope() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-review", "session-owner");
+        let card = make_chatanki_card("card-review", &task_id, "front", "back");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+
+        let document = resolve_review_selection(
+            &db,
+            "session-owner",
+            ChatAnkiReviewSelector::Document("doc-review".to_string()),
+        )
+        .expect("resolve owned document");
+        assert!(document.card_ids.is_empty());
+        assert_eq!(document.expected_document_id.as_deref(), Some("doc-review"));
+
+        let cards = resolve_review_selection(
+            &db,
+            "session-owner",
+            ChatAnkiReviewSelector::Cards(vec!["card-review".to_string()]),
+        )
+        .expect("resolve owned card");
+        assert_eq!(cards.card_ids, vec!["card-review"]);
+        assert_eq!(cards.expected_document_id, None);
+
+        assert!(resolve_review_selection(
+            &db,
+            "session-foreign",
+            ChatAnkiReviewSelector::Cards(vec!["card-review".to_string()]),
+        )
+        .is_err());
+
+        seed_additional_chatanki_task(
+            &db,
+            "doc-review",
+            "task-review-foreign",
+            1,
+            "session-foreign",
+        );
+        assert!(resolve_review_selection(
+            &db,
+            "session-owner",
+            ChatAnkiReviewSelector::Document("doc-review".to_string()),
+        )
+        .is_err());
+        assert!(resolve_review_selection(
+            &db,
+            "session-owner",
+            ChatAnkiReviewSelector::Cards(vec!["card-review".to_string()]),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_chatanki_agent_review_state_read_and_ownership_contract() {
+        let (db, _tmp) = make_test_db();
+        let db = Arc::new(db);
+        let task_id = seed_chatanki_document(&db, "doc-agent-review", "session-owner");
+        let enqueued = make_chatanki_card("card-agent-enqueued", &task_id, "front", "back");
+        let not_enqueued =
+            make_chatanki_card("card-agent-not-enqueued", &task_id, "front 2", "back 2");
+        assert!(db
+            .insert_anki_card(&enqueued)
+            .expect("insert enqueued card"));
+        assert!(db
+            .insert_anki_card(&not_enqueued)
+            .expect("insert non-enqueued card"));
+
+        let service = FsrsReviewService::new(db.clone());
+        let enqueue_result = service
+            .enqueue_cards_for_session(std::slice::from_ref(&enqueued.id), "session-owner", None)
+            .expect("enqueue owned card");
+        assert_eq!(enqueue_result.enqueued, 1);
+        let snapshots = service
+            .get_review_states_for_session(
+                &[enqueued.id.clone(), not_enqueued.id.clone()],
+                "session-owner",
+            )
+            .expect("read owned review states");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].anki_card_id, enqueued.id);
+        assert_eq!(snapshots[0].review_version, 0);
+
+        let cross_session = service
+            .get_review_states_for_session(&["card-agent-enqueued".to_string()], "session-other")
+            .expect_err("cross-session read must not reveal state");
+        assert!(matches!(cross_session.error_type, AppErrorType::NotFound));
+        assert_eq!(
+            verify_agent_review_card_ownership(&db, "card-agent-enqueued", "session-other")
+                .expect_err("executor preflight rejects cross-session card"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+
+        seed_additional_chatanki_task(
+            &db,
+            "doc-agent-review",
+            "task-agent-review-mixed",
+            1,
+            "session-other",
+        );
+        let mixed_owner = service
+            .get_review_states_for_session(&["card-agent-enqueued".to_string()], "session-owner")
+            .expect_err("mixed-owner document must be hidden");
+        assert!(matches!(mixed_owner.error_type, AppErrorType::NotFound));
+        assert_eq!(
+            verify_agent_review_card_ownership(&db, "card-agent-enqueued", "session-owner")
+                .expect_err("executor preflight rejects mixed ownership"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+    }
+
+    #[test]
+    fn test_chatanki_review_stats_contract_and_enqueue_event_payload() {
+        let stats = FsrsStats {
+            total: 8,
+            due: 7,
+            new_count: 6,
+            learning: 5,
+            review: 4,
+            relearning: 3,
+            suspended: 2,
+            reviews_today: 1,
+            buried: 0,
+            leech: 0,
+            new_remaining_today: 0,
+            reviews_remaining_today: 0,
+        };
+        assert_eq!(
+            chatanki_review_stats_output(&stats),
+            json!({
+                "status": "ok",
+                "total": 8,
+                "due": 7,
+                "new": 6,
+                "learning": 5,
+                "review": 4,
+                "relearning": 3,
+                "suspended": 2,
+                "reviews_today": 1,
+            })
+        );
+        assert!(serde_json::from_value::<ChatAnkiReviewStatsArgs>(json!({})).is_ok());
+        assert!(
+            serde_json::from_value::<ChatAnkiReviewStatsArgs>(json!({"scope": "chat"})).is_err()
+        );
+
+        assert_eq!(
+            build_enqueue_review_changed_payload(
+                &FsrsEnqueueResult {
+                    enqueued: 0,
+                    skipped: 1,
+                    enqueued_state_ids: Vec::new(),
+                    states: Vec::new(),
+                    review_cards: Vec::new(),
+                },
+                &[],
+                "run-skipped",
+            ),
+            None
+        );
+        let state = crate::fsrs_review_service::FsrsCardState {
+            id: "state-new".to_string(),
+            anki_card_id: "anki-new".to_string(),
+            deck_id: Some("deck_default".to_string()),
+            state: 0,
+            stability: None,
+            difficulty: None,
+            elapsed_days: 0.0,
+            scheduled_days: 0.0,
+            reps: 0,
+            lapses: 0,
+            due_ms: 0,
+            last_review_ms: None,
+            suspended: false,
+            fsrs_params_version: "test".to_string(),
+            desired_retention: Some(0.9),
+            created_at: "created".to_string(),
+            updated_at: "updated".to_string(),
+            leech: false,
+            buried_until_ms: None,
+        };
+        let mut skipped_state = state.clone();
+        skipped_state.id = "state-skipped".to_string();
+        skipped_state.anki_card_id = "anki-skipped".to_string();
+        let loaded_cards = vec![
+            FsrsEnqueuedCard {
+                id: "state-skipped".to_string(),
+                anki_card_id: "anki-skipped".to_string(),
+                front: "skipped front".to_string(),
+                back: "skipped back".to_string(),
+                tags: vec!["skipped".to_string()],
+                text: None,
+                template_id: None,
+                extra_fields: HashMap::new(),
+                images: Vec::new(),
+                is_error_card: false,
+                error_content: None,
+            },
+            FsrsEnqueuedCard {
+                id: "state-new".to_string(),
+                anki_card_id: "anki-new".to_string(),
+                front: "new front".to_string(),
+                back: "new back".to_string(),
+                tags: vec!["new".to_string()],
+                text: None,
+                template_id: None,
+                extra_fields: HashMap::new(),
+                images: Vec::new(),
+                is_error_card: false,
+                error_content: None,
+            },
+        ];
+        let payload = build_enqueue_review_changed_payload(
+            &FsrsEnqueueResult {
+                enqueued: 1,
+                skipped: 1,
+                enqueued_state_ids: vec!["state-new".to_string()],
+                states: vec![skipped_state, state],
+                review_cards: loaded_cards.clone(),
+            },
+            &loaded_cards,
+            "run-enqueue",
+        )
+        .expect("mixed enqueue emits its new state");
+        assert_eq!(
+            payload,
+            json!({
+                "source": "agent",
+                "action": "enqueue",
+                "entityIds": ["anki-new"],
+                "cardStateIds": ["state-new"],
+                "cards": [{
+                    "id": "state-new",
+                    "ankiCardId": "anki-new",
+                    "front": "new front",
+                    "back": "new back",
+                    "tags": ["new"],
+                    "extraFields": {},
+                    "images": [],
+                    "isErrorCard": false
+                }],
+                "runId": "run-enqueue",
+            })
+        );
+        assert!(!payload["cards"][0]["front"]
+            .as_str()
+            .expect("front text")
+            .is_empty());
+        assert!(!payload["cards"][0]["back"]
+            .as_str()
+            .expect("back text")
+            .is_empty());
+        assert!(build_enqueue_review_changed_payload(
+            &FsrsEnqueueResult {
+                enqueued: 0,
+                skipped: 0,
+                enqueued_state_ids: Vec::new(),
+                states: Vec::new(),
+                review_cards: Vec::new(),
+            },
+            &[],
+            "run-empty",
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_chatanki_card_ownership_rejects_cross_session() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-owner", "session-owner");
+        let card = make_chatanki_card("card-owner", &task_id, "front", "back");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+
+        let owned =
+            load_owned_chatanki_card(&db, "card-owner", "session-owner").expect("owner can load");
+        assert_eq!(owned.1, "doc-owner");
+        let error = load_owned_chatanki_card(&db, "card-owner", "session-other")
+            .expect_err("cross-session access must fail");
+        assert_eq!(error, "blocks.ankiCards.errors.statusNotFound");
+        assert!(verify_document_ownership(&db, "doc-owner", "session-other").is_err());
+    }
+
+    #[test]
+    fn test_chatanki_get_cards_rejects_wrong_and_mixed_document_ownership() {
+        let (db, _tmp) = make_test_db();
+        seed_chatanki_document(&db, "doc-get-owner", "session-owner");
+        assert!(db
+            .get_cards_for_document_for_session("doc-get-owner", "session-owner")
+            .expect("load owner snapshot")
+            .is_some());
+        assert!(db
+            .get_cards_for_document_for_session("doc-get-owner", "session-other")
+            .expect("reject other session")
+            .is_none());
+
+        seed_additional_chatanki_task(
+            &db,
+            "doc-get-owner",
+            "task-doc-get-owner-mixed",
+            1,
+            "session-other",
+        );
+        assert!(db
+            .get_cards_for_document_for_session("doc-get-owner", "session-owner")
+            .expect("reject mixed owner for original session")
+            .is_none());
+        assert!(db
+            .get_cards_for_document_for_session("doc-get-owner", "session-other")
+            .expect("reject mixed owner for other session")
+            .is_none());
+    }
+
+    #[test]
+    fn test_chatanki_update_card_rejects_wrong_owner_atomically() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-update-owner", "session-owner");
+        let mut card = make_chatanki_card("card-update-owner", &task_id, "before", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let expected_version = card.updated_at.clone();
+        card.front = "unauthorized".to_string();
+
+        let outcome = db
+            .update_anki_card_if_version_for_session(&card, &expected_version, "session-other")
+            .expect("ownership-aware update");
+        assert!(matches!(outcome, AnkiCardVersionUpdate::NotFound));
+        let current = db
+            .get_anki_card_with_document("card-update-owner")
+            .expect("reload")
+            .expect("card remains")
+            .0;
+        assert_eq!(current.front, "before");
+    }
+
+    #[test]
+    fn test_chatanki_update_card_rejects_mixed_owner_document_atomically() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-update-mixed", "session-owner");
+        let mut card = make_chatanki_card("card-update-mixed", &task_id, "before", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        seed_additional_chatanki_task(
+            &db,
+            "doc-update-mixed",
+            "task-update-mixed-foreign",
+            1,
+            "session-foreign",
+        );
+        assert!(db
+            .get_anki_card_for_session("card-update-mixed", "session-owner")
+            .expect("load concrete-task owner")
+            .is_some());
+        assert!(db
+            .get_anki_card_for_owned_document_session("card-update-mixed", "session-owner")
+            .expect("load complete-document owner")
+            .is_none());
+        assert_eq!(
+            load_owned_chatanki_card(&db, "card-update-mixed", "session-owner")
+                .expect_err("mixed-owner card must be hidden before content and UI preflight"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+        let expected_version = card.updated_at.clone();
+        card.front = "must not be written".to_string();
+
+        let outcome = db
+            .update_anki_card_if_version_for_session(&card, &expected_version, "session-owner")
+            .expect("mixed-owner update result");
+        assert!(matches!(outcome, AnkiCardVersionUpdate::NotFound));
+        let current = db
+            .get_anki_card_with_document("card-update-mixed")
+            .expect("reload")
+            .expect("card remains")
+            .0;
+        assert_eq!(current.front, "before");
+        assert_eq!(current.updated_at, expected_version);
+    }
+
+    #[test]
+    fn test_chatanki_delete_card_rejects_wrong_owner_atomically() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-delete-owner", "session-owner");
+        let card = make_chatanki_card("card-delete-owner", &task_id, "front", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+
+        let outcome = db
+            .delete_anki_card_for_session(
+                "card-delete-owner",
+                &card.updated_at,
+                None,
+                "session-other",
+            )
+            .expect("ownership-aware delete");
+        assert!(matches!(outcome, AnkiCardVersionDelete::NotFound));
+        assert!(db
+            .get_anki_card_with_document("card-delete-owner")
+            .expect("reload")
+            .is_some());
+    }
+
+    #[test]
+    fn test_chatanki_delete_card_rejects_mixed_owner_document_atomically() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-delete-mixed", "session-owner");
+        let card = make_chatanki_card("card-delete-mixed", &task_id, "front", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        seed_additional_chatanki_task(
+            &db,
+            "doc-delete-mixed",
+            "task-delete-mixed-foreign",
+            1,
+            "session-foreign",
+        );
+
+        let outcome = db
+            .delete_anki_card_for_session(
+                "card-delete-mixed",
+                &card.updated_at,
+                None,
+                "session-owner",
+            )
+            .expect("mixed-owner delete result");
+        assert!(matches!(outcome, AnkiCardVersionDelete::NotFound));
+        let conn = db.get_conn_safe().expect("connection");
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM anki_cards WHERE id = ?1",
+                rusqlite::params!["card-delete-mixed"],
+                |row| row.get(0),
+            )
+            .expect("load tombstone state");
+        assert!(deleted_at.is_none());
+    }
+
+    #[test]
+    fn test_chatanki_add_cards_rejects_wrong_and_mixed_document_ownership() {
+        let (db, _tmp) = make_test_db();
+        seed_chatanki_document(&db, "doc-add-owner", "session-owner");
+        let unauthorized = make_chatanki_card("card-add-unauthorized", "", "front", "answer");
+        assert!(db
+            .insert_anki_cards_for_document("doc-add-owner", "session-other", vec![unauthorized],)
+            .is_err());
+        assert!(db
+            .get_cards_for_document("doc-add-owner")
+            .expect("load cards")
+            .is_empty());
+
+        seed_additional_chatanki_task(
+            &db,
+            "doc-add-owner",
+            "task-doc-add-owner-mixed",
+            1,
+            "session-other",
+        );
+        let mixed = make_chatanki_card("card-add-mixed", "", "front", "answer");
+        assert!(db
+            .insert_anki_cards_for_document("doc-add-owner", "session-owner", vec![mixed])
+            .is_err());
+        assert!(db
+            .get_cards_for_document("doc-add-owner")
+            .expect("load cards")
+            .is_empty());
+    }
+
+    #[test]
+    fn test_chatanki_update_card_atomic_version_success_and_conflict() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-update", "session-update");
+        let mut card = make_chatanki_card("card-update", &task_id, "before", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let stale_version = card.updated_at.clone();
+        card.front = "after".to_string();
+
+        let updated = match db
+            .update_anki_card_if_version_for_session(&card, &stale_version, "session-update")
+            .expect("atomic update")
+        {
+            AnkiCardVersionUpdate::Updated(updated) => updated,
+            other => panic!("unexpected update result: {:?}", other),
+        };
+        assert_eq!(updated.front, "after");
+        assert_ne!(updated.updated_at, stale_version);
+
+        card.back = "stale overwrite".to_string();
+        match db
+            .update_anki_card_if_version_for_session(&card, &stale_version, "session-update")
+            .expect("conflict result")
+        {
+            AnkiCardVersionUpdate::Conflict(current) => {
+                assert_eq!(current.front, "after");
+                assert_eq!(current.back, "answer");
+                assert_eq!(current.updated_at, updated.updated_at);
+                let payload = chatanki_version_conflict_payload("doc-update", &current);
+                assert_eq!(payload["status"], "conflict");
+                assert_eq!(payload["error"], "version_conflict");
+                assert_eq!(payload["documentId"], "doc-update");
+                assert_eq!(payload["current"]["front"], "after");
+                assert_eq!(payload["retryable"], true);
+            }
+            other => panic!("expected conflict, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_chatanki_delete_card_normal_path() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-delete", "session-delete");
+        let card = make_chatanki_card("card-delete", &task_id, "front", "back");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        load_owned_chatanki_card(&db, "card-delete", "session-delete").expect("load owned card");
+
+        let outcome = db
+            .delete_anki_card_for_session("card-delete", &card.updated_at, None, "session-delete")
+            .expect("delete card");
+        assert!(matches!(outcome, AnkiCardVersionDelete::Deleted));
+        assert!(db
+            .get_anki_card_with_document("card-delete")
+            .expect("reload")
+            .is_none());
+        let conn = db.get_conn_safe().expect("connection");
+        let remaining: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM anki_cards WHERE id = ?1",
+                rusqlite::params!["card-delete"],
+                |row| row.get(0),
+            )
+            .expect("count physical rows");
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn test_chatanki_delete_card_stale_version_returns_conflict_without_deletion() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-delete-stale", "session-delete");
+        let mut card = make_chatanki_card("card-delete-stale", &task_id, "before", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let stale_version = card.updated_at.clone();
+        card.front = "current".to_string();
+        let current = match db
+            .update_anki_card_if_version_for_session(&card, &stale_version, "session-delete")
+            .expect("advance card version")
+        {
+            AnkiCardVersionUpdate::Updated(current) => current,
+            other => panic!("unexpected update result: {:?}", other),
+        };
+
+        let conflict = db
+            .delete_anki_card_for_session(
+                "card-delete-stale",
+                &stale_version,
+                None,
+                "session-delete",
+            )
+            .expect("stale delete result");
+        let conflict_current = match conflict {
+            AnkiCardVersionDelete::Conflict(current) => current,
+            other => panic!("expected delete conflict, got {:?}", other),
+        };
+        assert_eq!(conflict_current.front, "current");
+        assert_eq!(conflict_current.updated_at, current.updated_at);
+        let payload = chatanki_version_conflict_payload("doc-delete-stale", &conflict_current);
+        assert_eq!(payload["status"], "conflict");
+        assert_eq!(payload["error"], "version_conflict");
+        assert_eq!(payload["current"]["id"], "card-delete-stale");
+        assert_eq!(payload["current"]["version"], current.updated_at);
+        assert_eq!(payload["retryable"], true);
+        assert!(db
+            .get_anki_card_with_document("card-delete-stale")
+            .expect("reload")
+            .is_some());
+    }
+
+    #[test]
+    fn test_chatanki_delete_card_review_cas_blocks_null_and_post_rating_stale_tokens() {
+        let (db, _tmp) = make_test_db();
+        let db = Arc::new(db);
+        let task_id =
+            seed_chatanki_document(&db, "doc-delete-review-cas", "session-delete-review-cas");
+        let card = make_chatanki_card("card-delete-review-cas", &task_id, "front", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let service = FsrsReviewService::new(db.clone());
+        let enqueued = service
+            .enqueue_cards_for_session(
+                std::slice::from_ref(&card.id),
+                "session-delete-review-cas",
+                None,
+            )
+            .expect("enqueue owned card");
+        let state_id = enqueued.states[0].id.clone();
+        let preflight = service
+            .get_review_states_for_session(
+                std::slice::from_ref(&card.id),
+                "session-delete-review-cas",
+            )
+            .expect("load preflight review snapshot")
+            .remove(0);
+        assert_eq!(preflight.review_version, 0);
+
+        let null_conflict = db
+            .delete_anki_card_for_session(
+                &card.id,
+                &card.updated_at,
+                None,
+                "session-delete-review-cas",
+            )
+            .expect("null token conflicts with an active state");
+        match null_conflict {
+            AnkiCardVersionDelete::ReviewConflict { current, review } => {
+                assert_eq!(current.id, card.id);
+                assert_eq!(review.expect("active review state").review_version, 0);
+            }
+            other => panic!("expected enrollment conflict, got {other:?}"),
+        }
+
+        service
+            .rate(&state_id, 3, Some(80), None)
+            .expect("user rates after Agent preflight");
+        let stale_conflict = db
+            .delete_anki_card_for_session(
+                &card.id,
+                &card.updated_at,
+                Some(preflight.review_version),
+                "session-delete-review-cas",
+            )
+            .expect("stale review token returns a conflict");
+        let conflict_current = match stale_conflict {
+            AnkiCardVersionDelete::ReviewConflict { current, review } => {
+                assert_eq!(review.expect("rated state").review_version, 1);
+                current
+            }
+            other => panic!("expected post-rating conflict, got {other:?}"),
+        };
+        let current_review = service
+            .get_review_states_for_session(
+                std::slice::from_ref(&card.id),
+                "session-delete-review-cas",
+            )
+            .expect("reload current review snapshot")
+            .remove(0);
+        let payload = chatanki_delete_review_conflict_payload(
+            "doc-delete-review-cas",
+            &conflict_current,
+            Some(&current_review),
+        );
+        assert_eq!(payload["status"], "conflict");
+        assert_eq!(payload["error"], "review_state_conflict");
+        assert_eq!(payload["current"]["id"], card.id);
+        assert_eq!(payload["current"]["reviewState"]["reviewVersion"], 1);
+        assert_eq!(payload["mutationApplied"], false);
+        assert_eq!(payload["retryable"], true);
+        assert!(db
+            .get_anki_card_with_document(&card.id)
+            .expect("reload after conflict")
+            .is_some());
+
+        let deleted = db
+            .delete_anki_card_for_session(
+                &card.id,
+                &card.updated_at,
+                Some(current_review.review_version),
+                "session-delete-review-cas",
+            )
+            .expect("current content and review tokens delete atomically");
+        assert!(matches!(deleted, AnkiCardVersionDelete::Deleted));
+        assert!(db
+            .get_anki_card_with_document(&card.id)
+            .expect("reload deleted card")
+            .is_none());
+        let conn = db.get_conn_safe().expect("open connection");
+        let remaining_fsrs: i64 = conn
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM fsrs_card_states WHERE anki_card_id = ?1) +
+                    (SELECT COUNT(*) FROM fsrs_review_logs WHERE anki_card_id = ?1)",
+                rusqlite::params![card.id],
+                |row| row.get(0),
+            )
+            .expect("count deleted FSRS rows");
+        assert_eq!(remaining_fsrs, 0);
+    }
+
+    #[test]
+    fn test_chatanki_add_cards_continues_order_and_skips_duplicates() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-add", "session-add");
+        let existing = make_chatanki_card("card-existing", &task_id, "existing", "answer");
+        assert!(db.insert_anki_card(&existing).expect("insert existing"));
+
+        let duplicate = make_chatanki_card("card-duplicate", "", "existing", "answer");
+        let added = make_chatanki_card("card-added", "", "new front", "new back");
+        let inserted = db
+            .insert_anki_cards_for_document("doc-add", "session-add", vec![duplicate, added])
+            .expect("append cards");
+        assert_eq!(inserted.len(), 1);
+        assert_eq!(inserted[0].id, "card-added");
+        assert_eq!(inserted[0].task_id, task_id);
+
+        let conn = db.get_conn_safe().expect("connection");
+        let order: i64 = conn
+            .query_row(
+                "SELECT card_order_in_task FROM anki_cards WHERE id = ?1",
+                rusqlite::params!["card-added"],
+                |row| row.get(0),
+            )
+            .expect("load order");
+        assert_eq!(order, 1);
+    }
+
+    #[test]
+    fn test_chatanki_persistence_preserves_existing_block_timing_and_order() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-block-metadata",
+            "doc-block-metadata",
+            Vec::new(),
+            Vec::new(),
+        );
+        let block_id = required_mutation_block_id(&target).to_string();
+        let mut original = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load seeded block")
+            .expect("seeded block exists");
+        let message_id = original.message_id.clone();
+        original.started_at = Some(101);
+        original.first_chunk_at = Some(202);
+        original.ended_at = None;
+        ChatV2Repo::update_block_v2(&chat_db, &original).expect("seed block metadata");
+        chat_db
+            .get_conn_safe()
+            .expect("open chat db")
+            .execute(
+                "UPDATE chat_v2_blocks SET block_index = 7 WHERE id = ?1",
+                rusqlite::params![block_id],
+            )
+            .expect("seed block index");
+
+        persist_anki_cards_running_patch(
+            &chat_db,
+            "wrong-fallback-message",
+            &block_id,
+            "chatanki_start",
+            json!({ "progress": { "stage": "generating" } }),
+        );
+        let running = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load running block")
+            .expect("running block exists");
+        assert_eq!(running.message_id, message_id);
+        assert_eq!(running.started_at, Some(101));
+        assert_eq!(running.first_chunk_at, Some(202));
+        assert_eq!(running.ended_at, None);
+        assert_eq!(running.block_index, 7);
+
+        persist_anki_cards_terminal_block(
+            &chat_db,
+            "wrong-fallback-message",
+            &block_id,
+            "chatanki_start",
+            block_status::SUCCESS,
+            Some(json!({ "documentId": "doc-block-metadata", "cards": [] })),
+            None,
+        );
+        let terminal = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load terminal block")
+            .expect("terminal block exists");
+        assert_eq!(terminal.message_id, message_id);
+        assert_eq!(terminal.started_at, Some(101));
+        assert_eq!(terminal.first_chunk_at, Some(202));
+        assert!(terminal.ended_at.is_some());
+        assert_eq!(terminal.block_index, 7);
+    }
+
+    #[test]
+    fn test_chatanki_mutation_preflight_failure_prevents_database_write() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-preflight", "session-preflight");
+        let card = make_chatanki_card("card-preflight", &task_id, "front", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let mutation_invoked = std::cell::Cell::new(false);
+
+        let expected_version = card.updated_at.clone();
+        let result =
+            run_preflighted_card_mutation(None, "session-preflight", "doc-preflight", || {
+                mutation_invoked.set(true);
+                db.delete_anki_card_for_session(
+                    "card-preflight",
+                    &expected_version,
+                    None,
+                    "session-preflight",
+                )
+                .map_err(|error| error.to_string())
+            });
+
+        assert!(result.is_err());
+        assert!(!mutation_invoked.get());
+        assert!(db
+            .get_anki_card_with_document("card-preflight")
+            .expect("reload")
+            .is_some());
+    }
+
+    #[test]
+    fn test_chatanki_mutation_without_current_session_block_executes_without_ui_event() {
+        let (db, _tmp) = make_test_db();
+        let (chat_db, _chat_tmp) = make_chat_v2_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-no-preview", "session-no-preview");
+        let card = make_chatanki_card("card-no-preview", &task_id, "front", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let mutation_invoked = std::cell::Cell::new(false);
+        let expected_version = card.updated_at.clone();
+
+        let (target, deleted) = run_preflighted_card_mutation(
+            Some(&chat_db),
+            "session-no-preview",
+            "doc-no-preview",
+            || {
+                mutation_invoked.set(true);
+                db.delete_anki_card_for_session(
+                    "card-no-preview",
+                    &expected_version,
+                    None,
+                    "session-no-preview",
+                )
+                .map_err(|error| error.to_string())
+            },
+        )
+        .expect("missing preview block does not prevent an owned mutation");
+
+        assert!(mutation_invoked.get());
+        assert!(matches!(deleted, AnkiCardVersionDelete::Deleted));
+        assert!(target.block_id.is_none());
+        let event_attempted = std::cell::Cell::new(false);
+        let receipt = persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-no-preview",
+            json!({
+                "documentId": "doc-no-preview",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-no-preview"],
+            }),
+            |_block_id, _event_patch| event_attempted.set(true),
+        )
+        .expect("APKG-style mutation without a preview block needs no UI synchronization");
+        assert_eq!(receipt["status"], "not_required");
+        assert_eq!(receipt["eventAttempted"], false);
+        assert!(receipt.get("blockId").is_none());
+        assert!(!event_attempted.get());
+    }
+
+    #[test]
+    fn test_chatanki_mutation_requeries_block_created_after_preflight() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target =
+            preflight_card_mutation(Some(&chat_db), "session-late-preview", "doc-late-preview")
+                .expect("preflight without preview block");
+        assert!(target.block_id.is_none());
+
+        let late_target = seed_anki_cards_block(
+            &chat_db,
+            "session-late-preview",
+            "doc-late-preview",
+            vec![json!({"id": "card-existing", "front": "existing"})],
+            Vec::new(),
+        );
+        let late_block_id = required_mutation_block_id(&late_target).to_string();
+        let emitted = std::cell::RefCell::new(Vec::<(String, Value)>::new());
+        let receipt = persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-late-preview",
+            json!({
+                "documentId": "doc-late-preview",
+                "cardMutation": "upsert",
+                "cards": [{"id": "card-late", "front": "created after preflight"}],
+            }),
+            |block_id, event_patch| {
+                emitted
+                    .borrow_mut()
+                    .push((block_id.to_string(), event_patch));
+            },
+        )
+        .expect("late preview block is synchronized");
+
+        assert_eq!(receipt["status"], "ok");
+        assert_eq!(receipt["blockId"], late_block_id);
+        assert_eq!(receipt["eventAttempted"], true);
+        assert_eq!(emitted.borrow().len(), 1);
+        assert_eq!(emitted.borrow()[0].0, late_block_id);
+        assert_eq!(emitted.borrow()[0].1["documentId"], "doc-late-preview");
+
+        let block = ChatV2Repo::get_block_v2(&chat_db, &late_block_id)
+            .expect("load late preview block")
+            .expect("late preview block remains");
+        assert_eq!(
+            block.tool_output.expect("tool output")["cards"],
+            json!([
+                {"id": "card-existing", "front": "existing"},
+                {"id": "card-late", "front": "created after preflight"}
+            ])
+        );
+    }
+
+    #[test]
+    fn test_chatanki_mutation_persists_recovered_workflow_and_clears_block_error() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-recovered-preview",
+            "doc-recovered-preview",
+            Vec::new(),
+            Vec::new(),
+        );
+        let block_id = required_mutation_block_id(&target).to_string();
+        let mut failed_block = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load preview")
+            .expect("preview exists");
+        failed_block.status = block_status::ERROR.to_string();
+        failed_block.error = Some("blocks.ankiCards.errors.generationFailed".to_string());
+        ChatV2Repo::update_block_v2(&chat_db, &failed_block).expect("seed failed block");
+
+        persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-recovered-preview",
+            json!({
+                "documentId": "doc-recovered-preview",
+                "cardMutation": "upsert",
+                "cards": [{"id": "card-recovered", "front": "question", "back": "answer"}],
+                "_blockStatus": "success",
+                "_blockError": null,
+                "schemaVersion": 2,
+                "workflowStatus": "completed_with_warnings",
+                "deliveryStatus": "ready",
+                "recoveryStatus": "manual",
+                "finalStatus": "completed_with_errors",
+                "finalError": null,
+            }),
+            |_block_id, _event_patch| {},
+        )
+        .expect("persist recovered mutation");
+
+        let recovered = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("reload preview")
+            .expect("preview remains");
+        assert_eq!(recovered.status, block_status::SUCCESS);
+        assert!(recovered.error.is_none());
+        let output = recovered.tool_output.expect("recovered output");
+        assert_eq!(output["schemaVersion"], 2);
+        assert_eq!(output["workflowStatus"], "completed_with_warnings");
+        assert_eq!(output["deliveryStatus"], "ready");
+        assert_eq!(output["recoveryStatus"], "manual");
+        assert_eq!(output["cards"].as_array().map(Vec::len), Some(1));
+        assert!(output.get("_blockStatus").is_none());
+        assert!(output.get("_blockError").is_none());
+    }
+
+    #[test]
+    fn test_chatanki_postwrite_lookup_failures_are_partial_without_emit() {
+        let target = AnkiCardsMutationTarget {
+            block_id: None,
+            session_id: "session-postwrite-failure".to_string(),
+            document_id: "doc-postwrite-failure".to_string(),
+        };
+        let event_attempted = std::cell::Cell::new(false);
+        let missing_db = persist_and_emit_card_mutation_with(
+            None,
+            &target,
+            "doc-postwrite-failure",
+            json!({
+                "documentId": "doc-postwrite-failure",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-1"],
+            }),
+            |_block_id, _event_patch| event_attempted.set(true),
+        );
+        let (status, receipt) = mutation_ui_sync_receipt(missing_db);
+        assert_eq!(status, "partial");
+        assert_eq!(receipt["status"], "failed");
+        assert!(receipt["blockId"].is_null());
+        assert_eq!(receipt["eventAttempted"], false);
+        assert_eq!(receipt["error"], "chatanki_mutation_database_disappeared");
+        assert!(!event_attempted.get());
+
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        {
+            let conn = chat_db.get_conn_safe().expect("open chat database");
+            conn.execute("DROP TABLE chat_v2_blocks", [])
+                .expect("break block lookup fixture");
+        }
+        let lookup_failure = persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-postwrite-failure",
+            json!({
+                "documentId": "doc-postwrite-failure",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-1"],
+            }),
+            |_block_id, _event_patch| event_attempted.set(true),
+        );
+        let (status, receipt) = mutation_ui_sync_receipt(lookup_failure);
+        assert_eq!(status, "partial");
+        assert_eq!(receipt["status"], "failed");
+        assert!(receipt["blockId"].is_null());
+        assert_eq!(receipt["eventAttempted"], false);
+        assert!(receipt["error"]
+            .as_str()
+            .is_some_and(|error| error.starts_with("chatanki_mutation_block_requery_failed:")));
+        assert!(!event_attempted.get());
+    }
+
+    #[test]
+    fn test_chatanki_late_block_validation_failure_does_not_emit() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target =
+            preflight_card_mutation(Some(&chat_db), "session-late-partial", "doc-late-partial")
+                .expect("preflight without preview block");
+        assert!(target.block_id.is_none());
+        let late_target = seed_anki_cards_block(
+            &chat_db,
+            "session-late-partial",
+            "doc-late-partial",
+            vec![json!({"id": "card-existing", "front": "unchanged"})],
+            Vec::new(),
+        );
+        let late_block_id = required_mutation_block_id(&late_target).to_string();
+        let emitted = std::cell::RefCell::new(Vec::<(String, Value)>::new());
+
+        let result = persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-late-partial",
+            json!({
+                "documentId": "doc-mismatch",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-existing"],
+            }),
+            |block_id, event_patch| {
+                emitted
+                    .borrow_mut()
+                    .push((block_id.to_string(), event_patch));
+            },
+        );
+        let (status, receipt) = mutation_ui_sync_receipt(result);
+
+        assert_eq!(status, "partial");
+        assert_eq!(receipt["status"], "failed");
+        assert_eq!(receipt["blockId"], late_block_id);
+        assert_eq!(receipt["eventAttempted"], false);
+        assert_eq!(receipt["error"], "chatanki_mutation_document_mismatch");
+        assert!(emitted.borrow().is_empty());
+
+        let block = ChatV2Repo::get_block_v2(&chat_db, &late_block_id)
+            .expect("load late partial block")
+            .expect("late partial block remains");
+        assert_eq!(
+            block.tool_output.expect("tool output")["cards"],
+            json!([{"id": "card-existing", "front": "unchanged"}])
+        );
+    }
+
+    #[test]
+    fn test_chatanki_late_block_final_persist_failure_still_emits() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = preflight_card_mutation(
+            Some(&chat_db),
+            "session-late-persist-failure",
+            "doc-late-persist-failure",
+        )
+        .expect("preflight without preview block");
+        assert!(target.block_id.is_none());
+        let late_target = seed_anki_cards_block(
+            &chat_db,
+            "session-late-persist-failure",
+            "doc-late-persist-failure",
+            vec![json!({"id": "card-existing", "front": "unchanged"})],
+            Vec::new(),
+        );
+        let late_block_id = required_mutation_block_id(&late_target).to_string();
+        {
+            let conn = chat_db.get_conn_safe().expect("open chat database");
+            conn.execute_batch(
+                "CREATE TRIGGER reject_chatanki_block_update
+                 BEFORE UPDATE ON chat_v2_blocks
+                 BEGIN
+                   SELECT RAISE(FAIL, 'forced persist failure');
+                 END;",
+            )
+            .expect("install update failure trigger");
+        }
+        let emitted = std::cell::RefCell::new(Vec::<(String, Value)>::new());
+
+        let result = persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-late-persist-failure",
+            json!({
+                "documentId": "doc-late-persist-failure",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-existing"],
+            }),
+            |block_id, event_patch| {
+                emitted
+                    .borrow_mut()
+                    .push((block_id.to_string(), event_patch));
+            },
+        );
+        let (status, receipt) = mutation_ui_sync_receipt(result);
+
+        assert_eq!(status, "partial");
+        assert_eq!(receipt["status"], "failed");
+        assert_eq!(receipt["blockId"], late_block_id);
+        assert_eq!(receipt["eventAttempted"], true);
+        assert!(receipt["error"]
+            .as_str()
+            .is_some_and(|error| error.starts_with("chatanki_mutation_block_persist_failed:")));
+        assert_eq!(emitted.borrow().len(), 1);
+        assert_eq!(emitted.borrow()[0].0, late_block_id);
+        assert_eq!(
+            emitted.borrow()[0].1["documentId"],
+            "doc-late-persist-failure"
+        );
+
+        let block = ChatV2Repo::get_block_v2(&chat_db, &late_block_id)
+            .expect("load late partial block")
+            .expect("late partial block remains");
+        assert_eq!(
+            block.tool_output.expect("tool output")["cards"],
+            json!([{"id": "card-existing", "front": "unchanged"}])
+        );
+    }
+
+    #[test]
+    fn test_chatanki_mutation_other_session_block_is_not_a_ui_target() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        seed_anki_cards_block(
+            &chat_db,
+            "session-block-owner",
+            "doc-block-owner",
+            Vec::new(),
+            Vec::new(),
+        );
+
+        let target =
+            preflight_card_mutation(Some(&chat_db), "session-block-other", "doc-block-owner")
+                .expect("another session's block is equivalent to no current-session preview");
+        assert!(target.block_id.is_none());
+        assert_eq!(target.session_id, "session-block-other");
+        assert_eq!(target.document_id, "doc-block-owner");
+    }
+
+    #[test]
+    fn test_chatanki_mutation_existing_block_keeps_strict_document_validation() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-strict-block",
+            "doc-strict-block",
+            vec![json!({"id": "card-strict", "front": "unchanged"})],
+            Vec::new(),
+        );
+        assert!(target.block_id.is_some());
+
+        let error = persist_card_mutation(
+            &chat_db,
+            &target,
+            "doc-strict-block",
+            &json!({
+                "documentId": "doc-other",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-strict"],
+            }),
+        )
+        .expect_err("an existing preview block must reject a mismatched document patch");
+        assert_eq!(error, "chatanki_mutation_document_mismatch");
+
+        let block = ChatV2Repo::get_block_v2(&chat_db, required_mutation_block_id(&target))
+            .expect("load block")
+            .expect("block remains");
+        assert_eq!(
+            block.tool_output.expect("tool output")["cards"],
+            json!([{"id": "card-strict", "front": "unchanged"}])
+        );
+    }
+
+    #[test]
+    fn test_chatanki_mutation_persistence_unions_and_clears_delete_tombstones() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-persist",
+            "doc-persist",
+            vec![
+                json!({"id": "card-1", "front": "one"}),
+                json!({"id": "card-2", "front": "two"}),
+            ],
+            vec!["card-old"],
+        );
+
+        persist_card_mutation(
+            &chat_db,
+            &target,
+            "doc-persist",
+            &json!({
+                "documentId": "doc-persist",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-2", "card-new"],
+            }),
+        )
+        .expect("persist delete");
+        let deleted_block = ChatV2Repo::get_block_v2(&chat_db, required_mutation_block_id(&target))
+            .expect("load block")
+            .expect("block exists");
+        let deleted_output = deleted_block.tool_output.expect("tool output");
+        assert_eq!(
+            deleted_output["cards"],
+            json!([{"id": "card-1", "front": "one"}])
+        );
+        assert_eq!(
+            deleted_output["deletedCardIds"],
+            json!(["card-2", "card-new", "card-old"])
+        );
+
+        persist_card_mutation(
+            &chat_db,
+            &target,
+            "doc-persist",
+            &json!({
+                "documentId": "doc-persist",
+                "cardMutation": "upsert",
+                "cards": [
+                    {"id": "card-2", "front": "two restored"},
+                    {"id": "card-3", "front": "three"}
+                ],
+            }),
+        )
+        .expect("persist upsert");
+        let upserted_block =
+            ChatV2Repo::get_block_v2(&chat_db, required_mutation_block_id(&target))
+                .expect("load block")
+                .expect("block exists");
+        let upserted_output = upserted_block.tool_output.expect("tool output");
+        assert_eq!(
+            upserted_output["cards"],
+            json!([
+                {"id": "card-1", "front": "one"},
+                {"id": "card-2", "front": "two restored"},
+                {"id": "card-3", "front": "three"}
+            ])
+        );
+        assert_eq!(
+            upserted_output["deletedCardIds"],
+            json!(["card-new", "card-old"])
+        );
+    }
+
+    #[test]
+    fn test_chatanki_ui_sync_failure_is_structured_partial_receipt() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-partial",
+            "doc-partial",
+            Vec::new(),
+            Vec::new(),
+        );
+        ChatV2Repo::delete_block_v2(&chat_db, required_mutation_block_id(&target))
+            .expect("delete target block");
+        let emitted = std::cell::Cell::new(false);
+        let persistence = persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-partial",
+            json!({
+                "documentId": "doc-partial",
+                "cardMutation": "delete",
+                "deletedCardIds": ["card-partial"],
+            }),
+            |block_id, _event_patch| {
+                assert_eq!(block_id, required_mutation_block_id(&target));
+                emitted.set(true);
+            },
+        );
+        let (status, receipt) = mutation_ui_sync_receipt(persistence);
+
+        assert_eq!(status, "partial");
+        assert_eq!(receipt["status"], "failed");
+        assert_eq!(receipt["blockId"], required_mutation_block_id(&target));
+        assert_eq!(receipt["eventAttempted"], false);
+        assert_eq!(receipt["error"], "chatanki_mutation_block_disappeared");
+        assert!(!emitted.get());
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_selector_validation_and_unknown_fields() {
+        let valid_versions = json!({"card-1": "v1"});
+        for invalid in [
+            json!({
+                "targetTemplateId": "design-lexicon",
+                "strategy": "map_only",
+                "expectedVersions": valid_versions,
+            }),
+            json!({
+                "documentId": "doc-1",
+                "cardIds": ["card-1"],
+                "targetTemplateId": "design-lexicon",
+                "strategy": "map_only",
+                "expectedVersions": {"card-1": "v1"},
+            }),
+            json!({
+                "cardIds": [],
+                "targetTemplateId": "design-lexicon",
+                "strategy": "map_only",
+                "expectedVersions": {"card-1": "v1"},
+            }),
+            json!({
+                "cardIds": ["card-1", " card-1 "],
+                "targetTemplateId": "design-lexicon",
+                "strategy": "map_only",
+                "expectedVersions": {"card-1": "v1"},
+            }),
+        ] {
+            let parsed = serde_json::from_value::<ChatAnkiRetemplateArgs>(invalid)
+                .expect("shape should deserialize before runtime validation");
+            assert!(parsed.normalize().is_err());
+        }
+
+        let over_limit: Vec<String> = (0..=CHATANKI_RETEMPLATE_CARD_LIMIT)
+            .map(|index| format!("card-{}", index))
+            .collect();
+        let parsed: ChatAnkiRetemplateArgs = serde_json::from_value(json!({
+            "cardIds": over_limit,
+            "targetTemplateId": "design-lexicon",
+            "strategy": "fill_missing",
+            "expectedVersions": {"card-0": "v1"},
+        }))
+        .expect("parse over-limit request");
+        assert!(parsed.normalize().is_err());
+
+        assert!(serde_json::from_value::<ChatAnkiRetemplateArgs>(json!({
+            "documentId": "doc-1",
+            "targetTemplateId": "design-lexicon",
+            "strategy": "map_only",
+            "expectedVersions": {"card-1": "v1"},
+            "unexpected": true,
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn test_chatanki_list_template_item_includes_field_contract_and_cloze_flag() {
+        let now = chrono::Utc::now();
+        let template = crate::models::CustomAnkiTemplate {
+            id: "template-cloze".to_string(),
+            name: "Cloze".to_string(),
+            description: "Cloze template".to_string(),
+            author: None,
+            version: "1.0.0".to_string(),
+            preview_front: "{{Text}}".to_string(),
+            preview_back: "{{Text}}".to_string(),
+            note_type: "Cloze".to_string(),
+            fields: vec!["Text".to_string(), "Extra".to_string()],
+            generation_prompt: "prompt".to_string(),
+            front_template: "{{Text}}".to_string(),
+            back_template: "{{Text}}".to_string(),
+            css_style: String::new(),
+            field_extraction_rules: HashMap::new(),
+            created_at: now,
+            updated_at: now,
+            is_active: true,
+            is_built_in: false,
+            preview_data_json: None,
+        };
+
+        let output = chatanki_template_list_item(&template);
+        assert_eq!(output["fields"], json!(["Text", "Extra"]));
+        assert_eq!(output["noteType"], "Cloze");
+        assert_eq!(output["isCloze"], true);
+    }
+
+    #[test]
+    fn test_chatanki_list_templates_filters_before_paginating_all_page_boundaries() {
+        let templates = vec![
+            make_chatanki_template("template-1", "Match one", "first", "Basic", true),
+            make_chatanki_template("template-2", "Other", "second", "Basic", true),
+            make_chatanki_template("template-3", "Match two", "third", "Cloze", true),
+            make_chatanki_template("template-4", "Other inactive", "fourth", "Basic", false),
+            make_chatanki_template("template-5", "Last", "match three", "Basic", true),
+        ];
+
+        let (first_total, first_page) = select_chatanki_template_page(&templates, "", true, 1, 2);
+        assert_eq!(first_total, 4);
+        assert_eq!(first_page.len(), 2);
+        assert_eq!(first_page[0]["id"], "template-1");
+        assert_eq!(first_page[1]["id"], "template-2");
+
+        let (final_total, final_page) = select_chatanki_template_page(&templates, "", true, 2, 2);
+        assert_eq!(final_total, 4);
+        assert_eq!(final_page.len(), 2);
+        assert_eq!(final_page[0]["id"], "template-3");
+        assert_eq!(final_page[1]["id"], "template-5");
+
+        let (past_end_total, past_end_page) =
+            select_chatanki_template_page(&templates, "", true, 3, 2);
+        assert_eq!(past_end_total, 4);
+        assert!(past_end_page.is_empty());
+
+        let (filtered_total, filtered_final_page) =
+            select_chatanki_template_page(&templates, "match", true, 2, 2);
+        assert_eq!(filtered_total, 3);
+        assert_eq!(filtered_final_page.len(), 1);
+        assert_eq!(filtered_final_page[0]["id"], "template-5");
+    }
+
+    #[test]
+    fn test_chatanki_list_templates_uses_stable_id_order_for_equal_timestamps() {
+        let (db, _tmp) = make_test_db();
+        for (id, name) in [
+            ("template-b", "Stable B"),
+            ("template-c", "Stable C"),
+            ("template-a", "Stable A"),
+        ] {
+            db.create_custom_template_with_id(id, &make_chatanki_template_request(name))
+                .expect("create template");
+        }
+        db.get_conn_safe()
+            .expect("template connection")
+            .execute(
+                "UPDATE custom_anki_templates SET created_at = '2026-07-14T00:00:00Z'",
+                [],
+            )
+            .expect("align template timestamps");
+
+        let templates = db.get_all_custom_templates().expect("list templates");
+        let ordered_ids: Vec<&str> = templates
+            .iter()
+            .map(|template| template.id.as_str())
+            .collect();
+        assert_eq!(ordered_ids, vec!["template-a", "template-b", "template-c"]);
+        let (_, first_page) = select_chatanki_template_page(&templates, "", true, 1, 2);
+        let (_, second_page) = select_chatanki_template_page(&templates, "", true, 2, 2);
+        assert_eq!(first_page[0]["id"], "template-a");
+        assert_eq!(first_page[1]["id"], "template-b");
+        assert_eq!(second_page[0]["id"], "template-c");
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_maps_aliases_base_fields_and_required_normalization() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-map", "session-map");
+        let mut card = make_chatanki_card("card-map", &task_id, "base front", "base back");
+        card.text = Some("base text".to_string());
+        card.tags = vec!["tag-a".to_string(), "tag-b".to_string()];
+        card.extra_fields
+            .insert("Front".to_string(), "stale canonical extra".to_string());
+        card.extra_fields
+            .insert("front".to_string(), "stale lower extra".to_string());
+        card.extra_fields
+            .insert("some_key".to_string(), "normalized".to_string());
+        card.extra_fields
+            .insert("Canonical".to_string(), "exact".to_string());
+        card.extra_fields
+            .insert("canonical".to_string(), "lower".to_string());
+        card.extra_fields
+            .insert("loweronly".to_string(), "lower only".to_string());
+        card.extra_fields
+            .insert("legacy".to_string(), "preserved".to_string());
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let expected = expected_card_versions(std::slice::from_ref(&card));
+        let target = make_retemplate_target(
+            "design-lexicon",
+            "Basic",
+            &[
+                "Word",
+                "Definition",
+                "Front",
+                "Text",
+                "Tags",
+                "Some-Key",
+                "Canonical",
+                "LowerOnly",
+                "Needs Value",
+            ],
+            &["needs_value"],
+        );
+
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-map".to_string()),
+                &target,
+                &expected,
+                "session-map",
+                &["doc-map".to_string()],
+            )
+            .expect("retemplate");
+        let updates = match result {
+            AnkiRetemplateBatchResult::Updated { updates, .. } => updates,
+            other => panic!("unexpected result: {:?}", other),
+        };
+        let update = &updates[0];
+        assert_eq!(update.card.extra_fields["Word"], "base front");
+        assert_eq!(update.card.extra_fields["Definition"], "base back");
+        assert_eq!(update.card.extra_fields["Front"], "base front");
+        assert_eq!(update.card.extra_fields["Text"], "base text");
+        assert_eq!(update.card.extra_fields["Tags"], r#"["tag-a","tag-b"]"#);
+        assert_eq!(update.card.extra_fields["Some-Key"], "normalized");
+        assert_eq!(update.card.extra_fields["Canonical"], "exact");
+        assert_eq!(update.card.extra_fields["LowerOnly"], "lower only");
+        assert_eq!(update.card.extra_fields["legacy"], "preserved");
+        assert_eq!(
+            update.missing_fields,
+            vec![crate::database::AnkiRetemplateMissingField {
+                field: "Needs Value".to_string(),
+                required: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_rejects_document_card_and_mixed_ownership() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-owned", "session-owner");
+        let card = make_chatanki_card("card-owned", &task_id, "front", "back");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let expected = expected_card_versions(std::slice::from_ref(&card));
+        let target = make_retemplate_target("target", "Basic", &["Front", "Back"], &[]);
+
+        assert!(matches!(
+            db.retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-owned".to_string()),
+                &target,
+                &expected,
+                "session-other",
+                &["doc-owned".to_string()],
+            )
+            .expect("document ownership result"),
+            AnkiRetemplateBatchResult::OwnershipRejected
+        ));
+        assert!(matches!(
+            db.retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Cards(vec!["card-owned".to_string()]),
+                &target,
+                &expected,
+                "session-other",
+                &["doc-owned".to_string()],
+            )
+            .expect("card ownership result"),
+            AnkiRetemplateBatchResult::OwnershipRejected
+        ));
+
+        seed_additional_chatanki_task(&db, "doc-owned", "task-mixed-owner", 1, "session-other");
+        let second = make_chatanki_card("card-mixed", "task-mixed-owner", "two", "answer");
+        assert!(db.insert_anki_card(&second).expect("insert mixed card"));
+        let mixed_expected = expected_card_versions(&[card.clone(), second]);
+        assert!(matches!(
+            db.retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-owned".to_string()),
+                &target,
+                &mixed_expected,
+                "session-owner",
+                &["doc-owned".to_string()],
+            )
+            .expect("mixed ownership result"),
+            AnkiRetemplateBatchResult::OwnershipRejected
+        ));
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_rejects_cross_document_card_selection() {
+        let (db, _tmp) = make_test_db();
+        let task_a = seed_chatanki_document(&db, "doc-a", "session-cross");
+        let task_b = seed_chatanki_document(&db, "doc-b", "session-cross");
+        let card_a = make_chatanki_card("card-a", &task_a, "a", "answer-a");
+        let card_b = make_chatanki_card("card-b", &task_b, "b", "answer-b");
+        assert!(db.insert_anki_card(&card_a).expect("insert a"));
+        assert!(db.insert_anki_card(&card_b).expect("insert b"));
+        let expected = expected_card_versions(&[card_a, card_b]);
+        let target = make_retemplate_target("target", "Basic", &["Front", "Back"], &[]);
+
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Cards(vec!["card-a".to_string(), "card-b".to_string()]),
+                &target,
+                &expected,
+                "session-cross",
+                &["doc-a".to_string(), "doc-b".to_string()],
+            )
+            .expect("cross-document result");
+        assert!(matches!(
+            result,
+            AnkiRetemplateBatchResult::CrossDocumentSelection { .. }
+        ));
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_requires_exact_version_set() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-version-set", "session-version-set");
+        let card_a = make_chatanki_card("card-version-a", &task_id, "a", "answer-a");
+        let card_b = make_chatanki_card("card-version-b", &task_id, "b", "answer-b");
+        assert!(db.insert_anki_card(&card_a).expect("insert a"));
+        assert!(db.insert_anki_card(&card_b).expect("insert b"));
+        let mut expected = expected_card_versions(std::slice::from_ref(&card_a));
+        expected.insert("ghost-card".to_string(), "ghost-version".to_string());
+        let target = make_retemplate_target("target", "Basic", &["Front", "Back"], &[]);
+
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-version-set".to_string()),
+                &target,
+                &expected,
+                "session-version-set",
+                &["doc-version-set".to_string()],
+            )
+            .expect("version set result");
+        match result {
+            AnkiRetemplateBatchResult::ExpectedVersionsMismatch {
+                missing_version_ids,
+                unexpected_version_ids,
+            } => {
+                assert_eq!(missing_version_ids, vec!["card-version-b"]);
+                assert_eq!(unexpected_version_ids, vec!["ghost-card"]);
+            }
+            other => panic!("unexpected result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_document_live_set_add_and_delete_never_partially_write() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-live-set", "session-live-set");
+        let card_a = make_chatanki_card("card-live-a", &task_id, "a", "answer-a");
+        assert!(db.insert_anki_card(&card_a).expect("insert a"));
+        let expected_before_add = expected_card_versions(std::slice::from_ref(&card_a));
+        let card_b = make_chatanki_card("card-live-b", &task_id, "b", "answer-b");
+        assert!(db.insert_anki_card(&card_b).expect("insert b"));
+        let target = make_retemplate_target("target-live", "Basic", &["Word"], &[]);
+
+        let after_add = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-live-set".to_string()),
+                &target,
+                &expected_before_add,
+                "session-live-set",
+                &["doc-live-set".to_string()],
+            )
+            .expect("addition conflict");
+        assert!(matches!(
+            after_add,
+            AnkiRetemplateBatchResult::ExpectedVersionsMismatch {
+                ref missing_version_ids,
+                ref unexpected_version_ids,
+            } if missing_version_ids == &["card-live-b"] && unexpected_version_ids.is_empty()
+        ));
+
+        let expected_before_delete = expected_card_versions(&[card_a, card_b]);
+        db.get_conn_safe()
+            .expect("connection")
+            .execute(
+                "UPDATE anki_cards SET deleted_at = ?1 WHERE id = 'card-live-b'",
+                rusqlite::params![chrono::Utc::now().to_rfc3339()],
+            )
+            .expect("soft delete b");
+        let after_delete = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-live-set".to_string()),
+                &target,
+                &expected_before_delete,
+                "session-live-set",
+                &["doc-live-set".to_string()],
+            )
+            .expect("deletion conflict");
+        assert!(matches!(
+            after_delete,
+            AnkiRetemplateBatchResult::ExpectedVersionsMismatch {
+                ref missing_version_ids,
+                ref unexpected_version_ids,
+            } if missing_version_ids.is_empty() && unexpected_version_ids == &["card-live-b"]
+        ));
+        let conn = db.get_conn_safe().expect("connection");
+        let changed: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM anki_cards
+                 WHERE template_id = 'target-live' OR COALESCE(local_version, 0) != 0",
+                [],
+                |row| row.get(0),
+            )
+            .expect("changed rows");
+        assert_eq!(changed, 0);
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_document_set_change_rejects_before_write() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-set", "session-set");
+        let card = make_chatanki_card("card-set", &task_id, "front", "back");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let expected = expected_card_versions(std::slice::from_ref(&card));
+        let target = make_retemplate_target("target-set", "Basic", &["Word"], &[]);
+
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Cards(vec!["card-set".to_string()]),
+                &target,
+                &expected,
+                "session-set",
+                &["doc-preflight-stale".to_string()],
+            )
+            .expect("document set conflict");
+        assert!(matches!(
+            result,
+            AnkiRetemplateBatchResult::DocumentSetChanged {
+                ref document_ids,
+            } if document_ids == &["doc-set"]
+        ));
+        let reloaded = db
+            .get_anki_card_with_document("card-set")
+            .expect("reload")
+            .expect("card exists")
+            .0;
+        assert_eq!(reloaded.template_id.as_deref(), Some("design-swiss"));
+        assert_eq!(reloaded.updated_at, card.updated_at);
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_one_stale_version_rolls_back_entire_batch() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-stale", "session-stale");
+        let card_a = make_chatanki_card("card-stale-a", &task_id, "a", "answer-a");
+        let card_b = make_chatanki_card("card-stale-b", &task_id, "b", "answer-b");
+        assert!(db.insert_anki_card(&card_a).expect("insert a"));
+        assert!(db.insert_anki_card(&card_b).expect("insert b"));
+        let mut expected = expected_card_versions(&[card_a, card_b]);
+        expected.insert("card-stale-b".to_string(), "stale-version".to_string());
+        let target = make_retemplate_target("target-stale", "Basic", &["Word"], &[]);
+
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-stale".to_string()),
+                &target,
+                &expected,
+                "session-stale",
+                &["doc-stale".to_string()],
+            )
+            .expect("stale result");
+        assert!(matches!(
+            result,
+            AnkiRetemplateBatchResult::VersionConflict { .. }
+        ));
+        let cards = db
+            .get_cards_for_document("doc-stale")
+            .expect("reload cards");
+        assert!(cards
+            .iter()
+            .all(|card| card.template_id.as_deref() == Some("design-swiss")));
+        assert!(cards
+            .iter()
+            .all(|card| !card.extra_fields.contains_key("Word")));
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_updates_one_hundred_cards_atomically() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-hundred", "session-hundred");
+        let mut cards = Vec::new();
+        for index in 0..CHATANKI_RETEMPLATE_CARD_LIMIT {
+            let card = make_chatanki_card(
+                &format!("card-hundred-{:03}", index),
+                &task_id,
+                &format!("front {}", index),
+                &format!("back {}", index),
+            );
+            assert!(db.insert_anki_card(&card).expect("insert card"));
+            cards.push(card);
+        }
+        let expected = expected_card_versions(&cards);
+        let target = make_retemplate_target(
+            "design-lexicon",
+            "Basic",
+            &["Word", "Definition"],
+            &["Word", "Definition"],
+        );
+
+        let mut stale_expected = expected.clone();
+        stale_expected.insert(
+            format!("card-hundred-{:03}", CHATANKI_RETEMPLATE_CARD_LIMIT - 1),
+            "stale-last-card-version".to_string(),
+        );
+        let stale_result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-hundred".to_string()),
+                &target,
+                &stale_expected,
+                "session-hundred",
+                &["doc-hundred".to_string()],
+            )
+            .expect("hundred-card stale result");
+        assert!(matches!(
+            stale_result,
+            AnkiRetemplateBatchResult::VersionConflict { .. }
+        ));
+        let unchanged_count: i64 = db
+            .get_conn_safe()
+            .expect("connection")
+            .query_row(
+                "SELECT COUNT(*) FROM anki_cards
+                 WHERE template_id = 'design-swiss' AND COALESCE(local_version, 0) = 0",
+                [],
+                |row| row.get(0),
+            )
+            .expect("unchanged count");
+        assert_eq!(unchanged_count, CHATANKI_RETEMPLATE_CARD_LIMIT as i64);
+
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-hundred".to_string()),
+                &target,
+                &expected,
+                "session-hundred",
+                &["doc-hundred".to_string()],
+            )
+            .expect("hundred-card retemplate");
+        let updates = match result {
+            AnkiRetemplateBatchResult::Updated { updates, .. } => updates,
+            other => panic!("unexpected result: {:?}", other),
+        };
+        assert_eq!(updates.len(), CHATANKI_RETEMPLATE_CARD_LIMIT);
+        assert!(updates
+            .iter()
+            .all(|update| update.missing_fields.is_empty()));
+
+        let conn = db.get_conn_safe().expect("connection");
+        let updated_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM anki_cards
+                 WHERE template_id = 'design-lexicon' AND local_version = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("updated count");
+        assert_eq!(updated_count, CHATANKI_RETEMPLATE_CARD_LIMIT as i64);
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_cloze_guard_uses_only_valid_text_and_rolls_back() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-cloze", "session-cloze");
+        let mut missing_text =
+            make_chatanki_card("card-cloze-missing", &task_id, "{{c1::front-only}}", "back");
+        missing_text.text = None;
+        let mut fake_markup = make_chatanki_card("card-cloze-fake", &task_id, "front", "back");
+        fake_markup.text = Some("{{color}} and {{c1::}}".to_string());
+        let mut valid = make_chatanki_card("card-cloze-valid", &task_id, "front", "back");
+        valid.text = Some("A {{c1::valid answer::hint}} here".to_string());
+        for card in [&missing_text, &fake_markup, &valid] {
+            assert!(db.insert_anki_card(card).expect("insert cloze card"));
+        }
+        let expected =
+            expected_card_versions(&[missing_text.clone(), fake_markup.clone(), valid.clone()]);
+        let target = make_retemplate_target("design-redaction", "Cloze", &["Text"], &["Text"]);
+
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-cloze".to_string()),
+                &target,
+                &expected,
+                "session-cloze",
+                &["doc-cloze".to_string()],
+            )
+            .expect("cloze guard result");
+        match result {
+            AnkiRetemplateBatchResult::InvalidCloze { card_ids } => {
+                assert_eq!(card_ids, vec!["card-cloze-fake", "card-cloze-missing"])
+            }
+            other => panic!("unexpected result: {:?}", other),
+        }
+        let reloaded = db
+            .get_cards_for_document("doc-cloze")
+            .expect("reload cards");
+        assert!(reloaded
+            .iter()
+            .all(|card| card.template_id.as_deref() == Some("design-swiss")));
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_map_only_and_fill_missing_source_contract() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-missing", "session-missing");
+        let card = make_chatanki_card(
+            "card-missing",
+            &task_id,
+            &"x".repeat(CHATANKI_CARD_FIELD_LIMIT + 10),
+            "back",
+        );
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let expected = expected_card_versions(std::slice::from_ref(&card));
+        let target = make_retemplate_target(
+            "target-missing",
+            "Basic",
+            &["Unmapped Field"],
+            &["unmapped_field"],
+        );
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-missing".to_string()),
+                &target,
+                &expected,
+                "session-missing",
+                &["doc-missing".to_string()],
+            )
+            .expect("missing-field result");
+        let update = match result {
+            AnkiRetemplateBatchResult::Updated { mut updates, .. } => updates.remove(0),
+            other => panic!("unexpected result: {:?}", other),
+        };
+
+        let map_only = retemplate_update_for_tool(&update, ChatAnkiRetemplateStrategy::MapOnly);
+        assert_eq!(map_only["missingFields"], json!(["Unmapped Field"]));
+        assert_eq!(map_only["missingFieldDetails"][0]["required"], true);
+        assert!(map_only.get("source").is_none());
+
+        let fill_missing =
+            retemplate_update_for_tool(&update, ChatAnkiRetemplateStrategy::FillMissing);
+        assert_eq!(fill_missing["source"]["truncated"], true);
+        assert_eq!(
+            fill_missing["source"]["front"]
+                .as_str()
+                .expect("source front")
+                .chars()
+                .count(),
+            CHATANKI_CARD_FIELD_LIMIT
+        );
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_batch_ui_upsert_and_fsrs_event_payload() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-retemplate-ui",
+            "doc-retemplate-ui",
+            vec![json!({"id": "card-ui-1", "template_id": "old"})],
+            Vec::new(),
+        );
+        persist_card_mutation(
+            &chat_db,
+            &target,
+            "doc-retemplate-ui",
+            &json!({
+                "documentId": "doc-retemplate-ui",
+                "cardMutation": "upsert",
+                "cards": [
+                    {"id": "card-ui-1", "template_id": "target"},
+                    {"id": "card-ui-2", "template_id": "target"}
+                ],
+            }),
+        )
+        .expect("persist batch upsert");
+        let block = ChatV2Repo::get_block_v2(&chat_db, required_mutation_block_id(&target))
+            .expect("load block")
+            .expect("block exists");
+        assert_eq!(
+            block.tool_output.expect("output")["cards"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+
+        let payload = fsrs_cards_changed_payload(
+            "cards_retemplated",
+            &["card-ui-1".to_string(), "card-ui-2".to_string()],
+            "run-retemplate",
+        );
+        assert_eq!(payload["action"], "cards_retemplated");
+        assert_eq!(payload["entityIds"], json!(["card-ui-1", "card-ui-2"]));
+        assert_eq!(payload["runId"], "run-retemplate");
+    }
+
     #[test]
     fn test_can_handle() {
         let executor = ChatAnkiToolExecutor::new();
+        assert!(executor.can_handle("builtin-chatanki_import_apkg"));
+        assert!(executor.can_handle("mcp_chatanki_import_apkg"));
         assert!(executor.can_handle("builtin-chatanki_run"));
         assert!(executor.can_handle("mcp_chatanki_run"));
         assert!(executor.can_handle("chatanki_run"));
         assert!(executor.can_handle("builtin-chatanki_start"));
         assert!(executor.can_handle("builtin-chatanki_status"));
         assert!(executor.can_handle("builtin-chatanki_wait"));
+        assert!(executor.can_handle("builtin-chatanki_get_cards"));
+        assert!(executor.can_handle("builtin-chatanki_update_card"));
+        assert!(executor.can_handle("builtin-chatanki_delete_card"));
+        assert!(executor.can_handle("builtin-chatanki_add_cards"));
+        assert!(executor.can_handle("builtin-chatanki_enqueue_review"));
+        assert!(executor.can_handle("builtin-chatanki_review_stats"));
+        assert!(executor.can_handle("builtin-chatanki_undo_last_review"));
+        assert!(executor.can_handle("mcp_chatanki_set_suspended"));
+        assert!(executor.can_handle("chatanki_set_suspended"));
+        assert!(executor.can_handle("builtin-chatanki_list_library_cards"));
+        assert!(executor.can_handle("mcp_chatanki_update_library_card"));
+        assert!(executor.can_handle("chatanki_enqueue_library_review"));
+        assert!(executor.can_handle("builtin-chatanki_set_library_suspended"));
+        assert!(executor.can_handle("builtin-chatanki_undo_library_last_review"));
+        assert!(executor.can_handle("builtin-chatanki_delete_library_card"));
+        assert!(executor.can_handle("builtin-chatanki_retemplate"));
         assert!(executor.can_handle("builtin-chatanki_control"));
         assert!(executor.can_handle("builtin-chatanki_export"));
         assert!(executor.can_handle("builtin-chatanki_sync"));
@@ -5602,8 +14469,59 @@ mod tests {
     }
 
     #[test]
+    fn test_chatanki_import_apkg_requires_medium_sensitivity() {
+        let executor = ChatAnkiToolExecutor::new();
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_import_apkg"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_export"),
+            ToolSensitivity::Medium,
+            "all card export paths share the same data-egress baseline"
+        );
+    }
+
+    #[test]
+    fn test_chatanki_agent_review_mutation_sensitivity_contract() {
+        let executor = ChatAnkiToolExecutor::new();
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_undo_last_review"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_chatanki_set_suspended"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_list_library_cards"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_update_library_card"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_enqueue_library_review"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_chatanki_set_library_suspended"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_undo_library_last_review"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-chatanki_delete_library_card"),
+            ToolSensitivity::High
+        );
+    }
+
+    #[test]
     fn test_derive_status_snapshot_not_found() {
-        let (status, error, should_retry) = derive_status_snapshot(&[], 0);
+        let (status, error, should_retry) = derive_status_snapshot(&[], &[]);
         assert_eq!(status, "not_found");
         assert_eq!(
             error,
@@ -5615,16 +14533,156 @@ mod tests {
     #[test]
     fn test_derive_status_snapshot_running_and_completed_with_errors() {
         let (status_running, error_running, should_retry_running) =
-            derive_status_snapshot(&[make_task(TaskStatus::Pending)], 0);
+            derive_status_snapshot(&[make_task(TaskStatus::Pending)], &[]);
         assert_eq!(status_running, "running");
         assert!(error_running.is_none());
         assert!(!should_retry_running);
 
+        let cards = vec![
+            make_chatanki_card("status-card-1", "task-Failed", "front 1", "back 1"),
+            make_chatanki_card("status-card-2", "task-Failed", "front 2", "back 2"),
+        ];
         let (status_error, error_error, should_retry_error) =
-            derive_status_snapshot(&[make_task(TaskStatus::Failed)], 2);
+            derive_status_snapshot(&[make_task(TaskStatus::Failed)], &cards);
         assert_eq!(status_error, "completed_with_errors");
         assert!(error_error.is_none());
         assert!(!should_retry_error);
+
+        let (status_failed, error_failed, should_retry_failed) =
+            derive_status_snapshot(&[make_task(TaskStatus::Failed)], &[]);
+        assert_eq!(status_failed, "error");
+        assert!(error_failed.is_none());
+        assert!(!should_retry_failed);
+    }
+
+    #[test]
+    fn test_generation_terminal_completed_segment_with_failed_segment_is_partial() {
+        let tasks = vec![
+            make_task(TaskStatus::Completed),
+            make_task(TaskStatus::Failed),
+        ];
+
+        assert_eq!(
+            classify_generation_terminal(&tasks, &[]),
+            GenerationTerminalKind::CompletedWithErrors
+        );
+    }
+
+    #[test]
+    fn test_generation_terminal_failed_segment_with_usable_card_is_partial() {
+        let tasks = vec![make_task(TaskStatus::Failed)];
+        let cards = vec![make_chatanki_card(
+            "card-usable",
+            "task-Failed",
+            "front",
+            "back",
+        )];
+
+        assert_eq!(
+            classify_generation_terminal(&tasks, &cards),
+            GenerationTerminalKind::CompletedWithErrors
+        );
+    }
+
+    #[test]
+    fn test_generation_terminal_failed_segment_without_cards_is_failed() {
+        let tasks = vec![make_task(TaskStatus::Failed)];
+
+        assert_eq!(
+            classify_generation_terminal(&tasks, &[]),
+            GenerationTerminalKind::Failed
+        );
+    }
+
+    #[test]
+    fn test_generation_terminal_failed_segment_with_only_error_card_is_failed() {
+        let tasks = vec![make_task(TaskStatus::Failed)];
+        let mut error_card = make_chatanki_card("card-error", "task-Failed", "front", "back");
+        error_card.is_error_card = true;
+        error_card.error_content = Some("generation failed".to_string());
+
+        assert_eq!(
+            classify_generation_terminal(&tasks, &[error_card]),
+            GenerationTerminalKind::Failed
+        );
+    }
+
+    #[test]
+    fn test_workflow_projection_recovers_failed_generation_with_manual_cards() {
+        let mut task = make_task(TaskStatus::Failed);
+        task.error_message =
+            Some("API 访问被拒绝，请检查账户权限 (HTTP 403): balance is insufficient".to_string());
+        let cards = vec![
+            make_chatanki_card("recovered-1", "task-Failed", "front 1", "back 1"),
+            make_chatanki_card("recovered-2", "task-Failed", "front 2", "back 2"),
+            make_chatanki_card("recovered-3", "task-Failed", "front 3", "back 3"),
+        ];
+
+        let projection = project_chatanki_workflow(&[task], &cards, Some("manual"), 3);
+
+        assert_eq!(projection.block_status, block_status::SUCCESS);
+        assert!(projection.block_error.is_none());
+        assert_eq!(projection.output_patch["schemaVersion"], 2);
+        assert_eq!(
+            projection.output_patch["workflowStatus"],
+            "completed_with_warnings"
+        );
+        assert_eq!(projection.output_patch["generationStatus"], "failed");
+        assert_eq!(projection.output_patch["deliveryStatus"], "ready");
+        assert_eq!(projection.output_patch["recoveryStatus"], "manual");
+        assert_eq!(projection.output_patch["availableCards"], 3);
+        assert_eq!(projection.output_patch["recoveredCards"], 3);
+        assert_eq!(projection.output_patch["progress"]["cardsGenerated"], 3);
+        assert_eq!(projection.output_patch["progress"]["completedRatio"], 1.0);
+        assert_eq!(
+            projection.output_patch["issues"][0]["code"],
+            "provider_quota_exhausted"
+        );
+        assert_eq!(projection.output_patch["issues"][0]["retryable"], false);
+        assert!(projection.output_patch["finalError"].is_null());
+    }
+
+    #[test]
+    fn test_workflow_projection_keeps_unrecovered_failure_terminal() {
+        let mut task = make_task(TaskStatus::Failed);
+        task.error_message = Some("HTTP 403".to_string());
+
+        let projection = project_chatanki_workflow(&[task], &[], None, 0);
+
+        assert_eq!(projection.block_status, block_status::ERROR);
+        assert_eq!(
+            projection.block_error.as_deref(),
+            Some("blocks.ankiCards.errors.generationFailed")
+        );
+        assert_eq!(projection.output_patch["workflowStatus"], "failed");
+        assert_eq!(projection.output_patch["deliveryStatus"], "empty");
+        assert_eq!(projection.output_patch["finalStatus"], "error");
+        assert_eq!(projection.output_patch["progress"]["completedRatio"], 1.0);
+    }
+
+    #[test]
+    fn test_generation_terminal_user_cancelled_is_cancelled() {
+        let tasks = vec![
+            make_task(TaskStatus::Completed),
+            make_task(TaskStatus::Cancelled),
+        ];
+
+        assert_eq!(
+            classify_generation_terminal(&tasks, &[]),
+            GenerationTerminalKind::Cancelled
+        );
+    }
+
+    #[test]
+    fn test_generation_terminal_limit_cancelled_is_completed() {
+        let mut limit_task = make_task(TaskStatus::Cancelled);
+        limit_task.error_message = Some(GLOBAL_CARD_LIMIT_MARKER.to_string());
+        let tasks = vec![make_task(TaskStatus::Completed), limit_task];
+
+        assert_eq!(
+            classify_generation_terminal(&tasks, &[]),
+            GenerationTerminalKind::Completed
+        );
     }
 
     #[test]
@@ -5672,7 +14730,7 @@ mod tests {
     #[test]
     fn test_derive_status_snapshot_cancelled() {
         let (status, error, should_retry) =
-            derive_status_snapshot(&[make_task(TaskStatus::Cancelled)], 1);
+            derive_status_snapshot(&[make_task(TaskStatus::Cancelled)], &[]);
         assert_eq!(status, "cancelled");
         assert!(error.is_none());
         assert!(!should_retry);
@@ -5685,12 +14743,17 @@ mod tests {
         limit_task.error_message = Some(GLOBAL_CARD_LIMIT_MARKER.to_string());
         let tasks = vec![make_task(TaskStatus::Completed), limit_task];
 
-        let (status, error, should_retry) = derive_status_snapshot(&tasks, 10);
+        let (status, error, should_retry) = derive_status_snapshot(&tasks, &[]);
         assert_eq!(status, "completed");
         assert!(error.is_none());
         assert!(!should_retry);
         assert!(tasks_limit_reached(&tasks));
         assert!(!tasks_user_cancelled(&tasks));
+
+        let projection = project_chatanki_workflow(&tasks, &[], None, 0);
+        assert_eq!(projection.output_patch["workflowStatus"], "completed");
+        assert_eq!(projection.output_patch["issues"], json!([]));
+        assert_eq!(projection.output_patch["warnings"], json!([]));
     }
 
     #[test]
@@ -5701,7 +14764,7 @@ mod tests {
         let user_task = make_task(TaskStatus::Cancelled);
         let tasks = vec![limit_task, user_task];
 
-        let (status, _, _) = derive_status_snapshot(&tasks, 5);
+        let (status, _, _) = derive_status_snapshot(&tasks, &[]);
         assert_eq!(status, "cancelled");
         assert!(tasks_user_cancelled(&tasks));
     }
@@ -5709,7 +14772,7 @@ mod tests {
     #[test]
     fn test_derive_status_snapshot_paused() {
         let (status, error, should_retry) =
-            derive_status_snapshot(&[make_task(TaskStatus::Paused)], 0);
+            derive_status_snapshot(&[make_task(TaskStatus::Paused)], &[]);
         assert_eq!(status, "paused");
         assert!(error.is_none());
         assert!(!should_retry);
@@ -5823,6 +14886,279 @@ mod tests {
     }
 
     #[test]
+    fn test_chatanki_import_apkg_args_require_one_safe_source() {
+        let resource = serde_json::from_value::<ChatAnkiImportApkgArgs>(json!({
+            "resourceId": " res_apkg "
+        }))
+        .expect("resource args")
+        .normalize()
+        .expect("resource source");
+        assert_eq!(
+            resource,
+            ChatAnkiImportApkgSource::ResourceId("res_apkg".to_string())
+        );
+
+        let absolute = tempdir().expect("temp dir").path().join("cards.apkg");
+        let path = serde_json::from_value::<ChatAnkiImportApkgArgs>(json!({
+            "path": absolute.to_string_lossy()
+        }))
+        .expect("path args")
+        .normalize()
+        .expect("absolute path source");
+        assert_eq!(path, ChatAnkiImportApkgSource::AbsolutePath(absolute));
+
+        for invalid in [
+            json!({}),
+            json!({ "resourceId": "file_apkg", "path": "/tmp/cards.apkg" }),
+            json!({ "path": "relative/cards.apkg" }),
+            json!({ "resourceId": "note_not_a_file" }),
+        ] {
+            let error = serde_json::from_value::<ChatAnkiImportApkgArgs>(invalid)
+                .expect("shape parses")
+                .normalize()
+                .expect_err("invalid source must fail");
+            assert!(!error.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_chatanki_import_apkg_rejects_resource_from_another_session_context() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        for session_id in ["session-resource-owner", "session-resource-other"] {
+            ChatV2Repo::create_session_v2(
+                &chat_db,
+                &crate::chat_v2::types::ChatSession::new(
+                    session_id.to_string(),
+                    "general_chat".to_string(),
+                ),
+            )
+            .expect("create session");
+        }
+
+        let mut owner_message = crate::chat_v2::types::ChatMessage::new_user(
+            "session-resource-owner".to_string(),
+            Vec::new(),
+        );
+        owner_message.meta = Some(crate::chat_v2::types::MessageMeta {
+            context_snapshot: Some(crate::chat_v2::resource_types::ContextSnapshot {
+                user_refs: vec![
+                    ContextRef::new("file_current.apkg", "hash-file", "file"),
+                    ContextRef::new("res_current_apkg", "hash-resource", "file"),
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        ChatV2Repo::create_message_v2(&chat_db, &owner_message).expect("create owner message");
+
+        verify_apkg_resource_in_session_context(
+            &chat_db,
+            "session-resource-owner",
+            "file_current.apkg",
+        )
+        .expect("owner can use file resource");
+        verify_apkg_resource_in_session_context(
+            &chat_db,
+            "session-resource-owner",
+            "res_current_apkg",
+        )
+        .expect("owner can use res resource");
+
+        let error = verify_apkg_resource_in_session_context(
+            &chat_db,
+            "session-resource-other",
+            "file_current.apkg",
+        )
+        .expect_err("another session must not access the resource");
+        assert!(matches!(error.error_type, AppErrorType::NotFound));
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("errorCode"))
+                .and_then(Value::as_str),
+            Some("apkg_not_found")
+        );
+    }
+
+    #[test]
+    fn test_chatanki_import_apkg_resolves_file_attachment_and_resource_ids() {
+        let (_vfs_tmp, vfs_db) = crate::vfs::database::setup_migrated_test_db();
+        let original = tempfile::NamedTempFile::new().expect("original file");
+        std::fs::write(original.path(), b"original-apkg-bytes").expect("write original");
+        let blob = VfsBlobRepo::store_blob(
+            &vfs_db,
+            b"blob-fallback-bytes",
+            Some("application/octet-stream"),
+            Some("apkg"),
+        )
+        .expect("store blob");
+        let file = VfsFileRepo::create_file(
+            &vfs_db,
+            "sha-file-apkg",
+            "cards.apkg",
+            19,
+            "file",
+            Some("application/octet-stream"),
+            Some(&blob.hash),
+            original.path().to_str(),
+        )
+        .expect("create VFS file");
+
+        let direct = resolve_apkg_resource_bytes(&vfs_db, &file.id).expect("resolve file_");
+        assert_eq!(direct.source_name, "cards.apkg");
+        assert_eq!(direct.bytes, b"blob-fallback-bytes");
+
+        std::fs::write(original.path(), b"replaced-original-bytes")
+            .expect("replace mutable original path");
+        let after_original_change =
+            resolve_apkg_resource_bytes(&vfs_db, &file.id).expect("resolve blob after replace");
+        assert_eq!(after_original_change.bytes, b"blob-fallback-bytes");
+
+        let resource_id = file.resource_id.as_deref().expect("resource id");
+        let indirect =
+            resolve_apkg_resource_bytes(&vfs_db, resource_id).expect("resolve res_ mapping");
+        assert_eq!(indirect.bytes, b"blob-fallback-bytes");
+
+        let attachment_blob = VfsBlobRepo::store_blob(
+            &vfs_db,
+            b"attachment-apkg-bytes",
+            Some("application/octet-stream"),
+            Some("apkg"),
+        )
+        .expect("store attachment blob");
+        let attachment = VfsFileRepo::create_file(
+            &vfs_db,
+            "sha-att-apkg",
+            "attachment.apkg",
+            21,
+            "file",
+            Some("application/octet-stream"),
+            Some(&attachment_blob.hash),
+            None,
+        )
+        .expect("create attachment");
+        let attachment_resource_id = attachment.resource_id.expect("attachment resource id");
+        let conn = vfs_db.get_conn_safe().expect("VFS connection");
+        conn.execute(
+            "UPDATE files SET id = 'att_apkg_test' WHERE id = ?1",
+            rusqlite::params![attachment.id],
+        )
+        .expect("rename file id to attachment id");
+        conn.execute(
+            "UPDATE resources SET source_id = 'att_apkg_test' WHERE id = ?1",
+            rusqlite::params![attachment_resource_id],
+        )
+        .expect("update attachment resource mapping");
+        drop(conn);
+
+        let resolved_attachment =
+            resolve_apkg_resource_bytes(&vfs_db, "att_apkg_test").expect("resolve att_");
+        assert_eq!(resolved_attachment.source_name, "attachment.apkg");
+        assert_eq!(resolved_attachment.bytes, b"attachment-apkg-bytes");
+    }
+
+    #[test]
+    fn test_chatanki_import_apkg_original_only_requires_recorded_sha256_match() {
+        let (_vfs_tmp, vfs_db) = crate::vfs::database::setup_migrated_test_db();
+        let original = tempfile::NamedTempFile::new().expect("original-only file");
+        let original_bytes = b"verified-original-only-apkg";
+        std::fs::write(original.path(), original_bytes).expect("write original-only file");
+        let checksum = hex::encode(Sha256::digest(original_bytes));
+        let file = VfsFileRepo::create_file(
+            &vfs_db,
+            &checksum,
+            "original-only.apkg",
+            original_bytes.len() as i64,
+            "file",
+            Some("application/octet-stream"),
+            None,
+            original.path().to_str(),
+        )
+        .expect("create original-only VFS file");
+
+        let resolved = resolve_apkg_resource_bytes(&vfs_db, &file.id).expect("matching SHA-256");
+        assert_eq!(resolved.bytes, original_bytes);
+
+        std::fs::write(original.path(), b"tampered-original-only-apkg")
+            .expect("tamper original-only file");
+        let error = resolve_apkg_resource_bytes(&vfs_db, &file.id)
+            .expect_err("mismatched original path must be rejected");
+        assert!(matches!(error.error_type, AppErrorType::Validation));
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("errorCode"))
+                .and_then(Value::as_str),
+            Some("apkg_resource_mismatch")
+        );
+    }
+
+    #[test]
+    fn test_chatanki_import_apkg_rejects_oversized_vfs_file_before_allocation() {
+        let (_vfs_tmp, vfs_db) = crate::vfs::database::setup_migrated_test_db();
+        let oversized = tempfile::NamedTempFile::new().expect("oversized sparse file");
+        oversized
+            .as_file()
+            .set_len(crate::apkg_importer_service::MAX_APKG_ARCHIVE_BYTES + 1)
+            .expect("set sparse file length");
+        let file = VfsFileRepo::create_file(
+            &vfs_db,
+            "sha-oversized-apkg",
+            "oversized.apkg",
+            0,
+            "file",
+            Some("application/octet-stream"),
+            None,
+            oversized.path().to_str(),
+        )
+        .expect("create oversized VFS file");
+
+        let error = resolve_apkg_resource_bytes(&vfs_db, &file.id)
+            .expect_err("actual file length must enforce the byte limit");
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("errorCode"))
+                .and_then(Value::as_str),
+            Some("apkg_limit_exceeded")
+        );
+    }
+
+    #[test]
+    fn test_chatanki_import_apkg_result_and_domain_event_contract() {
+        let result = crate::apkg_importer_service::ApkgImportResult {
+            document_id: "doc-imported".to_string(),
+            imported_cards: 2,
+            imported_templates: 0,
+            media_skipped: 1,
+            media_imported: 0,
+            warnings: vec![],
+            card_ids: vec!["card-a".to_string(), "card-b".to_string()],
+        };
+        let output = serde_json::to_value(&result).expect("serialize import result");
+        assert_eq!(
+            output,
+            json!({
+                "documentId": "doc-imported",
+                "importedCards": 2,
+                "importedTemplates": 0,
+                "mediaSkipped": 1,
+                "mediaImported": 0,
+            })
+        );
+
+        let payload =
+            fsrs_import_changed_payload(&result.document_id, &result.card_ids, "run-import");
+        assert_eq!(payload["action"], "import");
+        assert_eq!(payload["documentId"], "doc-imported");
+        assert_eq!(payload["entityIds"], json!(["card-a", "card-b"]));
+        assert_eq!(payload["runId"], "run-import");
+    }
+
+    #[test]
     fn test_build_single_ref_data_from_context_ref_respects_image_type() {
         let context_ref = ContextRef::new(
             "att_image_1".to_string(),
@@ -5872,5 +15208,252 @@ mod tests {
             derive_effective_template_mode(&multiple).as_str(),
             ChatAnkiTemplateMode::Multiple.as_str()
         );
+    }
+
+    /// C6：超时判定为空闲语义——有进度（空闲时钟被调用方重置）就不超时；
+    /// 总时长上限只是防御性兜底且优先级最高。
+    #[test]
+    fn test_decide_pipeline_timeout_idle_semantics() {
+        // 双时钟都在阈值内：不超时。
+        assert_eq!(
+            decide_pipeline_timeout(Duration::from_secs(1), Duration::from_secs(60 * 60)),
+            None
+        );
+        // 总时长早已超过旧的 30 分钟硬上限，但仍有进度：继续运行（C6 核心修复）。
+        assert_eq!(
+            decide_pipeline_timeout(Duration::from_secs(5), Duration::from_secs(60 * 45)),
+            None
+        );
+        // 空闲超过阈值：idle 超时。
+        assert_eq!(
+            decide_pipeline_timeout(
+                PIPELINE_IDLE_TIMEOUT + Duration::from_secs(1),
+                Duration::from_secs(60 * 20)
+            ),
+            Some(PipelineTimeoutKind::Idle)
+        );
+        // 总时长超过防御上限：total 超时优先。
+        assert_eq!(
+            decide_pipeline_timeout(
+                PIPELINE_IDLE_TIMEOUT + Duration::from_secs(1),
+                PIPELINE_MAX_TOTAL_DURATION + Duration::from_secs(1)
+            ),
+            Some(PipelineTimeoutKind::Total)
+        );
+        assert_eq!(PipelineTimeoutKind::Idle.as_str(), "idle");
+        assert_eq!(PipelineTimeoutKind::Total.as_str(), "total");
+    }
+
+    /// F2：块最近活动时间取 started_at / first_chunk_at / progress.lastUpdatedAt 最大值；
+    /// stale 判定要求「无活跃管线」且「超过宽限时限」。
+    #[test]
+    fn test_anki_block_staleness_decision() {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let recent = chrono::Utc::now().to_rfc3339();
+        let output_with_recent_progress =
+            json!({ "progress": { "lastUpdatedAt": recent } }).to_string();
+
+        // progress.lastUpdatedAt 比 started_at 新时取前者。
+        let last_activity = anki_block_last_activity_ms(
+            Some(now_ms - 60 * 60 * 1000),
+            None,
+            Some(&output_with_recent_progress),
+        );
+        assert!(now_ms - last_activity < 5_000);
+
+        // 无 tool_output 时退回时间戳字段。
+        assert_eq!(anki_block_last_activity_ms(Some(100), Some(200), None), 200);
+        assert_eq!(anki_block_last_activity_ms(None, None, None), 0);
+
+        let old_activity = now_ms - STALE_RUNNING_ANKI_BLOCK_AFTER_MS - 1_000;
+        // 活跃管线永不 stale。
+        assert!(!is_stale_running_anki_block(now_ms, old_activity, true));
+        // 非活跃 + 超时限 = stale。
+        assert!(is_stale_running_anki_block(now_ms, old_activity, false));
+        // 非活跃但仍在宽限期内：不 stale（管线刚退出、终态写入窗口）。
+        assert!(!is_stale_running_anki_block(now_ms, now_ms - 1_000, false));
+    }
+
+    /// F2：僵尸 running 块被 reap 后落库为 error（带可读 interrupted 原因），
+    /// 注册了活跃管线的块不受影响——保证会话删除检查放行僵尸、保护真活跃。
+    #[test]
+    fn test_reap_stale_running_anki_blocks_marks_zombie_failed() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let session_id = "session-reap";
+        let zombie_target =
+            seed_anki_cards_block(&chat_db, session_id, "doc-zombie", Vec::new(), Vec::new());
+        let zombie_block_id = required_mutation_block_id(&zombie_target).to_string();
+
+        // 另一个块模拟“真在跑”的管线：状态 running 且已注册。
+        let mut live_message =
+            crate::chat_v2::types::ChatMessage::new_assistant(session_id.to_string());
+        let mut live_block = MessageBlock::new(live_message.id.clone(), block_types::ANKI_CARDS, 0);
+        live_block.status = block_status::RUNNING.to_string();
+        live_block.tool_output = Some(json!({ "documentId": "doc-live", "cards": [] }));
+        live_message.block_ids = vec![live_block.id.clone()];
+        ChatV2Repo::create_message_v2(&chat_db, &live_message).expect("create live message");
+        ChatV2Repo::create_block_v2(&chat_db, &live_block).expect("create live block");
+
+        let stale_ms =
+            chrono::Utc::now().timestamp_millis() - STALE_RUNNING_ANKI_BLOCK_AFTER_MS - 60_000;
+        {
+            let conn = chat_db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE chat_v2_blocks SET status = 'running', started_at = ?1, first_chunk_at = ?1, ended_at = NULL",
+                rusqlite::params![stale_ms],
+            )
+            .expect("age blocks");
+        }
+
+        let _live_guard = ChatAnkiPipelineGuard::register(&live_block.id, None);
+        let reaped =
+            reap_stale_running_anki_blocks(&chat_db, session_id).expect("reap should succeed");
+        assert_eq!(reaped, vec![zombie_block_id.clone()]);
+
+        let zombie = ChatV2Repo::get_block_v2(&chat_db, &zombie_block_id)
+            .expect("load zombie")
+            .expect("zombie exists");
+        assert_eq!(zombie.status, block_status::ERROR);
+        assert_eq!(
+            zombie.error.as_deref(),
+            Some("blocks.ankiCards.errors.pipelineTimeout")
+        );
+        assert!(zombie.ended_at.is_some());
+        let zombie_output = zombie.tool_output.expect("zombie tool output");
+        assert_eq!(
+            zombie_output["interrupted"]["reason"],
+            json!("stale_running_block")
+        );
+        assert_eq!(zombie_output["workflowStatus"], json!("failed"));
+
+        // 注册中的块保持 running，不被 reap。
+        let live = ChatV2Repo::get_block_v2(&chat_db, &live_block.id)
+            .expect("load live")
+            .expect("live exists");
+        assert_eq!(live.status, block_status::RUNNING);
+
+        // 守卫释放后再 reap：live 块也被判定为僵尸并落库 failed。
+        drop(_live_guard);
+        let reaped_after_drop =
+            reap_stale_running_anki_blocks(&chat_db, session_id).expect("second reap");
+        assert_eq!(reaped_after_drop, vec![live_block.id.clone()]);
+    }
+
+    /// A9（后端侧）：文档终态时，陈旧/孤儿块快照刷新为 DB 权威卡片；
+    /// 已收敛的块不重复改写；块内 deletedCardIds 继续被尊重。
+    #[test]
+    fn test_sync_terminal_anki_block_refreshes_stale_snapshot() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let session_id = "session-sync";
+        let document_id = "doc-sync";
+        let target = seed_anki_cards_block(
+            &chat_db,
+            session_id,
+            document_id,
+            vec![json!({ "id": "card-a", "front": "old", "back": "old" })],
+            Vec::new(),
+        );
+        let block_id = required_mutation_block_id(&target).to_string();
+        // 模拟崩溃遗留的孤儿 running 块。
+        {
+            let conn = chat_db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE chat_v2_blocks SET status = 'running', ended_at = NULL WHERE id = ?1",
+                rusqlite::params![block_id],
+            )
+            .expect("mark running");
+        }
+
+        let tasks = vec![make_task(TaskStatus::Completed)];
+        let db_cards = vec![
+            make_chatanki_card("card-a", "task-1", "front-a", "back-a"),
+            make_chatanki_card("card-b", "task-1", "front-b", "back-b"),
+        ];
+
+        let refreshed = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &tasks,
+            &db_cards,
+        )
+        .expect("refresh should succeed");
+        assert!(refreshed);
+
+        let block = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load block")
+            .expect("block exists");
+        assert_eq!(block.status, block_status::SUCCESS);
+        let output = block.tool_output.expect("tool output");
+        let card_ids: Vec<&str> = output["cards"]
+            .as_array()
+            .expect("cards array")
+            .iter()
+            .filter_map(|c| c["id"].as_str())
+            .collect();
+        assert_eq!(card_ids, vec!["card-a", "card-b"]);
+        assert_eq!(output["cardsRefreshedFromDb"], json!(true));
+        assert_eq!(output["workflowStatus"], json!("completed"));
+
+        // 已收敛：二次调用是 no-op。
+        let refreshed_again = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &tasks,
+            &db_cards,
+        )
+        .expect("second refresh should succeed");
+        assert!(!refreshed_again);
+
+        // deletedCardIds 被尊重：用户在块内删除的卡不因刷新复活。
+        {
+            let conn = chat_db.get_conn_safe().expect("conn");
+            let mut patched: Value = serde_json::from_str(
+                &conn
+                    .query_row(
+                        "SELECT tool_output_json FROM chat_v2_blocks WHERE id = ?1",
+                        rusqlite::params![block_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .expect("load output"),
+            )
+            .expect("parse output");
+            patched["deletedCardIds"] = json!(["card-b"]);
+            patched["cards"] = json!([patched["cards"][0].clone()]);
+            conn.execute(
+                "UPDATE chat_v2_blocks SET tool_output_json = ?2 WHERE id = ?1",
+                rusqlite::params![block_id, patched.to_string()],
+            )
+            .expect("apply block-side delete");
+        }
+        let refreshed_after_delete = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &tasks,
+            &db_cards,
+        )
+        .expect("refresh after block-side delete");
+        assert!(
+            !refreshed_after_delete,
+            "block-side deletion must not trigger resurrection"
+        );
+
+        // 仍在运行的文档不触发刷新。
+        let running_tasks = vec![make_task(TaskStatus::Processing)];
+        let refreshed_running = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &running_tasks,
+            &db_cards,
+        )
+        .expect("running refresh should succeed");
+        assert!(!refreshed_running);
     }
 }

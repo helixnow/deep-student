@@ -55,6 +55,8 @@ pub struct EmbeddingResult {
     pub chunks: Vec<ChunkWithEmbedding>,
     pub embedding_dim: usize,
     pub model_config_id: String,
+    pub model_name: String,
+    pub model_fingerprint: String,
     pub modality: String,
 }
 
@@ -69,6 +71,10 @@ pub struct IndexChunksResult {
     pub dim: usize,
     /// 写入 Lance 的 embedding_id 列表（与 chunks 一一对应）
     pub embedding_ids: Vec<String>,
+    /// Concrete model/index identity used for these rows.
+    pub model_config_id: Option<String>,
+    pub index_profile_id: Option<String>,
+    pub generation: Option<i64>,
 }
 
 // ============================================================================
@@ -116,24 +122,47 @@ impl VfsEmbeddingService {
     }
 
     /// 获取当前配置的嵌入模型 ID 和名称
-    pub async fn get_embedding_model_info(&self) -> VfsResult<(String, String)> {
-        let model_id = self.get_embedding_model_id().await?;
-
-        // 从模型配置中获取模型名称
-        let model_name = self
+    pub async fn get_embedding_model_info(&self) -> VfsResult<(String, String, String)> {
+        let config = self
             .llm_manager
-            .get_api_configs()
+            .get_embedding_model_config()
             .await
-            .ok()
-            .and_then(|configs| {
-                configs
-                    .into_iter()
-                    .find(|cfg| cfg.id == model_id)
-                    .map(|cfg| cfg.name)
-            })
-            .unwrap_or_else(|| model_id.clone());
+            .map_err(|error| VfsError::Other(format!("获取嵌入模型配置失败: {}", error)))?;
+        let fingerprint = crate::vfs::repos::embedding_dim_repo::model_fingerprint_for_config(
+            &config,
+            MODALITY_TEXT,
+        )?;
+        Ok((config.id, config.model, fingerprint))
+    }
 
-        Ok((model_id, model_name))
+    async fn ensure_model_assignment_unchanged(
+        &self,
+        expected_config_id: &str,
+        expected_model: &str,
+        expected_fingerprint: &str,
+    ) -> VfsResult<()> {
+        let current = self
+            .llm_manager
+            .get_embedding_model_config()
+            .await
+            .map_err(|error| VfsError::Other(format!("重新读取嵌入模型配置失败: {}", error)))?;
+        let current_fingerprint =
+            crate::vfs::repos::embedding_dim_repo::model_fingerprint_for_config(
+                &current,
+                MODALITY_TEXT,
+            )?;
+        if current.id != expected_config_id
+            || current.model != expected_model
+            || current_fingerprint != expected_fingerprint
+        {
+            return Err(VfsError::InvalidState {
+                message: format!(
+                    "Text embedding assignment changed while the batch was running: {}/{} -> {}/{}",
+                    expected_config_id, expected_model, current.id, current.model
+                ),
+            });
+        }
+        Ok(())
     }
 
     /// 生成单个文本的嵌入向量
@@ -223,11 +252,13 @@ impl VfsEmbeddingService {
                 chunks: Vec::new(),
                 embedding_dim: 0,
                 model_config_id: String::new(),
+                model_name: String::new(),
+                model_fingerprint: String::new(),
                 modality: "text".to_string(),
             });
         }
 
-        let model_id = self.get_embedding_model_id().await?;
+        let (model_id, model_name, model_fingerprint) = self.get_embedding_model_info().await?;
         let total = chunks.len();
         let mut results = Vec::with_capacity(total);
         let mut embedding_dim = 0usize;
@@ -303,6 +334,8 @@ impl VfsEmbeddingService {
             chunks: results,
             embedding_dim,
             model_config_id: model_id,
+            model_name,
+            model_fingerprint,
             modality: MODALITY_TEXT.to_string(),
         })
     }
@@ -370,8 +403,11 @@ impl VfsEmbeddingService {
     pub fn chunks_to_lance_rows(
         chunks: &[ChunkWithEmbedding],
         resource_id: &str,
+        unit_id: &str,
         resource_type: &str,
         folder_id: Option<&str>,
+        index_profile_id: &str,
+        generation: i64,
     ) -> Vec<VfsLanceRow> {
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -406,12 +442,15 @@ impl VfsEmbeddingService {
                 VfsLanceRow {
                     embedding_id: VfsEmbedding::generate_id(),
                     resource_id: resource_id.to_string(),
+                    unit_id: unit_id.to_string(),
                     resource_type: resource_type.to_string(),
                     folder_id: folder_id.map(|s| s.to_string()),
-                    chunk_index: c.chunk.index as i32,
+                    chunk_index: c.chunk.index,
                     text: c.chunk.text.clone(),
                     metadata_json,
                     created_at: now.clone(),
+                    index_profile_id: index_profile_id.to_string(),
+                    generation,
                     embedding: c.embedding.clone(),
                 }
             })
@@ -457,6 +496,7 @@ impl VfsEmbeddingPipeline {
     pub async fn index_chunks(
         &self,
         resource_id: &str,
+        unit_id: &str,
         resource_type: &str,
         folder_id: Option<&str>,
         chunks: Vec<TextChunk>,
@@ -468,14 +508,17 @@ impl VfsEmbeddingPipeline {
                 count: 0,
                 dim: 0,
                 embedding_ids: Vec::new(),
+                model_config_id: None,
+                index_profile_id: None,
+                generation: None,
             });
         }
 
         // VFS 只支持文本模态
         if modality != MODALITY_TEXT {
-            return Err(VfsError::Other(format!(
-                "VFS 只支持文本模态，多模态内容请使用 crate::multimodal 模块"
-            )));
+            return Err(VfsError::Other(
+                "VFS 只支持文本模态，多模态内容请使用 crate::multimodal 模块".to_string(),
+            ));
         }
 
         // 1. 生成嵌入
@@ -489,21 +532,52 @@ impl VfsEmbeddingPipeline {
                 count: 0,
                 dim: 0,
                 embedding_ids: Vec::new(),
+                model_config_id: None,
+                index_profile_id: None,
+                generation: None,
             });
         }
 
-        // 2. 转换为 Lance 行格式
+        // 2. Resolve profile and reserve the next Unit generation.  SQLite
+        // activates this generation only after Segment metadata commits.
+        self.embedding_service
+            .ensure_model_assignment_unchanged(
+                &result.model_config_id,
+                &result.model_name,
+                &result.model_fingerprint,
+            )
+            .await?;
+        let index_profile = self.lance_store.ensure_model_profile_with_fingerprint(
+            modality,
+            result.embedding_dim,
+            &result.model_config_id,
+            Some(&result.model_name),
+            &result.model_fingerprint,
+        )?;
+        let generation = self.lance_store.next_unit_generation(unit_id, modality)?;
+
+        // 3. 转换为 Lance 行格式
         let rows = VfsEmbeddingService::chunks_to_lance_rows(
             &result.chunks,
             resource_id,
+            unit_id,
             resource_type,
             folder_id,
+            &index_profile.id,
+            generation,
         );
 
-        // 3. 保存 embedding_ids（用于 SQLite lance_row_id 同步）
+        // 4. 保存 embedding_ids（用于 SQLite lance_row_id 同步）
         let embedding_ids: Vec<String> = rows.iter().map(|r| r.embedding_id.clone()).collect();
 
-        // 4. 写入 Lance 存储（使用指定模态）
+        // 5. 写入 Lance 存储（使用指定模态）
+        self.embedding_service
+            .ensure_model_assignment_unchanged(
+                &result.model_config_id,
+                &result.model_name,
+                &result.model_fingerprint,
+            )
+            .await?;
         self.lance_store.write_chunks(modality, &rows).await?;
 
         let count = result.chunks.len();
@@ -518,6 +592,9 @@ impl VfsEmbeddingPipeline {
             count,
             dim,
             embedding_ids,
+            model_config_id: Some(result.model_config_id),
+            index_profile_id: Some(index_profile.id),
+            generation: Some(generation),
         })
     }
 
@@ -535,6 +612,7 @@ impl VfsEmbeddingPipeline {
     pub async fn reindex_chunks(
         &self,
         resource_id: &str,
+        unit_id: &str,
         resource_type: &str,
         folder_id: Option<&str>,
         chunks: Vec<TextChunk>,
@@ -547,6 +625,7 @@ impl VfsEmbeddingPipeline {
         // 2. 创建新索引
         self.index_chunks(
             resource_id,
+            unit_id,
             resource_type,
             folder_id,
             chunks,
@@ -602,12 +681,18 @@ mod tests {
         let rows = VfsEmbeddingService::chunks_to_lance_rows(
             &chunks,
             "resource_123",
+            "unit_123",
             "note",
             Some("folder_456"),
+            "profile_123",
+            7,
         );
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].resource_id, "resource_123");
+        assert_eq!(rows[0].unit_id, "unit_123");
+        assert_eq!(rows[0].index_profile_id, "profile_123");
+        assert_eq!(rows[0].generation, 7);
         assert_eq!(rows[0].resource_type, "note");
         assert_eq!(rows[0].folder_id, Some("folder_456".to_string()));
         assert_eq!(rows[0].chunk_index, 0);

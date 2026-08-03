@@ -13,6 +13,7 @@
 import { useEffect } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
+import { MENU_CLOSE_WINDOW_EVENT } from './menuEvents';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -35,6 +36,19 @@ function buildHandlers(): Record<string, MenuHandler> {
       );
     },
     'menu://new-session': dispatch(COMMAND_EVENTS.CHAT_NEW_SESSION),
+    [MENU_CLOSE_WINDOW_EVENT]: () => {
+      // ⌘W 的原生 key equivalent 到不了 WKWebView（performKeyEquivalent 先吃），
+      // 菜单侧改为发事件路由回来。先给 workbench 一次接管机会（桌面激活时
+      // useWorkbenchShortcuts 会 preventDefault 并关闭 workbench 焦点窗口），
+      // 未被接管则回落到历史行为：关闭原生主窗。
+      const handled = !window.dispatchEvent(
+        new CustomEvent(MENU_CLOSE_WINDOW_EVENT, { cancelable: true })
+      );
+      if (handled) return;
+      void import('@tauri-apps/api/window')
+        .then((m) => m.getCurrentWindow().close())
+        .catch((err) => console.warn('[menu-bridge] close window failed:', err));
+    },
     'menu://command-palette': () => {
       // Open the command palette via the same key combo it listens for.
       window.dispatchEvent(
@@ -49,7 +63,7 @@ function buildHandlers(): Record<string, MenuHandler> {
     },
     'menu://toggle-sidebar': dispatch(COMMAND_EVENTS.CHAT_TOGGLE_SIDEBAR),
     'menu://documentation': () => {
-      const url = 'https://github.com/anomalyco/deep-student';
+      const url = 'https://github.com/helixnow/deep-student';
       try {
         // Prefer Tauri opener so we keep launching in the user's default browser
         void import('@tauri-apps/plugin-opener')
@@ -60,7 +74,7 @@ function buildHandlers(): Record<string, MenuHandler> {
       }
     },
     'menu://report-issue': () => {
-      const url = 'https://github.com/anomalyco/deep-student/issues/new';
+      const url = 'https://github.com/helixnow/deep-student/issues/new';
       try {
         void import('@tauri-apps/plugin-opener')
           .then((m) => m.openUrl?.(url))

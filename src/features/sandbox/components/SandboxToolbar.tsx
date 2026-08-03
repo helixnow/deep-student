@@ -1,7 +1,8 @@
 import React from 'react';
 import { ArrowClockwise, SidebarSimple, X } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 interface SandboxToolbarProps {
   title: string;
@@ -22,6 +23,9 @@ export function SandboxToolbar({
   onToggleInspector,
   onClose,
 }: SandboxToolbarProps) {
+  const { t } = useTranslation('workbench');
+  // 触屏（coarse 指针）下图标按钮放大到 ≥40px 触控目标
+  const iconBtnClass = '!h-8 !w-8 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10';
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border/70 px-5 py-4">
       <div className="min-w-0 flex-1">
@@ -35,39 +39,39 @@ export function SandboxToolbar({
       </div>
 
       <div className="flex items-center gap-2">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
           onClick={onReload}
-          title="刷新"
-          aria-label="刷新"
-          className="!h-8 !w-8 !p-0"
+          title={t('sandbox.refresh')}
+          aria-label={t('sandbox.refresh')}
+          className={iconBtnClass}
         >
           <ArrowClockwise size={16} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
           onClick={onToggleInspector}
-          title={inspectorOpen ? '收起检查器' : '打开检查器'}
-          aria-label={inspectorOpen ? '收起检查器' : '打开检查器'}
-          className="!h-8 !w-8 !p-0"
+          title={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+          aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+          className={iconBtnClass}
         >
           <SidebarSimple size={16} />
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
           onClick={onClose}
-          title="关闭"
-          aria-label="关闭"
-          className="!h-8 !w-8 !p-0"
+          title={t('sandbox.close')}
+          aria-label={t('sandbox.close')}
+          className={iconBtnClass}
         >
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
     </header>
   );

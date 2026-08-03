@@ -28,8 +28,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::llm_manager::adapters::{get_adapter, PassbackPolicy};
-use crate::llm_manager::ApiConfig;
+use crate::llm_manager::adapters::PassbackPolicy;
+use crate::llm_manager::{request_adapter_for_config, ApiConfig};
 
 // ============================================================================
 // 回传策略枚举
@@ -38,6 +38,7 @@ use crate::llm_manager::ApiConfig;
 /// 思维链回传策略
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ReasoningPassbackPolicy {
     /// DeepSeek 风格：回传 `reasoning_content` 字符串
     /// 适用于：DeepSeek R1/Reasoner、Perplexity Sonar、xAI Grok、GLM-4-Thinking
@@ -49,13 +50,8 @@ pub enum ReasoningPassbackPolicy {
 
     /// 不回传思维链
     /// 适用于：Claude、普通 GPT 等
+    #[default]
     NoPassback,
-}
-
-impl Default for ReasoningPassbackPolicy {
-    fn default() -> Self {
-        Self::NoPassback
-    }
 }
 
 // ============================================================================
@@ -197,11 +193,7 @@ pub fn get_passback_policy(config: &ApiConfig) -> ReasoningPassbackPolicy {
     }
 
     // 委托给适配器系统
-    let adapter = get_adapter(
-        config.provider_type.as_deref(),
-        config.provider_scope.as_deref(),
-        &config.model_adapter,
-    );
+    let adapter = request_adapter_for_config(config);
     let adapter_policy = adapter.get_passback_policy(config);
 
     // 转换适配器的 PassbackPolicy 到本模块的 ReasoningPassbackPolicy

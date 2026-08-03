@@ -12,8 +12,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { DotsSixVertical, Plus } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { CaretRight, DotsSixVertical, Plus } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { cn } from '@/lib/utils';
 import { ProviderIcon, getProviderBadgeChromeStyle } from '@/components/ui/ProviderIcon';
@@ -24,24 +24,15 @@ import {
 } from './SettingsCommon';
 import { useVendorSettings } from './VendorSettingsContext';
 import type { VendorConfig } from '@/types';
+import { isVendorConfiguredForSidebar } from '@/utils/vendorAuth';
 
 // --- Helpers ---
 
-const hasConfiguredApiKey = (apiKey?: string | null): boolean => {
-  const trimmed = apiKey?.trim() ?? '';
-  return Boolean(trimmed);
-};
-
-/** 供应商是否已配置（有 apiKey，或 noApiKey 模式且有 baseUrl） */
-const isVendorConfigured = (vendor: VendorConfig): boolean => {
-  if (vendor.noApiKey) {
-    return !!(vendor.baseUrl?.trim());
-  }
-  return hasConfiguredApiKey(vendor.apiKey);
-};
-
-const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
-  if (isVendorConfigured(vendor)) {
+const getVendorIconStyle = (
+  vendor: VendorConfig,
+  openAICodexAuthenticated: boolean,
+): React.CSSProperties => {
+  if (isVendorConfiguredForSidebar(vendor, openAICodexAuthenticated)) {
     return {};
   }
   return {
@@ -50,15 +41,21 @@ const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
   };
 };
 
-const getVendorIconTone = (vendor: VendorConfig): 'color' | 'muted' => (
-  isVendorConfigured(vendor) ? 'color' : 'muted'
+const getVendorIconTone = (
+  vendor: VendorConfig,
+  openAICodexAuthenticated: boolean,
+): 'color' | 'muted' => (
+  isVendorConfiguredForSidebar(vendor, openAICodexAuthenticated) ? 'color' : 'muted'
 );
 
-const getVendorIconBadgeStyle = (vendor: VendorConfig): React.CSSProperties => {
+const getVendorIconBadgeStyle = (
+  vendor: VendorConfig,
+  openAICodexAuthenticated: boolean,
+): React.CSSProperties => {
   const modelId = vendor.providerType || vendor.name || '';
   return {
     ...getProviderBadgeChromeStyle(modelId),
-    ...getVendorIconStyle(vendor),
+    ...getVendorIconStyle(vendor, openAICodexAuthenticated),
     alignItems: 'center',
     borderRadius: 9999,
     boxSizing: 'border-box',
@@ -78,6 +75,7 @@ const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) =
   const normalizedProviderType = providerType.toLowerCase();
   const map: Record<string, string> = {
     openai: 'OpenAI',
+    openai_codex: 'OpenAI Codex',
     anthropic: 'Anthropic',
     google: 'Google',
     siliconflow: 'SiliconFlow',
@@ -119,9 +117,12 @@ export const VendorSidebar: React.FC = () => {
     selectedVendor,
     setSelectedVendorId,
     profileCountByVendor,
+    openAICodexAuthenticated = false,
     vendorBusy,
     handleOpenVendorModal,
     onReorderVendors,
+    isSmallScreen,
+    openMobileVendorDetail,
   } = useVendorSettings();
 
   // 乐观更新：本地维护拖拽顺序，避免等待持久化导致闪烁
@@ -162,21 +163,31 @@ export const VendorSidebar: React.FC = () => {
         {...provided.draggableProps}
         {...provided.dragHandleProps}
         style={provided.draggableProps.style}
-        onClick={() => setSelectedVendorId(vendor.id)}
+        onClick={() => {
+          setSelectedVendorId(vendor.id);
+          // P1-6 移动端两级导航：点击行即进入供应商详情屏
+          if (isSmallScreen) openMobileVendorDetail?.();
+        }}
         className={cn(
-          'px-3 py-2 text-left w-full flex items-center gap-2 cursor-grab active:cursor-grabbing group',
+          'px-3 py-2 text-left w-full flex items-center gap-2 group',
+          // P1-8 触屏禁拖：小屏不显示抓取光标（拖拽已通过 isDragDisabled 关闭）
+          isSmallScreen ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
           isActive
             ? settingsQuietSelectedRowClassName
             : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
+          // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
+          // P1-8 触控目标：小屏行高提升到 44px
+          isSmallScreen ? 'min-h-11' : 'min-h-[32px]',
+          'rounded-[var(--shell-nav-row-radius,14px)] text-sm',
           snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
         )}
       >
         <span
           data-testid={`vendor-icon-${vendor.id}`}
-          data-icon-tone={getVendorIconTone(vendor)}
+          data-icon-tone={getVendorIconTone(vendor, openAICodexAuthenticated)}
           data-icon-chrome="badge"
           className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
-          style={getVendorIconBadgeStyle(vendor)}
+          style={getVendorIconBadgeStyle(vendor, openAICodexAuthenticated)}
         >
           <ProviderIcon
             modelId={vendor.providerType || vendor.name || ''}
@@ -193,17 +204,23 @@ export const VendorSidebar: React.FC = () => {
             </div>
             <div className="flex items-center gap-1.5">
               {modelCount > 0 && (
-                <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
+                <span className="text-2xs text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
                   {modelCount}
                 </span>
               )}
             </div>
           </div>
         </div>
-        {/* 拖拽指示：hover 时显示，放最右边 */}
-        <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-          <DotsSixVertical size={12} />
-        </span>
+        {/* 移动端：chevron 暗示可进入详情；桌面端：hover 显示拖拽指示 */}
+        {isSmallScreen ? (
+          <span className="shrink-0 text-muted-foreground/40" aria-hidden="true">
+            <CaretRight size={14} />
+          </span>
+        ) : (
+          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <DotsSixVertical size={12} />
+          </span>
+        )}
       </div>
     );
   };
@@ -215,7 +232,7 @@ export const VendorSidebar: React.FC = () => {
           <div className="text-sm font-medium text-foreground">
             {t('settings:vendor_panel.list_title')}
           </div>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -224,7 +241,7 @@ export const VendorSidebar: React.FC = () => {
             aria-label={t('settings:vendor_panel.add_vendor_button')}
           >
             <Plus className="h-3.5 w-3.5" />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 加载态 skeleton */}
@@ -247,7 +264,8 @@ export const VendorSidebar: React.FC = () => {
               {(provided) => (
                 <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-0.5">
                   {displayVendors.map((vendor, index) => (
-                    <Draggable key={vendor.id} draggableId={vendor.id} index={index}>
+                    // P1-8 触屏禁拖：整行拖拽在触屏上与滚动/点按冲突，小屏直接关闭拖拽排序
+                    <Draggable key={vendor.id} draggableId={vendor.id} index={index} isDragDisabled={isSmallScreen}>
                       {(provided, snapshot) => renderVendorRow(vendor, provided, snapshot)}
                     </Draggable>
                   ))}

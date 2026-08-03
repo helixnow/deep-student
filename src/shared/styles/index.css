@@ -1,9 +1,9 @@
 /**
- * Shared styles - original App.css and DeepStudent.css preserved intact.
+ * Shared styles entry — app.css / deep-student.css carry the legacy global
+ * styles (formerly src/App.css / src/DeepStudent.css)。
  * These will be decomposed into feature-scoped files in a future phase.
  */
 @import './app.css';
 @import './deep-student.css';
 @import './scrollbar-utils.css';
-@import './buttons.css';
 @import './page-keepalive.css';

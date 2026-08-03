@@ -7,7 +7,7 @@ use crate::vfs::error::VfsError;
 use crate::vfs::repos::index_segment_repo::{CreateSegmentInput, VfsIndexSegment};
 use crate::vfs::repos::index_unit_repo::{IndexState, VfsIndexUnit};
 use crate::vfs::repos::{
-    embedding_dim_repo, index_segment_repo, index_unit_repo, VfsIndexStateRepo,
+    embedding_dim_repo, embedding_repo, index_segment_repo, index_unit_repo, VfsIndexStateRepo,
 };
 use crate::vfs::unit_builder::{UnitBuildInput, UnitBuilderRegistry};
 use rusqlite::Connection;
@@ -149,17 +149,12 @@ impl VfsIndexService {
 
         let sync_result = index_unit_repo::sync_units(conn, &input.resource_id, output.units)?;
 
-        // ★ F5 修复：孤立向量入队（与本次同步同一连接/事务），
-        // 由后台索引循环 drain_lance_orphan_queue 真正删除 LanceDB 向量
+        // ★ F5/P1-5：孤立向量已由 sync_units 在同一连接/事务内写入
+        // __lance_orphan_queue（repo 内入队，调用方无法遗漏），
+        // 由后台索引循环 drain_lance_orphan_queue 真正删除 LanceDB 向量。此处仅记录。
         if !sync_result.orphaned_lance_row_ids.is_empty() {
-            for row_id in &sync_result.orphaned_lance_row_ids {
-                conn.execute(
-                    "INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id) VALUES (?1, ?2)",
-                    rusqlite::params![row_id, input.resource_id],
-                )?;
-            }
             log::info!(
-                "[VfsIndexService] sync_resource_units: enqueued {} orphaned LanceDB vectors for resource {} into __lance_orphan_queue",
+                "[VfsIndexService] sync_resource_units: {} stale LanceDB vectors for resource {} enqueued into __lance_orphan_queue",
                 sync_result.orphaned_lance_row_ids.len(),
                 input.resource_id
             );
@@ -262,19 +257,72 @@ impl VfsIndexService {
     }
 
     /// 重置 Unit 索引状态（用于重新索引）
+    ///
+    /// ★ P0-1 修复：Unit 置 pending 的同时必须抬升资源级调度状态。
+    /// 文本 worker 只按 `resources.index_state` claim 资源
+    /// （`get_pending_resources` 不看 Unit 状态），仅把 Unit 置 pending
+    /// 会让该 Unit 永远不被文本流水线处理；多模态 worker 虽按
+    /// `unit.mm_state = pending` 取样，但同步抬升 `mm_index_state` 可让
+    /// 资源级 claim/退避账本保持一致（否则双模态行为不对称）。
     pub fn reset_unit_index(&self, unit_id: &str, mode: &str) -> Result<(), VfsError> {
         let conn = self.db.get_conn()?;
+        let unit =
+            index_unit_repo::get_by_id(&conn, unit_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Unit".to_string(),
+                id: unit_id.to_string(),
+            })?;
 
-        match mode {
-            "text" => {
-                index_unit_repo::set_text_state(&conn, unit_id, IndexState::Pending, None)?;
+        let text_reset_state = |unit: &VfsIndexUnit| {
+            if unit.text_required {
+                IndexState::Pending
+            } else {
+                IndexState::Disabled
             }
-            "mm" => {
-                index_unit_repo::set_mm_state(&conn, unit_id, IndexState::Pending, None)?;
+        };
+        let mm_reset_state = |unit: &VfsIndexUnit| {
+            if unit.mm_required && unit.image_blob_hash.is_some() {
+                IndexState::Pending
+            } else {
+                IndexState::Disabled
             }
-            "both" | _ => {
-                index_unit_repo::set_text_state(&conn, unit_id, IndexState::Pending, None)?;
-                index_unit_repo::set_mm_state(&conn, unit_id, IndexState::Pending, None)?;
+        };
+
+        let (reset_text, reset_mm) = match mode {
+            "text" => (true, false),
+            "mm" => (false, true),
+            "both" => (true, true),
+            _ => {
+                return Err(VfsError::Other(format!(
+                    "unsupported index reset mode '{}'; expected text, mm, or both",
+                    mode
+                )))
+            }
+        };
+
+        if reset_text {
+            let state = text_reset_state(&unit);
+            index_unit_repo::set_text_state(&conn, unit_id, state.clone(), None)?;
+            if state == IndexState::Pending {
+                // mark_pending 同时清零 retry/backoff 计数，保证手动重试立即入队
+                VfsIndexStateRepo::set_index_state_with_conn(
+                    &conn,
+                    &unit.resource_id,
+                    embedding_repo::INDEX_STATE_PENDING,
+                    None,
+                    None,
+                )?;
+            }
+        }
+        if reset_mm {
+            let state = mm_reset_state(&unit);
+            index_unit_repo::set_mm_state(&conn, unit_id, state.clone(), None)?;
+            if state == IndexState::Pending {
+                VfsIndexStateRepo::set_mm_index_state_with_conn(
+                    &conn,
+                    &unit.resource_id,
+                    embedding_repo::INDEX_STATE_PENDING,
+                    None,
+                )?;
             }
         }
 

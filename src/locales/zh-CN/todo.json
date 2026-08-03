@@ -1,7 +1,8 @@
 {
   "sections": {
     "smartViews": "智能视图",
-    "lists": "列表"
+    "lists": "列表",
+    "favorites": "收藏"
   },
   "views": {
     "inbox": "收件箱",
@@ -11,12 +12,375 @@
     "overdue": "已过期",
     "completed": "已完成"
   },
+  "automation": {
+    "loading": "正在加载定时任务概览",
+    "createPanel": {
+      "quickTitle": "用一句话快速创建",
+      "nlApply": "填充表单",
+      "nlFirstRun": "首次运行：{{time}}",
+      "templatesToggle": "从模板开始",
+      "agentPrompt": "Agent 指令（可选）",
+      "agentPromptHint": "留空则使用上面的任务指令",
+      "promptCount": "{{count}} / {{max}}",
+      "scheduleInvalid": "当前排期无法计算出下一次运行，请检查排期设置",
+      "shortcutHint": "Esc 关闭 · ⌘/Ctrl+Enter 创建",
+      "success": "已创建定时任务「{{name}}」",
+      "steps": {
+        "describe": "描述任务",
+        "describeHint": "一句话或模板快速起步",
+        "configure": "配置细节",
+        "configureHint": "名称、动作与运行排期",
+        "confirm": "确认创建"
+      },
+      "confirm": {
+        "name": "名称",
+        "nameEmpty": "尚未填写",
+        "action": "动作",
+        "schedule": "排期",
+        "firstRun": "首次运行",
+        "noRun": "暂无可运行时间"
+      },
+      "scheduleSummary": {
+        "daily": "每天 {{time}}",
+        "weekdays": "工作日 {{time}}",
+        "weekly": "每周{{weekday}} {{time}}",
+        "monthly": "每月 {{day}} 号 {{time}}",
+        "interval": "每 {{minutes}} 分钟",
+        "once": "{{date}} {{time}} 运行一次",
+        "weeklyMulti": "每周{{weekdays}} {{time}}"
+      }
+    },
+    "nl": {
+      "placeholder": "用一句话描述，例如：每天早上8点提醒我背单词",
+      "matchedLabel": "识别到的时间表达",
+      "noSchedule": "未识别出排期，将只保留任务内容",
+      "defaultTimeHint": "未指定时刻，默认 09:00",
+      "confidence": {
+        "high": "解析可信度：高",
+        "medium": "解析可信度：中，请确认排期",
+        "low": "解析可信度：低，请手动设置排期"
+      },
+      "hints": {
+        "defaultTime": "未指定时刻，已默认 09:00",
+        "impliedTime": "按时段词推断了默认时刻，可在下方调整",
+        "weekendSaturday": "「周末」已按周六处理",
+        "weekAnchored": "「每周」未指定星期，已按今天的星期锚定",
+        "monthlyFirstDay": "「每月」未指定几号，已默认 1 号",
+        "intervalClamped": "间隔已收敛到 5–1440 分钟范围",
+        "bareHourAmbiguous": "未注明上午/下午，已按 24 小时制理解",
+        "timeOnlyToday": "只识别到时刻，已排到今天",
+        "timeRolledTomorrow": "该时刻今天已过，已顺延到明天",
+        "monthLastDay": "「每月最后一天」按每月 31 号处理，短月自动顺延到月末"
+      }
+    },
+    "entry": {
+      "badgeAria": "{{count}} 个启用的定时任务",
+      "failedDotAria": "有定时任务最近运行失败",
+      "openCommand": "打开定时任务",
+      "openCommandDesc": "切换到待办的定时任务视图",
+      "createCommand": "新建定时任务",
+      "createCommandDesc": "打开定时任务视图并开始新建任务",
+      "pauseBackgroundCommand": "暂停后台自动化",
+      "pauseBackgroundCommandDesc": "关闭后台运行开关：窗口关闭后定时任务不再执行，不改变每个任务的启用状态",
+      "pauseBackgroundDone": "已暂停后台自动化",
+      "resumeBackgroundCommand": "恢复后台自动化",
+      "resumeBackgroundCommandDesc": "重新允许定时任务在窗口关闭后继续在后台执行",
+      "resumeBackgroundDone": "已恢复后台自动化",
+      "backgroundToggleFailed": "切换后台自动化失败"
+    },
+    "card": {
+      "listTitle": "任务列表",
+      "capacityHint": "已创建 {{count}} / {{max}} 个任务",
+      "paused": "已暂停",
+      "nextRun": "下次：{{time}}",
+      "lastRun": "上次：{{time}}",
+      "recentRuns": "最近 {{count}} 次运行",
+      "saving": "保存中",
+      "toggleAria": "启用或停用「{{name}}」",
+      "runNow": "立即运行",
+      "runNowAria": "立即运行「{{name}}」",
+      "edit": "编辑",
+      "editAria": "编辑「{{name}}」",
+      "delete": "删除",
+      "deleteAria": "删除「{{name}}」",
+      "deleteConfirm": "删除「{{name}}」？运行历史将一并删除",
+      "deleteAction": "永久删除",
+      "save": "保存",
+      "updated": "已更新「{{name}}」",
+      "updatedElsewhere": "任务已在别处更新，列表已刷新",
+      "runStarted": "「{{name}}」已开始运行"
+    },
+    "title": "定时任务",
+    "subtitle": "提醒与无人值守 Agent 运行",
+    "summary": "自动化概览",
+    "enabled": "已启用",
+    "running": "运行中",
+    "failed24h": "24 小时失败",
+    "next": "下次执行",
+    "never": "暂无",
+    "startingSoon": "即将开始",
+    "background": "关闭窗口后继续运行",
+    "backgroundHint": "显式退出应用或关机会停止任务，重新打开后按补偿策略恢复",
+    "agentTurnHint": "Agent 任务会在后台无人值守调用 AI 模型（消耗 token），执行结果可在运行历史中查看",
+    "sessionModeHint": "连续会话会保留此前运行的上下文，适合需要记忆的任务；每次独立更省 token",
+    "modelHint": "留空使用默认对话模型；可在 设置 → 模型 查看可用模型 ID",
+    "catchUpHint": "逐次补跑会把错过的每一次都补齐执行；对 Agent 任务意味着连续多次 AI 调用，请谨慎选择",
+    "advancedHint": "运行失败时按退避间隔自动重试；超过超时时间的运行会被终止并计为失败",
+    "history": {
+      "title": "运行历史",
+      "toggleAria": "运行历史（{{count}} 条）",
+      "filterByTask": "按任务过滤",
+      "filterByStatus": "按状态过滤",
+      "allTasks": "全部任务",
+      "filterAll": "全部",
+      "filterSuccess": "成功",
+      "filterFailed": "失败",
+      "filterActive": "进行中",
+      "attempt": "第 {{attempt}}/{{max}} 次",
+      "summary": "运行摘要",
+      "error": "错误信息",
+      "copyError": "复制错误信息",
+      "copied": "已复制",
+      "copyFailed": "复制失败",
+      "duration": "耗时",
+      "detailRegion": "「{{name}}」运行详情",
+      "reason": {
+        "timeout": "运行超时：任务在限定时间内未完成，可在「重试与超时」中调大超时后重试",
+        "spawn": "启动失败：任务进程未能启动，通常为应用内部错误，可直接重试",
+        "network": "网络异常：请求未能送达服务，请检查网络连接后重试",
+        "auth": "鉴权失败：API Key 无效或权限不足，请到设置中检查模型服务配置",
+        "rateLimit": "请求过于频繁：已触发服务限流或配额上限，稍后再试",
+        "model": "模型服务异常：所选模型暂不可用，可换用其他模型或稍后重试",
+        "generic": "运行失败：可展开下方错误信息查看细节，或直接重试"
+      },
+      "scheduledFor": "计划时间",
+      "startedAt": "开始时间",
+      "finishedAt": "结束时间",
+      "nextAttemptAt": "下次重试",
+      "delivered": "已送达",
+      "retry": "重试",
+      "cancel": "取消",
+      "viewSession": "查看会话",
+      "empty": "暂无运行记录",
+      "emptyHint": "任务运行后会在这里留下历史",
+      "filteredEmpty": "当前筛选条件下没有匹配的运行记录",
+      "clearFilters": "清除筛选",
+      "actionFailed": "操作失败：{{message}}",
+      "loading": "正在加载运行历史",
+      "showMore": "显示更多（还剩 {{count}} 条）"
+    },
+    "format": {
+      "justNow": "刚刚",
+      "durationMinutesSeconds": "{{minutes}} 分 {{seconds}} 秒",
+      "durationSeconds": "{{seconds}} 秒"
+    },
+    "noHistory": "暂无运行记录",
+    "new": "新建任务",
+    "createTitle": "新建定时任务",
+    "name": "名称",
+    "action": "动作",
+    "notify": "通知 + 待办",
+    "schedule": "周期",
+    "daily": "每天",
+    "weekdays": "工作日",
+    "weekly": "每周",
+    "monthly": "每月",
+    "interval": "固定间隔",
+    "intervalMinutes": "间隔分钟",
+    "time": "时间",
+    "weekday": "星期",
+    "dayOfMonth": "日期",
+    "timezone": "时区",
+    "catchUp": "错过执行",
+    "runOnce": "恢复后补跑一次",
+    "catchAll": "逐次补跑",
+    "skip": "跳过",
+    "sessionMode": "会话",
+    "isolated": "每次独立",
+    "named": "连续会话",
+    "model": "模型配置 ID",
+    "defaultModel": "使用默认模型",
+    "retries": "失败重试",
+    "retryBackoff": "重试退避秒数",
+    "timeout": "超时秒数",
+    "prompt": "任务说明",
+    "advanced": "重试与超时",
+    "nameRequired": "请填写名称",
+    "nameTooLong": "名称最多 100 字符",
+    "promptRequired": "请填写任务说明",
+    "promptTooLong": "任务说明最多 4000 字符",
+    "timeInvalid": "请输入有效的 24 小时时间",
+    "timezoneInvalid": "请输入有效的 IANA 时区",
+    "intervalInvalid": "间隔需为 5–1440 分钟",
+    "dayOfMonthInvalid": "日期需为 1–31 之间",
+    "retriesInvalid": "重试次数需为 0–10 次",
+    "backoffInvalid": "重试退避需为 5–86400 秒",
+    "timeoutInvalid": "超时需为 30–3600 秒",
+    "showAll": "全部历史（{{total}}）",
+    "showLess": "收起历史",
+    "emptyTitle": "还没有定时任务",
+    "emptyHint": "创建定时任务，让提醒和 Agent 在后台替你自动运行",
+    "emptyTemplate": "用模板快速创建",
+    "templateName": "每日学习回顾",
+    "templatePrompt": "回顾今天到期的复习卡片和待办事项，整理出一份优先级清单",
+    "retry": "重试",
+    "openSession": "打开运行会话",
+    "viewSession": "查看会话",
+    "runCompletedTitle": "{{name}} 已完成",
+    "runFailedTitle": "{{name}} 运行失败",
+    "runCompletedFallback": "定时任务已完成。",
+    "runFailedFallback": "定时任务运行失败。",
+    "runFailedReason": "失败原因：{{reason}}",
+    "create": "创建",
+    "status": {
+      "queued": "排队中",
+      "running": "运行中",
+      "retrying": "等待重试",
+      "success": "成功",
+      "error": "失败",
+      "timeout": "已超时",
+      "heartbeat_ok": "心跳正常",
+      "spawn_error": "启动失败",
+      "cancelled": "已取消",
+      "skipped": "已跳过",
+      "unknown": "未知"
+    },
+    "trigger": {
+      "schedule": "定时",
+      "manual": "手动",
+      "retry": "重试",
+      "recovery": "恢复"
+    },
+    "scheduleEditor": {
+      "kindLabel": "重复方式",
+      "kinds": {
+        "daily": "每天",
+        "weekdays": "工作日",
+        "weekly": "每周",
+        "monthly": "每月",
+        "interval": "间隔",
+        "once": "一次"
+      },
+      "timeLabel": "时间",
+      "weekdayLabel": "星期",
+      "weekdaysShort": {
+        "0": "日",
+        "1": "一",
+        "2": "二",
+        "3": "三",
+        "4": "四",
+        "5": "五",
+        "6": "六"
+      },
+      "weekdaysLong": {
+        "0": "周日",
+        "1": "周一",
+        "2": "周二",
+        "3": "周三",
+        "4": "周四",
+        "5": "周五",
+        "6": "周六"
+      },
+      "dayOfMonthLabel": "每月几号",
+      "dayOfMonthOption": "每月 {{day}} 号",
+      "dayOfMonthHint": "每月 31 日在短月会顺延到月末",
+      "intervalLabel": "间隔分钟",
+      "intervalUnit": "分钟",
+      "intervalDecrease": "减少间隔",
+      "intervalIncrease": "增加间隔",
+      "intervalPresetsLabel": "常用间隔",
+      "presetMinutes": "{{n}} 分",
+      "presetHours": "{{n}} 时",
+      "dateLabel": "日期",
+      "timezoneLabel": "时区",
+      "timezoneSystemBadge": "（系统）",
+      "timezoneSearch": "搜索时区...",
+      "timezoneClear": "清除，回退系统时区",
+      "timezoneNoResults": "未找到匹配的时区",
+      "previewTitle": "接下来 {{n}} 次运行",
+      "previewEmpty": "暂无可预览的运行时间，请完善上方设置",
+      "preview": {
+        "today": "今天 {{time}}",
+        "tomorrow": "明天 {{time}}"
+      },
+      "errors": {
+        "time": "请输入有效的 24 小时时间（HH:MM）",
+        "dayOfMonth": "日期需为 1–31 之间",
+        "interval": "间隔需为 5–1440 分钟",
+        "onceDate": "日期不能早于今天",
+        "onceTimePassed": "该时刻今天已过，请选择更晚的时间或日期",
+        "timezone": "请选择有效的 IANA 时区",
+        "weekday": "请至少选择一个星期"
+      },
+      "describe": {
+        "daily": "每天 {{time}}",
+        "weekdays": "工作日 {{time}}",
+        "weekly": "每{{weekday}} {{time}}",
+        "monthly": "每月 {{day}} 日 {{time}}",
+        "interval": "每 {{minutes}} 分钟",
+        "once": "{{date}} {{time}}（仅一次）",
+        "withTimezone": "{{description}}（{{timezone}}）",
+        "invalid": "调度设置尚未完成",
+        "weeklyMulti": "每周{{weekdays}} {{time}}"
+      },
+      "weekdayListJoin": "、",
+      "weekdaysListItem": {
+        "0": "日",
+        "1": "一",
+        "2": "二",
+        "3": "三",
+        "4": "四",
+        "5": "五",
+        "6": "六"
+      }
+    },
+    "templates": {
+      "title": "模板起步",
+      "onceBadge": "{{time}} · 日期自选",
+      "dailyMistakes": {
+        "name": "每日错题汇总",
+        "description": "每晚 21:00 归纳当天新增错题",
+        "prompt": "汇总我今天新增的错题：按知识点归类，统计每个知识点的错题数量，指出出错频率最高的 3 个薄弱点，并针对每个薄弱点给出一条明天就能执行的具体复习建议（如重做某类题、复习某个概念）。最后用一段话总结今天的整体表现。"
+      },
+      "weeklyReport": {
+        "name": "每周学习报告",
+        "description": "周日 20:00 生成本周学习周报",
+        "prompt": "生成我本周的学习周报：1）统计本周学习总时长与各科目分布；2）汇总闪卡复习数量与记忆保持率变化；3）分析错题数量趋势，指出较上周改善或恶化的知识点；4）基于以上数据给出下周的 3 条重点学习建议。用简洁的分节格式输出。"
+      },
+      "morningReview": {
+        "name": "晨间复习提醒",
+        "description": "工作日 07:30 提醒今日待复习内容",
+        "prompt": "早安！今天有到期的闪卡和待复习内容在等你。趁记忆最清醒的早晨，先花 15 分钟完成今日复习计划，再开始新的学习。"
+      },
+      "examSprint": {
+        "name": "考前冲刺计划",
+        "description": "考试当天生成冲刺清单（日期自选）",
+        "prompt": "今天是关键复习日。请根据我的错题本和薄弱知识点，生成一份今日冲刺清单：1）挑出最值得重做的 10 道错题并说明理由；2）列出 3 个必须巩固的核心概念及快速自测方法；3）按上午、下午、晚上排出时间安排，穿插休息。清单要可勾选、可执行。"
+      },
+      "monthlyMap": {
+        "name": "每月知识盘点",
+        "description": "每月 1 日 09:00 盘点知识掌握全貌",
+        "prompt": "对我上个月的学习做一次知识图谱盘点：1）梳理已掌握、部分掌握、尚未掌握的知识点分布；2）找出长期未复习、可能已遗忘的内容；3）指出知识点之间的关联盲区（学了 A 但没串联 B）；4）给出本月的知识补全路线图，按优先级排序。"
+      },
+      "pomodoroBreak": {
+        "name": "久坐休息提醒",
+        "description": "每 2 小时提醒起身休息",
+        "prompt": "你已经连续学习 2 小时了！起来活动 5 分钟：伸展一下、喝口水、看看远处。短暂休息能让接下来的专注更高效。"
+      },
+      "midweekDrill": {
+        "name": "周中弱项加练",
+        "description": "每周三 18:00 针对薄弱点出练习",
+        "prompt": "根据我最近两周的错题和闪卡复习记录，找出掌握最不牢固的 2 个知识点，为每个知识点出 3 道有针对性的练习题（由易到难），附上详细解析和易错点提醒。最后告诉我如果练习中再次出错，应该回头复习哪些内容。"
+      }
+    }
+  },
   "matrix": {
     "urgentImportant": "重要且紧急",
     "importantNotUrgent": "重要不紧急",
     "urgentNotImportant": "紧急不重要",
     "neither": "不紧急不重要",
-    "empty": "暂无任务"
+    "empty": "暂无任务",
+    "dropHere": "放到这里"
   },
   "reviewLink": {
     "title": "今日有 {{count}} 题待复习",
@@ -38,14 +402,27 @@
     "markCompleted": "标记为完成",
     "markPending": "标记为未完成",
     "deleteItem": "删除待办",
-    "dragToReorder": "拖拽排序"
+    "dragToReorder": "拖拽排序",
+    "editTitleHint": "双击可编辑标题",
+    "setPriority": "设置优先级"
   },
   "reschedule": {
     "title": "改期",
     "today": "今天",
     "tomorrow": "明天",
+    "weekend": "周末",
     "nextMonday": "下周一",
-    "clear": "移除日期"
+    "inTwoWeeks": "两周后",
+    "pickDate": "选择日期",
+    "clear": "移除日期",
+    "allToToday": "全部改到今天",
+    "allToTodayHint": "把逾期任务的截止日期统一顺延到今天",
+    "movedToToday": "已把 {{count}} 项改到今天"
+  },
+  "dates": {
+    "today": "今天",
+    "tomorrow": "明天",
+    "yesterday": "昨天"
   },
   "notifications": {
     "operationFailed": "操作失败",
@@ -53,10 +430,19 @@
     "itemDeleted": "已删除「{{title}}」",
     "undo": "撤销"
   },
+  "apiErrors": {
+    "conflict": "这条待办已在其他位置更新。请刷新到最新版本后重试。",
+    "notFound": "这条待办或列表已不存在。请刷新当前视图。",
+    "invalidArgument": "部分待办信息不符合要求，请检查后重试。",
+    "invalidOperation": "当前待办状态不支持此操作。",
+    "maintenance": "数据维护期间暂时无法编辑待办，请在维护完成后重试。",
+    "storage": "待办数据暂时不可用。如果维护刚结束，请重启应用后重试。"
+  },
   "dialogs": {
     "deleteList": {
       "title": "删除列表",
-      "description": "确定删除列表「{{title}}」吗？列表中的待办会一并移入回收站，可通过撤销恢复。"
+      "description": "确定删除列表「{{title}}」吗？列表中的待办会一并移入回收站，可通过撤销恢复。",
+      "inlineConfirm": "删除「{{title}}」？撤销可恢复"
     }
   },
   "subtasks": {
@@ -65,10 +451,14 @@
     "addPlaceholder": "添加子任务...",
     "aiBreakdown": "AI 拆解",
     "aiBreaking": "拆解中...",
-    "aiBreakdownHint": "让 AI 把任务拆解为可执行的子任务"
+    "aiBreakdownHint": "让 AI 把任务拆解为可执行的子任务",
+    "openDetail": "查看子任务详情",
+    "promote": "转为独立任务"
   },
   "filters": {
-    "showCompleted": "显示已完成"
+    "showCompleted": "显示已完成",
+    "priority": "优先级",
+    "allPriorities": "全部优先级"
   },
   "sort": {
     "label": "排序",
@@ -88,7 +478,8 @@
     "pending": "待完成",
     "completed": "已完成",
     "pomodoroLoad": "预计 {{count}} 番茄",
-    "pomodoroLoadHint": "今日未完成任务的预估番茄合计"
+    "pomodoroLoadHint": "今日未完成任务的预估番茄合计",
+    "progressTitle": "已完成 {{done}}/{{total}}"
   },
   "empty": {
     "noItems": "暂无待办事项",
@@ -108,7 +499,18 @@
   },
   "detail": {
     "title": "详情",
-    "updatedAt": "更新于 {{date}}"
+    "updatedAt": "更新于 {{date}}",
+    "reminderAtTime": "准点",
+    "reminderBefore15": "提前 15 分钟",
+    "reminderBefore60": "提前 1 小时",
+    "repeatNeedsDueDate": "重复任务需要锚定日期，已回填为今天",
+    "daysAgo": "{{count}} 天前",
+    "durationHours": "{{count}} 小时",
+    "durationHoursMinutes": "{{hours}} 小时 {{minutes}} 分",
+    "subtaskProgress": "已完成 {{done}}/{{total}} 个子任务",
+    "pomodoroProgress": "已完成 {{done}}/{{total}} 个番茄",
+    "saved": "已保存",
+    "deleteConfirm": "确认删除？可撤销"
   },
   "fields": {
     "status": "状态",
@@ -118,6 +520,7 @@
     "description": "描述",
     "pomodoros": "番茄",
     "repeat": "重复",
+    "repeatInterval": "间隔",
     "reminder": "提醒",
     "tags": "标签"
   },
@@ -125,7 +528,12 @@
     "clear": "清除提醒",
     "notificationTitle": "提醒：{{title}}",
     "notificationBody": "该处理这条待办了",
-    "notificationBodyWithDue": "截止 {{due}}，记得及时处理"
+    "notificationBodyWithDue": "截止 {{due}}，记得及时处理",
+    "missedTitle_one": "你错过了 {{count}} 条提醒",
+    "missedTitle_other": "你错过了 {{count}} 条提醒",
+    "missedTitle": "你错过了 {{count}} 条提醒",
+    "missedBodyMore": "{{titles}} 等，另有 {{rest}} 条",
+    "titleJoin": "、"
   },
   "dailyDigest": {
     "title": "今日有 {{count}} 项待办到期",
@@ -133,13 +541,17 @@
   },
   "tags": {
     "addPlaceholder": "添加标签...",
-    "remove": "移除标签 {{tag}}"
+    "remove": "移除标签 {{tag}}",
+    "suggestionsLabel": "标签建议",
+    "createNew": "创建「{{tag}}」"
   },
   "focusHistory": {
     "title": "专注历史",
     "summary": "{{count}} 个番茄 · {{minutes}} 分钟",
     "minutes": "{{count}} 分钟",
-    "more": "还有 {{count}} 条记录"
+    "more": "还有 {{count}} 条记录",
+    "todayTotal": "今日 {{minutes}} 分钟",
+    "showLess": "收起"
   },
   "repeat": {
     "none": "不重复",
@@ -183,14 +595,22 @@
     "emptyAllConfirmTitle": "清空回收站",
     "emptyAllConfirmDescription": "确定清空回收站吗？所有已删除的列表与待办将被永久移除，该操作不可撤销。",
     "emptied": "回收站已清空",
-    "loadMore": "加载更早的记录"
+    "loadMore": "加载更早的记录",
+    "back": "返回待办",
+    "purgeInlineHint": "不可撤销",
+    "emptyAllInlineHint": "永久移除全部记录，不可撤销",
+    "confirmEmptyAll": "确认清空",
+    "loading": "正在加载回收站",
+    "emptyHint": "在这里之前删除的内容都会保留一段时间"
   },
   "overdue": {
     "badgeAria_one": "{{count}} 个逾期待办",
     "badgeAria_other": "{{count}} 个逾期待办",
+    "badgeAria": "{{count}} 个逾期待办",
     "notificationTitle": "待办提醒",
     "notificationBody_one": "你有 {{count}} 个逾期待办，记得及时处理",
-    "notificationBody_other": "你有 {{count}} 个逾期待办，记得及时处理"
+    "notificationBody_other": "你有 {{count}} 个逾期待办，记得及时处理",
+    "notificationBody": "你有 {{count}} 个逾期待办，记得及时处理"
   },
   "status": {
     "completed": "已完成",
@@ -232,10 +652,24 @@
       "noiseOn": "开启环境音",
       "noiseOff": "关闭环境音",
       "noiseCycle": "切换音色",
-      "popOut": "弹出置顶小窗"
+      "popOut": "弹出置顶小窗",
+      "extendMinutes": "+{{count}} 分钟",
+      "extendTitle": "延长当前阶段 {{count}} 分钟",
+      "more": "更多操作",
+      "resumeSpace": "继续 (Space)",
+      "abandonConfirm": "放弃本次专注？",
+      "abandon": "放弃",
+      "keepGoing": "继续专注",
+      "abandonConfirmShort": "放弃？",
+      "skipBreakKey": "跳过休息 (B)",
+      "noiseOnKey": "开启环境音 (M)",
+      "noiseOffKey": "关闭环境音 (M)"
     },
     "miniWindow": {
-      "close": "收回到主窗口"
+      "close": "收回到主窗口",
+      "openFailed": "置顶小窗打开失败，请重试",
+      "pin": "窗口置顶",
+      "unpin": "取消置顶"
     },
     "countUpLabel": "正计时",
     "strictBadge": "严格模式",
@@ -254,11 +688,22 @@
       "dailyAvg": "日均",
       "pomodoroCount": "{{count}} 个番茄",
       "empty": "该时间段暂无专注记录",
+      "loading": "统计加载中",
       "thisWeek": "本周",
       "weekUp": "较上周同期 +{{value}}%",
       "weekDown": "较上周同期 -{{value}}%",
       "weekFlat": "与上周同期持平",
-      "weekNoBase": "上周同期无记录"
+      "weekNoBase": "上周同期无记录",
+      "emptyHint": "完成第一个番茄后，这里会出现你的专注趋势",
+      "weekCompareTitle": "本周 vs 上周",
+      "weekNarrativeUp": "比上周同期多专注了 {{value}}%，保持住！",
+      "weekNarrativeDown": "比上周同期少了 {{value}}%，今天补一个番茄吧",
+      "weekNarrativeFlat": "与上周同期持平，稳定就是胜利",
+      "weekNarrativeNoBase": "上周同期还没有记录，这周就是新的起点",
+      "today": "今日",
+      "hourDist": "时段分布",
+      "peakHour": "高峰 {{hour}}:00",
+      "hourDetail": "{{hour}}:00 · {{minutes}} 分钟"
     },
     "stats": {
       "todayLabel": "今日",
@@ -269,7 +714,9 @@
       "hours": "{{value}} 小时",
       "interrupted": "中断 {{value}} 次",
       "goalProgress": "今日目标 {{done}}/{{goal}}",
-      "goalReached": "目标达成"
+      "goalReached": "目标达成",
+      "streak": "连续 {{count}} 天达标",
+      "streakDays": "连续专注 {{value}} 天"
     },
     "notifications": {
       "workCompleteTitle": "番茄完成",
@@ -280,7 +727,15 @@
       "endReminderBodyWork": "专注还剩约 {{minutes}} 分钟，准备收尾",
       "endReminderBodyBreak": "休息还剩约 {{minutes}} 分钟",
       "dailyGoalTitle": "今日目标达成！",
-      "dailyGoalBody": "已完成 {{value}} 个番茄，达成今日目标，给自己一点奖励吧"
+      "dailyGoalBody": "已完成 {{value}} 个番茄，达成今日目标，给自己一点奖励吧",
+      "endReminderBodyWorkSeconds": "专注还剩约 {{seconds}} 秒，准备收尾",
+      "endReminderBodyBreakSeconds": "休息还剩约 {{seconds}} 秒",
+      "awayPausedTitle": "专注已自动暂停",
+      "awayPausedBody": "检测到你离开了一段时间，正计时已在离开时暂停，回来后手动继续即可",
+      "awayWorkCompleteTitle": "番茄已完成",
+      "awayWorkCompleteBody": "这个番茄在你离开期间完成了（今日 {{value}} 个）。休息计时未自动开始",
+      "awayBreakCompleteTitle": "休息已结束",
+      "awayBreakCompleteBody": "休息在你离开期间结束了，准备好后手动开始下一个番茄"
     },
     "settings": {
       "title": "番茄钟设置",
@@ -297,7 +752,20 @@
       "endReminder": "结束前提醒（0 关闭）",
       "noiseType": "环境音",
       "noiseVolume": "音量",
-      "dailyGoal": "每日目标（0 不设）"
+      "noiseAutoWithFocus": "专注时自动播放环境音",
+      "dailyGoal": "每日目标（0 不设）",
+      "endReminderShort": "结束前提醒",
+      "dailyGoalShort": "每日目标",
+      "valueOff": "关闭",
+      "valueUnset": "不设",
+      "secondsUnit": "秒",
+      "sections": {
+        "duration": "时长",
+        "automation": "自动化",
+        "focus": "专注",
+        "goal": "目标",
+        "sound": "声音"
+      }
     },
     "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
     "completedCount": "已完成 {{count}} 个",
@@ -306,7 +774,50 @@
       "hintEscPrefix": "按 ",
       "hintEscSuffix": " 退出",
       "hintSpacePrefix": "",
-      "hintSpaceSuffix": " 暂停/恢复"
+      "hintSpaceSuffix": " 暂停/恢复",
+      "tapToPause": "轻触屏幕暂停 / 恢复"
+    },
+    "presets": {
+      "label": "时长快捷预设",
+      "setTitle": "将专注时长设为 {{count}} 分钟"
     }
+  },
+  "sidebar": {
+    "title": "待办导航",
+    "moreActions": "更多操作",
+    "listColor": "颜色",
+    "clearColor": "清除颜色",
+    "dragHandle": "拖拽排序",
+    "pendingBadgeAria_one": "{{count}} 个未完成待办",
+    "pendingBadgeAria_other": "{{count}} 个未完成待办",
+    "pendingBadgeAria": "{{count}} 个未完成待办",
+    "listIcon": "图标",
+    "clearIcon": "清除图标",
+    "resizeHandle": "拖拽调整侧栏宽度",
+    "trashBadgeAria": "回收站内 {{count}} 条记录"
+  },
+  "calendar": {
+    "prevMonth": "上个月",
+    "nextMonth": "下个月",
+    "backToToday": "回到今天"
+  },
+  "swipe": {
+    "confirmDelete": "确认删除"
+  },
+  "bulk": {
+    "title": "批量操作",
+    "selectedCount": "已选 {{count}} 项",
+    "complete": "完成",
+    "confirmDelete": "确认删除",
+    "clear": "清除选择",
+    "deleted": "已删除 {{count}} 项",
+    "completed": "已完成 {{count}} 项",
+    "rescheduled": "已改期 {{count}} 项",
+    "prioritySet": "已更新 {{count}} 项优先级",
+    "skippedCount": "跳过 {{count}} 项",
+    "selectMode": "选择"
+  },
+  "quickAdd": {
+    "removeToken": "移除"
   }
 }

@@ -27,6 +27,10 @@ export interface MemoryListItem {
   hits: number;
   isImportant: boolean;
   isStale: boolean;
+  /** 已归档（休眠层：已移出检索索引与分类聚合，笔记本体保留，可恢复） */
+  isArchived?: boolean;
+  /** 待去重复核（去重管线不可用时写入的显式记忆） */
+  needsDedupReview?: boolean;
   memoryType: string;
   memoryPurpose: string;
 }
@@ -193,6 +197,16 @@ export async function getRelatedMemories(noteId: string): Promise<string[]> {
 
 export async function updateMemoryTags(noteId: string, tags: string[]): Promise<void> {
   return invoke('memory_update_tags', { noteId, tags });
+}
+
+/** 恢复过时记忆（摘除 `_stale` 标记）。返回是否实际发生了恢复。 */
+export async function restoreStaleMemory(noteId: string): Promise<boolean> {
+  return invoke<boolean>('memory_restore_stale', { noteId });
+}
+
+/** 恢复已归档记忆（摘除 `_archived` 并重建索引）。返回是否实际发生了恢复。 */
+export async function restoreArchivedMemory(noteId: string): Promise<boolean> {
+  return invoke<boolean>('memory_restore_archived', { noteId });
 }
 
 export async function getMemoryTags(noteId: string): Promise<string[]> {

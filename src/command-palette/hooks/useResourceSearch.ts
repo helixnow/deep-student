@@ -4,34 +4,28 @@
  * 在命令搜索之外，提供文件（DSTU 资源）与聊天会话的直达搜索：
  * - 文件：dstu_search（全库按名称匹配）
  * - 会话：chat_v2_search_content（FTS5 标题+内容全文搜索，按会话去重）
+ *
+ * 底层 fetch / 防抖取消与 Workbench Spotlight providers 共用
+ *（`globalSearchProviders`），本 Hook 保持 legacy 导出签名不变。
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { search as dstuSearch } from '@/dstu/api';
-import { openResource, getOpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
+import { openResource, getOpenResourceHandler } from '@/dstu/openResource';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { resourceTypeToAppTypeId } from '@/features/workbench/apps/content/typeMap';
+import {
+  CONTENT_SEARCH_MIN_CHARS,
+  GLOBAL_SEARCH_DEBOUNCE_MS,
+  fetchChatSearchResults,
+  fetchDstuSearchResults,
+  stripSnippetMarkers,
+  useAbortableDebouncedQuery,
+  type SessionSearchItem,
+} from '@/features/workbench/search/globalSearchProviders';
 import type { DependencyResolver } from '../registry/types';
 
-const DEBOUNCE_MS = 250;
-const FILE_LIMIT = 6;
-const SESSION_LIMIT = 5;
-
-interface ContentSearchResult {
-  sessionId: string;
-  sessionTitle: string | null;
-  messageId: string;
-  blockId: string;
-  role: string;
-  snippet: string;
-  updatedAt: string;
-}
-
-export interface SessionSearchItem {
-  sessionId: string;
-  title: string;
-  snippet: string;
-}
+export type { SessionSearchItem };
+export { stripSnippetMarkers };
 
 export interface ResourceSearchState {
   fileResults: DstuNode[];
@@ -39,72 +33,41 @@ export interface ResourceSearchState {
   loading: boolean;
 }
 
-const EMPTY_STATE: ResourceSearchState = {
-  fileResults: [],
-  sessionResults: [],
-  loading: false,
-};
+const EMPTY_FILES: DstuNode[] = [];
+const EMPTY_SESSIONS: SessionSearchItem[] = [];
 
+/**
+ * Legacy 命令面板资源搜索。签名保持 `{ fileResults, sessionResults, loading }`。
+ * dstu / chat 各自独立 250ms 防抖与 AbortController 过期丢弃。
+ */
 export function useResourceSearch(query: string, enabled: boolean): ResourceSearchState {
-  const [state, setState] = useState<ResourceSearchState>(EMPTY_STATE);
-  const requestSeq = useRef(0);
+  const files = useAbortableDebouncedQuery(
+    query,
+    enabled,
+    fetchDstuSearchResults,
+    {
+      debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
+      minChars: CONTENT_SEARCH_MIN_CHARS,
+      empty: EMPTY_FILES,
+    },
+  );
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!enabled || trimmed.length < 2) {
-      requestSeq.current += 1;
-      setState(EMPTY_STATE);
-      return;
-    }
+  const sessions = useAbortableDebouncedQuery(
+    query,
+    enabled,
+    fetchChatSearchResults,
+    {
+      debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
+      minChars: CONTENT_SEARCH_MIN_CHARS,
+      empty: EMPTY_SESSIONS,
+    },
+  );
 
-    const seq = ++requestSeq.current;
-    setState((prev) => ({ ...prev, loading: true }));
-
-    const timer = setTimeout(async () => {
-      const [fileSettled, sessionSettled] = await Promise.allSettled([
-        dstuSearch(trimmed, { limit: FILE_LIMIT + 4 }),
-        invoke<ContentSearchResult[]>('chat_v2_search_content', {
-          query: trimmed,
-          limit: 30,
-        }),
-      ]);
-
-      if (seq !== requestSeq.current) return;
-
-      let fileResults: DstuNode[] = [];
-      if (fileSettled.status === 'fulfilled' && fileSettled.value.ok) {
-        fileResults = fileSettled.value.value
-          .filter((node) => node.type !== 'folder')
-          .slice(0, FILE_LIMIT);
-      }
-
-      let sessionResults: SessionSearchItem[] = [];
-      if (sessionSettled.status === 'fulfilled' && Array.isArray(sessionSettled.value)) {
-        const seen = new Set<string>();
-        for (const item of sessionSettled.value) {
-          if (seen.has(item.sessionId)) continue;
-          seen.add(item.sessionId);
-          sessionResults.push({
-            sessionId: item.sessionId,
-            title: item.sessionTitle || '',
-            snippet: stripSnippetMarkers(item.snippet),
-          });
-          if (sessionResults.length >= SESSION_LIMIT) break;
-        }
-      }
-
-      setState({ fileResults, sessionResults, loading: false });
-    }, DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [query, enabled]);
-
-  return state;
-}
-
-/** FTS snippet 可能包含高亮标记，纯文本展示时去掉 */
-function stripSnippetMarkers(snippet: string): string {
-  return snippet.replace(/<\/?b>/g, '').replace(/\s+/g, ' ').trim();
+  return {
+    fileResults: files.data,
+    sessionResults: sessions.data,
+    loading: files.loading || sessions.loading,
+  };
 }
 
 // ============================================================================
@@ -125,6 +88,27 @@ async function waitFor(check: () => boolean, timeoutMs: number, intervalMs: numb
  * Learning Hub 的 OpenResourceHandler 在页面挂载后才注册，因此需要等待。
  */
 export async function openFileFromPalette(deps: DependencyResolver, node: DstuNode): Promise<void> {
+  if (deps.getCurrentView() === 'workbench') {
+    // Notes and mind maps are routed through the shared Notes workspace by
+    // workbenchBus when their resource type is used as the launch type. The
+    // remaining resource types use the public app mapping.
+    const typeId = node.type === 'note' || node.type === 'mindmap'
+      ? node.type
+      : resourceTypeToAppTypeId(node.type);
+    if (!typeId) {
+      deps.showNotification(
+        'warning',
+        deps.t(
+          'command_palette:resource_not_openable_in_workbench',
+          'This resource cannot be opened in the desktop.',
+        ),
+      );
+      return;
+    }
+    workbenchBus.launch({ typeId, instanceKey: node.id, reason: 'command' });
+    return;
+  }
+
   deps.navigate('learning-hub');
   const ready = await waitFor(() => !!getOpenResourceHandler('learning-hub'), 4000, 80);
   if (!ready) {

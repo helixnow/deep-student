@@ -3,7 +3,7 @@
  * 
  * 提供表格形式的字段映射界面，用户可以将 CSV 列映射到题目字段
  * 
- * Notion 风格 UI：
+ * 简洁风格 UI：
  * - 简洁的表格设计
  * - 下拉选择框
  * - 实时预览映射后的数据
@@ -23,6 +23,8 @@ import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
 import { WarningCircle, CheckCircle, Link, LinkBreak } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { suggestCsvFieldFromHeader } from '@/utils/csvHeaderAliases';
+import { CustomScrollArea } from './custom-scroll-area';
 
 // 可映射的目标字段 (labels resolved via i18n at render time)
 export const QUESTION_FIELDS = [
@@ -119,66 +121,11 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
     [fieldMapping, onMappingChange]
   );
 
-  // 自动检测可能的映射（基于列名相似度）
-  const suggestMapping = useCallback((header: string): QuestionFieldKey | '' => {
-    const headerLower = header.toLowerCase().trim();
-    
-    // 常见中文和英文列名映射
-    const mappings: Record<string, QuestionFieldKey> = {
-      // content
-      '题目': 'content',
-      '题干': 'content',
-      '问题': 'content',
-      '内容': 'content',
-      'content': 'content',
-      'question': 'content',
-      'text': 'content',
-      // answer
-      '答案': 'answer',
-      '正确答案': 'answer',
-      'answer': 'answer',
-      'correct': 'answer',
-      // explanation
-      '解析': 'explanation',
-      '解答': 'explanation',
-      '说明': 'explanation',
-      'explanation': 'explanation',
-      'analysis': 'explanation',
-      // options
-      '选项': 'options',
-      'options': 'options',
-      'choices': 'options',
-      // difficulty
-      '难度': 'difficulty',
-      'difficulty': 'difficulty',
-      'level': 'difficulty',
-      // tags
-      '标签': 'tags',
-      '分类': 'tags',
-      '类别': 'tags',
-      'tags': 'tags',
-      'category': 'tags',
-      // images
-      '图片': 'images',
-      '配图': 'images',
-      '图像': 'images',
-      'images': 'images',
-      'image': 'images',
-      // question_type
-      '题型': 'question_type',
-      '类型': 'question_type',
-      'type': 'question_type',
-      'question_type': 'question_type',
-      // question_label
-      '题号': 'question_label',
-      '序号': 'question_label',
-      'label': 'question_label',
-      'number': 'question_label',
-      'no': 'question_label',
-    };
-    
-    return mappings[headerLower] || '';
-  }, []);
+  // 自动检测可能的映射（基于列名相似度；别名表见 csvHeaderAliases）
+  const suggestMapping = useCallback(
+    (header: string): QuestionFieldKey | '' => suggestCsvFieldFromHeader(header),
+    [],
+  );
 
   // 获取预览数据中某列的值
   const getPreviewValue = useCallback(
@@ -199,45 +146,118 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
   return (
     <div className="space-y-4">
       {/* 映射状态提示 */}
-      <div className="flex items-center gap-4 px-3 py-2 rounded-lg bg-muted/30">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-muted/30 px-3 py-2">
         {isMappingValid ? (
-          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+          <div className="flex items-center gap-2 text-success">
             <CheckCircle size={16} />
             <span className="text-sm">
-              {t('exam_sheet:csv.mapping_valid', '字段映射有效，可以开始导入')}
+              {t('exam_sheet:csv.mapping_valid')}
             </span>
           </div>
         ) : hasDuplicateMappings ? (
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+          <div className="flex items-center gap-2 text-warning">
             <WarningCircle size={16} />
             <span className="text-sm">
-              {t('exam_sheet:csv.mapping_duplicate', '存在重复映射，请确保每个目标字段只映射一次')}
+              {t('exam_sheet:csv.mapping_duplicate')}
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+          <div className="flex items-center gap-2 text-warning">
             <WarningCircle size={16} />
             <span className="text-sm">
-              {t('exam_sheet:csv.mapping_required', '请至少映射「题干内容」字段')}
+              {t('exam_sheet:csv.mapping_required')}
             </span>
           </div>
         )}
       </div>
 
-      {/* 字段映射表格 */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <Table>
+      {/* 手机端使用纵向卡片，避免三列表格被裁切并让字段选择保持完整宽度（≤767px 对齐 useIsMobile） */}
+      <div className="space-y-2 md:hidden">
+        {headers.map((header, index) => {
+          const currentTarget = getColumnTarget(header);
+          const suggestedTarget = suggestMapping(header);
+          const previewValue = getPreviewValue(index);
+          const isMapped = !!currentTarget;
+
+          return (
+            <section
+              key={header}
+              className={cn(
+                'space-y-2 rounded-lg border border-border/70 p-3',
+                isMapped && 'border-primary/30 bg-primary/5',
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                {isMapped ? (
+                  <Link size={16} className="shrink-0 text-primary" />
+                ) : (
+                  <LinkBreak size={16} className="shrink-0 text-muted-foreground/50" />
+                )}
+                <span className="min-w-0 flex-1 break-all font-mono text-sm">{header}</span>
+              </div>
+              {readonly ? (
+                <span className="block text-sm">
+                  {currentTarget
+                    ? t(`exam_sheet:questionBank.export.fields.${currentTarget}`, currentTarget)
+                    : '-'}
+                </span>
+              ) : (
+                <AppSelect
+                  value={currentTarget}
+                  onValueChange={(value) => handleMappingChange(header, value as QuestionFieldKey | '')}
+                  placeholder={t('exam_sheet:csv.select_field')}
+                  options={[
+                    { value: '', label: t('exam_sheet:csv.no_mapping') },
+                    ...QUESTION_FIELDS.map((field) => {
+                      const isSelected = currentTarget === field.key;
+                      const isUsed = !isSelected && mappedFields.has(field.key);
+                      const isSuggested = !currentTarget && suggestedTarget === field.key;
+                      const fieldLabel = t(`exam_sheet:questionBank.export.fields.${field.key}`, field.key);
+                      const suffix = field.required
+                        ? ` (${t('exam_sheet:csv.required')})`
+                        : isSuggested && !isUsed
+                          ? ` (${t('exam_sheet:csv.suggested')})`
+                          : '';
+                      return {
+                        value: field.key,
+                        label: `${fieldLabel}${suffix}`,
+                        disabled: isUsed,
+                      };
+                    }),
+                  ]}
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                />
+              )}
+              {showPreview && previewValue && (
+                <p className="break-words text-xs leading-relaxed text-muted-foreground">
+                  {previewValue}
+                </p>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {/* 较宽视口保留表格；容器允许横向滚动，窄工作台窗口不再裁切列 */}
+      <CustomScrollArea
+        className="hidden rounded-lg border border-border md:block"
+        orientation="horizontal"
+        fullHeight={false}
+      >
+        <Table className={showPreview ? 'min-w-[560px]' : 'min-w-[380px]'}>
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
               <TableHead className="w-[180px] font-medium">
-                {t('exam_sheet:csv.csv_column', 'CSV 列')}
+                {t('exam_sheet:csv.csv_column')}
               </TableHead>
               <TableHead className="w-[180px] font-medium">
-                {t('exam_sheet:csv.target_field', '映射字段')}
+                {t('exam_sheet:csv.target_field')}
               </TableHead>
               {showPreview && (
                 <TableHead className="font-medium">
-                  {t('exam_sheet:csv.preview_value', '预览值')}
+                  {t('exam_sheet:csv.preview_value')}
                 </TableHead>
               )}
             </TableRow>
@@ -271,22 +291,22 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                     {readonly ? (
                       <span className="text-sm">
                         {currentTarget
-                          ? t(`exam_sheet:export.fields.${currentTarget}`, currentTarget)
+                          ? t(`exam_sheet:questionBank.export.fields.${currentTarget}`, currentTarget)
                           : '-'}
                       </span>
                     ) : (
                       <AppSelect
                         value={currentTarget}
                         onValueChange={(value) => handleMappingChange(header, value as QuestionFieldKey | '')}
-                        placeholder={t('exam_sheet:csv.select_field', '选择字段...')}
+                        placeholder={t('exam_sheet:csv.select_field')}
                         options={[
-                          { value: '', label: t('exam_sheet:csv.no_mapping', '不映射') },
+                          { value: '', label: t('exam_sheet:csv.no_mapping') },
                           ...QUESTION_FIELDS.map((field) => {
                             const isSelected = currentTarget === field.key;
                             const isUsed = !isSelected && mappedFields.has(field.key);
                             const isSuggested = !currentTarget && suggestedTarget === field.key;
-                            const fieldLabel = t(`exam_sheet:export.fields.${field.key}`, field.key);
-                            const suffix = field.required ? ` (${t('common:required', '必需')})` : isSuggested && !isUsed ? ` (${t('exam_sheet:csv.suggested', '推荐')})` : '';
+                            const fieldLabel = t(`exam_sheet:questionBank.export.fields.${field.key}`, field.key);
+                            const suffix = field.required ? ` (${t('exam_sheet:csv.required')})` : isSuggested && !isUsed ? ` (${t('exam_sheet:csv.suggested')})` : '';
                             return {
                               value: field.key,
                               label: `${fieldLabel}${suffix}`,
@@ -311,15 +331,19 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
             })}
           </TableBody>
         </Table>
-      </div>
+      </CustomScrollArea>
 
       {/* 预览数据表格（可选） */}
       {showPreview && previewRows.length > 1 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-muted-foreground">
-            {t('exam_sheet:csv.data_preview', '数据预览（前 {{count}} 行）', { count: previewRows.length })}
+            {t('exam_sheet:csv.data_preview', { count: previewRows.length })}
           </h4>
-          <div className="rounded-lg border border-border overflow-auto max-h-[200px]">
+          <CustomScrollArea
+            className="max-h-[200px] rounded-lg border border-border"
+            orientation="both"
+            fullHeight={false}
+          >
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
@@ -346,7 +370,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </CustomScrollArea>
         </div>
       )}
     </div>

@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionDialog } from '@/components/ui/NotionDialog';
+import { DsDialog } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -32,17 +32,22 @@ import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { getModelDefaultParameters } from '@/utils/modelCapabilities';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
+import { Z_INDEX } from '@/config/zIndex';
 import {
   deepSeekV32BudgetToEffort,
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
   resolveDeepSeekReasoningControl,
+  resolveDeepSeekRuntimeReasoningControl,
+  resolveDeepSeekRuntimeReasoningSelection,
 } from './deepseekReasoningControls';
 import {
   defaultApiProtocolForModelAdapter,
   getAllowedApiProtocolsForModelAdapter,
   normalizeApiProtocolForModelAdapter,
 } from './modelConverters';
+import { useKeyboardInset } from '../hooks/useKeyboardInset';
 
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
@@ -63,6 +68,8 @@ const SUPPORTED_MODEL_ADAPTERS = [
   'grok',       // xAI Grok
   'minimax',    // MiniMax
   'mimo',       // Xiaomi MiMo
+  'ernie',      // 百度文心（千帆 v2）
+  'mistral',    // Mistral
 ] as const;
 
 const ADAPTER_DEFAULT_BASE_URL: Record<string, string> = {
@@ -77,10 +84,24 @@ const ADAPTER_DEFAULT_BASE_URL: Record<string, string> = {
   grok: 'https://api.x.ai/v1',
   minimax: 'https://api.minimax.io/v1',
   mimo: 'https://api.xiaomimimo.com/v1',
+  ernie: 'https://qianfan.baidubce.com/v2',
+  mistral: 'https://api.mistral.ai/v1',
 };
 
 export const GENERAL_DEFAULT_MIN_P = 0.05;
 export const GENERAL_DEFAULT_TOP_K = 50;
+
+export function clampGeminiThinkingBudget(model: string, budget: number): number {
+  const rounded = Math.round(budget);
+  const lowerModel = model.toLowerCase();
+  if (!lowerModel.includes('gemini-2.5')) {
+    return Math.max(-1, Math.min(rounded, 2_147_483_647));
+  }
+  if (rounded <= -1) return -1;
+  return lowerModel.includes('flash')
+    ? Math.max(0, Math.min(rounded, 24576))
+    : Math.max(128, Math.min(rounded, 32768));
+}
 
 const normalizeBaseUrlForCompare = (url: string) => url.trim().replace(/\/+$/u, '');
 
@@ -127,6 +148,8 @@ interface ApiEditModalProps {
   };
   /** 嵌入模式：不使用 Dialog 包裹，直接渲染内容（用于移动端三屏布局） */
   embeddedMode?: boolean;
+  /** 移动端右侧面板：取消/标题由统一顶栏承担，隐藏底部「取消」 */
+  mobilePanelMode?: boolean;
 }
 
 export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
@@ -136,8 +159,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   hideConnectionFields = false,
   lockedVendorInfo,
   embeddedMode = false,
+  mobilePanelMode = false,
 }) => {
   const { t } = useTranslation(['common', 'settings']);
+  // P2-15 键盘避让：移动端右滑面板中，软键盘弹出时抬升底部操作栏
+  const keyboardInset = useKeyboardInset(mobilePanelMode);
   const [connectionTest, setConnectionTest] = useState<
     | { state: 'idle' }
     | { state: 'testing' }
@@ -181,6 +207,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     apiProtocol: normalizeApiProtocolForModelAdapter(api.apiProtocol, normalizedAdapter, api.providerType, {
       model: api.model,
       baseUrl: api.baseUrl,
+      supportsOpenAIResponses: api.supportsOpenAIResponses,
     }),
     temperature: api.temperature ?? 0.7,
     maxOutputTokens: api.maxOutputTokens ?? 8192,
@@ -209,6 +236,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     inferredCaps.supportsReasoningEffort ||
     inferredCaps.supportsThinkingTokens ||
     inferredCaps.supportsHybridReasoning;
+  const usesCodexOAuth = formData.authMode === 'openai_codex_oauth';
   const isDeepSeekAdapter = formData.modelAdapter === 'deepseek';
   const effectiveSupportsReasoning = !!formData.supportsReasoning || inferredSupportsReasoning;
   const supportsDeepSeekReasoningEffort = isDeepSeekAdapter && inferredCaps.supportsReasoningEffort;
@@ -220,10 +248,115 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     deepSeekReasoningControl.kind === 'v32-budget-effort'
       ? formData.reasoningEffort ?? deepSeekV32BudgetToEffort(formData.thinkingBudget)
       : normalizeDeepSeekV4Effort(formData.reasoningEffort);
+  const profileReasoningControl = useMemo(
+    () =>
+      resolveDeepSeekRuntimeReasoningControl({
+        model: formData.model,
+        providerType: formData.providerType,
+        providerScope: formData.providerScope,
+        baseUrl: formData.baseUrl,
+      }),
+    [formData.baseUrl, formData.model, formData.providerScope, formData.providerType]
+  );
+  const normalizedProfileReasoningSelection = useMemo(
+    () =>
+      resolveDeepSeekRuntimeReasoningSelection({
+        control: profileReasoningControl,
+        enableThinking: formData.enableThinking ?? formData.thinkingEnabled,
+        reasoningEffort: formData.reasoningEffort,
+        thinkingBudget: formData.thinkingBudget,
+      }),
+    [
+      formData.enableThinking,
+      formData.reasoningEffort,
+      formData.thinkingBudget,
+      formData.thinkingEnabled,
+      profileReasoningControl,
+    ]
+  );
+  const profileReasoningSelectValue = profileReasoningControl.options.some(
+    option => option.value === formData.reasoningEffort
+  )
+    ? formData.reasoningEffort
+    : normalizedProfileReasoningSelection.reasoningEffort;
+  const profileReasoningOptions = profileReasoningControl.options.map(option => ({
+    value: option.value,
+    label: t(option.labelKey, option.defaultLabel),
+  }));
+  const profileUsesDiscreteEffort = profileReasoningControl.kind !== 'toggle-only';
+  const profileThinkingEnabled =
+    !profileReasoningControl.canDisable || !!(formData.enableThinking ?? formData.thinkingEnabled);
+  const miniMaxModelMajor = useMemo(() => {
+    const match = formData.model.toLowerCase().match(/(?:^|[/_-])minimax-m(\d+)(?:[.\-_/]|$)/);
+    return match ? Number(match[1]) : undefined;
+  }, [formData.model]);
+  const isModernKimiThinkingModel = useMemo(() => {
+    const lower = formData.model.toLowerCase();
+    const match = lower.match(/(?:^|[/_-])(?:kimi-)?k(\d+)(?:[.-](\d+))?/);
+    if (!match) return false;
+    const major = Number(match[1]);
+    const minor = Number(match[2] ?? 0);
+    return major > 2 || (major === 2 && minor >= 5);
+  }, [formData.model]);
+  const setProfileReasoningDepth = (value: string) => {
+    setFormData(prev => {
+      if (value === 'unset') {
+        return { ...prev, reasoningEffort: undefined, thinkingBudget: undefined };
+      }
+      if (value === 'none') {
+        if (!profileReasoningControl.canDisable) return prev;
+        return {
+          ...prev,
+          enableThinking: false,
+          thinkingEnabled: false,
+          reasoningEffort: 'none',
+          thinkingBudget: undefined,
+        };
+      }
+      return {
+        ...prev,
+        enableThinking: true,
+        thinkingEnabled: true,
+        supportsReasoning: true,
+        reasoningEffort: value,
+        thinkingBudget:
+          profileReasoningControl.kind === 'v32-budget-effort'
+            ? deepSeekV32EffortToBudget(value)
+            : undefined,
+      };
+    });
+  };
+  const setProfileThinkingEnabled = (enabled: boolean) => {
+    if (!enabled && !profileReasoningControl.canDisable) return;
+    setFormData(prev => {
+      const normalized = resolveDeepSeekRuntimeReasoningSelection({
+        control: profileReasoningControl,
+        enableThinking: enabled,
+        reasoningEffort: prev.reasoningEffort,
+        thinkingBudget: prev.thinkingBudget,
+      });
+      return {
+        ...prev,
+        enableThinking: enabled,
+        thinkingEnabled: enabled,
+        reasoningEffort: enabled
+          ? prev.reasoningEffort ?? normalized.reasoningEffort
+          : undefined,
+        thinkingBudget: enabled
+          ? prev.thinkingBudget ?? normalized.thinkingBudget
+          : undefined,
+      };
+    });
+  };
 
-  const protocolOptions = useMemo<Array<{ value: ApiProtocol; label: string; description?: string }>>(() => {
-    const allowed = getAllowedApiProtocolsForModelAdapter(formData.modelAdapter);
-    return allowed.map(protocol => ({
+  const protocolOptions = useMemo<Array<{ value: ApiProtocol; label: string; description?: string; disabled?: boolean }>>(() => {
+    const adapterProtocols = getAllowedApiProtocolsForModelAdapter(formData.modelAdapter);
+    const allowed = new Set(getAllowedApiProtocolsForModelAdapter(formData.modelAdapter, {
+      providerType: formData.providerType,
+      baseUrl: formData.baseUrl,
+      supportsOpenAIResponses: formData.supportsOpenAIResponses,
+    }));
+    return adapterProtocols.map(protocol => ({
       value: protocol,
       label: t(`settings:api.modal.protocols.${protocol}.label`, {
         defaultValue:
@@ -235,9 +368,13 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 ? 'Anthropic Messages'
                 : 'OpenAI Chat Completions',
       }),
-      description: t(`settings:api.modal.protocols.${protocol}.description`, { defaultValue: '' }) || undefined,
+      description:
+        protocol === 'openai_responses' && !allowed.has(protocol)
+          ? t('settings:api.modal.responses_unavailable', 'Enable OpenAI Responses on this provider before selecting it for a model.')
+          : t(`settings:api.modal.protocols.${protocol}.description`, { defaultValue: '' }) || undefined,
+      disabled: !allowed.has(protocol),
     }));
-  }, [formData.modelAdapter, t]);
+  }, [formData.modelAdapter, formData.providerType, formData.baseUrl, formData.supportsOpenAIResponses, t]);
 
   const inferenceTimeoutRef = useRef<number | null>(null);
   const lastInferredModelRef = useRef<string | null>(api.model ?? null);
@@ -381,6 +518,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       const normalizedProtocol = normalizeApiProtocolForModelAdapter(prev.apiProtocol, prev.modelAdapter, prev.providerType, {
         model: prev.model,
         baseUrl: prev.baseUrl,
+        supportsOpenAIResponses: prev.supportsOpenAIResponses,
       });
       if (normalizedProtocol === prev.apiProtocol) return prev;
       return { ...prev, apiProtocol: normalizedProtocol };
@@ -487,6 +625,16 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         label: t('common:api_config_modal.adapter_mimo', 'Xiaomi MiMo'),
         description: t('common:api_config_modal.adapter_mimo_desc', 'MiMo series, supports thinking.type and reasoning_content'),
       },
+      {
+        value: 'ernie',
+        label: t('common:api_config_modal.adapter_ernie', 'Baidu ERNIE'),
+        description: t('common:api_config_modal.adapter_ernie_desc', 'ERNIE 5.x / X1.1 via Qianfan v2, reasoning_content compatible'),
+      },
+      {
+        value: 'mistral',
+        label: t('common:api_config_modal.adapter_mistral', 'Mistral'),
+        description: t('common:api_config_modal.adapter_mistral_desc', 'Mistral Large/Medium/Small, reasoning_effort support'),
+      },
     ],
     [t]
   );
@@ -588,15 +736,15 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!formData.name.trim()) {
-      showGlobalNotification('warning', t('placeholders.enter_name'));
+      showGlobalNotification('warning', t('forms.placeholders.enter_name'));
       return;
     }
     if (!hideConnectionFields && !formData.baseUrl.trim()) {
-      showGlobalNotification('warning', t('placeholders.enter_url'));
+      showGlobalNotification('warning', t('forms.placeholders.enter_url'));
       return;
     }
     if (!formData.model.trim()) {
-      showGlobalNotification('warning', t('labels.model_name'));
+      showGlobalNotification('warning', t('api_config_modal.model_name'));
       return;
     }
     const sanitized: EditApiConfig = {
@@ -618,7 +766,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           ? (() => {
               const rounded = Math.round(formData.thinkingBudget);
               if (formData.modelAdapter === 'google') {
-                return Math.max(-1, Math.min(rounded, 2_147_483_647));
+                return clampGeminiThinkingBudget(formData.model, rounded);
               }
               return Math.max(0, Math.min(rounded, 2_147_483_647));
             })()
@@ -666,13 +814,48 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       } else if (!inferredCaps.supportsReasoningEffort) {
         sanitized.reasoningEffort = undefined;
       }
-    } else if (hasThinkingDefaults) {
-      // Non-DeepSeek adapters historically use this flag as the guard for provider thinking fields.
+    } else {
+      if (hasThinkingDefaults) {
+        // Non-DeepSeek adapters historically use this flag as the guard for provider thinking fields.
+        sanitized.supportsReasoning = true;
+      }
+      if (profileUsesDiscreteEffort && (inferredSupportsReasoning || sanitized.supportsReasoning)) {
+        sanitized.supportsReasoning = true;
+        sanitized.isReasoning = sanitized.isReasoning || inferredSupportsReasoning;
+        const requestedEffort = sanitized.reasoningEffort?.toLowerCase();
+        if (requestedEffort === 'none' && profileReasoningControl.canDisable) {
+          sanitized.enableThinking = false;
+          sanitized.thinkingEnabled = false;
+          sanitized.reasoningEffort = sanitized.modelAdapter === 'general' ? 'none' : undefined;
+          sanitized.thinkingBudget = undefined;
+        } else {
+          const normalized = resolveDeepSeekRuntimeReasoningSelection({
+            control: profileReasoningControl,
+            enableThinking: sanitized.enableThinking,
+            reasoningEffort: requestedEffort,
+            thinkingBudget: sanitized.thinkingBudget,
+          });
+          sanitized.enableThinking = normalized.enableThinking;
+          sanitized.thinkingEnabled = normalized.enableThinking;
+          sanitized.reasoningEffort = requestedEffort ? normalized.reasoningEffort : undefined;
+          sanitized.thinkingBudget = normalized.thinkingBudget;
+        }
+      }
+    }
+    if (!profileReasoningControl.canDisable && (inferredSupportsReasoning || sanitized.supportsReasoning)) {
       sanitized.supportsReasoning = true;
+      sanitized.isReasoning = sanitized.isReasoning || inferredSupportsReasoning;
+      sanitized.enableThinking = true;
+      sanitized.thinkingEnabled = true;
     }
     if (sanitized.modelAdapter === 'mimo') {
       sanitized.reasoningEffort = undefined;
       sanitized.thinkingBudget = undefined;
+    }
+    if (sanitized.modelAdapter === 'qwen') {
+      // DashScope/SiliconFlow Qwen expose a boolean switch plus a numeric
+      // thinking budget, not OpenAI-style low/medium/high effort levels.
+      sanitized.reasoningEffort = undefined;
     }
     if (!sanitized.supportsReasoning) {
       sanitized.enableThinking = false;
@@ -696,7 +879,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   // 测试连接：用当前表单数据实测（保存前即可验证，借鉴 Cherry 供应商连接检查）
   const handleTestConnection = async () => {
     if (!invoke) {
-      showGlobalNotification('info', t('settings:api.modal.test_connection_unavailable', '当前环境不支持连接测试'));
+      showGlobalNotification('info', t('settings:api.modal.test_connection_unavailable'));
       return;
     }
     if (!formData.model.trim()) {
@@ -716,25 +899,32 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         apiProtocol: formData.apiProtocol,
         supports_openai_responses: (formData as any).supportsOpenAIResponses,
         supportsOpenAIResponses: (formData as any).supportsOpenAIResponses,
+        provider_type: formData.providerType,
+        providerType: formData.providerType,
+        auth_mode: formData.authMode,
+        authMode: formData.authMode,
+        model_adapter: formData.modelAdapter,
+        modelAdapter: formData.modelAdapter,
         model: formData.model,
         vendor_id: vendorId,
         vendorId,
+        headers: formData.headers,
       });
       const latencyMs = Math.round(performance.now() - startedAt);
       if (result) {
         setConnectionTest({ state: 'success', latencyMs });
         showGlobalNotification(
           'success',
-          t('settings:api.modal.test_connection_success', { latency: latencyMs, defaultValue: '连接成功（{{latency}} ms）' })
+          t('settings:api.modal.test_connection_success', { latency: latencyMs})
         );
       } else {
         setConnectionTest({ state: 'failed' });
-        showGlobalNotification('error', t('settings:api.modal.test_connection_failed', '连接失败，请检查地址、密钥与模型名'));
+        showGlobalNotification('error', t('settings:api.modal.test_connection_failed'));
       }
     } catch (error: unknown) {
       setConnectionTest({ state: 'failed' });
       const message = error instanceof Error ? error.message : String(error);
-      showGlobalNotification('error', t('settings:api.modal.test_connection_failed', '连接失败，请检查地址、密钥与模型名'), message);
+      showGlobalNotification('error', t('settings:api.modal.test_connection_failed'), message);
     }
   };
 
@@ -750,7 +940,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
   // 嵌入模式的内容渲染
   const formContent = (
-    <form onSubmit={handleSubmit} className={cn(
+    <form
+      id={mobilePanelMode ? 'settings-model-editor-form' : undefined}
+      onSubmit={handleSubmit}
+      className={cn(
       "flex flex-col flex-1 min-h-0 overflow-hidden",
       embeddedMode && "h-full"
     )}>
@@ -762,28 +955,28 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 <TabsTrigger 
                   value="general" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.basic_info')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="capabilities" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.capabilities.title')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="params" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.advanced_settings')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="reasoning" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.reasoning.title')}
                 </TabsTrigger>
@@ -821,7 +1014,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         />
                         <Sparkle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
                       </div>
-                      <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 flex items-center gap-1 ml-1">
                         {t('settings:api.modal.model_name_hint')}
                       </p>
                     </div>
@@ -835,7 +1028,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         {modelAdapterOptions.map(option => {
                           const isSelected = formData.modelAdapter === option.value;
                           return (
-                            <NotionButton
+                            <DsButton
                               key={option.value}
                               variant="ghost"
                               size="sm"
@@ -852,6 +1045,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                     apiProtocol: normalizeApiProtocolForModelAdapter(prev.apiProtocol, option.value, prev.providerType, {
                                       model: prev.model,
                                       baseUrl: prev.baseUrl,
+                                      supportsOpenAIResponses: prev.supportsOpenAIResponses,
                                     }),
                                   };
                                   if (shouldReplaceBase) {
@@ -868,7 +1062,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               )}
                             >
                               <span className={cn('text-xs leading-tight', isSelected && 'font-medium')}>{option.label}</span>
-                            </NotionButton>
+                            </DsButton>
                           );
                         })}
                       </div>
@@ -884,7 +1078,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   <div className="pt-1">
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor={fieldIds.protocol} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                        <Label htmlFor={fieldIds.protocol} className="text-xs font-medium text-muted-foreground/80 ml-1">
                           {t('settings:api.modal.protocol_label')}
                         </Label>
                         <AppSelect
@@ -892,6 +1086,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             providerType: formData.providerType,
                             model: formData.model,
                             baseUrl: formData.baseUrl,
+                            supportsOpenAIResponses: formData.supportsOpenAIResponses,
                           })}
                           onValueChange={value =>
                             setFormData(prev => ({
@@ -899,14 +1094,15 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               apiProtocol: normalizeApiProtocolForModelAdapter(value as ApiProtocol, prev.modelAdapter, prev.providerType, {
                                 model: prev.model,
                                 baseUrl: prev.baseUrl,
+                                supportsOpenAIResponses: prev.supportsOpenAIResponses,
                               }),
                             }))
                           }
-                          options={protocolOptions.map(option => ({ value: option.value, label: option.label }))}
+                          options={protocolOptions}
                           variant="ghost"
                           className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10 w-full"
                         />
-                        <p className="text-[10px] text-muted-foreground/70 ml-1">
+                        <p className="text-2xs text-muted-foreground/70 ml-1">
                           {t('settings:api.modal.protocol_hint')}
                         </p>
                       </div>
@@ -958,7 +1154,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 </TabsContent>
 
                 {/* Capabilities Tab */}
-                <TabsContent value="capabilities" className="mt-0 focus-visible:outline-none animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                <TabsContent value="capabilities" className="mt-0 focus-visible:outline-none">
                   <div className="grid gap-2">
                     {capabilityOptions.map(option => {
                       const checked = !!(formData as any)[option.key];
@@ -1001,7 +1197,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             <span className="font-medium text-sm flex items-center gap-2">
                               {option.title}
                               {option.highlight && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal bg-primary/10 text-primary border-none">
+                                <Badge variant="secondary" className="text-2xs h-4 px-1.5 font-normal bg-primary/10 text-primary border-none">
                                   {t('settings:api.modal.capabilities.recommended')}
                                 </Badge>
                               )}
@@ -1020,7 +1216,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 </TabsContent>
 
                 {/* Params Tab */}
-                <TabsContent value="params" className="mt-0 focus-visible:outline-none animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                <TabsContent value="params" className="mt-0 focus-visible:outline-none">
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor={fieldIds.temperature} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
@@ -1045,7 +1241,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         step={0.1}
                         className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
-                      <p className="text-[10px] text-muted-foreground/60 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.temperature_hint')}
                       </p>
                     </div>
@@ -1072,11 +1268,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         step={1}
                         className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
-                      <p className="text-[10px] text-muted-foreground/60 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.max_tokens_hint')}
                       </p>
                       {formData.modelAdapter === 'general' && formData.model?.toLowerCase().includes('qwen') && (
-                        <p className="text-[10px] text-amber-500 ml-1">{t('settings:api.modal.fields.qwen_hint')}</p>
+                        <p className="text-2xs text-amber-500 ml-1">{t('settings:api.modal.fields.qwen_hint')}</p>
                       )}
                     </div>
                   </div>
@@ -1112,7 +1308,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       placeholder={t('settings:api.modal.fields.max_tokens_limit_placeholder')}
                       className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                     />
-                    <p className="text-[10px] text-muted-foreground/60 ml-1">
+                    <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.max_tokens_limit_hint')}
                     </p>
                   </div>
@@ -1148,7 +1344,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       placeholder={t('settings:api.modal.fields.context_window_placeholder', { defaultValue: `${t('settings:api.modal.fields.context_window_auto_inferred')}: ${inferredCaps.contextWindow.toLocaleString()}` })}
                       className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                     />
-                    <p className="text-[10px] text-muted-foreground/60 ml-1">
+                    <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.context_window_hint')}
                       {' '}{inferredCaps.contextWindow.toLocaleString()} tokens
                     </p>
@@ -1197,31 +1393,31 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 </TabsContent>
 
                 {/* Reasoning Tab */}
-                <TabsContent value="reasoning" className="mt-0 focus-visible:outline-none animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                <TabsContent value="reasoning" className="mt-0 focus-visible:outline-none">
                   {formData.modelAdapter === 'general' && (
                     <div className="space-y-6">
                       <div className="grid gap-3 md:grid-cols-2">
-                        <div className="space-y-2">
+                        {profileUsesDiscreteEffort && <div className="space-y-2">
                           <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                             {t('settings:api.modal.reasoning.openai_label')}
                           </Label>
                           <AppSelect
-                            value={formData.reasoningEffort ?? 'unset'}
-                            onValueChange={v => setFormData(prev => ({ ...prev, reasoningEffort: v === 'unset' ? undefined : v }))}
+                            value={formData.reasoningEffort === 'none' && profileReasoningControl.canDisable
+                              ? 'none'
+                              : profileReasoningSelectValue ?? 'unset'}
+                            onValueChange={setProfileReasoningDepth}
                             placeholder={t('settings:api.modal.reasoning.default_option')}
                             options={[
                               { value: 'unset', label: t('settings:api.modal.reasoning.unset_option') },
-                              { value: 'none', label: t('settings:api.modal.reasoning.effort.none', 'None') },
-                              { value: 'minimal', label: t('settings:api.modal.reasoning.effort.minimal') },
-                              { value: 'low', label: t('settings:api.modal.reasoning.effort.low') },
-                              { value: 'medium', label: t('settings:api.modal.reasoning.effort.medium') },
-                              { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
-                              { value: 'xhigh', label: t('settings:api.modal.reasoning.effort.xhigh', 'Extra High') },
+                              ...(profileReasoningControl.canDisable
+                                ? [{ value: 'none', label: t('settings:api.modal.reasoning.effort.none', 'None') }]
+                                : []),
+                              ...profileReasoningOptions,
                             ]}
                             variant="ghost"
                             className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
-                        </div>
+                        </div>}
                         <div className="space-y-2">
                           <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                             {t('settings:api.modal.reasoning.verbosity_label', 'Verbosity')}
@@ -1240,7 +1436,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
                         </div>
-                        <div className="space-y-2">
+                        {!profileUsesDiscreteEffort && <div className="space-y-2">
                           <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">{t('settings:api.modal.fields.thinking_budget')}</Label>
                           <Input
                             type="number"
@@ -1258,19 +1454,19 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             }}
                             className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                           />
-                        </div>
+                        </div>}
                       </div>
                       
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
-                            <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>{t('settings:api.modal.reasoning.enable_thinking')}</Label>
+                            <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.reasoning.enable_thinking')}</Label>
                             <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.enable_thinking_hint')}</p>
                           </div>
                           <Switch
-                            checked={!!formData.enableThinking}
-                            disabled={!formData.supportsReasoning}
-                            onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v }))}
+                            checked={profileThinkingEnabled}
+                            disabled={!effectiveSupportsReasoning || !profileReasoningControl.canDisable}
+                            onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                           />
                         </div>
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
@@ -1360,7 +1556,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         placeholder={t('settings:api.modal.fields.repetition_penalty_placeholder', 'Qwen: >1.0, Doubao: >0')}
                         className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
-                      <p className="text-[10px] text-muted-foreground/60 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.repetition_penalty_hint', 'Qwen/Doubao models: penalize repeated tokens')}
                       </p>
                     </div>
@@ -1388,17 +1584,32 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
                   {formData.modelAdapter === 'anthropic' && (
                     <div className="space-y-6">
-                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.thinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, thinkingEnabled: !prev.thinkingEnabled }))}>{t('settings:api.modal.anthropic.title')}</Label>
+                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.anthropic.title')}</Label>
                           <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.anthropic.description')}</p>
                         </div>
                         <Switch
-                          checked={!!formData.thinkingEnabled}
-                          onCheckedChange={v => setFormData(prev => ({ ...prev, thinkingEnabled: !!v }))}
+                          checked={profileThinkingEnabled}
+                          disabled={!profileReasoningControl.canDisable}
+                          onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                         />
                       </div>
-                      <div className="space-y-2">
+                      {profileUsesDiscreteEffort && (
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                            {t('settings:api.modal.reasoning.openai_label')}
+                          </Label>
+                          <AppSelect
+                            value={profileReasoningSelectValue}
+                            onValueChange={setProfileReasoningDepth}
+                            options={profileReasoningOptions}
+                            variant="ghost"
+                            className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
+                          />
+                        </div>
+                      )}
+                      {!profileUsesDiscreteEffort && <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">{t('settings:api.modal.anthropic.budget_label')}</Label>
                         <Input
                           type="number"
@@ -1415,31 +1626,43 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           }}
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                         />
-                        <p className="text-[10px] text-muted-foreground/60 ml-1">{t('settings:api.modal.anthropic.budget_hint')}</p>
-                      </div>
+                        <p className="text-2xs text-muted-foreground/60 ml-1">{t('settings:api.modal.anthropic.budget_hint')}</p>
+                      </div>}
                     </div>
                   )}
 
                   {formData.modelAdapter === 'google' && (
                     <div className="space-y-6">
+                      {profileReasoningControl.kind === 'toggle-only' && (
+                        <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className="space-y-1">
+                            <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              {t('settings:api.modal.reasoning.enable_thinking')}
+                            </Label>
+                            <p className="text-xs text-muted-foreground/70">
+                              {t('settings:api.modal.reasoning.enable_thinking_hint')}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={profileThinkingEnabled}
+                            disabled={!profileReasoningControl.canDisable}
+                            onCheckedChange={v => setProfileThinkingEnabled(!!v)}
+                          />
+                        </div>
+                      )}
                       <div className="grid gap-3 md:grid-cols-2">
-                        <div className="space-y-2">
+                        {profileUsesDiscreteEffort && <div className="space-y-2">
                           <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">{t('settings:api.modal.google.effort_label')}</Label>
                           <AppSelect
-                            value={formData.reasoningEffort ?? 'none'}
-                            onValueChange={v => setFormData(prev => ({ ...prev, reasoningEffort: v }))}
+                            value={profileReasoningSelectValue}
+                            onValueChange={setProfileReasoningDepth}
                             placeholder={t('settings:api.modal.reasoning.default_option')}
-                            options={[
-                              { value: 'none', label: t('settings:api.modal.reasoning.effort.none') },
-                              { value: 'low', label: t('settings:api.modal.reasoning.effort.low') },
-                              { value: 'medium', label: t('settings:api.modal.reasoning.effort.medium') },
-                              { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
-                            ]}
+                            options={profileReasoningOptions}
                             variant="ghost"
                             className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
-                        </div>
-                        <div className="space-y-2">
+                        </div>}
+                        {!profileUsesDiscreteEffort && <div className="space-y-2">
                           <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">{t('settings:api.modal.google.thinking_budget_label')}</Label>
                           <Input
                             type="number"
@@ -1450,12 +1673,15 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 if (!raw) return { ...prev, thinkingBudget: undefined };
                                 const num = Number(raw);
                                 if (!Number.isFinite(num)) return prev;
-                                return { ...prev, thinkingBudget: Math.max(-1, Math.min(Math.round(num), 2_147_483_647)) };
+                                return {
+                                  ...prev,
+                                  thinkingBudget: clampGeminiThinkingBudget(prev.model, num),
+                                };
                               });
                             }}
                             className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                           />
-                        </div>
+                        </div>}
                       </div>
                       <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
@@ -1471,8 +1697,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               const next = !!v;
                               const updated: EditApiConfig = { ...prev, includeThoughts: next };
                               if (next) {
-                                if (updated.thinkingBudget == null) updated.thinkingBudget = -1;
+                                if (
+                                  !profileUsesDiscreteEffort &&
+                                  updated.thinkingBudget == null
+                                ) updated.thinkingBudget = -1;
                                 if (!updated.thinkingEnabled) updated.thinkingEnabled = true;
+                                if (!updated.enableThinking) updated.enableThinking = true;
                                 if (updated.modelAdapter === 'google') (updated as any).geminiApiVersion = 'v1beta';
                               }
                               return updated;
@@ -1497,9 +1727,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.deepseek.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1507,9 +1737,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               </p>
                             </div>
                             <Switch
-                              checked={!!formData.enableThinking}
-                              disabled={!effectiveSupportsReasoning}
-                              onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v }))}
+                              checked={profileThinkingEnabled}
+                              disabled={!effectiveSupportsReasoning || !profileReasoningControl.canDisable}
+                              onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                             />
                           </div>
                           {formData.enableThinking && deepSeekReasoningControl.kind !== 'toggle-only' && (
@@ -1543,7 +1773,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 variant="ghost"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
-                              <p className="text-[10px] text-muted-foreground/60 ml-1">
+                              <p className="text-2xs text-muted-foreground/60 ml-1">
                                 {deepSeekReasoningControl.kind === 'v32-budget-effort'
                                   ? t('settings:api.modal.deepseek.v32_depth_hint', 'DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.')
                                   : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports high or max reasoning effort.')}
@@ -1575,9 +1805,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.qwen.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1585,52 +1815,47 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               </p>
                             </div>
                             <Switch
-                              checked={!!formData.enableThinking}
-                              onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v, supportsReasoning: !!v }))}
+                              checked={profileThinkingEnabled}
+                              disabled={!profileReasoningControl.canDisable}
+                              onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                             />
                           </div>
-                          <div className="grid gap-3 md:grid-cols-2">
+                          {profileReasoningControl.kind === 'v32-budget-effort' && (
                             <div className="space-y-2">
                               <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
-                                {t('settings:api.modal.qwen.thinking_budget', 'Thinking Budget')}
-                              </Label>
-                              <Input
-                                type="number"
-                                min={0}
-                                value={formData.thinkingBudget ?? ''}
-                                disabled={!formData.enableThinking}
-                                onChange={e => {
-                                  const raw = (e.target as HTMLInputElement).value;
-                                  setFormData(prev => {
-                                    if (!raw) return { ...prev, thinkingBudget: undefined };
-                                    const num = Number(raw);
-                                    if (!Number.isFinite(num)) return prev;
-                                    return { ...prev, thinkingBudget: Math.max(0, Math.round(num)) };
-                                  });
-                                }}
-                                placeholder={t('settings:api.modal.qwen.thinking_budget_placeholder')}
-                                className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
-                                {t('settings:api.modal.qwen.reasoning_effort', 'Reasoning Effort')}
+                                {t('settings:api.modal.reasoning.openai_label')}
                               </Label>
                               <AppSelect
-                                value={formData.reasoningEffort ?? 'unset'}
-                                onValueChange={v => setFormData(prev => ({ ...prev, reasoningEffort: v === 'unset' ? undefined : v }))}
-                                placeholder={t('settings:api.modal.reasoning.default_option')}
-                                options={[
-                                  { value: 'unset', label: t('settings:api.modal.reasoning.unset_option') },
-                                  { value: 'low', label: t('settings:api.modal.reasoning.effort.low') },
-                                  { value: 'medium', label: t('settings:api.modal.reasoning.effort.medium') },
-                                  { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
-                                ]}
+                                value={profileReasoningSelectValue}
+                                onValueChange={setProfileReasoningDepth}
+                                options={profileReasoningOptions}
                                 variant="ghost"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                             </div>
-                          </div>
+                          )}
+                          {profileReasoningControl.kind !== 'v32-budget-effort' && <div className="space-y-2">
+                            <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                              {t('settings:api.modal.qwen.thinking_budget', 'Thinking Budget')}
+                            </Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={formData.thinkingBudget ?? ''}
+                              disabled={!formData.enableThinking}
+                              onChange={e => {
+                                const raw = (e.target as HTMLInputElement).value;
+                                setFormData(prev => {
+                                  if (!raw) return { ...prev, thinkingBudget: undefined };
+                                  const num = Number(raw);
+                                  if (!Number.isFinite(num)) return prev;
+                                  return { ...prev, thinkingBudget: Math.max(0, Math.round(num)) };
+                                });
+                              }}
+                              placeholder={t('settings:api.modal.qwen.thinking_budget_placeholder')}
+                              className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                            />
+                          </div>}
                         </CardContent>
                       </Card>
                     </div>
@@ -1655,18 +1880,22 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               {t('settings:api.modal.grok.reasoning_effort')}
                             </Label>
                             <AppSelect
-                              value={formData.reasoningEffort ?? 'unset'}
-                              onValueChange={v => setFormData(prev => ({ ...prev, reasoningEffort: v === 'unset' ? undefined : v }))}
+                              value={!profileThinkingEnabled && profileReasoningControl.canDisable
+                                ? 'none'
+                                : profileReasoningSelectValue ?? 'unset'}
+                              onValueChange={setProfileReasoningDepth}
                               placeholder={t('settings:api.modal.reasoning.default_option')}
                               options={[
                                 { value: 'unset', label: t('settings:api.modal.reasoning.unset_option') },
-                                { value: 'low', label: t('settings:api.modal.reasoning.effort.low') },
-                                { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
+                                ...(profileReasoningControl.canDisable
+                                  ? [{ value: 'none', label: t('settings:api.modal.reasoning.effort.none', 'None') }]
+                                  : []),
+                                ...profileReasoningOptions,
                               ]}
                               variant="ghost"
                               className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
-                            <p className="text-[10px] text-muted-foreground/60 ml-1">
+                            <p className="text-2xs text-muted-foreground/60 ml-1">
                               {t('settings:api.modal.grok.reasoning_effort_hint')}
                             </p>
                           </div>
@@ -1700,12 +1929,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               {t('settings:api.modal.doubao.thinking_mode')}
                             </Label>
                             <AppSelect
-                              value={formData.reasoningEffort ?? 'enabled'}
+                              value={formData.reasoningEffort ?? (profileThinkingEnabled ? 'enabled' : 'disabled')}
                               onValueChange={v => setFormData(prev => ({ 
                                 ...prev, 
                                 reasoningEffort: v,
                                 enableThinking: v !== 'disabled',
-                                supportsReasoning: v !== 'disabled'
+                                thinkingEnabled: v !== 'disabled',
+                                supportsReasoning: true,
+                                isReasoning: true,
                               }))}
                               options={[
                                 { value: 'enabled', label: t('settings:api.modal.doubao.mode_enabled') },
@@ -1715,7 +1946,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               variant="ghost"
                               className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
-                            <p className="text-[10px] text-muted-foreground/60 ml-1">
+                            <p className="text-2xs text-muted-foreground/60 ml-1">
                               {t('settings:api.modal.doubao.thinking_mode_hint')}
                             </p>
                           </div>
@@ -1738,9 +1969,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.zhipu.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1748,10 +1979,25 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               </p>
                             </div>
                             <Switch
-                              checked={!!formData.enableThinking}
-                              onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v, supportsReasoning: !!v }))}
+                              checked={profileThinkingEnabled}
+                              disabled={!profileReasoningControl.canDisable}
+                              onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                             />
                           </div>
+                          {profileUsesDiscreteEffort && (
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                                {t('settings:api.modal.reasoning.openai_label')}
+                              </Label>
+                              <AppSelect
+                                value={profileReasoningSelectValue}
+                                onValueChange={setProfileReasoningDepth}
+                                options={profileReasoningOptions}
+                                variant="ghost"
+                                className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
+                              />
+                            </div>
+                          )}
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
@@ -1771,6 +2017,52 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                     </div>
                   )}
 
+                  {(formData.modelAdapter === 'mistral' || formData.modelAdapter === 'ernie') && (
+                    <div className="space-y-6">
+                      <Card className="border-border/40 bg-transparent shadow-none">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <Atom className="h-4 w-4 text-primary" />
+                            {formData.modelAdapter === 'mistral'
+                              ? t('settings:api.modal.mistral.title', 'Mistral')
+                              : t('settings:api.modal.ernie.title', 'ERNIE')}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                            <div className="space-y-1">
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                                {t('settings:api.modal.reasoning.enable_thinking')}
+                              </Label>
+                              <p className="text-xs text-muted-foreground/70">
+                                {t('settings:api.modal.reasoning.enable_thinking_hint')}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={profileThinkingEnabled}
+                              disabled={!profileReasoningControl.canDisable}
+                              onCheckedChange={v => setProfileThinkingEnabled(!!v)}
+                            />
+                          </div>
+                          {profileUsesDiscreteEffort && (
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                                {t('settings:api.modal.reasoning.openai_label')}
+                              </Label>
+                              <AppSelect
+                                value={profileReasoningSelectValue}
+                                onValueChange={setProfileReasoningDepth}
+                                options={profileReasoningOptions}
+                                variant="ghost"
+                                className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
+                              />
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
                   {/* Moonshot/Kimi 专用面板 */}
                   {formData.modelAdapter === 'moonshot' && (
                     <div className="space-y-6">
@@ -1785,6 +2077,23 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                          {isModernKimiThinkingModel && (
+                            <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                              <div className="space-y-1">
+                                <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                                  {t('settings:api.modal.reasoning.enable_thinking')}
+                                </Label>
+                                <p className="text-xs text-muted-foreground/70">
+                                  {t('settings:api.modal.reasoning.enable_thinking_hint')}
+                                </p>
+                              </div>
+                              <Switch
+                                checked={profileThinkingEnabled}
+                                disabled={!profileReasoningControl.canDisable}
+                                onCheckedChange={v => setProfileThinkingEnabled(!!v)}
+                              />
+                            </div>
+                          )}
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <Info className="h-3 w-3" />
                             {t('settings:api.modal.moonshot.auto_config')}
@@ -1811,6 +2120,23 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                          {miniMaxModelMajor !== undefined && (
+                            <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                              <div className="space-y-1">
+                                <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                                  {t('settings:api.modal.reasoning.enable_thinking')}
+                                </Label>
+                                <p className="text-xs text-muted-foreground/70">
+                                  {t('settings:api.modal.reasoning.enable_thinking_hint')}
+                                </p>
+                              </div>
+                              <Switch
+                                checked={profileThinkingEnabled}
+                                disabled={!profileReasoningControl.canDisable}
+                                onCheckedChange={v => setProfileThinkingEnabled(!!v)}
+                              />
+                            </div>
+                          )}
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
@@ -1825,10 +2151,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               onCheckedChange={v => setFormData(prev => ({ ...prev, reasoningSplit: !!v }))}
                             />
                           </div>
-                          <p className="text-xs text-amber-500 flex items-center gap-1">
-                            <Info className="h-3 w-3" />
-                            {t('settings:api.modal.minimax.no_enable_thinking')}
-                          </p>
+                          {(miniMaxModelMajor === undefined || miniMaxModelMajor < 3) && (
+                            <p className="text-xs text-amber-500 flex items-center gap-1">
+                              <Info className="h-3 w-3" />
+                              {t('settings:api.modal.minimax.no_enable_thinking')}
+                            </p>
+                          )}
                         </CardContent>
                       </Card>
                     </div>
@@ -1839,8 +2167,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           </Tabs>
 
           {/* Footer - Fixed & Minimal */}
-          <div className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2">
-            <NotionButton
+          <div
+            className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2"
+            style={mobilePanelMode && keyboardInset > 0 ? { paddingBottom: `calc(0.5rem + ${keyboardInset}px)` } : undefined}
+          >
+            <DsButton
               type="button"
               variant="ghost"
               onClick={() => void handleTestConnection()}
@@ -1854,32 +2185,46 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               )}
               <span>
                 {connectionTest.state === 'testing'
-                  ? t('settings:api.modal.test_connection_testing', '测试中…')
-                  : t('settings:api.modal.test_connection', '测试连接')}
+                  ? t('settings:api.modal.test_connection_testing')
+                  : t('settings:api.modal.test_connection')}
               </span>
               {connectionTest.state === 'success' && (
-                <span className="text-xs text-emerald-600 dark:text-emerald-400">{connectionTest.latencyMs} ms</span>
+                <span className="text-xs tabular-nums text-primary">{connectionTest.latencyMs} ms</span>
               )}
               {connectionTest.state === 'failed' && (
-                <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short', '失败')}</span>
+                <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short')}</span>
               )}
-            </NotionButton>
+            </DsButton>
             <div className="flex-1" />
-            <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
-              {t('common:actions.cancel')}
-            </NotionButton>
-            <NotionButton type="submit" variant="primary" className="min-w-[100px]">
-              {t('common:actions.save')}
-            </NotionButton>
+            {/* P1-7 移动端右滑面板：保存唯一出口在统一顶栏 Check，底栏只保留「测试连接」，
+                避免顶栏/底栏双保存出口造成心智分叉（表单仍可经 requestSubmit 提交） */}
+            {!mobilePanelMode && (
+              <>
+                <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
+                  {t('common:actions.cancel')}
+                </DsButton>
+                <DsButton type="submit" variant="primary" className="min-w-[100px]">
+                  {t('common:actions.save')}
+                </DsButton>
+              </>
+            )}
           </div>
         </form>
+  );
+
+  // Menus render into the nearest overlay container. Keep them above every
+  // editor surface, including the embedded responsive dialog host.
+  const layeredFormContent = (
+    <OverlayLayerProvider baseZ={Z_INDEX.modal}>
+      {formContent}
+    </OverlayLayerProvider>
   );
 
   // 嵌入模式：直接返回表单内容，不使用 Dialog 包裹
   if (embeddedMode) {
     return (
-      <div className="h-full flex flex-col">
-        {formContent}
+      <div className="flex h-full min-h-0 flex-col">
+        {layeredFormContent}
       </div>
     );
   }
@@ -1887,16 +2232,16 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   // 模态框模式：使用 Dialog 包裹
   // containerSelector 限制遮罩和居中区域在主内容区域（不包含左侧边栏）
   return (
-    <NotionDialog
+    <DsDialog
       open={true}
       onOpenChange={() => {}}
       closeOnOverlay={false}
       showClose={false}
       maxWidth="max-w-[672px]"
-      className="p-0 overflow-hidden"
+      className="h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 overflow-hidden p-0"
     >
-      {formContent}
-    </NotionDialog>
+      {layeredFormContent}
+    </DsDialog>
   );
 };
 

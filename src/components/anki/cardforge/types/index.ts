@@ -53,6 +53,8 @@ export interface GenerateCardsOutput {
   documentId?: string;
   /** 是否因暂停提前结束 */
   paused?: boolean;
+  /** 是否因空闲超时结束（ok 应为 false） */
+  timedOut?: boolean;
   /** 生成的卡片列表 */
   cards?: AnkiCardResult[];
   /** 统计信息 */
@@ -101,7 +103,56 @@ export interface ExportCardsOutput {
   filePath?: string;
   /** AnkiConnect 格式时返回导入数量 */
   importedCount?: number;
+  /** AnkiConnect 格式时：已存在（重复跳过）的数量 */
+  duplicateCount?: number;
+  /** AnkiConnect 格式时：导入失败的数量 */
+  failedCount?: number;
+  /** 实际参与导出的卡片数（排除错误卡/空卡后的数量） */
+  exportedCount?: number;
+  /** 导出前校验结果（含空卡/缺字段等警告，供 UI 内联展示） */
+  validation?: ExportCardsValidationResult;
   error?: string;
+}
+
+// ============================================================================
+// 导出前校验类型
+// ============================================================================
+
+/** 导出前校验问题代码 */
+export type ExportCardIssueCode =
+  | 'empty_card'        // 正反面与全部字段均为空
+  | 'missing_front'     // 缺少正面内容（且无字段可回退）
+  | 'missing_back'      // 缺少背面内容（且无字段可回退）
+  | 'error_card'        // 错误卡（生成失败/截断产物）
+  | 'missing_field';    // 模板必填字段为空
+
+/** 校验问题严重级别：error 会被排除出导出集合，warning 仅提示 */
+export type ExportCardIssueLevel = 'error' | 'warning';
+
+/** 单条导出校验问题（供 UI 内联展示） */
+export interface ExportCardValidationIssue {
+  /** 卡片在输入数组中的下标 */
+  index: number;
+  /** 卡片 ID（若有） */
+  cardId?: string;
+  code: ExportCardIssueCode;
+  level: ExportCardIssueLevel;
+  /** 出问题的字段名（missing_field 时有值） */
+  field?: string;
+  /** 人类可读描述（已本地化） */
+  message: string;
+}
+
+/** 导出前校验结果 */
+export interface ExportCardsValidationResult {
+  /** 是否存在阻断导出的 error 级问题（全部卡片均无法导出时为 false） */
+  ok: boolean;
+  /** 输入卡片总数 */
+  totalCount: number;
+  /** 通过校验、可导出的卡片数 */
+  exportableCount: number;
+  /** 全部问题明细（error + warning） */
+  issues: ExportCardValidationIssue[];
 }
 
 /** list_templates 输入 */
@@ -362,7 +413,16 @@ export type CardForgeEventType =
   | 'document:start'
   | 'document:complete'
   | 'document:paused'
-  | 'document:cancelled';
+  | 'document:cancelled'
+  | 'rate:limit'
+  | 'tool:result'
+  | 'tool:error';
+
+/** API 频率限制警告事件 payload（对齐后端 RateLimitWarning） */
+export interface RateLimitWarningPayload {
+  message: string;
+  retryAfterSeconds?: number;
+}
 
 /** 事件基础结构 */
 export interface CardForgeEvent<T = unknown> {

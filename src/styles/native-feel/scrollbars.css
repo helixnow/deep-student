@@ -4,19 +4,22 @@
  * Phase C of native-feel migration (2026-05-14).
  *
  * Behaviour:
- * - Scrollbars stay invisible by default (transparent thumb).
- * - When the user hovers a scrollable container, the thumb fades in.
- * - Mirrors macOS's overlay scrollbar style — content does not reflow on
- *   hover because the thumb sits on top of the content area.
+ * - A 10px interaction lane carries a restrained 4px visual thumb.
+ * - Native scrollbars stay invisible until hover / keyboard focus.
+ * - OverlayScrollbars appears while scrolling or interacting, then auto-hides.
+ * - Both paths consume the same geometry and semantic color tokens.
+ * - Touch surfaces keep a visible thumb because CSS cannot reveal a native
+ *   scrollbar only while scrolling.
  *
  * Tokens:
  *   --scrollbar-thumb        — visible thumb colour (defined in theme-colors.css)
  *   --scrollbar-thumb-hover  — thumb hovered colour
- *   --scrollbar-track        — preserved for inset / always-visible scrollbars
+ *   --scrollbar-thumb-active — thumb dragged colour
+ *   --scrollbar-track        — transparent in every interaction state
+ *   --scrollbar-interaction-size / --scrollbar-thumb-inset — shared geometry
  *
- * Escape hatches:
- *   .scroll-hidden  — completely no scrollbar (mobile / overlay panes)
- *   .scroll-always  — always-visible thin scrollbar (e.g. forms with long lists)
+ * The sole scrollbar-hiding utility is `.scrollbar-none`, defined in
+ * src/shared/styles/scrollbar-utils.css.
  *
  * Design doc: docs/plans/2026-05-14-native-feel-migration-design.md
  */
@@ -44,8 +47,8 @@
 /* WebKit: hidden by default, visible on container hover            */
 /* ---------------------------------------------------------------- */
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: var(--scrollbar-interaction-size);
+  height: var(--scrollbar-interaction-size);
   background: transparent;
 }
 
@@ -56,10 +59,10 @@
 
 *::-webkit-scrollbar-thumb {
   background: transparent;
-  border-radius: 8px;
-  border: 2px solid transparent;
+  border-radius: 999px;
+  border: var(--scrollbar-thumb-inset) solid transparent;
   background-clip: padding-box;
-  transition: background-color 150ms ease;
+  transition: background-color 160ms ease-out;
 }
 
 *:hover::-webkit-scrollbar-thumb,
@@ -88,37 +91,146 @@
 /* Active state — darken thumb while user is actively scrolling     */
 /* ---------------------------------------------------------------- */
 *::-webkit-scrollbar-thumb:active {
-  background-color: var(--scrollbar-thumb-hover);
+  background-color: var(--scrollbar-thumb-active);
   background-clip: padding-box;
 }
 
 /* ---------------------------------------------------------------- */
-/* Utility classes                                                   */
+/* OverlayScrollbars: project-owned visual system                    */
 /* ---------------------------------------------------------------- */
-.scroll-hidden {
-  scrollbar-width: none;
+.os-theme-deep-student {
+  --os-size: var(--scrollbar-interaction-size);
+  --os-padding-perpendicular: var(--scrollbar-thumb-inset);
+  --os-padding-axis: var(--scrollbar-thumb-axis-inset);
+  --os-track-border-radius: 999px;
+  --os-track-bg: var(--scrollbar-track);
+  --os-track-bg-hover: var(--scrollbar-track);
+  --os-track-bg-active: var(--scrollbar-track);
+  --os-handle-border-radius: 999px;
+  --os-handle-bg: var(--scrollbar-thumb);
+  --os-handle-bg-hover: var(--scrollbar-thumb-hover);
+  --os-handle-bg-active: var(--scrollbar-thumb-active);
+  --os-handle-min-size: var(--scrollbar-thumb-min-size);
+  --os-handle-interactive-area-offset: var(--scrollbar-thumb-inset);
 }
 
-.scroll-hidden::-webkit-scrollbar {
-  display: none;
+/* Per-surface track insets supplied by the unified ScrollArea wrapper. */
+/* ---------------------------------------------------------------- */
+/* Vertical-only surfaces (chat streams, lists, panels): the library
+ * always creates BOTH scrollbars even when one axis is overflow-hidden.
+ * The phantom horizontal bar would occupy the bottom 10px strip of the
+ * surface; remove it and keep the vertical track full-height.            */
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-scroll-axes="vertical"]
+  > .os-scrollbar-horizontal {
+  display: none !important;
 }
 
-.scroll-always {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-scroll-axes="vertical"]
+  > .os-scrollbar-vertical {
+  top: 0;
+  bottom: 0;
 }
 
-.scroll-always::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb);
-  background-clip: padding-box;
+/* Horizontal-only surfaces: drop the vertical phantom bar. */
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-scroll-axes="horizontal"]
+  > .os-scrollbar-vertical {
+  display: none !important;
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-top]
+  > .os-scrollbar-vertical {
+  top: var(--scroll-area-track-top);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-bottom]
+  > .os-scrollbar-vertical {
+  bottom: calc(var(--scroll-area-track-bottom) + var(--os-size));
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-bottom]
+  > .os-scrollbar-vertical.os-scrollbar-cornerless {
+  bottom: var(--scroll-area-track-bottom);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-vertical {
+  right: var(--scroll-area-track-right);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-vertical.os-scrollbar-rtl {
+  right: auto;
+  left: var(--scroll-area-track-right);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-left]
+  > .os-scrollbar-vertical.os-scrollbar-rtl {
+  left: var(--scroll-area-track-left);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-bottom]
+  > .os-scrollbar-horizontal {
+  bottom: var(--scroll-area-track-bottom);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-horizontal {
+  right: var(--scroll-area-track-right);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-right]
+  > .os-scrollbar-horizontal:not(.os-scrollbar-rtl):not(.os-scrollbar-cornerless) {
+  right: calc(var(--scroll-area-track-right) + var(--os-size));
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-left]
+  > .os-scrollbar-horizontal {
+  left: var(--scroll-area-track-left);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"][data-overlayscrollbars~="host"][data-scroll-track-left]
+  > .os-scrollbar-horizontal.os-scrollbar-rtl:not(.os-scrollbar-cornerless) {
+  left: calc(var(--scroll-area-track-left) + var(--os-size));
 }
 
 /* ---------------------------------------------------------------- */
-/* iOS / WebView fallback — touch devices keep momentum scrolling   */
+/* Native ScrollArea fallback: preserve iOS momentum and rubber-band */
 /* ---------------------------------------------------------------- */
-@supports (-webkit-touch-callout: none) {
-  *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+.scroll-area--native {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------------------------------------------------------------- */
+/* Touch devices — thumb must not depend on :hover                   */
+/* ---------------------------------------------------------------- */
+/*
+ * 2026-07 修复（移动端审计 M-1）：上面的隐藏/悬停显影策略依赖 hover，
+ * 触屏没有 hover，导致 Android WebView 等触屏环境下所有原生滚动容器
+ * 完全没有滚动位置指示。触屏改为恒显细 thumb（token 色本身很淡），
+ * CSS 无法做到"仅滚动时显示"，这是无 JS 前提下的最优解。
+ * OverlayScrollbars 路径的触屏 autoHide 策略见 src/components/ui/scroll-area.tsx。
+ */
+@media (hover: none) and (pointer: coarse) {
+  * {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    background-clip: padding-box;
+  }
+
+  /* OverlayScrollbars 容器仍由库自绘，维持隐藏原生条 */
+  [data-overlayscrollbars-viewport] {
+    scrollbar-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *::-webkit-scrollbar-thumb,
+  .os-scrollbar,
+  .os-scrollbar-track,
+  .os-scrollbar-handle {
+    transition: none !important;
   }
 }

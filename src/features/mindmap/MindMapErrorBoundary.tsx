@@ -6,8 +6,10 @@
 
 import React from 'react';
 import { WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import i18next from 'i18next';
+import { reportFrontendError } from '@/logging/errorReporter';
 
 interface MindMapErrorBoundaryProps {
   children: React.ReactNode;
@@ -41,6 +43,11 @@ export class MindMapErrorBoundary extends React.Component<
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     this.setState({ errorInfo });
     console.error('[MindMapErrorBoundary] Caught error:', error, errorInfo);
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'mindmap',
+      extra: { componentStack: errorInfo.componentStack },
+    }).catch(() => undefined);
   }
 
   handleReset = (): void => {
@@ -50,33 +57,41 @@ export class MindMapErrorBoundary extends React.Component<
 
   render(): React.ReactNode {
     if (this.state.hasError) {
+      // 视觉对齐加载错误卡：8px 圆角卡片 + --notes-popover-shadow，避免两处错误态样式漂移
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 bg-[var(--mm-bg)]">
-          <WarningCircle size={48} className="text-destructive" />
-          <p className="text-destructive font-medium">
-            {this.props.fallbackMessage || i18next.t('mindmap:errorBoundary')}
-          </p>
-          {this.state.error && (
-            <p className="text-sm text-muted-foreground max-w-md text-center">
-              {this.state.error.message}
+        <div className="flex items-center justify-center h-full p-6 bg-[var(--mm-bg)]" role="alert">
+          <div className="max-w-md w-full flex flex-col items-center gap-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] p-5 text-center shadow-[var(--notes-popover-shadow)]">
+            <WarningCircle size={32} className="text-destructive" />
+            <p className="text-sm text-destructive font-medium">
+              {this.props.fallbackMessage || i18next.t('mindmap:errorBoundary')}
             </p>
-          )}
-          <NotionButton
-            variant="default"
-            onClick={this.handleReset}
-            className="mt-2"
-          >
-            <ArrowClockwise size={16} className="mr-2" />
-            {i18next.t('mindmap:retryLoad')}
-          </NotionButton>
-          {import.meta.env.DEV && this.state.errorInfo && (
-            <details className="mt-4 text-xs text-muted-foreground max-w-lg">
-              <summary className="cursor-pointer">{i18next.t('mindmap:errorDetails')}</summary>
-              <pre className="mt-2 p-2 bg-muted rounded overflow-auto max-h-40">
-                {this.state.errorInfo.componentStack}
-              </pre>
-            </details>
-          )}
+            {this.state.error && (
+              <p className="text-xs text-muted-foreground break-words">
+                {this.state.error.message}
+              </p>
+            )}
+            <DsButton
+              variant="default"
+              onClick={this.handleReset}
+              className="mt-1"
+            >
+              <ArrowClockwise size={16} className="mr-2" />
+              {i18next.t('mindmap:retryLoad')}
+            </DsButton>
+            {import.meta.env.DEV && this.state.errorInfo && (
+              <details className="mt-2 w-full text-xs text-muted-foreground text-left">
+                <summary className="cursor-pointer">{i18next.t('mindmap:errorDetails')}</summary>
+                <CustomScrollArea
+                  className="mt-2 max-h-40 rounded bg-muted"
+                  viewportClassName="max-h-[inherit] p-2"
+                  orientation="both"
+                  fullHeight={false}
+                >
+                  <pre>{this.state.errorInfo.componentStack}</pre>
+                </CustomScrollArea>
+              </details>
+            )}
+          </div>
         </div>
       );
     }

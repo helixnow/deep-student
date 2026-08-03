@@ -10,6 +10,11 @@
     "emptyGroup": "No conversations yet"
   },
   "theme": "Theme",
+  "mobile_drawer": {
+    "section_app": "App",
+    "section_chat": "Chats",
+    "section_learning": "Learning Resources"
+  },
   "navigation": {
     "batch": "Batch Analysis",
     "textbook_library": "Textbook Library",
@@ -32,7 +37,13 @@
     "learning_hub": "Learning Hub",
     "extensions": "Extensions",
     "chat_v2": "Smart Chat",
-    "skills_management": "Skills Management"
+    "skills_management": "Skills Management",
+    "todo": "Todo",
+    "ui_lab": "UI Lab",
+    "command_palette": "Search & Commands",
+    "workbench_mode": "Learning Desktop",
+    "show_workbench_mode": "Show Learning Desktop",
+    "hide_workbench_mode": "Hide Learning Desktop"
   },
   "aria": {
     "sidebar_navigation": "Main navigation",
@@ -52,11 +63,25 @@
     "create_conversation": "New conversation",
     "expand_group_sessions": "Show more",
     "collapse_group_sessions": "Show less",
-    "rename_session": "Rename session"
+    "rename_session": "Rename session",
+    "delete_session": "Delete session"
   },
   "rename": {
     "title": "Rename conversation",
     "label": "Conversation name"
+  },
+  "delete": {
+    "confirm_hint": "Delete permanently? This cannot be undone"
+  },
+  "search": {
+    "placeholder": "Search sessions...",
+    "clear": "Clear search",
+    "no_results": "No matching sessions"
+  },
+  "update": {
+    "short": "Update",
+    "available": "Update available",
+    "downloading": "Downloading..."
   },
   "expand": "Expand sidebar",
   "collapse": "Collapse sidebar",

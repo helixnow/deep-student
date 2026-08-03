@@ -195,6 +195,17 @@ alignment 可选值：left / center / right / justify
             description: '替换后的文件名（含 .docx 后缀），默认 "edited.docx"',
             default: 'edited.docx',
           },
+          output_target: {
+            type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
+            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+          },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
+          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          overwrite_policy: {
+            type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
+            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+          },
+          expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },
         required: ['resource_id', 'replacements'],
       },
@@ -202,10 +213,10 @@ alignment 可选值：left / center / right / justify
     {
       name: 'builtin-docx_create',
       description:
-        '从 JSON spec 生成格式化的 DOCX 文件并保存到用户的学习资源。' +
+        '从 JSON spec 生成格式化 DOCX；默认保存到学习资源，也可安全写入已授权 workspace。' +
         '支持标题（6级）、段落（粗体/斜体/对齐）、表格、有序/无序列表、代码块、分页符。' +
         '当用户要求"生成 Word 文件"、"导出为 Word"、"写一份报告"时使用。' +
-        '生成成功后返回文件 ID，用户可在学习资源中查看和下载。',
+        '返回 TaskObjectHandle；workspace 输出同时返回可撤销的 mutation receipt/change set。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -224,6 +235,17 @@ alignment 可选值：left / center / right / justify
             type: 'string',
             description: '可选：保存到的文件夹 ID。不指定则保存到根目录。',
           },
+          output_target: {
+            type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
+            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+          },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
+          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          overwrite_policy: {
+            type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
+            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+          },
+          expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },
         required: ['spec'],
       },

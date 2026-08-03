@@ -1,12 +1,21 @@
 import type { IStyleTheme } from '../../registry/types';
+import { MINIMAL_LIGHT_PALETTE } from './palettes';
 
+/**
+ * 极简主题（亮色）
+ *
+ * 原先硬编码 #FFFFFF / #000000，已 token 化为 --mm-* 变量，
+ * 跟随应用主题背景（自定义浅色调色板下不再突兀）。
+ * "黑底白字根节点"的极简视觉通过反转 token（--mm-text 作底、--mm-bg 作字）保留。
+ */
 export const minimalTheme: IStyleTheme = {
   id: 'minimal',
   name: 'themes.minimal',
   node: {
     root: {
-      background: '#000000',
-      foreground: '#FFFFFF',
+      // 反转 token：亮色模式下等效于旧版黑底白字
+      background: 'var(--mm-text)',
+      foreground: 'var(--mm-bg)',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 16,
@@ -14,16 +23,16 @@ export const minimalTheme: IStyleTheme = {
       padding: '8px 16px',
     },
     branch: {
-      background: '#FFFFFF',
-      foreground: '#37352F',
-      border: '1px solid #E0E0E0',
+      background: 'var(--mm-bg-elevated)',
+      foreground: 'var(--mm-text)',
+      border: '1px solid var(--mm-border)',
       borderRadius: 4,
       fontSize: 14,
       padding: '6px 12px',
     },
     leaf: {
       background: 'transparent',
-      foreground: '#37352F',
+      foreground: 'var(--mm-text)',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 14,
@@ -32,10 +41,11 @@ export const minimalTheme: IStyleTheme = {
   },
   edge: {
     type: 'bezier',
-    stroke: '#E0E0E0',
+    stroke: 'var(--mm-border)',
     strokeWidth: 1,
   },
+  palette: MINIMAL_LIGHT_PALETTE,
   canvas: {
-    background: '#FFFFFF',
+    background: 'var(--mm-bg)',
   },
 };

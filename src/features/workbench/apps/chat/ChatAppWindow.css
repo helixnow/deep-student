@@ -1,0 +1,22 @@
+/* 侧栏宽度 / 右缘软分隔线已由 workbench.tokens.css + SystemWindowShared.css
+   的 .wb-sys-aside 统一提供（272px / medium 240px + --wb-sidebar-seam），
+   对话窗口即基准本身，无需覆盖。 */
+
+.wb-chat-app-host .chat-v2 {
+  position: absolute;
+  inset: 0;
+}
+
+.wb-chat-titlebar-controls {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  pointer-events: none;
+}
+
+.wb-chat-titlebar-sidebar-toggle {
+  width: 28px;
+  height: 28px;
+  pointer-events: auto;
+  color: var(--wb-titlebar-fg, hsl(var(--foreground)));
+}

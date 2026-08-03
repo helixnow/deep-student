@@ -121,10 +121,10 @@ impl From<anyhow::Error> for ChatV2Error {
     }
 }
 
-// Tauri 命令返回：序列化为结构化 JSON，便于前端按 code 差异化处理
-impl From<ChatV2Error> for String {
-    fn from(e: ChatV2Error) -> Self {
-        let code = match &e {
+impl ChatV2Error {
+    /// 稳定错误码（前端契约的一部分，不得随意改名）。
+    pub fn code(&self) -> &'static str {
+        match self {
             ChatV2Error::SessionNotFound(_) => "SESSION_NOT_FOUND",
             ChatV2Error::GroupNotFound(_) => "GROUP_NOT_FOUND",
             ChatV2Error::MessageNotFound(_) => "MESSAGE_NOT_FOUND",
@@ -147,9 +147,22 @@ impl From<ChatV2Error> for String {
             ChatV2Error::InvalidInput(_) => "INVALID_INPUT",
             ChatV2Error::DatabaseCorrupted { .. } => "DATABASE_CORRUPTED",
             ChatV2Error::Timeout(_) => "TIMEOUT",
-        };
-        let message = e.to_string();
-        serde_json::json!({ "code": code, "message": message }).to_string()
+        }
+    }
+
+    /// 命令层统一错误载荷：`{"code":"...","message":"..."}` JSON 字符串。
+    ///
+    /// 所有 Tauri command 的 `Err(String)` 都必须是这个形状；
+    /// 前端 `getErrorDetails` 按 `code` 分支处理、按 `message` 展示。
+    pub fn to_command_error(&self) -> String {
+        serde_json::json!({ "code": self.code(), "message": self.to_string() }).to_string()
+    }
+}
+
+// Tauri 命令返回：序列化为结构化 JSON，便于前端按 code 差异化处理
+impl From<ChatV2Error> for String {
+    fn from(e: ChatV2Error) -> Self {
+        e.to_command_error()
     }
 }
 
@@ -205,6 +218,32 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&s).expect("should be JSON");
         assert_eq!(parsed["code"], "DATABASE_ERROR");
         assert_eq!(parsed["message"], "Database error: connection failed");
+    }
+
+    #[test]
+    fn test_command_error_code_stability() {
+        // 命令层错误码是前端契约，重命名即破坏兼容
+        assert_eq!(
+            ChatV2Error::SessionNotFound(String::new()).code(),
+            "SESSION_NOT_FOUND"
+        );
+        assert_eq!(
+            ChatV2Error::Validation(String::new()).code(),
+            "VALIDATION_ERROR"
+        );
+        assert_eq!(
+            ChatV2Error::InvalidInput(String::new()).code(),
+            "INVALID_INPUT"
+        );
+        assert_eq!(ChatV2Error::Timeout(String::new()).code(), "TIMEOUT");
+
+        let payload = ChatV2Error::Timeout("approval_expired".to_string()).to_command_error();
+        let parsed: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
+        assert_eq!(parsed["code"], "TIMEOUT");
+        assert!(parsed["message"]
+            .as_str()
+            .unwrap()
+            .contains("approval_expired"));
     }
 
     #[test]

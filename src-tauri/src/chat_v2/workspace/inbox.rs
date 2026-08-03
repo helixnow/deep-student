@@ -31,9 +31,7 @@ impl InboxManager {
         for item in items {
             // 只恢复 unread 状态的 inbox
             if item.status == super::types::InboxStatus::Unread {
-                let inbox = inboxes
-                    .entry(item.session_id.clone())
-                    .or_insert_with(VecDeque::new);
+                let inbox = inboxes.entry(item.session_id.clone()).or_default();
                 // 避免重复添加
                 if !inbox.contains(&item.message_id) {
                     inbox.push_back(item.message_id);
@@ -51,9 +49,7 @@ impl InboxManager {
             log::error!("[InboxManager] Mutex poisoned! Attempting recovery");
             poisoned.into_inner()
         });
-        let inbox = inboxes
-            .entry(agent_id.to_string())
-            .or_insert_with(VecDeque::new);
+        let inbox = inboxes.entry(agent_id.to_string()).or_default();
 
         if inbox.len() >= MAX_INBOX_SIZE {
             return InboxPushResult {

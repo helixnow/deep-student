@@ -1,17 +1,21 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SourcePanel } from './SourcePanel';
 import { TargetPanel } from './TargetPanel';
 import { PromptPanel } from './PromptPanel';
+import { LanguageSelect } from './LanguageSelect';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { DsButton } from '@/components/ui/DsButton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Switch } from '../ui/shad/Switch';
+import { Label } from '../ui/shad/Label';
+import { CommonTooltip } from '../shared/CommonTooltip';
+import { ArrowsLeftRight, CircleNotch, Columns, GearSix, Rows } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 
 interface TranslationMainProps {
-  isMaximized: boolean;
-  setIsMaximized: (maximized: boolean) => void;
-  isSourceCollapsed: boolean;
-  setIsSourceCollapsed: (collapsed: boolean) => void;
   srcLang: string;
   setSrcLang: (lang: string) => void;
   tgtLang: string;
@@ -21,9 +25,7 @@ interface TranslationMainProps {
   sourceMaxChars?: number;
   isSourceOverLimit?: boolean;
   translatedText: string;
-  setTranslatedText: (text: string) => void;
   isTranslating: boolean;
-  translationProgress: number;
   customPrompt: string;
   setCustomPrompt: (prompt: string) => void;
   showPromptEditor: boolean;
@@ -39,14 +41,18 @@ interface TranslationMainProps {
   setEditedTranslation: (text: string) => void;
   translationQuality: number | null;
   isSpeaking: boolean;
-  charCount: number;
-  wordCount: number;
+  /** auto 模式下的检测语言（代码），用于选择器回显与交换按钮解锁 */
+  detectedLang?: string | null;
+  /** 是否自动聚焦原文输入框（非活跃标签页实例应传 false） */
+  autoFocusSource?: boolean;
 
-  // New States
+  // 常用开关
   isAutoTranslate: boolean;
   setIsAutoTranslate: (val: boolean) => void;
   isSyncScroll: boolean;
   setIsSyncScroll: (val: boolean) => void;
+  /** OS 宿主提供外部设置标签时，设置替换完整主区且隐藏内部齿轮入口 */
+  settingsAsPage?: boolean;
 
   // Actions
   onSwapLanguages: () => void;
@@ -94,11 +100,27 @@ const LANGUAGES = [
   { code: 'ms', label: 'translation:languages.ms' },
 ];
 
+type LayoutMode = 'split' | 'stacked';
+
+/** localStorage key：布局方式偏好（左右 / 上下） */
+const LAYOUT_STORAGE_KEY = 'translation.workbench.layout';
+
+function loadLayoutMode(): LayoutMode {
+  try {
+    return window.localStorage.getItem(LAYOUT_STORAGE_KEY) === 'stacked' ? 'stacked' : 'split';
+  } catch {
+    return 'split';
+  }
+}
+
+/** 主区窄于该宽度时强制上下布局 */
+const NARROW_LAYOUT_THRESHOLD = 500;
+
+/** 触屏命中区扩展：32px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
+const COARSE_HIT =
+  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
+
 export const TranslationMain: React.FC<TranslationMainProps> = ({
-  isMaximized,
-  setIsMaximized,
-  isSourceCollapsed,
-  setIsSourceCollapsed,
   srcLang,
   setSrcLang,
   tgtLang,
@@ -108,9 +130,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   sourceMaxChars,
   isSourceOverLimit,
   translatedText,
-  setTranslatedText,
   isTranslating,
-  translationProgress,
   customPrompt,
   setCustomPrompt,
   showPromptEditor,
@@ -126,12 +146,13 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   setEditedTranslation,
   translationQuality,
   isSpeaking,
-  charCount,
-  wordCount,
+  detectedLang = null,
+  autoFocusSource = true,
   isAutoTranslate,
   setIsAutoTranslate,
   isSyncScroll,
   setIsSyncScroll,
+  settingsAsPage = false,
   onSwapLanguages,
   onFilesDropped,
   onSavePrompt,
@@ -149,369 +170,284 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 }) => {
   const { t } = useTranslation(['translation', 'common']);
   const { isSmallScreen } = useBreakpoint();
+  const useSettingsPage = settingsAsPage || !isSmallScreen;
 
   const sourceCharCount = sourceText.length;
   const targetCharCount = translatedText.length;
 
-  // ========== 桌面端容器宽度检测（窄屏时切换为上下布局） ==========
-  const desktopContainerRef = useRef<HTMLDivElement>(null);
-  const [desktopContainerWidth, setDesktopContainerWidth] = useState(0);
-  const isDesktopNarrow = !isSmallScreen && desktopContainerWidth > 0 && desktopContainerWidth < 500;
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // ========== 布局模式（左右 / 上下，SegmentedControl 切换，持久化） ==========
+  const [layoutMode, setLayoutModeState] = useState<LayoutMode>(() => loadLayoutMode());
+  const setLayoutMode = useCallback((mode: LayoutMode) => {
+    setLayoutModeState(mode);
+    try {
+      window.localStorage.setItem(LAYOUT_STORAGE_KEY, mode);
+    } catch {
+      // localStorage 不可用时静默降级（仅失去布局记忆）
+    }
+  }, []);
+
+  // 主区宽度检测：窄于阈值时强制上下布局
+  const mainAreaRef = useRef<HTMLDivElement>(null);
+  const [mainAreaWidth, setMainAreaWidth] = useState(0);
 
   useEffect(() => {
-    const container = desktopContainerRef.current;
-    if (!container || isSmallScreen) return;
+    const el = mainAreaRef.current;
+    if (!el || isSmallScreen) return;
 
-    const updateWidth = () => setDesktopContainerWidth(container.clientWidth);
+    const updateWidth = () => setMainAreaWidth(el.clientWidth);
     updateWidth();
 
     const ro = new ResizeObserver(updateWidth);
-    ro.observe(container);
+    ro.observe(el);
     return () => ro.disconnect();
   }, [isSmallScreen]);
 
-  // ========== 移动端滑动布局状态 ==========
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
+  const isDesktopNarrow = !isSmallScreen && mainAreaWidth > 0 && mainAreaWidth < NARROW_LAYOUT_THRESHOLD;
+  const effectiveStacked = isSmallScreen || isDesktopNarrow || layoutMode === 'stacked';
+  const layoutControlValue: LayoutMode = isDesktopNarrow ? 'stacked' : layoutMode;
 
-  const stateRef = useRef({
-    isDragging: false,
-    startX: 0,
-    startY: 0,
-    currentTranslate: 0,
-    axisLocked: null as 'horizontal' | 'vertical' | null,
+  // ========== 移动端：设置区展开时注册 Android 返回键（返回 = 收起设置） ==========
+  useEffect(() => {
+    if (useSettingsPage || !showPromptEditor) return;
+    return registerBackHandler(() => {
+      setShowPromptEditor(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [useSettingsPage, showPromptEditor, setShowPromptEditor]);
+
+  // ========== 同步滚动 ==========
+  // 通过根容器捕获阶段监听 scroll，按 [data-translation-scroll="source"|"target"]
+  // 识别滚动容器（由 SourcePanel / TargetPanel 保证挂载该属性）。
+  // 捕获监听不依赖具体 DOM 节点，面板内部切换（编辑/对照/流式）重挂载后依然生效。
+  const syncLockRef = useRef<{ owner: 'source' | 'target' | null; timer: number | null }>({
+    owner: null,
+    timer: null,
   });
 
-  // 监听容器宽度
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
-
-    const updateWidth = () => setContainerWidth(container.clientWidth);
-    updateWidth();
-
-    const ro = new ResizeObserver(updateWidth);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [isSmallScreen]);
-
-  // 提示词面板宽度（留出 60px 露出主界面）
-  const promptPanelWidth = Math.max(containerWidth - 60, 280);
-
-  // 计算基础偏移量：主界面居中，提示词面板在右侧
-  const getBaseTranslate = useCallback(() => {
-    return showPromptEditor ? -promptPanelWidth : 0;
-  }, [showPromptEditor, promptPanelWidth]);
-
-  // 拖拽处理
-  const handleDragStart = useCallback((clientX: number, clientY: number) => {
-    stateRef.current = {
-      isDragging: true,
-      startX: clientX,
-      startY: clientY,
-      currentTranslate: getBaseTranslate(),
-      axisLocked: null,
-    };
-    setIsDragging(true);
-    setDragOffset(0);
-  }, [getBaseTranslate]);
-
-  const handleDragMove = useCallback((clientX: number, clientY: number, preventDefault: () => void) => {
-    if (!stateRef.current.isDragging) return;
-
-    const deltaX = clientX - stateRef.current.startX;
-    const deltaY = clientY - stateRef.current.startY;
-
-    // 确定轴向（轴向锁定，防止与竖直滚动冲突）
-    if (stateRef.current.axisLocked === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-        stateRef.current.axisLocked = 'horizontal';
-      } else {
-        stateRef.current.axisLocked = 'vertical';
-        stateRef.current.isDragging = false;
-        setIsDragging(false);
-        return;
-      }
-    }
-
-    if (stateRef.current.axisLocked === 'vertical') return;
-    if (stateRef.current.axisLocked === 'horizontal') preventDefault();
-
-    // 限制范围
-    const minTranslate = -promptPanelWidth;
-    const maxTranslate = 0;
-    let newTranslate = stateRef.current.currentTranslate + deltaX;
-    newTranslate = Math.max(minTranslate, Math.min(maxTranslate, newTranslate));
-
-    setDragOffset(newTranslate - getBaseTranslate());
-  }, [promptPanelWidth, getBaseTranslate]);
-
-  const handleDragEnd = useCallback(() => {
-    if (!stateRef.current.isDragging) {
-      stateRef.current.axisLocked = null;
-      return;
-    }
-
-    const threshold = promptPanelWidth * 0.3;
-    const offset = dragOffset;
-
-    // 根据拖拽方向和距离决定是否显示提示词面板
-    if (Math.abs(offset) > threshold) {
-      if (offset > 0 && showPromptEditor) {
-        // 向右滑动，关闭提示词面板
-        setShowPromptEditor(false);
-      } else if (offset < 0 && !showPromptEditor) {
-        // 向左滑动，打开提示词面板
-        setShowPromptEditor(true);
-      }
-    }
-
-    stateRef.current.isDragging = false;
-    stateRef.current.axisLocked = null;
-    setIsDragging(false);
-    setDragOffset(0);
-  }, [dragOffset, showPromptEditor, promptPanelWidth, setShowPromptEditor]);
-
-  // 绑定触摸事件
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
-
-    const onTouchStart = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      handleDragStart(touch.clientX, touch.clientY);
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      handleDragMove(touch.clientX, touch.clientY, () => e.preventDefault());
-    };
-
-    const onTouchEnd = () => handleDragEnd();
-
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd, { passive: true });
-    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-    return () => {
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-      container.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, [isSmallScreen, handleDragStart, handleDragMove, handleDragEnd]);
-
-  // Sync Scroll Logic
-  const sourceRef = React.useRef<HTMLTextAreaElement>(null);
-  const targetRef = React.useRef<HTMLDivElement>(null);
-  const isScrolling = React.useRef<'source' | 'target' | null>(null);
-
-  React.useEffect(() => {
     if (!isSyncScroll) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const lock = syncLockRef.current;
 
-    const source = sourceRef.current;
-    const targetWrapper = targetRef.current;
-    const target = targetWrapper?.querySelector('.translation-content .scroll-area__viewport') as HTMLElement;
+    const handleScroll = (event: Event) => {
+      const el = event.target;
+      if (!(el instanceof HTMLElement)) return;
+      const role = el.getAttribute('data-translation-scroll');
+      if (role !== 'source' && role !== 'target') return;
 
-    if (!source || !target) return;
+      // 防循环：对侧因程序滚动触发的 scroll 事件在锁定窗口内直接忽略
+      if (lock.owner && lock.owner !== role) return;
 
-    const handleSourceScroll = () => {
-      if (isScrolling.current === 'target') return;
-      isScrolling.current = 'source';
+      const counterpartRole = role === 'source' ? 'target' : 'source';
+      const counterpart = root.querySelector<HTMLElement>(
+        `[data-translation-scroll="${counterpartRole}"]`
+      );
+      if (!counterpart) return;
 
-      // 除零保护：确保分母不为零
-      const sourceScrollableHeight = source.scrollHeight - source.clientHeight;
-      if (sourceScrollableHeight > 0 && target.scrollHeight > target.clientHeight) {
-        const percentage = source.scrollTop / sourceScrollableHeight;
-        target.scrollTop = percentage * (target.scrollHeight - target.clientHeight);
+      lock.owner = role;
+
+      const fromScrollable = el.scrollHeight - el.clientHeight;
+      const toScrollable = counterpart.scrollHeight - counterpart.clientHeight;
+      if (fromScrollable > 0 && toScrollable > 0) {
+        const next = (el.scrollTop / fromScrollable) * toScrollable;
+        if (Math.abs(counterpart.scrollTop - next) > 1) {
+          counterpart.scrollTop = next;
+        }
       }
 
-      setTimeout(() => { if (isScrolling.current === 'source') isScrolling.current = null; }, 50);
+      if (lock.timer !== null) window.clearTimeout(lock.timer);
+      lock.timer = window.setTimeout(() => {
+        lock.owner = null;
+        lock.timer = null;
+      }, 80);
     };
 
-    const handleTargetScroll = () => {
-      if (isScrolling.current === 'source') return;
-      isScrolling.current = 'target';
-
-      // 除零保护：确保分母不为零
-      const targetScrollableHeight = target.scrollHeight - target.clientHeight;
-      if (targetScrollableHeight > 0 && source.scrollHeight > source.clientHeight) {
-        const percentage = target.scrollTop / targetScrollableHeight;
-        source.scrollTop = percentage * (source.scrollHeight - source.clientHeight);
-      }
-
-      setTimeout(() => { if (isScrolling.current === 'target') isScrolling.current = null; }, 50);
-    };
-
-    source.addEventListener('scroll', handleSourceScroll);
-    target.addEventListener('scroll', handleTargetScroll);
-
+    root.addEventListener('scroll', handleScroll, true);
     return () => {
-      source.removeEventListener('scroll', handleSourceScroll);
-      target.removeEventListener('scroll', handleTargetScroll);
+      root.removeEventListener('scroll', handleScroll, true);
+      if (lock.timer !== null) window.clearTimeout(lock.timer);
+      lock.owner = null;
+      lock.timer = null;
     };
-  }, [isSyncScroll, translatedText]);
+  }, [isSyncScroll]);
 
-  // ========== 移动端：滑动布局 ==========
-  if (isSmallScreen) {
-    const translateX = getBaseTranslate() + dragOffset;
+  // ========== 顶部工具栏 ==========
+  const languageOptions = useMemo(
+    () =>
+      LANGUAGES.filter((lang) => lang.code !== 'auto').map((lang) => ({
+        code: lang.code,
+        label: t(lang.label),
+      })),
+    [t]
+  );
 
-    return (
-      <div
-        ref={containerRef}
-        className="relative h-full overflow-hidden bg-background select-none"
-        style={{ touchAction: 'pan-y pinch-zoom' }}
-      >
-        {/* 滑动内容容器：主界面(100%) + 提示词面板(promptPanelWidth) */}
-        <div
-          className="flex h-full"
-          style={{
-            width: `calc(100% + ${promptPanelWidth}px)`,
-            transform: `translateX(${translateX}px)`,
-            transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
-        >
-          {/* 主界面：翻译内容 */}
-          <div
-            className="h-full flex-shrink-0 flex flex-col"
-            style={{ width: containerWidth || '100vw' }}
-          >
-            <VerticalResizable
-              initial={0.4}
-              minTop={0.2}
-              minBottom={0.3}
-              className="bg-background"
-              top={
-                <SourcePanel
-                  ref={sourceRef}
-                  isMaximized={isMaximized}
-                  isSourceCollapsed={isSourceCollapsed}
-                  setIsSourceCollapsed={setIsSourceCollapsed}
-                  srcLang={srcLang}
-                  setSrcLang={setSrcLang}
-                  tgtLang={tgtLang}
-                  setTgtLang={setTgtLang}
-                  sourceText={sourceText}
-                  setSourceText={setSourceText}
-                  sourceMaxChars={sourceMaxChars}
-                  isSourceOverLimit={isSourceOverLimit}
-                  isTranslating={isTranslating}
-                  onSwapLanguages={onSwapLanguages}
-                  onFilesDropped={onFilesDropped}
-                  setShowPromptEditor={setShowPromptEditor}
-                  onClear={onClear}
-                  onTranslate={onTranslate}
-                  onCancelTranslation={onCancelTranslation}
-                  sourceCharCount={sourceCharCount}
-                  LANGUAGES={LANGUAGES}
-                  isSyncScroll={isSyncScroll}
-                  setIsSyncScroll={setIsSyncScroll}
-                />
-              }
-              bottom={
-                <TargetPanel
-                  ref={targetRef}
-                  isMaximized={isMaximized}
-                  setIsMaximized={setIsMaximized}
-                  setIsSourceCollapsed={setIsSourceCollapsed}
-                  sourceText={sourceText}
-                  srcLang={srcLang}
-                  tgtLang={tgtLang}
-                  translatedText={translatedText}
-                  isTranslating={isTranslating}
-                  isSyncScroll={isSyncScroll}
-                  setIsSyncScroll={setIsSyncScroll}
-                  isEditingTranslation={isEditingTranslation}
-                  editedTranslation={editedTranslation}
-                  setEditedTranslation={setEditedTranslation}
-                  onCancelEdit={onCancelEdit}
-                  onSaveEditedTranslation={onSaveEditedTranslation}
-                  translationQuality={translationQuality}
-                  onRateTranslation={onRateTranslation}
-                  targetCharCount={targetCharCount}
-                  onEditTranslation={onEditTranslation}
-                  onSpeak={onSpeak}
-                  isSpeaking={isSpeaking}
-                  onCopyResult={onCopyResult}
-                  onExportTranslation={onExportTranslation}
-                  charCount={charCount}
-                  wordCount={wordCount}
-                />
-              }
-            />
-          </div>
+  // 互换按钮 180° 旋转动画：累计角度，方向感连续
+  const [swapSpin, setSwapSpin] = useState(0);
+  const handleSwapClick = useCallback(() => {
+    setSwapSpin((count) => count + 1);
+    onSwapLanguages();
+  }, [onSwapLanguages]);
 
-          {/* 右侧：提示词设置面板 */}
-          <div
-            className="h-full flex-shrink-0 bg-background border-l"
-            style={{ width: promptPanelWidth }}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchMove={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            <PromptPanel
-              customPrompt={customPrompt}
-              setCustomPrompt={setCustomPrompt}
-              onSavePrompt={onSavePrompt}
-              onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-              isOpen={showPromptEditor}
-              setIsOpen={setShowPromptEditor}
-              formality={formality}
-              setFormality={setFormality}
-              domain={domain}
-              setDomain={setDomain}
-              glossary={glossary}
-              setGlossary={setGlossary}
-              mobileFullscreen={true}
-              isAutoTranslate={isAutoTranslate}
-              setIsAutoTranslate={setIsAutoTranslate}
-              isSyncScroll={isSyncScroll}
-              setIsSyncScroll={setIsSyncScroll}
-            />
-          </div>
-        </div>
+  // auto 模式下已有检测结果时允许交换（对齐 DeepL：用检测语言交换）
+  // 编辑译文时禁止：交换会改写译文，踩踏未保存的编辑内容
+  const canSwap = !isTranslating && !isEditingTranslation && (srcLang !== 'auto' || !!detectedLang);
+
+  const toolbar = (
+    // 📱 minmax(0,*) 让三列都能收缩到内容以下：400px 窄屏下语言组不再把
+    // 工具栏挤出容器（此前源语言按钮 x=-14 左侧被裁剪）
+    <div data-wb-blur-surface className="h-12 shrink-0 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-1 sm:gap-2 px-3 sm:px-4 border-b bg-background/50 backdrop-blur z-20">
+      {/* 左：布局切换（仅桌面；窄容器时强制上下布局并禁用）。
+          ⚠️ display:none 的子项会从 grid 流中移除，后续列会左移错位，
+          三列都用 col-start 显式定位（P1：移动端语言组曾因此掉进 1fr 列溢出） */}
+      <div className="col-start-1 hidden sm:flex items-center justify-start">
+        <SegmentedControl<LayoutMode>
+          ariaLabel={t('translation:workbench.layout.label')}
+          value={layoutControlValue}
+          onValueChange={setLayoutMode}
+          size="compact"
+          options={[
+            {
+              value: 'split',
+              label: <Columns size={14} />,
+              ariaLabel: t('translation:workbench.layout.split'),
+              title: t('translation:workbench.layout.split'),
+              disabled: isDesktopNarrow,
+            },
+            {
+              value: 'stacked',
+              label: <Rows size={14} />,
+              ariaLabel: t('translation:workbench.layout.stacked'),
+              title: t('translation:workbench.layout.stacked'),
+              disabled: isDesktopNarrow,
+            },
+          ]}
+        />
       </div>
-    );
-  }
 
-  // ========== 桌面端源面板和目标面板（共用） ==========
-  const desktopSourcePanel = (
+      {/* 中：语向选择 + 互换（DeepL 式居中布局） */}
+      <div className="col-start-2 flex items-center justify-center gap-1 sm:gap-2 min-w-0">
+        <LanguageSelect
+          value={srcLang}
+          onChange={setSrcLang}
+          languages={languageOptions}
+          includeAuto
+          detectedLanguage={detectedLang}
+          disabled={isTranslating}
+          className="min-w-0 max-w-[9rem] sm:max-w-none"
+        />
+        <CommonTooltip
+          content={`${t('translation:actions.swap_languages')} · ${t('translation:shortcuts.swap')}`}
+        >
+          <DsButton
+            variant="ghost"
+            size="icon"
+            onClick={handleSwapClick}
+            disabled={!canSwap}
+            className={cn(COARSE_HIT, 'h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground')}
+            aria-label={t('translation:actions.swap_languages')}
+          >
+            <span
+              className="inline-flex transition-transform duration-[var(--dropdown-open-dur)] ease-[var(--ease-standard)] motion-reduce:transition-none"
+              style={{ transform: `rotate(${swapSpin * 180}deg)` }}
+            >
+              <ArrowsLeftRight size={16} />
+            </span>
+          </DsButton>
+        </CommonTooltip>
+        <LanguageSelect
+          value={tgtLang}
+          onChange={setTgtLang}
+          languages={languageOptions}
+          disabled={isTranslating}
+          className="min-w-0 max-w-[9rem] sm:max-w-none"
+        />
+      </div>
+
+      {/* 右：翻译中指示 + 常用开关 + 设置开合 */}
+      <div className="col-start-3 flex items-center justify-end gap-1 sm:gap-2 min-w-0">
+        {isTranslating && (
+          <span className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+            <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
+            {t('translation:actions.translating')}
+          </span>
+        )}
+
+        <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
+          <Switch
+            id="toolbar-auto-translate"
+            checked={isAutoTranslate}
+            onCheckedChange={setIsAutoTranslate}
+          />
+          <Label
+            htmlFor="toolbar-auto-translate"
+            className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
+          >
+            {t('translation:workbench.toolbar.auto_translate')}
+          </Label>
+        </div>
+
+        <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
+          <Switch
+            id="toolbar-sync-scroll"
+            checked={isSyncScroll}
+            onCheckedChange={setIsSyncScroll}
+          />
+          <Label
+            htmlFor="toolbar-sync-scroll"
+            className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
+          >
+            {t('translation:sync_scroll')}
+          </Label>
+        </div>
+
+        {!settingsAsPage && <div className="hidden lg:block w-px h-4 bg-border" />}
+
+        {!settingsAsPage && (
+          <CommonTooltip content={t('translation:prompt_editor.title')}>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowPromptEditor(!showPromptEditor)}
+              aria-label={t('translation:prompt_editor.title')}
+              aria-expanded={showPromptEditor}
+              className={cn(
+                COARSE_HIT,
+                'h-8 w-8 shrink-0',
+                showPromptEditor
+                  ? 'text-primary bg-primary/10'
+                  : 'text-muted-foreground/60 hover:text-foreground'
+              )}
+            >
+              <GearSix size={16} />
+            </DsButton>
+          </CommonTooltip>
+        )}
+      </div>
+    </div>
+  );
+
+  // ========== 双栏面板 ==========
+  const sourcePanelNode = (
     <SourcePanel
-      ref={sourceRef}
-      isMaximized={isMaximized}
-      isSourceCollapsed={isSourceCollapsed}
-      setIsSourceCollapsed={setIsSourceCollapsed}
-      srcLang={srcLang}
-      setSrcLang={setSrcLang}
-      tgtLang={tgtLang}
-      setTgtLang={setTgtLang}
       sourceText={sourceText}
       setSourceText={setSourceText}
       sourceMaxChars={sourceMaxChars}
       isSourceOverLimit={isSourceOverLimit}
       isTranslating={isTranslating}
-      onSwapLanguages={onSwapLanguages}
       onFilesDropped={onFilesDropped}
-      setShowPromptEditor={setShowPromptEditor}
       onClear={onClear}
       onTranslate={onTranslate}
       onCancelTranslation={onCancelTranslation}
       sourceCharCount={sourceCharCount}
-      LANGUAGES={LANGUAGES}
-      isSyncScroll={isSyncScroll}
-      setIsSyncScroll={setIsSyncScroll}
+      autoFocus={autoFocusSource}
     />
   );
 
-  const desktopTargetPanel = (
+  const targetPanelNode = (
     <TargetPanel
-      ref={targetRef}
-      isMaximized={isMaximized}
-      setIsMaximized={setIsMaximized}
-      setIsSourceCollapsed={setIsSourceCollapsed}
       sourceText={sourceText}
       srcLang={srcLang}
       tgtLang={tgtLang}
@@ -532,52 +468,56 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       isSpeaking={isSpeaking}
       onCopyResult={onCopyResult}
       onExportTranslation={onExportTranslation}
-      charCount={charCount}
-      wordCount={wordCount}
     />
   );
 
-  // ========== 桌面端：根据容器宽度自适应布局 ==========
-  const settingsDrawerWidth = 320;
-
-  return (
-    <div ref={desktopContainerRef} className="relative h-full overflow-hidden bg-background flex">
-      {/* 主内容区：通过 marginRight 推挤让位给抽屉 */}
-      <div
-        className="flex-1 min-w-0 h-full transition-all duration-300 ease-out"
-        style={{ marginRight: showPromptEditor ? settingsDrawerWidth : 0 }}
-      >
-        {isDesktopNarrow ? (
-          // 窄屏时使用上下布局
-          <VerticalResizable
-            initial={0.4}
-            minTop={0.2}
-            minBottom={0.3}
-            className="bg-background"
-            top={desktopSourcePanel}
-            bottom={desktopTargetPanel}
-          />
-        ) : (
-          // 正常宽度使用左右布局
-          <HorizontalResizable
-            initial={0.5}
-            minLeft={0.3}
-            minRight={0.3}
-            className="bg-background"
-            left={desktopSourcePanel}
-            right={desktopTargetPanel}
-          />
-        )}
+  // ========== 设置区 ==========
+  // 移动端：工具栏下方高度过渡展开的内联区块；桌面端：独立整页视图。
+  // 关闭态经 visibility 过渡转为 hidden，退出焦点链与无障碍树。
+  const mobileSettingsSection = (
+    <div
+      className={cn(
+        'shrink-0 overflow-hidden bg-background',
+        'transition-[height,visibility] duration-[var(--panel-open-dur)] ease-[var(--panel-ease)] motion-reduce:transition-none',
+        showPromptEditor ? 'visible h-[min(60dvh,420px)] border-b' : 'invisible h-0'
+      )}
+      aria-hidden={!showPromptEditor}
+    >
+      <div className="h-[min(60dvh,420px)]">
+        <PromptPanel
+          customPrompt={customPrompt}
+          setCustomPrompt={setCustomPrompt}
+          onSavePrompt={onSavePrompt}
+          onRestoreDefaultPrompt={onRestoreDefaultPrompt}
+          isOpen={showPromptEditor}
+          setIsOpen={setShowPromptEditor}
+          formality={formality}
+          setFormality={setFormality}
+          domain={domain}
+          setDomain={setDomain}
+          glossary={glossary}
+          setGlossary={setGlossary}
+          mobileFullscreen={true}
+          isAutoTranslate={isAutoTranslate}
+          setIsAutoTranslate={setIsAutoTranslate}
+          isSyncScroll={isSyncScroll}
+          setIsSyncScroll={setIsSyncScroll}
+        />
       </div>
+    </div>
+  );
 
-      {/* 设置抽屉 */}
-      <div
-        className={cn(
-          "absolute top-0 right-0 h-full transition-transform duration-300 ease-out shadow-lg",
-          showPromptEditor ? "translate-x-0" : "translate-x-full"
-        )}
-        style={{ width: settingsDrawerWidth }}
-      >
+  // 桌面端：设置以独立整页视图占满主区（由侧边栏"翻译设置"标签或齿轮按钮进入），
+  // 不再使用右侧滑入列；翻译主界面保持挂载（display:none），保留分栏比例与滚动位置。
+  const desktopSettingsPage = (
+    <div
+      className={cn(
+        'flex-1 min-h-0 overflow-hidden bg-background',
+        showPromptEditor ? 'ui-rise-in' : 'hidden'
+      )}
+      aria-hidden={!showPromptEditor}
+    >
+      <div className="mx-auto h-full min-h-0 w-full max-w-3xl">
         <PromptPanel
           customPrompt={customPrompt}
           setCustomPrompt={setCustomPrompt}
@@ -596,6 +536,47 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           isSyncScroll={isSyncScroll}
           setIsSyncScroll={setIsSyncScroll}
         />
+      </div>
+    </div>
+  );
+
+  return (
+    <div ref={rootRef} className="flex h-full flex-col overflow-hidden bg-background">
+      {/* OS/桌面设置标签：替换整个工作台内容，正常工具栏与双栏保持挂载但不可见 */}
+      {useSettingsPage && desktopSettingsPage}
+
+      <div className={cn(
+        'flex flex-1 min-h-0 flex-col',
+        useSettingsPage && showPromptEditor && 'hidden',
+      )}>
+        {toolbar}
+
+        {/* 移动端独立使用时，设置区仍以内联方式推挤内容 */}
+        {!useSettingsPage && mobileSettingsSection}
+
+        <div className="flex-1 min-h-0 flex">
+          <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
+            {effectiveStacked ? (
+              <VerticalResizable
+                initial={0.4}
+                minTop={0.2}
+                minBottom={0.3}
+                className="bg-background"
+                top={sourcePanelNode}
+                bottom={targetPanelNode}
+              />
+            ) : (
+              <HorizontalResizable
+                initial={0.5}
+                minLeft={0.3}
+                minRight={0.3}
+                className="bg-background"
+                left={sourcePanelNode}
+                right={targetPanelNode}
+              />
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

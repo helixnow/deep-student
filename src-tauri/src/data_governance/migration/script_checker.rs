@@ -358,8 +358,8 @@ impl MigrationScriptChecker {
                 let name = cap.get(1)?.as_str().to_string();
                 // 定位表体起始的左括号（RE_SAFE_CREATES 不含括号，需向后找）
                 let open = normalized[m.start()..].find('(')? + m.start();
-                let body_end = Self::find_matching_paren(normalized, open)
-                    .unwrap_or(normalized.len());
+                let body_end =
+                    Self::find_matching_paren(normalized, open).unwrap_or(normalized.len());
                 Some((open, body_end, name))
             })
             .collect();
@@ -371,8 +371,7 @@ impl MigrationScriptChecker {
             let fk_pos = cap.get(0).map(|m| m.start()).unwrap_or(0);
             let owner_table = creates
                 .iter()
-                .filter(|(open, end, _)| fk_pos > *open && fk_pos < *end)
-                .last()
+                .rfind(|(open, end, _)| fk_pos > *open && fk_pos < *end)
                 .map(|(_, _, name)| name.as_str());
 
             // 全新表（非 _NEW 重建表）的内联 FK：无孤儿数据风险，跳过。
@@ -563,6 +562,303 @@ impl Default for MigrationScriptChecker {
 }
 
 // ============================================================================
+// 危险 SQL 静态识别（L1 门禁）
+//
+// 与 Node 侧 `scripts/check-migrations.mjs` 的 detectDangers 规则保持一致，
+// 供 Rust 单元测试与本地工具复用。危险发现本身不直接判死刑：
+// 通过机器可读注解 `-- @danger-ack: <rule> reason="..."` 声明已知风险
+// （只声明风险类别与理由，不包含 reviewer 身份）。
+// ============================================================================
+
+/// 危险 SQL 规则类别
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DangerRule {
+    /// 无 WHERE 子句的 DELETE（清空整表）
+    DeleteWithoutWhere,
+    /// DROP TABLE（非 _new 中间表）
+    DropTable,
+    /// ALTER TABLE ... DROP COLUMN
+    DropColumn,
+    /// 对既有数据施加 UNIQUE 约束（CREATE UNIQUE INDEX / 重建表内 UNIQUE）
+    UniqueConstraint,
+    /// ALTER TABLE ... ADD COLUMN ... NOT NULL（对已有表新增非空列）
+    AddNotNullColumn,
+    /// 表重建流程（CREATE TABLE xxx_new + RENAME TO）
+    TableRebuild,
+    /// 同一脚本内 ADD COLUMN + 同表 UPDATE/INSERT 回填混排
+    AddColumnBackfill,
+}
+
+impl DangerRule {
+    /// 机器可读注解中的规则名（与 Node 侧一致）
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::DeleteWithoutWhere => "delete_without_where",
+            Self::DropTable => "drop_table",
+            Self::DropColumn => "drop_column",
+            Self::UniqueConstraint => "unique_constraint",
+            Self::AddNotNullColumn => "add_not_null_column",
+            Self::TableRebuild => "table_rebuild",
+            Self::AddColumnBackfill => "add_column_backfill",
+        }
+    }
+
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "delete_without_where" => Some(Self::DeleteWithoutWhere),
+            "drop_table" => Some(Self::DropTable),
+            "drop_column" => Some(Self::DropColumn),
+            "unique_constraint" => Some(Self::UniqueConstraint),
+            "add_not_null_column" => Some(Self::AddNotNullColumn),
+            "table_rebuild" => Some(Self::TableRebuild),
+            "add_column_backfill" => Some(Self::AddColumnBackfill),
+            _ => None,
+        }
+    }
+}
+
+/// 单条危险发现
+#[derive(Debug, Clone)]
+pub struct DangerFinding {
+    pub rule: DangerRule,
+    pub detail: String,
+    /// 是否已被脚本内 `-- @danger-ack:` 注解声明
+    pub acknowledged: bool,
+}
+
+static RE_DELETE_FROM: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^DELETE\s+FROM\s+(\w+)").unwrap());
+static RE_DROP_TABLE_ANY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(\w+)").unwrap());
+static RE_DROP_COLUMN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"ALTER\s+TABLE\s+(\w+)\s+DROP\s+COLUMN\s+(\w+)").unwrap());
+static RE_CREATE_UNIQUE_INDEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"CREATE\s+UNIQUE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)").unwrap()
+});
+static RE_CREATE_TABLE_ANY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)").unwrap());
+static RE_ADD_COLUMN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+").unwrap());
+static RE_NOT_NULL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bNOT\s+NULL\b").unwrap());
+static RE_UPDATE_SET: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^UPDATE\s+(\w+)\s+SET\b").unwrap());
+static RE_INSERT_INTO: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)").unwrap());
+
+/// 解析脚本内 `-- @danger-ack: rule_a, rule_b reason="..."` 注解
+/// （`-- @allow-data-change:` 为等价别名，与 Node 侧一致）。
+/// 返回 (已声明规则集合, 未知规则名列表)。
+pub fn parse_danger_acks(sql: &str) -> (HashSet<DangerRule>, Vec<String>) {
+    let mut acks = HashSet::new();
+    let mut unknown = Vec::new();
+    for line in sql.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed
+            .strip_prefix("-- @danger-ack:")
+            .or_else(|| trimmed.strip_prefix("-- @allow-data-change:"))
+        else {
+            continue;
+        };
+        // reason="..." 之后为自由文本，不参与规则解析
+        let rule_part = rest.split("reason").next().unwrap_or(rest);
+        for token in rule_part.split([' ', ',', '\t']) {
+            let token = token.trim();
+            if token.is_empty() || token == "=" {
+                continue;
+            }
+            match DangerRule::from_str(token) {
+                Some(rule) => {
+                    acks.insert(rule);
+                }
+                None => unknown.push(token.to_string()),
+            }
+        }
+    }
+    (acks, unknown)
+}
+
+/// 将单引号字符串字面量替换为空串占位（`''`），避免字面量内容触发误报。
+/// 处理 SQL 转义（`''` 表示字面量内的单引号）。
+fn strip_string_literals(sql: &str) -> String {
+    let mut out = String::with_capacity(sql.len());
+    let mut chars = sql.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\'' {
+            out.push(c);
+            continue;
+        }
+        // 进入字符串字面量
+        while let Some(inner) = chars.next() {
+            if inner == '\'' {
+                if chars.peek() == Some(&'\'') {
+                    chars.next(); // 转义的 ''
+                } else {
+                    break;
+                }
+            }
+        }
+        out.push_str("''");
+    }
+    out
+}
+
+/// 把归一化后的 SQL 拆成语句并压缩空白
+fn split_statements(normalized: &str) -> Vec<String> {
+    normalized
+        .split(';')
+        .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// 危险 SQL 静态识别。
+///
+/// `script_name` 以 `__init` / `:init` 结尾时豁免（全新数据库无既有数据风险）。
+/// 返回的每条发现携带 `acknowledged`，表示是否已被脚本内注解声明。
+pub fn detect_dangerous_statements(script_name: &str, sql: &str) -> Vec<DangerFinding> {
+    let is_init = script_name.ends_with("__init")
+        || script_name.ends_with("__init.sql")
+        || script_name.ends_with(":init");
+    if is_init {
+        return Vec::new();
+    }
+
+    let (acks, _unknown) = parse_danger_acks(sql);
+    let checker = MigrationScriptChecker::new();
+    // 先去注释（normalize_sql）再去字符串字面量，避免字面量内容触发误报
+    let normalized = strip_string_literals(&checker.normalize_sql(sql));
+    let statements = split_statements(&normalized);
+
+    let mut findings: Vec<(DangerRule, String)> = Vec::new();
+    let mut add_column_tables: HashSet<String> = HashSet::new();
+    let mut write_tables: HashSet<String> = HashSet::new();
+    let mut new_tables: Vec<String> = Vec::new();
+    let mut has_rename_to = false;
+
+    for stmt in &statements {
+        // 1. 无 WHERE 的 DELETE
+        if let Some(cap) = RE_DELETE_FROM.captures(stmt) {
+            if !stmt.contains("WHERE") {
+                findings.push((
+                    DangerRule::DeleteWithoutWhere,
+                    format!("DELETE FROM {} 没有 WHERE 子句", cap[1].to_lowercase()),
+                ));
+            }
+        }
+
+        // 2. DROP TABLE（_new 中间表清理豁免）
+        for cap in RE_DROP_TABLE_ANY.captures_iter(stmt) {
+            let table = &cap[1];
+            if !table.ends_with("_NEW") {
+                findings.push((
+                    DangerRule::DropTable,
+                    format!("DROP TABLE {}", table.to_lowercase()),
+                ));
+            }
+        }
+
+        // 3. DROP COLUMN
+        for cap in RE_DROP_COLUMN.captures_iter(stmt) {
+            findings.push((
+                DangerRule::DropColumn,
+                format!(
+                    "ALTER TABLE {} DROP COLUMN {}",
+                    cap[1].to_lowercase(),
+                    cap[2].to_lowercase()
+                ),
+            ));
+        }
+
+        // 4a. CREATE UNIQUE INDEX
+        if let Some(cap) = RE_CREATE_UNIQUE_INDEX.captures(stmt) {
+            findings.push((
+                DangerRule::UniqueConstraint,
+                format!("CREATE UNIQUE INDEX {}", cap[1].to_lowercase()),
+            ));
+        }
+
+        // 收集 CREATE TABLE；4b. 重建表内 UNIQUE 约束
+        if let Some(cap) = RE_CREATE_TABLE_ANY.captures(stmt) {
+            let table = cap[1].to_string();
+            if table.ends_with("_NEW") {
+                if stmt.contains("UNIQUE") {
+                    findings.push((
+                        DangerRule::UniqueConstraint,
+                        format!("重建表 {} 含 UNIQUE 约束", table.to_lowercase()),
+                    ));
+                }
+                new_tables.push(table);
+            }
+        }
+
+        // 5. ADD COLUMN ... NOT NULL
+        if let Some(cap) = RE_ADD_COLUMN.captures(stmt) {
+            let table = cap[1].to_string();
+            if RE_NOT_NULL.is_match(stmt) {
+                findings.push((
+                    DangerRule::AddNotNullColumn,
+                    format!(
+                        "ALTER TABLE {} ADD COLUMN ... NOT NULL",
+                        table.to_lowercase()
+                    ),
+                ));
+            }
+            add_column_tables.insert(table);
+        }
+
+        // 写语句目标表（供规则 7）
+        if let Some(cap) = RE_UPDATE_SET.captures(stmt) {
+            write_tables.insert(cap[1].to_string());
+        }
+        if let Some(cap) = RE_INSERT_INTO.captures(stmt) {
+            write_tables.insert(cap[1].to_string());
+        }
+
+        if stmt.contains("RENAME TO") {
+            has_rename_to = true;
+        }
+    }
+
+    // 6. 表重建
+    if !new_tables.is_empty() && has_rename_to {
+        findings.push((
+            DangerRule::TableRebuild,
+            format!(
+                "表重建流程: {}",
+                new_tables
+                    .iter()
+                    .map(|t| t.to_lowercase())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ));
+    }
+
+    // 7. ADD COLUMN + 同表回填
+    let mut backfilled: Vec<String> = add_column_tables
+        .iter()
+        .filter(|t| write_tables.contains(*t))
+        .map(|t| t.to_lowercase())
+        .collect();
+    backfilled.sort();
+    if !backfilled.is_empty() {
+        findings.push((
+            DangerRule::AddColumnBackfill,
+            format!("ADD COLUMN + 同表回填: {}", backfilled.join(", ")),
+        ));
+    }
+
+    findings
+        .into_iter()
+        .map(|(rule, detail)| DangerFinding {
+            rule,
+            detail,
+            acknowledged: acks.contains(&rule),
+        })
+        .collect()
+}
+
+// ============================================================================
 // 便捷函数
 // ============================================================================
 
@@ -596,7 +892,7 @@ pub fn assert_migration_script_valid(script_name: &str, sql: &str) {
             }
         }
 
-        msg.push_str("\n");
+        msg.push('\n');
         msg.push_str("═".repeat(60).as_str());
         msg.push_str("\n\n如果确认无问题，可在脚本中添加: -- @skip-check: <rule_name>\n");
 
@@ -893,6 +1189,164 @@ mod tests {
             !result.warnings.iter().any(|w| w.rule == "idempotent_index"),
             "使用 IF NOT EXISTS 的索引不应产生警告"
         );
+    }
+
+    // ------------------------------------------------------------------------
+    // 危险 SQL 静态识别测试
+    // ------------------------------------------------------------------------
+
+    fn rules_of(findings: &[DangerFinding]) -> Vec<DangerRule> {
+        findings.iter().map(|f| f.rule).collect()
+    }
+
+    #[test]
+    fn test_danger_delete_without_where() {
+        let findings = detect_dangerous_statements("V20260601__purge.sql", "DELETE FROM users;");
+        assert!(rules_of(&findings).contains(&DangerRule::DeleteWithoutWhere));
+
+        let ok = detect_dangerous_statements(
+            "V20260601__purge.sql",
+            "DELETE FROM users WHERE deleted_at IS NOT NULL;",
+        );
+        assert!(!rules_of(&ok).contains(&DangerRule::DeleteWithoutWhere));
+    }
+
+    #[test]
+    fn test_danger_drop_table_and_column() {
+        let findings = detect_dangerous_statements(
+            "V20260601__drop.sql",
+            "DROP TABLE legacy; ALTER TABLE users DROP COLUMN age;",
+        );
+        let rules = rules_of(&findings);
+        assert!(rules.contains(&DangerRule::DropTable));
+        assert!(rules.contains(&DangerRule::DropColumn));
+
+        // _new 中间表清理豁免
+        let ok = detect_dangerous_statements(
+            "V20260601__cleanup.sql",
+            "DROP TABLE IF EXISTS users_new;",
+        );
+        assert!(!rules_of(&ok).contains(&DangerRule::DropTable));
+    }
+
+    #[test]
+    fn test_danger_unique_constraint() {
+        let findings = detect_dangerous_statements(
+            "V20260601__uniq.sql",
+            "CREATE UNIQUE INDEX idx_users_email ON users(email);",
+        );
+        assert!(rules_of(&findings).contains(&DangerRule::UniqueConstraint));
+
+        // 重建表内 UNIQUE 约束
+        let rebuild = detect_dangerous_statements(
+            "V20260601__rebuild.sql",
+            r#"
+            DROP TABLE IF EXISTS t_new;
+            CREATE TABLE t_new (id TEXT, email TEXT UNIQUE);
+            INSERT INTO t_new SELECT * FROM t;
+            DROP TABLE t;
+            ALTER TABLE t_new RENAME TO t;
+            "#,
+        );
+        let rules = rules_of(&rebuild);
+        assert!(rules.contains(&DangerRule::UniqueConstraint));
+        assert!(rules.contains(&DangerRule::TableRebuild));
+    }
+
+    #[test]
+    fn test_danger_add_not_null_and_backfill() {
+        let findings = detect_dangerous_statements(
+            "V20260601__add_col.sql",
+            r#"
+            ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user';
+            UPDATE users SET role = 'admin' WHERE is_admin = 1;
+            "#,
+        );
+        let rules = rules_of(&findings);
+        assert!(rules.contains(&DangerRule::AddNotNullColumn));
+        assert!(rules.contains(&DangerRule::AddColumnBackfill));
+
+        // 无回填的可空加列不算危险
+        let ok = detect_dangerous_statements(
+            "V20260601__add_col.sql",
+            "ALTER TABLE users ADD COLUMN nickname TEXT;",
+        );
+        assert!(ok.is_empty(), "可空加列不应报危险: {:?}", ok);
+    }
+
+    #[test]
+    fn test_danger_init_script_exempt() {
+        let findings = detect_dangerous_statements(
+            "V20260130__init.sql",
+            "DROP TABLE legacy; DELETE FROM old_stuff;",
+        );
+        assert!(findings.is_empty(), "init 脚本应豁免危险扫描");
+    }
+
+    #[test]
+    fn test_danger_comments_and_strings_not_flagged() {
+        let sql = r#"
+            -- DROP TABLE users （只是注释）
+            /* DELETE FROM users */
+            INSERT INTO audit_log(msg) VALUES ('DROP TABLE users');
+        "#;
+        let findings = detect_dangerous_statements("V20260601__log.sql", sql);
+        assert!(
+            findings.is_empty(),
+            "注释/字符串中的关键词不应误报: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn test_danger_ack_annotation() {
+        let sql = r#"
+            -- @danger-ack: drop_table reason="legacy 表已由新表替代，确认无引用"
+            DROP TABLE legacy;
+        "#;
+        let findings = detect_dangerous_statements("V20260601__drop.sql", sql);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule, DangerRule::DropTable);
+        assert!(findings[0].acknowledged, "注解声明后应标记 acknowledged");
+    }
+
+    #[test]
+    fn test_allow_data_change_alias() {
+        let sql = r#"
+            -- @allow-data-change: drop_table reason="别名注解等价于 @danger-ack"
+            DROP TABLE legacy;
+        "#;
+        let findings = detect_dangerous_statements("V20260601__drop.sql", sql);
+        assert_eq!(findings.len(), 1);
+        assert!(
+            findings[0].acknowledged,
+            "@allow-data-change 别名应等价生效"
+        );
+    }
+
+    #[test]
+    fn test_danger_ack_multiple_rules_and_unknown() {
+        let (acks, unknown) = parse_danger_acks(
+            "-- @danger-ack: drop_table, delete_without_where reason=\"x\"\n-- @danger-ack: drop_tables\n",
+        );
+        assert!(acks.contains(&DangerRule::DropTable));
+        assert!(acks.contains(&DangerRule::DeleteWithoutWhere));
+        assert_eq!(unknown, vec!["drop_tables".to_string()]);
+    }
+
+    #[test]
+    fn test_danger_rule_roundtrip() {
+        for rule in [
+            DangerRule::DeleteWithoutWhere,
+            DangerRule::DropTable,
+            DangerRule::DropColumn,
+            DangerRule::UniqueConstraint,
+            DangerRule::AddNotNullColumn,
+            DangerRule::TableRebuild,
+            DangerRule::AddColumnBackfill,
+        ] {
+            assert_eq!(DangerRule::from_str(rule.as_str()), Some(rule));
+        }
     }
 
     #[test]

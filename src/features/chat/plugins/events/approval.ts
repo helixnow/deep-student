@@ -11,10 +11,37 @@
 import type { EventHandler } from '../../registry/eventRegistry';
 import { eventRegistry } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
+import type { PermissionPreset, RuntimeApprovalScope } from '../../core/types/store';
+import { registerTransientRuntime } from '../../core/store/transientRuntimeRegistry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
 // 🆕 2026-02-17: 工具调用生命周期追踪
 import { emitToolCallDebug, trackStart, trackEnd } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+import { workbenchBus } from '@/features/workbench';
+
+/**
+ * ACR R2-05 / DESIGN §6：High 审批前聚焦会话所属 chat 窗，
+ * 避免审批栏在后台窗不可见（生命周期调研 #12 / SCENARIOS S-CLOSE）。
+ */
+function focusChatWindowForApproval(store: ChatStore, sensitivity: string | undefined): void {
+  if (sensitivity !== 'high') return;
+  const sessionId = store.sessionId;
+  if (!sessionId) return;
+  try {
+    void workbenchBus.activate({
+      typeId: 'chat',
+      instanceKey: sessionId,
+      action: 'focus',
+      fallbackLaunch: {
+        typeId: 'chat',
+        instanceKey: sessionId,
+        reason: 'api',
+      },
+    });
+  } catch (err) {
+    console.warn('[ApprovalEventHandler] Failed to focus chat window for High approval:', err);
+  }
+}
 
 // ============================================================================
 // 审批请求数据类型
@@ -25,8 +52,15 @@ interface ApprovalRequestPayload {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
+  permissionPreset?: PermissionPreset;
   description: string;
   timeoutSeconds: number;
+  resolvedStatus?: ApprovalResolutionStatus;
+  status?: string;
+  expired?: boolean;
+  expiresAt?: number | string;
+  // shell / skill_install / skill_workshop / skill_lifecycle 等 scope 联合类型
+  runtimeScope?: RuntimeApprovalScope;
 }
 
 type ApprovalResolutionStatus = 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
@@ -39,9 +73,48 @@ interface ApprovalResultPayload {
 
 const APPROVAL_RESOLUTION_DISPLAY_MS = 1000;
 
-// 简单队列：避免并发审批请求互相覆盖
-const approvalQueue: ApprovalRequestPayload[] = [];
-let resolutionTimer: ReturnType<typeof setTimeout> | null = null;
+interface ApprovalRuntimeState {
+  queue: ApprovalRequestPayload[];
+  resolutionTimer: ReturnType<typeof setTimeout> | null;
+  terminalToolCallIds: Set<string>;
+}
+
+/**
+ * Store state snapshots are replaced after every Zustand update, while action
+ * functions remain stable for the lifetime of a store. Keying by the action
+ * therefore keeps each chat window's queue and timer isolated without keeping
+ * destroyed stores alive.
+ */
+const approvalRuntimeByStore = new WeakMap<
+  ChatStore['setPendingApproval'],
+  ApprovalRuntimeState
+>();
+
+function getApprovalRuntime(store: ChatStore): ApprovalRuntimeState {
+  const storeIdentity = store.setPendingApproval;
+  let runtime = approvalRuntimeByStore.get(storeIdentity);
+  if (!runtime) {
+    runtime = {
+      queue: [],
+      resolutionTimer: null,
+      terminalToolCallIds: new Set(),
+    };
+    approvalRuntimeByStore.set(storeIdentity, runtime);
+    registerTransientRuntime(storeIdentity, 'tool-approval-queue', () => {
+      if (runtime?.resolutionTimer) {
+        clearTimeout(runtime.resolutionTimer);
+      }
+      runtime?.queue.splice(0);
+      runtime?.terminalToolCallIds.clear();
+      approvalRuntimeByStore.delete(storeIdentity);
+    });
+  }
+  return runtime;
+}
+
+function getExistingApprovalRuntime(store: ChatStore): ApprovalRuntimeState | null {
+  return approvalRuntimeByStore.get(store.setPendingApproval) ?? null;
+}
 
 function toStoreApproval(request: ApprovalRequestPayload) {
   return {
@@ -49,8 +122,10 @@ function toStoreApproval(request: ApprovalRequestPayload) {
     toolName: request.toolName,
     arguments: request.arguments || {},
     sensitivity: request.sensitivity || 'medium',
+    permissionPreset: request.permissionPreset ?? 'relaxed',
     description: request.description || '',
     timeoutSeconds: request.timeoutSeconds || 30,
+    runtimeScope: request.runtimeScope,
   };
 }
 
@@ -75,6 +150,43 @@ function extractToolCallId(blockId?: string): string | null {
   return null;
 }
 
+function isTerminalApprovalRequest(request: ApprovalRequestPayload): boolean {
+  if (request.expired === true || request.resolvedStatus) return true;
+  const status = request.status?.toLowerCase();
+  if (status && ['approved', 'rejected', 'timeout', 'expired', 'error', 'completed', 'cancelled'].includes(status)) {
+    return true;
+  }
+  if (request.expiresAt !== undefined) {
+    const numericExpiresAt = typeof request.expiresAt === 'number'
+      ? request.expiresAt
+      : Date.parse(request.expiresAt);
+    const expiresAt = numericExpiresAt > 0 && numericExpiresAt < 1_000_000_000_000
+      ? numericExpiresAt * 1000
+      : numericExpiresAt;
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return true;
+  }
+  return false;
+}
+
+function isDuplicateApproval(
+  store: ChatStore,
+  runtime: ApprovalRuntimeState,
+  toolCallId: string,
+): boolean {
+  if (!toolCallId) return false;
+  const pending = store.pendingBlockingInteraction;
+  return runtime.terminalToolCallIds.has(toolCallId)
+    || (pending?.kind === 'tool_approval' && pending.toolCallId === toolCallId)
+    || runtime.queue.some((item) => item.toolCallId === toolCallId);
+}
+
+function removeQueuedApproval(runtime: ApprovalRuntimeState, toolCallId: string): boolean {
+  const index = runtime.queue.findIndex((item) => item.toolCallId === toolCallId);
+  if (index < 0) return false;
+  runtime.queue.splice(index, 1);
+  return true;
+}
+
 function shouldResolveApproval(store: ChatStore, toolCallId?: string | null) {
   const pending = store.pendingBlockingInteraction;
   if (!pending) return false;
@@ -85,17 +197,42 @@ function shouldResolveApproval(store: ChatStore, toolCallId?: string | null) {
 }
 
 function scheduleAdvanceQueue(store: ChatStore) {
-  if (resolutionTimer) {
-    clearTimeout(resolutionTimer);
+  const runtime = getApprovalRuntime(store);
+  const expectedToolCallId = store.pendingBlockingInteraction?.kind === 'tool_approval'
+    ? store.pendingBlockingInteraction.toolCallId
+    : null;
+  if (runtime.resolutionTimer) {
+    clearTimeout(runtime.resolutionTimer);
   }
-  resolutionTimer = setTimeout(() => {
-    resolutionTimer = null;
+
+  const timer = setTimeout(() => {
+    if (runtime.resolutionTimer !== timer) return;
+    runtime.resolutionTimer = null;
+    const pending = store.pendingBlockingInteraction;
+    if (
+      expectedToolCallId
+      && (
+        pending?.kind !== 'tool_approval'
+        || pending.toolCallId !== expectedToolCallId
+      )
+    ) {
+      return;
+    }
     store.clearPendingApproval();
-    const next = approvalQueue.shift();
+    let next = runtime.queue.shift();
+    while (next && (
+      runtime.terminalToolCallIds.has(next.toolCallId)
+      || isTerminalApprovalRequest(next)
+    )) {
+      next = runtime.queue.shift();
+    }
     if (next) {
-      store.setPendingApproval(toStoreApproval(next));
+      const normalized = toStoreApproval(next);
+      focusChatWindowForApproval(store, normalized.sensitivity);
+      store.setPendingApproval(normalized);
     }
   }, APPROVAL_RESOLUTION_DISPLAY_MS);
+  runtime.resolutionTimer = timer;
 }
 
 function normalizeApprovalError(error: string): 'timeout' | 'expired' | 'error' {
@@ -151,6 +288,18 @@ export const approvalEventHandler: EventHandler = {
    */
   onStart: (store: ChatStore, _messageId: string, payload: Record<string, unknown>): string => {
     const request = payload as unknown as ApprovalRequestPayload;
+    const blockId = `approval_${request.toolCallId}`;
+    const runtime = getApprovalRuntime(store);
+
+    if (isTerminalApprovalRequest(request)) {
+      if (request.toolCallId) runtime.terminalToolCallIds.add(request.toolCallId);
+      console.log('[ApprovalEventHandler] Ignored terminal approval request:', request.toolCallId);
+      return blockId;
+    }
+    if (isDuplicateApproval(store, runtime, request.toolCallId)) {
+      console.log('[ApprovalEventHandler] Ignored duplicate approval request:', request.toolCallId);
+      return blockId;
+    }
     
     console.log('[ApprovalEventHandler] Received approval request:', {
       toolName: request.toolName,
@@ -167,16 +316,21 @@ export const approvalEventHandler: EventHandler = {
 
     const normalized = toStoreApproval(request);
 
+    // ACR R2-05：High 审批到达时先 focus 本会话 chat 窗（队列中的请求在出队时再 focus）
+    if (!store.pendingBlockingInteraction) {
+      focusChatWindowForApproval(store, normalized.sensitivity);
+    }
+
     // 已有待审批请求时进入队列，避免覆盖
     if (store.pendingBlockingInteraction) {
-      approvalQueue.push(request);
-      console.log('[ApprovalEventHandler] Queued approval request:', request.toolCallId, 'queueSize=', approvalQueue.length);
+      runtime.queue.push(request);
+      console.log('[ApprovalEventHandler] Queued approval request:', request.toolCallId, 'queueSize=', runtime.queue.length);
     } else {
       store.setPendingApproval(normalized);
     }
 
     // 返回一个虚拟的 blockId（审批事件不创建块）
-    return `approval_${request.toolCallId}`;
+    return blockId;
   },
 
   /**
@@ -188,6 +342,12 @@ export const approvalEventHandler: EventHandler = {
     console.log('[ApprovalEventHandler] Approval completed, processing next request if exists');
     const result = _result as ApprovalResultPayload | undefined;
     const toolCallId = result?.toolCallId ?? extractToolCallId(_blockId);
+    const runtime = getExistingApprovalRuntime(store);
+    if (!runtime) return;
+    if (toolCallId) {
+      runtime.terminalToolCallIds.add(toolCallId);
+      removeQueuedApproval(runtime, toolCallId);
+    }
     // 🆕 2026-02-17: 生命周期追踪
     if (toolCallId) trackEnd(toolCallId, true);
     if (!shouldResolveApproval(store, toolCallId)) {
@@ -215,6 +375,12 @@ export const approvalEventHandler: EventHandler = {
   onError: (store: ChatStore, _blockId: string, error: string): void => {
     console.log('[ApprovalEventHandler] Approval error:', error);
     const toolCallId = extractToolCallId(_blockId);
+    const runtime = getExistingApprovalRuntime(store);
+    if (!runtime) return;
+    if (toolCallId) {
+      runtime.terminalToolCallIds.add(toolCallId);
+      removeQueuedApproval(runtime, toolCallId);
+    }
     // 🆕 2026-02-17: 生命周期追踪
     if (toolCallId) trackEnd(toolCallId, false);
     if (!shouldResolveApproval(store, toolCallId)) {

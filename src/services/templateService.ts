@@ -160,7 +160,7 @@ export class TemplateService {
    * 如果没有，根据字段自动生成默认规则
    */
   public ensureFieldExtractionRules(template: CustomAnkiTemplate): CustomAnkiTemplate {
-    const normalizeDefaultValue = (value: any) => {
+    const normalizeDefaultValue = (value: unknown): string => {
       if (value === undefined || value === null) return '';
       return typeof value === 'string' ? value : JSON.stringify(value);
     };
@@ -172,7 +172,7 @@ export class TemplateService {
     Object.entries(existing).forEach(([field, rule]) => {
       filled[field] = {
         ...rule,
-        default_value: normalizeDefaultValue((rule as any).default_value),
+        default_value: normalizeDefaultValue(rule.default_value),
         description: rule.description || `${field}字段的内容`,
       };
     });
@@ -183,7 +183,7 @@ export class TemplateService {
       if (!filled[field]) {
         const fieldLower = field.toLowerCase();
         filled[field] = {
-          field_type: fieldLower === 'tags' ? 'Array' as any : 'Text' as any,
+          field_type: fieldLower === 'tags' ? 'Array' : 'Text',
           is_required: fieldLower === 'front' || fieldLower === 'back',
           // 后端 FieldExtractionRule.default_value 为字符串，保持类型一致
           default_value: fieldLower === 'tags' ? '[]' : '',

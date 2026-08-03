@@ -42,12 +42,18 @@ use tracing::{debug, info, warn};
 ///
 /// 以下数据库**明确豁免**，不纳入数据治理系统：
 /// - `message_queue.db` — 持久化消息队列（运行时临时队列，重启后自动重建，无需迁移/备份/同步）
+/// - `browser.db` — 内置浏览器元数据（历史/会话/下载元数据/站点权限/设置）；路径
+///   `{active_slot}/browser.db`；**懒加载**（双闸开且首次 `browser_open_session` 才建库）；
+///   模块内 Refinery（`migrations/browser/`），不进本枚举 / RowSync / 默认备份
+/// - `browser-profiles/` — WebView 独立 profile 目录（cookie/缓存等；**不是** SQLite）；
+///   路径 `{active_slot}/browser-profiles/default/`；清除语义与 DB 分离（清 Cookie ≠ 清历史）
 /// - `ws_*.db` — 工作空间独立数据库（生命周期由工作空间管理，随工作空间创建/删除）
 /// - `resources.db` — 兼容期资源数据库（已废弃，仅用于旧数据兼容读取，不再写入新数据）
 ///
 /// 如果未来需要纳管上述豁免数据库，需在此枚举中新增变体，
 /// 并同步更新 `all_ordered()`、`dependencies()`、前端 `dataGovernance.ts` 中的类型声明、
 /// 以及 `MigrationCoordinator::get_database_path()` 中的路径映射。
+/// （`browser.db` 一期明确不纳管；禁用浏览器 flag 时**保留**文件，不得静默删除。）
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum DatabaseId {
     Vfs,

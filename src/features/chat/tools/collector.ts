@@ -48,11 +48,6 @@ export interface CollectToolsOptions {
   pendingContextRefs?: ContextRef[];
   /** @deprecated Anki 工具已迁移到内置 MCP 服务器，此选项不再生效 */
   enableAnkiTools?: boolean;
-  /**
-   * 技能声明的可见工具白名单。
-   * 为空或未传时不过滤；条目支持精确匹配或命名前缀匹配（如 "anki" 匹配 "anki_*"）。
-   */
-  skillAllowedTools?: string[];
 }
 
 /**
@@ -68,19 +63,11 @@ export function collectSchemaToolIds(options: CollectToolsOptions): CollectTools
   const sources = {
     contextRefs: [] as string[],
   };
-  const allowedTools = options.skillAllowedTools?.filter(Boolean) ?? [];
-  const isAllowed = (toolId: string) =>
-    allowedTools.length === 0 ||
-    allowedTools.some((allowed) => toolId === allowed || toolId.startsWith(`${allowed}_`));
-
   // 1. 上下文引用关联工具
   if (options.pendingContextRefs && options.pendingContextRefs.length > 0) {
     const typeIds = [...new Set(options.pendingContextRefs.map((ref) => ref.typeId))];
     const contextTools = contextTypeRegistry.collectToolsForTypes(typeIds);
     contextTools.forEach((id) => {
-      if (!isAllowed(id)) {
-        return;
-      }
       if (!toolSet.has(id)) {
         toolSet.add(id);
         sources.contextRefs.push(id);

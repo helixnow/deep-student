@@ -232,6 +232,11 @@ pub fn textbook_to_dstu_node(textbook: &VfsTextbook) -> DstuNode {
     .with_metadata(serde_json::json!({
         "filePath": textbook.original_path,
         "isFavorite": textbook.is_favorite,
+        "pageCount": textbook.page_count,
+        "readingProgress": textbook.last_page.map(|page| serde_json::json!({ "page": page })),
+        "bookmarks": textbook.bookmarks,
+        "highlights": textbook.highlights,
+        "annotationRevision": textbook.updated_at,
     }))
 }
 
@@ -409,7 +414,7 @@ pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
     let created_at = parse_timestamp(&file.created_at);
     let updated_at = parse_timestamp(&file.updated_at);
 
-    let is_pdf = file.mime_type.as_ref().map_or(false, |m| m.contains("pdf"))
+    let is_pdf = file.mime_type.as_ref().is_some_and(|m| m.contains("pdf"))
         || file.file_name.to_lowercase().ends_with(".pdf");
 
     let node_type = if is_pdf {
@@ -440,6 +445,8 @@ pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
             "contentHash": file.sha256,
             "isFavorite": file.is_favorite,
             "pageCount": file.page_count,
+            "readingProgress": file.last_page.map(|page| serde_json::json!({ "page": page })),
+            "bookmarks": file.bookmarks,
         }))
 }
 
@@ -526,9 +533,9 @@ mod tests {
     #[test]
     fn test_get_textbook_preview_type_text_ebook() {
         // 电子书和富文本
-        assert_eq!(get_textbook_preview_type("book.epub"), PreviewType::Text);
+        assert_eq!(get_textbook_preview_type("book.epub"), PreviewType::Epub);
         assert_eq!(get_textbook_preview_type("document.rtf"), PreviewType::Text);
-        assert_eq!(get_textbook_preview_type("BOOK.EPUB"), PreviewType::Text);
+        assert_eq!(get_textbook_preview_type("BOOK.EPUB"), PreviewType::Epub);
     }
 
     #[test]

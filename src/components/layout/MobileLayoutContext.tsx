@@ -1,45 +1,31 @@
 /**
  * MobileLayoutContext - 移动端布局状态管理
  *
- * 管理移动端特有的UI状态：
- * - 当前打开的侧边栏/Sheet
- * - 全屏模式
- * - 手势状态
+ * 管理移动端特有的 UI 状态：
+ * - 是否处于移动端布局（<768，与 App shell 同源）
+ * - 全屏内容 claim（抑制底部 inset，见 isFullscreenContent）
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
-/** 可打开的侧边栏类型 */
-export type SidebarType =
-  | 'sessions'      // 会话列表
-  | 'learning-hub'  // 学习资源
-  | 'navigation'    // 主导航
-  | null;
-
 interface MobileLayoutState {
   /** 是否为移动端布局 */
   isMobile: boolean;
 
-  /** 当前打开的侧边栏 */
-  openSidebar: SidebarType;
-
-  /** 打开指定侧边栏 */
-  openSidebarPanel: (type: Exclude<SidebarType, null>) => void;
-
-  /** 关闭侧边栏 */
-  closeSidebar: () => void;
-
-  /** 切换侧边栏 */
-  toggleSidebar: (type: Exclude<SidebarType, null>) => void;
-
-  /** 是否处于全屏内容模式（隐藏底部导航） */
+  /**
+   * 是否处于「全屏内容」状态。
+   *
+   * 语义：抑制底部 inset —— 有任意 claim 存在时，消费方（InputBarUI 底部
+   * padding 等）应视为内容占满纵向空间、去掉为底部导航/安全区预留的间距。
+   * 典型 claim 来源：MobileSlidingLayout 的侧栏/右屏展开或拖拽中。
+   */
   isFullscreenContent: boolean;
 
-  /** 进入全屏内容模式 */
+  /** 登记一个全屏内容 claim（幂等，按 claimId 去重） */
   enterFullscreen: (claimId?: string) => void;
 
-  /** 退出全屏内容模式 */
+  /** 释放一个全屏内容 claim */
   exitFullscreen: (claimId?: string) => void;
 }
 
@@ -65,20 +51,7 @@ interface MobileLayoutProviderProps {
 export const MobileLayoutProvider: React.FC<MobileLayoutProviderProps> = ({ children }) => {
   const { isSmallScreen } = useBreakpoint();
 
-  const [openSidebar, setOpenSidebar] = useState<SidebarType>(null);
   const [fullscreenClaims, setFullscreenClaims] = useState<Set<string>>(() => new Set());
-
-  const openSidebarPanel = useCallback((type: Exclude<SidebarType, null>) => {
-    setOpenSidebar(type);
-  }, []);
-
-  const closeSidebar = useCallback(() => {
-    setOpenSidebar(null);
-  }, []);
-
-  const toggleSidebar = useCallback((type: Exclude<SidebarType, null>) => {
-    setOpenSidebar(prev => prev === type ? null : type);
-  }, []);
 
   const enterFullscreen = useCallback((claimId = 'default') => {
     setFullscreenClaims(prev => {
@@ -102,19 +75,11 @@ export const MobileLayoutProvider: React.FC<MobileLayoutProviderProps> = ({ chil
 
   const value = useMemo<MobileLayoutState>(() => ({
     isMobile: isSmallScreen,
-    openSidebar,
-    openSidebarPanel,
-    closeSidebar,
-    toggleSidebar,
     isFullscreenContent,
     enterFullscreen,
     exitFullscreen,
   }), [
     isSmallScreen,
-    openSidebar,
-    openSidebarPanel,
-    closeSidebar,
-    toggleSidebar,
     isFullscreenContent,
     enterFullscreen,
     exitFullscreen,

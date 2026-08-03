@@ -68,7 +68,26 @@ export function useBackupJobListener(
         if (isBackupJobTerminal(event.status)) {
           terminalHandled.current = true;
           if (event.status === 'completed') {
-            optionsRef.current.onComplete?.(event);
+            // Transport completion is not business success.  A job may reach the
+            // completed state with result.success=false after a fail-close
+            // validation error, and callers must never present that as success.
+            if (event.result?.success === true) {
+              optionsRef.current.onComplete?.(event);
+            } else {
+              optionsRef.current.onError?.({
+                ...event,
+                result: {
+                  success: false,
+                  requires_restart: false,
+                  ...event.result,
+                  error:
+                    event.result?.error ||
+                    event.result?.message ||
+                    event.message ||
+                    'Backup job completed without a successful result',
+                },
+              });
+            }
           } else if (event.status === 'failed') {
             optionsRef.current.onError?.(event);
           } else if (event.status === 'cancelled') {

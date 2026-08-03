@@ -17,16 +17,32 @@
   "loading": "Loading PDF...",
   "loading_reading": "Reading file ({{mb}} MB)…",
   "loading_reading_simple": "Reading file…",
+  "loading_progress": "Loading PDF… {{percent}}%",
   "empty": {
     "title": "No file selected",
-    "description": "Click the button above to choose a PDF file"
+    "description": "Choose a PDF file to start reading",
+    "select_button": "Choose PDF file"
   },
   "errors": {
     "invalid_file": "Please choose a valid PDF file",
     "load_failed": "Failed to load PDF. Please retry",
     "conversion_failed": "File format conversion failed",
     "content_not_found": "Unable to load PDF file content",
-    "load_pdf_failed": "Failed to load PDF"
+    "load_pdf_failed": "Failed to load PDF",
+    "password_protected": "This PDF is encrypted or password-protected",
+    "password_protected_hint": "Remove password protection in a PDF reader, then re-import or open locally.",
+    "invalid_pdf": "Invalid or corrupted PDF file",
+    "invalid_pdf_hint": "The file may not be a valid PDF, or it was corrupted during transfer or storage.",
+    "stream_failed": "PDF streaming failed",
+    "stream_failed_hint": "The file path may be invalid or outside allowed directories. Try relinking the file.",
+    "too_large": "PDF is too large to preview ({{size}})",
+    "too_large_simple": "PDF is too large to preview",
+    "too_large_hint": "Files over 100MB are best opened in your system PDF reader.",
+    "large_file_hint": "Large file ({{size}}), first load may be slow"
+  },
+  "load_source": {
+    "stream": "Streaming",
+    "memory": "In-memory"
   },
   "toolbar": {
     "select_this_page": "Select this page",
@@ -66,7 +82,15 @@
     "show_highlights": "View Highlights",
     "highlights": "Highlights",
     "page": "Page {{page}}",
-    "delete_highlight": "Delete Highlight"
+    "delete_highlight": "Delete Highlight",
+    "more": "More",
+    "fit_width": "Fit width",
+    "fit_page": "Fit page",
+    "actual_size": "Actual size",
+    "zoom_level": "Zoom level",
+    "rotate_ccw": "Rotate 90° counterclockwise",
+    "outline_nav_failed": "Couldn't jump to this section",
+    "highlight_rotation_disabled": "Text highlighting is unavailable while the view is rotated. Restore the original orientation and try again"
   },
   "bookmark": {
     "addBookmark": "Add Bookmark",
@@ -147,11 +171,19 @@
     "initializing_session": "Initializing OCR session...",
     "waiting_ocr": "Pages uploaded, waiting for OCR recognition...",
     "process_new": "Process New File"
+  },
+  "a11y": {
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "search": "Search"
+  },
+  "password": {
+    "title": "This PDF is password protected",
+    "description": "Enter the password to open the document",
+    "placeholder": "Password",
+    "submit": "Open",
+    "cancel": "Cancel",
+    "incorrect": "Incorrect password. Please try again"
   }
 }
-
-
-
-
-
-

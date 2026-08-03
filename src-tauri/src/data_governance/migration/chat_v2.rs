@@ -356,6 +356,111 @@ pub const V20260527_ADD_WORKSPACE_DELETION_QUEUE: MigrationDef = MigrationDef::n
 .with_expected_indexes(&["idx__workspace_deletion_queue_retry"])
 .idempotent();
 
+/// V20260528: 重建 resources 表并移除过时的 type CHECK 约束
+pub const V20260528_RESOURCES_TYPE_CHECK_REBUILD: MigrationDef = MigrationDef::new(
+    20260528,
+    "resources_type_check_rebuild",
+    include_str!("../../../migrations/chat_v2/V20260528__resources_type_check_rebuild.sql"),
+)
+.with_expected_columns(&[
+    ("resources", "type"),
+    ("resources", "device_id"),
+    ("resources", "deleted_at"),
+])
+.with_expected_indexes(&[
+    "idx_resources_hash",
+    "idx_resources_type",
+    "idx_resources_local_version",
+])
+.idempotent();
+
+/// V20260711: 为会话标签补齐复合主键变更日志触发器
+pub const V20260711_SESSION_TAGS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
+    20260711,
+    "session_tags_sync_coverage",
+    include_str!("../../../migrations/chat_v2/V20260711__session_tags_sync_coverage.sql"),
+)
+.idempotent();
+
+/// V20260717: 课题首选 runtime root（default_runtime_root_id + preferred_project_root_path）
+pub const V20260717_GROUP_PREFERRED_RUNTIME_ROOT: MigrationDef = MigrationDef::new(
+    20260717,
+    "group_preferred_runtime_root",
+    include_str!("../../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
+)
+.with_expected_columns(&[
+    ("chat_v2_session_groups", "default_runtime_root_id"),
+    ("chat_v2_session_groups", "preferred_project_root_path"),
+])
+.idempotent();
+
+/// V20260719: FTS 触发器覆盖 block_type 变更 + 会话列表复合索引
+///
+/// 重建 chat_v2_content_fts 的 UPDATE/DELETE 触发器（监听 content + block_type），
+/// 全量重建 FTS 修复历史幽灵/漏索引，并添加 (persist_status, updated_at DESC) 复合索引。
+pub const V20260719_FTS_BLOCKTYPE_COVERAGE: MigrationDef = MigrationDef::new(
+    20260719,
+    "fts_blocktype_coverage_and_indexes",
+    include_str!("../../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"),
+)
+.with_expected_indexes(&["idx_chat_v2_sessions_status_updated"])
+.idempotent();
+
+pub const V20260720_COMPACTION_LINEAGE_AND_SYNC: MigrationDef = MigrationDef::new(
+    20260720,
+    "compaction_lineage_and_sync",
+    include_str!("../../../migrations/chat_v2/V20260720__compaction_lineage_and_sync.sql"),
+)
+.with_expected_columns(&[
+    ("chat_v2_compactions", "previous_compaction_id"),
+    ("chat_v2_compactions", "range_start_message_id"),
+    ("chat_v2_compactions", "range_end_message_id"),
+    ("chat_v2_compactions", "compacted_message_count"),
+    ("chat_v2_compactions", "model_config_id"),
+    ("chat_v2_compactions", "device_id"),
+    ("chat_v2_compactions", "local_version"),
+    ("chat_v2_compactions", "updated_at"),
+    ("chat_v2_compactions", "deleted_at"),
+])
+.with_expected_indexes(&[
+    "idx_chat_v2_compactions_previous",
+    "idx_chat_v2_compactions_local_version",
+    "idx_chat_v2_compactions_device_version",
+    "idx_chat_v2_compactions_sync_updated_at",
+    "idx_chat_v2_compactions_updated_not_deleted",
+])
+.idempotent();
+
+/// V20260721: 工作区数据库删除两阶段日志。
+///
+/// 旧队列表继续作为仅包含 ready 项的同步 outbox；DELETE 触发器在云端发布成功、
+/// drain 删除 outbox 行时把持久 journal 原子推进到 published。
+pub const V20260721_WORKSPACE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::new(
+    20260721,
+    "workspace_deletion_intent_journal",
+    include_str!("../../../migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql"),
+)
+.with_expected_tables(&["__file_deletion_journal"])
+.with_expected_columns(&[
+    ("__file_deletion_journal", "operation_id"),
+    ("__file_deletion_journal", "target_kind"),
+    ("__file_deletion_journal", "entity_key"),
+    ("__file_deletion_journal", "local_path"),
+    ("__file_deletion_journal", "expected_hash"),
+    ("__file_deletion_journal", "state"),
+    ("__file_deletion_journal", "prepared_at"),
+    ("__file_deletion_journal", "ready_at"),
+    ("__file_deletion_journal", "published_at"),
+])
+.with_expected_indexes(&[
+    "idx__file_deletion_journal_recovery",
+    "idx__file_deletion_journal_target",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__workspace_deletion_queue_published'",
+])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -375,6 +480,12 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260523_ADD_MISSING_SYNC_COVERAGE,
     V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
     V20260527_ADD_WORKSPACE_DELETION_QUEUE,
+    V20260528_RESOURCES_TYPE_CHECK_REBUILD,
+    V20260711_SESSION_TAGS_SYNC_COVERAGE,
+    V20260717_GROUP_PREFERRED_RUNTIME_ROOT,
+    V20260719_FTS_BLOCKTYPE_COVERAGE,
+    V20260720_COMPACTION_LINEAGE_AND_SYNC,
+    V20260721_WORKSPACE_DELETION_INTENT_JOURNAL,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -394,7 +505,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 17); // V20260130 ~ V20260527
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 23); // V20260130 ~ V20260721
     }
 
     #[test]
@@ -421,97 +532,184 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(CHAT_V2_MIGRATION_SET.latest_version(), 20260527);
+        assert_eq!(
+            CHAT_V2_MIGRATION_SET.latest_version(),
+            crate::chat_v2::database::CURRENT_SCHEMA_VERSION as i32
+        );
+    }
+
+    #[test]
+    fn test_v20260528_rebuild_removes_type_check_and_preserves_data() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE __change_log (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 table_name TEXT NOT NULL,
+                 record_id TEXT NOT NULL,
+                 operation TEXT NOT NULL,
+                 field_deltas_json TEXT
+             );
+             CREATE TABLE resources (
+                 id TEXT PRIMARY KEY,
+                 hash TEXT NOT NULL UNIQUE,
+                 type TEXT NOT NULL CHECK(type IN ('image','file','note','card','retrieval')),
+                 source_id TEXT,
+                 data TEXT,
+                 metadata_json TEXT,
+                 ref_count INTEGER NOT NULL DEFAULT 0,
+                 created_at INTEGER NOT NULL,
+                 device_id TEXT,
+                 local_version INTEGER DEFAULT 0,
+                 updated_at TEXT,
+                 deleted_at TEXT
+             );
+             INSERT INTO resources (id, hash, type, data, created_at)
+             VALUES ('existing', 'hash-existing', 'image', 'payload', 1);",
+        )
+        .unwrap();
+
+        conn.execute_batch(V20260528_RESOURCES_TYPE_CHECK_REBUILD.sql)
+            .unwrap();
+        conn.execute(
+            "INSERT INTO resources (id, hash, type, data, created_at)
+             VALUES ('new-type', 'hash-new-type', 'folder', 'folder payload', 2)",
+            [],
+        )
+        .expect("new ResourceType variants must no longer violate a stale CHECK constraint");
+
+        let existing_payload: String = conn
+            .query_row(
+                "SELECT data FROM resources WHERE id = 'existing'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(existing_payload, "payload");
+
+        let resources_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'resources'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            !resources_sql.to_ascii_uppercase().contains("CHECK"),
+            "rebuilt resources schema must not retain the stale type CHECK: {resources_sql}"
+        );
+
+        conn.execute_batch(V20260528_RESOURCES_TYPE_CHECK_REBUILD.sql)
+            .expect("migration is marked idempotent and must be replayable");
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_v20260711_session_tags_emit_unambiguous_composite_keys() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE __change_log (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 table_name TEXT NOT NULL,
+                 record_id TEXT NOT NULL,
+                 operation TEXT NOT NULL CHECK(operation IN ('INSERT', 'UPDATE', 'DELETE'))
+             );
+             CREATE TABLE chat_v2_session_tags (
+                 session_id TEXT NOT NULL,
+                 tag TEXT NOT NULL,
+                 tag_type TEXT NOT NULL DEFAULT 'auto',
+                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 PRIMARY KEY (session_id, tag)
+             );",
+        )
+        .unwrap();
+
+        conn.execute_batch(V20260711_SESSION_TAGS_SYNC_COVERAGE.sql)
+            .unwrap();
+        conn.execute_batch(V20260711_SESSION_TAGS_SYNC_COVERAGE.sql)
+            .expect("migration is idempotent and must not duplicate triggers");
+
+        conn.execute(
+            "INSERT INTO chat_v2_session_tags (session_id, tag) VALUES (?1, ?2)",
+            rusqlite::params!["session:one", "tag:\"quoted\""],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE chat_v2_session_tags SET tag_type = 'manual'
+             WHERE session_id = ?1 AND tag = ?2",
+            rusqlite::params!["session:one", "tag:\"quoted\""],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE chat_v2_session_tags SET tag = ?1
+             WHERE session_id = ?2 AND tag = ?3",
+            rusqlite::params!["renamed:tag", "session:one", "tag:\"quoted\""],
+        )
+        .unwrap();
+        conn.execute(
+            "DELETE FROM chat_v2_session_tags WHERE session_id = ?1 AND tag = ?2",
+            rusqlite::params!["session:one", "renamed:tag"],
+        )
+        .unwrap();
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT operation, record_id FROM __change_log
+                 WHERE table_name = 'chat_v2_session_tags' ORDER BY id",
+            )
+            .unwrap();
+        let changes: Vec<(String, serde_json::Value)> = stmt
+            .query_map([], |row| {
+                let operation: String = row.get(0)?;
+                let record_id: String = row.get(1)?;
+                Ok((operation, record_id))
+            })
+            .unwrap()
+            .map(|row| {
+                let (operation, record_id) = row.unwrap();
+                (operation, serde_json::from_str(&record_id).unwrap())
+            })
+            .collect();
+
+        assert_eq!(changes.len(), 5);
+        assert_eq!(changes[0].0, "INSERT");
+        assert_eq!(changes[1].0, "UPDATE");
+        assert_eq!(changes[2].0, "DELETE");
+        assert_eq!(changes[3].0, "INSERT");
+        assert_eq!(changes[4].0, "DELETE");
+        assert_eq!(
+            changes[0].1,
+            serde_json::json!({"session_id": "session:one", "tag": "tag:\"quoted\""})
+        );
+        assert_eq!(changes[1].1, changes[0].1);
+        assert_eq!(changes[2].1, changes[0].1);
+        assert_eq!(
+            changes[3].1,
+            serde_json::json!({"session_id": "session:one", "tag": "renamed:tag"})
+        );
+        assert_eq!(changes[4].1, changes[3].1);
     }
 
     #[test]
     fn test_pending_migrations() {
-        // 从版本 0 开始，应该有 17 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(0).collect();
-        assert_eq!(pending.len(), 17);
+        let expected_versions = vec![
+            20260130, 20260131, 20260201, 20260202, 20260203, 20260204, 20260207, 20260221,
+            20260301, 20260302, 20260306, 20260502, 20260510, 20260516, 20260523, 20260524,
+            20260527, 20260528, 20260711, 20260717, 20260719, 20260720, 20260721,
+        ];
+        let actual_versions: Vec<_> = CHAT_V2_MIGRATION_SET
+            .pending(0)
+            .map(|migration| migration.refinery_version)
+            .collect();
 
-        // 从版本 20260130 开始，应该有 16 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260130).collect();
-        assert_eq!(pending.len(), 16);
-
-        // 从版本 20260131 开始，应该有 15 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260131).collect();
-        assert_eq!(pending.len(), 15);
-
-        // 从版本 20260201 开始，应该有 14 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260201).collect();
-        assert_eq!(pending.len(), 14);
-
-        // 从版本 20260202 开始，应该有 13 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260202).collect();
-        assert_eq!(pending.len(), 13);
-
-        // 从版本 20260203 开始，应该有 12 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260203).collect();
-        assert_eq!(pending.len(), 12);
-
-        // 从版本 20260204 开始，应该有 11 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260204).collect();
-        assert_eq!(pending.len(), 11);
-
-        // 从版本 20260207 开始，应该有 10 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260207).collect();
-        assert_eq!(pending.len(), 10);
-
-        // 从版本 20260221 开始，应该有 9 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260221).collect();
-        assert_eq!(pending.len(), 9);
-
-        // 从版本 20260301 开始，应该有 8 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260301).collect();
-        assert_eq!(pending.len(), 8);
-
-        // 从版本 20260302 开始，应该有 7 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260302).collect();
-        assert_eq!(pending.len(), 7);
-
-        // 从版本 20260306 开始，应该有 6 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260306).collect();
-        assert_eq!(pending.len(), 6);
-
-        // 从版本 20260502 开始，应该有 5 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260502).collect();
-        assert_eq!(pending.len(), 5);
-        assert_eq!(pending[0].refinery_version, 20260510);
-        assert_eq!(pending[1].refinery_version, 20260516);
-        assert_eq!(pending[2].refinery_version, 20260523);
-        assert_eq!(pending[3].refinery_version, 20260524);
-        assert_eq!(pending[4].refinery_version, 20260527);
-
-        // 从版本 20260510 开始，应该有 4 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260510).collect();
-        assert_eq!(pending.len(), 4);
-        assert_eq!(pending[0].refinery_version, 20260516);
-        assert_eq!(pending[1].refinery_version, 20260523);
-        assert_eq!(pending[2].refinery_version, 20260524);
-        assert_eq!(pending[3].refinery_version, 20260527);
-
-        // 从版本 20260516 开始，应该有 3 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260516).collect();
-        assert_eq!(pending.len(), 3);
-        assert_eq!(pending[0].refinery_version, 20260523);
-        assert_eq!(pending[1].refinery_version, 20260524);
-        assert_eq!(pending[2].refinery_version, 20260527);
-
-        // 从版本 20260523 开始，应该有 2 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260523).collect();
-        assert_eq!(pending.len(), 2);
-        assert_eq!(pending[0].refinery_version, 20260524);
-        assert_eq!(pending[1].refinery_version, 20260527);
-
-        // 从版本 20260524 开始，应该有 1 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260524).collect();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].refinery_version, 20260527);
-
-        // 从版本 20260527 开始，应该没有待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260527).collect();
-        assert_eq!(pending.len(), 0);
+        assert_eq!(actual_versions, expected_versions);
+        for (index, version) in expected_versions.iter().enumerate() {
+            let remaining: Vec<_> = CHAT_V2_MIGRATION_SET.pending(*version).collect();
+            assert_eq!(remaining.len(), expected_versions.len() - index - 1);
+        }
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260721).count(), 0);
     }
 
     #[test]

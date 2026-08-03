@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 const VIEWPORT_PADDING_PX = 8;
 const DEFAULT_PANEL_GAP_PX = 8;
@@ -175,6 +176,12 @@ export function ComposerPanelOverlay({
   }, [anchorRef, updatePosition]);
 
   if (typeof document === 'undefined') return null;
+  // 外壳有 p-3（上下各 12px）；直接给滚动宿主与 viewport 传明确像素上限，
+  // 避免 max-height 祖先下百分比高度解析为 auto。
+  const contentViewportMaxHeight = Math.max(
+    0,
+    (position?.maxHeight ?? maxHeight) - 24
+  );
 
   return createPortal(
     <div
@@ -188,9 +195,11 @@ export function ComposerPanelOverlay({
         'fixed rounded-[var(--radius-shell-panel)] border border-[color:var(--composer-panel-border)] bg-[color:var(--composer-panel-surface)] bg-clip-padding p-3 text-[color:var(--composer-panel-foreground)] shadow-[var(--composer-panel-shadow)]',
         heightMode === 'available'
           ? 'flex min-h-0 flex-col overflow-hidden'
-          : 'overflow-y-auto overscroll-contain',
+          : 'overflow-hidden',
         'outline-none',
-        'transition-[opacity,transform] duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
+        // P2-4 动效 token 统一：--panel-ease 定义在 :root（portal 到 body 也能解析）；
+        // --chat-composer-motion-duration 为 .chat-v2 作用域 token，portal 下走 200ms fallback
+        'transition-[opacity,transform] duration-[var(--chat-composer-motion-duration,200ms)] ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))] will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
         motionState === 'open' || motionState === 'opening'
           ? 'translate-y-0 opacity-100 pointer-events-auto'
           : 'translate-y-4 opacity-0 pointer-events-none',
@@ -210,7 +219,15 @@ export function ComposerPanelOverlay({
       }}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      {children}
+      {heightMode === 'content' ? (
+        <CustomScrollArea
+          fullHeight={false}
+          style={{ maxHeight: contentViewportMaxHeight }}
+          viewportProps={{ style: { maxHeight: contentViewportMaxHeight } }}
+        >
+          {children}
+        </CustomScrollArea>
+      ) : children}
     </div>,
     document.body
   );

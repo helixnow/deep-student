@@ -1,11 +1,105 @@
 use crate::models::AnkiCard;
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::TcpStream;
+use std::path::Path;
 use std::time::Duration;
 use tracing::{debug, warn};
 
 const ANKI_CONNECT_URL: &str = "http://127.0.0.1:8765";
+
+/// 本应用依赖的最低 AnkiConnect API 版本（canAddNotes / addNotes / createModel 均在 v6 定义）。
+const ANKI_CONNECT_MIN_VERSION: u64 = 6;
+
+/// addNotes 批量推送分片大小默认值：过大易触发 AnkiConnect 超时，过小徒增 HTTP 往返。
+/// 与前端设置项 `anki_connect_batch_size` 的默认值保持一致。
+const ANKI_CONNECT_DEFAULT_BATCH_SIZE: usize = 50;
+
+/// batch_size 设置的硬上限，防止误配置导致单请求过大。
+const ANKI_CONNECT_MAX_BATCH_SIZE: usize = 500;
+
+/// 额外重试次数默认值（不含首次尝试）。与前端设置项 `anki_connect_retry_times` 默认一致。
+const ANKI_CONNECT_DEFAULT_RETRY_TIMES: u32 = 1;
+
+/// 媒体同步模式（设置项 `anki_connect_media_mode`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnkiConnectMediaMode {
+    /// 跳过媒体处理：字段原样发送，不上传任何媒体
+    Skip,
+    /// 字段内联 data URL，不写入 Anki 媒体库
+    InlineBase64,
+    /// 上传到 Anki 媒体库并改写引用（默认，历史行为）
+    UploadMedia,
+}
+
+impl AnkiConnectMediaMode {
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "skip" => Self::Skip,
+            "inline_base64" | "inline-base64" | "inline" => Self::InlineBase64,
+            _ => Self::UploadMedia,
+        }
+    }
+}
+
+/// 同步可调参数（激活设置项 batch_size / retry_times / media_mode）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnkiConnectSyncOptions {
+    pub batch_size: usize,
+    /// 额外重试次数（不含首次尝试）。0 = 只试一次。
+    pub retry_times: u32,
+    pub media_mode: AnkiConnectMediaMode,
+}
+
+impl Default for AnkiConnectSyncOptions {
+    fn default() -> Self {
+        Self {
+            batch_size: ANKI_CONNECT_DEFAULT_BATCH_SIZE,
+            retry_times: ANKI_CONNECT_DEFAULT_RETRY_TIMES,
+            media_mode: AnkiConnectMediaMode::UploadMedia,
+        }
+    }
+}
+
+impl AnkiConnectSyncOptions {
+    pub fn sanitize(mut self) -> Self {
+        if self.batch_size == 0 {
+            self.batch_size = ANKI_CONNECT_DEFAULT_BATCH_SIZE;
+        }
+        self.batch_size = self.batch_size.min(ANKI_CONNECT_MAX_BATCH_SIZE);
+        self
+    }
+
+    /// 从 settings DB 的原始字符串构造（无效/缺失回落默认值）。
+    pub fn from_setting_strings(
+        batch_size: Option<&str>,
+        retry_times: Option<&str>,
+        media_mode: Option<&str>,
+    ) -> Self {
+        let batch_size = batch_size
+            .and_then(|s| s.trim().parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(ANKI_CONNECT_DEFAULT_BATCH_SIZE);
+        let retry_times = retry_times
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .unwrap_or(ANKI_CONNECT_DEFAULT_RETRY_TIMES);
+        let media_mode = media_mode
+            .map(AnkiConnectMediaMode::parse)
+            .unwrap_or(AnkiConnectMediaMode::UploadMedia);
+        Self {
+            batch_size,
+            retry_times,
+            media_mode,
+        }
+        .sanitize()
+    }
+}
+
+/// storeMediaFile 单文件上限：base64 后随请求体走本机 HTTP，过大易拖垮 AnkiConnect。
+const ANKI_CONNECT_MAX_MEDIA_BYTES: u64 = 32 * 1024 * 1024;
 
 #[derive(Serialize)]
 struct AnkiConnectRequest {
@@ -21,6 +115,19 @@ struct AnkiConnectResponse {
     error: Option<String>,
 }
 
+/// AnkiConnect 笔记媒体附件（picture/audio 协议对象）。
+/// `fields` 指定 Anki 侧要把媒体引用追加到哪些字段。
+#[derive(Serialize, Clone)]
+struct NoteMediaAttachment {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    filename: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fields: Vec<String>,
+}
+
 #[derive(Serialize)]
 struct Note {
     #[serde(rename = "deckName")]
@@ -29,6 +136,10 @@ struct Note {
     model_name: String,
     fields: HashMap<String, String>,
     tags: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    picture: Vec<NoteMediaAttachment>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    audio: Vec<NoteMediaAttachment>,
 }
 
 fn normalize_key(key: &str) -> String {
@@ -226,14 +337,30 @@ pub async fn check_anki_connect_availability() -> Result<bool, String> {
 
                 match serde_json::from_str::<AnkiConnectResponse>(&response_text) {
                     Ok(anki_response) => {
-                        if anki_response.error.is_none() {
-                            debug!("✅ AnkiConnect版本检查成功");
-                            Ok(true)
-                        } else {
-                            Err(format!(
-                                "AnkiConnect错误: {}",
-                                anki_response.error.unwrap_or_default()
-                            ))
+                        if let Some(error) = anki_response.error {
+                            return Err(format!("AnkiConnect错误: {}", error));
+                        }
+                        // 版本协商：低于最低支持版本时给出明确升级提示，
+                        // 避免后续 canAddNotes/createModel 等 action 静默失败。
+                        match anki_response.result.as_ref().and_then(|v| v.as_u64()) {
+                            Some(version) if version < ANKI_CONNECT_MIN_VERSION => {
+                                Err(format!(
+                                    "AnkiConnect 插件版本过旧（API v{}，需要 ≥ v{}）。请在 Anki 中更新 AnkiConnect 插件（代码：2055492159）后重试",
+                                    version, ANKI_CONNECT_MIN_VERSION
+                                ))
+                            }
+                            Some(version) => {
+                                debug!("✅ AnkiConnect版本检查成功: API v{}", version);
+                                Ok(true)
+                            }
+                            None => {
+                                // 兼容返回非数字（极旧/魔改版本）：放行但记录告警
+                                warn!(
+                                    "⚠️ AnkiConnect version 返回非数字结果，跳过版本协商: {:?}",
+                                    anki_response.result
+                                );
+                                Ok(true)
+                            }
                         }
                     }
                     Err(e) => Err(format!(
@@ -415,9 +542,16 @@ pub async fn add_notes_to_anki_with_card_models(
     note_type: String,
     card_models: HashMap<String, String>,
 ) -> Result<Vec<Option<u64>>, String> {
-    add_notes_to_anki_detailed(cards, deck_name, note_type, card_models, HashMap::new())
-        .await
-        .map(|report| report.note_ids)
+    add_notes_to_anki_detailed(
+        cards,
+        deck_name,
+        note_type,
+        card_models,
+        HashMap::new(),
+        AnkiConnectSyncOptions::default(),
+    )
+    .await
+    .map(|report| report.note_ids)
 }
 
 /// AnkiConnect 同步明细结果（D1 修复）：
@@ -434,42 +568,120 @@ pub struct AnkiSyncReport {
     pub failed: usize,
     /// 本次同步自动创建的 Anki 模型名
     pub created_models: Vec<String>,
+    /// 新增可选字段（向后兼容）：模型预检/createModel 的结构化失败明细。
+    /// 为空时不序列化，旧前端无感知。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub model_errors: Vec<AnkiSyncModelError>,
+    /// 新增可选字段（向后兼容）：非致命告警（canAddNotes 降级、分批推送部分失败等）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+/// 模型相关失败的结构化明细（AnkiSyncReport 新增可选字段的元素类型）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnkiSyncModelError {
+    /// 出问题的 Anki 模型名（note type）
+    pub model: String,
+    pub error: String,
+}
+
+/// 重试退避间隔（毫秒）：第 n 次重试前等待。
+fn retry_backoff_ms(retry_index: u32) -> u64 {
+    match retry_index {
+        0 => 500,
+        1 => 1000,
+        _ => 2000,
+    }
 }
 
 /// 通用 AnkiConnect 调用辅助（新增 action 使用）。
+///
+/// `retry_times` 为额外重试次数（不含首次尝试）；只有网络类失败
+/// （超时/连接失败/HTTP 错误/响应解析失败）才重试，AnkiConnect 业务错误
+/// （如字段校验、重复判定）不可靠重试，直接返回。
 async fn invoke_anki_connect_action(
     action: &str,
     params: Option<serde_json::Value>,
     timeout_secs: u64,
+    retry_times: u32,
 ) -> Result<serde_json::Value, String> {
     let request = AnkiConnectRequest {
         action: action.to_string(),
         version: 6,
         params,
     };
-    let client = reqwest::Client::new();
-    let response = client
-        .post(ANKI_CONNECT_URL)
-        .json(&request)
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .send()
-        .await
-        .map_err(|e| format!("AnkiConnect 请求失败({}): {}", action, e))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "AnkiConnect HTTP错误({}): {}",
-            action,
-            response.status()
-        ));
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败({}): {}", action, e))?;
+
+    let attempts = retry_times.saturating_add(1);
+    let mut last_err = format!("AnkiConnect 请求失败({})", action);
+
+    for attempt in 0..attempts {
+        if attempt > 0 {
+            let delay = retry_backoff_ms(attempt - 1);
+            debug!(
+                "⏳ AnkiConnect {} 重试 {}/{}，等待 {}ms",
+                action, attempt, retry_times, delay
+            );
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+        }
+
+        let response = match client
+            .post(ANKI_CONNECT_URL)
+            .json(&request)
+            .timeout(std::time::Duration::from_secs(timeout_secs))
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                last_err = if e.is_timeout() {
+                    format!(
+                        "AnkiConnect 请求超时({}): 请确认 Anki 正在运行且未被弹窗阻塞",
+                        action
+                    )
+                } else if e.is_connect() {
+                    format!(
+                        "无法连接 AnkiConnect({}): 请确认 Anki 已启动并安装了 AnkiConnect 插件",
+                        action
+                    )
+                } else {
+                    format!("AnkiConnect 请求失败({}): {}", action, e)
+                };
+                if !(e.is_timeout() || e.is_connect() || e.is_request()) {
+                    return Err(last_err);
+                }
+                continue;
+            }
+        };
+
+        if !response.status().is_success() {
+            last_err = format!("AnkiConnect HTTP错误({}): {}", action, response.status());
+            continue;
+        }
+        match response.json::<AnkiConnectResponse>().await {
+            Ok(resp) => {
+                if let Some(error) = resp.error {
+                    // 业务错误不可靠重试（如字段校验、重复），直接返回
+                    return Err(format!("AnkiConnect错误({}): {}", action, error));
+                }
+                return Ok(resp.result.unwrap_or(serde_json::Value::Null));
+            }
+            Err(e) => {
+                last_err = format!("解析AnkiConnect响应失败({}): {}", action, e);
+                continue;
+            }
+        }
     }
-    let resp: AnkiConnectResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("解析AnkiConnect响应失败({}): {}", action, e))?;
-    if let Some(error) = resp.error {
-        return Err(format!("AnkiConnect错误({}): {}", action, error));
+
+    if retry_times > 0 {
+        Err(format!("{}（已重试 {} 次）", last_err, retry_times))
+    } else {
+        Err(last_err)
     }
-    Ok(resp.result.unwrap_or(serde_json::Value::Null))
 }
 
 /// 用自定义模板在 Anki 中创建模型（createModel）。
@@ -503,15 +715,371 @@ pub async fn create_model_from_template(
         }],
     });
 
-    invoke_anki_connect_action("createModel", Some(params), 15).await?;
+    // createModel 非幂等（重复创建会报错），不做网络重试
+    invoke_anki_connect_action("createModel", Some(params), 15, 0).await?;
     debug!("✅ 已在 Anki 中创建模型: {}", model_name);
     Ok(())
 }
 
+// ============================================================================
+// 媒体同步（storeMediaFile + picture/audio 附件）
+// ============================================================================
+
+/// 按扩展名区分 audio / picture（未知类型按 picture 处理，Anki 端仍会保存文件）。
+fn is_audio_media_filename(name: &str) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "mp3" | "wav" | "ogg" | "oga" | "m4a" | "flac" | "opus" | "aac" | "3gp" | "spx"
+            )
+        })
+}
+
+/// 从字段 HTML/文本中提取媒体引用：`src="..."`、`src='...'` 与 `[sound:...]`。
+/// （与 apkg_importer_service::extract_media_filenames 保持同一识别口径。）
+fn extract_field_media_refs(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let bytes = text.as_bytes();
+
+    let mut search_from = 0usize;
+    while let Some(relative) = text[search_from..].find("src=") {
+        let quote_index = search_from + relative + 4;
+        let Some(&quote) = bytes.get(quote_index) else {
+            break;
+        };
+        if quote == b'"' || quote == b'\'' {
+            let value_start = quote_index + 1;
+            if let Some(relative_end) = text[value_start..].find(quote as char) {
+                let value = &text[value_start..value_start + relative_end];
+                if !value.is_empty() {
+                    names.push(value.to_string());
+                }
+                search_from = value_start + relative_end + 1;
+                continue;
+            }
+        }
+        search_from = quote_index;
+    }
+
+    let mut search_from = 0usize;
+    while let Some(relative) = text[search_from..].find("[sound:") {
+        let value_start = search_from + relative + "[sound:".len();
+        let Some(relative_end) = text[value_start..].find(']') else {
+            break;
+        };
+        let value = &text[value_start..value_start + relative_end];
+        if !value.is_empty() {
+            names.push(value.to_string());
+        }
+        search_from = value_start + relative_end + 1;
+    }
+
+    names
+}
+
+/// 读取本地媒体文件并 base64 编码（带大小上限）。
+fn read_media_file_base64(path: &Path) -> Result<String, String> {
+    let metadata =
+        std::fs::metadata(path).map_err(|error| format!("读取媒体文件信息失败: {error}"))?;
+    if !metadata.is_file() {
+        return Err("媒体路径不是常规文件".to_string());
+    }
+    if metadata.len() > ANKI_CONNECT_MAX_MEDIA_BYTES {
+        return Err(format!(
+            "媒体文件超过 {ANKI_CONNECT_MAX_MEDIA_BYTES} 字节上限"
+        ));
+    }
+    let bytes = std::fs::read(path).map_err(|error| format!("读取媒体文件失败: {error}"))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+/// storeMediaFile：把 base64 数据按文件名存入 Anki 媒体库（同名覆盖，与 Anki 语义一致）。
+async fn store_media_file_base64(
+    filename: &str,
+    data: &str,
+    retry_times: u32,
+) -> Result<(), String> {
+    let params = serde_json::json!({ "filename": filename, "data": data });
+    invoke_anki_connect_action("storeMediaFile", Some(params), 60, retry_times)
+        .await
+        .map(|_| ())
+}
+
+/// 按扩展名猜测图片 MIME（inline_base64 模式的 data URL 用）。
+fn guess_image_mime(filename: &str) -> &'static str {
+    match Path::new(filename)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "bmp" => "image/bmp",
+        _ => "image/jpeg",
+    }
+}
+
+/// 上传单个本地媒体文件（按文件名幂等去重）；失败进入 failed 集与 warnings。
+async fn upload_local_media(
+    path: &Path,
+    filename: &str,
+    uploaded: &mut HashSet<String>,
+    failed: &mut HashSet<String>,
+    warnings: &mut Vec<String>,
+    retry_times: u32,
+) -> bool {
+    if uploaded.contains(filename) {
+        return true;
+    }
+    if failed.contains(filename) {
+        return false;
+    }
+    let encoded = match read_media_file_base64(path) {
+        Ok(encoded) => encoded,
+        Err(error) => {
+            warnings.push(format!(
+                "媒体文件 {} 读取失败，已跳过上传: {}",
+                filename, error
+            ));
+            failed.insert(filename.to_string());
+            return false;
+        }
+    };
+    match store_media_file_base64(filename, &encoded, retry_times).await {
+        Ok(()) => {
+            uploaded.insert(filename.to_string());
+            true
+        }
+        Err(error) => {
+            warnings.push(format!("媒体文件 {} 上传失败，已跳过: {}", filename, error));
+            failed.insert(filename.to_string());
+            false
+        }
+    }
+}
+
+fn media_basename(path: &str) -> Option<String> {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .filter(|name| !name.is_empty())
+}
+
+/// 同步前处理单张卡片的媒体（行为受设置项 `anki_connect_media_mode` 控制）：
+///
+/// `upload_media`（默认，历史行为）：
+/// 1. 字段值中引用的本地绝对路径媒体 → 上传到 Anki 媒体库并把引用改写为纯文件名，
+///    保证字段引用与 Anki 媒体库文件名一致；
+/// 2. `card.images` 中被字段引用（按文件名）的媒体 → storeMediaFile 上传；
+/// 3. `card.images` 中未被任何字段引用的媒体 → 作为 picture/audio 附件挂到 note，
+///    由 AnkiConnect 把引用追加到目标字段（优先 Back/Extra）。
+///
+/// `inline_base64`：图片改写/追加为 data URL，不写 Anki 媒体库；音频无法内联，跳过并告警。
+/// `skip`：完全不处理媒体，字段原样发送。
+///
+/// 所有失败均降级为 warnings，不阻断笔记同步。
+async fn prepare_note_media(
+    card: &AnkiCard,
+    fields: &mut HashMap<String, String>,
+    uploaded: &mut HashSet<String>,
+    failed: &mut HashSet<String>,
+    warnings: &mut Vec<String>,
+    options: AnkiConnectSyncOptions,
+) -> (Vec<NoteMediaAttachment>, Vec<NoteMediaAttachment>) {
+    // skip 模式：媒体完全不处理（设置项 anki_connect_media_mode 激活）
+    if matches!(options.media_mode, AnkiConnectMediaMode::Skip) {
+        return (Vec::new(), Vec::new());
+    }
+    let inline_mode = matches!(options.media_mode, AnkiConnectMediaMode::InlineBase64);
+    let retry_times = options.retry_times;
+    // inline 模式下已内联的文件名（防止 card.images 步骤重复追加）
+    let mut inlined: HashSet<String> = HashSet::new();
+
+    // 第一步：把字段里的本地绝对路径引用改写成文件名（upload 模式）或 data URL（inline 模式）
+    let field_keys: Vec<String> = fields.keys().cloned().collect();
+    for key in &field_keys {
+        let Some(value) = fields.get(key).cloned() else {
+            continue;
+        };
+        let mut rewritten = value.clone();
+        for reference in extract_field_media_refs(&value) {
+            let path = Path::new(&reference);
+            if !path.is_absolute() || !path.is_file() {
+                continue;
+            }
+            let Some(filename) = media_basename(&reference) else {
+                continue;
+            };
+            if inline_mode {
+                if is_audio_media_filename(&filename) {
+                    warnings.push(format!(
+                        "inline_base64 模式无法内联音频 {}，已保留原引用",
+                        filename
+                    ));
+                    continue;
+                }
+                match read_media_file_base64(path) {
+                    Ok(encoded) => {
+                        let data_url =
+                            format!("data:{};base64,{}", guess_image_mime(&filename), encoded);
+                        rewritten = rewritten.replace(&reference, &data_url);
+                        inlined.insert(filename);
+                    }
+                    Err(error) => {
+                        warnings.push(format!(
+                            "媒体文件 {} 读取失败，已跳过内联: {}",
+                            filename, error
+                        ));
+                    }
+                }
+            } else if upload_local_media(path, &filename, uploaded, failed, warnings, retry_times)
+                .await
+            {
+                rewritten = rewritten.replace(&reference, &filename);
+            }
+        }
+        if rewritten != value {
+            fields.insert(key.clone(), rewritten);
+        }
+    }
+
+    // 改写后字段实际引用到的文件名集合
+    let mut referenced: HashSet<String> = HashSet::new();
+    for value in fields.values() {
+        for reference in extract_field_media_refs(value) {
+            if let Some(filename) = media_basename(&reference) {
+                referenced.insert(filename);
+            }
+        }
+    }
+
+    // 第二步：card.images 中的本地媒体
+    let mut picture: Vec<NoteMediaAttachment> = Vec::new();
+    let mut audio: Vec<NoteMediaAttachment> = Vec::new();
+    for image_path in &card.images {
+        let Some(filename) = media_basename(image_path) else {
+            warnings.push(format!("媒体路径无有效文件名，已跳过: {}", image_path));
+            continue;
+        };
+        let path = Path::new(image_path);
+
+        if inline_mode {
+            if inlined.contains(&filename) {
+                // 第一步已把该文件内联进字段，无需再处理
+                continue;
+            }
+            if is_audio_media_filename(&filename) {
+                warnings.push(format!(
+                    "inline_base64 模式无法内联音频 {}，已跳过",
+                    filename
+                ));
+                continue;
+            }
+            let encoded = match read_media_file_base64(path) {
+                Ok(encoded) => encoded,
+                Err(error) => {
+                    warnings.push(format!(
+                        "媒体文件 {} 读取失败，已跳过内联: {}",
+                        filename, error
+                    ));
+                    continue;
+                }
+            };
+            let data_url = format!("data:{};base64,{}", guess_image_mime(&filename), encoded);
+            if referenced.contains(&filename) {
+                // 字段按文件名引用：把 src="文件名" 改写为 data URL（不落媒体库）
+                let field_keys: Vec<String> = fields.keys().cloned().collect();
+                for key in &field_keys {
+                    if let Some(value) = fields.get(key).cloned() {
+                        let rewritten = value
+                            .replace(
+                                &format!("src=\"{}\"", filename),
+                                &format!("src=\"{}\"", data_url),
+                            )
+                            .replace(
+                                &format!("src='{}'", filename),
+                                &format!("src='{}'", data_url),
+                            );
+                        if rewritten != value {
+                            fields.insert(key.clone(), rewritten);
+                        }
+                    }
+                }
+            } else {
+                // 字段未引用：把 data URL 图片追加到目标字段（优先 Back/Extra）
+                let target_field = ["Back", "Extra", "Front"]
+                    .iter()
+                    .find(|name| fields.contains_key(**name))
+                    .map(|name| (*name).to_string())
+                    .or_else(|| {
+                        let mut keys: Vec<&String> = fields.keys().collect();
+                        keys.sort();
+                        keys.first().map(|key| (*key).to_string())
+                    });
+                if let Some(target) = target_field {
+                    let value = fields.entry(target).or_default();
+                    if !value.is_empty() {
+                        value.push_str("<br>");
+                    }
+                    value.push_str(&format!("<img src=\"{}\">", data_url));
+                }
+            }
+            continue;
+        }
+
+        if referenced.contains(&filename) {
+            // 字段已引用同名文件：仅需保证媒体库里有这个文件
+            upload_local_media(path, &filename, uploaded, failed, warnings, retry_times).await;
+            continue;
+        }
+        // 字段未引用：作为附件挂到 note，由 AnkiConnect 追加引用到目标字段
+        let encoded = match read_media_file_base64(path) {
+            Ok(encoded) => encoded,
+            Err(error) => {
+                warnings.push(format!(
+                    "媒体文件 {} 读取失败，已跳过附加: {}",
+                    filename, error
+                ));
+                continue;
+            }
+        };
+        let target_field = ["Back", "Extra", "Front"]
+            .iter()
+            .find(|name| fields.contains_key(**name))
+            .map(|name| (*name).to_string())
+            .or_else(|| {
+                let mut keys: Vec<&String> = fields.keys().collect();
+                keys.sort();
+                keys.first().map(|key| (*key).to_string())
+            });
+        let attachment = NoteMediaAttachment {
+            data: Some(encoded),
+            url: None,
+            filename: filename.clone(),
+            fields: target_field.into_iter().collect(),
+        };
+        if is_audio_media_filename(&filename) {
+            audio.push(attachment);
+        } else {
+            picture.push(attachment);
+        }
+    }
+
+    (picture, audio)
+}
+
 /// canAddNotes 预检：返回每张卡是否可添加（false 通常表示重复）。
-async fn can_add_notes(notes: &[Note]) -> Result<Vec<bool>, String> {
+async fn can_add_notes(notes: &[Note], retry_times: u32) -> Result<Vec<bool>, String> {
     let params = serde_json::json!({ "notes": notes });
-    let result = invoke_anki_connect_action("canAddNotes", Some(params), 15).await?;
+    let result = invoke_anki_connect_action("canAddNotes", Some(params), 15, retry_times).await?;
     serde_json::from_value::<Vec<bool>>(result)
         .map_err(|e| format!("解析 canAddNotes 结果失败: {}", e))
 }
@@ -573,7 +1141,9 @@ pub async fn add_notes_to_anki_detailed(
     note_type: String,
     card_models: HashMap<String, String>,
     templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate>,
+    options: AnkiConnectSyncOptions,
 ) -> Result<AnkiSyncReport, String> {
+    let options = options.sanitize();
     // 首先检查AnkiConnect可用性
     check_anki_connect_availability().await?;
 
@@ -590,8 +1160,11 @@ pub async fn add_notes_to_anki_detailed(
     model_names.sort();
     model_names.dedup();
 
-    // 模型预检（D1）：缺失的模型若有对应自定义模板，自动创建
+    // 模型预检（D1）：缺失的模型若有对应自定义模板，自动创建。
+    // 失败不再只 warn：结构化写入报告（model_errors/warnings），让前端可见。
     let mut created_models: Vec<String> = Vec::new();
+    let mut model_errors: Vec<AnkiSyncModelError> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
     if !templates_by_model.is_empty() {
         match get_model_names().await {
             Ok(existing) => {
@@ -604,6 +1177,10 @@ pub async fn add_notes_to_anki_detailed(
                             Ok(()) => created_models.push(model_name.clone()),
                             Err(e) => {
                                 warn!("⚠️ 自动创建模型 {} 失败: {}", model_name, e);
+                                model_errors.push(AnkiSyncModelError {
+                                    model: model_name.clone(),
+                                    error: format!("自动创建模型失败: {}", e),
+                                });
                             }
                         }
                     } else {
@@ -611,10 +1188,18 @@ pub async fn add_notes_to_anki_detailed(
                             "⚠️ Anki 中缺少模型 {} 且无对应模板，可能导致同步失败",
                             model_name
                         );
+                        model_errors.push(AnkiSyncModelError {
+                            model: model_name.clone(),
+                            error: "Anki 中缺少该模型且本地无对应模板，相关卡片可能同步失败"
+                                .to_string(),
+                        });
                     }
                 }
             }
-            Err(e) => warn!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e),
+            Err(e) => {
+                warn!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e);
+                warnings.push(format!("获取 Anki 模型列表失败，已跳过模型预检: {}", e));
+            }
         }
     }
 
@@ -630,73 +1215,142 @@ pub async fn add_notes_to_anki_detailed(
         model_field_names_cache.insert(model_name, loaded);
     }
 
-    // 构建notes数组
-    let notes: Vec<Note> = cards
-        .into_iter()
-        .map(|card| {
-            let model_name = card_models
-                .get(&card.id)
-                .cloned()
-                .unwrap_or_else(|| note_type.clone());
+    // 构建notes数组（媒体处理：本地媒体上传 + 字段引用改写 + 未引用媒体作为附件）
+    let mut notes: Vec<Note> = Vec::with_capacity(cards.len());
+    let mut uploaded_media: HashSet<String> = HashSet::new();
+    let mut failed_media: HashSet<String> = HashSet::new();
+    for card in cards {
+        let model_name = card_models
+            .get(&card.id)
+            .cloned()
+            .unwrap_or_else(|| note_type.clone());
 
-            let model_field_names = model_field_names_cache
-                .get(&model_name)
-                .cloned()
-                .unwrap_or(None);
+        let model_field_names = model_field_names_cache
+            .get(&model_name)
+            .cloned()
+            .unwrap_or(None);
 
-            let fields = if let Some(names) = model_field_names.as_ref() {
-                build_fields_with_model_names(&card, names, &model_name)
-            } else {
-                build_basic_fields(&card, &model_name)
-            };
+        let mut fields = if let Some(names) = model_field_names.as_ref() {
+            build_fields_with_model_names(&card, names, &model_name)
+        } else {
+            build_basic_fields(&card, &model_name)
+        };
 
-            Note {
-                deck_name: deck_name.clone(),
-                model_name,
-                fields,
-                tags: card.tags,
-            }
-        })
-        .collect();
+        let (picture, audio) = prepare_note_media(
+            &card,
+            &mut fields,
+            &mut uploaded_media,
+            &mut failed_media,
+            &mut warnings,
+            options,
+        )
+        .await;
+
+        notes.push(Note {
+            deck_name: deck_name.clone(),
+            model_name,
+            fields,
+            tags: card.tags,
+            picture,
+            audio,
+        });
+    }
+    let notes = notes;
 
     let total = notes.len();
+    let mut note_ids: Vec<Option<u64>> = vec![None; total];
+    let mut duplicates = 0usize;
 
     // canAddNotes 预检（D1）：false 只有在本地结构校验通过时才视为重复；
     // 模型字段未知、首字段为空、字段缺失等情况记为真实失败，避免把结构错误误报为幂等成功。
-    let can_add: Vec<bool> = match can_add_notes(&notes).await {
-        Ok(flags) if flags.len() == total => flags,
-        Ok(_) | Err(_) => vec![true; total],
-    };
-    let duplicates = notes
-        .iter()
-        .zip(can_add.iter())
-        .filter(|(note, ok)| {
-            !**ok
-                && classify_can_add_false(note, &model_field_names_cache)
-                    == CanAddFalseReason::Duplicate
-        })
-        .count();
+    //
+    // 预检失败/返回数量不一致时【不再乐观假设全部可添加】：
+    // 降级为逐条 addNote 并收集逐条结果（重复由 AnkiConnect 的 duplicate 错误判定），
+    // 同时把降级原因写入 warnings 供前端展示。
+    match can_add_notes(&notes, options.retry_times).await {
+        Ok(flags) if flags.len() == total => {
+            duplicates = notes
+                .iter()
+                .zip(flags.iter())
+                .filter(|(note, ok)| {
+                    !**ok
+                        && classify_can_add_false(note, &model_field_names_cache)
+                            == CanAddFalseReason::Duplicate
+                })
+                .count();
 
-    let addable_notes: Vec<&Note> = notes
-        .iter()
-        .zip(can_add.iter())
-        .filter(|(_, ok)| **ok)
-        .map(|(note, _)| note)
-        .collect();
+            let addable_indices: Vec<usize> = flags
+                .iter()
+                .enumerate()
+                .filter(|(_, ok)| **ok)
+                .map(|(index, _)| index)
+                .collect();
 
-    let mut note_ids: Vec<Option<u64>> = vec![None; total];
-    if !addable_notes.is_empty() {
-        let params = serde_json::json!({ "notes": addable_notes });
-        let result = invoke_anki_connect_action("addNotes", Some(params), 30).await?;
-        let added_ids = serde_json::from_value::<Vec<Option<u64>>>(result)
-            .map_err(|e| format!("解析笔记ID列表失败: {}", e))?;
+            // 分批推送（大批量分块 + 失败续传）：
+            // 单批失败只影响本批，之前批次已写入 Anki 的结果全部保留；
+            // 失败批次的卡片在 note_ids 中保持 None，由调用方按 receipt 续传。
+            // 分片大小由设置项 anki_connect_batch_size 控制（已 sanitize）
+            for chunk in addable_indices.chunks(options.batch_size) {
+                let chunk_notes: Vec<&Note> = chunk.iter().map(|&index| &notes[index]).collect();
+                let params = serde_json::json!({ "notes": chunk_notes });
+                match invoke_anki_connect_action("addNotes", Some(params), 60, options.retry_times)
+                    .await
+                {
+                    Ok(result) => match serde_json::from_value::<Vec<Option<u64>>>(result) {
+                        Ok(added_ids) => {
+                            for (slot, note_index) in chunk.iter().enumerate() {
+                                note_ids[*note_index] = added_ids.get(slot).cloned().flatten();
+                            }
+                        }
+                        Err(e) => {
+                            warnings.push(format!(
+                                "解析 addNotes 批次结果失败（{} 张卡片未确认写入）: {}",
+                                chunk.len(),
+                                e
+                            ));
+                        }
+                    },
+                    Err(e) => {
+                        warn!("⚠️ addNotes 批次推送失败（{} 张）: {}", chunk.len(), e);
+                        warnings.push(format!(
+                            "addNotes 批次推送失败（{} 张卡片未写入，可重试续传）: {}",
+                            chunk.len(),
+                            e
+                        ));
+                    }
+                }
+            }
+        }
+        other => {
+            let reason = match other {
+                Ok(flags) => format!(
+                    "canAddNotes 返回数量不匹配（期望 {}，实际 {}）",
+                    total,
+                    flags.len()
+                ),
+                Err(e) => e,
+            };
+            warn!("⚠️ canAddNotes 预检不可用，降级为逐条 addNote: {}", reason);
+            warnings.push(format!(
+                "canAddNotes 预检不可用，已降级为逐条 addNote: {}",
+                reason
+            ));
 
-        // 回填到原位置
-        let mut cursor = 0usize;
-        for (i, ok) in can_add.iter().enumerate() {
-            if *ok {
-                note_ids[i] = added_ids.get(cursor).cloned().flatten();
-                cursor += 1;
+            for (index, note) in notes.iter().enumerate() {
+                let params = serde_json::json!({ "note": note });
+                match invoke_anki_connect_action("addNote", Some(params), 30, options.retry_times)
+                    .await
+                {
+                    Ok(result) => match result.as_u64() {
+                        Some(id) => note_ids[index] = Some(id),
+                        // addNote 结果为 null：Anki 判定为重复但未报错（旧版本行为）
+                        None => duplicates += 1,
+                    },
+                    Err(e) if is_duplicate_note_error(&e) => duplicates += 1,
+                    Err(e) => {
+                        warnings.push(format!("第 {} 张卡片 addNote 失败: {}", index + 1, e));
+                    }
+                }
             }
         }
     }
@@ -710,7 +1364,15 @@ pub async fn add_notes_to_anki_detailed(
         duplicates,
         failed,
         created_models,
+        model_errors,
+        warnings,
     })
+}
+
+/// AnkiConnect addNote 的重复判定：错误信息包含 "duplicate"
+/// （官方实现返回 "cannot create note because it is a duplicate"）。
+fn is_duplicate_note_error(error: &str) -> bool {
+    error.to_lowercase().contains("duplicate")
 }
 
 /// 创建牌组（如果不存在）
@@ -822,6 +1484,8 @@ mod tests {
             model_name: "Basic".to_string(),
             fields,
             tags: vec![],
+            picture: vec![],
+            audio: vec![],
         }
     }
 
@@ -875,5 +1539,117 @@ mod tests {
             classify_can_add_false(&note, &cache),
             CanAddFalseReason::InvalidNote
         );
+    }
+
+    #[test]
+    fn note_serialization_omits_empty_media_attachments() {
+        let note = basic_note("question", "answer");
+        let value = serde_json::to_value(&note).expect("serialize note");
+        assert!(value.get("picture").is_none());
+        assert!(value.get("audio").is_none());
+
+        let mut with_media = basic_note("question", "answer");
+        with_media.picture.push(NoteMediaAttachment {
+            data: Some("aGk=".to_string()),
+            url: None,
+            filename: "img.png".to_string(),
+            fields: vec!["Back".to_string()],
+        });
+        let value = serde_json::to_value(&with_media).expect("serialize note with media");
+        assert_eq!(value["picture"][0]["filename"], "img.png");
+        assert_eq!(value["picture"][0]["data"], "aGk=");
+        assert!(value["picture"][0].get("url").is_none());
+        assert_eq!(value["picture"][0]["fields"][0], "Back");
+    }
+
+    #[test]
+    fn media_filename_classification_and_ref_extraction() {
+        assert!(is_audio_media_filename("clip.mp3"));
+        assert!(is_audio_media_filename("CLIP.WAV"));
+        assert!(!is_audio_media_filename("img.png"));
+        assert!(!is_audio_media_filename("noext"));
+
+        let html =
+            r#"<img src="one.png"> text <img src='/abs/two.jpg'/> [sound:clip.mp3] src= broken"#;
+        assert_eq!(
+            extract_field_media_refs(html),
+            vec!["one.png", "/abs/two.jpg", "clip.mp3"]
+        );
+
+        assert_eq!(
+            media_basename("/abs/path/pic.png").as_deref(),
+            Some("pic.png")
+        );
+        assert_eq!(media_basename("pic.png").as_deref(), Some("pic.png"));
+        assert_eq!(media_basename(""), None);
+    }
+
+    #[test]
+    fn read_media_file_base64_reads_and_limits() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("img.png");
+        std::fs::write(&path, b"hi").expect("write media");
+        assert_eq!(read_media_file_base64(&path).expect("encode"), "aGk=");
+
+        let missing = dir.path().join("missing.png");
+        assert!(read_media_file_base64(&missing).is_err());
+    }
+
+    #[test]
+    fn duplicate_note_error_detection_is_case_insensitive() {
+        assert!(is_duplicate_note_error(
+            "cannot create note because it is a duplicate"
+        ));
+        assert!(is_duplicate_note_error(
+            "AnkiConnect错误(addNote): Duplicate"
+        ));
+        assert!(!is_duplicate_note_error("model was not found: Basic"));
+    }
+
+    #[test]
+    fn sync_report_omits_empty_optional_fields_for_backward_compat() {
+        let report = AnkiSyncReport {
+            note_ids: vec![Some(1), None],
+            added: 1,
+            duplicates: 1,
+            failed: 0,
+            created_models: vec![],
+            model_errors: vec![],
+            warnings: vec![],
+        };
+        let value = serde_json::to_value(&report).expect("serialize report");
+        // 旧契约字段保持存在
+        assert_eq!(value["noteIds"][0], 1);
+        assert_eq!(value["added"], 1);
+        assert_eq!(value["duplicates"], 1);
+        assert_eq!(value["failed"], 0);
+        assert!(value["createdModels"].as_array().is_some());
+        // 新字段为空时不序列化，旧前端零感知
+        assert!(value.get("modelErrors").is_none());
+        assert!(value.get("warnings").is_none());
+    }
+
+    #[test]
+    fn sync_report_serializes_structured_model_errors_when_present() {
+        let report = AnkiSyncReport {
+            note_ids: vec![None],
+            added: 0,
+            duplicates: 0,
+            failed: 1,
+            created_models: vec![],
+            model_errors: vec![AnkiSyncModelError {
+                model: "Custom".to_string(),
+                error: "自动创建模型失败: boom".to_string(),
+            }],
+            warnings: vec!["canAddNotes 预检不可用，已降级为逐条 addNote: timeout".to_string()],
+        };
+        let value = serde_json::to_value(&report).expect("serialize report");
+        assert_eq!(value["modelErrors"][0]["model"], "Custom");
+        assert!(value["modelErrors"][0]["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("boom")));
+        assert!(value["warnings"][0]
+            .as_str()
+            .is_some_and(|w| w.contains("addNote")));
     }
 }

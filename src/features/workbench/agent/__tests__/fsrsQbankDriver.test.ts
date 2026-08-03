@@ -1,0 +1,1046 @@
+/**
+ * R1-15 — appendToQueue 铁律 + qbank 刷新守卫
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(async () => []),
+}));
+
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: vi.fn(),
+}));
+
+vi.mock('../visuals/agentFlash', () => ({
+  agentFlash: vi.fn(),
+  agentFlashMany: vi.fn(),
+}));
+
+import { useFsrsReviewStore, type ReviewCard } from '@/features/flashcards/store/fsrsReviewStore';
+import { useQuestionBankStore } from '@/stores/questionBankStore';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { agentFlashMany } from '../visuals/agentFlash';
+import {
+  FSRS_LIBRARY_REFRESH_EVENT,
+  FSRS_STATS_REFRESH_EVENT,
+} from '@/features/flashcards/events';
+import {
+  __resetQbankDriverForTests,
+  handleQbankDomainChange,
+  isQbankInlineEditorActive,
+  QBANK_FOCUS_EVENT,
+  type QbankFocusEventDetail,
+  refreshQbankPreservingCurrent,
+  qbankDriver,
+} from '../drivers/qbankDriver';
+import { fsrsDriver, handleFsrsDomainChange } from '../drivers/fsrsDriver';
+import type { AcrReceipt, AcrRunContext, Pacer, RunLedger } from '../types';
+
+const card = (id: string, front = id): ReviewCard => ({
+  id,
+  ankiCardId: id,
+  front,
+  back: `back-${id}`,
+});
+
+function makeRun(typeId: string): { run: AcrRunContext; record: ReturnType<typeof vi.fn> } {
+  const record = vi.fn();
+  const ledger: RunLedger = {
+    record,
+    revertRun: vi.fn(async () => true),
+    hasRun: vi.fn(() => false),
+    sealRun: vi.fn(),
+  };
+  const pacing: Pacer = {
+    profile: {
+      name: 'fast',
+      opIntervalMs: 0,
+      typeBatchMin: 8,
+      typeBatchMax: 40,
+      typeIntervalMs: 0,
+      instant: true,
+    },
+    tick: vi.fn(async () => {}),
+    dispose: vi.fn(),
+  };
+  return {
+    record,
+    run: {
+      runId: `run-${typeId}`,
+      sessionId: 'session',
+      target: { typeId },
+      windowId: 'window',
+      pacing,
+      reportProgress: vi.fn(),
+      checkPaused: vi.fn(async () => 'resume' as const),
+      ledger,
+    },
+  };
+}
+
+describe('appendToQueue 铁律（R1-15）', () => {
+  beforeEach(() => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a'), card('b'), card('c')],
+      queueIndex: 1,
+      flipped: true,
+      loading: false,
+      ratingBusy: false,
+      usingMock: true,
+      error: null,
+      errorKind: null,
+      lastRated: null,
+      lastReview: null,
+      lastSuspended: null,
+      dueCards: [],
+    });
+  });
+
+  it('appendToQueue 去重入队且不重置 queueIndex / flipped', () => {
+    const added = useFsrsReviewStore.getState().appendToQueue([
+      card('b'), // 已在队列 → 忽略
+      card('d'),
+      card('e'),
+    ]);
+    expect(added).toBe(2);
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((c) => c.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(state.queueIndex).toBe(1);
+    expect(state.flipped).toBe(true);
+    expect(state.queue[state.queueIndex]?.id).toBe('b');
+  });
+
+  it('已完成 session 追加时跳过开头的暂停卡', () => {
+    useFsrsReviewStore.setState({ queueIndex: 3, flipped: false });
+
+    const added = useFsrsReviewStore.getState().appendToQueue([
+      { ...card('d'), suspended: true },
+      card('e'),
+    ]);
+
+    const state = useFsrsReviewStore.getState();
+    expect(added).toBe(2);
+    expect(state.queueIndex).toBe(4);
+    expect(state.queue[state.queueIndex]?.id).toBe('e');
+    expect(state.flipped).toBe(false);
+  });
+
+  it('非 session 时 appendToQueue 为 no-op', () => {
+    useFsrsReviewStore.setState({ screen: 'today', queueIndex: 0 });
+    const added = useFsrsReviewStore.getState().appendToQueue([card('x')]);
+    expect(added).toBe(0);
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it.each(['user', 'agent'] as const)(
+    '%s 后端 enqueue 使用 payload.cards 的完整内容追加且不重置 session',
+    (source) => {
+      handleFsrsDomainChange({
+        source,
+        action: 'enqueue',
+        entityIds: ['anki-d', 'anki-a'],
+        cards: [
+          { id: 'state-d', ankiCardId: 'anki-d', front: 'Question D', back: '' },
+          { id: 'a', ankiCardId: 'anki-a', front: '', back: 'Answer A' },
+        ],
+      });
+
+      const state = useFsrsReviewStore.getState();
+      expect(state.queue.map((c) => c.id)).toEqual(['a', 'b', 'c', 'state-d']);
+      expect(state.queue.at(-1)?.ankiCardId).toBe('anki-d');
+      expect(state.queue.map((c) => c.id)).not.toContain('anki-d');
+      expect(state.queueIndex).toBe(1);
+      expect(state.flipped).toBe(true);
+      expect(state.screen).toBe('session');
+    },
+  );
+
+  it('enqueue 只有 entityIds / cardStateIds 时不构造空卡', () => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      entityIds: ['anki-z'],
+      cardStateIds: ['state-z'],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+
+  it('enqueue 透传 camel/snake 完整元数据并接受 Cloze-only 卡片', () => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      cards: [
+        {
+          id: 'state-cloze',
+          ankiCardId: 'anki-cloze',
+          front: '',
+          back: '',
+          text: 'Capital: {{c1::Paris}}',
+          tags: ['geo'],
+          images: ['paris.png'],
+          templateId: 'design-redaction',
+          extraFields: { Hint: 'France' },
+          isErrorCard: false,
+        },
+        {
+          id: 'state-snake',
+          anki_card_id: 'anki-snake',
+          front: 'Question',
+          back: 'Answer',
+          template_id: 'design-swiss',
+          extra_fields: { Source: 'book' },
+          is_error_card: false,
+          error_content: null,
+        },
+      ],
+    });
+
+    const appended = useFsrsReviewStore.getState().queue.slice(3);
+    expect(appended).toEqual([
+      expect.objectContaining({
+        id: 'state-cloze',
+        ankiCardId: 'anki-cloze',
+        text: 'Capital: {{c1::Paris}}',
+        images: ['paris.png'],
+        templateId: 'design-redaction',
+        extraFields: { Hint: 'France' },
+        isErrorCard: false,
+      }),
+      expect.objectContaining({
+        id: 'state-snake',
+        ankiCardId: 'anki-snake',
+        templateId: 'design-swiss',
+        extraFields: { Source: 'book' },
+        isErrorCard: false,
+        errorContent: null,
+      }),
+    ]);
+  });
+
+  it('enqueue 拒绝诊断卡进入活动 session', () => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      cards: [
+        {
+          id: 'state-diag',
+          ankiCardId: 'anki-diag',
+          front: 'broken',
+          back: 'x',
+          isErrorCard: true,
+        },
+      ],
+    });
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it.each([
+    ['empty content', { id: 'state-empty', ankiCardId: 'anki-empty', front: '', back: '   ' }],
+    ['missing ankiCardId', { id: 'state-no-anki', front: 'Question', back: 'Answer' }],
+    ['missing state id', { id: '  ', ankiCardId: 'anki-no-state', front: 'Question', back: '' }],
+  ])('enqueue 的 payload.cards 含 %s 时不追加', (_case, invalidCard) => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      cards: [invalidCard],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+
+  it.each(['cards_persisted', 'card_updated', 'card_deleted', 'cards_added', 'rate'])(
+    '%s 只刷新状态，不向活跃 session 追加 Anki id',
+    (action) => {
+      handleFsrsDomainChange({
+        source: action === 'cards_persisted' ? 'user' : 'agent',
+        action,
+        entityIds: [`anki-${action}`],
+        cards: [
+          {
+            id: `state-${action}`,
+            ankiCardId: `anki-${action}`,
+            front: `Question ${action}`,
+            back: `Answer ${action}`,
+          },
+        ],
+      });
+
+      const state = useFsrsReviewStore.getState();
+      expect(state.queue.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+      expect(state.queueIndex).toBe(1);
+      expect(state.flipped).toBe(true);
+    },
+  );
+
+  it('他窗 rate 当前卡时从队列移除并翻回正面', () => {
+    useFsrsReviewStore.setState({
+      queue: [card('a'), card('b'), card('c')],
+      queueIndex: 1,
+      flipped: true,
+      lastReview: null,
+      ratingBusy: false,
+    });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      entityIds: ['b'],
+      cardStateIds: ['b'],
+      cards: [{ id: 'b', ankiCardId: 'b' }],
+    });
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((c) => c.id)).toEqual(['a', 'c']);
+    expect(state.queueIndex).toBe(1);
+    expect(state.queue[state.queueIndex]?.id).toBe('c');
+    expect(state.flipped).toBe(false);
+  });
+
+  it('本窗 rate 回声不删除已回插的学习卡', () => {
+    useFsrsReviewStore.setState({
+      queue: [card('b'), card('a')],
+      queueIndex: 0,
+      flipped: false,
+      lastReview: { logId: 'log-a', cardStateId: 'a', queueIndex: 0 },
+      recentLocalLogIds: ['log-a'],
+      ratingBusy: false,
+    });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      cardStateIds: ['a'],
+      cards: [{ id: 'a', ankiCardId: 'a', logId: 'log-a' }],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['b', 'a']);
+    expect(useFsrsReviewStore.getState().queueIndex).toBe(0);
+  });
+
+  it('延迟本窗回声在 lastReview 已切换后仍保留回插卡', () => {
+    useFsrsReviewStore.setState({
+      queue: [card('b'), card('a')],
+      queueIndex: 0,
+      flipped: false,
+      lastReview: { logId: 'log-b', cardStateId: 'b', queueIndex: 0 },
+      recentLocalLogIds: ['log-a', 'log-b'],
+      ratingBusy: false,
+    });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      cardStateIds: ['a'],
+      cards: [{ id: 'a', ankiCardId: 'a', logId: 'log-a' }],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['b', 'a']);
+  });
+
+  it('Agent 撤销评分会重新打开对应卡并清除失效的本地撤销状态', () => {
+    useFsrsReviewStore.setState({
+      queue: [
+        { ...card('state-a'), ankiCardId: 'anki-a' },
+        { ...card('state-b'), ankiCardId: 'anki-b' },
+        { ...card('state-c'), ankiCardId: 'anki-c' },
+      ],
+      queueIndex: 2,
+      flipped: true,
+      lastRated: 3,
+      lastReview: { logId: 'log-b', cardStateId: 'state-b', queueIndex: 1 },
+    });
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'undo_last_review',
+      entityIds: ['anki-b'],
+      cardStateIds: ['state-b'],
+      cards: [{
+        ankiCardId: 'anki-b',
+        cardStateId: 'state-b',
+        suspended: false,
+        dueMs: 0,
+      }],
+    });
+
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      queueIndex: 1,
+      flipped: false,
+      lastRated: null,
+      lastReview: null,
+    });
+    expect(useFsrsReviewStore.getState().queue[1]?.suspended).toBe(false);
+  });
+
+  it('Agent 暂停当前卡会跳过它，恢复仍到期的卡会回到原位置', () => {
+    useFsrsReviewStore.setState({
+      queue: [
+        { ...card('state-a'), ankiCardId: 'anki-a' },
+        { ...card('state-b'), ankiCardId: 'anki-b' },
+        { ...card('state-c'), ankiCardId: 'anki-c' },
+      ],
+      queueIndex: 1,
+      flipped: true,
+      lastRated: 4,
+      lastReview: { logId: 'log-b', cardStateId: 'state-b', queueIndex: 1 },
+    });
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'set_suspended',
+      entityIds: ['anki-b'],
+      cards: [{
+        ankiCardId: 'anki-b',
+        cardStateId: 'state-b',
+        suspended: true,
+        dueMs: 0,
+      }],
+    });
+
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      queueIndex: 2,
+      flipped: false,
+      lastRated: null,
+      lastReview: null,
+      lastSuspended: { cardStateId: 'state-b', queueIndex: 1 },
+    });
+    expect(useFsrsReviewStore.getState().queue[1]?.suspended).toBe(true);
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'set_suspended',
+      entityIds: ['anki-b'],
+      cards: [{
+        ankiCardId: 'anki-b',
+        cardStateId: 'state-b',
+        suspended: false,
+        dueMs: 0,
+      }],
+    });
+
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      queueIndex: 1,
+      flipped: false,
+      lastSuspended: null,
+    });
+    expect(useFsrsReviewStore.getState().queue[1]?.suspended).toBe(false);
+  });
+
+  it('Agent 复习写入同时通知库和统计视图刷新', () => {
+    const onLibraryRefresh = vi.fn();
+    const onStatsRefresh = vi.fn();
+    window.addEventListener(FSRS_LIBRARY_REFRESH_EVENT, onLibraryRefresh);
+    window.addEventListener(FSRS_STATS_REFRESH_EVENT, onStatsRefresh);
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'set_suspended',
+      entityIds: ['anki-b'],
+      cards: [{
+        ankiCardId: 'b',
+        cardStateId: 'b',
+        suspended: true,
+        dueMs: 0,
+      }],
+    });
+
+    expect(onLibraryRefresh).toHaveBeenCalledTimes(1);
+    expect(onStatsRefresh).toHaveBeenCalledTimes(1);
+    window.removeEventListener(FSRS_LIBRARY_REFRESH_EVENT, onLibraryRefresh);
+    window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onStatsRefresh);
+  });
+
+  it('enqueue 缺少 state id 时不会回退追加 entityIds', () => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      entityIds: ['anki-only'],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+
+  it('probe 只在真正处于复习的 session 中返回 hot', () => {
+    expect(fsrsDriver.probe({ typeId: 'flashcards' })).toBe('hot');
+
+    useFsrsReviewStore.setState({ queueIndex: 3, ratingBusy: false });
+    expect(fsrsDriver.probe({ typeId: 'flashcards' })).toBe('clean');
+
+    useFsrsReviewStore.setState({ ratingBusy: true });
+    expect(fsrsDriver.probe({ typeId: 'flashcards' })).toBe('hot');
+  });
+
+  it('settings 收到 FSRS domain change 时刷新统计页', () => {
+    const onRefresh = vi.fn();
+    window.addEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
+    useFsrsReviewStore.setState({ screen: 'settings' });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      entityIds: ['anki-1'],
+    });
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(agentFlashMany).toHaveBeenCalledWith('flashcards', ['anki-1']);
+    window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
+  });
+});
+
+describe('qbank 刷新守卫（R1-15）', () => {
+  beforeEach(() => {
+    __resetQbankDriverForTests();
+    useQuestionBankStore.setState({
+      currentExamId: 'exam-1',
+      currentQuestionId: 'q-keep',
+      questions: new Map([
+        ['q-keep', { id: 'q-keep' } as never],
+        ['q-other', { id: 'q-other' } as never],
+      ]),
+      questionOrder: ['q-keep', 'q-other'],
+      filters: {},
+      pagination: { page: 1, pageSize: 50, total: 2, hasMore: false },
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  afterEach(() => {
+    __resetQbankDriverForTests();
+    vi.restoreAllMocks();
+  });
+
+  it('refreshQbankPreservingCurrent 刷新后恢复 currentQuestionId', async () => {
+    const refreshSpy = vi
+      .spyOn(useQuestionBankStore.getState(), 'refreshQuestions')
+      .mockImplementation(async () => {
+        // 模拟 loadQuestions 把 current 重置为第一题
+        useQuestionBankStore.setState({
+          currentQuestionId: 'q-other',
+          questions: new Map([
+            ['q-keep', { id: 'q-keep' } as never],
+            ['q-other', { id: 'q-other' } as never],
+            ['q-new', { id: 'q-new' } as never],
+          ]),
+        });
+      });
+
+    await refreshQbankPreservingCurrent({
+      source: 'agent',
+      action: 'changed',
+      entityIds: ['q-new'],
+    });
+
+    expect(refreshSpy).toHaveBeenCalled();
+    expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-keep');
+  });
+
+  it('行内编辑中延迟刷新（不立即调用 refreshQuestions）', async () => {
+    vi.useFakeTimers();
+    const scope = document.createElement('div');
+    scope.dataset.agentQbankEditor = '';
+    const input = document.createElement('input');
+    scope.appendChild(input);
+    document.body.appendChild(scope);
+    input.focus();
+    expect(isQbankInlineEditorActive()).toBe(true);
+
+    const refreshSpy = vi
+      .spyOn(useQuestionBankStore.getState(), 'refreshQuestions')
+      .mockResolvedValue(undefined);
+
+    // 编辑中：立即返回并排程，不 await 完整刷新
+    void refreshQbankPreservingCurrent({
+      source: 'agent',
+      action: 'changed',
+      entityIds: ['q-1'],
+    });
+    expect(refreshSpy).not.toHaveBeenCalled();
+
+    // 结束编辑后再推进定时器，触发延迟刷新
+    input.blur();
+    document.body.removeChild(scope);
+    await vi.advanceTimersByTimeAsync(800);
+    await Promise.resolve();
+
+    expect(refreshSpy).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('题库外的输入框不会把 probe 误报为 hot', () => {
+    const chatInput = document.createElement('textarea');
+    document.body.appendChild(chatInput);
+    chatInput.focus();
+
+    expect(isQbankInlineEditorActive()).toBe(false);
+    expect(qbankDriver.probe({ typeId: 'exam' })).toBe('clean');
+
+    chatInput.blur();
+    document.body.removeChild(chatInput);
+  });
+
+  it('题库容器中只有可编辑焦点会使 probe 返回 hot', () => {
+    const scope = document.createElement('div');
+    scope.dataset.agentQbankEditor = '';
+    const button = document.createElement('button');
+    const input = document.createElement('input');
+    scope.append(button, input);
+    document.body.appendChild(scope);
+
+    button.focus();
+    expect(qbankDriver.probe({ typeId: 'exam' })).toBe('clean');
+    input.focus();
+    expect(qbankDriver.probe({ typeId: 'exam' })).toBe('hot');
+
+    input.blur();
+    document.body.removeChild(scope);
+  });
+
+  it('handleQbankDomainChange 触发守卫刷新', async () => {
+    const refreshSpy = vi
+      .spyOn(useQuestionBankStore.getState(), 'refreshQuestions')
+      .mockImplementation(async () => {
+        useQuestionBankStore.setState({ currentQuestionId: 'q-other' });
+      });
+
+    handleQbankDomainChange({
+      source: 'user',
+      action: 'update',
+      entityIds: ['q-keep'],
+    });
+
+    // 异步刷新
+    await vi.waitFor(() => {
+      expect(refreshSpy).toHaveBeenCalled();
+    });
+    expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-keep');
+  });
+
+  it('R2-04：QBANK_FOCUS_EVENT 与 onActivation focusQuestion 事件名一致', () => {
+    expect(QBANK_FOCUS_EVENT).toBe('qbank:focus-question');
+    const seen: string[] = [];
+    const onFocus = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ questionId?: string }>).detail;
+      if (detail?.questionId) seen.push(detail.questionId);
+    };
+    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
+    try {
+      window.dispatchEvent(
+        new CustomEvent(QBANK_FOCUS_EVENT, { detail: { questionId: 'q-42' } }),
+      );
+      expect(seen).toEqual(['q-42']);
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
+    }
+  });
+});
+
+
+describe('driver undo truthfulness', () => {
+  it('FSRS append-only enqueue does not create a fake inverse', async () => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a')],
+      queueIndex: 0,
+      flipped: false,
+    });
+    const { run, record } = makeRun('flashcards');
+
+    const receipt = await fsrsDriver.apply(run, [
+      {
+        kind: 'fsrs_enqueue',
+        destructive: false,
+        label: 'enqueue',
+        payload: { cards: [card('b')] },
+      },
+    ]);
+
+    expect(receipt.status).toBe('completed');
+    expect(record).not.toHaveBeenCalled();
+    expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it.each([
+    ['cardIds-only', { cardIds: ['anki-only'] }],
+    [
+      'empty content',
+      {
+        cards: [
+          {
+            id: 'state-empty',
+            ankiCardId: 'anki-empty',
+            front: ' ',
+            back: '',
+          },
+        ],
+      },
+    ],
+  ])('FSRS apply 拒绝 %s payload 且不追加空卡', async (_case, payload) => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a')],
+      queueIndex: 0,
+      flipped: false,
+    });
+    const { run } = makeRun('flashcards');
+
+    const receipt = await fsrsDriver.apply(run, [
+      {
+        kind: 'fsrs_enqueue',
+        destructive: false,
+        label: 'invalid enqueue',
+        payload,
+      },
+    ]);
+
+    expect(receipt.status).toBe('failed');
+    expect(receipt.applied).toBe(0);
+    expect(receipt.undone).toEqual(['invalid enqueue']);
+    expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual([
+      'a',
+    ]);
+  });
+
+  it('QBank focus records an inverse that restores the previous selection', async () => {
+    useQuestionBankStore.setState({
+      currentQuestionId: 'q-keep',
+      questions: new Map([
+        ['q-keep', { id: 'q-keep' } as never],
+        ['q-new', { id: 'q-new' } as never],
+      ]),
+    });
+    const { run, record } = makeRun('exam');
+    let displayedQuestionId: string | null = 'q-keep';
+    const onFocus = (event: Event) => {
+      const detail = (event as CustomEvent<QbankFocusEventDetail>).detail;
+      const previousQuestionId = displayedQuestionId;
+      const handled = detail.questionId === 'q-keep' || detail.questionId === 'q-new';
+      if (handled) displayedQuestionId = detail.questionId;
+      detail.acknowledge?.({ handled, previousQuestionId });
+    };
+    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
+
+    try {
+      const receipt = await qbankDriver.apply(run, [
+        {
+          kind: 'qbank_focus_question',
+          destructive: false,
+          label: 'focus',
+          payload: { questionId: 'q-new' },
+        },
+      ]);
+
+      expect(receipt.status).toBe('completed');
+      expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-new');
+      expect(record).toHaveBeenCalledTimes(1);
+
+      const invert = record.mock.calls[0]![1] as () => void;
+      invert();
+      expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-keep');
+      expect(displayedQuestionId).toBe('q-keep');
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
+    }
+  });
+
+  it('QBank focus 拒绝不存在的题目，不产生导航副作用或 inverse', async () => {
+    useQuestionBankStore.setState({
+      currentQuestionId: 'q-keep',
+      questions: new Map([['q-keep', { id: 'q-keep' } as never]]),
+    });
+    const { run, record } = makeRun('exam');
+    const focusListener = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<QbankFocusEventDetail>).detail;
+      detail.acknowledge?.({ handled: false, previousQuestionId: 'q-keep' });
+    });
+    window.addEventListener(QBANK_FOCUS_EVENT, focusListener);
+
+    try {
+      const receipt = await qbankDriver.apply(run, [
+        {
+          kind: 'qbank_focus_question',
+          destructive: false,
+          label: 'focus missing',
+          payload: { questionId: 'q-missing' },
+        },
+      ]);
+
+      expect(receipt.status).toBe('failed');
+      expect(receipt.applied).toBe(0);
+      expect(receipt.undone).toEqual(['focus missing（可见题库未找到该题）']);
+      expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-keep');
+      expect(focusListener).toHaveBeenCalledTimes(1);
+      expect(record).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, focusListener);
+    }
+  });
+
+  it('QBank 无前选中项时不登记无法完整恢复视图的 inverse', async () => {
+    useQuestionBankStore.setState({
+      currentQuestionId: null,
+      questions: new Map([['q-new', { id: 'q-new' } as never]]),
+    });
+    const { run, record } = makeRun('exam');
+    const onFocus = (event: Event) => {
+      const detail = (event as CustomEvent<QbankFocusEventDetail>).detail;
+      detail.acknowledge?.({ handled: true, previousQuestionId: null });
+    };
+    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
+
+    try {
+      const receipt = await qbankDriver.apply(run, [
+        {
+          kind: 'qbank_focus_question',
+          destructive: false,
+          payload: { questionId: 'q-new' },
+        },
+      ]);
+
+      expect(receipt.status).toBe('completed');
+      expect(record).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
+    }
+  });
+
+  it('QBank inverse 恢复目标已不可见时向 ledger 传播失败', async () => {
+    const { run, record } = makeRun('exam');
+    let firstDispatch = true;
+    const onFocus = (event: Event) => {
+      const detail = (event as CustomEvent<QbankFocusEventDetail>).detail;
+      if (firstDispatch) {
+        firstDispatch = false;
+        detail.acknowledge?.({ handled: true, previousQuestionId: 'q-old' });
+      } else {
+        detail.acknowledge?.({ handled: false, previousQuestionId: 'q-new' });
+      }
+    };
+    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
+
+    try {
+      const receipt = await qbankDriver.apply(run, [
+        {
+          kind: 'qbank_focus_question',
+          destructive: false,
+          payload: { questionId: 'q-new' },
+        },
+      ]);
+      expect(receipt.status).toBe('completed');
+
+      const invert = record.mock.calls[0]![1] as () => void;
+      expect(() => invert()).toThrow('无法恢复已不存在的题目 q-old');
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
+    }
+  });
+});
+
+describe('driver receipts and interruption', () => {
+  beforeEach(() => {
+    vi.mocked(showGlobalNotification).mockClear();
+    vi.mocked(agentFlashMany).mockClear();
+  });
+
+  it('FSRS 混合新旧卡片时只回执、通知和高亮真实新增项', async () => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a')],
+      queueIndex: 0,
+      flipped: false,
+    });
+    const { run } = makeRun('flashcards');
+
+    const receipt = await fsrsDriver.apply(run, [
+      {
+        kind: 'fsrs_enqueue',
+        destructive: false,
+        payload: { cards: [card('a'), card('b'), card('b')] },
+      },
+    ]);
+
+    expect(receipt.status).toBe('completed');
+    expect(receipt.entityIds).toEqual(['b']);
+    expect(showGlobalNotification).toHaveBeenCalledTimes(1);
+    expect(agentFlashMany).toHaveBeenCalledWith('flashcards', ['b']);
+  });
+
+  it('FSRS 失败 op 也执行 pacing，不会在 multi-op 中快速穿透', async () => {
+    useFsrsReviewStore.setState({ screen: 'today' });
+    const { run } = makeRun('flashcards');
+
+    const receipt = await fsrsDriver.apply(run, [
+      { kind: 'fsrs_enqueue', destructive: false, payload: { cards: [card('a')] } },
+      { kind: 'unsupported', destructive: false },
+    ]);
+
+    expect(receipt.status).toBe('failed');
+    expect(run.pacing.tick).toHaveBeenCalledTimes(2);
+  });
+
+  it('FSRS multi-op 在中断后如实列出尚未执行步骤且不发生副作用', async () => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a')],
+      queueIndex: 0,
+      flipped: false,
+    });
+    const { run } = makeRun('flashcards');
+    vi.mocked(run.checkPaused)
+      .mockResolvedValueOnce('resume')
+      .mockResolvedValueOnce('abort');
+
+    const receipt = await fsrsDriver.apply(run, [
+      { kind: 'fsrs_enqueue', label: 'first', destructive: false, payload: { cards: [card('b')] } },
+      { kind: 'fsrs_enqueue', label: 'second', destructive: false, payload: { cards: [card('c')] } },
+    ]);
+
+    expect(receipt.status).toBe('cancelled');
+    expect(receipt.applied).toBe(1);
+    expect(receipt.done).toEqual(['first']);
+    expect(receipt.undone).toEqual(['second']);
+    expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('FSRS abort 运行中 run 返回真实 done/undone 前缀（ACR 4.0 A3）', async () => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a')],
+      queueIndex: 0,
+      flipped: false,
+    });
+    const { run } = makeRun('flashcards');
+    let abortReceipt: AcrReceipt | null = null;
+    // 第一个 op 成功后的 pacing tick 里发起 abort（模拟运行中用户中止）
+    vi.mocked(run.pacing.tick).mockImplementation(async () => {
+      if (!abortReceipt) abortReceipt = fsrsDriver.abort(run.runId);
+    });
+
+    const receipt = await fsrsDriver.apply(run, [
+      { kind: 'fsrs_enqueue', label: 'first', destructive: false, payload: { cards: [card('b')] } },
+      { kind: 'fsrs_enqueue', label: 'second', destructive: false, payload: { cards: [card('c')] } },
+    ]);
+
+    expect(abortReceipt).toMatchObject({
+      status: 'cancelled',
+      applied: 1,
+      totalOps: 2,
+      done: ['first'],
+      undone: ['second'],
+      entityIds: ['b'],
+    });
+    expect(receipt).toMatchObject({
+      status: 'cancelled',
+      applied: 1,
+      done: ['first'],
+      undone: ['second'],
+    });
+    // 未执行 op 不重复计入 undone
+    expect(receipt.undone).toHaveLength(1);
+    expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('FSRS abort 未知 run 仍回 cancelled 且不虚报 applied', () => {
+    const receipt = fsrsDriver.abort('run-unknown');
+    expect(receipt).toMatchObject({ status: 'cancelled', applied: 0, totalOps: 0 });
+  });
+
+  it('QBank abort 运行中 run 返回真实 done/undone 前缀（ACR 4.0 A3）', async () => {
+    useQuestionBankStore.setState({
+      currentQuestionId: 'q-old',
+      questions: new Map([
+        ['q-old', { id: 'q-old' } as never],
+        ['q-1', { id: 'q-1' } as never],
+        ['q-2', { id: 'q-2' } as never],
+      ]),
+    });
+    const { run } = makeRun('exam');
+    let abortReceipt: AcrReceipt | null = null;
+    vi.mocked(run.pacing.tick).mockImplementation(async () => {
+      if (!abortReceipt) abortReceipt = qbankDriver.abort(run.runId);
+    });
+    const onFocus = (event: Event) => {
+      const detail = (event as CustomEvent<QbankFocusEventDetail>).detail;
+      detail.acknowledge?.({ handled: true, previousQuestionId: 'q-old' });
+    };
+    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
+
+    try {
+      const receipt = await qbankDriver.apply(run, [
+        { kind: 'qbank_focus_question', label: 'first', destructive: false, payload: { questionId: 'q-1' } },
+        { kind: 'qbank_focus_question', label: 'second', destructive: false, payload: { questionId: 'q-2' } },
+      ]);
+
+      expect(abortReceipt).toMatchObject({
+        status: 'cancelled',
+        applied: 1,
+        totalOps: 2,
+        done: ['first'],
+        undone: ['second'],
+        entityIds: ['q-1'],
+      });
+      expect(receipt).toMatchObject({
+        status: 'cancelled',
+        applied: 1,
+        done: ['first'],
+        undone: ['second'],
+      });
+      expect(receipt.undone).toHaveLength(1);
+      expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-1');
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
+    }
+  });
+
+  it('QBank abort 未知 run 仍回 cancelled 且不虚报 applied', () => {
+    const receipt = qbankDriver.abort('run-unknown');
+    expect(receipt).toMatchObject({ status: 'cancelled', applied: 0, totalOps: 0 });
+  });
+
+  it('QBank 混合成功与无效导航时返回 partial 并保留未执行语义', async () => {
+    const { run } = makeRun('exam');
+    let displayedQuestionId: string | null = 'q-old';
+    const onFocus = (event: Event) => {
+      const detail = (event as CustomEvent<QbankFocusEventDetail>).detail;
+      const previousQuestionId = displayedQuestionId;
+      const handled = detail.questionId !== 'q-missing';
+      if (handled) displayedQuestionId = detail.questionId;
+      detail.acknowledge?.({ handled, previousQuestionId });
+    };
+    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
+
+    try {
+      const receipt = await qbankDriver.apply(run, [
+        { kind: 'qbank_focus_question', label: 'valid', destructive: false, payload: { questionId: 'q-new' } },
+        { kind: 'qbank_focus_question', label: 'invalid', destructive: false, payload: { questionId: 'q-missing' } },
+      ]);
+
+      expect(receipt.status).toBe('partial');
+      expect(receipt.applied).toBe(1);
+      expect(receipt.done).toEqual(['valid']);
+      expect(receipt.undone).toEqual(['invalid（可见题库未找到该题）']);
+      expect(displayedQuestionId).toBe('q-new');
+      expect(run.pacing.tick).toHaveBeenCalledTimes(2);
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
+    }
+  });
+});

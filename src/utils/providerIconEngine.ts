@@ -78,7 +78,10 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   // === 国际供应商 ===
   openai: [
     /^openai$/i,
+    /^openai[_-]codex$/i,
     /^openai\//i,
+    /^codex$/i,
+    /^codex subscription$/i,
     /^gpt-/i,
     /^o1-/i, /^o3-/i, /^o4-/i,
     /\bgpt-[345]/i,

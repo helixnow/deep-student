@@ -15,6 +15,7 @@ import type { RagBlockData } from '@/features/chat/plugins/blocks/components/typ
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const translations: Record<string, string> = {

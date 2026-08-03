@@ -13,8 +13,7 @@ export type { VariantSwitcherProps } from './VariantSwitcher';
 export { VariantActions } from './VariantActions';
 export type { VariantActionsProps } from './VariantActions';
 
-export { ParallelStreamingView } from './ParallelStreamingView';
-export type { ParallelStreamingViewProps } from './ParallelStreamingView';
+// ★ 低-12：ParallelStreamingView 为全仓无引用的死代码，已删除
 
 export { ParallelVariantView } from './ParallelVariantView';
 export type { ParallelVariantViewProps } from './ParallelVariantView';

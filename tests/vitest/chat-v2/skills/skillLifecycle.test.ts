@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../../../src/features/chat/skills/types';
 import { collectSchemaToolIds } from '../../../../src/features/chat/tools/collector';
 import type { ContextRef } from '../../../../src/features/chat/context/types';
+import * as contextHelper from '../../../../src/features/chat/adapters/contextHelper';
 
 // ============================================================================
 // Mock 设置
@@ -107,65 +108,49 @@ describe('P0 修复：发送后 sticky skill refs 保留', () => {
 // ============================================================================
 
 describe('P1-A：clearPendingContextRefs helper 已移除', () => {
-  it('contextHelper 不应导出 clearPendingContextRefs', async () => {
-    const contextHelper = await import('../../../../src/features/chat/adapters/contextHelper');
-    
-    // 验证 clearPendingContextRefs 不再导出
+  it('contextHelper 不应导出 clearPendingContextRefs', () => {
     expect('clearPendingContextRefs' in contextHelper).toBe(false);
   });
 });
 
 // ============================================================================
-// P1-B 回归测试：allowedTools 前端可见性过滤
+// P1-B 回归测试：allowedTools 约束职责归属
+//
+// ★ 架构变更：allowedTools 白名单过滤已从前端 collectSchemaToolIds 迁移到
+// 后端运行时执行策略（src-tauri tool_policy::is_tool_allowed_by_execution_policy，
+// 由 pipeline 的 execution_allowed_tools 驱动，含自身 Rust 单测）。
+// 前端收集器只负责从上下文引用收集工具，不做权限裁剪——本组测试锁定该契约，
+// 防止有人在前端重新引入形同虚设的"可见性过滤"造成双重真相源。
 // ============================================================================
 
-describe('P1-B：allowedTools 前端可见性过滤', () => {
+describe('P1-B：allowedTools 约束职责归属（后端执行策略）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('无 skillAllowedTools 时不过滤工具', () => {
+  it('收集器应返回上下文引用关联的全部工具（不做白名单裁剪）', () => {
     const result = collectSchemaToolIds({
       pendingContextRefs: [createSkillContextRef('test')],
-      enableAnkiTools: true,
     });
 
-    // 应该包含所有 anki 工具
-    expect(result.schemaToolIds.length).toBeGreaterThan(0);
-  });
-
-  it('skillAllowedTools 应过滤不在白名单中的工具', () => {
-    const result = collectSchemaToolIds({
-      pendingContextRefs: [createSkillContextRef('test')],
-      enableAnkiTools: true,
-      skillAllowedTools: ['anki_create_card'], // 只允许创建卡片
-    });
-
-    // 只有 anki_create_card 应该保留
-    expect(result.schemaToolIds).toContain('anki_create_card');
-    expect(result.schemaToolIds).not.toContain('anki_list_decks');
-  });
-
-  it('skillAllowedTools 支持前缀匹配', () => {
-    const result = collectSchemaToolIds({
-      pendingContextRefs: [createSkillContextRef('test')],
-      enableAnkiTools: true,
-      skillAllowedTools: ['anki'], // "anki" 前缀匹配所有 anki_* 工具
-    });
-
-    // 所有 anki_ 工具都应保留
+    // mock 的 contextTypeRegistry 返回两个 anki 工具，均应收集
     expect(result.schemaToolIds).toContain('anki_create_card');
     expect(result.schemaToolIds).toContain('anki_list_decks');
   });
 
-  it('空 skillAllowedTools 数组不应过滤', () => {
+  it('收集器选项不应再暴露 skillAllowedTools（过滤职责在后端）', () => {
+    // 类型层面已移除；运行时传入未知字段也不得影响收集结果
     const result = collectSchemaToolIds({
       pendingContextRefs: [createSkillContextRef('test')],
-      enableAnkiTools: true,
-      skillAllowedTools: [], // 空数组不限制
+      ...( { skillAllowedTools: [] } as Record<string, unknown> ),
     });
 
     expect(result.schemaToolIds.length).toBeGreaterThan(0);
+  });
+
+  it('无上下文引用时收集结果为空', () => {
+    const result = collectSchemaToolIds({ pendingContextRefs: [] });
+    expect(result.schemaToolIds).toEqual([]);
   });
 });
 

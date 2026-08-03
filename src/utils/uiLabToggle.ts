@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 const UILAB_STORAGE_KEY = 'DSTU_UI_LAB_ENABLED';
 
-let listeners = new Set<() => void>();
+const listeners = new Set<() => void>();
 
 export function isUILabEnabled(): boolean {
   try {

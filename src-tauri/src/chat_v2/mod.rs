@@ -14,27 +14,43 @@
 //! - `pipeline`: 编排引擎（待实现）
 
 pub mod adapters;
+pub mod agents_md; // AGENTS.md 常驻指令发现与注入
 pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
 pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
+pub mod automations; // 🆕 周期自动化定义存储与调度器
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;
 pub mod events;
 pub mod handlers;
+pub mod headless; // 🆕 Headless Runner：后端自主发起 agent turn（automations 到点真正跑 agent）
+pub mod kill_switch; // 🆕 全局一键断电（AgentKillSwitch）
 pub mod migration; // 旧版数据迁移模块
 pub mod pipeline;
 pub mod prompt_builder;
 pub mod repo;
-pub mod resource_repo; // ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)，由 vfs/repos/resource_repo.rs 替代。参见 P1-#9。
+pub mod resource_repo; // DEPRECATED (owner: platform-chat, remove: vNext): resource_* 命令已注销；替代 = vfs/repos/resource_repo.rs。
 pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
+pub mod role_packs;
+pub mod runtime_roots;
+pub mod shell_command_policy;
+pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTap 接入）
+pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
+pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
+pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
+pub mod task_audit; // Deterministic task audit manifests and export redaction
+pub mod task_objects; // Unified file/message/event/record identity and delivery receipts
+pub mod tool_approval_policy;
+pub mod tool_policy;
 pub mod tools;
 pub mod types;
 pub mod user_message_builder; // 用户消息统一构建模块
 pub mod variant_context;
 pub mod vfs_resolver;
 pub mod workspace; // VFS 解引用模块 - 统一处理首次发送和历史加载的资源解引用
+pub mod workspace_change_set; // Workspace 文件变更收据、检查点与安全回滚
 
 // 测试模块（仅在测试时编译）
 #[cfg(test)]
@@ -57,6 +73,11 @@ pub use events::{BackendEvent, ChatV2EventEmitter, SessionEvent};
 
 // 重导出状态类型
 pub use state::{ChatV2State, StreamGuard};
+
+// 重导出 Headless Runner（供 automations 调度器 / 手动触发命令使用）
+pub use headless::{
+    run_headless_turn, HeadlessSessionMode, HeadlessTurnRequest, HeadlessTurnResult,
+};
 
 // 重导出核心类型
 pub use types::{
@@ -112,7 +133,7 @@ pub use workspace::{
 
 // 重导出资源库类型（统一上下文注入系统）
 // NOTE: 这些类型仍被 pipeline/context/user_message_builder 等模块使用，暂不废弃。
-// resource_repo 和 resource_handlers 已废弃，参见 P1-#9。
+// resource_handlers 已删除（2026-07-20）；resource_repo 仍 DEPRECATED 保留（owner: platform-chat, remove: vNext）。
 pub use resource_types::{
     // 资源相关
     ContentBlock,
@@ -133,7 +154,7 @@ pub use user_message_builder::{
 };
 
 // 重导出 Skills 命令
-pub use skills::{skill_list_directories, skill_read_file};
+pub use skills::{skill_list_directories, skill_list_package_files, skill_read_file};
 
 // 重导出 Tauri 命令
 pub use handlers::{
@@ -150,7 +171,10 @@ pub use handlers::{
     chat_v2_delete_variant,
     chat_v2_edit_and_resend,
     chat_v2_empty_deleted_sessions,
+    // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
+    chat_v2_get_message_summary,
     chat_v2_list_sessions,
+    chat_v2_load_messages_page,
     chat_v2_load_session,
     chat_v2_migrate_legacy_chat,
     chat_v2_perform_ocr,
@@ -158,8 +182,6 @@ pub use handlers::{
     chat_v2_retry_variant,
     chat_v2_retry_variants,
     chat_v2_rollback_migration,
-    // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
-    chat_v2_get_message_summary,
     chat_v2_save_session,
     chat_v2_send_message,
     chat_v2_session_message_count,

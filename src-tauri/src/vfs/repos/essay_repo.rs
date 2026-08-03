@@ -896,6 +896,17 @@ impl VfsEssayRepo {
         Self::list_sessions_with_conn(&conn, limit, offset)
     }
 
+    /// Count active essay sessions for paginated tool responses.
+    pub fn count_sessions(db: &VfsDatabase) -> VfsResult<u32> {
+        let conn = db.get_conn_safe()?;
+        let count = conn.query_row(
+            "SELECT COUNT(*) FROM essay_sessions WHERE deleted_at IS NULL",
+            [],
+            |row| row.get::<_, u32>(0),
+        )?;
+        Ok(count)
+    }
+
     /// 列出作文会话（使用现有连接）
     pub fn list_sessions_with_conn(
         conn: &Connection,
@@ -999,7 +1010,27 @@ impl VfsEssayRepo {
         // ★ B-5: 使用事务保护
         conn.execute("BEGIN IMMEDIATE", [])?;
 
-        let result = (|| -> VfsResult<usize> {
+        let result = Self::purge_session_with_conn(&conn, session_id);
+
+        // 提交或回滚
+        match result {
+            Ok(count) => {
+                conn.execute("COMMIT", [])?;
+                Ok(count)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// Permanently delete a trashed session using an existing transaction.
+    ///
+    /// This deliberately does not open a transaction so callers that need an
+    /// atomic state check (such as DSTU purge) can retain their writer lock.
+    pub fn purge_session_with_conn(conn: &Connection, session_id: &str) -> VfsResult<usize> {
+        (|| -> VfsResult<usize> {
             // ★ B-5: 先获取关联的 resource_ids
             let mut stmt = conn.prepare("SELECT resource_id FROM essays WHERE session_id = ?1")?;
             let resource_ids: Vec<String> = stmt
@@ -1038,7 +1069,7 @@ impl VfsEssayRepo {
 
                 if ref_count == 0 {
                     // ★ 2026-06-12（第二轮审阅）：同时清理索引产物
-                    super::index_unit_repo::purge_index_artifacts_by_resource(&conn, rid)?;
+                    super::index_unit_repo::purge_index_artifacts_by_resource(conn, rid)?;
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
                     debug!("[VFS::EssayRepo] Purged orphan resource: {}", rid);
                 }
@@ -1051,19 +1082,7 @@ impl VfsEssayRepo {
                 resource_ids.len()
             );
             Ok(deleted_essays)
-        })();
-
-        // 提交或回滚
-        match result {
-            Ok(count) => {
-                conn.execute("COMMIT", [])?;
-                Ok(count)
-            }
-            Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
-                Err(e)
-            }
-        }
+        })()
     }
 
     // ========================================================================
@@ -1236,6 +1255,41 @@ impl VfsEssayRepo {
     pub fn get_rounds_by_session(db: &VfsDatabase, session_id: &str) -> VfsResult<Vec<VfsEssay>> {
         let conn = db.get_conn_safe()?;
         Self::get_rounds_by_session_with_conn(&conn, session_id)
+    }
+
+    /// Count active grading rounds in an essay session.
+    pub fn count_rounds_by_session(db: &VfsDatabase, session_id: &str) -> VfsResult<u32> {
+        let conn = db.get_conn_safe()?;
+        let count = conn.query_row(
+            "SELECT COUNT(*) FROM essays WHERE session_id = ?1 AND deleted_at IS NULL",
+            params![session_id],
+            |row| row.get::<_, u32>(0),
+        )?;
+        Ok(count)
+    }
+
+    /// List a page of active grading rounds in chronological order.
+    pub fn list_rounds_by_session(
+        db: &VfsDatabase,
+        session_id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<Vec<VfsEssay>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, resource_id, title, essay_type,
+                   grading_result_json, score, session_id, round_number,
+                   grade_level, custom_prompt, dimension_scores_json,
+                   is_favorite, created_at, updated_at
+            FROM essays
+            WHERE session_id = ?1 AND deleted_at IS NULL
+            ORDER BY round_number ASC, created_at ASC
+            LIMIT ?2 OFFSET ?3
+            "#,
+        )?;
+        let rows = stmt.query_map(params![session_id, limit, offset], Self::row_to_essay)?;
+        Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
     /// 获取会话的所有轮次（使用现有连接）

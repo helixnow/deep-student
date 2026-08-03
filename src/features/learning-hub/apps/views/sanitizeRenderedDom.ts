@@ -42,6 +42,15 @@ function isUnsafeHref(href: string): boolean {
 }
 
 /**
+ * 判断 href 是否指向外部资源（http/https）——这类链接需要 rel=noopener 加固，
+ * 防止目标页面通过 window.opener 反向操纵应用窗口
+ */
+function isExternalHref(href: string): boolean {
+  const normalized = href.trim().toLowerCase();
+  return normalized.startsWith('http:') || normalized.startsWith('https:');
+}
+
+/**
  * 使用 DOMPurify 对容器内容进行完整消毒
  *
  * 这是主要的安全防线，处理所有已知的 XSS 向量：
@@ -71,7 +80,9 @@ export function sanitizeRenderedDom(container: HTMLElement): void {
       // 媒体（安全的）
       'img', 'picture', 'source', 'svg', 'path', 'rect', 'circle', 'ellipse',
       'line', 'polyline', 'polygon', 'text', 'tspan', 'g', 'defs', 'clipPath',
-      'use', 'symbol', 'marker', 'pattern',
+      'use', 'symbol', 'marker', 'pattern', 'image', 'linearGradient',
+      'radialGradient', 'stop', 'filter', 'mask', 'feGaussianBlur', 'feOffset',
+      'feColorMatrix', 'feBlend', 'feMerge', 'feMergeNode',
       // 链接（href 会被单独检查）
       'a',
       // Ruby 注音
@@ -92,6 +103,9 @@ export function sanitizeRenderedDom(container: HTMLElement): void {
       'transform', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y',
       'x1', 'y1', 'x2', 'y2', 'points', 'font-size', 'text-anchor',
       'dominant-baseline', 'clip-path', 'marker-end', 'marker-start',
+      'offset', 'stop-color', 'stop-opacity', 'gradientUnits',
+      'gradientTransform', 'spreadMethod', 'filter', 'mask', 'href',
+      'in', 'in2', 'stdDeviation', 'dx', 'dy', 'result', 'values', 'mode',
     ],
     // 允许安全的 data: URI（图片）
     ALLOW_DATA_ATTR: false,
@@ -132,6 +146,9 @@ export function sanitizeRenderedLinks(container: HTMLElement): void {
         el.setAttribute('data-blocked', 'unsafe-protocol');
         (el as HTMLElement).style.cursor = 'not-allowed';
         (el as HTMLElement).style.opacity = '0.6';
+      } else if (isExternalHref(href)) {
+        // 外链加固：切断 window.opener 反向引用
+        el.setAttribute('rel', 'noopener noreferrer');
       }
     }
 

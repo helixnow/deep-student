@@ -41,82 +41,42 @@
   /* 允许 flex 子元素收缩 */
 }
 
-.chat-v2 .tool-trace__scroll {
-  max-height: 260px;
-  overflow-y: auto;
-  /* 允许内容超出时滚动 */
-  overflow-x: visible;
-  /* 允许横向内容完整显示 */
-  /* 确保 ScrollArea 本身能正确计算高度，包含展开内容 */
-  display: flex;
-  flex-direction: column;
-}
-
-/* 当有工具详情展开时，移除高度限制，让内容自然撑开 */
-.chat-v2 .tool-trace__scroll--expanded {
-  max-height: none !important;
-  /* 移除高度限制 */
-  overflow-y: visible !important;
-  /* 改为可见，不滚动 */
-}
-
-/* 确保 ScrollArea 的 viewport 能正确包含展开内容 */
-.chat-v2 .tool-trace__scroll [data-radix-scroll-area-viewport] {
-  max-height: 260px !important;
-  /* 保持最大高度限制 */
-  overflow-y: auto !important;
-  /* 内容超出时滚动 */
-  overflow-x: visible !important;
-  /* 横向内容完整显示 */
-}
-
-/* 当有展开时，移除 viewport 的高度限制 */
-.chat-v2 .tool-trace__scroll--expanded [data-radix-scroll-area-viewport] {
-  max-height: none !important;
-  /* 移除高度限制 */
-  overflow-y: visible !important;
-  /* 改为可见 */
-  height: auto !important;
-  /* 自动高度 */
-}
-
-/* 确保 ScrollArea 的内容区域能正确撑开 */
-.chat-v2 .tool-trace__scroll [data-radix-scroll-area-content] {
-  min-height: min-content;
-  /* 允许内容决定最小高度 */
-}
-
 .chat-v2 .thinking-trace__body {
-  background: hsl(var(--card));
-  border-color: hsl(var(--border));
+  background: var(--chat-thinking-surface);
+  border-color: var(--chat-thinking-border);
   color: hsl(var(--muted-foreground));
 }
 
 [data-theme="dark"] .chat-v2 .thinking-trace__body,
 .dark .chat-v2 .thinking-trace__body {
-  background: hsl(var(--muted) / 0.4);
-  border-color: hsl(var(--border));
+  background: var(--chat-thinking-surface);
+  border-color: var(--chat-thinking-border);
   color: hsl(var(--muted-foreground));
 }
 
 .chat-v2 .thinking-trace__text {
-  max-height: 200px;
-  overflow-y: auto;
   position: relative;
   padding-right: 3px;
-  font-size: var(--chat-md-compact-font-size);
-  line-height: var(--chat-md-compact-line-height);
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height));
 }
 
-/* 思维链内容块字号 - Tier S-1：使用全局 token，去 !important，回归用户可缩放 */
-.chat-v2 .thinking-content,
-.chat-v2 .thinking-content .markdown-content,
-.chat-v2 .thinking-content .markdown-content p,
-.chat-v2 .thinking-content .markdown-content li,
-.chat-v2 .thinking-content .markdown-content ul,
-.chat-v2 .thinking-content .markdown-content ol {
-  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
-  line-height: var(--chat-md-compact-line-height);
+/* 思维链展开内容与正文共用阅读节奏；状态摘要仍由 ActivityTimeline 的 status token 控制。 */
+.chat-v2 .chain-of-thought .thinking-content,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content p,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content li,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content ul,
+.chat-v2 .chain-of-thought .thinking-content .markdown-content ol,
+.chat-v2 .thinking-chain-content,
+.chat-v2 .thinking-chain-content .markdown-content,
+.chat-v2 .thinking-chain-content .markdown-content p,
+.chat-v2 .thinking-chain-content .markdown-content li,
+.chat-v2 .thinking-chain-content .markdown-content ul,
+.chat-v2 .thinking-chain-content .markdown-content ol {
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));
+  font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height));
 }
 
 .chat-v2 .thinking-trace__text::before,
@@ -132,20 +92,20 @@
 
 .chat-v2 .thinking-trace__text::before {
   top: 0;
-  background: linear-gradient(180deg, hsl(var(--card) / 0.95), hsl(var(--card) / 0));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 .chat-v2 .thinking-trace__text::after {
   bottom: 0;
-  background: linear-gradient(0deg, hsl(var(--card) / 0.95), hsl(var(--card) / 0));
+  background: linear-gradient(0deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 [data-theme="dark"] .chat-v2 .thinking-trace__text::before {
-  background: linear-gradient(180deg, hsl(var(--muted) / 0.4), transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 [data-theme="dark"] .chat-v2 .thinking-trace__text::after {
-  background: linear-gradient(0deg, hsl(var(--muted) / 0.4), transparent);
+  background: linear-gradient(0deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 .chat-v2 .thinking-trace__text p {
@@ -162,7 +122,7 @@
   margin-top: 12px;
   padding-left: 14px;
   border-left: 1px solid hsl(var(--border) / 0.35);
-  --timeline-ease: cubic-bezier(0.16, 0.84, 0.44, 1);
+  --timeline-ease: var(--ease-standard);
 }
 
 [data-theme="dark"] .chat-v2 .timeline-panel {
@@ -346,7 +306,8 @@
 }
 
 [data-theme="dark"] .chat-v2 .timeline-item--highlight .timeline-item__content {
-  background: hsla(var(--primary), 0.12);
+  /* hsla(var(--primary), a) 是无效语法（token 为空格分隔），必须用 hsl(... / a) */
+  background: hsl(var(--primary) / 0.12);
 }
 
 .chat-v2 .timeline-thinking {
@@ -376,8 +337,6 @@
 .thinking-chain-content .markdown-content li,
 .thinking-chain-content .markdown-content ul,
 .thinking-chain-content .markdown-content ol {
-  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
-  line-height: var(--chat-md-compact-line-height);
   color: hsl(var(--muted-foreground));
 }
 
@@ -434,14 +393,14 @@
 }
 
 [data-theme="dark"] .chat-v2 .tool-event-detail-block {
-  background: hsla(var(--background), 0.35);
-  border-color: hsla(var(--border), 0.55);
+  background: hsl(var(--background) / 0.35);
+  border-color: hsl(var(--border) / 0.55);
   color: hsl(var(--muted-foreground));
 }
 
 [data-theme="dark"] .tool-event-detail-block.error {
-  background: hsla(var(--destructive), 0.18);
-  border-color: hsla(var(--destructive), 0.4);
+  background: hsl(var(--destructive) / 0.18);
+  border-color: hsl(var(--destructive) / 0.4);
   color: hsl(var(--destructive-foreground));
 }
 
@@ -836,7 +795,7 @@
 }
 
 .summary-panel .panel-body,
-.summary-panel .notion-collapsible-body,
+.summary-panel .card-collapsible-body,
 .summary-panel__body {
   padding: 0;
   background: transparent;
@@ -847,7 +806,7 @@
 }
 
 [data-theme="dark"] .summary-panel .panel-body,
-[data-theme="dark"] .summary-panel .notion-collapsible-body,
+[data-theme="dark"] .summary-panel .card-collapsible-body,
 [data-theme="dark"] .summary-panel__body {
   padding: 0;
   background: transparent;
@@ -870,10 +829,12 @@
    ============================================================================ */
 
 .think-block {
-  border: 1px solid hsl(var(--border) / 0.3);
-  border-left: 2px solid var(--brand-primary);
+  border: 1px solid var(--chat-thinking-border);
+
+  /* --brand-primary 是裸 HSL 分量，必须包 hsl() 才是合法颜色 */
+  border-left: 2px solid hsl(var(--brand-primary));
   border-radius: var(--radius-shell-toolbar);
-  background: hsl(var(--card));
+  background: var(--chat-thinking-surface);
   overflow: hidden;
   contain: layout style;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -885,8 +846,8 @@
 }
 
 .dark .think-block {
-  background: hsl(var(--muted) / 0.2);
-  border-color: hsl(var(--border) / 0.2);
+  background: var(--chat-thinking-surface);
+  border-color: var(--chat-thinking-border);
 }
 
 .dark .think-block--expanded {
@@ -905,20 +866,20 @@
   background: transparent;
   cursor: pointer;
   color: hsl(var(--muted-foreground));
-  font-size: var(--font-size-sm);
-  line-height: 1.2;
-  font-weight: 500;
+  font-size: var(--chat-activity-summary-font-size, var(--chat-body-font-size));
+  line-height: var(--chat-activity-summary-line-height, var(--chat-body-line-height));
+  font-weight: var(--chat-activity-summary-font-weight, var(--chat-body-font-weight));
   user-select: none;
   -webkit-user-select: none;
   transition: background-color 0.15s;
 }
 
 .think-header:hover {
-  background: hsl(var(--muted) / 0.35);
+  background: var(--chat-thinking-hover-surface);
 }
 
 .think-header-icon {
-  color: var(--brand-primary);
+  color: hsl(var(--brand-primary));
   flex-shrink: 0;
   opacity: 0.85;
 }
@@ -947,14 +908,14 @@
 
 .think-pulse-label {
   font-size: 0.75rem;
-  color: var(--brand-primary);
+  color: hsl(var(--brand-primary));
 }
 
 .think-pulse-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--brand-primary);
+  background: hsl(var(--brand-primary));
   animation: thinkPulse 1.4s ease-in-out infinite;
 }
 
@@ -981,7 +942,7 @@
   flex-shrink: 0;
   color: hsl(var(--muted-foreground) / 0.5);
   transition: transform var(--icon-swap-dur, 200ms) var(--icon-swap-ease, ease-in-out);
-  will-change: transform;
+  /* 不用常驻 will-change：每条消息都可能有 thinking 块，常驻合成层白占显存 */
 }
 
 .think-chevron--expanded {
@@ -1001,7 +962,7 @@
 }
 
 .think-content {
-  border-top: 1px solid hsl(var(--border) / 0.15);
+  border-top: 1px solid var(--chat-thinking-border);
   padding: 0.75rem 0.875rem;
   transform: translateY(-6px);
   opacity: 0;
@@ -1010,7 +971,7 @@
     transform var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     opacity   var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     filter    var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1));
-  will-change: transform, opacity, filter;
+  /* 不用常驻 will-change：折叠态内容常驻 DOM，强制分层会随消息数线性膨胀 */
 }
 
 .think-content-wrapper--expanded .think-content {
@@ -1029,8 +990,9 @@
 /* ─── Typography inside thinking block ────────────────────────────────────── */
 
 .think-content .markdown-content {
-  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
-  line-height: var(--chat-md-compact-line-height);
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));
+  font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height));
   color: hsl(var(--muted-foreground));
 }
 
@@ -1047,7 +1009,7 @@
 }
 
 .think-content .markdown-content code:not(pre code) {
-  background: hsl(var(--muted) / 0.5);
+  background: var(--chat-thinking-header-surface);
   border-radius: 4px;
   padding: 0.15em 0.35em;
   font-size: 0.9em;

@@ -433,7 +433,7 @@ function editTextareaAndConfirm(textarea: HTMLTextAreaElement, newText: string):
 // =============================================================================
 
 async function createRequestBodyCapture(sessionId: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const bodies: any[] = [];
   const unlisten = await listen<{
     streamEvent: string; model: string; url: string; requestBody: unknown;
@@ -456,12 +456,12 @@ async function createRequestBodyCapture(sessionId: string) {
     get bodies() { return bodies; },
     get count() { return bodies.length; },
     /** 第一个请求体（通常含用户消息+附件） */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     get first(): any { return bodies[0]?.requestBody ?? null; },
     /** 第一个请求的模型 ID（来自事件 payload，非 requestBody 内部） */
     get firstModel(): string | undefined { return bodies[0]?.model; },
     /** 最后一个请求体 */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     get last(): any { return bodies[bodies.length - 1]?.requestBody ?? null; },
     /** 所有捕获到的模型 ID */
     get models(): string[] { return bodies.map(b => b.model); },
@@ -583,11 +583,11 @@ async function verifyPersistence(
 // 请求体 Dump（脱敏）
 // =============================================================================
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function sanitizeRequestBody(body: any): unknown {
   if (!body) return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const sanitized = JSON.parse(JSON.stringify(body, (_key: string, val: any) => {
       if (_key === 'url' && typeof val === 'string' && val.startsWith('data:')) {
         return `[base64:${val.length}bytes]`;
@@ -595,7 +595,7 @@ function sanitizeRequestBody(body: any): unknown {
       return val;
     }));
     if (Array.isArray(sanitized.messages)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       sanitized.messages = sanitized.messages.map((m: any) => {
         if (m.role === 'system') {
           return { role: 'system', content: `[system:${(m.content?.length || 0)}字符]` };
@@ -1323,7 +1323,7 @@ async function stepMultiVariant(ctx: StepContext): Promise<StepResult> {
     //   确保 adapter.buildSendOptions() 能读到我们设置的并行模型 ID。
     const modelIds = [config.primaryModelId, config.secondaryModelId];
     origSetPending = store.getState().setPendingParallelModelIds;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (store as any).setState({
       setPendingParallelModelIds: (ids: string[] | null) => {
         if (ids === null) {
@@ -1334,7 +1334,7 @@ async function stepMultiVariant(ctx: StepContext): Promise<StepResult> {
       },
     });
     // 直接写入 state 绕过 action（action 已被替换）
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (store as any).setState({ pendingParallelModelIds: modelIds });
     log('info', 'model', `设置并行模型: ${modelIds.join(', ')} (via store, 防清空拦截已激活)`);
 
@@ -1355,7 +1355,7 @@ async function stepMultiVariant(ctx: StepContext): Promise<StepResult> {
     log('info', 'send', `流式已开始 (status=${store.getState().sessionStatus})`);
 
     // 恢复原始 setPendingParallelModelIds，adapter 已读取并行模型 ID
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (store as any).setState({ setPendingParallelModelIds: origSetPending });
 
     const timeout = (config.roundTimeoutMs || 60000) * 2;
@@ -1409,10 +1409,10 @@ async function stepMultiVariant(ctx: StepContext): Promise<StepResult> {
   } finally {
     // 确保 monkey-patch 被恢复（即使在 streaming 前抛错）
     if (store && origSetPending) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const current = store.getState().setPendingParallelModelIds;
       if (current !== origSetPending) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         (store as any).setState({ setPendingParallelModelIds: origSetPending });
       }
     }
@@ -1568,7 +1568,7 @@ export async function cleanupInteractionTestData(
 
   for (const status of ['active', 'archived', 'deleted'] as const) {
     offset = 0;
-    // eslint-disable-next-line no-constant-condition
+
     while (true) {
       const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
         status, limit: PAGE, offset,

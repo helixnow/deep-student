@@ -5,11 +5,17 @@
  * 支持思维导图、逻辑图、组织结构图三种分类
  */
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+import {
+  BACK_PRIORITY,
+  registerBackHandler,
+} from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { PresetRegistry } from '../../registry';
 import { ensureInitialized } from '../../init';
 import type { PresetCategory, IPreset } from '../../registry/types';
@@ -72,17 +78,16 @@ const categoryIds: PresetCategory[] = ['mindmap', 'logic', 'orgchart'];
 
 const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) => {
   const { t } = useTranslation('mindmap');
+  const isMindMapActive = useMindMapIsActive();
   const resolvedName = t(preset.name);
   return (
-    <NotionButton variant="ghost"
+    <DsButton variant="ghost"
       className={cn(
-        'relative w-16 h-12 rounded-lg border-2 transition-all duration-200',
+        'mm-structure-preset',
         'flex items-center justify-center',
-        'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
         isActive
-          ? 'border-primary bg-primary/10 shadow-sm'
-          : 'border-border hover:border-primary/50',
-        !isActive && 'hover:bg-[var(--interactive-hover)]',
+          ? 'is-active'
+          : '',
         preset.locked && 'opacity-60 cursor-not-allowed'
       )}
       onClick={onClick}
@@ -105,18 +110,18 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
 
       {/* 选中标记 */}
       {isActive && (
-        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow-sm">
-          <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+        <div className="mm-structure-check">
+          <Check className="w-3 h-3" strokeWidth={2.5} />
         </div>
       )}
 
       {/* 锁定标记 */}
       {preset.locked && (
-        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-muted-foreground rounded-full flex items-center justify-center shadow-sm">
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-muted-foreground rounded-full flex items-center justify-center">
           <Lock className="w-2.5 h-2.5 text-muted" />
         </div>
       )}
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -133,17 +138,17 @@ const CategorySection: React.FC<{
   if (presets.length === 0) return null;
 
   return (
-    <div className="mb-4 last:mb-0">
+    <div className="mm-structure-section">
       {/* 分类标题 */}
-      <div className="flex items-center gap-2 mb-2.5">
+      <div className="mm-panel-section-label">
         <span className="text-muted-foreground">{category.icon}</span>
-        <h4 className="text-sm font-medium text-muted-foreground">
+        <h4>
           {category.name}
         </h4>
       </div>
 
       {/* 预设网格 */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="mm-structure-grid">
         {presets.map((preset) => (
           <PresetItem
             key={preset.id}
@@ -170,10 +175,14 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
   onOpenChange,
 }) => {
   const { t } = useTranslation('mindmap');
+  const isMindMapActive = useMindMapIsActive();
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  
+  const triggerRef = useRef<HTMLDivElement>(null);
+  // 视口钳位：面板锚定触发按钮时的水平修正量（px）
+  const [clampOffset, setClampOffset] = useState(0);
+  const clampOffsetRef = useRef(0);
+
   // 受控/非受控模式
   const isControlled = controlledOpen !== undefined;
   const isOpen = isControlled ? controlledOpen : internalOpen;
@@ -247,8 +256,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
       if (
         panelRef.current &&
         !panelRef.current.contains(event.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(event.target as Node)
+        !triggerRef.current?.contains(event.target as Node)
       ) {
         setIsOpen(false);
       }
@@ -260,18 +268,59 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     }
   }, [isOpen, setIsOpen]);
 
-  // 处理键盘事件
+  // 处理键盘事件（仅面板打开时挂监听，避免常驻全局 keydown）
   useEffect(() => {
+    if (!isOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
-        setIsOpen(false);
-        triggerRef.current?.focus();
-      }
+      if (event.key !== 'Escape') return;
+      setIsOpen(false);
+      triggerRef.current?.querySelector<HTMLElement>('button')?.focus();
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, setIsOpen]);
+
+  useEffect(() => {
+    if (!isOpen || isInline || !isMindMapActive) return;
+    return registerBackHandler(() => {
+      setIsOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isInline, isMindMapActive, isOpen, setIsOpen]);
+
+  // 视口钳位：锚定面板贴近窗口边缘时向内平移，防止右缘/左缘被裁切
+  // 用独立的 translate 属性修正，避免与 ui-zoom-fade-in 的 transform 动画互相覆盖
+  useLayoutEffect(() => {
+    if (!isOpen || isInline) {
+      clampOffsetRef.current = 0;
+      setClampOffset(0);
+      return;
+    }
+    const measure = () => {
+      const el = panelRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const margin = 8;
+      // 先扣掉上一次修正量，还原面板的自然锚定位置再重新计算
+      const naturalLeft = rect.left - clampOffsetRef.current;
+      const naturalRight = rect.right - clampOffsetRef.current;
+      let next = 0;
+      if (naturalRight > window.innerWidth - margin) {
+        next = window.innerWidth - margin - naturalRight;
+      }
+      if (naturalLeft + next < margin) {
+        next = margin - naturalLeft;
+      }
+      if (next !== clampOffsetRef.current) {
+        clampOffsetRef.current = next;
+        setClampOffset(next);
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isOpen, isInline]);
 
   // 计算面板位置样式
   const getPlacementStyles = () => {
@@ -295,12 +344,12 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     <>
       {/* 标题栏 - inline 模式下隐藏 */}
       {!isInline && (
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-foreground">
+        <div className="mm-panel-heading">
+          <h3>
             {t('selectStructure')}
           </h3>
           {activePreset && (
-            <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+            <span className="mm-panel-current">
               {t(activePreset.name)}
             </span>
           )}
@@ -315,7 +364,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
       )}
 
       {/* 分类列表 */}
-      <div className="space-y-1">
+      <div>
         {categories.map((category) => (
           <CategorySection
             key={category.id}
@@ -328,8 +377,8 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
       </div>
 
       {/* 底部提示 */}
-      <div className="mt-4 pt-3 border-t border-border">
-        <p className="text-xs text-muted-foreground text-center">
+      <div className="mm-panel-hint">
+        <p>
           {t('structure.hint')}
         </p>
       </div>
@@ -346,66 +395,54 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
   }
 
   return (
-    <div className={cn('relative', className)}>
+    <div ref={triggerRef} className={cn('relative', className)}>
       {/* 触发按钮 */}
       {trigger ? (
         <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
       ) : (
-        <NotionButton variant="ghost"
-          ref={triggerRef}
+        <DsButton variant="ghost"
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg',
-            'bg-white dark:bg-gray-800',
-            'border border-gray-200 dark:border-gray-700',
-            'hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]',
-            'hover:border-gray-300 dark:hover:border-gray-600',
-            'transition-all duration-200',
-            'text-sm font-medium text-gray-700 dark:text-gray-200',
-            'focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1',
-            isOpen && 'bg-gray-50 dark:bg-gray-750 border-gray-300 dark:border-gray-600'
+            'flex items-center gap-2 px-2 h-7 rounded',
+            'bg-transparent border border-transparent',
+            'hover:bg-[var(--mm-bg-hover)]',
+            'transition-colors duration-100',
+            'text-sm text-[var(--mm-text-secondary)]',
+            'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-primary)]',
+            isOpen && 'bg-[var(--mm-bg-hover)] text-[var(--mm-text)]'
           )}
           aria-expanded={isOpen}
           aria-haspopup="true"
         >
-          <SquaresFour className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          <SquaresFour className="w-4 h-4 text-[var(--mm-text-muted)]" />
           <span>{t('toolbar.structure')}</span>
           <CaretDown
             className={cn(
-              'w-4 h-4 text-gray-400 transition-transform duration-200',
+              'w-4 h-4 text-[var(--mm-text-muted)] transition-transform duration-150',
               isOpen && 'rotate-180'
             )}
           />
-        </NotionButton>
+        </DsButton>
       )}
 
-      {/* 弹出面板 */}
+      {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}
       {isOpen && (
-        <>
-          {/* 背景遮罩（移动端） */}
-          <div
-            className="fixed inset-0 z-40 bg-black/10 dark:bg-black/20 md:hidden"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* 面板内容 */}
-          <div
-            ref={panelRef}
-            className={cn(
-              'absolute z-50',
-              getPlacementStyles(),
-              'w-[320px] p-4 rounded-xl shadow-lg',
-              'bg-popover border border-border text-popover-foreground',
-              'animate-in fade-in-0 zoom-in-95 duration-200',
-              // 移动端全宽
-              'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'
-            )}
-            role="dialog"
-            aria-label={t('structure.selectorLabel')}
-          >
-            {panelContent}
-          </div>
-        </>
+        <CustomScrollArea
+          ref={panelRef}
+          className={cn(
+            'absolute z-50',
+            getPlacementStyles(),
+            'mm-settings-popover mm-structure-popover',
+            'ui-zoom-fade-in'
+          )}
+          viewportClassName="mm-settings-popover-viewport p-2"
+          style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
+          role="dialog"
+          aria-label={t('structure.selectorLabel')}
+          fullHeight={false}
+        >
+          {panelContent}
+        </CustomScrollArea>
       )}
     </div>
   );

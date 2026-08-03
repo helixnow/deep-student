@@ -113,7 +113,7 @@ const SENSITIVE_KEYS = ['apiKey', 'api_key', 'token', 'password', 'secret', 'aut
 const sanitizeSensitive = (data: any): any => {
   if (typeof data === 'string') {
     // 检查是否像是 API key (长度 > 20 且包含字母数字)
-    if (data.length > 20 && /^[A-Za-z0-9_\-]+$/.test(data)) {
+    if (data.length > 20 && /^[A-Za-z0-9_-]+$/.test(data)) {
       return `${data.slice(0, 6)}***${data.slice(-4)} [已脱敏]`;
     }
     return data;

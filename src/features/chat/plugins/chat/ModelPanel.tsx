@@ -12,7 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Star, PushPin, Sparkle } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -22,6 +22,7 @@ import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPanel';
 import type { ChatStore } from '../../core/types';
 import type { ModelAssignments } from '@/types';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 // ============================================================================
 // 类型
@@ -82,13 +83,18 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
 
   const isInitialLoad = useRef(true);
+  // 加载序号：配置变更事件可能在上一轮加载未完成时触发新一轮，
+  // 旧一轮的响应到达后直接丢弃，避免乱序覆盖新数据
+  const loadSeqRef = useRef(0);
   const loadModels = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     try {
       if (isInitialLoad.current) {
         setLoading(true);
         isInitialLoad.current = false;
       }
       const configs = await invoke<ModelConfig[]>('get_api_configurations');
+      if (seq !== loadSeqRef.current) return;
       const chatModels = (configs || []).filter((c) => {
         const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
         const isReranker = c.isReranker === true || c.is_reranker === true;
@@ -99,6 +105,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
 
       try {
         const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
+        if (seq !== loadSeqRef.current) return;
         const orderMap = new Map<string, number>();
         const nameMap = new Map<string, string>();
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
@@ -117,21 +124,24 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         setVendorOrderMap(orderMap);
         setVendorNameMap(nameMap);
       } catch {
-        setVendorOrderMap(new Map());
-        setVendorNameMap(new Map());
+        if (seq === loadSeqRef.current) {
+          setVendorOrderMap(new Map());
+          setVendorNameMap(new Map());
+        }
       }
 
       try {
         const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
+        if (seq !== loadSeqRef.current) return;
         setDefaultModelId(assignments?.['model2_config_id'] || null);
       } catch {
-        setDefaultModelId(null);
+        if (seq === loadSeqRef.current) setDefaultModelId(null);
       }
     } catch (error: unknown) {
       console.error('[ModelPanel] Failed to load models:', error);
-      setModels([]);
+      if (seq === loadSeqRef.current) setModels([]);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, []);
 
@@ -285,9 +295,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const subtitle = t('chat_host:model_panel.subtitle');
 
   const openModelSettings = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
     window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'models' } }));
+      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'models' });
     }, 120);
     onClose();
   }, [onClose]);
@@ -340,9 +350,10 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
               <span className="truncate text-sm font-medium">{option.name}</span>
               {option.id === defaultModelId ? (
                 <CommonTooltip content={systemBadgeTooltip} position="top">
+                  {/* 移动端也常显（原 hidden sm:inline-flex 在 <640 隐藏，用户看不到系统默认标记） */}
                   <Badge
                     variant="outline"
-                    className="hidden h-4 px-1 py-0 text-[10px] font-medium shrink-0 cursor-help border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] sm:inline-flex"
+                    className="inline-flex h-4 px-1 py-0 text-2xs font-medium shrink-0 cursor-help border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]"
                   >
                     {systemBadge}
                   </Badge>
@@ -366,7 +377,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   };
 
   return (
-    <ComposerPanel.Root>
+    // fillHeight：移动端内联面板（heightMode='available'）给定固定高度，
+    // Root 需撑满才能让内部 flex-1 滚动区生效（与 McpPanel/SkillSelector 对齐）
+    <ComposerPanel.Root fillHeight>
       <ComposerPanel.Header
         icon={Sparkle}
         title={t('chat_host:model_panel.title')}
@@ -383,16 +396,16 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       />
 
       {!defaultModelId && !loading && (
-        <div className="rounded-md border border-amber-300/70 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+        <div className="rounded-md border border-warning/70 bg-warning/10 px-3 py-2 text-xs text-warning">
           <div>{t('chat_host:model_panel.missing_default_hint')}</div>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="mt-2 h-7 px-2 text-xs"
             onClick={openModelSettings}
           >
             {t('chat_host:model_panel.go_config_model2')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -436,7 +449,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
 
       {selectedModelId && selectedModelId !== defaultModelId && (
         <ComposerPanel.Footer divided>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="w-full justify-center gap-2 text-xs"
@@ -447,7 +460,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
             {savingDefault
               ? t('common:saving')
               : t('chat_host:model_panel.set_as_default')}
-          </NotionButton>
+          </DsButton>
         </ComposerPanel.Footer>
       )}
     </ComposerPanel.Root>

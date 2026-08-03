@@ -1,7 +1,10 @@
 import React from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { WarningCircle } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import i18n from '@/i18n';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { getErrorMessage } from '@/utils/errorUtils';
+import { reportFrontendError } from '@/logging/errorReporter';
 
 const SHOW_DEV_ERROR_DETAILS = import.meta.env.DEV;
 
@@ -71,10 +74,13 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       void stateError;
     }
     try {
-      // Reuse existing debug bus if available
-      (window as any)?.emitDebug?.({ channel: 'error', eventName: 'error_boundary', payload: { name: this.props.name, error: String(error), info } });
-    } catch (emitError) {
-      void emitError;
+      void reportFrontendError(error, {
+        kind: 'REACT_ERROR_BOUNDARY',
+        component: this.props.name ?? 'unknown',
+        extra: { componentStack: info?.componentStack },
+      }).catch(() => undefined);
+    } catch {
+      // 错误边界本身必须保持无抛出。
     }
     try {
       this.props.onError?.(error, info);
@@ -94,16 +100,19 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           ? this.state.error.name
           : 'Error';
       const errorMessage =
-        typeof this.state.error?.message === 'string' && this.state.error.message.length > 0
-          ? this.state.error.message
-          : String(this.state.error ?? '');
+        getErrorMessage(this.state.error);
       const shouldShowDetails = SHOW_DEV_ERROR_DETAILS && this.props.name === 'chat-v2';
 
       return this.props.fallback ?? (
         <div className="flex flex-col items-center justify-center p-8 text-center">
-          <div className="text-destructive text-lg mb-2">⚠️</div>
+          <div
+            aria-hidden
+            className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10"
+          >
+            <WarningCircle size={22} weight="duotone" className="text-destructive/80" />
+          </div>
           <p className="text-sm text-muted-foreground mb-3">
-            {i18n.t('common:errorBoundary.title', 'Something went wrong')}
+            {i18n.t('common:error_boundary.title', 'Application encountered a critical error')}
           </p>
           {shouldShowDetails && (
             <div className="mb-3 w-full max-w-xl rounded-xl border border-[color:var(--shell-inspector-border)] bg-[color:var(--shell-inspector-panel)] px-3 py-2 text-left">
@@ -111,16 +120,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 {`${errorName}: ${errorMessage || 'Unknown error'}`}
               </p>
               <div className="mt-2 flex justify-end">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={this.handleCopyError}
                   className={this.state.copied ? 'text-[color:var(--success)] hover:text-[color:var(--success)]' : 'text-xs'}
                 >
                   {this.state.copied
-                    ? i18n.t('common:error_boundary.copied', '已复制')
-                    : i18n.t('common:error_boundary.copy_error', '复制错误日志')}
-                </NotionButton>
+                    ? i18n.t('common:error_boundary.copied', 'Copied')
+                    : i18n.t('common:error_boundary.copy_error', 'Copy Error Log')}
+                </DsButton>
               </div>
               {this.state.componentStack && (
                 <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-muted-foreground">
@@ -129,9 +138,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               )}
             </div>
           )}
-          <NotionButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 bg-primary text-primary-foreground hover:opacity-90">
-            {i18n.t('common:errorBoundary.retry', 'Try again')}
-          </NotionButton>
+          <DsButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 bg-primary text-primary-foreground hover:opacity-90">
+            {i18n.t('common:error_boundary.refresh', 'Refresh Page')}
+          </DsButton>
         </div>
       );
     }

@@ -78,6 +78,208 @@ fn default_bbox() -> [f64; 4] {
 }
 
 // ============================================================================
+// ★ P1-3 修复：DOCX 直提路径的图片请求预算
+//
+// 此前 extract_docx_questions_stream 把全部原始图片（不压缩、无上限）
+// 塞进单次 VLM 请求，几十张手机照片即产生数十 MB 请求体（413/超时），
+// 且每次重试完整重传。以下限制对齐考卷分割路径
+// （llm_manager::EXAM_SEGMENT_MAX_IMAGE_BYTES / EXAM_SEGMENT_MAX_DIMENSION /
+//  EXAM_SEGMENT_MAX_PAGES，私有常量故在此镜像）。
+// ============================================================================
+
+/// 单图字节上限（超过则缩放 + JPEG 重编码），对齐 EXAM_SEGMENT_MAX_IMAGE_BYTES
+const DOCX_VLM_MAX_IMAGE_BYTES: usize = 1_500_000;
+/// 单张源图片最大解码字节数，避免超大 data URL 在图片库内造成资源耗尽
+const DOCX_VLM_MAX_SOURCE_IMAGE_BYTES: usize = 50 * 1024 * 1024;
+/// 单张源图片最大像素数，限制解码后的最坏内存占用
+const DOCX_VLM_MAX_SOURCE_PIXELS: u64 = 64_000_000;
+/// 压缩时的最长边上限，对齐 EXAM_SEGMENT_MAX_DIMENSION
+const DOCX_VLM_MAX_DIMENSION: u32 = 1_600;
+/// 单次请求最多附带的图片数，对齐 EXAM_SEGMENT_MAX_PAGES
+const DOCX_VLM_MAX_IMAGES: usize = 36;
+/// DOCX VLM SSE 响应的原始字节硬上限。32K 输出 token 的正常响应远低于此值；
+/// 该预算用于阻断异常上游无限发送 SSE 注释、空事件或超长 JSON。
+const DOCX_VLM_MAX_STREAM_BYTES: usize = 16 * 1024 * 1024;
+/// 流连接建立后，连续无任何字节到达的最长等待时间。
+const DOCX_VLM_STREAM_IDLE_TIMEOUT_SECS: u64 = 120;
+
+fn account_docx_vlm_stream_bytes(total: &mut usize, incoming: usize) -> Result<(), AppError> {
+    *total = total
+        .checked_add(incoming)
+        .filter(|next| *next <= DOCX_VLM_MAX_STREAM_BYTES)
+        .ok_or_else(|| {
+            AppError::llm(format!(
+                "VLM DOCX 流式响应超过 {}MB 安全上限",
+                DOCX_VLM_MAX_STREAM_BYTES / (1024 * 1024)
+            ))
+        })?;
+    Ok(())
+}
+/// 单次请求中图片原始字节总预算（base64 后约 32MB）
+const DOCX_VLM_MAX_TOTAL_IMAGE_BYTES: usize = 24 * 1024 * 1024;
+
+#[derive(Debug)]
+struct PreparedDocxImage {
+    data_url: String,
+    source_index: usize,
+    byte_len: usize,
+}
+
+#[derive(Debug, Default)]
+struct PreparedDocxImages {
+    images: Vec<PreparedDocxImage>,
+    rejected: Vec<(usize, String)>,
+    omitted_by_count: usize,
+    total_bytes: usize,
+}
+
+fn base64_decoded_len_upper_bound(encoded_len: usize) -> Option<usize> {
+    encoded_len.checked_add(3)?.checked_div(4)?.checked_mul(3)
+}
+
+/// 验证并压缩单张 data URL。任何检查或压缩失败都返回错误，调用方会记录并省略该图，
+/// 不允许把无法确认大小/格式的原始内容继续放入 VLM 请求。
+fn prepare_docx_image(data_url: String, source_index: usize) -> Result<PreparedDocxImage, String> {
+    let (header, payload) = data_url
+        .split_once(',')
+        .ok_or_else(|| "缺少 data URL 分隔符".to_string())?;
+    if !header.starts_with("data:image/") || !header.contains(";base64") {
+        return Err("不是受支持的 base64 图片 data URL".to_string());
+    }
+
+    let payload = payload.trim();
+    let decoded_upper_bound = base64_decoded_len_upper_bound(payload.len())
+        .ok_or_else(|| "base64 长度溢出".to_string())?;
+    if decoded_upper_bound > DOCX_VLM_MAX_SOURCE_IMAGE_BYTES {
+        return Err(format!(
+            "源图片可能超过 {}MB 上限",
+            DOCX_VLM_MAX_SOURCE_IMAGE_BYTES / (1024 * 1024)
+        ));
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|e| format!("base64 解码失败: {}", e))?;
+    if bytes.is_empty() {
+        return Err("图片内容为空".to_string());
+    }
+    if bytes.len() > DOCX_VLM_MAX_SOURCE_IMAGE_BYTES {
+        return Err(format!(
+            "源图片超过 {}MB 上限",
+            DOCX_VLM_MAX_SOURCE_IMAGE_BYTES / (1024 * 1024)
+        ));
+    }
+
+    let (width, height) = image::io::Reader::new(std::io::Cursor::new(&bytes))
+        .with_guessed_format()
+        .map_err(|e| format!("无法识别图片格式: {}", e))?
+        .into_dimensions()
+        .map_err(|e| format!("无法读取图片尺寸: {}", e))?;
+    let pixels = u64::from(width)
+        .checked_mul(u64::from(height))
+        .ok_or_else(|| "图片像素数溢出".to_string())?;
+    if width == 0 || height == 0 || pixels > DOCX_VLM_MAX_SOURCE_PIXELS {
+        return Err(format!("图片尺寸 {}x{} 超出安全上限", width, height));
+    }
+
+    if bytes.len() <= DOCX_VLM_MAX_IMAGE_BYTES
+        && width <= DOCX_VLM_MAX_DIMENSION
+        && height <= DOCX_VLM_MAX_DIMENSION
+    {
+        return Ok(PreparedDocxImage {
+            data_url,
+            source_index,
+            byte_len: bytes.len(),
+        });
+    }
+
+    let image = image::load_from_memory(&bytes).map_err(|e| format!("图片解码失败: {}", e))?;
+    let resized = image.resize(
+        DOCX_VLM_MAX_DIMENSION,
+        DOCX_VLM_MAX_DIMENSION,
+        image::imageops::FilterType::Triangle,
+    );
+
+    for quality in [85, 75, 65, 55] {
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        resized
+            .write_to(&mut cursor, image::ImageOutputFormat::Jpeg(quality))
+            .map_err(|e| format!("JPEG 压缩失败: {}", e))?;
+        let out = cursor.into_inner();
+        if out.len() <= DOCX_VLM_MAX_IMAGE_BYTES {
+            info!(
+                "[VLM-Grounding] DOCX 图片压缩: {:.1}MB -> {:.1}MB (quality={})",
+                bytes.len() as f64 / (1024.0 * 1024.0),
+                out.len() as f64 / (1024.0 * 1024.0),
+                quality
+            );
+            return Ok(PreparedDocxImage {
+                data_url: format!(
+                    "data:image/jpeg;base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(&out)
+                ),
+                source_index,
+                byte_len: out.len(),
+            });
+        }
+    }
+
+    Err(format!(
+        "压缩后仍超过 {}KB 上限",
+        DOCX_VLM_MAX_IMAGE_BYTES / 1024
+    ))
+}
+
+fn prepare_docx_images(
+    candidate_urls: Vec<String>,
+    total_input_count: usize,
+) -> PreparedDocxImages {
+    let mut prepared = PreparedDocxImages {
+        omitted_by_count: total_input_count.saturating_sub(candidate_urls.len()),
+        ..PreparedDocxImages::default()
+    };
+
+    for (source_index, data_url) in candidate_urls.into_iter().enumerate() {
+        match prepare_docx_image(data_url, source_index) {
+            Ok(image) => {
+                let Some(next_total) = prepared.total_bytes.checked_add(image.byte_len) else {
+                    prepared
+                        .rejected
+                        .push((source_index, "图片总字节数溢出".to_string()));
+                    continue;
+                };
+                if next_total > DOCX_VLM_MAX_TOTAL_IMAGE_BYTES {
+                    prepared.rejected.push((
+                        source_index,
+                        format!(
+                            "加入后超过整批 {}MB 图片预算",
+                            DOCX_VLM_MAX_TOTAL_IMAGE_BYTES / (1024 * 1024)
+                        ),
+                    ));
+                    continue;
+                }
+                prepared.total_bytes = next_total;
+                prepared.images.push(image);
+            }
+            Err(reason) => prepared.rejected.push((source_index, reason)),
+        }
+    }
+
+    prepared
+}
+
+fn remap_docx_question_image_indices(
+    question: &mut VlmExtractedQuestion,
+    source_indices: &[usize],
+) {
+    question.image_indices = question
+        .image_indices
+        .iter()
+        .filter_map(|prepared_index| source_indices.get(*prepared_index).copied())
+        .collect();
+}
+
+// ============================================================================
 // DOCX 图文混合 VLM 直提类型
 // ============================================================================
 
@@ -197,9 +399,17 @@ impl VlmGroundingService {
 
         let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = provider
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("VLM 请求构建失败: {:?}", e)))?;
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                provider.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "VLM 请求构建失败",
+            )
+            .await?;
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(180))
@@ -220,26 +430,41 @@ impl VlmGroundingService {
                 tokio::time::sleep(delay).await;
             }
 
-            let mut rb = client.post(&preq.url);
-            for (k, v) in preq.headers.iter() {
-                rb = rb.header(k.as_str(), v.as_str());
-            }
-
             if attempt == 0 {
+                // 🔒 URL query 可能含 API key（Gemini ?key=...），日志脱敏
                 info!(
                     "[VLM-Grounding] 发送分析请求: model={}, url={}",
-                    config.model, preq.url
+                    config.model,
+                    crate::llm_manager::sanitize_url_for_log(&preq.url)
                 );
             }
 
-            let response = match rb.json(&preq.body).send().await {
+            let response_result = if preq.is_codex() {
+                self.llm_manager
+                    .send_codex_request_with_single_refresh(
+                        &mut preq,
+                        Some(std::time::Duration::from_secs(180)),
+                    )
+                    .await
+            } else {
+                let mut rb = client.post(&preq.url);
+                for (k, v) in &preq.headers {
+                    rb = rb.header(k, v);
+                }
+                rb.json(&preq.body)
+                    .send()
+                    .await
+                    .map_err(|e| AppError::network(format!("VLM 请求失败: {}", e)))
+            };
+
+            let response = match response_result {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = format!("VLM 请求失败: {}", e);
+                    last_error = e.to_string();
                     if attempt < MAX_RETRIES {
                         continue;
                     }
-                    return Err(AppError::network(last_error));
+                    return Err(e);
                 }
             };
 
@@ -350,25 +575,40 @@ impl VlmGroundingService {
 
         let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = provider
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("VLM 图片描述请求构建失败: {:?}", e)))?;
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                provider.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "VLM 图片描述请求构建失败",
+            )
+            .await?;
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(|e| AppError::internal(format!("创建 HTTP 客户端失败: {}", e)))?;
 
-        let mut rb = client.post(&preq.url);
-        for (k, v) in preq.headers.iter() {
-            rb = rb.header(k.as_str(), v.as_str());
-        }
-
-        let response = rb
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("VLM 图片描述请求失败: {}", e)))?;
+        let response = if preq.is_codex() {
+            self.llm_manager
+                .send_codex_request_with_single_refresh(
+                    &mut preq,
+                    Some(std::time::Duration::from_secs(120)),
+                )
+                .await?
+        } else {
+            let mut rb = client.post(&preq.url);
+            for (k, v) in &preq.headers {
+                rb = rb.header(k, v);
+            }
+            rb.json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::network(format!("VLM 图片描述请求失败: {}", e)))?
+        };
 
         let status = response.status();
         let body = response
@@ -418,10 +658,103 @@ impl VlmGroundingService {
             .llm_manager
             .decrypt_api_key_if_needed(&config.api_key)?;
 
-        // 构建多图 + 文本的 content 数组
-        let mut content_parts: Vec<Value> = Vec::with_capacity(image_data_urls.len() + 1);
+        // 按数量预算逐张进入 blocking 线程。每轮只克隆一张已通过编码长度预检的图片，
+        // 避免先复制 36 个大 data URL 形成数 GB 瞬时峰值。
+        let total_input_count = image_data_urls.len();
+        let mut prepared = PreparedDocxImages {
+            omitted_by_count: total_input_count.saturating_sub(DOCX_VLM_MAX_IMAGES),
+            ..PreparedDocxImages::default()
+        };
+        for (source_index, data_url) in image_data_urls.iter().take(DOCX_VLM_MAX_IMAGES).enumerate()
+        {
+            let payload = match data_url.split_once(',') {
+                Some((_, payload)) => payload.trim(),
+                None => {
+                    prepared
+                        .rejected
+                        .push((source_index, "缺少 data URL 分隔符".to_string()));
+                    continue;
+                }
+            };
+            let decoded_upper_bound = match base64_decoded_len_upper_bound(payload.len()) {
+                Some(size) => size,
+                None => {
+                    prepared
+                        .rejected
+                        .push((source_index, "base64 长度溢出".to_string()));
+                    continue;
+                }
+            };
+            if decoded_upper_bound > DOCX_VLM_MAX_SOURCE_IMAGE_BYTES {
+                prepared.rejected.push((
+                    source_index,
+                    format!(
+                        "源图片可能超过 {}MB 上限",
+                        DOCX_VLM_MAX_SOURCE_IMAGE_BYTES / (1024 * 1024)
+                    ),
+                ));
+                continue;
+            }
 
-        for (idx, url) in image_data_urls.iter().enumerate() {
+            let owned_data_url = data_url.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                prepare_docx_image(owned_data_url, source_index)
+            })
+            .await
+            .map_err(|e| AppError::internal(format!("图片压缩任务失败: {}", e)))?;
+            match result {
+                Ok(image) => {
+                    let Some(next_total) = prepared.total_bytes.checked_add(image.byte_len) else {
+                        prepared
+                            .rejected
+                            .push((source_index, "图片总字节数溢出".to_string()));
+                        continue;
+                    };
+                    if next_total > DOCX_VLM_MAX_TOTAL_IMAGE_BYTES {
+                        prepared.rejected.push((
+                            source_index,
+                            format!(
+                                "加入后超过整批 {}MB 图片预算",
+                                DOCX_VLM_MAX_TOTAL_IMAGE_BYTES / (1024 * 1024)
+                            ),
+                        ));
+                        continue;
+                    }
+                    prepared.total_bytes = next_total;
+                    prepared.images.push(image);
+                }
+                Err(reason) => prepared.rejected.push((source_index, reason)),
+            }
+        }
+
+        for (source_index, reason) in &prepared.rejected {
+            warn!(
+                "[VLM-Grounding] 省略 DOCX 图片 {}: {}",
+                source_index, reason
+            );
+        }
+        if prepared.omitted_by_count > 0 {
+            warn!(
+                "[VLM-Grounding] DOCX 图片数 {} 超过单请求上限 {}，未处理后续 {} 张图片",
+                total_input_count, DOCX_VLM_MAX_IMAGES, prepared.omitted_by_count
+            );
+        }
+        if prepared.images.is_empty() {
+            return Err(AppError::validation(
+                "DOCX 中没有通过安全检查且可发送给 VLM 的图片",
+            ));
+        }
+
+        let source_indices: Vec<usize> = prepared
+            .images
+            .iter()
+            .map(|image| image.source_index)
+            .collect();
+
+        // 构建多图 + 文本的 content 数组
+        let mut content_parts: Vec<Value> = Vec::with_capacity(prepared.images.len() * 2 + 2);
+
+        for (idx, image) in prepared.images.iter().enumerate() {
             // 在每张图片前加文本标注，帮助 VLM 建立索引
             content_parts.push(json!({
                 "type": "text",
@@ -429,12 +762,24 @@ impl VlmGroundingService {
             }));
             content_parts.push(json!({
                 "type": "image_url",
-                "image_url": { "url": url, "detail": "high" }
+                "image_url": { "url": image.data_url, "detail": "high" }
+            }));
+        }
+
+        let omitted_total = prepared.rejected.len() + prepared.omitted_by_count;
+        if omitted_total > 0 {
+            content_parts.push(json!({
+                "type": "text",
+                "text": format!(
+                    "注意：原文共有 {} 张嵌入图片，其中 {} 张因安全或请求预算未附带；请勿臆测未显示图片的内容。",
+                    total_input_count,
+                    omitted_total
+                )
             }));
         }
 
         // 构建提取指令
-        let prompt = Self::build_docx_extraction_prompt(image_data_urls.len(), extracted_text);
+        let prompt = Self::build_docx_extraction_prompt(prepared.images.len(), extracted_text);
         content_parts.push(json!({
             "type": "text",
             "text": prompt
@@ -474,9 +819,17 @@ impl VlmGroundingService {
 
         let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = provider
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("VLM DOCX 提取请求构建失败: {:?}", e)))?;
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                provider.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "VLM DOCX 提取请求构建失败",
+            )
+            .await?;
 
         // 流式请求不设全局 timeout，改用 connect timeout + 读 chunk 超时
         let client = reqwest::Client::builder()
@@ -485,10 +838,12 @@ impl VlmGroundingService {
             .map_err(|e| AppError::internal(format!("创建 HTTP 客户端失败: {}", e)))?;
 
         info!(
-            "[VLM-Grounding] DOCX 图文提取 (streaming): {} 张图片, model={}, url={}",
-            image_data_urls.len(),
+            "[VLM-Grounding] DOCX 图文提取 (streaming): {}/{} 张图片, {} bytes, model={}, url={}",
+            prepared.images.len(),
+            total_input_count,
+            prepared.total_bytes,
             config.model,
-            preq.url
+            crate::llm_manager::sanitize_url_for_log(&preq.url)
         );
 
         const MAX_RETRIES: u32 = 2;
@@ -505,19 +860,29 @@ impl VlmGroundingService {
                 tokio::time::sleep(delay).await;
             }
 
-            let mut rb = client.post(&preq.url);
-            for (k, v) in preq.headers.iter() {
-                rb = rb.header(k.as_str(), v.as_str());
-            }
+            let response_result = if preq.is_codex() {
+                self.llm_manager
+                    .send_codex_stream_request_with_single_refresh(&mut preq, None)
+                    .await
+            } else {
+                let mut rb = client.post(&preq.url);
+                for (k, v) in &preq.headers {
+                    rb = rb.header(k, v);
+                }
+                rb.json(&preq.body)
+                    .send()
+                    .await
+                    .map_err(|e| AppError::network(format!("VLM DOCX 提取请求失败: {}", e)))
+            };
 
-            let response = match rb.json(&preq.body).send().await {
+            let response = match response_result {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = format!("VLM DOCX 提取请求失败: {}", e);
+                    last_error = e.to_string();
                     if attempt < MAX_RETRIES {
                         continue;
                     }
-                    return Err(AppError::network(last_error));
+                    return Err(e);
                 }
             };
 
@@ -546,25 +911,44 @@ impl VlmGroundingService {
             // ===== SSE 流式读取 + 增量 JSON 解析 =====
             use futures_util::StreamExt;
             let mut stream = response.bytes_stream();
-            let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
+            let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
             let mut json_parser = crate::llm_manager::IncrementalJsonArrayParser::new();
             let mut full_content = String::new();
             let mut stream_ended = false;
             let mut chunk_count: usize = 0;
             let mut question_count: usize = 0;
             let mut aborted = false;
+            let mut response_bytes = 0usize;
+            let mut stream_idle_timed_out = false;
 
-            while let Some(chunk_result) = stream.next().await {
+            loop {
+                let chunk_result = match tokio::time::timeout(
+                    std::time::Duration::from_secs(DOCX_VLM_STREAM_IDLE_TIMEOUT_SECS),
+                    stream.next(),
+                )
+                .await
+                {
+                    Ok(Some(result)) => result,
+                    Ok(None) => break,
+                    Err(_) => {
+                        last_error = format!(
+                            "VLM DOCX 流式响应空闲超过 {} 秒",
+                            DOCX_VLM_STREAM_IDLE_TIMEOUT_SECS
+                        );
+                        stream_idle_timed_out = true;
+                        warn!("[VLM-Grounding] {}", last_error);
+                        break;
+                    }
+                };
+
                 if aborted {
                     break;
                 }
                 match chunk_result {
                     Ok(chunk) => {
-                        let chunk_str = String::from_utf8_lossy(&chunk);
-                        let complete_lines = sse_buffer.process_chunk(&chunk_str);
-
-                        for line in complete_lines {
-                            if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+                        account_docx_vlm_stream_bytes(&mut response_bytes, chunk.len())?;
+                        for line in sse_buffer.process_bytes(&chunk) {
+                            if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
                                 stream_ended = true;
                                 break;
                             }
@@ -578,11 +962,15 @@ impl VlmGroundingService {
                                         // 增量解析：每个 SSE token 喂给 JSON 解析器
                                         if let Some(objects) = json_parser.feed(&content) {
                                             for obj in objects {
-                                                if let Ok(vq) =
+                                                if let Ok(mut vq) =
                                                     serde_json::from_value::<VlmExtractedQuestion>(
                                                         obj,
                                                     )
                                                 {
+                                                    remap_docx_question_image_indices(
+                                                        &mut vq,
+                                                        &source_indices,
+                                                    );
                                                     question_count += 1;
                                                     if !on_question(vq) {
                                                         aborted = true;
@@ -592,7 +980,7 @@ impl VlmGroundingService {
                                             }
                                         }
 
-                                        if chunk_count % 50 == 0 {
+                                        if chunk_count.is_multiple_of(50) {
                                             info!(
                                                 "[VLM-Grounding] DOCX 流式进度: {} chunks, {} 字符, {} 题",
                                                 chunk_count,
@@ -639,19 +1027,50 @@ impl VlmGroundingService {
                 }
             }
 
-            // 处理 SSE 缓冲器和 JSON 解析器中的剩余数据
-            if let Some(remaining) = sse_buffer.flush() {
+            if aborted {
+                info!(
+                    "[VLM-Grounding] DOCX 提取回调请求停止，已在 {} 道题后终止",
+                    question_count
+                );
+                return Ok(question_count);
+            }
+
+            // 尚未向调用方交付任何题目时可以安全重试；一旦已经回调题目，
+            // 为避免重复保存，只返回已完成的部分结果。
+            if stream_idle_timed_out {
+                if question_count > 0 {
+                    warn!(
+                        "[VLM-Grounding] 流空闲超时，保留已提取的 {} 道题目",
+                        question_count
+                    );
+                    return Ok(question_count);
+                }
+                if attempt < MAX_RETRIES {
+                    continue;
+                }
+                return Err(AppError::network(last_error));
+            }
+
+            // 处理自然关闭且没有空行分隔符的最后一个 SSE 事件。
+            for remaining in sse_buffer.flush() {
                 if !remaining.trim().is_empty() {
+                    if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&remaining) {
+                        break;
+                    }
                     let events = provider.parse_stream(&remaining);
                     for event in events {
                         if let crate::providers::StreamEvent::ContentChunk(content) = event {
+                            full_content.push_str(&content);
                             if let Some(objects) = json_parser.feed(&content) {
                                 for obj in objects {
-                                    if let Ok(vq) =
+                                    if let Ok(mut vq) =
                                         serde_json::from_value::<VlmExtractedQuestion>(obj)
                                     {
+                                        remap_docx_question_image_indices(&mut vq, &source_indices);
                                         question_count += 1;
-                                        let _ = on_question(vq);
+                                        if !on_question(vq) {
+                                            return Ok(question_count);
+                                        }
                                     }
                                 }
                             }
@@ -663,9 +1082,12 @@ impl VlmGroundingService {
             // finalize: 处理 JSON 解析器缓冲区中可能的不完整对象
             if let Some(objects) = json_parser.finalize() {
                 for obj in objects {
-                    if let Ok(vq) = serde_json::from_value::<VlmExtractedQuestion>(obj) {
+                    if let Ok(mut vq) = serde_json::from_value::<VlmExtractedQuestion>(obj) {
+                        remap_docx_question_image_indices(&mut vq, &source_indices);
                         question_count += 1;
-                        let _ = on_question(vq);
+                        if !on_question(vq) {
+                            return Ok(question_count);
+                        }
                     }
                 }
             }
@@ -686,7 +1108,8 @@ impl VlmGroundingService {
                 );
                 match Self::parse_docx_extraction_response(&full_content) {
                     Ok(questions) => {
-                        for vq in questions {
+                        for mut vq in questions {
+                            remap_docx_question_image_indices(&mut vq, &source_indices);
                             question_count += 1;
                             if !on_question(vq) {
                                 break;
@@ -1192,6 +1615,18 @@ fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
 mod tests {
     use super::*;
 
+    fn png_data_url(width: u32, height: u32) -> String {
+        let image = image::RgbImage::new(width, height);
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image)
+            .write_to(&mut cursor, image::ImageOutputFormat::Png)
+            .unwrap();
+        format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(cursor.into_inner())
+        )
+    }
+
     #[test]
     fn test_truncate_utf8_ascii() {
         assert_eq!(truncate_utf8("hello", 10), "hello");
@@ -1209,6 +1644,73 @@ mod tests {
         assert_eq!(truncate_utf8(s, 9), "错误信");
         assert_eq!(truncate_utf8(s, 8), "错误"); // 回退到 6
         assert_eq!(truncate_utf8(s, 2), "");
+    }
+
+    #[test]
+    fn test_docx_vlm_stream_budget_rejects_limit_and_integer_overflow() {
+        let mut total = DOCX_VLM_MAX_STREAM_BYTES - 1;
+        account_docx_vlm_stream_bytes(&mut total, 1).unwrap();
+        assert_eq!(total, DOCX_VLM_MAX_STREAM_BYTES);
+        assert!(account_docx_vlm_stream_bytes(&mut total, 1).is_err());
+
+        let mut overflow = usize::MAX;
+        assert!(account_docx_vlm_stream_bytes(&mut overflow, 1).is_err());
+    }
+
+    #[test]
+    fn test_prepare_docx_image_fails_closed_for_malformed_input() {
+        assert!(prepare_docx_image("not-a-data-url".to_string(), 0).is_err());
+        assert!(prepare_docx_image("data:text/plain;base64,SGVsbG8=".to_string(), 0).is_err());
+        assert!(prepare_docx_image("data:image/png;base64,!!!".to_string(), 0).is_err());
+    }
+
+    #[test]
+    fn test_prepare_docx_image_resizes_and_enforces_hard_output_limit() {
+        let prepared = prepare_docx_image(png_data_url(2_000, 100), 7).unwrap();
+        assert_eq!(prepared.source_index, 7);
+        assert!(prepared.byte_len <= DOCX_VLM_MAX_IMAGE_BYTES);
+        assert!(prepared.data_url.starts_with("data:image/jpeg;base64,"));
+
+        let (_, payload) = prepared.data_url.split_once(',').unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(payload)
+            .unwrap();
+        let (width, height) = image::io::Reader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .unwrap()
+            .into_dimensions()
+            .unwrap();
+        assert!(width <= DOCX_VLM_MAX_DIMENSION);
+        assert!(height <= DOCX_VLM_MAX_DIMENSION);
+    }
+
+    #[test]
+    fn test_prepare_docx_images_applies_count_budget_before_processing() {
+        let valid = png_data_url(1, 1);
+        let candidates = vec![valid; DOCX_VLM_MAX_IMAGES];
+        let prepared = prepare_docx_images(candidates, DOCX_VLM_MAX_IMAGES + 1);
+
+        assert_eq!(prepared.images.len(), DOCX_VLM_MAX_IMAGES);
+        assert_eq!(prepared.omitted_by_count, 1);
+        assert!(prepared.rejected.is_empty());
+        assert!(prepared.total_bytes <= DOCX_VLM_MAX_TOTAL_IMAGE_BYTES);
+    }
+
+    #[test]
+    fn test_remap_docx_question_image_indices_drops_invalid_entries() {
+        let mut question = VlmExtractedQuestion {
+            content: String::new(),
+            question_type: String::new(),
+            options: Vec::new(),
+            answer: String::new(),
+            explanation: String::new(),
+            image_indices: vec![0, 2, 99],
+            difficulty: String::new(),
+            tags: Vec::new(),
+        };
+
+        remap_docx_question_image_indices(&mut question, &[3, 8, 12]);
+        assert_eq!(question.image_indices, vec![3, 12]);
     }
 
     #[test]
@@ -1236,8 +1738,7 @@ mod tests {
         let bytes = buf.into_inner();
 
         // 颠倒坐标 + 超出 0-1 范围都应被归一化处理
-        let result =
-            VlmGroundingService::crop_figure_from_page(&bytes, &[0.9, 1.5, 0.1, -0.2]);
+        let result = VlmGroundingService::crop_figure_from_page(&bytes, &[0.9, 1.5, 0.1, -0.2]);
         assert!(result.is_ok());
     }
 }

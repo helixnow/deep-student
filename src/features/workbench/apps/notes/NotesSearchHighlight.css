@@ -1,0 +1,91 @@
+/* Keyword highlight + active tag bar for NotesSearchOverlay (owned by A13). */
+
+.nso-hl {
+  background: hsl(var(--primary) / 22%);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+:is(.dark, [data-theme='dark']) .nso-hl {
+  background: hsl(var(--primary) / 34%);
+}
+
+.notes-search-overlay-active-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.notes-search-overlay-active-tags-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  margin-right: 2px;
+}
+
+.notes-search-overlay-active-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid hsl(var(--primary) / 35%);
+  background: hsl(var(--primary) / 12%);
+  color: hsl(var(--foreground));
+  border-radius: 999px;
+  padding: 2px 4px 2px 10px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.notes-search-overlay-active-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.notes-search-overlay-active-tag-remove:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.notes-search-overlay-active-tag-remove:focus-visible {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* 长标签名截断，胶囊不撑破一行 */
+.notes-search-overlay-active-tag {
+  max-width: 100%;
+}
+
+.notes-search-overlay-active-tag-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-search-overlay-active-tag-remove {
+    transition: none;
+  }
+}

@@ -11,7 +11,7 @@ describe('chat v2 send button contract', () => {
     expect(packageSource).toContain('"@phosphor-icons/react": "^2.1.10"');
     expect(inputBarSource).toMatch(/from ['"]@phosphor-icons\/react['"]/);
     expect(inputBarSource).toContain('ArrowUp');
-    expect(inputBarSource).toContain("const studyUiSendButtonAriaLabel = '发送消息';");
+    expect(inputBarSource).toContain("const studyUiSendButtonAriaLabel = t('chatV2:inputBar.sendMessage');");
     expect(inputBarSource).toContain('<ArrowUp size={16} weight="bold" />');
     expect(inputBarSource).toContain('aria-label={studyUiSendButtonAriaLabel}');
     expect(inputBarSource).not.toContain('<Send size={16} strokeWidth={2.2} />');
@@ -21,7 +21,7 @@ describe('chat v2 send button contract', () => {
 
   it('uses the study-ui button shell with black filled active and stop states', () => {
     const stopButtonStart = inputBarSource.indexOf('data-testid="btn-stop"');
-    const stopButtonEnd = inputBarSource.indexOf('</NotionButton>', stopButtonStart);
+    const stopButtonEnd = inputBarSource.indexOf('</DsButton>', stopButtonStart);
     const stopButtonSource = inputBarSource.slice(stopButtonStart, stopButtonEnd);
 
     expect(stopButtonStart).toBeGreaterThan(-1);
@@ -35,7 +35,7 @@ describe('chat v2 send button contract', () => {
     expect(inputBarSource).toMatch(/studyUiBlackActionButtonClass\s*=\s*['"]!border-black !bg-black hover:!bg-black active:!bg-black !text-white['"]/);
     expect(inputBarSource).toMatch(/studyUiSendButtonEmptyStateClass\s*=\s*['"]!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted\/80 active:!bg-muted\/70['"]/);
     expect(inputBarSource).toContain("const studyUiButtonBaseClassName =");
-    expect(inputBarSource).toContain('rounded-[var(--button-radius)] border text-[13px] font-medium leading-none tracking-[0.01em]');
+    expect(inputBarSource).toContain('rounded-[var(--button-radius)] border text-ui font-medium leading-none tracking-[0.01em]');
     expect(inputBarSource).toContain("const studyUiButtonSizeIconClassName =");
     expect(inputBarSource).toContain('h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]');
     expect(inputBarSource).toContain('studyUiButtonBaseClassName,');

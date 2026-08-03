@@ -77,6 +77,9 @@ pub enum VfsError {
     /// 无效状态（处理流水线等场景）
     InvalidState { message: String },
 
+    /// 数据治理维护屏障正在阻止 VFS 访问
+    Maintenance { component: String },
+
     /// 内部错误（OCR/外部服务调用等）
     Internal(String),
 
@@ -89,6 +92,79 @@ pub enum VfsError {
 
     /// 其他错误
     Other(String),
+}
+
+impl VfsError {
+    /// TD-11：稳定错误码（IPC 契约）。
+    ///
+    /// 约束：`Display` 文案可自由改动；本方法返回的 code **一经发布不可更名**，
+    /// 前端（src/features/todo/api.ts 等）只允许依赖 code 做行为分派。
+    /// 新增变体时按语义归入既有 code 或新增 code，禁止改动既有映射。
+    pub fn stable_code(&self) -> &'static str {
+        match self {
+            VfsError::Database(_) | VfsError::Pool(_) => "VFS_STORAGE",
+            VfsError::Io(_) => "VFS_IO",
+            VfsError::NotFound { .. }
+            | VfsError::ItemNotFound { .. }
+            | VfsError::FolderNotFound { .. } => "VFS_NOT_FOUND",
+            VfsError::AlreadyExists { .. } | VfsError::FolderAlreadyExists { .. } => {
+                "VFS_ALREADY_EXISTS"
+            }
+            VfsError::InvalidArgument { .. }
+            | VfsError::PathParse { .. }
+            | VfsError::InvalidParent { .. } => "VFS_INVALID_ARGUMENT",
+            VfsError::InvalidOperation { .. } | VfsError::InvalidState { .. } => {
+                "VFS_INVALID_OPERATION"
+            }
+            VfsError::Maintenance { .. } => "VFS_MAINTENANCE",
+            VfsError::Conflict { .. } => "VFS_CONFLICT",
+            VfsError::Serialization(_) => "VFS_SERIALIZATION",
+            VfsError::Migration(_) => "VFS_MIGRATION",
+            VfsError::RefCount { .. } => "VFS_REF_COUNT",
+            VfsError::FolderDepthExceeded { .. } | VfsError::FolderCountExceeded { .. } => {
+                "VFS_LIMIT_EXCEEDED"
+            }
+            VfsError::HashCollision { .. } | VfsError::Internal(_) | VfsError::Other(_) => {
+                "VFS_INTERNAL"
+            }
+        }
+    }
+
+    /// 转换为稳定 IPC envelope；结构化字段（冲突 key、资源 id 等）进 `data`，
+    /// `message` 保持与历史 `Display` 文案一致（存量 UI 展示不回归）。
+    pub fn to_command_error(&self) -> crate::error_details::CommandError {
+        use crate::error_details::CommandError;
+        let envelope = CommandError::new(self.stable_code(), self.to_string());
+        match self {
+            VfsError::Conflict { key, .. } => envelope.with_data(serde_json::json!({ "key": key })),
+            VfsError::NotFound { resource_type, id } => envelope.with_data(serde_json::json!({
+                "resourceType": resource_type,
+                "id": id,
+            })),
+            VfsError::ItemNotFound { item_type, item_id } => {
+                envelope.with_data(serde_json::json!({
+                    "resourceType": item_type,
+                    "id": item_id,
+                }))
+            }
+            VfsError::FolderNotFound { folder_id } => {
+                envelope.with_data(serde_json::json!({ "id": folder_id }))
+            }
+            VfsError::InvalidArgument { param, .. } => {
+                envelope.with_data(serde_json::json!({ "param": param }))
+            }
+            VfsError::Maintenance { component } => {
+                envelope.with_data(serde_json::json!({ "component": component }))
+            }
+            _ => envelope,
+        }
+    }
+}
+
+impl From<VfsError> for crate::error_details::CommandError {
+    fn from(err: VfsError) -> Self {
+        err.to_command_error()
+    }
 }
 
 impl fmt::Display for VfsError {
@@ -159,6 +235,13 @@ impl fmt::Display for VfsError {
             VfsError::InvalidState { message } => {
                 write!(f, "INVALID_STATE: {}", message)
             }
+            VfsError::Maintenance { component } => {
+                write!(
+                    f,
+                    "MAINTENANCE_MODE: {} is temporarily unavailable",
+                    component
+                )
+            }
             VfsError::Conflict { key, message } => {
                 write!(f, "CONFLICT({}): {}", key, message)
             }
@@ -223,5 +306,96 @@ mod tests {
         let err = VfsError::Database("connection failed".to_string());
         let s: String = err.into();
         assert_eq!(s, "Database error: connection failed");
+    }
+
+    /// TD-11 契约：同一变体换任意 message，stable_code 不变（前端只依赖 code）
+    #[test]
+    fn stable_code_is_independent_of_message() {
+        let a = VfsError::Conflict {
+            key: "todo.conflict".to_string(),
+            message: "TODO_CONFLICT: item was modified".to_string(),
+        };
+        let b = VfsError::Conflict {
+            key: "notes.conflict".to_string(),
+            message: "完全不同的新文案（fully reworded message）".to_string(),
+        };
+        assert_ne!(a.to_string(), b.to_string());
+        assert_eq!(a.stable_code(), "VFS_CONFLICT");
+        assert_eq!(a.stable_code(), b.stable_code());
+
+        let db_old = VfsError::Database("disk I/O error".to_string());
+        let db_new = VfsError::Database("数据库暂时不可用，请稍后重试".to_string());
+        assert_eq!(db_old.stable_code(), "VFS_STORAGE");
+        assert_eq!(db_old.stable_code(), db_new.stable_code());
+    }
+
+    #[test]
+    fn stable_code_covers_key_variants() {
+        assert_eq!(
+            VfsError::NotFound {
+                resource_type: "Note".into(),
+                id: "n1".into()
+            }
+            .stable_code(),
+            "VFS_NOT_FOUND"
+        );
+        assert_eq!(
+            VfsError::ItemNotFound {
+                item_type: "todo".into(),
+                item_id: "t1".into()
+            }
+            .stable_code(),
+            "VFS_NOT_FOUND"
+        );
+        assert_eq!(
+            VfsError::InvalidArgument {
+                param: "title".into(),
+                reason: "empty".into()
+            }
+            .stable_code(),
+            "VFS_INVALID_ARGUMENT"
+        );
+        assert_eq!(
+            VfsError::InvalidParent {
+                folder_id: "child".into(),
+                reason: "cycle".into(),
+            }
+            .stable_code(),
+            "VFS_INVALID_ARGUMENT"
+        );
+        assert_eq!(
+            VfsError::InvalidOperation {
+                operation: "batch".into(),
+                reason: "too many".into()
+            }
+            .stable_code(),
+            "VFS_INVALID_OPERATION"
+        );
+        assert_eq!(
+            VfsError::Maintenance {
+                component: "vfs".into(),
+            }
+            .stable_code(),
+            "VFS_MAINTENANCE"
+        );
+        assert_eq!(VfsError::Pool("busy".into()).stable_code(), "VFS_STORAGE");
+        assert_eq!(VfsError::Other("misc".into()).stable_code(), "VFS_INTERNAL");
+    }
+
+    #[test]
+    fn command_error_envelope_carries_code_message_and_data() {
+        let err = VfsError::Conflict {
+            key: "todo.conflict".to_string(),
+            message: "TODO_CONFLICT: stale".to_string(),
+        };
+        let display = err.to_string();
+        let envelope = err.to_command_error();
+        assert_eq!(envelope.code, "VFS_CONFLICT");
+        // message 与历史 Display 文案一致，存量 UI 展示不回归
+        assert_eq!(envelope.message, display);
+
+        let value = serde_json::to_value(&envelope).unwrap();
+        assert_eq!(value["code"], "VFS_CONFLICT");
+        assert_eq!(value["data"]["key"], "todo.conflict");
     }
 }

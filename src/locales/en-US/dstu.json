@@ -38,6 +38,10 @@
     "search": "Search",
     "filter": "Filter",
     "sort": "Sort"
+  ,
+    "creatingResource": "Creating resource..."
+  ,
+    "creatingResource": "Creating resource..."
   },
   "sort": {
     "name": "Name",

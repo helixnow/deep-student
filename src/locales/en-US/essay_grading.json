@@ -15,7 +15,25 @@
     "copy": "Copy",
     "export": "Export",
     "copied": "Copied to clipboard",
+    "copied_feedback": "Copied",
     "exported": "Grading result exported"
+  },
+  "result_empty": {
+    "title": "Ready to grade",
+    "description": "Enter or paste an essay in the input area, then click \"Start Grading\" to see annotated results here in real time"
+  },
+  "confirm": {
+    "clear": "Clear?",
+    "cancel": "Cancel?"
+  },
+  "grading_lock": {
+    "hint": "Grading in progress — input is temporarily locked"
+  },
+  "ocr_status": {
+    "processing": "Recognizing",
+    "retrying": "Retrying",
+    "timeout": "Timeout",
+    "error": "Failed"
   },
   "essay_type": {
     "label": "Essay Type",
@@ -28,7 +46,8 @@
     "label": "Grade Level",
     "middle_school": "Middle School",
     "high_school": "High School",
-    "college": "College"
+    "college": "College",
+    "other": "Other"
   },
   "session": {
     "new": "New Session",
@@ -68,7 +87,7 @@
     "restore_default": "Restore Default",
     "save": "Save",
     "saved": "Prompt saved",
-    "default_prompt": "You are a professional essay grading teacher with extensive teaching experience. Please thoroughly and carefully grade the student's essay.\n\nGrading requirements:\n1. Overall evaluation: Give an evaluation of the overall quality\n2. Highlights: Point out excellent aspects\n3. Issues: Mark existing problems\n4. Suggestions: Give specific revision suggestions\n5. Example revisions: Provide rewritten examples for problematic paragraphs\n\nPlease output the grading result in Markdown format."
+    "default_prompt": "When grading, please focus on:\n1. Thesis & content: whether the argument is clear and the material is relevant and substantial\n2. Structure & logic: whether paragraph transitions and argumentation are coherent\n3. Language: word precision, sentence variety, and expressiveness\n4. Highlights: point out strengths worth keeping and developing\n\nMake suggestions specific and actionable; avoid generic comments."
   },
   "history": {
     "title": "Grading History",
@@ -92,7 +111,14 @@
     "rounds_count": "{{count}} rounds"
   },
   "progress": {
-    "grading": "Grading"
+    "grading": "Grading",
+    "waiting_response": "Waiting for model response...",
+    "chars_generated": "{{count}} chars generated",
+    "phase_preparing": "Preparing",
+    "phase_annotating": "Annotating",
+    "phase_scoring": "Scoring",
+    "phase_polishing": "Polishing",
+    "phase_model_essay": "Writing model essay"
   },
   "errors": {
     "empty_text": "Please enter the essay to be graded",
@@ -104,7 +130,11 @@
     "load_models_failed": "Failed to load model list, please check your settings",
     "load_modes_failed": "Failed to load grading modes",
     "offline": "Cannot grade while offline. Please check your network connection.",
-    "unchanged_text": "Content unchanged. Please revise before re-grading."
+    "unchanged_text": "Content unchanged. Please revise before re-grading.",
+    "export_failed": "Export failed. Please try again.",
+    "api_key_missing": "No API key configured. Please add one in Settings.",
+    "model_not_found": "The selected model is unavailable. Please choose another.",
+    "network_error": "Network connection failed. Please check your network and retry."
   },
   "toast": {
     "grading_success": "Grading completed",
@@ -122,7 +152,15 @@
     "ocr_failed": "OCR recognition failed: {{error}}",
     "ocr_timeout": "Image \"{{fileName}}\" OCR timed out, skipped",
     "suggestions_in_result": "Improvement suggestions are included in the grading result",
-    "max_images_reached": "Image limit reached (max {{max}} images)"
+    "max_images_reached": "Image limit reached (max {{max}} images)",
+    "unsupported_image_format": "Unsupported image format, please use PNG / JPG / WebP",
+    "ocr_retrying_image": "Re-running OCR for \"{{fileName}}\"...",
+    "save_failed": "Save failed: {{error}}",
+    "cleared": "Input and result cleared",
+    "clear_blocked_grading": "Cannot clear while grading is in progress",
+    "suggestion_applied": "Suggestion applied",
+    "suggestion_not_found": "Original text not found in the essay; it may have been edited",
+    "suggestion_blocked_grading": "Cannot apply suggestions while grading is in progress"
   },
   "round_navigation": {
     "title": "Round Navigation",
@@ -162,6 +200,8 @@
     "points": "{{score}} pts",
     "total": "Total Score",
     "dimensions": "Score Breakdown",
+    "view_bars": "Bar view",
+    "view_radar": "Radar view",
     "grade": {
       "excellent": "Excellent",
       "good": "Good",
@@ -171,6 +211,7 @@
     "parse_failed": "Failed to parse the score. Please refer to the grading details below."
   },
   "markers": {
+    "apply": "Apply",
     "delete": "Suggest deletion",
     "insert": "Suggest insertion",
     "replace": "Suggest replacement",
@@ -188,8 +229,28 @@
       "word_choice": "Word choice",
       "punctuation": "Punctuation error",
       "tense": "Tense error",
-      "agreement": "Subject-verb agreement"
+      "agreement": "Subject-verb agreement",
+      "idiom_misuse": "Idiom misuse",
+      "collocation": "Collocation error",
+      "redundancy": "Redundancy",
+      "ambiguity": "Ambiguity",
+      "connective": "Connective misuse",
+      "rhetoric": "Rhetoric suggestion"
     }
+  },
+  "annotation_card": {
+    "original": "Original",
+    "suggestion": "Suggestion",
+    "copy_suggestion": "Copy suggestion",
+    "copied": "Copied",
+    "click_hint": "Click for details"
+  },
+  "result_ui": {
+    "annotation_prev": "Previous annotation",
+    "annotation_next": "Next annotation",
+    "annotation_close": "Close annotation details",
+    "polish_show_diff": "Show edits",
+    "polish_hide_diff": "Hide edits"
   },
   "legend": {
     "title": "Annotation Guide",
@@ -200,10 +261,10 @@
     "filter_suggestions": "Suggestions",
     "filter_highlights": "Highlights",
     "del_desc": "Red strikethrough: suggested deletions",
-    "ins_desc": "Green underline: suggested insertions",
-    "replace_desc": "Orange arrow: suggested replacements",
-    "note_desc": "Blue dashed: annotation notes",
-    "good_desc": "Gold highlight: well-written highlights",
+    "ins_desc": "Amber underline: suggested insertions",
+    "replace_desc": "Amber arrow: suggested replacements",
+    "note_desc": "Amber dashed: annotation notes",
+    "good_desc": "Green highlight: well-written highlights",
     "err_desc": "Red wavy: grammar/spelling errors",
     "example": "Example",
     "example_old": "Old",
@@ -213,6 +274,8 @@
     "title": "Start Grading an Essay",
     "description": "Enter or paste essay content below, or import images for OCR recognition",
     "paste_hint": "Paste or type essay",
+    "drop_hint": "Drag & drop or paste images",
+    "drop_hint_mobile": "Import or paste images",
     "ocr_hint": "Import images",
     "ocr_supported": "Supports PNG/JPG/WEBP, up to {{max}} images"
   },
@@ -233,7 +296,8 @@
   },
   "char_limit": {
     "reached": "Character limit reached ({{max}} characters)",
-    "warning": "Approaching character limit"
+    "warning": "Approaching character limit",
+    "truncated": "Pasted content exceeded the limit and was truncated to {{max}} characters"
   },
   "partial_result": {
     "label": "Partial Result",
@@ -269,12 +333,31 @@
     "per_image_failed": "Image {{index}} recognition failed"
   },
   "images": {
-    "essay_images": "Essay images ({{count}})"
+    "essay_images": "Essay images ({{count}})",
+    "ocr_error_detail": "OCR failed for \"{{fileName}}\": {{error}}",
+    "tap_to_retry": "Tap to view error and retry OCR"
+  },
+  "workbench": {
+    "settings": {
+      "section_criteria": "Grading Criteria",
+      "locked_while_grading": "Locked while grading"
+    },
+    "stats": {
+      "paragraphs": "Paragraphs"
+    },
+    "sample": {
+      "fill_button": "Fill with sample essay",
+      "filled_toast": "Sample essay filled in — click \"Start Grading\" to try it out",
+      "topic": "Write an argumentative essay of at least 300 words on the topic of \"Perseverance\".",
+      "content": "The Power of Perseverance\n\nGreat achievements are rarely born of sudden inspiration. More often, they grow from countless ordinary days of quiet, stubborn effort. Perseverance is the bridge between what we dream of and what we actually accomplish.\n\nHistory offers abundant proof. Thomas Edison tested thousands of materials before finding a workable filament for the light bulb. Marie Curie spent years processing tons of ore to isolate a fraction of a gram of radium. Neither talent alone nor luck alone carried them forward; it was their refusal to stop.\n\nYet perseverance is not the same as stubbornness. True persistence means holding firmly to a worthy goal while remaining willing to adjust the path. When the direction is wrong, pausing to reflect is itself progress; when the direction is right, even slow steps will arrive.\n\nFor young people today, the lesson is simple: time rewards those who keep going. May we all treat perseverance as our sail and conviction as our oar, and press forward steadily through the long river of life."
+    }
   },
   "topic": {
     "toggle_label": "Topic / Reference",
     "placeholder": "Enter essay topic, requirements, or reference content...",
-    "add_image": "Add reference image"
+    "add_image": "Add reference image",
+    "filled": "Filled",
+    "image_count": "{{count}} image(s)"
   },
   "sections": {
     "tab_overview": "Overview",
@@ -282,12 +365,20 @@
     "tab_polish": "Polish",
     "tab_model_essay": "Model Essay",
     "no_corrections": "No corrections needed",
+    "no_corrections_desc": "No errors or suggestions were marked in this round",
     "no_polish": "No polish suggestions",
+    "no_polish_desc": "No polish suggestions were generated in this round",
     "no_model_essay": "No model essay (please provide essay topic)",
+    "no_model_essay_desc": "Provide an essay topic to generate a model essay",
     "polish_desc": "The following sentences can be polished for better fluency and precision",
     "model_essay_desc": "AI-generated model essay based on the topic, for reference",
     "original": "Original",
-    "polished": "Polished"
+    "polished": "Polished",
+    "copied": "Copied",
+    "generating_polish": "Generating polish suggestions...",
+    "generating_model_essay": "Generating model essay...",
+    "model_essay_word_count": "{{total}} words",
+    "serif_toggle": "Toggle serif font"
   },
   "export": {
     "grading_details": "### Grading Details",
@@ -298,6 +389,40 @@
     "table_separator": "| :--- | :---: | :---: | :--- |",
     "delete_reason": "Deleted: ",
     "original_sentence": "**{{index}}. Original**:",
-    "polished_sentence": "**Polished**:"
+    "polished_sentence": "**Polished**:",
+    "original_text": "### Original Text"
+  },
+  "settings_panel": {
+    "close": "Close settings",
+    "section_mode": "Grading Mode",
+    "section_essay_info": "Essay Type & Grade",
+    "section_mode_editor": "Manage Modes",
+    "editing_badge": "Editing",
+    "edit_current": "Edit current mode",
+    "copy_current": "Duplicate current mode",
+    "create_mode": "New mode",
+    "confirm_reset": "Confirm reset?",
+    "confirm_delete": "Confirm delete?",
+    "drag_reorder": "Drag to reorder",
+    "move_dimension_up": "Move up",
+    "move_dimension_down": "Move down",
+    "remove_dimension": "Remove dimension",
+    "prompt_saved_short": "Saved",
+    "validation": {
+      "dimension_invalid": "Fix the highlighted dimensions: names cannot be empty and scores must be greater than 0",
+      "total_positive": "Total score must be greater than 0",
+      "total_mismatch": "Total {{total}} does not match the sum of dimensions ({{sum}})",
+      "sync_total": "Use {{sum}}"
+    }
+  },
+  "data_layer": {
+    "errors": {
+      "rate_limited": "Too many requests or quota exceeded. Please try again later.",
+      "auth_failed": "Authentication failed. Please check your API key or account permissions."
+    },
+    "export": {
+      "corrections_title": "### Corrections",
+      "empty_result": "(No grading content yet)"
+    }
   }
 }

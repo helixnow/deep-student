@@ -10,11 +10,12 @@ use tauri::{Emitter, State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
-use crate::chat_v2::events::ChatV2EventEmitter;
+use crate::chat_v2::handlers::ensure_session_writable;
+use crate::chat_v2::kill_switch::{admit_or_block, KILL_SWITCH_BLOCKED_MESSAGE};
 use crate::chat_v2::pipeline::ChatV2Pipeline;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
-use crate::chat_v2::state::{ChatV2State, StreamGuard};
+use crate::chat_v2::state::{ChatV2State, StreamGuard, StreamRegistration};
 use crate::chat_v2::tools::todo_executor::{load_persisted_todo_list, restore_todo_list_from_db};
 use crate::chat_v2::types::{
     variant_status, AttachmentMeta, ChatMessage, MessageRole, SendMessageRequest, SendOptions,
@@ -261,12 +262,95 @@ fn apply_replay_mode_overrides(mut options: SendOptions) -> SendOptions {
     options
 }
 
+fn build_wake_request(
+    session_id: String,
+    content: String,
+    assistant_message_id: Option<String>,
+    options: Option<SendOptions>,
+) -> SendMessageRequest {
+    let mut options = options.unwrap_or_default();
+    // Wake content is ephemeral input for this turn. It must never create the
+    // synthetic user-history entry that ordinary sends persist.
+    options.skip_user_message_save = Some(true);
+
+    SendMessageRequest {
+        session_id,
+        content,
+        options: Some(apply_replay_mode_overrides(options)),
+        user_message_id: None,
+        assistant_message_id,
+        user_context_refs: None,
+        path_map: None,
+        workspace_id: None,
+    }
+}
+
+/// 🆕 Headless 基建（2026-07）：可被 headless runner 复用的内部执行路径。
+///
+/// 封装「StreamGuard 保护 + Pipeline::execute」的公共序列，调用方负责：
+/// 1. 预先通过 `chat_v2_state.try_register_stream` 原子注册流并取得 cancel_token；
+/// 2. 决定 fire-and-forget（spawn_tracked，前端命令路径）还是 await（headless 路径）。
+///
+/// StreamGuard 在正常完成、取消或 panic 时都会自动 remove_stream。
+pub(crate) async fn run_send_message_pipeline(
+    pipeline: Arc<ChatV2Pipeline>,
+    chat_v2_state: Arc<ChatV2State>,
+    window: Window,
+    mut request: SendMessageRequest,
+    cancel_token: tokio_util::sync::CancellationToken,
+) -> Result<String, ChatV2Error> {
+    let session_id = request.session_id.clone();
+    // Compatibility path for headless callers that only retain the token. Interactive handlers
+    // use the owned-registration path below so cleanup can compare generations exactly.
+    let _stream_guard =
+        StreamGuard::from_registered_token(chat_v2_state.clone(), session_id, &cancel_token);
+    if let Some(guard) = _stream_guard.as_ref() {
+        request
+            .options
+            .get_or_insert_with(SendOptions::default)
+            .stream_generation = Some(guard.generation());
+    }
+    pipeline
+        .execute(window, request, cancel_token, Some(chat_v2_state))
+        .await
+}
+
+async fn run_send_message_pipeline_owned(
+    pipeline: Arc<ChatV2Pipeline>,
+    chat_v2_state: Arc<ChatV2State>,
+    window: Window,
+    mut request: SendMessageRequest,
+    registration: StreamRegistration,
+) -> Result<String, ChatV2Error> {
+    let session_id = request.session_id.clone();
+    let stream_generation = registration.generation();
+    let cancel_token = registration.token().clone();
+    let _stream_guard = StreamGuard::new(chat_v2_state.clone(), session_id, registration);
+    request
+        .options
+        .get_or_insert_with(SendOptions::default)
+        .stream_generation = Some(stream_generation);
+    pipeline
+        .execute(window, request, cancel_token, Some(chat_v2_state))
+        .await
+}
+
 pub(crate) fn apply_original_skill_snapshot_overrides(
     mut options: SendOptions,
     preferred_meta: Option<&crate::chat_v2::types::MessageMeta>,
     fallback_meta: Option<&crate::chat_v2::types::MessageMeta>,
 ) -> SendOptions {
     if options.replay_mode != Some(crate::chat_v2::types::ReplayMode::Original) {
+        return options;
+    }
+
+    // Modern renderers re-evaluate current trust/disabled/requires admission
+    // and rebuild replay skill/schema fields before invoking the backend.
+    // `Some(empty)` is an explicit marker that this check ran successfully.
+    // Never overwrite that current decision with historical embedded schemas
+    // or execution allowlists; the legacy snapshot path below remains only for
+    // older callers which do not provide the marker.
+    if options.skill_admission_errors.is_some() {
         return options;
     }
 
@@ -313,6 +397,14 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
 
     if !replay_pinned_skill_ids.is_empty() {
         options.active_skill_ids = Some(replay_pinned_skill_ids);
+    }
+
+    let replay_allowed_tools =
+        runtime_snapshot.and_then(|snapshot| snapshot.execution_allowed_tools.clone());
+    if let Some(mut replay_allowed_tools) = replay_allowed_tools {
+        replay_allowed_tools.sort();
+        replay_allowed_tools.dedup();
+        options.execution_allowed_tools = Some(replay_allowed_tools);
     }
 
     if let Some(runtime_snapshot) = runtime_snapshot {
@@ -364,6 +456,7 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
 pub async fn chat_v2_send_message(
     request: SendMessageRequest,
     window: Window,
+    db: State<'_, Arc<ChatV2Database>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
     pipeline: State<'_, Arc<ChatV2Pipeline>>,
     llm_manager: State<'_, Arc<LLMManager>>,
@@ -402,7 +495,7 @@ pub async fn chat_v2_send_message(
         // 🔍 诊断：检查 active_skill_ids 和 skill_contents 是否被正确传递
         log::info!(
             "[ChatV2::handlers] 📦 Skills diag: active_skill_ids={:?}, skill_contents_keys={:?}",
-            options.active_skill_ids.as_ref().map(|ids| ids.as_slice()),
+            options.active_skill_ids.as_deref(),
             options
                 .skill_contents
                 .as_ref()
@@ -412,17 +505,35 @@ pub async fn chat_v2_send_message(
         log::warn!("[ChatV2::handlers] ⚠️ SendOptions is None!");
     }
 
+    // 🔒 P1：session_id 前缀校验（与 load_session / manage_session 对齐），
+    // 拒绝对任意字符串注册流并 spawn pipeline
+    if !request.session_id.starts_with("sess_")
+        && !request.session_id.starts_with("agent_")
+        && !request.session_id.starts_with("subagent_")
+    {
+        return Err(ChatV2Error::Validation(format!(
+            "Invalid session ID format: {}",
+            request.session_id
+        ))
+        .into());
+    }
+    ensure_session_writable(&db, &request.session_id).map_err(String::from)?;
+
     // ★ 2025-12-10 统一改造：验证请求（附件现在通过 user_context_refs 传递）
     let has_content = !request.content.trim().is_empty();
     let has_context_refs = request
         .user_context_refs
         .as_ref()
-        .map_or(false, |refs| !refs.is_empty());
+        .is_some_and(|refs| !refs.is_empty());
     if !has_content && !has_context_refs {
         return Err(ChatV2Error::Validation(
             "Message content or context refs required".to_string(),
         )
         .into());
+    }
+
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
     }
 
     let model_id = request.options.as_ref().and_then(|o| o.model_id.as_deref());
@@ -441,7 +552,7 @@ pub async fn chat_v2_send_message(
     let assistant_message_id = request
         .assistant_message_id
         .clone()
-        .unwrap_or_else(|| ChatMessage::generate_id());
+        .unwrap_or_else(ChatMessage::generate_id);
 
     // 构建带有确定 ID 的请求
     let request_with_id = SendMessageRequest {
@@ -452,20 +563,23 @@ pub async fn chat_v2_send_message(
 
     // 🔒 P0 修复（2026-01-11）：使用原子操作检查并注册流
     // 避免并发请求同时通过检查导致多个流被创建
-    let cancel_token = match chat_v2_state.try_register_stream(&request_with_id.session_id) {
-        Ok(token) => token,
-        Err(()) => {
-            return Err(ChatV2Error::Other(
-                "Session has an active stream. Please wait for completion or cancel first."
-                    .to_string(),
-            )
-            .into());
-        }
-    };
+    let stream_registration =
+        match chat_v2_state.try_register_stream_owned(&request_with_id.session_id) {
+            Ok(registration) => registration,
+            Err(()) => {
+                if chat_v2_state.kill_switch.is_tripped() {
+                    return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+                }
+                return Err(ChatV2Error::Other(
+                    "Session has an active stream. Please wait for completion or cancel first."
+                        .to_string(),
+                )
+                .into());
+            }
+        };
 
     // 克隆必要的数据用于异步任务
     let session_id = request_with_id.session_id.clone();
-    let session_id_for_cleanup = session_id.clone();
     let window_clone = window.clone();
     let pipeline_clone = pipeline.inner().clone();
     let chat_v2_state_clone = chat_v2_state.inner().clone();
@@ -473,22 +587,19 @@ pub async fn chat_v2_send_message(
     // 🆕 P1修复：使用 TaskTracker 追踪异步任务，确保优雅关闭
     // 异步执行流水线
     // 🔧 P1修复：传递 chat_v2_state 给 Pipeline，用于注册每个变体的 cancel token
+    // Interactive path carries the atomic registration generation into the spawned task. This is
+    // what makes cancel followed by an immediate retry safe even if the old task starts late.
     chat_v2_state.spawn_tracked(async move {
-        // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
-        let _stream_guard =
-            StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+        let result = run_send_message_pipeline_owned(
+            pipeline_clone,
+            chat_v2_state_clone,
+            window_clone,
+            request_with_id,
+            stream_registration,
+        )
+        .await;
 
-        // 调用真正的 Pipeline 执行
-        let result = pipeline_clone
-            .execute(
-                window_clone,
-                request_with_id,
-                cancel_token,
-                Some(chat_v2_state_clone.clone()),
-            )
-            .await;
-
-        // remove_stream 由 _stream_guard 自动调用，无需手动清理
+        // remove_stream 由 run_send_message_pipeline 内的 StreamGuard 自动调用
 
         match result {
             Ok(returned_msg_id) => {
@@ -518,6 +629,112 @@ pub async fn chat_v2_send_message(
     Ok(assistant_message_id)
 }
 
+/// 以不持久化用户消息的内部回合唤醒会话。
+///
+/// 唤醒内容仍作为当前回合的 user content 输入 Pipeline，但聊天历史中仅保存
+/// 本轮生成的 assistant 消息，避免显示伪造的用户气泡。
+#[tauri::command]
+pub async fn chat_v2_wake_session(
+    session_id: String,
+    content: String,
+    assistant_message_id: Option<String>,
+    options: Option<SendOptions>,
+    window: Window,
+    db: State<'_, Arc<ChatV2Database>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
+    pipeline: State<'_, Arc<ChatV2Pipeline>>,
+    llm_manager: State<'_, Arc<LLMManager>>,
+) -> Result<String, String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_wake_session: session_id={}, content_len={}",
+        session_id,
+        content.len()
+    );
+
+    if !session_id.starts_with("sess_")
+        && !session_id.starts_with("agent_")
+        && !session_id.starts_with("subagent_")
+    {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+        );
+    }
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
+
+    if content.trim().is_empty() {
+        return Err(ChatV2Error::Validation("Wake content cannot be empty".to_string()).into());
+    }
+
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
+    let assistant_message_id = assistant_message_id.unwrap_or_else(ChatMessage::generate_id);
+    let request = build_wake_request(
+        session_id,
+        content,
+        Some(assistant_message_id.clone()),
+        options,
+    );
+    let model_id = request.options.as_ref().and_then(|o| o.model_id.as_deref());
+    let is_multimodal_model = is_model_multimodal(&llm_manager, model_id).await;
+    let request_audit_payload =
+        build_backend_request_audit_payload(&request, model_id, is_multimodal_model);
+    if let Err(e) = window.emit("chat_v2_request_audit", &request_audit_payload) {
+        log::warn!(
+            "[ChatV2::handlers] Failed to emit chat_v2_request_audit event: {}",
+            e
+        );
+    }
+
+    let stream_registration = match chat_v2_state.try_register_stream_owned(&request.session_id) {
+        Ok(registration) => registration,
+        Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
+            return Err(ChatV2Error::Other(
+                "Session has an active stream. Please wait for completion or cancel first."
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    let wake_session_id = request.session_id.clone();
+    let window_clone = window.clone();
+    let pipeline_clone = pipeline.inner().clone();
+    let chat_v2_state_clone = chat_v2_state.inner().clone();
+    chat_v2_state.spawn_tracked(async move {
+        match run_send_message_pipeline_owned(
+            pipeline_clone,
+            chat_v2_state_clone,
+            window_clone,
+            request,
+            stream_registration,
+        )
+        .await
+        {
+            Ok(returned_msg_id) => log::info!(
+                "[ChatV2::handlers] Wake pipeline completed: session_id={}, assistant_message_id={}",
+                wake_session_id,
+                returned_msg_id
+            ),
+            Err(ChatV2Error::Cancelled) => log::info!(
+                "[ChatV2::handlers] Wake pipeline cancelled: session_id={}",
+                wake_session_id
+            ),
+            Err(e) => log::error!(
+                "[ChatV2::handlers] Wake pipeline error: session_id={}, error={}",
+                wake_session_id,
+                e
+            ),
+        }
+    });
+
+    Ok(assistant_message_id)
+}
+
 /// 取消正在进行的流式生成
 ///
 /// 触发取消信号，流水线会在各阶段检查并停止处理。
@@ -535,7 +752,7 @@ pub async fn chat_v2_send_message(
 pub async fn chat_v2_cancel_stream(
     session_id: String,
     message_id: String,
-    window: Window,
+    _window: Window,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<(), String> {
     log::info!(
@@ -596,11 +813,12 @@ pub async fn chat_v2_retry_message(
         session_id,
         message_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     // 从数据库加载原消息
     let original_message = ChatV2Repo::get_message_v2(&db, &message_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
     // 🔧 语义修正：重试只能针对助手消息
     // 如果是用户消息，应该使用"编辑并重发"功能
@@ -612,11 +830,18 @@ pub async fn chat_v2_retry_message(
         .into());
     }
 
-    // 🔒 P0 修复：在任何破坏性操作之前原子注册流，消除 TOCTOU 竞态
-    // 如果后续操作失败，需要在 error 路径中调用 remove_stream 清理
-    let cancel_token = match chat_v2_state.try_register_stream(&session_id) {
-        Ok(token) => token,
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
+    // 在任何破坏性操作之前取得带 generation 的原子注册租约。guard 立即创建，
+    // 因而预处理失败、取消后立即重试、spawn 延迟启动都只会清理本次注册。
+    let stream_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
+        Ok(registration) => registration,
         Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
             return Err(ChatV2Error::Other(
                 "Session has an active stream. Please wait for completion or cancel first."
                     .to_string(),
@@ -624,16 +849,18 @@ pub async fn chat_v2_retry_message(
             .into());
         }
     };
+    let stream_generation = stream_registration.generation();
+    let cancel_token = stream_registration.token().clone();
+    let stream_guard = StreamGuard::new(
+        chat_v2_state.inner().clone(),
+        session_id.clone(),
+        stream_registration,
+    );
 
     // ★ 2025-12-10 统一改造：获取前一条用户消息的内容和上下文快照
     // 附件现在通过 context_snapshot.user_refs 恢复，不再使用 message.attachments
     let user_msg_result =
-        find_preceding_user_message_with_attachments(&db, &session_id, &original_message).map_err(
-            |e| {
-                chat_v2_state.remove_stream(&session_id);
-                e
-            },
-        )?;
+        find_preceding_user_message_with_attachments(&db, &session_id, &original_message)?;
     let user_content = user_msg_result.content;
 
     // ★ VFS 统一存储：从上下文快照恢复 SendContextRef（包含附件）
@@ -659,7 +886,7 @@ pub async fn chat_v2_retry_message(
     );
     let has_context_refs = restored_context_refs
         .as_ref()
-        .map_or(false, |refs| !refs.is_empty());
+        .is_some_and(|refs| !refs.is_empty());
     if has_context_refs {
         log::info!(
             "[ChatV2::handlers] Retry with restored context refs: count={}",
@@ -672,15 +899,9 @@ pub async fn chat_v2_retry_message(
 
     // 🔧 修复：删除助手消息之后的所有消息（含自身），确保前后端一致
     let messages_to_delete: Vec<String> = {
-        let conn = db.get_conn_safe().map_err(|e| {
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
-        })?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
         let all_messages =
-            ChatV2Repo::get_session_messages_with_conn(&conn, &session_id).map_err(|e| {
-                chat_v2_state.remove_stream(&session_id);
-                e.to_string()
-            })?;
+            ChatV2Repo::get_session_messages_with_conn(&conn, &session_id).map_err(String::from)?;
 
         log::info!(
             "[ChatV2::handlers] Retry: found {} total messages in session",
@@ -690,10 +911,7 @@ pub async fn chat_v2_retry_message(
         let target_index = all_messages
             .iter()
             .position(|m| m.id == message_id)
-            .ok_or_else(|| {
-                chat_v2_state.remove_stream(&session_id);
-                ChatV2Error::MessageNotFound(message_id.clone()).to_string()
-            })?;
+            .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
         let to_delete: Vec<String> = all_messages
             .iter()
@@ -713,10 +931,7 @@ pub async fn chat_v2_retry_message(
 
     // 使用事务删除所有后续消息
     if !messages_to_delete.is_empty() {
-        let conn = db.get_conn_safe().map_err(|e| {
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
-        })?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
 
         // 🔧 P0 修复：先收集要 decrement 的 resource IDs（在事务外、decrement 前）
         // 事务 COMMIT 成功后再执行 decrement，避免事务回滚时引用计数已被减少
@@ -739,8 +954,7 @@ pub async fn chat_v2_retry_message(
                 "[ChatV2::handlers] Failed to begin transaction for retry: {}",
                 e
             );
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
+            String::from(ChatV2Error::Database(e.to_string()))
         })?;
 
         let mut deleted_count = 0;
@@ -768,18 +982,16 @@ pub async fn chat_v2_retry_message(
             }
         }
 
-        if delete_error.is_some() {
+        if let Some(delete_error) = delete_error {
             let _ = conn.execute("ROLLBACK", []);
-            chat_v2_state.remove_stream(&session_id);
-            return Err(delete_error.unwrap());
+            return Err(ChatV2Error::Database(delete_error).into());
         } else {
             conn.execute("COMMIT", []).map_err(|e| {
                 log::error!(
                     "[ChatV2::handlers] Failed to commit transaction for retry: {}",
                     e
                 );
-                chat_v2_state.remove_stream(&session_id);
-                e.to_string()
+                String::from(ChatV2Error::Database(e.to_string()))
             })?;
         }
 
@@ -826,8 +1038,7 @@ pub async fn chat_v2_retry_message(
     // 🆕 P1修复：使用 TaskTracker 追踪异步任务
     // 异步执行重试流水线
     chat_v2_state.spawn_tracked(async move {
-        // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
-        let _stream_guard = StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+        let _stream_guard = stream_guard;
 
         // ★ 2025-12-10 统一改造：移除 AttachmentInput 重建逻辑
         // 所有附件现在通过 restored_context_refs（从 context_snapshot 恢复）传递
@@ -843,6 +1054,7 @@ pub async fn chat_v2_retry_message(
                 preceding_user_meta.as_ref(),
             );
             opts.skip_user_message_save = Some(true);
+            opts.stream_generation = Some(stream_generation);
             // 🔧 修复：旧助手消息已被删除，需要创建新消息而非更新
             // skip_assistant_message_save 默认为 None/false，save_results 会调用 create_message_with_conn
             opts
@@ -948,6 +1160,7 @@ pub async fn chat_v2_edit_and_resend(
         message_id,
         new_content.len()
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     // 验证内容
     if new_content.trim().is_empty() {
@@ -956,8 +1169,8 @@ pub async fn chat_v2_edit_and_resend(
 
     // 验证原消息存在且是用户消息
     let original_message = ChatV2Repo::get_message_v2(&db, &message_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
     if original_message.role != MessageRole::User {
         return Err(ChatV2Error::Validation("Can only edit user messages".to_string()).into());
@@ -972,11 +1185,17 @@ pub async fn chat_v2_edit_and_resend(
         .into());
     }
 
-    // 🔒 P0 修复：在任何破坏性操作之前原子注册流，消除 TOCTOU 竞态
-    // 如果后续操作失败，需要在 error 路径中调用 remove_stream 清理
-    let cancel_token = match chat_v2_state.try_register_stream(&session_id) {
-        Ok(token) => token,
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
+    // Keep the registration generation alive from the first mutation through spawned execution.
+    let stream_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
+        Ok(registration) => registration,
         Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
             return Err(ChatV2Error::Other(
                 "Session has an active stream. Please wait for completion or cancel first."
                     .to_string(),
@@ -984,6 +1203,13 @@ pub async fn chat_v2_edit_and_resend(
             .into());
         }
     };
+    let stream_generation = stream_registration.generation();
+    let cancel_token = stream_registration.token().clone();
+    let stream_guard = StreamGuard::new(
+        chat_v2_state.inner().clone(),
+        session_id.clone(),
+        stream_registration,
+    );
 
     let original_snapshot = original_message
         .meta
@@ -1022,7 +1248,7 @@ pub async fn chat_v2_edit_and_resend(
             });
             let has_context_refs = restored_context_refs
                 .as_ref()
-                .map_or(false, |refs| !refs.is_empty());
+                .is_some_and(|refs| !refs.is_empty());
             if has_context_refs {
                 log::info!(
                     "[ChatV2::handlers] Edit and resend with restored context refs: count={}",
@@ -1055,26 +1281,23 @@ pub async fn chat_v2_edit_and_resend(
 
     // 更新原用户消息的内容块
     {
-        let conn = db.get_conn_safe().map_err(|e| {
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
-        })?;
+        let mut conn = db.get_conn_safe().map_err(String::from)?;
+        let tx = conn
+            .transaction()
+            .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
+        ChatV2Repo::invalidate_compaction_for_message_with_conn(&tx, &session_id, &message_id)
+            .map_err(String::from)?;
 
         // 获取原消息的块
-        let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message_id).map_err(|e| {
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
-        })?;
+        let blocks =
+            ChatV2Repo::get_message_blocks_with_conn(&tx, &message_id).map_err(String::from)?;
 
         // 找到 content 块并更新
         for block in blocks {
             if block.block_type == "content" {
                 let mut updated_block = block.clone();
                 updated_block.content = Some(new_content.clone());
-                ChatV2Repo::update_block_with_conn(&conn, &updated_block).map_err(|e| {
-                    chat_v2_state.remove_stream(&session_id);
-                    e.to_string()
-                })?;
+                ChatV2Repo::update_block_with_conn(&tx, &updated_block).map_err(String::from)?;
                 log::debug!(
                     "[ChatV2::handlers] Updated content block: block_id={}",
                     block.id
@@ -1109,38 +1332,28 @@ pub async fn chat_v2_edit_and_resend(
             }
             updated_message.meta = Some(meta);
 
-            ChatV2Repo::update_message_with_conn(&conn, &updated_message).map_err(|e| {
-                chat_v2_state.remove_stream(&session_id);
-                e.to_string()
-            })?;
+            ChatV2Repo::update_message_with_conn(&tx, &updated_message).map_err(String::from)?;
 
             log::info!(
                 "[ChatV2::handlers] Updated context_snapshot for edited user message: user_refs={}",
                 user_refs.len()
             );
         }
+        tx.commit()
+            .map_err(|error| String::from(ChatV2Error::Database(error.to_string())))?;
     }
 
     // 🔧 P0 修复：使用 index-based 删除（与 retry_message 对齐），避免 timestamp 相同时误删前序消息
     let messages_to_delete: Vec<String> = {
-        let conn = db.get_conn_safe().map_err(|e| {
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
-        })?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
         let all_messages =
-            ChatV2Repo::get_session_messages_with_conn(&conn, &session_id).map_err(|e| {
-                chat_v2_state.remove_stream(&session_id);
-                e.to_string()
-            })?;
+            ChatV2Repo::get_session_messages_with_conn(&conn, &session_id).map_err(String::from)?;
 
         // 按稳定排序（timestamp ASC, rowid ASC）定位用户消息的 index
         let target_index = all_messages
             .iter()
             .position(|m| m.id == message_id)
-            .ok_or_else(|| {
-                chat_v2_state.remove_stream(&session_id);
-                ChatV2Error::MessageNotFound(message_id.clone()).to_string()
-            })?;
+            .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
         // 只删除该用户消息之后的所有消息（+1 保留用户消息本身）
         let to_delete: Vec<String> = all_messages
@@ -1160,10 +1373,7 @@ pub async fn chat_v2_edit_and_resend(
     // 🔧 修复：使用单次连接 + 事务删除后续消息，确保原子性
     // 注意：chat_v2_messages 表有 ON DELETE CASCADE，删除消息会自动删除关联的块
     if !messages_to_delete.is_empty() {
-        let conn = db.get_conn_safe().map_err(|e| {
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
-        })?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
 
         // 🔧 P0 修复：先收集要 decrement 的 resource IDs（在事务外、decrement 前）
         // 事务 COMMIT 成功后再执行 decrement，避免事务回滚时引用计数已被减少
@@ -1184,8 +1394,7 @@ pub async fn chat_v2_edit_and_resend(
         // 使用事务确保原子性
         conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
             log::error!("[ChatV2::handlers] Failed to begin transaction: {}", e);
-            chat_v2_state.remove_stream(&session_id);
-            e.to_string()
+            String::from(ChatV2Error::Database(e.to_string()))
         })?;
 
         let mut deleted_count = 0;
@@ -1214,15 +1423,13 @@ pub async fn chat_v2_edit_and_resend(
         }
 
         // 提交或回滚事务
-        if delete_error.is_some() {
+        if let Some(delete_error) = delete_error {
             let _ = conn.execute("ROLLBACK", []);
-            chat_v2_state.remove_stream(&session_id);
-            return Err(delete_error.unwrap());
+            return Err(ChatV2Error::Database(delete_error).into());
         } else {
             conn.execute("COMMIT", []).map_err(|e| {
                 log::error!("[ChatV2::handlers] Failed to commit transaction: {}", e);
-                chat_v2_state.remove_stream(&session_id);
-                e.to_string()
+                String::from(ChatV2Error::Database(e.to_string()))
             })?;
         }
 
@@ -1272,8 +1479,7 @@ pub async fn chat_v2_edit_and_resend(
     // 🆕 P1修复：使用 TaskTracker 追踪异步任务
     // 异步执行编辑重发流水线
     chat_v2_state.spawn_tracked(async move {
-        // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
-        let _stream_guard = StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+        let _stream_guard = stream_guard;
 
         // 🔧 P0-1修复：构建 SendOptions，设置 skip_user_message_save = true
         // 这样 Pipeline 不会创建新的用户消息，避免冗余创建+删除
@@ -1285,6 +1491,7 @@ pub async fn chat_v2_edit_and_resend(
                 preceding_user_meta.as_ref(),
             );
             opts.skip_user_message_save = Some(true);
+            opts.stream_generation = Some(stream_generation);
             opts
         };
 
@@ -1348,7 +1555,7 @@ pub async fn chat_v2_edit_and_resend(
 /// 获取消息内容（从块中提取）
 fn get_message_content(db: &ChatV2Database, message_id: &str) -> Result<String, String> {
     // 获取消息的所有块
-    let blocks = ChatV2Repo::get_message_blocks_v2(db, message_id).map_err(|e| e.to_string())?;
+    let blocks = ChatV2Repo::get_message_blocks_v2(db, message_id).map_err(String::from)?;
 
     // 合并所有 content 类型块的内容
     let content: String = blocks
@@ -1385,8 +1592,7 @@ fn locate_preceding_user_message<'a>(
     } else {
         messages
             .iter()
-            .filter(|m| m.role == MessageRole::User && m.timestamp <= assistant_message.timestamp)
-            .last()
+            .rfind(|m| m.role == MessageRole::User && m.timestamp <= assistant_message.timestamp)
     }
 }
 
@@ -1397,8 +1603,7 @@ fn find_preceding_user_message_content(
     assistant_message: &ChatMessage,
 ) -> Result<String, String> {
     // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
-    let messages =
-        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(|e| e.to_string())?;
+    let messages = ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
 
     match locate_preceding_user_message(&messages, assistant_message) {
         Some(msg) => get_message_content(db, &msg.id),
@@ -1438,7 +1643,14 @@ fn filter_path_map_for_send_refs(
     let mut filtered = path_map.clone();
     let keep: std::collections::HashSet<&str> =
         refs.iter().map(|r| r.resource_id.as_str()).collect();
-    filtered.retain(|resource_id, _| keep.contains(resource_id.as_str()));
+    const STAGED_PREFIX: &str = "__staged_attachment__:";
+    filtered.retain(|key, _| {
+        keep.contains(key.as_str())
+            || key.strip_prefix(STAGED_PREFIX).is_some_and(|suffix| {
+                keep.iter()
+                    .any(|resource_id| suffix.starts_with(&format!("{}:", resource_id)))
+            })
+    });
 
     if filtered.is_empty() {
         None
@@ -1456,8 +1668,7 @@ fn find_preceding_user_message_with_attachments(
     assistant_message: &ChatMessage,
 ) -> Result<UserMessageRestoreResult, String> {
     // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
-    let messages =
-        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(|e| e.to_string())?;
+    let messages = ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
 
     // 🔧 修复：index-based 向前查找，避免相同时间戳时选错消息
     let user_message = locate_preceding_user_message(&messages, assistant_message);
@@ -1530,7 +1741,7 @@ fn restore_context_refs_from_snapshot(
             // ★ 2025-12-10：使用统一的 vfs_resolver 模块
             use crate::chat_v2::vfs_resolver::resolve_context_ref_data_to_blocks;
 
-            let formatted_blocks = if let Ok(mut ref_data) =
+            let mut formatted_blocks = if let Ok(mut ref_data) =
                 serde_json::from_str::<VfsContextRefData>(&data_str)
             {
                 // ★ 2026-02 修复：从 ContextRef 恢复用户选择的 inject_modes
@@ -1578,6 +1789,23 @@ fn restore_context_refs_from_snapshot(
                     text: format!("[旧版上下文引用已忽略: {}]", display_name),
                 }]
             };
+
+            let staged_prefix = format!("__staged_attachment__:{}:", context_ref.resource_id);
+            let staged_metadata: Vec<serde_json::Value> = context_snapshot
+                .path_map
+                .iter()
+                .filter(|(key, _)| key.starts_with(&staged_prefix))
+                .filter_map(|(_, value)| serde_json::from_str(value).ok())
+                .collect();
+            if !staged_metadata.is_empty() {
+                formatted_blocks.push(ContentBlock::Text {
+                    text: format!(
+                        "<attachment_metadata>{}</attachment_metadata>",
+                        serde_json::to_string(&staged_metadata)
+                            .unwrap_or_else(|_| "[]".to_string())
+                    ),
+                });
+            }
 
             // ★ 2026-02 修复：在 SendContextRef 中保留 inject_modes
             result.push(SendContextRef {
@@ -1655,10 +1883,15 @@ pub async fn chat_v2_continue_message(
         message_id,
         variant_id
     );
+    ensure_session_writable(&db, &session_id).map_err(String::from)?;
 
     // 加载持久化的 TodoList (活跃流检查由 try_register_stream 原子完成)
-    let todo_info = load_persisted_todo_list(&db, &session_id)
-        .map_err(|e| format!("Failed to load TodoList: {}", e))?;
+    let todo_info = load_persisted_todo_list(&db, &session_id).map_err(|e| {
+        String::from(ChatV2Error::Other(format!(
+            "Failed to load TodoList: {}",
+            e
+        )))
+    })?;
 
     let (todo_list, persisted_message_id, persisted_variant_id) = match todo_info {
         Some(info) => info,
@@ -1696,13 +1929,20 @@ pub async fn chat_v2_continue_message(
         todo_list.total_count()
     );
 
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
     // 5. 原子注册流（提前到任何内存状态修改之前）
     // 🔧 修复：之前在 restore_todo_list_from_db 之后才注册流，
     // 若会话已有活跃流，注册失败返回错误，但内存中的 TodoList 已被覆盖，
     // 可能破坏正在运行的流的 TodoList 状态
-    let cancel_token = match chat_v2_state.try_register_stream(&session_id) {
-        Ok(token) => token,
+    let stream_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
+        Ok(registration) => registration,
         Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
             return Err(ChatV2Error::Other(
                 "Session has an active stream. Please wait for completion or cancel first."
                     .to_string(),
@@ -1710,23 +1950,27 @@ pub async fn chat_v2_continue_message(
             .into());
         }
     };
+    let stream_generation = stream_registration.generation();
+    let cancel_token = stream_registration.token().clone();
+    let stream_guard = StreamGuard::new(
+        chat_v2_state.inner().clone(),
+        session_id.clone(),
+        stream_registration,
+    );
 
     // 恢复 TodoList 到内存（已持有流注册，不会与活跃流冲突）
     if let Err(e) = restore_todo_list_from_db(&db, &session_id) {
-        chat_v2_state.remove_stream(&session_id);
-        return Err(format!("Failed to restore TodoList: {}", e));
+        return Err(ChatV2Error::Other(format!("Failed to restore TodoList: {}", e)).into());
     }
 
     // 6. 加载原消息
     let original_message = match ChatV2Repo::get_message_v2(&db, &persisted_message_id) {
         Ok(Some(msg)) => msg,
         Ok(None) => {
-            chat_v2_state.remove_stream(&session_id);
-            return Err(ChatV2Error::MessageNotFound(persisted_message_id.clone()).to_string());
+            return Err(ChatV2Error::MessageNotFound(persisted_message_id.clone()).into());
         }
         Err(e) => {
-            chat_v2_state.remove_stream(&session_id);
-            return Err(e.to_string());
+            return Err(e.into());
         }
     };
 
@@ -1751,11 +1995,7 @@ pub async fn chat_v2_continue_message(
 
     // 8. 获取前一条用户消息的内容
     let user_msg_result =
-        find_preceding_user_message_with_attachments(&db, &session_id, &original_message)
-            .map_err(|e| {
-                chat_v2_state.remove_stream(&session_id);
-                e
-            })?;
+        find_preceding_user_message_with_attachments(&db, &session_id, &original_message)?;
     let user_content = user_msg_result.content;
 
     // 恢复上下文引用
@@ -1787,9 +2027,11 @@ pub async fn chat_v2_continue_message(
         content: user_content,
         assistant_message_id: Some(persisted_message_id.clone()),
         user_context_refs: restored_context_refs,
-        options: options.map(|mut opts| {
+        options: Some({
+            let mut opts = options.unwrap_or_default();
             opts.is_continue = Some(true);
             opts.continue_variant_id = target_variant_id.clone();
+            opts.stream_generation = Some(stream_generation);
             opts
         }),
         user_message_id: None,
@@ -1807,9 +2049,7 @@ pub async fn chat_v2_continue_message(
     // 🆕 P1修复：使用 TaskTracker 追踪异步任务
     // 11. 异步执行 Pipeline（继续模式）
     chat_v2_state.spawn_tracked(async move {
-        // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
-        let _stream_guard =
-            StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+        let _stream_guard = stream_guard;
 
         let result = pipeline_clone
             .execute(
@@ -1867,6 +2107,23 @@ mod tests {
         assert!(id1.starts_with("msg_"));
         assert!(id2.starts_with("msg_"));
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn build_wake_request_forces_ephemeral_user_content() {
+        let request = build_wake_request(
+            "sess_wake".to_string(),
+            "[子代理完成通知] done".to_string(),
+            Some("msg_wake".to_string()),
+            Some(SendOptions {
+                skip_user_message_save: Some(false),
+                ..Default::default()
+            }),
+        );
+
+        assert_eq!(request.options.unwrap().skip_user_message_save, Some(true));
+        assert_eq!(request.assistant_message_id.as_deref(), Some("msg_wake"));
+        assert!(request.user_context_refs.is_none());
     }
 
     #[test]
@@ -1956,8 +2213,6 @@ mod tests {
                 mode_required_bundle_ids: vec!["mode-a".to_string()],
                 agentic_session_skill_ids: vec!["agentic-a".to_string()],
                 branch_local_skill_ids: vec!["branch-a".to_string()],
-                effective_allowed_internal_tools: vec!["builtin-web_search".to_string()],
-                effective_allowed_external_tools: vec!["mcp_fetch".to_string()],
                 effective_allowed_external_servers: vec!["server-a".to_string()],
                 ..Default::default()
             }),
@@ -1969,6 +2224,7 @@ mod tests {
             updated.active_skill_ids.unwrap(),
             vec!["manual-a".to_string()]
         );
+        assert!(updated.execution_allowed_tools.is_none());
         assert_eq!(updated.mcp_tools.unwrap(), vec!["server-a".to_string()]);
     }
 
@@ -1981,6 +2237,7 @@ mod tests {
         let meta = MessageMeta {
             skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
                 active_skill_ids: vec!["runtime-skill".to_string()],
+                execution_allowed_tools: Some(vec!["builtin-runtime_tool".to_string()]),
                 skill_contents: std::collections::HashMap::from([(
                     "runtime-skill".to_string(),
                     "runtime body".to_string(),
@@ -2005,6 +2262,10 @@ mod tests {
         assert_eq!(
             updated.active_skill_ids.unwrap(),
             vec!["runtime-skill".to_string()]
+        );
+        assert_eq!(
+            updated.execution_allowed_tools.unwrap(),
+            vec!["builtin-runtime_tool".to_string()]
         );
         assert_eq!(
             updated
@@ -2036,6 +2297,55 @@ mod tests {
             updated.mcp_tool_schemas.unwrap()[0].server_id.as_deref(),
             Some("server-a")
         );
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_preserves_current_admission_projection() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            active_skill_ids: Some(vec!["currently-trusted".to_string()]),
+            execution_allowed_tools: Some(vec!["builtin-current_tool".to_string()]),
+            skill_admission_errors: Some(std::collections::HashMap::from([(
+                "revoked-skill".to_string(),
+                "untrusted: revoked".to_string(),
+            )])),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["revoked-skill".to_string()],
+                execution_allowed_tools: Some(vec!["builtin-revoked_tool".to_string()]),
+                skill_embedded_tools: std::collections::HashMap::from([(
+                    "revoked-skill".to_string(),
+                    vec![crate::chat_v2::types::McpToolSchema {
+                        name: "builtin-revoked_tool".to_string(),
+                        server_id: None,
+                        description: Some("historical schema".to_string()),
+                        input_schema: Some(serde_json::json!({ "type": "object" })),
+                    }],
+                )]),
+                mcp_tool_schemas: vec![crate::chat_v2::types::McpToolSchema {
+                    name: "builtin-revoked_tool".to_string(),
+                    server_id: None,
+                    description: Some("historical schema".to_string()),
+                    input_schema: Some(serde_json::json!({ "type": "object" })),
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(
+            updated.active_skill_ids.unwrap(),
+            vec!["currently-trusted".to_string()]
+        );
+        assert_eq!(
+            updated.execution_allowed_tools.unwrap(),
+            vec!["builtin-current_tool".to_string()]
+        );
+        assert!(updated.skill_embedded_tools.is_none());
+        assert!(updated.mcp_tool_schemas.is_none());
     }
 
     #[test]
@@ -2086,6 +2396,49 @@ mod tests {
         assert_eq!(
             updated.active_skill_ids.unwrap(),
             vec!["variant-skill".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_preserves_explicit_empty_execution_allowed_tools(
+    ) {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            execution_allowed_tools: Some(vec!["current-tool".to_string()]),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["instruction-only".to_string()],
+                execution_allowed_tools: Some(Vec::new()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(updated.execution_allowed_tools, Some(Vec::new()));
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_does_not_invent_empty_policy_for_legacy_meta() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            execution_allowed_tools: Some(vec!["current-tool".to_string()]),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_snapshot_after: Some(crate::chat_v2::types::SkillStateSnapshot {
+                manual_pinned_skill_ids: vec!["legacy-skill".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(
+            updated.execution_allowed_tools,
+            Some(vec!["current-tool".to_string()])
         );
     }
 }

@@ -2,9 +2,11 @@
 //!
 //! 从 pipeline.rs 拆分，管理单次请求的完整状态
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
+use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -13,10 +15,349 @@ use crate::models::ChatMessage as LegacyChatMessage;
 use super::pipeline::ChatV2LLMAdapter;
 use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
 use super::types::{
-    block_status, block_types, AttachmentInput, MessageBlock, MessageSources, SendMessageRequest,
-    SendOptions, TokenUsage, ToolResultInfo,
+    block_status, block_types, AttachmentInput, CanonicalContentPart, MessageBlock, MessageSources,
+    ModelExecutionSnapshot, SendMessageRequest, SendOptions, TokenUsage, ToolResultInfo,
 };
 use super::vfs_resolver::escape_xml_content;
+
+// ============================================================
+// 🆕 2026-07 Doom loop 检测（借鉴 参考实现）
+// ============================================================
+
+/// 同一指纹连续出现第 3 次起拦截执行（合成失败结果回喂 LLM）
+pub(crate) const DOOM_LOOP_WARN_THRESHOLD: u32 = 3;
+
+/// 同一指纹连续出现第 5 次时终止本轮工具循环（生成 tool_limit 块）
+pub(crate) const DOOM_LOOP_ABORT_THRESHOLD: u32 = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LocalShellRuntimeContract {
+    pub(crate) os: &'static str,
+    pub(crate) sandbox_backend: &'static str,
+    pub(crate) shell_path: Option<&'static str>,
+    pub(crate) shell_kind: &'static str,
+    pub(crate) invocation: Option<&'static str>,
+    pub(crate) output_encoding: Option<&'static str>,
+    pub(crate) execution_supported: bool,
+}
+
+/// Return the local shell contract implemented by the desktop backend for a
+/// target platform. Keep this mapping explicit so prompts and preflight output
+/// cannot claim a PTY or a user-selected shell that the executor does not
+/// provide.
+pub(crate) fn local_shell_contract_for_platform(platform: &str) -> LocalShellRuntimeContract {
+    match platform {
+        "macos" => LocalShellRuntimeContract {
+            os: "macOS",
+            sandbox_backend: "macos_seatbelt",
+            shell_path: Some("/bin/sh"),
+            shell_kind: "posix_sh",
+            invocation: Some("/bin/sh -c"),
+            output_encoding: Some("utf-8"),
+            execution_supported: true,
+        },
+        "windows" => LocalShellRuntimeContract {
+            os: "Windows",
+            sandbox_backend: "windows_appcontainer_job",
+            shell_path: Some(r"System32\WindowsPowerShell\v1.0\powershell.exe"),
+            shell_kind: "windows_powershell",
+            invocation: Some(
+                "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand",
+            ),
+            output_encoding: Some("utf-8"),
+            execution_supported: true,
+        },
+        // Linux 桌面：bubblewrap（bwrap）沙箱 + /bin/sh。契约层声明支持，
+        // bwrap 是否实际安装由 preflight 的运行时 capability 探测兜底。
+        // 注意：Android 上 std::env::consts::OS 为 "android"，不会命中本
+        // 分支，移动端仍走下方 fail-closed 的 Unsupported 契约。
+        "linux" => LocalShellRuntimeContract {
+            os: "Linux",
+            sandbox_backend: "linux_bwrap",
+            shell_path: Some("/bin/sh"),
+            shell_kind: "posix_sh",
+            invocation: Some("/bin/sh -c"),
+            output_encoding: Some("utf-8"),
+            execution_supported: true,
+        },
+        _ => LocalShellRuntimeContract {
+            os: "Unsupported",
+            sandbox_backend: "unavailable",
+            shell_path: None,
+            shell_kind: "unavailable",
+            invocation: None,
+            output_encoding: Some("unknown"),
+            execution_supported: false,
+        },
+    }
+}
+
+/// Doom loop 裁决结果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DoomLoopVerdict {
+    /// 正常执行
+    Execute,
+    /// 连续第 3/4 次相同调用：拦截执行，合成失败结果告知 LLM 改变策略
+    SkipRepeated { count: u32 },
+    /// 连续第 5 次相同调用：拦截执行并终止本轮工具循环
+    Abort { count: u32 },
+}
+
+/// Doom loop 守卫：跨工具轮次追踪「工具名 + 参数 JSON」指纹的连续重复次数
+///
+/// 借鉴 参考实现 的 doom loop 检测（同工具同参数连续 3 次告警）。
+/// 状态生命周期与 PipelineContext 一致（单次请求内跨递归轮次累计）；
+/// 指纹不同（换工具或换参数）即重置计数。多变体路径在变体循环内各持有独立实例。
+#[derive(Debug, Default)]
+pub(crate) struct DoomLoopGuard {
+    /// 最近一次观察到的调用指纹（sha256(工具名 + 参数 JSON)）
+    last_fingerprint: Option<String>,
+    /// 该指纹的连续出现次数（含当前次）
+    repeat_count: u32,
+    /// 是否已触发终止（达到 DOOM_LOOP_ABORT_THRESHOLD）
+    abort_triggered: bool,
+    /// 触发终止的工具名（用于 tool_limit 块提示文案）
+    abort_tool_name: Option<String>,
+}
+
+impl DoomLoopGuard {
+    /// 按执行顺序观察一次工具调用，返回裁决结果并更新内部计数
+    ///
+    /// 本方法只做计数与裁决，不落终止标记；由 tool_loop 对 Abort 裁决
+    /// 调用 `mark_abort`（心跳白名单工具会忽略裁决，避免误伤合法轮询）。
+    pub(crate) fn observe(
+        &mut self,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> DoomLoopVerdict {
+        let fingerprint = Self::fingerprint(tool_name, arguments);
+        if self.last_fingerprint.as_deref() == Some(fingerprint.as_str()) {
+            self.repeat_count += 1;
+        } else {
+            self.last_fingerprint = Some(fingerprint);
+            self.repeat_count = 1;
+        }
+
+        if self.repeat_count >= DOOM_LOOP_ABORT_THRESHOLD {
+            DoomLoopVerdict::Abort {
+                count: self.repeat_count,
+            }
+        } else if self.repeat_count >= DOOM_LOOP_WARN_THRESHOLD {
+            DoomLoopVerdict::SkipRepeated {
+                count: self.repeat_count,
+            }
+        } else {
+            DoomLoopVerdict::Execute
+        }
+    }
+
+    /// 落终止标记（tool_loop 对非心跳工具的 Abort 裁决调用）
+    pub(crate) fn mark_abort(&mut self, tool_name: &str) {
+        self.abort_triggered = true;
+        self.abort_tool_name = Some(tool_name.to_string());
+    }
+
+    /// 是否已达到终止阈值（由 tool_loop 在工具批次执行后检查）
+    pub(crate) fn abort_triggered(&self) -> bool {
+        self.abort_triggered
+    }
+
+    /// 触发终止的工具名
+    pub(crate) fn abort_tool_name(&self) -> Option<&str> {
+        self.abort_tool_name.as_deref()
+    }
+
+    /// 计算调用指纹：sha256(工具名 + 0x1f + 参数 JSON 序列化)
+    ///
+    /// serde_json 启用 preserve_order，同一 LLM 重复输出的相同参数
+    /// 序列化结果稳定，指纹可靠。
+    fn fingerprint(tool_name: &str, arguments: &serde_json::Value) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(tool_name.as_bytes());
+        hasher.update(b"\x1f");
+        hasher.update(
+            serde_json::to_string(arguments)
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+// ============================================================
+// 🆕 2026-07 Citation Ledger（P0：跨工具调用引用编号全局一致）
+// ============================================================
+
+/// 单次引用编号分配结果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CitationAssignment {
+    /// 同类来源内的编号（`[类型-N]` 中的 N）
+    pub type_index: usize,
+    /// 是否为本次回复内首次出现的来源
+    pub is_new: bool,
+}
+
+/// 引用编号账本：同一次助手回复（一次 tool loop，可含多轮检索工具调用）内，
+/// 同一 (引用类型, 来源身份) 恒定复用同一编号，新来源在该类型内全局递增。
+///
+/// ## 契约
+/// - 前端「直接信任后端 citationTag/typeIndex，不再重排」，因此多轮工具调用后
+///   `[知识库-3]` 必须永远指向同一来源——由本账本保证。
+/// - `group` 为引用类型分组键（rag / multimodal / memory / web），
+///   `identity` 为来源身份键（resource/chunk/page/blob 或 noteId / URL）。
+/// - 单条检索结果内出现相同身份时也会得到相同编号（上游检索已做去重，
+///   即便漏网也保持「同源同号」语义）。
+#[derive(Debug, Default)]
+pub struct CitationLedger {
+    /// 引用类型 -> 已分配的最大编号
+    counters: HashMap<String, usize>,
+    /// "group\x1f identity" -> 已分配编号
+    assignments: HashMap<String, usize>,
+}
+
+impl CitationLedger {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 为 (group, identity) 分配（或复用）同类编号
+    pub fn assign(&mut self, group: &str, identity: &str) -> CitationAssignment {
+        let key = format!("{}\u{1f}{}", group, identity);
+        if let Some(&type_index) = self.assignments.get(&key) {
+            return CitationAssignment {
+                type_index,
+                is_new: false,
+            };
+        }
+        let counter = self.counters.entry(group.to_string()).or_insert(0);
+        *counter += 1;
+        let type_index = *counter;
+        self.assignments.insert(key, type_index);
+        CitationAssignment {
+            type_index,
+            is_new: true,
+        }
+    }
+
+    /// 已分配的来源总数（跨类型）
+    pub fn len(&self) -> usize {
+        self.assignments.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.assignments.is_empty()
+    }
+}
+
+/// 全局 Citation Ledger 注册表容量（按「回复」计，FIFO 淘汰最旧条目）。
+///
+/// 账本生命周期 = 一次助手回复（assistant_message_id + variant_id 唯一确定）。
+/// 工具执行侧只能拿到 `ExecutionContext`（归其他代理所有，无法加字段），
+/// 因此账本挂在这里的进程级注册表上，以 (session, message, variant) 为键；
+/// 回复结束后条目不再被访问，由容量上限自然淘汰，无需显式清理钩子。
+const CITATION_LEDGER_CAPACITY: usize = 64;
+
+#[derive(Default)]
+struct CitationLedgerRegistry {
+    ledgers: HashMap<String, Arc<Mutex<CitationLedger>>>,
+    /// 插入顺序（FIFO 淘汰用）
+    order: VecDeque<String>,
+}
+
+static CITATION_LEDGERS: OnceLock<Mutex<CitationLedgerRegistry>> = OnceLock::new();
+
+/// 获取（或创建）某次助手回复对应的引用编号账本。
+///
+/// - `message_id`：助手消息 ID（同一次 tool loop 的多轮工具调用共享）
+/// - `variant_id`：多变体路径下各变体独立编号，避免跨变体串号
+pub fn citation_ledger_for_reply(
+    session_id: &str,
+    message_id: &str,
+    variant_id: Option<&str>,
+) -> Arc<Mutex<CitationLedger>> {
+    let key = format!(
+        "{}\u{1f}{}\u{1f}{}",
+        session_id,
+        message_id,
+        variant_id.unwrap_or("")
+    );
+    let registry = CITATION_LEDGERS.get_or_init(|| Mutex::new(CitationLedgerRegistry::default()));
+    let mut registry = registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(ledger) = registry.ledgers.get(&key) {
+        return Arc::clone(ledger);
+    }
+    let ledger = Arc::new(Mutex::new(CitationLedger::new()));
+    registry.ledgers.insert(key.clone(), Arc::clone(&ledger));
+    registry.order.push_back(key);
+    while registry.order.len() > CITATION_LEDGER_CAPACITY {
+        if let Some(evicted) = registry.order.pop_front() {
+            registry.ledgers.remove(&evicted);
+        }
+    }
+    ledger
+}
+
+// ============================================================
+// 🆕 2026-07 检索工具输出的 LLM 视图脱敏（P1：本地路径/冗余字段不进上下文）
+// ============================================================
+
+/// 判断工具是否为「输出中带 sources 数组」的检索类工具
+pub(crate) fn is_retrieval_source_tool(tool_name: &str) -> bool {
+    let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
+    matches!(
+        stripped,
+        "rag_search" | "multimodal_search" | "unified_search" | "web_search"
+    )
+}
+
+/// 构建检索工具输出的 LLM 视图：
+/// 保留给前端/持久化的 `output`（事件 payload 与块 tool_output）字段完整，
+/// 回灌 LLM 的 tool 消息则剥离本地路径与纯诊断字段，节省 token 且符合
+/// citationGuide「禁止输出 URL / Markdown 图片」的约束。
+///
+/// 剥离规则：
+/// - 每条 source：移除 `imageUrl`/`imageCitation`（本地路径 + `![](...)` Markdown）、
+///   `blob_hash`（内容哈希，仅前端渲染用）、`retrievalProvenance`（冗长诊断）；
+///   `url` 仅在非 http(s)（即本地路径 / asset 协议）时移除。
+/// - 顶层：移除 `retrievalPlan` / `capabilitySnapshot`（纯诊断，前端事件仍有全量）。
+///
+/// 返回 `None` 表示该工具/形状不适用脱敏（调用方使用原始 output）。
+pub(crate) fn sanitize_retrieval_output_for_llm(tool_name: &str, output: &Value) -> Option<Value> {
+    if !is_retrieval_source_tool(tool_name) {
+        return None;
+    }
+    if !output.is_object() {
+        return None;
+    }
+    let mut sanitized = output.clone();
+    {
+        let object = sanitized.as_object_mut()?;
+        object.remove("retrievalPlan");
+        object.remove("capabilitySnapshot");
+        if let Some(sources) = object.get_mut("sources").and_then(Value::as_array_mut) {
+            for source in sources {
+                let Some(entry) = source.as_object_mut() else {
+                    continue;
+                };
+                entry.remove("imageUrl");
+                entry.remove("imageCitation");
+                entry.remove("blob_hash");
+                entry.remove("retrievalProvenance");
+                let keep_url = entry
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .is_some_and(|url| url.starts_with("http://") || url.starts_with("https://"));
+                if !keep_url {
+                    entry.remove("url");
+                }
+            }
+        }
+    }
+    Some(sanitized)
+}
 
 // ============================================================
 // 内部上下文
@@ -38,6 +379,12 @@ pub(crate) struct PipelineContext {
     pub(crate) attachments: Vec<AttachmentInput>,
     /// 聊天历史（用于构建上下文）
     pub(crate) chat_history: Vec<LegacyChatMessage>,
+    /// Capability-aware compiler output for the current user turn.
+    pub(crate) compiled_current_user_message: Option<LegacyChatMessage>,
+    /// Stable typed content persisted with the user message.
+    pub(crate) canonical_content: Vec<CanonicalContentPart>,
+    /// Frozen model/capability plan for this in-flight generation.
+    pub(crate) execution_snapshot: Option<ModelExecutionSnapshot>,
     /// 检索到的来源
     pub(crate) retrieved_sources: MessageSources,
     /// 发送选项
@@ -77,6 +424,15 @@ pub(crate) struct PipelineContext {
     /// 待传递给 API 的 reasoning_content（DeepSeek/Claude 工具调用递归时使用）
     /// 在工具调用迭代中，需要将上一轮的 thinking_content 回传给 API
     pub(crate) pending_reasoning_for_api: Option<String>,
+
+    /// 🔧 P1-2 修复：每轮工具调用的伴随文本（text-before-tool_use）
+    /// 键为该轮第一个工具结果的 tool_call_id。用于在 tool_results_to_messages_impl
+    /// 中回填 assistant(tool_call) 消息的 content，让 LLM 能看到上一轮说过的话
+    pub(crate) round_text_by_tool_call_id: HashMap<String, String>,
+
+    /// OpenAI Responses reasoning item associated with the first tool call of
+    /// each round. Kept in memory and replayed on the next stateless request.
+    pub(crate) response_reasoning_by_tool_call_id: HashMap<String, Value>,
 
     /// Gemini 3 思维签名缓存（工具调用迭代时回传）
     /// 在工具调用场景下，API 返回的 thoughtSignature 需要缓存并在后续请求中回传
@@ -118,6 +474,17 @@ pub(crate) struct PipelineContext {
     /// provider usage 决定是否设置；外层 pipeline 循环读取并在下一次
     /// LLM 调用前执行 compaction::run，完成后重置为 false。
     pub(crate) needs_compaction: bool,
+
+    /// 🆕 2026-07: Doom loop 守卫 —— 跨工具轮次追踪「工具名+参数」指纹的连续重复，
+    /// 连续第 3 次拦截执行回喂合成失败，连续第 5 次终止本轮循环（见 DoomLoopGuard）
+    pub(crate) doom_loop_guard: DoomLoopGuard,
+
+    /// 🆕 最近一次 load_chat_history 中 FIFO 截断的丢弃报告（dropped > 0 时挂起），
+    /// 由 notify_context_trimmed 消费并发射 `context_trimmed` 事件
+    pub(crate) pending_context_trim: Option<super::pipeline::TrimOutcome>,
+
+    /// 🆕 本轮流式内是否已发射过 `context_trimmed`（去重防刷屏）
+    pub(crate) context_trim_notified: bool,
 }
 
 impl PipelineContext {
@@ -143,6 +510,9 @@ impl PipelineContext {
             // 所有附件现在通过 user_context_refs 传递
             attachments: Vec::new(),
             chat_history: Vec::new(),
+            compiled_current_user_message: None,
+            canonical_content: Vec::new(),
+            execution_snapshot: None,
             retrieved_sources: MessageSources::default(),
             options: request.options.unwrap_or_default(),
             tool_results: Vec::new(),
@@ -161,6 +531,8 @@ impl PipelineContext {
             interleaved_blocks: Vec::new(),
             global_block_index: 0,
             pending_reasoning_for_api: None,
+            round_text_by_tool_call_id: HashMap::new(),
+            response_reasoning_by_tool_call_id: HashMap::new(),
             pending_thought_signature: None,
             current_adapter: None,
             // 统一上下文注入系统支持
@@ -181,6 +553,9 @@ impl PipelineContext {
             heartbeat_count: 0,
             last_round_heartbeat: false,
             needs_compaction: false,
+            doom_loop_guard: DoomLoopGuard::default(),
+            pending_context_trim: None,
+            context_trim_notified: false,
         }
     }
 
@@ -253,6 +628,11 @@ impl PipelineContext {
             } else {
                 None
             };
+            let response_reasoning_item = result
+                .tool_call_id
+                .as_ref()
+                .and_then(|id| self.response_reasoning_by_tool_call_id.get(id))
+                .cloned();
 
             let assistant_msg = LegacyChatMessage {
                 role: "assistant".to_string(),
@@ -273,7 +653,8 @@ impl PipelineContext {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: None,
-                metadata: None,
+                metadata: response_reasoning_item
+                    .map(|item| json!({ "openai_responses_reasoning_item": item })),
             };
             messages.push(assistant_msg);
 
@@ -333,10 +714,24 @@ impl PipelineContext {
             // 🔧 思维链修复：每个工具结果使用它自己的 reasoning_content
             // 这样多轮工具调用的思维链都能被正确保留和回传
             let thinking_content = result.reasoning_content.clone();
+            let response_reasoning_item = result
+                .tool_call_id
+                .as_ref()
+                .and_then(|id| self.response_reasoning_by_tool_call_id.get(id))
+                .cloned();
+
+            // 🔧 P1-2 修复：回填该轮的伴随文本（text-before-tool_use），
+            // 使 LLM 在后续轮次能看到自己在发起工具调用前说过的话
+            let round_text = result
+                .tool_call_id
+                .as_ref()
+                .and_then(|id| self.round_text_by_tool_call_id.get(id))
+                .cloned()
+                .unwrap_or_default();
 
             let assistant_msg = LegacyChatMessage {
                 role: "assistant".to_string(),
-                content: String::new(),
+                content: round_text,
                 timestamp: chrono::Utc::now(),
                 thinking_content,
                 thought_signature: result.thought_signature.clone(),
@@ -353,7 +748,8 @@ impl PipelineContext {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: None,
-                metadata: None,
+                metadata: response_reasoning_item
+                    .map(|item| json!({ "openai_responses_reasoning_item": item })),
             };
             messages.push(assistant_msg);
 
@@ -370,9 +766,13 @@ impl PipelineContext {
 
             // 🔧 修复：当工具失败时，content 应包含错误信息而非空的 output
             // 这样 LLM 才能知道工具调用失败的原因并做出合理响应
+            // 🆕 P1：检索工具的 LLM 视图脱敏——本地路径 / Markdown 图片 / 冗长诊断
+            // 字段不回灌 LLM；前端事件 payload 与持久化块 tool_output 仍为全量。
             let tool_content = if result.success {
-                // 成功时使用 output
-                serde_json::to_string(&result.output).unwrap_or_default()
+                match sanitize_retrieval_output_for_llm(&result.tool_name, &result.output) {
+                    Some(sanitized) => serde_json::to_string(&sanitized).unwrap_or_default(),
+                    None => serde_json::to_string(&result.output).unwrap_or_default(),
+                }
             } else {
                 // 失败时优先使用 error，若 error 为空则回退到 output
                 if let Some(ref err) = result.error {
@@ -425,6 +825,16 @@ impl PipelineContext {
     /// ## 返回
     /// 块被分配的 block_index
     pub(crate) fn add_interleaved_block(&mut self, mut block: MessageBlock) -> u32 {
+        // 🔧 幂等保护：同一块 ID 只收集一次。
+        // attempt_completion 路径 / 取消收尾路径可能对同一轮的 thinking/content 块
+        // 重复调用 collect_round_blocks，重复收集会导致 block_ids 列表出现重复项。
+        if let Some(pos) = self
+            .interleaved_blocks
+            .iter()
+            .position(|b| b.id == block.id)
+        {
+            return self.interleaved_blocks[pos].block_index;
+        }
         let index = self.global_block_index;
         block.block_index = index;
         self.global_block_index += 1;
@@ -515,6 +925,13 @@ impl PipelineContext {
 
     /// 添加工具调用块到交替列表
     ///
+    /// ## 与检索事件的单一写入契约（P2-6）
+    /// 检索工具（rag/web_search 等）通过 `emit_start`/`emit_end` 发射事件驱动前端
+    /// 实时渲染，但**不**调用 `save_tool_block` 落库；块的持久化唯一入口是本方法
+    /// （经 `add_interleaved_block` → `save_results`）。事件与持久化块共享同一
+    /// `block_id`（`tool_result.block_id` == 事件的 `ctx.block_id`），且
+    /// `add_interleaved_block` 对重复块 ID 幂等，因此不存在同 block_id 的双写竞态。
+    ///
     /// ## 参数
     /// - `tool_result`: 工具调用结果
     /// - `message_id`: 消息 ID
@@ -525,7 +942,7 @@ impl PipelineContext {
         let block_id = tool_result
             .block_id
             .clone()
-            .unwrap_or_else(|| MessageBlock::generate_id());
+            .unwrap_or_else(MessageBlock::generate_id);
 
         // 🔧 P0 修复：检索工具使用正确的块类型，而非通用的 mcp_tool
         // 这样前端 sourceAdapter 能正确从 toolOutput.sources 中提取来源
@@ -585,6 +1002,16 @@ impl PipelineContext {
     pub fn get_block_type_for_tool_static(tool_name: &str) -> String {
         let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
 
+        // ACR R2-05 / R3-01：workbench_* 与域委托写持久化为 workbench_ops（撤销入口）
+        if stripped.starts_with("workbench_")
+            || matches!(
+                stripped,
+                "note_append" | "note_replace" | "note_set" | "mindmap_edit_nodes"
+            )
+        {
+            return block_types::WORKBENCH_OPS.to_string();
+        }
+
         match stripped {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
             "memory_search" => block_types::MEMORY.to_string(),
@@ -593,6 +1020,9 @@ impl PipelineContext {
             "image_generate" => block_types::IMAGE_GEN.to_string(),
             "coordinator_sleep" => block_types::SLEEP.to_string(),
             "subagent_call" => block_types::SUBAGENT_EMBED.to_string(),
+            // 🆕 契约 C11 配套（缺口 2 历史加载侧）：前端为 workspace_send 建专属块，
+            // 历史加载时工具块类型必须与实时块一致
+            "workspace_send" => block_types::WORKSPACE_SEND.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
             _ => block_types::MCP_TOOL.to_string(),
         }
@@ -734,19 +1164,27 @@ impl PipelineContext {
 
     pub(crate) fn build_runtime_facts_block(user_content: &str) -> String {
         let now = chrono::Local::now();
-        if Self::is_time_sensitive_query(user_content) {
-            format!(
-                "<runtime_facts>\n当前时间: {}\n时区: {}\n</runtime_facts>",
-                now.format("%Y-%m-%d %H:%M:%S"),
-                now.format("%:z")
-            )
+        let platform = std::env::consts::OS;
+        let shell = local_shell_contract_for_platform(platform);
+        let temporal_fact = if Self::is_time_sensitive_query(user_content) {
+            format!("当前时间: {}", now.format("%Y-%m-%d %H:%M:%S"))
         } else {
-            format!(
-                "<runtime_facts>\n当前日期: {}\n时区: {}\n</runtime_facts>",
-                now.format("%Y-%m-%d"),
-                now.format("%:z")
-            )
-        }
+            format!("当前日期: {}", now.format("%Y-%m-%d"))
+        };
+
+        format!(
+            "<runtime_facts>\n{}\n时区: {}\nos: {}\nplatform: {}\nlocal_shell: {}\nshell_path: {}\nsandbox_backend: {}\nshell_kind: {}\noutput_encoding: {}\nexecution_supported: {}\nnon_interactive: true\npty_available: false\npersistent_shell_session: false\nnetwork_default: deny\n</runtime_facts>",
+            temporal_fact,
+            now.format("%:z"),
+            shell.os,
+            platform,
+            shell.invocation.unwrap_or("none"),
+            shell.shell_path.unwrap_or("none"),
+            shell.sandbox_backend,
+            shell.shell_kind,
+            shell.output_encoding.unwrap_or("none"),
+            shell.execution_supported,
+        )
     }
 
     pub(crate) fn build_injected_context_blocks(
@@ -827,6 +1265,9 @@ impl PipelineContext {
     ///
     /// 在消息发送开始时调用，将用户上下文引用保存到快照中。
     pub(crate) fn init_context_snapshot(&mut self) {
+        // Re-entry is expected (the crash-safe save initializes before execute_internal).
+        // Preserve retrieval refs/path_map while rebuilding user refs deterministically.
+        self.context_snapshot.user_refs.clear();
         // 将 SendContextRef 转换为 ContextRef
         for send_ref in &self.user_context_refs {
             self.context_snapshot
@@ -1016,5 +1457,102 @@ impl PipelineContext {
     /// 重置工作区注入计数（新一轮 LLM 调用开始时）
     pub(crate) fn reset_workspace_injection_count(&mut self) {
         self.workspace_injection_count = 0;
+    }
+}
+
+// ============================================================
+// 单元测试
+// ============================================================
+
+#[cfg(test)]
+mod citation_tests {
+    use super::*;
+
+    #[test]
+    fn ledger_reuses_index_for_same_identity_across_calls() {
+        let mut ledger = CitationLedger::new();
+        // 第一次工具调用
+        let first = ledger.assign("rag", "res:doc_a|c:0");
+        let second = ledger.assign("rag", "res:doc_b|c:1");
+        assert_eq!((first.type_index, first.is_new), (1, true));
+        assert_eq!((second.type_index, second.is_new), (2, true));
+        // 第二次工具调用：doc_a 复用编号 1，新来源全局递增到 3
+        let repeat = ledger.assign("rag", "res:doc_a|c:0");
+        assert_eq!((repeat.type_index, repeat.is_new), (1, false));
+        let third = ledger.assign("rag", "res:doc_c|c:0");
+        assert_eq!((third.type_index, third.is_new), (3, true));
+    }
+
+    #[test]
+    fn ledger_counts_groups_independently() {
+        let mut ledger = CitationLedger::new();
+        assert_eq!(ledger.assign("rag", "res:a").type_index, 1);
+        assert_eq!(ledger.assign("multimodal", "res:a|p:0").type_index, 1);
+        assert_eq!(ledger.assign("memory", "note:x").type_index, 1);
+        assert_eq!(ledger.assign("rag", "res:b").type_index, 2);
+    }
+
+    #[test]
+    fn ledger_registry_is_stable_per_reply_and_isolated_per_variant() {
+        let ledger_a = citation_ledger_for_reply("sess_ct", "msg_ct_1", None);
+        ledger_a.lock().unwrap().assign("rag", "res:shared");
+        // 同一回复再次获取：拿到同一账本（编号被复用）
+        let ledger_a_again = citation_ledger_for_reply("sess_ct", "msg_ct_1", None);
+        let repeat = ledger_a_again.lock().unwrap().assign("rag", "res:shared");
+        assert_eq!((repeat.type_index, repeat.is_new), (1, false));
+        // 不同变体：独立账本
+        let ledger_b = citation_ledger_for_reply("sess_ct", "msg_ct_1", Some("var_1"));
+        let fresh = ledger_b.lock().unwrap().assign("rag", "res:shared");
+        assert!(fresh.is_new);
+    }
+
+    #[test]
+    fn sanitize_strips_local_paths_and_diagnostics_but_keeps_web_urls() {
+        let output = json!({
+            "success": true,
+            "retrievalPlan": { "routes": [] },
+            "capabilitySnapshot": { "profiles": [] },
+            "sources": [
+                {
+                    "citationTag": "[图片-1]",
+                    "url": "asset://localhost/blobs/abc.png",
+                    "imageUrl": "asset://localhost/blobs/abc.png",
+                    "imageCitation": "![Page 1](asset://localhost/blobs/abc.png)",
+                    "blob_hash": "deadbeef",
+                    "retrievalProvenance": [{ "routeId": "mm" }],
+                    "snippet": "page text",
+                    "readResourceId": "res_1"
+                },
+                {
+                    "citationTag": "[搜索-1]",
+                    "url": "https://example.com/article",
+                    "snippet": "web text"
+                }
+            ]
+        });
+        let sanitized =
+            sanitize_retrieval_output_for_llm("builtin-unified_search", &output).expect("applies");
+        assert!(sanitized.get("retrievalPlan").is_none());
+        assert!(sanitized.get("capabilitySnapshot").is_none());
+        let sources = sanitized["sources"].as_array().unwrap();
+        assert!(sources[0].get("url").is_none());
+        assert!(sources[0].get("imageUrl").is_none());
+        assert!(sources[0].get("imageCitation").is_none());
+        assert!(sources[0].get("blob_hash").is_none());
+        assert!(sources[0].get("retrievalProvenance").is_none());
+        // LLM 仍能看到 snippet 与 readResourceId
+        assert_eq!(sources[0]["snippet"], "page text");
+        assert_eq!(sources[0]["readResourceId"], "res_1");
+        // 真实网络 URL 保留
+        assert_eq!(sources[1]["url"], "https://example.com/article");
+        // 原始 output 不被修改（前端/持久化仍是全量）
+        assert!(output["sources"][0].get("imageUrl").is_some());
+    }
+
+    #[test]
+    fn sanitize_skips_non_retrieval_tools() {
+        let output = json!({ "sources": [{ "imageUrl": "asset://x" }] });
+        assert!(sanitize_retrieval_output_for_llm("builtin-note_read", &output).is_none());
+        assert!(sanitize_retrieval_output_for_llm("mcp_custom_tool", &output).is_none());
     }
 }

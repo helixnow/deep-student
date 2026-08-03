@@ -31,7 +31,7 @@ describe('settings sidebar study-ui contract', () => {
   });
 
   it('collapses the desktop settings sidebar fully out of view instead of leaving an icon rail', () => {
-    expect(settingsSidebarSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]'");
+    expect(settingsSidebarSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[var(--panel-ease)]'");
     expect(settingsSidebarSource).toContain("globalLeftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'");
     expect(settingsSidebarSource).not.toContain("globalLeftPanelCollapsed ? 'w-14' : 'w-[var(--shell-navigation-width)]'");
   });
@@ -57,17 +57,24 @@ describe('settings sidebar study-ui contract', () => {
     expect(settingsSidebarSource).toContain("@phosphor-icons/react");
     expect(settingsSidebarSource).not.toContain("from 'lucide-react'");
     expect(settingsSource).toContain("@phosphor-icons/react");
-    expect(settingsNavigationSource).toContain("{ value: 'apis', icon: Robot");
-    expect(settingsNavigationSource).toContain("{ value: 'models', icon: Flask");
-    expect(settingsNavigationSource).toContain("{ value: 'general', icon: SlidersHorizontal");
-    expect(settingsNavigationSource).toContain("{ value: 'appearance', icon: Palette");
-    expect(settingsNavigationSource).toContain("{ value: 'mcp', icon: Plug");
-    expect(settingsNavigationSource).toContain("{ value: 'search', icon: Globe");
-    expect(settingsNavigationSource).toContain("{ value: 'statistics', icon: ChartBar");
-    expect(settingsNavigationSource).toContain("{ value: 'data-governance', icon: Shield");
-    expect(settingsNavigationSource).toContain("{ value: 'params', icon: Wrench");
-    expect(settingsNavigationSource).toContain("{ value: 'shortcuts', icon: Keyboard");
-    expect(settingsNavigationSource).toContain("{ value: 'about', icon: BookOpen");
+    const expectedIcons = {
+      apis: 'Robot',
+      models: 'Flask',
+      general: 'SlidersHorizontal',
+      appearance: 'Palette',
+      mcp: 'Plug',
+      search: 'Globe',
+      statistics: 'ChartBar',
+      'data-governance': 'Shield',
+      params: 'Wrench',
+      shortcuts: 'Keyboard',
+      about: 'BookOpen',
+    };
+    for (const [value, icon] of Object.entries(expectedIcons)) {
+      expect(settingsNavigationSource).toMatch(
+        new RegExp(`value:\\s*'${value}'[\\s\\S]{0,100}icon:\\s*${icon}`),
+      );
+    }
     expect(settingsNavigationSource).not.toContain("{ value: 'app', icon: Palette");
   });
 });

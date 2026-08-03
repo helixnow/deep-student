@@ -22,39 +22,81 @@ button.timeline-node-dot {
   border: none;
 }
 
+.activity-timeline {
+  margin-block: 0 var(--chat-activity-content-gap, 0.75rem);
+  font-size: var(--chat-activity-font-size, var(--chat-body-font-size, 1rem));
+  font-weight: var(--chat-activity-font-weight, var(--chat-body-font-weight, 400));
+  line-height: var(--chat-activity-line-height, var(--chat-body-line-height, 1.5));
+}
+
+.activity-timeline__node {
+  padding-bottom: var(--chat-activity-node-gap, 0.75rem);
+}
+
+.activity-timeline__node:last-child {
+  padding-bottom: 0;
+}
+
+.activity-timeline-icon-column {
+  height: var(--chat-activity-summary-row-height, 1.75rem);
+  width: var(--chat-activity-summary-row-height, 1.75rem);
+}
+
+.activity-timeline-summary,
+.activity-timeline-tool-name,
+.activity-timeline-thinking-trigger,
+.activity-timeline-tool-trigger {
+  font-size: var(--chat-activity-summary-font-size, var(--chat-body-font-size, 1rem));
+  font-weight: var(--chat-activity-summary-font-weight, var(--chat-body-font-weight, 400));
+  line-height: var(--chat-activity-summary-line-height, var(--chat-body-line-height, 1.5));
+}
+
+.activity-timeline-thinking-trigger,
+.activity-timeline-tool-trigger {
+  min-height: var(--chat-activity-summary-row-height, 1.75rem);
+}
+
+.activity-timeline-thinking-details,
+.activity-timeline-thinking-content {
+  font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size, 1rem));
+  font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight, 400));
+  line-height: var(--chat-activity-detail-line-height, var(--chat-body-line-height, 1.5));
+}
+
+.activity-timeline-tool-details {
+  font-size: var(--chat-activity-tool-detail-font-size, var(--chat-md-compact-font-size, 0.9375rem));
+  line-height: var(--chat-activity-tool-detail-line-height, var(--chat-md-compact-line-height, 1.6));
+}
+
+.activity-timeline-tool-command {
+  font-size: var(--chat-md-compact-font-size, 0.9375rem);
+  line-height: var(--chat-md-compact-line-height, 1.6);
+}
+
+.activity-timeline-status {
+  font-size: var(--chat-activity-status-font-size, var(--font-size-sm, 0.75rem));
+  font-weight: var(--chat-body-font-weight, 400);
+  line-height: var(--chat-activity-status-line-height, 1.5rem);
+}
+
+/* When tool activity hands off to the answer body, avoid stacking the
+   timeline's paragraph gap with the markdown first-block margin. */
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .prose,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .streaming-block-renderer {
+  margin-top: 0;
+}
+
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .streaming-blocks > .stream-block:first-child,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .markdown-content > :first-child,
+.chat-v2 .message.assistant .message-content .activity-timeline + .block-renderer .markdown-content > p:first-child {
+  margin-top: 0;
+}
+
 .thinking-summary-sticky {
   position: sticky;
   isolation: isolate;
   overflow: visible;
-}
-
-.thinking-summary-sticky::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  background: var(--surface-panel-strong);
-}
-
-.thinking-summary-sticky::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -16px;
-  height: 28px;
-  pointer-events: none;
-  z-index: -1;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--surface-panel-strong) 96%, transparent) 0%,
-    color-mix(in srgb, var(--surface-panel-strong) 72%, transparent) 38%,
-    transparent 100%
-  );
-}
-
-.thinking-summary-row {
-  background: var(--surface-panel-strong);
 }
 
 .thinking-summary-trigger:hover,

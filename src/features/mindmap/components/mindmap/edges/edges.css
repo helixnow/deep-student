@@ -1,0 +1,19 @@
+/* 树边组件级样式（不写入 mindmap.css，由各边组件自行引入）
+   挂载淡入：新建节点的边、以及 edgeType 切换导致的边组件重挂载
+   都会以淡入呈现，避免切换瞬间的闪跳。 */
+
+@keyframes mm-edge-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+.react-flow__edge-path.mm-tree-edge {
+  animation: mm-edge-enter var(--notes-popup-enter-duration, 200ms) ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__edge-path.mm-tree-edge {
+    animation: none;
+  }
+}

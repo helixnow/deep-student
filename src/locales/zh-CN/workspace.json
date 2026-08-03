@@ -91,6 +91,52 @@
     "processing": "处理中...",
     "noOutput": "暂无输出"
   },
+  "subagentEmbed": {
+    "cancel": "取消",
+    "cancelRequested": "已发送取消请求",
+    "cancelFailed": "取消失败: {{msg}}",
+    "finalResult": "最终结果",
+    "truncated": "（已截断）",
+    "ended": "已结束",
+    "tokens": "{{count}} tokens",
+    "resumed": "续跑",
+    "errorDetail": "错误详情",
+    "failedGeneric": "子代理执行失败，未返回错误详情",
+    "copyResult": "复制最终结果",
+    "pendingInbox": "{{count}} 条待处理",
+    "pendingInboxHint": "该子代理有未消费的消息，可通过续跑让它处理",
+    "openFull": "在完整视图打开",
+    "profile": {
+      "worker": "执行",
+      "explorer": "调研",
+      "default": "默认"
+    }
+  },
+  "workspaceInjection": {
+    "titleFromCoordinator": "来自主代理的消息",
+    "titleFromWorkspace": "来自工作区的消息",
+    "expand": "展开全部",
+    "collapse": "收起"
+  },
+  "workspaceSend": {
+    "delivered": "已向 {{target}} 投递消息",
+    "failed": "向 {{target}} 投递消息失败",
+    "broadcast": "全体（广播）",
+    "showMore": "展开全文",
+    "showLess": "收起"
+  },
+  "subagentRetry": {
+    "finalCancelled": "子代理已取消，重试终止"
+  },
+  "sleep": {
+    "progress": "{{done}}/{{total}} 已完成",
+    "subagent": {
+      "queued": "排队中",
+      "cancelled": "已取消",
+      "interrupted": "已中断",
+      "closed": "已关闭"
+    }
+  },
   "agent": {
     "you": "你"
   }

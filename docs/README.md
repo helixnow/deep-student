@@ -2,6 +2,12 @@
 
 > 用户指南在线版：https://deepstudent.cn/docs/
 
+## 用户指南（面向最终用户）
+
+| 文档 | 说明 |
+|------|------|
+| [user-guide/README.md](./user-guide/README.md) | 用户指南总目录（17 章，覆盖桌面 + 移动双端，含快速上手） |
+
 ## 开发必读
 
 | 文档 | 说明 |

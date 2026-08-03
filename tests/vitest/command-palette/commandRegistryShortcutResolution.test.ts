@@ -7,6 +7,7 @@ import type { Command, DependencyResolver } from '@/command-palette/registry/typ
 const createDeps = (): DependencyResolver => ({
   navigate: () => {},
   getCurrentView: () => 'chat-v2',
+  getFocusedWorkbenchAppTypeId: () => null,
   t: ((key: string) => key) as unknown as TFunction,
   showNotification: () => {},
   toggleTheme: () => {},
@@ -46,13 +47,14 @@ describe('CommandRegistry shortcut resolution', () => {
       category: 'notes',
       shortcut: 'mod+n',
       priority: 100,
-      visibleInViews: ['learning-hub'],
+      visibleInViews: ['learning-hub', 'workbench'],
       execute: () => {},
     }));
 
     const deps = createDeps();
     expect(registry.resolveShortcut('mod+n', 'chat-v2', deps)?.id).toBe('chat.new-session');
     expect(registry.resolveShortcut('mod+n', 'learning-hub', deps)?.id).toBe('notes.new');
+    expect(registry.resolveShortcut('mod+n', 'workbench', deps)?.id).toBe('notes.new');
     expect(warnSpy).not.toHaveBeenCalled();
 
     warnSpy.mockRestore();

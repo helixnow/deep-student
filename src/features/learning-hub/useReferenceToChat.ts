@@ -25,8 +25,14 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import { ensureActiveChatSession } from '@/features/chat/pages/ensureActiveChatSession';
 import { resourceStoreApi } from '@/features/chat/resources';
 import type { ContextRef, ResourceType as StoreResourceType } from '@/features/chat/resources/types';
+import type { AttachmentMeta } from '@/features/chat/core/types/common';
+import {
+  getAttachmentMediaType,
+  buildDefaultInjectModes,
+} from '@/features/chat/components/input-bar/injectModeUtils';
 import { vfsRefApi, type VfsContextRefData } from '@/features/chat/context';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
@@ -37,6 +43,8 @@ import { TEXTBOOK_TYPE_ID } from '@/features/chat/context/definitions/textbook';
 import { EXAM_TYPE_ID } from '@/features/chat/context/definitions/exam';
 import { ESSAY_TYPE_ID } from '@/features/chat/context/definitions/essay';
 import { TRANSLATION_TYPE_ID } from '@/features/chat/context/definitions/translation';
+import { FILE_TYPE_ID } from '@/features/chat/context/definitions/file';
+import { IMAGE_TYPE_ID } from '@/features/chat/context/definitions/image';
 
 // ============================================================================
 // 类型定义
@@ -60,7 +68,7 @@ export interface PageRange {
  * - essay: 作文
  * - translation: 翻译
  */
-export type SourceType = 'note' | 'exam' | 'textbook' | 'essay' | 'translation';
+export type SourceType = 'note' | 'exam' | 'textbook' | 'essay' | 'translation' | 'file' | 'image';
 
 /**
  * 引用到对话的参数
@@ -155,6 +163,10 @@ function getResourceType(sourceType: SourceType): StoreResourceType {
       return 'essay';
     case 'translation':
       return 'translation';
+    case 'file':
+      return 'file';
+    case 'image':
+      return 'image';
     default:
       return 'file';
   }
@@ -175,6 +187,10 @@ function getTypeId(sourceType: SourceType): string {
       return ESSAY_TYPE_ID;
     case 'translation':
       return TRANSLATION_TYPE_ID;
+    case 'file':
+      return FILE_TYPE_ID;
+    case 'image':
+      return IMAGE_TYPE_ID;
     default:
       return 'file';
   }
@@ -194,10 +210,12 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
 
   /**
    * 检查是否可以引用到对话
+   *
+   * referenceToChat 现会在无活动会话时经 ensureActiveChatSession 自建
+   * 隐藏 draft 会话闭环，因此不再以「当前是否有会话」作为禁用条件。
    */
   const canReferenceToChat = useCallback((): boolean => {
-    const sessionIds = sessionManager.getAllSessionIds();
-    return sessionIds.length > 0;
+    return true;
   }, []);
 
   /**
@@ -213,19 +231,13 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
 
       console.log(LOG_PREFIX, 'referenceToChat (ref mode):', { sourceType, sourceId });
 
-      // 1. 检查是否有活跃会话
-      // ★ D4 修复（对齐 useVfsContextInject 的 P1-26）：优先当前活跃会话，
-      // 回退任意会话——否则多会话场景引用会进最旧的会话
-      let activeSessionId = sessionManager.getCurrentSessionId();
+      // 1. 无活动会话时先经 chat 域闭环入口建立/复用隐藏 draft 会话
+      //    （2026-07-20 移动端审计闭环：此前直接 toast 丢弃动作）
+      const activeSessionId = await ensureActiveChatSession();
       if (!activeSessionId || !sessionManager.has(activeSessionId)) {
-        const sessionIds = sessionManager.getAllSessionIds();
-        if (sessionIds.length === 0) {
-          const errorMsg = t('notes:reference.no_active_session');
-          showGlobalNotification('warning', errorMsg);
-          return { success: false, error: errorMsg };
-        }
-        activeSessionId = sessionIds[0];
-        console.log(LOG_PREFIX, 'No current session, falling back to:', activeSessionId);
+        const errorMsg = t('notes:reference.no_active_session');
+        showGlobalNotification('warning', errorMsg);
+        return { success: false, error: errorMsg };
       }
 
       const store = sessionManager.get(activeSessionId);
@@ -290,14 +302,55 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
 
         console.log(LOG_PREFIX, 'Resource created/reused (ref mode):', createResult);
 
-        // 4. 构建 ContextRef 并添加到 chatStore
+        // 4. 构建 ContextRef 并添加到 chatStore（对齐 useVfsContextInject：displayName + attachment + 开面板）
+        // ★ P1 物质化补全：真实 mime/type、sourceId、显式 injectModes、可用的预览 URL
+        const displayName = (typeof metadata?.title === 'string' && metadata.title) || sourceId;
+
+        const vfsMimeTypes: Record<string, string> = {
+          note: 'text/markdown',
+          textbook: 'application/pdf',
+          exam: 'application/json',
+          translation: 'text/markdown',
+          essay: 'text/markdown',
+          image: 'image/png',
+          file: 'application/octet-stream',
+          mindmap: 'application/json',
+        };
+        // 优先使用资源元数据中的真实 MIME，兜底走类型映射
+        const realMimeType = (typeof metadata?.mimeType === 'string' && metadata.mimeType)
+          || vfsMimeTypes[sourceType]
+          || 'application/octet-stream';
+        // SSOT 媒体识别：MIME OR 扩展名（覆盖空 mime 的 .png 等）
+        const mediaType = getAttachmentMediaType(realMimeType, displayName);
+        // ★ P0 契约：PDF/图片引用创建时显式写入 UI 默认注入模式，
+        // 后端「缺省 text+image 双开」兜底逻辑不再触发
+        const injectModes = buildDefaultInjectModes(mediaType);
+        const previewUrl = typeof metadata?.previewUrl === 'string' ? metadata.previewUrl : undefined;
+
         const contextRef: ContextRef = {
           resourceId: createResult.resourceId,
           hash: createResult.hash,
           typeId,
+          displayName,
+          ...(injectModes ? { injectModes } : {}),
         };
 
         store.getState().addContextRef(contextRef);
+
+        const attachmentMeta: AttachmentMeta = {
+          id: `vfs-${sourceId}-${Date.now()}`,
+          name: displayName,
+          type: mediaType === 'image' || sourceType === 'image' ? 'image' : 'document',
+          mimeType: realMimeType,
+          size: typeof metadata?.size === 'number' ? metadata.size : 0,
+          status: 'ready',
+          resourceId: createResult.resourceId,
+          sourceId,
+          ...(previewUrl ? { previewUrl } : {}),
+          ...(injectModes ? { injectModes } : {}),
+        };
+        store.getState().addAttachment(attachmentMeta);
+        window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
 
         // 5. 通知用户
         const message = createResult.isNew

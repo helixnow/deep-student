@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ArrowLeft, Copy, Check } from '@phosphor-icons/react';
 import { CrepeEditor, type CrepeEditorApi } from '../crepe';
 import { useMobileHeader } from '../layout';
@@ -21,12 +21,21 @@ export const CrepeDemoPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
   useMobileHeader('crepe-demo', {
     title: 'Crepe 编辑器演示',
     subtitle: '现代化 Markdown 编辑器',
+    showBackArrow: Boolean(onBack),
+    onMenuClick: onBack,
     rightActions: (
-      <NotionButton variant="ghost" size="sm" onClick={() => handleCopyMarkdownRef.current()}>
+      <DsButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={copied ? 'Markdown 已复制' : '复制 Markdown'}
+        title={copied ? 'Markdown 已复制' : '复制 Markdown'}
+        onClick={() => handleCopyMarkdownRef.current()}
+      >
         {copied ? <Check size={16} /> : <Copy size={16} />}
-      </NotionButton>
+      </DsButton>
     ),
-  }, [copied]);
+  }, [copied, onBack]);
 
   const handleCopyMarkdownRef = useRef<() => void>(() => {});
 
@@ -97,19 +106,19 @@ greeting('Crepe');
         <div className="flex items-center justify-between mb-6 p-6 pb-0">
           <div className="flex items-center gap-4">
             {onBack && (
-              <NotionButton variant="ghost" iconOnly size="sm" onClick={onBack}>
+              <DsButton variant="ghost" iconOnly size="sm" onClick={onBack} aria-label="返回设置">
                 <ArrowLeft size={20} />
-              </NotionButton>
+              </DsButton>
             )}
             <div>
               <h1 className="text-2xl font-bold">Crepe 编辑器演示</h1>
               <p className="text-muted-foreground">基于 @milkdown/crepe 的现代化 Markdown 编辑器</p>
             </div>
           </div>
-          <NotionButton variant="ghost" size="sm" onClick={handleCopyMarkdown}>
+          <DsButton variant="ghost" size="sm" onClick={handleCopyMarkdown}>
             {copied ? <Check size={16} className="mr-2" /> : <Copy size={16} className="mr-2" />}
             {copied ? '已复制' : '复制 Markdown'}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 

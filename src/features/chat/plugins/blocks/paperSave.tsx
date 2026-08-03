@@ -10,8 +10,9 @@
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   DownloadSimple,
   CheckCircle,
@@ -26,7 +27,7 @@ import {
   CaretDown,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
-import type { BlockComponentProps } from '../../registry';
+import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
 // 类型
@@ -59,15 +60,16 @@ interface ProgressSnapshot {
 // 阶段配置
 // ============================================================================
 
-const STAGE_CONFIG: Record<string, { label: string; icon: React.ElementType; weight: number }> = {
-  resolving:     { label: '解析地址',   icon: MagnifyingGlass, weight: 5 },
-  downloading:   { label: '下载中',     icon: DownloadSimple,  weight: 60 },
-  deduplicating: { label: '去重检查',   icon: Copy,            weight: 5 },
-  storing:       { label: '存储中',     icon: HardDrive,       weight: 10 },
-  processing:    { label: '文本提取',   icon: FileText,        weight: 10 },
-  indexing:      { label: '建立索引',   icon: Database,        weight: 10 },
-  done:          { label: '完成',       icon: CheckCircle,     weight: 0 },
-  error:         { label: '失败',       icon: WarningCircle,   weight: 0 },
+/** Stage weight/icon only — labels come from chatV2:blocks.paperSave.stage.* */
+const STAGE_CONFIG: Record<string, { icon: React.ElementType; weight: number }> = {
+  resolving:     { icon: MagnifyingGlass, weight: 5 },
+  downloading:   { icon: DownloadSimple,  weight: 60 },
+  deduplicating: { icon: Copy,            weight: 5 },
+  storing:       { icon: HardDrive,       weight: 10 },
+  processing:    { icon: FileText,        weight: 10 },
+  indexing:      { icon: Database,        weight: 10 },
+  done:          { icon: CheckCircle,     weight: 0 },
+  error:         { icon: WarningCircle,   weight: 0 },
 };
 
 const STAGE_ORDER = ['resolving', 'downloading', 'deduplicating', 'storing', 'processing', 'indexing', 'done'];
@@ -109,6 +111,7 @@ function formatBytes(bytes: number): string {
 // ============================================================================
 
 const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
+  const { t } = useTranslation('chatV2');
   const config = STAGE_CONFIG[paper.s] || STAGE_CONFIG.resolving;
   const Icon = config.icon;
   const overallPct = computeOverallPercent(paper);
@@ -121,8 +124,10 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
   const [retryError, setRetryError] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
   const [selectedSourceIdx, setSelectedSourceIdx] = useState<number | null>(null);
+  // 错误信息可点展开（触屏无 hover，title 提示不可见）
+  const [showFullError, setShowFullError] = useState(false);
 
-  const sources = paper.srcs ?? [];
+  const sources = useMemo(() => paper.srcs ?? [], [paper.srcs]);
   const hasMultipleSources = sources.length > 1;
 
   const handleRetry = useCallback(async (sourceUrl?: string) => {
@@ -140,23 +145,23 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
       setRetryState('success');
     } catch (e) {
       setRetryState('error');
-      setRetryError(typeof e === 'string' ? e : (e as Error)?.message ?? '下载失败');
+      setRetryError(typeof e === 'string' ? e : (e as Error)?.message ?? t('blocks.paperSave.downloadFailed'));
     }
-  }, [sources, paper.t]);
+  }, [sources, paper.t, t]);
 
   return (
     <div className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0">
-      {/* 标题行 */}
-      <div className="flex items-center justify-between gap-2 min-w-0">
+      {/* 标题行（窄屏允许右侧状态簇换行，避免挤压标题） */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <Icon
             className={cn(
               'w-3.5 h-3.5 shrink-0',
-              isDone && 'text-green-500',
+              isDone && 'text-success',
               isError && 'text-destructive',
               isActive && 'text-primary',
               isActive && paper.s !== 'downloading' && 'animate-pulse',
-              retryState === 'success' && 'text-green-500',
+              retryState === 'success' && 'text-success',
             )}
           />
           <span
@@ -173,18 +178,18 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs text-muted-foreground">
           {/* 当前源标签 */}
           {isActive && paper.src && (
-            <span className="text-muted-foreground/60" title={`下载源: ${paper.src}`}>
+            <span className="text-muted-foreground/60" title={t('blocks.paperSave.sourceTitle', { source: paper.src })}>
               {paper.src}
             </span>
           )}
 
           {/* 去重标识 */}
           {paper.dedup && (
-            <span className="text-amber-500" title="已存在于资料库">
-              去重
+            <span className="text-warning" title={t('blocks.paperSave.dedupTitle')}>
+              {t('blocks.paperSave.dedup')}
             </span>
           )}
 
@@ -198,32 +203,50 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 阶段标签 */}
           {isActive && (
-            <span className="text-primary">{config.label}</span>
+            <span className="text-primary">{t(`blocks.paperSave.stage.${paper.s}`)}</span>
           )}
 
           {/* 完成 */}
           {(isDone || retryState === 'success') && (
-            <span className="text-green-500">已保存</span>
+            <span className="text-success">{t('blocks.paperSave.saved')}</span>
           )}
 
           {/* 错误 + 重试按钮 */}
           {isError && retryState !== 'success' && (
             <>
-              <span className="text-destructive truncate max-w-[100px]" title={paper.err}>
-                {paper.err || '失败'}
+              {/* 错误信息可点展开（触屏无 hover，title 不可达）；展开态多行 break-words */}
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowFullError(v => !v)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setShowFullError(v => !v);
+                  }
+                }}
+                className={cn(
+                  'text-destructive cursor-pointer',
+                  showFullError
+                    ? 'min-w-0 max-w-full whitespace-normal break-words'
+                    : 'truncate max-w-[100px]'
+                )}
+                title={paper.err}
+              >
+                {paper.err || t('blocks.paperSave.stage.error')}
               </span>
               {retryState === 'loading' ? (
                 <CircleNotch size={12} className="animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title="重试下载">
+                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle')}>
                     <ArrowCounterClockwise size={12} />
-                    <span>重试</span>
-                  </NotionButton>
+                    <span>{t('blocks.paperSave.retry')}</span>
+                  </DsButton>
                   {hasMultipleSources && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label="切换下载源" title="切换下载源">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-1.5 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
                       <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </div>
               )}
@@ -232,7 +255,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 重试失败 */}
           {retryState === 'error' && (
-            <span className="text-destructive" title={retryError ?? undefined}>重试失败</span>
+            <span className="text-destructive" title={retryError ?? undefined}>{t('blocks.paperSave.retryFailed')}</span>
           )}
         </div>
       </div>
@@ -241,7 +264,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
       {showSources && sources.length > 0 && (
         <div className="ml-5 flex flex-wrap gap-1">
           {sources.map((src, si) => (
-            <NotionButton
+            <DsButton
               key={si}
               variant={selectedSourceIdx === si ? 'outline' : 'ghost'}
               size="sm"
@@ -250,14 +273,21 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 handleRetry(src.url);
               }}
               className={cn(
+                '!h-auto !py-1',
                 selectedSourceIdx === si
                   ? 'border-primary text-primary bg-primary/10'
                   : 'border-border/50 hover:border-primary/50',
               )}
               title={src.url}
             >
-              {src.label}
-            </NotionButton>
+              {/* 触屏无 hover 看不到 title，URL 直接展示为可断行小字 */}
+              <span className="flex min-w-0 max-w-full flex-col items-start text-left">
+                <span>{src.label}</span>
+                <span className="max-w-full break-all text-2xs font-normal text-muted-foreground/70">
+                  {src.url}
+                </span>
+              </span>
+            </DsButton>
           ))}
         </div>
       )}
@@ -272,7 +302,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
         <div
           className={cn(
             'h-full rounded-full transition-all duration-500 ease-out',
-            (isDone || retryState === 'success') && 'bg-green-500',
+            (isDone || retryState === 'success') && 'bg-success',
             isError && retryState !== 'success' && 'bg-destructive',
             isActive && 'bg-primary',
             retryState === 'loading' && 'bg-primary animate-pulse',
@@ -289,6 +319,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 // ============================================================================
 
 const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
+  const { t } = useTranslation('chatV2');
   // 从 block.content 解析最后一行 NDJSON 获取当前进度快照
   const snapshot = useMemo<ProgressSnapshot | null>(() => {
     const raw = block.content;
@@ -329,7 +360,7 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
     return (
       <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
         <CircleNotch size={16} className="animate-spin text-primary" />
-        <span>准备下载论文…</span>
+        <span>{t('blocks.paperSave.preparing')}</span>
       </div>
     );
   }
@@ -355,14 +386,26 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">
-              论文下载
+              {t('blocks.paperSave.title')}
             </span>
             <span className="text-xs text-muted-foreground">
               {isComplete
-                ? `${doneCount}/${totalCount} 篇完成${errorCount > 0 ? `，${errorCount} 篇失败` : ''}`
+                ? errorCount > 0
+                  ? t('blocks.paperSave.summaryWithFailures', {
+                      done: doneCount,
+                      total: totalCount,
+                      count: errorCount,
+                    })
+                  : t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })
                 : isError
-                  ? (totalCount > 0 ? `${doneCount}/${totalCount} 篇完成，${errorCount} 篇失败` : '下载失败')
-                  : `下载中 ${doneCount}/${totalCount}`}
+                  ? (totalCount > 0
+                    ? t('blocks.paperSave.summaryWithFailures', {
+                        done: doneCount,
+                        total: totalCount,
+                        count: errorCount,
+                      })
+                    : t('blocks.paperSave.downloadFailed'))
+                  : t('blocks.paperSave.downloading', { done: doneCount, total: totalCount })}
             </span>
           </div>
         </div>
@@ -370,10 +413,10 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
         {/* 全局状态图标 */}
         <div className="flex items-center gap-1.5">
           {isComplete && errorCount === 0 && (
-            <CheckCircle className="w-4 h-4 text-green-500" />
+            <CheckCircle className="w-4 h-4 text-success" />
           )}
           {isComplete && errorCount > 0 && (
-            <WarningCircle size={16} className="text-amber-500" />
+            <WarningCircle size={16} className="text-warning" />
           )}
           {!isComplete && !isError && (
             <CircleNotch size={16} className="text-primary animate-spin" />
@@ -396,11 +439,23 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
       {/* 错误信息 */}
       {isError && !snapshot && (
         <div className="p-3 text-sm text-destructive">
-          {block.error || '论文下载失败'}
+          {block.error || t('blocks.paperSave.blockError')}
         </div>
       )}
     </div>
   );
+});
+
+// ============================================================================
+// 自动注册
+// ============================================================================
+
+// 🔧 P0 修复：正式注册 paper_save 块类型，防止历史/异常 type=paper_save 块
+// 落到 GenericBlock（此前仅由 mcpTool 按 toolName 委托渲染）
+blockRegistry.register('paper_save', {
+  type: 'paper_save',
+  component: PaperSaveBlock,
+  onAbort: 'mark-error',
 });
 
 export { PaperSaveBlock };

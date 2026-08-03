@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AnkiCard } from '../../types';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,12 +9,14 @@ import {
   Copy, CheckSquare, Square, DotsThreeVertical, X, CaretDown
 } from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm, unifiedPrompt } from '@/utils/unifiedDialogs';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import BatchEditDialog from './BatchEditDialog';
 import FilterBuilder from './FilterBuilder';
 import { generateId } from '../../utils/common';
 import { ankiApiAdapter, notificationAdapter } from '../../services/ankiApiAdapter';
 import './BatchOperationToolbar.css';
 import { fileManager } from '../../utils/fileManager';
+import { CustomScrollArea } from '../custom-scroll-area';
 
 interface BatchOperationToolbarProps {
   cards: AnkiCard[];
@@ -46,9 +48,13 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number>(-1);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  // 触屏无 Shift/Ctrl 修饰键：点击语义改为切换选中，保证批量操作可用
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   
   // 虚拟列表容器
   const listContainerRef = useRef<HTMLDivElement>(null);
+  // 「更多」下拉容器（用于点击外部关闭）
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   
   // 过滤后的卡片
   const filteredCards = useMemo(() => {
@@ -96,8 +102,8 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           newSelection.add(filteredCards[i].id || filteredCards[i].front);
         }
       }
-    } else if (event.ctrlKey || event.metaKey) {
-      // Ctrl/Cmd选择：切换单个
+    } else if (event.ctrlKey || event.metaKey || isTouchPrimary) {
+      // Ctrl/Cmd选择：切换单个；触屏（无修饰键）同样按切换处理，否则无法多选
       if (newSelection.has(cardId)) {
         newSelection.delete(cardId);
       } else {
@@ -112,7 +118,20 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
     setSelectedIds(newSelection);
     setLastSelectedIndex(index);
     onSelectionChange?.(newSelection);
-  }, [selectedIds, lastSelectedIndex, filteredCards, onSelectionChange]);
+  }, [selectedIds, lastSelectedIndex, filteredCards, isTouchPrimary, onSelectionChange]);
+  
+  // 复选框独立命中区：无论指针类型，点复选框都是切换选中（不清空已有选择）
+  const handleToggleOne = useCallback((cardId: string, index: number) => {
+    const newSelection = new Set(selectedIds);
+    if (newSelection.has(cardId)) {
+      newSelection.delete(cardId);
+    } else {
+      newSelection.add(cardId);
+    }
+    setSelectedIds(newSelection);
+    setLastSelectedIndex(index);
+    onSelectionChange?.(newSelection);
+  }, [selectedIds, onSelectionChange]);
   
   // 全选/取消全选
   const toggleSelectAll = useCallback(() => {
@@ -272,47 +291,60 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, toggleSelectAll]);
   
+  // 「更多」菜单：点击菜单外任意位置关闭（触屏没有 hover，此前只能再点按钮收起）
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!moreMenuRef.current?.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [showMoreMenu]);
+  
   return (
-    <>
+    // 根容器：flex 列布局让列表占据剩余高度（替代此前对工具栏高度的 100vh 硬编码假设）
+    <div className="batch-operation-root">
       <div className="batch-operation-toolbar">
         {/* 搜索和筛选区 */}
         <div className="toolbar-section search-filter">
           <div className="search-box">
             <MagnifyingGlass size={18} />
             <input
-              type="text"
+              type="search"
               placeholder={t('search_cards_placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="search-input"
 />
             {searchQuery && (
-              <NotionButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
+              <DsButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
                 <X size={14} />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
           
-          <NotionButton variant="ghost" size="sm" className="filter-button" onClick={() => setShowFilterBuilder(true)}>
+          <DsButton variant="ghost" size="sm" className="filter-button" onClick={() => setShowFilterBuilder(true)}>
             <Funnel size={18} />
             {t('filter')}
             {activeFilters.length > 0 && (
               <span className="filter-count">{activeFilters.length}</span>
             )}
-          </NotionButton>
+          </DsButton>
         </div>
         
         {/* 快速筛选 */}
         <div className="toolbar-section quick-filters">
-          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('has_image')}>
+          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('has_image')}>
             {t('has_image')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('no_tags')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('no_tags')}>
             {t('no_tags')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('created_today')}>
+          </DsButton>
+          <DsButton variant="ghost" size="sm" className="filter-chip" onClick={() => addQuickFilter('created_today')}>
             {t('created_today')}
-          </NotionButton>
+          </DsButton>
         </div>
         
         {/* 选择信息 */}
@@ -320,7 +352,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           <span className="selection-count">
             {selectedIds.size} / {filteredCards.length} {t('selected')}
           </span>
-          <NotionButton variant="ghost" size="sm" className="select-all-btn" onClick={toggleSelectAll}>
+          <DsButton variant="ghost" size="sm" className="select-all-btn" onClick={toggleSelectAll}>
             {selectedIds.size === filteredCards.length && filteredCards.length > 0 ? (
               <>
                 <Square size={16} />
@@ -332,52 +364,53 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
                 {t('select_all')}
               </>
             )}
-          </NotionButton>
+          </DsButton>
         </div>
         
         {/* 批量操作按钮 */}
         <div className="toolbar-section batch-actions">
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => setShowBatchEdit(true)} disabled={selectedIds.size === 0 || isProcessing}>
+          {/* 文案包 span：窄屏 (<640) 由 .action-btn span 规则收缩为纯图标 */}
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={() => setShowBatchEdit(true)} disabled={selectedIds.size === 0 || isProcessing}>
             <PencilSimple size={18} />
-            {t('edit')}
-          </NotionButton>
+            <span>{t('edit')}</span>
+          </DsButton>
           
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchAddTags} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchAddTags} disabled={selectedIds.size === 0 || isProcessing}>
             <Tag size={18} />
-            {t('tags')}
-          </NotionButton>
+            <span>{t('tags')}</span>
+          </DsButton>
           
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => handleBatchExport()} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={() => handleBatchExport()} disabled={selectedIds.size === 0 || isProcessing}>
             <Download size={18} />
-            {t('export')}
-          </NotionButton>
+            <span>{t('export')}</span>
+          </DsButton>
           
-          <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchDuplicate} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchDuplicate} disabled={selectedIds.size === 0 || isProcessing}>
             <Copy size={18} />
-            {t('duplicate')}
-          </NotionButton>
+            <span>{t('duplicate')}</span>
+          </DsButton>
           
-          <NotionButton variant="danger" size="sm" className="action-btn danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0 || isProcessing}>
+          <DsButton variant="danger" size="sm" className="action-btn danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0 || isProcessing}>
             <Trash size={18} />
-            {t('delete')}
-          </NotionButton>
+            <span>{t('delete')}</span>
+          </DsButton>
           
-          <div className="dropdown-container">
-            <NotionButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more">
+          <div className="dropdown-container" ref={moreMenuRef}>
+            <DsButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more" aria-expanded={showMoreMenu}>
               <DotsThreeVertical size={18} />
-            </NotionButton>
+            </DsButton>
             
             {showMoreMenu && (
               <div className="dropdown-menu">
-                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('csv')}>
+                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('csv'); }}>
                   {t('export_as_csv')}
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('json')}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('json'); }}>
                   {t('export_as_json')}
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('markdown')}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('markdown'); }}>
                   {t('export_as_markdown')}
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </div>
@@ -385,9 +418,10 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
       </div>
       
       {/* 卡片列表（虚拟滚动） */}
-      <div 
-        ref={listContainerRef}
+      <CustomScrollArea
+        viewportRef={listContainerRef}
         className="batch-cards-list"
+        viewportClassName="batch-cards-list-viewport"
       >
         <div
           style={{
@@ -417,12 +451,13 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
                   card={card}
                   isSelected={isSelected}
                   onSelect={(e) => handleSelect(cardId, virtualItem.index, e)}
+                  onToggle={() => handleToggleOne(cardId, virtualItem.index)}
 />
               </div>
             );
           })}
         </div>
-      </div>
+      </CustomScrollArea>
       
       {/* 对话框 */}
       {showFilterBuilder && (
@@ -449,7 +484,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           onClose={() => setShowBatchEdit(false)}
 />
       )}
-    </>
+    </div>
   );
 };
 
@@ -458,12 +493,15 @@ interface BatchCardItemProps {
   card: AnkiCard;
   isSelected: boolean;
   onSelect: (event: React.MouseEvent) => void;
+  /** 复选框独立命中区：始终切换选中（不清空已有选择），触屏多选的主要入口 */
+  onToggle: () => void;
 }
 
 const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
   card,
   isSelected,
-  onSelect
+  onSelect,
+  onToggle
 }) => {
   const { t } = useTranslation('anki');
   
@@ -472,9 +510,21 @@ const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
       className={`batch-card-item ${isSelected ? 'selected' : ''}`}
       onClick={onSelect}
     >
-      <div className="card-checkbox">
+      <DsButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        className="card-checkbox"
+        role="checkbox"
+        aria-checked={isSelected}
+        aria-label={t('select_all')}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
         {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
-      </div>
+      </DsButton>
       
       <div className="card-content">
         <div className="card-front">{card.front}</div>
@@ -507,7 +557,7 @@ function applyFilter(cards: AnkiCard[], filter: Funnel): AnkiCard[] {
         return true;
       });
       
-    case 'content':
+    case 'content': {
       const searchValue = filter.value?.toLowerCase() || '';
       return cards.filter(card => {
         const content = (card.front + ' ' + card.back).toLowerCase();
@@ -518,6 +568,7 @@ function applyFilter(cards: AnkiCard[], filter: Funnel): AnkiCard[] {
         }
         return true;
       });
+    }
       
     case 'has_image':
       return cards.filter(card => card.images && card.images.length > 0);
@@ -525,13 +576,14 @@ function applyFilter(cards: AnkiCard[], filter: Funnel): AnkiCard[] {
     case 'no_tags':
       return cards.filter(card => !card.tags || card.tags.length === 0);
       
-    case 'created_today':
+    case 'created_today': {
       const today = new Date().toDateString();
       return cards.filter(card => {
         const created = (card as any).created_at || (card as any).createdAt;
         if (!created) return false;
         return new Date(created).toDateString() === today;
       });
+    }
       
     default:
       return cards;
@@ -547,7 +599,7 @@ function applyBatchChanges(
     const cardId = card.id || card.front;
     if (!selectedIds.has(cardId)) return card;
     
-    let updatedCard = { ...card };
+    const updatedCard = { ...card };
     
     // 应用正面修改
     if (changes.front?.enabled) {

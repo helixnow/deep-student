@@ -1,3 +1,4 @@
+pub(crate) mod maintenance;
 mod manager;
 
 pub use manager::DatabaseManager;
@@ -10,9 +11,9 @@ use crate::models::{
 use crate::secure_store::{SecureStore, SecureStoreConfig};
 use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use rusqlite::{params, types::Value, Connection, OptionalExtension};
+use rusqlite::{params, types::Value, Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
@@ -36,69 +37,10 @@ fn parse_datetime_flexible(datetime_str: &str) -> Result<DateTime<Utc>> {
     ))
 }
 
-pub(crate) fn ensure_chat_messages_extended_columns(conn: &Connection) -> Result<()> {
-    let mut existing = HashSet::new();
-    {
-        let mut stmt = conn.prepare("PRAGMA table_info('chat_messages')")?;
-        let mut rows = stmt.query([])?;
-        while let Some(row) = rows.next()? {
-            let name: String = row.get(1)?;
-            existing.insert(name);
-        }
-    }
-
-    let required_columns: [(&str, &str); 13] = [
-        ("rag_sources", "TEXT"),
-        ("memory_sources", "TEXT"),
-        ("graph_sources", "TEXT"),
-        ("web_search_sources", "TEXT"),
-        ("image_paths", "TEXT"),
-        ("image_base64", "TEXT"),
-        ("doc_attachments", "TEXT"),
-        ("tool_call", "TEXT"),
-        ("tool_result", "TEXT"),
-        ("overrides", "TEXT"),
-        ("relations", "TEXT"),
-        ("stable_id", "TEXT"),
-        ("metadata", "TEXT"),
-    ];
-
-    for (name, ty) in required_columns.iter() {
-        if !existing.contains(*name) {
-            let sql = format!("ALTER TABLE chat_messages ADD COLUMN {} {}", name, ty);
-            conn.execute(&sql, [])?;
-        }
-    }
-
-    Ok(())
-}
-
-// Re-export for external use
-// pub use std::sync::MutexGuard; // Removed unused import
-
-/// 旧迁移系统的当前数据库版本号。
-///
-/// # ⚠️ 废弃通知 — 旧迁移系统
-///
-/// 此常量是旧版顺序迁移系统（`DatabaseManager::handle_migration`）的一部分，
-/// 通过递增版本号执行 `migrate_to_version(N)` 来变更 schema。
-///
-/// ## 新系统
-/// 新的 schema 变更应通过 **数据治理系统** 的 Refinery 迁移脚本实现：
-/// - 迁移协调器：`data_governance/migration/coordinator.rs`
-/// - 迁移脚本目录：`migrations/{vfs,chat_v2,mistakes,llm_usage}/`
-/// - 版本格式：`V{YYYYMMDD}__{description}.sql`（如 `V20260130__init.sql`）
-///
-/// ## 过渡期说明
-/// - **禁止**再递增此版本号添加新迁移
-/// - 旧迁移逻辑（`handle_migration`、`ensure_compatibility`、`ensure_post_migration_patches`）
-///   仅为兼容尚未升级的用户保留
-/// - 当所有用户均已升级到包含 Refinery 迁移的版本后，旧系统将被移除
-///
-/// ## 不冲突的保障
-/// 旧系统操作**主数据库**的 `schema_version` 表，
-/// 新系统使用独立的 `refinery_schema_history` 表，两者互不干扰。
-pub(crate) const CURRENT_DB_VERSION: u32 = 41;
+// NOTE: 旧迁移系统（`CURRENT_DB_VERSION` 顺序迁移、`ensure_chat_messages_extended_columns`
+// 启动时裸 ALTER 补丁、`DatabaseManager::initialize_schema` 及其调用链）已删除：
+// 生产路径从未调用它们（`Database::new`/`DatabaseManager::new` 不建 schema），
+// schema 的唯一事实源是 `data_governance/migration/coordinator.rs` 的 Refinery 迁移。
 
 // 新的类型别名
 pub type SqlitePool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
@@ -108,6 +50,8 @@ pub struct Database {
     conn: Mutex<Connection>,
     db_path: RwLock<PathBuf>,
     secure_store: Option<SecureStore>,
+    /// Serializes secure-file writes with legacy-row cleanup and compensation.
+    secret_operation_lock: Mutex<()>,
     /// 维护模式标志：当备份/恢复等数据治理操作进行时设为 true，
     /// 用于阻止同步命令等并发操作绕过维护模式直接访问数据库文件。
     maintenance_mode: std::sync::atomic::AtomicBool,
@@ -124,6 +68,167 @@ pub struct AppendMessagesChangeSet {
     pub total_processed: usize, // 所有处理的消息数（包含无变更跳过的）
 }
 
+#[derive(Debug, Clone)]
+pub enum AnkiCardVersionUpdate {
+    Updated(AnkiCard),
+    Conflict(AnkiCard),
+    NotFound,
+}
+
+#[derive(Debug, Clone)]
+pub enum AnkiCardVersionDelete {
+    Deleted,
+    Conflict(AnkiCard),
+    ReviewConflict {
+        current: AnkiCard,
+        review: Option<AnkiLibraryReviewVersion>,
+    },
+    NotFound,
+}
+
+/// Compile-time marker for operations that intentionally address the complete
+/// live flashcard library instead of one Chat session's owned documents.
+///
+/// Keeping this as an explicit argument prevents a missing `session_id` from
+/// silently widening a session-scoped mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnkiLibraryScope {
+    _private: (),
+}
+
+impl AnkiLibraryScope {
+    pub const fn agent() -> Self {
+        Self { _private: () }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnkiLibraryCardLocator {
+    pub document_id: String,
+    pub source_session_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnkiLibraryCardRecord {
+    pub library_card: AnkiLibraryCard,
+    pub locator: AnkiLibraryCardLocator,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnkiLibraryScheduleFilter {
+    All,
+    Due,
+    NotEnqueued,
+    Suspended,
+    Enqueued,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnkiLibraryDiagnosticFilter {
+    All,
+    ErrorOnly,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnkiLibraryPage {
+    pub items: Vec<AnkiLibraryCardRecord>,
+    pub page: u32,
+    pub page_size: u32,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone)]
+pub enum AnkiLibraryCardVersionUpdate {
+    Updated(AnkiLibraryCardRecord),
+    Conflict(AnkiLibraryCardRecord),
+    NotFound,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnkiLibraryReviewVersion {
+    pub card_state_id: String,
+    pub review_version: i64,
+}
+
+#[derive(Debug, Clone)]
+pub enum AnkiLibraryCardDeleteOutcome {
+    Deleted {
+        locator: AnkiLibraryCardLocator,
+    },
+    ContentConflict {
+        current: AnkiLibraryCardRecord,
+        review: Option<AnkiLibraryReviewVersion>,
+    },
+    ReviewConflict {
+        current: AnkiLibraryCardRecord,
+        review: Option<AnkiLibraryReviewVersion>,
+    },
+    NotFound,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnkiRetemplateSelector {
+    Document(String),
+    Cards(Vec<String>),
+}
+
+#[derive(Debug, Clone)]
+pub struct AnkiRetemplateTarget {
+    pub template_id: String,
+    pub note_type: String,
+    pub fields: Vec<String>,
+    pub required_fields: HashSet<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnkiRetemplateMissingField {
+    pub field: String,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnkiRetemplateCardUpdate {
+    pub document_id: String,
+    pub card: AnkiCard,
+    pub source: AnkiCard,
+    pub missing_fields: Vec<AnkiRetemplateMissingField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnkiRetemplateVersionConflict {
+    pub card_id: String,
+    pub expected_version: String,
+    pub current_version: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum AnkiRetemplateBatchResult {
+    Updated {
+        target_note_type: String,
+        updates: Vec<AnkiRetemplateCardUpdate>,
+    },
+    SelectionNotFound {
+        card_ids: Vec<String>,
+    },
+    OwnershipRejected,
+    CrossDocumentSelection {
+        document_ids: Vec<String>,
+    },
+    DocumentSetChanged {
+        document_ids: Vec<String>,
+    },
+    ExpectedVersionsMismatch {
+        missing_version_ids: Vec<String>,
+        unexpected_version_ids: Vec<String>,
+    },
+    VersionConflict {
+        conflicts: Vec<AnkiRetemplateVersionConflict>,
+    },
+    InvalidCloze {
+        card_ids: Vec<String>,
+    },
+}
+
 // 简化：只保留 stable_id -> message_id 的映射
 // 消息一旦创建就不变，不需要存储完整快照来比较
 type ExistingMessageMap = std::collections::HashMap<String, i64>;
@@ -132,6 +237,339 @@ fn build_existing_message_map(row: &rusqlite::Row<'_>) -> rusqlite::Result<(Stri
     let id: i64 = row.get(0)?;
     let stable_id: String = row.get(1)?;
     Ok((stable_id, id))
+}
+
+fn map_anki_card_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnkiCard> {
+    let tags_json: String = row.get(5)?;
+    let images_json: String = row.get(6)?;
+    let extra_fields_json: String = row.get(11)?;
+
+    Ok(AnkiCard {
+        id: row.get(0)?,
+        task_id: row.get(1)?,
+        front: row.get(2)?,
+        back: row.get(3)?,
+        text: row.get(4)?,
+        tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+        images: serde_json::from_str(&images_json).unwrap_or_default(),
+        is_error_card: row.get::<_, i32>(7)? != 0,
+        error_content: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+        extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
+        template_id: row.get(12)?,
+    })
+}
+
+/// Maps the common library SELECT projection used by Agent reads and CAS
+/// outcomes. Columns 0..=20 intentionally match the existing UI library row;
+/// columns 21..=22 add the stable source locator.
+fn map_anki_library_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnkiLibraryCardRecord> {
+    let tags_json: String = row.get(5)?;
+    let images_json: String = row.get(6)?;
+    let extra_fields_json: String = row.get(11)?;
+    let raw_source_type: String = row.get(13)?;
+    let raw_source_id: String = row.get(14)?;
+    Ok(AnkiLibraryCardRecord {
+        library_card: AnkiLibraryCard {
+            card: AnkiCard {
+                id: row.get(0)?,
+                task_id: row.get(1)?,
+                front: row.get(2)?,
+                back: row.get(3)?,
+                text: row.get(4)?,
+                tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+                images: serde_json::from_str(&images_json).unwrap_or_default(),
+                is_error_card: row.get::<_, i32>(7)? != 0,
+                error_content: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+                extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
+                template_id: row.get(12)?,
+            },
+            source_type: (!raw_source_type.trim().is_empty()).then_some(raw_source_type),
+            source_id: (!raw_source_id.trim().is_empty()).then_some(raw_source_id),
+            state_id: row.get(15)?,
+            state: row.get(16)?,
+            due_ms: row.get(17)?,
+            suspended: row.get::<_, i32>(18)? != 0,
+            enqueued: row.get::<_, i32>(19)? != 0,
+            is_due: row.get::<_, i32>(20)? != 0,
+        },
+        locator: AnkiLibraryCardLocator {
+            document_id: row.get(21)?,
+            source_session_id: row.get(22)?,
+        },
+    })
+}
+
+fn load_anki_library_card_record(
+    conn: &Connection,
+    card_id: &str,
+    now_ms: i64,
+) -> Result<Option<AnkiLibraryCardRecord>> {
+    Ok(conn
+        .query_row(
+            "SELECT
+                ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                COALESCE(ac.extra_fields_json, '{}'), ac.template_id, ac.source_type, ac.source_id,
+                fs.id, fs.state, fs.due_ms, COALESCE(fs.suspended, 0),
+                CASE WHEN fs.id IS NULL THEN 0 ELSE 1 END,
+                CASE
+                    WHEN fs.id IS NOT NULL
+                     AND COALESCE(fs.suspended, 0) = 0
+                     AND fs.due_ms <= ?2
+                    THEN 1 ELSE 0
+                END,
+                dt.document_id, dt.source_session_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             LEFT JOIN fsrs_card_states fs
+               ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
+             WHERE ac.id = ?1
+               AND ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL",
+            params![card_id, now_ms],
+            map_anki_library_record_row,
+        )
+        .optional()?)
+}
+
+fn load_anki_library_review_version(
+    conn: &Connection,
+    card_id: &str,
+) -> Result<Option<AnkiLibraryReviewVersion>> {
+    Ok(conn
+        .query_row(
+            "SELECT id, COALESCE(local_version, 0)
+             FROM fsrs_card_states
+             WHERE anki_card_id = ?1
+               AND deleted_at IS NULL",
+            params![card_id],
+            |row| {
+                Ok(AnkiLibraryReviewVersion {
+                    card_state_id: row.get(0)?,
+                    review_version: row.get(1)?,
+                })
+            },
+        )
+        .optional()?)
+}
+
+#[derive(Debug)]
+struct LoadedRetemplateCard {
+    card: AnkiCard,
+    document_id: String,
+}
+
+fn map_retemplate_card_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LoadedRetemplateCard> {
+    Ok(LoadedRetemplateCard {
+        card: map_anki_card_row(row)?,
+        document_id: row.get(13)?,
+    })
+}
+
+fn normalize_anki_template_field_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+fn nonempty_anki_field_value<'a>(
+    fields: &'a HashMap<String, String>,
+    key: &str,
+) -> Option<&'a str> {
+    fields
+        .get(key)
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn map_anki_fields_for_template(
+    card: &AnkiCard,
+    target: &AnkiRetemplateTarget,
+) -> (HashMap<String, String>, Vec<AnkiRetemplateMissingField>) {
+    let mut mapped = card.extra_fields.clone();
+    let mut base_fields = HashMap::new();
+    let mut add_base_field = |lower: &str, canonical: &str, value: String| {
+        if value.trim().is_empty() {
+            return;
+        }
+        base_fields.insert(lower.to_string(), value.clone());
+        base_fields.insert(canonical.to_string(), value);
+    };
+    add_base_field("front", "Front", card.front.clone());
+    add_base_field("back", "Back", card.back.clone());
+    if let Some(text) = &card.text {
+        add_base_field("text", "Text", text.clone());
+    }
+    add_base_field(
+        "tags",
+        "Tags",
+        serde_json::to_string(&card.tags).unwrap_or_else(|_| "[]".to_string()),
+    );
+
+    let mut source_fields = card.extra_fields.clone();
+    for (key, value) in &base_fields {
+        source_fields.insert(key.clone(), value.clone());
+    }
+
+    // HashMap has no insertion order. Sorting makes normalized-key collisions deterministic.
+    let mut source_keys: Vec<&String> = source_fields.keys().collect();
+    source_keys.sort();
+    let mut normalized_sources: HashMap<String, &str> = HashMap::new();
+    for key in source_keys {
+        let normalized = normalize_anki_template_field_key(key);
+        if normalized.is_empty() || normalized_sources.contains_key(&normalized) {
+            continue;
+        }
+        if let Some(value) = nonempty_anki_field_value(&source_fields, key) {
+            normalized_sources.insert(normalized, value);
+        }
+    }
+
+    let front = (!card.front.trim().is_empty()).then_some(card.front.as_str());
+    let back = (!card.back.trim().is_empty()).then_some(card.back.as_str());
+    let mut missing_fields = Vec::new();
+
+    for field in &target.fields {
+        if field.trim().is_empty() {
+            continue;
+        }
+
+        let lower = field.to_ascii_lowercase();
+        let normalized = normalize_anki_template_field_key(field);
+        if let Some(value) = nonempty_anki_field_value(&base_fields, field)
+            .or_else(|| nonempty_anki_field_value(&base_fields, &lower))
+        {
+            mapped.insert(field.clone(), value.to_string());
+            continue;
+        }
+        if nonempty_anki_field_value(&mapped, field).is_some() {
+            continue;
+        }
+        let alias_value = nonempty_anki_field_value(&source_fields, &lower)
+            .or_else(|| normalized_sources.get(&normalized).copied())
+            .or(match lower.as_str() {
+                "question" | "word" | "name" => front,
+                "back" | "explanation" | "definition" | "desc" | "expl" | "backdetail"
+                | "answer" => back,
+                _ => None,
+            })
+            .map(str::to_string);
+
+        if let Some(value) = alias_value {
+            mapped.insert(field.clone(), value);
+            continue;
+        }
+
+        mapped.entry(field.clone()).or_default();
+        let normalized_field = normalize_anki_template_field_key(field);
+        let required = target.required_fields.contains(field)
+            || target.required_fields.iter().any(|required_field| {
+                required_field.eq_ignore_ascii_case(field)
+                    || normalize_anki_template_field_key(required_field) == normalized_field
+            });
+        missing_fields.push(AnkiRetemplateMissingField {
+            field: field.clone(),
+            required,
+        });
+    }
+
+    (mapped, missing_fields)
+}
+
+fn contains_valid_anki_cloze_markup(text: &str) -> bool {
+    let mut cursor = 0usize;
+    while let Some(relative_start) = text[cursor..].find("{{c") {
+        let start = cursor + relative_start + 3;
+        let suffix = &text[start..];
+        let digit_len = suffix
+            .bytes()
+            .take_while(|byte| byte.is_ascii_digit())
+            .count();
+        if digit_len == 0 {
+            cursor = start;
+            continue;
+        }
+        let cloze_number = suffix[..digit_len].parse::<usize>().unwrap_or_default();
+        let after_number = &suffix[digit_len..];
+        if cloze_number == 0 || !after_number.starts_with("::") {
+            cursor = start;
+            continue;
+        }
+        let body = &after_number[2..];
+        let Some(close) = body.find("}}") else {
+            cursor = start;
+            continue;
+        };
+        let answer = body[..close].split("::").next().unwrap_or_default();
+        if !answer.trim().is_empty() {
+            return true;
+        }
+        cursor = start + digit_len;
+    }
+    false
+}
+
+fn transaction_document_owned_by_session(
+    tx: &rusqlite::Transaction<'_>,
+    document_id: &str,
+    session_id: &str,
+) -> rusqlite::Result<bool> {
+    let (task_count, owned_task_count): (i64, i64) = tx.query_row(
+        "SELECT COUNT(*),
+                COALESCE(SUM(CASE WHEN source_session_id = ?2 THEN 1 ELSE 0 END), 0)
+         FROM document_tasks
+         WHERE document_id = ?1 AND deleted_at IS NULL",
+        params![document_id, session_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok(task_count > 0 && task_count == owned_task_count)
+}
+
+fn insert_anki_card_with_order(
+    conn: &Connection,
+    card: &AnkiCard,
+    card_order_in_task: i64,
+    source_type: &str,
+    source_id: &str,
+) -> Result<bool> {
+    let rows_affected = conn.execute(
+        "INSERT OR IGNORE INTO anki_cards
+         (id, task_id, front, back, text, tags_json, images_json,
+          is_error_card, error_content, card_order_in_task, created_at, updated_at,
+          extra_fields_json, template_id, source_type, source_id)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+         WHERE EXISTS (
+             SELECT 1
+             FROM document_tasks dt
+             WHERE dt.id = ?2
+               AND dt.deleted_at IS NULL
+         )",
+        params![
+            card.id,
+            card.task_id,
+            card.front,
+            card.back,
+            card.text,
+            serde_json::to_string(&card.tags)?,
+            serde_json::to_string(&card.images)?,
+            if card.is_error_card { 1 } else { 0 },
+            card.error_content,
+            card_order_in_task,
+            card.created_at,
+            card.updated_at,
+            serde_json::to_string(&card.extra_fields)?,
+            card.template_id,
+            source_type,
+            source_id,
+        ],
+    )?;
+    Ok(rows_affected > 0)
 }
 
 fn parse_image_list(raw_json: Option<String>) -> Option<Vec<String>> {
@@ -212,9 +650,7 @@ impl Database {
             "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'user' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
         )?;
         let user_rows = users_stmt
-            .query_map(rusqlite::params![mistake_id], |row| {
-                Ok(row.get::<_, i64>(0)?)
-            })?
+            .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         for user_row_id in user_rows {
             let turn_id = uuid::Uuid::new_v4().to_string();
@@ -229,9 +665,7 @@ impl Database {
             "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'assistant' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
         )?;
         let assistant_rows = assistants_stmt
-            .query_map(rusqlite::params![mistake_id], |row| {
-                Ok(row.get::<_, i64>(0)?)
-            })?
+            .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         for assistant_row_id in assistant_rows {
             let candidate: Option<(i64, String)> = tx
@@ -264,7 +698,23 @@ impl Database {
 
     /// 安全获取数据库连接的辅助方法
     /// 如果 Mutex 被中毒（由于 panic），会恢复并返回连接
+    ///
+    /// fail-close：维护屏障（备份/恢复）期间显式拒绝，绝不把一次性的
+    /// 占位连接借给业务代码——之前的实现会让写入落到内存库后被静默丢弃。
     pub fn get_conn_safe(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
+        if self.is_in_maintenance_mode() {
+            return Err(anyhow::anyhow!(
+                "主数据库{}",
+                maintenance::MAINTENANCE_REFUSAL_MESSAGE
+            ));
+        }
+        self.lock_conn_any_phase()
+    }
+
+    /// 内部锁定辅助：无视维护标志直接取得连接守卫（含 poison 恢复）。
+    ///
+    /// 仅供维护屏障自身的进入/退出流程使用；业务代码一律走 `get_conn_safe`。
+    fn lock_conn_any_phase(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
         match self.conn.lock() {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
@@ -299,28 +749,62 @@ impl Database {
         self.db_path.read().ok().map(|path| path.clone())
     }
 
-    /// 进入维护模式：将底层连接切换为内存数据库，从而释放对磁盘文件的占用
-    /// 用于导入/恢复流程中替换实际数据库文件，避免 Windows 上文件映射锁
+    /// 进入维护模式（fail-close 屏障）：
+    ///
+    /// 1. CAS 抢占维护标志——后续 `get_conn_safe` 立即拒绝新借出；
+    /// 2. 获取连接互斥锁——单连接模型下，拿到锁即证明在途使用者已排空；
+    /// 3. 严格执行 `wal_checkpoint(TRUNCATE)`，失败则回滚标志并向上传播
+    ///    （屏障建立在 WAL 已合并的前提上，忽略失败会让备份读到缺数据的快照）；
+    /// 4. 换入 deny-all 占位连接释放磁盘文件句柄。经 `conn()` 裸 Mutex 绕过
+    ///    标志的调用方也会在 prepare 阶段显式失败，而不是写进内存库被静默丢弃。
     pub fn enter_maintenance_mode(&self) -> Result<()> {
-        // 先尝试做一次 checkpoint 以合并 WAL（若存在）
-        if let Ok(guard) = self.get_conn_safe() {
-            let _ = guard.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        if self
+            .maintenance_mode
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .is_err()
+        {
+            return Err(anyhow::anyhow!(
+                "主数据库已处于维护屏障，拒绝重复进入以免破坏现有屏障"
+            ));
         }
-        // 将连接替换为内存数据库，释放文件句柄
-        let mut guard = self.get_conn_safe()?;
-        let mem_conn = Connection::open_in_memory().with_context(|| "创建内存数据库连接失败")?;
-        // 用内存连接替换原连接，旧连接在离开作用域时被丢弃（关闭）
-        *guard = mem_conn;
-        // 设置维护模式标志
-        self.maintenance_mode
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let entered = (|| -> Result<()> {
+            // 拿到互斥锁 = 在途使用者已排空（单连接模型的可证明排空）
+            let mut guard = self.lock_conn_any_phase()?;
+            maintenance::checkpoint_truncate_strict(&guard)
+                .map_err(|e| anyhow::anyhow!("主数据库进入维护屏障失败: {e}"))?;
+            let placeholder = maintenance::deny_all_placeholder_connection()
+                .with_context(|| "创建维护占位连接失败")?;
+            // 旧磁盘连接在赋值时被丢弃（关闭），释放文件句柄
+            *guard = placeholder;
+            Ok(())
+        })();
+
+        if let Err(error) = entered {
+            // checkpoint/占位连接失败：磁盘连接未被替换，回滚标志恢复服务
+            self.maintenance_mode
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            return Err(error);
+        }
         Ok(())
     }
 
     /// 退出维护模式：重新打开磁盘数据库文件
     /// 注意：导入完成后通常会重启应用；该方法提供在无需重启时的恢复手段
+    ///
+    /// fail-close：重新打开磁盘库失败时**保持**维护标志不变并返回错误，
+    /// 绝不清除标志让调用方误以为已恢复（否则后续借出的是 deny-all 占位连接）。
+    /// 未处于维护模式时调用为幂等 no-op。
     pub fn exit_maintenance_mode(&self) -> Result<()> {
-        let mut guard = self.get_conn_safe()?;
+        if !self.is_in_maintenance_mode() {
+            log::warn!("[Database] exit_maintenance_mode 在非维护状态被调用，按幂等 no-op 处理");
+            return Ok(());
+        }
         let path = {
             self.db_path
                 .read()
@@ -328,15 +812,19 @@ impl Database {
                 .map(|p| p.clone())
                 .ok_or_else(|| anyhow::anyhow!("无法读取数据库路径"))?
         };
+        // 先完整准备好新连接，任何一步失败都保持维护屏障（fail-close）
         let new_conn = Connection::open(&path)
             .with_context(|| format!("重新打开数据库连接失败: {:?}", path))?;
         // 恢复基础 PRAGMA
-        new_conn.pragma_update(None, "journal_mode", &"WAL")?;
-        new_conn.pragma_update(None, "synchronous", &"NORMAL")?;
+        new_conn.pragma_update(None, "journal_mode", "WAL")?;
+        new_conn.pragma_update(None, "synchronous", "NORMAL")?;
         // 🔒 审计修复: 恢复外键约束（SQLite 每次新连接默认关闭，必须显式启用）
-        new_conn.pragma_update(None, "foreign_keys", &"ON")?;
-        new_conn.pragma_update(None, "busy_timeout", &3000i64)?;
+        new_conn.pragma_update(None, "foreign_keys", "ON")?;
+        new_conn.pragma_update(None, "busy_timeout", 3000i64)?;
+
+        let mut guard = self.lock_conn_any_phase()?;
         *guard = new_conn;
+        drop(guard);
         // 清除维护模式标志
         self.maintenance_mode
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -361,9 +849,10 @@ impl Database {
 
         let new_conn = Connection::open(new_path)
             .with_context(|| format!("打开数据库连接失败: {:?}", new_path))?;
-        new_conn.pragma_update(None, "journal_mode", &"WAL")?;
-        new_conn.pragma_update(None, "synchronous", &"NORMAL")?;
-        new_conn.pragma_update(None, "busy_timeout", &3000i64)?;
+        new_conn.pragma_update(None, "journal_mode", "WAL")?;
+        new_conn.pragma_update(None, "synchronous", "NORMAL")?;
+        new_conn.pragma_update(None, "foreign_keys", "ON")?;
+        new_conn.pragma_update(None, "busy_timeout", 3000i64)?;
 
         {
             let mut guard = self.get_conn_safe()?;
@@ -569,8 +1058,8 @@ impl Database {
             .optional()?;
 
         if let Some(json_str) = exam_sheet_json {
-            if let Some(mut link) =
-                serde_json::from_str::<crate::models::MistakeExamSheetLink>(&json_str).ok()
+            if let Ok(mut link) =
+                serde_json::from_str::<crate::models::MistakeExamSheetLink>(&json_str)
             {
                 let session_match = link.session_id.as_deref() == Some(session_id);
                 let card_match = card_id
@@ -673,6 +1162,14 @@ impl Database {
 
     /// 创建新的数据库连接并初始化/迁移数据库
     pub fn new(db_path: &Path) -> Result<Self> {
+        const MIN_SAFE_SQLITE_VERSION: i32 = 3_051_003;
+        let sqlite_version = rusqlite::version_number();
+        anyhow::ensure!(
+            sqlite_version >= MIN_SAFE_SQLITE_VERSION,
+            "SQLite {} is too old; 3.51.3 or newer is required to avoid the WAL-reset corruption bug",
+            rusqlite::version()
+        );
+
         if let Some(parent) = db_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("创建数据库目录失败: {:?}", parent))?;
@@ -680,6 +1177,11 @@ impl Database {
 
         let conn = Connection::open(db_path)
             .with_context(|| format!("打开数据库连接失败: {:?}", db_path))?;
+        // SQLite enables foreign keys per connection. Production constructs the
+        // database through `new` without calling `initialize_schema`, so this
+        // must be applied here for automation run cascades and every other FK.
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "busy_timeout", 3000i64)?;
 
         // 初始化安全存储（使用 db_path 的父目录作为 app_data_dir，确保路径稳定）
         let secure_store_config = SecureStoreConfig::default();
@@ -696,6 +1198,7 @@ impl Database {
             conn: Mutex::new(conn),
             db_path: RwLock::new(db_path.to_path_buf()),
             secure_store,
+            secret_operation_lock: Mutex::new(()),
             maintenance_mode: std::sync::atomic::AtomicBool::new(false),
         };
         Ok(db)
@@ -705,10 +1208,10 @@ impl Database {
         let conn = self.get_conn_safe()?;
 
         // 启用WAL模式提高并发性能
-        conn.pragma_update(None, "journal_mode", &"WAL")?;
-        conn.pragma_update(None, "synchronous", &"NORMAL")?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         // 🔒 审计修复: 启用外键约束（SQLite 默认关闭，导致 FOREIGN KEY 和 ON DELETE CASCADE 不生效）
-        conn.pragma_update(None, "foreign_keys", &"ON")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
 
         conn.execute_batch(
             "BEGIN;
@@ -865,12 +1368,7 @@ impl Database {
                 "CREATE INDEX IF NOT EXISTS idx_anki_cards_source ON anki_cards(source_type, source_id)",
                 [],
             );
-
-            // 🔧 Phase 1: document_tasks 增加 source_session_id 字段（用于跳转到聊天上下文）
-            let _ = conn.execute(
-                "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-                [],
-            );
+            // source_session_id 由治理迁移 V20260705 声明，禁止在此 runtime ALTER 以免 schema 指纹漂移
         }
 
         let _current_version: u32 = conn
@@ -2033,7 +2531,7 @@ impl Database {
                     fields_json, generation_prompt, front_template, back_template, css_style,
                     field_extraction_rules_json, created_at, updated_at, is_active, is_built_in,
                     preview_data_json
-             FROM custom_anki_templates ORDER BY created_at DESC",
+             FROM custom_anki_templates ORDER BY created_at DESC, id ASC",
         )?;
 
         let template_iter = stmt.query_map([], |row| {
@@ -2319,6 +2817,147 @@ impl Database {
         Ok(())
     }
 
+    /// 幂等补齐模板表用户态标记列（user_modified / user_deleted）。
+    ///
+    /// 正式 schema 由迁移 V20260723__template_user_state.sql 声明；
+    /// 此处为旧库 / 未走治理迁移路径时的运行时兜底，重复执行安全。
+    fn ensure_template_user_state_columns(conn: &Connection) -> Result<()> {
+        for ddl in [
+            "ALTER TABLE custom_anki_templates ADD COLUMN user_modified INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE custom_anki_templates ADD COLUMN user_deleted INTEGER NOT NULL DEFAULT 0",
+        ] {
+            if let Err(e) = conn.execute(ddl, []) {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 统计仍引用指定模板的 Anki 卡片数量（排除已软删卡片）。
+    pub fn count_anki_cards_referencing_template(&self, template_id: &str) -> Result<i64> {
+        let conn = self.get_conn_safe()?;
+        match conn.query_row(
+            "SELECT COUNT(*) FROM anki_cards WHERE template_id = ?1 AND deleted_at IS NULL",
+            params![template_id],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(count) => Ok(count),
+            // 兜底：极老的库可能缺 deleted_at 列（同步字段迁移之前创建）
+            Err(_) => Ok(conn.query_row(
+                "SELECT COUNT(*) FROM anki_cards WHERE template_id = ?1",
+                params![template_id],
+                |row| row.get::<_, i64>(0),
+            )?),
+        }
+    }
+
+    /// 读取模板用户态标记：template_id -> (user_modified, user_deleted)
+    pub fn get_template_user_states(&self) -> Result<HashMap<String, (bool, bool)>> {
+        let conn = self.get_conn_safe()?;
+        Self::ensure_template_user_state_columns(&conn)?;
+        let mut stmt =
+            conn.prepare("SELECT id, user_modified, user_deleted FROM custom_anki_templates")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)? != 0,
+                row.get::<_, i64>(2)? != 0,
+            ))
+        })?;
+        let mut states = HashMap::new();
+        for row in rows {
+            let (id, user_modified, user_deleted) = row?;
+            states.insert(id, (user_modified, user_deleted));
+        }
+        Ok(states)
+    }
+
+    /// 标记内置模板已被用户修改（内置模板版本升级导入时将跳过覆盖）。
+    /// 对非内置模板是 no-op。
+    pub fn mark_template_user_modified(&self, template_id: &str) -> Result<()> {
+        let conn = self.get_conn_safe()?;
+        Self::ensure_template_user_state_columns(&conn)?;
+        conn.execute(
+            "UPDATE custom_anki_templates SET user_modified = 1 WHERE id = ?1 AND is_built_in = 1",
+            params![template_id],
+        )?;
+        Ok(())
+    }
+
+    /// 软删除（停用）内置模板：打 user_deleted 墓碑并置 is_active = 0。
+    ///
+    /// 保留行与模板 ID，存量卡片的 template_id 绑定不断裂；
+    /// 内置模板版本升级导入检测到墓碑后不会复活该模板。
+    pub fn soft_delete_builtin_template(&self, template_id: &str) -> Result<()> {
+        let conn = self.get_conn_safe()?;
+        Self::ensure_template_user_state_columns(&conn)?;
+        let now = Utc::now().to_rfc3339();
+        let affected = conn.execute(
+            "UPDATE custom_anki_templates
+             SET user_deleted = 1, is_active = 0, updated_at = ?2
+             WHERE id = ?1 AND is_built_in = 1",
+            params![template_id, now],
+        )?;
+        if affected == 0 {
+            return Err(anyhow::anyhow!(
+                "builtin_template_not_found: {}",
+                template_id
+            ));
+        }
+        Ok(())
+    }
+
+    /// 原地整体替换模板内容（保持模板 ID 与 is_built_in 不变）。
+    ///
+    /// 用于"覆盖导入"场景：替代旧的"先删后建"流程。
+    /// 单条 UPDATE 原子执行，失败时不会丢失旧模板，
+    /// 且存量卡片的 template_id 绑定保持稳定。
+    pub fn replace_custom_template_content(
+        &self,
+        template_id: &str,
+        request: &crate::models::CreateTemplateRequest,
+    ) -> Result<()> {
+        let conn = self.get_conn_safe()?;
+        let now = Utc::now().to_rfc3339();
+        let version = request.version.as_deref().unwrap_or("1.0.0").to_string();
+        let is_active = request.is_active.unwrap_or(true);
+        let affected = conn.execute(
+            "UPDATE custom_anki_templates SET
+                name = ?2, description = ?3, author = ?4, version = ?5,
+                preview_front = ?6, preview_back = ?7, note_type = ?8,
+                fields_json = ?9, generation_prompt = ?10,
+                front_template = ?11, back_template = ?12, css_style = ?13,
+                field_extraction_rules_json = ?14, preview_data_json = ?15,
+                is_active = ?16, updated_at = ?17
+             WHERE id = ?1",
+            params![
+                template_id,
+                request.name,
+                request.description,
+                request.author,
+                version,
+                request.preview_front,
+                request.preview_back,
+                request.note_type,
+                serde_json::to_string(&request.fields)?,
+                request.generation_prompt,
+                request.front_template,
+                request.back_template,
+                request.css_style,
+                serde_json::to_string(&request.field_extraction_rules)?,
+                request.preview_data_json,
+                if is_active { 1 } else { 0 },
+                now,
+            ],
+        )?;
+        if affected == 0 {
+            return Err(anyhow::anyhow!("template_not_found: {}", template_id));
+        }
+        Ok(())
+    }
+
     // ============================================
     // 已废弃：旧迁移辅助函数 (review_sessions)
     // 新系统使用 data_governance::migration
@@ -2505,10 +3144,7 @@ impl Database {
                     .get("is_summary")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
-                    || overrides
-                        .get("phase")
-                        .and_then(|v| v.as_str())
-                        .map_or(false, |p| p == "SUMMARY")
+                    || (overrides.get("phase").and_then(|v| v.as_str()) == Some("SUMMARY"))
             } else {
                 false
             };
@@ -2670,7 +3306,7 @@ impl Database {
         let conn = self.get_conn_safe()?;
         let mut stmt = conn.prepare("SELECT id FROM chat_messages WHERE mistake_id = ?1")?;
         let rows = stmt
-            .query_map(params![mistake_id], |row| Ok(row.get::<_, i64>(0)?))?
+            .query_map(params![mistake_id], |row| row.get::<_, i64>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -2736,7 +3372,7 @@ impl Database {
                     "SELECT id, stable_id FROM chat_messages WHERE mistake_id = ?1 AND stable_id IS NOT NULL AND stable_id <> ''"
                 )?;
             let rows: Vec<(String, i64)> = stmt
-                .query_map(params![mistake_id], |row| build_existing_message_map(row))?
+                .query_map(params![mistake_id], build_existing_message_map)?
                 .collect::<rusqlite::Result<_>>()?;
             rows.into_iter().collect()
         } else {
@@ -2760,17 +3396,17 @@ impl Database {
             let image_paths_json = message
                 .image_paths
                 .as_ref()
-                .map(|paths| serde_json::to_string(paths))
+                .map(serde_json::to_string)
                 .transpose()?;
             let image_base64_json = message
                 .image_base64
                 .as_ref()
-                .map(|imgs| serde_json::to_string(imgs))
+                .map(serde_json::to_string)
                 .transpose()?;
             let doc_attachments_json = message
                 .doc_attachments
                 .as_ref()
-                .map(|docs| serde_json::to_string(docs))
+                .map(serde_json::to_string)
                 .transpose()?;
 
             // sources 字段：对所有角色保留
@@ -2783,22 +3419,22 @@ impl Database {
                 message
                     .rag_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .memory_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .graph_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .web_search_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
             );
 
@@ -2807,12 +3443,12 @@ impl Database {
                 message
                     .tool_call
                     .as_ref()
-                    .map(|tc| serde_json::to_string(tc))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .tool_result
                     .as_ref()
-                    .map(|tr| serde_json::to_string(tr))
+                    .map(serde_json::to_string)
                     .transpose()?,
             );
 
@@ -3082,7 +3718,7 @@ impl Database {
                     inserted_ids.push(tx.last_insert_rowid());
                 }
             }
-            if latest_ts.map_or(true, |t: DateTime<Utc>| message.timestamp > t) {
+            if latest_ts.is_none_or(|t: DateTime<Utc>| message.timestamp > t) {
                 latest_ts = Some(message.timestamp);
             }
         }
@@ -3192,7 +3828,7 @@ impl Database {
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt
             .query_map(rusqlite::params![mistake_id, turn_id], |row| {
-                Ok(row.get::<_, i64>(0)?)
+                row.get::<_, i64>(0)
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
@@ -3284,7 +3920,7 @@ impl Database {
         Ok(crate::models::DeleteChatTurnResult {
             mistake_id: mistake_id.to_string(),
             turn_id: turn_id.to_string(),
-            deleted_count: affected as usize,
+            deleted_count: affected,
             full_turn_deleted: delete_user,
             note,
         })
@@ -3303,9 +3939,7 @@ impl Database {
                 "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'user' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
             )?;
             let user_rows: Vec<i64> = users_stmt
-                .query_map(rusqlite::params![mistake_id], |row| {
-                    Ok(row.get::<_, i64>(0)?)
-                })?
+                .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
                 .collect::<std::result::Result<_, _>>()?;
             drop(users_stmt);
             for user_row_id in user_rows {
@@ -3324,9 +3958,7 @@ impl Database {
                 "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'assistant' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
             )?;
             let assistant_rows: Vec<i64> = assistants_stmt
-                .query_map(rusqlite::params![mistake_id], |row| {
-                    Ok(row.get::<_, i64>(0)?)
-                })?
+                .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
                 .collect::<std::result::Result<_, _>>()?;
             drop(assistants_stmt);
             for assistant_row_id in assistant_rows {
@@ -3448,7 +4080,11 @@ impl Database {
     pub fn save_setting(&self, key: &str, value: &str) -> Result<()> {
         let conn = self.get_conn_safe()?;
         conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = excluded.updated_at
+             WHERE settings.value IS NOT excluded.value",
             params![key, value, Utc::now().to_rfc3339()],
         )?;
         Ok(())
@@ -3562,74 +4198,131 @@ impl Database {
         Ok(())
     }
 
-    /// 保存敏感设置（优先使用安全存储）
+    /// 保存设置；敏感值必须写入安全存储，禁止明文回退。
     pub fn save_secret(&self, key: &str, value: &str) -> Result<()> {
-        // 检查是否为敏感键
-        if SecureStore::is_sensitive_key(key) {
-            if let Some(ref secure_store) = self.secure_store {
-                match secure_store.save_secret(key, value) {
-                    Ok(_) => {
-                        // 成功保存到安全存储，从数据库删除明文（如果存在）
-                        let _ = self.delete_setting(key);
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        // 安全存储失败，记录警告并回退到数据库
-                        if secure_store.get_config().warn_on_fallback {
-                            log::warn!("安全存储失败，回退到明文存储: {} - {}", key, e);
-                        }
-                    }
-                }
-            }
+        if !SecureStore::is_sensitive_key(key) {
+            return self.save_setting(key, value);
         }
 
-        // 回退到普通数据库存储
-        self.save_setting(key, value)
+        let _secret_guard = self.lock_secret_operations();
+        self.save_sensitive_secret_locked(key, value)
     }
 
-    /// 获取敏感设置（优先从安全存储获取）
-    pub fn get_secret(&self, key: &str) -> Result<Option<String>> {
-        // 检查是否为敏感键且安全存储可用
-        if SecureStore::is_sensitive_key(key) {
-            if let Some(ref secure_store) = self.secure_store {
-                match secure_store.get_secret(key) {
-                    Ok(Some(value)) => {
-                        // 从安全存储成功获取
-                        return Ok(Some(value));
-                    }
-                    Ok(None) => {
-                        // 安全存储中没有，继续尝试数据库
-                    }
-                    Err(e) => {
-                        // 安全存储访问失败，记录警告并回退
-                        log::warn!("安全存储读取失败，回退到数据库: {} - {}", key, e);
-                    }
+    fn lock_secret_operations(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.secret_operation_lock
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[Database] Secret operation mutex poisoned; recovering lock");
+                poisoned.into_inner()
+            })
+    }
+
+    /// Caller must hold `secret_operation_lock` for the whole state transition.
+    fn save_sensitive_secret_locked(&self, key: &str, value: &str) -> Result<()> {
+        let secure_store = self
+            .secure_store
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("安全存储不可用，拒绝以明文保存敏感设置: {}", key))?;
+
+        match secure_store.save_secret(key, value) {
+            Ok(()) => {
+                // Legacy versions may have left a plaintext row behind. Treat its removal as
+                // part of the write: reporting success while it remains would silently retain
+                // the secret in backups and database exports.
+                if let Err(db_error) = self.delete_setting(key) {
+                    // The file and SQLite database cannot share a transaction. Remove the newly
+                    // written secure copy on failure so callers do not unknowingly leave two
+                    // divergent values behind. A retry can then complete the migration cleanly.
+                    return match secure_store.delete_secret(key) {
+                        Ok(()) => Err(anyhow::anyhow!(
+                            "安全存储写入成功，但清理数据库中的旧明文失败（已回滚安全副本）: {} - {}",
+                            key,
+                            db_error
+                        )),
+                        Err(rollback_error) => Err(anyhow::anyhow!(
+                            "安全存储写入成功，但清理数据库中的旧明文失败，且回滚安全副本也失败: {} - {}; rollback: {}",
+                            key,
+                            db_error,
+                            rollback_error
+                        )),
+                    };
                 }
+                Ok(())
             }
+            Err(secure_error) => Err(anyhow::anyhow!(
+                "安全存储写入失败，已拒绝以明文保存敏感设置: {} - {}",
+                key,
+                secure_error
+            )),
+        }
+    }
+
+    /// 获取设置；敏感值从安全存储读取，并迁移遗留的数据库明文。
+    pub fn get_secret(&self, key: &str) -> Result<Option<String>> {
+        if !SecureStore::is_sensitive_key(key) {
+            return self.get_setting(key);
         }
 
-        // 回退到普通数据库存储
-        self.get_setting(key)
+        let _secret_guard = self.lock_secret_operations();
+
+        let secure_store = self.secure_store.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("安全存储不可用，拒绝读取数据库中的敏感设置: {}", key)
+        })?;
+
+        match secure_store.get_secret(key) {
+            Ok(Some(value)) => Ok(Some(value)),
+            Ok(None) => {
+                let legacy_value = self.get_setting(key)?;
+                if let Some(ref value) = legacy_value {
+                    self.save_sensitive_secret_locked(key, value)
+                        .with_context(|| format!("迁移数据库中的旧明文敏感设置失败: {}", key))?;
+                }
+                Ok(legacy_value)
+            }
+            Err(secure_error) => Err(anyhow::anyhow!(
+                "安全存储读取失败，已拒绝回退到数据库明文: {} - {}",
+                key,
+                secure_error
+            )),
+        }
     }
 
     /// 删除敏感设置（同时从安全存储和数据库删除）
     pub fn delete_secret(&self, key: &str) -> Result<bool> {
-        let mut deleted = false;
-
-        // 从安全存储删除
-        if SecureStore::is_sensitive_key(key) {
-            if let Some(ref secure_store) = self.secure_store {
-                secure_store
-                    .delete_secret(key)
-                    .map_err(|e| anyhow::anyhow!("从安全存储删除失败: {} - {}", key, e))?;
-                deleted = true;
-            }
+        if !SecureStore::is_sensitive_key(key) {
+            return self.delete_setting(key);
         }
 
-        // 从数据库删除
-        let db_deleted = self.delete_setting(key)?;
+        let _secret_guard = self.lock_secret_operations();
 
-        Ok(deleted || db_deleted)
+        // Always attempt both locations. In particular, a secure-store error must not leave an
+        // independently removable legacy plaintext row in SQLite.
+        let secure_result = self
+            .secure_store
+            .as_ref()
+            .map(|secure_store| secure_store.delete_secret(key));
+        let db_result = self.delete_setting(key);
+
+        match (secure_result, db_result) {
+            (Some(Err(secure_error)), Err(db_error)) => Err(anyhow::anyhow!(
+                "删除敏感设置失败（安全存储和数据库均未能清理）: {} - secure: {}; database: {}",
+                key,
+                secure_error,
+                db_error
+            )),
+            (Some(Err(secure_error)), Ok(_)) => Err(anyhow::anyhow!(
+                "从安全存储删除敏感设置失败（数据库明文已清理）: {} - {}",
+                key,
+                secure_error
+            )),
+            (Some(Ok(())), Err(db_error)) => Err(anyhow::anyhow!(
+                "从数据库删除旧明文敏感设置失败（安全副本已清理）: {} - {}",
+                key,
+                db_error
+            )),
+            (Some(Ok(())), Ok(_)) => Ok(true),
+            (None, result) => result,
+        }
     }
 
     // ================= Research reports =================
@@ -3825,13 +4518,12 @@ impl Database {
     /// 🔧 Phase 1: 为指定 document_id 的所有任务设置 source_session_id
     pub fn set_document_session_source(&self, document_id: &str, session_id: &str) -> Result<()> {
         let conn = self.get_conn_safe()?;
-        // 确保列存在
-        let _ = conn.execute(
-            "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-            [],
-        );
         conn.execute(
-            "UPDATE document_tasks SET source_session_id = ?1 WHERE document_id = ?2 AND source_session_id IS NULL",
+            "UPDATE document_tasks
+             SET source_session_id = ?1
+             WHERE document_id = ?2
+               AND source_session_id IS NULL
+               AND deleted_at IS NULL",
             params![session_id, document_id],
         )?;
         Ok(())
@@ -3840,19 +4532,38 @@ impl Database {
     /// 读取 document_id 对应的 source_session_id（如果有）
     pub fn get_document_session_source(&self, document_id: &str) -> Result<Option<String>> {
         let conn = self.get_conn_safe()?;
-        // 兼容旧库：列不存在时先补齐
-        let _ = conn.execute(
-            "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-            [],
-        );
         let source = conn
             .query_row(
-                "SELECT source_session_id FROM document_tasks WHERE document_id = ?1 AND source_session_id IS NOT NULL LIMIT 1",
+                "SELECT source_session_id
+                 FROM document_tasks
+                 WHERE document_id = ?1
+                   AND source_session_id IS NOT NULL
+                   AND deleted_at IS NULL
+                 LIMIT 1",
                 params![document_id],
                 |row| row.get::<_, String>(0),
             )
             .optional()?;
         Ok(source)
+    }
+
+    /// A document is owned only when every task has the same requested session owner.
+    pub fn is_document_owned_by_session(
+        &self,
+        document_id: &str,
+        session_id: &str,
+    ) -> Result<bool> {
+        let conn = self.get_conn_safe()?;
+        let (total, owned): (i64, i64) = conn.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN source_session_id = ?2 THEN 1 ELSE 0 END), 0)
+             FROM document_tasks
+             WHERE document_id = ?1
+               AND deleted_at IS NULL",
+            params![document_id, session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        Ok(total > 0 && owned == total)
     }
 
     /// 原子保存一个文档任务及其卡片，避免出现“任务已完成但卡片部分写入”的不一致状态
@@ -3964,15 +4675,19 @@ impl Database {
     ) -> Result<()> {
         let conn = self.get_conn_safe()?;
         let updated_at = chrono::Utc::now().to_rfc3339();
-        conn.execute(
-            "UPDATE document_tasks SET status = ?1, error_message = ?2, updated_at = ?3 WHERE id = ?4",
-            params![
-                status.to_db_string(),
-                error_message,
-                updated_at,
-                task_id
-            ]
+        let updated = conn.execute(
+            "UPDATE document_tasks
+             SET status = ?1, error_message = ?2, updated_at = ?3
+             WHERE id = ?4
+               AND deleted_at IS NULL",
+            params![status.to_db_string(), error_message, updated_at, task_id],
         )?;
+        if updated == 0 {
+            return Err(anyhow::anyhow!(
+                "document_task_not_found_or_deleted: {}",
+                task_id
+            ));
+        }
         Ok(())
     }
 
@@ -3982,7 +4697,9 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, document_id, original_document_name, segment_index, content_segment,
                     status, created_at, updated_at, error_message, anki_generation_options_json
-             FROM document_tasks WHERE id = ?1",
+             FROM document_tasks
+             WHERE id = ?1
+               AND deleted_at IS NULL",
         )?;
 
         let task = stmt.query_row(params![task_id], |row| {
@@ -4011,7 +4728,10 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, document_id, original_document_name, segment_index, content_segment,
                     status, created_at, updated_at, error_message, anki_generation_options_json
-             FROM document_tasks WHERE document_id = ?1 ORDER BY segment_index",
+             FROM document_tasks
+             WHERE document_id = ?1
+               AND deleted_at IS NULL
+             ORDER BY segment_index",
         )?;
 
         let task_iter = stmt.query_map(params![document_id], |row| {
@@ -4044,7 +4764,10 @@ impl Database {
         let conn = self.get_conn_safe()?;
         let document_id: Option<String> = conn
             .query_row(
-                "SELECT document_id FROM document_tasks WHERE id = ?1",
+                "SELECT document_id
+                 FROM document_tasks
+                 WHERE id = ?1
+                   AND deleted_at IS NULL",
                 params![card.task_id],
                 |row| row.get(0),
             )
@@ -4055,43 +4778,84 @@ impl Database {
             ("task".to_string(), card.task_id.clone())
         };
 
-        let rows_affected = conn.execute(
-            "INSERT OR IGNORE INTO anki_cards
-             (id, task_id, front, back, text, tags_json, images_json,
-              is_error_card, error_content, card_order_in_task, created_at, updated_at,
-              extra_fields_json, template_id, source_type, source_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-            params![
-                card.id,
-                card.task_id,
-                card.front,
-                card.back,
-                card.text,
-                serde_json::to_string(&card.tags)?,
-                serde_json::to_string(&card.images)?,
-                if card.is_error_card { 1 } else { 0 },
-                card.error_content,
-                0, // card_order_in_task will be calculated
-                card.created_at,
-                card.updated_at,
-                serde_json::to_string(&card.extra_fields)?,
-                card.template_id,
-                source_type,
-                source_id
-            ],
+        insert_anki_card_with_order(&conn, card, 0, &source_type, &source_id)
+    }
+
+    /// Appends cards to the final task in a document while preserving document order.
+    /// Duplicate cards rejected by the document-level unique index are omitted.
+    pub fn insert_anki_cards_for_document(
+        &self,
+        document_id: &str,
+        session_id: &str,
+        mut cards: Vec<AnkiCard>,
+    ) -> Result<Vec<AnkiCard>> {
+        if cards.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        let (task_count, owned_task_count): (i64, i64) = tx.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN source_session_id = ?2 THEN 1 ELSE 0 END), 0)
+             FROM document_tasks
+             WHERE document_id = ?1
+               AND deleted_at IS NULL",
+            params![document_id, session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        Ok(rows_affected > 0)
+        if task_count == 0 || owned_task_count != task_count {
+            return Err(anyhow::anyhow!("document_ownership_mismatch"));
+        }
+        let task_id: String = tx
+            .query_row(
+                "SELECT id
+                 FROM document_tasks
+                 WHERE document_id = ?1
+                   AND source_session_id = ?2
+                   AND deleted_at IS NULL
+                 ORDER BY segment_index DESC, created_at DESC, rowid DESC
+                 LIMIT 1",
+                params![document_id, session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("document_task_not_found"))?;
+        let mut next_order: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(card_order_in_task), -1) + 1
+             FROM anki_cards
+             WHERE task_id = ?1
+               AND deleted_at IS NULL",
+            params![task_id],
+            |row| row.get(0),
+        )?;
+
+        let mut inserted = Vec::with_capacity(cards.len());
+        for card in &mut cards {
+            card.task_id = task_id.clone();
+            if insert_anki_card_with_order(&tx, card, next_order, "document", document_id)? {
+                inserted.push(card.clone());
+                next_order += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(inserted)
     }
 
     /// 获取指定任务的所有卡片
     pub fn get_cards_for_task(&self, task_id: &str) -> Result<Vec<AnkiCard>> {
         let conn = self.get_conn_safe()?;
         let mut stmt = conn.prepare(
-            "SELECT id, task_id, front, back, text, tags_json, images_json,
-                    is_error_card, error_content, created_at, updated_at,
-                    COALESCE(extra_fields_json, '{}') as extra_fields_json,
-                    template_id
-             FROM anki_cards WHERE task_id = ?1 ORDER BY card_order_in_task, created_at",
+            "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                    ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                    COALESCE(ac.extra_fields_json, '{}') as extra_fields_json,
+                    ac.template_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.task_id = ?1
+               AND ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL
+             ORDER BY ac.card_order_in_task, ac.created_at",
         )?;
 
         let card_iter = stmt.query_map(params![task_id], |row| {
@@ -4141,6 +4905,8 @@ impl Database {
              FROM anki_cards ac
              JOIN document_tasks dt ON ac.task_id = dt.id
              WHERE dt.document_id = ?1
+               AND dt.deleted_at IS NULL
+               AND ac.deleted_at IS NULL
              ORDER BY dt.segment_index, ac.card_order_in_task, ac.created_at",
         )?;
 
@@ -4180,6 +4946,55 @@ impl Database {
         Ok(cards)
     }
 
+    /// Loads all cards from a document only when every task belongs to the session.
+    ///
+    /// Ownership validation and card loading share one SQLite transaction so the
+    /// returned card set cannot cross an ownership change between two snapshots.
+    pub fn get_cards_for_document_for_session(
+        &self,
+        document_id: &str,
+        session_id: &str,
+    ) -> Result<Option<Vec<AnkiCard>>> {
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        let (task_count, owned_task_count): (i64, i64) = tx.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN source_session_id = ?2 THEN 1 ELSE 0 END), 0)
+             FROM document_tasks
+             WHERE document_id = ?1
+               AND deleted_at IS NULL",
+            params![document_id, session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if task_count == 0 || owned_task_count != task_count {
+            tx.commit()?;
+            return Ok(None);
+        }
+
+        let cards = {
+            let mut stmt = tx.prepare(
+                "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                        ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                        COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                        ac.template_id
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE dt.document_id = ?1
+                   AND dt.deleted_at IS NULL
+                   AND ac.deleted_at IS NULL
+                 ORDER BY dt.segment_index, ac.card_order_in_task, ac.created_at",
+            )?;
+            let card_iter = stmt.query_map(params![document_id], map_anki_card_row)?;
+            let mut cards = Vec::new();
+            for card in card_iter {
+                cards.push(card?);
+            }
+            cards
+        };
+        tx.commit()?;
+        Ok(Some(cards))
+    }
+
     /// 根据ID列表获取卡片
     pub fn get_cards_by_ids(&self, card_ids: &[String]) -> Result<Vec<AnkiCard>> {
         if card_ids.is_empty() {
@@ -4189,11 +5004,16 @@ impl Database {
         let conn = self.get_conn_safe()?;
         let placeholders: Vec<&str> = card_ids.iter().map(|_| "?").collect();
         let sql = format!(
-            "SELECT id, task_id, front, back, text, tags_json, images_json,
-                    is_error_card, error_content, created_at, updated_at,
-                    COALESCE(extra_fields_json, '{{}}') as extra_fields_json,
-                    template_id
-             FROM anki_cards WHERE id IN ({}) ORDER BY created_at",
+            "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                    ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                    COALESCE(ac.extra_fields_json, '{{}}') as extra_fields_json,
+                    ac.template_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.id IN ({})
+               AND ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL
+             ORDER BY ac.created_at",
             placeholders.join(",")
         );
 
@@ -4234,16 +5054,114 @@ impl Database {
         Ok(cards)
     }
 
-    /// 更新Anki卡片
+    /// Loads one card together with the document that owns its task.
+    pub fn get_anki_card_with_document(&self, card_id: &str) -> Result<Option<(AnkiCard, String)>> {
+        let conn = self.get_conn_safe()?;
+        conn.query_row(
+            "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                    ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                    COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                    ac.template_id, dt.document_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.id = ?1
+               AND ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL
+             LIMIT 1",
+            params![card_id],
+            |row| Ok((map_anki_card_row(row)?, row.get(13)?)),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    /// Loads a card only when its concrete task belongs to the requested session.
+    pub fn get_anki_card_for_session(
+        &self,
+        card_id: &str,
+        session_id: &str,
+    ) -> Result<Option<(AnkiCard, String)>> {
+        let conn = self.get_conn_safe()?;
+        conn.query_row(
+            "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                    ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                    COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                    ac.template_id, dt.document_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.id = ?1
+               AND dt.source_session_id = ?2
+               AND ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL
+             LIMIT 1",
+            params![card_id, session_id],
+            |row| Ok((map_anki_card_row(row)?, row.get(13)?)),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    /// Loads a card only when every live task in its document belongs to the session.
+    ///
+    /// This single query provides a consistent preflight snapshot. Mutations must still repeat
+    /// the ownership check inside their write transaction to prevent TOCTOU races.
+    pub fn get_anki_card_for_owned_document_session(
+        &self,
+        card_id: &str,
+        session_id: &str,
+    ) -> Result<Option<(AnkiCard, String)>> {
+        let conn = self.get_conn_safe()?;
+        conn.query_row(
+            "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                    ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                    COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                    ac.template_id, dt.document_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.id = ?1
+               AND dt.source_session_id = ?2
+               AND ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM document_tasks sibling
+                   WHERE sibling.document_id = dt.document_id
+                     AND sibling.deleted_at IS NULL
+                     AND (sibling.source_session_id IS NULL OR sibling.source_session_id <> ?2)
+               )
+             LIMIT 1",
+            params![card_id, session_id],
+            |row| Ok((map_anki_card_row(row)?, row.get(13)?)),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    /// 更新Anki卡片（忽略影响行数；兼容旧调用方）
     pub fn update_anki_card(&self, card: &AnkiCard) -> Result<()> {
+        let _ = self.update_anki_card_rows(card)?;
+        Ok(())
+    }
+
+    /// 更新Anki卡片并返回影响行数。
+    ///
+    /// `0` 表示 `WHERE id = ?` 未命中任何行（常见于内容去重 IGNORE 后用新 id 回退 UPDATE）。
+    pub fn update_anki_card_rows(&self, card: &AnkiCard) -> Result<usize> {
         let conn = self.get_conn_safe()?;
         let updated_at = chrono::Utc::now().to_rfc3339();
-        conn.execute(
+        let rows = conn.execute(
             "UPDATE anki_cards SET
              front = ?1, back = ?2, text = ?3, tags_json = ?4, images_json = ?5,
              is_error_card = ?6, error_content = ?7, updated_at = ?8,
              extra_fields_json = ?9, template_id = ?10
-             WHERE id = ?11",
+             WHERE id = ?11
+               AND deleted_at IS NULL
+               AND EXISTS (
+                   SELECT 1
+                   FROM document_tasks dt
+                   WHERE dt.id = anki_cards.task_id
+                     AND dt.deleted_at IS NULL
+               )",
             params![
                 card.front,
                 card.back,
@@ -4258,32 +5176,853 @@ impl Database {
                 card.id
             ],
         )?;
-        Ok(())
+        Ok(rows)
+    }
+
+    /// Atomically updates a card only when its `updated_at` token still matches.
+    pub fn update_anki_card_if_version_for_session(
+        &self,
+        card: &AnkiCard,
+        expected_updated_at: &str,
+        session_id: &str,
+    ) -> Result<AnkiCardVersionUpdate> {
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let document_id = tx
+            .query_row(
+                "SELECT dt.document_id
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE ac.id = ?1
+                   AND ac.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                params![card.id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(document_id) = document_id else {
+            return Ok(AnkiCardVersionUpdate::NotFound);
+        };
+        if !transaction_document_owned_by_session(&tx, &document_id, session_id)? {
+            return Ok(AnkiCardVersionUpdate::NotFound);
+        }
+        let mut updated_at = chrono::Utc::now().to_rfc3339();
+        if updated_at == expected_updated_at {
+            updated_at = (chrono::Utc::now() + chrono::Duration::nanoseconds(1)).to_rfc3339();
+        }
+
+        let rows = tx.execute(
+            "UPDATE anki_cards SET
+             front = ?1, back = ?2, text = ?3, tags_json = ?4, images_json = ?5,
+             is_error_card = ?6, error_content = ?7, updated_at = ?8,
+             extra_fields_json = ?9, template_id = ?10
+             WHERE id = ?11
+               AND updated_at = ?12
+               AND deleted_at IS NULL
+               AND EXISTS (
+                   SELECT 1 FROM document_tasks dt
+                   WHERE dt.id = anki_cards.task_id
+                     AND dt.deleted_at IS NULL
+               )",
+            params![
+                card.front,
+                card.back,
+                card.text,
+                serde_json::to_string(&card.tags)?,
+                serde_json::to_string(&card.images)?,
+                if card.is_error_card { 1 } else { 0 },
+                card.error_content,
+                updated_at,
+                serde_json::to_string(&card.extra_fields)?,
+                card.template_id,
+                card.id,
+                expected_updated_at,
+            ],
+        )?;
+
+        let current = tx
+            .query_row(
+                "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                        ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                        COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                        ac.template_id
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE ac.id = ?1
+                   AND ac.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                params![card.id],
+                map_anki_card_row,
+            )
+            .optional()?;
+        let outcome = match (rows, current) {
+            (1, Some(updated)) => AnkiCardVersionUpdate::Updated(updated),
+            (0, Some(current)) => AnkiCardVersionUpdate::Conflict(current),
+            (_, None) => AnkiCardVersionUpdate::NotFound,
+            (affected, Some(_)) => {
+                return Err(anyhow::anyhow!(
+                    "unexpected_anki_card_update_count: {}",
+                    affected
+                ));
+            }
+        };
+        tx.commit()?;
+        Ok(outcome)
+    }
+
+    /// Reads one live card from the complete library without changing its
+    /// source-session attribution.
+    pub fn get_anki_agent_library_card(
+        &self,
+        _scope: AnkiLibraryScope,
+        card_id: &str,
+    ) -> Result<Option<AnkiLibraryCardRecord>> {
+        let card_id = card_id.trim();
+        if card_id.is_empty() {
+            return Err(anyhow::anyhow!("cardId is required"));
+        }
+        let conn = self.get_conn_safe()?;
+        load_anki_library_card_record(&conn, card_id, Utc::now().timestamp_millis())
+    }
+
+    /// Updates one live library card only while its content version remains
+    /// current. The card's task and `source_session_id` are never rewritten.
+    pub fn update_anki_card_if_version_for_library(
+        &self,
+        _scope: AnkiLibraryScope,
+        card: &AnkiCard,
+        expected_updated_at: &str,
+    ) -> Result<AnkiLibraryCardVersionUpdate> {
+        if card.id.trim().is_empty() || expected_updated_at.trim().is_empty() {
+            return Err(anyhow::anyhow!("cardId and expectedVersion are required"));
+        }
+
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let now_ms = Utc::now().timestamp_millis();
+        let Some(current) = load_anki_library_card_record(&tx, &card.id, now_ms)? else {
+            return Ok(AnkiLibraryCardVersionUpdate::NotFound);
+        };
+        if current.library_card.card.updated_at != expected_updated_at {
+            return Ok(AnkiLibraryCardVersionUpdate::Conflict(current));
+        }
+
+        let now = Utc::now();
+        let mut updated_at = now.to_rfc3339();
+        if updated_at == expected_updated_at {
+            updated_at = (now + chrono::Duration::nanoseconds(1)).to_rfc3339();
+        }
+        let updated = tx.execute(
+            "UPDATE anki_cards SET
+                front = ?1,
+                back = ?2,
+                text = ?3,
+                tags_json = ?4,
+                images_json = ?5,
+                is_error_card = ?6,
+                error_content = ?7,
+                updated_at = ?8,
+                extra_fields_json = ?9,
+                template_id = ?10,
+                local_version = COALESCE(local_version, 0) + 1
+             WHERE id = ?11
+               AND updated_at = ?12
+               AND deleted_at IS NULL
+               AND EXISTS (
+                   SELECT 1
+                   FROM document_tasks dt
+                   WHERE dt.id = anki_cards.task_id
+                     AND dt.deleted_at IS NULL
+               )",
+            params![
+                card.front,
+                card.back,
+                card.text,
+                serde_json::to_string(&card.tags)?,
+                serde_json::to_string(&card.images)?,
+                if card.is_error_card { 1 } else { 0 },
+                card.error_content,
+                updated_at,
+                serde_json::to_string(&card.extra_fields)?,
+                card.template_id,
+                card.id,
+                expected_updated_at,
+            ],
+        )?;
+        if updated != 1 {
+            let current = load_anki_library_card_record(&tx, &card.id, now_ms)?;
+            return Ok(match current {
+                Some(current) => AnkiLibraryCardVersionUpdate::Conflict(current),
+                None => AnkiLibraryCardVersionUpdate::NotFound,
+            });
+        }
+
+        let current = load_anki_library_card_record(&tx, &card.id, now_ms)?
+            .ok_or_else(|| anyhow::anyhow!("library card missing after content update"))?;
+        tx.commit()?;
+        Ok(AnkiLibraryCardVersionUpdate::Updated(current))
+    }
+
+    /// Atomically maps one live document's cards to another template.
+    ///
+    /// Template metadata is an immutable snapshot loaded from the template database by the
+    /// caller. Card selection, complete document ownership, exact version coverage, Cloze
+    /// validation, CAS updates, and the final commit all share one `IMMEDIATE` transaction.
+    pub fn retemplate_anki_cards_for_session(
+        &self,
+        selector: &AnkiRetemplateSelector,
+        target: &AnkiRetemplateTarget,
+        expected_versions: &HashMap<String, String>,
+        session_id: &str,
+        preflighted_document_ids: &[String],
+    ) -> Result<AnkiRetemplateBatchResult> {
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let mut loaded = match selector {
+            AnkiRetemplateSelector::Document(document_id) => {
+                if !transaction_document_owned_by_session(&tx, document_id, session_id)? {
+                    return Ok(AnkiRetemplateBatchResult::OwnershipRejected);
+                }
+                let mut stmt = tx.prepare(
+                    "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json,
+                            ac.images_json, ac.is_error_card, ac.error_content, ac.created_at,
+                            ac.updated_at, COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                            ac.template_id, dt.document_id
+                     FROM anki_cards ac
+                     INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                     WHERE dt.document_id = ?1
+                       AND dt.deleted_at IS NULL
+                       AND ac.deleted_at IS NULL
+                     ORDER BY dt.segment_index, ac.card_order_in_task, ac.created_at, ac.id",
+                )?;
+                let rows = stmt.query_map(params![document_id], map_retemplate_card_row)?;
+                let mut cards = Vec::new();
+                for row in rows {
+                    cards.push(row?);
+                }
+                cards
+            }
+            AnkiRetemplateSelector::Cards(card_ids) => {
+                if card_ids.is_empty() {
+                    return Ok(AnkiRetemplateBatchResult::SelectionNotFound {
+                        card_ids: Vec::new(),
+                    });
+                }
+                let placeholders = vec!["?"; card_ids.len()].join(",");
+                let sql = format!(
+                    "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json,
+                            ac.images_json, ac.is_error_card, ac.error_content, ac.created_at,
+                            ac.updated_at, COALESCE(ac.extra_fields_json, '{{}}') AS extra_fields_json,
+                            ac.template_id, dt.document_id
+                     FROM anki_cards ac
+                     INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                     WHERE ac.id IN ({})
+                       AND dt.deleted_at IS NULL
+                       AND ac.deleted_at IS NULL",
+                    placeholders
+                );
+                let mut stmt = tx.prepare(&sql)?;
+                let rows = stmt.query_map(
+                    rusqlite::params_from_iter(card_ids.iter()),
+                    map_retemplate_card_row,
+                )?;
+                let mut by_id = HashMap::new();
+                for row in rows {
+                    let loaded_card = row?;
+                    by_id.insert(loaded_card.card.id.clone(), loaded_card);
+                }
+                let mut missing: Vec<String> = card_ids
+                    .iter()
+                    .filter(|card_id| !by_id.contains_key(*card_id))
+                    .cloned()
+                    .collect();
+                if !missing.is_empty() {
+                    missing.sort();
+                    return Ok(AnkiRetemplateBatchResult::SelectionNotFound { card_ids: missing });
+                }
+                let mut cards = Vec::with_capacity(card_ids.len());
+                for card_id in card_ids {
+                    if let Some(card) = by_id.remove(card_id) {
+                        cards.push(card);
+                    }
+                }
+                cards
+            }
+        };
+
+        if loaded.is_empty() {
+            return Ok(AnkiRetemplateBatchResult::SelectionNotFound {
+                card_ids: Vec::new(),
+            });
+        }
+
+        let mut document_ids: Vec<String> = loaded
+            .iter()
+            .map(|loaded_card| loaded_card.document_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        document_ids.sort();
+        if document_ids.len() != 1 {
+            return Ok(AnkiRetemplateBatchResult::CrossDocumentSelection { document_ids });
+        }
+        if !transaction_document_owned_by_session(&tx, &document_ids[0], session_id)? {
+            return Ok(AnkiRetemplateBatchResult::OwnershipRejected);
+        }
+
+        let mut preflighted: Vec<String> = preflighted_document_ids
+            .iter()
+            .map(|document_id| document_id.trim().to_string())
+            .filter(|document_id| !document_id.is_empty())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        preflighted.sort();
+        if preflighted != document_ids {
+            return Ok(AnkiRetemplateBatchResult::DocumentSetChanged { document_ids });
+        }
+
+        let live_ids: HashSet<String> = loaded
+            .iter()
+            .map(|loaded_card| loaded_card.card.id.clone())
+            .collect();
+        let expected_ids: HashSet<String> = expected_versions.keys().cloned().collect();
+        if live_ids != expected_ids {
+            let mut missing_version_ids: Vec<String> =
+                live_ids.difference(&expected_ids).cloned().collect();
+            let mut unexpected_version_ids: Vec<String> =
+                expected_ids.difference(&live_ids).cloned().collect();
+            missing_version_ids.sort();
+            unexpected_version_ids.sort();
+            return Ok(AnkiRetemplateBatchResult::ExpectedVersionsMismatch {
+                missing_version_ids,
+                unexpected_version_ids,
+            });
+        }
+
+        let mut conflicts = Vec::new();
+        for loaded_card in &loaded {
+            let expected_version = expected_versions
+                .get(&loaded_card.card.id)
+                .expect("exact version set was checked above");
+            if expected_version != &loaded_card.card.updated_at {
+                conflicts.push(AnkiRetemplateVersionConflict {
+                    card_id: loaded_card.card.id.clone(),
+                    expected_version: expected_version.clone(),
+                    current_version: loaded_card.card.updated_at.clone(),
+                });
+            }
+        }
+        if !conflicts.is_empty() {
+            return Ok(AnkiRetemplateBatchResult::VersionConflict { conflicts });
+        }
+
+        if target.note_type.trim().eq_ignore_ascii_case("cloze") {
+            let mut invalid_card_ids: Vec<String> = loaded
+                .iter()
+                .filter(|loaded_card| {
+                    loaded_card
+                        .card
+                        .text
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|text| !text.is_empty())
+                        .map(contains_valid_anki_cloze_markup)
+                        != Some(true)
+                })
+                .map(|loaded_card| loaded_card.card.id.clone())
+                .collect();
+            if !invalid_card_ids.is_empty() {
+                invalid_card_ids.sort();
+                return Ok(AnkiRetemplateBatchResult::InvalidCloze {
+                    card_ids: invalid_card_ids,
+                });
+            }
+        }
+
+        let mut updates = Vec::with_capacity(loaded.len());
+        for loaded_card in loaded.drain(..) {
+            let source = loaded_card.card.clone();
+            let (extra_fields, missing_fields) = map_anki_fields_for_template(&source, target);
+            let mut card = loaded_card.card;
+            card.extra_fields = extra_fields;
+            card.template_id = Some(target.template_id.clone());
+            updates.push(AnkiRetemplateCardUpdate {
+                document_id: loaded_card.document_id,
+                card,
+                source,
+                missing_fields,
+            });
+        }
+
+        let expected_tokens: HashSet<&str> =
+            expected_versions.values().map(String::as_str).collect();
+        let mut timestamp = Utc::now();
+        let mut updated_at = timestamp.to_rfc3339();
+        while expected_tokens.contains(updated_at.as_str()) {
+            timestamp += chrono::Duration::nanoseconds(1);
+            updated_at = timestamp.to_rfc3339();
+        }
+
+        for update in &mut updates {
+            let expected_version = expected_versions
+                .get(&update.card.id)
+                .expect("exact version set was checked above");
+            let extra_fields_json = serde_json::to_string(&update.card.extra_fields)?;
+            let affected = tx.execute(
+                "UPDATE anki_cards
+                 SET extra_fields_json = ?1,
+                     template_id = ?2,
+                     updated_at = ?3,
+                     local_version = COALESCE(local_version, 0) + 1
+                 WHERE id = ?4
+                   AND updated_at = ?5
+                   AND deleted_at IS NULL
+                   AND EXISTS (
+                       SELECT 1
+                       FROM document_tasks dt
+                       WHERE dt.id = anki_cards.task_id
+                         AND dt.source_session_id = ?6
+                         AND dt.deleted_at IS NULL
+                   )",
+                params![
+                    extra_fields_json,
+                    target.template_id,
+                    updated_at,
+                    update.card.id,
+                    expected_version,
+                    session_id,
+                ],
+            )?;
+            if affected != 1 {
+                return Err(anyhow::anyhow!(
+                    "unexpected_anki_retemplate_update_count: card={}, affected={}",
+                    update.card.id,
+                    affected
+                ));
+            }
+            update.card.updated_at = updated_at.clone();
+        }
+
+        tx.commit()?;
+        Ok(AnkiRetemplateBatchResult::Updated {
+            target_note_type: target.note_type.clone(),
+            updates,
+        })
+    }
+
+    /// Deletes a card when both its content and scheduling snapshots match and
+    /// the session owns the complete document.
+    ///
+    /// `None` explicitly asserts that the card remains unenqueued. A newly
+    /// created FSRS row therefore conflicts instead of being erased.
+    pub fn delete_anki_card_for_session(
+        &self,
+        card_id: &str,
+        expected_updated_at: &str,
+        expected_review_version: Option<i64>,
+        session_id: &str,
+    ) -> Result<AnkiCardVersionDelete> {
+        let card_id = card_id.trim();
+        if card_id.is_empty()
+            || expected_updated_at.trim().is_empty()
+            || session_id.trim().is_empty()
+        {
+            return Err(anyhow::anyhow!(
+                "cardId, expectedVersion, and sessionId are required"
+            ));
+        }
+        if expected_review_version.is_some_and(|version| version < 0) {
+            return Err(anyhow::anyhow!(
+                "expectedReviewVersion must be a non-negative integer or null"
+            ));
+        }
+
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let document_id = tx
+            .query_row(
+                "SELECT dt.document_id
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE ac.id = ?1
+                   AND ac.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                params![card_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(document_id) = document_id else {
+            return Ok(AnkiCardVersionDelete::NotFound);
+        };
+        if !transaction_document_owned_by_session(&tx, &document_id, session_id)? {
+            return Ok(AnkiCardVersionDelete::NotFound);
+        }
+        let current = tx
+            .query_row(
+                "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                        ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                        COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                        ac.template_id
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE ac.id = ?1
+                   AND ac.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                params![card_id],
+                map_anki_card_row,
+            )
+            .optional()?;
+        let Some(current) = current else {
+            return Ok(AnkiCardVersionDelete::NotFound);
+        };
+        if current.updated_at != expected_updated_at {
+            return Ok(AnkiCardVersionDelete::Conflict(current));
+        }
+
+        let current_review = load_anki_library_review_version(&tx, card_id)?;
+        let review_matches = match (&current_review, expected_review_version) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => current.review_version == expected,
+            _ => false,
+        };
+        if !review_matches {
+            return Ok(AnkiCardVersionDelete::ReviewConflict {
+                current,
+                review: current_review,
+            });
+        }
+
+        if let Some(review) = &current_review {
+            tx.execute(
+                "DELETE FROM fsrs_review_logs
+                 WHERE card_state_id = ?1
+                   AND anki_card_id = ?2",
+                params![review.card_state_id, card_id],
+            )?;
+            let deleted_state = tx.execute(
+                "DELETE FROM fsrs_card_states
+                 WHERE id = ?1
+                   AND anki_card_id = ?2
+                   AND COALESCE(local_version, 0) = ?3
+                   AND deleted_at IS NULL",
+                params![review.card_state_id, card_id, review.review_version],
+            )?;
+            if deleted_state != 1 {
+                let current_review = load_anki_library_review_version(&tx, card_id)?;
+                return Ok(AnkiCardVersionDelete::ReviewConflict {
+                    current,
+                    review: current_review,
+                });
+            }
+        }
+
+        // Old sync tombstones do not count as an active scheduling snapshot.
+        tx.execute(
+            "DELETE FROM fsrs_review_logs WHERE anki_card_id = ?1",
+            params![card_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states
+             WHERE anki_card_id = ?1 AND deleted_at IS NOT NULL",
+            params![card_id],
+        )?;
+        let deleted = tx.execute(
+            "DELETE FROM anki_cards
+             WHERE id = ?1
+               AND updated_at = ?2
+               AND deleted_at IS NULL
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM fsrs_card_states fs
+                   WHERE fs.anki_card_id = anki_cards.id
+                     AND fs.deleted_at IS NULL
+               )
+               AND EXISTS (
+                 SELECT 1 FROM document_tasks dt
+                 WHERE dt.id = anki_cards.task_id
+                   AND dt.source_session_id = ?3
+                   AND dt.deleted_at IS NULL
+             )",
+            params![card_id, expected_updated_at, session_id],
+        )?;
+        if deleted != 1 {
+            let current = tx
+                .query_row(
+                    "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                            ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                            COALESCE(ac.extra_fields_json, '{}') AS extra_fields_json,
+                            ac.template_id
+                     FROM anki_cards ac
+                     INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                     WHERE ac.id = ?1
+                       AND ac.deleted_at IS NULL
+                       AND dt.deleted_at IS NULL",
+                    params![card_id],
+                    map_anki_card_row,
+                )
+                .optional()?;
+            let Some(current) = current else {
+                return Ok(AnkiCardVersionDelete::NotFound);
+            };
+            let review = load_anki_library_review_version(&tx, card_id)?;
+            return Ok(if current.updated_at != expected_updated_at {
+                AnkiCardVersionDelete::Conflict(current)
+            } else {
+                AnkiCardVersionDelete::ReviewConflict { current, review }
+            });
+        }
+        tx.commit()?;
+        Ok(AnkiCardVersionDelete::Deleted)
+    }
+
+    /// Deletes a live library card only when both its content and scheduling
+    /// snapshots still match the caller's preflight read.
+    ///
+    /// `None` is an explicit assertion that the card remains unenqueued. A
+    /// newly-created FSRS row therefore conflicts instead of being erased.
+    pub fn delete_anki_card_for_library(
+        &self,
+        _scope: AnkiLibraryScope,
+        card_id: &str,
+        expected_updated_at: &str,
+        expected_review_version: Option<i64>,
+    ) -> Result<AnkiLibraryCardDeleteOutcome> {
+        let card_id = card_id.trim();
+        if card_id.is_empty() || expected_updated_at.trim().is_empty() {
+            return Err(anyhow::anyhow!("cardId and expectedVersion are required"));
+        }
+        if expected_review_version.is_some_and(|version| version < 0) {
+            return Err(anyhow::anyhow!(
+                "expectedReviewVersion must be a non-negative integer or null"
+            ));
+        }
+
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let now_ms = Utc::now().timestamp_millis();
+        let Some(current) = load_anki_library_card_record(&tx, card_id, now_ms)? else {
+            return Ok(AnkiLibraryCardDeleteOutcome::NotFound);
+        };
+        let current_review = load_anki_library_review_version(&tx, card_id)?;
+
+        if current.library_card.card.updated_at != expected_updated_at {
+            return Ok(AnkiLibraryCardDeleteOutcome::ContentConflict {
+                current,
+                review: current_review,
+            });
+        }
+
+        let review_matches = match (&current_review, expected_review_version) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => current.review_version == expected,
+            _ => false,
+        };
+        if !review_matches {
+            return Ok(AnkiLibraryCardDeleteOutcome::ReviewConflict {
+                current,
+                review: current_review,
+            });
+        }
+
+        if let Some(review) = &current_review {
+            tx.execute(
+                "DELETE FROM fsrs_review_logs
+                 WHERE card_state_id = ?1
+                   AND anki_card_id = ?2",
+                params![review.card_state_id, card_id],
+            )?;
+            let deleted_state = tx.execute(
+                "DELETE FROM fsrs_card_states
+                 WHERE id = ?1
+                   AND anki_card_id = ?2
+                   AND COALESCE(local_version, 0) = ?3
+                   AND deleted_at IS NULL",
+                params![review.card_state_id, card_id, review.review_version],
+            )?;
+            if deleted_state != 1 {
+                let current_review = load_anki_library_review_version(&tx, card_id)?;
+                return Ok(AnkiLibraryCardDeleteOutcome::ReviewConflict {
+                    current,
+                    review: current_review,
+                });
+            }
+        }
+
+        // Remove any old sync tombstones only after the active-state CAS has
+        // succeeded. They do not count as an enqueued review state.
+        tx.execute(
+            "DELETE FROM fsrs_review_logs WHERE anki_card_id = ?1",
+            params![card_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states
+             WHERE anki_card_id = ?1 AND deleted_at IS NOT NULL",
+            params![card_id],
+        )?;
+
+        let deleted = tx.execute(
+            "DELETE FROM anki_cards
+             WHERE id = ?1
+               AND updated_at = ?2
+               AND deleted_at IS NULL
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM fsrs_card_states fs
+                   WHERE fs.anki_card_id = anki_cards.id
+                     AND fs.deleted_at IS NULL
+               )
+               AND EXISTS (
+                   SELECT 1
+                   FROM document_tasks dt
+                   WHERE dt.id = anki_cards.task_id
+                     AND dt.deleted_at IS NULL
+               )",
+            params![card_id, expected_updated_at],
+        )?;
+        if deleted != 1 {
+            let Some(current) = load_anki_library_card_record(&tx, card_id, now_ms)? else {
+                return Ok(AnkiLibraryCardDeleteOutcome::NotFound);
+            };
+            let review = load_anki_library_review_version(&tx, card_id)?;
+            return Ok(
+                if current.library_card.card.updated_at != expected_updated_at {
+                    AnkiLibraryCardDeleteOutcome::ContentConflict { current, review }
+                } else {
+                    AnkiLibraryCardDeleteOutcome::ReviewConflict { current, review }
+                },
+            );
+        }
+
+        let locator = current.locator;
+        tx.commit()?;
+        Ok(AnkiLibraryCardDeleteOutcome::Deleted { locator })
+    }
+
+    /// AnkiConnect Sync 成功后按卡片回写 receipt（note id + export_status）。
+    ///
+    /// `note_ids` 与 `card_ids` 一一对应；仅对 `Some(note_id)` 的条目写回。
+    /// 重复跳过（None）不覆盖已有 receipt。
+    pub fn write_anki_export_receipts(
+        &self,
+        card_ids: &[String],
+        note_ids: &[Option<u64>],
+    ) -> Result<usize> {
+        if card_ids.is_empty() || note_ids.is_empty() {
+            return Ok(0);
+        }
+        let len = card_ids.len().min(note_ids.len());
+        let conn = self.get_conn_safe()?;
+        let exported_at = chrono::Utc::now().to_rfc3339();
+        let mut written = 0usize;
+        for i in 0..len {
+            let Some(note_id) = note_ids[i] else {
+                continue;
+            };
+            let card_id = card_ids[i].trim();
+            if card_id.is_empty() {
+                continue;
+            }
+            let affected = conn.execute(
+                "UPDATE anki_cards SET
+                    anki_note_id = ?1,
+                    export_status = 'synced',
+                    last_exported_at = ?2,
+                    updated_at = ?2
+                 WHERE id = ?3
+                   AND deleted_at IS NULL
+                   AND EXISTS (
+                       SELECT 1
+                       FROM document_tasks dt
+                       WHERE dt.id = anki_cards.task_id
+                         AND dt.deleted_at IS NULL
+                   )",
+                params![note_id as i64, exported_at, card_id],
+            )?;
+            if affected > 0 {
+                written += 1;
+            }
+        }
+        Ok(written)
     }
 
     /// 删除Anki卡片
     pub fn delete_anki_card(&self, card_id: &str) -> Result<()> {
-        let conn = self.get_conn_safe()?;
-        conn.execute("DELETE FROM anki_cards WHERE id = ?1", params![card_id])?;
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM fsrs_review_logs WHERE anki_card_id = ?1",
+            params![card_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states WHERE anki_card_id = ?1",
+            params![card_id],
+        )?;
+        tx.execute("DELETE FROM anki_cards WHERE id = ?1", params![card_id])?;
+        tx.commit()?;
         Ok(())
     }
 
     /// 删除文档任务及其所有卡片
     pub fn delete_document_task(&self, task_id: &str) -> Result<()> {
-        let conn = self.get_conn_safe()?;
-        // 由于设置了ON DELETE CASCADE，删除任务会自动删除关联的卡片
-        conn.execute("DELETE FROM document_tasks WHERE id = ?1", params![task_id])?;
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM fsrs_review_logs
+             WHERE anki_card_id IN (SELECT id FROM anki_cards WHERE task_id = ?1)",
+            params![task_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states
+             WHERE anki_card_id IN (SELECT id FROM anki_cards WHERE task_id = ?1)",
+            params![task_id],
+        )?;
+        // Explicitly delete cards so correctness does not depend on a connection's
+        // PRAGMA foreign_keys setting.
+        tx.execute(
+            "DELETE FROM anki_cards WHERE task_id = ?1",
+            params![task_id],
+        )?;
+        tx.execute("DELETE FROM document_tasks WHERE id = ?1", params![task_id])?;
+        tx.commit()?;
         Ok(())
     }
 
     /// 删除整个文档会话（所有任务和卡片）
     pub fn delete_document_session(&self, document_id: &str) -> Result<()> {
-        let conn = self.get_conn_safe()?;
-        // 由于设置了ON DELETE CASCADE，删除任务会自动删除关联的卡片
-        conn.execute(
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM fsrs_review_logs
+             WHERE anki_card_id IN (
+                 SELECT a.id
+                 FROM anki_cards a
+                 INNER JOIN document_tasks t ON t.id = a.task_id
+                 WHERE t.document_id = ?1
+             )",
+            params![document_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states
+             WHERE anki_card_id IN (
+                 SELECT a.id
+                 FROM anki_cards a
+                 INNER JOIN document_tasks t ON t.id = a.task_id
+                 WHERE t.document_id = ?1
+             )",
+            params![document_id],
+        )?;
+        tx.execute(
+            "DELETE FROM anki_cards
+             WHERE task_id IN (SELECT id FROM document_tasks WHERE document_id = ?1)",
+            params![document_id],
+        )?;
+        tx.execute(
             "DELETE FROM document_tasks WHERE document_id = ?1",
             params![document_id],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -4669,7 +6408,7 @@ impl Database {
                 transaction.prepare("SELECT id FROM rag_documents WHERE sub_library_id = ?1")?;
 
             let document_ids: Vec<String> = stmt
-                .query_map(params![id], |row| Ok(row.get::<_, String>(0)?))?
+                .query_map(params![id], |row| row.get::<_, String>(0))?
                 .collect::<Result<Vec<_>, _>>()?;
 
             // 删除文档关联的向量和块
@@ -4723,20 +6462,23 @@ impl Database {
              LIMIT ?2 OFFSET ?3"
         )?;
 
-        let rows = stmt.query_map(params![sub_library_id, page_size, offset], |row| {
-            Ok(serde_json::json!({
-                "id": row.get::<_, String>(0)?,
-                "file_name": row.get::<_, String>(1)?,
-                "file_path": row.get::<_, Option<String>>(2)?,
-                "file_size": row.get::<_, Option<i64>>(3)?,
-                "total_chunks": row.get::<_, i32>(4)?,
-                "sub_library_id": row.get::<_, String>(5)?,
-                "update_state": row.get::<_, String>(6)?,
-                "update_retry": row.get::<_, i64>(7)?,
-                "created_at": row.get::<_, String>(8)?,
-                "updated_at": row.get::<_, String>(9)?
-            }))
-        })?;
+        let rows = stmt.query_map(
+            params![sub_library_id, page_size as i64, offset as i64],
+            |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "file_name": row.get::<_, String>(1)?,
+                    "file_path": row.get::<_, Option<String>>(2)?,
+                    "file_size": row.get::<_, Option<i64>>(3)?,
+                    "total_chunks": row.get::<_, i32>(4)?,
+                    "sub_library_id": row.get::<_, String>(5)?,
+                    "update_state": row.get::<_, String>(6)?,
+                    "update_retry": row.get::<_, i64>(7)?,
+                    "created_at": row.get::<_, String>(8)?,
+                    "updated_at": row.get::<_, String>(9)?
+                }))
+            },
+        )?;
 
         let mut documents = Vec::new();
         for row in rows {
@@ -5383,8 +7125,12 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('default_template_id', ?1, ?2)",
-            params![template_id, now]
+            "INSERT INTO settings (key, value, updated_at) VALUES ('default_template_id', ?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = excluded.updated_at
+             WHERE settings.value IS NOT excluded.value",
+            params![template_id, now],
         )?;
 
         Ok(())
@@ -5414,6 +7160,10 @@ impl Database {
         response_time_ms: Option<u64>,
     ) -> Result<()> {
         let conn = self.get_conn_safe()?;
+        let response_time_ms = response_time_ms
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| anyhow::anyhow!("response_time_ms exceeds SQLite INTEGER range"))?;
         conn.execute(
             "INSERT INTO search_logs (query, search_type, results_count, response_time_ms, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -5501,6 +7251,7 @@ impl Database {
             "SELECT id, document_id, original_document_name, segment_index, content_segment,
                     status, created_at, updated_at, error_message, anki_generation_options_json
              FROM document_tasks
+             WHERE deleted_at IS NULL
              ORDER BY updated_at DESC
              LIMIT ?",
         )?;
@@ -5527,8 +7278,9 @@ impl Database {
     }
 
     /// 🔧 Phase 1: 恢复卡住的制卡任务
-    /// 将 Processing/Streaming 状态超过给定分钟数的任务标记为 Failed（中断），
-    /// 用户可通过"重试失败任务"续跑。
+    /// 将 Processing/Streaming（以及所属文档已无活跃分段、长时间未更新的
+    /// Pending）任务标记为 Paused（可 resume），用户可通过「恢复」继续，
+    /// 而非当作 Failed 重试。
     ///
     /// 注意：updated_at 存储为 RFC3339（带 'T'/'Z'），直接与 datetime('now',...) 的
     /// 空格分隔格式做字符串比较在同一天内恒为假，必须先用 datetime() 规范化两侧。
@@ -5536,18 +7288,35 @@ impl Database {
         self.recover_stuck_document_tasks_older_than_minutes(10)
     }
 
-    /// 将 Processing/Streaming 超过 `minutes` 分钟未更新的任务标记为 Failed。
+    /// 将超过 `minutes` 分钟未更新的“卡死”任务标记为 Paused：
+    /// - `Processing` / `Streaming`：直接按阈值回收；
+    /// - `Pending`：仅当该文档已没有任何未删除的 Processing/Streaming 分段时
+    ///   才回收（调度协程已死、Pending 永远不会被拾起的空洞；文档仍在活跃
+    ///   生成时排队中的 Pending 不能误标，否则大文档长队列会被中途暂停）。
+    ///
     /// `minutes = 0` 表示无条件回收。注意：应用未启用单实例约束，启动路径
     /// 必须走带阈值的 `recover_stuck_document_tasks()`（10 分钟），不要传 0，
-    /// 否则并行实例正在跑的任务会被误标为 Failed。
+    /// 否则并行实例正在跑的任务会被误标为 Paused。
     pub fn recover_stuck_document_tasks_older_than_minutes(&self, minutes: u32) -> Result<u32> {
         let conn = self.get_conn_safe()?;
         let count = conn.execute(
             r#"UPDATE document_tasks
-               SET status = 'Failed',
-                   error_message = '任务被中断（应用重启或长时间无响应），可点击"重试失败任务"继续',
+               SET status = 'Paused',
+                   error_message = '任务被中断（应用重启），可点击恢复继续',
                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-               WHERE status IN ('Processing', 'Streaming')
+               WHERE (
+                   status IN ('Processing', 'Streaming')
+                   OR (
+                       status = 'Pending'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM document_tasks live
+                           WHERE live.document_id = document_tasks.document_id
+                             AND live.deleted_at IS NULL
+                             AND live.status IN ('Processing', 'Streaming')
+                       )
+                   )
+               )
+               AND deleted_at IS NULL
                AND (?1 = 0 OR datetime(updated_at) < datetime('now', '-' || ?1 || ' minutes')
                     OR datetime(updated_at) IS NULL)"#,
             rusqlite::params![minutes],
@@ -5558,11 +7327,6 @@ impl Database {
     /// 🔧 Phase 1: 按 document_id 分组汇总任务信息（用于任务管理页面）
     pub fn list_document_sessions(&self, limit: u32) -> Result<Vec<serde_json::Value>> {
         let conn = self.get_conn_safe()?;
-        // 确保 source_session_id 列存在（兼容旧数据库）
-        let _ = conn.execute(
-            "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-            [],
-        );
         // 使用 LEFT JOIN + COUNT(DISTINCT) 代替关联子查询，提升大数据量下的性能
         let mut stmt = conn.prepare(
             r#"SELECT
@@ -5578,7 +7342,10 @@ impl Database {
                  MIN(dt.created_at) AS created_at,
                  COUNT(DISTINCT ac.id) AS total_cards
                FROM document_tasks dt
-               LEFT JOIN anki_cards ac ON ac.task_id = dt.id
+               LEFT JOIN anki_cards ac
+                 ON ac.task_id = dt.id
+                AND ac.deleted_at IS NULL
+               WHERE dt.deleted_at IS NULL
                GROUP BY dt.document_id
                ORDER BY MAX(dt.updated_at) DESC
                LIMIT ?1"#,
@@ -5608,28 +7375,68 @@ impl Database {
     /// 🔧 Phase 2: 卡片库统计数据（用于任务管理页面统计卡片）
     pub fn get_anki_stats(&self) -> Result<serde_json::Value> {
         let conn = self.get_conn_safe()?;
+        let live_cards_from = "FROM anki_cards ac
+                               INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                               WHERE ac.deleted_at IS NULL
+                                 AND dt.deleted_at IS NULL";
         let total_cards: i64 =
-            conn.query_row("SELECT COUNT(*) FROM anki_cards", [], |r| r.get(0))?;
+            conn.query_row(&format!("SELECT COUNT(*) {live_cards_from}"), [], |r| {
+                r.get(0)
+            })?;
         let total_tasks: i64 = conn.query_row(
-            "SELECT COUNT(DISTINCT document_id) FROM document_tasks",
+            "SELECT COUNT(DISTINCT document_id)
+             FROM document_tasks
+             WHERE deleted_at IS NULL",
             [],
             |r| r.get(0),
         )?;
         let error_cards: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM anki_cards WHERE is_error_card = 1",
+            &format!("SELECT COUNT(*) {live_cards_from} AND ac.is_error_card = 1"),
             [],
             |r| r.get(0),
         )?;
+        // 历史口径：卡片引用过的 distinct template_id（保留字段名以兼容前端）
         let template_count: i64 = conn.query_row(
-            "SELECT COUNT(DISTINCT template_id) FROM anki_cards WHERE template_id IS NOT NULL AND template_id != ''",
+            &format!(
+                "SELECT COUNT(DISTINCT ac.template_id) {live_cards_from}
+                 AND ac.template_id IS NOT NULL
+                 AND ac.template_id != ''"
+            ),
             [],
             |r| r.get(0),
         )?;
+        // 新口径：模板库中真实存在的模板数量（含内置模板）。
+        // 与 templateCount 并存：前者反映"用过的模板"，后者反映"模板库规模"。
+        // 模板表理论上随迁移必建；万一缺失（旧库/部分迁移）降级为 0 并记录警告，避免拖垮整个统计接口。
+        let library_template_count: i64 =
+            match conn.query_row("SELECT COUNT(*) FROM custom_anki_templates", [], |r| {
+                r.get(0)
+            }) {
+                Ok(count) => count,
+                Err(e) => {
+                    tracing::warn!("[get_anki_stats] 查询模板库数量失败（降级为 0）: {}", e);
+                    0
+                }
+            };
+        let active_library_template_count: i64 = match conn.query_row(
+            "SELECT COUNT(*) FROM custom_anki_templates WHERE is_active = 1",
+            [],
+            |r| r.get(0),
+        ) {
+            Ok(count) => count,
+            Err(e) => {
+                tracing::warn!("[get_anki_stats] 查询启用模板数量失败（降级为 0）: {}", e);
+                0
+            }
+        };
         Ok(serde_json::json!({
             "totalCards": total_cards,
             "totalDocuments": total_tasks,
             "errorCards": error_cards,
             "templateCount": template_count,
+            // 新增可选字段（向后兼容）：模板库真实规模
+            "libraryTemplateCount": library_template_count,
+            "activeLibraryTemplateCount": active_library_template_count,
         }))
     }
 
@@ -5637,11 +7444,14 @@ impl Database {
     pub fn get_recent_anki_cards(&self, limit: u32) -> Result<Vec<AnkiCard>> {
         let conn = self.get_conn_safe()?;
         let mut stmt = conn.prepare(
-            "SELECT id, task_id, front, back, text, tags_json, images_json,
-                    is_error_card, error_content, created_at, updated_at,
-                    COALESCE(extra_fields_json, '{}') as extra_fields_json, template_id
-             FROM anki_cards
-             ORDER BY created_at DESC
+            "SELECT ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                    ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                    COALESCE(ac.extra_fields_json, '{}') as extra_fields_json, ac.template_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             WHERE ac.deleted_at IS NULL
+               AND dt.deleted_at IS NULL
+             ORDER BY ac.created_at DESC
              LIMIT ?",
         )?;
 
@@ -5649,7 +7459,10 @@ impl Database {
             .query_map([limit], |row| {
                 let tags_json: String = row.get(5)?;
                 let images_json: String = row.get(6)?;
-                let extra_fields_json: String = row.get(12)?;
+                // 修复列索引错位：SELECT 共 13 列（索引 0-12），
+                // extra_fields_json 位于索引 11，template_id 位于索引 12。
+                // 旧代码取 12/13 会把 template_id 当 extra_fields 解析并越界读取 template_id。
+                let extra_fields_json: String = row.get(11)?;
 
                 Ok(AnkiCard {
                     id: row.get(0)?,
@@ -5664,12 +7477,141 @@ impl Database {
                     created_at: row.get(9)?,
                     updated_at: row.get(10)?,
                     extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
-                    template_id: row.get(13)?,
+                    template_id: row.get(12)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<AnkiCard>>>()?;
 
         Ok(cards)
+    }
+
+    /// Lists one bounded page from the complete live card library. This query
+    /// deliberately ignores `source_session_id` while returning it as immutable
+    /// provenance for UI refreshes and Agent mutation receipts.
+    #[allow(clippy::too_many_arguments)]
+    pub fn list_anki_agent_library_cards(
+        &self,
+        _scope: AnkiLibraryScope,
+        template_id: Option<&str>,
+        query: Option<&str>,
+        schedule: AnkiLibraryScheduleFilter,
+        diagnostic: AnkiLibraryDiagnosticFilter,
+        page: u32,
+        page_size: u32,
+    ) -> Result<AnkiLibraryPage> {
+        let conn = self.get_conn_safe()?;
+        let now_ms = Utc::now().timestamp_millis();
+        let mut clauses = vec![
+            "ac.deleted_at IS NULL".to_string(),
+            "dt.deleted_at IS NULL".to_string(),
+        ];
+        let mut filter_params: Vec<Value> = Vec::new();
+
+        if let Some(template_id) = template_id
+            .map(str::trim)
+            .filter(|template_id| !template_id.is_empty())
+        {
+            clauses.push("ac.template_id = ?".to_string());
+            filter_params.push(Value::from(template_id.to_string()));
+        }
+        if let Some(query) = query.map(str::trim).filter(|query| !query.is_empty()) {
+            clauses.push(
+                "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\' OR ac.tags_json LIKE ? ESCAPE '\\')"
+                    .to_string(),
+            );
+            let pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(query));
+            filter_params.extend([
+                Value::from(pattern.clone()),
+                Value::from(pattern.clone()),
+                Value::from(pattern.clone()),
+                Value::from(pattern),
+            ]);
+        }
+        match schedule {
+            AnkiLibraryScheduleFilter::All => {}
+            AnkiLibraryScheduleFilter::Due => {
+                clauses.push(
+                    "fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.due_ms <= ?"
+                        .to_string(),
+                );
+                filter_params.push(Value::from(now_ms));
+            }
+            AnkiLibraryScheduleFilter::NotEnqueued => {
+                clauses.push("fs.id IS NULL".to_string());
+            }
+            AnkiLibraryScheduleFilter::Suspended => {
+                clauses.push("fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 1".to_string());
+            }
+            AnkiLibraryScheduleFilter::Enqueued => {
+                clauses.push("fs.id IS NOT NULL".to_string());
+            }
+        }
+        if diagnostic == AnkiLibraryDiagnosticFilter::ErrorOnly {
+            clauses.push("COALESCE(ac.is_error_card, 0) = 1".to_string());
+        }
+        let where_clause = format!("WHERE {}", clauses.join(" AND "));
+
+        let count_sql = format!(
+            "SELECT COUNT(*)
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             LEFT JOIN fsrs_card_states fs
+               ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
+             {}",
+            where_clause
+        );
+        let total: i64 = conn.query_row(
+            &count_sql,
+            rusqlite::params_from_iter(filter_params.iter()),
+            |row| row.get(0),
+        )?;
+
+        let safe_page = page.max(1);
+        let safe_page_size = page_size.clamp(1, 20);
+        let offset = i64::from(safe_page.saturating_sub(1)) * i64::from(safe_page_size);
+        let mut data_params = vec![Value::from(now_ms)];
+        data_params.extend(filter_params.iter().cloned());
+        data_params.push(Value::from(i64::from(safe_page_size)));
+        data_params.push(Value::from(offset));
+        let data_sql = format!(
+            "SELECT
+                ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
+                ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
+                COALESCE(ac.extra_fields_json, '{{}}'), ac.template_id, ac.source_type, ac.source_id,
+                fs.id, fs.state, fs.due_ms, COALESCE(fs.suspended, 0),
+                CASE WHEN fs.id IS NULL THEN 0 ELSE 1 END,
+                CASE
+                    WHEN fs.id IS NOT NULL
+                     AND COALESCE(fs.suspended, 0) = 0
+                     AND fs.due_ms <= ?
+                    THEN 1 ELSE 0
+                END,
+                dt.document_id, dt.source_session_id
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             LEFT JOIN fsrs_card_states fs
+               ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
+             {}
+             ORDER BY ac.created_at DESC, ac.id DESC
+             LIMIT ? OFFSET ?",
+            where_clause
+        );
+        let mut stmt = conn.prepare(&data_sql)?;
+        let rows = stmt.query_map(
+            rusqlite::params_from_iter(data_params.iter()),
+            map_anki_library_record_row,
+        )?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+
+        Ok(AnkiLibraryPage {
+            items,
+            page: safe_page,
+            page_size: safe_page_size,
+            total: total.max(0) as u64,
+        })
     }
 
     pub fn list_anki_library_cards(
@@ -5681,7 +7623,10 @@ impl Database {
         page_size: u32,
     ) -> Result<(Vec<AnkiLibraryCard>, u64)> {
         let conn = self.get_conn_safe()?;
-        let mut clauses: Vec<String> = Vec::new();
+        let mut clauses: Vec<String> = vec![
+            "ac.deleted_at IS NULL".to_string(),
+            "dt.deleted_at IS NULL".to_string(),
+        ];
         let mut params: Vec<Value> = Vec::new();
 
         if let Some(template_value) = template_id
@@ -5696,13 +7641,11 @@ impl Database {
             // ★ 2026-06-12（审阅问题 F1 同类）：转义用户输入中的 LIKE 通配符，
             // 避免搜索 "%"/"_" 时变成全表匹配/单字符通配。
             clauses.push(
-                "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\')"
+                "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\' OR ac.tags_json LIKE ? ESCAPE '\\')"
                     .to_string(),
             );
-            let pattern = format!(
-                "%{}%",
-                crate::vfs::repos::escape_like_pattern(search_value)
-            );
+            let pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(search_value));
+            params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern));
@@ -5715,8 +7658,9 @@ impl Database {
         };
 
         let count_sql = format!(
-            "SELECT COUNT(*) FROM anki_cards ac
-             LEFT JOIN document_tasks dt ON dt.id = ac.task_id
+            "SELECT COUNT(*)
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
              {}",
             where_clause
         );
@@ -5731,7 +7675,10 @@ impl Database {
         let safe_page_size = page_size.clamp(1, 200);
         let offset = (safe_page.saturating_sub(1) as i64) * (safe_page_size as i64);
 
-        let mut data_params = params.clone();
+        // The due-time placeholder appears in the SELECT list before dynamic WHERE
+        // placeholders, so its value must be bound first.
+        let mut data_params = vec![Value::from(Utc::now().timestamp_millis())];
+        data_params.extend(params.iter().cloned());
         data_params.push(Value::from(safe_page_size as i64));
         data_params.push(Value::from(offset));
 
@@ -5740,11 +7687,21 @@ impl Database {
                 ac.id, ac.task_id, ac.front, ac.back, ac.text, ac.tags_json, ac.images_json,
                 ac.is_error_card, ac.error_content, ac.created_at, ac.updated_at,
                 COALESCE(ac.extra_fields_json, '{{}}') as extra_fields_json,
-                ac.template_id, ac.source_type, ac.source_id
+                ac.template_id, ac.source_type, ac.source_id,
+                fs.id, fs.state, fs.due_ms, COALESCE(fs.suspended, 0),
+                CASE WHEN fs.id IS NULL THEN 0 ELSE 1 END,
+                CASE
+                    WHEN fs.id IS NOT NULL
+                     AND COALESCE(fs.suspended, 0) = 0
+                     AND fs.due_ms <= ?
+                    THEN 1 ELSE 0
+                END
              FROM anki_cards ac
-             LEFT JOIN document_tasks dt ON dt.id = ac.task_id
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             LEFT JOIN fsrs_card_states fs
+               ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
              {}
-             ORDER BY ac.created_at DESC
+             ORDER BY ac.created_at DESC, ac.id DESC
              LIMIT ? OFFSET ?",
             where_clause
         );
@@ -5791,6 +7748,12 @@ impl Database {
                 card,
                 source_type,
                 source_id,
+                state_id: row.get(15)?,
+                state: row.get(16)?,
+                due_ms: row.get(17)?,
+                suspended: row.get::<_, i32>(18)? != 0,
+                enqueued: row.get::<_, i32>(19)? != 0,
+                is_due: row.get::<_, i32>(20)? != 0,
             })
         })?;
 
@@ -5826,6 +7789,331 @@ mod tests {
             .migrate_single(DatabaseId::Mistakes)
             .map_err(|e| anyhow::anyhow!("mistakes migrations failed: {}", e))?;
         Ok(Database::new(&app_data_dir.join("mistakes.db"))?)
+    }
+
+    /// 回归：主库维护屏障必须 fail-close。
+    ///
+    /// - 屏障内 `get_conn_safe` 显式失败；
+    /// - 经 `conn()` 裸 Mutex 绕过标志的调用方拿到的是 deny-all 占位连接，
+    ///   读写都会在 prepare 阶段失败——旧实现换入的是可正常读写的内存库，
+    ///   写入会在退出屏障时被静默丢弃；
+    /// - 退出屏障后屏障前的数据完整可见；
+    /// - 重复进入被拒绝、非维护状态下退出为幂等 no-op。
+    #[test]
+    fn maintenance_barrier_fails_closed_for_all_connection_paths() {
+        let dir = tempdir().expect("tempdir");
+        let db = Database::new(&dir.path().join("barrier.db")).expect("database");
+
+        {
+            let conn = db.get_conn_safe().expect("connection before barrier");
+            conn.execute_batch(
+                "CREATE TABLE barrier_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO barrier_probe (value) VALUES ('before');",
+            )
+            .expect("seed data before barrier");
+        }
+
+        db.exit_maintenance_mode().expect("no-op exit is ok");
+        db.enter_maintenance_mode().expect("enter barrier");
+        assert!(db.is_in_maintenance_mode());
+        assert!(
+            db.enter_maintenance_mode().is_err(),
+            "double enter must fail instead of silently re-entering"
+        );
+
+        // 正门：get_conn_safe 显式拒绝
+        let refused = db.get_conn_safe();
+        assert!(refused.is_err(), "get_conn_safe must refuse in maintenance");
+        assert!(
+            refused.err().unwrap().to_string().contains("维护屏障"),
+            "refusal must carry an explicit maintenance message"
+        );
+
+        // 后门：裸 Mutex 拿到的占位连接必须对读写都显式失败（deny-all authorizer），
+        // 绝不允许"成功"写入一次性内存库
+        {
+            let guard = db.conn().lock().expect("raw mutex lock");
+            assert!(
+                guard.prepare("SELECT 1").is_err(),
+                "reads through the raw connection must fail during maintenance"
+            );
+            assert!(
+                guard
+                    .execute("CREATE TABLE smuggled (id INTEGER)", [])
+                    .is_err(),
+                "writes through the raw connection must fail during maintenance"
+            );
+        }
+
+        db.exit_maintenance_mode().expect("exit barrier");
+        assert!(!db.is_in_maintenance_mode());
+
+        let (count, value): (i64, String) = db
+            .get_conn_safe()
+            .expect("connection after barrier")
+            .query_row(
+                "SELECT COUNT(*), MAX(value) FROM barrier_probe",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query after barrier");
+        assert_eq!(count, 1, "pre-barrier data must survive the barrier");
+        assert_eq!(value, "before");
+    }
+
+    fn insert_agent_library_fixture(
+        db: &Database,
+        document_id: &str,
+        task_id: &str,
+        card_id: &str,
+        source_session_id: Option<&str>,
+    ) -> anyhow::Result<AnkiCard> {
+        let now = Utc::now().to_rfc3339();
+        db.insert_document_task(&DocumentTask {
+            id: task_id.to_string(),
+            document_id: document_id.to_string(),
+            original_document_name: format!("{document_id}.md"),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        })?;
+        db.get_conn_safe()?.execute(
+            "UPDATE document_tasks SET source_session_id = ?1 WHERE id = ?2",
+            params![source_session_id, task_id],
+        )?;
+        let card = AnkiCard {
+            id: card_id.to_string(),
+            task_id: task_id.to_string(),
+            front: format!("front {card_id}"),
+            back: format!("back {card_id}"),
+            text: None,
+            tags: vec!["library-agent".to_string()],
+            images: Vec::new(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: HashMap::new(),
+            template_id: None,
+        };
+        assert!(db.insert_anki_card(&card)?);
+        Ok(card)
+    }
+
+    fn setup_secret_db(app_data_dir: &std::path::Path) -> anyhow::Result<Database> {
+        let db = Database::new(&app_data_dir.join("secret-tests.db"))?;
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute_batch(
+                "CREATE TABLE settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );",
+            )?;
+        }
+        Ok(db)
+    }
+
+    #[test]
+    fn bundled_sqlite_contains_wal_reset_corruption_fix() {
+        assert!(
+            rusqlite::version_number() >= 3_051_003,
+            "bundled SQLite {} must be at least 3.51.3",
+            rusqlite::version()
+        );
+    }
+
+    #[test]
+    fn large_setting_upsert_preserves_rowid_and_integrity() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "builtin_model_profiles_snapshot";
+
+        db.save_setting(key, &"a".repeat(29_081))?;
+        let original_rowid: i64 = db.get_conn_safe()?.query_row(
+            "SELECT rowid FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )?;
+
+        for iteration in 0..64 {
+            let value = if iteration % 2 == 0 {
+                "b".repeat(49_186)
+            } else {
+                "c".repeat(29_081)
+            };
+            db.save_setting(key, &value)?;
+            db.get_conn_safe()?
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        }
+
+        let conn = db.get_conn_safe()?;
+        let final_rowid: i64 = conn.query_row(
+            "SELECT rowid FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )?;
+        let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+
+        assert_eq!(
+            final_rowid, original_rowid,
+            "UPSERT must not replace the row"
+        );
+        assert_eq!(integrity, "ok");
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_secure_write_failure_does_not_write_plaintext() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        std::fs::write(
+            dir.path().join(".secure"),
+            b"blocks secure directory creation",
+        )?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "write-failure.api_key";
+
+        assert!(
+            !db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_config()
+                .fallback_to_plaintext
+        );
+        let error = db
+            .save_secret(key, "must-not-reach-sqlite")
+            .expect_err("default configuration must fail closed");
+
+        assert!(
+            error.to_string().contains("拒绝以明文保存"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(db.get_setting(key)?, None);
+
+        db.save_setting(key, "pre-existing-legacy-value")?;
+        let read_error = db
+            .get_secret(key)
+            .expect_err("secure read failure must not expose a legacy plaintext fallback");
+        assert!(
+            read_error.to_string().contains("拒绝回退到数据库明文"),
+            "unexpected error: {read_error:#}"
+        );
+        assert_eq!(
+            db.get_setting(key)?.as_deref(),
+            Some("pre-existing-legacy-value")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_db_delete_failure_is_reported_and_secure_write_is_rolled_back(
+    ) -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "delete-failure.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute_batch(
+                "CREATE TRIGGER reject_legacy_secret_delete
+                 BEFORE DELETE ON settings
+                 WHEN OLD.key = 'delete-failure.api_key'
+                 BEGIN
+                     SELECT RAISE(FAIL, 'forced legacy delete failure');
+                 END;",
+            )?;
+        }
+
+        let error = db
+            .save_secret(key, "new-secure-value")
+            .expect_err("legacy plaintext cleanup failure must be visible");
+
+        assert!(
+            error.to_string().contains("清理数据库中的旧明文失败"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(db.get_setting(key)?.as_deref(), Some("legacy-plaintext"));
+        assert_eq!(
+            db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_secret(key)?,
+            None,
+            "compensation must remove the newly written secure copy"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_success_removes_legacy_plaintext_row() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "migration-success.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+
+        db.save_secret(key, "encrypted-value")?;
+
+        assert_eq!(db.get_setting(key)?, None);
+        assert_eq!(db.get_secret(key)?.as_deref(), Some("encrypted-value"));
+        assert_eq!(
+            db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_secret(key)?
+                .as_deref(),
+            Some("encrypted-value")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_read_migrates_legacy_plaintext_row() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "read-migration.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+
+        assert_eq!(db.get_secret(key)?.as_deref(), Some("legacy-plaintext"));
+
+        assert_eq!(db.get_setting(key)?, None);
+        assert_eq!(
+            db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_secret(key)?
+                .as_deref(),
+            Some("legacy-plaintext")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_delete_cleans_legacy_row_even_when_secure_store_fails() -> anyhow::Result<()>
+    {
+        let dir = tempdir()?;
+        std::fs::write(
+            dir.path().join(".secure"),
+            b"blocks secure directory creation",
+        )?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "delete-cleanup.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+
+        let error = db
+            .delete_secret(key)
+            .expect_err("secure-store cleanup failure must be reported");
+
+        assert!(
+            error.to_string().contains("数据库明文已清理"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(db.get_setting(key)?, None);
+        Ok(())
     }
 
     #[test]
@@ -6066,6 +8354,852 @@ mod tests {
         };
         assert_eq!(task_2_exists, 0);
 
+        Ok(())
+    }
+
+    #[test]
+    fn update_anki_card_rows_reports_zero_when_id_missing() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let now = Utc::now().to_rfc3339();
+
+        let task = DocumentTask {
+            id: "task-u".to_string(),
+            document_id: "doc-u".to_string(),
+            original_document_name: "doc".to_string(),
+            segment_index: 0,
+            content_segment: "seg".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let card = AnkiCard {
+            id: "card-u".to_string(),
+            task_id: "task-u".to_string(),
+            front: "f".to_string(),
+            back: "b".to_string(),
+            text: None,
+            tags: vec![],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        db.save_document_task_with_cards_atomic(&task, &[card.clone()])?;
+
+        let rows_hit = db.update_anki_card_rows(&AnkiCard {
+            front: "f2".to_string(),
+            back: "b2".to_string(),
+            updated_at: Utc::now().to_rfc3339(),
+            ..card.clone()
+        })?;
+        assert_eq!(rows_hit, 1);
+
+        let ghost = AnkiCard {
+            id: "ghost-id".to_string(),
+            task_id: "task-u".to_string(),
+            front: "f".to_string(),
+            back: "b".to_string(),
+            text: None,
+            tags: vec![],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        let rows_miss = db.update_anki_card_rows(&ghost)?;
+        assert_eq!(rows_miss, 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn document_task_status_update_rejects_missing_and_tombstoned_tasks() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let now = Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: "task-status-live".to_string(),
+            document_id: "doc-status-live".to_string(),
+            original_document_name: "status fixture".to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Pending,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        db.insert_document_task(&task)?;
+
+        db.update_document_task_status(&task.id, TaskStatus::Processing, None)?;
+        assert!(matches!(
+            db.get_document_task(&task.id)?.status,
+            TaskStatus::Processing
+        ));
+
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute(
+                "UPDATE document_tasks SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &task.id],
+            )?;
+        }
+        let tombstone_error = db
+            .update_document_task_status(&task.id, TaskStatus::Completed, None)
+            .expect_err("tombstoned task must reject status updates");
+        assert!(tombstone_error
+            .to_string()
+            .contains("document_task_not_found_or_deleted"));
+        let missing_error = db
+            .update_document_task_status("task-status-missing", TaskStatus::Completed, None)
+            .expect_err("missing task must reject status updates");
+        assert!(missing_error
+            .to_string()
+            .contains("document_task_not_found_or_deleted"));
+
+        let raw_status: String = db.get_conn_safe()?.query_row(
+            "SELECT status FROM document_tasks WHERE id = ?1",
+            params![&task.id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(raw_status, "Processing");
+        Ok(())
+    }
+
+    #[test]
+    fn export_receipts_only_update_live_cards_with_live_parents() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let now = Utc::now().to_rfc3339();
+        let make_task = |id: &str| DocumentTask {
+            id: id.to_string(),
+            document_id: format!("doc-{id}"),
+            original_document_name: id.to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, task_id: &str| AnkiCard {
+            id: id.to_string(),
+            task_id: task_id.to_string(),
+            front: id.to_string(),
+            back: "answer".to_string(),
+            text: None,
+            tags: Vec::new(),
+            images: Vec::new(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+
+        for (task_id, card_id) in [
+            ("task-receipt-live", "card-receipt-live"),
+            ("task-receipt-card-tomb", "card-receipt-card-tomb"),
+            ("task-receipt-parent-tomb", "card-receipt-parent-tomb"),
+        ] {
+            db.save_document_task_with_cards_atomic(
+                &make_task(task_id),
+                &[make_card(card_id, task_id)],
+            )?;
+        }
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute(
+                "UPDATE anki_cards SET deleted_at = ?1 WHERE id = 'card-receipt-card-tomb'",
+                params![&now],
+            )?;
+            conn.execute(
+                "UPDATE document_tasks SET deleted_at = ?1 WHERE id = 'task-receipt-parent-tomb'",
+                params![&now],
+            )?;
+        }
+
+        let written = db.write_anki_export_receipts(
+            &[
+                "card-receipt-live".to_string(),
+                "card-receipt-card-tomb".to_string(),
+                "card-receipt-parent-tomb".to_string(),
+            ],
+            &[Some(101), Some(102), Some(103)],
+        )?;
+        assert_eq!(written, 1);
+
+        let conn = db.get_conn_safe()?;
+        for (card_id, expected_note_id) in [
+            ("card-receipt-live", Some(101i64)),
+            ("card-receipt-card-tomb", None),
+            ("card-receipt-parent-tomb", None),
+        ] {
+            let receipt: (Option<i64>, Option<String>, Option<String>) = conn.query_row(
+                "SELECT anki_note_id, export_status, last_exported_at
+                 FROM anki_cards WHERE id = ?1",
+                params![card_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+            assert_eq!(receipt.0, expected_note_id, "card={card_id}");
+            if expected_note_id.is_some() {
+                assert_eq!(receipt.1.as_deref(), Some("synced"));
+                assert!(receipt.2.is_some());
+            } else {
+                assert_eq!(receipt.1, None);
+                assert_eq!(receipt.2, None);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn list_anki_library_cards_paginates_live_cards_with_active_fsrs_state() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let task = DocumentTask {
+            id: "task-library".to_string(),
+            document_id: "doc-library".to_string(),
+            original_document_name: "library fixture".to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: "2026-07-14T00:00:00Z".to_string(),
+            updated_at: "2026-07-14T00:00:00Z".to_string(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, created_at: &str, tags: Vec<String>| AnkiCard {
+            id: id.to_string(),
+            task_id: task.id.clone(),
+            front: format!("front {id}"),
+            back: format!("back {id}"),
+            text: None,
+            tags,
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: created_at.to_string(),
+            updated_at: created_at.to_string(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        db.save_document_task_with_cards_atomic(
+            &task,
+            &[
+                make_card(
+                    "card-due",
+                    "2026-07-14T00:00:03Z",
+                    vec!["100%_ready".to_string()],
+                ),
+                make_card(
+                    "card-unqueued",
+                    "2026-07-14T00:00:02Z",
+                    vec!["plain".to_string()],
+                ),
+                make_card(
+                    "card-suspended",
+                    "2026-07-14T00:00:01Z",
+                    vec!["paused".to_string()],
+                ),
+                make_card(
+                    "card-deleted",
+                    "2026-07-14T00:00:04Z",
+                    vec!["deleted".to_string()],
+                ),
+            ],
+        )?;
+
+        let now = Utc::now();
+        let now_text = now.to_rfc3339();
+        let past_due = now.timestamp_millis() - 1_000;
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute(
+                "INSERT INTO fsrs_card_states (
+                    id, anki_card_id, state, due_ms, suspended, created_at, updated_at
+                 ) VALUES (?1, ?2, 2, ?3, 0, ?4, ?4)",
+                params!["state-due", "card-due", past_due, &now_text],
+            )?;
+            conn.execute(
+                "INSERT INTO fsrs_card_states (
+                    id, anki_card_id, state, due_ms, suspended, created_at, updated_at, deleted_at
+                 ) VALUES (?1, ?2, 1, ?3, 0, ?4, ?4, ?4)",
+                params!["state-soft-deleted", "card-unqueued", past_due, &now_text],
+            )?;
+            conn.execute(
+                "INSERT INTO fsrs_card_states (
+                    id, anki_card_id, state, due_ms, suspended, created_at, updated_at
+                 ) VALUES (?1, ?2, 3, ?3, 1, ?4, ?4)",
+                params!["state-suspended", "card-suspended", past_due, &now_text],
+            )?;
+            conn.execute(
+                "UPDATE anki_cards SET deleted_at = ?1 WHERE id = 'card-deleted'",
+                params![&now_text],
+            )?;
+        }
+
+        let (first_page, total) = db.list_anki_library_cards(None, None, None, 1, 2)?;
+        assert_eq!(total, 3);
+        assert_eq!(first_page.len(), 2);
+        assert_eq!(first_page[0].card.id, "card-due");
+        assert_eq!(first_page[0].state_id.as_deref(), Some("state-due"));
+        assert_eq!(first_page[0].state, Some(2));
+        assert_eq!(first_page[0].due_ms, Some(past_due));
+        assert!(first_page[0].enqueued);
+        assert!(first_page[0].is_due);
+        assert!(!first_page[0].suspended);
+
+        assert_eq!(first_page[1].card.id, "card-unqueued");
+        assert_eq!(first_page[1].state_id, None);
+        assert!(!first_page[1].enqueued);
+        assert!(!first_page[1].is_due);
+
+        let (second_page, second_total) = db.list_anki_library_cards(None, None, None, 2, 2)?;
+        assert_eq!(second_total, 3);
+        assert_eq!(second_page.len(), 1);
+        assert_eq!(second_page[0].card.id, "card-suspended");
+        assert!(second_page[0].enqueued);
+        assert!(second_page[0].suspended);
+        assert!(!second_page[0].is_due);
+
+        let serialized = serde_json::to_value(&first_page[0])?;
+        assert_eq!(serialized["stateId"], json!("state-due"));
+        assert_eq!(serialized["dueMs"], json!(past_due));
+        assert_eq!(serialized["isDue"], json!(true));
+        assert!(serialized.get("state_id").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn list_anki_library_cards_searches_tags_and_escapes_like_wildcards() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let now = Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: "task-library-search".to_string(),
+            document_id: "doc-library-search".to_string(),
+            original_document_name: "library search".to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, front: &str, tag: &str| AnkiCard {
+            id: id.to_string(),
+            task_id: task.id.clone(),
+            front: front.to_string(),
+            back: "plain back".to_string(),
+            text: None,
+            tags: vec![tag.to_string()],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        db.save_document_task_with_cards_atomic(
+            &task,
+            &[
+                make_card("card-literal-wildcards", "alpha", "100%_ready"),
+                make_card("card-plain-tag", "beta", "tag-only"),
+            ],
+        )?;
+
+        let (percent_matches, percent_total) =
+            db.list_anki_library_cards(None, None, Some("%"), 1, 20)?;
+        assert_eq!(percent_total, 1);
+        assert_eq!(percent_matches[0].card.id, "card-literal-wildcards");
+
+        let (underscore_matches, underscore_total) =
+            db.list_anki_library_cards(None, None, Some("_"), 1, 20)?;
+        assert_eq!(underscore_total, 1);
+        assert_eq!(underscore_matches[0].card.id, "card-literal-wildcards");
+
+        let (tag_matches, tag_total) =
+            db.list_anki_library_cards(None, None, Some("tag-only"), 1, 20)?;
+        assert_eq!(tag_total, 1, "search includes serialized tags");
+        assert_eq!(tag_matches[0].card.id, "card-plain-tag");
+        Ok(())
+    }
+
+    #[test]
+    fn generic_anki_writes_reject_tombstoned_cards_and_parent_tasks() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let now = Utc::now().to_rfc3339();
+        let make_task = |id: &str, document_id: &str| DocumentTask {
+            id: id.to_string(),
+            document_id: document_id.to_string(),
+            original_document_name: document_id.to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, task_id: &str, front: &str| AnkiCard {
+            id: id.to_string(),
+            task_id: task_id.to_string(),
+            front: front.to_string(),
+            back: "answer".to_string(),
+            text: None,
+            tags: Vec::new(),
+            images: Vec::new(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+
+        db.insert_document_task(&make_task("task-card-tomb", "doc-card-tomb"))?;
+        let card_tomb = make_card("card-tomb", "task-card-tomb", "original card");
+        assert!(db.insert_anki_card(&card_tomb)?);
+        let mut live_update = card_tomb.clone();
+        live_update.front = "live update".to_string();
+        assert_eq!(db.update_anki_card_rows(&live_update)?, 1);
+
+        db.insert_document_task(&make_task("task-parent-tomb", "doc-parent-tomb"))?;
+        let parent_tomb_card = make_card("card-parent-tomb", "task-parent-tomb", "parent original");
+        assert!(db.insert_anki_card(&parent_tomb_card)?);
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute(
+                "UPDATE anki_cards SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &card_tomb.id],
+            )?;
+            conn.execute(
+                "UPDATE document_tasks SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &parent_tomb_card.task_id],
+            )?;
+        }
+
+        let mut card_tomb_update = live_update.clone();
+        card_tomb_update.front = "must not update card tombstone".to_string();
+        assert_eq!(db.update_anki_card_rows(&card_tomb_update)?, 0);
+        let mut parent_tomb_update = parent_tomb_card.clone();
+        parent_tomb_update.front = "must not update parent tombstone".to_string();
+        assert_eq!(db.update_anki_card_rows(&parent_tomb_update)?, 0);
+
+        let rejected_insert = make_card(
+            "card-under-deleted-parent",
+            "task-parent-tomb",
+            "must not insert",
+        );
+        assert!(!db.insert_anki_card(&rejected_insert)?);
+
+        let conn = db.get_conn_safe()?;
+        let card_tomb_front: String = conn.query_row(
+            "SELECT front FROM anki_cards WHERE id = ?1",
+            params![&card_tomb.id],
+            |row| row.get(0),
+        )?;
+        let parent_tomb_front: String = conn.query_row(
+            "SELECT front FROM anki_cards WHERE id = ?1",
+            params![&parent_tomb_card.id],
+            |row| row.get(0),
+        )?;
+        let rejected_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM anki_cards WHERE id = ?1",
+            params![&rejected_insert.id],
+            |row| row.get(0),
+        )?;
+        assert_eq!(card_tomb_front, "live update");
+        assert_eq!(parent_tomb_front, "parent original");
+        assert_eq!(rejected_count, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn document_sessions_and_anki_stats_exclude_task_and_card_tombstones() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let now = Utc::now().to_rfc3339();
+        let make_task = |id: &str, document_id: &str| DocumentTask {
+            id: id.to_string(),
+            document_id: document_id.to_string(),
+            original_document_name: document_id.to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, task_id: &str, template_id: &str| AnkiCard {
+            id: id.to_string(),
+            task_id: task_id.to_string(),
+            front: format!("front {id}"),
+            back: "answer".to_string(),
+            text: None,
+            tags: Vec::new(),
+            images: Vec::new(),
+            is_error_card: true,
+            error_content: Some("fixture error".to_string()),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: Some(template_id.to_string()),
+        };
+
+        let live_task = make_task("task-live-stats", "doc-live-stats");
+        let card_tomb_task = make_task("task-card-tomb-stats", "doc-card-tomb-stats");
+        let parent_tomb_task = make_task("task-parent-tomb-stats", "doc-parent-tomb-stats");
+        db.insert_document_task(&live_task)?;
+        db.insert_document_task(&card_tomb_task)?;
+        db.insert_document_task(&parent_tomb_task)?;
+        let live_card = make_card("card-live-stats", &live_task.id, "template-live");
+        let card_tomb = make_card("card-tomb-stats", &card_tomb_task.id, "template-card-tomb");
+        let parent_tomb_card = make_card(
+            "card-parent-tomb-stats",
+            &parent_tomb_task.id,
+            "template-parent-tomb",
+        );
+        assert!(db.insert_anki_card(&live_card)?);
+        assert!(db.insert_anki_card(&card_tomb)?);
+        assert!(db.insert_anki_card(&parent_tomb_card)?);
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute(
+                "UPDATE anki_cards SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &card_tomb.id],
+            )?;
+            conn.execute(
+                "UPDATE document_tasks SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &parent_tomb_task.id],
+            )?;
+        }
+
+        let sessions = db.list_document_sessions(20)?;
+        assert_eq!(sessions.len(), 2);
+        let live_session = sessions
+            .iter()
+            .find(|session| session["documentId"] == "doc-live-stats")
+            .expect("live document session");
+        let card_tomb_session = sessions
+            .iter()
+            .find(|session| session["documentId"] == "doc-card-tomb-stats")
+            .expect("live task remains visible when only its card is tombstoned");
+        assert_eq!(live_session["totalCards"], json!(1));
+        assert_eq!(card_tomb_session["totalCards"], json!(0));
+        assert!(sessions
+            .iter()
+            .all(|session| session["documentId"] != "doc-parent-tomb-stats"));
+
+        let stats = db.get_anki_stats()?;
+        assert_eq!(stats["totalCards"], json!(1));
+        assert_eq!(stats["totalDocuments"], json!(2));
+        assert_eq!(stats["errorCards"], json!(1));
+        assert_eq!(stats["templateCount"], json!(1));
+        Ok(())
+    }
+
+    #[test]
+    fn agent_library_reads_and_content_cas_cover_null_and_foreign_sessions() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let null_card = insert_agent_library_fixture(
+            &db,
+            "doc-library-null",
+            "task-library-null",
+            "card-library-null",
+            None,
+        )?;
+        let foreign_card = insert_agent_library_fixture(
+            &db,
+            "doc-library-foreign",
+            "task-library-foreign",
+            "card-library-foreign",
+            Some("session-foreign"),
+        )?;
+        let scope = AnkiLibraryScope::agent();
+
+        let page = db.list_anki_agent_library_cards(
+            scope,
+            None,
+            Some("library-agent"),
+            AnkiLibraryScheduleFilter::All,
+            AnkiLibraryDiagnosticFilter::All,
+            1,
+            100,
+        )?;
+        assert_eq!(page.page_size, 20, "Agent pages are bounded");
+        assert_eq!(page.total, 2);
+        assert_eq!(page.items.len(), 2);
+        let null_record = page
+            .items
+            .iter()
+            .find(|item| item.library_card.card.id == null_card.id)
+            .expect("NULL-owner card is visible");
+        assert_eq!(null_record.locator.document_id, "doc-library-null");
+        assert_eq!(null_record.locator.source_session_id, None);
+        let foreign_record = page
+            .items
+            .iter()
+            .find(|item| item.library_card.card.id == foreign_card.id)
+            .expect("foreign-owner card is visible");
+        assert_eq!(
+            foreign_record.locator.source_session_id.as_deref(),
+            Some("session-foreign")
+        );
+
+        let session_attempt = db.update_anki_card_if_version_for_session(
+            &AnkiCard {
+                front: "session must not write".to_string(),
+                ..foreign_card.clone()
+            },
+            &foreign_card.updated_at,
+            "session-owner",
+        )?;
+        assert!(matches!(session_attempt, AnkiCardVersionUpdate::NotFound));
+
+        let updated = match db.update_anki_card_if_version_for_library(
+            scope,
+            &AnkiCard {
+                front: "library updated".to_string(),
+                ..null_card.clone()
+            },
+            &null_card.updated_at,
+        )? {
+            AnkiLibraryCardVersionUpdate::Updated(record) => record,
+            other => panic!("expected library update, got {other:?}"),
+        };
+        assert_eq!(updated.library_card.card.front, "library updated");
+        assert_ne!(updated.library_card.card.updated_at, null_card.updated_at);
+        assert_eq!(updated.locator.source_session_id, None);
+
+        let stale = db.update_anki_card_if_version_for_library(
+            scope,
+            &AnkiCard {
+                front: "stale overwrite".to_string(),
+                ..null_card.clone()
+            },
+            &null_card.updated_at,
+        )?;
+        match stale {
+            AnkiLibraryCardVersionUpdate::Conflict(current) => {
+                assert_eq!(current.library_card.card.front, "library updated");
+                assert_eq!(current.locator.source_session_id, None);
+            }
+            other => panic!("expected stale content conflict, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn agent_library_delete_conflicts_when_user_rates_after_preflight() -> anyhow::Result<()> {
+        use crate::fsrs_review_service::{
+            FsrsLibraryEnqueueCard, FsrsLibraryEnqueueOutcome, FsrsRating, FsrsReviewService,
+        };
+        use std::sync::Arc;
+
+        let dir = tempdir()?;
+        let db = Arc::new(setup_migrated_db(dir.path())?);
+        let card = insert_agent_library_fixture(
+            &db,
+            "doc-library-delete",
+            "task-library-delete",
+            "card-library-delete",
+            Some("session-foreign"),
+        )?;
+        let scope = AnkiLibraryScope::agent();
+        let service = FsrsReviewService::new(db.clone());
+        let state_id = match service.enqueue_cards_for_library(
+            scope,
+            &[FsrsLibraryEnqueueCard {
+                card_id: card.id.clone(),
+                expected_content_version: card.updated_at.clone(),
+            }],
+        )? {
+            FsrsLibraryEnqueueOutcome::Enqueued(result) => result.states[0].id.clone(),
+            other => panic!("expected enqueue, got {other:?}"),
+        };
+        let unexpected_enrollment =
+            db.delete_anki_card_for_library(scope, &card.id, &card.updated_at, None)?;
+        match unexpected_enrollment {
+            AnkiLibraryCardDeleteOutcome::ReviewConflict { review, .. } => {
+                assert_eq!(review.expect("new review state").review_version, 0);
+            }
+            other => panic!("expected null-token enrollment conflict, got {other:?}"),
+        }
+        let preflight = service
+            .get_review_states_for_library(scope, &[card.id.clone()])?
+            .remove(0);
+        assert_eq!(preflight.review_version, 0);
+
+        service.rate(&state_id, FsrsRating::Good.as_u8(), Some(75), None)?;
+        let conflict = db.delete_anki_card_for_library(
+            scope,
+            &card.id,
+            &card.updated_at,
+            Some(preflight.review_version),
+        )?;
+        match conflict {
+            AnkiLibraryCardDeleteOutcome::ReviewConflict {
+                current, review, ..
+            } => {
+                assert_eq!(current.library_card.card.id, card.id);
+                assert_eq!(review.expect("active review state").review_version, 1);
+            }
+            other => panic!("expected post-rating delete conflict, got {other:?}"),
+        }
+        assert!(db.get_anki_agent_library_card(scope, &card.id)?.is_some());
+
+        let current = service
+            .get_review_states_for_library(scope, &[card.id.clone()])?
+            .remove(0);
+        let deleted = db.delete_anki_card_for_library(
+            scope,
+            &card.id,
+            &card.updated_at,
+            Some(current.review_version),
+        )?;
+        match deleted {
+            AnkiLibraryCardDeleteOutcome::Deleted { locator } => {
+                assert_eq!(locator.document_id, "doc-library-delete");
+                assert_eq!(
+                    locator.source_session_id.as_deref(),
+                    Some("session-foreign")
+                );
+            }
+            other => panic!("expected version-bound delete, got {other:?}"),
+        }
+        assert!(db.get_anki_agent_library_card(scope, &card.id)?.is_none());
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // 模板用户态标记（bug D3 / F4 配套）
+    // ------------------------------------------------------------------
+
+    fn make_template_create_request(
+        name: &str,
+        is_built_in: bool,
+    ) -> crate::models::CreateTemplateRequest {
+        crate::models::CreateTemplateRequest {
+            name: name.to_string(),
+            description: "desc".to_string(),
+            author: None,
+            version: Some("1.0.0".to_string()),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: "Basic".to_string(),
+            fields: vec!["Front".to_string()],
+            generation_prompt: "gen".to_string(),
+            front_template: "{{Front}}".to_string(),
+            back_template: "{{Front}}".to_string(),
+            css_style: String::new(),
+            field_extraction_rules: HashMap::new(),
+            preview_data_json: None,
+            is_active: Some(true),
+            is_built_in: Some(is_built_in),
+        }
+    }
+
+    #[test]
+    fn soft_delete_builtin_template_keeps_row_and_sets_tombstone() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+
+        let builtin_id = db.create_custom_template_with_id(
+            "builtin-tpl",
+            &make_template_create_request("内置模板", true),
+        )?;
+        db.soft_delete_builtin_template(&builtin_id)?;
+
+        // 软删：行保留（ID 稳定），is_active=0 + user_deleted=1 墓碑
+        let template = db
+            .get_custom_template_by_id(&builtin_id)?
+            .expect("软删后行必须保留");
+        assert!(!template.is_active, "软删后应停用");
+        assert!(template.is_built_in);
+
+        let states = db.get_template_user_states()?;
+        let (user_modified, user_deleted) = states.get(&builtin_id).copied().expect("状态行存在");
+        assert!(user_deleted, "软删后应有 user_deleted 墓碑");
+        assert!(!user_modified);
+
+        // 非内置模板不可软删（保护性 WHERE is_built_in = 1）
+        let custom_id =
+            db.create_custom_template(&make_template_create_request("自定义模板", false))?;
+        assert!(
+            db.soft_delete_builtin_template(&custom_id).is_err(),
+            "对非内置模板软删应返回错误"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn mark_template_user_modified_only_affects_builtin_rows() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+
+        let builtin_id = db.create_custom_template_with_id(
+            "builtin-tpl-mod",
+            &make_template_create_request("内置模板2", true),
+        )?;
+        let custom_id =
+            db.create_custom_template(&make_template_create_request("自定义模板2", false))?;
+
+        db.mark_template_user_modified(&builtin_id)?;
+        // 对非内置模板是 no-op（不报错、不打标记）
+        db.mark_template_user_modified(&custom_id)?;
+
+        let states = db.get_template_user_states()?;
+        assert_eq!(states.get(&builtin_id).copied(), Some((true, false)));
+        assert_eq!(states.get(&custom_id).copied(), Some((false, false)));
+        Ok(())
+    }
+
+    #[test]
+    fn replace_custom_template_content_keeps_id_and_builtin_flag() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+
+        let builtin_id = db.create_custom_template_with_id(
+            "builtin-tpl-replace",
+            &make_template_create_request("内置模板3", true),
+        )?;
+
+        let mut replacement = make_template_create_request("内置模板3", false);
+        replacement.front_template = "{{Front}} v2".to_string();
+        replacement.version = Some("9.9.9".to_string());
+        db.replace_custom_template_content(&builtin_id, &replacement)?;
+
+        let template = db
+            .get_custom_template_by_id(&builtin_id)?
+            .expect("原地替换后行保留");
+        assert_eq!(template.front_template, "{{Front}} v2");
+        assert_eq!(template.version, "9.9.9");
+        // is_built_in 不随导入数据翻转（导入文件不能夺取/放弃内置身份）
+        assert!(template.is_built_in);
+
+        assert!(
+            db.replace_custom_template_content("no-such-id", &replacement)
+                .is_err(),
+            "不存在的模板应报 template_not_found"
+        );
         Ok(())
     }
 }

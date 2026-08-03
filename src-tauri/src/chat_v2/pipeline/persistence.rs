@@ -5,6 +5,7 @@ fn build_replay_skill_payload_snapshot(
 ) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
+        execution_allowed_tools: options.execution_allowed_tools.clone(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
         skill_dependencies: options.skill_dependencies.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
@@ -14,6 +15,86 @@ fn build_replay_skill_payload_snapshot(
     .without_skill_contents();
 
     snapshot.has_replay_metadata().then_some(snapshot)
+}
+
+/// 从最终回复文本与工具结果中解析"实际被引用的记忆 note_id"（引用级使用信号）。
+///
+/// - 回复中的引用标记形如 `[记忆-N]`（编号由后端 CitationLedger 分配、前端直接
+///   信任的契约；兼容英文别名 `[memory-N]` 与 `:图片` 类后缀）；
+/// - 工具输出的 numbered sources 中 `citationTag` 为 `[记忆-N]` 的条目携带
+///   `noteId`（压缩摘要条目为 null，改用 `sourceNoteIds` 数组还原真实成员）。
+///
+/// 返回去重后的 note_id 列表；同一编号被引用多次只计一次（回复级 set 语义）。
+/// 这使 `_used` 从"LLM 主动读全文"扩展到"检索摘要被答案实际引用"，
+/// 覆盖了此前只在前端渲染层可见的引用使用信号。
+fn extract_cited_memory_note_ids(
+    final_content: &str,
+    tool_results: &[ToolResultInfo],
+) -> Vec<String> {
+    use std::sync::OnceLock;
+    static CITED_PATTERN: OnceLock<regex::Regex> = OnceLock::new();
+    let pattern = CITED_PATTERN.get_or_init(|| {
+        regex::Regex::new(r"(?i)\[(?:记忆|memory)-(\d+)(?::[^\]]*)?\]")
+            .expect("memory citation regex is valid")
+    });
+
+    let mut cited_indexes: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    for cap in pattern.captures_iter(final_content) {
+        if let Some(n) = cap.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
+            cited_indexes.insert(n);
+        }
+    }
+    if cited_indexes.is_empty() {
+        return Vec::new();
+    }
+
+    let mut note_ids: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for tr in tool_results {
+        if !tr.success {
+            continue;
+        }
+        let Some(sources) = tr.output.get("sources").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for source in sources {
+            let Some(tag) = source.get("citationTag").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(idx) = pattern
+                .captures(tag)
+                .and_then(|c| c.get(1))
+                .and_then(|m| m.as_str().parse::<u64>().ok())
+            else {
+                continue;
+            };
+            if !cited_indexes.contains(&idx) {
+                continue;
+            }
+            let mut push_id = |id: &str| {
+                if !id.is_empty() && seen.insert(id.to_string()) {
+                    note_ids.push(id.to_string());
+                }
+            };
+            // 普通条目：noteId（camelCase 优先，兼容 snake_case）
+            if let Some(id) = source
+                .get("noteId")
+                .and_then(|v| v.as_str())
+                .or_else(|| source.get("note_id").and_then(|v| v.as_str()))
+            {
+                push_id(id);
+            }
+            // 压缩摘要条目：noteId 为 null，成员真实 ID 在 sourceNoteIds
+            if let Some(list) = source.get("sourceNoteIds").and_then(|v| v.as_array()) {
+                for value in list {
+                    if let Some(id) = value.as_str() {
+                        push_id(id);
+                    }
+                }
+            }
+        }
+    }
+    note_ids
 }
 
 #[cfg(test)]
@@ -48,6 +129,56 @@ mod tests {
 
         assert!(build_replay_skill_payload_snapshot(&options).is_none());
     }
+
+    fn make_tool_result(output: serde_json::Value) -> ToolResultInfo {
+        ToolResultInfo {
+            tool_call_id: None,
+            block_id: None,
+            tool_name: "builtin-unified_search".to_string(),
+            input: serde_json::json!({}),
+            output,
+            success: true,
+            error: None,
+            duration_ms: None,
+            reasoning_content: None,
+            thought_signature: None,
+        }
+    }
+
+    #[test]
+    fn cited_memory_ids_map_citations_including_compressed_sources() {
+        let tool_results = vec![make_tool_result(serde_json::json!({
+            "success": true,
+            "sources": [
+                { "citationTag": "[记忆-1]", "noteId": "note_a" },
+                { "citationTag": "[记忆-2]", "noteId": null,
+                  "sourceNoteIds": ["note_b", "note_c"] },
+                { "citationTag": "[知识库-1]", "noteId": "res_x" },
+                { "citationTag": "[记忆-3]", "noteId": "note_d" }
+            ]
+        }))];
+        // 引用了记忆-1/2（记忆-3 未被引用；知识库引用不计入）
+        let ids = extract_cited_memory_note_ids(
+            "根据 [记忆-1]，你此前……结合 [记忆-2] 与 [知识库-1] 来看",
+            &tool_results,
+        );
+        assert_eq!(ids, vec!["note_a", "note_b", "note_c"]);
+    }
+
+    #[test]
+    fn cited_memory_ids_dedupe_and_handle_no_citation() {
+        let tool_results = vec![make_tool_result(serde_json::json!({
+            "success": true,
+            "sources": [{ "citationTag": "[记忆-1]", "noteId": "note_a" }]
+        }))];
+        // 同一编号引用两次只计一次；英文别名大小写不敏感
+        let ids = extract_cited_memory_note_ids("[记忆-1] …… [Memory-1] 再次引用", &tool_results);
+        assert_eq!(ids, vec!["note_a"]);
+        // 正文无记忆引用（裸文本"记忆-1"不带方括号不算）
+        assert!(
+            extract_cited_memory_note_ids("提到过 记忆-1 但没有引用标记", &tool_results).is_empty()
+        );
+    }
 }
 
 impl ChatV2Pipeline {
@@ -77,6 +208,8 @@ impl ChatV2Pipeline {
                 .with_id(ctx.user_message_id.clone())
                 .with_attachments(ctx.attachments.clone())
                 .with_context_snapshot(ctx.context_snapshot.clone())
+                .with_canonical_content(ctx.canonical_content.clone())
+                .with_execution_snapshot(ctx.execution_snapshot.clone())
                 .with_timestamp(now_ms);
 
         let user_msg_result = build_user_message(user_msg_params);
@@ -156,6 +289,53 @@ impl ChatV2Pipeline {
         }
     }
 
+    /// 🔧 P0-3 修复：带一次重试的中间保存点。
+    ///
+    /// 用于「即将进入长阻塞阶段」（工具执行如 coordinator_sleep、下一轮 LLM 调用）
+    /// 前的关键保存：之前失败仅 warn 一次即放弃，阻塞期间用户刷新会丢已生成内容。
+    /// 现在失败后小退避重试一次（多数失败源于 SQLITE_BUSY 类瞬态锁竞争）；
+    /// 重试仍失败则升级为 error 日志（附 session/message id），但不中断流程。
+    ///
+    /// 返回是否最终保存成功（仅用于调用方日志分支）。
+    pub(crate) async fn save_intermediate_results_with_retry(
+        &self,
+        ctx: &PipelineContext,
+        stage: &str,
+    ) -> bool {
+        let first_err = match self.save_intermediate_results(ctx).await {
+            Ok(()) => return true,
+            Err(e) => e,
+        };
+        log::warn!(
+            "[ChatV2::pipeline] Intermediate save failed at {} (session={}, message={}): {}; retrying once",
+            stage,
+            ctx.session_id,
+            ctx.assistant_message_id,
+            first_err
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        match self.save_intermediate_results(ctx).await {
+            Ok(()) => {
+                log::info!(
+                    "[ChatV2::pipeline] Intermediate save retry succeeded at {} (session={})",
+                    stage,
+                    ctx.session_id
+                );
+                true
+            }
+            Err(retry_err) => {
+                log::error!(
+                    "[ChatV2::pipeline] Intermediate save failed after retry at {} (session={}, message={}): {}; continuing without persistence — generated blocks may be lost on refresh until the next save point",
+                    stage,
+                    ctx.session_id,
+                    ctx.assistant_message_id,
+                    retry_err
+                );
+                false
+            }
+        }
+    }
+
     /// save_intermediate_results 的内部实现（在事务内执行）
     fn save_intermediate_results_inner(
         &self,
@@ -173,13 +353,15 @@ impl ChatV2Pipeline {
                     .with_id(ctx.user_message_id.clone())
                     .with_attachments(ctx.attachments.clone())
                     .with_context_snapshot(ctx.context_snapshot.clone())
+                    .with_canonical_content(ctx.canonical_content.clone())
+                    .with_execution_snapshot(ctx.execution_snapshot.clone())
                     .with_timestamp(now_ms);
 
             let user_msg_result = build_user_message(user_msg_params);
 
             // 使用 INSERT OR REPLACE 保存用户消息（与 save_results 兼容）
-            ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
-            ChatV2Repo::create_block_with_conn(&conn, &user_msg_result.block)?;
+            ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
+            ChatV2Repo::create_block_with_conn(conn, &user_msg_result.block)?;
         }
 
         // 1. 保存助手消息（如果不存在则创建）
@@ -189,7 +371,7 @@ impl ChatV2Pipeline {
         // 是原地更新而非 DELETE+INSERT，不会触发 CASCADE 删除。
         // 但仍保留 anki_cards 块的保存逻辑以防 block_ids 列表覆盖。
         let preserved_anki_cards_blocks: Vec<MessageBlock> =
-            ChatV2Repo::get_message_blocks_with_conn(&conn, &ctx.assistant_message_id)?
+            ChatV2Repo::get_message_blocks_with_conn(conn, &ctx.assistant_message_id)?
                 .into_iter()
                 .filter(|b| b.block_type == block_types::ANKI_CARDS)
                 .collect();
@@ -257,13 +439,13 @@ impl ChatV2Pipeline {
             variants: None,
             shared_context: None,
         };
-        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg)?;
+        ChatV2Repo::create_message_with_conn(conn, &assistant_msg)?;
 
         // 2. 保存所有已生成的块
         for (index, block) in ctx.interleaved_blocks.iter().enumerate() {
             let mut block_to_save = block.clone();
             block_to_save.block_index = index as u32;
-            ChatV2Repo::create_block_with_conn(&conn, &block_to_save)?;
+            ChatV2Repo::create_block_with_conn(conn, &block_to_save)?;
         }
 
         // 3. Re-insert preserved `anki_cards` blocks deleted by the assistant message REPLACE.
@@ -284,7 +466,7 @@ impl ChatV2Pipeline {
                 // 保持原始 block_index 不变，这样刷新后位置不会跳到末尾
                 let block_to_save = preserved;
 
-                if let Err(e) = ChatV2Repo::create_block_with_conn(&conn, &block_to_save) {
+                if let Err(e) = ChatV2Repo::create_block_with_conn(conn, &block_to_save) {
                     log::error!(
                         "[ChatV2::pipeline] Failed to re-insert preserved anki_cards block: message_id={}, block_id={}, err={:?}",
                         ctx.assistant_message_id,
@@ -392,13 +574,15 @@ impl ChatV2Pipeline {
                     .with_id(ctx.user_message_id.clone())
                     .with_attachments(ctx.attachments.clone())
                     .with_context_snapshot(ctx.context_snapshot.clone())
+                    .with_canonical_content(ctx.canonical_content.clone())
+                    .with_execution_snapshot(ctx.execution_snapshot.clone())
                     .with_timestamp(user_now_ms);
 
             let user_msg_result = build_user_message(user_msg_params);
 
             // 保存用户消息和块
-            ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
-            ChatV2Repo::create_block_with_conn(&conn, &user_msg_result.block)?;
+            ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
+            ChatV2Repo::create_block_with_conn(conn, &user_msg_result.block)?;
 
             log::debug!(
                 "[ChatV2::pipeline] Saved user message: id={}, content_len={}",
@@ -577,10 +761,7 @@ impl ChatV2Pipeline {
             // 🔧 修复：只要有 thinking 或 content 内容，都应该保存（取消时可能只有 thinking）
             // ============================================================
             else if !ctx.final_content.is_empty()
-                || ctx
-                    .final_reasoning
-                    .as_ref()
-                    .map_or(false, |r| !r.is_empty())
+                || ctx.final_reasoning.as_ref().is_some_and(|r| !r.is_empty())
             {
                 log::info!(
                     "[ChatV2::pipeline] save_results priority 3: final_content_len={}, final_reasoning={:?}",
@@ -593,7 +774,7 @@ impl ChatV2Pipeline {
                         let thinking_block_id = ctx
                             .streaming_thinking_block_id
                             .clone()
-                            .unwrap_or_else(|| MessageBlock::generate_id());
+                            .unwrap_or_else(MessageBlock::generate_id);
                         let started_at = assistant_now_ms - elapsed_ms;
                         let block = MessageBlock {
                             id: thinking_block_id,
@@ -647,7 +828,7 @@ impl ChatV2Pipeline {
                     let content_block_id = ctx
                         .streaming_content_block_id
                         .clone()
-                        .unwrap_or_else(|| MessageBlock::generate_id());
+                        .unwrap_or_else(MessageBlock::generate_id);
                     let started_at = assistant_now_ms - elapsed_ms;
                     let block = MessageBlock {
                         id: content_block_id,
@@ -677,7 +858,7 @@ impl ChatV2Pipeline {
                 let tool_block_id = tool_result
                     .block_id
                     .clone()
-                    .unwrap_or_else(|| MessageBlock::generate_id());
+                    .unwrap_or_else(MessageBlock::generate_id);
                 let started_at = assistant_now_ms - tool_result.duration_ms.unwrap_or(0) as i64;
 
                 // 🔧 修复：根据工具名称判断正确的 block_type
@@ -721,14 +902,15 @@ impl ChatV2Pipeline {
         // With `chat_v2_blocks.message_id ON DELETE CASCADE`, replacing the assistant message row
         // can delete existing blocks (including ChatAnki-generated `anki_cards` blocks).
         let preserved_anki_cards_blocks: Vec<MessageBlock> =
-            ChatV2Repo::get_message_blocks_with_conn(&conn, &ctx.assistant_message_id)?
+            ChatV2Repo::get_message_blocks_with_conn(conn, &ctx.assistant_message_id)?
                 .into_iter()
                 .filter(|b| b.block_type == block_types::ANKI_CARDS)
                 .collect();
-        let _preserved_anki_cards_block_ids: Vec<String> = preserved_anki_cards_blocks
-            .iter()
-            .map(|b| b.id.clone())
-            .collect();
+        let preserved_anki_cards_block_ids: std::collections::HashSet<String> =
+            preserved_anki_cards_blocks
+                .iter()
+                .map(|b| b.id.clone())
+                .collect();
 
         // 🔧 P37 修复：合并数据库中已有的 block_ids（保留前端追加的块）
         // 问题：前端在工具执行后创建 workspace_status 块并追加到消息的 block_ids，
@@ -747,6 +929,11 @@ impl ChatV2Pipeline {
                     if let Ok(existing_block_ids) = serde_json::from_str::<Vec<String>>(&json_str) {
                         // 找出前端追加的块（在数据库中但不在当前 block_ids 中）
                         for existing_id in existing_block_ids {
+                            // anki_cards 按原始 block_index 在下方插入；这里直接 append
+                            // 会让它永久落到消息尾部，并使后续插入逻辑失效。
+                            if preserved_anki_cards_block_ids.contains(&existing_id) {
+                                continue;
+                            }
                             if !merged_block_ids.contains(&existing_id) {
                                 log::info!(
                                     "[ChatV2::pipeline] 🔧 P37: Preserving frontend-appended block_id: {}",
@@ -784,6 +971,11 @@ impl ChatV2Pipeline {
         let _pipeline_block_count = blocks_to_save.len() as u32;
         let pipeline_block_id_set: std::collections::HashSet<String> =
             blocks_to_save.iter().map(|b| b.id.clone()).collect();
+        let final_block_positions: std::collections::HashMap<String, u32> = final_block_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (id.clone(), index as u32))
+            .collect();
 
         // 构建 chatParams 快照（从 SendOptions 中提取相关参数）
         let chat_params_snapshot = json!({
@@ -821,6 +1013,8 @@ impl ChatV2Pipeline {
                         .filter(|id| !is_config_id_format(id))
                         .cloned()
                 }),
+            execution_snapshot: ctx.execution_snapshot.clone(),
+            canonical_content: None,
             chat_params: Some(chat_params_snapshot),
             sources: if ctx.retrieved_sources.rag.is_some()
                 || ctx.retrieved_sources.memory.is_some()
@@ -873,23 +1067,25 @@ impl ChatV2Pipeline {
 
         if !skip_assistant_message {
             // 正常场景：创建新的助手消息
-            ChatV2Repo::create_message_with_conn(&conn, &assistant_message)?;
+            ChatV2Repo::create_message_with_conn(conn, &assistant_message)?;
         } else {
             // 重试场景：更新已有的助手消息（只更新块列表和元数据）
             log::debug!(
                 "[ChatV2::pipeline] Updating existing assistant message for retry: id={}",
                 ctx.assistant_message_id
             );
-            ChatV2Repo::update_message_with_conn(&conn, &assistant_message)?;
+            ChatV2Repo::update_message_with_conn(conn, &assistant_message)?;
         }
 
         // 保存所有助手消息块（无论是创建还是更新消息，块都需要保存）
-        for (index, mut block) in blocks_to_save.into_iter().enumerate() {
-            // 确保 block_index 正确设置
-            block.block_index = index as u32;
+        for mut block in blocks_to_save {
+            block.block_index = final_block_positions
+                .get(block.id.as_str())
+                .copied()
+                .unwrap_or(block.block_index);
             // 确保 message_id 正确
             block.message_id = ctx.assistant_message_id.clone();
-            ChatV2Repo::create_block_with_conn(&conn, &block)?;
+            ChatV2Repo::create_block_with_conn(conn, &block)?;
         }
 
         // Re-insert preserved `anki_cards` blocks deleted by the assistant message REPLACE.
@@ -901,11 +1097,14 @@ impl ChatV2Pipeline {
                     continue;
                 }
 
-                // 保持原始 block_index 不变，这样刷新后位置不会跳到末尾
                 let mut block_to_save = preserved;
                 block_to_save.message_id = ctx.assistant_message_id.clone();
+                block_to_save.block_index = final_block_positions
+                    .get(block_to_save.id.as_str())
+                    .copied()
+                    .unwrap_or(block_to_save.block_index);
 
-                if let Err(e) = ChatV2Repo::create_block_with_conn(&conn, &block_to_save) {
+                if let Err(e) = ChatV2Repo::create_block_with_conn(conn, &block_to_save) {
                     log::error!(
                         "[ChatV2::pipeline] Failed to re-insert preserved anki_cards block: message_id={}, block_id={}, err={:?}",
                         ctx.assistant_message_id,
@@ -955,18 +1154,79 @@ impl ChatV2Pipeline {
     ///
     /// 受 mem0 `add` 和 memU `memorize` 启发：
     /// 从用户消息和助手回复中自动提取候选记忆，通过 write_smart 去重写入。
+    fn trigger_auto_memory_extraction(&self, ctx: &PipelineContext) {
+        self.trigger_auto_memory_extraction_for_turn(
+            ctx.options.memory_enabled,
+            &ctx.user_content,
+            &ctx.final_content,
+            &ctx.tool_results,
+            "AutoMemory",
+        );
+    }
+
+    /// 对话后自动记忆提取的共享实现（单变体 persistence 与 multi_variant 共用，
+    /// 消除此前两处手工镜像门控逻辑的漂移风险）
     ///
     /// 门控顺序（全部在 spawn 前同步检查，避免无谓 task 创建）：
+    /// 0. 会话级 memory_enabled 开关（Some(false) → 直接跳过，
+    ///    与注入 prompt.rs / 工具拦截 tool_loop.rs 的会话开关语义保持一致）
     /// 1. vfs_db 存在性
     /// 2. 频率配置（off → 直接 return）
     /// 3. 隐私模式
     /// 4. 内容长度（按频率档位的字符数门槛）
     /// 5. 竞态保护（LLM 本轮已通过工具写入 fact 记忆时跳过）
-    fn trigger_auto_memory_extraction(&self, ctx: &PipelineContext) {
+    pub(crate) fn trigger_auto_memory_extraction_for_turn(
+        &self,
+        memory_enabled: Option<bool>,
+        user_content: &str,
+        assistant_content: &str,
+        tool_results: &[ToolResultInfo],
+        log_tag: &'static str,
+    ) {
+        // ⓪ 会话级开关：用户关闭记忆的会话不做任何自动提取入库
+        if memory_enabled == Some(false) {
+            log::debug!(
+                "[{}] Session memory disabled, skipping auto-extraction",
+                log_tag
+            );
+            return;
+        }
+
         let vfs_db = match &self.vfs_db {
             Some(db) => db.clone(),
             None => return,
         };
+
+        // 引用级使用信号（fire-and-forget）：答案中实际引用的 `[记忆-N]` 记 `_used`。
+        // 有意放在频率/隐私门控之前——这是纯本地标签写入（无 LLM、无外部调用），
+        // 即使自动提取关闭，"被引用"的使用反馈也应照常累积。
+        let cited_note_ids = extract_cited_memory_note_ids(assistant_content, tool_results);
+        if !cited_note_ids.is_empty() {
+            let vfs_db_for_usage = vfs_db.clone();
+            let llm_manager_for_usage = self.llm_manager.clone();
+            let usage_log_tag = log_tag;
+            tokio::task::spawn_blocking(move || {
+                use crate::memory::MemoryService;
+                use crate::vfs::lance_store::VfsLanceStore;
+                let lance_store = match crate::chat_v2::pipeline::managed_vfs_lance_store_for(
+                    &vfs_db_for_usage,
+                ) {
+                    Some(s) => s,
+                    None => match VfsLanceStore::new(vfs_db_for_usage.clone()) {
+                        Ok(s) => std::sync::Arc::new(s),
+                        Err(_) => return,
+                    },
+                };
+                let service =
+                    MemoryService::new(vfs_db_for_usage, lance_store, llm_manager_for_usage);
+                log::debug!(
+                    "[{}] Recording citation usage for {} memories",
+                    usage_log_tag,
+                    cited_note_ids.len()
+                );
+                service.record_used(&cited_note_ids);
+            });
+        }
 
         // ① 早期门控：读取频率 + 隐私模式配置（同步 SQLite 主键查询，亚毫秒级）
         let mem_config = crate::memory::MemoryConfig::new(vfs_db.clone());
@@ -975,62 +1235,90 @@ impl ChatV2Pipeline {
             .unwrap_or(crate::memory::AutoExtractFrequency::Balanced);
 
         if frequency == crate::memory::AutoExtractFrequency::Off {
-            log::debug!("[AutoMemory] Frequency=off, skipping auto-extraction");
+            log::debug!("[{}] Frequency=off, skipping auto-extraction", log_tag);
             return;
         }
 
         if mem_config.is_privacy_mode().unwrap_or(false) {
-            log::debug!("[AutoMemory] Privacy mode enabled, skipping auto-extraction");
+            log::debug!(
+                "[{}] Privacy mode enabled, skipping auto-extraction",
+                log_tag
+            );
             return;
         }
 
         // ② 内容长度门槛（统一使用 chars().count() 做中文友好的字符数比较）
         let min_chars = frequency.content_min_chars();
-        let user_chars = ctx.user_content.chars().count();
-        let assistant_chars = ctx.final_content.chars().count();
+        let user_chars = user_content.chars().count();
+        let assistant_chars = assistant_content.chars().count();
         if user_chars < min_chars && assistant_chars < min_chars {
             return;
         }
 
         // ③ 竞态保护：LLM 本轮已通过工具写入 fact 记忆时跳过
-        let llm_wrote_fact_memory = ctx.tool_results.iter().any(|tr| {
+        let llm_wrote_fact_memory = tool_results.iter().any(|tr| {
             let name = tr.tool_name.as_str();
-            let is_memory_tool = matches!(
-                name.strip_prefix("builtin-").unwrap_or(name),
-                "memory_write" | "memory_write_smart" | "memory_update_by_id"
-            );
-            if !is_memory_tool {
-                return false;
+            let stripped = name.strip_prefix("builtin-").unwrap_or(name);
+            match stripped {
+                "memory_write" | "memory_write_smart" | "memory_update_by_id" => {
+                    let declared_type = tr
+                        .input
+                        .get("memory_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("fact");
+                    declared_type == "fact"
+                }
+                // 批量写入：条目级 memory_type 优先，回退到 default_memory_type
+                "memory_write_batch" => {
+                    let default_type = tr
+                        .input
+                        .get("default_memory_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("fact");
+                    tr.input
+                        .get("items")
+                        .and_then(|v| v.as_array())
+                        .map(|items| {
+                            items.iter().any(|item| {
+                                item.get("memory_type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(default_type)
+                                    == "fact"
+                            })
+                        })
+                        .unwrap_or(default_type == "fact")
+                }
+                _ => false,
             }
-            let declared_type = tr
-                .input
-                .get("memory_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("fact");
-            declared_type == "fact"
         });
         if llm_wrote_fact_memory {
             log::debug!(
-                "[AutoMemory] Skipping auto-extraction: LLM already wrote fact memories this turn"
+                "[{}] Skipping auto-extraction: LLM already wrote fact memories this turn",
+                log_tag
             );
             return;
         }
 
         let llm_manager = self.llm_manager.clone();
-        let user_content = ctx.user_content.clone();
-        let final_content = ctx.final_content.clone();
+        let user_content = user_content.to_string();
+        let final_content = assistant_content.to_string();
 
         // fire-and-forget: 不走 spawn_tracked 因为 Pipeline 不持有 ChatV2State。
         tokio::spawn(async move {
             use crate::memory::{MemoryAutoExtractor, MemoryService};
             use crate::vfs::lance_store::VfsLanceStore;
 
-            let lance_store = match VfsLanceStore::new(vfs_db.clone()) {
-                Ok(s) => std::sync::Arc::new(s),
-                Err(e) => {
-                    log::warn!("[AutoMemory] Failed to create lance store: {}", e);
-                    return;
-                }
+            // 优先复用 app 托管单例（保留 Lance 连接与 ensured_tables 缓存）；
+            // 无托管单例（启动降级/测试）时才按需新建。
+            let lance_store = match crate::chat_v2::pipeline::managed_vfs_lance_store_for(&vfs_db) {
+                Some(s) => s,
+                None => match VfsLanceStore::new(vfs_db.clone()) {
+                    Ok(s) => std::sync::Arc::new(s),
+                    Err(e) => {
+                        log::warn!("[{}] Failed to create lance store: {}", log_tag, e);
+                        return;
+                    }
+                },
             };
 
             let memory_service =
@@ -1045,7 +1333,8 @@ impl ChatV2Pipeline {
                 Ok(count) => {
                     if count > 0 {
                         log::info!(
-                            "[AutoMemory] Auto-extracted {} memories (frequency={:?})",
+                            "[{}] Auto-extracted {} memories (frequency={:?})",
+                            log_tag,
                             count,
                             frequency
                         );
@@ -1066,7 +1355,7 @@ impl ChatV2Pipeline {
                             let cat_mgr =
                                 MemoryCategoryManager::new(vfs_db.clone(), llm_manager.clone());
                             if let Err(e) = cat_mgr.refresh_all_categories(&memory_service).await {
-                                log::warn!("[AutoMemory] Category refresh failed: {}", e);
+                                log::warn!("[{}] Category refresh failed: {}", log_tag, e);
                             }
                         }
                     }
@@ -1077,7 +1366,7 @@ impl ChatV2Pipeline {
                     evolution.run_throttled(&memory_service, frequency.evolution_interval_ms());
                 }
                 Err(e) => {
-                    log::warn!("[AutoMemory] Auto-extraction failed (non-fatal): {}", e);
+                    log::warn!("[{}] Auto-extraction failed (non-fatal): {}", log_tag, e);
                 }
             }
         });

@@ -8,6 +8,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { eventRegistry } from '@/features/chat/registry/eventRegistry';
 import type { ChatStore } from '@/features/chat/core/types';
 
+const reloadSkillsMock = vi.fn().mockResolvedValue({
+  total: 1,
+  builtin: 0,
+  global: 1,
+  project: 0,
+  errors: 0,
+});
+
+vi.mock('@/features/chat/skills/loader', async () => {
+  const actual = await vi.importActual<typeof import('@/features/chat/skills/loader')>(
+    '@/features/chat/skills/loader',
+  );
+  return {
+    ...actual,
+    reloadSkills: (...args: unknown[]) => reloadSkillsMock(...args),
+  };
+});
+
 // 导入插件（触发自动注册）
 import '@/features/chat/plugins/events/toolCall';
 
@@ -302,6 +320,35 @@ describe('ToolCallEventHandler', () => {
 
       expect(mockStore.setBlockResult).toHaveBeenCalledWith('mcp-tool-block-1', undefined);
     });
+
+    it('reloads skills after skill_workshop_apply succeeds', async () => {
+      const handler = eventRegistry.get('tool_call');
+      reloadSkillsMock.mockClear();
+
+      mockStore.blocks.set('skill-apply-1', {
+        id: 'skill-apply-1',
+        messageId: 'msg-1',
+        type: 'mcp_tool',
+        content: '',
+        status: 'running',
+        toolName: 'builtin-skill_workshop_apply',
+        toolCallId: 'tc-apply-1',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never);
+
+      handler!.onEnd!(mockStore, 'skill-apply-1', {
+        result: {
+          applied: true,
+          skill_id: 'quick-study-helper',
+          path: '~/.deep-student/skills/quick-study-helper/SKILL.md',
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(reloadSkillsMock).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('onError', () => {
@@ -467,7 +514,7 @@ describe('tool_pack interleaving', () => {
       error: 'phase 3 failure',
       status: 'error',
     });
-    expect(mockStore.blocks.get('parent-tool_pack-0')).not.toHaveProperty('error');
+    expect(mockStore.blocks.get('parent-tool_pack-0')?.error).toBeUndefined();
   });
 });
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { NotesLibraryManager, ImportConflictStrategy, ImportProgress } from "../NotesLibraryManager";
+import { NotesLibraryManager, NOTES_LIBRARY_LAST_EXPORT_PREF, ImportConflictStrategy, ImportProgress } from "../NotesLibraryManager";
 import { useNotes } from "../NotesContext";
 import { NotesAPI } from "../../../utils/notesApi";
 import { getErrorMessage } from "../../../utils/errorUtils";
@@ -49,7 +49,7 @@ export function NotesLibraryDialog() {
             const selected = await save({
                 title: t('notes:export.destination.choose'),
                 defaultPath: `notes_export_${new Date().toISOString().split('T')[0]}.zip`,
-                filters: [{ name: t('notes:export.filter_name', 'Notes Backup'), extensions: ['zip'] }]
+                filters: [{ name: t('notes:export.filter_name'), extensions: ['zip'] }]
             });
             if (selected) {
                 setExportTargetPath(selected);
@@ -71,6 +71,9 @@ export function NotesLibraryDialog() {
                 outputPath: exportTargetPath,
                 includeVersions: true,
             });
+
+            // Remember when the library was last exported (shown inside the panel).
+            void NotesAPI.setPref(NOTES_LIBRARY_LAST_EXPORT_PREF, String(Date.now())).catch(() => {});
 
             notify({
                 title: t('notes:export.success'), // success_title was likely wrong, using 'success' from notes.json
@@ -95,9 +98,9 @@ export function NotesLibraryDialog() {
     const handlePickImportFile = async () => {
         try {
             const selected = await open({
-                title: t('notes:import.file.dialog_title', 'Select notes library backup file'),
+                title: t('notes:import.file.dialog_title'),
                 multiple: false,
-                filters: [{ name: t('notes:import.filter_name', 'Notes Archive'), extensions: ['zip'] }]
+                filters: [{ name: t('notes:import.filter_name'), extensions: ['zip'] }]
             });
             if (selected && typeof selected === 'string') {
                 setImportFilePath(selected);

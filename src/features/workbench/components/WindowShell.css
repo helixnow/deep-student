@@ -1,0 +1,237 @@
+/**
+ * WindowShell.css（O2 专属）— 窗口拖拽/缩放手感层
+ * ---------------------------------------------------------------------------
+ * 纪律（编排文档 §1.2 / §1.5）：
+ * - 新类一律 wb-shell- 前缀；不重定义 workbench.css 契约类，
+ *   覆盖仅通过更高特异性叠加类（.wb-window.wb-shell-*），已在 O2.md 声明交 O20 reconcile；
+ * - move 跟手由 JS 直写 transform，resize 才写布局属性；
+ *   本文件只含 box-shadow 状态过渡与静态命中区/光标样式；
+ * - 曲线/时长引用 O1 token（--wb-shadow-transition-duration / --wb-ease /
+ *   --wb-motion-* / --wb-ease-*）；reduced-motion / minimal 档由 token 层归零。
+ */
+
+/* ==========================================================================
+ * will-change：空闲中和为 auto（省内存）；仅拖/缩手势期间提升合成层。
+ * move 跟手走 transform；will-change 只降低手势期 paint 抖动风险。
+ * 生命周期开/关窗另见 WindowLifecycle.css 的 [data-wb-lifec] 提升。
+ * ========================================================================== */
+
+.wb-window.wb-window-focused,
+.wb-window.wb-window-idle {
+  will-change: auto;
+}
+
+/*
+ * 标题栏 pointerenter 预提升（JS 挂 wb-shell-lift）：避免 :has(:hover) 在
+ * 鼠标划过时反复创建/销毁合成层；真正拖拽仍用 wb-shell-dragging。
+ */
+.wb-window.wb-shell-lift {
+  will-change: transform;
+}
+
+.wb-window.wb-shell-dragging {
+  /* 跟手用 translate3d；提升合成层，不改阴影档 */
+  will-change: transform;
+}
+
+.wb-window.wb-shell-resizing {
+  /* 缩放改宽高，布局属性不可避免 */
+  will-change: width, height, left, top;
+}
+
+/*
+ * ANTI-REGRESSION：不要在拖/缩 class 下动态增加 contain / content-visibility /
+ * isolation。这些属性会在首个 transform 前重建重内容子树的布局或绘制边界，
+ * 表现为固定起拖卡顿（Win/macOS/Linux 同病）；内容命中仅由 WindowShell
+ * 直写 pointer-events 关闭。CI：platformPerformanceConfig.test.ts。
+ */
+
+/* ==========================================================================
+ * 拖拽态：状态锚点（光标/内容冻结由 JS 管理）。
+ * 阴影与静止 focused/idle 一致（勿用 --wb-shadow-drag 开倒车）。
+ * ========================================================================== */
+
+.wb-window.wb-shell-dragging {
+  /* 保留类名供调试 / 选择器 / will-change */
+}
+
+/* 缩放中：不抬升不加深（macOS 行为），仅作状态锚点（光标/内容冻结由 JS 管理） */
+.wb-window.wb-shell-resizing {
+  cursor: inherit;
+}
+
+/*
+ * 内容区建立独立 stacking context，避免编辑器内部的高 z-index 浮层越过标题栏菜单。
+ * 标题栏层级见 WindowTitleBar.css。
+ */
+[data-wb-window-content] {
+  z-index: var(--wb-z-window-content, 0);
+}
+
+/*
+ * 最大化：圆角收束到 0（对齐 macOS 全屏/最大化观感），避免桌面四角漏出
+ * 壁纸缺口。用 display-mode 属性选择器叠加，不改契约 .wb-window 本体。
+ */
+.wb-window[data-display-mode='maximized'] {
+  border-radius: 0;
+}
+
+.wb-window[data-display-mode='maximized'] .wb-titlebar {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* ==========================================================================
+ * 八向缩放命中区（视觉透明；边 8px、角 14px）
+ * 边区自角部各退让 14px，保证四角始终由角柄（对角光标）优先命中；
+ * 角柄在 DOM 中后渲染，与边区重叠处按栈序取胜。
+ * ========================================================================== */
+
+.wb-shell-rz {
+  position: absolute;
+  z-index: var(--wb-z-window-resize, 5);
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/*
+ * 顶边/顶角命中区必须压过标题栏（z=10），否则窗内 0–4px 的命中带被
+ * 标题栏吞掉，从顶部缩放几乎不可用（macOS 任意边可缩）。
+ * 命中区极窄（8/14px）且视觉透明，抬高 z 不影响三键与拖拽区点击
+ * （三键自带 pointer 命中且位于命中带以下 ≥7px）。
+ */
+.wb-shell-rz-n,
+.wb-shell-rz-ne,
+.wb-shell-rz-nw {
+  z-index: calc(var(--wb-z-window-titlebar, 10) + 1);
+}
+
+.wb-shell-rz-n {
+  top: -4px;
+  left: 14px;
+  right: 14px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.wb-shell-rz-s {
+  bottom: -4px;
+  left: 14px;
+  right: 14px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.wb-shell-rz-e {
+  right: -4px;
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.wb-shell-rz-w {
+  left: -4px;
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.wb-shell-rz-ne {
+  top: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
+.wb-shell-rz-nw {
+  top: -5px;
+  left: -5px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+.wb-shell-rz-se {
+  bottom: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+.wb-shell-rz-sw {
+  bottom: -5px;
+  left: -5px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+
+/* 触屏：8/14px 命中带手指几乎点不中，放大到边 18px / 角 28px。
+   外扩 6px + 内收 12px：不改变视觉（透明），仅边缘 12px 内的内容点击让位给缩放柄 */
+@media (pointer: coarse) {
+  .wb-shell-rz-n {
+    top: -6px;
+    height: 18px;
+  }
+
+  .wb-shell-rz-s {
+    bottom: -6px;
+    height: 18px;
+  }
+
+  .wb-shell-rz-e {
+    right: -6px;
+    width: 18px;
+  }
+
+  .wb-shell-rz-w {
+    left: -6px;
+    width: 18px;
+  }
+
+  .wb-shell-rz-n,
+  .wb-shell-rz-s {
+    left: 28px;
+    right: 28px;
+  }
+
+  .wb-shell-rz-e,
+  .wb-shell-rz-w {
+    top: 28px;
+    bottom: 28px;
+  }
+
+  .wb-shell-rz-ne,
+  .wb-shell-rz-nw,
+  .wb-shell-rz-se,
+  .wb-shell-rz-sw {
+    width: 28px;
+    height: 28px;
+  }
+
+  .wb-shell-rz-ne {
+    top: -8px;
+    right: -8px;
+  }
+
+  .wb-shell-rz-nw {
+    top: -8px;
+    left: -8px;
+  }
+
+  .wb-shell-rz-se {
+    bottom: -8px;
+    right: -8px;
+  }
+
+  .wb-shell-rz-sw {
+    bottom: -8px;
+    left: -8px;
+  }
+}

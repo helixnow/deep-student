@@ -1,0 +1,353 @@
+/* Extras for NotesBacklinksPanel — collapsible sections, create, context snippets.
+   Base layout lives in NotesBacklinksPanel.css (owned by another agent). */
+
+.notes-backlinks-panel-section-toggle {
+  width: 100%;
+  min-height: 20px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-section-toggle:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent) / 55%);
+}
+
+.notes-backlinks-panel-section-toggle:focus-visible {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent) / 55%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-backlinks-panel-section-toggle-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.notes-backlinks-panel-section-toggle-label > svg {
+  flex: 0 0 auto;
+}
+
+/* 折叠动画：grid-template-rows 0fr→1fr，内容层 overflow:hidden 收纳 */
+.notes-backlinks-panel-section-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 200ms var(--dropdown-ease);
+}
+
+.notes-backlinks-panel-section-body-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: visible;
+  transition: visibility 0s linear;
+}
+
+.notes-backlinks-panel-section-collapsed .notes-backlinks-panel-section-body {
+  grid-template-rows: 0fr;
+}
+
+.notes-backlinks-panel-section-collapsed .notes-backlinks-panel-section-body-inner {
+  visibility: hidden;
+  transition-delay: 200ms;
+}
+
+.notes-backlinks-panel-empty {
+  margin: 6px 2px 2px;
+  padding: 12px 8px 10px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  border: 1px dashed hsl(var(--border) / 85%);
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--background) / 35%);
+  text-align: center;
+}
+
+.notes-backlinks-panel-empty > svg {
+  opacity: 0.72;
+}
+
+.notes-backlinks-panel-empty p {
+  padding: 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.notes-backlinks-panel-link-row {
+  display: grid;
+  gap: 2px;
+}
+
+.notes-backlinks-panel-context {
+  margin: 0 0 4px 28px;
+  padding: 3px 6px;
+  max-height: 3.6em;
+  overflow: hidden;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--background) / 48%);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: max-height 200ms ease;
+}
+
+.notes-backlinks-panel-section[data-more-context='true'] .notes-backlinks-panel-context {
+  max-height: 12em;
+}
+
+/* Match NotesSearchOverlay .nso-hl — primary tint, 2px radius */
+.notes-backlinks-panel-context-mark {
+  color: inherit;
+  background: hsl(var(--primary) / 22%);
+  border-radius: 2px;
+  padding: 0 1px;
+  font-weight: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+:is(.dark, [data-theme='dark']) .notes-backlinks-panel-context-mark {
+  background: hsl(var(--primary) / 34%);
+}
+
+.notes-backlinks-panel-context-ellipsis {
+  opacity: 0.65;
+}
+
+.notes-backlinks-panel-more-context {
+  margin: 4px 4px 0;
+  padding: 0;
+  border: 0;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-more-context:hover {
+  color: hsl(var(--foreground));
+}
+
+.notes-backlinks-panel-more-context:focus-visible {
+  color: hsl(var(--foreground));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: var(--notes-radius-control);
+}
+
+.notes-backlinks-panel-unresolved-row {
+  min-height: 30px;
+  padding: 3px 4px 3px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--notes-radius-row);
+  color: hsl(var(--muted-foreground));
+  transition: background-color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-unresolved-row:hover {
+  background: hsl(var(--accent) / 40%);
+}
+
+.notes-backlinks-panel-unresolved-row > svg:first-child {
+  flex: 0 0 auto;
+}
+
+.notes-backlinks-panel-unresolved-row code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: inherit;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ghost icon button — hidden until row hover / focus-within (workspace icon language) */
+.notes-backlinks-panel-create-button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    opacity var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-unresolved-row:hover .notes-backlinks-panel-create-button,
+.notes-backlinks-panel-unresolved-row:focus-within .notes-backlinks-panel-create-button,
+.notes-backlinks-panel-create-button:focus-visible {
+  opacity: 1;
+}
+
+.notes-backlinks-panel-create-button:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.notes-backlinks-panel-create-button:focus-visible {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* 触屏：hover 不可达，「新建」按钮常显并放大触控目标 */
+@media (pointer: coarse) {
+  .notes-backlinks-panel-create-button {
+    opacity: 1;
+    width: 36px;
+    height: 36px;
+  }
+}
+
+.notes-backlinks-panel-create-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.notes-backlinks-panel-scanned-hint {
+  margin: 6px 4px 0 !important;
+  padding: 4px 6px !important;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--background) / 55%);
+  font-size: 10px !important;
+  line-height: 1.4;
+}
+
+div.notes-backlinks-panel-scanned-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+div.notes-backlinks-panel-scanned-hint > p {
+  margin: 0;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.notes-backlinks-panel-load-more {
+  padding: 2px 7px;
+  flex: 0 0 auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-load-more:hover {
+  background: hsl(var(--accent));
+}
+
+.notes-backlinks-panel-load-more:focus-visible {
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* ===== 未链接提及 ===== */
+
+.notes-backlinks-panel-mention-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-backlinks-panel-mention-main > .notes-backlinks-panel-link {
+  min-width: 0;
+  flex: 1;
+}
+
+.notes-backlinks-panel-mention-row .notes-backlinks-panel-create-button {
+  align-self: center;
+}
+
+.notes-backlinks-panel-mention-row:hover .notes-backlinks-panel-create-button,
+.notes-backlinks-panel-mention-row:focus-within .notes-backlinks-panel-create-button {
+  opacity: 1;
+}
+
+.notes-backlinks-panel-mentions-loading {
+  min-height: 26px;
+  padding: 5px 4px 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+.notes-backlinks-panel-mentions-error {
+  padding: 5px 4px 2px;
+  color: hsl(var(--destructive));
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-backlinks-panel-section-toggle,
+  .notes-backlinks-panel-more-context,
+  .notes-backlinks-panel-unresolved-row,
+  .notes-backlinks-panel-create-button,
+  .notes-backlinks-panel-load-more {
+    transition-duration: 0.01ms;
+  }
+
+  .notes-backlinks-panel-section-body {
+    transition: none;
+  }
+
+  .notes-backlinks-panel-section-collapsed .notes-backlinks-panel-section-body-inner {
+    transition-delay: 0s;
+  }
+
+  .notes-backlinks-panel-context {
+    transition: none;
+  }
+}

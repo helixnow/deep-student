@@ -105,6 +105,15 @@ pub mod block_types {
 
     // 🆕 用户提问块
     pub const ASK_USER: &str = "ask_user";
+
+    // ACR R1-01：工作台操作工具卡（前端 remap workbench_* → 此块类型）
+    pub const WORKBENCH_OPS: &str = "workbench_ops";
+
+    // 🆕 主代理→子代理消息链路（契约 C11/缺口 2）
+    /// 工作区消息注入块（注入内容持久化 + 前端渲染"主代理插话"）
+    pub const WORKSPACE_INJECTION: &str = "workspace_injection";
+    /// workspace_send 工具专属块（历史加载与前端实时块类型对齐）
+    pub const WORKSPACE_SEND: &str = "workspace_send";
 }
 
 /// 块状态字符串常量（与前端 BlockStatus 完全对齐）
@@ -191,11 +200,22 @@ pub struct TokenUsage {
 
     /// 最后一轮请求的上下文窗口使用量（prompt + completion，即该轮在上下文窗口中的总占用）
     ///
+    /// ⚠️ 命名为历史遗留：字段名带 "prompt" 但语义是 **prompt + completion**。
+    /// 前端 contextWindowUsage 与 compaction 阈值均按「上下文窗口占用」消费本字段，
+    /// 不可改变语义；需要纯输入规模时请用 `last_round_input_tokens`。
+    ///
     /// 行业标准：context_window = input_tokens + output_tokens
     /// 参考：Anthropic 文档 "context window refers to all the text a language model can reference
     /// when generating a response, including the response itself"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_round_prompt_tokens: Option<u32>,
+
+    /// 🆕 最后一轮请求的**纯输入** token 数（prompt-only，不含 completion）
+    ///
+    /// 与 `last_round_prompt_tokens` 互补：本字段才是「上一轮实际送入模型的
+    /// 输入规模」。新增字段（只增不删），旧前端可安全忽略。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_round_input_tokens: Option<u32>,
 }
 
 impl TokenUsage {
@@ -209,12 +229,13 @@ impl TokenUsage {
         Self {
             prompt_tokens: prompt,
             completion_tokens: completion,
-            total_tokens: prompt + completion,
+            total_tokens: prompt.saturating_add(completion),
             source: TokenSource::Api,
             reasoning_tokens: reasoning,
             cached_tokens: None,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
-            last_round_prompt_tokens: Some(prompt + completion),
+            last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
+            last_round_input_tokens: Some(prompt),
         }
     }
 
@@ -234,12 +255,13 @@ impl TokenUsage {
         Self {
             prompt_tokens: prompt,
             completion_tokens: completion,
-            total_tokens: prompt + completion,
+            total_tokens: prompt.saturating_add(completion),
             source: TokenSource::Api,
             reasoning_tokens: reasoning,
             cached_tokens: cached,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
-            last_round_prompt_tokens: Some(prompt + completion),
+            last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
+            last_round_input_tokens: Some(prompt),
         }
     }
 
@@ -253,7 +275,7 @@ impl TokenUsage {
         Self {
             prompt_tokens: prompt,
             completion_tokens: completion,
-            total_tokens: prompt + completion,
+            total_tokens: prompt.saturating_add(completion),
             source: if precise {
                 TokenSource::Tiktoken
             } else {
@@ -262,7 +284,8 @@ impl TokenUsage {
             reasoning_tokens: None,
             cached_tokens: None,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
-            last_round_prompt_tokens: Some(prompt + completion),
+            last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
+            last_round_input_tokens: Some(prompt),
         }
     }
 
@@ -274,9 +297,12 @@ impl TokenUsage {
     /// - reasoning_tokens 和 cached_tokens：合并相加
     /// - last_round_prompt_tokens：更新为最新一轮的上下文窗口使用量（prompt + completion）
     pub fn accumulate(&mut self, other: &TokenUsage) {
-        self.prompt_tokens += other.prompt_tokens;
-        self.completion_tokens += other.completion_tokens;
-        self.total_tokens += other.total_tokens;
+        // saturating_add：长 agentic 会话多轮累加不应有 debug 溢出 panic 风险
+        self.prompt_tokens = self.prompt_tokens.saturating_add(other.prompt_tokens);
+        self.completion_tokens = self
+            .completion_tokens
+            .saturating_add(other.completion_tokens);
+        self.total_tokens = self.total_tokens.saturating_add(other.total_tokens);
 
         // 来源混合逻辑
         if self.source != other.source {
@@ -285,23 +311,25 @@ impl TokenUsage {
 
         // 累加 reasoning_tokens
         match (&self.reasoning_tokens, &other.reasoning_tokens) {
-            (Some(a), Some(b)) => self.reasoning_tokens = Some(a + b),
+            (Some(a), Some(b)) => self.reasoning_tokens = Some(a.saturating_add(*b)),
             (None, Some(b)) => self.reasoning_tokens = Some(*b),
             _ => {}
         }
 
         // 累加 cached_tokens
         match (&self.cached_tokens, &other.cached_tokens) {
-            (Some(a), Some(b)) => self.cached_tokens = Some(a + b),
+            (Some(a), Some(b)) => self.cached_tokens = Some(a.saturating_add(*b)),
             (None, Some(b)) => self.cached_tokens = Some(*b),
             _ => {}
         }
 
         // 更新 last_round_prompt_tokens 为最新一轮的上下文窗口使用量（prompt + completion）
         // 行业标准：context_window = input + output
-        let other_context_window = other.prompt_tokens + other.completion_tokens;
+        // 同步更新 last_round_input_tokens 为最新一轮的纯输入规模
+        let other_context_window = other.prompt_tokens.saturating_add(other.completion_tokens);
         if other_context_window > 0 {
             self.last_round_prompt_tokens = Some(other_context_window);
+            self.last_round_input_tokens = Some(other.prompt_tokens);
         }
     }
 
@@ -323,16 +351,12 @@ impl TokenUsage {
 /// 持久化状态（后端存储用，与前端 SessionStatus 分离）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PersistStatus {
+    #[default]
     Active,
     Archived,
     Deleted,
-}
-
-impl Default for PersistStatus {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 /// 会话结构（与前端 Session 接口对齐）
@@ -400,6 +424,257 @@ pub struct SessionTag {
     pub created_at: String,
 }
 
+// ============================================================================
+// Session authority mode (Ask / Plan / Craft) — stored in session.metadata
+// ============================================================================
+
+/// Session-level Ask / Plan / Craft authority mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthorityMode {
+    /// Read-only: Low tools pass; Medium/High writes are hard-blocked.
+    Ask,
+    /// Writes suspend at plan_gate until the user approves a plan batch.
+    Plan,
+    /// Legacy behaviour (default): only tool-level ApprovalManager applies.
+    #[default]
+    Craft,
+}
+
+impl AuthorityMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::Plan => "plan",
+            Self::Craft => "craft",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "ask" => Some(Self::Ask),
+            "plan" => Some(Self::Plan),
+            "craft" => Some(Self::Craft),
+            _ => None,
+        }
+    }
+}
+
+/// Session-only Craft approval behavior preset.
+///
+/// Ask and Plan keep their authority semantics and do not inherit these
+/// bypasses. In Craft mode, both full-access presets select the explicit
+/// unsandboxed local-shell backend. `DangerFullAccess` remains a wire-compatible
+/// alias with stronger UI warnings for existing sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PermissionPreset {
+    /// Prompt for every Medium/High operation and never remember approvals.
+    #[serde(rename = "cautious")]
+    Cautious,
+    /// Low/Medium execute automatically. Base/dynamic High and Unknown prompt.
+    #[default]
+    #[serde(rename = "relaxed")]
+    Relaxed,
+    /// Tool approval bypass plus unrestricted local-shell host access.
+    #[serde(rename = "full_access")]
+    FullAccess,
+    /// Legacy high-warning alias for unrestricted local-shell host access.
+    #[serde(rename = "danger_full_access")]
+    DangerFullAccess,
+}
+
+impl PermissionPreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cautious => "cautious",
+            Self::Relaxed => "relaxed",
+            Self::FullAccess => "full_access",
+            Self::DangerFullAccess => "danger_full_access",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "cautious" => Some(Self::Cautious),
+            "relaxed" => Some(Self::Relaxed),
+            "full_access" => Some(Self::FullAccess),
+            "danger_full_access" => Some(Self::DangerFullAccess),
+            _ => None,
+        }
+    }
+}
+
+/// Plan approval lifecycle status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PlanStatus {
+    #[default]
+    Pending,
+    Approved,
+    Rejected,
+    Expired,
+}
+
+impl PlanStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+            Self::Expired => "expired",
+        }
+    }
+}
+
+/// Plan batch bound to a single user approval (`session.metadata.plan`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanAuthorityState {
+    pub plan_id: String,
+    pub status: PlanStatus,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_until: Option<String>,
+    /// Opaque SHA-256 binding for the approved tool + canonical arguments + round.
+    /// Older persisted plans have no binding and therefore fail closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_key: Option<String>,
+}
+
+impl PlanAuthorityState {
+    pub fn new_pending(summary: impl Into<String>) -> Self {
+        Self {
+            plan_id: format!("plan_{}", uuid::Uuid::new_v4()),
+            status: PlanStatus::Pending,
+            summary: summary.into(),
+            approved_at: None,
+            approved_until: None,
+            binding_key: None,
+        }
+    }
+
+    pub fn bind_to_call(&mut self, binding_key: String) {
+        self.binding_key = Some(binding_key);
+    }
+
+    pub fn is_batch_active(&self, now: DateTime<Utc>) -> bool {
+        if self.status != PlanStatus::Approved {
+            return false;
+        }
+        match self.approved_until.as_deref() {
+            None => true,
+            Some(raw) => match DateTime::parse_from_rfc3339(raw) {
+                Ok(until) => until.with_timezone(&Utc) > now,
+                Err(_) => false,
+            },
+        }
+    }
+
+    pub fn is_active_for_binding(&self, binding_key: &str, now: DateTime<Utc>) -> bool {
+        self.binding_key.as_deref() == Some(binding_key) && self.is_batch_active(now)
+    }
+
+    pub fn mark_approved(&mut self, ttl_secs: i64) {
+        let now = Utc::now();
+        self.status = PlanStatus::Approved;
+        self.approved_at = Some(now.to_rfc3339());
+        self.approved_until = Some((now + chrono::Duration::seconds(ttl_secs)).to_rfc3339());
+    }
+
+    pub fn mark_expired(&mut self) {
+        self.status = PlanStatus::Expired;
+    }
+}
+
+/// Persisted authority state inside `ChatSession.metadata`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAuthorityState {
+    #[serde(default, alias = "authority_mode")]
+    pub authority_mode: AuthorityMode,
+    #[serde(default, alias = "permission_preset")]
+    pub permission_preset: PermissionPreset,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PlanAuthorityState>,
+}
+
+impl SessionAuthorityState {
+    pub fn craft_default() -> Self {
+        Self {
+            authority_mode: AuthorityMode::Craft,
+            permission_preset: PermissionPreset::Relaxed,
+            plan: None,
+        }
+    }
+
+    pub fn from_metadata(metadata: Option<&Value>) -> Self {
+        let Some(meta) = metadata else {
+            return Self::craft_default();
+        };
+
+        let mode = meta
+            .get("authorityMode")
+            .or_else(|| meta.get("authority_mode"))
+            .and_then(|v| v.as_str())
+            .and_then(AuthorityMode::parse)
+            .unwrap_or(AuthorityMode::Craft);
+
+        let plan = meta
+            .get("plan")
+            .cloned()
+            .and_then(|v| serde_json::from_value::<PlanAuthorityState>(v).ok());
+
+        let permission_preset = meta
+            .get("permissionPreset")
+            .or_else(|| meta.get("permission_preset"))
+            .and_then(Value::as_str)
+            .and_then(PermissionPreset::parse)
+            .unwrap_or_default();
+
+        Self {
+            authority_mode: mode,
+            permission_preset,
+            plan,
+        }
+    }
+
+    pub fn apply_to_metadata(&self, metadata: Option<Value>) -> Value {
+        let mut obj = match metadata {
+            Some(Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        obj.insert(
+            "authorityMode".to_string(),
+            Value::String(self.authority_mode.as_str().to_string()),
+        );
+        obj.insert(
+            "authority_mode".to_string(),
+            Value::String(self.authority_mode.as_str().to_string()),
+        );
+        obj.insert(
+            "permissionPreset".to_string(),
+            Value::String(self.permission_preset.as_str().to_string()),
+        );
+        obj.insert(
+            "permission_preset".to_string(),
+            Value::String(self.permission_preset.as_str().to_string()),
+        );
+        match &self.plan {
+            Some(plan) => {
+                if let Ok(plan_value) = serde_json::to_value(plan) {
+                    obj.insert("plan".to_string(), plan_value);
+                }
+            }
+            None => {
+                obj.remove("plan");
+            }
+        }
+        Value::Object(obj)
+    }
+}
+
 /// 内容搜索结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -464,6 +739,12 @@ pub struct SessionGroup {
     pub pinned_resource_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
+    /// 课题默认 runtime root（`workspace` / `authorized_*`）；未绑定为 None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_runtime_root_id: Option<String>,
+    /// 本机展示用绝对路径缓存（local-derived，不同步）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_project_root_path: Option<String>,
     pub sort_order: i32,
     pub persist_status: PersistStatus,
     pub created_at: DateTime<Utc>,
@@ -488,6 +769,9 @@ pub struct CreateGroupRequest {
     pub default_skill_ids: Option<Vec<String>>,
     pub pinned_resource_ids: Option<Vec<String>>,
     pub workspace_id: Option<String>,
+    pub default_runtime_root_id: Option<String>,
+    /// 仅本机展示；绑定时由后端从 root path 写入，客户端可不传
+    pub preferred_project_root_path: Option<String>,
 }
 
 /// 更新分组请求
@@ -502,6 +786,9 @@ pub struct UpdateGroupRequest {
     pub default_skill_ids: Option<Vec<String>>,
     pub pinned_resource_ids: Option<Vec<String>>,
     pub workspace_id: Option<String>,
+    pub default_runtime_root_id: Option<String>,
+    /// 仅本机展示；绑定时由后端从 root path 写入，空字符串清除
+    pub preferred_project_root_path: Option<String>,
     pub sort_order: Option<i32>,
     pub persist_status: Option<PersistStatus>,
 }
@@ -710,10 +997,6 @@ pub struct SkillStateSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub branch_local_skill_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_internal_tools: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_external_tools: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effective_allowed_external_servers: Vec<String>,
     #[serde(default)]
     pub version: u64,
@@ -724,6 +1007,8 @@ pub struct SkillStateSnapshot {
 pub struct ReplaySkillPayloadSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub active_skill_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_allowed_tools: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_contents: std::collections::HashMap<String, String>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
@@ -747,6 +1032,7 @@ impl ReplaySkillPayloadSnapshot {
 
     pub fn has_replay_metadata(&self) -> bool {
         !self.active_skill_ids.is_empty()
+            || self.execution_allowed_tools.is_some()
             || !self.skill_dependencies.is_empty()
             || !self.skill_embedded_tools.is_empty()
             || !self.mcp_tool_schemas.is_empty()
@@ -765,10 +1051,6 @@ pub struct SessionSkillState {
     pub agentic_session_skill_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub branch_local_skill_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_internal_tools: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_external_tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effective_allowed_external_servers: Vec<String>,
     #[serde(default)]
@@ -819,8 +1101,6 @@ impl SessionSkillState {
             mode_required_bundle_ids: self.mode_required_bundle_ids.clone(),
             agentic_session_skill_ids: self.agentic_session_skill_ids.clone(),
             branch_local_skill_ids: self.branch_local_skill_ids.clone(),
-            effective_allowed_internal_tools: self.effective_allowed_internal_tools.clone(),
-            effective_allowed_external_tools: self.effective_allowed_external_tools.clone(),
             effective_allowed_external_servers: self.effective_allowed_external_servers.clone(),
             version: self.version,
         }
@@ -868,6 +1148,16 @@ impl SessionSkillState {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VariantMeta {
+    /// Per-variant model/capability snapshot captured before fan-out.
+    ///
+    /// This is deliberately variant-scoped: parallel variants may target models with
+    /// different image capabilities and must never share a compiled context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_snapshot: Option<ModelExecutionSnapshot>,
+    /// Variant-specific derived visual observations. Original ImageRef parts remain on the user
+    /// message; the active variant's artifacts may be promoted there for later TM reuse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_artifacts: Option<Vec<CanonicalContentPart>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_snapshot_before: Option<SkillStateSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -876,6 +1166,93 @@ pub struct VariantMeta {
     pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
+}
+
+/// Canonical, persistence-safe message content.
+///
+/// Binary image bytes are intentionally absent. Images retain stable VFS/blob references and
+/// are resolved to request-local base64 only by the context compiler.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CanonicalContentPart {
+    Text {
+        text: String,
+    },
+    ImageRef {
+        image_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        blob_hash: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content_hash: Option<String>,
+        mime_type: String,
+        #[serde(default)]
+        pinned: bool,
+        #[serde(default)]
+        retrieval_hit: bool,
+    },
+    FileRef {
+        file_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        blob_hash: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content_hash: Option<String>,
+        mime_type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    CitationRef {
+        citation_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+    },
+    DerivedArtifactRef {
+        artifact_id: String,
+        artifact_type: String,
+        source_image_ids: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        producer_model_id: Option<String>,
+        content: String,
+        created_at: i64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatGenerationPlan {
+    /// Shared VFS capability planner decision. This is the authoritative route semantics used
+    /// by both retrieval and chat generation.
+    pub planner: crate::vfs::retrieval_planner::GenerationPlan,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auxiliary_multimodal_config_id: Option<String>,
+    pub image_budget: usize,
+    pub history_image_budget: usize,
+}
+
+/// Immutable model resolution and routing facts for one assistant generation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelExecutionSnapshot {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_model_id: Option<String>,
+    pub resolved_model_id: String,
+    pub resolved_model_name: String,
+    pub resolved_model_is_multimodal: bool,
+    pub capability_snapshot: crate::vfs::retrieval_planner::CapabilitySnapshot,
+    pub generation_plan: ChatGenerationPlan,
+    /// Actual compiler route after auxiliary-MM/OCR fallbacks have completed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_route: Option<crate::vfs::retrieval_planner::GenerationRoute>,
+    pub frozen_at: i64,
 }
 
 impl VariantMeta {
@@ -958,20 +1335,17 @@ impl SharedContext {
 
     /// 检查是否有任何检索结果
     pub fn has_sources(&self) -> bool {
-        self.rag_sources.as_ref().map_or(false, |v| !v.is_empty())
-            || self
-                .memory_sources
-                .as_ref()
-                .map_or(false, |v| !v.is_empty())
-            || self.graph_sources.as_ref().map_or(false, |v| !v.is_empty())
+        self.rag_sources.as_ref().is_some_and(|v| !v.is_empty())
+            || self.memory_sources.as_ref().is_some_and(|v| !v.is_empty())
+            || self.graph_sources.as_ref().is_some_and(|v| !v.is_empty())
             || self
                 .web_search_sources
                 .as_ref()
-                .map_or(false, |v| !v.is_empty())
+                .is_some_and(|v| !v.is_empty())
             || self
                 .multimodal_sources
                 .as_ref()
-                .map_or(false, |v| !v.is_empty())
+                .is_some_and(|v| !v.is_empty())
     }
 }
 
@@ -1097,7 +1471,7 @@ impl ChatMessage {
     ///
     /// 注意：此判断逻辑需与前端 isMultiVariantMessage() 保持一致
     pub fn is_multi_variant(&self) -> bool {
-        self.variants.as_ref().map_or(false, |v| v.len() > 1)
+        self.variants.as_ref().is_some_and(|v| v.len() > 1)
     }
 
     /// 获取当前应该显示的 block_ids（displayBlockIds 的后端权威实现）
@@ -1223,10 +1597,20 @@ impl ChatMessage {
 /// 消息元数据（与前端 MessageMeta 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MessageMeta {
     /// 生成此消息使用的模型 ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
+
+    /// Immutable model/capability/route snapshot captured before this generation started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_snapshot: Option<ModelExecutionSnapshot>,
+
+    /// Canonical typed content. Images/files are stable references rather than persisted base64.
+    /// Older messages omit this field and continue to use attachments/context_snapshot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_content: Option<Vec<CanonicalContentPart>>,
 
     /// 生成此消息使用的对话参数快照
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1274,25 +1658,6 @@ pub struct MessageMeta {
     pub replay_source: Option<String>,
 }
 
-impl Default for MessageMeta {
-    fn default() -> Self {
-        Self {
-            model_id: None,
-            chat_params: None,
-            sources: None,
-            tool_results: None,
-            anki_cards: None,
-            usage: None,
-            context_snapshot: None,
-            skill_snapshot_before: None,
-            skill_snapshot_after: None,
-            skill_runtime_before: None,
-            skill_runtime_after: None,
-            replay_source: None,
-        }
-    }
-}
-
 impl MessageMeta {
     pub fn without_skill_runtime_contents(&self) -> Self {
         let mut next = self.clone();
@@ -1316,6 +1681,7 @@ pub enum ReplayMode {
 /// 消息来源（与前端 MessageSources 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MessageSources {
     /// 文档 RAG 来源
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1336,18 +1702,6 @@ pub struct MessageSources {
     /// 多模态知识库来源
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multimodal: Option<Vec<SourceInfo>>,
-}
-
-impl Default for MessageSources {
-    fn default() -> Self {
-        Self {
-            rag: None,
-            memory: None,
-            graph: None,
-            web_search: None,
-            multimodal: None,
-        }
-    }
 }
 
 /// 工具调用请求（LLM 返回的工具调用）
@@ -1461,6 +1815,33 @@ impl ToolResultInfo {
             error: Some(error),
             duration_ms: Some(duration_ms),
             reasoning_content: None, // 稍后通过 with_reasoning 设置
+            thought_signature: None,
+        }
+    }
+
+    /// Create a failed tool result while preserving structured diagnostics.
+    ///
+    /// Use this when a tool has a machine-readable error payload that the UI
+    /// and model still need (for example partial/rejected batch results).
+    pub fn failure_with_output(
+        tool_call_id: Option<String>,
+        block_id: Option<String>,
+        tool_name: String,
+        input: Value,
+        output: Value,
+        error: String,
+        duration_ms: u64,
+    ) -> Self {
+        Self {
+            tool_call_id,
+            block_id,
+            tool_name,
+            input,
+            output,
+            success: false,
+            error: Some(error),
+            duration_ms: Some(duration_ms),
+            reasoning_content: None,
             thought_signature: None,
         }
     }
@@ -1858,6 +2239,11 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
 
+    /// Backend-only exact-model contract. When true, capability planning must
+    /// not replace `model_id` with another configuration.
+    #[serde(skip)]
+    pub strict_model_id: bool,
+
     /// 温度
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
@@ -1901,6 +2287,11 @@ pub struct SendOptions {
     /// 当前技能状态版本（用于事件去重/丢弃过期事件）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_state_version: Option<u64>,
+
+    /// Backend-owned stream registration generation. Never accepted from or returned to the
+    /// frontend as part of SendOptions; it is copied into session lifecycle events instead.
+    #[serde(skip)]
+    pub stream_generation: Option<u64>,
 
     /// 禁用工具调用
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2067,10 +2458,16 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_type_hints: Option<Vec<String>>,
 
-    // ========== 🆕 P1-C: Skill 工具权限约束 ==========
+    // ========== Skill 运行时上下文 ==========
     /// 当前会话激活的 Skill IDs
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_skill_ids: Option<Vec<String>>,
+
+    /// 无人值守或受限 worker 运行时的后端执行边界。
+    /// 普通技能永远不设置此字段；它不是 Skill `allowed-tools` 策略。
+    /// 该字段不接受前端输入，只由后端 headless/worker 入口构造。
+    #[serde(skip)]
+    pub execution_allowed_tools: Option<Vec<String>>,
 
     // ========== 🆕 渐进披露 Skills 内容 ==========
     /// 技能内容映射（skillId -> content）
@@ -2095,6 +2492,18 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_embedded_tools: Option<std::collections::HashMap<String, Vec<McpToolSchema>>>,
 
+    /// Frontend runtime-admission failures (skillId -> non-sensitive reason).
+    /// Rejected skills have no entry in skill_contents/skill_embedded_tools.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_admission_errors: Option<std::collections::HashMap<String, String>>,
+
+    /// 技能包根目录映射（skillId -> package root）
+    ///
+    /// 仅作为本地 runtime 解析 `skill:<skillId>` 只读 root 的候选；
+    /// 后端执行前仍会重新验证路径位于允许的 skills 目录且包含 SKILL.md。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_package_roots: Option<std::collections::HashMap<String, String>>,
+
     // ========== 🆕 消息内继续执行支持 ==========
     /// 标记这是继续执行（而非新消息）
     /// 当为 true 时，Pipeline 会恢复已有的 TODO 列表状态，继续在同一消息内执行
@@ -2107,10 +2516,6 @@ pub struct SendOptions {
     pub continue_variant_id: Option<String>,
 
     // ========== 🆕 图片压缩策略 ==========
-    /// 🆕 关闭工具白名单检查（允许所有工具绕过技能白名单限制）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disable_tool_whitelist: Option<bool>,
-
     /// 视觉质量策略（用于多模态图片压缩）
     ///
     /// - `low`: 最大 768px，JPEG 60%，适用于大量图片/PDF 概览
@@ -2140,6 +2545,40 @@ pub struct LoadSessionResponse {
     /// 会话状态（可选）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<SessionState>,
+
+    /// 会话的消息总数（尾部分块加载时用于判断是否还有更早的历史）
+    /// None 表示 messages 已是全量
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub total_message_count: Option<u32>,
+}
+
+/// 消息分页加载响应（`chat_v2_load_messages_page`）
+///
+/// 与 `LoadSessionResponse` 中 messages/blocks 的序列化结构完全一致，
+/// 供前端在尾部首屏之后按窗口渐进补齐历史，避免一次性全量拉取。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadMessagesPageResponse {
+    /// 本页消息（时间正序）
+    pub messages: Vec<ChatMessage>,
+
+    /// 本页消息关联的所有块
+    pub blocks: Vec<MessageBlock>,
+
+    /// 会话消息总数（用于计算是否还有下一页）
+    pub total_message_count: u32,
+
+    /// 本页起始偏移（按时间正序的行偏移）
+    pub offset: u32,
+
+    /// 请求的页大小（服务端 clamp 后的实际值）
+    pub limit: u32,
+
+    /// 🆕 下一页起始偏移（可选 cursor 信息，向后兼容的附加字段）。
+    /// `None` 表示没有更多历史页。旧前端可继续用 offset/limit 自行推算，
+    /// 新前端可直接以此为游标翻页。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<u32>,
 }
 
 /// 会话设置（用于更新会话）
@@ -2372,10 +2811,6 @@ pub struct ChatParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multimodal_library_ids: Option<Vec<String>>,
 
-    /// 关闭工具白名单检查
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disable_tool_whitelist: Option<bool>,
-
     /// 图片压缩策略（low/medium/high/auto）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_quality: Option<String>,
@@ -2412,7 +2847,6 @@ impl Default for ChatParams {
             multimodal_top_k: None,
             multimodal_enable_reranking: None,
             multimodal_library_ids: None,
-            disable_tool_whitelist: None,
             vision_quality: None,
         }
     }
@@ -2477,7 +2911,7 @@ impl Default for PanelStates {
 /// ## 视图语义
 /// - `tail_start_time_created` 及之后的消息：逐字保留
 /// - 之前的消息：在 LLM 视图中**隐藏**，仅用户点击"展开原文"时可见
-/// - 在 tail 起点前插入一条 system 伪消息承载 summary 文本
+/// - 在 tail 起点前插入一条 user 伪消息承载 summary 文本
 ///
 /// ## 签名保真
 /// tail_start 必须对齐 turn 边界（某个 user turn 的起点），且不能切穿
@@ -2494,14 +2928,24 @@ pub struct CompactionRecord {
     pub tail_start_message_id: String,
     /// 首条逐字保留消息的创建时间（ms epoch），用于 SQL 层过滤
     pub tail_start_time_created: i64,
-    /// 'auto' | 'manual' | 'overflow'
+    /// 'auto' | 'manual' | 'overflow' | 'branch'
     pub reason: String,
     pub is_auto: bool,
     pub is_overflow: bool,
     pub tokens_before: Option<u32>,
     pub tokens_after: Option<u32>,
-    /// 触发压缩的对话主模型 ID（审计用）
+    /// 实际生成摘要的模型名称
     pub model_id: Option<String>,
+    /// 发起请求时使用的模型配置 ID
+    pub model_config_id: Option<String>,
+    /// 上一个活跃压缩记录
+    pub previous_compaction_id: Option<String>,
+    /// 本次新纳入摘要的首条消息
+    pub range_start_message_id: Option<String>,
+    /// 本次摘要区间的右开边界（通常为 tail_start）
+    pub range_end_message_id: Option<String>,
+    /// 本次新纳入摘要的原始消息数量
+    pub compacted_message_count: Option<u32>,
     /// 创建时间戳（ms epoch）
     pub created_at: i64,
 }
@@ -2620,6 +3064,7 @@ mod tests {
                 skill_runtime_before: None,
                 skill_runtime_after: None,
                 replay_source: None,
+                ..Default::default()
             }),
             attachments: None,
             active_variant_id: None,
@@ -2722,6 +3167,26 @@ mod tests {
         assert!(
             !json.contains("\"ankiEnabled\""),
             "None fields should not be serialized, got: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_send_options_execution_allowed_tools_is_backend_only() {
+        let options: SendOptions = serde_json::from_value(json!({
+            "activeSkillIds": ["skill-a"],
+            "executionAllowedTools": ["builtin-web_search"],
+            "skillAllowedTools": ["builtin-memory_delete"]
+        }))
+        .unwrap();
+
+        assert_eq!(options.active_skill_ids, Some(vec!["skill-a".to_string()]));
+        assert!(options.execution_allowed_tools.is_none());
+
+        let json = serde_json::to_string(&options).unwrap();
+        assert!(
+            !json.contains("executionAllowedTools") && !json.contains("skillAllowedTools"),
+            "Backend-only execution policy must not cross the frontend request boundary: {}",
             json
         );
     }
@@ -2882,6 +3347,7 @@ mod tests {
             messages: vec![message],
             blocks: vec![block],
             state: None,
+            total_message_count: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -3324,6 +3790,7 @@ mod tests {
             reasoning_tokens: Some(200),
             cached_tokens: None,
             last_round_prompt_tokens: None,
+            last_round_input_tokens: None,
         };
 
         let json = serde_json::to_string(&usage).unwrap();
@@ -3621,6 +4088,7 @@ mod tests {
     fn test_replay_skill_payload_snapshot_without_skill_contents_keeps_light_metadata() {
         let snapshot = ReplaySkillPayloadSnapshot {
             active_skill_ids: vec!["manual-a".to_string()],
+            execution_allowed_tools: Some(vec!["builtin-web_search".to_string()]),
             skill_contents: std::collections::HashMap::from([(
                 "manual-a".to_string(),
                 "private instructions".to_string(),
@@ -3636,6 +4104,10 @@ mod tests {
         assert!(redacted.skill_contents.is_empty());
         assert_eq!(redacted.active_skill_ids, vec!["manual-a".to_string()]);
         assert_eq!(
+            redacted.execution_allowed_tools,
+            Some(vec!["builtin-web_search".to_string()])
+        );
+        assert_eq!(
             redacted
                 .skill_dependencies
                 .get("manual-a")
@@ -3644,6 +4116,38 @@ mod tests {
             vec!["dep-a".to_string()]
         );
         assert!(redacted.has_replay_metadata());
+    }
+
+    #[test]
+    fn test_replay_skill_payload_snapshot_preserves_explicit_empty_policy() {
+        let runtime = ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["instruction-only".to_string()],
+            execution_allowed_tools: Some(Vec::new()),
+            ..Default::default()
+        };
+
+        assert!(runtime.has_replay_metadata());
+        let json = serde_json::to_string(&runtime).unwrap();
+        assert!(
+            json.contains("\"executionAllowedTools\":[]"),
+            "Expected explicit empty executionAllowedTools to be serialized, got: {}",
+            json
+        );
+
+        let decoded: ReplaySkillPayloadSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.execution_allowed_tools, Some(Vec::new()));
+    }
+
+    #[test]
+    fn test_replay_skill_payload_snapshot_drops_legacy_skill_allowlist() {
+        let decoded: ReplaySkillPayloadSnapshot = serde_json::from_value(json!({
+            "activeSkillIds": ["legacy-skill"],
+            "skillAllowedTools": ["builtin-web_search"]
+        }))
+        .unwrap();
+
+        assert_eq!(decoded.active_skill_ids, vec!["legacy-skill".to_string()]);
+        assert!(decoded.execution_allowed_tools.is_none());
     }
 
     #[test]
@@ -3678,5 +4182,47 @@ mod tests {
             .unwrap()
             .skill_contents
             .is_empty());
+    }
+
+    #[test]
+    fn canonical_multiple_images_preserve_distinct_identity_and_names() {
+        let parts = vec![
+            CanonicalContentPart::ImageRef {
+                image_id: "container:file-a".to_string(),
+                name: Some("front.png".to_string()),
+                resource_id: Some("container".to_string()),
+                source_id: Some("file-a".to_string()),
+                blob_hash: Some("blob-a".to_string()),
+                content_hash: Some("hash-a".to_string()),
+                mime_type: "image/png".to_string(),
+                pinned: false,
+                retrieval_hit: false,
+            },
+            CanonicalContentPart::ImageRef {
+                image_id: "container:file-b".to_string(),
+                name: Some("back.jpg".to_string()),
+                resource_id: Some("container".to_string()),
+                source_id: Some("file-b".to_string()),
+                blob_hash: Some("blob-b".to_string()),
+                content_hash: Some("hash-b".to_string()),
+                mime_type: "image/jpeg".to_string(),
+                pinned: false,
+                retrieval_hit: false,
+            },
+        ];
+
+        let encoded = serde_json::to_value(&parts).unwrap();
+        let decoded: Vec<CanonicalContentPart> = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, parts);
+        assert!(matches!(
+            &decoded[0],
+            CanonicalContentPart::ImageRef { name: Some(name), source_id: Some(source), .. }
+                if name == "front.png" && source == "file-a"
+        ));
+        assert!(matches!(
+            &decoded[1],
+            CanonicalContentPart::ImageRef { name: Some(name), source_id: Some(source), .. }
+                if name == "back.jpg" && source == "file-b"
+        ));
     }
 }

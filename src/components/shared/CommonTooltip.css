@@ -1,16 +1,47 @@
+:root {
+  /* Tooltip motion tokens. The intent delay is controlled by the React prop. */
+  --tt-in-dur: 150ms;
+  --tt-out-dur: 50ms;
+  --tt-scale: 0.98;
+  --tt-delay: 0ms;
+  --tt-in-ease: ease-out;
+  --tt-out-ease: ease-out;
+}
+
 /* 通用Tooltip样式 */
 .common-tooltip {
   pointer-events: none;
   user-select: none;
-  animation: tooltip-fade-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0;
+  transform: scale(var(--tt-scale));
   transform-origin: center;
+  transition:
+    opacity var(--tt-out-dur) var(--tt-out-ease),
+    transform var(--tt-out-dur) var(--tt-out-ease);
 }
 
-/* 淡入动画 */
-@keyframes tooltip-fade-in {
+/* 根据气泡位置从触发器一侧展开。 */
+.common-tooltip--top {
+  transform-origin: 50% 100%;
+}
+
+.common-tooltip--bottom {
+  transform-origin: 50% 0%;
+}
+
+.common-tooltip--left {
+  transform-origin: 100% 50%;
+}
+
+.common-tooltip--right {
+  transform-origin: 0% 50%;
+}
+
+/* 淡入动画；离场由基础规则负责，避免离开时再次等待 delay。 */
+@keyframes common-tooltip-fade-in {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(var(--tt-scale));
   }
   to {
     opacity: 1;
@@ -18,9 +49,15 @@
   }
 }
 
+.common-tooltip--visible {
+  opacity: 1;
+  transform: scale(1);
+  animation: common-tooltip-fade-in var(--tt-in-dur) var(--tt-in-ease) both;
+  animation-delay: var(--tt-delay);
+}
+
 /* Tooltip内容 */
 .common-tooltip__content {
-  padding: 8px 12px;
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.5;
@@ -32,6 +69,10 @@
     0 2px 4px hsl(var(--shadow-base) / 0.04);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.common-tooltip__viewport {
+  padding: 8px 12px;
 }
 
 /* 深色主题（默认） */
@@ -159,7 +200,7 @@
     max-width: calc(100vw - 32px) !important;
   }
   
-  .common-tooltip__content {
+  .common-tooltip__viewport {
     font-size: 11px;
     padding: 5px 8px;
   }
@@ -203,26 +244,12 @@
 
 /* 长文本处理 */
 .common-tooltip__content {
-  max-height: min(400px, 80vh);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--foreground) / 0.3) transparent;
+  max-height: min(400px, calc(100dvh - 16px));
 }
 
-.common-tooltip__content::-webkit-scrollbar {
-  width: 4px;
+@media (prefers-reduced-motion: reduce) {
+  .common-tooltip {
+    animation: none;
+    transition: none;
+  }
 }
-
-.common-tooltip__content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.common-tooltip__content::-webkit-scrollbar-thumb {
-  background: hsl(var(--foreground) / 0.3);
-  border-radius: 2px;
-}
-
-.common-tooltip__content::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--foreground) / 0.5);
-}
-

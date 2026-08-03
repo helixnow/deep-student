@@ -183,6 +183,7 @@
     "empty": "No available models detected. Enable at least one text model under Settings → Model Setup.",
     "no_match": "No models matched your keywords.",
     "no_matches": "No matching models",
+    "select": "Select model",
     "missing_default_hint": "No default chat model configured. Go to Settings to choose one.",
     "go_config_model2": "Go to Settings",
     "set_as_default": "Set as Default Model",
@@ -193,6 +194,16 @@
       "system_default": "System Default",
       "system_default_tooltip": "This model is set as the system default chat model"
     }
+  },
+  "attachmentValidation": {
+    "success_added": "Added {{count}} attachments",
+    "rejected_count": "{{count}} attachments rejected:",
+    "more_rejected": "{{count}} more files rejected",
+    "limits_title": "Attachment limits:",
+    "images_limit": "Images: {{limit}}",
+    "documents_limit": "Documents: {{limit}}",
+    "total_limit": "Total: {{limit}}",
+    "close_notice": "Close notice"
   },
   "graph_status": {
     "started": "Graph retrieval in progress…",

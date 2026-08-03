@@ -29,19 +29,61 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).not.toContain('onClick={onToggleThinking}');
   });
 
-  it('orders reasoning depth choices before the off action', () => {
-    const menuGroupStart = inputBarSource.indexOf("label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}");
-    const menuGroupEnd = inputBarSource.indexOf('</AppMenuGroup>', menuGroupStart);
+  it('renders reasoning depth as a slider with an off stop when thinking can be disabled', () => {
+    const menuGroupStart = inputBarSource.indexOf(') : hasThinkingDepthMenu ? (');
+    const menuGroupEnd = inputBarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
     const menuGroup = inputBarSource.slice(menuGroupStart, menuGroupEnd);
 
     expect(menuGroupStart).toBeGreaterThan(-1);
     expect(menuGroupEnd).toBeGreaterThan(menuGroupStart);
-    expect(menuGroup.indexOf('thinkingDepthOptions.map')).toBeLessThan(
-      menuGroup.indexOf("<AppMenuSeparator />")
-    );
-    expect(menuGroup.indexOf("<AppMenuSeparator />")).toBeLessThan(
-      menuGroup.indexOf("t('chatV2:inputBar.thinkingOff', '关闭')")
-    );
+    expect(menuGroup).toContain('<ThinkingDepthSlider');
+    expect(menuGroup).toContain('options={thinkingDepthOptions}');
+    expect(menuGroup).toContain('value={thinkingDepthValue}');
+    expect(menuGroup).toContain('enabled={!!enableThinking}');
+    expect(menuGroup).toContain("offLabel={t('chatV2:inputBar.thinkingOff')}");
+    expect(menuGroup).toContain("efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient')}");
+    expect(menuGroup).toContain("smartLabel={t('chatV2:inputBar.thinkingDepthSmart')}");
+  });
+
+  it('keeps a menu-item fallback without an off action for forced-thinking models', () => {
+    const menuGroupStart = inputBarSource.indexOf(') : hasThinkingDepthMenu ? (');
+    const menuGroupEnd = inputBarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
+    const menuGroup = inputBarSource.slice(menuGroupStart, menuGroupEnd);
+
+    expect(menuGroup).toContain('thinkingCanDisable ? (');
+    // 滑块必带"关闭"档；不可关闭推理的模型退回菜单列表且不渲染关闭项
+    const fallbackStart = menuGroup.indexOf('thinkingDepthOptions.map');
+    expect(fallbackStart).toBeGreaterThan(-1);
+    const fallback = menuGroup.slice(fallbackStart);
+    expect(fallback).not.toContain('<AppMenuSeparator />');
+    expect(fallback).not.toContain("t('chatV2:inputBar.thinkingOff')");
+  });
+
+  it('anchors the reasoning menu to the stable right edge while depth labels change', () => {
+    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const contentStart = inputBarSource.indexOf('<AppMenuContent', triggerStart);
+    const contentEnd = inputBarSource.indexOf('>', contentStart);
+    const menuContent = inputBarSource.slice(contentStart, contentEnd);
+
+    expect(triggerStart).toBeGreaterThan(-1);
+    expect(contentStart).toBeGreaterThan(triggerStart);
+    expect(menuContent).toContain('align="end"');
+  });
+
+  it('uses the transitions-dev text state swap for changes in the trigger label', () => {
+    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const triggerEnd = inputBarSource.indexOf('</button>', triggerStart);
+    const triggerSource = inputBarSource.slice(triggerStart, triggerEnd);
+
+    expect(triggerStart).toBeGreaterThan(-1);
+    expect(triggerEnd).toBeGreaterThan(triggerStart);
+    expect(inputBarSource).toContain("import { TextSwap } from '@/components/ui/TextSwap';");
+    expect(inputBarSource).toContain('function ResizingThinkingLabel');
+    expect(triggerSource).toContain('<ResizingThinkingLabel');
+    expect(triggerSource).toContain('text={thinkingRuntimeTriggerLabel}');
+    expect(inputBarSource).toContain("className=\"t-resize inline-block whitespace-nowrap\"");
+    expect(inputBarSource).toContain('style={labelWidth ? { width: labelWidth } : undefined}');
+    expect(triggerSource).not.toContain('max-w-[5.75rem]');
   });
 
   it('adds the runtime model selector to the thinking runtime menu', () => {
@@ -51,7 +93,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
 
     expect(menuBranchStart).toBeGreaterThan(-1);
     expect(menuBranchEnd).toBeGreaterThan(menuBranchStart);
-    expect(inputBarSource).toContain("t('chatV2:inputBar.runtimeModelTitle', '模型')");
+    expect(inputBarSource).toContain("t('chatV2:inputBar.runtimeModelTitle')");
     expect(inputBarSource).toContain('onOpenRuntimeModelPanel');
     expect(menuBranch).toContain('<AppMenuGroup label={runtimeModelTitle}>');
     expect(menuBranch).toContain('runtimeModelOptions.length > 0 ? (');
@@ -62,7 +104,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).toContain('groupedRuntimeModelOptions.map');
     expect(menuBranch).toContain("handleOpenRuntimeModelPanel('compare')");
     expect(menuBranch).toContain('<AppMenuItem');
-    expect(inputBarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel', '选择模型')");
+    expect(inputBarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel')");
     expect(menuBranch).toContain('onSelectRuntimeModel?.(model.id)');
     expect(menuBranch).toContain('runtimeCurrentModelId');
   });
@@ -77,11 +119,11 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(leftStart).toBeGreaterThan(-1);
     expect(rightStart).toBeGreaterThan(leftStart);
     expect(panelStart).toBeGreaterThan(rightStart);
-    expect(leftToolbar).toContain('data-testid="btn-toggle-attachments"');
+    expect(leftToolbar).toContain('<ComposerPlusMenu');
     expect(leftToolbar).not.toContain('data-testid="btn-toggle-model"');
     expect(leftToolbar).not.toContain('data-testid="thinking-runtime-control"');
     expect(rightToolbar).toContain('data-testid="thinking-runtime-control"');
-    expect(rightToolbar).not.toContain('data-testid="btn-toggle-attachments"');
+    expect(rightToolbar).not.toContain('<ComposerPlusMenu');
     expect(rightToolbar.indexOf('data-testid="thinking-runtime-control"')).toBeLessThan(
       rightToolbar.indexOf('data-testid="btn-send"')
     );
@@ -123,18 +165,22 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringSource).toContain('width: `${usage.usedPercent}%`');
   });
 
-  it('keeps the context window usage meter monochrome and minimal', () => {
+  it('uses tiered context usage colors at high-water thresholds', () => {
     const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
     const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
     const ringSource = inputBarSource.slice(ringStart, ringEnd);
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
-    expect(ringSource).toContain("const contextUsageColor = 'var(--text-primary)'");
+    expect(ringSource).toContain('const contextUsageColor =');
+    expect(ringSource).toContain("usage.usedPercent >= 90");
+    expect(ringSource).toContain("usage.usedPercent >= 75");
+    expect(ringSource).toContain("'hsl(var(--danger))'");
+    expect(ringSource).toContain("'hsl(var(--warning))'");
+    expect(ringSource).toContain("'var(--text-primary)'");
     expect(ringSource).toContain('background: contextUsageColor');
+    expect(ringSource).toContain('stroke={contextUsageColor}');
     expect(ringSource).not.toContain('getContextUsageTone');
-    expect(ringSource).not.toContain('hsl(var(--warning))');
-    expect(ringSource).not.toContain('hsl(var(--destructive))');
   });
 
   it('keeps tooltip support without adding a hover state to the ring control', () => {
@@ -180,13 +226,17 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('uses a plus icon for the attachment toggle button', () => {
-    const buttonStart = inputBarSource.indexOf('data-testid="btn-toggle-attachments"');
-    const buttonEnd = inputBarSource.indexOf('</NotionButton>', buttonStart);
-    const attachmentButton = inputBarSource.slice(buttonStart, buttonEnd);
+    const plusMenuSource = readFileSync(
+      resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPlusMenu.tsx'),
+      'utf-8'
+    );
+    const buttonStart = plusMenuSource.indexOf('data-testid="btn-toggle-attachments"');
+    const buttonEnd = plusMenuSource.indexOf('</DsButton>', buttonStart);
+    const attachmentButton = plusMenuSource.slice(buttonStart, buttonEnd);
 
     expect(buttonStart).toBeGreaterThan(-1);
     expect(buttonEnd).toBeGreaterThan(buttonStart);
-    expect(attachmentButton).toContain('<Plus size={18} weight="bold" />');
+    expect(attachmentButton).toContain('<Plus size={18} weight="bold"');
     expect(attachmentButton).not.toContain('<Paperclip size={18} />');
     expect(attachmentButton).not.toContain('attachmentBadgeLabel');
     expect(attachmentButton).not.toContain('rounded-full border bg-primary');

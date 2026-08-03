@@ -19,11 +19,23 @@ function buildMetadata(
 ): Record<string, unknown> | null {
   if (!groupId) return metadata ?? null;
   const group = groupCache.get(groupId);
-  if (!group?.systemPrompt) return metadata ?? null;
+  if (!group) return metadata ?? null;
+
+  const needsSystemPrompt =
+    Boolean(group.systemPrompt) && !metadata?.groupSystemPromptSnapshot;
+  const needsRuntimeRoot =
+    Boolean(group.defaultRuntimeRootId) && !metadata?.groupDefaultRuntimeRootIdSnapshot;
+
+  if (!needsSystemPrompt && !needsRuntimeRoot) {
+    return metadata ?? null;
+  }
 
   const base = metadata ? { ...metadata } : {};
-  if (!base.groupSystemPromptSnapshot) {
+  if (needsSystemPrompt) {
     base.groupSystemPromptSnapshot = group.systemPrompt;
+  }
+  if (needsRuntimeRoot) {
+    base.groupDefaultRuntimeRootIdSnapshot = group.defaultRuntimeRootId;
   }
   return base;
 }
@@ -76,7 +88,6 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
       showGlobalNotification(
         'warning',
         i18n.t('skills:errors.defaultActivationFailed', {
-          defaultValue: '以下默认技能无法激活: {{skills}}，请前往技能管理页面检查',
           skills: failedSkills.join(', '),
         })
       );

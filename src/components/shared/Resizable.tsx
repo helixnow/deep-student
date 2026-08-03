@@ -25,38 +25,57 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dragging || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const r = x / rect.width;
+    if (!dragging) return;
+    // WebView2 高刷鼠标（125Hz+）下 per-event getBoundingClientRect + setState 会逐帧触发 layout，
+    // 这里 mousemove 只缓存最新坐标，rAF 每帧消费一次；
+    // 拖拽期间只有子项宽度变化、容器 rect 不变，入场缓存一次即可
+    const rect = containerRef.current?.getBoundingClientRect() ?? null;
+    let rafId = 0;
+    let pendingX: number | null = null;
+
+    const applyPending = () => {
+      rafId = 0;
+      if (pendingX === null || !rect) return;
+      const r = (pendingX - rect.left) / rect.width;
+      pendingX = null;
       setRatio(Math.min(1 - minRight, Math.max(minLeft, r)));
+    };
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      pendingX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      if (rafId === 0) rafId = requestAnimationFrame(applyPending);
       e.preventDefault();
     };
     const onUp = () => setDragging(false);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
     return () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      pendingX = null;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
     };
   }, [dragging, minLeft, minRight]);
 
   return (
-    <div ref={containerRef} className={`w-full h-full flex select-none ${className || ''}`}>
-      <div style={{ width: `calc(${ratio * 100}% - 3px)` }} className="shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+    <div ref={containerRef} className={`w-full h-full min-h-0 flex select-none ${className || ''}`}>
+      <div style={{ width: `calc(${ratio * 100}% - 3px)` }} className="h-full min-h-0 shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {left}
       </div>
       <div
         role="separator"
         aria-orientation="vertical"
         onMouseDown={() => setDragging(true)}
-        className={`w-1.5 cursor-col-resize flex items-center justify-center shrink-0 bg-border ${dragging ? 'bg-primary' : 'hover:bg-primary/30'} transition-colors`}
+        onTouchStart={() => setDragging(true)}
+        className={`w-1.5 cursor-col-resize flex items-center justify-center shrink-0 bg-border ${dragging ? 'bg-primary' : 'hover:bg-primary/30'} transition-colors [@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-y-0 [@media(pointer:coarse)]:after:-inset-x-2.5 [@media(pointer:coarse)]:after:content-['']`}
         title={t('resizable.dragToResizeWidth')}
       >
         <DotsSixVertical size={12} className="text-muted-foreground/50" />
       </div>
-      <div style={{ width: `calc(${(1 - ratio) * 100}% - 3px)` }} className="shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+      <div style={{ width: `calc(${(1 - ratio) * 100}% - 3px)` }} className="h-full min-h-0 shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {right}
       </div>
     </div>
@@ -88,13 +107,22 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
-    const onMove = (e: MouseEvent | TouchEvent) => {
-      if (!dragging || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-      const y = clientY - rect.top;
-      const r = y / rect.height;
+    if (!dragging) return;
+    // 同 HorizontalResizable：高频指针事件只缓存坐标，rAF 合并计算；容器 rect 在拖拽期间不变
+    const rect = containerRef.current?.getBoundingClientRect() ?? null;
+    let rafId = 0;
+    let pendingY: number | null = null;
+
+    const applyPending = () => {
+      rafId = 0;
+      if (pendingY === null || !rect) return;
+      const r = (pendingY - rect.top) / rect.height;
+      pendingY = null;
       setRatio(Math.min(1 - minBottom, Math.max(minTop, r)));
+    };
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      pendingY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      if (rafId === 0) rafId = requestAnimationFrame(applyPending);
       e.preventDefault();
     };
     const onUp = () => setDragging(false);
@@ -103,6 +131,8 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
     window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('touchend', onUp);
     return () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      pendingY = null;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       window.removeEventListener('touchmove', onMove);
@@ -111,8 +141,8 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
   }, [dragging, minTop, minBottom]);
 
   return (
-    <div ref={containerRef} className={`w-full h-full flex flex-col select-none ${className || ''}`}>
-      <div style={{ height: `calc(${ratio * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+    <div ref={containerRef} className={`w-full h-full min-h-0 flex flex-col select-none ${className || ''}`}>
+      <div style={{ height: `calc(${ratio * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {top}
       </div>
       <div
@@ -126,7 +156,7 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
         {/* 拖拽手柄指示器 */}
         <div className={`w-12 h-1.5 rounded-full ${dragging ? 'bg-primary' : 'bg-muted-foreground/40'} transition-colors`} />
       </div>
-      <div style={{ height: `calc(${(1 - ratio) * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+      <div style={{ height: `calc(${(1 - ratio) * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {bottom}
       </div>
     </div>

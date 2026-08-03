@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+source "$SCRIPT_DIR/android-ndk-tools.sh"
 
 say() { echo -e "\033[1;32m==>\033[0m $*"; }
 warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
@@ -22,7 +23,6 @@ DEBUG_MODE=false
 USE_DEV_PACKAGE=false
 ORIGINAL_IDENTIFIER=""
 TAURI_CONF="$REPO_ROOT/src-tauri/tauri.conf.json"
-TAURI_CONF_BACKUP=""
 
 # ============================================================================
 # 交互式菜单函数
@@ -130,6 +130,8 @@ setup_dev_package() {
         npx @tauri-apps/cli android init || die "Android 项目初始化失败"
         info "✓ Android 项目已重新初始化"
         inject_android_permissions
+        inject_android_soft_input_mode
+        sync_main_activity
     fi
 }
 
@@ -169,59 +171,134 @@ ensure_android_project() {
 inject_android_permissions() {
     local MANIFEST="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
     if [[ ! -f "$MANIFEST" ]]; then
-        warn "未找到 AndroidManifest.xml，跳过权限注入"
+        warn "AndroidManifest.xml not found; microphone permission injection skipped"
         return
     fi
-    local PERM="<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />"
-    if grep -qF "$PERM" "$MANIFEST" 2>/dev/null; then
+
+    local PERMISSIONS=(
+        "android.permission.RECORD_AUDIO"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+    )
+    local changed=false
+
+    for PERMISSION in "${PERMISSIONS[@]}"; do
+        local PERM_LINE="<uses-permission android:name=\"$PERMISSION\" />"
+        if grep -qF "$PERMISSION" "$MANIFEST" 2>/dev/null; then
+            continue
+        fi
+
+        say "Injecting Android permission: $PERMISSION"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            sed -i '' "/<manifest/a\\
+    $PERM_LINE" "$MANIFEST"
+        else
+            sed -i "/<manifest/a\\    $PERM_LINE" "$MANIFEST"
+        fi
+        changed=true
+    done
+
+    if [[ "$changed" == true ]]; then
+        info "✓ Android microphone permissions injected"
+    fi
+}
+
+# 同步受控 MainActivity.kt（含 A-5 返回键接管 + SA-1 真实安全区注入）到生成工程。
+# tauri android init 会生成裸模板 MainActivity，缺失这两段逻辑会导致
+# 返回手势直接退出 App、安全区退回猜测值。受控副本是单一事实源。
+sync_main_activity() {
+    local SRC="$REPO_ROOT/src-tauri/mobile/android/MainActivity.kt"
+    local DST="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
+    if [[ ! -f "$SRC" ]]; then
+        warn "受控 MainActivity.kt 不存在: $SRC"
         return
     fi
-    say "向 AndroidManifest.xml 注入 RECORD_AUDIO 权限..."
+    if [[ ! -d "$(dirname "$DST")" ]]; then
+        warn "Android 工程 java 目录不存在; MainActivity 同步跳过"
+        return
+    fi
+    if ! cmp -s "$SRC" "$DST" 2>/dev/null; then
+        cp "$SRC" "$DST"
+        info "✓ MainActivity.kt 已从受控副本同步"
+    fi
+}
+
+# 显式声明键盘 softInputMode（tauri android init 重新生成工程后仍能保住该配置）。
+# adjustResize 是前端键盘适配（useKeyboardHeight/Dialog 键盘避让）依赖的确定性行为，
+# 避免不同 ROM 对未声明时的默认策略（adjustUnspecified）各自为政。
+inject_android_soft_input_mode() {
+    local MANIFEST="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$MANIFEST" ]]; then
+        warn "AndroidManifest.xml not found; windowSoftInputMode injection skipped"
+        return
+    fi
+    if grep -qF 'android:windowSoftInputMode' "$MANIFEST" 2>/dev/null; then
+        return
+    fi
+
+    say "Injecting android:windowSoftInputMode=\"adjustResize\""
     if [[ "$(uname)" == "Darwin" ]]; then
-        sed -i '' "/<manifest/a\\
-    $PERM" "$MANIFEST"
+        sed -i '' 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$MANIFEST"
     else
-        sed -i "/<manifest/a\\    $PERM" "$MANIFEST"
+        sed -i 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$MANIFEST"
     fi
-    info "✓ 已注入 RECORD_AUDIO 权限"
+
+    if grep -qF 'android:windowSoftInputMode' "$MANIFEST" 2>/dev/null; then
+        info "✓ windowSoftInputMode injected"
+    else
+        warn "windowSoftInputMode injection failed; please check $MANIFEST"
+    fi
 }
 
-apply_android_version_code() {
-    local build_number="$1"
-    if [[ -z "$build_number" ]]; then
-        warn "内部版本号为空，跳过写入 tauri.conf.json"
-        return
+assert_android_permissions_in_apk() {
+    local APK="$1"
+    local REQUIRED_PERMISSIONS=(
+        "android.permission.RECORD_AUDIO"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+    )
+    local DUMP=""
+
+    if [[ -n "$AAPT_CMD" ]]; then
+        DUMP="$("$AAPT_CMD" dump permissions "$APK" 2>/dev/null || true)"
     fi
-    if [[ ! -f "$TAURI_CONF" ]]; then
-        warn "未找到 tauri.conf.json，跳过写入 versionCode"
-        return
+
+    if [[ -z "$DUMP" && -n "$AAPT2_CMD" ]]; then
+        DUMP="$("$AAPT2_CMD" dump permissions "$APK" 2>/dev/null || true)"
     fi
-    TAURI_CONF_BACKUP="$(mktemp)"
-    cp "$TAURI_CONF" "$TAURI_CONF_BACKUP"
-    node -e '
-const fs = require("fs");
-const path = process.argv[1];
-const buildNumber = Number(process.argv[2]);
-const raw = fs.readFileSync(path, "utf8");
-const data = JSON.parse(raw);
-if (!data.bundle) data.bundle = {};
-if (!data.bundle.android) data.bundle.android = {};
-data.bundle.android.versionCode = Number.isNaN(buildNumber) ? 1 : buildNumber;
-fs.writeFileSync(path, JSON.stringify(data, null, 2) + "\n", "utf8");
-' "$TAURI_CONF" "$build_number"
-    say "✓ tauri.conf.json 已写入 Android versionCode: $build_number"
+
+    if [[ -z "$DUMP" ]]; then
+        die "Unable to inspect APK permissions with aapt/aapt2"
+    fi
+
+    for PERMISSION in "${REQUIRED_PERMISSIONS[@]}"; do
+        if ! grep -qF "$PERMISSION" <<<"$DUMP"; then
+            error "APK is missing Android permission: $PERMISSION"
+            echo "$DUMP" >&2
+            die "Android APK permission verification failed"
+        fi
+    done
+
+    info "✓ APK declares microphone permissions: ${REQUIRED_PERMISSIONS[*]}"
 }
 
-restore_android_version_code() {
-    if [[ -n "$TAURI_CONF_BACKUP" && -f "$TAURI_CONF_BACKUP" ]]; then
-        mv "$TAURI_CONF_BACKUP" "$TAURI_CONF"
-        TAURI_CONF_BACKUP=""
-        info "✓ tauri.conf.json 已恢复"
+normalize_android_sdk_path() {
+  local path="$1"
+  if [[ -d "$path" ]]; then
+    echo "$path"
+    return 0
+  fi
+  if command -v cygpath >/dev/null 2>&1; then
+    local converted
+    converted="$(cygpath -u "$path" 2>/dev/null || true)"
+    if [[ -n "$converted" && -d "$converted" ]]; then
+      echo "$converted"
+      return 0
     fi
+  fi
+  echo "$path"
 }
 
 # 确保脚本退出时恢复
-trap 'restore_android_version_code; restore_package_name' EXIT
+trap 'restore_package_name' EXIT
 
 # ============================================================================
 # 解析命令行参数
@@ -284,22 +361,34 @@ find_build_tools_cmd() {
     command -v "$cmd"
     return 0
   fi
+  for ext in .exe .bat .cmd; do
+    if command -v "${cmd}${ext}" >/dev/null 2>&1; then
+      command -v "${cmd}${ext}"
+      return 0
+    fi
+  done
 
   local search_dirs=()
-  if [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/build-tools" ]]; then
-    if [[ -n "${ANDROID_BUILD_TOOLS_VERSION:-}" && -d "$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION" ]]; then
-      search_dirs+=("$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION")
+  local android_home=""
+  if [[ -n "${ANDROID_HOME:-}" ]]; then
+    android_home="$(normalize_android_sdk_path "$ANDROID_HOME")"
+  fi
+  if [[ -n "$android_home" && -d "$android_home/build-tools" ]]; then
+    if [[ -n "${ANDROID_BUILD_TOOLS_VERSION:-}" && -d "$android_home/build-tools/$ANDROID_BUILD_TOOLS_VERSION" ]]; then
+      search_dirs+=("$android_home/build-tools/$ANDROID_BUILD_TOOLS_VERSION")
     fi
     while IFS= read -r dir; do
       search_dirs+=("$dir")
-    done < <(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V)
+    done < <(find "$android_home/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V)
   fi
 
   for dir in "${search_dirs[@]}"; do
-    if [[ -x "$dir/$cmd" ]]; then
-      echo "$dir/$cmd"
-      return 0
-    fi
+    for candidate in "$dir/$cmd" "$dir/$cmd.exe" "$dir/$cmd.bat" "$dir/$cmd.cmd"; do
+      if [[ -x "$candidate" || -f "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
   done
 
   return 1
@@ -311,6 +400,8 @@ require_cmd keytool
 
 APKSIGNER_CMD="$(find_build_tools_cmd apksigner)" || true
 ZIPALIGN_CMD="$(find_build_tools_cmd zipalign)" || true
+AAPT_CMD="$(find_build_tools_cmd aapt)" || true
+AAPT2_CMD="$(find_build_tools_cmd aapt2)" || true
 
 if ! command -v jarsigner >/dev/null 2>&1; then
   die "缺少必需命令: jarsigner"
@@ -350,12 +441,17 @@ fi
 if [[ -z "${NDK_HOME:-}" ]]; then
     warn "未设置 NDK_HOME，将尝试使用 ANDROID_HOME 下的 NDK"
     if [[ -d "$ANDROID_HOME/ndk" ]]; then
-        NDK_HOME=$(find "$ANDROID_HOME/ndk" -maxdepth 1 -type d | tail -n 1)
+        NDK_HOME=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
         export NDK_HOME
         say "自动检测到 NDK: $NDK_HOME"
     else
         die "未找到 NDK。请设置 NDK_HOME 或在 ANDROID_HOME 下安装 NDK"
     fi
+fi
+NDK_HOME="$(normalize_android_sdk_path "$NDK_HOME")"
+export NDK_HOME
+if [[ ! -d "$NDK_HOME" ]]; then
+    die "NDK_HOME 路径不存在: $NDK_HOME"
 fi
 
 # 检查 Rust Android 目标
@@ -508,6 +604,8 @@ if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
     say "打包 pdfium 动态库..."
     ensure_android_project
     inject_android_permissions
+    inject_android_soft_input_mode
+    sync_main_activity
     JNILIBS_DIR="$REPO_ROOT/src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
     mkdir -p "$JNILIBS_DIR"
     PDFIUM_ANDROID_SO="$REPO_ROOT/src-tauri/resources/pdfium/libpdfium_android_arm64.so"
@@ -530,77 +628,44 @@ if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
     # 清理旧的构建产物（可选）
     # rm -rf src-tauri/gen/android/app/build/outputs/apk
 
-    # 配置 Android NDK 工具链环境变量
-    # 检测系统架构（darwin-x86_64 或 darwin-arm64）
-    NDK_PREBUILT_DIR=""
-    if [[ -d "$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64" ]]; then
-        NDK_PREBUILT_DIR="$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64"
-    elif [[ -d "$NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64" ]]; then
-        NDK_PREBUILT_DIR="$NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64"
-    else
-        die "无法找到 NDK 预构建工具链目录"
-    fi
+    # 配置 Android NDK 工具链环境变量。宿主标签和 Windows 扩展名
+    # 由独立 helper 解析，避免把开发机路径写回 Cargo 配置。
+    NDK_PREBUILT_DIR="$(android_ndk_find_prebuilt "$NDK_HOME")" \
+        || die "当前宿主不受支持，或 NDK 缺少匹配的预构建工具链: $(uname -s)/$(uname -m)"
+    NDK_CC="$(android_ndk_find_tool "$NDK_PREBUILT_DIR" aarch64-linux-android21-clang)" \
+        || die "缺少 NDK 工具: aarch64-linux-android21-clang"
+    NDK_CXX="$(android_ndk_find_tool "$NDK_PREBUILT_DIR" aarch64-linux-android21-clang++)" \
+        || die "缺少 NDK 工具: aarch64-linux-android21-clang++"
+    NDK_AR="$(android_ndk_find_tool "$NDK_PREBUILT_DIR" llvm-ar)" \
+        || die "缺少 NDK 工具: llvm-ar"
 
     # 设置 Cargo 使用的 Android 工具链
-    export CC_aarch64_linux_android="$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang"
-    export CXX_aarch64_linux_android="$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang++"
-    export AR_aarch64_linux_android="$NDK_PREBUILT_DIR/bin/llvm-ar"
-    export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang"
-    
-    # 配置 src-tauri/.cargo/config.toml 中的 Android 链接器
-    # 确保 Cargo 使用正确的链接器
-    CARGO_CONFIG_FILE="$REPO_ROOT/src-tauri/.cargo/config.toml"
-    if ! grep -q "\[target.aarch64-linux-android\]" "$CARGO_CONFIG_FILE" 2>/dev/null; then
-        say "更新 Cargo 配置文件以包含 Android NDK 链接器配置..."
-        cat >> "$CARGO_CONFIG_FILE" <<EOF
-
-# Android NDK 配置（由 build_android.sh 自动添加）
-[target.aarch64-linux-android]
-linker = "$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang"
-ar = "$NDK_PREBUILT_DIR/bin/llvm-ar"
-EOF
-    else
-        # 如果配置已存在，更新链接器路径
-        say "更新 Android NDK 链接器路径..."
-        if [[ "$(uname)" == "Darwin" ]]; then
-            if [[ "$(uname -m)" == "arm64" ]]; then
-                sed -i '' "s|linker = \".*aarch64-linux-android.*\"|linker = \"$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang\"|" "$CARGO_CONFIG_FILE"
-                sed -i '' "s|ar = \".*llvm-ar\"|ar = \"$NDK_PREBUILT_DIR/bin/llvm-ar\"|" "$CARGO_CONFIG_FILE"
-            else
-                sed -i '' "s|linker = \".*aarch64-linux-android.*\"|linker = \"$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang\"|" "$CARGO_CONFIG_FILE"
-                sed -i '' "s|ar = \".*llvm-ar\"|ar = \"$NDK_PREBUILT_DIR/bin/llvm-ar\"|" "$CARGO_CONFIG_FILE"
-            fi
-        else
-            sed -i "s|linker = \".*aarch64-linux-android.*\"|linker = \"$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang\"|" "$CARGO_CONFIG_FILE"
-            sed -i "s|ar = \".*llvm-ar\"|ar = \"$NDK_PREBUILT_DIR/bin/llvm-ar\"|" "$CARGO_CONFIG_FILE"
-        fi
-    fi
+    export CC_aarch64_linux_android="$NDK_CC"
+    export CXX_aarch64_linux_android="$NDK_CXX"
+    export AR_aarch64_linux_android="$NDK_AR"
+    export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_CC"
     
     say "配置 Android NDK 工具链:"
     say "  CC: $CC_aarch64_linux_android"
     say "  AR: $AR_aarch64_linux_android"
     say "  Linker: $CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"
 
-    # 设置内部版本号（versionCode）
-    say "设置内部版本号..."
-    BUILD_NUMBER=$(grep "BUILD_NUMBER:" "$REPO_ROOT/src/version.ts" | sed "s/.*BUILD_NUMBER: '\([^']*\)'.*/\1/")
-    if [[ -z "$BUILD_NUMBER" ]]; then
-        warn "无法获取内部版本号，使用默认值 1"
-        BUILD_NUMBER="1"
+    # Android 商店发布号与内部 build number 分离，必须使用 tracked release code。
+    say "设置 Android versionCode..."
+    ANDROID_VERSION_CODE=$(node scripts/generate-version.mjs --print-android-version-code) \
+        || die "无法获取 Android versionCode"
+    if [[ ! "$ANDROID_VERSION_CODE" =~ ^[0-9]+$ ]]; then
+        die "Android versionCode 不是纯数字: $ANDROID_VERSION_CODE"
     fi
-    if [[ ! "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
-        warn "内部版本号不是纯数字，重置为 1"
-        BUILD_NUMBER="1"
-    fi
-    say "✓ 内部版本号: $BUILD_NUMBER"
+    say "✓ Android versionCode: $ANDROID_VERSION_CODE"
 
-    apply_android_version_code "$BUILD_NUMBER"
-    
     # 导出环境变量供Tauri使用
-    export TAURI_ANDROID_VERSION_CODE="$BUILD_NUMBER"
+    export TAURI_ANDROID_VERSION_CODE="$ANDROID_VERSION_CODE"
+    TAURI_ANDROID_CONFIG="{\"bundle\":{\"android\":{\"versionCode\":${ANDROID_VERSION_CODE}}}}"
 
     # 使用 Tauri CLI 进行标准构建（默认 release）
-    npx @tauri-apps/cli android build --target aarch64 || die "Android 构建失败"
+    npx @tauri-apps/cli android build --target aarch64 --config "$TAURI_ANDROID_CONFIG" \
+        || die "Android 构建失败"
 
     # 可选：构建一个可调试的发布变体，便于用 Chrome Inspect 调试发布白屏
     if [[ -n "${ANDROID_DEBUGGABLE_RELEASE:-}" ]]; then
@@ -742,6 +807,8 @@ fi
 #     "$jarsigner_cmd" -verify -verbose -certs "$FINAL_APK" || die "APK 签名验证失败"
 #     say "✓ APK V1 签名验证通过（未检测 V2/V3，请确保目标设备接受 V1 签名）"
 # fi
+
+assert_android_permissions_in_apk "$FINAL_APK"
 
 # FINAL_APK="$SIGNED_APK"
 

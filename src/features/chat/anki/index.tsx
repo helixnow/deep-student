@@ -4,18 +4,21 @@
  * 提供 Anki 卡片管理相关的功能和组件
  * 已集成 CardForge 2.0 真实 API
  *
- * ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器
- * 工具定义见 src/mcp/builtinMcpServer.ts（builtin-anki_* 格式）
+ * 当前生产工具链由 ChatAnki skill 与 builtin-chatanki_* 工具统一提供。
+ * 本模块仅保留卡片管理与预览组件，不负责向 LLM 注册工具。
  */
 
-import React, { useRef, useLayoutEffect, useState, useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import React from 'react';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { save as dialogSave } from '@tauri-apps/plugin-dialog';
 import type { AnkiCard, AnkiGenerationOptions, CustomAnkiTemplate } from '@/types';
-import { ankiApiAdapter } from '@/services/ankiApiAdapter';
-import { RenderedAnkiCard } from '../plugins/blocks/components/RenderedAnkiCard';
+import {
+  ankiApiAdapter,
+  type SaveAnkiCardIdMapping,
+} from '@/services/ankiApiAdapter';
+import { ankiConnectClient } from '@/services/ankiConnectClient';
 import { Card3DPreview } from '@/components/Card3DPreview';
 
 // ============================================================================
@@ -79,23 +82,73 @@ interface AnkiSyncReport {
   createdModels: string[];
 }
 
+type AnkiSaveWarning =
+  | {
+      code: 'anki_save_partial';
+      details: {
+        saved: number;
+        duplicated: number;
+        skipped: number;
+        failed: number;
+      };
+    }
+  | {
+      code: 'anki_save_all_skipped';
+      details: {
+        skipped: number;
+        duplicated: number;
+      };
+    };
+
 /**
  * 保存卡片到本地库
  *
- * 使用 ChatV2AnkiAdapter 导出为 JSON 格式
+ * 使用诚实语义响应：区分新插入 / 已存在更新 / 跳过 / 失败。
  */
 export async function saveCardsToLibrary(
   params: AnkiActionParams
-): Promise<{ success: boolean; savedCount: number; savedIds?: string[]; taskId?: string }> {
+): Promise<{
+  success: boolean;
+  savedCount: number;
+  savedIds?: string[];
+  cardIdMappings?: SaveAnkiCardIdMapping[];
+  duplicatedIds?: string[];
+  skippedIds?: string[];
+  failed?: Array<{ id: string; error: string }>;
+  taskId?: string;
+  warning?: AnkiSaveWarning;
+  error?: string;
+  skippedErrorCards?: number;
+}> {
   const { cards, context } = params;
 
   if (cards.length === 0) {
-    return { success: true, savedCount: 0 };
+    return { success: true, savedCount: 0, cardIdMappings: [] };
+  }
+
+  const errorCardCount = cards.filter((card) => {
+    const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+    return row.is_error_card === true || row.isErrorCard === true;
+  }).length;
+  const savableCards = cards.filter((card) => {
+    const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+    return row.is_error_card !== true && row.isErrorCard !== true;
+  });
+  if (errorCardCount > 0) {
+    console.warn(`[anki] saveCardsToLibrary: ${errorCardCount} error cards skipped`);
+  }
+  if (savableCards.length === 0) {
+    return {
+      success: false,
+      savedCount: 0,
+      skippedErrorCards: errorCardCount,
+      error: 'all cards are diagnostic error cards',
+    };
   }
 
   try {
     const result = await ankiApiAdapter.saveAnkiCards({
-      cards,
+      cards: savableCards,
       documentId: context?.documentId ?? null,
       businessSessionId: context?.businessSessionId ?? null,
       messageStableId: context?.messageStableId ?? null,
@@ -104,21 +157,117 @@ export async function saveCardsToLibrary(
       options: context?.options,
     });
 
-    if (result.savedIds?.length) {
-      console.log('[anki] saveCardsToLibrary success:', result.savedIds.length, 'cards saved');
+    const savedIds = result.savedIds ?? [];
+    const cardIdMappings = result.cardIdMappings ?? [];
+    const duplicatedIds = result.duplicatedIds ?? [];
+    const skippedIds = result.skippedIds ?? [];
+    const failed = result.failed ?? [];
+    const savedCount = savedIds.length;
+    const hasProgress =
+      savedCount > 0 || duplicatedIds.length > 0 || (skippedIds.length > 0 && failed.length === 0);
+
+    if (!hasProgress) {
+      const failDetail = failed
+        .map((f) => `${f.id}: ${f.error}`)
+        .join('; ');
+      console.error('[anki] saveCardsToLibrary error: no cards saved', { failed });
       return {
-        success: true,
-        savedCount: result.savedIds.length,
-        savedIds: result.savedIds,
+        success: false,
+        savedCount: 0,
+        savedIds,
+        cardIdMappings,
+        duplicatedIds,
+        skippedIds,
+        failed,
         taskId: result.taskId,
+        error: failDetail || 'savedIds empty',
       };
-    } else {
-      console.error('[anki] saveCardsToLibrary error: savedIds empty');
-      return { success: false, savedCount: 0, taskId: result.taskId };
     }
+
+    let warning: AnkiSaveWarning | undefined;
+    if (failed.length > 0 || (skippedIds.length > 0 && savedCount > 0)) {
+      warning = {
+        code: 'anki_save_partial',
+        details: {
+          saved: savedCount,
+          duplicated: duplicatedIds.length,
+          skipped: skippedIds.length,
+          failed: failed.length,
+        },
+      };
+    } else if (savedCount === 0 && (skippedIds.length > 0 || duplicatedIds.length > 0)) {
+      warning = {
+        code: 'anki_save_all_skipped',
+        details: {
+          skipped: skippedIds.length,
+          duplicated: duplicatedIds.length,
+        },
+      };
+    }
+
+    console.log('[anki] saveCardsToLibrary success:', {
+      saved: savedCount,
+      duplicated: duplicatedIds.length,
+      skipped: skippedIds.length,
+      failed: failed.length,
+      skippedErrorCards: errorCardCount,
+    });
+
+    return {
+      success: true,
+      savedCount,
+      savedIds,
+      cardIdMappings,
+      duplicatedIds,
+      skippedIds,
+      failed,
+      taskId: result.taskId,
+      warning,
+      ...(errorCardCount > 0 ? { skippedErrorCards: errorCardCount } : {}),
+    };
   } catch (error: unknown) {
     console.error('[anki] saveCardsToLibrary error:', error);
-    return { success: false, savedCount: 0 };
+    const message = error instanceof Error ? error.message : String(error ?? 'unknown error');
+    return {
+      success: false,
+      savedCount: 0,
+      error: message,
+      ...(errorCardCount > 0 ? { skippedErrorCards: errorCardCount } : {}),
+    };
+  }
+}
+
+/**
+ * APKG 导出完成后的 AnkiConnect 自动导入（设置驱动的后置副作用）：
+ * - anki_connect_enabled 且 anki_connect_auto_import_enabled 时调用 importPackage
+ * - 导入成功且 anki_connect_delete_apkg_after_import 时由后端删除 APKG 文件
+ * - 导入失败且 anki_connect_open_folder_on_failure 时在文件管理器中定位该文件
+ */
+async function autoImportApkgIfEnabled(filePath: string): Promise<void> {
+  let settings: Awaited<ReturnType<typeof ankiConnectClient.loadSettings>>;
+  try {
+    settings = await ankiConnectClient.loadSettings();
+  } catch (error) {
+    console.warn('[anki] autoImportApkg: load settings failed', error);
+    return;
+  }
+  if (!settings.anki_connect_enabled || !settings.anki_connect_auto_import_enabled) return;
+  try {
+    const ok = await ankiConnectClient.importPackage(filePath, {
+      deleteAfter: settings.anki_connect_delete_apkg_after_import,
+    });
+    if (!ok) throw new Error('AnkiConnect importPackage returned false');
+    console.log('[anki] autoImportApkg success:', filePath);
+  } catch (error) {
+    console.error('[anki] autoImportApkg error:', error);
+    if (settings.anki_connect_open_folder_on_failure) {
+      try {
+        const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+        await revealItemInDir(filePath);
+      } catch (revealError) {
+        console.warn('[anki] autoImportApkg: reveal folder failed', revealError);
+      }
+    }
   }
 }
 
@@ -143,9 +292,15 @@ export async function exportCardsAsApkg(
   try {
     // 多模板导出：直接调用后端 export_cards_as_apkg_with_template
     // 每张卡片保留自己的 template_id，后端会按卡片分组加载对应模板
-    const errorCardCount = cards.filter(card => card.is_error_card).length;
+    const errorCardCount = cards.filter((card) => {
+      const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+      return row.is_error_card === true || row.isErrorCard === true;
+    }).length;
     const cardsForExport = cards
-      .filter(card => !card.is_error_card)
+      .filter((card) => {
+        const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+        return row.is_error_card !== true && row.isErrorCard !== true;
+      })
       .map(card => ({
         front: card.front ?? card.fields?.Front ?? '',
         back: card.back ?? card.fields?.Back ?? '',
@@ -191,6 +346,8 @@ export async function exportCardsAsApkg(
 
     if (filePath) {
       console.log('[anki] exportCardsAsApkg success:', filePath);
+      // 后置副作用：不阻塞导出结果返回
+      void autoImportApkgIfEnabled(filePath);
       return { success: true, filePath, skippedErrorCards: errorCardCount };
     } else {
       console.error('[anki] exportCardsAsApkg: no file path returned');
@@ -226,7 +383,10 @@ export async function importCardsViaAnkiConnect(
 
   try {
     const validCards = cards
-      .filter(c => !c.is_error_card)
+      .filter((c) => {
+        const row = c as { is_error_card?: unknown; isErrorCard?: unknown };
+        return row.is_error_card !== true && row.isErrorCard !== true;
+      })
       .map(card => ({
         front: card.front ?? card.fields?.Front ?? '',
         back: card.back ?? card.fields?.Back ?? '',
@@ -288,114 +448,15 @@ export function logChatAnkiEvent(event: string, data?: unknown, _context?: AnkiA
 }
 
 // ============================================================================
-// 事件派发
+// 聊天卡片容器
 // ============================================================================
-
-interface OpenAnkiPanelParams {
-  blockId?: string;
-  messageId?: string;
-  businessSessionId?: string;
-  cards?: AnkiCard[];
-}
-
-/**
- * 派发打开 Anki 面板的事件
- */
-export function dispatchOpenAnkiPanelEvent(params: OpenAnkiPanelParams): void {
-  const event = new CustomEvent('open-anki-panel', { detail: params });
-  window.dispatchEvent(event);
-}
-
-// ============================================================================
-// 全宽包裹器：精确计算偏移实现真正的视口全宽
-// ============================================================================
-
-/**
- * 全宽卡片包裹器
- *
- * 使用 getBoundingClientRect 动态计算元素距视口左侧的精确偏移，
- * 通过负 margin 突破所有父容器（含头像、padding、max-width）限制，
- * 实现真正的 100vw 全宽。解决 `calc(-50vw + 50%)` 在非居中父容器下
- * 偏移不准的问题。
- */
-/**
- * 移动端全宽精确包裹器
- *
- * 桌面端（>768px）：不做任何处理，直接渲染 children + className，
- * 保持原有 CSS 布局（如 calc(-50vw + 50%) 等）。
- *
- * 移动端（<768px）：使用 getBoundingClientRect 精确计算元素距视口
- * 左侧的偏移，通过 inline style 突破所有父容器限制实现真正全宽。
- * 解决移动端头像/padding 导致 CSS calc 偏移不准的问题。
- */
-const MOBILE_BREAKPOINT = 768;
 
 export const FullWidthCardWrapper: React.FC<{
   children: React.ReactNode;
   className?: string;
-}> = ({ children, className }) => {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [mobileStyle, setMobileStyle] = useState<React.CSSProperties | undefined>(undefined);
-
-  const recalculate = useCallback(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-
-    // 桌面端（≥768，与 App shell isSmallScreen=<768 边界对齐）：清除所有 inline 定位，完全交给 CSS。
-    // 用 >= 而非 >：768px（如 iPad 竖屏）属桌面双栏布局，不应套用移动端全宽 inline 计算
-    if (window.innerWidth >= MOBILE_BREAKPOINT) {
-      if (el.style.width || el.style.marginLeft) {
-        el.style.width = '';
-        el.style.marginLeft = '';
-        setMobileStyle(undefined);
-      }
-      return;
-    }
-
-    // 移动端：精确计算偏移
-    // 临时清除 inline 定位，回到自然位置以获得真实偏移
-    el.style.width = '';
-    el.style.marginLeft = '';
-
-    const rect = el.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const newLeft = rect.left;
-
-    el.style.width = `${viewportWidth}px`;
-    el.style.marginLeft = `-${newLeft}px`;
-
-    setMobileStyle({
-      width: `${viewportWidth}px`,
-      marginLeft: `-${newLeft}px`,
-      position: 'relative',
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    recalculate();
-    window.addEventListener('resize', recalculate);
-    return () => window.removeEventListener('resize', recalculate);
-  }, [recalculate]);
-
-  // 监听父容器尺寸变化（侧边栏展开/收起等）
-  useLayoutEffect(() => {
-    const el = wrapperRef.current;
-    if (!el?.parentElement) return;
-    const ro = new ResizeObserver(() => recalculate());
-    ro.observe(el.parentElement);
-    return () => ro.disconnect();
-  }, [recalculate]);
-
-  return (
-    <div
-      ref={wrapperRef}
-      className={className}
-      style={mobileStyle}
-    >
-      {children}
-    </div>
-  );
-};
+}> = ({ children, className }) => (
+  <div className={className}>{children}</div>
+);
 
 // ============================================================================
 // 组件
@@ -454,6 +515,12 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
   ]
     .filter(Boolean)
     .join(' ');
+  const activate = (event: React.KeyboardEvent | React.MouseEvent) => {
+    if (disabled || !onClick) return;
+    if ('key' in event && event.key !== 'Enter' && event.key !== ' ') return;
+    if ('key' in event) event.preventDefault();
+    onClick();
+  };
 
   // 是否使用模板渲染：有 templateMap（多模板）或有单模板且有 front_template
   const hasMultiTemplate = templateMap && templateMap.size > 0;
@@ -461,7 +528,13 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
 
   if (status === 'parsing') {
     return (
-      <div className={containerClassName} onClick={disabled ? undefined : onClick}>
+      <div
+        className={containerClassName}
+        onClick={activate}
+        onKeyDown={activate}
+        role={!disabled && onClick ? 'button' : undefined}
+        tabIndex={!disabled && onClick ? 0 : undefined}
+      >
         <div className="text-muted-foreground text-sm animate-pulse">{t('chatV2.generating')}</div>
       </div>
     );
@@ -471,16 +544,20 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
     // 区分"生成完成但没产出卡片"和"还没开始"
     const isReadyButEmpty = status === 'ready' && !isError && !isCancelled;
     return (
-      <div className={containerClassName} onClick={disabled ? undefined : onClick}>
+      <div
+        className={containerClassName}
+        onClick={activate}
+        onKeyDown={activate}
+        role={!disabled && onClick ? 'button' : undefined}
+        tabIndex={!disabled && onClick ? 0 : undefined}
+      >
         <div
           className={
             isError
               ? 'text-destructive text-sm'
-              : isCancelled
-                ? 'text-amber-600 text-sm'
-                : isReadyButEmpty
-                  ? 'text-amber-600 text-sm'
-                  : 'text-muted-foreground text-sm'
+              : isCancelled || isReadyButEmpty
+                ? 'text-warning text-sm'
+                : 'text-muted-foreground text-sm'
           }
         >
           {isError
@@ -502,7 +579,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
           className={
             isError
               ? 'text-destructive text-sm mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1'
-              : 'text-amber-700 text-sm mb-2 rounded-md border border-amber-400/40 bg-amber-100/60 px-2 py-1'
+              : 'text-warning text-sm mb-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1'
           }
         >
           {bannerMessage}
@@ -513,7 +590,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
         <FullWidthCardWrapper className="chat-card3d-compact">
           <Card3DPreview
             cards={cards}
-            template={template as any}
+            template={template ?? undefined}
             templateMap={templateMap}
             debugContext={debugContext}
             onCardClick={onCardClick}
@@ -534,8 +611,18 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
               onClick={(e) => {
                 if (disabled) return;
                 e.stopPropagation();
-                onCardClick?.(card, index);
+                if (onCardClick) onCardClick(card, index);
+                else onClick?.();
               }}
+              onKeyDown={(e) => {
+                if (disabled || (e.key !== 'Enter' && e.key !== ' ')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (onCardClick) onCardClick(card, index);
+                else onClick?.();
+              }}
+              role={!disabled && (onCardClick || onClick) ? 'button' : undefined}
+              tabIndex={!disabled && (onCardClick || onClick) ? 0 : undefined}
             >
               <div className="text-sm font-medium truncate">{card.front || t('chatV2.frontContent')}</div>
               <div className="text-xs text-muted-foreground truncate mt-1">{card.back || t('chatV2.backContent')}</div>
@@ -550,26 +637,19 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
       )}
       {/* 底部：总数 + 编辑入口 */}
       <div className="flex items-center justify-between mt-2 gap-2 min-w-0">
-        <div className="text-[10px] sm:text-[11px] text-muted-foreground/50 truncate min-w-0">
+        <div className="text-xs text-muted-foreground truncate min-w-0">
           {cards.length > 0 && t('chatV2.totalCards', { count: cards.length })}
           {status === 'stored' && (
-            <span className="text-green-600 ml-1 sm:ml-2">{t('chatV2.saved')}</span>
+            <span className="text-success ml-1 sm:ml-2">{t('chatV2.saved')}</span>
           )}
         </div>
         {cards.length > 0 && !disabled && (
-          <NotionButton variant="ghost" size="sm" onClick={onClick} className="!h-auto !p-0 text-[10px] sm:text-[11px] text-muted-foreground/50 hover:text-muted-foreground">
+          // 视觉不变（负 margin 抵消 padding），实际命中区扩大满足触控目标
+          <DsButton variant="ghost" size="sm" onClick={onClick} className="!min-h-10 !px-2 text-xs text-muted-foreground hover:text-foreground">
             {t('chatV2.clickToEdit')} →
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>
   );
 };
-
-// ============================================================================
-// Chat V2 面板桥接组件（CardForge 2.0 集成）
-// ============================================================================
-
-export { useAnkiPanelV2Bridge } from '../hooks/useAnkiPanelV2Bridge';
-export { AnkiPanelHost } from '../components/AnkiPanelHost';
-export type { OpenAnkiPanelParams, AnkiPanelState } from '../hooks/useAnkiPanelV2Bridge';

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, CheckCircle, Copy, Info, Warning, WarningCircle, X } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import './UnifiedNotification.css';
 
@@ -55,6 +56,7 @@ const shouldShowIcon = (
 const shouldShowProgress = (progress: GlobalNotificationProgressMode | undefined): boolean => progress === true;
 
 export const UnifiedNotification: React.FC<NotificationProps> = ({ notification, onClose }) => {
+  const { t } = useTranslation('common');
   const DURATION = Math.min(6000 + (notification.message?.length ?? 0) * 20, 15000);
   const [isClosing, setIsClosing] = useState(false);
   const [isHoverExpanded, setIsHoverExpanded] = useState(false);
@@ -160,6 +162,45 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     collapseRef.current = setTimeout(() => setIsHoverExpanded(false), 300);
   };
 
+  // ★ 2026-07（移动端审计 L-6）：触屏横滑关闭。只在 touchend 判定
+  // （横向位移 >56px 且明显大于纵向），不做拖拽跟随，避免与
+  // .unified-notification 自身的 transform 过渡打架。
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    swipeRef.current = t ? { x: t.clientX, y: t.clientY } : null;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const start = swipeRef.current;
+    swipeRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) > 56 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      handleClose();
+    }
+  };
+
+  // ★ 2026-07-08（移动端审计 D-8）：展开长文本原来只有 hover 一条路，
+  // 触屏设备点按切换展开/收起；桌面（细指针）不改变行为。
+  const handleTapToggleExpand = (e: React.MouseEvent) => {
+    if (typeof window === 'undefined' || !window.matchMedia?.('(pointer: coarse)').matches) return;
+    if ((e.target as HTMLElement | null)?.closest('button')) return;
+    if (expandRef.current) { clearTimeout(expandRef.current); expandRef.current = null; }
+    if (collapseRef.current) { clearTimeout(collapseRef.current); collapseRef.current = null; }
+    setIsHoverExpanded((prev) => {
+      const next = !prev;
+      if (next) {
+        pauseTimer();
+      } else {
+        maybeResume();
+      }
+      return next;
+    });
+  };
+
   if (!notification.visible) return null;
 
   const isAssertive = notification.type === 'error' || notification.type === 'warning';
@@ -191,6 +232,9 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     <div
       className={`unified-notification ${typeClass} ${borderClass} ${isClosing ? 'hide' : 'show'} ${isHoverExpanded ? 'expanded' : ''}`}
       style={progressStyle}
+      onClick={handleTapToggleExpand}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocusCapture={() => { focusRef.current = true; pauseTimer(); }}
@@ -213,19 +257,19 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           {displayText}
         </div>
         {(notification.count ?? 1) > 1 && (
-          <span className="unified-notification-count" aria-label={`重复 ${notification.count} 次`}>
+          <span className="unified-notification-count" aria-label={t('notifications.repeated', { count: notification.count })}>
             x{notification.count}
           </span>
         )}
         {notification.action && (
-          <NotionButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
+          <DsButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
             {notification.action.label}
-          </NotionButton>
+          </DsButton>
         )}
         {notification.type === 'error' && (
           <button
             className="unified-notification-copy"
-            aria-label="复制错误信息"
+            aria-label={t('notifications.copy_error')}
             onClick={handleCopy}
             type="button"
           >
@@ -236,9 +280,9 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
             />
           </button>
         )}
-        <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" aria-label="关闭通知" onClick={handleClose}>
+        <DsButton variant="ghost" size="icon" iconOnly className="unified-notification-close" aria-label={t('close_notification')} onClick={handleClose}>
           <X className="unified-notification-close-icon" weight="regular" aria-hidden="true" />
-        </NotionButton>
+        </DsButton>
       </div>
       {showProgress && (
         <span key={progressKey} className="unified-notification-progress" aria-hidden="true" />

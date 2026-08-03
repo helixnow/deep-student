@@ -202,15 +202,18 @@
   background: hsl(var(--muted) / 0.7);
 }
 
-.data-pre {
+.data-pre-scroll {
   margin: 4px 0 0;
   max-height: 240px;
-  overflow: auto;
   font-size: 12px;
   background: hsl(var(--foreground) / 0.95);
   color: hsl(var(--border));
   border-radius: 6px;
-  padding: 8px;
+}
+
+.data-pre {
+  margin: 0;
+  min-width: max-content;
 }
 
 .empty {
@@ -224,7 +227,8 @@
    ============================================ */
 @media (max-width: 767.98px) {
   .template-json-preview-page {
-    padding-bottom: 80px; /* 为 BottomTabBar 留出空间 */
+    /* 底部手势导航安全区（BottomTabBar 已移除，勿再按 80px 预留） */
+    padding-bottom: calc(1rem + var(--mobile-safe-area-bottom, 0px));
   }
 
   .template-json-preview-viewport {
@@ -315,13 +319,8 @@
     padding: 6px;
   }
 
-  .data-pre {
+  .data-pre-scroll {
     font-size: 11px;
-    padding: 6px;
     max-height: 180px;
-  }
-
-  .input-column .json-editor-wrapper {
-    min-height: 250px;
   }
 }

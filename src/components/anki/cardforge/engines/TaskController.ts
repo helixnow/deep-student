@@ -30,12 +30,18 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { t } from '@/utils/i18n';
+import { isFailedLikeTaskStatus, normalizeTaskStatus } from './taskStatus';
 import type {
   ControlTaskInput,
   ControlTaskOutput,
   TaskInfo,
   TaskStatus,
 } from '../types';
+
+/** anki 命名空间下 engine 子对象的 i18n 快捷函数 */
+const tEngine = (key: string, options?: Record<string, unknown>): string =>
+  t(`engine.${key}`, options, 'anki');
 
 /**
  * 后端返回的文档状态
@@ -69,6 +75,33 @@ interface BackendTask {
  */
 export class TaskController {
   /**
+   * 进行中的控制操作（按 `${action}:${documentId}` 去重）。
+   *
+   * 竞态防护：暂停/恢复/取消按钮被快速连点时，同一操作只会向后端发出
+   * 一次命令，后续调用复用同一个 Promise，避免命令交叠导致后端状态抖动。
+   * 不同 action 之间不互斥（后端命令本身幂等，由后端状态机裁决）。
+   */
+  private inflightOps = new Map<string, Promise<ControlTaskOutput>>();
+
+  /**
+   * 以去重方式执行控制操作：同 key 的并发调用共享同一个 Promise。
+   */
+  private async runExclusive(
+    key: string,
+    run: () => Promise<ControlTaskOutput>,
+  ): Promise<ControlTaskOutput> {
+    const existing = this.inflightOps.get(key);
+    if (existing) {
+      return existing;
+    }
+    const task = run().finally(() => {
+      this.inflightOps.delete(key);
+    });
+    this.inflightOps.set(key, task);
+    return task;
+  }
+
+  /**
    * 暂停文档处理
    *
    * 调用后端 pause_document_processing 命令，将文档标记为暂停状态
@@ -87,41 +120,43 @@ export class TaskController {
    * ```
    */
   async pause(documentId: string): Promise<ControlTaskOutput> {
-    try {
-      // 参数验证
-      if (!documentId || documentId.trim() === '') {
-        return {
-          ok: false,
-          message: '文档 ID 不能为空',
-        };
-      }
-
-      // 调用后端暂停命令
-      await invoke<void>('pause_document_processing', {
-        documentId: documentId.trim(),
-      });
-
-      // 获取更新后的任务状态
-      const tasks = await this.getTaskStatus(documentId);
-
-      return {
-        ok: true,
-        message: '文档处理已暂停',
-        tasks,
-      };
-    } catch (error: unknown) {
-      // 错误处理
-      const errorMessage = error instanceof Error
-        ? error.message
-        : String(error);
-
-      console.error(`[TaskController] 暂停文档失败 (documentId: ${documentId}):`, error);
-
+    // 参数验证
+    if (!documentId || documentId.trim() === '') {
       return {
         ok: false,
-        message: `暂停失败: ${errorMessage}`,
+        message: tEngine('document_id_required'),
       };
     }
+
+    return this.runExclusive(`pause:${documentId.trim()}`, async () => {
+      try {
+        // 调用后端暂停命令
+        await invoke<void>('pause_document_processing', {
+          documentId: documentId.trim(),
+        });
+
+        // 获取更新后的任务状态
+        const tasks = await this.getTaskStatus(documentId);
+
+        return {
+          ok: true,
+          message: tEngine('pause_success'),
+          tasks,
+        };
+      } catch (error: unknown) {
+        // 错误处理
+        const errorMessage = error instanceof Error
+          ? error.message
+          : String(error);
+
+        console.error(`[TaskController] 暂停文档失败 (documentId: ${documentId}):`, error);
+
+        return {
+          ok: false,
+          message: tEngine('pause_failed', { error: errorMessage }),
+        };
+      }
+    });
   }
 
   /**
@@ -143,41 +178,43 @@ export class TaskController {
    * ```
    */
   async resume(documentId: string): Promise<ControlTaskOutput> {
-    try {
-      // 参数验证
-      if (!documentId || documentId.trim() === '') {
-        return {
-          ok: false,
-          message: '文档 ID 不能为空',
-        };
-      }
-
-      // 调用后端恢复命令
-      await invoke<void>('resume_document_processing', {
-        documentId: documentId.trim(),
-      });
-
-      // 获取更新后的任务状态
-      const tasks = await this.getTaskStatus(documentId);
-
-      return {
-        ok: true,
-        message: '文档处理已恢复',
-        tasks,
-      };
-    } catch (error: unknown) {
-      // 错误处理
-      const errorMessage = error instanceof Error
-        ? error.message
-        : String(error);
-
-      console.error(`[TaskController] 恢复文档失败 (documentId: ${documentId}):`, error);
-
+    // 参数验证
+    if (!documentId || documentId.trim() === '') {
       return {
         ok: false,
-        message: `恢复失败: ${errorMessage}`,
+        message: tEngine('document_id_required'),
       };
     }
+
+    return this.runExclusive(`resume:${documentId.trim()}`, async () => {
+      try {
+        // 调用后端恢复命令
+        await invoke<void>('resume_document_processing', {
+          documentId: documentId.trim(),
+        });
+
+        // 获取更新后的任务状态
+        const tasks = await this.getTaskStatus(documentId);
+
+        return {
+          ok: true,
+          message: tEngine('resume_success'),
+          tasks,
+        };
+      } catch (error: unknown) {
+        // 错误处理
+        const errorMessage = error instanceof Error
+          ? error.message
+          : String(error);
+
+        console.error(`[TaskController] 恢复文档失败 (documentId: ${documentId}):`, error);
+
+        return {
+          ok: false,
+          message: tEngine('resume_failed', { error: errorMessage }),
+        };
+      }
+    });
   }
 
   /**
@@ -200,48 +237,50 @@ export class TaskController {
    * ```
    */
   async retry(documentId: string, taskId: string): Promise<ControlTaskOutput> {
-    try {
-      // 参数验证
-      if (!documentId || documentId.trim() === '') {
-        return {
-          ok: false,
-          message: '文档 ID 不能为空',
-        };
-      }
-
-      if (!taskId || taskId.trim() === '') {
-        return {
-          ok: false,
-          message: '任务 ID 不能为空',
-        };
-      }
-
-      // 调用后端重试命令（Tauri v2 默认参数 key 为 camelCase）
-      await invoke<void>('trigger_task_processing', {
-        taskId: taskId.trim(),
-      });
-
-      // 获取更新后的任务状态
-      const tasks = await this.getTaskStatus(documentId);
-
-      return {
-        ok: true,
-        message: `任务 ${taskId} 已重新提交`,
-        tasks,
-      };
-    } catch (error: unknown) {
-      // 错误处理
-      const errorMessage = error instanceof Error
-        ? error.message
-        : String(error);
-
-      console.error(`[TaskController] 重试任务失败 (documentId: ${documentId}, taskId: ${taskId}):`, error);
-
+    // 参数验证
+    if (!documentId || documentId.trim() === '') {
       return {
         ok: false,
-        message: `重试失败: ${errorMessage}`,
+        message: tEngine('document_id_required'),
       };
     }
+
+    if (!taskId || taskId.trim() === '') {
+      return {
+        ok: false,
+        message: tEngine('task_id_required'),
+      };
+    }
+
+    return this.runExclusive(`retry:${documentId.trim()}:${taskId.trim()}`, async () => {
+      try {
+        // 调用后端重试命令（Tauri v2 默认参数 key 为 camelCase）
+        await invoke<void>('trigger_task_processing', {
+          taskId: taskId.trim(),
+        });
+
+        // 获取更新后的任务状态
+        const tasks = await this.getTaskStatus(documentId);
+
+        return {
+          ok: true,
+          message: tEngine('retry_submitted', { taskId }),
+          tasks,
+        };
+      } catch (error: unknown) {
+        // 错误处理
+        const errorMessage = error instanceof Error
+          ? error.message
+          : String(error);
+
+        console.error(`[TaskController] 重试任务失败 (documentId: ${documentId}, taskId: ${taskId}):`, error);
+
+        return {
+          ok: false,
+          message: tEngine('retry_failed', { error: errorMessage }),
+        };
+      }
+    });
   }
 
   /**
@@ -264,38 +303,40 @@ export class TaskController {
    * ```
    */
   async cancel(documentId: string): Promise<ControlTaskOutput> {
-    try {
-      // 参数验证
-      if (!documentId || documentId.trim() === '') {
-        return {
-          ok: false,
-          message: '文档 ID 不能为空',
-        };
-      }
-
-      // 仅停止生成：后端断开运行中的流、将未完成任务置为 Cancelled，
-      // 保留已生成的卡片（非破坏性取消）
-      await invoke<void>('cancel_document_processing', {
-        documentId: documentId.trim(),
-      });
-
-      return {
-        ok: true,
-        message: '文档处理已取消，已生成的卡片已保留',
-      };
-    } catch (error: unknown) {
-      // 错误处理
-      const errorMessage = error instanceof Error
-        ? error.message
-        : String(error);
-
-      console.error(`[TaskController] 取消文档失败 (documentId: ${documentId}):`, error);
-
+    // 参数验证
+    if (!documentId || documentId.trim() === '') {
       return {
         ok: false,
-        message: `取消失败: ${errorMessage}`,
+        message: tEngine('document_id_required'),
       };
     }
+
+    return this.runExclusive(`cancel:${documentId.trim()}`, async () => {
+      try {
+        // 仅停止生成：后端断开运行中的流、将未完成任务置为 Cancelled，
+        // 保留已生成的卡片（非破坏性取消）
+        await invoke<void>('cancel_document_processing', {
+          documentId: documentId.trim(),
+        });
+
+        return {
+          ok: true,
+          message: tEngine('cancel_success'),
+        };
+      } catch (error: unknown) {
+        // 错误处理
+        const errorMessage = error instanceof Error
+          ? error.message
+          : String(error);
+
+        console.error(`[TaskController] 取消文档失败 (documentId: ${documentId}):`, error);
+
+        return {
+          ok: false,
+          message: tEngine('cancel_failed', { error: errorMessage }),
+        };
+      }
+    });
   }
 
   /**
@@ -364,30 +405,8 @@ export class TaskController {
   }
 
   private normalizeStatus(status: BackendTask['status']): TaskStatus {
-    if (typeof status !== 'string') {
-      return 'pending';
-    }
-    const trimmed = status.trim();
-    const statusMap: Record<string, TaskStatus> = {
-      Pending: 'pending',
-      Processing: 'processing',
-      Streaming: 'streaming',
-      Paused: 'paused',
-      Completed: 'completed',
-      Failed: 'failed',
-      Truncated: 'truncated',
-      Cancelled: 'cancelled',
-      pending: 'pending',
-      processing: 'processing',
-      streaming: 'streaming',
-      paused: 'paused',
-      completed: 'completed',
-      failed: 'failed',
-      truncated: 'truncated',
-      cancelled: 'cancelled',
-    };
-
-    return statusMap[trimmed] ?? statusMap[trimmed.toLowerCase()] ?? 'pending';
+    // 统一走大小写不敏感的共享归一化工具（见 ./taskStatus.ts）
+    return normalizeTaskStatus(status);
   }
 
   /**
@@ -421,16 +440,23 @@ export class TaskController {
 
       const trimmedId = documentId.trim();
 
+      // 文档级状态同样可能是帕斯卡命名（'Paused' 等），统一归一为小写，
+      // 避免 canResume/isProcessing 的等值比较因大小写漏判
+      const normalizeDocState = (state: DocumentState): DocumentState => ({
+        ...state,
+        status: normalizeTaskStatus(state.status) as DocumentState['status'],
+      });
+
       try {
         // 优先使用最新命令名
-        return await invoke<DocumentState>('get_document_processing_state', {
+        return normalizeDocState(await invoke<DocumentState>('get_document_processing_state', {
           documentId: trimmedId,
-        });
+        }));
       } catch (error: unknown) {
         // 兼容旧命令名
-        return await invoke<DocumentState>('get_document_state', {
+        return normalizeDocState(await invoke<DocumentState>('get_document_state', {
           documentId: trimmedId,
-        });
+        }));
       }
     } catch (error: unknown) {
       // 如果后端未实现该命令，尝试从任务列表推导状态
@@ -513,7 +539,7 @@ export class TaskController {
     if (!input || typeof input !== 'object') {
       return {
         ok: false,
-        message: '无效的输入参数',
+        message: tEngine('invalid_input'),
       };
     }
 
@@ -523,14 +549,14 @@ export class TaskController {
     if (!action) {
       return {
         ok: false,
-        message: '缺少 action 参数',
+        message: tEngine('action_required'),
       };
     }
 
     if (!documentId) {
       return {
         ok: false,
-        message: '缺少 documentId 参数',
+        message: tEngine('document_id_required'),
       };
     }
 
@@ -547,7 +573,7 @@ export class TaskController {
           if (!taskId) {
             return {
               ok: false,
-              message: 'retry 操作需要提供 taskId 参数',
+              message: tEngine('retry_requires_task_id'),
             };
           }
           return await this.retry(documentId, taskId);
@@ -558,7 +584,7 @@ export class TaskController {
         default:
           return {
             ok: false,
-            message: `未知的操作类型: ${action}`,
+            message: tEngine('unknown_action', { action }),
           };
       }
     } catch (error: unknown) {
@@ -571,7 +597,7 @@ export class TaskController {
 
       return {
         ok: false,
-        message: `操作失败: ${errorMessage}`,
+        message: tEngine('action_failed', { error: errorMessage }),
       };
     }
   }
@@ -602,15 +628,14 @@ export class TaskController {
       // 获取所有任务
       const tasks = await this.getTaskStatus(documentId);
 
-      // 筛选失败的任务
-      const failedTasks = tasks.filter(task =>
-        task.status === 'failed' || task.status === 'truncated'
-      );
+      // 筛选失败口径任务（Failed / Truncated / Cancelled，与会话统计
+      // failed_tasks 一致；仅含 Cancelled 的会话点重试也应生效）
+      const failedTasks = tasks.filter(task => isFailedLikeTaskStatus(task.status));
 
       if (failedTasks.length === 0) {
         return {
           ok: true,
-          message: '没有失败的任务需要重试',
+          message: tEngine('retry_all_none'),
           retriedCount: 0,
           failedRetries: [],
         };
@@ -634,8 +659,8 @@ export class TaskController {
       return {
         ok: allSuccess,
         message: allSuccess
-          ? `成功重试 ${retriedCount} 个失败任务`
-          : `重试了 ${retriedCount} 个任务，${failedRetries.length} 个失败`,
+          ? tEngine('retry_all_success', { count: retriedCount })
+          : tEngine('retry_all_partial', { succeeded: retriedCount, failed: failedRetries.length }),
         retriedCount,
         failedRetries,
       };
@@ -648,7 +673,7 @@ export class TaskController {
 
       return {
         ok: false,
-        message: `批量重试失败: ${errorMessage}`,
+        message: tEngine('retry_all_failed', { error: errorMessage }),
         retriedCount: 0,
         failedRetries: [],
       };

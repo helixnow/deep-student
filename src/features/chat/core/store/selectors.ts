@@ -88,21 +88,27 @@ export const selectMessage =
 /**
  * 选择有序消息列表
  * 使用缓存避免 useStore 场景下的无效重渲染
+ *
+ * 🔧 P0修复：缓存以 messageMap 实例为键存入 WeakMap，而非模块级全局变量。
+ * 每个会话 Store 持有独立的 messageMap 实例，因此多会话并发时不会互相
+ * 污染缓存（旧实现中会话 A 可能错误复用会话 B 的缓存结果）。
+ * messageMap 在每次消息更新后都会换新实例，旧缓存条目随之可被 GC。
  */
-let _cachedMessageOrder: string[] | null = null;
-let _cachedMessageMap: Map<string, Message> | null = null;
-let _cachedResult: Message[] = [];
+const orderedMessagesCache = new WeakMap<
+  ReadonlyMap<string, Message>,
+  { order: readonly string[]; result: Message[] }
+>();
 
 export const selectOrderedMessages = (state: ChatStoreState): Message[] => {
-  if (state.messageOrder === _cachedMessageOrder && state.messageMap === _cachedMessageMap) {
-    return _cachedResult;
+  const cached = orderedMessagesCache.get(state.messageMap);
+  if (cached && cached.order === state.messageOrder) {
+    return cached.result;
   }
-  _cachedMessageOrder = state.messageOrder;
-  _cachedMessageMap = state.messageMap;
-  _cachedResult = state.messageOrder
+  const result = state.messageOrder
     .map((id) => state.messageMap.get(id))
     .filter((msg): msg is Message => msg !== undefined);
-  return _cachedResult;
+  orderedMessagesCache.set(state.messageMap, { order: state.messageOrder, result });
+  return result;
 };
 
 /**

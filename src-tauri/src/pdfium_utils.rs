@@ -43,7 +43,7 @@ static PDFIUM_INSTANCE: OnceLock<Result<SyncPdfium, String>> = OnceLock::new();
 /// 如果所有加载方式都失败，返回错误描述（也会被缓存，避免重复尝试加载）
 pub fn load_pdfium() -> Result<&'static Pdfium, String> {
     PDFIUM_INSTANCE
-        .get_or_init(|| init_pdfium())
+        .get_or_init(init_pdfium)
         .as_ref()
         .map(|sp| &sp.0)
         .map_err(|e| e.clone())

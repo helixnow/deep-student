@@ -11,6 +11,9 @@
     "toggle": "Paragraph Comparison",
     "empty": "Enter text and translate to see paragraph-level comparison here"
   },
+  "comparison_ux": {
+    "copy_segment": "Copy this segment"
+  },
   "tabs": {
     "translate": "Text Translation",
     "history": "History",
@@ -87,6 +90,7 @@
   "popover": {
     "translating": "Translating...",
     "unknown_error": "Translation failed",
+    "empty_result": "Translation result is empty, please retry",
     "model_hint": "Current translation model (change in Settings → Models): {{name}}",
     "copy_source": "Copy source",
     "copy_translation": "Copy translation",
@@ -136,7 +140,7 @@
     "domain_medical": "Medical",
     "domain_casual": "Casual",
     "glossary_title": "Glossary",
-    "glossary_hint": "Specify fixed translations for terms",
+    "glossary_hint": "Specify fixed translations for terms; they will be strictly followed during translation",
     "glossary_source": "Source Term",
     "glossary_target": "Target Translation",
     "glossary_add": "Add Term",
@@ -172,6 +176,7 @@
     "translate_failed": "Translation failed",
     "model_not_configured": "Translation model or Model2 not configured",
     "file_too_large": "File too large (max 200MB)",
+    "file_too_large_dynamic": "File too large. Each file must be no larger than {{size}}MB",
     "unsupported_format": "Unsupported file format",
     "empty_text": "Please enter text to translate",
     "network_error": "Network error, please check connection",
@@ -179,11 +184,12 @@
     "tts_not_supported": "Text-to-speech not supported in current browser",
     "no_text_to_speak": "No text to speak",
     "tts_failed": "Speech synthesis failed: {{error}}",
-    "load_failed": "Failed to load translation: {{error}}",
+    "load_failed": "Failed to load translation record: {{error}}",
+    "load_failed_generic": "Failed to load translation data",
     "offline": "Network disconnected, please check your connection and try again",
     "offline_save": "Cannot save while offline, please check your connection",
     "offline_rate": "Cannot rate while offline, please check your connection",
-    "text_too_long": "Text exceeds maximum of {{max}} characters and will be truncated.",
+    "text_too_long": "Text exceeds maximum of {{max}} characters and will be truncated",
     "ocr_timeout_retry": "OCR timed out, please try again",
     "copy_failed": "Copy failed: {{error}}",
     "export_failed": "Export failed: {{error}}",
@@ -191,7 +197,7 @@
   },
   "confirm": {
     "clear": "Are you sure you want to clear all content?",
-    "clear_title": "Clear content"
+    "clear_title": "Clear Content"
   },
   "toast": {
     "translate_success": "Translation successful",
@@ -212,11 +218,129 @@
     "save_failed": "Save failed: {{error}}"
   },
   "export": {
-    "markdown_title": "Translation",
+    "markdown_title": "Translation Result",
     "date_label": "Date",
     "file_filters": {
       "markdown": "Markdown",
       "text": "Text"
     }
+  },
+  "panel_ux": {
+    "clear_confirm": "Clear all?",
+    "paste_hint": "Pasted — press {{shortcut}} to translate",
+    "near_limit": "Approaching character limit",
+    "empty_hint": "Enter text and press {{shortcut}} to translate",
+    "rate_star": "Rate {{count}} stars",
+    "alignment_sentence": "Paragraph counts differ — aligned by sentence heuristics",
+    "pending_segment": "Pending translation",
+    "segments": "{{count}} segments"
+  },
+  "workbench": {
+    "layout": {
+      "label": "Layout",
+      "split": "Side by side",
+      "stacked": "Stacked"
+    },
+    "toolbar": {
+      "auto_translate": "Auto-translate"
+    }
+  },
+  "language_select": {
+    "trigger_label": "Select language",
+    "search_placeholder": "Search languages…",
+    "no_results": "No matching languages",
+    "recent": "Recent",
+    "all": "All languages",
+    "auto_detect": "Auto Detect",
+    "detected": "Detected · {{language}}"
+  },
+  "contentView": {
+    "skeleton_loading": "Loading translation…",
+    "save_saving": "Saving…",
+    "save_saved": "Saved",
+    "save_failed": "Save failed: {{error}}",
+    "save_retry": "Retry",
+    "save_error_dismiss": "Dismiss this save error",
+    "empty_hint": "New translation ready — enter source text below to get started",
+    "empty_hint_dismiss": "Dismiss hint",
+    "workbench_error_title": "Translation workbench failed to load",
+    "workbench_error_desc": "You can reload the workbench; a read-only preview of the current content is shown below so you can copy it first.",
+    "workbench_error_desc_empty": "You can reload the workbench, or go back and reopen this translation.",
+    "workbench_error_retry": "Reload",
+    "char_count": "{{n}} characters",
+    "empty_content": "(no content)"
+  },
+  "chat_popover": {
+    "streaming": "Translating",
+    "timeout": "Translation timed out with no response for a while. Please retry.",
+    "fallback_notice": "Phrase alignment unavailable; showing the full translation instead",
+    "segments_progress": "{{n}} segments translated",
+    "swap_languages": "Swap languages",
+    "cannot_swap_auto": "Cannot swap while source language is auto-detected",
+    "copy_streaming_hint": "Copy is available once translation completes",
+    "add_streaming_hint": "Add to chat is available once translation completes"
+  },
+  "prompt_panel": {
+    "style_title": "Translation Style",
+    "style_hint": "Controls the tone and formality of the translation",
+    "domain_hint": "Optimizes terminology and phrasing for the selected domain",
+    "prompt_hint": "Extra instructions sent to the model with every translation",
+    "glossary": {
+      "empty": "No terms yet. Type a source term and its translation above, then press Enter",
+      "edit": "Edit term",
+      "remove": "Remove term",
+      "confirm_edit": "Save changes",
+      "cancel_edit": "Cancel editing",
+      "duplicate_updated": "Updated translation for term \"{{term}}\""
+    },
+    "templates": {
+      "general": "General",
+      "academic": "Academic",
+      "conversational": "Conversational",
+      "technical": "Technical Docs",
+      "literary": "Literary",
+      "save_as": "Save as Template",
+      "name_placeholder": "Template name",
+      "confirm_save": "Save template",
+      "cancel_save": "Cancel saving",
+      "delete": "Delete template {{name}}",
+      "saved": "Template saved"
+    },
+    "template_prompts": {
+      "academic": "You are a professional academic translator. Translate the given text with precise terminology and a formal academic register. Preserve citations, technical terms, symbols, and formatting. Do not add explanations or notes. Only output the translated text.",
+      "conversational": "You are a skilled translator specializing in everyday conversation. Translate the given text into natural, idiomatic spoken language that sounds like a native speaker. Keep the tone friendly and casual while staying faithful to the meaning. Only output the translated text.",
+      "technical": "You are a technical documentation translator. Translate the given text accurately and consistently. Keep code snippets, commands, API names, file paths, and placeholders unchanged. Use standard technical terminology for the target language. Only output the translated text.",
+      "literary": "You are a literary translator. Translate the given text while preserving its style, rhythm, imagery, and emotional tone. Prefer expressive, faithful renderings over word-for-word literalism. Only output the translated text."
+    }
+  },
+  "workbench_core": {
+    "samples_label": "Try an example",
+    "sample_en": "The best way to predict the future is to invent it.",
+    "sample_zh": "学而不思则罔，思而不学则殆。",
+    "drop_hint_inline": "or drop an image / PDF / DOCX / TXT / MD file",
+    "detected_badge": "Detected"
+  },
+  "workbench_ui": {
+    "detected_language": "Detected: {{language}}",
+    "cancelled_partial": "Translation cancelled — partial result kept",
+    "discard_partial": "Discard partial",
+    "dismiss": "Got it",
+    "shortcut_translate": "Translate",
+    "shortcut_swap": "Swap languages",
+    "shortcut_cancel": "Cancel translation"
+  },
+  "viewer": {
+    "loading": "Loading translation…",
+    "non_text_content": "This translation content is not text and cannot be previewed",
+    "unknown_lang": "Unknown",
+    "view_mode": "Bilingual view mode",
+    "view_stacked": "Sections",
+    "view_interleaved": "Aligned",
+    "empty_title": "Nothing translated yet",
+    "empty_hint": "This translation has no content yet — open it in the Learning Hub to start translating",
+    "char_count": "{{n}} characters",
+    "meta_glossary": "{{n}} glossary terms",
+    "meta_quality": "{{n}} stars",
+    "meta_favorite": "Favorited"
   }
 }

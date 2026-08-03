@@ -5,9 +5,36 @@
 use crate::commands::AppState;
 use crate::models::AppError;
 use crate::tools::ToolConflict;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 type Result<T> = std::result::Result<T, AppError>;
+
+/// Rust-only settings that must never be reachable through the generic WebView IPC surface.
+const INTERNAL_SETTING_PREFIXES: &[&str] = &["internal.oauth."];
+
+fn ensure_public_setting_key(key: &str) -> Result<()> {
+    if INTERNAL_SETTING_PREFIXES
+        .iter()
+        .any(|reserved| key.starts_with(reserved))
+    {
+        return Err(AppError::configuration(
+            "该设置键属于后端内部凭据，不能通过通用设置接口访问",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_public_setting_prefix(prefix: &str) -> Result<()> {
+    if INTERNAL_SETTING_PREFIXES
+        .iter()
+        .any(|reserved| prefix.starts_with(reserved) || reserved.starts_with(prefix))
+    {
+        return Err(AppError::configuration(
+            "该设置前缀可能包含后端内部凭据，不能通过通用设置接口访问",
+        ));
+    }
+    Ok(())
+}
 
 // =====================
 // Web Search connectivity test
@@ -74,6 +101,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
 
     // 定义所有可能的搜索引擎
     let engines = vec![
+        ("bing_rss", "Bing RSS（免费）"),
         ("google_cse", "Google CSE"),
         ("serpapi", "SerpAPI"),
         ("tavily", "Tavily"),
@@ -91,6 +119,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
 
         // 检查是否有必要的配置
         let has_config = match engine_id {
+            "bing_rss" => true,
             "google_cse" => cfg.keys.google_cse.is_some() && cfg.keys.google_cse_cx.is_some(),
             "serpapi" => cfg.keys.serpapi.is_some(),
             "tavily" => cfg.keys.tavily.is_some(),
@@ -508,17 +537,29 @@ pub async fn test_search_engine(
 
 /// 保存设置（敏感键自动使用安全存储）
 #[tauri::command]
-pub async fn save_setting(key: String, value: String, state: State<'_, AppState>) -> Result<bool> {
+pub async fn save_setting(
+    key: String,
+    value: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<bool> {
+    ensure_public_setting_key(&key)?;
     let db = &state.database;
     // 使用 save_secret 自动判断是否需要安全存储
     db.save_secret(&key, &value)
         .map_err(|e| AppError::database(format!("保存设置失败: {}", e)))?;
+    if key == crate::browser::SETTING_BROWSER_NETWORK_MODE {
+        if let Some(service) = app.try_state::<std::sync::Arc<crate::browser::BrowserService>>() {
+            service.sync_network_mode_value(&value);
+        }
+    }
     Ok(true)
 }
 
 /// 读取设置（敏感键自动从安全存储读取）
 #[tauri::command]
 pub async fn get_setting(key: String, state: State<'_, AppState>) -> Result<Option<String>> {
+    ensure_public_setting_key(&key)?;
     let db = &state.database;
     // 使用 get_secret 自动判断是否需要从安全存储读取
     db.get_secret(&key)
@@ -528,6 +569,7 @@ pub async fn get_setting(key: String, state: State<'_, AppState>) -> Result<Opti
 /// 删除设置
 #[tauri::command]
 pub async fn delete_setting(key: String, state: State<'_, AppState>) -> Result<bool> {
+    ensure_public_setting_key(&key)?;
     let db = &state.database;
     db.delete_secret(&key)
         .map_err(|e| AppError::database(format!("删除设置失败: {}", e)))
@@ -539,6 +581,7 @@ pub async fn get_settings_by_prefix(
     prefix: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<(String, String, String)>> {
+    ensure_public_setting_prefix(&prefix)?;
     let db = &state.database;
     db.get_settings_by_prefix(&prefix)
         .map_err(|e| AppError::database(format!("按前缀查询设置失败: {}", e)))
@@ -550,7 +593,27 @@ pub async fn delete_settings_by_prefix(
     prefix: String,
     state: State<'_, AppState>,
 ) -> Result<usize> {
+    ensure_public_setting_prefix(&prefix)?;
     let db = &state.database;
     db.delete_settings_by_prefix(&prefix)
         .map_err(|e| AppError::database(format!("按前缀批量删除设置失败: {}", e)))
+}
+
+#[cfg(test)]
+mod internal_setting_boundary_tests {
+    use super::{ensure_public_setting_key, ensure_public_setting_prefix};
+
+    #[test]
+    fn blocks_internal_oauth_keys_from_generic_ipc() {
+        assert!(ensure_public_setting_key("internal.oauth.openai_codex.session").is_err());
+        assert!(ensure_public_setting_prefix("internal.oauth.").is_err());
+        assert!(ensure_public_setting_prefix("internal.").is_err());
+        assert!(ensure_public_setting_prefix("").is_err());
+    }
+
+    #[test]
+    fn leaves_normal_settings_available() {
+        assert!(ensure_public_setting_key("web_search.default_engine").is_ok());
+        assert!(ensure_public_setting_prefix("mcp.tools.").is_ok());
+    }
 }

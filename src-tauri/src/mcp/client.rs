@@ -806,6 +806,12 @@ pub struct EventEmitter {
     handlers: Arc<RwLock<Vec<EventHandler>>>,
 }
 
+impl Default for EventEmitter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventEmitter {
     pub fn new() -> Self {
         Self {
@@ -1176,11 +1182,7 @@ impl McpClient {
             if page_count > 100 {
                 break;
             }
-            let params = if let Some(ref c) = cursor {
-                Some(json!({ "cursor": c }))
-            } else {
-                None
-            };
+            let params = cursor.as_ref().map(|c| json!({ "cursor": c }));
             let response = self.send_request("tools/list", params).await?;
             if let Some(result) = response.result {
                 let tools: Vec<Tool> =
@@ -1256,11 +1258,7 @@ impl McpClient {
             if page_count > 100 {
                 break;
             }
-            let params = if let Some(ref c) = cursor {
-                Some(json!({ "cursor": c }))
-            } else {
-                None
-            };
+            let params = cursor.as_ref().map(|c| json!({ "cursor": c }));
             let response = self.send_request("resources/list", params).await?;
             if let Some(result) = response.result {
                 let resources: Vec<Resource> =
@@ -1295,11 +1293,7 @@ impl McpClient {
             if page_count > 100 {
                 break;
             }
-            let params = if let Some(ref c) = cursor {
-                Some(json!({ "cursor": c }))
-            } else {
-                None
-            };
+            let params = cursor.as_ref().map(|c| json!({ "cursor": c }));
             let response = self
                 .send_request("resources/templates/list", params)
                 .await?;
@@ -1412,11 +1406,7 @@ impl McpClient {
             if page_count > 100 {
                 break;
             }
-            let params = if let Some(ref c) = cursor {
-                Some(json!({ "cursor": c }))
-            } else {
-                None
-            };
+            let params = cursor.as_ref().map(|c| json!({ "cursor": c }));
             let response = self.send_request("prompts/list", params).await?;
             if let Some(result) = response.result {
                 let prompts: Vec<Prompt> =

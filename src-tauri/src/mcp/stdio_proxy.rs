@@ -12,6 +12,10 @@ use super::global::create_stdio_transport;
 use super::transport::Transport;
 use super::types::McpError;
 
+/// 移动端（android/ios）拒绝 stdio 时的稳定错误文案（桌面测试可断言）
+pub const STDIO_UNSUPPORTED_ON_MOBILE_MSG: &str =
+    "Stdio MCP transport is not supported on this platform";
+
 struct StdioTransportHandle {
     transport: Arc<dyn Transport + Send + Sync>,
     reader_task: JoinHandle<()>,
@@ -22,9 +26,12 @@ static STDIO_SESSIONS: LazyLock<Mutex<HashMap<String, StdioTransportHandle>>> =
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn framing_from_str(value: Option<&str>) -> McpFraming {
+    // 默认 JSONL（MCP 规范）；Content-Length 仅在显式请求时启用。
     match value.map(|v| v.to_lowercase()).as_deref() {
-        Some("jsonl") | Some("json_lines") | Some("json-lines") => McpFraming::JsonLines,
-        _ => McpFraming::ContentLength,
+        Some("content_length") | Some("content-length") | Some("contentlength") => {
+            McpFraming::ContentLength
+        }
+        _ => McpFraming::JsonLines,
     }
 }
 
@@ -143,20 +150,73 @@ pub async fn start_stdio_session(
     _cwd: Option<String>,
 ) -> Result<String, McpError> {
     Err(McpError::TransportError(
-        "Stdio MCP transport is not supported on this platform".into(),
+        STDIO_UNSUPPORTED_ON_MOBILE_MSG.into(),
     ))
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub async fn send_stdio_message(_session_id: &str, _message: &str) -> Result<(), McpError> {
     Err(McpError::TransportError(
-        "Stdio MCP transport is not supported on this platform".into(),
+        STDIO_UNSUPPORTED_ON_MOBILE_MSG.into(),
     ))
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub async fn close_stdio_session(_session_id: &str) -> Result<(), McpError> {
     Err(McpError::TransportError(
-        "Stdio MCP transport is not supported on this platform".into(),
+        STDIO_UNSUPPORTED_ON_MOBILE_MSG.into(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::config::{McpTransportConfig, OAuthConfig};
+
+    #[test]
+    fn mobile_stdio_rejection_message_is_stable() {
+        assert!(STDIO_UNSUPPORTED_ON_MOBILE_MSG.contains("not supported"));
+        assert!(STDIO_UNSUPPORTED_ON_MOBILE_MSG
+            .to_ascii_lowercase()
+            .contains("stdio"));
+    }
+
+    /// 移动端仍可配置网络 MCP（SSE / HTTP / Streamable HTTP），仅 stdio 被拒
+    #[test]
+    fn network_mcp_transport_variants_remain_available() {
+        let sse = McpTransportConfig::SSE {
+            endpoint: "https://example.com/sse".into(),
+            api_key: None,
+            oauth: Some(OAuthConfig {
+                client_id: String::new(),
+                auth_url: String::new(),
+                token_url: String::new(),
+                redirect_uri: "http://127.0.0.1/auth/callback".into(),
+                scopes: vec![],
+                client_secret: None,
+            }),
+            headers: HashMap::new(),
+        };
+        let http = McpTransportConfig::Http {
+            url: "https://example.com/mcp".into(),
+            api_key: Some("k".into()),
+            oauth: None,
+            headers: HashMap::new(),
+        };
+        let stream = McpTransportConfig::StreamableHttp {
+            url: "https://example.com/mcp".into(),
+            api_key: None,
+            oauth: None,
+            headers: HashMap::new(),
+        };
+        assert!(matches!(sse, McpTransportConfig::SSE { .. }));
+        assert!(matches!(
+            http,
+            McpTransportConfig::Http {
+                api_key: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(stream, McpTransportConfig::StreamableHttp { .. }));
+    }
 }

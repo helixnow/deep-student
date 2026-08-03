@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Monitor, Moon, Sun, CircleNotch } from '@phosphor-icons/react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSelect, type AppSelectGroup } from '@/components/ui/app-menu';
 import { SettingSection } from './SettingsCommon';
@@ -11,6 +11,7 @@ import { AccentPicker } from './AccentPicker';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { isMacOS } from '@/utils/platform';
+import { applySidebarTranslucency } from '@/utils/sidebarTranslucency';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import {
   DEFAULT_UI_FONT,
@@ -19,6 +20,7 @@ import {
   UI_FONT_SIZE_PRESETS,
 } from '@/config/fontConfig';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
+import { APP_EVENTS, addAppEventListener, dispatchAppEvent } from '@/events';
 
 const DEFAULT_UI_ZOOM = 1.0;
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
@@ -101,20 +103,29 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const loadSidebarTranslucent = async () => {
       try {
         const val = await tauriInvoke<string | null>('get_setting', { key: SIDEBAR_TRANSLUCENT_KEY }).catch(() => null);
         if (cancelled) return;
         const enabled = String(val ?? '').trim() === 'true';
         setSidebarTranslucent(enabled);
-        document.documentElement.setAttribute('data-sidebar-translucent', String(enabled));
+        void applySidebarTranslucency(enabled);
       } catch {
         if (cancelled) return;
         setSidebarTranslucent(false);
       }
-    })();
+    };
+    void loadSidebarTranslucent();
+
+    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
+      if (detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
+        void loadSidebarTranslucent();
+      }
+    });
+
     return () => {
       cancelled = true;
+      dispose();
     };
   }, []);
 
@@ -152,20 +163,18 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         const enabled = String(raw ?? '').trim() !== 'false';
         setThinkingAutoCollapse(enabled);
         document.documentElement.setAttribute('data-auto-collapse-thinking', String(enabled));
-        window.dispatchEvent(
-          new CustomEvent('systemSettingsChanged', {
-            detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: enabled },
-          }),
-        );
+        dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+          settingKey: THINKING_AUTO_COLLAPSE_KEY,
+          value: enabled,
+        });
       } catch {
         if (cancelled) return;
         setThinkingAutoCollapse(true);
         document.documentElement.setAttribute('data-auto-collapse-thinking', 'true');
-        window.dispatchEvent(
-          new CustomEvent('systemSettingsChanged', {
-            detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: true },
-          }),
-        );
+        dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+          settingKey: THINKING_AUTO_COLLAPSE_KEY,
+          value: true,
+        });
       }
     })();
 
@@ -209,19 +218,19 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   const themeModeOptions = React.useMemo(() => [
     {
       mode: 'light' as const,
-      label: t('settings:theme.modes.light', '浅色'),
+      label: t('settings:theme.modes.light'),
       icon: Sun,
     },
     {
       mode: 'dark' as const,
-      label: t('settings:theme.modes.dark', '深色'),
+      label: t('settings:theme.modes.dark'),
       icon: Moon,
     },
     {
       mode: 'auto' as const,
-      label: t('settings:theme.system_default', '系统默认'),
+      label: t('settings:theme.system_default'),
       icon: Monitor,
-      title: t('settings:theme.system_default_hint', '匹配系统外观设置'),
+      title: t('settings:theme.system_default_hint'),
     },
   ], [t]);
 
@@ -254,14 +263,10 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         value: String(checked),
       });
 
-      window.dispatchEvent(
-        new CustomEvent('systemSettingsChanged', {
-          detail: {
-            macosFontSmoothing: true,
-            settingKey: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
-          },
-        }),
-      );
+      dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+        macosFontSmoothing: true,
+        settingKey: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
+      });
     } catch (error: unknown) {
       setMacosNativeFontSmoothingEnabled(previousValue);
       showGlobalNotification('error', getErrorMessage(error));
@@ -272,7 +277,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     if (sidebarTranslucent === null) return;
     const previousValue = sidebarTranslucent;
     setSidebarTranslucent(checked);
-    document.documentElement.setAttribute('data-sidebar-translucent', String(checked));
+    void applySidebarTranslucency(checked);
 
     if (!invoke) return;
 
@@ -283,7 +288,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
       });
     } catch (error: unknown) {
       setSidebarTranslucent(previousValue);
-      document.documentElement.setAttribute('data-sidebar-translucent', String(previousValue));
+      void applySidebarTranslucency(previousValue);
       showGlobalNotification('error', getErrorMessage(error));
     }
   }, [invoke, sidebarTranslucent]);
@@ -302,15 +307,11 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         value: String(checked),
       });
 
-      window.dispatchEvent(
-        new CustomEvent('systemSettingsChanged', {
-          detail: {
-            pointerCursor: true,
-            settingKey: POINTER_CURSOR_SETTING_KEY,
-            value: checked,
-          },
-        }),
-      );
+      dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+        pointerCursor: true,
+        settingKey: POINTER_CURSOR_SETTING_KEY,
+        value: checked,
+      });
     } catch (error: unknown) {
       setPointerCursorEnabled(previousValue);
       document.documentElement.setAttribute('data-pointer-cursor', String(previousValue));
@@ -318,17 +319,36 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     }
   }, [invoke, pointerCursorEnabled]);
 
+  // 同步 DB 副本 theme_palette（localStorage 是主源，DB 副本供 Agent 工具/导出读取，
+  // 之前只在设置页 autoSave 链路里偶发写入，长期漂移）
+  const persistThemePalette = React.useCallback((palette: ThemePalette) => {
+    if (!invoke) return;
+    void (invoke as typeof tauriInvoke)('save_setting', { key: 'theme_palette', value: palette })
+      .catch((error: unknown) => {
+        console.warn('Failed to persist theme_palette:', getErrorMessage(error));
+      });
+  }, [invoke]);
+
+  const handleThemePaletteChange = React.useCallback((palette: ThemePalette) => {
+    setThemePalette(palette);
+    persistThemePalette(palette);
+  }, [persistThemePalette, setThemePalette]);
+
+  const handleCustomColorChange = React.useCallback((color: string) => {
+    setCustomColor(color);
+    persistThemePalette('custom');
+  }, [persistThemePalette, setCustomColor]);
+
   const handleThinkingAutoCollapseChange = React.useCallback(async (checked: boolean) => {
     if (thinkingAutoCollapse === null) return;
     const previousValue = thinkingAutoCollapse;
     setThinkingAutoCollapse(checked);
     document.documentElement.setAttribute('data-auto-collapse-thinking', String(checked));
 
-    window.dispatchEvent(
-      new CustomEvent('systemSettingsChanged', {
-        detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: checked },
-      }),
-    );
+    dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+      settingKey: THINKING_AUTO_COLLAPSE_KEY,
+      value: checked,
+    });
 
     if (!invoke) return;
 
@@ -340,38 +360,36 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     } catch (error: unknown) {
       setThinkingAutoCollapse(previousValue);
       document.documentElement.setAttribute('data-auto-collapse-thinking', String(previousValue));
-      window.dispatchEvent(
-        new CustomEvent('systemSettingsChanged', {
-          detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: previousValue },
-        }),
-      );
+      dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+        settingKey: THINKING_AUTO_COLLAPSE_KEY,
+        value: previousValue,
+      });
       showGlobalNotification('error', getErrorMessage(error));
     }
   }, [invoke, thinkingAutoCollapse]);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="appearance-settings">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="appearance-settings">
       <SettingSection
-        title={t('settings:tabs.appearance', '外观')}
-        description={t('settings:study_ui_descriptions.appearance', '自定义主题、字体、缩放和界面视觉风格。')}
+        title={t('settings:tabs.appearance')}
+        description={t('settings:study_ui_descriptions.appearance')}
         className="overflow-visible"
         dataTourId="theme-section"
         hideHeader
       >
         <SettingsGroup
-          title={t('settings:groups.appearance', '界面外观')}
-          description={t('settings:study_ui_descriptions.appearance', '自定义主题、字体、缩放和界面视觉风格。')}
+          title={t('settings:groups.appearance')}
         >
             <SettingRow
-              title={t('settings:theme.row_title', '外观 / 主题')}
-              description={t('settings:theme.row_description', '使用浅色、深色，或匹配系统设置')}
-              className="items-center"
+              title={t('settings:theme.row_title')}
+              className="items-stretch md:!items-center"
             >
               <SegmentedControl
-                ariaLabel={t('settings:theme.mode_label', '选择主题模式')}
+                ariaLabel={t('settings:theme.mode_label')}
                 value={themeMode}
                 onValueChange={(nextMode) => { void handleThemeModeChange(nextMode); }}
                 stretch
+                className="w-full md:w-auto"
                 options={themeModeOptions.map(({ mode, label, icon: Icon, title }) => ({
                   value: mode,
                   title,
@@ -387,11 +405,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
 
             {isMacOS() && (
               <SwitchRow
-                title={t('settings:theme.font_smoothing_title', 'macOS 原生字体平滑')}
-                description={t(
-                  'settings:theme.font_smoothing_description',
-                  '在 macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。',
-                )}
+                title={t('settings:theme.font_smoothing_title')}
+                description={t('settings:theme.font_smoothing_description')}
                 checked={macosNativeFontSmoothingEnabled ?? true}
                 loading={macosNativeFontSmoothingEnabled === null}
                 onCheckedChange={(checked) => {
@@ -401,11 +416,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
             )}
 
             <SwitchRow
-              title={t('settings:theme.sidebar_translucent_title', '侧边栏半透明')}
-              description={t(
-                'settings:theme.sidebar_translucent_description',
-                '开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。',
-              )}
+              title={t('settings:theme.sidebar_translucent_title')}
+              description={t('settings:theme.sidebar_translucent_description')}
               checked={sidebarTranslucent ?? false}
               loading={sidebarTranslucent === null}
               onCheckedChange={(checked) => {
@@ -414,11 +426,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
             />
 
             <SwitchRow
-              title={t('settings:theme.pointer_cursor_title', '使用指针光标')}
-              description={t(
-                'settings:theme.pointer_cursor_description',
-                '悬停交互元素时切换为指针光标。',
-              )}
+              title={t('settings:theme.pointer_cursor_title')}
+              description={t('settings:theme.pointer_cursor_description')}
               checked={pointerCursorEnabled ?? true}
               loading={pointerCursorEnabled === null}
               onCheckedChange={(checked) => {
@@ -427,11 +436,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
             />
 
             <SwitchRow
-              title={t('settings:theme.thinking_auto_collapse_title', '思维链自动折叠')}
-              description={t(
-                'settings:theme.thinking_auto_collapse_description',
-                '思维链输出完成后自动折叠，保持对话界面更简洁。',
-              )}
+              title={t('settings:theme.thinking_auto_collapse_title')}
+              description={t('settings:theme.thinking_auto_collapse_description')}
               checked={thinkingAutoCollapse ?? true}
               loading={thinkingAutoCollapse === null}
               onCheckedChange={(checked) => {
@@ -444,7 +450,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               description={zoomLoading ? t('settings:zoom.loading') : t('settings:zoom.status_current', { value: formatZoomLabel(uiZoom) })}
             >
               {isTauriEnvironment ? (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
                   <AppSelect
                     value={uiZoom.toString()}
                     onValueChange={val => { void handleZoomChange(parseFloat(val)); }}
@@ -453,22 +459,23 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     options={UI_ZOOM_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                     size="sm"
                     variant="ghost"
-                    className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                    className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8"
                     width={90}
                   />
-                  <NotionButton
+                  <DsButton
                     type="button"
                     variant="ghost"
                     size="sm"
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001}
                     onClick={handleZoomReset}
+                    className="min-h-11 md:min-h-0"
                   >
                     {zoomSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                     {t('settings:zoom.reset')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               ) : (
-                <div className="text-[11px] text-muted-foreground/70">
+                <div className="text-xs text-muted-foreground/70">
                   {t('settings:zoom.not_supported')}
                 </div>
               )}
@@ -478,17 +485,18 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               title={t('settings:font.title')}
               description={fontLoading ? t('settings:font.loading') : t('settings:font.status_current', { font: t(`settings:font.presets.${uiFont.replace(/-/g, '_')}`) })}
             >
-              <div className="flex items-center gap-2">
-                <NotionButton
+              <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+                <DsButton
                   type="button"
                   variant="ghost"
                   size="sm"
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT}
                   onClick={handleFontReset}
+                  className="min-h-11 md:min-h-0"
                 >
                   {fontSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.reset')}
-                </NotionButton>
+                </DsButton>
                 <AppSelect
                   value={uiFont}
                   onValueChange={val => { void handleFontChange(val); }}
@@ -497,7 +505,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   disabled={fontSaving || fontLoading}
                   width={180}
                   variant="outline"
-                  className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                  className="h-11 max-w-full bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8"
                 />
               </div>
             </SettingRow>
@@ -506,7 +514,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               title={t('settings:font.size_title')}
               description={fontSizeLoading ? t('settings:font.size_loading') : t('settings:font.size_status_current', { value: formatFontSizeLabel(uiFontSize) })}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
                 <AppSelect
                   value={uiFontSize.toString()}
                   onValueChange={val => { void handleFontSizeChange(parseFloat(val)); }}
@@ -515,36 +523,37 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   options={UI_FONT_SIZE_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                   size="sm"
                   variant="ghost"
-                  className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                  className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8"
                   width={90}
                 />
-                <NotionButton
+                <DsButton
                   type="button"
                   variant="ghost"
                   size="sm"
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}
+                  className="min-h-11 md:min-h-0"
                 >
                   {fontSizeSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.size_reset')}
-                </NotionButton>
+                </DsButton>
               </div>
             </SettingRow>
 
             <div className="group rounded-[var(--button-radius)] px-1 py-2.5">
               <div className="mb-3">
                 <h3 className="text-sm text-foreground/90 leading-tight">
-                  {t('settings:theme.accent_label', '强调色')}
+                  {t('settings:theme.accent_label')}
                 </h3>
-                <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-                  {t('settings:theme.accent_hint', '只调整按钮、链接和选中态的颜色。不影响背景、卡片和文本。')}
+                <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">
+                  {t('settings:theme.accent_hint')}
                 </p>
               </div>
               <AccentPicker
                 palette={themePalette}
                 customColor={customColor}
-                onSelectPreset={setThemePalette}
-                onSelectCustomColor={setCustomColor}
+                onSelectPreset={handleThemePaletteChange}
+                onSelectCustomColor={handleCustomColorChange}
               />
             </div>
         </SettingsGroup>

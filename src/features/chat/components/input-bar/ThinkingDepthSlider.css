@@ -1,0 +1,239 @@
+.tds-root {
+  --tds-snap-dur: 220ms;
+  --tds-snap-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --tds-rail-height: 24px;
+  --tds-thumb-size: 28px;
+  --tds-thumb-inset: 14px;
+  --tds-thumb-hover-scale: 1.1;
+  --tds-thumb-drag-scale: 1.18;
+  --tds-track-height: calc(var(--tds-thumb-size) * var(--tds-thumb-drag-scale) + 8px);
+  --tds-thumb-hover-dur: 400ms;
+  --tds-thumb-release-dur: 160ms;
+  --tds-thumb-hold-dur: 220ms;
+  --tds-thumb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tds-thumb-hover-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --tds-guidance-dur: 140ms;
+  --tds-guidance-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tds-track-active: hsl(var(--primary));
+
+  display: block;
+  padding: 0;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.tds-root * {
+  -webkit-app-region: no-drag;
+}
+
+.tds-track {
+  position: relative;
+  display: flex;
+  height: var(--tds-track-height);
+  align-items: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  outline: none;
+  touch-action: none;
+}
+
+.tds-root[data-dragging] .tds-track {
+  cursor: grabbing;
+}
+
+.tds-track:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 24%);
+}
+
+.tds-rail {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  height: var(--tds-rail-height);
+  margin-inline: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: inherit;
+  background: var(--surface-muted);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+
+.tds-rail-inner {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.tds-fill {
+  position: absolute;
+  z-index: 0;
+  inset: 0 auto 0 0;
+  width: calc(100% - var(--tds-thumb-inset));
+  background: var(--tds-track-active);
+  transform: scaleX(var(--tds-ratio));
+  transform-origin: left center;
+  transition: transform var(--tds-snap-dur) var(--tds-snap-ease);
+  will-change: transform;
+}
+
+.tds-canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.tds-root[data-dragging] .tds-fill {
+  transition: none;
+}
+
+.tds-range {
+  position: absolute;
+  z-index: 2;
+  inset: 0 var(--tds-thumb-inset);
+}
+
+.tds-tick {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in hsl, var(--text-muted) 20%, transparent);
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1);
+  transition: background-color 120ms ease-out, transform 180ms var(--tds-snap-ease);
+}
+
+.tds-tick[data-lit='true'] {
+  background: color-mix(in hsl, hsl(var(--primary-foreground)) 40%, transparent);
+  transform: translate(-50%, -50%) scale(1.25);
+}
+
+/* 拇指移动走 transform 而非 left：left 过渡每帧触发 layout+paint，
+   transform 由合成器插值（WebView2 低配机上 snap 动画不掉帧）。
+   positioner 全宽（= .tds-range 内容宽），translateX 的百分比以自身宽度
+   为基准，与原 left: var(--tds-pct) 的定位语义完全等价。 */
+.tds-thumb-positioner {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 2;
+  width: 100%;
+  height: 0;
+  pointer-events: none;
+  transform: translateX(calc(var(--tds-ratio) * 100%));
+  transition: transform var(--tds-snap-dur) var(--tds-snap-ease);
+  will-change: transform;
+}
+
+.tds-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.tds-root[data-dragging] .tds-thumb-positioner {
+  transition: none;
+}
+
+.tds-thumb-core {
+  display: block;
+  width: var(--tds-thumb-size);
+  height: var(--tds-thumb-size);
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-content-subtle);
+  transform: scale(1);
+  transform-origin: center;
+  transition: transform var(--tds-thumb-release-dur) var(--tds-thumb-ease), box-shadow var(--tds-thumb-release-dur) var(--tds-thumb-ease);
+}
+
+.tds-track:hover .tds-thumb-core {
+  transform: scale(var(--tds-thumb-hover-scale));
+  transition: transform var(--tds-thumb-hover-dur) var(--tds-thumb-hover-ease);
+}
+
+.tds-root[data-dragging] .tds-track .tds-thumb-core {
+  transform: scale(var(--tds-thumb-drag-scale));
+  transition: transform var(--tds-thumb-hover-dur) var(--tds-thumb-ease), box-shadow var(--tds-thumb-hover-dur) var(--tds-thumb-ease);
+}
+
+.tds-root[data-thumb-held] .tds-thumb-core {
+  box-shadow: var(--shadow-content-soft);
+  transition-duration: var(--tds-thumb-hold-dur);
+}
+
+.tds-drag-label-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  height: 16px;
+  align-items: center;
+  animation: tds-guidance-in var(--tds-guidance-dur) var(--tds-guidance-ease) both;
+  column-gap: 6px;
+  margin-top: 4px;
+  pointer-events: none;
+}
+
+@keyframes tds-guidance-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tds-scale-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tds-scale-label-efficient {
+  grid-column: 1;
+  text-align: left;
+}
+
+.tds-scale-label-smart {
+  grid-column: 3;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tds-root .tds-fill,
+  .tds-root[data-dragging] .tds-fill,
+  .tds-root .tds-thumb,
+  .tds-root .tds-thumb-positioner,
+  .tds-root[data-dragging] .tds-thumb-positioner,
+  .tds-root .tds-tick,
+  .tds-root .tds-thumb-core {
+    transition: none;
+  }
+
+  .tds-root .tds-drag-label-slot {
+    animation: none;
+  }
+}

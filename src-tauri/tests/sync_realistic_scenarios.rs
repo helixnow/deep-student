@@ -1542,7 +1542,6 @@ fn s30_create_anki_card_from_document_tasks_sync() {
 }
 
 #[test]
-#[ignore = "custom_anki_templates is BackupOnly"]
 fn s31_custom_anki_template_sync_as_backup() {
     clear_sync_log();
     let device_a = SyncDevice::new("A", "device_a_001");
@@ -1880,7 +1879,6 @@ fn s42_folder_item_unique_constraint_conflict() {
 }
 
 #[test]
-#[ignore = "String escaping in JSON-to-SQL conversion needs null byte handling"]
 fn s54_special_characters_in_json_cols() {
     clear_sync_log();
     let device_a = SyncDevice::new("A", "device_a_001");
@@ -1899,11 +1897,9 @@ fn s54_special_characters_in_json_cols() {
 }
 
 #[test]
-#[ignore = "FTS5 trigger + INSERT OR REPLACE causes SQLITE_CORRUPT_VTAB"]
 fn s43_both_devices_add_different_tags_to_question() {
-    // NOTE: questions table has FTS5 triggers that cause SQLITE_CORRUPT_VTAB on
-    // UPDATE/INSERT OR REPLACE in in-memory test harness. This test verifies
-    // concurrent-edit change_log behavior using the notes table (no FTS5).
+    // The lightweight scenario harness exercises concurrent tag edits on notes.
+    // Real-schema question/FTS replay is covered by sync_real_flow_smoke_tests.
     clear_sync_log();
     let device_a = SyncDevice::new("A", "device_a_001");
     let device_b = SyncDevice::new("B", "device_b_001");
@@ -2599,7 +2595,6 @@ fn s72_pomodoro_record_with_end_time_before_start() {
 }
 
 #[test]
-#[ignore = "answer_submissions UNIQUE(client_request_id) needs engine's COALESCE UPSERT"]
 fn s73_answer_submission_idempotency_client_request_id() {
     clear_sync_log();
     let device_a = SyncDevice::new("A", "device_a_001");
@@ -2635,7 +2630,6 @@ fn s73_answer_submission_idempotency_client_request_id() {
 }
 
 #[test]
-#[ignore = "Self-referencing FK requires FK-ordering in changeset batch"]
 fn s74_question_with_parent_id_variant_question() {
     clear_sync_log();
     let device_a = SyncDevice::new("A", "device_a_001");
@@ -3260,7 +3254,6 @@ fn s94_upload_fails_midway_retry_succeeds() {
 }
 
 #[test]
-#[ignore = "Schema version detection needs refinery_schema_history mock"]
 fn s95_different_schema_versions_should_detect() {
     clear_sync_log();
     let device_a = SyncDevice::new("A", "device_a_001");

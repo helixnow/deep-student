@@ -73,6 +73,9 @@ export interface ISessionManager {
    */
   get(sessionId: string): ChatStoreApi | undefined;
 
+  /** 只读查看缓存，不更新 LRU；供 hover 预取等推测性检查使用。 */
+  peek(sessionId: string): ChatStoreApi | undefined;
+
   /**
    * 检查会话是否存在
    */

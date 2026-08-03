@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 describe('modern sidebar icon contract', () => {
   const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+  const workbenchSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/workbench/components/sidebar/WorkbenchSidebar.tsx'), 'utf-8');
 
   it('keeps navigation icon stroke width stable across selected states', () => {
     expect(sidebarSource).toContain('<Icon className="size-[18px]" strokeWidth={2} />');
@@ -12,22 +13,44 @@ describe('modern sidebar icon contract', () => {
     expect(sidebarSource).not.toContain("strokeWidth={currentView === 'settings' ? 2.3 : 2}");
   });
 
-  it('keeps the conversation-section create action visible with the writing icon', () => {
+  it('reveals the conversation-section create action on section hover with the writing icon', () => {
     const conversationSectionAction = sidebarSource.match(
       /const conversationHeaderAction = \([\s\S]*?<section className="space-y-0\.5 pt-1">/
     )?.[0] ?? '';
 
     expect(sidebarSource).toContain("import { CommonTooltip } from '@/components/shared/CommonTooltip';");
     expect(sidebarSource).toContain('StudyComposeIcon');
-    expect(conversationSectionAction).toContain('<CommonTooltip content={newConversationLabel} position="right">');
-    expect(conversationSectionAction).toContain('className="flex shrink-0 items-center gap-1"');
+    expect(conversationSectionAction).toContain('<CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut(\'mod+n\')}>');
+    expect(conversationSectionAction).toContain('data-sidebar-section-action="create-conversation"');
+    expect(conversationSectionAction).toContain('ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)]');
     expect(conversationSectionAction).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
+    expect(conversationSectionAction).toContain('hover:bg-transparent');
+    expect(conversationSectionAction).toContain('hover:text-[color:var(--shell-navigation-foreground)]');
+    expect(conversationSectionAction).toContain('active:bg-transparent');
+    expect(conversationSectionAction).toContain('!rounded-none');
     expect(conversationSectionAction).not.toContain('title={newConversationLabel}');
-    expect(conversationSectionAction).not.toContain('opacity-0');
-    expect(conversationSectionAction).not.toContain('group-hover/sidebar-top-section:opacity-100');
-    expect(conversationSectionAction).not.toContain('group-focus-within/sidebar-top-section:opacity-100');
+    expect(conversationSectionAction).toContain('opacity-0');
+    expect(conversationSectionAction).toContain('group-hover/sidebar-top-section:opacity-100');
+    expect(conversationSectionAction).toContain('group-focus-within/sidebar-top-section:opacity-100');
+    expect(conversationSectionAction).toContain('motion-reduce:transition-none');
     expect(conversationSectionAction).not.toContain('<Plus className="w-3.5 h-3.5" />');
     expect(conversationSectionAction).not.toContain('<Folder className="size-[16px]" strokeWidth={2} />');
+  });
+
+  it('keeps shared sidebar leading icons aligned with their labels', () => {
+    const mobileDrawerStylesSource = readFileSync(resolve(process.cwd(), 'src/components/layout/mobileDrawerStyles.ts'), 'utf-8');
+    const sessionSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionSidebarContent.tsx'), 'utf-8');
+    const unifiedSidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx'), 'utf-8');
+    const unifiedSidebarSectionSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/UnifiedSidebarSection.tsx'), 'utf-8');
+    const finderSource = readFileSync(resolve(process.cwd(), 'src/features/learning-hub/components/finder/FinderQuickAccess.tsx'), 'utf-8');
+
+    expect(workbenchSidebarSource).toContain('text-[color:var(--shell-navigation-foreground)]">{leftSlot}</span>');
+    expect(mobileDrawerStylesSource).toContain('text-[color:var(--shell-navigation-foreground)] [&_svg]:size-[18px]');
+    expect(sessionSidebarSource).toContain("text-[color:var(--sidebar-foreground)]'}");
+    expect(unifiedSidebarSource).toContain("'text-[color:inherit]'");
+    expect(unifiedSidebarSectionSource).toContain('text-foreground/90');
+    expect(unifiedSidebarSectionSource).toContain('text-muted-foreground/60');
+    expect(finderSource).toContain("iconColor || 'text-[color:var(--shell-navigation-foreground)]'");
   });
 
   it('routes topic header actions through CommonTooltip instead of native title tooltips', () => {
@@ -44,12 +67,14 @@ describe('modern sidebar icon contract', () => {
   });
 
   it('uses CommonTooltip and icon swap for recent-session archive quick actions', () => {
-    const recentSessionRow = sidebarSource.match(
-      /const renderRecentSessionRow = useCallback\([\s\S]*?<AppMenuContent align="end" width=\{180\}>/
-    )?.[0] ?? '';
+    const recentSessionRowStart = sidebarSource.indexOf('const renderRecentSessionRow = useCallback');
+    const recentSessionRowEnd = sidebarSource.indexOf('const pinnedRecentSessions', recentSessionRowStart);
+    const recentSessionRow = sidebarSource.slice(recentSessionRowStart, recentSessionRowEnd);
 
-    expect(recentSessionRow).toContain("<CommonTooltip content={isConfirmingArchive ? '确认归档会话' : '归档会话'} position=\"right\">");
-    expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? '确认归档会话' : '归档会话'}");
+    expect(recentSessionRowStart).toBeGreaterThanOrEqual(0);
+    expect(recentSessionRowEnd).toBeGreaterThan(recentSessionRowStart);
+    expect(recentSessionRow).toContain("content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}");
+    expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}");
     expect(recentSessionRow).toContain('className="w-3.5 h-3.5 t-icon-swap"');
     expect(recentSessionRow).toContain("data-state={isConfirmingArchive ? 'b' : 'a'}");
     expect(recentSessionRow).toContain('<Archive size={14} />');
@@ -68,19 +93,22 @@ describe('modern sidebar icon contract', () => {
     expect(transitionSource).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
-  it('keeps section disclosure arrows after the label and hidden until header hover or focus', () => {
-    const sectionHeader = sidebarSource.match(
-      /const renderSidebarSectionHeader = \(\{[\s\S]*?const conversationHeaderAction = \(/u
-    )?.[0] ?? '';
+  it('keeps section disclosure arrows visible only while a section is collapsed', () => {
+    const sectionHeaderStart = workbenchSidebarSource.indexOf('export function WorkbenchSidebarSectionHeader');
+    const sectionHeaderEnd = workbenchSidebarSource.length;
+    const sectionHeader = sectionHeaderStart >= 0
+      ? workbenchSidebarSource.slice(sectionHeaderStart, sectionHeaderEnd)
+      : '';
 
-    const labelIndex = sectionHeader.indexOf('className="desktop-shell-nav-section-label min-w-0 truncate"');
+    const labelIndex = sectionHeader.indexOf('className="desktop-shell-nav-section-label desktop-shell-sidebar-section-label min-w-0 truncate"');
     const arrowIndex = sectionHeader.indexOf('className={cn(');
 
     expect(labelIndex).toBeGreaterThan(-1);
     expect(arrowIndex).toBeGreaterThan(labelIndex);
-    expect(sectionHeader).toContain('opacity-0');
-    expect(sectionHeader).toContain('group-hover/sidebar-top-section:opacity-100');
-    expect(sectionHeader).toContain('group-focus-within/sidebar-top-section:opacity-100');
-    expect(sectionHeader).toMatch(/<CaretRight[\s\S]*text-\[color:var\(--shell-navigation-section-label\)\]/);
+    expect(sectionHeader).toContain("collapsed ? 'rotate-0 opacity-100' : 'rotate-90 opacity-0 group-hover/sidebar-top-section:opacity-100'");
+    expect(sectionHeader).not.toContain('group-focus-within/sidebar-top-section:opacity-100');
+    expect(sectionHeader).toContain('text-[color:var(--shell-navigation-muted)]');
+    expect(sectionHeader).toContain('hover:bg-transparent');
+    expect(sectionHeader).toContain('hover:text-[color:var(--shell-navigation-muted)]');
   });
 });

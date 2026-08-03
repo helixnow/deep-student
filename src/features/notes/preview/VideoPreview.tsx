@@ -13,7 +13,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import {
   WarningCircle,
@@ -358,8 +358,9 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
     <div
       ref={containerRef}
       className={cn(
+        // 全屏走系统原生 requestFullscreen（容器自身充满屏幕），
+        // 不再叠加 fixed inset-0 遮罩类（设计系统禁用全屏 scrim）
         'relative flex h-full flex-col items-center justify-center bg-black outline-none',
-        isFullscreen && 'fixed inset-0 z-50',
         className
       )}
       onMouseMove={showControlsWithTimeout}
@@ -437,7 +438,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {/* 播放/暂停 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
@@ -449,10 +450,10 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                 ) : (
                   <Play className="h-5 w-5 ml-0.5" />
                 )}
-              </NotionButton>
+              </DsButton>
 
               {/* 快退 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
@@ -460,10 +461,10 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                 disabled={videoLoading}
               >
                 <SkipBack className="h-4 w-4" />
-              </NotionButton>
+              </DsButton>
 
               {/* 快进 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
@@ -471,7 +472,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                 disabled={videoLoading}
               >
                 <SkipForward className="h-4 w-4" />
-              </NotionButton>
+              </DsButton>
 
               {/* 时间显示 */}
               <span className="text-sm text-white ml-2">
@@ -482,14 +483,14 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
             <div className="flex items-center gap-2">
               {/* 音量控制 */}
               <div className="flex items-center gap-1 group">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
                   onClick={toggleMute}
                 >
                   <VolumeIcon className="h-4 w-4" />
-                </NotionButton>
+                </DsButton>
                 <div className="w-0 overflow-hidden group-hover:w-20 transition-all duration-200">
                   <Slider
                     value={[isMuted ? 0 : volume]}
@@ -502,7 +503,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
               </div>
 
               {/* 全屏 */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
@@ -513,7 +514,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                 ) : (
                   <ArrowsOut size={16} />
                 )}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </div>

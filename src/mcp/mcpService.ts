@@ -29,6 +29,7 @@ function sanitizeToolResultContent(content: any): any {
     // 清洗 text 类型内容
     if (sanitized.type === 'text' && typeof sanitized.text === 'string') {
       // 移除 NUL 字节和其他不可见控制字符（保留换行、制表符）
+      // eslint-disable-next-line no-control-regex
       sanitized.text = sanitized.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
       // 截断过长文本
       if (sanitized.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
@@ -44,6 +45,7 @@ function sanitizeToolResultContent(content: any): any {
     if (sanitized.type === 'resource' && sanitized.resource) {
       if (typeof sanitized.resource.text === 'string') {
         sanitized.resource = { ...sanitized.resource };
+        // eslint-disable-next-line no-control-regex
         sanitized.resource.text = sanitized.resource.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
         if (sanitized.resource.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
           sanitized.resource.text = sanitized.resource.text.slice(0, MCP_RESULT_MAX_TEXT_LENGTH) + '\n[...truncated]';
@@ -57,6 +59,22 @@ function sanitizeToolResultContent(content: any): any {
     result.push(sanitized);
   }
   return result;
+}
+
+export function buildMcpToolUsage(
+  serverId: string,
+  toolName: string,
+  traceId: string,
+  elapsedMs: number,
+) {
+  return {
+    elapsed_ms: elapsedMs,
+    provider: 'mcp',
+    server_id: serverId,
+    tool_name: toolName,
+    source: 'mcp-frontend',
+    trace_id: traceId,
+  };
 }
 
 function clampJsonDepth(obj: any, maxDepth: number, currentDepth = 0): any {
@@ -73,35 +91,22 @@ function clampJsonDepth(obj: any, maxDepth: number, currentDepth = 0): any {
   return result;
 }
 
-const isWindowsPlatform = () => {
-  if (typeof navigator === 'undefined') return false;
-  return /windows/i.test(navigator.userAgent);
-};
-
-// SECURITY: Restrict default MCP filesystem access to the current user's home
-// directory instead of the entire /Users (macOS) or C:\Users (Windows) tree,
-// which would expose ALL user home directories on the system.
-const DEFAULT_STDIO_ARGS: string[] = [
-  '@modelcontextprotocol/server-filesystem',
-  isWindowsPlatform() ? 'C:\\Users\\Default' : '/tmp',
-];
-
-// Eagerly resolve the real home directory via Tauri path API and patch the
-// mutable fallback above. By the time a user actually triggers an MCP stdio
-// connection the promise will have settled.
-(async () => {
-  try {
-    const { homeDir } = await import('@tauri-apps/api/path');
-    const home = await homeDir();
-    if (home) DEFAULT_STDIO_ARGS[1] = home;
-  } catch {
-    // Non-Tauri environment or API unavailable – safe fallback remains.
-  }
-})();
-
 const isTauriEnvironment =
   typeof window !== 'undefined'
   && Boolean((window as any).__TAURI_INTERNALS__);
+
+/**
+ * 解析 stdio 分帧：与后端 framing_from_str / McpFraming::default 对齐。
+ * 仅显式 content_length / content-length / contentlength 走 CL，其余（含缺省）一律 JSONL。
+ */
+function resolveStdioFraming(framing?: string | null): 'jsonl' | 'content_length' {
+  if (!framing) return 'jsonl';
+  const normalized = String(framing).toLowerCase().replace(/-/g, '');
+  if (normalized === 'content_length' || normalized === 'contentlength') {
+    return 'content_length';
+  }
+  return 'jsonl';
+}
 
 export interface McpServerConfig {
   id: string;
@@ -114,12 +119,33 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   cwd?: string;
   framing?: 'jsonl' | 'content_length';
+  /** 显式 API Key（优先于 OAuth） */
+  apiKey?: string;
+  /** OAuth 占位：存在且无 apiKey 时连接前注入 Bearer */
+  oauth?: {
+    client_id?: string;
+    auth_url?: string;
+    token_url?: string;
+    redirect_uri?: string;
+    scopes?: string[];
+  };
 }
 
 export interface McpConfig {
   servers: McpServerConfig[];
   cacheTtlMs?: number;
+  /** mcp.performance.timeout_ms：前端工具调用超时上限（与调用方传入超时取更小者） */
+  toolTimeoutMs?: number;
+  /** mcp.performance.rate_limit_per_second：callTool 每秒滑动窗口限流（超限等待） */
+  rateLimitPerSecond?: number;
+  /** mcp.performance.cache_max_size：工具/提示/资源缓存的总条目上限（最旧淘汰） */
+  cacheMaxSize?: number;
 }
+
+// 与设置 UI 默认值保持一致（useSettingsConfig 读取回填时的缺省）
+const MCP_DEFAULT_TOOL_TIMEOUT_MS = 15_000;
+const MCP_DEFAULT_RATE_LIMIT_PER_SECOND = 10;
+const MCP_DEFAULT_CACHE_MAX_SIZE = 500;
 
 export interface McpStatusInfo {
   available: boolean;
@@ -186,7 +212,7 @@ const isMethodNotFoundError = (error: any): boolean => {
 /**
  * 检测是否为认证相关错误 (401/403)
  */
-const isAuthError = (error: unknown): boolean => {
+export const isAuthError = (error: unknown): boolean => {
   const msg = getErrorMessage(error).toLowerCase();
   return msg.includes('401') ||
          msg.includes('403') ||
@@ -196,6 +222,67 @@ const isAuthError = (error: unknown): boolean => {
          msg.includes('invalid api key') ||
          msg.includes('invalid_api_key');
 };
+
+export type McpAuthHeaderResolveDeps = {
+  isTauri?: boolean;
+  /** 测试可注入；默认 invoke get_mcp_oauth_access_token */
+  getAccessToken?: (serverId: string, resourceUrl: string) => Promise<string | null>;
+};
+
+/**
+ * 连接前解析 Authorization：apiKey / 已有 Authorization > OAuth Bearer。
+ * 抽离供 hermetic 单测；connectServer 复用同一逻辑。
+ */
+export async function resolveMcpAuthHeaders(
+  cfg: Pick<McpServerConfig, 'id' | 'apiKey' | 'oauth' | 'headers' | 'url'>,
+  deps: McpAuthHeaderResolveDeps = {},
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...(cfg.headers ?? {}) };
+  const isTauri = deps.isTauri ?? isTauriEnvironment;
+  const hasApiKeyAuth =
+    Boolean(cfg.apiKey && String(cfg.apiKey).trim()) ||
+    Boolean(headers['Authorization'] || headers['authorization']);
+  if (cfg.apiKey && !headers['Authorization'] && !headers['authorization']) {
+    headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+    if (!headers['X-API-Key']) headers['X-API-Key'] = String(cfg.apiKey);
+  } else if (!hasApiKeyAuth && cfg.oauth && isTauri) {
+    try {
+      const getToken =
+        deps.getAccessToken ??
+        (async (serverId: string, resourceUrl: string) => {
+          const { invoke } = await import('@tauri-apps/api/core');
+          return invoke<string | null>('get_mcp_oauth_access_token', { serverId, resourceUrl });
+        });
+      const resourceUrl = cfg.url;
+      if (!resourceUrl) throw new Error('OAuth MCP server is missing resource URL');
+      const token = await getToken(cfg.id, resourceUrl);
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      } else {
+        throw new Error(i18next.t('mcp:service.oauth_reauth_required', {
+          defaultValue: 'OAuth re-authorization required for this MCP server',
+        }));
+      }
+    } catch (oauthErr) {
+      const msg = getErrorMessage(oauthErr);
+      if (msg.toLowerCase().includes('oauth') || msg.toLowerCase().includes('re-auth')) {
+        throw oauthErr;
+      }
+      throw new Error(i18next.t('mcp:service.oauth_reauth_required', {
+        defaultValue: 'OAuth re-authorization required for this MCP server',
+      }));
+    }
+  }
+  return headers;
+}
+
+/** 401/认证失败时是否应提示 OAuth 再授权（有 oauth 且无 apiKey） */
+export function mcpAuthFailureNeedsReauth(
+  cfg: Pick<McpServerConfig, 'apiKey' | 'oauth'>,
+  error: unknown,
+): boolean {
+  return isAuthError(error) && Boolean(cfg.oauth) && !cfg.apiKey;
+}
 
 /**
  * 检测是否为连接断开/传输层错误（可通过重连恢复）
@@ -231,6 +318,8 @@ class McpServiceImpl {
   private promptCacheByServer: Map<string, { at: number; prompts: PromptInfo[] }> = new Map();
   private resourceCacheByServer: Map<string, { at: number; resources: ResourceInfo[] }> = new Map();
   private listeners = new Set<Listener>();
+  // mcp.performance.rate_limit_per_second 滑动窗口：最近 1s 内 callTool 的时间戳
+  private rateLimitTimestamps: number[] = [];
   // 防止错误状态日志刷屏：记录上一次的错误摘要签名
   private lastErrorSummaryKey: string | null = null;
   // 标记是否正在销毁，防止 dispose() 触发的 onclose 引发重连
@@ -271,7 +360,38 @@ class McpServiceImpl {
     }
   }
   
+  /** mcp.performance.cache_max_size：总条目超限时按快照时间最旧淘汰，仅剩单快照仍超限则截断 */
+  private enforceCacheMaxSize(): void {
+    const max = this.cfg.cacheMaxSize ?? MCP_DEFAULT_CACHE_MAX_SIZE;
+    if (!Number.isFinite(max) || max <= 0) return;
+    const trim = <S extends { at: number }>(
+      cache: Map<string, S>,
+      items: (snap: S) => unknown[],
+      storageKeyPrefix: string,
+    ) => {
+      const total = () => Array.from(cache.values()).reduce((sum, snap) => sum + items(snap).length, 0);
+      while (total() > max && cache.size > 1) {
+        let oldestId: string | undefined;
+        let oldestAt = Infinity;
+        for (const [sid, snap] of cache.entries()) {
+          if (snap.at < oldestAt) { oldestAt = snap.at; oldestId = sid; }
+        }
+        if (!oldestId) break;
+        cache.delete(oldestId);
+        try { localStorage.removeItem(`${storageKeyPrefix}::${oldestId}`); } catch { /* best-effort */ }
+      }
+      if (total() > max && cache.size === 1) {
+        const snap = cache.values().next().value as S | undefined;
+        if (snap) items(snap).splice(max);
+      }
+    };
+    trim(this.toolCacheByServer, snap => snap.tools, this.CACHE_KEY_TOOLS);
+    trim(this.promptCacheByServer, snap => snap.prompts, this.CACHE_KEY_PROMPTS);
+    trim(this.resourceCacheByServer, snap => snap.resources, this.CACHE_KEY_RESOURCES);
+  }
+
   private saveCacheToStorage() {
+    this.enforceCacheMaxSize();
     try {
       for (const [serverId, snap] of this.toolCacheByServer.entries()) {
         localStorage.setItem(`${this.CACHE_KEY_TOOLS}::${serverId}`, JSON.stringify(snap));
@@ -294,12 +414,14 @@ class McpServiceImpl {
     this.toolCacheByServer.clear();
     this.promptCacheByServer.clear();
     this.resourceCacheByServer.clear();
+    this.rateLimitTimestamps = [];
     for (const s of cfg.servers) {
       const client = new Client({ name: 'dstu-frontend-mcp', version: '1.0.0' });
       this.servers.set(s.id, { cfg: s, client, connected: false });
     }
     // 初始化时加载持久化缓存
     this.loadCacheFromStorage();
+    this.enforceCacheMaxSize();
     // Removed shims - handle in transport config instead
     this.emitStatus();
     
@@ -351,7 +473,7 @@ class McpServiceImpl {
       }
       // 每次连接都创建新 Client，确保 Protocol 状态干净
       // MCP SDK v2: 启用 listChanged autoRefresh，当服务器发送 notifications/tools/list_changed 等通知时自动刷新
-      const self = this;
+      // onChanged 回调均为箭头函数，直接沿用词法 this，无需 self 别名
       const serverId = rt.cfg.id;
       rt.client = new Client(
         { name: 'dstu-frontend-mcp', version: '1.0.0' },
@@ -368,13 +490,13 @@ class McpServiceImpl {
                 if (error) { console.warn(`[MCP] listChanged tools refresh error for ${serverId}:`, error); }
                 if (tools && Array.isArray(tools)) {
                   const toolsForServer: ToolInfo[] = tools.map((t: any) => ({
-                    name: self.withNamespace(t.name, rt.cfg.namespace),
+                    name: this.withNamespace(t.name, rt.cfg.namespace),
                     description: t.description || '',
                     input_schema: t.inputSchema,
                   }));
-                  self.toolCacheByServer.set(serverId, { at: Date.now(), tools: toolsForServer });
-                  self.saveCacheToStorage();
-                  self.emitStatus();
+                  this.toolCacheByServer.set(serverId, { at: Date.now(), tools: toolsForServer });
+                  this.saveCacheToStorage();
+                  this.emitStatus();
                 }
               },
             },
@@ -385,13 +507,13 @@ class McpServiceImpl {
                 if (error) { console.warn(`[MCP] listChanged prompts refresh error for ${serverId}:`, error); }
                 if (prompts && Array.isArray(prompts)) {
                   const promptsForServer: PromptInfo[] = prompts.map((p: any) => ({
-                    name: self.withNamespace(p.name, rt.cfg.namespace),
+                    name: this.withNamespace(p.name, rt.cfg.namespace),
                     description: p.description || '',
                     arguments: p.arguments,
                   }));
-                  self.promptCacheByServer.set(serverId, { at: Date.now(), prompts: promptsForServer });
-                  self.saveCacheToStorage();
-                  self.emitStatus();
+                  this.promptCacheByServer.set(serverId, { at: Date.now(), prompts: promptsForServer });
+                  this.saveCacheToStorage();
+                  this.emitStatus();
                 }
               },
             },
@@ -403,13 +525,13 @@ class McpServiceImpl {
                 if (resources && Array.isArray(resources)) {
                   const resourcesForServer: ResourceInfo[] = resources.map((r: any) => ({
                     uri: r.uri || r.id || '',
-                    name: r.name ? self.withNamespace(r.name, rt.cfg.namespace) : undefined,
+                    name: r.name ? this.withNamespace(r.name, rt.cfg.namespace) : undefined,
                     description: r.description,
                     mime_type: r.mimeType || r.mime_type,
                   }));
-                  self.resourceCacheByServer.set(serverId, { at: Date.now(), resources: resourcesForServer });
-                  self.saveCacheToStorage();
-                  self.emitStatus();
+                  this.resourceCacheByServer.set(serverId, { at: Date.now(), resources: resourcesForServer });
+                  this.saveCacheToStorage();
+                  this.emitStatus();
                 }
               },
             },
@@ -418,7 +540,9 @@ class McpServiceImpl {
       );
 
       const { cfg, client } = rt;
-      const headers = cfg.headers ?? {};
+      // 认证优先级：apiKey / 已有 Authorization > OAuth Bearer
+      const headers = await resolveMcpAuthHeaders(cfg);
+
       // Map remote URLs via local dev proxy to bypass CORS
       const mapUrl = (raw: string) => {
         try {
@@ -557,7 +681,7 @@ class McpServiceImpl {
             args: Array.isArray(cfg.args) ? cfg.args : [],
             env: cfg.env || {},
             cwd: cfg.cwd,
-            framing: cfg.framing ?? 'content_length',
+            framing: resolveStdioFraming(cfg.framing),
           }, cfg.id); // 传入 serverId 用于调试
           break;
         }
@@ -721,11 +845,18 @@ class McpServiceImpl {
       // 检测认证错误 (401/403)
       const authFailed = isAuthError(e);
       if (authFailed) {
-        rt.error = i18next.t('mcp:service.auth_failed', { error: rawError });
+        const needsReauth = mcpAuthFailureNeedsReauth(rt.cfg, e);
+        const oauthHint = needsReauth
+          ? i18next.t('mcp:service.oauth_reauth_required', {
+              defaultValue: 'OAuth re-authorization required for this MCP server',
+            })
+          : null;
+        rt.error = oauthHint
+          || i18next.t('mcp:service.auth_failed', { error: rawError });
         
         debugLog.warn(`[MCP] Authentication failed for ${rt.cfg.id}:`, {
           error: rawError,
-          hint: 'Check API key or token configuration',
+          hint: oauthHint || 'Check API key or token configuration',
         });
         
         // 触发认证失败专用事件
@@ -733,6 +864,7 @@ class McpServiceImpl {
           serverId: rt.cfg.id,
           transport: rt.cfg.type,
           error: rt.error,
+          needsReauth,
         });
         
         // 认证错误不重试，更新状态后返回
@@ -1262,6 +1394,26 @@ class McpServiceImpl {
   }
 
   /**
+   * mcp.performance.rate_limit_per_second：滑动窗口限流，超限时等待令牌而非报错。
+   */
+  private async acquireRateLimitSlot(): Promise<void> {
+    const limit = this.cfg.rateLimitPerSecond ?? MCP_DEFAULT_RATE_LIMIT_PER_SECOND;
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    for (;;) {
+      const now = Date.now();
+      while (this.rateLimitTimestamps.length > 0 && now - this.rateLimitTimestamps[0] >= 1000) {
+        this.rateLimitTimestamps.shift();
+      }
+      if (this.rateLimitTimestamps.length < limit) {
+        this.rateLimitTimestamps.push(now);
+        return;
+      }
+      const waitMs = Math.max(1, this.rateLimitTimestamps[0] + 1000 - now);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
+
+  /**
    * 统一工具调用。toolName 可带 namespace；会自动路由到对应 server。
    * 连接断开时会自动重连并重试一次。
    */
@@ -1269,6 +1421,11 @@ class McpServiceImpl {
     ok: boolean; data?: any; error?: string; usage?: any;
   }> {
     const started = Date.now();
+    // mcp.performance.timeout_ms：前端侧超时上限，与调用方传入超时取更小者
+    const configuredTimeoutMs = this.cfg.toolTimeoutMs ?? MCP_DEFAULT_TOOL_TIMEOUT_MS;
+    const effectiveTimeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+      ? Math.min(timeoutMs, configuredTimeoutMs)
+      : timeoutMs;
     const rt = this.pickServerByTool(toolName, preferredServerId);
     if (!rt) return { ok: false, error: i18next.t('mcp:service.tool_not_found', { toolName }) };
     
@@ -1299,6 +1456,8 @@ class McpServiceImpl {
 
     const rawName = rt.cfg.namespace ? toolName.slice(rt.cfg.namespace.length) : toolName;
     const callId = uuidv4();
+    const buildUsage = (elapsed: number) =>
+      buildMcpToolUsage(rt.cfg.id, toolName, callId, elapsed);
     
     // 触发工具调用开始事件
     emitMcpDebugEvent('mcp-tool-call-start', {
@@ -1317,7 +1476,7 @@ class McpServiceImpl {
       const controller = new AbortController();
       const to = setTimeout(() => {
         controller.abort('timeout');
-      }, timeoutMs);
+      }, effectiveTimeoutMs);
       try {
         const result = await rt.client.callTool(
           { name: rawName, arguments: args ?? {} },
@@ -1352,7 +1511,7 @@ class McpServiceImpl {
             ok: false,
             data: sanitizedData,
             error: errorMsg,
-            usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId }
+            usage: buildUsage(elapsed)
           };
         } else {
           emitMcpDebugEvent('mcp-tool-call-success', {
@@ -1362,7 +1521,7 @@ class McpServiceImpl {
             ok: true,
             data: sanitizedData,
             error: undefined,
-            usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId }
+            usage: buildUsage(elapsed)
           };
         }
       } catch (e: any) {
@@ -1370,6 +1529,9 @@ class McpServiceImpl {
         throw e; // 由外层处理
       }
     };
+
+    // mcp.performance.rate_limit_per_second：超限时等待令牌
+    await this.acquireRateLimitSlot();
 
     // 首次尝试
     try {
@@ -1386,7 +1548,7 @@ class McpServiceImpl {
         });
         rt.error = i18next.t('mcp:service.auth_failed_check_key');
         this.emitStatus();
-        return { ok: false, error: finalError, usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId } };
+        return { ok: false, error: finalError, usage: buildUsage(elapsed) };
       }
 
       // 连接断开错误：自动重连并重试一次
@@ -1414,7 +1576,7 @@ class McpServiceImpl {
             emitMcpDebugEvent('mcp-tool-call-error', {
               serverId: rt.cfg.id, toolName, error: retryMsg, duration: retryElapsed, callId, isRetry: true,
             });
-            return { ok: false, error: retryMsg, usage: { elapsed_ms: retryElapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId } };
+            return { ok: false, error: retryMsg, usage: buildUsage(retryElapsed) };
           }
         }
       }
@@ -1424,7 +1586,7 @@ class McpServiceImpl {
       emitMcpDebugEvent('mcp-tool-call-error', {
         serverId: rt.cfg.id, toolName, error: errorMsg, duration: elapsed, callId,
       });
-      return { ok: false, error: errorMsg, usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId } };
+      return { ok: false, error: errorMsg, usage: buildUsage(elapsed) };
     }
   }
 
@@ -1671,6 +1833,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
 
   for (const item of list) {
     if (!item) continue;
+    // 尊重 enabled 标记：显式 false 的条目不建连、不广告；undefined 视为 true（兼容存量数据）
+    if (item.enabled === false) continue;
     // 注意：虽然 MCP 2025-11-25 规范推荐 Streamable HTTP，但为保持向后兼容
     // 默认仍为 'sse'。用户可显式设置 transportType: 'streamable_http' 来使用新标准。
     // 将来可考虑实现自动探测（先尝试 Streamable HTTP，失败回退 SSE）。
@@ -1682,6 +1846,9 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
     if (item.apiKey && !headers['X-API-Key']) {
       headers['X-API-Key'] = String(item.apiKey);
     }
+    const oauthCfg = item.oauth && typeof item.oauth === 'object'
+      ? item.oauth as McpServerConfig['oauth']
+      : undefined;
 
     const namespace = guessNamespace(item);
 
@@ -1709,21 +1876,14 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
         if (argsArray.length === 0 && inline.args.length > 0) {
           argsArray = inline.args;
         }
-        const execLower = executable.toLowerCase();
-        const shouldApplyDefaultArgs =
-          argsArray.length === 0 &&
-          inline.args.length === 0 &&
-          (execLower === 'npx' || execLower === 'npx.cmd' || execLower === 'npx.exe');
-        if (shouldApplyDefaultArgs) {
-          argsArray = [...DEFAULT_STDIO_ARGS];
-        }
+        // 不再对裸 npx 隐式注入默认 args：后端 validate_stdio_start_against_entries
+        // 要求 (command, args) 与已审批条目完全匹配，隐式扩展会被拒。
         const envObj = (() => {
           if (item.env && typeof item.env === 'object') return item.env as Record<string, string>;
           if (item?.fetch?.env && typeof item.fetch.env === 'object') return item.fetch.env as Record<string, string>;
           return {};
         })();
         const framingRaw = item.framing || item.framingMode || item?.fetch?.framing;
-        const framing = framingRaw ? String(framingRaw).toLowerCase() : undefined;
         const cwd = typeof item.cwd === 'string' ? item.cwd : (typeof item.workingDir === 'string' ? item.workingDir : undefined);
         servers.push({
           id: item.id || item.name || executable,
@@ -1732,7 +1892,7 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
           args: argsArray,
           env: envObj,
           cwd,
-          framing: framing === 'jsonl' ? 'jsonl' : 'content_length',
+          framing: resolveStdioFraming(framingRaw),
           namespace,
         });
       }
@@ -1746,6 +1906,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
         url: String(item.url),
         namespace,
         headers,
+        apiKey: item.apiKey ? String(item.apiKey) : undefined,
+        oauth: oauthCfg,
       });
       continue;
     }
@@ -1759,6 +1921,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
           url: String(httpUrl),
           namespace,
           headers,
+          apiKey: item.apiKey ? String(item.apiKey) : undefined,
+          oauth: oauthCfg,
         });
       }
       continue;
@@ -1772,6 +1936,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
         url: String(sseUrl),
         namespace,
         headers,
+        apiKey: item.apiKey ? String(item.apiKey) : undefined,
+        oauth: oauthCfg,
       });
     }
   }
@@ -1838,6 +2004,50 @@ async function loadCacheTtlFromSettings(): Promise<number | undefined> {
   return undefined;
 }
 
+type McpPerformanceSettings = {
+  toolTimeoutMs?: number;
+  rateLimitPerSecond?: number;
+  cacheMaxSize?: number;
+};
+
+/** 加载 mcp.performance.* 安全策略设置（与 loadCacheTtlFromSettings 相同的读取模式） */
+async function loadMcpPerformanceFromSettings(): Promise<McpPerformanceSettings> {
+  const parsePositive = (raw: string | null | undefined): number | undefined => {
+    if (typeof raw !== 'string' || raw.trim().length === 0) return undefined;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  };
+  if (isTauriEnvironment) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const [timeoutRaw, rateRaw, cacheMaxRaw] = await Promise.all([
+        invoke<string | null>('get_setting', { key: 'mcp.performance.timeout_ms' }).catch(() => null),
+        invoke<string | null>('get_setting', { key: 'mcp.performance.rate_limit_per_second' }).catch(() => null),
+        invoke<string | null>('get_setting', { key: 'mcp.performance.cache_max_size' }).catch(() => null),
+      ]);
+      return {
+        toolTimeoutMs: parsePositive(timeoutRaw),
+        rateLimitPerSecond: parsePositive(rateRaw),
+        cacheMaxSize: parsePositive(cacheMaxRaw),
+      };
+    } catch (err: unknown) {
+      debugLog.warn('[MCP] Failed to load MCP performance settings via Tauri invoke:', err);
+    }
+  }
+  try {
+    if (typeof window !== 'undefined') {
+      return {
+        toolTimeoutMs: parsePositive(window.localStorage.getItem('mcp.performance.timeout_ms')),
+        rateLimitPerSecond: parsePositive(window.localStorage.getItem('mcp.performance.rate_limit_per_second')),
+        cacheMaxSize: parsePositive(window.localStorage.getItem('mcp.performance.cache_max_size')),
+      };
+    }
+  } catch (e: unknown) {
+    console.warn('[MCP] Failed to read MCP performance settings from localStorage:', e);
+  }
+  return {};
+}
+
 export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): Promise<void> {
   if (bootstrapInFlight) {
     return bootstrapInFlight;
@@ -1847,6 +2057,7 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
     setupTauriBridge();
     const servers = await loadServersFromSettings();
     const cacheTtlMs = await loadCacheTtlFromSettings();
+    const performance = await loadMcpPerformanceFromSettings();
     const signature = JSON.stringify({
       servers: servers.map((s) => ({
         id: s.id,
@@ -1857,6 +2068,7 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
         args: s.args ?? [],
       })),
       cacheTtlMs: cacheTtlMs ?? 300_000,
+      performance,
     });
     const now = Date.now();
     if (
@@ -1867,7 +2079,7 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
       return;
     }
 
-    McpService.init({ servers, cacheTtlMs: cacheTtlMs ?? 300_000 });
+    McpService.init({ servers, cacheTtlMs: cacheTtlMs ?? 300_000, ...performance });
     if (servers.length === 0) {
       // 即使没有服务器，也触发 ready 事件让 UI 更新
       emitMcpDebugEvent('mcp-bootstrap-ready', { servers: [], toolsCount: 0 });

@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useId, useCallback, forwardRef, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { CaretRight, CaretDown, Star, Folder, FileText } from '@phosphor-icons/react';
+import { CaretRight, Star, FileText, Plus, DotsThree } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useTree } from './TreeContext';
@@ -15,6 +15,10 @@ import { InvalidReferenceIcon } from '../InvalidReferenceOverlay';
 const LEVEL_INDENT = 20;
 const BASE_INDENT = 16;
 
+// Typeahead：按键入字符跳转到匹配标题的节点（同一时刻只有一棵树持有键盘焦点，模块级 buffer 足够）
+const TYPEAHEAD_TTL_MS = 600;
+const typeaheadState = { buffer: '', deadline: 0 };
+
 interface TreeNodeProps {
   id: string;
   node: TreeNodeType;
@@ -22,6 +26,8 @@ interface TreeNodeProps {
   draggingId?: string | null;
   overId?: string | null;
   dropPosition?: 'before' | 'after' | 'inside';
+  /** 当前拖放目标为禁入位置（拖入自身/自身后代） */
+  dropInvalid?: boolean;
   status?: 'none' | 'pending' | 'ok';
   searchTerm?: string;
   isSearchMatch?: boolean;
@@ -69,6 +75,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
     draggingId,
     overId,
     dropPosition,
+    dropInvalid,
     status,
     searchTerm,
     isSearchMatch,
@@ -77,7 +84,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
     style: externalStyle,
     dataIndex,
   } = props;
-  const { t } = useTranslation(['notes']);
+  const { t } = useTranslation(['notes', 'common']);
   const { state, actions, callbacks, treeData } = useTree();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(node.title);
@@ -89,7 +96,8 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
   const isFocused = state.focusedId === id;
   const isRenaming = state.renamingId === id;
   const isOver = (overId ?? state.overId) === id;
-  const isOverInsideFolder = isOver && node.isFolder && (dropPosition ?? 'inside') === 'inside';
+  const isOverInvalid = isOver && Boolean(dropInvalid);
+  const isOverInsideFolder = isOver && node.isFolder && (dropPosition ?? 'inside') === 'inside' && !isOverInvalid;
   const currentDropPosition = dropPosition ?? state.dropPosition;
   const computedPaddingLeft = BASE_INDENT + depth * LEVEL_INDENT;
   const firstRootChildId = treeData.root?.children?.[0];
@@ -158,11 +166,11 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
     [setNodeRef, forwardedRef],
   );
 
-  // 拖拽时使用正常的transform，非拖拽时禁用transform避免位置错乱
+  // 拖拽时使用正常的transform，非拖拽时禁用transform避免位置错乱。
+  // 透明度只由 .rct-tree-item-li-isDragging 控制，避免与内联透明度叠乘导致源节点几乎不可见。
   const dragStyle = {
     transform: dndIsDragging ? CSS.Transform.toString(transform) : undefined,
     transition: dndIsDragging ? transition : undefined,
-    opacity: dndIsDragging ? 0.5 : 1,
     pointerEvents: dndIsDragging ? 'none' : 'auto',
   } as React.CSSProperties;
 
@@ -252,8 +260,17 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
   const onTouchStartCtx = (e: React.TouchEvent) => {
     try { e.stopPropagation(); } catch {}
     const t = e.touches[0];
+    const targetEl = e.currentTarget;
     touchStartPos.current = { x: t.clientX, y: t.clientY };
     longPressTimer.current = setTimeout(() => {
+      // 长按菜单（500ms）先于树拖拽激活（600ms，见 DndFileTree sensors）触发。
+      // 弹菜单前派发合成 touchcancel，让 dnd-kit 中止仍在计时的拖拽待激活，
+      // 避免用户继续按住时菜单和拖拽同时生效（P1-9）。
+      try {
+        targetEl.dispatchEvent(new Event('touchcancel', { bubbles: true, cancelable: true }));
+      } catch {
+        // 构造事件失败时放弃中止（拖拽 delay 长于菜单，仍以菜单为主）
+      }
       callbacks.onContextMenu?.(id, { clientX: t.clientX, clientY: t.clientY, preventDefault: () => {} });
     }, LONG_PRESS_MS);
   };
@@ -319,6 +336,32 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
       e.preventDefault();
       actions.setAnchor(state.anchorId ?? id);
       actions.selectRange(visibleIds[visibleIds.length - 1]);
+      return;
+    }
+
+    // Typeahead：键入可打印字符，跳转到下一个标题前缀匹配的可见节点
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      const now = performance.now();
+      typeaheadState.buffer = now <= typeaheadState.deadline
+        ? typeaheadState.buffer + e.key
+        : e.key;
+      typeaheadState.deadline = now + TYPEAHEAD_TTL_MS;
+      const query = typeaheadState.buffer.toLowerCase();
+      if (visibleIds.length > 0) {
+        // 单字符从当前节点之后找（循环）；累积输入时从当前节点开始（保持停留）
+        const start = currentIndex === -1
+          ? 0
+          : currentIndex + (query.length === 1 ? 1 : 0);
+        for (let offset = 0; offset < visibleIds.length; offset++) {
+          const candidateId = visibleIds[(start + offset) % visibleIds.length];
+          const title = (treeData[candidateId]?.title ?? '').toLowerCase();
+          if (title.startsWith(query)) {
+            if (candidateId !== id) moveFocusTo(candidateId);
+            break;
+          }
+        }
+      }
       return;
     }
 
@@ -417,6 +460,13 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
     });
   };
 
+  const statusDescriptionId = useId();
+
+  // 判断是否为引用节点（hooks 必须在 early return 之前）
+  const isReference = useMemo(() => {
+    return node.nodeType === 'reference' || isReferenceId(id);
+  }, [node.nodeType, id]);
+
   // 不渲染 root 节点本身，只渲染其子节点
   // 注意: root 节点不应该通过 TreeNode 组件渲染
   if (id === 'root') {
@@ -429,17 +479,11 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
       : status === 'pending'
         ? t('notes:tree.vectorStatus.pending')
         : t('notes:tree.vectorStatus.none');
-  const statusDescriptionId = useId();
   const isFavorite = !node.isFolder && !!node.data?.note?.is_favorite;
 
   // ============================================================================
   // 引用节点支持
   // ============================================================================
-
-  // 判断是否为引用节点
-  const isReference = useMemo(() => {
-    return node.nodeType === 'reference' || isReferenceId(id);
-  }, [node.nodeType, id]);
 
   // 引用节点数据
   const referenceData = node.referenceData;
@@ -466,10 +510,12 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
           'rct-tree-item-li',
           isSelected && 'rct-tree-item-li-selected',
           isFocused && 'rct-tree-item-li-focused',
-          isOver && 'rct-tree-item-li-isOver',
+          isOver && !isOverInvalid && 'rct-tree-item-li-isOver',
           dndIsDragging && 'rct-tree-item-li-isDragging',
           isOverInsideFolder && 'rct-tree-item-li-over-inside',
           isSearchMatch && 'rct-tree-item-li-searchMatch',
+          // 拖入自身/后代：禁入光标，且不显示放置高亮
+          isOverInvalid && 'cursor-not-allowed opacity-70',
           // 引用节点样式
           isReference && 'rct-tree-item-li-reference',
           isInvalidReference && 'rct-tree-item-li-invalid'
@@ -485,7 +531,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
       >
         <div
           ref={buttonRef}
-          className="rct-tree-item-button"
+          className={cn('rct-tree-item-button group/treerow', isOverInvalid && 'cursor-not-allowed')}
           style={{ paddingLeft: `${computedPaddingLeft}px` }}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
@@ -511,9 +557,9 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
         >
           {/* 展开/折叠箭头 - 文件夹显示，引用节点和笔记显示图标 */}
           {node.isFolder ? (
-            <NotionButton variant="ghost" size="icon" iconOnly className="rct-tree-item-arrow mr-2" onClick={handleExpandClick} aria-label={isExpanded ? t('notes:tree.aria.collapse') : t('notes:tree.aria.expand')} aria-expanded={isExpanded}>
+            <DsButton variant="ghost" size="icon" iconOnly className="rct-tree-item-arrow mr-2" onClick={handleExpandClick} aria-label={isExpanded ? t('notes:tree.aria.collapse') : t('notes:tree.aria.expand')} aria-expanded={isExpanded}>
               <CaretRight className="w-3 h-3" />
-            </NotionButton>
+            </DsButton>
           ) : isReference && sourceDb ? (
             // 引用节点显示对应图标
             <span className="rct-tree-item-icon mr-2 flex-shrink-0">
@@ -528,7 +574,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
           ) : (
             // 笔记节点显示文件图标
             <span className="rct-tree-item-icon mr-2 flex-shrink-0">
-              <FileText className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" aria-hidden="true" />
+              <FileText className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
             </span>
           )}
 
@@ -600,6 +646,47 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
               </>
             )}
           </span>
+
+          {/* hover 行内操作：文件夹「+」新建子项 / 全部节点「⋯」更多菜单；
+              触屏（pointer:coarse）无 hover，常显并放大到 ≥40px 触控目标 */}
+          {!isEditing && !dndIsDragging && (
+            <span
+              className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 group-hover/treerow:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+            >
+              {node.isFolder && callbacks.onCreateChild && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="flex h-5 w-5 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
+                  title={t('notes:tree.context_menu.new_note')}
+                  aria-label={t('notes:tree.context_menu.new_note')}
+                  onClick={() => {
+                    if (!isExpanded) actions.expand(id);
+                    callbacks.onCreateChild?.(id);
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {callbacks.onContextMenu && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="flex h-5 w-5 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
+                  title={t('common:more')}
+                  aria-label={t('common:more')}
+                  onClick={() => triggerKeyboardContextMenu()}
+                >
+                  <DotsThree className="w-4 h-4" weight="bold" />
+                </button>
+              )}
+            </span>
+          )}
         </div>
       </div>
     </div>

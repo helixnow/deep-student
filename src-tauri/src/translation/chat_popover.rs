@@ -11,13 +11,14 @@
 //! - 不复用 `run_translation`（它绑定 VFS、emitter、120s 超时，不适合 popover）
 
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tauri::{Emitter, State, Window};
 use tracing::{info, warn};
 
 use crate::commands::AppState;
 use crate::models::AppError;
 
-use super::pipeline::{lang_full_name, stream_translate, StreamStatus};
+use super::pipeline::{lang_full_name, stream_translate, StreamOptions, StreamStatus};
 
 /// 显示模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,18 +47,49 @@ pub struct ChatTranslationRequest {
 }
 
 /// 流事件 payload（独立于 standalone 翻译事件，结构更精简）
+///
+/// 协议演进（向后兼容，只增不改名）：
+/// - `chunk.delta`：增量文本，前端自行拼接。当前实现只发 delta，
+///   避免旧协议"每个 chunk 回传全量 accumulated"造成的 O(n²) IPC 拷贝。
+/// - `chunk.accumulated`：旧协议的全量累积字段，保留为可选仅供兼容；
+///   为 `None` 时不参与序列化（旧前端若收不到该字段会退回 delta 拼接）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ChatTranslationEvent {
-    Chunk { delta: String, accumulated: String },
+    Chunk {
+        delta: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        accumulated: Option<String>,
+    },
     Complete,
-    Error { message: String },
+    Error {
+        message: String,
+    },
     Cancelled,
 }
 
 /// 输入校验
 const MAX_SOURCE_CHARS: usize = 8_000; // popover 是即时翻译场景，不需要支持超长
 const MAX_CONTEXT_CHARS: usize = 200;
+
+/// 低延迟路径参数：popover 场景快速失败优于长时间等待
+/// （前端自身 90s 超时兜底，后端 30s 空闲即中断，让用户更早拿到可重试的错误）
+const POPOVER_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+const POPOVER_TOTAL_TIMEOUT: Duration = Duration::from_secs(120);
+const POPOVER_MAX_REQUEST_ATTEMPTS: u32 = 2;
+const POPOVER_TEMPERATURE: f32 = 0.2;
+const POPOVER_MIN_MAX_TOKENS: u32 = 512;
+
+/// 按源文本长度估算输出 token 上限，避免用模型全局大上限拖慢首包/尾包。
+/// aligned 模式输出为 NDJSON（src+tgt+JSON 结构开销），预算放大更多。
+fn popover_max_tokens(source_chars: usize, mode: ChatTranslationMode) -> u32 {
+    let multiplier: usize = match mode {
+        ChatTranslationMode::Aligned => 6,
+        ChatTranslationMode::Plain => 3,
+    };
+    let estimated = source_chars.saturating_mul(multiplier).saturating_add(256);
+    (estimated.min(u32::MAX as usize) as u32).max(POPOVER_MIN_MAX_TOKENS)
+}
 
 fn truncate_context(s: Option<String>) -> String {
     match s {
@@ -98,9 +130,9 @@ fn build_aligned_prompts(req: &ChatTranslationRequest) -> (String, String) {
     if !context_before.is_empty() || !context_after.is_empty() {
         user_prompt.push_str("Context (do NOT translate, for disambiguation only):\n");
         user_prompt.push_str(&context_before);
-        user_prompt.push_str("«");
+        user_prompt.push('«');
         user_prompt.push_str(&req.source);
-        user_prompt.push_str("»");
+        user_prompt.push('»');
         user_prompt.push_str(&context_after);
         user_prompt.push_str("\n\n");
     }
@@ -130,9 +162,9 @@ fn build_plain_prompts(req: &ChatTranslationRequest) -> (String, String) {
     if !context_before.is_empty() || !context_after.is_empty() {
         user_prompt.push_str("Context (do NOT translate):\n");
         user_prompt.push_str(&context_before);
-        user_prompt.push_str("«");
+        user_prompt.push('«');
         user_prompt.push_str(&req.source);
-        user_prompt.push_str("»");
+        user_prompt.push('»');
         user_prompt.push_str(&context_after);
         user_prompt.push_str("\n\n");
     }
@@ -225,10 +257,20 @@ async fn run_chat_translation(
         ChatTranslationMode::Plain => build_plain_prompts(&request),
     };
 
-    // 3. 流式调用 + 转发事件
+    // 3. 流式调用 + 转发事件（只发增量 delta；全量文本由前端拼接）
+    // 低延迟参数：紧凑 max_tokens（按源长估算并受模型上限约束）+ 快速失败超时
+    let model_cap =
+        crate::llm_manager::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+    let options = StreamOptions {
+        temperature: POPOVER_TEMPERATURE,
+        max_tokens: Some(popover_max_tokens(request.source.chars().count(), mode).min(model_cap)),
+        idle_timeout: POPOVER_IDLE_TIMEOUT,
+        total_timeout: POPOVER_TOTAL_TIMEOUT,
+        max_request_attempts: POPOVER_MAX_REQUEST_ATTEMPTS,
+    };
     let window_for_chunk = window.clone();
     let event_for_chunk = event_name.clone();
-    let mut accumulated = String::new();
+    let mut accumulated_chars: usize = 0; // 仅用于日志统计，不再拼接/回传全量文本
     let stream_result = stream_translate(
         &config,
         &api_key,
@@ -236,14 +278,15 @@ async fn run_chat_translation(
         &user_prompt,
         &event_name,
         state.llm_manager.clone(),
+        &options,
         |chunk| {
-            accumulated.push_str(&chunk);
+            accumulated_chars += chunk.chars().count();
             emit_event(
                 &window_for_chunk,
                 &event_for_chunk,
                 ChatTranslationEvent::Chunk {
                     delta: chunk,
-                    accumulated: accumulated.clone(),
+                    accumulated: None,
                 },
             );
         },
@@ -252,11 +295,23 @@ async fn run_chat_translation(
 
     match stream_result {
         Ok(StreamStatus::Completed) => {
+            // 空结果保护：流正常结束但没有任何产出（供应商静默失败），按错误上报
+            if accumulated_chars == 0 {
+                let msg = "翻译服务返回空结果，请重试。".to_string();
+                emit_event(
+                    &window,
+                    &event_name,
+                    ChatTranslationEvent::Error {
+                        message: msg.clone(),
+                    },
+                );
+                warn!("[ChatTranslation] empty result event={}", event_name);
+                return Err(AppError::llm(msg));
+            }
             emit_event(&window, &event_name, ChatTranslationEvent::Complete);
             info!(
                 "[ChatTranslation] complete event={} chars={}",
-                event_name,
-                accumulated.chars().count()
+                event_name, accumulated_chars
             );
             Ok(())
         }
@@ -275,7 +330,10 @@ async fn run_chat_translation(
                     message: msg.clone(),
                 },
             );
-            warn!("[ChatTranslation] incomplete event={} msg={}", event_name, msg);
+            warn!(
+                "[ChatTranslation] incomplete event={} msg={}",
+                event_name, msg
+            );
             Err(AppError::llm(msg))
         }
         Err(e) => {

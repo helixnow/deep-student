@@ -1,11 +1,9 @@
 // Public API for settings feature
 export { Settings } from './components/Settings';
 export { CloudStorageSection } from './components/CloudStorageSection';
-export { UpdateNotificationDialog } from './components/UpdateNotificationDialog';
 export { SettingsShellSidebar } from './components/SettingsShellSidebar';
 export {
   SettingSection,
-  settingsMobileSheetCloseButtonClassName,
   settingsQuietTableRowClassName,
   settingsQuietHoverClassName,
   settingsQuietRowBaseClassName,

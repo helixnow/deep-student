@@ -1,0 +1,243 @@
+# Windows 构建（reusable）
+#
+# release.yml / rebuild-release.yml 共用的唯一 Windows 构建实现。
+# 调用方需 `secrets: inherit`。
+#
+# 生产签名链（fail-closed）：
+#   1. Preflight 校验生产 secrets（缺失 ⇒ 立即失败并列出缺失项，
+#      绝不静默产出未签名安装包）
+#   2. tauri build 产出 NSIS 安装包（含 updater minisign .sig）
+#   3. signtool 对安装包做 Authenticode 签名（SHA256 + RFC3161 时间戳）
+#   4. signtool verify /pa 强制验证
+#   5. Authenticode 改变了 exe 字节 ⇒ 用 tauri signer 重新生成 updater
+#      .sig（否则更新器校验必然失败）
+#
+# 需要的生产 secrets：
+#   WINDOWS_CERTIFICATE_BASE64（代码签名证书 .pfx 的 base64）
+#   WINDOWS_CERTIFICATE_PASSWORD
+#   TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD（updater 重签名）
+
+name: Build Windows (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: '构建的 tag（如 v0.9.42）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # 固定工具版本（升级需显式改这里）
+  SENTRY_CLI_VERSION: '2.58.6'
+  # RFC3161 时间戳服务器（主 + 备）
+  TIMESTAMP_URL_PRIMARY: 'http://timestamp.digicert.com'
+  TIMESTAMP_URL_FALLBACK: 'http://timestamp.sectigo.com'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      # ── 生产签名 secrets 预检（fail-closed, 在任何耗时步骤之前）──
+      - name: Preflight — require production signing secrets (fail-closed)
+        shell: bash
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          MISSING=""
+          for VAR in WINDOWS_CERTIFICATE_BASE64 WINDOWS_CERTIFICATE_PASSWORD \
+                     TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -z "${!VAR}" ]; then
+              MISSING="${MISSING} ${VAR}"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Windows release build refuses to run without production signing secrets (fail-closed)."
+            echo "::error::Missing secrets:${MISSING}"
+            echo "::error::Configure them in repository/organization secrets. Unsigned builds are only allowed via local scripts (e.g. scripts/build_windows.sh with DS_ALLOW_UNSIGNED=1)."
+            exit 1
+          fi
+          echo "✅ All required Windows production signing secrets are present"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.symlinks
+          GIT_CONFIG_VALUE_0: "false"
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Sentry CLI (pinned)
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        shell: bash
+        run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
+
+      - name: Print build tool manifest
+        shell: bash
+        run: |
+          echo "=== Windows build tool manifest ==="
+          echo "node            : $(node --version)"
+          echo "npm             : $(npm --version)"
+          echo "rustc           : $(rustc --version)"
+          echo "cargo           : $(cargo --version)"
+          echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
+          echo "timestamp       : ${TIMESTAMP_URL_PRIMARY} (fallback: ${TIMESTAMP_URL_FALLBACK})"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: npx tauri build --target x86_64-pc-windows-msvc -- --locked
+
+      - name: Upload native symbols to Sentry
+        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: bash scripts/upload-sentry-symbols.sh "src-tauri/target/x86_64-pc-windows-msvc/release"
+
+      # ── Authenticode 签名 + 时间戳 + 验证（fail-closed）──
+      - name: Authenticode sign NSIS installer (signtool + timestamp + verify)
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # 定位 Windows SDK 中最新版 signtool（x64）
+          # 按 SDK 目录版本号数值排序（字符串排序会把 10.0.9 排在 10.0.19 后面）
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } | Select-Object -Last 1
+          if (-not $signtool) {
+            Write-Host "::error::signtool.exe not found in Windows SDK"
+            exit 1
+          }
+          Write-Host "signtool: $($signtool.FullName)"
+
+          $bundleDir = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          $installers = Get-ChildItem "$bundleDir/*-setup.exe" -ErrorAction SilentlyContinue
+          if (-not $installers -or $installers.Count -ne 1) {
+            Write-Host "::error::Expected exactly 1 NSIS installer under $bundleDir, found $($installers.Count)"
+            exit 1
+          }
+          $installer = $installers[0].FullName
+          Write-Host "Installer: $installer"
+
+          # 解码 PFX 到临时文件
+          $pfxPath = Join-Path $env:RUNNER_TEMP "windows-signing-cert.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          if ((Get-Item $pfxPath).Length -eq 0) {
+            Write-Host "::error::WINDOWS_CERTIFICATE_BASE64 decoded to an empty file"
+            exit 1
+          }
+
+          try {
+            # 主时间戳服务器失败时回退到备用服务器
+            $signed = $false
+            foreach ($tsUrl in @($env:TIMESTAMP_URL_PRIMARY, $env:TIMESTAMP_URL_FALLBACK)) {
+              Write-Host "Signing with timestamp server: $tsUrl"
+              & $signtool.FullName sign /fd SHA256 /td SHA256 /tr $tsUrl `
+                /f $pfxPath /p $env:WINDOWS_CERTIFICATE_PASSWORD $installer
+              if ($LASTEXITCODE -eq 0) { $signed = $true; break }
+              Write-Host "::warning::signtool sign failed with $tsUrl (exit $LASTEXITCODE), trying fallback..."
+            }
+            if (-not $signed) {
+              Write-Host "::error::Authenticode signing failed with all timestamp servers"
+              exit 1
+            }
+
+            # 强制验证：签名链 + 时间戳必须全部有效
+            & $signtool.FullName verify /pa /v $installer
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::signtool verify /pa failed — installer signature is not valid"
+              exit 1
+            }
+            Write-Host "✅ Authenticode signature + timestamp verified"
+          }
+          finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
+      # ── Authenticode 改写了 exe 字节 ⇒ 必须重签 updater .sig ──
+      - name: Re-sign updater signature after Authenticode (tauri signer)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          EXE=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*-setup.exe' ! -name '*.sig' | head -1)
+          if [ -z "$EXE" ]; then
+            echo "::error::NSIS installer not found for updater re-signing"
+            exit 1
+          fi
+
+          # tauri signer 从 TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) env 读取密钥
+          npx tauri signer sign "$EXE"
+
+          SIG="${EXE}.sig"
+          if [ ! -s "$SIG" ]; then
+            echo "::error::Updater signature missing or empty after re-signing: $SIG"
+            exit 1
+          fi
+          if ! tr -d '\r\n' < "$SIG" | base64 -d > /dev/null 2>&1; then
+            echo "::error::Regenerated updater signature is not valid base64: $SIG"
+            exit 1
+          fi
+          echo "✅ Updater .sig regenerated over the Authenticode-signed installer"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-x86_64
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig

@@ -1,5 +1,9 @@
 use super::*;
 
+fn authoritative_content_result(content: String) -> Value {
+    json!({ "content": content })
+}
+
 // ============================================================================
 // 变体 LLM 适配器
 // ============================================================================
@@ -81,17 +85,30 @@ impl VariantLLMAdapter {
     }
 
     pub(crate) fn finalize_all(&self) {
+        self.finalize_all_inner(false);
+    }
+
+    fn finalize_all_with_authoritative_content(&self) {
+        self.finalize_all_inner(true);
+    }
+
+    fn finalize_all_inner(&self, include_authoritative_content: bool) {
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
         self.finalize_thinking();
-        let content_initialized = *self
+        let mut content_initialized = self
             .content_block_initialized
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if content_initialized {
+        if *content_initialized {
             if let Some(block_id) = self.ctx.get_content_block_id() {
-                self.ctx.emit_end(event_types::CONTENT, &block_id, None);
+                let result = include_authoritative_content
+                    .then(|| authoritative_content_result(self.ctx.get_accumulated_content()));
+                self.ctx.emit_end(event_types::CONTENT, &block_id, result);
             }
+            // on_complete is followed by a defensive finalize_all in the
+            // multi-variant pipeline. Do not emit a second payload-less end.
+            *content_initialized = false;
         }
     }
 
@@ -479,9 +496,7 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
                 .args_delta_buffer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            let entry = guard
-                .entry(tool_call_id.to_string())
-                .or_insert_with(String::new);
+            let entry = guard.entry(tool_call_id.to_string()).or_default();
             entry.push_str(delta);
             entry.len() >= 500
         };
@@ -572,8 +587,17 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
     }
 
     fn on_complete(&self, _final_text: &str, _reasoning: Option<&str>) {
-        self.finalize_all();
+        self.finalize_all_with_authoritative_content();
     }
 }
 
-// 测试模块已分离至 pipeline_tests.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variant_content_end_result_carries_authoritative_text() {
+        let result = authoritative_content_result("complete variant tail".to_string());
+        assert_eq!(result["content"], json!("complete variant tail"));
+    }
+}

@@ -18,13 +18,21 @@ export function createStreamActions(
             // 🔧 Bug修复：即使状态已经是 idle，也要确保清空 activeBlockIds
             // 防止因其他地方的 bug 导致 isStreaming 状态残留
             if (state.sessionStatus === 'idle') {
-              // 只在有残留的 activeBlockIds 时处理
-              if (state.activeBlockIds.size > 0) {
+              // Defensive cleanup for a terminal event that arrived after a
+              // status race. Leaving currentStreamingMessageId behind causes
+              // subsequent autonomous streams to be rejected as conflicts.
+              if (state.activeBlockIds.size > 0 || state.currentStreamingMessageId !== null) {
                 console.warn(
-                  '[ChatStore] completeStream: Found stale activeBlockIds while in idle state, cleaning up:',
-                  Array.from(state.activeBlockIds)
+                  '[ChatStore] completeStream: Found stale stream state while idle, cleaning up:',
+                  {
+                    activeBlockIds: Array.from(state.activeBlockIds),
+                    currentStreamingMessageId: state.currentStreamingMessageId,
+                  }
                 );
-                set({ activeBlockIds: new Set() });
+                set({
+                  activeBlockIds: new Set(),
+                  currentStreamingMessageId: null,
+                });
               }
               return;
             }
@@ -97,23 +105,35 @@ export function createStreamActions(
               }
             }
 
-            // 3. 🆕 2026-01-16: 清理 preparing 块（流式取消时可能遗留）
-            // preparing 块的状态是 pending，不会被上面的 running 检查捕获
+            // 3. 清理仍停留在 preparing 的孤儿块（pending，不会被上面的 running 检查捕获）。
+            // 文案必须跟 reason 一致：success 路径绝不能写 "cancelled"，否则会出现
+            // 「加载技能组执行失败 / Stream cancelled…」闪红后再成功的误报。
+            const removedPreparingIds: string[] = [];
             for (const blockId of messageBlockIds) {
               const block = newBlocks.get(blockId);
               if (block && block.isPreparing) {
                 console.warn(
                   '[ChatStore] completeStream: Found orphan preparing block, cleaning:',
                   blockId,
-                  'toolName=', block.toolName
+                  'toolName=', block.toolName,
+                  'reason=', reason,
                 );
-                newBlocks.set(blockId, {
-                  ...block,
-                  isPreparing: false,
-                  status: 'error',
-                  error: 'Stream cancelled before tool execution',
-                  endedAt: now,
-                });
+                if (reason === 'success') {
+                  // 成功收尾：未执行的 preparing 预览块直接移除，避免空「执行完成」卡。
+                  newBlocks.delete(blockId);
+                  removedPreparingIds.push(blockId);
+                } else {
+                  newBlocks.set(blockId, {
+                    ...block,
+                    isPreparing: false,
+                    status: 'error',
+                    error:
+                      reason === 'error'
+                        ? 'Stream ended with error before tool execution'
+                        : 'Stream cancelled before tool execution',
+                    endedAt: now,
+                  });
+                }
                 updatedCount++;
               }
             }
@@ -122,16 +142,26 @@ export function createStreamActions(
               console.log('[ChatStore] completeStream: Updated', updatedCount, 'blocks to', reason);
             }
 
-            // 🆕 2026-01-15: 清除 preparingToolCall 状态
-            // 流式完成或取消时，清理消息元数据中的 preparingToolCall
+            // 清除 preparingToolCall；若 success 移除了孤儿 preparing，同步修剪 message.blockIds
             let newMessageMap = s.messageMap;
             if (currentMessageId) {
               const msg = s.messageMap.get(currentMessageId);
-              if (msg && msg._meta?.preparingToolCall) {
-                newMessageMap = new Map(s.messageMap);
-                const newMeta = { ...msg._meta };
-                delete newMeta.preparingToolCall;
-                newMessageMap.set(currentMessageId, { ...msg, _meta: newMeta });
+              if (msg) {
+                const dropPreparingMeta = Boolean(msg._meta?.preparingToolCall);
+                const dropBlockIds =
+                  removedPreparingIds.length > 0
+                    ? msg.blockIds.filter((id) => !removedPreparingIds.includes(id))
+                    : null;
+                if (dropPreparingMeta || dropBlockIds) {
+                  newMessageMap = new Map(s.messageMap);
+                  const newMeta = { ...msg._meta };
+                  delete newMeta.preparingToolCall;
+                  newMessageMap.set(currentMessageId, {
+                    ...msg,
+                    ...(dropBlockIds ? { blockIds: dropBlockIds } : {}),
+                    _meta: newMeta,
+                  });
+                }
               }
             }
 

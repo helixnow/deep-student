@@ -93,8 +93,8 @@ export class TemplateComplexityAnalyzer {
   private static getFieldTypeScore(rule: FieldExtractionRule): number {
     switch (rule.field_type) {
       case EnhancedFieldType.Formula:
-      case EnhancedFieldType.RichText:
         return this.WEIGHTS.simpleField * 2;
+      // RichText 已由渲染引擎（ankiTemplateEngine）原生支持，不再计为高复杂度
       default:
         return this.WEIGHTS.simpleField;
     }
@@ -193,11 +193,12 @@ export class TemplateComplexityAnalyzer {
       const tagMatches = tmpl.match(/\{\{[^}]+\}\}/g) || [];
       complexity += tagMatches.length;
 
-      // 统计条件和循环
-      const conditionals = tmpl.match(/\{\{#[^}]+\}\}/g) || [];
+      // 统计条件和循环（含反条件段 {{^...}}）。
+      // 渲染引擎已原生支持任意嵌套的条件段/数组迭代，权重相应下调。
+      const conditionals = tmpl.match(/\{\{[#^][^}]+\}\}/g) || [];
       const loops = tmpl.match(/\{\{#[^}]+\}\}[\s\S]*?\{\{\/[^}]+\}\}/g) || [];
-      complexity += conditionals.length * 2;
-      complexity += loops.length * 3;
+      complexity += conditionals.length;
+      complexity += loops.length * 2;
     });
 
     // CSS复杂度

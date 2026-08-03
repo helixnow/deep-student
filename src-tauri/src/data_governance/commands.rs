@@ -24,7 +24,7 @@ use tauri::{AppHandle, Manager, State};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditFilter, AuditLog, AuditOperation, AuditRepository, AuditStatus};
-use super::commands_backup::{get_app_data_dir, sanitize_path_for_user};
+use super::commands_backup::{get_app_data_dir, resolve_database_path, sanitize_path_for_user};
 use super::commands_types::{
     AuditLogPagedResponse, AuditLogResponse, DatabaseDetailResponse, DatabaseHealthStatus,
     DatabaseStatusResponse, HealthCheckResponse, MaintenanceStatusResponse,
@@ -33,11 +33,6 @@ use super::commands_types::{
 };
 use super::migration::{get_migration_set, MigrationCoordinator};
 use super::schema_registry::{DatabaseId, DatabaseStatus, SchemaRegistry};
-use crate::backup_common::{log_and_skip_entry_err, BACKUP_GLOBAL_LIMITER};
-use crate::backup_job_manager::{
-    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
-    BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
-};
 use crate::utils::text::safe_truncate_chars;
 
 fn resolve_target_and_pending(
@@ -285,43 +280,59 @@ fn run_slot_d_clone_db_test(app_data_dir: &Path) -> SlotMigrationTestResponse {
     }
     let _ = std::fs::create_dir_all(&slot_d_dir);
 
-    // 复制当前活跃插槽的数据库文件（只复制 .db 和 .db-wal，不复制大文件）
-    let db_files: &[&str] = &[
-        "chat_v2.db",
-        "chat_v2.db-wal",
-        "mistakes.db",
-        "mistakes.db-wal",
-        "llm_usage.db",
-        "llm_usage.db-wal",
+    // 使用 SQLite Online Backup API 获取各库自洽快照；直接逐个复制 .db/.db-wal
+    // 会把不同时间点的文件拼在一起，产生伪迁移失败或假成功。
+    let db_files: &[(&str, &str)] = &[
+        ("", "chat_v2.db"),
+        ("", "mistakes.db"),
+        ("", "llm_usage.db"),
+        ("databases", "vfs.db"),
     ];
-    let db_subdir_files: &[(&str, &str)] = &[("databases", "vfs.db"), ("databases", "vfs.db-wal")];
-
     let mut copy_errors: Vec<String> = Vec::new();
-
-    for file_name in db_files {
-        let src = app_data_dir.join(file_name);
+    for (subdir, file_name) in db_files {
+        let src = if subdir.is_empty() {
+            app_data_dir.join(file_name)
+        } else {
+            app_data_dir.join(subdir).join(file_name)
+        };
         if src.exists() {
-            let dst = slot_d_dir.join(file_name);
-            if let Err(e) = std::fs::copy(&src, &dst) {
-                copy_errors.push(format!("{}: {}", file_name, e));
+            let dst_dir = if subdir.is_empty() {
+                slot_d_dir.clone()
+            } else {
+                slot_d_dir.join(subdir)
+            };
+            if let Err(e) = std::fs::create_dir_all(&dst_dir) {
+                copy_errors.push(format!("{}/{}: {}", subdir, file_name, e));
+                continue;
             }
-        }
-    }
-
-    for (subdir, file_name) in db_subdir_files {
-        let src = app_data_dir.join(subdir).join(file_name);
-        if src.exists() {
-            let dst_dir = slot_d_dir.join(subdir);
-            let _ = std::fs::create_dir_all(&dst_dir);
             let dst = dst_dir.join(file_name);
-            if let Err(e) = std::fs::copy(&src, &dst) {
+            let snapshot_result = (|| -> Result<(), String> {
+                let src_conn =
+                    rusqlite::Connection::open(&src).map_err(|e| format!("打开源库失败: {}", e))?;
+                let mut dst_conn = rusqlite::Connection::open(&dst)
+                    .map_err(|e| format!("创建快照库失败: {}", e))?;
+                let backup = rusqlite::backup::Backup::new(&src_conn, &mut dst_conn)
+                    .map_err(|e| format!("初始化 SQLite backup 失败: {}", e))?;
+                backup
+                    .run_to_completion(64, std::time::Duration::from_millis(10), None)
+                    .map_err(|e| format!("执行 SQLite backup 失败: {}", e))
+            })();
+            if let Err(e) = snapshot_result {
                 copy_errors.push(format!("{}/{}: {}", subdir, file_name, e));
             }
+        } else {
+            copy_errors.push(format!("{}/{}: 源数据库不存在", subdir, file_name));
         }
     }
 
     if !copy_errors.is_empty() {
         let _ = writeln!(report, "复制文件时出错: {}", copy_errors.join("; "));
+        let _ = std::fs::remove_dir_all(&slot_d_dir);
+        let _ = std::fs::create_dir_all(&slot_d_dir);
+        return SlotMigrationTestResponse {
+            success: false,
+            report,
+        };
     }
 
     let mut coordinator = MigrationCoordinator::new(slot_d_dir.clone()).with_audit_db(None);
@@ -415,14 +426,59 @@ pub(super) fn try_save_audit_log(app: &tauri::AppHandle, log: AuditLog) {
 pub fn data_governance_get_maintenance_status(
     app: AppHandle,
 ) -> Result<MaintenanceStatusResponse, String> {
-    let in_maintenance = if let Some(state) = app.try_state::<crate::commands::AppState>() {
-        state.database.is_in_maintenance_mode()
-    } else {
-        false
-    };
+    let mut blocked_components = Vec::new();
+    if let Some(state) = app.try_state::<crate::commands::AppState>() {
+        if state.database.is_in_maintenance_mode() {
+            blocked_components.push("main".to_string());
+        }
+        if state.database_manager.is_in_maintenance_mode() {
+            blocked_components.push("manager".to_string());
+        }
+        if state
+            .vfs_db
+            .as_ref()
+            .is_some_and(|vfs| vfs.is_in_maintenance_mode())
+        {
+            blocked_components.push("vfs".to_string());
+        }
+    }
+    if app
+        .try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>()
+        .is_some_and(|chat| chat.is_in_maintenance_mode())
+    {
+        blocked_components.push("chat_v2".to_string());
+    }
+    if app
+        .try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
+        .is_some_and(|usage| usage.is_in_maintenance_mode())
+    {
+        blocked_components.push("llm_usage".to_string());
+    }
+    if app
+        .try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+        .is_some_and(|workspaces| workspaces.is_in_maintenance_mode())
+    {
+        blocked_components.push("workspaces".to_string());
+    }
+
+    let component_health = app
+        .try_state::<super::StartupComponentHealthState>()
+        .map(|state| state.snapshot())
+        .or_else(|| {
+            app.try_state::<std::sync::Arc<super::StartupComponentHealthState>>()
+                .map(|state| state.snapshot())
+        });
+    let component_issues = component_health
+        .as_ref()
+        .map(|health| health.issues())
+        .unwrap_or_default();
 
     Ok(MaintenanceStatusResponse {
-        is_in_maintenance_mode: in_maintenance,
+        is_in_maintenance_mode: !blocked_components.is_empty(),
+        blocked_components,
+        current_operation: crate::backup_common::current_data_governance_operation(),
+        component_health,
+        component_issues,
     })
 }
 
@@ -760,7 +816,8 @@ pub fn data_governance_run_health_check(
     use tracing::{info, warn};
 
     info!("🔍 [HealthCheck] 开始运行健康检查...");
-    let registry = refresh_schema_registry_from_live_state(&app, registry.inner())?;
+    let active_dir = get_live_app_data_dir(&app)?;
+    let registry = refresh_schema_registry_from_dir(&active_dir, registry.inner())?;
 
     // 检查依赖关系
     let dependency_check = registry.check_dependencies();
@@ -821,8 +878,49 @@ pub fn data_governance_run_health_check(
                 ));
             }
 
+            if is_initialized {
+                let db_path = resolve_database_path(&id, &active_dir);
+                let integrity_result = (|| -> Result<(), String> {
+                    if !db_path.is_file() {
+                        return Err("数据库文件不存在".to_string());
+                    }
+                    let conn = rusqlite::Connection::open_with_flags(
+                        &db_path,
+                        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                            | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                    )
+                    .map_err(|e| format!("只读打开失败: {}", e))?;
+                    conn.busy_timeout(std::time::Duration::from_secs(5))
+                        .map_err(|e| format!("设置完整性检查超时失败: {}", e))?;
+                    let quick_check: String = conn
+                        .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
+                        .map_err(|e| format!("quick_check 执行失败: {}", e))?;
+                    if !quick_check.eq_ignore_ascii_case("ok") {
+                        return Err(format!("quick_check: {}", quick_check));
+                    }
+                    let mut stmt = conn
+                        .prepare("PRAGMA foreign_key_check")
+                        .map_err(|e| format!("foreign_key_check 准备失败: {}", e))?;
+                    let mut rows = stmt
+                        .query([])
+                        .map_err(|e| format!("foreign_key_check 执行失败: {}", e))?;
+                    if rows
+                        .next()
+                        .map_err(|e| format!("foreign_key_check 读取失败: {}", e))?
+                        .is_some()
+                    {
+                        return Err("检测到外键约束违规".to_string());
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = integrity_result {
+                    issues.push(format!("数据库完整性检查失败: {}", error));
+                }
+            }
+
             // 健康状态：已初始化 + 无待执行迁移 + 依赖满足
-            let is_healthy = is_initialized && pending_count == 0 && dependencies_met;
+            let is_healthy =
+                is_initialized && pending_count == 0 && dependencies_met && issues.is_empty();
 
             // 输出每个数据库的详细状态
             if is_healthy {
@@ -854,8 +952,10 @@ pub fn data_governance_run_health_check(
         .collect();
 
     // 整体健康：依赖通过 + 无未初始化数据库 + 无待执行迁移
-    let overall_healthy =
-        dependency_ok && uninitialized_count == 0 && pending_migrations_total == 0;
+    let overall_healthy = dependency_ok
+        && uninitialized_count == 0
+        && pending_migrations_total == 0
+        && database_health.iter().all(|database| database.is_healthy);
 
     if overall_healthy {
         info!("✅ [HealthCheck] 健康检查完成: 所有数据库状态正常");

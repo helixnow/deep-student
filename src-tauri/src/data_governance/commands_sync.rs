@@ -16,6 +16,7 @@ use super::sync::{
     SyncExecutionResult, SyncManager, SyncManifest, SyncPhase, SyncProgress, SyncProgressEmitter,
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
+use crate::cloud_config_commands::{load_hydrated_cloud_config_ssot, CloudConfigSsotError};
 use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
@@ -53,8 +54,7 @@ fn rollback_marked_sync_versions(
         // [P0-9/C7] 分批回滚，避免超过 SQLite 变量上限导致整体失败。
         const ROLLBACK_BATCH_SIZE: usize = 500;
         for chunk in change_ids.chunks(ROLLBACK_BATCH_SIZE) {
-            let placeholders = std::iter::repeat("?")
-                .take(chunk.len())
+            let placeholders = std::iter::repeat_n("?", chunk.len())
                 .collect::<Vec<_>>()
                 .join(",");
             let sql = format!(
@@ -109,6 +109,27 @@ fn mark_apply_failures_visible(
         )
     };
     append_warning_message(&mut exec_result.error_message, detail);
+}
+
+/// 游标只能在每条下载变更已经落入业务库，或已经持久化到目标库隔离区后推进。
+///
+/// `total_failed` 中的单条应用失败由同步层写入 `__sync_quarantine`，可以安全确认；
+/// `db_errors` 则表示目标库未知、文件缺失或整库事务失败，上层没有任何持久 inbox
+/// 可以保存这些 payload。此时必须让整包重放，不能把“未处理”误当成“已消费”。
+fn ensure_download_apply_is_durable(apply_agg: &ApplyToDbsResult) -> Result<(), String> {
+    if apply_agg.db_errors.is_empty() {
+        return Ok(());
+    }
+
+    let details = apply_agg
+        .db_errors
+        .iter()
+        .map(|(database, error)| format!("{database}: {error}"))
+        .collect::<Vec<_>>()
+        .join("；");
+    Err(format!(
+        "下载变更未能持久处理，已保留远端游标等待重试：{details}"
+    ))
 }
 
 fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
@@ -246,24 +267,37 @@ fn archive_synced_change_logs(active_dir: &std::path::Path, keep_days: i64) {
             continue;
         }
         match open_sync_connection(&db_path) {
-            Ok(conn) => match SyncManager::cleanup_synced_changes(&conn, &cutoff) {
-                Ok(n) if n > 0 => {
-                    tracing::info!(
-                        "[data_governance] 已归档 {} 条 {} 日前的已同步变更日志（{}）",
-                        n,
-                        keep_days,
-                        db_id.as_str()
-                    );
-                }
-                Ok(_) => {}
-                Err(e) => {
+            Ok(conn) => {
+                let local_device_id = crate::cloud_storage::get_device_id();
+                if let Err(error) =
+                    SyncManager::prepare_delete_versions_for_cleanup(&conn, &local_device_id)
+                {
                     tracing::warn!(
-                        "[data_governance] 归档 __change_log 失败（{}，非致命）: {}",
+                        "[data_governance] DELETE 版本固化失败，跳过变更日志归档（{}）: {}",
                         db_id.as_str(),
-                        e
+                        error
                     );
+                    continue;
                 }
-            },
+                match SyncManager::cleanup_synced_changes(&conn, &cutoff) {
+                    Ok(n) if n > 0 => {
+                        tracing::info!(
+                            "[data_governance] 已归档 {} 条 {} 日前的已同步变更日志（{}）",
+                            n,
+                            keep_days,
+                            db_id.as_str()
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(
+                            "[data_governance] 归档 __change_log 失败（{}，非致命）: {}",
+                            db_id.as_str(),
+                            e
+                        );
+                    }
+                }
+            }
             Err(e) => {
                 tracing::warn!(
                     "[data_governance] 归档时无法打开数据库 {}: {}（跳过）",
@@ -280,7 +314,7 @@ fn archive_synced_change_logs(active_dir: &std::path::Path, keep_days: i64) {
 /// 在每次同步进入文件级阶段之前调用。对每条 pending：
 /// 1. 调 `mark_blob_deleted` 写云端 tombstone 清单
 /// 2. 成功后从本地队列删除
-/// 3. 失败（如网络问题）则 `retry_count += 1`，达到阈值后放弃（保留记录供排查）
+/// 3. 失败（如网络问题）则 `retry_count += 1`，后续同步继续重试
 ///
 /// 返回成功推送的条数；云端传播失败必须上浮，避免后续行级同步在删除未发布时继续推进。
 async fn drain_blob_deletion_queue(
@@ -288,8 +322,6 @@ async fn drain_blob_deletion_queue(
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
 ) -> Result<usize, String> {
-    const MAX_RETRIES: i64 = 5;
-
     let vfs_path = active_dir.join("databases").join("vfs.db");
     if !vfs_path.exists() {
         return Ok(0);
@@ -318,14 +350,13 @@ async fn drain_blob_deletion_queue(
         let mut stmt = match conn.prepare(
             "SELECT hash, relative_path, size, deleted_at
              FROM __blob_deletion_queue
-             WHERE retry_count < ?1
-             ORDER BY deleted_at ASC
+             ORDER BY retry_count ASC, deleted_at ASC
              LIMIT 500",
         ) {
             Ok(s) => s,
             Err(e) => return Err(format!("读取 blob 删除队列失败: {}", e)),
         };
-        let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
+        let mapped = match stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<String>>(1)?,
@@ -399,8 +430,6 @@ async fn drain_asset_deletion_queue(
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
 ) -> Result<usize, String> {
-    const MAX_RETRIES: i64 = 5;
-
     let vfs_path = active_dir.join("databases").join("vfs.db");
     if !vfs_path.exists() {
         return Ok(0);
@@ -431,14 +460,13 @@ async fn drain_asset_deletion_queue(
         let mut stmt = match conn.prepare(
             "SELECT key, size, deleted_at
              FROM __asset_deletion_queue
-             WHERE retry_count < ?1
-             ORDER BY deleted_at ASC
+             ORDER BY retry_count ASC, deleted_at ASC
              LIMIT 500",
         ) {
             Ok(s) => s,
             Err(e) => return Err(format!("读取 asset 删除队列失败: {}", e)),
         };
-        let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
+        let mapped = match stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<i64>>(1)?,
@@ -508,8 +536,6 @@ async fn drain_workspace_deletion_queue(
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
 ) -> Result<usize, String> {
-    const MAX_RETRIES: i64 = 5;
-
     let chat_path = active_dir.join("chat_v2.db");
     if !chat_path.exists() {
         return Ok(0);
@@ -540,19 +566,17 @@ async fn drain_workspace_deletion_queue(
         let mut stmt = match conn.prepare(
             "SELECT workspace_id, deleted_at
              FROM __workspace_deletion_queue
-             WHERE retry_count < ?1
-             ORDER BY deleted_at ASC
+             ORDER BY retry_count ASC, deleted_at ASC
              LIMIT 500",
         ) {
             Ok(s) => s,
             Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
         };
-        let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        }) {
-            Ok(iter) => iter.filter_map(|x| x.ok()).collect::<Vec<_>>(),
-            Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
-        };
+        let mapped =
+            match stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+                Ok(iter) => iter.filter_map(|x| x.ok()).collect::<Vec<_>>(),
+                Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
+            };
         mapped
     };
 
@@ -622,6 +646,8 @@ impl FileLevelProgress<'_> {
             SyncDirection::Upload | SyncDirection::Bidirectional => SyncPhase::Uploading,
         };
         self.emitter.emit_force_sync(SyncProgress {
+            operation_id: None,
+            outcome: None,
             phase,
             percent,
             current,
@@ -670,6 +696,8 @@ impl FileLevelProgress<'_> {
             let stage = (step as f32 + inner) / total_steps as f32;
             let percent = start + (end - start) * stage.clamp(0.0, 1.0);
             emitter.emit_force_sync(SyncProgress {
+                operation_id: None,
+                outcome: None,
                 phase,
                 percent,
                 current: done,
@@ -698,23 +726,36 @@ struct WorkspaceMaintenanceGuard {
 impl WorkspaceMaintenanceGuard {
     fn enter(
         coordinator: Option<&std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
-    ) -> Option<Self> {
-        let coordinator = coordinator?.clone();
-        if let Err(e) = coordinator.enter_maintenance_mode() {
-            warn!(
-                "[data_governance] 进入工作区维护模式失败（继续同步，不中断）: {}",
-                e
-            );
-            return None;
-        }
-        Some(Self { coordinator })
+    ) -> Result<Self, String> {
+        let coordinator = coordinator
+            .cloned()
+            .ok_or_else(|| "WorkspaceCoordinator 尚未初始化，无法取得一致性屏障".to_string())?;
+        coordinator
+            .enter_maintenance_mode()
+            .map_err(|error| format!("进入工作区维护模式失败: {error}"))?;
+        Ok(Self { coordinator })
     }
 }
 
 impl Drop for WorkspaceMaintenanceGuard {
     fn drop(&mut self) {
-        if let Err(e) = self.coordinator.exit_maintenance_mode() {
-            warn!("[data_governance] 退出工作区维护模式失败: {}", e);
+        let mut last_error = None;
+        for attempt in 1u64..=3 {
+            match self.coordinator.exit_maintenance_mode() {
+                Ok(()) => return,
+                Err(error) => {
+                    last_error = Some(error);
+                    if attempt < 3 {
+                        std::thread::sleep(std::time::Duration::from_millis(50 * attempt));
+                    }
+                }
+            }
+        }
+        if let Some(error) = last_error {
+            tracing::error!(
+                "[data_governance] 退出工作区维护模式连续失败，工作区保持只读以避免写入内存池丢失: {}",
+                error
+            );
         }
     }
 }
@@ -730,7 +771,7 @@ fn workspace_coordinator_from_app(
 
 async fn run_file_level_sync(
     active_dir: &std::path::Path,
-    app_data_dir: &std::path::Path,
+    _app_data_dir: &std::path::Path,
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
     direction: SyncDirection,
@@ -745,29 +786,36 @@ async fn run_file_level_sync(
         progress.emit(direction, 0, total_steps, "文件级同步：工作区数据库");
     }
 
-    {
-        // ws_*.db 同步期间进入维护模式，结束后立即恢复（窗口仅覆盖本段）
-        let _ws_guard = WorkspaceMaintenanceGuard::enter(ws_coordinator);
-
-        if direction != SyncDirection::Download {
-            if let Err(e) = drain_workspace_deletion_queue(active_dir, manager, storage).await {
-                warn!("[data_governance] {}", e);
-                append_warning_message(&mut report.warning, e);
+    // ws_*.db 同步期间必须先取得维护屏障；失败时跳过整个工作区步骤，不能在仍有
+    // 活跃连接/WAL 的情况下直接哈希、覆盖或删除数据库文件。
+    match WorkspaceMaintenanceGuard::enter(ws_coordinator) {
+        Ok(_ws_guard) => {
+            if direction != SyncDirection::Download {
+                if let Err(e) = drain_workspace_deletion_queue(active_dir, manager, storage).await {
+                    warn!("[data_governance] {}", e);
+                    append_warning_message(&mut report.warning, e);
+                    report.failed = true;
+                }
+            }
+            if let Err(e) = manager
+                .sync_workspace_databases_with_progress(
+                    storage,
+                    active_dir,
+                    direction,
+                    progress.map(|progress| {
+                        progress.transfer_callback(direction, 0, total_steps, "文件级传输")
+                    }),
+                )
+                .await
+            {
+                let msg = format!("工作区数据库同步失败: {}", e);
+                warn!("[data_governance] {}", msg);
+                append_warning_message(&mut report.warning, msg);
                 report.failed = true;
             }
         }
-        if let Err(e) = manager
-            .sync_workspace_databases_with_progress(
-                storage,
-                active_dir,
-                direction,
-                progress.map(|progress| {
-                    progress.transfer_callback(direction, 0, total_steps, "文件级传输")
-                }),
-            )
-            .await
-        {
-            let msg = format!("工作区数据库同步失败: {}", e);
+        Err(error) => {
+            let msg = format!("工作区数据库同步已跳过: {}", error);
             warn!("[data_governance] {}", msg);
             append_warning_message(&mut report.warning, msg);
             report.failed = true;
@@ -826,7 +874,9 @@ async fn run_file_level_sync(
         .sync_asset_directories_with_tombstones_and_progress(
             storage,
             active_dir,
-            app_data_dir,
+            // FileManager is initialized with the active A/B slot. Keep the
+            // legacy `app_data/...` cloud namespace, but map it to that slot.
+            active_dir,
             direction,
             progress.map(|progress| {
                 progress.transfer_callback(direction, 2, total_steps, "文件级传输")
@@ -880,6 +930,7 @@ pub async fn data_governance_get_sync_status(
     let mut databases_status: Vec<DatabaseSyncStatusResponse> = Vec::new();
     let mut total_pending_changes = 0usize;
     let mut total_synced_changes = 0usize;
+    let mut status_errors = Vec::new();
 
     // 遍历所有数据库获取同步状态
     for db_id in DatabaseId::all_ordered() {
@@ -890,13 +941,27 @@ pub async fn data_governance_get_sync_status(
             match open_sync_connection(&db_path) {
                 Ok(conn) => {
                     // 检查 __change_log 表是否存在
-                    let table_exists: bool = conn
-                        .query_row(
+                    let table_exists: bool = match conn.query_row(
                             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
                             [],
                             |row| row.get(0),
-                        )
-                        .unwrap_or(false);
+                        ) {
+                            Ok(exists) => exists,
+                            Err(error) => {
+                                let message = format!("检查变更日志表失败: {}", error);
+                                status_errors.push(format!("{}: {}", db_id.as_str(), message));
+                                databases_status.push(DatabaseSyncStatusResponse {
+                                    id: db_id.as_str().to_string(),
+                                    knowledge: SyncStatusKnowledge::Unknown,
+                                    error: Some(message),
+                                    has_change_log: false,
+                                    pending_changes: 0,
+                                    synced_changes: 0,
+                                    last_sync_at: None,
+                                });
+                                continue;
+                            }
+                        };
 
                     if table_exists {
                         // 获取变更日志统计
@@ -906,17 +971,29 @@ pub async fn data_governance_get_sync_status(
                                 total_synced_changes += stats.synced_count;
 
                                 // 获取上次同步时间：取 __change_log 中最新已同步记录的时间戳
-                                let last_sync: Option<String> = conn
+                                let last_sync_result: rusqlite::Result<Option<String>> = conn
                                     .query_row(
                                         "SELECT MAX(changed_at) FROM __change_log WHERE sync_version > 0",
                                         [],
                                         |row| row.get(0),
-                                    )
-                                    .ok()
-                                    .flatten();
+                                    );
+                                let (knowledge, status_error, last_sync) = match last_sync_result {
+                                    Ok(last_sync) => (SyncStatusKnowledge::Known, None, last_sync),
+                                    Err(error) => {
+                                        let message = format!("读取最后同步时间失败: {}", error);
+                                        status_errors.push(format!(
+                                            "{}: {}",
+                                            db_id.as_str(),
+                                            message
+                                        ));
+                                        (SyncStatusKnowledge::Unknown, Some(message), None)
+                                    }
+                                };
 
                                 databases_status.push(DatabaseSyncStatusResponse {
                                     id: db_id.as_str().to_string(),
+                                    knowledge,
+                                    error: status_error,
                                     has_change_log: true,
                                     pending_changes: stats.pending_count,
                                     synced_changes: stats.synced_count,
@@ -930,16 +1007,25 @@ pub async fn data_governance_get_sync_status(
                                 );
                                 databases_status.push(DatabaseSyncStatusResponse {
                                     id: db_id.as_str().to_string(),
+                                    knowledge: SyncStatusKnowledge::Unknown,
+                                    error: Some(e.to_string()),
                                     has_change_log: true,
                                     pending_changes: 0,
                                     synced_changes: 0,
                                     last_sync_at: None,
                                 });
+                                status_errors.push(format!(
+                                    "{}: 读取变更日志统计失败: {}",
+                                    db_id.as_str(),
+                                    e
+                                ));
                             }
                         }
                     } else {
                         databases_status.push(DatabaseSyncStatusResponse {
                             id: db_id.as_str().to_string(),
+                            knowledge: SyncStatusKnowledge::Known,
+                            error: None,
                             has_change_log: false,
                             pending_changes: 0,
                             synced_changes: 0,
@@ -949,12 +1035,30 @@ pub async fn data_governance_get_sync_status(
                 }
                 Err(e) => {
                     debug!("[data_governance] 打开数据库 {:?} 失败: {}", db_id, e);
+                    status_errors.push(format!("{}: 打开数据库失败: {}", db_id.as_str(), e));
+                    databases_status.push(DatabaseSyncStatusResponse {
+                        id: db_id.as_str().to_string(),
+                        knowledge: SyncStatusKnowledge::Unknown,
+                        error: Some(e.to_string()),
+                        has_change_log: false,
+                        pending_changes: 0,
+                        synced_changes: 0,
+                        last_sync_at: None,
+                    });
                 }
             }
         }
     }
 
     let has_pending_changes = total_pending_changes > 0;
+
+    // 全局 last_sync_at：取各库 __change_log 已同步时间戳的最大值。
+    // 无独立全局元数据表；ISO-8601 / SQLite datetime 字符串可按字典序取 max。
+    let last_sync_at = databases_status
+        .iter()
+        .filter_map(|db| db.last_sync_at.as_ref())
+        .max()
+        .cloned();
 
     info!(
         "[data_governance] 同步状态: pending={}, synced={}, databases={}",
@@ -964,11 +1068,13 @@ pub async fn data_governance_get_sync_status(
     );
 
     Ok(SyncStatusResponse {
+        partial: !status_errors.is_empty(),
+        errors: status_errors,
         has_pending_changes,
         total_pending_changes,
         total_synced_changes,
         databases: databases_status,
-        last_sync_at: None, // TODO: 从全局元数据获取
+        last_sync_at,
         device_id: get_device_id(&app),
     })
 }
@@ -1010,6 +1116,10 @@ fn get_device_id(app: &tauri::AppHandle) -> String {
 /// 同步状态响应
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SyncStatusResponse {
+    /// 任一数据库无法读取时为 true；此时汇总计数只是已知部分，不代表完整的 0。
+    pub partial: bool,
+    /// 状态不可知的数据库及原因。
+    pub errors: Vec<String>,
     /// 是否有待同步的变更
     pub has_pending_changes: bool,
     /// 待同步变更总数
@@ -1024,11 +1134,22 @@ pub struct SyncStatusResponse {
     pub device_id: String,
 }
 
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncStatusKnowledge {
+    Known,
+    Unknown,
+}
+
 /// 数据库同步状态响应
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DatabaseSyncStatusResponse {
     /// 数据库 ID
     pub id: String,
+    /// 计数是否可信；Unknown 时数字字段仅为兼容占位。
+    pub knowledge: SyncStatusKnowledge,
+    /// Unknown 的具体原因。
+    pub error: Option<String>,
     /// 是否有变更日志表
     pub has_change_log: bool,
     /// 待同步变更数量
@@ -1204,6 +1325,12 @@ pub async fn data_governance_resolve_conflicts(
     strategy: String,
     cloud_manifest_json: String,
 ) -> Result<SyncResultResponse, String> {
+    if !strategy.is_empty() || !cloud_manifest_json.is_empty() {
+        return Err(
+            "批量清单级冲突接口已停用，因为它只生成记录 ID、不会提交数据库或云端变更。请使用 data_governance_list_record_conflicts 和 data_governance_resolve_record_conflict 逐条裁决。"
+                .to_string(),
+        );
+    }
     info!("[data_governance] 开始解决冲突，策略: {}", strategy);
 
     // P0-6: 维护模式检查——禁止在备份/恢复/迁移期间访问数据库文件
@@ -1388,15 +1515,29 @@ pub async fn data_governance_run_sync(
         }
     };
 
-    // 获取云存储配置
+    // 获取云存储配置：显式入参优先；否则回落 SSOT（settings + secure_store 凭据）
     let mut config = match cloud_config {
         Some(cfg) => cfg,
         None => {
-            // TODO: 从应用配置或状态中获取默认云存储配置
-            return Err("未提供云存储配置。请在调用前配置云存储。".to_string());
+            let Some(state) = app.try_state::<crate::commands::AppState>() else {
+                return Err(
+                    "Cloud storage is not configured. Save a cloud config in Settings first."
+                        .to_string(),
+                );
+            };
+            match load_hydrated_cloud_config_ssot(&app, &state.database) {
+                Ok(cfg) => cfg,
+                Err(CloudConfigSsotError::NotConfigured) => {
+                    return Err(
+                        "Cloud storage is not configured. Save a cloud config in Settings first."
+                            .to_string(),
+                    );
+                }
+                Err(e) => return Err(e.to_string()),
+            }
         }
     };
-    // [P0-3A] 空白凭据由后端从安全存储补全
+    // [P0-3A] 空白凭据由后端从安全存储补全（显式入参路径；SSOT 路径已 hydrate）
     crate::secure_store::hydrate_cloud_config(&app, &mut config);
 
     // 获取设备 ID（用于审计与同步清单）
@@ -1433,9 +1574,10 @@ pub async fn data_governance_run_sync(
     // P1-4: 全局互斥：避免与备份/恢复/ZIP 导入导出/另一次同步并发。
     // 同步命令用 try_acquire 立即失败：双入口重复触发时第二个请求应当即刻
     // 返回"正在进行中"，而不是排队 30 秒后再完整跑一遍同步。
-    let _permit = BACKUP_GLOBAL_LIMITER.clone().try_acquire_owned().map_err(|_| {
-        "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string()
-    })?;
+    let _permit = BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string())?;
 
     // 创建云存储实例
     let storage = create_storage(&config)
@@ -1452,6 +1594,10 @@ pub async fn data_governance_run_sync(
     // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+    manager
+        .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
+        .await
+        .map_err(|e| format!("同步格式协商失败: {}", e))?;
 
     validate_sync_registry_drift(&active_dir)?;
 
@@ -1678,6 +1824,7 @@ pub async fn data_governance_run_sync(
                 exec_result.conflicts_detected = apply_agg.total_conflicts;
                 total_warning_skipped = apply_agg.total_incomplete_skipped;
                 mark_apply_failures_visible(&mut exec_result, &apply_agg);
+                ensure_download_apply_is_durable(&apply_agg)?;
                 if total_warning_skipped > 0 {
                     warn!(
                         "[data_governance] 同步完成但有 {} 条变更被跳过（旧格式数据缺失），建议在源设备重新执行完整同步",
@@ -1742,6 +1889,7 @@ pub async fn data_governance_run_sync(
                 exec_result.conflicts_detected = apply_agg.total_conflicts;
                 total_warning_skipped = apply_agg.total_incomplete_skipped;
                 mark_apply_failures_visible(&mut exec_result, &apply_agg);
+                ensure_download_apply_is_durable(&apply_agg)?;
                 applied_keys = apply_agg.applied_keys;
                 if total_warning_skipped > 0 {
                     warn!(
@@ -2058,7 +2206,7 @@ pub struct SyncExecutionResponse {
 
 fn cleanup_temp_sync_file(path: Option<&PathBuf>, context: &str) {
     if let Some(temp_path) = path {
-        if let Err(err) = std::fs::remove_file(&temp_path) {
+        if let Err(err) = std::fs::remove_file(temp_path) {
             warn!(
                 "[data_governance] {}: 清理临时文件失败 ({}): {}",
                 context,
@@ -2347,25 +2495,11 @@ pub async fn data_governance_import_sync_data(
         }
     };
 
-    // 如果有冲突且是手动模式
-    if detection.has_conflicts && merge_strategy == MergeStrategy::Manual {
-        let response = SyncImportResponse {
-            success: false,
-            imported_changes: 0,
-            conflicts_detected: detection.total_conflicts(),
-            needs_manual_resolution: true,
-            error_message: Some(
-                "存在冲突，需要手动解决。请前往「同步」面板选择合适的解决策略".to_string(),
-            ),
-        };
-        cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
-        return Ok(response);
-    }
-
     // 应用变更到本地数据库（v2 格式已含完整数据，按数据库路由）
     let mut total_applied = 0usize;
     let mut total_incomplete_skipped = 0usize;
     let mut total_failed = 0usize;
+    let mut record_conflicts = 0usize;
 
     if !import_data.pending_changes.is_empty() {
         // 导入的变更已含完整记录数据，直接按数据库路由并应用
@@ -2379,6 +2513,7 @@ pub async fn data_governance_import_sync_data(
                 let total_skipped = apply_agg.total_skipped;
                 total_incomplete_skipped = apply_agg.total_incomplete_skipped;
                 total_failed = apply_agg.total_failed;
+                record_conflicts = apply_agg.total_conflicts;
                 info!(
                     "[data_governance] 导入变更应用完成: applied={}, failed={}, skipped={}",
                     total_applied, total_failed, total_skipped
@@ -2402,7 +2537,12 @@ pub async fn data_governance_import_sync_data(
         detection.total_conflicts()
     );
 
-    let error_message = if total_failed > 0 {
+    let error_message = if record_conflicts > 0 && merge_strategy == MergeStrategy::Manual {
+        Some(format!(
+            "已保留本地数据并记录 {} 个冲突快照，请在冲突面板逐条裁决。",
+            record_conflicts
+        ))
+    } else if total_failed > 0 {
         Some(format!("{}条变更应用失败", total_failed))
     } else if total_incomplete_skipped > 0 {
         Some(format!(
@@ -2416,8 +2556,8 @@ pub async fn data_governance_import_sync_data(
     let response = SyncImportResponse {
         success: total_failed == 0,
         imported_changes: total_applied,
-        conflicts_detected: detection.total_conflicts(),
-        needs_manual_resolution: false,
+        conflicts_detected: record_conflicts.max(detection.total_conflicts()),
+        needs_manual_resolution: merge_strategy == MergeStrategy::Manual && record_conflicts > 0,
         error_message,
     };
     cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
@@ -2485,9 +2625,6 @@ pub async fn data_governance_run_sync_with_progress(
     // 创建进度发射器
     let emitter = SyncProgressEmitter::new(app.clone());
 
-    // 发送准备中状态
-    emitter.emit_preparing().await;
-
     // 解析同步方向
     let sync_direction = match SyncDirection::from_str(&direction) {
         Some(d) => d,
@@ -2517,13 +2654,32 @@ pub async fn data_governance_run_sync_with_progress(
         }
     };
 
-    // 获取云存储配置
+    // 获取云存储配置：显式入参优先；否则回落后端 SSOT。
     let mut config = match cloud_config {
         Some(cfg) => cfg,
         None => {
-            let error_msg = "未提供云存储配置。请在调用前配置云存储。".to_string();
-            emitter.emit_failed(&error_msg).await;
-            return Err(error_msg);
+            let Some(state) = app.try_state::<crate::commands::AppState>() else {
+                let error_msg =
+                    "Cloud storage is not configured. Save a cloud config in Settings first."
+                        .to_string();
+                emitter.emit_failed(&error_msg).await;
+                return Err(error_msg);
+            };
+            match load_hydrated_cloud_config_ssot(&app, &state.database) {
+                Ok(cfg) => cfg,
+                Err(CloudConfigSsotError::NotConfigured) => {
+                    let error_msg =
+                        "Cloud storage is not configured. Save a cloud config in Settings first."
+                            .to_string();
+                    emitter.emit_failed(&error_msg).await;
+                    return Err(error_msg);
+                }
+                Err(error) => {
+                    let error_msg = error.to_string();
+                    emitter.emit_failed(&error_msg).await;
+                    return Err(error_msg);
+                }
+            }
         }
     };
     // [P0-3A] 空白凭据由后端从安全存储补全
@@ -2574,6 +2730,9 @@ pub async fn data_governance_run_sync_with_progress(
         }
     };
 
+    // 只有拿到全局锁后才宣告本次操作开始，避免第二个请求制造幽灵 preparing 事件。
+    emitter.emit_preparing().await;
+
     // 发送检测变更状态
     emitter.emit_detecting_changes().await;
 
@@ -2600,6 +2759,14 @@ pub async fn data_governance_run_sync_with_progress(
     // [P0-2] 透传加密密码
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+    if let Err(e) = manager
+        .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
+        .await
+    {
+        let error_msg = format!("同步格式协商失败: {}", e);
+        emitter.emit_failed(&error_msg).await;
+        return Err(error_msg);
+    }
 
     if let Err(e) = validate_sync_registry_drift(&active_dir) {
         emitter.emit_failed(&e).await;
@@ -2639,6 +2806,8 @@ pub async fn data_governance_run_sync_with_progress(
         // 每处理一个 DB 就推送一次 detecting_changes 进度，消除大批量富化时的静默窗口
         emitter
             .emit(SyncProgress {
+                operation_id: None,
+                outcome: None,
                 phase: SyncPhase::DetectingChanges,
                 percent: 5.0,
                 current: db_index as u64 + 1,
@@ -2785,7 +2954,7 @@ pub async fn data_governance_run_sync_with_progress(
                 let warn_msg = exec_result.error_message.clone().unwrap_or_else(|| {
                     "同步未完全成功：部分步骤失败或有变更被跳过，请检查同步详情。".to_string()
                 });
-                emitter.emit_failed(&warn_msg).await;
+                emitter.emit_partial(&warn_msg).await;
             }
 
             info!(
@@ -2993,6 +3162,8 @@ async fn execute_upload_with_progress_v2(
                     };
                     let pct = batch_progress_base + inner_pct * batch_progress_span;
                     emitter_cb.emit_force_sync(SyncProgress {
+                        operation_id: None,
+                        outcome: None,
                         phase: SyncPhase::Uploading,
                         percent: pct,
                         current: done,
@@ -3114,15 +3285,13 @@ async fn enforce_prune_gap_check(
         .map(|s| s.data_version)
         .min()
         .unwrap_or(0);
-    let needs_bootstrap = SyncManager::has_prune_gap(since_version, min_available)
-        || (since_version == 0 && min_available.is_some_and(|v| v > 1));
+    // 新设备的合法游标是 0，v3 按上传设备从 seq=1 连续消费。全局最小
+    // wall-clock 文件名不具备跨设备序列语义，不能据此把 fresh device 误判为断层。
+    let needs_bootstrap = SyncManager::has_prune_gap(since_version, min_available);
     if needs_bootstrap {
-        if storage_has_snapshot(storage).await? {
-            return Ok(());
-        }
         return Err(format!(
             "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}。\
-             部分变更可能已被清理，且云端没有可用快照；请先通过 ZIP 完整恢复后重新同步。",
+             当前 v1 快照不具备权威删除集合，不能安全覆盖本地；请先通过 ZIP 完整恢复后重新同步。",
             since_version,
             min_available.map_or("无".to_string(), |v| v.to_string())
         ));
@@ -3188,11 +3357,11 @@ async fn commit_download_progress_if_needed(
 }
 
 async fn apply_snapshot_bootstrap_if_needed(
-    manager: &SyncManager,
+    _manager: &SyncManager,
     storage: &dyn CloudStorage,
     local_manifest: &SyncManifest,
-    active_dir: &std::path::Path,
-    merge_strategy: MergeStrategy,
+    _active_dir: &std::path::Path,
+    _merge_strategy: MergeStrategy,
 ) -> Result<(usize, usize), String> {
     let min_available = SyncManager::get_min_available_change_version(storage)
         .await
@@ -3203,64 +3372,18 @@ async fn apply_snapshot_bootstrap_if_needed(
         .map(|s| s.data_version)
         .min()
         .unwrap_or(0);
-    let has_gap = SyncManager::has_prune_gap(since_version, min_available)
-        || (since_version == 0 && min_available.is_some_and(|v| v > 1));
-    let looks_unbootstrapped = !local_manifest.databases.is_empty()
-        && local_manifest
-            .databases
-            .values()
-            .all(|s| s.data_version == 0);
-
-    if !has_gap && !looks_unbootstrapped {
-        return Ok((0, 0));
+    let has_gap = SyncManager::has_prune_gap(since_version, min_available);
+    if has_gap {
+        return Err(
+            "检测到云端变更断层；UPSERT-only 快照无法证明本地集合相等，已拒绝推进游标。请使用完整 ZIP 恢复。"
+                .to_string(),
+        );
     }
 
-    let snapshot = manager
-        .download_snapshot_bootstrap_changes(storage)
-        .await
-        .map_err(|e| format!("下载快照失败: {}", e))?;
-
-    if snapshot.changes.is_empty() && snapshot.cursor_advancements.is_empty() {
-        if has_gap {
-            return Err(format!(
-                "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}，但云端没有可用快照。",
-                since_version,
-                min_available.map_or("无".to_string(), |v| v.to_string())
-            ));
-        }
-        return Ok((0, 0));
-    }
-
-    let mut skipped = 0usize;
-    if !snapshot.changes.is_empty() {
-        let apply_agg =
-            apply_downloaded_changes_to_databases(&snapshot.changes, active_dir, merge_strategy)?;
-        skipped = apply_agg.total_incomplete_skipped;
-        if apply_agg.total_failed > 0 {
-            let detail = if apply_agg.db_errors.is_empty() {
-                "部分快照变更已移入同步隔离区".to_string()
-            } else {
-                apply_agg
-                    .db_errors
-                    .iter()
-                    .map(|(db, err)| format!("{}: {}", db, err))
-                    .collect::<Vec<_>>()
-                    .join("；")
-            };
-            return Err(format!(
-                "应用快照失败：{} 条变更未能应用（{}）",
-                apply_agg.total_failed, detail
-            ));
-        }
-    }
-
-    manager
-        .commit_download_progress(storage, &snapshot)
-        .await
-        .map_err(|e| format!("提交快照游标失败: {}", e))?;
-    publish_current_sync_manifest(manager, storage, active_dir).await?;
-
-    Ok((snapshot.changes.len(), skipped))
+    // With automatic prune disabled, a fresh device can safely replay the
+    // immutable change log from sequence 1. Avoid v1 snapshot bootstrap because
+    // it cannot delete stale rows or represent an authoritative table set.
+    Ok((0, 0))
 }
 
 async fn execute_download_with_progress_v2(
@@ -3320,6 +3443,7 @@ async fn execute_download_with_progress_v2(
         exec_result.conflicts_detected = apply_agg.total_conflicts;
         total_warning_skipped = apply_agg.total_incomplete_skipped;
         mark_apply_failures_visible(&mut exec_result, &apply_agg);
+        ensure_download_apply_is_durable(&apply_agg)?;
         if total_warning_skipped > 0 {
             append_warning_message(&mut exec_result.error_message, format!(
                 "同步已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。",
@@ -3420,6 +3544,7 @@ async fn execute_bidirectional_with_progress_v2(
         exec_result.conflicts_detected = apply_agg.total_conflicts;
         total_warning_skipped = apply_agg.total_incomplete_skipped;
         mark_apply_failures_visible(&mut exec_result, &apply_agg);
+        ensure_download_apply_is_durable(&apply_agg)?;
         applied_keys = apply_agg.applied_keys;
         if total_warning_skipped > 0 {
             append_warning_message(&mut exec_result.error_message, format!(
@@ -3509,6 +3634,8 @@ async fn execute_bidirectional_with_progress_v2(
                     60.0
                 };
                 emitter_cb.emit_force_sync(SyncProgress {
+                    operation_id: None,
+                    outcome: None,
                     phase: SyncPhase::Uploading,
                     percent: pct,
                     current: done,
@@ -3801,55 +3928,8 @@ pub async fn data_governance_retry_quarantine(
         return Ok(false);
     }
 
-    let payload_json: Option<String> = conn
-        .query_row(
-            "SELECT payload_json FROM __sync_quarantine WHERE id=?1",
-            rusqlite::params![quarantine_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => "该隔离记录不存在".to_string(),
-            other => format!("读取隔离记录失败: {}", other),
-        })?;
-    let payload_json =
-        payload_json.ok_or_else(|| "该隔离记录缺少 payload，无法重试".to_string())?;
-    let change: SyncChangeWithData = serde_json::from_str(&payload_json)
-        .map_err(|e| format!("解析隔离记录 payload 失败: {}", e))?;
-
-    match SyncManager::apply_downloaded_changes(&conn, &[change], Some(&id_column_map())) {
-        Ok(result) if result.failure_count == 0 => {
-            let deleted = conn
-                .execute(
-                    "DELETE FROM __sync_quarantine WHERE id=?1",
-                    rusqlite::params![quarantine_id],
-                )
-                .map_err(|e| format!("清理隔离记录失败: {}", e))?;
-            Ok(deleted > 0)
-        }
-        Ok(result) => {
-            let error = result
-                .failures
-                .first()
-                .map(|f| f.error.clone())
-                .unwrap_or_else(|| "重试后仍未能应用".to_string());
-            let _ = conn.execute(
-                "UPDATE __sync_quarantine
-                 SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now')
-                 WHERE id=?2",
-                rusqlite::params![error, quarantine_id],
-            );
-            Ok(false)
-        }
-        Err(e) => {
-            let _ = conn.execute(
-                "UPDATE __sync_quarantine
-                 SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now')
-                 WHERE id=?2",
-                rusqlite::params![e.to_string(), quarantine_id],
-            );
-            Err(format!("重试隔离记录失败: {}", e))
-        }
-    }
+    SyncManager::retry_quarantined_change(&conn, quarantine_id, Some(&id_column_map()))
+        .map_err(|e| format!("重试隔离记录失败: {}", e))
 }
 
 /// 丢弃一条检疫记录（不会写入业务表）。
@@ -3915,57 +3995,24 @@ pub async fn data_governance_retry_all_quarantine(
 
         // 获取所有检疫记录
         let mut stmt = conn
-            .prepare(
-                "SELECT id, payload_json FROM __sync_quarantine WHERE payload_json IS NOT NULL",
-            )
+            .prepare("SELECT id FROM __sync_quarantine ORDER BY id")
             .map_err(|e| format!("准备批量查询失败: {}", e))?;
 
-        let rows: Vec<(i64, String)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        let rows: Vec<i64> = stmt
+            .query_map([], |row| row.get(0))
             .map_err(|e| format!("执行批量查询失败: {}", e))?
             .filter_map(|r| r.ok())
             .collect();
 
-        for (quarantine_id, payload_json) in rows {
-            let change: SyncChangeWithData = match serde_json::from_str(&payload_json) {
-                Ok(c) => c,
-                Err(e) => {
-                    errors.push(format!("记录 {}: 解析失败 - {}", quarantine_id, e));
-                    failed += 1;
-                    continue;
-                }
-            };
-
-            match SyncManager::apply_downloaded_changes(
-                &conn,
-                &[change],
-                Some(&id_column_map()),
-            ) {
-                Ok(result) if result.failure_count == 0 => {
-                    let _ = conn.execute(
-                        "DELETE FROM __sync_quarantine WHERE id=?1",
-                        rusqlite::params![quarantine_id],
-                    );
-                    success += 1;
-                }
-                Ok(result) => {
-                    let error = result
-                        .failures
-                        .first()
-                        .map(|f| f.error.clone())
-                        .unwrap_or_else(|| "重试后仍未能应用".to_string());
-                    let _ = conn.execute(
-                        "UPDATE __sync_quarantine SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now') WHERE id=?2",
-                        rusqlite::params![error, quarantine_id],
-                    );
-                    errors.push(format!("记录 {}: {}", quarantine_id, error));
+        let columns = id_column_map();
+        for quarantine_id in rows {
+            match SyncManager::retry_quarantined_change(&conn, quarantine_id, Some(&columns)) {
+                Ok(true) => success += 1,
+                Ok(false) => {
+                    errors.push(format!("记录 {}: 重试后仍未能应用", quarantine_id));
                     failed += 1;
                 }
                 Err(e) => {
-                    let _ = conn.execute(
-                        "UPDATE __sync_quarantine SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now') WHERE id=?2",
-                        rusqlite::params![e.to_string(), quarantine_id],
-                    );
                     errors.push(format!("记录 {}: {}", quarantine_id, e));
                     failed += 1;
                 }
@@ -4043,8 +4090,8 @@ pub async fn data_governance_list_record_conflicts(
     offset: Option<u32>,
 ) -> Result<Vec<RecordConflictRow>, String> {
     let active_dir = get_active_data_dir(&app)?;
-    let limit = limit.unwrap_or(200).min(2000) as i64;
-    let offset = offset.unwrap_or(0) as i64;
+    let limit = limit.unwrap_or(200).min(2000) as usize;
+    let offset = offset.unwrap_or(0) as usize;
 
     let mut out: Vec<RecordConflictRow> = Vec::new();
     for db_id in _DatabaseId::all_ordered() {
@@ -4075,13 +4122,12 @@ pub async fn data_governance_list_record_conflicts(
                         losing_device_id, detected_at, resolved_at, resolution
                  FROM __sync_conflicts
                  WHERE resolved_at IS NULL
-                 ORDER BY detected_at DESC
-                 LIMIT ?1 OFFSET ?2",
+                 ORDER BY detected_at DESC",
             )
             .map_err(|e| format!("准备冲突查询失败: {}", e))?;
 
         let rows = stmt
-            .query_map(rusqlite::params![limit, offset], |row| {
+            .query_map([], |row| {
                 Ok(RecordConflictRow {
                     id: row.get(0)?,
                     database_name: db_id.as_str().to_string(),
@@ -4102,7 +4148,37 @@ pub async fn data_governance_list_record_conflicts(
             out.push(r);
         }
     }
-    Ok(out)
+    out.sort_by(|a, b| {
+        b.detected_at
+            .cmp(&a.detected_at)
+            .then_with(|| b.id.cmp(&a.id))
+    });
+    let mut seen_groups = std::collections::HashSet::new();
+    let mut selected_groups = std::collections::HashSet::new();
+    let mut group_index = 0usize;
+    for row in &out {
+        let key = (
+            row.database_name.clone(),
+            row.table_name.clone(),
+            row.record_id.clone(),
+        );
+        if seen_groups.insert(key.clone()) {
+            if group_index >= offset && group_index < offset.saturating_add(limit) {
+                selected_groups.insert(key);
+            }
+            group_index += 1;
+        }
+    }
+    Ok(out
+        .into_iter()
+        .filter(|row| {
+            selected_groups.contains(&(
+                row.database_name.clone(),
+                row.table_name.clone(),
+                row.record_id.clone(),
+            ))
+        })
+        .collect())
 }
 
 /// 统计每个数据库的待解决冲突数
@@ -4136,8 +4212,12 @@ pub async fn data_governance_count_record_conflicts(
         // 按 record_id 去重：一次冲突保存 2 条（local + cloud），用户关心的是"有多少条记录有冲突"
         let count: i64 = conn
             .query_row(
-                "SELECT COUNT(DISTINCT record_id || '|' || table_name)
-                 FROM __sync_conflicts WHERE resolved_at IS NULL",
+                "SELECT COUNT(*) FROM (
+                    SELECT table_name, record_id
+                    FROM __sync_conflicts
+                    WHERE resolved_at IS NULL
+                    GROUP BY table_name, record_id
+                 )",
                 [],
                 |row| row.get(0),
             )
@@ -4172,6 +4252,7 @@ fn table_has_column(conn: &rusqlite::Connection, table_name: &str, column_name: 
 /// - `record_id`: 记录主键
 /// - `resolution`: `"keep_local"` | `"keep_cloud"` | `"merged"`
 /// - `merged_data_json`: 当 resolution = "merged" 时，用户手动合并后的完整行 JSON
+/// - `expected_conflict_ids`: 用户实际查看并决定的冲突行；集合变化时拒绝旧决策
 #[tauri::command]
 pub async fn data_governance_resolve_record_conflict(
     app: tauri::AppHandle,
@@ -4180,7 +4261,21 @@ pub async fn data_governance_resolve_record_conflict(
     record_id: String,
     resolution: String,
     merged_data_json: Option<String>,
+    expected_conflict_ids: Vec<i64>,
 ) -> Result<(), String> {
+    check_maintenance_mode(&app)?;
+    let _permit = BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "其他备份、恢复或同步操作正在进行，请刷新冲突后重试".to_string())?;
+
+    if expected_conflict_ids.is_empty() {
+        return Err("缺少冲突版本标识，请刷新冲突列表后重试".to_string());
+    }
+    let mut expected_ids = expected_conflict_ids;
+    expected_ids.sort_unstable();
+    expected_ids.dedup();
+
     let active_dir = get_active_data_dir(&app)?;
 
     // 找对应数据库
@@ -4193,6 +4288,30 @@ pub async fn data_governance_resolve_record_conflict(
 
     let conn = open_sync_connection(&db_path)
         .map_err(|e| format!("打开数据库 {} 失败: {}", database_name, e))?;
+
+    let mut current_ids = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM __sync_conflicts
+                 WHERE table_name = ?1 AND record_id = ?2 AND resolved_at IS NULL
+                 ORDER BY id ASC",
+            )
+            .map_err(|e| format!("读取冲突版本失败: {}", e))?;
+        let rows = stmt
+            .query_map(rusqlite::params![&table_name, &record_id], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(|e| format!("查询冲突版本失败: {}", e))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row.map_err(|e| format!("解析冲突版本失败: {}", e))?);
+        }
+        ids
+    };
+    current_ids.sort_unstable();
+    if current_ids != expected_ids {
+        return Err("冲突已在后台变化，旧决策未执行；请刷新后重新确认".to_string());
+    }
 
     // 取出冲突记录的 local/cloud 两端数据
     let get_side_data = |side: &str| -> Result<Option<String>, String> {
@@ -4210,22 +4329,86 @@ pub async fn data_governance_resolve_record_conflict(
         }
     };
 
-    let target_json =
-        match resolution.as_str() {
-            "keep_local" => get_side_data("local")?
-                .ok_or_else(|| "找不到该冲突的 local side 数据".to_string())?,
-            "keep_cloud" => get_side_data("cloud")?
-                .ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?,
-            "merged" => merged_data_json
-                .ok_or_else(|| "resolution='merged' 时必须提供 merged_data_json".to_string())?,
-            other => return Err(format!("未知 resolution: {}", other)),
-        };
-
-    let mut data: serde_json::Value =
-        serde_json::from_str(&target_json).map_err(|e| format!("解析合并后数据失败: {}", e))?;
+    let id_column_map = build_id_column_map();
+    let id_column = id_column_map
+        .get(&table_name)
+        .map(String::as_str)
+        .unwrap_or("id");
+    let current_local_snapshot =
+        SyncManager::get_record_data(&conn, &table_name, &record_id, id_column)
+            .map_err(|e| format!("读取当前本地记录失败: {}", e))?;
+    let recorded_local_raw =
+        get_side_data("local")?.ok_or_else(|| "找不到该冲突的 local side 数据".to_string())?;
+    let recorded_cloud_raw =
+        get_side_data("cloud")?.ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?;
+    let recorded_local_snapshot = {
+        let value: serde_json::Value = serde_json::from_str(&recorded_local_raw)
+            .map_err(|e| format!("解析冲突中的本地快照失败: {}", e))?;
+        (!value.is_null()).then_some(value)
+    };
+    let recorded_cloud_snapshot = {
+        let value: serde_json::Value = serde_json::from_str(&recorded_cloud_raw)
+            .map_err(|e| format!("解析冲突中的云端快照失败: {}", e))?;
+        (!value.is_null()).then_some(value)
+    };
+    if resolution != "keep_local" {
+        let current_matches_recorded_side = current_local_snapshot == recorded_local_snapshot
+            || current_local_snapshot == recorded_cloud_snapshot;
+        if !current_matches_recorded_side {
+            return Err(
+                "本地记录在冲突生成后已再次变化，拒绝用旧冲突覆盖；请重新同步或手动合并"
+                    .to_string(),
+            );
+        }
+    }
+    let (operation, mut data) = match resolution.as_str() {
+        "keep_local" => {
+            // 若云端曾获胜并已写入业务表，“保留本地”恢复面板中的 local side；
+            // 若业务表已不同于两端快照，则视为冲突后的新本地编辑，保留当前值。
+            let selected = if current_local_snapshot == recorded_cloud_snapshot
+                && current_local_snapshot != recorded_local_snapshot
+            {
+                recorded_local_snapshot.clone()
+            } else {
+                current_local_snapshot.clone()
+            };
+            match selected {
+                Some(value) => (
+                    crate::data_governance::sync::ChangeOperation::Update,
+                    Some(value),
+                ),
+                None => (crate::data_governance::sync::ChangeOperation::Delete, None),
+            }
+        }
+        "keep_cloud" => {
+            if let Some(value) = recorded_cloud_snapshot.clone() {
+                (
+                    crate::data_governance::sync::ChangeOperation::Update,
+                    Some(value),
+                )
+            } else {
+                (crate::data_governance::sync::ChangeOperation::Delete, None)
+            }
+        }
+        "merged" => {
+            let target_json = merged_data_json
+                .ok_or_else(|| "resolution='merged' 时必须提供 merged_data_json".to_string())?;
+            let value: serde_json::Value = serde_json::from_str(&target_json)
+                .map_err(|e| format!("解析合并后数据失败: {}", e))?;
+            if value.is_null() {
+                (crate::data_governance::sync::ChangeOperation::Delete, None)
+            } else {
+                (
+                    crate::data_governance::sync::ChangeOperation::Update,
+                    Some(value),
+                )
+            }
+        }
+        other => return Err(format!("未知 resolution: {}", other)),
+    };
 
     let now = chrono::Utc::now().to_rfc3339();
-    if let Some(obj) = data.as_object_mut() {
+    if let Some(obj) = data.as_mut().and_then(serde_json::Value::as_object_mut) {
         if table_has_column(&conn, &table_name, "updated_at") {
             let current = obj.get("updated_at");
             let refreshed = if matches!(current, Some(serde_json::Value::Number(_))) {
@@ -4241,8 +4424,8 @@ pub async fn data_governance_resolve_record_conflict(
     let change = SyncChangeWithData {
         table_name: table_name.clone(),
         record_id: record_id.clone(),
-        operation: crate::data_governance::sync::ChangeOperation::Update,
-        data: Some(data),
+        operation,
+        data,
         changed_at: now.clone(),
         change_log_id: None,
         database_name: Some(database_name.clone()),
@@ -4252,20 +4435,110 @@ pub async fn data_governance_resolve_record_conflict(
         source_seq: None,
     };
 
-    let apply_result = SyncManager::apply_downloaded_changes_force_exact(&conn, &[change], None)
-        .map_err(|e| format!("写回冲突解决失败: {}", e))?;
+    let preflight_table = table_name.clone();
+    let preflight_record = record_id.clone();
+    let preflight_id_column = id_column.to_string();
+    let preflight_snapshot = current_local_snapshot;
+    let final_expected_ids = expected_ids.clone();
+    let final_table = table_name.clone();
+    let final_record = record_id.clone();
+    let final_resolution = resolution.clone();
+    let final_now = now.clone();
+    let apply_result = SyncManager::apply_downloaded_changes_force_exact_with_hooks(
+        &conn,
+        &[change],
+        None,
+        move |transaction_conn| {
+            let latest = SyncManager::get_record_data(
+                transaction_conn,
+                &preflight_table,
+                &preflight_record,
+                &preflight_id_column,
+            )?;
+            if latest != preflight_snapshot {
+                return Err(crate::data_governance::sync::SyncError::Database(
+                    "本地记录在提交冲突决策前发生变化".to_string(),
+                ));
+            }
+            Ok(())
+        },
+        move |transaction_conn, apply_result| {
+            if apply_result.success_count == 0 {
+                return Err(crate::data_governance::sync::SyncError::Database(
+                    "冲突决策未写入任何业务记录".to_string(),
+                ));
+            }
+            let mut current = Vec::new();
+            let mut stmt = transaction_conn
+                .prepare(
+                    "SELECT id FROM __sync_conflicts
+                     WHERE table_name = ?1 AND record_id = ?2 AND resolved_at IS NULL
+                     ORDER BY id ASC",
+                )
+                .map_err(|e| {
+                    crate::data_governance::sync::SyncError::Database(format!(
+                        "提交前读取冲突 generation 失败: {}",
+                        e
+                    ))
+                })?;
+            let rows = stmt
+                .query_map(rusqlite::params![&final_table, &final_record], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .map_err(|e| {
+                    crate::data_governance::sync::SyncError::Database(format!(
+                        "提交前查询冲突 generation 失败: {}",
+                        e
+                    ))
+                })?;
+            for row in rows {
+                current.push(row.map_err(|e| {
+                    crate::data_governance::sync::SyncError::Database(format!(
+                        "提交前解析冲突 generation 失败: {}",
+                        e
+                    ))
+                })?);
+            }
+            current.sort_unstable();
+            if current != final_expected_ids {
+                return Err(crate::data_governance::sync::SyncError::Database(
+                    "冲突 generation 在提交前发生变化".to_string(),
+                ));
+            }
+            for conflict_id in &final_expected_ids {
+                let updated = transaction_conn
+                    .execute(
+                        "UPDATE __sync_conflicts
+                         SET resolved_at = ?1, resolution = ?2
+                         WHERE id = ?3 AND table_name = ?4 AND record_id = ?5
+                           AND resolved_at IS NULL",
+                        rusqlite::params![
+                            &final_now,
+                            &final_resolution,
+                            conflict_id,
+                            &final_table,
+                            &final_record
+                        ],
+                    )
+                    .map_err(|e| {
+                        crate::data_governance::sync::SyncError::Database(format!(
+                            "更新冲突状态失败: {}",
+                            e
+                        ))
+                    })?;
+                if updated != 1 {
+                    return Err(crate::data_governance::sync::SyncError::Database(
+                        "冲突状态在提交前发生变化".to_string(),
+                    ));
+                }
+            }
+            Ok(())
+        },
+    )
+    .map_err(|e| format!("写回冲突解决失败: {}", e))?;
     if apply_result.success_count == 0 {
         return Err("冲突解决未写入任何记录，已拒绝标记为 resolved".to_string());
     }
-
-    // 标记该冲突的 local/cloud 两条记录都已解决
-    conn.execute(
-        "UPDATE __sync_conflicts
-         SET resolved_at = ?1, resolution = ?2
-         WHERE table_name = ?3 AND record_id = ?4 AND resolved_at IS NULL",
-        rusqlite::params![&now, &resolution, &table_name, &record_id],
-    )
-    .map_err(|e| format!("更新冲突状态失败: {}", e))?;
 
     Ok(())
 }
@@ -4401,36 +4674,40 @@ mod tests {
         );
     }
 
-    /// [P1 回归] v2 download 的快照引导必须尊重用户选择的合并策略，
-    /// 不得硬编码 KeepLatest（否则 keep_local 用户的本地数据会被快照覆盖）。
+    /// v1 快照不具备权威删除集合，不能再用于 bootstrap 或推进游标。
     #[test]
-    fn progress_v2_snapshot_bootstrap_respects_user_merge_strategy() {
+    fn unsafe_snapshot_bootstrap_is_disabled() {
         let source = include_str!("commands_sync.rs");
-
-        let download_start = source
-            .find("async fn execute_download_with_progress_v2")
-            .expect("download v2 function exists");
-        let bidirectional_start = source
-            .find("async fn execute_bidirectional_with_progress_v2")
-            .expect("bidirectional v2 function exists");
-        let download_body = &source[download_start..bidirectional_start];
-
-        let snapshot_call_start = download_body
-            .find("apply_snapshot_bootstrap_if_needed(")
-            .expect("download v2 invokes snapshot bootstrap");
-        let snapshot_tail = &download_body[snapshot_call_start..];
-        let snapshot_call_end = snapshot_tail
-            .find(".await")
-            .expect("snapshot bootstrap call is awaited");
-        let snapshot_call = &snapshot_tail[..snapshot_call_end];
-
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
         assert!(
-            snapshot_call.contains("merge_strategy"),
-            "快照引导必须传入用户选择的 merge_strategy"
+            production_source.contains("UPSERT-only 快照无法证明本地集合相等，已拒绝推进游标"),
+            "断层必须 fail-close"
         );
         assert!(
-            !snapshot_call.contains("MergeStrategy::KeepLatest"),
-            "快照引导不得硬编码 MergeStrategy::KeepLatest"
+            !production_source.contains("download_snapshot_bootstrap_changes(storage)"),
+            "生产命令路径不得保留可误启用的 v1 快照 bootstrap"
+        );
+    }
+
+    #[test]
+    fn deletion_queues_never_permanently_abandon_failed_entries() {
+        let source = include_str!("commands_sync.rs");
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+
+        assert!(
+            !production_source.contains("WHERE retry_count <"),
+            "file deletion queues must retry retained tombstones on later sync runs"
+        );
+        assert_eq!(
+            production_source.matches("ORDER BY retry_count ASC, deleted_at ASC").count(),
+            3,
+            "blob, asset, and workspace queues should prioritize fresh failures without dropping older ones"
         );
     }
 

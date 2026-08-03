@@ -7,11 +7,16 @@
  * - ★ 支持视图级别的配置隔离，只有活跃视图的配置才会生效
  */
 
-import React, { createContext, useContext, useState, useCallback, useLayoutEffect, useRef, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useLayoutEffect, useRef, type ReactNode } from 'react';
 
 /** 移动端顶栏配置 */
 export interface MobileHeaderConfig {
-  /** 是否暂时隐藏整个移动端顶栏 */
+  /**
+   * 是否暂时隐藏整个移动端顶栏。
+   *
+   * App 壳层会根据 `[data-mobile-shell="header"]` 是否存在同步移除
+   * workspace 的顶栏预留高度，适用于需要全屏接管移动层级的页面内面板。
+   */
   hidden?: boolean;
   /** 标题（字符串形式） */
   title?: string;
@@ -19,10 +24,16 @@ export interface MobileHeaderConfig {
   titleNode?: ReactNode;
   /** 副标题 */
   subtitle?: string;
-  /** 右侧操作区域 */
+  /**
+   * 右侧操作区域。
+   * 约定：≤2 个动作（每个 ≥44px 触控目标）。顶栏无溢出收纳机制，
+   * 超过 2 个会挤压标题区并在窄屏溢出；更多动作请收进页面内「更多」菜单。
+   */
   rightActions?: ReactNode;
   /** 是否显示菜单按钮（用于打开次级侧边栏） */
   showMenu?: boolean;
+  /** 只显示浮动菜单入口，不渲染占位顶栏（用于聊天新对话空态） */
+  floatingMenuButton?: boolean;
   /** 点击菜单按钮的回调 */
   onMenuClick?: () => void;
   /** 是否显示返回箭头（替代菜单图标） */
@@ -37,6 +48,8 @@ interface MobileHeaderContextValue {
   config: MobileHeaderConfig;
   /** 设置配置（带视图 ID） */
   setConfig: (viewId: string, config: MobileHeaderConfig) => void;
+  /** 清除某视图缓存的配置（视图卸载时调用，释放 rightActions 等引用） */
+  clearConfig: (viewId: string) => void;
   /** 重置配置 */
   resetConfig: () => void;
   /** 设置活跃视图（由 App.tsx 调用） */
@@ -49,10 +62,17 @@ const defaultConfig: MobileHeaderConfig = {
   subtitle: undefined,
   rightActions: undefined,
   showMenu: false,
+  floatingMenuButton: false,
   onMenuClick: undefined,
 };
 
 const MobileHeaderContext = createContext<MobileHeaderContextValue | null>(null);
+
+/** 仅包含写操作的 context：引用永久稳定，供 useMobileHeader 等“只写不读”的
+ * 消费者使用，避免 config 每次变化都重渲染所有页面组件（曾导致
+ * “页面渲染 → 效果重跑 → setConfig → config 变化 → 页面再渲染”的无限循环）。 */
+type MobileHeaderActions = Omit<MobileHeaderContextValue, 'config'>;
+const MobileHeaderActionsContext = createContext<MobileHeaderActions | null>(null);
 
 /** Provider 组件 */
 export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -73,27 +93,47 @@ export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   }, []);
 
+  // 清除某视图的缓存配置：视图被 LRU 驱逐/切壳卸载后，缓存里的 rightActions
+  // ReactNode 及其闭包会一直滞留内存；且回到该视图时会先应用指向已卸载组件
+  // 的陈旧回调（重挂载完成前的窗口期内可被点击）。由 useMobileHeader 卸载时调用。
+  const clearConfig = useCallback((viewId: string) => {
+    configCacheRef.current.delete(viewId);
+  }, []);
+
   // 设置活跃视图
   const setActiveView = useCallback((viewId: string) => {
-    activeViewRef.current = viewId;
-    // 应用该视图缓存的配置
-    const cachedConfig = configCacheRef.current.get(viewId);
-    if (cachedConfig) {
-      setConfigState(cachedConfig);
-    } else {
-      // 如果没有缓存（懒加载组件还没加载），先显示空配置，页面加载后会更新
-      setConfigState(defaultConfig);
+    // 视图未变化时跳过，避免 Provider 重渲染 → effect 重跑 → setState 的无限循环
+    if (activeViewRef.current === viewId) {
+      return;
     }
+    activeViewRef.current = viewId;
+    // 应用该视图缓存的配置；没有缓存（懒加载组件还没加载）时先显示空配置，页面加载后会更新
+    const cachedConfig = configCacheRef.current.get(viewId) ?? defaultConfig;
+    setConfigState((prev) => (prev === cachedConfig ? prev : cachedConfig));
   }, []);
 
   const resetConfig = useCallback(() => {
     setConfigState(defaultConfig);
   }, []);
 
+  // 稳定 context 引用：只有 config 变化时才产生新值，防止依赖 ctx 的 effect 每次提交都重跑
+  const contextValue = useMemo(
+    () => ({ config, setConfig, clearConfig, resetConfig, setActiveView }),
+    [config, setConfig, clearConfig, resetConfig, setActiveView],
+  );
+
+  // 所有回调都是 [] 依赖的 useCallback，此对象在 Provider 生命周期内引用不变
+  const actionsValue = useMemo(
+    () => ({ setConfig, clearConfig, resetConfig, setActiveView }),
+    [setConfig, clearConfig, resetConfig, setActiveView],
+  );
+
   return (
-    <MobileHeaderContext.Provider value={{ config, setConfig, resetConfig, setActiveView }}>
-      {children}
-    </MobileHeaderContext.Provider>
+    <MobileHeaderActionsContext.Provider value={actionsValue}>
+      <MobileHeaderContext.Provider value={contextValue}>
+        {children}
+      </MobileHeaderContext.Provider>
+    </MobileHeaderActionsContext.Provider>
   );
 };
 
@@ -136,7 +176,8 @@ export const useMobileHeaderContextSafe = (): MobileHeaderContextValue | null =>
  * ```
  */
 export function useMobileHeader(viewId: string, config: MobileHeaderConfig, deps: React.DependencyList = []): void {
-  const ctx = useContext(MobileHeaderContext);
+  // 只订阅写操作 context：引用稳定，config 更新不会触发调用方重渲染
+  const ctx = useContext(MobileHeaderActionsContext);
   const configRef = useRef(config);
   configRef.current = config;
   const viewIdRef = useRef(viewId);
@@ -150,19 +191,23 @@ export function useMobileHeader(viewId: string, config: MobileHeaderConfig, deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  // 首次挂载时立即设置配置
+  // 首次挂载时立即设置配置；卸载时清除缓存（防止 LRU 驱逐后配置滞留，见 clearConfig 注释）
   useLayoutEffect(() => {
     if (ctx) {
       ctx.setConfig(viewIdRef.current, configRef.current);
     }
-  }, []); // 仅首次挂载时执行
+    return () => {
+      ctx?.clearConfig(viewIdRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 仅首次挂载/卸载时执行
 }
 
 /**
  * useSetMobileHeaderActiveView - 供 App.tsx 调用，设置当前活跃视图
  */
 export function useSetMobileHeaderActiveView(): (viewId: string) => void {
-  const ctx = useContext(MobileHeaderContext);
+  const ctx = useContext(MobileHeaderActionsContext);
   return useCallback((viewId: string) => {
     ctx?.setActiveView(viewId);
   }, [ctx]);
@@ -174,7 +219,7 @@ export function useSetMobileHeaderActiveView(): (viewId: string) => void {
  * 必须放在 MobileHeaderProvider 内部使用，因为需要访问 Context
  */
 export const MobileHeaderActiveViewSync: React.FC<{ activeView: string }> = ({ activeView }) => {
-  const ctx = useContext(MobileHeaderContext);
+  const ctx = useContext(MobileHeaderActionsContext);
 
   useLayoutEffect(() => {
     if (ctx) {

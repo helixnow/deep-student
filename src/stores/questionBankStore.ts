@@ -21,6 +21,7 @@ import type {
   PracticeMode,
   QuestionOption,
   QuestionImage,
+  QuestionStructuredData,
 } from '@/api/questionBankApi';
 
 // ============================================================================
@@ -37,7 +38,34 @@ export type {
   QuestionImage,
 };
 
-export type SourceType = 'ocr' | 'imported' | 'ai_generated';
+export type SourceType = 'ocr' | 'imported' | 'ai_generated' | 'manual';
+
+/**
+ * 历史别名：API 层 QuestionType 已并入 true_false / matching / ordering / numeric，
+ * 本联合与 QuestionType 等价。保留导出名以兼容既有 import。
+ */
+export type ExtendedQuestionType = QuestionType;
+
+/**
+ * 练习/组卷配置界面使用的题型显示顺序。
+ * 与浏览管理流 src/components/questionTypeMeta.ts 的 QUESTION_TYPE_ORDER 保持一致。
+ * 只增不删；文案键位于 practice.json 的 questionType.*。
+ */
+export const PRACTICE_QUESTION_TYPES: readonly ExtendedQuestionType[] = [
+  'single_choice',
+  'multiple_choice',
+  'indefinite_choice',
+  'true_false',
+  'fill_blank',
+  'short_answer',
+  'essay',
+  'calculation',
+  'numeric',
+  'proof',
+  'matching',
+  'ordering',
+  'other',
+];
 
 export interface Question {
   id: string;
@@ -48,10 +76,24 @@ export interface Question {
   options?: QuestionOption[];
   answer?: string;
   explanation?: string;
-  question_type: QuestionType;
+  question_type: ExtendedQuestionType;
   difficulty?: Difficulty;
   tags: string[];
   status: QuestionStatus;
+  /**
+   * 结构化题型数据（判断/配对/排序/数值等的选项与判分元数据），
+   * 由 Rust 侧 structured_data JSON 列透传，前端不做二次加工。
+   * 契约类型见 src/api/questionBankApi.ts（QuestionStructuredData 判别联合）。
+   */
+  structured_data?: QuestionStructuredData | null;
+  /**
+   * 作答序列化约定（与后端判分对齐）：
+   * - true_false: "true" / "false"
+   * - numeric: 数字字符串（如 "3.14"）
+   * - fill_blank 多空: JSON 数组（如 ["答案1","答案2"]）
+   * - matching: {"pairs":[{"left":"L1","right":"R1"}]}
+   * - ordering: JSON 数组（如 ["B","A","C"]）
+   */
   user_answer?: string;
   is_correct?: boolean;
   attempt_count: number;
@@ -59,6 +101,8 @@ export interface Question {
   last_attempt_at?: string;
   user_note?: string;
   is_favorite: boolean;
+  /** 后端始终序列化该字段；置为可选以兼容存量本地构造 */
+  is_bookmarked?: boolean;
   images: QuestionImage[];
   source_type: SourceType;
   source_ref?: string;
@@ -74,7 +118,7 @@ export interface Question {
 export interface QuestionFilters {
   status?: QuestionStatus[];
   difficulty?: Difficulty[];
-  question_type?: QuestionType[];
+  question_type?: ExtendedQuestionType[];
   tags?: string[];
   search?: string;
   is_favorite?: boolean;
@@ -129,6 +173,13 @@ export interface QuestionHistory {
   operator: string;
   reason?: string;
   created_at: string;
+}
+
+/** qbank_batch_* 命令的返回（与 Rust BatchResult 对齐） */
+export interface QuestionBatchResult {
+  success_count: number;
+  failed_count: number;
+  errors: string[];
 }
 
 // ============================================================================
@@ -193,6 +244,8 @@ export interface CsvImportResult {
   exam_id: string;
   /** 总处理行数 */
   total_rows: number;
+  /** 用户取消后返回部分结果时为 true */
+  cancelled?: boolean;
 }
 
 /** CSV 导出请求参数 */
@@ -322,103 +375,12 @@ export interface KnowledgeStatsComparison {
   previous: KnowledgePoint[];
 }
 
-/** 时间范围类型 */
-export type DateRange = 'today' | 'week' | 'month' | 'all';
+/** 时间范围类型（2026-07 新增 quarter = 近 90 天） */
+export type DateRange = 'today' | 'week' | 'month' | 'quarter' | 'all';
 
-// ============================================================================
-// 同步冲突策略类型（2026-01 新增）
-// ============================================================================
-
-/** 同步冲突解决策略 */
-export type QuestionConflictStrategy = 
-  | 'keep_local'    // 保留本地版本
-  | 'keep_remote'   // 保留远程版本
-  | 'keep_newer'    // 保留更新时间较新的版本
-  | 'merge'         // 智能合并（字段级别）
-  | 'manual';       // 手动选择
-
-/** 同步状态 */
-export type SyncStatus = 
-  | 'local_only'    // 仅本地存在（未同步）
-  | 'synced'        // 已同步（本地与远程一致）
-  | 'modified'      // 本地已修改（待推送）
-  | 'conflict'      // 存在冲突
-  | 'deleted_remote'; // 远程已删除
-
-/** 冲突类型 */
-export type ConflictType = 
-  | 'modify_modify'   // 双方都修改了同一题目
-  | 'modify_delete'   // 本地修改，远程删除
-  | 'delete_modify'   // 本地删除，远程修改
-  | 'add_add';        // 双方都新增了相同 remote_id 的题目
-
-/** 题目版本快照 */
-export interface QuestionVersion {
-  id: string;
-  content: string;
-  options?: QuestionOption[];
-  answer?: string;
-  explanation?: string;
-  question_type: QuestionType;
-  difficulty?: Difficulty;
-  tags: string[];
-  status: QuestionStatus;
-  user_answer?: string;
-  is_correct?: boolean;
-  attempt_count: number;
-  correct_count: number;
-  user_note?: string;
-  is_favorite: boolean;
-  content_hash: string;
-  updated_at: string;
-  remote_version: number;
-}
-
-/** 同步冲突记录 */
-export interface SyncConflict {
-  id: string;
-  question_id: string;
-  exam_id: string;
-  conflict_type: ConflictType;
-  local_version: QuestionVersion;
-  remote_version: QuestionVersion;
-  status: 'pending' | 'resolved' | 'skipped';
-  resolved_strategy?: string;
-  resolved_at?: string;
-  created_at: string;
-}
-
-/** 单条冲突解决失败详情（#20 round2） */
-export interface ConflictResolveFailure {
-  conflict_id: string;
-  error: string;
-}
-
-/** 批量解决冲突结果（#20 round2：区分成功解决与失败，前端可提示部分失败） */
-export interface BatchResolveConflictsResult {
-  resolved: Question[];
-  failed: ConflictResolveFailure[];
-}
-
-/** 同步配置 */
-export interface SyncConfig {
-  default_strategy: QuestionConflictStrategy;
-  auto_sync: boolean;
-  sync_interval_secs: number;
-  sync_progress: boolean;
-  sync_notes: boolean;
-}
-
-/** 同步状态检查结果 */
-export interface SyncStatusResult {
-  sync_enabled: boolean;
-  last_synced_at?: string;
-  local_modified_count: number;
-  pending_conflict_count: number;
-  total_count: number;
-  synced_count: number;
-  sync_config?: SyncConfig;
-}
+// COMPAT-REMOVED 2026-07-20 (owner: learning-qbank): 题库专属 sync conflict 类型/API 已移除。
+// 无生产生产者（QuestionSyncService::detect_conflicts / save_conflict 零调用）。
+// 真冲突源：data_governance __sync_conflicts + RecordConflictsPanel。
 
 // ============================================================================
 // 练习模式扩展类型（2026-01 新增）
@@ -439,6 +401,12 @@ export interface TimedPracticeSession {
   is_submitted: boolean;
   paused_seconds: number;
   is_paused: boolean;
+  /**
+   * 本会话内已作答的题目 ID（前端补充字段，仅用于进度去重与答题卡状态，
+   * 不回传后端）。2026-07 修复：此前 answered_count/correct_count 无人更新，
+   * 进度永远显示 0。
+   */
+  answered_question_ids?: string[];
 }
 
 /** 模拟考试配置 */
@@ -518,6 +486,271 @@ export interface DailyPracticeResult {
   is_completed: boolean;
 }
 
+export type QbankPracticeHandoffMode = 'timed' | 'mock_exam' | 'daily';
+
+interface QbankPracticeHandoffBase {
+  version: 1;
+  kind: 'qbank_practice_session';
+  handoff_id: string;
+  exam_id: string;
+  mode: QbankPracticeHandoffMode;
+  agentCanAnswer: false;
+}
+
+export type QbankPracticeHandoff =
+  | (QbankPracticeHandoffBase & { mode: 'timed'; session: TimedPracticeSession })
+  | (QbankPracticeHandoffBase & { mode: 'mock_exam'; session: MockExamSession })
+  | (QbankPracticeHandoffBase & { mode: 'daily'; session: DailyPracticeResult });
+
+export type PracticeHandoffHydrationResult =
+  | {
+      ok: true;
+      mode: QbankPracticeHandoffMode;
+      handoffId: string;
+      firstQuestionId: string;
+      questionCount: number;
+    }
+  | {
+      ok: false;
+      code: 'INVALID_PRACTICE_HANDOFF' | 'PRACTICE_HANDOFF_EXAM_MISMATCH';
+      hint: string;
+    };
+
+export type PracticeHandoffHydrationFailure = Extract<
+  PracticeHandoffHydrationResult,
+  { ok: false }
+>;
+
+function practiceRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function practiceString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function practiceInteger(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number | null {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= min
+    && value <= max
+    ? value
+    : null;
+}
+
+function practiceQuestionIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100) return null;
+  const ids = value.map(practiceString);
+  if (ids.some((id) => id == null)) return null;
+  const normalized = ids as string[];
+  return new Set(normalized).size === normalized.length ? normalized : null;
+}
+
+function validPracticeTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && Number.isFinite(Date.parse(value));
+}
+
+function emptyPracticeRecord(value: unknown): value is Record<string, never> {
+  const record = practiceRecord(value);
+  return Boolean(record && Object.keys(record).length === 0);
+}
+
+function practiceCountMap(value: unknown): Record<string, number> | null {
+  const record = practiceRecord(value);
+  if (!record) return null;
+  const entries = Object.entries(record);
+  if (entries.some(([, count]) => practiceInteger(count, 1, 100) == null)) return null;
+  return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function invalidPracticeHandoff(hint: string): PracticeHandoffHydrationFailure {
+  return { ok: false, code: 'INVALID_PRACTICE_HANDOFF', hint };
+}
+
+/** Validate and normalize a backend-created handoff before it reaches mutable UI state. */
+export function validateQbankPracticeHandoff(
+  value: unknown,
+  expectedExamId: string,
+): QbankPracticeHandoff | PracticeHandoffHydrationFailure {
+  const handoff = practiceRecord(value);
+  if (
+    !handoff
+    || handoff.version !== 1
+    || handoff.kind !== 'qbank_practice_session'
+    || handoff.agentCanAnswer !== false
+  ) {
+    return invalidPracticeHandoff('练习交接版本或来源无效');
+  }
+  const examId = practiceString(handoff.exam_id);
+  const handoffId = practiceString(handoff.handoff_id);
+  const session = practiceRecord(handoff.session);
+  const mode = handoff.mode;
+  if (!examId || !handoffId || !session || !['timed', 'mock_exam', 'daily'].includes(String(mode))) {
+    return invalidPracticeHandoff('练习交接缺少 exam_id、handoff_id、mode 或 session');
+  }
+  if (examId !== expectedExamId || practiceString(session.exam_id) !== expectedExamId) {
+    return {
+      ok: false,
+      code: 'PRACTICE_HANDOFF_EXAM_MISMATCH',
+      hint: '练习交接不属于当前题目集',
+    };
+  }
+  const questionIds = practiceQuestionIds(session.question_ids);
+  if (!questionIds) return invalidPracticeHandoff('练习交接必须包含 1-100 个唯一题目 ID');
+
+  if (mode === 'timed') {
+    const id = practiceString(session.id);
+    const duration = practiceInteger(session.duration_minutes, 1, 480);
+    const questionCount = practiceInteger(session.question_count, 1, 100);
+    if (
+      !id
+      || handoffId !== id
+      || duration == null
+      || questionCount !== questionIds.length
+      || !validPracticeTimestamp(session.started_at)
+      // 全新会话不允许预填 ended_at：否则恢复出的倒计时会立即结算/误报超时
+      || session.ended_at != null
+      || practiceInteger(session.answered_count, 0, questionIds.length) !== 0
+      || practiceInteger(session.correct_count, 0, questionIds.length) !== 0
+      || session.is_timeout !== false
+      || session.is_submitted !== false
+      || practiceInteger(session.paused_seconds, 0) !== 0
+      || session.is_paused !== false
+    ) {
+      return invalidPracticeHandoff('限时练习 session 无效或包含 Agent 预填进度');
+    }
+    return {
+      version: 1,
+      kind: 'qbank_practice_session',
+      handoff_id: id,
+      exam_id: examId,
+      mode: 'timed',
+      agentCanAnswer: false,
+      session: {
+        id,
+        exam_id: examId,
+        duration_minutes: duration,
+        question_count: questionIds.length,
+        question_ids: [...questionIds],
+        started_at: session.started_at as string,
+        answered_count: 0,
+        correct_count: 0,
+        is_timeout: false,
+        is_submitted: false,
+        paused_seconds: 0,
+        is_paused: false,
+      },
+    };
+  }
+
+  if (mode === 'mock_exam') {
+    const id = practiceString(session.id);
+    const config = practiceRecord(session.config);
+    const duration = practiceInteger(config?.duration_minutes, 1, 480);
+    const totalCount = config?.total_count == null
+      ? undefined
+      : practiceInteger(config.total_count, 1, 100);
+    const typeDistribution = practiceCountMap(config?.type_distribution);
+    const difficultyDistribution = practiceCountMap(config?.difficulty_distribution);
+    const tags = config?.tags == null
+      ? undefined
+      : Array.isArray(config.tags)
+        ? config.tags.map(practiceString)
+        : null;
+    if (
+      !id
+      || handoffId !== id
+      || !config
+      || duration == null
+      || totalCount === null
+      || !typeDistribution
+      || !difficultyDistribution
+      || config.shuffle !== true && config.shuffle !== false
+      || config.include_mistakes !== true && config.include_mistakes !== false
+      || tags === null
+      || tags?.some((tag) => tag == null)
+      || (tags?.length ?? 0) > 20
+      || !validPracticeTimestamp(session.started_at)
+      || session.ended_at != null
+      || !emptyPracticeRecord(session.answers)
+      || !emptyPracticeRecord(session.results)
+      || session.is_submitted !== false
+      || session.score != null
+      || session.correct_rate != null
+    ) {
+      return invalidPracticeHandoff('模拟考 session 无效或包含 Agent 预填答案/成绩');
+    }
+    return {
+      version: 1,
+      kind: 'qbank_practice_session',
+      handoff_id: id,
+      exam_id: examId,
+      mode: 'mock_exam',
+      agentCanAnswer: false,
+      session: {
+        id,
+        exam_id: examId,
+        config: {
+          duration_minutes: duration,
+          type_distribution: typeDistribution,
+          difficulty_distribution: difficultyDistribution,
+          ...(totalCount == null ? {} : { total_count: totalCount }),
+          shuffle: config.shuffle as boolean,
+          include_mistakes: config.include_mistakes as boolean,
+          ...(tags ? { tags: tags as string[] } : {}),
+        },
+        question_ids: [...questionIds],
+        started_at: session.started_at as string,
+        answers: {},
+        results: {},
+        is_submitted: false,
+      },
+    };
+  }
+
+  const date = practiceString(session.date);
+  if (
+    !date
+    || handoffId !== date
+    || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+    || practiceInteger(session.daily_target, 1, 20) == null
+    || practiceInteger(session.completed_count, 0, questionIds.length) !== 0
+    || practiceInteger(session.correct_count, 0, questionIds.length) !== 0
+    || !practiceRecord(session.source_distribution)
+    || practiceInteger((session.source_distribution as Record<string, unknown>).mistake_count, 0, questionIds.length) == null
+    || practiceInteger((session.source_distribution as Record<string, unknown>).new_count, 0, questionIds.length) == null
+    || practiceInteger((session.source_distribution as Record<string, unknown>).review_count, 0, questionIds.length) == null
+    || session.is_completed !== false
+  ) {
+    return invalidPracticeHandoff('每日一练 session 无效或包含 Agent 预填进度');
+  }
+  const distribution = session.source_distribution as Record<string, number>;
+  return {
+    version: 1,
+    kind: 'qbank_practice_session',
+    handoff_id: date,
+    exam_id: examId,
+    mode: 'daily',
+    agentCanAnswer: false,
+    session: {
+      date,
+      exam_id: examId,
+      question_ids: [...questionIds],
+      daily_target: session.daily_target as number,
+      completed_count: 0,
+      correct_count: 0,
+      source_distribution: {
+        mistake_count: distribution.mistake_count as number,
+        new_count: distribution.new_count as number,
+        review_count: distribution.review_count as number,
+      },
+      is_completed: false,
+    },
+  };
+}
+
 /** 试卷导出格式 */
 export type PaperExportFormat = 'preview' | 'pdf' | 'word' | 'markdown';
 
@@ -557,6 +790,8 @@ export interface DailyCheckIn {
 
 /** 打卡日历数据 */
 export interface CheckInCalendar {
+  /** 该日历所属的题目集；null 表示跨题目集汇总。 */
+  exam_id: string | null;
   year: number;
   month: number;
   days: DailyCheckIn[];
@@ -564,6 +799,10 @@ export interface CheckInCalendar {
   month_check_in_days: number;
   month_total_questions: number;
 }
+
+// 日历结果在 store 中只有一个槽位。保留最新请求的结果，避免快速切换题目集或月份时
+// 较慢的旧请求覆盖当前日历。
+let checkInCalendarRequestSeq = 0;
 
 // ============================================================================
 // Store 状态
@@ -598,7 +837,6 @@ interface QuestionBankState {
   
   // UI 状态
   focusMode: boolean;
-  showSettingsPanel: boolean;
   
   // 加载状态
   isLoading: boolean;
@@ -617,7 +855,6 @@ interface QuestionBankState {
   setFilters: (filters: QuestionFilters) => void;
   setPracticeMode: (mode: PracticeMode) => void;
   setFocusMode: (focusMode: boolean) => void;
-  toggleSettingsPanel: () => void;
   setDateRange: (range: DateRange) => void;
   resetFilters: () => void;
   
@@ -632,6 +869,14 @@ interface QuestionBankState {
   getQuestion: (questionId: string) => Promise<Question | null>;
   updateQuestion: (questionId: string, params: Partial<Question>) => Promise<void>;
   deleteQuestion: (questionId: string) => Promise<void>;
+  
+  // 批量管理 API（2026-07 新增，浏览管理流消费）
+  /** 批量设置难度（走 qbank_batch_update_questions，同一难度一次落库） */
+  batchUpdateDifficulty: (questionIds: string[], difficulty: Difficulty) => Promise<void>;
+  /** 批量增删标签（逐题合并计算后更新，保持各题既有标签） */
+  batchUpdateTags: (questionIds: string[], changes: { add: string[]; remove: string[] }) => Promise<void>;
+  /** 重命名标签：遍历题目集内含 oldTag 的题目；newTag 已存在时合并去重 */
+  renameTag: (examId: string, oldTag: string, newTag: string) => Promise<void>;
   submitAnswer: (questionId: string, answer: string, isCorrectOverride?: boolean) => Promise<SubmitAnswerResult>;
   toggleFavorite: (questionId: string) => Promise<void>;
   loadStats: (examId: string) => Promise<void>;
@@ -665,23 +910,14 @@ interface QuestionBankState {
   checkInCalendar: CheckInCalendar | null;
   mockExamScoreCard: MockExamScoreCard | null;
   
-  // 同步状态（2026-01 新增）
-  syncStatus: SyncStatusResult | null;
-  syncConflicts: SyncConflict[];
-  isSyncing: boolean;
-  
   setTimedSession: (session: TimedPracticeSession | null) => void;
   setMockExamSession: (session: MockExamSession | null) => void;
   setDailyPractice: (result: DailyPracticeResult | null) => void;
   setGeneratedPaper: (paper: GeneratedPaper | null) => void;
-  
-  // 同步 API（2026-01 新增）
-  checkSyncStatus: (examId: string) => Promise<SyncStatusResult>;
-  getSyncConflicts: (examId: string) => Promise<SyncConflict[]>;
-  resolveSyncConflict: (conflictId: string, strategy: QuestionConflictStrategy) => Promise<Question>;
-  batchResolveSyncConflicts: (examId: string, strategy: QuestionConflictStrategy) => Promise<BatchResolveConflictsResult>;
-  setSyncEnabled: (examId: string, enabled: boolean) => Promise<void>;
-  updateSyncConfig: (examId: string, config: SyncConfig) => Promise<void>;
+  hydratePracticeHandoff: (
+    handoff: unknown,
+    expectedExamId: string,
+  ) => PracticeHandoffHydrationResult;
   
   // Navigation
   goToQuestion: (index: number) => void;
@@ -722,7 +958,6 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       filters: {},
       practiceMode: 'sequential',
       focusMode: false,
-      showSettingsPanel: false,
       isLoading: false,
       isSubmitting: false,
       isLoadingTrend: false,
@@ -742,11 +977,6 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       checkInCalendar: null,
       mockExamScoreCard: null,
       
-      // 同步状态（2026-01 新增）
-      syncStatus: null,
-      syncConflicts: [],
-      isSyncing: false,
-
       // 基本 Setters
       setCurrentExam: (examId) => set({ currentExamId: examId }),
       
@@ -757,7 +987,6 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setPracticeMode: (mode) => set({ practiceMode: mode }),
       
       setFocusMode: (focusMode) => set({ focusMode }),
-      toggleSettingsPanel: () => set(state => ({ showSettingsPanel: !state.showSettingsPanel })),
       
       setDateRange: (range) => set({ selectedDateRange: range }),
       
@@ -851,11 +1080,14 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       },
 
       loadMoreQuestions: async () => {
-        const { currentExamId, pagination, filters, isLoading } = get();
+        const { currentExamId, pagination, filters, isLoading, loadRequestId } = get();
         if (!currentExamId || isLoading || !pagination.hasMore) return;
         
-        // 保存当前 examId 用于并发检查
+        // 保存当前 examId 与请求代际用于并发检查：
+        // examId 不变但期间发生 loadQuestions（筛选变化/刷新）时，loadRequestId 会递增，
+        // 旧的分页结果不能再追加到新列表上。
         const examIdAtStart = currentExamId;
+        const requestIdAtStart = loadRequestId;
         
         set({ isLoading: true });
         
@@ -869,8 +1101,8 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          // 并发防护：检查 examId 是否已变更
-          if (get().currentExamId !== examIdAtStart) {
+          // 并发防护：examId 变更或期间发生了新的 loadQuestions（筛选变化/刷新）都视为过期
+          if (get().currentExamId !== examIdAtStart || get().loadRequestId !== requestIdAtStart) {
             return; // 忽略过期请求
           }
           
@@ -897,8 +1129,8 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             isLoading: false,
           });
         } catch (err: unknown) {
-          // 并发防护：检查 examId 是否已变更
-          if (get().currentExamId !== examIdAtStart) {
+          // 并发防护：检查请求是否已过期
+          if (get().currentExamId !== examIdAtStart || get().loadRequestId !== requestIdAtStart) {
             return; // 忽略过期请求的错误
           }
           debugLog.error('[QuestionBankStore] loadMoreQuestions failed:', err);
@@ -1033,6 +1265,186 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         }
       },
 
+      // ========================================================================
+      // 批量管理 API（2026-07 新增）
+      // ========================================================================
+
+      batchUpdateDifficulty: async (questionIds, difficulty) => {
+        if (questionIds.length === 0) return;
+        try {
+          const result = await invoke<QuestionBatchResult>('qbank_batch_update_questions', {
+            request: {
+              question_ids: questionIds,
+              params: { difficulty },
+            },
+          });
+          
+          // 本地已加载的题目就地更新，未加载的由 refreshQuestions 兜底
+          set((state) => {
+            const newMap = new Map(state.questions);
+            let touched = false;
+            questionIds.forEach((id) => {
+              const question = newMap.get(id);
+              if (question) {
+                newMap.set(id, { ...question, difficulty });
+                touched = true;
+              }
+            });
+            return touched ? { questions: newMap } : {};
+          });
+          get().refreshQuestions().catch((e) =>
+            debugLog.error('[QuestionBankStore] refresh after batchUpdateDifficulty failed:', e)
+          );
+          
+          if (result.failed_count > 0) {
+            throw new Error(result.errors.join('; ') || `${result.failed_count} update(s) failed`);
+          }
+        } catch (err: unknown) {
+          debugLog.error('[QuestionBankStore] batchUpdateDifficulty failed:', err);
+          throw err;
+        }
+      },
+
+      batchUpdateTags: async (questionIds, changes) => {
+        if (questionIds.length === 0) return;
+        const addTags = changes.add.map((tag) => tag.trim()).filter(Boolean);
+        const removeTags = new Set(changes.remove.map((tag) => tag.trim()).filter(Boolean));
+        if (addTags.length === 0 && removeTags.size === 0) return;
+        
+        try {
+          // 逐题计算合并后的标签（保留各题既有标签），结果相同的题目
+          // 归为一组走一次 qbank_batch_update_questions
+          const groups = new Map<string, { tags: string[]; ids: string[] }>();
+          for (const id of questionIds) {
+            // 优先本地缓存；未加载的题目按需拉取（getQuestion 会写回缓存）
+            const question = get().questions.get(id) ?? await get().getQuestion(id);
+            if (!question) continue;
+            const nextTags = Array.from(new Set([
+              ...question.tags.filter((tag) => !removeTags.has(tag)),
+              ...addTags,
+            ]));
+            const unchanged = nextTags.length === question.tags.length
+              && nextTags.every((tag, i) => question.tags[i] === tag);
+            if (unchanged) continue;
+            const groupKey = JSON.stringify(nextTags);
+            const group = groups.get(groupKey) ?? { tags: nextTags, ids: [] };
+            group.ids.push(id);
+            groups.set(groupKey, group);
+          }
+          if (groups.size === 0) return;
+          
+          const failures: string[] = [];
+          for (const { tags, ids } of groups.values()) {
+            const result = await invoke<QuestionBatchResult>('qbank_batch_update_questions', {
+              request: {
+                question_ids: ids,
+                params: { tags },
+              },
+            });
+            if (result.failed_count > 0) failures.push(...result.errors);
+            // 本地已加载的题目就地更新
+            set((state) => {
+              const newMap = new Map(state.questions);
+              let touched = false;
+              ids.forEach((id) => {
+                const question = newMap.get(id);
+                if (question) {
+                  newMap.set(id, { ...question, tags });
+                  touched = true;
+                }
+              });
+              return touched ? { questions: newMap } : {};
+            });
+          }
+          get().refreshQuestions().catch((e) =>
+            debugLog.error('[QuestionBankStore] refresh after batchUpdateTags failed:', e)
+          );
+          
+          if (failures.length > 0) {
+            throw new Error(failures.join('; '));
+          }
+        } catch (err: unknown) {
+          debugLog.error('[QuestionBankStore] batchUpdateTags failed:', err);
+          throw err;
+        }
+      },
+
+      renameTag: async (examId, oldTag, newTag) => {
+        const from = oldTag.trim();
+        const to = newTag.trim();
+        if (!from || !to || from === to) return;
+        
+        try {
+          // 收集题目集内所有含 oldTag 的题目（分页拉全，不能只看当前加载页）
+          const affected: Question[] = [];
+          const pageSize = 200;
+          let page = 1;
+          // 上限防御：200 * 50 = 10000 题，超出视为异常数据
+          for (let i = 0; i < 50; i++) {
+            const result = await invoke<QuestionListResult>('qbank_list_questions', {
+              request: {
+                exam_id: examId,
+                filters: { tags: [from] },
+                page,
+                page_size: pageSize,
+              },
+            });
+            affected.push(...result.questions);
+            if (!result.has_more) break;
+            page += 1;
+          }
+          if (affected.length === 0) return;
+          
+          // newTag 已存在时自然合并：替换后 Set 去重
+          const groups = new Map<string, { tags: string[]; ids: string[] }>();
+          for (const question of affected) {
+            if (!question.tags.includes(from)) continue;
+            const nextTags = Array.from(new Set(
+              question.tags.map((tag) => (tag === from ? to : tag)),
+            ));
+            const groupKey = JSON.stringify(nextTags);
+            const group = groups.get(groupKey) ?? { tags: nextTags, ids: [] };
+            group.ids.push(question.id);
+            groups.set(groupKey, group);
+          }
+          
+          const failures: string[] = [];
+          for (const { tags, ids } of groups.values()) {
+            const result = await invoke<QuestionBatchResult>('qbank_batch_update_questions', {
+              request: {
+                question_ids: ids,
+                params: { tags },
+              },
+            });
+            if (result.failed_count > 0) failures.push(...result.errors);
+            set((state) => {
+              const newMap = new Map(state.questions);
+              let touched = false;
+              ids.forEach((id) => {
+                const question = newMap.get(id);
+                if (question) {
+                  newMap.set(id, { ...question, tags });
+                  touched = true;
+                }
+              });
+              return touched ? { questions: newMap } : {};
+            });
+          }
+          if (get().currentExamId === examId) {
+            get().refreshQuestions().catch((e) =>
+              debugLog.error('[QuestionBankStore] refresh after renameTag failed:', e)
+            );
+          }
+          
+          if (failures.length > 0) {
+            throw new Error(failures.join('; '));
+          }
+        } catch (err: unknown) {
+          debugLog.error('[QuestionBankStore] renameTag failed:', err);
+          throw err;
+        }
+      },
+
       submitAnswer: async (questionId, answer, isCorrectOverride) => {
         set({ isSubmitting: true });
         
@@ -1055,6 +1467,29 @@ export const useQuestionBankStore = create<QuestionBankState>()(
               isSubmitting: false,
             };
           });
+          
+          // 限时练习进度同步（2026-07 修复）：此前 answered_count / correct_count
+          // 没有任何写入方，限时面板的进度与正确率恒为 0。会话内每题只计首答。
+          const timed = get().timedSession;
+          if (
+            timed
+            && !timed.is_submitted
+            && !timed.is_timeout
+            && timed.exam_id === result.updated_question.exam_id
+            && timed.question_ids.includes(questionId)
+          ) {
+            const answeredIds = timed.answered_question_ids ?? [];
+            if (!answeredIds.includes(questionId)) {
+              set({
+                timedSession: {
+                  ...timed,
+                  answered_question_ids: [...answeredIds, questionId],
+                  answered_count: Math.min(timed.question_count, timed.answered_count + 1),
+                  correct_count: timed.correct_count + (result.is_correct === true ? 1 : 0),
+                },
+              });
+            }
+          }
           
           return result;
         } catch (err: unknown) {
@@ -1145,6 +1580,13 @@ export const useQuestionBankStore = create<QuestionBankState>()(
               const monthAgo = new Date(now);
               monthAgo.setMonth(monthAgo.getMonth() - 1);
               defaultStartDate = toLocalDateStr(monthAgo);
+              break;
+            }
+            case 'quarter': {
+              // 近 90 天
+              const quarterAgo = new Date(now);
+              quarterAgo.setDate(quarterAgo.getDate() - 90);
+              defaultStartDate = toLocalDateStr(quarterAgo);
               break;
             }
             case 'all':
@@ -1304,6 +1746,29 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setMockExamSession: (session) => set({ mockExamSession: session }),
       setDailyPractice: (result) => set({ dailyPractice: result }),
       setGeneratedPaper: (paper) => set({ generatedPaper: paper }),
+      hydratePracticeHandoff: (value, expectedExamId) => {
+        const validated = validateQbankPracticeHandoff(value, expectedExamId);
+        if ('ok' in validated) return validated;
+        const common = {
+          currentExamId: expectedExamId,
+          practiceMode: validated.mode as PracticeMode,
+          error: null,
+        };
+        if (validated.mode === 'timed') {
+          set({ ...common, timedSession: validated.session });
+        } else if (validated.mode === 'mock_exam') {
+          set({ ...common, mockExamSession: validated.session, mockExamScoreCard: null });
+        } else {
+          set({ ...common, dailyPractice: validated.session });
+        }
+        return {
+          ok: true,
+          mode: validated.mode,
+          handoffId: validated.handoff_id,
+          firstQuestionId: validated.session.question_ids[0]!,
+          questionCount: validated.session.question_ids.length,
+        };
+      },
 
       startTimedPractice: async (examId, durationMinutes, questionCount) => {
         set({ isLoadingPractice: true, error: null });
@@ -1413,6 +1878,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       },
 
       getCheckInCalendar: async (examId, year, month) => {
+        const requestId = ++checkInCalendarRequestSeq;
         set({ isLoadingPractice: true, error: null });
         
         try {
@@ -1424,133 +1890,15 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ checkInCalendar: calendar, isLoadingPractice: false });
+          if (requestId === checkInCalendarRequestSeq) {
+            set({ checkInCalendar: calendar, isLoadingPractice: false });
+          }
           return calendar;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] getCheckInCalendar failed:', err);
-          set({ error: String(err), isLoadingPractice: false });
-          throw err;
-        }
-      },
-
-      // ========================================================================
-      // 同步 API（2026-01 新增）
-      // ========================================================================
-
-      checkSyncStatus: async (examId) => {
-        set({ isSyncing: true, error: null });
-        
-        try {
-          const status = await invoke<SyncStatusResult>('qbank_sync_check', {
-            examId,
-          });
-          
-          set({ syncStatus: status, isSyncing: false });
-          return status;
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] checkSyncStatus failed:', err);
-          set({ error: String(err), isSyncing: false });
-          throw err;
-        }
-      },
-
-      getSyncConflicts: async (examId) => {
-        set({ isSyncing: true, error: null });
-        
-        try {
-          const conflicts = await invoke<SyncConflict[]>('qbank_get_sync_conflicts', {
-            examId,
-          });
-          
-          set({ syncConflicts: conflicts, isSyncing: false });
-          return conflicts;
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] getSyncConflicts failed:', err);
-          set({ error: String(err), isSyncing: false });
-          throw err;
-        }
-      },
-
-      resolveSyncConflict: async (conflictId, strategy) => {
-        set({ isSyncing: true, error: null });
-        
-        try {
-          const question = await invoke<Question>('qbank_resolve_sync_conflict', {
-            conflictId,
-            strategy,
-          });
-          
-          // 更新本地题目缓存
-          set((state) => {
-            const newMap = new Map(state.questions);
-            newMap.set(question.id, question);
-            // 移除已解决的冲突
-            const newConflicts = state.syncConflicts.filter(c => c.id !== conflictId);
-            return { questions: newMap, syncConflicts: newConflicts, isSyncing: false };
-          });
-          
-          return question;
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] resolveSyncConflict failed:', err);
-          set({ error: String(err), isSyncing: false });
-          throw err;
-        }
-      },
-
-      batchResolveSyncConflicts: async (examId, strategy) => {
-        set({ isSyncing: true, error: null });
-        
-        try {
-          // ★ #20(round2): 后端返回 {resolved, failed}，前端可感知部分失败
-          const result = await invoke<BatchResolveConflictsResult>('qbank_batch_resolve_conflicts', {
-            examId,
-            strategy,
-          });
-          const refreshedConflicts = await invoke<SyncConflict[]>('qbank_get_sync_conflicts', {
-            examId,
-          });
-          
-          // 更新本地题目缓存（仅成功解决的题目）
-          set((state) => {
-            const newMap = new Map(state.questions);
-            result.resolved.forEach(q => newMap.set(q.id, q));
-            return { questions: newMap, syncConflicts: refreshedConflicts, isSyncing: false };
-          });
-          
-          return result;
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] batchResolveSyncConflicts failed:', err);
-          set({ error: String(err), isSyncing: false });
-          throw err;
-        }
-      },
-
-      setSyncEnabled: async (examId, enabled) => {
-        try {
-          await invoke('qbank_set_sync_enabled', {
-            examId,
-            enabled,
-          });
-          
-          // 刷新同步状态
-          await get().checkSyncStatus(examId);
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] setSyncEnabled failed:', err);
-          throw err;
-        }
-      },
-
-      updateSyncConfig: async (examId, config) => {
-        try {
-          await invoke('qbank_update_sync_config', {
-            examId,
-            config,
-          });
-          
-          // 刷新同步状态
-          await get().checkSyncStatus(examId);
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] updateSyncConfig failed:', err);
+          if (requestId === checkInCalendarRequestSeq) {
+            set({ error: String(err), isLoadingPractice: false });
+          }
           throw err;
         }
       },
@@ -1635,8 +1983,3 @@ export const useSelectedDateRange = () => useQuestionBankStore((state) => state.
 export const useLoadingTrend = () => useQuestionBankStore((state) => state.isLoadingTrend);
 export const useLoadingHeatmap = () => useQuestionBankStore((state) => state.isLoadingHeatmap);
 export const useLoadingKnowledge = () => useQuestionBankStore((state) => state.isLoadingKnowledge);
-
-// 同步状态 Hooks（2026-01 新增）
-export const useSyncStatus = () => useQuestionBankStore((state) => state.syncStatus);
-export const useSyncConflicts = () => useQuestionBankStore((state) => state.syncConflicts);
-export const useIsSyncing = () => useQuestionBankStore((state) => state.isSyncing);

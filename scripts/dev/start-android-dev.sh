@@ -21,6 +21,66 @@ warn() { echo -e "${YELLOW}[warn]${RESET} $*"; }
 die()  { echo -e "${RED}[error]${RESET} $*" >&2; exit 1; }
 info() { echo -e "${CYAN}[info]${RESET} $*"; }
 
+inject_android_permissions() {
+    local manifest="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$manifest" ]]; then
+        warn "AndroidManifest.xml not found; microphone permission injection skipped"
+        return
+    fi
+
+    local permissions=(
+        "android.permission.RECORD_AUDIO"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+    )
+
+    for permission in "${permissions[@]}"; do
+        local permission_line="<uses-permission android:name=\"$permission\" />"
+        if grep -qF "$permission" "$manifest" 2>/dev/null; then
+            continue
+        fi
+        say "Injecting Android permission: $permission"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            sed -i '' "/<manifest/a\\
+    $permission_line" "$manifest"
+        else
+            sed -i "/<manifest/a\\    $permission_line" "$manifest"
+        fi
+    done
+}
+
+# 显式声明键盘 softInputMode（与 scripts/build_android.sh 同步逻辑）：
+# 前端键盘适配（useKeyboardHeight/Dialog 键盘避让）依赖 adjustResize 的确定性行为
+inject_android_soft_input_mode() {
+    local manifest="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$manifest" ]]; then
+        warn "AndroidManifest.xml not found; windowSoftInputMode injection skipped"
+        return
+    fi
+    if grep -qF 'android:windowSoftInputMode' "$manifest" 2>/dev/null; then
+        return
+    fi
+
+    say "Injecting android:windowSoftInputMode=\"adjustResize\""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$manifest"
+    else
+        sed -i 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$manifest"
+    fi
+}
+
+# 同步受控 MainActivity.kt（A-5 返回键接管 + SA-1 安全区注入），与 scripts/build_android.sh 同逻辑
+sync_main_activity() {
+    local src="$REPO_ROOT/src-tauri/mobile/android/MainActivity.kt"
+    local dst="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
+    if [[ ! -f "$src" || ! -d "$(dirname "$dst")" ]]; then
+        return
+    fi
+    if ! cmp -s "$src" "$dst" 2>/dev/null; then
+        cp "$src" "$dst"
+        say "MainActivity.kt synced from controlled copy"
+    fi
+}
+
 # ── 环境检查 ──
 if [[ -z "${ANDROID_HOME:-}" ]]; then
     for candidate in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do
@@ -52,6 +112,9 @@ if [[ ! -d "$REPO_ROOT/src-tauri/gen/android" ]]; then
     (cd "$REPO_ROOT" && npx tauri android init) || die "tauri android init 失败"
     say "✓ Android 项目初始化完成"
 fi
+inject_android_permissions
+inject_android_soft_input_mode
+sync_main_activity
 
 # ── 选择 AVD ──
 AVD_NAME="${1:-}"

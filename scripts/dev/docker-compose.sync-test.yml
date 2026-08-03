@@ -1,12 +1,13 @@
 # 本地 WebDAV + S3 (MinIO) + FTP 同步测试环境
 # 启动: docker compose -f scripts/dev/docker-compose.sync-test.yml up -d
 # 停止: docker compose -f scripts/dev/docker-compose.sync-test.yml down -v
-# 注意: dstu-test/docker/docker-compose.sync-test.yml 是本文件的副本（npm run dstu-test:cloud:* 使用），修改时需同步两份
+# 本文件是 provider contract 环境的唯一事实源；
+# dstu-test/docker/docker-compose.sync-test.yml 仅通过 Compose include 引用本文件。
 
 services:
   # ============== MinIO (S3 兼容) ==============
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: ds-minio
     ports:
       - "127.0.0.1:9000:9000"   # S3 API
@@ -18,14 +19,15 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 5s
 
   # 自动创建 bucket
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
     container_name: ds-minio-init
     depends_on:
       minio:
@@ -40,7 +42,7 @@ services:
 
   # ============== WebDAV ==============
   webdav:
-    image: bytemark/webdav:latest
+    image: bytemark/webdav:2.4
     container_name: ds-webdav
     ports:
       - "127.0.0.1:8080:80"
@@ -50,10 +52,19 @@ services:
       PASSWORD: webdav123
     volumes:
       - webdav_data:/var/lib/dav
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://webdav:webdav123@127.0.0.1/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
 
   # ============== FTP ==============
   ftp:
-    image: stilliard/pure-ftpd:latest
+    build:
+      context: ../../dstu-test/docker
+      dockerfile: Dockerfile.ftp
+    image: deep-student-sync-test-ftp:pyftpdlib-2.2.0
     container_name: ds-ftp
     ports:
       - "127.0.0.1:2121:21"     # FTP 控制端口
@@ -67,6 +78,16 @@ services:
       FTP_PASSIVE_PORTS: "30000:30009"
     volumes:
       - ftp_data:/home/ftpuser/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket; s=socket.create_connection(('127.0.0.1',21),3); assert s.recv(3)==b'220'"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
 
 volumes:
   minio_data:

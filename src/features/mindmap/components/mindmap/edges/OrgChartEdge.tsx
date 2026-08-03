@@ -8,6 +8,8 @@
 
 import React from 'react';
 import { BaseEdge, type EdgeProps } from '@xyflow/react';
+import { getEdgeEmphasis, emphasizedEdgeStyle, withEmphasisClass } from './edgeEmphasis';
+import './edges.css';
 
 interface OrgChartEdgeData {
   /** 边类型: trunk=主干线, branch=分支线 */
@@ -149,6 +151,8 @@ export const OrgChartEdge: React.FC<EdgeProps> = ({
     edgePath = getBranchPath(sourceX, sourceY, targetX, targetY, direction, railOffset);
   }
 
+  const emphasized = getEdgeEmphasis(data);
+
   return (
     <BaseEdge
       id={id}
@@ -156,7 +160,7 @@ export const OrgChartEdge: React.FC<EdgeProps> = ({
       markerEnd={markerEnd}
       markerStart={markerStart}
       interactionWidth={interactionWidth}
-      className="orgchart-edge"
+      className={withEmphasisClass('orgchart-edge mm-tree-edge', emphasized)}
       style={{
         strokeWidth: 1.5,
         stroke: 'var(--mm-edge)',
@@ -164,6 +168,7 @@ export const OrgChartEdge: React.FC<EdgeProps> = ({
         strokeLinejoin: 'round',
         fill: 'none',
         ...style,
+        ...emphasizedEdgeStyle(emphasized),
       }}
     />
   );

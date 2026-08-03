@@ -15,6 +15,10 @@ describe('activity timeline thinking summary source', () => {
     resolve(process.cwd(), 'src/features/chat/components/renderers/ThinkingChain.css'),
     'utf-8'
   );
+  const chatCssSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/styles/chat.css'),
+    'utf-8'
+  );
 
   it('keeps completed thinking auto-collapsed by default and only applies sticky behavior while expanded', () => {
     expect(activityTimelineSource).toContain('function readAutoCollapseSetting(): boolean');
@@ -30,38 +34,55 @@ describe('activity timeline thinking summary source', () => {
     expect(activityTimelineSource).toContain('const shouldStickSummary = hasContent && (isExpanded || preserveStickyOnCollapse);');
   });
 
-  it('uses the full summary row as the thinking trigger without shrinking the tap target', () => {
-    expect(activityTimelineSource).toMatch(/w-full !justify-start !px-0 rounded-\[var\(--radius-shell-control\)\] .* group/);
-    expect(activityTimelineSource).toContain('thinking-summary-trigger w-full !justify-start !px-0');
+  it('uses a body-aligned summary row as the thinking trigger', () => {
+    expect(activityTimelineSource).toContain('thinking-summary-trigger activity-timeline-thinking-trigger activity-timeline-summary w-full !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7');
+    expect(activityTimelineSource).toContain('text-muted-foreground hover:text-foreground');
     expect(activityTimelineCssSource).toContain('.thinking-summary-trigger:hover,');
     expect(activityTimelineCssSource).toContain('background: transparent;');
     expect(activityTimelineSource).not.toContain('group-hover:translate-x-0.5');
   });
 
-  it('scopes the sticky treatment to the full chat-column summary row', () => {
-    expect(activityTimelineSource).toMatch(/thinking-summary-sticky sticky top-0 z-10 -ml-\[28px\] -mr-3 pl-\[28px\] pr-3 pt-1/);
+  it('scopes the sticky treatment without negative timeline offsets', () => {
+    expect(activityTimelineSource).toContain('thinking-summary-sticky sticky top-0 z-10 -mr-3 pr-3');
+    expect(activityTimelineSource).not.toContain('-ml-[28px]');
+    expect(activityTimelineSource).not.toContain('pl-[28px]');
+    expect(activityTimelineSource).not.toContain('-ml-[22px]');
     expect(activityTimelineSource).toContain('flex w-full max-w-full items-center');
   });
 
-  it('uses a semantic solid band with a bottom fade aligned to the shared scroll-fade curve', () => {
-    expect(activityTimelineCssSource).toContain('.thinking-summary-sticky::before');
-    expect(activityTimelineCssSource).toContain('inset: 0;');
-    expect(activityTimelineCssSource).toContain('background: var(--surface-panel-strong);');
-    expect(activityTimelineCssSource).toContain('.thinking-summary-sticky::after');
-    expect(activityTimelineCssSource).toContain('bottom: -16px;');
-    expect(activityTimelineCssSource).toContain('color-mix(in srgb, var(--surface-panel-strong) 96%, transparent) 0%');
-    expect(activityTimelineCssSource).toContain('color-mix(in srgb, var(--surface-panel-strong) 72%, transparent) 38%');
-    expect(activityTimelineCssSource).not.toContain('backdrop-blur-sm');
+  it('keeps the sticky summary transparent so it matches adjacent timeline entries', () => {
+    expect(activityTimelineCssSource).not.toContain('.thinking-summary-sticky::before');
+    expect(activityTimelineCssSource).not.toContain('.thinking-summary-sticky::after');
+    expect(activityTimelineCssSource).not.toContain('.thinking-summary-row {');
+    expect(activityTimelineCssSource).not.toContain('--surface-panel-strong');
     expect(activityTimelineSource).not.toContain('border-[color:var(--surface-divider)]');
   });
 
   it('keeps list markers inside the visible thinking-chain viewport', () => {
-    expect(activityTimelineSource).toContain('className="py-1.5 pl-2 pr-1 text-gray-500 dark:text-gray-400 text-xs leading-snug"');
+    expect(activityTimelineSource).toContain('className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-gray-500 dark:text-gray-400"');
     expect(thinkingChainCssSource).toContain('padding-left: 1.5rem !important;');
+    expect(thinkingChainCssSource).toContain('font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size));');
+    expect(thinkingChainCssSource).toContain('font-weight: var(--chat-activity-detail-font-weight, var(--chat-body-font-weight));');
     expect(thinkingChainCssSource).toContain('list-style-position: outside;');
   });
 
-  it('leaves safety space between the sticky fade and the following thinking content', () => {
-    expect(activityTimelineSource).toContain("className={cn('overflow-hidden', shouldStickSummary && 'pt-3')}");
+  it('leaves compact safety space between the sticky row and the following thinking content', () => {
+    expect(activityTimelineSource).toContain("className={cn('activity-timeline-thinking-details overflow-hidden', shouldStickSummary && 'pt-2')}");
+  });
+
+  it('keeps timeline-to-answer spacing from stacking with markdown first-block margins', () => {
+    expect(activityTimelineSource).toContain('activity-timeline__node flex gap-1.5');
+    expect(activityTimelineSource).toContain("cn('activity-timeline'");
+    expect(chatCssSource).toContain('--chat-activity-summary-font-size: var(--chat-body-font-size);');
+    expect(chatCssSource).toContain('--chat-activity-detail-font-size: var(--chat-body-font-size);');
+    expect(chatCssSource).toContain('--chat-activity-tool-detail-font-size: var(--chat-md-compact-font-size);');
+    expect(chatCssSource).toContain('--chat-activity-status-font-size: var(--font-size-sm);');
+    expect(activityTimelineCssSource).toContain('font-size: var(--chat-activity-summary-font-size, var(--chat-body-font-size, 1rem));');
+    expect(activityTimelineCssSource).toContain('font-size: var(--chat-activity-detail-font-size, var(--chat-body-font-size, 1rem));');
+    expect(activityTimelineCssSource).toContain('font-size: var(--chat-activity-tool-detail-font-size, var(--chat-md-compact-font-size, 0.9375rem));');
+    expect(activityTimelineCssSource).toContain('margin-block: 0 var(--chat-activity-content-gap, 0.75rem);');
+    expect(activityTimelineCssSource).toContain('padding-bottom: var(--chat-activity-node-gap, 0.75rem);');
+    expect(activityTimelineCssSource).toContain('.activity-timeline__node:last-child');
+    expect(activityTimelineCssSource).toContain('.activity-timeline + .block-renderer .markdown-content > p:first-child');
   });
 });

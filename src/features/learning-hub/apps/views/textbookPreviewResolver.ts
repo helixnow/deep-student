@@ -6,6 +6,7 @@ const SUPPORTED_TEXTBOOK_PREVIEW_TYPES = new Set<ResourceListItem['previewType']
   'docx',
   'xlsx',
   'pptx',
+  'epub',
   'text',
   'none',
 ]);
@@ -17,6 +18,8 @@ export function resolveTextbookPreviewType(
   previewType: string | undefined,
   fileName: string
 ): ResourceListItem['previewType'] {
+  if (fileName.split('.').pop()?.toLowerCase() === 'epub') return 'epub';
+
   const normalized = normalizePreviewType(previewType);
   if (normalized && normalized !== 'none' && SUPPORTED_TEXTBOOK_PREVIEW_TYPES.has(normalized)) {
     return normalized;

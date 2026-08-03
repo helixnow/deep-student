@@ -11,8 +11,8 @@ describe('GeneralTab structure contract', () => {
 
     expect(source).toContain('<VoiceInputSettingsSection embedded assignedModel={voiceInputAssignedModel} />');
     expect(source).toContain('rounded-2xl border border-border/40 bg-background');
-    expect(source).toContain("title={t('common:legal.settingsSection.title', '隐私与数据')}");
-    expect(source).toContain("title={t('settings:tabs.general', '常规')}");
+    expect(source).toContain("title={t('common:legal.settingsSection.title')}");
+    expect(source).toContain("title={t('settings:tabs.general')}");
   });
 
   it('keeps developer and debugging controls inside the general settings taxonomy', () => {

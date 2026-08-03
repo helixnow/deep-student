@@ -651,8 +651,97 @@ pub async fn vfs_delete_note(
     // 验证笔记 ID 格式
     validate_id_format(&id, "note_", "id")?;
 
+    // 记忆卫生（J7）：删除前判断该笔记是否在记忆根目录内。
+    // 判定与后续清理全程 best-effort——非记忆笔记不受影响，
+    // 记忆逻辑失败也绝不阻塞通用删除。
+    let memory_ctx = memory_note_delete_context(&vfs_db, &id);
+
     // 保持 notes 与 folder_items 软删除一致
-    VfsNoteRepo::delete_note_with_folder_item(&vfs_db, &id).map_err(|e| e.to_string())
+    VfsNoteRepo::delete_note_with_folder_item(&vfs_db, &id).map_err(|e| e.to_string())?;
+
+    if let Some((resource_id, title)) = memory_ctx {
+        cleanup_deleted_memory_note(&vfs_db, &id, &resource_id, &title);
+    }
+    Ok(())
+}
+
+/// 判断笔记是否位于记忆根目录内；是则返回 (resource_id, title)。
+///
+/// 任何一步出错都按"非记忆笔记"处理（返回 None），确保记忆逻辑
+/// 不影响通用笔记删除路径。
+fn memory_note_delete_context(
+    vfs_db: &Arc<VfsDatabase>,
+    note_id: &str,
+) -> Option<(String, String)> {
+    let root_id = crate::memory::MemoryConfig::new(vfs_db.clone())
+        .get_root_folder_id()
+        .ok()
+        .flatten()?;
+    let note = VfsNoteRepo::get_note(vfs_db, note_id).ok().flatten()?;
+    let location = VfsNoteRepo::get_note_location(vfs_db, note_id)
+        .ok()
+        .flatten()?;
+    let folder_id = location.folder_id?;
+    if folder_id != root_id {
+        let folder_ids =
+            crate::vfs::repos::VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
+        if !folder_ids.contains(&folder_id) {
+            return None;
+        }
+    }
+    Some((note.resource_id, note.title))
+}
+
+/// 记忆笔记经 UI 删除后的索引/审计卫生（best-effort，只记 warn 不上抛）：
+/// - 把该笔记的向量段入 __lance_orphan_queue 并清理索引单元（与
+///   MemoryService::delete_with_source 的清理口径一致；后台 drain 兜底删除
+///   Lance 向量，恢复笔记时 restore_note 会 mark_pending 重建索引）
+/// - 写一条 memory_audit_log，标注来源为用户 UI 删除
+fn cleanup_deleted_memory_note(
+    vfs_db: &Arc<VfsDatabase>,
+    note_id: &str,
+    resource_id: &str,
+    title: &str,
+) {
+    match vfs_db.get_conn_safe() {
+        Ok(conn) => {
+            if let Err(e) = crate::vfs::repos::index_unit_repo::purge_index_artifacts_by_resource(
+                &conn,
+                resource_id,
+            ) {
+                log::warn!(
+                    "[VFS::handlers] Failed to purge index artifacts for deleted memory note {}: {}",
+                    note_id,
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[VFS::handlers] Failed to get connection for memory note cleanup {}: {}",
+                note_id,
+                e
+            );
+        }
+    }
+
+    crate::memory::MemoryAuditLogger::new(vfs_db.clone()).log(
+        &crate::memory::audit_log::MemoryAuditEntry {
+            source: crate::memory::MemoryOpSource::Handler,
+            operation: crate::memory::MemoryOpType::Delete,
+            success: true,
+            note_id: Some(note_id.to_string()),
+            title: Some(title.to_string()),
+            content_preview: None,
+            folder: None,
+            event: Some("DELETE".to_string()),
+            confidence: None,
+            reason: Some("user_ui: 用户经 VFS/DSTU UI 删除记忆笔记 (vfs_delete_note)".to_string()),
+            session_id: None,
+            duration_ms: None,
+            extra_json: None,
+        },
+    );
 }
 
 // ============================================================================
@@ -821,11 +910,12 @@ pub async fn vfs_search_all(
     let types = params.types.as_ref();
     let search_limit = params.limit.min(50); // 每种类型最多搜索 50 条
 
-    // 根据 types 过滤要搜索的类型
-    let search_notes = types.is_none() || types.unwrap().iter().any(|t| t == "note");
-    let search_exams = types.is_none() || types.unwrap().iter().any(|t| t == "exam");
-    let search_translations = types.is_none() || types.unwrap().iter().any(|t| t == "translation");
-    let search_essays = types.is_none() || types.unwrap().iter().any(|t| t == "essay");
+    // 根据 types 过滤要搜索的类型（None = 不过滤，搜索全部类型）
+    let type_enabled = |name: &str| types.is_none_or(|list| list.iter().any(|t| t == name));
+    let search_notes = type_enabled("note");
+    let search_exams = type_enabled("exam");
+    let search_translations = type_enabled("translation");
+    let search_essays = type_enabled("essay");
 
     // ★ 2026-01 优化：并行搜索多种类型，提升响应速度
     let vfs_db_clone = Arc::clone(&vfs_db);
@@ -1306,8 +1396,281 @@ pub struct VfsUploadAttachmentParamsExt {
     pub folder_id: Option<String>,
 }
 
+/// 自动转写的音频大小上限（与 media_transcribe 工具的受管 ASR 限额一致）
+const AUTO_TRANSCRIBE_MAX_AUDIO_BYTES: usize = 25 * 1024 * 1024;
+
+/// 判断上传是否是音频文件（MIME 或扩展名）
+fn is_audio_upload(name: &str, mime_type: &str) -> bool {
+    if mime_type.trim().to_lowercase().starts_with("audio/") {
+        return true;
+    }
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase());
+    matches!(
+        ext.as_deref(),
+        Some("mp3" | "wav" | "ogg" | "m4a" | "flac" | "aac" | "opus" | "wma")
+    )
+}
+
+/// 通过文件签名确认音频容器类型（供受管 ASR 使用的 MIME）
+///
+/// 与 `media_executor::media_signature` 保持一致的接受范围：
+/// MP3 / WAV / OGG / FLAC / M4A（MP4 audio ftyp）/ ADTS AAC。
+/// WMA（ASF 容器）与视频容器返回明确的不支持原因。
+fn detect_audio_mime_by_signature(bytes: &[u8]) -> Result<&'static str, String> {
+    if bytes.starts_with(b"ID3")
+        || bytes.starts_with(b"\xff\xfb")
+        || bytes.starts_with(b"\xff\xf3")
+        || bytes.starts_with(b"\xff\xf2")
+    {
+        Ok("audio/mpeg")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        Ok("audio/wav")
+    } else if bytes.starts_with(b"OggS") {
+        Ok("audio/ogg")
+    } else if bytes.starts_with(b"fLaC") {
+        Ok("audio/flac")
+    } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        // ISO BMFF：仅接受确认为音频的 M4A/M4B/M4P 品牌，其余按视频容器拒绝
+        let brand = &bytes[8..12];
+        if brand.starts_with(b"M4A") || brand.starts_with(b"M4B") || brand.starts_with(b"M4P") {
+            Ok("audio/mp4")
+        } else {
+            Err("视频容器（MP4/MOV 等）暂不支持提取音轨转写".to_string())
+        }
+    } else if bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xf6) == 0xf0 {
+        // ADTS AAC 帧头（0xFFF1 / 0xFFF9 等）
+        Ok("audio/aac")
+    } else if bytes.starts_with(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11") {
+        Err("WMA（ASF 容器）暂不支持转写，请先转换为 MP3/WAV/M4A".to_string())
+    } else if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+        Err("WebM/MKV 容器暂不支持提取音轨转写".to_string())
+    } else {
+        Err("无法通过文件签名确认音频格式（支持 MP3/WAV/OGG/FLAC/M4A/AAC）".to_string())
+    }
+}
+
+/// 把可读的处理状态写入 files 行（音频转写状态显式化，仅日志用户不可见）
+fn mark_audio_processing_note(vfs_db: &VfsDatabase, file_id: &str, note: &str) {
+    match vfs_db.get_conn_safe() {
+        Ok(conn) => {
+            if let Err(e) = conn.execute(
+                "UPDATE files SET processing_error = ?1 WHERE id = ?2",
+                rusqlite::params![note, file_id],
+            ) {
+                log::warn!(
+                    "[VFS::handlers] Failed to record audio processing note for {}: {}",
+                    file_id,
+                    e
+                );
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[VFS::handlers] Failed to get connection for audio note {}: {}",
+                file_id,
+                e
+            );
+        }
+    }
+}
+
+/// ★ 音频导入后的可选转写流水线（异步，不阻塞导入）
+///
+/// 复用现有语音输入 ASR 基建（`voice_input_transcribe_with_state`）：
+/// - ASR 未配置 → 在 files.processing_error 标记可读状态后跳过；
+/// - 转写成功 → 写入 files.extracted_text + resources OCR 文本并重建索引单元，
+///   使音频内容可被检索与注入对话。
+fn spawn_audio_transcription_if_applicable(
+    app: &AppHandle,
+    vfs_db: Arc<VfsDatabase>,
+    file_id: String,
+    resource_id: Option<String>,
+    file_name: String,
+    audio_base64: String,
+) {
+    use base64::Engine as _;
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = app.try_state::<crate::commands::AppState>() else {
+            log::warn!(
+                "[VFS::handlers] AppState unavailable, skip audio transcription for {}",
+                file_id
+            );
+            return;
+        };
+
+        let asr = crate::voice_input::voice_input_asr_capability(&state);
+        if !asr.configured {
+            log::info!(
+                "[VFS::handlers] ASR not configured, skip audio transcription for {}",
+                file_id
+            );
+            mark_audio_processing_note(
+                &vfs_db,
+                &file_id,
+                "音频未自动转写：未配置语音输入 ASR（SiliconFlow API Key）。可在设置中配置后重新导入，或在对话中调用 media_transcribe 工具转写",
+            );
+            return;
+        }
+
+        // 解码前按编码长度估算，超过受管 ASR 限额直接跳过
+        let estimated = audio_base64.len() / 4 * 3;
+        if estimated > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES {
+            mark_audio_processing_note(
+                &vfs_db,
+                &file_id,
+                "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+            );
+            return;
+        }
+        let bytes = match base64::engine::general_purpose::STANDARD.decode(&audio_base64) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                log::warn!(
+                    "[VFS::handlers] Failed to decode audio for transcription {}: {}",
+                    file_id,
+                    e
+                );
+                return;
+            }
+        };
+        if bytes.len() > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES {
+            mark_audio_processing_note(
+                &vfs_db,
+                &file_id,
+                "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+            );
+            return;
+        }
+
+        let mime = match detect_audio_mime_by_signature(&bytes) {
+            Ok(mime) => mime,
+            Err(reason) => {
+                mark_audio_processing_note(
+                    &vfs_db,
+                    &file_id,
+                    &format!("音频未自动转写：{}", reason),
+                );
+                return;
+            }
+        };
+
+        let request = crate::voice_input::VoiceInputTranscribeRequest {
+            audio_base64,
+            mime_type: mime.to_string(),
+            provider_id: None,
+            model: None,
+            config_id: None,
+            language: None,
+            prompt: None,
+            duration_ms: None,
+        };
+
+        match crate::voice_input::voice_input_transcribe_with_state(request, &state).await {
+            Ok(transcript) if !transcript.text.trim().is_empty() => {
+                let text = transcript.text.trim().to_string();
+                log::info!(
+                    "[VFS::handlers] Audio transcribed for {} ({}): {} chars",
+                    file_id,
+                    file_name,
+                    text.len()
+                );
+                match vfs_db.get_conn_safe() {
+                    Ok(conn) => {
+                        if let Err(e) = conn.execute(
+                            "UPDATE files SET extracted_text = ?1, processing_error = NULL WHERE id = ?2",
+                            rusqlite::params![text, file_id],
+                        ) {
+                            log::warn!(
+                                "[VFS::handlers] Failed to store transcript for {}: {}",
+                                file_id,
+                                e
+                            );
+                            return;
+                        }
+                        if let Some(ref resource_id) = resource_id {
+                            if let Err(e) =
+                                VfsResourceRepo::save_ocr_text_with_conn(&conn, resource_id, &text)
+                            {
+                                log::warn!(
+                                    "[VFS::handlers] Failed to persist transcript OCR text for {}: {}",
+                                    resource_id,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[VFS::handlers] Failed to get connection for transcript {}: {}",
+                            file_id,
+                            e
+                        );
+                        return;
+                    }
+                }
+
+                // 触发既有文本索引（与文档上传一致的 Units 同步路径）
+                if let Some(resource_id) = resource_id {
+                    let index_service = VfsIndexService::new(vfs_db.clone());
+                    let input = UnitBuildInput {
+                        resource_id: resource_id.clone(),
+                        resource_type: "file".to_string(),
+                        data: None,
+                        ocr_text: Some(text.clone()),
+                        ocr_pages_json: None,
+                        blob_hash: None,
+                        page_count: None,
+                        extracted_text: Some(text),
+                        preview_json: None,
+                    };
+                    match index_service.sync_resource_units(input) {
+                        Ok(units) => log::info!(
+                            "[VFS::handlers] Synced {} units for transcribed audio {}",
+                            units.len(),
+                            file_id
+                        ),
+                        Err(e) => log::warn!(
+                            "[VFS::handlers] Failed to sync units for transcribed audio {}: {}",
+                            file_id,
+                            e
+                        ),
+                    }
+                }
+            }
+            Ok(_) => {
+                mark_audio_processing_note(
+                    &vfs_db,
+                    &file_id,
+                    "音频转写结果为空（可能是无语音内容）",
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[VFS::handlers] Audio transcription failed for {}: {}",
+                    file_id,
+                    e.message
+                );
+                mark_audio_processing_note(
+                    &vfs_db,
+                    &file_id,
+                    &format!(
+                        "音频自动转写失败：{}。可在对话中调用 media_transcribe 工具重试",
+                        e.message
+                    ),
+                );
+            }
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn vfs_upload_attachment(
+    app: AppHandle,
     params: VfsUploadAttachmentParamsExt,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
@@ -1335,6 +1698,17 @@ pub async fn vfs_upload_attachment(
         }
     };
 
+    // ★ 音频附件：留存 base64 供导入后的可选转写流水线使用（其余类型不复制；
+    // 超过受管 ASR 25MB 限额的大音频不复制，避免峰值内存翻倍）
+    let is_audio = is_audio_upload(&params.name, &params.mime_type);
+    let audio_within_asr_limit =
+        params.base64_content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES / 3 * 4 + 4;
+    let audio_base64_for_transcription = if is_audio && audio_within_asr_limit {
+        Some(params.base64_content.clone())
+    } else {
+        None
+    };
+
     let upload_params = VfsUploadAttachmentParams {
         name: params.name.clone(),
         mime_type: params.mime_type.clone(),
@@ -1345,6 +1719,32 @@ pub async fn vfs_upload_attachment(
     let result =
         VfsAttachmentRepo::upload_with_folder(&vfs_db, upload_params, target_folder_id.as_deref())
             .map_err(|e| e.to_string())?;
+
+    // ★ 音频导入后自动转写（异步，不阻塞导入；ASR 未配置则标记状态后跳过）
+    if let Some(audio_base64) = audio_base64_for_transcription {
+        let has_transcript = result
+            .attachment
+            .extracted_text
+            .as_ref()
+            .map(|t| !t.trim().is_empty())
+            .unwrap_or(false);
+        if result.is_new && !has_transcript {
+            spawn_audio_transcription_if_applicable(
+                &app,
+                vfs_db.inner().clone(),
+                result.source_id.clone(),
+                result.attachment.resource_id.clone(),
+                params.name.clone(),
+                audio_base64,
+            );
+        }
+    } else if is_audio && !audio_within_asr_limit && result.is_new {
+        mark_audio_processing_note(
+            &vfs_db,
+            &result.source_id,
+            "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+        );
+    }
 
     log::info!(
         "[VFS::handlers] Attachment {}: source_id={}, hash={}, folder={:?}",
@@ -1602,6 +2002,7 @@ pub struct VfsAttachmentContentResult {
 #[tauri::command]
 pub async fn vfs_get_attachment_content(
     attachment_id: String,
+    max_bytes: Option<u64>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<VfsAttachmentContentResult, String> {
     log::info!(
@@ -1667,6 +2068,17 @@ pub async fn vfs_get_attachment_content(
                             };
 
                             if blob_path.exists() {
+                                if let Some(limit) = max_bytes {
+                                    let size = std::fs::metadata(&blob_path)
+                                        .map_err(|e| e.to_string())?
+                                        .len();
+                                    if size > limit {
+                                        return Err(format!(
+                                            "attachment content exceeds preview limit: {} > {} bytes",
+                                            size, limit
+                                        ));
+                                    }
+                                }
                                 match std::fs::read(&blob_path) {
                                     Ok(data) => {
                                         use base64::{engine::general_purpose::STANDARD, Engine};
@@ -1729,7 +2141,11 @@ pub async fn vfs_get_attachment_content(
         );
     }
 
-    match VfsAttachmentRepo::get_content(&vfs_db, &attachment_id) {
+    let content_result = match max_bytes {
+        Some(limit) => VfsAttachmentRepo::get_content_bounded(&vfs_db, &attachment_id, limit),
+        None => VfsAttachmentRepo::get_content(&vfs_db, &attachment_id),
+    };
+    match content_result {
         Ok(Some(content)) => {
             log::info!(
                 "[VFS::handlers] vfs_get_attachment_content: SUCCESS id={}, content_len={}",
@@ -1941,10 +2357,11 @@ impl OcrStrategyConfig {
 
 #[tauri::command]
 pub async fn vfs_upload_file(
+    app: AppHandle,
     params: VfsUploadFileParams,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
-    database: State<'_, crate::database::Database>,
+    database: State<'_, Arc<crate::database::Database>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
 ) -> Result<VfsUploadFileResult, String> {
     use crate::document_parser::DocumentParser;
@@ -1972,11 +2389,17 @@ pub async fn vfs_upload_file(
         .map_err(|e| format!("Base64 decode failed: {}", e))?;
 
     if !VfsAttachmentRepo::is_supported_upload_type(&params.name, &params.mime_type) {
+        // ★ 结构化拒绝错误：带上具体文件名/扩展名/MIME，前端可直接展示给用户
+        let ext_display = std::path::Path::new(&params.name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| format!(".{}", e.to_lowercase()))
+            .unwrap_or_else(|| "(无扩展名)".to_string());
         return Err(VfsError::InvalidArgument {
             param: "mime_type".to_string(),
             reason: format!(
-                "Unsupported mime type or file extension: {} ({})",
-                params.mime_type, params.name
+                "UNSUPPORTED_FILE_TYPE: 不支持的文件类型 {} (文件: {}, MIME: {})",
+                ext_display, params.name, params.mime_type
             ),
         }
         .to_string());
@@ -2027,7 +2450,7 @@ pub async fn vfs_upload_file(
                     needs_processing = pdf_preview_needs_compression(preview_json);
                 }
             } else if is_image {
-                needs_processing = image_needs_compression_with_conn(&conn, &blobs_dir, &file.id);
+                needs_processing = image_needs_compression_with_conn(&conn, blobs_dir, &file.id);
             }
 
             if needs_processing {
@@ -2064,31 +2487,26 @@ pub async fn vfs_upload_file(
         }
     }
 
-    // TODO(transaction): 以下多步操作（store_blob → create_file_with_doc_data_in_folder → sync_resource_units）
-    // 目前缺少 handler 级别的事务保护。create_file_with_doc_data_in_folder 已有内部 SAVEPOINT，
-    // 但 store_blob 涉及文件系统写入（无法被数据库事务回滚），sync_resource_units 使用独立的
-    // VfsIndexService（可能获取独立连接）。若 create_file_with_doc_data_in_folder 失败，
-    // 已写入的 blob 文件和 DB 记录会成为孤儿数据（因去重设计影响较小，但仍应清理）。
-    // 考虑方案：1) 用 SAVEPOINT 包裹 store_blob_db + create_file 的 DB 部分；
-    //          2) 失败时补偿删除 blob 文件；3) 后台定期清理孤儿 blob。
-    let blob_hash = if is_image || size >= 1024 * 1024 {
-        let blob = VfsBlobRepo::store_blob_with_conn(
-            &conn,
-            &blobs_dir,
-            &content,
-            Some(&params.mime_type),
-            None,
-        )
-        .map_err(|e| e.to_string())?;
-        Some(blob.hash)
-    } else {
-        None
-    };
-
-    // ★ P2-1 修复：添加文档处理逻辑（与 vfs_upload_attachment 保持一致）
+    // ★ TD-03：上传原子性保障（最小 saga + savepoint，替代旧 TODO(transaction)）
+    //
+    // 事务边界：
+    // - PDF 预览渲染与根目录解析使用**独立连接**、先于事务执行；
+    //   它们的副作用（预览页 blob 的 ref +1）记入 UploadSaga 补偿账本。
+    // - store_blob（主 blob 落库）与 create_file_with_doc_data_in_folder
+    //   （resources/files/folder_items）在**同一连接**的 SAVEPOINT 内执行，
+    //   失败整体回滚；已原子 rename 落盘、且 DB 行随回滚消失的物理文件由
+    //   remove_unregistered_blob_file 补偿删除（去重复用的 blob 行仍在 → 保留）。
+    // - 索引同步失败不回滚文件（文件已持久可用），而是把资源置入显式
+    //   可重试状态（failed + 退避），由后台索引循环幂等重试补建。
     let is_pdf =
         params.mime_type == "application/pdf" || params.name.to_lowercase().ends_with(".pdf");
 
+    let mut saga = crate::vfs::upload_saga::UploadSaga::new();
+
+    // ★ pptx/epub 页级拆分结果（写入 files.ocr_pages_json，使检索命中可定位页/章节）
+    let mut paged_text_pages: Option<Vec<String>> = None;
+
+    // ★ P2-1 修复：添加文档处理逻辑（与 vfs_upload_attachment 保持一致）
     let (preview_json, extracted_text, page_count): (Option<String>, Option<String>, Option<i32>) =
         if is_pdf {
             log::info!(
@@ -2113,6 +2531,11 @@ pub async fn vfs_upload_file(
                 .await
                 {
                     Ok(Ok(result)) => {
+                        // 页面 blob 已在独立连接上提交，登记入补偿账本：
+                        // 后续任一步失败即回退这些引用（守卫式，仅归零才删文件）
+                        if let Some(ref preview) = result.preview_json {
+                            saga.record_preview_blobs(preview);
+                        }
                         let preview_str = result
                             .preview_json
                             .as_ref()
@@ -2147,33 +2570,77 @@ pub async fn vfs_upload_file(
                 .map(|s| s.to_lowercase());
 
             let supported_extensions = [
-                "docx", "xlsx", "xls", "xlsb", "ods", "pptx", "epub", "rtf", "txt", "md", "html",
-                "htm", "csv", "json", "xml",
+                "docx", "xlsx", "xls", "xlsb", "ods", "pptx", "epub", "rtf", "txt", "md",
+                "markdown", "html", "htm", "csv", "json", "xml",
             ];
 
-            if let Some(ref ext) = extension {
-                if supported_extensions.contains(&ext.as_str()) {
+            let is_zip_archive = extension.as_deref() == Some("zip")
+                || matches!(
+                    params.mime_type.trim().to_ascii_lowercase().as_str(),
+                    "application/zip" | "application/x-zip-compressed"
+                );
+
+            if is_zip_archive {
+                // ★ ZIP 压缩包：解析中央目录生成条目清单（不解压内容），
+                // 存入 extracted_text 供预览兜底页与对话注入使用
+                match crate::vfs::repos::attachment_repo::build_zip_manifest_text(
+                    &params.name,
+                    &content,
+                ) {
+                    Some(manifest) => {
+                        log::info!(
+                            "[VFS::handlers] Built zip manifest for {}: {} chars",
+                            params.name,
+                            manifest.len()
+                        );
+                        (None, Some(manifest), None)
+                    }
+                    None => (None, None, None),
+                }
+            } else if let Some(ref ext) = extension {
+                // ★ 代码/纯文本扩展名（与附件白名单/前端同一清单）也走文本提取
+                let is_parseable = supported_extensions.contains(&ext.as_str())
+                    || crate::document_parser::is_plain_text_code_extension(ext);
+                if is_parseable {
                     let parser = DocumentParser::new();
-                    match parser.extract_text_from_bytes(&params.name, content.clone()) {
-                        Ok(text) => {
-                            if !text.trim().is_empty() {
-                                log::info!(
-                                    "[VFS::handlers] Extracted text from {}: {} chars",
-                                    params.name,
-                                    text.len()
-                                );
-                                (None, Some(text), None)
-                            } else {
-                                (None, None, None)
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[VFS::handlers] Failed to extract text from {}: {}",
+
+                    // ★ pptx/epub 优先页级拆分（按 slide/章节），失败回退整篇提取
+                    match parser.extract_paged_text_from_bytes(&params.name, &content) {
+                        Ok(Some(pages)) if !pages.is_empty() => {
+                            let joined = pages.join("\n\n").trim().to_string();
+                            log::info!(
+                                "[VFS::handlers] Extracted paged text from {}: {} pages, {} chars",
                                 params.name,
-                                e
+                                pages.len(),
+                                joined.len()
                             );
-                            (None, None, None)
+                            let count = pages.len() as i32;
+                            paged_text_pages = Some(pages);
+                            (None, Some(joined), Some(count))
+                        }
+                        Ok(_) | Err(_) => {
+                            match parser.extract_text_from_bytes(&params.name, content.clone()) {
+                                Ok(text) => {
+                                    if !text.trim().is_empty() {
+                                        log::info!(
+                                            "[VFS::handlers] Extracted text from {}: {} chars",
+                                            params.name,
+                                            text.len()
+                                        );
+                                        (None, Some(text), None)
+                                    } else {
+                                        (None, None, None)
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "[VFS::handlers] Failed to extract text from {}: {}",
+                                        params.name,
+                                        e
+                                    );
+                                    (None, None, None)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -2184,50 +2651,74 @@ pub async fn vfs_upload_file(
             }
         };
 
+    // 解析目标文件夹（可能在独立连接上创建根目录，必须在 savepoint 之外）
     let target_folder_id = match params.folder_id {
         Some(ref id) if !id.is_empty() => Some(id.clone()),
         _ => {
             let config = AttachmentConfig::new(vfs_db.inner().clone());
-            Some(
-                config
-                    .get_or_create_root_folder()
-                    .map_err(|e| e.to_string())?,
-            )
+            match config.get_or_create_root_folder() {
+                Ok(id) => Some(id),
+                Err(e) => {
+                    // ★ TD-03：此前这里直接 `?` 返回，泄漏已渲染的预览页 blob
+                    saga.abort(&conn, blobs_dir);
+                    return Err(e.to_string());
+                }
+            }
         }
     };
 
-    let file = match VfsFileRepo::create_file_with_doc_data_in_folder(
-        &conn,
-        &sha256,
-        &params.name,
-        size,
-        &file_type,
-        Some(&params.mime_type),
-        blob_hash.as_deref(),
-        None,
-        target_folder_id.as_deref(),
-        preview_json.as_deref(),
-        extracted_text.as_deref(),
-        page_count,
-    ) {
-        Ok(file) => file,
+    // ★ TD-03：主 blob 落库 + 文件三表写入在同一连接的 SAVEPOINT 内，失败整体回滚。
+    // 闭包内无 .await、无其他连接写入（避免持写锁期间跨连接死锁）。
+    let saga_result =
+        crate::vfs::upload_saga::with_savepoint(&conn, "vfs_upload_file_saga", || {
+            let blob_hash = if is_image || size >= 1024 * 1024 {
+                let blob = VfsBlobRepo::store_blob_with_conn(
+                    &conn,
+                    blobs_dir,
+                    &content,
+                    Some(&params.mime_type),
+                    None,
+                )?;
+                Some(blob.hash)
+            } else {
+                None
+            };
+
+            let (file, created) = VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
+                &conn,
+                &sha256,
+                &params.name,
+                size,
+                &file_type,
+                Some(&params.mime_type),
+                blob_hash.as_deref(),
+                None,
+                target_folder_id.as_deref(),
+                preview_json.as_deref(),
+                extracted_text.as_deref(),
+                page_count,
+            )?;
+            Ok((blob_hash, file, created))
+        });
+
+    let (blob_hash, file, created) = match saga_result {
+        Ok(v) => v,
         Err(e) => {
-            if let Some(ref hash) = blob_hash {
-                log::warn!(
-                    "[VFS::handlers] 文件记录创建失败，补偿清理 blob: hash={}…",
-                    &hash[..hash.len().min(16)]
-                );
-                // ★ 2026-06-13（审阅 R2-3）：store_blob_with_conn 已把 ref_count 置/加到 1
-                // （去重命中时 N→N+1），而 create_file 不增 ref。旧补偿直接 cleanup_blob
-                // （ref_count=1>0 → no-op）会漏删 → 孤儿 blob 残留（原 2071 注释已知此问题）。
-                // 正确补偿：先 decrement_ref 抵消本次 store 的 +1（去重命中回到 N，仍被他人引用），
-                // 再 cleanup（仅当回到 0 时真正删除文件+记录）。
-                let _ = VfsBlobRepo::decrement_ref_with_conn(&conn, &blobs_dir, hash);
+            log::warn!(
+                "[VFS::handlers] 上传事务失败，已回滚 DB 写入，开始补偿: {}",
+                e
+            );
+            // savepoint 已回滚 blobs/resources/files/folder_items 行；
+            // 补偿：1) 预览页 blob 引用（独立连接已提交，逐个回退）
+            saga.abort(&conn, blobs_dir);
+            // 2) 主 blob 物理文件（行随回滚消失 → 本次新写，删除；
+            //    去重复用时行仍在 → 保留，不删共享 blob）
+            if is_image || size >= 1024 * 1024 {
                 if let Err(cleanup_err) =
-                    VfsBlobRepo::cleanup_blob_with_conn(&conn, &blobs_dir, hash)
+                    VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &sha256)
                 {
                     log::error!(
-                        "[VFS::handlers] 补偿清理 blob 失败（将由后台清理）: {}",
+                        "[VFS::handlers] 补偿删除孤儿 blob 文件失败（内容寻址可自愈）: {}",
                         cleanup_err
                     );
                 }
@@ -2235,6 +2726,22 @@ pub async fn vfs_upload_file(
             return Err(e.to_string());
         }
     };
+
+    if created {
+        // 主 blob（若有）与预览页 blob 的引用均已被新 files 行接管
+        saga.commit();
+    } else {
+        // 并发去重命中：返回的是已存在文件，本次 store 的主 blob +1 与
+        // 渲染的预览页 blob 均未被接管 → 全部补偿回退（守卫式，不动共享数据）
+        log::info!(
+            "[VFS::handlers] 上传去重命中已有文件 {}，回退本次新增的 blob 引用",
+            file.id
+        );
+        if let Some(ref hash) = blob_hash {
+            saga.record_blob_ref(hash);
+        }
+        saga.abort(&conn, blobs_dir);
+    }
 
     log::info!(
         "[VFS::handlers] File uploaded: {} (type={}, folder={:?}, has_text={})",
@@ -2258,7 +2765,24 @@ pub async fn vfs_upload_file(
 
     // OCR 相关变量设为 None，由 Pipeline 异步填充
     let ocr_text: Option<String> = None;
-    let ocr_pages_json: Option<String> = None;
+    // ★ pptx/epub 页级文本：与 PDF 相同写入 ocr_pages_json，索引可定位页/章节
+    let ocr_pages_json: Option<String> = paged_text_pages
+        .as_ref()
+        .and_then(|pages| serde_json::to_string(pages).ok());
+    if created {
+        if let Some(ref pages_json) = ocr_pages_json {
+            if let Err(e) = conn.execute(
+                "UPDATE files SET ocr_pages_json = ?1 WHERE id = ?2",
+                rusqlite::params![pages_json, file.id],
+            ) {
+                log::warn!(
+                    "[VFS::handlers] Failed to write ocr_pages_json for {}: {}",
+                    file.id,
+                    e
+                );
+            }
+        }
+    }
 
     // 判断是否需要触发 Pipeline OCR（用于状态返回）
     let needs_image_ocr = is_image && ocr_config.enabled && ocr_config.ocr_images;
@@ -2313,6 +2837,21 @@ pub async fn vfs_upload_file(
                     file.id,
                     e
                 );
+                // ★ TD-03：索引失败不得被静默吞掉。sync_units 已整体回滚
+                // （不留半套 Units），此处把资源置入显式可重试状态：
+                // failed + 退避 + 重试计数，后台索引循环（get_pending_resources
+                // → sync_resource_to_units）会幂等重建单元并索引。
+                // 若 mark_failed 本身失败，index_state 保持 NULL——待索引队列
+                // 把 NULL 视同 pending，同样会被重试（双保险）。
+                if let Err(mark_err) =
+                    VfsIndexStateRepo::mark_failed(&vfs_db, resource_id, &e.to_string())
+                {
+                    log::error!(
+                        "[VFS::handlers] Failed to mark index retry state for {}: {} (NULL state still retried by queue)",
+                        resource_id,
+                        mark_err
+                    );
+                }
             }
         }
     }
@@ -2351,7 +2890,8 @@ pub async fn vfs_upload_file(
     // ★ 2026-01 新增：构建索引状态
     let index_status = if file.resource_id.is_some() {
         let message = if let Some(ref err) = index_error {
-            format!("索引失败: {}", err)
+            // ★ TD-03：失败已落入可重试状态，向前端如实说明（不谎报成功，也不丢失索引）
+            format!("索引失败，已加入后台重试队列: {}", err)
         } else if index_queued && index_units_created > 0 {
             format!("已加入索引队列（{} 个单元）", index_units_created)
         } else if index_queued {
@@ -2368,6 +2908,36 @@ pub async fn vfs_upload_file(
     } else {
         None
     };
+
+    // ★ 音频导入后自动转写（异步，不阻塞导入；ASR 未配置则标记状态后跳过）
+    if created
+        && is_audio_upload(&params.name, &params.mime_type)
+        && file
+            .extracted_text
+            .as_ref()
+            .map(|t| t.trim().is_empty())
+            .unwrap_or(true)
+        && content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES
+    {
+        let audio_base64 = BASE64.encode(&content);
+        spawn_audio_transcription_if_applicable(
+            &app,
+            vfs_db.inner().clone(),
+            file.id.clone(),
+            file.resource_id.clone(),
+            params.name.clone(),
+            audio_base64,
+        );
+    } else if created
+        && is_audio_upload(&params.name, &params.mime_type)
+        && content.len() > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES
+    {
+        mark_audio_processing_note(
+            &vfs_db,
+            &file.id,
+            "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+        );
+    }
 
     // ★ 2026-02 修复：PDF/图片 上传后异步触发 Pipeline
     // PDF: Stage 1-2（文本提取、页面渲染）已在 create_file_with_doc_data_in_folder 中完成，从 OCR 阶段开始
@@ -2503,7 +3073,7 @@ pub async fn vfs_get_file_content(
 
     if let Some(ref blob_hash) = file.blob_hash {
         let blobs_dir = vfs_db.blobs_dir();
-        if let Some(path) = VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, blob_hash)
+        if let Some(path) = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, blob_hash)
             .map_err(|e| e.to_string())?
         {
             let data = std::fs::read(&path).map_err(|e| e.to_string())?;
@@ -2573,7 +3143,7 @@ pub async fn vfs_get_blob_base64(
         .ok_or_else(|| format!("Blob 不存在: {}", blob_hash))?;
 
     // 2. 获取 blob 文件路径（使用已有连接）
-    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &blob_hash)
+    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &blob_hash)
         .map_err(|e| format!("获取 blob 路径失败: {}", e))?
         .ok_or_else(|| format!("Blob 文件路径不存在: {}", blob_hash))?;
 
@@ -2628,14 +3198,22 @@ pub struct VfsBlobBase64Result {
 /// ## 使用场景
 /// - RAG 检索结果中引用 PDF 页面时，前端调用此 API 获取页面图片
 /// - 支持 OCR + 文本索引（有预渲染）和多模态索引两种场景
-#[tauri::command]
-pub async fn vfs_get_pdf_page_image(
-    resource_id: String,
+pub(crate) struct PdfPageImageBytes {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+    pub stored_size: i64,
+}
+
+/// Shared byte-level source used by both the Tauri command and the bounded
+/// Chat V2 tool. It deliberately selects the existing compressed preview blob
+/// when the PDF pipeline produced one.
+pub(crate) fn read_pdf_page_image_bytes(
+    vfs_db: &VfsDatabase,
+    resource_id: &str,
     page_index: usize,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
-) -> Result<VfsBlobBase64Result, String> {
+    max_bytes: Option<usize>,
+) -> Result<PdfPageImageBytes, String> {
     use crate::vfs::types::PdfPreviewJson;
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
     log::debug!(
         "[VFS::handlers] vfs_get_pdf_page_image: resource_id={}, page_index={}",
@@ -2649,7 +3227,7 @@ pub async fn vfs_get_pdf_page_image(
     let blobs_dir = vfs_db.blobs_dir();
 
     // 1. 获取资源信息，确定来源表
-    let resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+    let resource = VfsResourceRepo::get_resource_with_conn(&conn, resource_id)
         .map_err(|e| format!("获取资源失败: {}", e))?
         .ok_or_else(|| format!("资源不存在: {}", resource_id))?;
 
@@ -2752,15 +3330,30 @@ pub async fn vfs_get_pdf_page_image(
         .ok_or_else(|| format!("Blob 不存在: {}", blob_hash))?;
 
     // 5. 获取 blob 文件路径
-    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &blob_hash)
+    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &blob_hash)
         .map_err(|e| format!("获取 blob 路径失败: {}", e))?
         .ok_or_else(|| format!("Blob 文件路径不存在: {}", blob_hash))?;
 
+    if let Some(max_bytes) = max_bytes {
+        let source_size = std::fs::metadata(&blob_path)
+            .map_err(|e| format!("读取 blob 元数据失败: {}", e))?
+            .len();
+        if source_size > max_bytes as u64 {
+            return Err(format!(
+                "PDF page image exceeds source limit: {} > {} bytes",
+                source_size, max_bytes
+            ));
+        }
+    }
+
     // 7. 读取文件内容
     let file_data = std::fs::read(&blob_path).map_err(|e| format!("读取 blob 文件失败: {}", e))?;
-
-    // 8. 转换为 base64
-    let base64_data = BASE64.encode(&file_data);
+    if max_bytes.is_some_and(|max_bytes| file_data.len() > max_bytes) {
+        return Err(format!(
+            "PDF page image exceeded source limit while reading: {} bytes",
+            file_data.len()
+        ));
+    }
 
     log::info!(
         "[VFS::handlers] vfs_get_pdf_page_image: resource_id={}, page_index={}, size={} bytes",
@@ -2769,10 +3362,26 @@ pub async fn vfs_get_pdf_page_image(
         file_data.len()
     );
 
-    Ok(VfsBlobBase64Result {
-        base64: base64_data,
+    Ok(PdfPageImageBytes {
+        bytes: file_data,
         mime_type,
-        size: blob.size,
+        stored_size: blob.size,
+    })
+}
+
+#[tauri::command]
+pub async fn vfs_get_pdf_page_image(
+    resource_id: String,
+    page_index: usize,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+) -> Result<VfsBlobBase64Result, String> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    let image = read_pdf_page_image_bytes(vfs_db.inner(), &resource_id, page_index, None)?;
+    Ok(VfsBlobBase64Result {
+        base64: BASE64.encode(&image.bytes),
+        mime_type: image.mime_type,
+        size: image.stored_size,
     })
 }
 
@@ -3018,6 +3627,34 @@ pub async fn vfs_get_pending_resources(
         .map_err(|e| e.to_string())
 }
 
+fn validate_embedding_model_config<'a>(
+    configs: &'a [crate::llm_manager::ApiConfig],
+    model_config_id: &str,
+    modality: &str,
+) -> Result<&'a crate::llm_manager::ApiConfig, String> {
+    let config = configs
+        .iter()
+        .find(|config| config.id == model_config_id)
+        .ok_or_else(|| format!("模型配置 {} 不存在", model_config_id))?;
+    let protocol_matches = match modality {
+        "text" => !config.is_multimodal,
+        "multimodal" => config.is_multimodal,
+        _ => return Err(format!("无效的嵌入模态: {}", modality)),
+    };
+    if !config.enabled
+        || !config.is_embedding
+        || config.is_reranker
+        || !protocol_matches
+        || config.model.trim().is_empty()
+    {
+        return Err(format!(
+            "模型配置 {} 已禁用或不支持 {} 嵌入协议",
+            model_config_id, modality
+        ));
+    }
+    Ok(config)
+}
+
 /// 为维度分配模型（用于跨维度检索）
 ///
 /// 模型分配是配置项，不是数据绑定。用户可以随时更改维度使用的模型。
@@ -3031,6 +3668,7 @@ pub async fn vfs_assign_dimension_model(
     model_config_id: String,
     model_name: String,
     database: State<'_, Arc<crate::database::Database>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<bool, String> {
     log::info!(
@@ -3040,6 +3678,25 @@ pub async fn vfs_assign_dimension_model(
         model_config_id
     );
 
+    let configs = llm_manager
+        .get_api_configs()
+        .await
+        .map_err(|error| error.to_string())?;
+    let model_config =
+        validate_embedding_model_config(&configs, &model_config_id, &modality)?.clone();
+    if model_name != model_config.model {
+        log::warn!(
+            "[VFS::handlers] Ignoring client model name {:?}; authoritative model is {:?}",
+            model_name,
+            model_config.model
+        );
+    }
+    let model_fingerprint = crate::vfs::repos::embedding_dim_repo::model_fingerprint_for_config(
+        &model_config,
+        &modality,
+    )
+    .map_err(|error| error.to_string())?;
+
     // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
     let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
     let existing = crate::vfs::repos::embedding_dim_repo::get_by_key(&conn, dimension, &modality)
@@ -3047,12 +3704,13 @@ pub async fn vfs_assign_dimension_model(
     if existing.is_none() {
         return Err(format!("维度 {}:{} 不存在", dimension, modality));
     }
-    crate::vfs::repos::embedding_dim_repo::register_with_model(
+    crate::vfs::repos::embedding_dim_repo::register_with_model_fingerprint(
         &conn,
         dimension,
         &modality,
         Some(&model_config_id),
-        Some(&model_name),
+        Some(&model_config.model),
+        Some(&model_fingerprint),
     )
     .map_err(|e| e.to_string())?;
     drop(conn);
@@ -3096,6 +3754,7 @@ pub async fn vfs_create_dimension(
     modality: String,
     model_config_id: Option<String>,
     model_name: Option<String>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<crate::vfs::repos::embedding_dim_repo::VfsEmbeddingDim, String> {
     log::info!(
@@ -3105,15 +3764,51 @@ pub async fn vfs_create_dimension(
         model_config_id
     );
 
+    let resolved_model = if let Some(model_config_id) = model_config_id.as_deref() {
+        let configs = llm_manager
+            .get_api_configs()
+            .await
+            .map_err(|error| error.to_string())?;
+        let config = validate_embedding_model_config(&configs, model_config_id, &modality)?.clone();
+        if model_name
+            .as_deref()
+            .is_some_and(|name| name != config.model)
+        {
+            log::warn!(
+                "[VFS::handlers] Ignoring client model name for {}; authoritative model is {:?}",
+                model_config_id,
+                config.model
+            );
+        }
+        let fingerprint =
+            crate::vfs::repos::embedding_dim_repo::model_fingerprint_for_config(&config, &modality)
+                .map_err(|error| error.to_string())?;
+        Some((config, fingerprint))
+    } else {
+        if model_name.is_some() {
+            return Err("modelName 不能在 modelConfigId 缺失时单独使用".to_string());
+        }
+        None
+    };
+
     let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
-    crate::vfs::repos::embedding_dim_repo::create_dimension(
-        &conn,
-        dimension,
-        &modality,
-        model_config_id.as_deref(),
-        model_name.as_deref(),
-    )
-    .map_err(|e| e.to_string())
+    match resolved_model {
+        Some((config, fingerprint)) => {
+            crate::vfs::repos::embedding_dim_repo::register_with_model_fingerprint(
+                &conn,
+                dimension,
+                &modality,
+                Some(&config.id),
+                Some(&config.model),
+                Some(&fingerprint),
+            )
+            .map_err(|error| error.to_string())
+        }
+        None => crate::vfs::repos::embedding_dim_repo::create_dimension(
+            &conn, dimension, &modality, None, None,
+        )
+        .map_err(|error| error.to_string()),
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -3791,8 +4486,7 @@ pub async fn vfs_get_all_index_status(
     }
 
     // 文件夹过滤（通过 folder_items 表）
-    let folder_join = if folder_id.is_some() {
-        let fid = folder_id.clone().unwrap();
+    let folder_join = if let Some(fid) = folder_id.clone() {
         stats_conditions.push("fi.folder_id = ?".to_string());
         stats_params.push(Box::new(fid.clone()));
         list_conditions.push("fi.folder_id = ?".to_string());
@@ -4440,24 +5134,18 @@ pub async fn vfs_rag_search(
         top_k: input.top_k,
     };
 
-    // 执行检索（支持跨维度搜索）
-    let results = if input.enable_cross_dimension {
-        // 跨维度搜索：聚合所有已分配模型的维度
-        search_service
-            .search_cross_dimension_with_resource_info(
-                &input.query,
-                &params,
-                input.enable_reranking,
-            )
-            .await
-            .map_err(|e| e.to_string())?
-    } else {
-        // 普通搜索：只使用当前模型的维度
-        search_service
-            .search_with_resource_info(&input.query, &params, input.enable_reranking)
-            .await
-            .map_err(|e| e.to_string())?
-    };
+    // `enableCrossDimension` is retained for frontend compatibility. Both values now use the
+    // profile/fingerprint-aware planner and weighted RRF; `false` must not reopen the legacy
+    // dimension-only Lance path.
+    if !input.enable_cross_dimension {
+        log::debug!(
+            "[VFS::handlers] enableCrossDimension=false is compatibility-only; using unified planner"
+        );
+    }
+    let results = search_service
+        .search_cross_dimension_with_resource_info(&input.query, &params, input.enable_reranking)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let elapsed = start.elapsed();
     let count = results.len();
@@ -4479,7 +5167,7 @@ pub async fn vfs_rag_search(
 #[tauri::command]
 pub async fn vfs_get_lance_stats(
     modality: Option<String>,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<(String, usize)>, String> {
     use crate::vfs::repos::MODALITY_TEXT;
@@ -4498,7 +5186,7 @@ pub async fn vfs_get_lance_stats(
 #[tauri::command]
 pub async fn vfs_optimize_lance(
     modality: Option<String>,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<usize, String> {
     use crate::vfs::repos::MODALITY_TEXT;
@@ -4584,6 +5272,13 @@ pub struct UpdateMindMapInput {
     /// 乐观并发控制：期望的 updatedAt（ISO8601）
     #[serde(default)]
     pub expected_updated_at: Option<String>,
+
+    /// 版本快照来源（'manual' | 'auto'），缺省为 'manual'
+    ///
+    /// 仅影响 mindmap_versions 的 source 标记与自动保存合并窗口分组；
+    /// chat% 前缀保留给聊天工具链路（builtin executor），UI 路径不可伪造。
+    #[serde(default)]
+    pub version_source: Option<String>,
 }
 
 /// 创建知识导图
@@ -4598,6 +5293,9 @@ pub async fn vfs_create_mindmap(
         params.folder_id
     );
 
+    // ★ 2026-07（B14）：内容字节上限（MindMap 50MB，与资源类型上限表一致）
+    validate_file_size(&VfsResourceType::MindMap, &params.content).map_err(|e| e.to_string())?;
+
     let create_params = VfsCreateMindMapParams {
         title: params.title,
         description: params.description,
@@ -4606,13 +5304,8 @@ pub async fn vfs_create_mindmap(
         theme: params.theme,
     };
 
-    if let Some(folder_id) = params.folder_id {
-        VfsMindMapRepo::create_mindmap_in_folder(&vfs_db, create_params, Some(&folder_id))
-            .map_err(|e| e.to_string())
-    } else {
-        VfsMindMapRepo::create_mindmap_in_folder(&vfs_db, create_params, None)
-            .map_err(|e| e.to_string())
-    }
+    VfsMindMapRepo::create_mindmap_in_folder(&vfs_db, create_params, params.folder_id.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 /// 获取知识导图元数据
@@ -4654,14 +5347,18 @@ pub async fn vfs_get_mindmap_content(
 }
 
 /// 获取思维导图的版本历史
+///
+/// `limit` 可选（1..=500），缺省 100（与旧行为一致）。
 #[tauri::command]
 pub async fn vfs_get_mindmap_versions(
     mindmap_id: String,
+    limit: Option<u32>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<VfsMindMapVersion>, String> {
     log::debug!(
-        "[VFS::handlers] vfs_get_mindmap_versions: id={}",
-        mindmap_id
+        "[VFS::handlers] vfs_get_mindmap_versions: id={}, limit={:?}",
+        mindmap_id,
+        limit
     );
 
     if !mindmap_id.starts_with("mm_") {
@@ -4672,7 +5369,37 @@ pub async fn vfs_get_mindmap_versions(
         .to_string());
     }
 
-    VfsMindMapRepo::get_versions(&vfs_db, &mindmap_id).map_err(|e| e.to_string())
+    let effective_limit = limit
+        .unwrap_or(VfsMindMapRepo::DEFAULT_VERSION_PAGE_SIZE)
+        .clamp(1, 500);
+
+    VfsMindMapRepo::get_versions_paged(&vfs_db, &mindmap_id, effective_limit)
+        .map_err(|e| e.to_string())
+}
+
+/// 恢复思维导图到指定历史版本
+///
+/// ★ 2026-07 新增（B6）：事务内先将当前内容快照为 `restore_backup` 版本，
+/// 再用目标版本内容覆盖主资源，返回恢复后的导图元数据。
+#[tauri::command]
+pub async fn vfs_restore_mindmap_version(
+    version_id: String,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+) -> Result<VfsMindMap, String> {
+    log::info!(
+        "[VFS::handlers] vfs_restore_mindmap_version: id={}",
+        version_id
+    );
+
+    if !version_id.starts_with("mv_") {
+        return Err(VfsError::InvalidArgument {
+            param: "version_id".to_string(),
+            reason: format!("Invalid version ID format: {}", version_id),
+        }
+        .to_string());
+    }
+
+    VfsMindMapRepo::restore_version(&vfs_db, &version_id).map_err(|e| e.to_string())
 }
 
 /// 获取指定版本的思维导图内容
@@ -4733,6 +5460,27 @@ pub async fn vfs_update_mindmap(
         .to_string());
     }
 
+    // ★ 2026-07（B14）：更新路径补内容字节上限（MindMap 50MB）
+    if let Some(content) = params.content.as_deref() {
+        validate_file_size(&VfsResourceType::MindMap, content).map_err(|e| e.to_string())?;
+    }
+
+    // 版本来源白名单：UI 路径只允许 manual/auto，缺省 manual（与旧行为一致）；
+    // chat% 保留给聊天工具链路，非法值回退 manual 并告警，防止绕过版本清理策略
+    let version_source = match params.version_source.as_deref() {
+        None | Some("manual") => "manual",
+        Some("auto") => "auto",
+        Some(other) => {
+            log::warn!(
+                "[VFS::handlers] vfs_update_mindmap: invalid versionSource {:?} for {}, falling back to 'manual'",
+                other,
+                mindmap_id
+            );
+            "manual"
+        }
+    }
+    .to_string();
+
     let update_params = VfsUpdateMindMapParams {
         title: params.title,
         description: params.description,
@@ -4741,7 +5489,7 @@ pub async fn vfs_update_mindmap(
         theme: params.theme,
         settings: params.settings,
         expected_updated_at: params.expected_updated_at,
-        version_source: Some("manual".to_string()),
+        version_source: Some(version_source),
     };
 
     VfsMindMapRepo::update_mindmap(&vfs_db, &mindmap_id, update_params).map_err(|e| e.to_string())
@@ -5313,10 +6061,14 @@ pub async fn vfs_reset_disabled_to_pending(
 
     let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
 
-    let updated = conn.execute(
-        "UPDATE resources SET index_state = 'pending', index_error = NULL WHERE index_state = 'disabled'",
-        [],
-    ).map_err(|e| e.to_string())?;
+    let updated = conn
+        .execute(
+            "UPDATE resources SET index_state = 'pending', index_error = NULL,
+            index_retry_count = 0, index_next_retry_at = 0
+         WHERE index_state = 'disabled'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
 
     log::info!(
         "[VFS::handlers] Reset {} disabled resources to pending",
@@ -5340,7 +6092,8 @@ pub async fn vfs_reset_indexed_without_embeddings(
         .execute(
             r#"
         UPDATE resources
-        SET index_state = 'pending', index_error = NULL
+        SET index_state = 'pending', index_error = NULL,
+            index_retry_count = 0, index_next_retry_at = 0
         WHERE index_state = 'indexed'
           AND NOT EXISTS (
             SELECT 1 FROM vfs_index_units u
@@ -5413,9 +6166,11 @@ pub async fn vfs_reset_all_index_state(
             index_hash = NULL,
             index_error = NULL,
             index_retry_count = 0,
+            index_next_retry_at = 0,
             mm_index_state = 'pending',
             mm_index_error = NULL,
             mm_index_retry_count = 0,
+            mm_index_next_retry_at = 0,
             mm_embedding_dim = NULL,
             mm_indexing_mode = NULL,
             mm_indexed_at = NULL
@@ -5580,18 +6335,86 @@ pub async fn vfs_multimodal_index(
 }
 
 /// 多模态检索输入参数
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum VfsMultimodalQueryMode {
+    Text,
+    Image,
+    Mixed,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfsMultimodalSearchInput {
-    /// 查询文本
-    pub query: String,
+    /// 旧调用方使用的查询文本。新调用方优先使用 `queryText`。
+    #[serde(default)]
+    pub query: Option<String>,
+    /// 多模态查询文本。
+    #[serde(default)]
+    pub query_text: Option<String>,
+    /// 原始图片 Base64（不含 data URL 前缀）。
+    #[serde(default)]
+    pub query_image_base64: Option<String>,
+    /// 图片 MIME；省略时默认 image/png。
+    #[serde(default)]
+    pub query_image_media_type: Option<String>,
+    /// 显式查询模式；省略时根据 text/image 字段推断。
+    #[serde(default)]
+    pub query_mode: Option<VfsMultimodalQueryMode>,
     /// 返回的最大结果数
     #[serde(default = "default_top_k")]
     pub top_k: usize,
     /// 文件夹 ID 过滤
     pub folder_ids: Option<Vec<String>>,
+    /// 资源 ID 过滤
+    pub resource_ids: Option<Vec<String>>,
     /// 资源类型过滤
     pub resource_types: Option<Vec<String>>,
+}
+
+impl VfsMultimodalSearchInput {
+    fn resolved_query(&self) -> Result<crate::multimodal::MultimodalInput, String> {
+        use crate::multimodal::MultimodalInput;
+
+        let text = self
+            .query_text
+            .as_deref()
+            .or(self.query.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let image = self
+            .query_image_base64
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let mode = self.query_mode.unwrap_or(match (text, image) {
+            (Some(_), Some(_)) => VfsMultimodalQueryMode::Mixed,
+            (None, Some(_)) => VfsMultimodalQueryMode::Image,
+            _ => VfsMultimodalQueryMode::Text,
+        });
+        let media_type = self
+            .query_image_media_type
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("image/png");
+
+        match mode {
+            VfsMultimodalQueryMode::Text => text
+                .map(MultimodalInput::text)
+                .ok_or_else(|| "text search requires queryText or query".to_string()),
+            VfsMultimodalQueryMode::Image => image
+                .map(|value| MultimodalInput::image_base64(value, media_type))
+                .ok_or_else(|| "image search requires queryImageBase64".to_string()),
+            VfsMultimodalQueryMode::Mixed => match (text, image) {
+                (Some(text), Some(image)) => {
+                    Ok(MultimodalInput::text_and_image(text, image, media_type))
+                }
+                (None, _) => Err("mixed search requires queryText or query".to_string()),
+                (_, None) => Err("mixed search requires queryImageBase64".to_string()),
+            },
+        }
+    }
 }
 
 fn default_top_k() -> usize {
@@ -5602,6 +6425,8 @@ fn default_top_k() -> usize {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfsMultimodalSearchOutput {
+    /// Lance 行 ID
+    pub embedding_id: String,
     /// 资源 ID
     pub resource_id: String,
     /// 资源类型
@@ -5616,6 +6441,40 @@ pub struct VfsMultimodalSearchOutput {
     pub score: f32,
     /// 文件夹 ID
     pub folder_id: Option<String>,
+    /// multi-profile RRF 路由来源
+    pub retrieval_provenance: serde_json::Value,
+}
+
+async fn run_vfs_multimodal_search(
+    params: VfsMultimodalSearchInput,
+    vfs_db: Arc<VfsDatabase>,
+    llm_manager: Arc<crate::llm_manager::LLMManager>,
+    lance_store: Arc<crate::vfs::lance_store::VfsLanceStore>,
+) -> Result<crate::vfs::UnifiedRetrievalResponse, String> {
+    use crate::vfs::retrieval_planner::QueryModality;
+    use crate::vfs::{UnifiedRetrievalRequest, VfsUnifiedRetriever};
+
+    let resolved = params.resolved_query()?;
+    let query_modality = match (resolved.text.is_some(), resolved.image.is_some()) {
+        (true, true) => QueryModality::Mixed,
+        (false, true) => QueryModality::Image,
+        _ => QueryModality::Text,
+    };
+    let query_text = params.query_text.clone().or_else(|| params.query.clone());
+    let retriever = VfsUnifiedRetriever::new(vfs_db, lance_store, llm_manager);
+    retriever
+        .search_multimodal(UnifiedRetrievalRequest {
+            query_text,
+            query_image_base64: params.query_image_base64,
+            query_image_media_type: params.query_image_media_type,
+            query_modality,
+            top_k: params.top_k,
+            folder_ids: params.folder_ids,
+            resource_ids: params.resource_ids,
+            resource_types: params.resource_types,
+        })
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 多模态向量检索
@@ -5635,37 +6494,73 @@ pub async fn vfs_multimodal_search(
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<VfsMultimodalSearchOutput>, String> {
-    use crate::vfs::multimodal_service::VfsMultimodalService;
+    let response = run_vfs_multimodal_search(
+        params,
+        Arc::clone(vfs_db.inner()),
+        Arc::clone(llm_manager.inner()),
+        Arc::clone(lance_store.inner()),
+    )
+    .await?;
 
-    let lance_store = Arc::clone(lance_store.inner());
-
-    // 创建多模态服务
-    let service =
-        VfsMultimodalService::new(Arc::clone(&vfs_db), Arc::clone(&llm_manager), lance_store);
-
-    // 执行检索
-    let results = service
-        .search(
-            &params.query,
-            params.top_k,
-            params.folder_ids.as_deref(),
-            params.resource_types.as_deref(),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(results
+    Ok(response
+        .result
+        .hits
         .into_iter()
-        .map(|r| VfsMultimodalSearchOutput {
-            resource_id: r.resource_id,
-            resource_type: r.resource_type,
-            page_index: r.page_index,
-            text_content: r.text_content,
-            blob_hash: r.blob_hash,
-            score: r.score,
-            folder_id: r.folder_id,
+        .map(|fused| VfsMultimodalSearchOutput {
+            embedding_id: fused.hit.embedding_id,
+            resource_id: fused.hit.identity.resource_id,
+            resource_type: fused
+                .hit
+                .resource_type
+                .unwrap_or_else(|| "unknown".to_string()),
+            page_index: fused
+                .hit
+                .identity
+                .page_index
+                .unwrap_or(fused.hit.identity.chunk_index),
+            text_content: Some(fused.hit.text),
+            blob_hash: fused.hit.blob_hash,
+            score: fused.rrf_score as f32,
+            folder_id: fused.hit.folder_id,
+            retrieval_provenance: serde_json::to_value(fused.provenance)
+                .unwrap_or(serde_json::Value::Null),
         })
         .collect())
+}
+
+/// 返回完整的多路检索诊断信息；旧的 `vfs_multimodal_search` 继续只返回扁平命中列表。
+#[tauri::command]
+pub async fn vfs_multimodal_search_detailed(
+    params: VfsMultimodalSearchInput,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
+) -> Result<crate::vfs::UnifiedRetrievalResponse, String> {
+    run_vfs_multimodal_search(
+        params,
+        Arc::clone(vfs_db.inner()),
+        Arc::clone(llm_manager.inner()),
+        Arc::clone(lance_store.inner()),
+    )
+    .await
+}
+
+/// 只读能力检查。该命令不会创建、修复或重建 Lance 表/索引。
+#[tauri::command]
+pub async fn vfs_inspect_retrieval_capabilities(
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
+) -> Result<crate::vfs::CapabilitySnapshot, String> {
+    let retriever = crate::vfs::VfsUnifiedRetriever::new(
+        Arc::clone(vfs_db.inner()),
+        Arc::clone(lance_store.inner()),
+        Arc::clone(llm_manager.inner()),
+    );
+    retriever
+        .inspect_capabilities()
+        .await
+        .map_err(|error| error.to_string())
 }
 
 /// 获取 VFS 多模态索引统计
@@ -5770,7 +6665,7 @@ pub async fn vfs_multimodal_index_resource(
 #[tauri::command]
 pub async fn vfs_diagnose_lance_schema(
     modality: Option<String>,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<crate::vfs::lance_store::LanceTableDiagnostic>, String> {
     use crate::vfs::repos::MODALITY_TEXT;
@@ -6704,20 +7599,14 @@ pub async fn vfs_download_paper(
         }
     }
 
-    // Blob 存储
+    // ★ TD-03：与 vfs_upload_file 相同的最小 saga——
+    // 预览渲染（独立连接）先行并登记补偿账本；主 blob 落库 + 文件三表写入
+    // 在同一连接 SAVEPOINT 内整体回滚；索引失败置显式可重试状态。
     use crate::vfs::VfsBlobRepo;
     let blobs_dir = vfs_db.blobs_dir();
-    let blob_hash = VfsBlobRepo::store_blob_with_conn(
-        &conn,
-        &blobs_dir,
-        &pdf_bytes,
-        Some("application/pdf"),
-        None,
-    )
-    .map_err(|e| format!("Blob storage failed: {}", e))?
-    .hash;
+    let mut saga = crate::vfs::upload_saga::UploadSaga::new();
 
-    // PDF 预览 + 文本提取（spawn_blocking 避免阻塞 tokio 线程）
+    // PDF 预览 + 文本提取（spawn_blocking 避免阻塞 tokio 线程；须在 savepoint 之外）
     let (preview_json, extracted_text, page_count) = {
         let vfs_db_clone = vfs_db.inner().clone();
         let blobs_dir_clone = blobs_dir.to_path_buf();
@@ -6735,6 +7624,9 @@ pub async fn vfs_download_paper(
         .await
         {
             Ok(Ok(result)) => {
+                if let Some(ref preview) = result.preview_json {
+                    saga.record_preview_blobs(preview);
+                }
                 let preview_str = result
                     .preview_json
                     .as_ref()
@@ -6768,21 +7660,61 @@ pub async fn vfs_download_paper(
 
     let folder_id = params.folder_id.as_deref().filter(|s| !s.is_empty());
 
-    let file = VfsFileRepo::create_file_with_doc_data_in_folder(
-        &conn,
-        &sha256,
-        &file_name,
-        pdf_bytes.len() as i64,
-        "pdf",
-        Some("application/pdf"),
-        Some(&blob_hash),
-        None,
-        folder_id,
-        preview_json.as_deref(),
-        extracted_text.as_deref(),
-        page_count,
-    )
-    .map_err(|e| format!("File creation failed: {}", e))?;
+    let saga_result =
+        crate::vfs::upload_saga::with_savepoint(&conn, "vfs_download_paper_saga", || {
+            let blob_hash = VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                blobs_dir,
+                &pdf_bytes,
+                Some("application/pdf"),
+                None,
+            )?
+            .hash;
+
+            let (file, created) = VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
+                &conn,
+                &sha256,
+                &file_name,
+                pdf_bytes.len() as i64,
+                "pdf",
+                Some("application/pdf"),
+                Some(&blob_hash),
+                None,
+                folder_id,
+                preview_json.as_deref(),
+                extracted_text.as_deref(),
+                page_count,
+            )?;
+            Ok((blob_hash, file, created))
+        });
+
+    let (blob_hash, file, created) = match saga_result {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "[VFS::download_paper] 保存事务失败，已回滚 DB 写入，开始补偿: {}",
+                e
+            );
+            saga.abort(&conn, blobs_dir);
+            if let Err(cleanup_err) =
+                VfsBlobRepo::remove_unregistered_blob_file(&conn, blobs_dir, &sha256)
+            {
+                log::error!(
+                    "[VFS::download_paper] 补偿删除孤儿 blob 文件失败（内容寻址可自愈）: {}",
+                    cleanup_err
+                );
+            }
+            return Err(format!("File creation failed: {}", e));
+        }
+    };
+
+    if created {
+        saga.commit();
+    } else {
+        // 并发去重命中：本次 +1 的引用未被新文件行接管，回退
+        saga.record_blob_ref(&blob_hash);
+        saga.abort(&conn, blobs_dir);
+    }
 
     // 索引
     if let Some(ref resource_id) = file.resource_id {
@@ -6795,12 +7727,28 @@ pub async fn vfs_download_paper(
             data: None,
             ocr_text: None,
             ocr_pages_json: None,
-            blob_hash: Some(blob_hash.clone()),
+            blob_hash: file.blob_hash.clone(),
             page_count: file.page_count,
             extracted_text: file.extracted_text.clone(),
             preview_json: file.preview_json.clone(),
         };
-        let _ = index_service.sync_resource_units(input);
+        // ★ TD-03：失败不再 `let _` 吞掉——置显式可重试状态交后台索引循环补建
+        if let Err(e) = index_service.sync_resource_units(input) {
+            log::warn!(
+                "[VFS::download_paper] Failed to sync units for {}: {} (queued for background retry)",
+                resource_id,
+                e
+            );
+            if let Err(mark_err) =
+                VfsIndexStateRepo::mark_failed(&vfs_db, resource_id, &e.to_string())
+            {
+                log::error!(
+                    "[VFS::download_paper] Failed to mark index retry state for {}: {}",
+                    resource_id,
+                    mark_err
+                );
+            }
+        }
     }
 
     // 异步 PDF Pipeline
@@ -7250,6 +8198,20 @@ mod tests {
         assert_eq!(input.offset, 0); // default
     }
 
+    #[test]
+    fn rag_search_accepts_legacy_false_cross_dimension_flag() {
+        let input: VfsRagSearchInput = serde_json::from_value(serde_json::json!({
+            "query": "profile aware retrieval",
+            "enableCrossDimension": false,
+            "topK": 7
+        }))
+        .expect("deserialize compatibility flag");
+
+        assert!(!input.enable_cross_dimension);
+        assert_eq!(input.top_k, 7);
+        assert_eq!(input.modality, "text");
+    }
+
     /// 验证 vfs_update_note 参数结构支持自动版本管理
     ///
     /// TODO: 等待 Prompt 2 完成后实现完整的版本管理测试
@@ -7436,5 +8398,91 @@ mod tests {
         assert!(nested_path.starts_with('/'));
         assert!(nested_path.contains("高考复习"));
         assert!(nested_path.contains("函数"));
+    }
+
+    #[test]
+    fn embedding_model_validation_enforces_backend_protocol_contract() {
+        let text = crate::llm_manager::ApiConfig {
+            id: "text-embedding".to_string(),
+            model: "embed-v1".to_string(),
+            enabled: true,
+            is_embedding: true,
+            ..Default::default()
+        };
+        let multimodal = crate::llm_manager::ApiConfig {
+            id: "mm-embedding".to_string(),
+            model: "vl-embed-v1".to_string(),
+            enabled: true,
+            is_embedding: true,
+            is_multimodal: true,
+            ..Default::default()
+        };
+        let reranker = crate::llm_manager::ApiConfig {
+            id: "reranker".to_string(),
+            model: "rerank-v1".to_string(),
+            enabled: true,
+            is_embedding: true,
+            is_reranker: true,
+            ..Default::default()
+        };
+        let configs = vec![text, multimodal, reranker];
+
+        assert!(validate_embedding_model_config(&configs, "text-embedding", "text").is_ok());
+        assert!(validate_embedding_model_config(&configs, "mm-embedding", "multimodal").is_ok());
+        assert!(validate_embedding_model_config(&configs, "mm-embedding", "text").is_err());
+        assert!(validate_embedding_model_config(&configs, "text-embedding", "multimodal").is_err());
+        assert!(validate_embedding_model_config(&configs, "reranker", "text").is_err());
+        assert!(validate_embedding_model_config(&configs, "missing", "text").is_err());
+    }
+
+    #[test]
+    fn multimodal_search_dto_accepts_legacy_query() {
+        let input: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "query": "legacy text",
+            "topK": 7
+        }))
+        .expect("deserialize legacy query");
+        let resolved = input.resolved_query().expect("resolve legacy query");
+        assert_eq!(resolved.text.as_deref(), Some("legacy text"));
+        assert!(resolved.image.is_none());
+        assert_eq!(input.top_k, 7);
+    }
+
+    #[test]
+    fn multimodal_search_dto_accepts_image_and_mixed_camel_case() {
+        let image: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "queryImageBase64": "image-bytes",
+            "queryImageMediaType": "image/jpeg",
+            "queryMode": "image"
+        }))
+        .expect("deserialize image query");
+        let resolved_image = image.resolved_query().expect("resolve image query");
+        assert!(resolved_image.text.is_none());
+        assert!(resolved_image.image.is_some());
+
+        let mixed: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "query": "legacy field remains accepted",
+            "queryText": "preferred text",
+            "queryImageBase64": "image-bytes",
+            "queryImageMediaType": "image/webp",
+            "queryMode": "mixed"
+        }))
+        .expect("deserialize mixed query");
+        let resolved_mixed = mixed.resolved_query().expect("resolve mixed query");
+        assert_eq!(resolved_mixed.text.as_deref(), Some("preferred text"));
+        assert!(resolved_mixed.image.is_some());
+    }
+
+    #[test]
+    fn multimodal_search_dto_rejects_mode_payload_mismatch() {
+        let missing_image: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "queryText": "text",
+            "queryMode": "mixed"
+        }))
+        .expect("deserialize incomplete mixed query");
+        assert!(missing_image
+            .resolved_query()
+            .expect_err("mixed requires image")
+            .contains("queryImageBase64"));
     }
 }

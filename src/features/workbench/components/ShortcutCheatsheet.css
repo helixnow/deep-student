@@ -1,0 +1,269 @@
+/**
+ * ShortcutCheatsheet 专属样式（O12，全部 wb-cheat- 前缀）
+ * ---------------------------------------------------------------------------
+ * - 玻璃面板复用契约类 wb-glass / wb-glass-highlight（只消费不重定义）；
+ * - 动画仅 transform / opacity；时长走 --wb-cheat-duration，
+ *   reduced-motion 与 minimal 材质档下归零；
+ * - 缓动优先引用 O1 motion.css 变量（--wb-motion-ease-out），
+ *   未落地前回退既有 token --wb-ease-out；
+ * - z-index 优先引用 O1 z 刻度（--wb-z-cheatsheet），回退 9600
+ *   （高于 Dock 9000 / SnapPreview 8500，低于 DevPanel 9990）。
+ */
+
+:where(:root) {
+  --wb-cheat-duration: 200ms;
+  --wb-cheat-ease: var(--wb-motion-ease-out, var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(:root) {
+    --wb-cheat-duration: 0ms;
+  }
+}
+
+:root[data-wb-material='minimal'] {
+  --wb-cheat-duration: 0ms;
+}
+
+/* ==== 根层 / 背景 ======================================================= */
+
+.wb-cheat-root {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-cheatsheet, 9700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+/* 退场期（~200ms）透明层不再拦截指针，桌面立即可点（与 AppsPanel 同策略） */
+.wb-cheat-root[data-wb-cheat-open='false'] {
+  pointer-events: none;
+}
+
+.wb-cheat-backdrop {
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--background) / 0.32);
+  opacity: 0;
+  transition: opacity var(--wb-cheat-duration) var(--wb-cheat-ease);
+}
+
+.wb-cheat-root[data-wb-cheat-open='true'] .wb-cheat-backdrop {
+  opacity: 1;
+}
+
+/* ==== 面板 ============================================================== */
+
+.wb-cheat-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 100%);
+  max-height: min(620px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--wb-overlay-radius, 18px);
+  /* 中央玻璃件走 overlay 档阴影（O1 token 注释点名速查表用此档） */
+  box-shadow: var(--wb-shadow-overlay, var(--wb-dock-shadow));
+  color: var(--wb-titlebar-fg, inherit);
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition:
+    opacity var(--wb-cheat-duration) var(--wb-cheat-ease),
+    transform var(--wb-cheat-duration) var(--wb-cheat-ease);
+  will-change: transform, opacity;
+}
+
+.wb-cheat-root[data-wb-cheat-open='true'] .wb-cheat-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* ==== 头部 / 底部 ======================================================= */
+
+.wb-cheat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 10px;
+  flex: none;
+}
+
+.wb-cheat-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.wb-cheat-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 16%, transparent 84%);
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity var(--wb-cheat-duration) var(--wb-cheat-ease),
+    transform var(--wb-cheat-duration) var(--wb-cheat-ease);
+}
+
+.wb-cheat-close:hover {
+  opacity: 1;
+}
+
+.wb-cheat-close:focus-visible {
+  opacity: 1;
+  outline: var(--wb-focus-ring-width, 2px) solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.85));
+  outline-offset: var(--wb-focus-ring-offset, 2px);
+}
+
+.wb-cheat-close:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.wb-cheat-close:active {
+  transform: scale(0.92);
+}
+
+.wb-cheat-footer {
+  flex: none;
+  padding: 10px 20px 14px;
+  font-size: 11.5px;
+  text-align: center;
+  opacity: 0.62;
+}
+
+/* ==== 分组网格 ========================================================== */
+
+.wb-cheat-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wb-cheat-groups {
+  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px 26px;
+  padding: 4px 20px 8px;
+  align-items: start;
+}
+
+.wb-cheat-group-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+}
+
+.wb-cheat-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-cheat-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+/* 扫读辅助：行 hover 轻着色（静态换色，非动画） */
+.wb-cheat-row:hover {
+  background: color-mix(in hsl, hsl(var(--foreground)) 6%, transparent 94%);
+}
+
+.wb-cheat-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.88;
+}
+
+/* 快捷键触发时的行高亮（feedback 事件驱动；仅 opacity 动画） */
+.wb-cheat-row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: hsl(var(--primary) / 0.14);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wb-cheat-row-flash::after {
+  animation: wb-cheat-row-pulse 650ms var(--wb-cheat-ease);
+}
+
+@keyframes wb-cheat-row-pulse {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-cheat-row-flash::after {
+    animation: none;
+  }
+}
+
+/* ==== 键帽 ============================================================== */
+
+.wb-cheat-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.wb-cheat-key-sep {
+  font-size: 10px;
+  opacity: 0.45;
+}
+
+.wb-cheat-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 21px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--wb-glass-border);
+  background: color-mix(in hsl, hsl(var(--card)) 72%, transparent 28%);
+  /* 键帽厚度感：静态内阴影（非动画） */
+  box-shadow:
+    inset 0 -1.5px 0 color-mix(in hsl, hsl(var(--border)) 65%, transparent 35%),
+    0 1px 1.5px hsl(var(--shadow-base, 0 0% 0%) / 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}

@@ -21,6 +21,7 @@
  *   阻碍。这里只共享视觉骨架。
  */
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CaretDown,
   CaretRight,
@@ -32,7 +33,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 // ============================================================================
 // Root —— 通用 flex 容器，统一上下间距
@@ -86,9 +87,11 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
   count,
   actions,
   onClose,
-  closeAriaLabel = 'Close',
+  closeAriaLabel,
   className,
 }) => {
+  const { t } = useTranslation('chatV2');
+  const resolvedCloseAriaLabel = closeAriaLabel ?? t('common.close');
   const showCount = typeof count === 'number' && count > 0;
   return (
     <div
@@ -106,7 +109,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
             aria-hidden="true"
           />
         ) : null)}
-        <span className="shrink-0 text-[13px] font-semibold text-[color:var(--composer-panel-foreground)]">
+        <span className="shrink-0 text-ui font-semibold text-[color:var(--composer-panel-foreground)]">
           {title}
         </span>
         {showCount ? (
@@ -115,7 +118,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
               'inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1',
               'border border-[color:var(--button-primary-border)]',
               'bg-[color:var(--button-primary-surface)]',
-              'text-[10px] font-semibold leading-none tabular-nums',
+              'text-2xs font-semibold leading-none tabular-nums',
               'text-[color:var(--button-primary-foreground)]'
             )}
             aria-hidden="true"
@@ -133,16 +136,16 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
         <div className="flex shrink-0 items-center gap-1.5">
           {actions}
           {onClose ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
               onClick={onClose}
-              aria-label={closeAriaLabel}
-              title={closeAriaLabel}
+              aria-label={resolvedCloseAriaLabel}
+              title={resolvedCloseAriaLabel}
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           ) : null}
         </div>
       )}
@@ -160,6 +163,7 @@ export interface ComposerPanelSearchProps {
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
+  clearAriaLabel?: string;
   className?: string;
   inputClassName?: string;
   /** 末尾插入的自定义节点（如 fuzzy 切换） */
@@ -172,10 +176,12 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
   placeholder,
   disabled,
   ariaLabel,
+  clearAriaLabel,
   className,
   inputClassName,
   endAdornment,
 }) => {
+  const { t } = useTranslation('chatV2');
   const showClear = !!value && !disabled;
   return (
     <div className={cn('relative shrink-0', className)}>
@@ -185,14 +191,15 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
         aria-hidden="true"
       />
       <Input
-        type="text"
+        type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
         aria-label={ariaLabel ?? placeholder}
         className={cn(
-          'h-8 w-full pl-7 text-xs',
+          // coarse 指针下 16px 字号避免 iOS WebView 聚焦自动放大，同时抬高到 40px 触控高度
+          'h-8 w-full pl-7 text-xs [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:text-[16px]',
           'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]',
           'placeholder:text-[color:var(--composer-panel-placeholder)]',
           'focus-visible:border-[color:var(--composer-panel-focus-border)]',
@@ -203,16 +210,16 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
       {(showClear || endAdornment) && (
         <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
           {showClear ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
               onClick={() => onChange('')}
-              aria-label="Clear search"
-              className="!h-5 !w-5"
+              aria-label={clearAriaLabel ?? t('common.clearSearch')}
+              className="!h-5 !w-5 relative after:absolute after:-inset-3 after:content-['']"
             >
               <X size={12} />
-            </NotionButton>
+            </DsButton>
           ) : null}
           {endAdornment}
         </div>
@@ -301,7 +308,7 @@ const Section: React.FC<ComposerPanelSectionProps> = ({
               />
             )
           ) : null}
-          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.04em] text-[color:var(--composer-panel-muted-foreground)]">
+          <span className="truncate text-[11px] font-semibold tracking-[0.04em] text-[color:var(--composer-panel-muted-foreground)]">
             {label}
           </span>
           {typeof count === 'number' ? (
@@ -315,7 +322,7 @@ const Section: React.FC<ComposerPanelSectionProps> = ({
                 'ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1',
                 'border border-[color:var(--button-primary-border)]',
                 'bg-[color:var(--button-primary-surface)]',
-                'text-[9px] font-semibold tabular-nums',
+                'text-2xs font-semibold tabular-nums',
                 'text-[color:var(--button-primary-foreground)]'
               )}
               aria-hidden="true"
@@ -425,7 +432,7 @@ const Row = React.forwardRef<HTMLButtonElement, ComposerPanelRowProps>(
   ) => {
     const tinted = selectedAccent === 'tinted';
     return (
-      // eslint-disable-next-line ds-components/no-native-button -- Row 是 ComposerPanel 的低层 primitive，需要直接控制 token 化的强调色 className，使用 NotionButton 会被其内置 variant 覆盖
+      // eslint-disable-next-line ds-components/no-native-button -- Row 是 ComposerPanel 的低层 primitive，需要直接控制 token 化的强调色 className，使用 DsButton 会被其内置 variant 覆盖
       <button
         ref={ref}
         type="button"
@@ -434,6 +441,8 @@ const Row = React.forwardRef<HTMLButtonElement, ComposerPanelRowProps>(
         className={cn(
           'group relative flex w-full items-start gap-2 text-left transition-colors outline-none',
           'rounded-[var(--menu-shell-row-radius)] border border-transparent',
+          // 📱 coarse 指针触控保底：行高不低于 44px（桌面 fine 指针不受影响）
+          '[@media(pointer:coarse)]:min-h-11',
           density === 'cozy'
             ? 'px-[var(--menu-shell-row-padding-x)] py-[var(--menu-shell-row-padding-y)]'
             : 'px-2 py-1.5',

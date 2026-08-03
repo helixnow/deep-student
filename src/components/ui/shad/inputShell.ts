@@ -18,7 +18,8 @@
 export const inputShellClass = [
   // 形状 / 字色 / 过渡
   'rounded-[var(--radius-shell-control)]',
-  'text-sm text-foreground transition-colors',
+  // 触屏（coarse）下 16px：iOS 对 <16px 输入聚焦时会强制放大页面
+  'text-sm [@media(pointer:coarse)]:text-base text-foreground transition-colors',
   // 边框 / 底色（默认态）
   'border border-[color:var(--input-shell-border)]',
   'bg-[color:var(--input-shell-surface)]',
@@ -28,11 +29,10 @@ export const inputShellClass = [
   'placeholder:text-muted-foreground/50',
   // hover
   'hover:bg-[color:var(--surface-panel-strong)]',
-  // focus-visible
-  'focus-visible:border-[color:var(--input-shell-focus)]',
-  'focus-visible:bg-[color:var(--surface-panel-strong)]',
-  'focus-visible:outline-none',
-  'focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)]',
+  // Focus matches the settings search field: a quiet border and surface change, no glow.
+  'focus:border-[color:var(--border)] focus:bg-background focus:outline-none focus:ring-0',
+  'focus-visible:border-[color:var(--border)] focus-visible:bg-background',
+  'focus-visible:outline-none focus-visible:ring-0',
   // disabled
   'disabled:cursor-not-allowed disabled:opacity-50',
 ].join(' ');

@@ -5,7 +5,8 @@ use log::{debug, error, info, warn};
 use crate::database::{Database, DatabaseManager};
 use crate::exam_sheet_service::ExamSheetService;
 use crate::llm_manager::{
-    should_use_openai_responses_for_config, ApiConfig, ModelProfile, VendorConfig,
+    build_provider_adapter, should_use_openai_responses_for_config, ApiConfig, ModelProfile,
+    VendorConfig, AUTH_MODE_NONE, AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 #[cfg(feature = "mcp")]
 use crate::mcp::McpConfig;
@@ -27,7 +28,6 @@ use crate::file_manager::FileManager;
 use crate::pdf_ocr_service::PdfOcrService;
 use crate::unified_file_manager;
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -51,6 +51,7 @@ pub use crate::cmd::ocr::*;
 pub use crate::cmd::textbooks::*;
 pub use crate::cmd::translation::*;
 pub use crate::cmd::web_search::*; // OCR 引擎配置命令
+pub use crate::cmd::window_effects::*; // macOS 窗口毛玻璃
 
 // 教材库独立数据库
 
@@ -272,7 +273,6 @@ pub fn merge_tags(primary: &[String], secondary: Option<&[String]>) -> Vec<Strin
 use serde_json;
 
 #[cfg(feature = "mcp")]
-
 /// 估算文本Token数量（优先使用tiktoken；不可用时回退启发式估算）
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct EstimateTokensRequest {
@@ -432,11 +432,7 @@ fn normalize_single_bridge_image_path(
     let candidate = if is_absolute {
         cleaned.clone()
     } else {
-        format!(
-            "{}/{}",
-            app_dir,
-            cleaned.trim_start_matches('/').to_string()
-        )
+        format!("{}/{}", app_dir, cleaned.trim_start_matches('/'))
     };
 
     if candidate.starts_with(&images_dir) {
@@ -492,47 +488,83 @@ pub async fn get_app_data_dir(state: State<'_, AppState>) -> Result<String> {
 // 调试日志管理命令
 // ============================================================================
 
+fn resolve_app_log_dir(app: &AppHandle) -> Result<std::path::PathBuf> {
+    if let Ok(path) = app.path().app_log_dir() {
+        return Ok(path);
+    }
+    if let Ok(path) = app.path().app_data_dir() {
+        return Ok(path.join("logs"));
+    }
+    Ok(std::env::temp_dir().join("deep-student").join("logs"))
+}
+
+fn resolve_debug_log_roots(app: &AppHandle) -> Result<Vec<std::path::PathBuf>> {
+    let current = resolve_app_log_dir(app)?;
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("deep-student"));
+    let mut roots = vec![
+        current,
+        app_data.clone(),
+        app_data.join("slots").join("slotA"),
+        app_data.join("slots").join("slotB"),
+    ];
+    roots.sort();
+    roots.dedup();
+    Ok(roots)
+}
+
 /// 获取调试日志统计信息（文件数量 + 总大小）
 #[tauri::command]
 pub async fn get_debug_logs_info(
-    state: State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<crate::debug_log_service::DebugLogsInfo> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    Ok(crate::debug_log_service::get_debug_logs_info(data_dir))
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    Ok(crate::debug_log_service::get_debug_logs_info(&log_roots))
 }
 
 /// 清除所有调试日志文件
 #[tauri::command]
-pub async fn clear_debug_logs(state: State<'_, AppState>) -> Result<usize> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::clear_all_debug_logs(data_dir).map_err(|e| AppError::unknown(e))
+pub async fn clear_debug_logs(app: AppHandle) -> Result<usize> {
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    crate::debug_log_service::clear_all_debug_logs(&log_roots).map_err(AppError::unknown)
 }
 
 /// 清理超过指定天数的旧调试日志
 #[tauri::command]
-pub async fn cleanup_old_debug_logs(
-    state: State<'_, AppState>,
-    max_age_days: u32,
-) -> Result<usize> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::cleanup_old_debug_logs(data_dir, max_age_days)
-        .map_err(|e| AppError::unknown(e))
+pub async fn cleanup_old_debug_logs(app: AppHandle, max_age_days: u32) -> Result<usize> {
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    crate::debug_log_service::cleanup_old_debug_logs(&log_roots, max_age_days)
+        .map_err(AppError::unknown)
 }
 
 /// 确保 debug-logs 目录存在并返回绝对路径
 #[tauri::command]
-pub async fn ensure_debug_log_dir(state: State<'_, AppState>) -> Result<String> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    let dir = crate::debug_log_service::ensure_debug_log_dir(data_dir);
+pub async fn ensure_debug_log_dir(app: AppHandle) -> Result<String> {
+    let log_root = resolve_app_log_dir(&app)?;
+    let dir = crate::debug_log_service::ensure_debug_log_dir(&log_root);
     Ok(dir.to_string_lossy().to_string())
 }
 
 /// 读取指定调试日志文件的完整内容（用于"完整"过滤级别的复制）
 #[tauri::command]
-pub async fn read_debug_log_file(path: String, state: State<'_, AppState>) -> Result<String> {
-    let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::read_debug_log_file(std::path::Path::new(&path), data_dir)
-        .map_err(|e| AppError::unknown(e))
+pub async fn read_debug_log_file(path: String, app: AppHandle) -> Result<String> {
+    if !crate::debug_log_service::flush_pending_debug_log_writes().await {
+        return Err(AppError::file_system("等待调试日志写入超时，请稍后重试"));
+    }
+    let log_roots = resolve_debug_log_roots(&app)?;
+    crate::debug_log_service::read_debug_log_file(std::path::Path::new(&path), &log_roots)
+        .map_err(AppError::unknown)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -579,6 +611,13 @@ pub struct AppState {
     // PDF-OCR 跳过页面：session_id -> skip set
     pub pdf_ocr_skip_pages:
         Arc<tokio::sync::Mutex<HashMap<String, std::collections::HashSet<usize>>>>,
+    // CSV 导入取消控制：import_id -> cancellable in-flight import
+    pub csv_import_cancellations:
+        Arc<dashmap::DashMap<String, Arc<crate::question_import_service::CsvImportCancellation>>>,
+    // 题目集流式导入取消控制：import_id -> cancellable in-flight import
+    pub question_import_cancellations: Arc<
+        dashmap::DashMap<String, Arc<crate::question_import_service::QuestionImportCancellation>>,
+    >,
     pub app_handle: tauri::AppHandle,
     pub active_database: RwLock<ActiveDatabaseKind>,
 }
@@ -908,6 +947,9 @@ pub struct ImportQuestionBankRequest {
     /// - None: 使用后端默认策略
     #[serde(default)]
     pub pdf_prefer_ocr: Option<bool>,
+    /// 前端为每次流式导入生成的唯一标识，用于取消与事件隔离。
+    #[serde(default)]
+    pub import_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -975,7 +1017,7 @@ pub async fn import_question_bank_stream(
     app_handle: AppHandle,
 ) -> Result<ExamSheetSessionDetail> {
     use crate::question_import_service::{
-        ImportRequest, QuestionImportProgress, QuestionImportService,
+        ImportRequest, QuestionImportCancellation, QuestionImportProgress, QuestionImportService,
     };
 
     let vfs_db = state
@@ -983,14 +1025,56 @@ pub async fn import_question_bank_stream(
         .as_ref()
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
+    let import_id = request
+        .import_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned);
+
+    // Register before work starts so a visible Cancel action always targets
+    // this exact attempt. The terminal-state token prevents a late cancel from
+    // claiming success after the import has already completed.
+    let cancellation = if let Some(import_id) = import_id.as_ref() {
+        let token = Arc::new(QuestionImportCancellation::new());
+        match state.question_import_cancellations.entry(import_id.clone()) {
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(token.clone());
+                Some(token)
+            }
+            dashmap::mapref::entry::Entry::Occupied(_) => {
+                return Err(AppError::validation("该题目集导入仍在进行中，请稍后再试"));
+            }
+        }
+    } else {
+        None
+    };
+
     let (progress_tx, mut progress_rx) =
         tokio::sync::mpsc::unbounded_channel::<QuestionImportProgress>();
 
     let event_forwarder = {
         let app_handle = app_handle.clone();
+        let import_id = import_id.clone();
         tokio::spawn(async move {
             while let Some(payload) = progress_rx.recv().await {
-                if let Err(err) = app_handle.emit("question_import_progress", payload) {
+                let mut event_payload = match serde_json::to_value(payload) {
+                    Ok(payload) => payload,
+                    Err(err) => {
+                        error!("[question_import_progress] serialize failed: {}", err);
+                        continue;
+                    }
+                };
+                if let (Some(import_id), Some(object)) =
+                    (import_id.as_ref(), event_payload.as_object_mut())
+                {
+                    object.insert(
+                        "import_id".to_string(),
+                        serde_json::Value::String(import_id.clone()),
+                    );
+                }
+
+                if let Err(err) = app_handle.emit("question_import_progress", event_payload) {
                     error!("[question_import_progress] emit failed: {}", err);
                 }
             }
@@ -1010,9 +1094,33 @@ pub async fn import_question_bank_stream(
         pdf_prefer_ocr: request.pdf_prefer_ocr,
     };
 
-    let result = import_service
-        .import_document_stream(vfs_db, import_request, Some(progress_tx))
-        .await;
+    // Dropping this future cancels the in-flight request at its next await
+    // point, which also closes the progress channel. This is intentionally
+    // scoped to the caller-provided import_id; another retry has its own token.
+    let result = {
+        let import_future =
+            import_service.import_document_stream(vfs_db, import_request, Some(progress_tx));
+        tokio::pin!(import_future);
+
+        match cancellation.as_ref() {
+            Some(cancellation) => {
+                let cancellation_token = cancellation.token();
+                let result = tokio::select! {
+                    result = &mut import_future => result,
+                    _ = cancellation_token.cancelled() => {
+                        Err(AppError::validation("题目集导入已取消"))
+                    }
+                };
+
+                if cancellation.finish_or_cancelled() {
+                    result
+                } else {
+                    Err(AppError::validation("题目集导入已取消"))
+                }
+            }
+            None => import_future.await,
+        }
+    };
 
     if let Err(err) = event_forwarder.await {
         error!(
@@ -1021,12 +1129,40 @@ pub async fn import_question_bank_stream(
         );
     }
 
+    if let (Some(import_id), Some(cancellation)) = (import_id.as_ref(), cancellation.as_ref()) {
+        let should_remove = state
+            .question_import_cancellations
+            .get(import_id)
+            .is_some_and(|entry| Arc::ptr_eq(entry.value(), cancellation));
+        if should_remove {
+            state.question_import_cancellations.remove(import_id);
+        }
+    }
+
     let result = result?;
 
     state
         .exam_sheet_service
         .get_exam_sheet_session_detail(&result.session_id)
         .await
+}
+
+/// Requests cancellation for one active streaming question-bank import.
+///
+/// The import task is dropped at its next await point. Any checkpoint created
+/// before then remains resumable, while no later progress from this attempt is
+/// allowed to affect a newer frontend attempt.
+#[tauri::command]
+pub fn cancel_question_bank_import(import_id: String, state: State<'_, AppState>) -> Result<bool> {
+    let Some(cancellation) = state
+        .question_import_cancellations
+        .get(&import_id)
+        .map(|entry| entry.value().clone())
+    else {
+        return Ok(false);
+    };
+
+    Ok(cancellation.request_cancel())
 }
 
 // ============================================================================
@@ -1097,7 +1233,7 @@ pub async fn list_importing_sessions(
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
     crate::vfs::repos::VfsExamRepo::list_importing_sessions(vfs_db)
-        .map_err(|e| AppError::database(format!("查询中断会话失败: {}", e)).into())
+        .map_err(|e| AppError::database(format!("查询中断会话失败: {}", e)))
 }
 
 // ============================================================================
@@ -1120,6 +1256,9 @@ pub struct CsvImportCommandRequest {
     pub folder_id: Option<String>,
     /// 题目集名称（创建新题目集时使用）
     pub exam_name: Option<String>,
+    /// 前端生成的导入会话 ID，用于取消正在进行的导入。
+    #[serde(default)]
+    pub import_id: Option<String>,
 }
 
 /// CSV 导出请求参数
@@ -1155,7 +1294,8 @@ pub async fn import_questions_csv(
     window: Window,
 ) -> Result<crate::question_import_service::CsvImportResult> {
     use crate::question_import_service::{
-        CsvDuplicateStrategy, CsvImportProgress, CsvImportRequest, CsvImportService,
+        CsvDuplicateStrategy, CsvImportCancellation, CsvImportProgress, CsvImportRequest,
+        CsvImportService,
     };
 
     let vfs_db = state
@@ -1201,6 +1341,7 @@ pub async fn import_questions_csv(
         })
     };
 
+    let import_id = request.import_id.filter(|id| !id.trim().is_empty());
     let csv_request = CsvImportRequest {
         file_path: csv_file_path,
         exam_id: request.exam_id,
@@ -1209,12 +1350,67 @@ pub async fn import_questions_csv(
         folder_id: request.folder_id,
         exam_name: request.exam_name,
     };
+    let progress_exam_id = csv_request.exam_id.clone();
 
-    let result = CsvImportService::import_csv(vfs_db, &csv_request, Some(progress_tx));
+    // CSV 导入会同步执行数据库写入，令牌在每行写入前检查。这样取消会保留已完成的
+    // 行，但不会继续写入后续行。
+    let cancellation = if let Some(import_id) = import_id.as_ref() {
+        let token = Arc::new(CsvImportCancellation::new());
+        match state.csv_import_cancellations.entry(import_id.clone()) {
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(token.clone());
+                Some(token)
+            }
+            dashmap::mapref::entry::Entry::Occupied(_) => {
+                if let Some(cleanup) = cleanup_path.as_ref() {
+                    if let Err(err) = std::fs::remove_file(cleanup) {
+                        warn!(
+                            "[csv_import] 清理重复导入的临时 CSV 文件失败 ({}): {}",
+                            cleanup.display(),
+                            err
+                        );
+                    }
+                }
+                return Err(AppError::validation("该 CSV 导入仍在进行中，请稍后再试"));
+            }
+        }
+    } else {
+        None
+    };
+
+    let vfs_db = Arc::clone(vfs_db);
+    let import_cancellation = cancellation.clone();
+    let join_result = tokio::task::spawn_blocking(move || {
+        CsvImportService::import_csv(
+            &vfs_db,
+            &csv_request,
+            Some(progress_tx),
+            import_cancellation,
+        )
+    })
+    .await;
+
+    if let (Some(import_id), Some(cancellation)) = (import_id.as_ref(), cancellation.as_ref()) {
+        // Only remove our own registration. This stays correct even if the
+        // lifecycle changes to permit reusing an import id in the future.
+        let should_remove = state
+            .csv_import_cancellations
+            .get(import_id)
+            .is_some_and(|entry| Arc::ptr_eq(entry.value(), cancellation));
+        if should_remove {
+            state.csv_import_cancellations.remove(import_id);
+        }
+    }
+
+    let result: Result<crate::question_import_service::CsvImportResult> = match join_result {
+        Ok(result) => result,
+        Err(err) => Err(AppError::internal(format!("CSV 导入任务异常终止: {err}"))),
+    };
+
     if let Err(err) = &result {
         let _ = progress_tx_error.send(CsvImportProgress::Failed {
             error: err.to_string(),
-            exam_id: csv_request.exam_id.clone(),
+            exam_id: progress_exam_id,
         });
     }
     drop(progress_tx_error);
@@ -1234,7 +1430,23 @@ pub async fn import_questions_csv(
         }
     }
 
-    result.map_err(|e| e.into())
+    result
+}
+
+/// 请求取消正在执行的 CSV 导入。
+///
+/// 导入服务会在下一行写入前读取该标记，因此已完成的行会保留，尚未开始的行不会继续入库。
+#[tauri::command]
+pub fn cancel_questions_csv_import(import_id: String, state: State<'_, AppState>) -> Result<bool> {
+    let Some(token) = state
+        .csv_import_cancellations
+        .get(&import_id)
+        .map(|entry| entry.value().clone())
+    else {
+        return Ok(false);
+    };
+
+    Ok(token.request_cancel())
 }
 
 /// 导出题目集为 CSV 文件
@@ -1298,7 +1510,7 @@ pub async fn export_questions_csv(
                     );
                 }
             }
-            return Err(err.into());
+            return Err(err);
         }
     };
 
@@ -1354,8 +1566,7 @@ pub async fn get_csv_preview(
     };
 
     let preview_rows = rows.unwrap_or(5);
-    let result =
-        CsvImportService::preview_csv(&preview_file_path, preview_rows).map_err(|e| e.into());
+    let result = CsvImportService::preview_csv(&preview_file_path, preview_rows);
 
     if let Some(cleanup) = cleanup_path {
         if let Err(err) = std::fs::remove_file(&cleanup) {
@@ -1417,10 +1628,8 @@ pub async fn clear_message_embeddings(
             let rows = stmt
                 .query_map(rusqlite::params![stable], |row| row.get::<_, i64>(0))
                 .map_err(|e| AppError::database(e.to_string()))?;
-            for row in rows {
-                if let Ok(id) = row {
-                    resolved_ids.push(id);
-                }
+            for id in rows.flatten() {
+                resolved_ids.push(id);
             }
         }
     }
@@ -1592,16 +1801,20 @@ fn resolve_test_api_protocol(
     explicit_protocol: Option<&str>,
     model: Option<&str>,
     supports_openai_responses: Option<bool>,
+    provider_type: Option<&str>,
+    model_adapter: Option<&str>,
 ) -> &'static str {
     let mut inferred_config = ApiConfig {
         base_url: api_base.to_string(),
         model: model.unwrap_or_default().to_string(),
-        model_adapter: "general".to_string(),
+        model_adapter: model_adapter.unwrap_or("general").to_string(),
         api_protocol: explicit_protocol.map(|protocol| protocol.to_string()),
+        provider_type: provider_type.map(str::to_string),
         ..Default::default()
     };
     inferred_config.supports_openai_responses = supports_openai_responses;
-    if api_base.to_lowercase().contains("api.openai.com") {
+    if inferred_config.provider_type.is_none() && api_base.to_lowercase().contains("api.openai.com")
+    {
         inferred_config.provider_type = Some("openai".to_string());
     }
 
@@ -1612,14 +1825,433 @@ fn resolve_test_api_protocol(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TestProviderAdapter {
+    OpenAi,
+    Anthropic,
+    Gemini,
+}
+
+fn resolve_test_provider_adapter(
+    provider_type: Option<&str>,
+    model_adapter: Option<&str>,
+) -> TestProviderAdapter {
+    let normalized_adapter = model_adapter.unwrap_or_default().trim().to_lowercase();
+    match normalized_adapter.as_str() {
+        "anthropic" | "claude" => return TestProviderAdapter::Anthropic,
+        "google" | "gemini" => return TestProviderAdapter::Gemini,
+        _ => {}
+    }
+
+    match provider_type
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase()
+        .as_str()
+    {
+        "anthropic" | "claude" => TestProviderAdapter::Anthropic,
+        "google" | "gemini" => TestProviderAdapter::Gemini,
+        _ => TestProviderAdapter::OpenAi,
+    }
+}
+
+fn build_test_provider_request(
+    api_base: &str,
+    api_key: &str,
+    model: &str,
+    request_body: &serde_json::Value,
+    protocol: &str,
+    provider_type: Option<&str>,
+    model_adapter: Option<&str>,
+) -> std::result::Result<crate::providers::ProviderRequest, crate::providers::ProviderError> {
+    use crate::providers::ProviderAdapter;
+
+    let adapter: Box<dyn ProviderAdapter> =
+        match resolve_test_provider_adapter(provider_type, model_adapter) {
+            TestProviderAdapter::Anthropic => Box::new(crate::providers::AnthropicAdapter::new()),
+            TestProviderAdapter::Gemini => Box::new(crate::providers::GeminiAdapter::new()),
+            TestProviderAdapter::OpenAi if protocol == "openai_responses" => {
+                Box::new(crate::providers::OpenAIResponsesAdapter::new())
+            }
+            TestProviderAdapter::OpenAi => Box::new(crate::providers::OpenAIAdapter),
+        };
+
+    adapter.build_request(api_base, api_key, model, request_body)
+}
+
+fn is_openai_codex_oauth_test(
+    persisted_vendor: Option<&VendorConfig>,
+    provider_type: Option<&str>,
+    auth_mode: Option<&str>,
+) -> bool {
+    let effective_provider_type = persisted_vendor
+        .map(|vendor| vendor.provider_type.as_str())
+        .or(provider_type)
+        .unwrap_or_default();
+    let effective_auth_mode = persisted_vendor
+        .and_then(|vendor| vendor.auth_mode.as_deref())
+        .or(auth_mode)
+        .unwrap_or_default();
+
+    effective_provider_type.eq_ignore_ascii_case("openai_codex")
+        && effective_auth_mode.eq_ignore_ascii_case(AUTH_MODE_OPENAI_CODEX_OAUTH)
+}
+
+fn api_origins_match(left: &str, right: &str) -> bool {
+    let Ok(left) = url::Url::parse(left.trim()) else {
+        return false;
+    };
+    let Ok(right) = url::Url::parse(right.trim()) else {
+        return false;
+    };
+    left.scheme().eq_ignore_ascii_case(right.scheme())
+        && left.host_str().map(str::to_ascii_lowercase)
+            == right.host_str().map(str::to_ascii_lowercase)
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn truncate_provider_error_detail(detail: String) -> String {
+    detail.chars().take(2048).collect()
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchedVendorModel {
+    pub id: String,
+    pub label: String,
+}
+
+fn vendor_models_endpoint(
+    base_url: &str,
+    provider_type: &str,
+    api_protocol: Option<&str>,
+) -> Result<(url::Url, &'static str)> {
+    let mut url = url::Url::parse(base_url.trim())
+        .map_err(|_| AppError::validation("供应商 Base URL 无效"))?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(AppError::validation(
+            "供应商 Base URL 必须是有效的 HTTP(S) 地址",
+        ));
+    }
+
+    let provider = provider_type.trim().to_ascii_lowercase();
+    let protocol = api_protocol.unwrap_or_default().trim().to_ascii_lowercase();
+    let mut path = url.path().trim_end_matches('/').to_string();
+    let uses_openai_protocol = matches!(
+        protocol.as_str(),
+        "openai_chat_completions" | "openai_responses"
+    );
+    let kind = if !uses_openai_protocol
+        && (protocol == "google_generate_content"
+            || matches!(provider.as_str(), "gemini" | "google"))
+    {
+        for suffix in ["/v1beta/models", "/v1/models", "/models"] {
+            if path.to_ascii_lowercase().ends_with(suffix) {
+                path.truncate(path.len() - suffix.len());
+                break;
+            }
+        }
+        if path.is_empty() {
+            path = "/v1beta".to_string();
+        } else if !path.ends_with("/v1beta") && !path.ends_with("/v1") {
+            path.push_str("/v1beta");
+        }
+        path.push_str("/models");
+        "gemini"
+    } else if !uses_openai_protocol
+        && (protocol == "anthropic_messages" || matches!(provider.as_str(), "anthropic" | "claude"))
+    {
+        for suffix in ["/v1/messages", "/v1/models", "/messages", "/models"] {
+            if path.to_ascii_lowercase().ends_with(suffix) {
+                path.truncate(path.len() - suffix.len());
+                break;
+            }
+        }
+        if !path.ends_with("/v1") {
+            path.push_str("/v1");
+        }
+        path.push_str("/models");
+        "anthropic"
+    } else {
+        for suffix in ["/chat/completions", "/responses", "/models"] {
+            if path.to_ascii_lowercase().ends_with(suffix) {
+                path.truncate(path.len() - suffix.len());
+                break;
+            }
+        }
+        path.push_str("/models");
+        "openai"
+    };
+    url.set_path(&path);
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok((url, kind))
+}
+
+fn vendor_model_headers(vendor: &VendorConfig, kind: &str) -> Result<reqwest::header::HeaderMap> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
+    let mut headers = HeaderMap::new();
+    for (name, value) in &vendor.headers {
+        let normalized = name.trim().to_ascii_lowercase();
+        if matches!(
+            normalized.as_str(),
+            "host" | "content-length" | "connection" | "transfer-encoding"
+        ) {
+            continue;
+        }
+        let name = HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| AppError::validation(format!("无效的供应商请求头名称: {name}")))?;
+        let value = HeaderValue::from_str(value)
+            .map_err(|_| AppError::validation("供应商请求头包含无效字符"))?;
+        headers.insert(name, value);
+    }
+
+    let key = vendor.api_key.trim();
+    match kind {
+        "gemini" if !key.is_empty() => {
+            headers.insert(
+                HeaderName::from_static("x-goog-api-key"),
+                HeaderValue::from_str(key)
+                    .map_err(|_| AppError::validation("Gemini API 密钥包含无效字符"))?,
+            );
+        }
+        "anthropic" => {
+            headers.insert(
+                HeaderName::from_static("anthropic-version"),
+                HeaderValue::from_static("2023-06-01"),
+            );
+            if !key.is_empty() {
+                headers.insert(
+                    HeaderName::from_static("x-api-key"),
+                    HeaderValue::from_str(key)
+                        .map_err(|_| AppError::validation("Anthropic API 密钥包含无效字符"))?,
+                );
+            }
+        }
+        "openai" if !key.is_empty() => {
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {key}"))
+                    .map_err(|_| AppError::validation("API 密钥包含无效字符"))?,
+            );
+        }
+        _ => {}
+    }
+    Ok(headers)
+}
+
+async fn vendor_model_response_json(
+    client: &reqwest::Client,
+    url: url::Url,
+    headers: &reqwest::header::HeaderMap,
+) -> Result<serde_json::Value> {
+    let response = client
+        .get(url)
+        .headers(headers.clone())
+        .send()
+        .await
+        .map_err(|error| {
+            AppError::network(format!("获取供应商模型失败: {}", error.without_url()))
+        })?;
+    let status = response.status();
+    if !status.is_success() {
+        let detail: String = response
+            .text()
+            .await
+            .unwrap_or_default()
+            .chars()
+            .take(2048)
+            .collect();
+        return Err(AppError::network(format!(
+            "获取供应商模型失败: {status} - {detail}"
+        )));
+    }
+    response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| AppError::network(format!("解析供应商模型响应失败: {error}")))
+}
+
+#[tauri::command]
+pub async fn fetch_vendor_models(
+    vendor_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<FetchedVendorModel>> {
+    let mut vendor = state
+        .llm_manager
+        .vendor_config_for_runtime(vendor_id.trim())
+        .await?;
+    let uses_no_auth = vendor
+        .auth_mode
+        .as_deref()
+        .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+    if !uses_no_auth && vendor.api_key.trim().is_empty() {
+        if let Some(backup_key) = vendor
+            .api_keys
+            .iter()
+            .map(|key| key.trim())
+            .find(|key| !key.is_empty())
+            .map(str::to_string)
+        {
+            vendor.api_key = backup_key;
+        } else {
+            return Err(AppError::validation("供应商尚未配置 API 密钥"));
+        }
+    }
+
+    let (endpoint, kind) = vendor_models_endpoint(
+        &vendor.base_url,
+        &vendor.provider_type,
+        vendor.api_protocol.as_deref(),
+    )?;
+    let headers = vendor_model_headers(&vendor, kind)?;
+    let timeout_ms = vendor
+        .default_timeout_ms
+        .unwrap_or(30_000)
+        .clamp(1_000, 120_000);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(timeout_ms))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| AppError::network(format!("创建供应商模型客户端失败: {error}")))?;
+
+    let mut models = HashMap::<String, String>::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..20 {
+        let mut page_url = endpoint.clone();
+        {
+            let mut query = page_url.query_pairs_mut();
+            match kind {
+                "gemini" => {
+                    query.append_pair("pageSize", "100");
+                    if let Some(token) = cursor.as_deref() {
+                        query.append_pair("pageToken", token);
+                    }
+                }
+                "anthropic" => {
+                    query.append_pair("limit", "1000");
+                    if let Some(after_id) = cursor.as_deref() {
+                        query.append_pair("after_id", after_id);
+                    }
+                }
+                _ => {
+                    // OpenAI 的 GET /models 不定义 limit；部分兼容网关会拒绝未知参数。
+                    // 仅在响应明确给出 has_more 后携带游标继续请求。
+                    if let Some(after) = cursor.as_deref() {
+                        query.append_pair("after", after);
+                    }
+                }
+            }
+        }
+
+        let body = vendor_model_response_json(&client, page_url, &headers).await?;
+        if kind == "gemini" {
+            let items = body
+                .get("models")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| AppError::network("Gemini 模型响应缺少 models 数组"))?;
+            for item in items {
+                let supports_generate = item
+                    .get("supportedGenerationMethods")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|methods| {
+                        methods
+                            .iter()
+                            .any(|method| method.as_str() == Some("generateContent"))
+                    });
+                if !supports_generate {
+                    continue;
+                }
+                if let Some(raw_id) = item.get("name").and_then(serde_json::Value::as_str) {
+                    let id = raw_id.strip_prefix("models/").unwrap_or(raw_id).to_string();
+                    let label = item
+                        .get("displayName")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(&id)
+                        .to_string();
+                    models.insert(id, label);
+                }
+            }
+            cursor = body
+                .get("nextPageToken")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+        } else {
+            let items = body
+                .get("data")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| AppError::network("供应商模型响应缺少 data 数组"))?;
+            for item in items {
+                let Some(id) = item.get("id").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if kind == "anthropic"
+                    && item
+                        .get("type")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|item_type| item_type != "model")
+                {
+                    continue;
+                }
+                let excluded = [
+                    "tts", "whisper", "video", "kolors", "flux", "dall-e", "audio",
+                ]
+                .iter()
+                .any(|needle| id.to_ascii_lowercase().contains(needle));
+                if kind == "openai" && excluded {
+                    continue;
+                }
+                let label = item
+                    .get("display_name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(id)
+                    .to_string();
+                models.insert(id.to_string(), label);
+            }
+            let has_more = body
+                .get("has_more")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            cursor = if has_more {
+                body.get("last_id")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| {
+                        items
+                            .last()
+                            .and_then(|item| item.get("id"))
+                            .and_then(serde_json::Value::as_str)
+                    })
+                    .map(str::to_string)
+            } else {
+                None
+            };
+        }
+        if cursor.as_deref().map_or(true, str::is_empty) {
+            break;
+        }
+    }
+
+    let mut fetched: Vec<FetchedVendorModel> = models
+        .into_iter()
+        .map(|(id, label)| FetchedVendorModel { id, label })
+        .collect();
+    fetched.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(fetched)
+}
+
 #[tauri::command]
 pub async fn test_api_connection(
     api_key: String,
     api_base: String,
     api_protocol: Option<String>,
     supports_openai_responses: Option<bool>,
+    provider_type: Option<String>,
+    auth_mode: Option<String>,
+    model_adapter: Option<String>,
     model: Option<String>,
     vendor_id: Option<String>,
+    headers: Option<HashMap<String, String>>,
     state: State<'_, AppState>,
 ) -> Result<bool> {
     use reqwest::Client;
@@ -1627,8 +2259,42 @@ pub async fn test_api_connection(
 
     info!(
         "[API测试] 开始测试连接: base={}, model={:?}, vendor_id={:?}",
-        api_base, model, vendor_id
+        crate::llm_manager::sanitize_url_for_log(&api_base),
+        model,
+        vendor_id
     );
+
+    let persisted_vendor = if let Some(vid) = vendor_id.as_deref() {
+        Some(state.llm_manager.vendor_config_for_runtime(vid).await?)
+    } else {
+        None
+    };
+    let effective_provider_type = persisted_vendor
+        .as_ref()
+        .map(|vendor| vendor.provider_type.clone())
+        .or(provider_type.clone());
+    let effective_auth_mode = persisted_vendor
+        .as_ref()
+        .and_then(|vendor| vendor.auth_mode.clone())
+        .or(auth_mode.clone());
+    let is_codex_oauth = is_openai_codex_oauth_test(
+        persisted_vendor.as_ref(),
+        provider_type.as_deref(),
+        auth_mode.as_deref(),
+    );
+    let uses_no_auth = effective_auth_mode
+        .as_deref()
+        .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+
+    // 已保存供应商的凭据只能发送到同源端点。修改主机、协议或端口时必须先保存
+    // 新供应商配置并重新输入凭据，避免 renderer 借 vendor_id 把真实密钥转发到任意 URL。
+    if let Some(vendor) = persisted_vendor.as_ref() {
+        if !api_origins_match(&vendor.base_url, &api_base) {
+            return Err(AppError::validation(
+                "连接测试地址与已保存供应商不同源；请先保存新地址并重新输入凭据",
+            ));
+        }
+    }
 
     // 解析真实的 API 密钥
     // 如果 api_key 是占位符（*** 或空），尝试从安全存储获取真实密钥
@@ -1637,22 +2303,63 @@ pub async fn test_api_connection(
         let is_placeholder =
             trimmed.is_empty() || trimmed == "***" || trimmed.chars().all(|c| c == '*');
 
-        if is_placeholder {
-            // 尝试从安全存储获取真实密钥
-            if let Some(vid) = &vendor_id {
-                // 尝试标准格式：{vendor_id}.api_key
-                let secret_key = format!("{}.api_key", vid);
-                if let Ok(Some(key)) = state.database.get_secret(&secret_key) {
-                    if !key.is_empty() {
-                        debug!("[API测试] 从安全存储获取密钥: {}", secret_key);
-                        key
+        if is_codex_oauth || uses_no_auth {
+            String::new()
+        } else if is_placeholder {
+            if let Some(key) = persisted_vendor.as_ref().and_then(|vendor| {
+                std::iter::once(vendor.api_key.as_str())
+                    .chain(vendor.api_keys.iter().map(String::as_str))
+                    .map(str::trim)
+                    .find(|key| {
+                        !key.is_empty()
+                            && *key != "***"
+                            && !key.chars().all(|character| character == '*')
+                    })
+            }) {
+                key.to_string()
+            } else {
+                // 尝试从安全存储获取真实密钥
+                if let Some(vid) = &vendor_id {
+                    // 尝试标准格式：{vendor_id}.api_key
+                    let secret_key = format!("{}.api_key", vid);
+                    if let Ok(Some(key)) = state.database.get_secret(&secret_key) {
+                        if !key.is_empty() {
+                            debug!("[API测试] 从安全存储获取密钥: {}", secret_key);
+                            key
+                        } else {
+                            // 如果是 SiliconFlow，尝试旧格式
+                            if vid.contains("siliconflow") {
+                                if let Ok(Some(key)) =
+                                    state.database.get_secret("siliconflow.api_key")
+                                {
+                                    if !key.is_empty() {
+                                        debug!("[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key");
+                                        key
+                                    } else {
+                                        return Err(AppError::validation(
+                                            "API 密钥未配置，请先配置 API 密钥",
+                                        ));
+                                    }
+                                } else {
+                                    return Err(AppError::validation(
+                                        "API 密钥未配置，请先配置 API 密钥",
+                                    ));
+                                }
+                            } else {
+                                return Err(AppError::validation(
+                                    "API 密钥未配置，请先配置 API 密钥",
+                                ));
+                            }
+                        }
                     } else {
                         // 如果是 SiliconFlow，尝试旧格式
                         if vid.contains("siliconflow") {
                             if let Ok(Some(key)) = state.database.get_secret("siliconflow.api_key")
                             {
                                 if !key.is_empty() {
-                                    debug!("[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key");
+                                    debug!(
+                                    "[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key"
+                                );
                                     key
                                 } else {
                                     return Err(AppError::validation(
@@ -1669,28 +2376,8 @@ pub async fn test_api_connection(
                         }
                     }
                 } else {
-                    // 如果是 SiliconFlow，尝试旧格式
-                    if vid.contains("siliconflow") {
-                        if let Ok(Some(key)) = state.database.get_secret("siliconflow.api_key") {
-                            if !key.is_empty() {
-                                debug!(
-                                    "[API测试] 从安全存储获取密钥（旧格式）: siliconflow.api_key"
-                                );
-                                key
-                            } else {
-                                return Err(AppError::validation(
-                                    "API 密钥未配置，请先配置 API 密钥",
-                                ));
-                            }
-                        } else {
-                            return Err(AppError::validation("API 密钥未配置，请先配置 API 密钥"));
-                        }
-                    } else {
-                        return Err(AppError::validation("API 密钥未配置，请先配置 API 密钥"));
-                    }
+                    return Err(AppError::validation("请先输入 API 密钥"));
                 }
-            } else {
-                return Err(AppError::validation("请先输入 API 密钥"));
             }
         } else {
             trimmed.to_string()
@@ -1702,63 +2389,147 @@ pub async fn test_api_connection(
         api_protocol.as_deref(),
         model.as_deref(),
         supports_openai_responses,
+        effective_provider_type.as_deref(),
+        model_adapter.as_deref(),
     );
 
-    // 构建请求 URL
-    let url = match protocol {
-        "openai_responses" => format!("{}/responses", api_base.trim_end_matches('/')),
-        _ => format!("{}/chat/completions", api_base.trim_end_matches('/')),
-    };
-
-    // 构建最小化请求体
-    let model_id = model.unwrap_or_else(|| {
-        if protocol == "openai_responses" {
-            "gpt-4o-mini".to_string()
-        } else {
-            "gpt-4o-mini".to_string()
-        }
+    let model_id = model.unwrap_or_else(|| "gpt-4o-mini".to_string());
+    let request_body = serde_json::json!({
+        "model": model_id.clone(),
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 1,
+        "stream": false
     });
-    let request_body = if protocol == "openai_responses" {
-        serde_json::json!({
-            "model": model_id,
-            "input": "Hi",
-            "max_output_tokens": 1,
-            "stream": false
-        })
-    } else {
-        serde_json::json!({
-            "model": model_id,
-            "messages": [{"role": "user", "content": "Hi"}],
-            "max_tokens": 1,
-            "stream": false
-        })
-    };
 
-    // 创建 HTTP 客户端（10 秒超时）
+    if is_codex_oauth {
+        let config = ApiConfig {
+            id: "connection-test".to_string(),
+            name: "OpenAI Codex connection test".to_string(),
+            vendor_id: vendor_id.clone(),
+            provider_type: effective_provider_type,
+            auth_mode: effective_auth_mode,
+            api_protocol: Some(protocol.to_string()),
+            supports_openai_responses: Some(true),
+            api_key: String::new(),
+            base_url: persisted_vendor
+                .as_ref()
+                .map(|vendor| vendor.base_url.clone())
+                .filter(|base_url| !base_url.trim().is_empty())
+                .unwrap_or_else(|| api_base.clone()),
+            model: model_id.clone(),
+            model_adapter: model_adapter.unwrap_or_else(|| "openai".to_string()),
+            headers: persisted_vendor
+                .as_ref()
+                .map(|vendor| vendor.headers.clone())
+                .filter(|headers| !headers.is_empty())
+                .or(headers),
+            ..Default::default()
+        };
+        let mut adapted_request_body = request_body.clone();
+        crate::llm_manager::LLMManager::apply_reasoning_config(
+            &mut adapted_request_body,
+            &config,
+            None,
+        );
+        let adapter = build_provider_adapter(&config);
+        let mut request = state
+            .llm_manager
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
+                &adapted_request_body,
+                None,
+                None,
+                "Codex 连接测试请求构建失败",
+            )
+            .await?;
+        let response = state
+            .llm_manager
+            .send_codex_request_with_single_refresh(&mut request, Some(Duration::from_secs(10)))
+            .await?;
+        let status = response.status();
+        if status.is_success() {
+            info!("[API测试] Codex OAuth 连接成功");
+            return Ok(true);
+        }
+        let error_text = truncate_provider_error_detail(response.text().await.unwrap_or_default());
+        error!(
+            "[API测试] Codex OAuth 连接失败: {} - {}",
+            status, error_text
+        );
+        return Err(AppError::network(format!(
+            "Codex 连接测试失败: {} - {}",
+            status, error_text
+        )));
+    }
+
+    let config = ApiConfig {
+        id: "connection-test".to_string(),
+        name: "API connection test".to_string(),
+        vendor_id: vendor_id.clone(),
+        provider_type: effective_provider_type,
+        auth_mode: effective_auth_mode,
+        api_protocol: Some(protocol.to_string()),
+        supports_openai_responses,
+        api_key: effective_api_key,
+        base_url: api_base,
+        model: model_id,
+        model_adapter: model_adapter.unwrap_or_else(|| "general".to_string()),
+        headers: persisted_vendor
+            .as_ref()
+            .map(|vendor| vendor.headers.clone())
+            .filter(|configured| !configured.is_empty())
+            .or(headers),
+        ..Default::default()
+    };
+    let mut adapted_request_body = request_body;
+    crate::llm_manager::LLMManager::apply_reasoning_config(
+        &mut adapted_request_body,
+        &config,
+        None,
+    );
+    let adapter = build_provider_adapter(&config);
+    let provider_request = state
+        .llm_manager
+        .prepare_provider_request(
+            adapter.as_ref(),
+            &config,
+            &adapted_request_body,
+            None,
+            None,
+            "API连接测试请求构建失败",
+        )
+        .await?;
+
+    let timeout_ms = persisted_vendor
+        .as_ref()
+        .and_then(|vendor| vendor.default_timeout_ms)
+        .unwrap_or(10_000)
+        .clamp(1_000, 120_000);
+    // 连接测试遵循供应商超时设置，同时禁止跨源重定向。
     let client = Client::builder()
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_millis(timeout_ms))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| AppError::network(format!("创建HTTP客户端失败: {}", e)))?;
 
+    let mut request_builder = client.post(&provider_request.url);
+    for (name, value) in &provider_request.headers {
+        request_builder = request_builder.header(name, value);
+    }
     // 发送请求
-    let response = client
-        .post(&url)
-        .header(
-            "Authorization",
-            format!("Bearer {}", effective_api_key.trim()),
-        )
-        .header("Content-Type", "application/json")
-        .json(&request_body)
+    let response = request_builder
+        .json(&provider_request.body)
         .send()
         .await
-        .map_err(|e| AppError::network(format!("API连接测试失败: {}", e)))?;
+        .map_err(|e| AppError::network(format!("API连接测试失败: {}", e.without_url())))?;
 
     let status = response.status();
     if status.is_success() {
         info!("[API测试] 连接成功");
         Ok(true)
     } else {
-        let error_text = response.text().await.unwrap_or_default();
+        let error_text = truncate_provider_error_detail(response.text().await.unwrap_or_default());
         error!("[API测试] 连接失败: {} - {}", status, error_text);
         Err(AppError::network(format!(
             "API连接测试失败: {} - {}",
@@ -1812,10 +2583,8 @@ async fn cleanup_orphan_chat_embeddings(db: Arc<Database>) -> usize {
         };
 
         let mut ids = HashSet::new();
-        for row in rows {
-            if let Ok(id) = row {
-                ids.insert(id.to_string());
-            }
+        for id in rows.flatten() {
+            ids.insert(id.to_string());
         }
         ids
     };
@@ -2183,7 +2952,14 @@ fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
         return Ok(());
     }
 
-    // 应用数据目录内的路径（如 VFS blob）放行
+    // ★ 2026-07-19（安全加固）：先解码 + canonicalize 再做前缀/隐藏段判断。
+    // 旧实现直接对原始字符串做 `starts_with`，`$APP_DATA/../../.ssh/key` 这类
+    // 带 `..` 的路径可通过应用目录前缀放行，URL 编码（%2Essh）也能绕过隐藏段检查。
+    let normalized_raw = unified_file_manager::sanitize_for_legacy(raw_path);
+    let resolved = canonicalize_lenient(Path::new(&normalized_raw));
+
+    // 应用数据目录内的路径（如 VFS blob）放行（目录本身也真实化，
+    // 处理 macOS /var -> /private/var 之类的符号链接前缀差异）
     let app = window.app_handle();
     let in_app_dirs = [
         app.path().app_data_dir().ok(),
@@ -2192,12 +2968,15 @@ fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
     ]
     .into_iter()
     .flatten()
-    .any(|dir| Path::new(raw_path).starts_with(&dir));
+    .any(|dir| {
+        let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+        resolved.starts_with(&dir)
+    });
     if in_app_dirs {
         return Ok(());
     }
 
-    let has_hidden_component = Path::new(raw_path).components().any(|c| {
+    let has_hidden_component = resolved.components().any(|c| {
         matches!(
             c,
             std::path::Component::Normal(name)
@@ -2213,16 +2992,73 @@ fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
     Ok(())
 }
 
+/// 尽力真实化路径：
+/// - 文件存在时直接 `canonicalize`（消除 `..` 与符号链接）；
+/// - 文件尚不存在时先词法归一化 `.`/`..`，再尝试真实化父目录后拼回文件名；
+/// - 父目录也不存在时退化为纯词法归一化结果。
+fn canonicalize_lenient(path: &Path) -> std::path::PathBuf {
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        return canonical;
+    }
+    let normalized = lexical_normalize_path(path);
+    if let Some(parent) = normalized.parent() {
+        if let (Ok(canonical_parent), Some(name)) =
+            (std::fs::canonicalize(parent), normalized.file_name())
+        {
+            return canonical_parent.join(name);
+        }
+    }
+    normalized
+}
+
+/// 词法归一化：消除 `.` 段，`..` 段弹出上一个普通段（到达根后忽略，
+/// 与 `canonicalize` 对 `/..` 的行为一致）。不访问文件系统。
+fn lexical_normalize_path(path: &Path) -> std::path::PathBuf {
+    use std::path::Component;
+
+    let mut result = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // 相对路径开头的连续 `..` 无处可弹，原样保留；
+                // 已到根（pop 返回 false）时按 POSIX 语义忽略。
+                let ends_with_parent =
+                    matches!(result.components().next_back(), Some(Component::ParentDir));
+                if ends_with_parent || (!result.pop() && !result.has_root()) {
+                    result.push(Component::ParentDir.as_os_str());
+                }
+            }
+            other => result.push(other.as_os_str()),
+        }
+    }
+    result
+}
+
+/// `read_file_bytes` 单次读取的强制上限（与 vfs attachment `MAX_FILE_BYTES` 对齐）。
+/// 调用方传入的 `max_bytes` 只能收紧、不能放宽该上限。
+const MAX_READ_FILE_BYTES: u64 = 200 * 1024 * 1024;
+
 /// 读取文件二进制内容（支持 content://、ph:// 等移动端安全URI）
 ///
 /// ★ 2026-06-12（审阅问题 R4）：返回 `tauri::ipc::Response` 原始二进制。
 /// 旧实现返回 `Vec<u8>` 会被序列化成 JSON number 数组，传输体积膨胀 3-4 倍，
 /// 200MB 文件经 IPC 后字符串近 1GB。同时把磁盘读取移入 blocking 线程。
+///
+/// ★ 2026-07-19（安全加固）：新增可选 `max_bytes` 参数并强制 200MB 上限，
+/// 超限直接报错（本地文件先 metadata 预检，读取用 take 截断防 TOCTOU 增长）。
 #[tauri::command]
-pub async fn read_file_bytes(window: Window, path: String) -> Result<tauri::ipc::Response> {
+pub async fn read_file_bytes(
+    window: Window,
+    path: String,
+    max_bytes: Option<u64>,
+) -> Result<tauri::ipc::Response> {
     deny_hidden_local_path(&window, &path)?;
+    let limit = max_bytes
+        .unwrap_or(MAX_READ_FILE_BYTES)
+        .min(MAX_READ_FILE_BYTES);
     let bytes = tauri::async_runtime::spawn_blocking(move || {
-        unified_file_manager::read_all_bytes(&window, &path)
+        unified_file_manager::read_all_bytes_bounded(&window, &path, limit)
     })
     .await
     .map_err(|e| AppError::file_system(format!("读取任务异常终止: {}", e)))??;
@@ -2230,8 +3066,12 @@ pub async fn read_file_bytes(window: Window, path: String) -> Result<tauri::ipc:
 }
 
 /// 获取文件大小（字节）
+///
+/// ★ 2026-07-19（安全加固）：补上与 `read_file_bytes` 相同的路径策略，
+/// 避免通过文件大小探测隐藏目录（~/.ssh 等）内容的存在性。
 #[tauri::command]
 pub async fn get_file_size(window: Window, path: String) -> Result<u64> {
+    deny_hidden_local_path(&window, &path)?;
     unified_file_manager::get_file_size(&window, &path)
 }
 
@@ -2411,25 +3251,67 @@ pub async fn update_custom_template(
             }
         })?;
 
+    // 内置模板被用户修改后打 user_modified 标记：
+    // 后续内置模板版本升级导入将跳过该模板，避免用户修改被静默覆盖（bug D3 配套）
+    if existing_template.is_built_in {
+        if let Err(e) = state.database.mark_template_user_modified(&template_id) {
+            warn!(
+                "标记内置模板 user_modified 失败: {} ({})，内置模板升级导入可能覆盖此次修改",
+                template_id, e
+            );
+        }
+    }
+
     Ok(())
 }
 
 /// 删除自定义模板
+///
+/// 统一规则（bug F4）：内置模板不可物理删除，删除请求转为"停用 + user_deleted 墓碑"，
+/// 保持模板 ID 稳定且内置模板升级导入不会复活它；用户自建模板才做物理删除。
+///
+/// 返回结构（bug D5，向后兼容增强——旧前端忽略返回值不受影响）：
+/// `{ deleted, deactivated, isBuiltIn, referencingCards, message }`
+/// referencingCards 为仍引用该模板的存量卡片数，供前端提示。
 #[tauri::command]
-pub async fn delete_custom_template(template_id: String, state: State<'_, AppState>) -> Result<()> {
+pub async fn delete_custom_template(
+    template_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value> {
     // 验证模板是否存在
     let existing_template = state
         .database
         .get_custom_template_by_id(&template_id)
         .map_err(|e| AppError::database(format!("查询模板失败: {}", e)))?;
 
-    match existing_template {
-        Some(_template) => {
-            // 允许删除内置模板
-        }
+    let template = match existing_template {
+        Some(template) => template,
         None => {
             return Err(AppError::validation("模板不存在".to_string()));
         }
+    };
+
+    let referencing_cards = state
+        .database
+        .count_anki_cards_referencing_template(&template_id)
+        .map_err(|e| AppError::database(format!("统计模板引用卡片失败: {}", e)))?;
+
+    if template.is_built_in {
+        state
+            .database
+            .soft_delete_builtin_template(&template_id)
+            .map_err(|e| AppError::database(format!("停用内置模板失败: {}", e)))?;
+
+        return Ok(serde_json::json!({
+            "deleted": false,
+            "deactivated": true,
+            "isBuiltIn": true,
+            "referencingCards": referencing_cards,
+            "message": format!(
+                "内置模板「{}」已停用（内置模板不可物理删除，已有 {} 张卡片引用不受影响）",
+                template.name, referencing_cards
+            ),
+        }));
     }
 
     state
@@ -2437,7 +3319,20 @@ pub async fn delete_custom_template(template_id: String, state: State<'_, AppSta
         .delete_custom_template(&template_id)
         .map_err(|e| AppError::database(format!("删除模板失败: {}", e)))?;
 
-    Ok(())
+    if referencing_cards > 0 {
+        warn!(
+            "模板 '{}' 已删除，但仍有 {} 张卡片引用它（template_id 绑定失效）",
+            template.name, referencing_cards
+        );
+    }
+
+    Ok(serde_json::json!({
+        "deleted": true,
+        "deactivated": false,
+        "isBuiltIn": false,
+        "referencingCards": referencing_cards,
+        "message": format!("模板「{}」已删除", template.name),
+    }))
 }
 /// 导出模板
 #[tauri::command]
@@ -2463,6 +3358,11 @@ pub async fn export_template(
     }
 }
 /// 导入模板
+///
+/// 修复 bug D2：旧实现"先删同名旧模板，后校验新模板"，校验失败时旧模板已丢失，
+/// 且删旧建新导致模板 ID 变化，存量卡片的 template_id 绑定断裂。
+/// 新实现：先校验；同名覆盖时对旧模板做单条 UPDATE 原地替换（保持 ID 稳定），
+/// 任一步失败旧模板保持原样。
 #[tauri::command]
 pub async fn import_template(
     request: TemplateImportRequest,
@@ -2478,23 +3378,11 @@ pub async fn import_template(
         .get_all_custom_templates()
         .map_err(|e| AppError::database(format!("查询现有模板失败: {}", e)))?;
 
-    if existing_templates.iter().any(|t| t.name == template.name) {
-        if !request.overwrite_existing {
-            return Err(AppError::validation(format!(
-                "模板 '{}' 已存在，请启用覆盖或修改名称后重试",
-                template.name
-            )));
-        }
-        // 找到同名模板并删除（包括内置模板）
-        if let Some(existing) = existing_templates.iter().find(|t| t.name == template.name) {
-            state
-                .database
-                .delete_custom_template(&existing.id)
-                .map_err(|e| AppError::database(format!("删除旧模板失败: {}", e)))?;
-        }
-    }
+    let existing_same_name = existing_templates
+        .iter()
+        .find(|t| t.name == template.name)
+        .cloned();
 
-    // 创建新模板
     let create_request = CreateTemplateRequest {
         name: template.name,
         description: template.description,
@@ -2514,7 +3402,32 @@ pub async fn import_template(
         is_built_in: Some(template.is_built_in),
     };
 
+    // 先校验后写库：校验失败时数据库不发生任何变更
     validate_template_request(&create_request)?;
+
+    if let Some(existing) = existing_same_name {
+        if !request.overwrite_existing {
+            return Err(AppError::validation(format!(
+                "模板 '{}' 已存在，请启用覆盖或修改名称后重试",
+                create_request.name
+            )));
+        }
+
+        // 原地覆盖：保持模板 ID 与 is_built_in 不变，存量卡片绑定不断裂
+        state
+            .database
+            .replace_custom_template_content(&existing.id, &create_request)
+            .map_err(|e| AppError::database(format!("覆盖导入模板失败: {}", e)))?;
+
+        // 覆盖的是内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
+        if existing.is_built_in {
+            if let Err(e) = state.database.mark_template_user_modified(&existing.id) {
+                warn!("标记内置模板 user_modified 失败: {} ({})", existing.id, e);
+            }
+        }
+
+        return Ok(existing.id);
+    }
 
     let template_id = state
         .database
@@ -2546,12 +3459,18 @@ pub async fn import_custom_templates_bulk(
             .database
             .get_all_custom_templates()
             .map_err(|e| AppError::database(format!("查询现有模板失败: {}", e)))?;
-        let mut existing_ids: HashSet<String> =
+        let existing_ids: HashSet<String> =
             existing_templates.iter().map(|t| t.id.clone()).collect();
+        let builtin_ids: HashSet<String> = existing_templates
+            .iter()
+            .filter(|t| t.is_built_in)
+            .map(|t| t.id.clone())
+            .collect();
         let mut existing_by_name: HashMap<String, String> = existing_templates
             .iter()
             .map(|template| (template.name.clone(), template.id.clone()))
             .collect();
+        let mut created_ids: HashSet<String> = HashSet::new();
 
         let mut imported = 0;
         let mut skipped = 0;
@@ -2568,33 +3487,15 @@ pub async fn import_custom_templates_bulk(
                 .and_then(|v| v.as_str())
                 .unwrap_or("未命名模板");
 
-            if let Some(existing_id) = existing_by_name.get(template_name).cloned() {
-                if !request.overwrite_existing {
-                    skipped += 1;
-                    conflicts.push(template_name.to_string());
-                    continue;
-                }
-                if let Err(e) = state.database.delete_custom_template(&existing_id) {
-                    errors.push(format!("{}: {}", template_name, e));
-                    continue;
-                }
-                existing_by_name.remove(template_name);
-                existing_ids.remove(&existing_id);
-            }
-
-            if existing_ids.contains(template_id) {
-                if !request.overwrite_existing {
-                    skipped += 1;
-                    conflicts.push(template_name.to_string());
-                    continue;
-                }
-                if let Err(e) = state.database.delete_custom_template(template_id) {
-                    errors.push(format!("{}: {}", template_name, e));
-                    continue;
-                }
-                existing_ids.remove(template_id);
-                existing_by_name.retain(|_, id| id != template_id);
-            }
+            // 与单模板导入（bug D2 修复）同源规则：先校验后写库、
+            // 同名/同 ID 覆盖用原地 UPDATE（保持模板 ID 稳定），不再"先删后建"。
+            // 目标行定位优先按 ID，其次按名称。
+            let target_existing_id =
+                if existing_ids.contains(template_id) || created_ids.contains(template_id) {
+                    Some(template_id.to_string())
+                } else {
+                    existing_by_name.get(template_name).cloned()
+                };
 
             let fields: Vec<String> = template_value
                 .get("fields_json")
@@ -2674,8 +3575,35 @@ pub async fn import_custom_templates_bulk(
                 is_built_in: Some(true),
             };
 
+            // 先校验后写库：校验失败时旧模板保持原样（bug D2 同源修复）
             if let Err(e) = validate_template_request(&create_request) {
                 errors.push(format!("{}: {}", template_name, e));
+                continue;
+            }
+
+            if let Some(existing_id) = target_existing_id {
+                if !request.overwrite_existing {
+                    skipped += 1;
+                    conflicts.push(template_name.to_string());
+                    continue;
+                }
+                match state
+                    .database
+                    .replace_custom_template_content(&existing_id, &create_request)
+                {
+                    Ok(()) => {
+                        imported += 1;
+                        existing_by_name.insert(template_name.to_string(), existing_id.clone());
+                        // 覆盖内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
+                        if builtin_ids.contains(&existing_id) {
+                            if let Err(e) = state.database.mark_template_user_modified(&existing_id)
+                            {
+                                warn!("标记内置模板 user_modified 失败: {} ({})", existing_id, e);
+                            }
+                        }
+                    }
+                    Err(e) => errors.push(format!("{}: {}", template_name, e)),
+                }
                 continue;
             }
 
@@ -2685,7 +3613,8 @@ pub async fn import_custom_templates_bulk(
             {
                 Ok(_) => {
                     imported += 1;
-                    existing_ids.insert(template_id.to_string());
+                    created_ids.insert(template_id.to_string());
+                    existing_by_name.insert(template_name.to_string(), template_id.to_string());
                 }
                 Err(e) => errors.push(format!("{}: {}", template_name, e)),
             }
@@ -2722,6 +3651,11 @@ pub async fn import_custom_templates_bulk(
         .iter()
         .map(|template| (template.name.clone(), template.id.clone()))
         .collect();
+    let builtin_id_set: HashSet<String> = existing_templates
+        .iter()
+        .filter(|t| t.is_built_in)
+        .map(|t| t.id.clone())
+        .collect();
 
     let mut imported = 0;
     let mut skipped = 0;
@@ -2738,19 +3672,7 @@ pub async fn import_custom_templates_bulk(
         };
 
         let template_name = template.name.clone();
-
-        if let Some(existing_id) = existing_by_name.get(&template_name).cloned() {
-            if !request.overwrite_existing {
-                skipped += 1;
-                conflicts.push(template_name.clone());
-                continue;
-            }
-            if let Err(e) = state.database.delete_custom_template(&existing_id) {
-                errors.push(format!("{}: {}", template_name, e));
-                continue;
-            }
-            existing_by_name.remove(&template_name);
-        }
+        let template_is_built_in = template.is_built_in;
 
         let create_request = CreateTemplateRequest {
             name: template.name,
@@ -2768,11 +3690,37 @@ pub async fn import_custom_templates_bulk(
             field_extraction_rules: template.field_extraction_rules,
             preview_data_json: template.preview_data_json,
             is_active: Some(template.is_active),
-            is_built_in: Some(template.is_built_in),
+            is_built_in: Some(template_is_built_in),
         };
 
+        // 先校验后写库：校验失败时旧模板保持原样（bug D2 同源修复）
         if let Err(e) = validate_template_request(&create_request) {
             errors.push(format!("{}: {}", template_name, e));
+            continue;
+        }
+
+        if let Some(existing_id) = existing_by_name.get(&template_name).cloned() {
+            if !request.overwrite_existing {
+                skipped += 1;
+                conflicts.push(template_name.clone());
+                continue;
+            }
+            // 同名覆盖用原地 UPDATE（保持模板 ID 稳定），不再"先删后建"
+            match state
+                .database
+                .replace_custom_template_content(&existing_id, &create_request)
+            {
+                Ok(()) => {
+                    imported += 1;
+                    // 覆盖内置模板 => 视为用户修改，内置模板升级导入不再覆盖它
+                    if builtin_id_set.contains(&existing_id) {
+                        if let Err(e) = state.database.mark_template_user_modified(&existing_id) {
+                            warn!("标记内置模板 user_modified 失败: {} ({})", existing_id, e);
+                        }
+                    }
+                }
+                Err(e) => errors.push(format!("{}: {}", template_name, e)),
+            }
             continue;
         }
 
@@ -2823,6 +3771,8 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
     let mut skipped = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut conflicts: Vec<String> = Vec::new();
+    // bug D3：因用户改过/删过而被保留（跳过覆盖）的内置模板说明
+    let mut preserved: Vec<String> = Vec::new();
 
     // 获取现有模板列表
     let existing_templates = state
@@ -2835,6 +3785,14 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
         .collect();
     let mut existing_names: HashSet<String> =
         existing_templates.iter().map(|t| t.name.clone()).collect();
+
+    // bug D3：读取模板用户态标记（user_modified / user_deleted）。
+    // 用户改过的内置模板升级时跳过覆盖；用户删过（停用墓碑）的不复活。
+    // 停用是软删（行保留、is_active=0），因此墓碑一定能在这里查到。
+    let user_states = state
+        .database
+        .get_template_user_states()
+        .map_err(|e| AppError::database(format!("读取模板用户态标记失败: {}", e)))?;
 
     for template_value in templates {
         let template_id = template_value
@@ -2860,7 +3818,30 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
                 continue;
             }
 
-            if should_update_builtin_template(&existing.version, builtin_version) {
+            // bug D3：尊重用户对内置模板的删除/修改，不静默复活或覆盖
+            let (user_modified, user_deleted) = user_states
+                .get(template_id)
+                .copied()
+                .unwrap_or((false, false));
+            match decide_builtin_import_action(
+                user_modified,
+                user_deleted,
+                &existing.version,
+                builtin_version,
+            ) {
+                BuiltinImportAction::PreserveUserState { reason } => {
+                    skipped += 1;
+                    preserved.push(format!("{}({})", template_name, reason));
+                    continue;
+                }
+                BuiltinImportAction::Skip => {
+                    skipped += 1;
+                    continue;
+                }
+                BuiltinImportAction::Update => {}
+            }
+
+            {
                 let fields: Vec<String> = template_value
                     .get("fields_json")
                     .and_then(|v| v.as_str())
@@ -2944,7 +3925,8 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
                             .to_string(),
                     ),
                     field_extraction_rules: Some(field_extraction_rules),
-                    is_active: Some(true),
+                    // 保持现有激活状态：升级导入不得把用户手动停用的模板重新激活
+                    is_active: Some(existing.is_active),
                     preview_data_json: template_value
                         .get("preview_data_json")
                         .and_then(|v| v.as_str())
@@ -2971,8 +3953,6 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
                     }
                     Err(e) => errors.push(format!("{}: {}", template_name, e)),
                 }
-            } else {
-                skipped += 1;
             }
             continue;
         }
@@ -3077,10 +4057,19 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
     }
 
     let result = format!(
-        "导入完成: {} 个新增, {} 个更新, {} 个跳过{}{}",
+        "导入完成: {} 个新增, {} 个更新, {} 个跳过{}{}{}",
         imported,
         updated,
         skipped,
+        if preserved.is_empty() {
+            String::new()
+        } else {
+            format!(
+                ", {} 个保留用户状态(已跳过): {}",
+                preserved.len(),
+                preserved.join("; ")
+            )
+        },
         if conflicts.is_empty() {
             String::new()
         } else {
@@ -3102,6 +4091,44 @@ pub async fn import_builtin_templates(state: State<'_, AppState>) -> Result<Stri
 
 fn should_update_builtin_template(existing_version: &str, builtin_version: &str) -> bool {
     compare_template_version(existing_version, builtin_version) == Ordering::Less
+}
+
+/// bug D3：内置模板升级导入时，对"库中已存在的内置模板"的处置决策
+#[derive(Debug, PartialEq, Eq)]
+enum BuiltinImportAction {
+    /// 用户改过 / 删过（墓碑），跳过覆盖并保留用户状态
+    PreserveUserState { reason: &'static str },
+    /// 内置版本更新，执行原地覆盖
+    Update,
+    /// 版本无变化，常规跳过
+    Skip,
+}
+
+/// 内置模板升级导入决策：
+/// 1. user_deleted 墓碑优先——用户删过（停用）的模板不复活；
+/// 2. user_modified 次之——用户改过的模板保留用户版本；
+/// 3. 都没有时按版本比较决定是否覆盖。
+fn decide_builtin_import_action(
+    user_modified: bool,
+    user_deleted: bool,
+    existing_version: &str,
+    builtin_version: &str,
+) -> BuiltinImportAction {
+    if user_deleted {
+        return BuiltinImportAction::PreserveUserState {
+            reason: "用户已删除，保持停用不复活",
+        };
+    }
+    if user_modified {
+        return BuiltinImportAction::PreserveUserState {
+            reason: "用户已修改，保留用户版本",
+        };
+    }
+    if should_update_builtin_template(existing_version, builtin_version) {
+        BuiltinImportAction::Update
+    } else {
+        BuiltinImportAction::Skip
+    }
 }
 
 fn compare_template_version(existing_version: &str, builtin_version: &str) -> Ordering {
@@ -3165,8 +4192,13 @@ fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        compare_template_version, resolve_test_api_protocol, should_update_builtin_template,
+        build_test_provider_request, compare_template_version, decide_builtin_import_action,
+        extract_template_field_refs, is_openai_codex_oauth_test, resolve_test_api_protocol,
+        resolve_test_provider_adapter, should_update_builtin_template, validate_template_request,
+        BuiltinImportAction, TestProviderAdapter,
     };
+    use crate::llm_manager::{VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH};
+    use serde_json::json;
     use std::cmp::Ordering;
 
     #[test]
@@ -3186,6 +4218,204 @@ mod tests {
         assert!(!should_update_builtin_template("2.1.0", "beta"));
     }
 
+    // ------------------------------------------------------------------
+    // bug D3：内置模板升级导入决策
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn builtin_import_skips_user_deleted_templates() {
+        // 用户删过（墓碑）的内置模板：即使内置版本更新也不复活
+        assert_eq!(
+            decide_builtin_import_action(false, true, "1.0.0", "2.0.0"),
+            BuiltinImportAction::PreserveUserState {
+                reason: "用户已删除，保持停用不复活"
+            }
+        );
+        // 墓碑优先级高于 user_modified
+        assert_eq!(
+            decide_builtin_import_action(true, true, "1.0.0", "2.0.0"),
+            BuiltinImportAction::PreserveUserState {
+                reason: "用户已删除，保持停用不复活"
+            }
+        );
+    }
+
+    #[test]
+    fn builtin_import_skips_user_modified_templates() {
+        assert_eq!(
+            decide_builtin_import_action(true, false, "1.0.0", "2.0.0"),
+            BuiltinImportAction::PreserveUserState {
+                reason: "用户已修改，保留用户版本"
+            }
+        );
+    }
+
+    #[test]
+    fn builtin_import_updates_untouched_templates_by_version() {
+        assert_eq!(
+            decide_builtin_import_action(false, false, "1.0.0", "2.0.0"),
+            BuiltinImportAction::Update
+        );
+        assert_eq!(
+            decide_builtin_import_action(false, false, "2.0.0", "2.0.0"),
+            BuiltinImportAction::Skip
+        );
+        assert_eq!(
+            decide_builtin_import_action(false, false, "2.1.0", "2.0.0"),
+            BuiltinImportAction::Skip
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 模板校验增强：字段引用提取 + Cloze 占位符
+    // ------------------------------------------------------------------
+
+    fn make_template_request(
+        note_type: &str,
+        fields: &[&str],
+        front: &str,
+        back: &str,
+    ) -> crate::models::CreateTemplateRequest {
+        use crate::models::{FieldExtractionRule, FieldType};
+        let mut rules = std::collections::HashMap::new();
+        for field in fields {
+            rules.insert(
+                field.to_string(),
+                FieldExtractionRule {
+                    field_type: FieldType::Text,
+                    is_required: false,
+                    default_value: None,
+                    validation_pattern: None,
+                    description: format!("{}字段", field),
+                    validation: None,
+                    transform: None,
+                    schema: None,
+                    item_schema: None,
+                    display_format: None,
+                    ai_hint: None,
+                    max_length: None,
+                    min_length: None,
+                    allowed_values: None,
+                    depends_on: None,
+                    compute_function: None,
+                },
+            );
+        }
+        crate::models::CreateTemplateRequest {
+            name: "测试模板".to_string(),
+            description: "desc".to_string(),
+            author: None,
+            version: Some("1.0.0".to_string()),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: note_type.to_string(),
+            fields: fields.iter().map(|s| s.to_string()).collect(),
+            generation_prompt: "gen".to_string(),
+            front_template: front.to_string(),
+            back_template: back.to_string(),
+            css_style: String::new(),
+            field_extraction_rules: rules,
+            preview_data_json: None,
+            is_active: Some(true),
+            is_built_in: None,
+        }
+    }
+
+    #[test]
+    fn extract_template_field_refs_handles_conditionals_filters_and_specials() {
+        let refs = extract_template_field_refs(
+            "{{Front}} {{#Extra}}{{cloze:Text}}{{/Extra}} {{^Hint}}x{{/Hint}} \
+             {{type:cloze:Answer}} {{FrontSide}} {{Tags}}",
+        );
+        assert!(refs.contains("Front"));
+        assert!(refs.contains("Extra"));
+        assert!(refs.contains("Text"));
+        assert!(refs.contains("Hint"));
+        assert!(refs.contains("Answer"));
+        // Anki 特殊占位符不算字段引用
+        assert!(!refs.contains("FrontSide"));
+        assert!(!refs.contains("Tags"));
+    }
+
+    #[test]
+    fn validate_template_request_rejects_cloze_without_placeholder() {
+        let request = make_template_request(
+            "Cloze",
+            &["Text", "Extra"],
+            "{{Text}}",
+            "{{Text}} {{Extra}}",
+        );
+        let err = validate_template_request(&request).expect_err("缺少 cloze 占位符应校验失败");
+        assert!(
+            err.to_string().contains("cloze"),
+            "错误信息应指明 cloze 占位符缺失"
+        );
+    }
+
+    #[test]
+    fn validate_template_request_accepts_valid_cloze_and_basic_templates() {
+        let cloze = make_template_request(
+            "Cloze",
+            &["Text", "Extra"],
+            "{{cloze:Text}}",
+            "{{cloze:Text}} {{Extra}}",
+        );
+        assert!(validate_template_request(&cloze).is_ok());
+
+        // Basic 模板引用未定义字段仅告警不阻断（兼容存量内置模板的历史写法）
+        let basic_with_unknown_ref =
+            make_template_request("Basic", &["Front"], "{{Front}}", "{{FrontSide}} {{Back}}");
+        assert!(validate_template_request(&basic_with_unknown_ref).is_ok());
+    }
+
+    #[test]
+    fn lexical_normalize_path_resolves_dot_segments() {
+        use super::lexical_normalize_path;
+        use std::path::{Path, PathBuf};
+
+        assert_eq!(
+            lexical_normalize_path(Path::new("/a/b/../c/./d")),
+            PathBuf::from("/a/c/d")
+        );
+        // `..` 穿越应用目录前缀的攻击面：归一化后前缀判断不再被欺骗
+        assert_eq!(
+            lexical_normalize_path(Path::new("/app/data/../../home/user/.ssh/key")),
+            PathBuf::from("/home/user/.ssh/key")
+        );
+        // 根之上的 `..` 按 POSIX 语义忽略
+        assert_eq!(
+            lexical_normalize_path(Path::new("/../a")),
+            PathBuf::from("/a")
+        );
+        // 相对路径开头的连续 `..` 原样保留
+        assert_eq!(
+            lexical_normalize_path(Path::new("../../a/b/../c")),
+            PathBuf::from("../../a/c")
+        );
+    }
+
+    #[test]
+    fn canonicalize_lenient_handles_missing_files() {
+        use super::canonicalize_lenient;
+
+        let temp = std::env::temp_dir();
+        let canonical_temp = std::fs::canonicalize(&temp).unwrap();
+
+        // 不存在的文件：父目录真实化 + 拼回文件名
+        let missing = temp.join("deep_student_test_missing_file.bin");
+        assert_eq!(
+            canonicalize_lenient(&missing),
+            canonical_temp.join("deep_student_test_missing_file.bin")
+        );
+
+        // 不存在的文件 + `..` 段：词法归一化后仍能消除穿越
+        let traversal = temp.join("nonexistent_dir/../deep_student_test_missing_file.bin");
+        assert_eq!(
+            canonicalize_lenient(&traversal),
+            canonical_temp.join("deep_student_test_missing_file.bin")
+        );
+    }
+
     #[test]
     fn resolve_test_api_protocol_prefers_explicit_protocol() {
         assert_eq!(
@@ -3193,7 +4423,9 @@ mod tests {
                 "https://proxy.example.com/v1",
                 Some("openai_responses"),
                 Some("gpt-4o-mini"),
-                None
+                None,
+                None,
+                None,
             ),
             "openai_chat_completions"
         );
@@ -3202,7 +4434,9 @@ mod tests {
                 "https://api.openai.com/v1",
                 Some("openai_chat_completions"),
                 Some("gpt-5"),
-                None
+                None,
+                None,
+                None,
             ),
             "openai_chat_completions"
         );
@@ -3211,7 +4445,14 @@ mod tests {
     #[test]
     fn resolve_test_api_protocol_defaults_official_openai_to_responses() {
         assert_eq!(
-            resolve_test_api_protocol("https://api.openai.com/v1", None, Some("gpt-4o-mini"), None),
+            resolve_test_api_protocol(
+                "https://api.openai.com/v1",
+                None,
+                Some("gpt-4o-mini"),
+                None,
+                None,
+                None,
+            ),
             "openai_responses"
         );
     }
@@ -3223,7 +4464,9 @@ mod tests {
                 "https://proxy.example.com/v1",
                 None,
                 Some("gpt-4o-mini"),
-                Some(true)
+                Some(true),
+                Some("custom"),
+                Some("qwen"),
             ),
             "openai_responses"
         );
@@ -3232,7 +4475,9 @@ mod tests {
                 "https://proxy.example.com/v1",
                 None,
                 Some("o4-mini"),
-                Some(true)
+                Some(true),
+                Some("custom"),
+                Some("deepseek"),
             ),
             "openai_responses"
         );
@@ -3245,7 +4490,9 @@ mod tests {
                 "https://api.openai.com/v1",
                 Some("openai_responses"),
                 Some("gpt-5"),
-                None
+                None,
+                None,
+                None,
             ),
             "openai_responses"
         );
@@ -3254,9 +4501,33 @@ mod tests {
                 "https://api.qsl.fan/v1",
                 Some("openai_responses"),
                 Some("deepseek-v4-pro"),
-                None
+                None,
+                Some("openai"),
+                Some("deepseek"),
             ),
             "openai_chat_completions"
+        );
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                Some("openai_responses"),
+                Some("qwen-plus"),
+                None,
+                Some("qwen"),
+                Some("qwen"),
+            ),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://proxy.example.com/v1",
+                Some("openai_responses"),
+                Some("claude-sonnet-4-5"),
+                Some(true),
+                Some("custom"),
+                Some("anthropic"),
+            ),
+            "openai_responses"
         );
     }
 
@@ -3267,10 +4538,134 @@ mod tests {
                 "https://proxy.example.com/v1",
                 None,
                 Some("gpt-4o-mini"),
-                None
+                None,
+                Some("custom"),
+                Some("general"),
             ),
             "openai_chat_completions"
         );
+    }
+
+    #[test]
+    fn resolve_test_provider_adapter_prefers_native_model_adapters() {
+        assert_eq!(
+            resolve_test_provider_adapter(Some("custom"), Some("anthropic")),
+            TestProviderAdapter::Anthropic
+        );
+        assert_eq!(
+            resolve_test_provider_adapter(Some("custom"), Some("gemini")),
+            TestProviderAdapter::Gemini
+        );
+        assert_eq!(
+            resolve_test_provider_adapter(Some("anthropic"), Some("general")),
+            TestProviderAdapter::Anthropic
+        );
+        assert_eq!(
+            resolve_test_provider_adapter(Some("openai"), Some("general")),
+            TestProviderAdapter::OpenAi
+        );
+    }
+
+    #[test]
+    fn build_test_provider_request_uses_native_endpoints_and_authentication() {
+        let body = json!({
+            "model": "placeholder",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 1,
+            "stream": false
+        });
+
+        let anthropic = build_test_provider_request(
+            "https://api.anthropic.com",
+            "anthropic-key",
+            "claude-sonnet-4-5",
+            &body,
+            "anthropic_messages",
+            Some("anthropic"),
+            Some("anthropic"),
+        )
+        .expect("Anthropic test request should build");
+        assert_eq!(anthropic.url, "https://api.anthropic.com/v1/messages");
+        assert!(anthropic
+            .headers
+            .iter()
+            .any(|(name, value)| name == "x-api-key" && value == "anthropic-key"));
+
+        let gemini = build_test_provider_request(
+            "https://generativelanguage.googleapis.com",
+            "gemini-key",
+            "gemini-2.5-flash",
+            &body,
+            "google_generate_content",
+            Some("google"),
+            Some("google"),
+        )
+        .expect("Gemini test request should build");
+        assert!(gemini
+            .url
+            .contains("/v1/models/gemini-2.5-flash:generateContent"));
+        assert!(gemini
+            .headers
+            .iter()
+            .any(|(name, value)| name == "x-goog-api-key" && value == "gemini-key"));
+
+        let responses = build_test_provider_request(
+            "https://proxy.example.com/v1",
+            "openai-key",
+            "gpt-5",
+            &body,
+            "openai_responses",
+            Some("custom"),
+            Some("general"),
+        )
+        .expect("OpenAI Responses test request should build");
+        assert_eq!(responses.url, "https://proxy.example.com/v1/responses");
+        assert!(responses
+            .headers
+            .iter()
+            .any(|(name, value)| name == "Authorization" && value == "Bearer openai-key"));
+    }
+
+    #[test]
+    fn codex_connection_test_prefers_persisted_vendor_authentication() {
+        let codex_vendor = VendorConfig {
+            id: "builtin-openai-codex".to_string(),
+            provider_type: "openai_codex".to_string(),
+            auth_mode: Some(AUTH_MODE_OPENAI_CODEX_OAUTH.to_string()),
+            ..Default::default()
+        };
+
+        assert!(is_openai_codex_oauth_test(
+            Some(&codex_vendor),
+            Some("openai"),
+            Some("api_key"),
+        ));
+
+        let api_key_vendor = VendorConfig {
+            id: "custom-openai".to_string(),
+            provider_type: "openai".to_string(),
+            auth_mode: Some("api_key".to_string()),
+            ..Default::default()
+        };
+        assert!(!is_openai_codex_oauth_test(
+            Some(&api_key_vendor),
+            Some("openai_codex"),
+            Some(AUTH_MODE_OPENAI_CODEX_OAUTH),
+        ));
+    }
+
+    #[test]
+    fn codex_connection_test_supports_unsaved_oauth_context() {
+        assert!(is_openai_codex_oauth_test(
+            None,
+            Some("openai_codex"),
+            Some(AUTH_MODE_OPENAI_CODEX_OAUTH),
+        ));
+        assert!(!is_openai_codex_oauth_test(
+            None,
+            Some("openai_codex"),
+            None,
+        ));
     }
 }
 
@@ -3388,7 +4783,74 @@ pub fn validate_template_request(request: &CreateTemplateRequest) -> Result<()> 
         )));
     }
 
+    // Cloze 模板必须含 {{cloze:字段}} 占位符，否则 Anki 无法生成填空卡片
+    if request.note_type.to_ascii_lowercase().contains("cloze")
+        && !request.front_template.contains("{{cloze:")
+    {
+        return Err(AppError::validation(format!(
+            "Cloze 模板「{}」的正面模板缺少 {{{{cloze:字段}}}} 占位符，Anki 无法生成填空卡片",
+            request.name
+        )));
+    }
+
+    // front/back 模板引用的 {{Field}} 应在 fields 中定义。
+    // 仅告警不阻断：存量内置模板（如 The Swiss 引用了未声明的 {{Back}}）存在历史写法，
+    // 硬校验会阻断其版本升级导入；未定义字段渲染时表现为空白，不构成数据安全问题。
+    let referenced_fields: HashSet<String> = extract_template_field_refs(&request.front_template)
+        .into_iter()
+        .chain(extract_template_field_refs(&request.back_template))
+        .collect();
+    let unknown_refs: Vec<&String> = referenced_fields
+        .iter()
+        .filter(|field| !field_set.contains(*field))
+        .collect();
+    if !unknown_refs.is_empty() {
+        let mut unknown_refs: Vec<&str> = unknown_refs.iter().map(|s| s.as_str()).collect();
+        unknown_refs.sort_unstable();
+        warn!(
+            "模板「{}」的 front/back 模板引用了 fields 之外的字段: {}（渲染时将为空白，请核对字段定义）",
+            request.name,
+            unknown_refs.join(", ")
+        );
+    }
+
     Ok(())
+}
+
+/// 从 Anki 模板 HTML 中提取引用的字段名。
+///
+/// 处理条件区块前缀（`{{#X}}` / `{{/X}}` / `{{^X}}`）与过滤器链
+/// （`{{cloze:Text}}`、`{{type:cloze:Text}}` 取链尾字段名），
+/// 并忽略 Anki 内置特殊占位符（FrontSide / Tags / Type / Deck / Subdeck / Card / Flags）。
+fn extract_template_field_refs(template: &str) -> HashSet<String> {
+    const ANKI_SPECIAL_PLACEHOLDERS: &[&str] = &[
+        "FrontSide",
+        "Tags",
+        "Type",
+        "Deck",
+        "Subdeck",
+        "Card",
+        "Flags",
+        "CardFlag",
+    ];
+    let mut refs = HashSet::new();
+    let mut rest = template;
+    while let Some(start) = rest.find("{{") {
+        rest = &rest[start + 2..];
+        let Some(end) = rest.find("}}") else {
+            break;
+        };
+        let raw = rest[..end].trim();
+        rest = &rest[end + 2..];
+
+        let stripped = raw.trim_start_matches(['#', '/', '^']).trim();
+        let field = stripped.rsplit(':').next().unwrap_or(stripped).trim();
+        if field.is_empty() || ANKI_SPECIAL_PLACEHOLDERS.contains(&field) {
+            continue;
+        }
+        refs.insert(field.to_string());
+    }
+    refs
 }
 
 /// 设置默认模板
@@ -3407,20 +4869,39 @@ pub async fn get_default_template_id(state: tauri::State<'_, AppState>) -> Resul
 }
 // ============= 测试日志相关命令 =============
 
+fn structured_log_subdir(log_type: &str) -> Result<&'static str> {
+    let subdir = match log_type {
+        "backend" => "backend",
+        "frontend" => "frontend",
+        "debug" => "debug-logs",
+        "crash" => "crash",
+        _ => return Err(AppError::validation("不支持的日志类型")),
+    };
+    Ok(subdir)
+}
+
+fn resolve_structured_log_dir(app: &AppHandle, log_type: &str) -> Result<std::path::PathBuf> {
+    Ok(resolve_app_log_dir(app)?.join(structured_log_subdir(log_type)?))
+}
+
 /// 保存测试日志到文件
 #[tauri::command]
 pub async fn save_test_log(
     file_name: String,
     content: String,
     log_type: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<()> {
     use std::fs;
 
-    // 创建日志目录路径
-    let mut log_dir = state.file_manager.get_app_data_dir().to_path_buf();
-    log_dir.push("logs");
-    log_dir.push(&log_type);
+    if std::path::Path::new(&file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        != Some(file_name.as_str())
+    {
+        return Err(AppError::validation("非法的日志文件名"));
+    }
+    let log_dir = resolve_structured_log_dir(&app, &log_type)?;
 
     // 确保目录存在
     if let Err(e) = fs::create_dir_all(&log_dir) {
@@ -3440,15 +4921,11 @@ pub async fn save_test_log(
 }
 /// 获取测试日志列表
 #[tauri::command]
-pub async fn get_test_logs(
-    log_type: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<String>> {
+pub async fn get_test_logs(log_type: String, app: AppHandle) -> Result<Vec<String>> {
     use std::fs;
 
-    let mut log_dir = state.file_manager.get_app_data_dir().to_path_buf();
-    log_dir.push("logs");
-    log_dir.push(&log_type);
+    let log_dir = resolve_structured_log_dir(&app, &log_type)?;
+    let log_subdir = structured_log_subdir(&log_type)?;
 
     if !log_dir.exists() {
         return Ok(vec![]);
@@ -3457,15 +4934,13 @@ pub async fn get_test_logs(
     let mut log_files = Vec::new();
 
     if let Ok(entries) = fs::read_dir(&log_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "log") {
-                    if let Some(file_name) = path.file_name() {
-                        if let Some(file_name_str) = file_name.to_str() {
-                            let relative_path = format!("logs/{}/{}", log_type, file_name_str);
-                            log_files.push(relative_path);
-                        }
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "log") {
+                if let Some(file_name) = path.file_name() {
+                    if let Some(file_name_str) = file_name.to_str() {
+                        let relative_path = format!("{}/{}", log_subdir, file_name_str);
+                        log_files.push(relative_path);
                     }
                 }
             }
@@ -3474,8 +4949,9 @@ pub async fn get_test_logs(
 
     // 按修改时间排序（最新的在前）
     log_files.sort_by(|a, b| {
-        let path_a = state.file_manager.get_app_data_dir().join(a);
-        let path_b = state.file_manager.get_app_data_dir().join(b);
+        let root = resolve_app_log_dir(&app).unwrap_or_default();
+        let path_a = root.join(a);
+        let path_b = root.join(b);
 
         let time_a = path_a
             .metadata()
@@ -3494,7 +4970,7 @@ pub async fn get_test_logs(
 
 /// 打开指定的日志文件
 #[tauri::command]
-pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) -> Result<()> {
+pub async fn open_log_file(log_path: String, app: AppHandle) -> Result<()> {
     use std::process::Command;
 
     // 防止路径遍历
@@ -3502,19 +4978,16 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
         return Err(AppError::validation("非法的文件路径"));
     }
 
-    let full_path = state.file_manager.get_app_data_dir().join(&log_path);
+    let log_root = resolve_app_log_dir(&app)?;
+    let full_path = log_root.join(&log_path);
 
     // 规范化路径并检查前缀
     let canonical_path = full_path
         .canonicalize()
         .map_err(|_| AppError::not_found(format!("日志文件不存在: {}", log_path)))?;
-    let app_data_dir = state
-        .file_manager
-        .get_app_data_dir()
-        .canonicalize()
-        .unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
+    let canonical_log_root = log_root.canonicalize().unwrap_or(log_root);
 
-    if !canonical_path.starts_with(&app_data_dir) {
+    if !canonical_path.starts_with(&canonical_log_root) {
         return Err(AppError::validation("非法的文件路径访问"));
     }
 
@@ -3528,17 +5001,7 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
         {
-            // 如果notepad失败，尝试默认程序
-            if let Err(e2) = Command::new("cmd")
-                .args(&["/C", "start", "", canonical_path.to_str().unwrap_or("")])
-                .creation_flags(0x08000000)
-                .spawn()
-            {
-                return Err(AppError::file_system(format!(
-                    "打开日志文件失败: {} (备用方案也失败: {})",
-                    e, e2
-                )));
-            }
+            return Err(AppError::file_system(format!("打开日志文件失败: {}", e)));
         }
     }
 
@@ -3556,49 +5019,29 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
         }
     }
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return Err(AppError::validation(
+        "移动端不支持直接打开日志文件，请导出诊断包",
+    ));
+
     Ok(())
 }
 /// 打开日志文件夹
 #[tauri::command]
-pub async fn open_logs_folder(log_type: String, state: tauri::State<'_, AppState>) -> Result<()> {
+pub async fn open_logs_folder(log_type: String, app: AppHandle) -> Result<()> {
     use std::process::Command;
 
-    // 防止路径遍历
-    if log_type.contains("..") || log_type.starts_with("/") || log_type.starts_with("\\") {
-        return Err(AppError::validation("非法的文件路径"));
-    }
-
-    let mut log_dir = state.file_manager.get_app_data_dir().to_path_buf();
-    log_dir.push("logs");
-    log_dir.push(&log_type);
-
-    // 规范化路径并检查前缀
-    let canonical_path = if log_dir.exists() {
-        log_dir
-            .canonicalize()
-            .map_err(|_| AppError::not_found("日志目录路径无效"))?
-    } else {
-        // 如果目录不存在，我们先不canonicalize，而是检查其逻辑路径
-        // 但为了安全，我们最好先创建它，然后再 canonicalize
-        std::fs::create_dir_all(&log_dir)
-            .map_err(|_| AppError::file_system("创建日志目录失败".to_string()))?;
-        log_dir
-            .canonicalize()
-            .map_err(|_| AppError::not_found("日志目录路径无效"))?
+    let root = resolve_app_log_dir(&app)?;
+    let target_dir = match log_type.as_str() {
+        // 后端主日志 deep-student.log 位于根目录，旧实现打开空的 backend/ 是问题根因。
+        "all" | "backend" => root,
+        "frontend" => root.join("frontend"),
+        "debug" => root.join("debug-logs"),
+        "crash" => root.join("crash"),
+        _ => return Err(AppError::validation("不支持的日志类型")),
     };
-
-    let app_data_dir = state
-        .file_manager
-        .get_app_data_dir()
-        .canonicalize()
-        .unwrap_or_else(|_| state.file_manager.get_app_data_dir().to_path_buf());
-
-    if !canonical_path.starts_with(&app_data_dir) {
-        return Err(AppError::validation("非法的文件路径访问"));
-    }
-
-    // 使用规范化后的路径
-    let target_dir = canonical_path;
+    std::fs::create_dir_all(&target_dir)
+        .map_err(|e| AppError::file_system(format!("创建日志目录失败: {}", e)))?;
 
     // 根据操作系统选择合适的命令打开文件夹
     #[cfg(target_os = "windows")]
@@ -3622,6 +5065,11 @@ pub async fn open_logs_folder(log_type: String, state: tauri::State<'_, AppState
         }
     }
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return Err(AppError::validation(
+        "移动端不支持打开日志目录，请导出诊断包",
+    ));
+
     Ok(())
 }
 
@@ -3638,6 +5086,43 @@ pub struct FrontendLogPayload {
     pub user_agent: Option<String>,
     pub extra: Option<serde_json::Value>,
     pub kind: Option<String>,
+}
+
+fn bounded_frontend_text(value: &str, max_chars: usize) -> String {
+    let redacted = crate::debug_log_service::redact_sensitive_text(value);
+    let mut chars = redacted.chars();
+    let output: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{}…[truncated]", output)
+    } else {
+        output
+    }
+}
+
+fn bounded_frontend_json(value: &serde_json::Value, depth: usize) -> serde_json::Value {
+    if depth >= 4 {
+        return serde_json::Value::String("[max depth reached]".to_string());
+    }
+    match crate::debug_log_service::redact_sensitive_fields(value) {
+        serde_json::Value::String(value) => {
+            serde_json::Value::String(bounded_frontend_text(&value, 8_000))
+        }
+        serde_json::Value::Array(values) => serde_json::Value::Array(
+            values
+                .iter()
+                .take(20)
+                .map(|child| bounded_frontend_json(child, depth + 1))
+                .collect(),
+        ),
+        serde_json::Value::Object(values) => serde_json::Value::Object(
+            values
+                .iter()
+                .take(40)
+                .map(|(key, child)| (key.clone(), bounded_frontend_json(child, depth + 1)))
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 impl FrontendLogPayload {
@@ -3665,17 +5150,21 @@ pub async fn report_frontend_log(payload: FrontendLogPayload) -> Result<()> {
         .kind
         .clone()
         .unwrap_or_else(|| "CLIENT_ERROR".to_string());
+    let kind = bounded_frontend_text(&kind, 128);
 
     let data = serde_json::json!({
-        "message": payload.message,
-        "stack": payload.stack,
-        "component": payload.component,
-        "route": payload.route,
-        "url": payload.url,
+        "message": bounded_frontend_text(&payload.message, 16_000),
+        "stack": payload.stack.as_deref().map(|value| bounded_frontend_text(value, 64_000)),
+        "component": payload.component.as_deref().map(|value| bounded_frontend_text(value, 256)),
+        "route": payload.route.as_deref().map(|value| bounded_frontend_text(value, 2_000)),
+        "url": payload.url.as_deref().map(|value| {
+            let without_query = value.split(['?', '#']).next().unwrap_or(value);
+            bounded_frontend_text(without_query, 2_000)
+        }),
         "line": payload.line,
         "column": payload.column,
-        "user_agent": payload.user_agent,
-        "extra": payload.extra,
+        "user_agent": payload.user_agent.as_deref().map(|value| bounded_frontend_text(value, 1_000)),
+        "extra": payload.extra.as_ref().map(|value| bounded_frontend_json(value, 0)),
     });
 
     if let Some(logger) = crate::debug_logger::get_global_logger() {
@@ -3831,7 +5320,7 @@ async fn calculate_monthly_trend(
         for offset in (0..6).rev() {
             let days_offset = 30_i64 * offset as i64;
             let duration =
-                chrono::Duration::try_days(days_offset).unwrap_or_else(|| chrono::Duration::zero());
+                chrono::Duration::try_days(days_offset).unwrap_or_else(chrono::Duration::zero);
             let month = now - duration;
             trend_data.push(serde_json::json!({
                 "month": format!("{}月", month.format("%m").to_string().parse::<u8>().unwrap_or(1)),
@@ -3897,23 +5386,6 @@ async fn calculate_recent_growth(database: &Arc<Database>) -> std::result::Resul
     Ok(growth_rate)
 }
 
-/// 回顾分析功能已移除
-#[allow(dead_code)]
-async fn calculate_review_analysis_stats(
-    _database: &Arc<Database>,
-) -> std::result::Result<serde_json::Value, String> {
-    let review_stats = serde_json::json!({
-        "total_reviews": 0,
-        "total_covered_mistakes": 0,
-        "average_depth": 0.0,
-        "improvement_rate": 0.0,
-        "recent_reviews": 0,
-        "success_rate": 0.0,
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
-
-    Ok(review_stats)
-}
 /// 计算统一回顾趋势增长率 - 基于回顾分析创建数据
 async fn calculate_review_trend(database: &Arc<Database>) -> std::result::Result<f64, String> {
     let conn = database
@@ -5504,13 +6976,13 @@ pub async fn get_learning_heatmap(
                 }
             }
 
-            // VFS 做题记录（question_history）
+            // VFS 作答提交记录
             for (date, count) in query_date_counts(
                 &conn,
-                "SELECT DATE(answered_at) as date, COUNT(*) as count
-                 FROM question_history
-                 WHERE DATE(answered_at) >= ?1 AND DATE(answered_at) <= ?2
-                 GROUP BY DATE(answered_at)",
+                "SELECT DATE(submitted_at) as date, COUNT(*) as count
+                 FROM answer_submissions
+                 WHERE DATE(submitted_at) >= ?1 AND DATE(submitted_at) <= ?2
+                 GROUP BY DATE(submitted_at)",
                 &start_date,
                 &end_date,
             ) {
@@ -5527,7 +6999,8 @@ pub async fn get_learning_heatmap(
             &conn,
             "SELECT DATE(created_at) as date, COUNT(*) as count
              FROM anki_cards
-             WHERE DATE(created_at) >= ?1 AND DATE(created_at) <= ?2
+             WHERE deleted_at IS NULL
+               AND DATE(created_at) >= ?1 AND DATE(created_at) <= ?2
              GROUP BY DATE(created_at)",
             &start_date,
             &end_date,
@@ -5599,66 +7072,73 @@ pub async fn qbank_get_source_images(
     let vfs_db = state
         .vfs_db
         .as_ref()
+        .cloned()
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
-    // 从 exam_sheet 的 metadata_json 中读取 source_image_hashes
-    let exam = crate::vfs::repos::VfsExamRepo::get_exam_sheet(vfs_db, &examId)
-        .map_err(|e| AppError::database(format!("获取题目集失败: {}", e)))?
-        .ok_or_else(|| AppError::not_found("题目集不存在"))?;
+    // 阻塞式 SQLite 查询 + 大文件读取 + base64 编码整体移出异步线程，
+    // 避免多页大图卡住 Tokio runtime
+    tokio::task::spawn_blocking(move || -> Result<Vec<SourceImageInfo>> {
+        // 从 exam_sheet 的 metadata_json 中读取 source_image_hashes
+        let exam = crate::vfs::repos::VfsExamRepo::get_exam_sheet(&vfs_db, &examId)
+            .map_err(|e| AppError::database(format!("获取题目集失败: {}", e)))?
+            .ok_or_else(|| AppError::not_found("题目集不存在"))?;
 
-    let mut source_hashes: Vec<String> = exam
-        .metadata_json
-        .get("source_image_hashes")
-        .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
-        .unwrap_or_default();
+        let mut source_hashes: Vec<String> = exam
+            .metadata_json
+            .get("source_image_hashes")
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+            .unwrap_or_default();
 
-    // ★ 回退：OCR 上传流程不写 source_image_hashes，图片存在 preview_json pages 的 blob_hash 中
-    if source_hashes.is_empty() {
-        if let Some(pages) = exam.preview_json.get("pages").and_then(|v| v.as_array()) {
-            for page in pages {
-                if let Some(hash) = page.get("blob_hash").and_then(|v| v.as_str()) {
-                    if !hash.is_empty() {
-                        source_hashes.push(hash.to_string());
+        // ★ 回退：OCR 上传流程不写 source_image_hashes，图片存在 preview_json pages 的 blob_hash 中
+        if source_hashes.is_empty() {
+            if let Some(pages) = exam.preview_json.get("pages").and_then(|v| v.as_array()) {
+                for page in pages {
+                    if let Some(hash) = page.get("blob_hash").and_then(|v| v.as_str()) {
+                        if !hash.is_empty() {
+                            source_hashes.push(hash.to_string());
+                        }
                     }
                 }
             }
         }
-    }
 
-    if source_hashes.is_empty() {
-        return Ok(Vec::new());
-    }
+        if source_hashes.is_empty() {
+            return Ok(Vec::new());
+        }
 
-    let mut results = Vec::new();
-    for (idx, hash) in source_hashes.iter().enumerate() {
-        let blob_path = match VfsBlobRepo::get_blob_path(vfs_db, hash) {
-            Ok(Some(p)) => p,
-            _ => continue,
-        };
-        let data = match std::fs::read(&blob_path) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-        // 检测实际 MIME 类型（通过魔数字节头）
-        let mime = if data.starts_with(b"\x89PNG") {
-            "image/png"
-        } else if data.starts_with(b"\xFF\xD8\xFF") {
-            "image/jpeg"
-        } else if data.starts_with(b"RIFF") && data.len() > 12 && &data[8..12] == b"WEBP" {
-            "image/webp"
-        } else {
-            "image/png"
-        };
-        let data_url = format!("data:{};base64,{}", mime, b64);
-        results.push(SourceImageInfo {
-            blob_hash: hash.clone(),
-            data_url,
-            page_index: idx,
-        });
-    }
+        let mut results = Vec::new();
+        for (idx, hash) in source_hashes.iter().enumerate() {
+            let blob_path = match VfsBlobRepo::get_blob_path(&vfs_db, hash) {
+                Ok(Some(p)) => p,
+                _ => continue,
+            };
+            let data = match std::fs::read(&blob_path) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+            // 检测实际 MIME 类型（通过魔数字节头）
+            let mime = if data.starts_with(b"\x89PNG") {
+                "image/png"
+            } else if data.starts_with(b"\xFF\xD8\xFF") {
+                "image/jpeg"
+            } else if data.starts_with(b"RIFF") && data.len() > 12 && &data[8..12] == b"WEBP" {
+                "image/webp"
+            } else {
+                "image/png"
+            };
+            let data_url = format!("data:{};base64,{}", mime, b64);
+            results.push(SourceImageInfo {
+                blob_hash: hash.clone(),
+                data_url,
+                page_index: idx,
+            });
+        }
 
-    Ok(results)
+        Ok(results)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("读取源图片任务失败: {}", e)))?
 }
 
 /// 裁剪请求参数
@@ -5695,40 +7175,51 @@ pub async fn qbank_crop_source_image(
         .map_err(|e| AppError::database(format!("获取 Blob 路径失败: {}", e)))?
         .ok_or_else(|| AppError::not_found("源图片 Blob 不存在"))?;
 
-    let img_data = std::fs::read(&blob_path)
-        .map_err(|e| AppError::file_system(format!("读取源图片失败: {}", e)))?;
+    // 2/3. 文件读取 + 解码/裁剪/PNG 编码是重 IO/CPU 操作，移出异步线程执行
+    let (crop_x_ratio, crop_y_ratio, crop_w_ratio, crop_h_ratio) = (
+        request.crop_x,
+        request.crop_y,
+        request.crop_width,
+        request.crop_height,
+    );
+    let buf = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
+        let img_data = std::fs::read(&blob_path)
+            .map_err(|e| AppError::file_system(format!("读取源图片失败: {}", e)))?;
 
-    // 2. 解码图片并裁剪（使用 image::imageops::crop_imm 匹配项目 image 0.24 API）
-    let img = image::load_from_memory(&img_data)
-        .map_err(|e| AppError::validation(format!("图片解码失败: {}", e)))?;
-    let rgba = img.to_rgba8();
+        // 解码图片并裁剪（使用 image::imageops::crop_imm 匹配项目 image 0.24 API）
+        let img = image::load_from_memory(&img_data)
+            .map_err(|e| AppError::validation(format!("图片解码失败: {}", e)))?;
+        let rgba = img.to_rgba8();
 
-    let (w, h) = (rgba.width(), rgba.height());
-    let crop_x = (request.crop_x * w as f64).round() as u32;
-    let crop_y = (request.crop_y * h as f64).round() as u32;
-    let crop_w = (request.crop_width * w as f64).round().max(1.0) as u32;
-    let crop_h = (request.crop_height * h as f64).round().max(1.0) as u32;
+        let (w, h) = (rgba.width(), rgba.height());
+        let crop_x = (crop_x_ratio * w as f64).round() as u32;
+        let crop_y = (crop_y_ratio * h as f64).round() as u32;
+        let crop_w = (crop_w_ratio * w as f64).round().max(1.0) as u32;
+        let crop_h = (crop_h_ratio * h as f64).round().max(1.0) as u32;
 
-    // 边界保护
-    let crop_x = crop_x.min(w.saturating_sub(1));
-    let crop_y = crop_y.min(h.saturating_sub(1));
-    let crop_w = crop_w.min(w - crop_x);
-    let crop_h = crop_h.min(h - crop_y);
+        // 边界保护
+        let crop_x = crop_x.min(w.saturating_sub(1));
+        let crop_y = crop_y.min(h.saturating_sub(1));
+        let crop_w = crop_w.min(w - crop_x).max(1);
+        let crop_h = crop_h.min(h - crop_y).max(1);
 
-    let crop = image::imageops::crop_imm(&rgba, crop_x, crop_y, crop_w, crop_h);
-    let cropped = crop.to_image();
+        let crop = image::imageops::crop_imm(&rgba, crop_x, crop_y, crop_w, crop_h);
+        let cropped = crop.to_image();
 
-    if cropped.width() == 0 || cropped.height() == 0 {
-        return Err(AppError::validation("裁剪区域无效"));
-    }
+        if cropped.width() == 0 || cropped.height() == 0 {
+            return Err(AppError::validation("裁剪区域无效"));
+        }
 
-    // 3. 编码为 PNG（写入内存缓冲区）
-    let dyn_img = image::DynamicImage::ImageRgba8(cropped);
-    let mut cursor = std::io::Cursor::new(Vec::new());
-    dyn_img
-        .write_to(&mut cursor, image::ImageOutputFormat::Png)
-        .map_err(|e| AppError::validation(format!("裁剪图片编码失败: {}", e)))?;
-    let buf = cursor.into_inner();
+        // 编码为 PNG（写入内存缓冲区）
+        let dyn_img = image::DynamicImage::ImageRgba8(cropped);
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        dyn_img
+            .write_to(&mut cursor, image::ImageOutputFormat::Png)
+            .map_err(|e| AppError::validation(format!("裁剪图片编码失败: {}", e)))?;
+        Ok(cursor.into_inner())
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("图片裁剪任务失败: {}", e)))??;
 
     // 4. 存入 VFS Blob
     let blob = VfsBlobRepo::store_blob(vfs_db, &buf, Some("image/png"), Some("png"))

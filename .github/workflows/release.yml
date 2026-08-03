@@ -6,14 +6,32 @@
 # ║    0. 修复历史遗留 autorelease: pending 标签 (防御性)          ║
 # ║    1. 开发者向 main 推送 conventional commits                  ║
 # ║    2. release-please 自动创建/更新 Release PR (版本号升级)     ║
-# ║    3. 合并 Release PR → 三路检测 release commit:               ║
+# ║    3. 合并 Release PR → 四路检测 release commit:               ║
 # ║       a) release-please 输出 release_created=true              ║
 # ║       b) HEAD commit 消息匹配 chore(main): release X.Y.Z      ║
 # ║       c) HEAD 为 merge commit 时扫描父提交 (v0.9.33 修复)     ║
-# ║    4. 创建 GitHub Release + 同步 PR 标签为 tagged              ║
+# ║       d) 近 10 个提交中存在未发布/仍为 draft 的 release commit ║
+# ║          (catch-up: 配合串行 concurrency, 被顶掉的排队 run     ║
+# ║           所对应的 release 由下一次 run 补建/续跑)             ║
+# ║    4. 创建 git tag + **draft** GitHub Release + 同步 PR 标签   ║
+# ║       —— Release 全程保持 draft(对外不可见), 直到 publish 阶段 ║
+# ║       所有校验/构建/签名清单全部通过后才一次性翻转为公开。     ║
+# ║       失败或 rerun 会幂等恢复同一个 draft(不会出现空公开       ║
+# ║       Release, 也不会重复建 Release)。                         ║
 # ║    5. 版本号三重校验 (tag vs 代码中 3 处版本号)                ║
-# ║    6. 通过校验 → 并行构建全平台产物                            ║
-# ║    7. 发布产物到 GitHub Release + R2 镜像                      ║
+# ║    6. 迁移兼容性门禁 (fail-closed) → 并行构建全平台产物        ║
+# ║    7. publish: 校验期望产物/签名清单 (fail-closed) → 上传      ║
+# ║       draft → R2 镜像 → draft 翻转公开 → R2 latest.json →      ║
+# ║       CDN 刷新                                                 ║
+# ║                                                                ║
+# ║  Release 状态机:                                               ║
+# ║    missing ──(release commit 检测)──▶ tag + draft              ║
+# ║    draft ──(全平台构建+清单校验通过)──▶ published(一次性)      ║
+# ║    draft ──(任一环节失败/rerun)──▶ 仍是同一个 draft(幂等)      ║
+# ║    published ──(重复 run/catch-up)──▶ 跳过(不重建)             ║
+# ║                                                                ║
+# ║  构建/发布实现在 reusable-build-*.yml / reusable-publish.yml, ║
+# ║  与 rebuild-release.yml 共用同一份代码, 不再复制粘贴。         ║
 # ║                                                                ║
 # ║  标签生命周期 (v0.9.34 事故修复):                              ║
 # ║    - release-please 创建 PR 时: autorelease: pending           ║
@@ -26,23 +44,30 @@
 # ║      headSha 与 tag 不一致的风险 (v0.9.21 事故根因)            ║
 # ║    - GITHUB_TOKEN 创建的 tag 不会触发后续 workflow             ║
 # ║      (GitHub 的防递归机制), 所以 tag push 触发不可行            ║
-# ║    - 三路检测确保即使 release commit 被 merge commit 包裹      ║
-# ║      也能正确识别 (v0.9.33 事故根因: 并发 push 产生 merge)    ║
 # ║                                                                ║
 # ║  重建某个版本:                                                 ║
 # ║    使用 rebuild-release.yml 手动触发, 输入已存在的 tag 名称    ║
-# ║    该 workflow 走相同的校验 + 构建 + 发布流程                  ║
+# ║    该 workflow 走相同的校验 + 迁移门禁 + 构建 + 发布流程       ║
 # ║                                                                ║
 # ╠══════════════════════════════════════════════════════════════════╣
-# ║  Secrets 配置:                                                 ║
+# ║  Secrets 配置 (标注为【必需】的缺失时 release 构建 fail-closed):║
+# ║  更新器签名【必需, 全平台】:                                   ║
 # ║    TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD║
+# ║  macOS 签名+公证【必需, reusable-build-macos.yml】:            ║
+# ║    APPLE_CERTIFICATE_BASE64 (Developer ID Application .p12)    ║
+# ║    APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY         ║
+# ║    APPLE_ID / APPLE_PASSWORD (app-specific) / APPLE_TEAM_ID    ║
+# ║  Windows Authenticode【必需, reusable-build-windows.yml】:     ║
+# ║    WINDOWS_CERTIFICATE_BASE64 (.pfx) / WINDOWS_CERTIFICATE_PASSWORD║
+# ║  Android 签名【必需于 Android 构建; 不阻塞桌面发布】:          ║
 # ║    ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD         ║
 # ║    ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD                    ║
+# ║  发布渠道【必需, reusable-publish.yml】:                       ║
 # ║    CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN                ║
+# ║    CLOUDFLARE_ZONE_ID (可选, CDN 自动刷新)                     ║
 # ║    VERCEL_DEPLOY_HOOK (可选)                                   ║
-# ║  macOS 公证 (可选):                                            ║
-# ║    APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_PASSWORD          ║
-# ║    APPLE_TEAM_ID                                               ║
+# ║  观测 (可选, 缺失时显式跳过):                                  ║
+# ║    SENTRY_DSN / SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_PROJECT║
 # ╚══════════════════════════════════════════════════════════════════╝
 
 name: Release
@@ -51,14 +76,16 @@ on:
   push:
     branches: [main]
 
+# 审查 F3 修复：原 group 为 release-${{ github.sha }}，每次 push SHA 都不同，
+# 等于没有并发保护 —— 两次快速 push 会并发跑 release-please，竞争创建
+# Release / 修 label（v0.9.33 类事故的温床）。改为固定组名严格串行；
+# 排队 run 被更新 run 顶掉的场景由 Resolve 步骤的 catch-up 检测（路径 d）兜底。
 concurrency:
-  group: release-${{ github.sha }}
+  group: release-main
   cancel-in-progress: false
 
-env:
-  GITHUB_REPO: ${{ github.repository }}
-  R2_BUCKET: deepstudent
-  KEEP_VERSIONS: 10
+permissions:
+  contents: read
 
 jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -67,6 +94,7 @@ jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   release-please:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
@@ -82,6 +110,7 @@ jobs:
       - name: Fix stale autorelease labels
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           echo "🔍 Scanning for merged PRs with stale 'autorelease: pending' label..."
           STALE_PRS=$(gh pr list --state merged --label "autorelease: pending" \
@@ -98,7 +127,7 @@ jobs:
             if [[ "$PR_TITLE" =~ release\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
               TAG="v${BASH_REMATCH[1]}"
               # Only fix if the corresponding tag actually exists
-              if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
+              if git ls-remote --tags "https://github.com/${GH_REPO}.git" "refs/tags/${TAG}" | grep -q .; then
                 echo "  🔧 PR #${PR_NUM} (${TAG}): pending → tagged"
                 gh pr edit "$PR_NUM" --remove-label "autorelease: pending" --add-label "autorelease: tagged" || true
                 FIXED=$((FIXED + 1))
@@ -113,22 +142,35 @@ jobs:
           echo "✅ Fixed ${FIXED} stale autorelease label(s)"
 
       # ── Step 1: release-please ──
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         id: release
         continue-on-error: true
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           skip-github-release: true
 
-      - uses: actions/checkout@v7
+      # fetch-depth 15：路径 3 需要 merge 父提交、路径 4 需要近 10 个提交历史
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 5
+          fetch-depth: 15
 
-      # ── Step 2: 三路检测 + GitHub Release 创建 + 标签同步 ──
+      # ── Step 2: 四路检测 + git tag + draft Release 创建/恢复 + 标签同步 ──
+      #
+      # Release 状态机 (draft-first, 幂等):
+      #   missing   → 创建 git tag (幂等) + draft Release → release_created=true
+      #   draft     → 上一次 run 中途失败 / rerun: 复用同一个 draft, 继续跑
+      #               构建+publish (publish 阶段用 --clobber 覆盖资产) →
+      #               release_created=true
+      #   published → 已完整发布, 跳过 → release_created=false
+      #
+      # 对外不可见性: Release 从创建到 publish 阶段全部校验通过前始终是
+      # draft; 翻转为公开由 reusable-publish.yml 在资产/清单全部就绪后
+      # 一次性执行。任何失败都只留下 draft, 不产生空的公开 Release。
       - name: Resolve release result
         id: result
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RP_CREATED: ${{ steps.release.outputs.release_created }}
           RP_TAG: ${{ steps.release.outputs.tag_name }}
           RP_OUTCOME: ${{ steps.release.outcome }}
@@ -139,6 +181,47 @@ jobs:
           echo "ℹ️ RP_CREATED=${RP_CREATED}, RP_TAG=${RP_TAG}"
 
           RELEASE_PATTERN='^chore\(main\): release ([0-9]+\.[0-9]+\.[0-9]+)'
+
+          # ── Helper: 查询 Release 状态机状态: missing / draft / published ──
+          # 注意: draft Release 无法通过 releases/tags/:tag 查到, 必须列表匹配。
+          release_state() {
+            local TAG="$1"
+            local STATE
+            STATE=$(gh api --paginate "repos/${GH_REPO}/releases" \
+              --jq ".[] | select(.tag_name == \"${TAG}\") | if .draft then \"draft\" else \"published\" end" \
+              2>/dev/null | head -1 || true)
+            if [[ -z "$STATE" ]]; then
+              echo "missing"
+            else
+              echo "$STATE"
+            fi
+          }
+
+          # ── Helper: 确保 git tag 存在 (幂等) ──
+          # gh release create --draft 不会推 tag (publish 时才建), 而构建 job
+          # 需要 checkout ref=tag, 所以必须先显式创建 tag。
+          ensure_tag() {
+            local TAG="$1"
+            local TARGET_SHA="$2"
+            if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
+              # fail-close：历史 rerun / 手工标签若指向其他提交，绝不能继续构建并
+              # 发布错误源码。fetch 后用 rev-list 同时兼容轻量与 annotated tag。
+              git fetch --force --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+              local ACTUAL_SHA EXPECTED_SHA
+              ACTUAL_SHA=$(git rev-list -n 1 "${TAG}")
+              EXPECTED_SHA=$(git rev-parse "${TARGET_SHA}^{commit}")
+              if [[ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]]; then
+                echo "❌ Existing tag ${TAG} points to ${ACTUAL_SHA}, expected ${EXPECTED_SHA}"
+                exit 1
+              fi
+              echo "  ℹ️ Tag ${TAG} already exists and points to expected commit"
+              return 0
+            fi
+            gh api "repos/${GH_REPO}/git/refs" \
+              -f ref="refs/tags/${TAG}" \
+              -f sha="${TARGET_SHA}"
+            echo "  ✅ Created tag ${TAG} → ${TARGET_SHA:0:7}"
+          }
 
           # ── Helper: 同步 Release PR 的 autorelease 标签 ──
           # 这是 v0.9.34 事故的根因修复: 确保每次创建/检测到 release 后
@@ -168,40 +251,57 @@ jobs:
             }
           }
 
-          # ── Helper: 创建 GitHub Release (幂等) ──
-          try_create_release() {
+          # ── Helper: 确保 draft Release 存在 (幂等状态机入口) ──
+          # 第三个参数可指定 tag 指向的 commit（catch-up 路径用），默认 HEAD。
+          ensure_draft_release() {
             local TAG="$1"
             local SOURCE="$2"
+            local TARGET_SHA="${3:-${HEAD_SHA}}"
             local VERSION="${TAG#v}"
 
-            echo "ℹ️ Detected release ${TAG} (via ${SOURCE})"
+            echo "ℹ️ Detected release ${TAG} (via ${SOURCE}, target ${TARGET_SHA:0:7})"
 
-            if gh release view "${TAG}" >/dev/null 2>&1; then
-              echo "release_created=false" >> $GITHUB_OUTPUT
-              echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
-              echo "ℹ️ Release ${TAG} already exists; skipping duplicate creation"
-              # Still sync the label — the release exists but label may be stale
-              mark_pr_as_tagged "${VERSION}"
-              return 0
-            fi
+            local STATE
+            STATE=$(release_state "${TAG}")
+            echo "ℹ️ Release ${TAG} state: ${STATE}"
 
-            gh release create "${TAG}" \
-              --target "${HEAD_SHA}" \
-              --title "${TAG}" \
-              --generate-notes
-
-            echo "release_created=true" >> $GITHUB_OUTPUT
-            echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
-            echo "✅ Created GitHub Release ${TAG} (detected via ${SOURCE})"
-
-            # Sync the label after successful release creation
-            mark_pr_as_tagged "${VERSION}"
-            return 0
+            case "$STATE" in
+              published)
+                # 状态机终态: 不重建、不重跑构建
+                echo "release_created=false" >> $GITHUB_OUTPUT
+                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "ℹ️ Release ${TAG} already published; nothing to do"
+                mark_pr_as_tagged "${VERSION}"
+                return 0
+                ;;
+              draft)
+                # 幂等恢复: 上一次 run 失败或被 rerun, 复用同一个 draft,
+                # 继续走构建 + publish (publish 用 --clobber 覆盖旧资产)
+                ensure_tag "${TAG}" "${TARGET_SHA}"
+                echo "release_created=true" >> $GITHUB_OUTPUT
+                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "🔁 Resuming existing draft Release ${TAG} (idempotent recovery)"
+                mark_pr_as_tagged "${VERSION}"
+                return 0
+                ;;
+              missing)
+                ensure_tag "${TAG}" "${TARGET_SHA}"
+                gh release create "${TAG}" \
+                  --draft \
+                  --title "${TAG}" \
+                  --generate-notes
+                echo "release_created=true" >> $GITHUB_OUTPUT
+                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "✅ Created draft GitHub Release ${TAG} (detected via ${SOURCE}; stays hidden until publish gate passes)"
+                mark_pr_as_tagged "${VERSION}"
+                return 0
+                ;;
+            esac
           }
 
           # Path 1: release-please directly reported a release
           if [[ "${RP_CREATED}" == "true" && -n "${RP_TAG}" ]]; then
-            try_create_release "${RP_TAG}" "release-please output"
+            ensure_draft_release "${RP_TAG}" "release-please output"
             exit 0
           fi
 
@@ -210,7 +310,7 @@ jobs:
           echo "ℹ️ head commit subject: ${HEAD_COMMIT_SUBJECT}"
 
           if [[ "${HEAD_COMMIT_SUBJECT}" =~ ^chore\(main\):\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(#[0-9]+\))?$ ]]; then
-            try_create_release "v${BASH_REMATCH[1]}" "HEAD commit message"
+            ensure_draft_release "v${BASH_REMATCH[1]}" "HEAD commit message"
             exit 0
           fi
 
@@ -224,581 +324,88 @@ jobs:
               PARENT_SUBJECT=$(git log -1 --format='%s' "$PARENT_SHA" 2>/dev/null || true)
               echo "  parent ${PARENT_SHA:0:7}: ${PARENT_SUBJECT}"
               if [[ "${PARENT_SUBJECT}" =~ $RELEASE_PATTERN ]]; then
-                try_create_release "v${BASH_REMATCH[1]}" "merge parent ${PARENT_SHA:0:7}"
+                ensure_draft_release "v${BASH_REMATCH[1]}" "merge parent ${PARENT_SHA:0:7}"
                 exit 0
               fi
             done < <(git cat-file -p HEAD | grep '^parent ' | awk '{print $2}')
           fi
 
+          # Path 4 (catch-up): 近 10 个提交中存在尚未 published 的 release
+          # commit (missing 或遗留 draft)。固定 concurrency 组下, 排队中的
+          # run 会被更新的 run 顶掉——若被顶掉的正是 release commit 的 run,
+          # 这里由后续任意一次 push 补建/续跑同一个 draft Release。
+          echo "ℹ️ Scanning last 10 commits for unpublished release commits..."
+          while IFS=$'\t' read -r COMMIT_SHA COMMIT_SUBJECT; do
+            if [[ "${COMMIT_SUBJECT}" =~ $RELEASE_PATTERN ]]; then
+              TAG="v${BASH_REMATCH[1]}"
+              if [[ "$(release_state "${TAG}")" != "published" ]]; then
+                ensure_draft_release "${TAG}" "catch-up scan (${COMMIT_SHA:0:7})" "${COMMIT_SHA}"
+                exit 0
+              fi
+            fi
+          done < <(git log --format='%H%x09%s' -n 10)
+
           echo "release_created=false" >> $GITHUB_OUTPUT
           echo "⏭️ No release created this run"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段二: 版本号三重校验门禁
-  # 仅当 release-please 报告 release_created 时运行
-  # 校验 tag 版本号与代码中三处版本号完全一致后才放行构建
+  # 阶段二: 版本号三重校验门禁 (reusable, 与 rebuild 共用)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   verify:
     needs: [release-please]
     if: needs.release-please.outputs.release_created == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.verify.outputs.version }}
-      tag_name: ${{ steps.verify.outputs.tag_name }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
-
-      - name: Verify version consistency
-        id: verify
-        run: |
-          TAG_NAME="${{ needs.release-please.outputs.tag_name }}"
-          TAG_VERSION="${TAG_NAME#v}"
-
-          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "version=${TAG_VERSION}" >> $GITHUB_OUTPUT
-
-          PKG_VERSION=$(jq -r '.version' package.json)
-          CARGO_VERSION=$(sed -n '/^\[package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' src-tauri/Cargo.toml)
-          TAURI_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
-
-          echo "══════════════════════════════════════"
-          echo "  Tag version:       ${TAG_VERSION}"
-          echo "  package.json:      ${PKG_VERSION}"
-          echo "  Cargo.toml:        ${CARGO_VERSION}"
-          echo "  tauri.conf.json:   ${TAURI_VERSION}"
-          echo "══════════════════════════════════════"
-
-          ERRORS=0
-
-          if [[ "${PKG_VERSION}" != "${TAG_VERSION}" ]]; then
-            echo "::error::package.json version (${PKG_VERSION}) does not match tag (${TAG_VERSION})"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [[ "${CARGO_VERSION}" != "${TAG_VERSION}" ]]; then
-            echo "::error::Cargo.toml version (${CARGO_VERSION}) does not match tag (${TAG_VERSION})"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [[ "${TAURI_VERSION}" != "${TAG_VERSION}" ]]; then
-            echo "::error::tauri.conf.json version (${TAURI_VERSION}) does not match tag (${TAG_VERSION})"
-            ERRORS=$((ERRORS + 1))
-          fi
-
-          if [[ $ERRORS -gt 0 ]]; then
-            echo "::error::Version mismatch detected! ${ERRORS} file(s) have inconsistent versions."
-            echo "::error::This usually means release-please did not update all version files."
-            echo "::error::Check release-please-config.json extra-files configuration."
-            exit 1
-          fi
-
-          echo "✅ All version numbers are consistent: ${TAG_VERSION}"
+    uses: ./.github/workflows/reusable-verify-version.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.tag_name }}
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段三: 构建 (通过版本校验后并行构建全平台)
+  # 阶段二点五: 数据库迁移兼容性门禁 (fail-closed, 构建前, reusable)
+  # 仅在 release commit 上运行（挂在 verify 之后；verify 已由
+  # release_created == 'true' 条件门控，普通 main push 不会进入本 job）
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  migration-compatibility-gate:
+    needs: [verify]
+    uses: ./.github/workflows/reusable-migration-gate.yml
+    with:
+      tag_name: ${{ needs.verify.outputs.tag_name }}
+    secrets: inherit
 
-  # ── macOS ──────────────────────────────────────────────────────
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 阶段三: 构建 (通过版本校验 + 迁移兼容性门禁后并行构建全平台)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   build-macos:
-    needs: [verify]
-    runs-on: macos-latest
-    env:
-      NODE_OPTIONS: '--max-old-space-size=4096'
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.verify.outputs.tag_name }}
+    needs: [verify, migration-compatibility-gate]
+    uses: ./.github/workflows/reusable-build-macos.yml
+    with:
+      tag_name: ${{ needs.verify.outputs.tag_name }}
+    secrets: inherit
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate version info
-        run: node scripts/generate-version.mjs
-
-      - name: Prepare target-specific pdfium
-        run: |
-          TARGET="${{ matrix.target }}"
-          if [[ -x "scripts/prepare-pdfium-macos.sh" ]]; then
-            bash scripts/prepare-pdfium-macos.sh "$TARGET"
-            exit 0
-          fi
-
-          echo "[warn] scripts/prepare-pdfium-macos.sh not found, falling back to legacy prepare flow."
-          if [[ ! -x "scripts/download-pdfium.sh" ]]; then
-            echo "[warn] scripts/download-pdfium.sh not found, skip pdfium prepare."
-            exit 0
-          fi
-
-          case "$TARGET" in
-            aarch64-apple-darwin)
-              rm -f src-tauri/resources/pdfium/libpdfium.dylib
-              bash scripts/download-pdfium.sh macos-arm64
-              ;;
-            x86_64-apple-darwin)
-              rm -f src-tauri/resources/pdfium/libpdfium.dylib
-              bash scripts/download-pdfium.sh macos-x64
-              ;;
-            *)
-              echo "::error::Unsupported macOS target: $TARGET"
-              exit 1
-              ;;
-          esac
-
-      - name: Build Tauri app
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
-          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
-          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
-        run: npx tauri build --target ${{ matrix.target }}
-
-      - name: Verify bundled pdfium architecture
-        run: |
-          TARGET="${{ matrix.target }}"
-          if [[ -x "scripts/verify-macos-pdfium-bundle.sh" ]]; then
-            bash scripts/verify-macos-pdfium-bundle.sh "$TARGET"
-            exit 0
-          fi
-
-          echo "[warn] scripts/verify-macos-pdfium-bundle.sh not found, falling back to legacy verify flow."
-          APP_DIR=$(find "src-tauri/target/$TARGET/release/bundle/macos" -maxdepth 1 -type d -name '*.app' | head -n 1)
-          if [[ -z "$APP_DIR" ]]; then
-            echo "[warn] No .app found for $TARGET, skip verify."
-            exit 0
-          fi
-          LIB="$APP_DIR/Contents/Resources/libpdfium.dylib"
-          if [[ ! -f "$LIB" ]]; then
-            echo "[warn] Bundled libpdfium.dylib missing, skip verify."
-            exit 0
-          fi
-          ARCH_INFO=$(lipo -info "$LIB" 2>/dev/null || true)
-          case "$TARGET" in
-            aarch64-apple-darwin)
-              [[ "$ARCH_INFO" == *"arm64"* ]] || { echo "::error::Bundled libpdfium missing arm64: $ARCH_INFO"; exit 1; }
-              ;;
-            x86_64-apple-darwin)
-              [[ "$ARCH_INFO" == *"x86_64"* ]] || { echo "::error::Bundled libpdfium missing x86_64: $ARCH_INFO"; exit 1; }
-              ;;
-          esac
-          echo "Verified bundled pdfium: $ARCH_INFO"
-
-      - name: Rename updater artifacts with arch suffix
-        run: |
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
-          for f in "$BUNDLE_DIR"/*.app.tar.gz; do
-            [ -f "$f" ] || continue
-            BASE=$(basename "$f" .app.tar.gz | tr ' ' '.')
-            mv "$f" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz"
-            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz.sig"
-          done
-          echo "📦 Renamed updater artifacts:"
-          ls -la "$BUNDLE_DIR"/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: macos-${{ matrix.target }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-
-  # ── Windows ────────────────────────────────────────────────────
   build-windows:
-    needs: [verify]
-    runs-on: windows-latest
-    env:
-      NODE_OPTIONS: '--max-old-space-size=4096'
-    steps:
-      - uses: actions/checkout@v7
-        env:
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: core.symlinks
-          GIT_CONFIG_VALUE_0: "false"
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.verify.outputs.tag_name }}
+    needs: [verify, migration-compatibility-gate]
+    uses: ./.github/workflows/reusable-build-windows.yml
+    with:
+      tag_name: ${{ needs.verify.outputs.tag_name }}
+    secrets: inherit
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate version info
-        run: node scripts/generate-version.mjs
-
-      - name: Build Tauri app
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
-          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
-          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
-        run: npx tauri build --target x86_64-pc-windows-msvc
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: windows-x86_64
-          path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig
-
-  # ── Linux ──────────────────────────────────────────────────────
   build-linux:
-    needs: [verify]
-    runs-on: ubuntu-24.04
-    env:
-      NODE_OPTIONS: '--max-old-space-size=4096'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.verify.outputs.tag_name }}
+    needs: [verify, migration-compatibility-gate]
+    uses: ./.github/workflows/reusable-build-linux.yml
+    with:
+      tag_name: ${{ needs.verify.outputs.tag_name }}
+    secrets: inherit
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            rpm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate version info
-        run: node scripts/generate-version.mjs
-
-      - name: Build Tauri app
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
-          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
-          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
-        run: npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm,appimage
-
-      - name: Rename updater artifacts with arch suffix
-        run: |
-          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
-          for f in "$BUNDLE_DIR"/*.AppImage.tar.gz; do
-            [ -f "$f" ] || continue
-            BASE=$(basename "$f" .AppImage.tar.gz | tr ' ' '.')
-            mv "$f" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz"
-            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_x86_64.AppImage.tar.gz.sig"
-          done
-          echo "📦 Linux bundle artifacts:"
-          ls -la src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: linux-x86_64
-          path: |
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig
-
-  # ── Android ────────────────────────────────────────────────────
   build-android:
-    needs: [verify]
-    runs-on: ubuntu-latest
-    env:
-      NODE_OPTIONS: '--max-old-space-size=4096'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: ${{ needs.verify.outputs.tag_name }}
-
-      - name: Free disk space
-        run: |
-          echo "=== Disk usage BEFORE cleanup ==="
-          df -h /
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /usr/share/swift \
-            /usr/local/lib/android/sdk/ndk \
-            /usr/local/share/powershell \
-            /usr/local/share/chromium \
-            /usr/local/graalvm \
-            /usr/local/lib/node_modules \
-            /opt/ghc \
-            /opt/hostedtoolcache/CodeQL \
-            /opt/hostedtoolcache/go \
-            /opt/hostedtoolcache/Python \
-            /opt/hostedtoolcache/Ruby
-          sudo docker image prune --all --force
-          echo "=== Disk usage AFTER cleanup ==="
-          df -h /
-
-      - name: Add swap space
-        run: |
-          SWAPFILE=/swapfile
-
-          if swapon --show --noheadings | grep -q .; then
-            echo "Swap already enabled on runner; skipping allocation"
-          else
-            if ! sudo fallocate -l 8G "$SWAPFILE"; then
-              echo "::warning::fallocate failed; retrying swap creation with dd"
-              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=8192 status=progress
-            fi
-
-            sudo chmod 600 "$SWAPFILE"
-            sudo mkswap "$SWAPFILE"
-
-            if sudo swapon "$SWAPFILE"; then
-              echo "Swap enabled at $SWAPFILE"
-            else
-              echo "::warning::Failed to enable swap on this runner; continuing without extra swap"
-              sudo rm -f "$SWAPFILE"
-            fi
-          fi
-
-          echo "=== Memory + Swap ==="
-          free -h
-          swapon --show || true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Setup Android SDK & NDK
-        run: |
-          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
-            "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
-          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate version info
-        run: node scripts/generate-version.mjs
-
-      - name: Initialize Android project
-        run: npx tauri android init
-
-      - name: Copy custom Android icons
-        run: |
-          ICONS_SRC="src-tauri/icons/android"
-          RES_DST="src-tauri/gen/android/app/src/main/res"
-          if [ -d "$ICONS_SRC" ]; then
-            for density in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
-              if [ -d "$ICONS_SRC/$density" ]; then
-                mkdir -p "$RES_DST/$density"
-                cp -f "$ICONS_SRC/$density/"* "$RES_DST/$density/"
-              fi
-            done
-            if [ -d "$ICONS_SRC/mipmap-anydpi-v26" ]; then
-              mkdir -p "$RES_DST/mipmap-anydpi-v26"
-              cp -f "$ICONS_SRC/mipmap-anydpi-v26/"* "$RES_DST/mipmap-anydpi-v26/"
-            fi
-            if [ -f "$ICONS_SRC/values/ic_launcher_background.xml" ]; then
-              mkdir -p "$RES_DST/values"
-              cp -f "$ICONS_SRC/values/ic_launcher_background.xml" "$RES_DST/values/"
-            fi
-            rm -f "$RES_DST/drawable-v24/ic_launcher_foreground.xml"
-            rm -f "$RES_DST/drawable/ic_launcher_background.xml"
-            echo "✅ Custom Android icons copied from $ICONS_SRC"
-            find "$RES_DST" -name "ic_launcher*" -type f | head -20
-          else
-            echo "⚠️ No custom Android icons found at $ICONS_SRC, using defaults"
-          fi
-
-      - name: Bundle pdfium for Android
-        run: |
-          JNILIBS_DIR="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
-          mkdir -p "$JNILIBS_DIR"
-          if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
-            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
-            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
-          else
-            echo "⚠️ Android pdfium .so not found, downloading..."
-            bash scripts/download-pdfium.sh android-arm64
-            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
-            echo "✅ Downloaded and bundled pdfium for arm64"
-          fi
-
-      - name: Configure NDK toolchain
-        run: |
-          NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
-
-          sed -i '/\[target.aarch64-linux-android\]/,/^$/{ s|linker = .*|linker = "'"${NDK_PREBUILT}"'/bin/aarch64-linux-android21-clang"|; s|ar = .*|ar = "'"${NDK_PREBUILT}"'/bin/llvm-ar"| }' src-tauri/.cargo/config.toml
-
-          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
-          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
-          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
-
-          echo "✅ NDK toolchain configured:"
-          cat src-tauri/.cargo/config.toml | grep -A2 aarch64-linux-android
-
-      - name: Build Android APK
-        env:
-          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
-          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
-          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
-          GRADLE_OPTS: -Dorg.gradle.daemon=false
-        run: |
-          set +e
-          echo "Starting Android build with 120 minute timeout"
-          timeout --signal=TERM --kill-after=60s 120m npx tauri android build --target aarch64
-          status=$?
-          set -e
-
-          if [ "$status" -eq 124 ]; then
-            echo "::error::Android build timed out after 120 minutes"
-          elif [ "$status" -ne 0 ]; then
-            echo "::error::Android build failed with exit code ${status}"
-          fi
-
-          exit "$status"
-
-      - name: Sign APK
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > /tmp/release.keystore
-
-          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
-          if [ -z "$UNSIGNED_APK" ]; then
-            echo "::error::未找到未签名的 APK"
-            find src-tauri/gen/android -name "*.apk" -type f
-            exit 1
-          fi
-          echo "找到 APK: $UNSIGNED_APK"
-
-          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
-
-          "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
-
-          "${BUILD_TOOLS}/apksigner" sign \
-            --ks /tmp/release.keystore \
-            --ks-key-alias "${ANDROID_KEY_ALIAS:-deepstudent}" \
-            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
-            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
-            --in /tmp/aligned.apk \
-            --out /tmp/signed.apk
-
-          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
-
-          VERSION="${{ needs.verify.outputs.version }}"
-          mkdir -p android-output
-          cp /tmp/signed.apk "android-output/Deep.Student_${VERSION}_arm64.apk"
-
-          rm -f /tmp/release.keystore
-
-          echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
-          ls -lh android-output/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: android-arm64
-          path: android-output/*.apk
+    needs: [verify, migration-compatibility-gate]
+    uses: ./.github/workflows/reusable-build-android.yml
+    with:
+      ref: ${{ needs.verify.outputs.tag_name }}
+      version: ${{ needs.verify.outputs.version }}
+    secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 阶段四: 发布 (全平台构建完成后统一发布)
+  # 阶段四: 发布 (Android 失败不阻塞桌面端发布, 由 rebuild-android 补发)
+  # 桌面四目标是硬性要求; Android 结果透传给 publish, 由其在发布清单
+  # 中诚实表达 (成功⇒必须有 APK, 失败⇒明确标记 pending, 不产出错误元数据)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   publish:
     needs: [verify, build-macos, build-windows, build-linux, build-android]
@@ -809,348 +416,15 @@ jobs:
       needs.build-windows.result == 'success' &&
       needs.build-linux.result == 'success' &&
       !cancelled()
-    runs-on: ubuntu-latest
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.verify.outputs.tag_name }}
+    uses: ./.github/workflows/reusable-publish.yml
+    with:
+      tag_name: ${{ needs.verify.outputs.tag_name }}
+      version: ${{ needs.verify.outputs.version }}
+      android_result: ${{ needs.build-android.result }}
+    secrets: inherit
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-
-      - name: Display artifact structure
-        run: find artifacts -type f | head -50
-
-      - name: Normalize artifact filenames
-        run: |
-          find artifacts -type f -name '* *' | while IFS= read -r f; do
-            DIR=$(dirname "$f")
-            OLD=$(basename "$f")
-            NEW=$(echo "$OLD" | tr ' ' '.')
-            mv "$f" "$DIR/$NEW"
-            echo "  Renamed: $OLD → $NEW"
-          done
-
-      - name: Generate latest.json
-        run: |
-          VERSION="${{ needs.verify.outputs.version }}"
-          REPO="${{ github.repository }}"
-          TAG="${{ needs.verify.outputs.tag_name }}"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          CHANNEL=$(cat .release-channel 2>/dev/null | tr -d '[:space:]' || echo "stable")
-          if [[ "$CHANNEL" != "experimental" ]]; then CHANNEL="stable"; fi
-          echo "📢 Release channel: ${CHANNEL}"
-
-          PLATFORMS="{}"
-
-          # ── macOS aarch64 ──
-          MACOS_ARM_DIR="artifacts/macos-aarch64-apple-darwin"
-          if [ -d "$MACOS_ARM_DIR" ]; then
-            TAR=$(find "$MACOS_ARM_DIR" -name "*_aarch64.app.tar.gz" ! -name "*.sig" | head -1)
-            SIG=$(find "$MACOS_ARM_DIR" -name "*_aarch64.app.tar.gz.sig" | head -1)
-            if [ -n "$TAR" ] && [ -n "$SIG" ]; then
-              TAR_NAME=$(basename "$TAR")
-              SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
-                --arg sig "$SIGNATURE" \
-                '. + {"darwin-aarch64": {"url": $url, "signature": $sig}}')
-            fi
-          fi
-
-          # ── macOS x86_64 ──
-          MACOS_X64_DIR="artifacts/macos-x86_64-apple-darwin"
-          if [ -d "$MACOS_X64_DIR" ]; then
-            TAR=$(find "$MACOS_X64_DIR" -name "*_x86_64.app.tar.gz" ! -name "*.sig" | head -1)
-            SIG=$(find "$MACOS_X64_DIR" -name "*_x86_64.app.tar.gz.sig" | head -1)
-            if [ -n "$TAR" ] && [ -n "$SIG" ]; then
-              TAR_NAME=$(basename "$TAR")
-              SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
-                --arg sig "$SIGNATURE" \
-                '. + {"darwin-x86_64": {"url": $url, "signature": $sig}}')
-            fi
-          fi
-
-          # ── Windows x86_64 ──
-          WIN_DIR="artifacts/windows-x86_64"
-          if [ -d "$WIN_DIR" ]; then
-            EXE=$(find "$WIN_DIR" -name "*-setup.exe" ! -name "*.sig" | head -1)
-            SIG=$(find "$WIN_DIR" -name "*-setup.exe.sig" | head -1)
-            if [ -n "$EXE" ] && [ -n "$SIG" ]; then
-              EXE_NAME=$(basename "$EXE")
-              SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$EXE_NAME" \
-                --arg sig "$SIGNATURE" \
-                '. + {"windows-x86_64": {"url": $url, "signature": $sig}}')
-            fi
-          fi
-
-          # ── Linux x86_64 ──
-          LINUX_DIR="artifacts/linux-x86_64"
-          if [ -d "$LINUX_DIR" ]; then
-            TAR=$(find "$LINUX_DIR" -name "*_x86_64.AppImage.tar.gz" ! -name "*.sig" | head -1)
-            if [ -z "$TAR" ]; then
-              TAR=$(find "$LINUX_DIR" -name "*.AppImage.tar.gz" ! -name "*.sig" | head -1)
-            fi
-            SIG=""
-            if [ -n "$TAR" ] && [ -f "$TAR.sig" ]; then
-              SIG="$TAR.sig"
-            elif [ -n "$TAR" ]; then
-              SIG=$(find "$LINUX_DIR" -name "$(basename "$TAR").sig" | head -1)
-            fi
-            if [ -n "$TAR" ] && [ -n "$SIG" ]; then
-              TAR_NAME=$(basename "$TAR")
-              SIGNATURE=$(cat "$SIG")
-              PLATFORMS=$(echo "$PLATFORMS" | jq --arg url "https://github.com/$REPO/releases/download/$TAG/$TAR_NAME" \
-                --arg sig "$SIGNATURE" \
-                '. + {"linux-x86_64": {"url": $url, "signature": $sig}}')
-            fi
-          fi
-
-          jq -n \
-            --arg version "$VERSION" \
-            --arg notes "Deep Student v$VERSION 更新" \
-            --arg pub_date "$DATE" \
-            --arg channel "$CHANNEL" \
-            --argjson platforms "$PLATFORMS" \
-            '{version: $version, notes: $notes, pub_date: $pub_date, channel: $channel, platforms: $platforms}' \
-            > latest.json
-
-          echo "✅ latest.json 已生成:"
-          cat latest.json
-
-      - name: Collect release files
-        run: |
-          mkdir -p release-files
-          cp latest.json release-files/
-
-          find artifacts -name "*.app.tar.gz" -exec cp {} release-files/ \;
-          find artifacts -name "*.app.tar.gz.sig" -exec cp {} release-files/ \;
-          find artifacts -name "*.dmg" -exec cp {} release-files/ \;
-          find artifacts -name "*.exe" -exec cp {} release-files/ \;
-          find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
-          find artifacts -name "*.AppImage" -exec cp {} release-files/ \;
-          find artifacts -name "*.AppImage.tar.gz" -exec cp {} release-files/ \;
-          find artifacts -name "*.AppImage.tar.gz.sig" -exec cp {} release-files/ \;
-          find artifacts -name "*.deb" -exec cp {} release-files/ \;
-          find artifacts -name "*.rpm" -exec cp {} release-files/ \;
-          find artifacts -name "*.apk" -exec cp {} release-files/ \;
-
-          echo "📦 Release files:"
-          ls -lh release-files/
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2 pinned
-        with:
-          tag_name: ${{ needs.verify.outputs.tag_name }}
-          draft: false
-          prerelease: false
-          files: release-files/*
-
-      # ── R2 镜像上传 ────────────────────────────────────────────
-      - name: Setup Node.js for wrangler
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Upload to Cloudflare R2
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          TAG="${{ needs.verify.outputs.tag_name }}"
-          MAX_RETRIES=3
-          RETRY_DELAY=3
-          FAILED_FILES=""
-
-          upload_with_retry() {
-            local object_key="$1"
-            local file_path="$2"
-            local content_type="$3"
-            local cache_control="$4"
-
-            local attempt=1
-            while [ "$attempt" -le "$MAX_RETRIES" ]; do
-              if npx wrangler r2 object put "$object_key" \
-                --file "$file_path" --content-type "$content_type" \
-                --cache-control "$cache_control" --remote; then
-                return 0
-              fi
-              echo "    ⚠️ Attempt ${attempt}/${MAX_RETRIES} failed: $(basename "$file_path")"
-              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-                sleep "$RETRY_DELAY"
-              fi
-              attempt=$((attempt + 1))
-            done
-
-            return 1
-          }
-
-          echo "📤 Uploading release ${TAG} to R2..."
-          for FILE in release-files/*; do
-            NAME=$(basename "$FILE")
-            [ "$NAME" = "latest.json" ] && continue
-            case "$NAME" in
-              *.sig)  CT="application/pgp-signature" ;;
-              *.dmg)  CT="application/x-apple-diskimage" ;;
-              *.deb)  CT="application/vnd.debian.binary-package" ;;
-              *.rpm)  CT="application/x-rpm" ;;
-              *.apk)  CT="application/vnd.android.package-archive" ;;
-              *)      CT="application/octet-stream" ;;
-            esac
-            echo "  ⬆️ ${NAME} (${CT})"
-
-            if ! upload_with_retry \
-              "${R2_BUCKET}/releases/${TAG}/${NAME}" \
-              "$FILE" \
-              "$CT" \
-              "public, max-age=31536000, immutable"; then
-              echo "    ❌ Failed after ${MAX_RETRIES} attempts: ${NAME}"
-              FAILED_FILES="${FAILED_FILES}${NAME}\n"
-            fi
-          done
-
-          if [ -n "$FAILED_FILES" ]; then
-            echo "❌ R2 upload finished with failures:"
-            printf "%b" "$FAILED_FILES"
-            exit 1
-          fi
-
-          echo "✅ R2 upload complete"
-
-      - name: Generate R2 latest.json
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          TAG="${{ needs.verify.outputs.tag_name }}"
-          R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
-          MAX_RETRIES=3
-          RETRY_DELAY=3
-
-          upload_with_retry() {
-            local object_key="$1"
-            local file_path="$2"
-            local content_type="$3"
-            local cache_control="$4"
-
-            local attempt=1
-            while [ "$attempt" -le "$MAX_RETRIES" ]; do
-              if npx wrangler r2 object put "$object_key" \
-                --file "$file_path" --content-type "$content_type" \
-                --cache-control "$cache_control" --remote; then
-                return 0
-              fi
-              echo "⚠️ latest.json upload attempt ${attempt}/${MAX_RETRIES} failed"
-              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-                sleep "$RETRY_DELAY"
-              fi
-              attempt=$((attempt + 1))
-            done
-            return 1
-          }
-
-          if [ ! -f latest.json ]; then
-            echo "⚠️ No latest.json, skipping"
-            exit 0
-          fi
-
-          APK_NAME=$(ls release-files/*.apk 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
-          APK_URL=""
-          if [ -n "$APK_NAME" ]; then
-            APK_URL="${R2_BASE}/${APK_NAME}"
-            echo "📱 APK: ${APK_URL}"
-          fi
-
-          jq --arg base "$R2_BASE" --arg apk "$APK_URL" '
-            .platforms |= with_entries(
-              .value.url = ($base + "/" + (.value.url | split("/") | last))
-            )
-            | if $apk != "" then .apk_url = $apk else . end
-          ' latest.json > r2-latest.json
-
-          echo "R2 latest.json:"
-          cat r2-latest.json
-
-          upload_with_retry \
-            "${R2_BUCKET}/releases/latest.json" \
-            "r2-latest.json" \
-            "application/json" \
-            "public, max-age=300"
-          echo "✅ R2 latest.json uploaded"
-
-      - name: Cleanup old R2 versions
-        continue-on-error: true
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "🧹 Checking for old versions to clean up..."
-          RELEASES=$(gh api repos/${{ github.repository }}/releases \
-            --paginate -q '.[].tag_name')
-          TOTAL=$(echo "$RELEASES" | grep -c . || true)
-          echo "Found ${TOTAL} releases"
-
-          if [ "$TOTAL" -le "$KEEP_VERSIONS" ]; then
-            echo "✅ No cleanup needed (${TOTAL} ≤ ${KEEP_VERSIONS})"
-            exit 0
-          fi
-
-          TO_DELETE=$(echo "$RELEASES" | tail -n +$((KEEP_VERSIONS + 1)))
-          echo "🗑️ Deleting $(echo "$TO_DELETE" | grep -c . || true) old versions from R2"
-          echo "$TO_DELETE" | while read -r OLD_TAG; do
-            [ -z "$OLD_TAG" ] && continue
-            echo "  Removing releases/${OLD_TAG}/..."
-            ASSETS=$(gh api "repos/${{ github.repository }}/releases/tags/${OLD_TAG}" \
-              -q '.assets[].name' 2>/dev/null || true)
-            echo "$ASSETS" | while read -r NAME; do
-              [ -z "$NAME" ] && continue
-              npx wrangler r2 object delete "${R2_BUCKET}/releases/${OLD_TAG}/${NAME}" --remote 2>/dev/null || true
-            done
-          done
-          echo "✅ R2 cleanup complete"
-
-      # ── 触发官网重构建 ─────────────────────────────────────────
-      - name: Trigger website rebuild
-        continue-on-error: true
-        env:
-          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
-        run: |
-          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
-            echo "⚠️ VERCEL_DEPLOY_HOOK not configured, skipping"
-            exit 0
-          fi
-          RESP=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK")
-          echo "🌐 Website rebuild triggered: $RESP"
-
-      # ── 确保 autorelease 标签已同步 (publish 阶段兜底) ──────────
-      - name: Sync autorelease label
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ needs.verify.outputs.version }}"
-          echo "🏷️ Ensuring autorelease label is 'tagged' for release ${VERSION}..."
-
-          PR_NUM=$(gh pr list --state merged --label "autorelease: pending" \
-            --json number,title \
-            --jq ".[] | select(.title | test(\"release ${VERSION}\")) | .number" \
-            | head -1 || true)
-
-          if [[ -z "$PR_NUM" ]]; then
-            echo "  ℹ️ No PR with 'autorelease: pending' found for ${VERSION} (already tagged or manual release)"
-            exit 0
-          fi
-
-          echo "  🔧 PR #${PR_NUM}: autorelease: pending → autorelease: tagged"
-          gh pr edit "$PR_NUM" \
-            --remove-label "autorelease: pending" \
-            --add-label "autorelease: tagged" || true
   trigger-android-rebuild:
     needs: [verify, build-android, publish]
     if: |
@@ -1158,6 +432,7 @@ jobs:
       needs.publish.result == 'success' &&
       needs.build-android.result == 'failure'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       actions: write
       contents: read
@@ -1165,6 +440,7 @@ jobs:
       - name: Dispatch Android rebuild workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           TAG_NAME: ${{ needs.verify.outputs.tag_name }}
         run: |
@@ -1184,7 +460,7 @@ jobs:
           echo "Dispatching rebuild-android.yml for ${TAG} using workflow ref ${REF}"
           echo "$PAYLOAD" | gh api \
             --method POST \
-            "repos/${{ github.repository }}/actions/workflows/rebuild-android.yml/dispatches" \
+            "repos/${GH_REPO}/actions/workflows/rebuild-android.yml/dispatches" \
             --input -
 
           echo "Android rebuild workflow dispatched for ${TAG}"

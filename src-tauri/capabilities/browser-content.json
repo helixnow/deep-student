@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser-content",
+  "description": "Isolated browser content WebView capability. Remote pages receive only the nonce-authenticated trusted-input report command; they do not inherit main/default, core, fs, http, dialog, opener, or window permissions.",
+  "local": false,
+  "remote": {
+    "urls": ["https://*/*", "http://*/*"]
+  },
+  "webviews": ["browser-content"],
+  "platforms": ["linux", "macOS", "windows"],
+  "permissions": ["allow-browser-content-user-input"]
+}

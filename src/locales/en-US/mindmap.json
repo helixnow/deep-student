@@ -16,6 +16,7 @@
     "note": "Add a note..."
   },
   "toolbar": {
+    "view": "View",
     "outline": "Outline",
     "mindmap": "Mind Map",
     "undo": "Undo",
@@ -32,12 +33,39 @@
     "prevResult": "Previous result",
     "nextResult": "Next result",
     "closeSearch": "Close search",
+    "searchMode": "Search mode",
+    "searchFilter": "Filter",
+    "searchLocate": "Locate",
+    "searchFilterHint": "Outline shows only matches and their ancestor path",
+    "searchLocateHint": "Keep full tree and jump to matches",
+    "searchOptions": "Search options",
+    "searchCaseSensitive": "Match case",
+    "searchWholeWord": "Whole word",
+    "searchNoResults": "No matching nodes",
     "moreActions": "More actions",
     "save": "Save",
     "saving": "Saving...",
     "saved": "Saved",
     "shortcutList": "Keyboard Shortcuts",
-    "closeShortcuts": "Close shortcuts panel"
+    "closeShortcuts": "Close shortcuts panel",
+    "hideCompleted": "Hide completed",
+    "learning": "Learn",
+    "fold": "Fold",
+    "foldMenu": "Expand / collapse to level",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "collapseToLevel": "Collapse to level {{level}}",
+    "unsaved": "Unsaved",
+    "saveShortcut": "Save (Cmd+S)",
+    "undoDisabled": "Nothing to undo",
+    "redoDisabled": "Nothing to redo"
+  },
+  "preferences": {
+    "classicKeymap": "Classic outline keymap",
+    "spatialNavigation": "Spatial canvas arrow navigation",
+    "descriptionFirstLine": "Preview first description line only",
+    "classicKeymapActive": "Classic outline keymap: Cmd+Enter completes, Shift+Enter edits description, Cmd+[/] focuses; Alt+[/] folds.",
+    "deepStudentKeymapActive": "Deep Student default keymap: Cmd+Enter adds a child, Shift+Enter inserts a line; Alt+[/] folds."
   },
   "export": {
     "title": "Export",
@@ -61,20 +89,42 @@
     "switchToMindMapView": "Please switch to mind map view to export images",
     "failed": "Export failed, please try again",
     "success": "Export successful",
-    "processing": "Exporting..."
+    "processing": "Exporting...",
+    "exportJson": "Export JSON",
+    "exportSvg": "Export SVG",
+    "exportXmind": "Export .xmind",
+    "dialogExportXmind": "Export .xmind",
+    "filterXmind": ".xmind mind map package",
+    "exportPdf": "Export PDF",
+    "pdfPrintHint": "The system print dialog will open; choose \"Save as PDF\"",
+    "pdfPrintDegradeHint": "The system print dialog will open; choose \"Save as PDF\". If no dialog appears, PDF export may not be supported on this system — use PNG/SVG instead",
+    "exportText": "Export Plain Text",
+    "dialogExportText": "Export Plain Text"
   },
   "import": {
     "title": "Import",
     "dialogTitle": "Import Mind Map",
     "filterName": "Mind Map",
     "success": "Mind map imported successfully",
+    "successSummary": "Imported {{nodes}} nodes",
+    "successSummaryIgnored": "Imported {{nodes}} nodes; ignored {{images}} image(s) and {{summaries}} summary item(s)",
     "failed": "Mind map import failed",
     "failedTitle": "Import Failed",
     "importedMap": "Imported Mind Map",
     "emptyMap": "Empty Mind Map",
     "unsavedWarning": "The current mind map has unsaved changes. Importing will overwrite them. Continue?",
     "unsavedTitle": "Import will overwrite unsaved changes",
-    "unsavedConfirm": "Continue import"
+    "unsavedConfirm": "Continue import",
+    "unnamedTopic": "Untitled topic",
+    "multiSheetNote": "Merged from {{count}} .xmind sheets: {{titles}}",
+    "labelsNote": "Labels: {{labels}}",
+    "markersNote": ".xmind markers: {{markers}}",
+    "saveAndImport": "Save & Import"
+  },
+  "presentation": {
+    "enter": "Presentation mode",
+    "exit": "Exit presentation mode",
+    "exitHint": "Exit presentation mode (Esc)"
   },
   "errors": {
     "notFound": "Mind map not found"
@@ -103,11 +153,73 @@
     "editNote": "Edit note",
     "moveNode": "Move node up / down",
     "collapseExpand": "Collapse / expand node",
+    "zoomInOut": "Focus in / return to parent",
     "bold": "Bold",
     "fitView": "Fit view",
     "clipboard": "Copy / cut / paste",
     "indentOutdent": "Indent / outdent",
-    "escape": "Exit editing / deselect"
+    "escape": "Exit editing / deselect",
+    "splitMerge": "Split at caret / merge at line start",
+    "multiSelect": "Range select / toggle select",
+    "continuousCreate": "While editing: Enter creates next sibling",
+    "batchOps": "With multi-select: Tab / Delete batch ops",
+    "collapseExpandAll": "Collapse all / Expand all",
+    "marqueeSelect": "Marquee-select nodes",
+    "marqueeSelectKeys": "Drag blank area",
+    "marqueeSelectKeysPanMode": "⇧ + drag blank area",
+    "panCanvas": "Pan canvas",
+    "panCanvasKeys": "Space / Middle / Right button + drag",
+    "panCanvasKeysPanMode": "Drag blank area",
+    "associationEntryKeys": "Right-click node",
+    "associationAdd": "Add association (then click target)",
+    "groupRecite": "Recite Mode",
+    "reciteNavigate": "Navigate between nodes",
+    "reciteReveal": "Reveal next blank",
+    "reciteExit": "Exit recite mode",
+    "duplicate": "Duplicate",
+    "addSiblingOrSplit": "Add sibling / split at caret",
+    "toggleComplete": "Toggle completed",
+    "drillIn": "Focus in",
+    "drillOut": "Return to parent",
+    "moveUp": "Move node up",
+    "moveDown": "Move node down",
+    "collapse": "Collapse node",
+    "expand": "Expand node",
+    "collapseAll": "Collapse all",
+    "expandAll": "Expand all",
+    "copy": "Copy nodes",
+    "cut": "Cut nodes",
+    "paste": "Paste",
+    "pasteAsText": "Paste as plain text",
+    "selectAll": "Select all visible nodes",
+    "italic": "Italic",
+    "underline": "Underline",
+    "indent": "Indent",
+    "outdent": "Outdent"
+  },
+  "versions": {
+    "title": "Version History",
+    "loading": "Loading version history...",
+    "loadFailed": "Failed to load version history",
+    "empty": "No versions yet",
+    "untitled": "Untitled",
+    "preview": "Preview",
+    "previewTitle": "Title preview: {{title}}",
+    "previewFailed": "Preview failed or content unavailable",
+    "restore": "Restore",
+    "restoreConfirm": "Confirm restore",
+    "restoreConfirmHint": "Restoring will overwrite the current content with this version; unsaved changes are saved first.",
+    "restoring": "Restoring...",
+    "restored": "Restored to the selected version",
+    "restoreFailed": "Failed to restore version, please retry",
+    "close": "Close version history",
+    "source": {
+      "manual": "Manual save",
+      "auto": "Auto save",
+      "chat_update": "AI update",
+      "chat_edit_nodes": "AI node edits",
+      "unknown": "Unknown source"
+    }
   },
   "embed": {
     "zoomIn": "Zoom in",
@@ -142,7 +254,8 @@
     "orgchartDown": "Org Chart (Down)",
     "orgchartUp": "Org Chart (Up)",
     "orgchartRight": "Org Chart (Right)",
-    "orgchartLeft": "Org Chart (Left)"
+    "orgchartLeft": "Org Chart (Left)",
+    "timelineRight": "Timeline (Right)"
   },
   "themes": {
     "default": "Default",
@@ -152,10 +265,12 @@
     "defaultDark": "Default (Dark)",
     "minimalDark": "Minimal (Dark)",
     "colorfulDark": "Colorful (Dark)",
-    "notionDark": "Notion Dark",
-    "notionLight": "Notion Light",
+    "cardDark": "Card Dark",
+    "cardLight": "Card Light",
     "minimalWhite": "Minimal White",
-    "minimalBlack": "Minimal Black"
+    "minimalBlack": "Minimal Black",
+    "paper": "Paper & Ink",
+    "paperDark": "Paper & Ink (Dark)"
   },
   "layouts": {
     "tree": "Tree",
@@ -169,13 +284,16 @@
     "orgchartVertical": "Organization Chart",
     "orgchartVerticalDesc": "Top-down hierarchical chart",
     "orgchartHorizontal": "Horizontal Org Chart",
-    "orgchartHorizontalDesc": "Left-right hierarchical chart"
+    "orgchartHorizontalDesc": "Left-right hierarchical chart",
+    "timeline": "Timeline",
+    "timelineDesc": "Timeline layout with first-level topics along a horizontal axis"
   },
   "store": {
     "draftRecovered": "Restored unsaved local draft",
     "contentCorrupted": "Mind map content is corrupted and cannot be loaded: {{error}}",
     "saveFailed": "Failed to save mind map. Please check your network and retry.",
     "saveFailedTitle": "Save Failed",
+    "saveRetryExhausted": "Auto-save failed repeatedly. Please check your network and save manually.",
     "updateConflict": "Content has been updated elsewhere. Auto-refreshing to the latest version…",
     "conflictResolved": "Successfully refreshed to the latest version.",
     "conflictReloadFailed": "Auto-refresh failed. Please manually refresh the page to get the latest content.",
@@ -199,8 +317,11 @@
   },
   "outline": {
     "dragToMove": "Drag to move",
+    "bulletZoomAndDrag": "Click to enter focus mode, drag to move",
+    "bulletFocusAndDrag": "Click to focus, drag to move",
     "doubleClickFocus": "Double-click to enter focus mode",
     "enterFocusMode": "Enter focus mode",
+    "exitFocusMode": "Exit focus mode",
     "markIncomplete": "Mark as incomplete",
     "markComplete": "Mark as complete",
     "bold": "Bold",
@@ -208,9 +329,34 @@
     "highlight": "Highlight",
     "unnamedNode": "Unnamed node",
     "untitled": "Untitled",
-    "emptyHint": "Click here or press Tab to add the first child node"
+    "emptyHint": "Press Enter to start typing the first node",
+    "expandWithCount": "Expand ({{count}})",
+    "selectedCount": "{{count}} selected",
+    "batchComplete": "Complete",
+    "clearSelection": "Clear selection",
+    "convertToTask": "Convert to task",
+    "removeTask": "Remove task",
+    "batchCopy": "Copy",
+    "batchIndent": "Indent",
+    "batchOutdent": "Outdent",
+    "bulletClickHint": "Click to select · ⌘-click to zoom in",
+    "subtreeItemCount": "{{count}} items",
+    "bulletHint": "Click to select · Double-click to zoom in · ⌘-click to zoom in",
+    "batchCollapse": "Collapse",
+    "ghostNewLine": "Add a new line",
+    "dropLevelBadge": "L{{level}}"
+  },
+  "outlineV2": {
+    "deleteConfirm": "Delete this item?",
+    "deleteConfirmCount": "Delete {{count}} items and their subtrees?",
+    "confirmDelete": "Delete",
+    "cancel": "Cancel",
+    "collapseToggleHint": "⌥ subtree · ⌘ collapse to this level",
+    "breadcrumbHome": "Back to full outline"
   },
   "contextMenu": {
+    "clearColor": "Clear color",
+    "selectColor": "Select color {{color}}",
     "addSibling": "Add Sibling",
     "edit": "Edit",
     "editNote": "Edit Note",
@@ -235,27 +381,63 @@
     "copy": "Copy",
     "cut": "Cut",
     "pasteAsChild": "Paste as Child",
-    "linkResource": "Link Resource"
+    "linkResource": "Link Resource",
+    "addTopic": "New Topic",
+    "paste": "Paste",
+    "fitView": "Fit View",
+    "exitFocusMode": "Exit Focus Mode"
+  },
+  "association": {
+    "add": "Add association",
+    "menuLabel": "Association menu",
+    "selectSource": "Select a source node first",
+    "pickTarget": "Click a target node",
+    "editLabel": "Edit label",
+    "delete": "Delete association",
+    "closeActions": "Close",
+    "labelPlaceholder": "Label",
+    "doubleClickHint": "Double-click to edit"
   },
   "refs": {
     "pickerTitle": "Link Resource",
     "searchPlaceholder": "Search resources...",
     "loading": "Loading...",
     "noResults": "No matching resources",
-    "empty": "No resources"
+    "empty": "No resources",
+    "loadFailed": "Failed to load resources",
+    "searchFailed": "Resource search failed",
+    "unavailable": "Resource deleted or unavailable",
+    "remove": "Remove resource “{{name}}”"
   },
   "node": {
     "unnamed": "Unnamed",
     "openMenu": "Open node menu",
     "moreActions": "More actions",
     "addChildShortcut": "Add Child (Tab)",
-    "deleteShortcut": "Delete (Del)"
+    "deleteShortcut": "Delete (Del)",
+    "openLink": "Open link",
+    "priorityBadge": "Priority {{level}}",
+    "progressLabel": "Progress {{percent}}%",
+    "toggleComplete": "Toggle completed"
   },
   "errorDetails": "Error details",
   "canvas": {
     "emptyTitle": "Start creating",
     "emptyHintBefore": "Click",
-    "emptyHintAfter": "to add your first node"
+    "emptyHintAfter": "to add your first node",
+    "dragModeGroup": "Canvas drag mode",
+    "selectMode": "Select",
+    "panMode": "Pan canvas",
+    "dragModeSelect": "Select mode: drag blank area to marquee-select (pan with Space / middle / right button drag)",
+    "dragModePan": "Pan canvas mode: drag blank area to move the canvas (marquee-select with Shift + drag)"
+  },
+  "canvasV2": {
+    "zoomResetTooltip": "Current zoom; click to reset to 100%",
+    "zoomLevel": "Zoom {{percent}}%, click to reset to 100%",
+    "deleteWithChildrenQuestion": "Also delete {{count}} subtopics?",
+    "confirmDelete": "Delete",
+    "cancel": "Cancel",
+    "tapAgainToDelete": "Tap to confirm"
   },
   "recite": {
     "title": "Recite Mode",
@@ -266,8 +448,51 @@
     "exitFirst": "Please exit Recite Mode first",
     "blank": "Blank",
     "unblank": "Unblank",
+    "markBlank": "Mark blank",
     "clearBlanks": "Clear All Blanks",
     "emptyHint": "Select text and click 'Blank' to create cloze items",
+    "createBlankCta": "Exit recite and create a blank",
     "progress": "{{revealed}}/{{total}} revealed"
+  },
+  "clipboard": {
+    "pasteParseFailed": "Pasted content is too large or too deep to parse"
+  },
+  "menu": {
+    "groupData": "Data",
+    "groupView": "View"
+  },
+  "shellV2": {
+    "versions": {
+      "justNow": "Just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago",
+      "nodeCount_one": "{{count}} node",
+      "nodeCount_other": "{{count}} nodes",
+      "diffSummary": "vs current +{{added}} / −{{removed}}",
+      "diffSame": "Same nodes as current",
+      "latestBadge": "Latest"
+    },
+    "conflict": {
+      "keepServer": "Keep server version"
+    },
+    "import": {
+      "errorTitle": "Import failed",
+      "retry": "Retry",
+      "dismiss": "Dismiss"
+    },
+    "export": {
+      "group": "Export as…",
+      "xmindDone": ".xmind file exported"
+    },
+    "clipboard": {
+      "copiedNodes_one": "Copied {{count}} node",
+      "copiedNodes_other": "Copied {{count}} nodes",
+      "cutNodes_one": "Cut {{count}} node",
+      "cutNodes_other": "Cut {{count}} nodes"
+    },
+    "embed": {
+      "retry": "Retry"
+    }
   }
 }

@@ -1,35 +1,42 @@
 import React, { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X, Robot } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { isMacOS } from '@/utils/platform';
 import type { AIEditState, CanvasEditOperation, DiffLine } from './hooks/useAIEditState';
 
 interface AIDiffPanelProps {
   state: AIEditState;
   onAccept: () => void;
   onReject: () => void;
+  isApplying?: boolean;
   className?: string;
+  /**
+   * 宿主可在其他面板（如查找替换）拥有 Esc 语义时暂停本面板的
+   * 全局快捷键，避免两个 Esc 监听互相抢占。按钮操作不受影响。
+   */
+  suspendShortcuts?: boolean;
 }
 
 function DiffLineView({ line }: { line: DiffLine }) {
   const bgClass = {
     unchanged: '',
-    added: 'bg-green-100 dark:bg-green-900/30',
-    removed: 'bg-red-100 dark:bg-red-900/30',
+    added: 'bg-[hsl(var(--success)/0.12)]',
+    removed: 'bg-[hsl(var(--destructive)/0.10)]',
   }[line.type];
-  
+
   const prefixChar = {
     unchanged: ' ',
     added: '+',
     removed: '-',
   }[line.type];
-  
+
   const prefixClass = {
     unchanged: 'text-muted-foreground',
-    added: 'text-green-600 dark:text-green-400',
-    removed: 'text-red-600 dark:text-red-400',
+    added: 'text-[hsl(var(--success))]',
+    removed: 'text-[hsl(var(--destructive))]',
   }[line.type];
 
   return (
@@ -47,7 +54,68 @@ function DiffLineView({ line }: { line: DiffLine }) {
   );
 }
 
-export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPanelProps) {
+type DiffHunk = {
+  kind: 'context' | 'change';
+  lines: DiffLine[];
+  /** diffLines 中的起始下标（渲染 key 用，行内容可能重复） */
+  startIndex: number;
+};
+
+/** 把整份行级 diff 切成「上下文段 / 变更段」交替的 hunk 序列，供视觉分组 */
+export function groupDiffHunks(lines: readonly DiffLine[]): DiffHunk[] {
+  const hunks: DiffHunk[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const kind: DiffHunk['kind'] = line.type === 'unchanged' ? 'context' : 'change';
+    const last = hunks[hunks.length - 1];
+    if (last && last.kind === kind) {
+      last.lines.push(line);
+    } else {
+      hunks.push({ kind, lines: [line], startIndex: index });
+    }
+  }
+  return hunks;
+}
+
+/**
+ * 只读 hunk 级 diff 渲染层。
+ * AI 编辑面板与保存冲突「对比」（NotesCrepeEditor）共用，
+ * 仅负责渲染，不带操作条/快捷键。
+ */
+export function DiffHunksView({ lines }: { lines: readonly DiffLine[] }) {
+  return (
+    <div className="flex flex-col px-1">
+      {groupDiffHunks(lines).map((hunk) => (
+        <div
+          key={hunk.startIndex}
+          className={cn(
+            hunk.kind === 'change' &&
+              'my-0.5 overflow-hidden rounded-[var(--notes-radius-row,6px)] border-l-2 border-[hsl(var(--primary)/0.35)]',
+          )}
+        >
+          {hunk.lines.map((line, offset) => (
+            <DiffLineView key={hunk.startIndex + offset} line={line} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * AI 编辑建议 diff 面板。
+ *
+ * 内联呈现（非全屏遮罩）：作为编辑器上方的有界卡片区参与布局，
+ * 编辑器正文保持可见、可滚动；Accept/Reject 操作条固定在 diff 区顶部。
+ */
+export function AIDiffPanel({
+  state,
+  onAccept,
+  onReject,
+  isApplying = false,
+  className,
+  suspendShortcuts = false,
+}: AIDiffPanelProps) {
   const { t } = useTranslation('notes');
   const { request, diffLines } = state;
 
@@ -56,16 +124,24 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
     replace: t('aiDiff.operation_replace'),
     set: t('aiDiff.operation_set'),
   };
-  
+
+  const acceptShortcutLabel = isMacOS() ? '⌘↵' : 'Ctrl+Enter';
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Accept 应用中锁定快捷键，防止重复触发；已被其他面板消费的事件不再处理
+    if (isApplying || e.defaultPrevented) return;
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       onAccept();
-    } else if (e.key === 'Escape') {
+      return;
+    }
+    if (e.key === 'Escape') {
+      // Esc 优先级：查找替换等面板打开时让位（宿主经 suspendShortcuts 声明）
+      if (suspendShortcuts) return;
       e.preventDefault();
       onReject();
     }
-  }, [onAccept, onReject]);
+  }, [isApplying, suspendShortcuts, onAccept, onReject]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -79,84 +155,77 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
   const removedCount = diffLines.filter(line => line.type === 'removed').length;
 
   return (
-    <div className={cn(
-      'absolute inset-0 z-40 flex flex-col bg-background/95 backdrop-blur-sm',
-      'animate-in fade-in slide-in-from-top-2 duration-200',
-      className
-    )}>
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
-            <Robot size={16} className="text-primary" />
-          </div>
-          <div>
-            <h3 className="text-sm font-medium">{t('aiDiff.title')}</h3>
-            <p className="text-xs text-muted-foreground">
-              {operationLabels[request.operation]}
-              {hasChanges && (
-                <span className="ml-2">
-                  <span className="text-green-600 dark:text-green-400">+{addedCount}</span>
-                  {' / '}
-                  <span className="text-red-600 dark:text-red-400">-{removedCount}</span>
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onReject}
-        >
-          <X size={16} />
-        </NotionButton>
-      </div>
-
-      <CustomScrollArea className="flex-1" viewportClassName="p-4">
-        <div className="rounded-lg border bg-card overflow-hidden">
-          {diffLines.length === 0 ? (
-            <div className="p-4 text-center text-muted-foreground text-sm">
-              {t('aiDiff.no_changes')}
+    <section
+      aria-label={t('aiDiff.title')}
+      className={cn(
+        'notes-ai-diff-inline relative z-20 flex max-h-[min(45vh,420px)] flex-shrink-0 flex-col',
+        'border-b border-border bg-background ui-drop-in',
+        className
+      )}
+    >
+      <div className="mx-auto flex min-h-0 w-full max-w-[var(--notes-content-max-w)] flex-col px-5 py-2 sm:px-12">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-shell-control,12px)] border border-border bg-card shadow-[0_1px_3px_hsl(var(--shadow-base)/0.08)]">
+          {/* 操作条：贴住 diff 区顶部，不随 diff 内容滚动 */}
+          <div className="flex flex-shrink-0 items-center gap-3 border-b border-border/60 bg-muted/40 px-3 py-2">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <Robot size={14} className="text-primary" />
             </div>
-          ) : (
-            <div className="divide-y divide-border/50">
-              {diffLines.map((line, index) => (
-                <DiffLineView key={index} line={line} />
-              ))}
+            <div className="min-w-0 flex-1">
+              <h3 className="truncate text-sm font-medium leading-tight">{t('aiDiff.title')}</h3>
+              <p className="truncate text-xs text-muted-foreground">
+                {operationLabels[request.operation]}
+                {hasChanges && (
+                  <span className="ml-2 tabular-nums">
+                    <span className="text-[hsl(var(--success))]">+{addedCount}</span>
+                    {' / '}
+                    <span className="text-[hsl(var(--destructive))]">-{removedCount}</span>
+                  </span>
+                )}
+              </p>
             </div>
-          )}
-        </div>
-      </CustomScrollArea>
+            <div className="hidden items-center text-xs text-muted-foreground sm:flex">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px]">{acceptShortcutLabel}</kbd>
+              <span className="mx-1">{t('aiDiff.accept')}</span>
+              <span className="mx-0.5">·</span>
+              <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px]">Esc</kbd>
+              <span className="ml-1">{t('aiDiff.reject')}</span>
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-1.5">
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={onReject}
+                disabled={isApplying}
+                className="h-7 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] hover:border-[hsl(var(--destructive)/0.4)] hover:text-[hsl(var(--destructive))] motion-reduce:transition-none"
+              >
+                <X size={13} className="mr-1" />
+                {t('aiDiff.reject')}
+              </DsButton>
+              <DsButton
+                size="sm"
+                onClick={onAccept}
+                disabled={isApplying}
+                aria-busy={isApplying}
+                className="h-7 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none"
+              >
+                <Check size={13} className="mr-1" />
+                {t('aiDiff.accept')}
+              </DsButton>
+            </div>
+          </div>
 
-      <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
-        <div className="text-xs text-muted-foreground">
-          <kbd className="px-1.5 py-0.5 rounded bg-muted border text-[10px]">⌘↵</kbd>
-          {` ${t('aiDiff.accept')} · `}
-          <kbd className="px-1.5 py-0.5 rounded bg-muted border text-[10px]">Esc</kbd>
-          {` ${t('aiDiff.reject')}`}
-        </div>
-        <div className="flex items-center gap-2">
-          <NotionButton
-            variant="outline"
-            size="sm"
-            onClick={onReject}
-            className="h-8"
-          >
-            <X size={14} className="mr-1.5" />
-            {t('aiDiff.reject')}
-          </NotionButton>
-          <NotionButton
-            size="sm"
-            onClick={onAccept}
-            className="h-8"
-          >
-            <Check size={14} className="mr-1.5" />
-            {t('aiDiff.accept')}
-          </NotionButton>
+          <CustomScrollArea className="min-h-0 flex-1" viewportClassName="py-1">
+            {diffLines.length === 0 ? (
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                {t('aiDiff.no_changes')}
+              </div>
+            ) : (
+              <DiffHunksView lines={diffLines} />
+            )}
+          </CustomScrollArea>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 

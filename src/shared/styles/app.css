@@ -13,6 +13,7 @@ body {
 :where(:root) {
   --shell-titlebar-height: var(--desktop-titlebar-height, 40px);
   --shell-navigation-width: var(--sidebar-width, 272px);
+  --shell-sidebar-divider: color-mix(in oklab, var(--shell-seam) 68%, transparent);
   --shell-workspace-edge-radius: 24px;
   --shell-layout-gap: var(--space-shell-layout-gap);
   --shell-panel-radius: var(--radius-shell-panel);
@@ -23,6 +24,9 @@ body {
   --shell-window-control-gap: var(--space-shell-control-gap);
   --shell-window-control-radius: var(--radius-shell-window-control);
   --shell-section-gap: var(--space-shell-section-gap);
+
+  /* 主题亮暗切换的全局颜色过渡时长（useTheme.ts 会读取该值来定时移除临时 class） */
+  --theme-transition-dur: 220ms;
 }
 
 [data-shell-role="app-shell"] {
@@ -33,7 +37,17 @@ body {
    * 透出的颜色与侧栏始终一致，主题切换时不会出现中间色差。
    */
   background: var(--shell-backdrop);
+  transition: background-color var(--page-slide-dur, 200ms) var(--ease-shell);
+}
+
+[data-shell-role="app-shell"][data-sidebar-visible] {
   transition: background-color 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
+  transition: none;
 }
 
 [data-shell-role="app-shell"][data-sidebar-visible="true"] {
@@ -50,15 +64,19 @@ body {
     linear-gradient(
       90deg,
       var(--shell-navigation-surface) 0,
-      var(--shell-navigation-surface) var(--shell-navigation-width),
-      var(--shell-workspace-panel) var(--shell-navigation-width),
+      var(--shell-navigation-surface) var(--shell-navigation-surface-width, var(--shell-navigation-width)),
+      var(--shell-workspace-panel) var(--shell-navigation-surface-width, var(--shell-navigation-width)),
       var(--shell-workspace-panel) 100%
     );
 }
 
+/* 工作台模式不再渲染 desktop-shell-titlebar：窗口拖拽与 Win 三键
+ * 全部由 Workbench StatusBar（wb-menubar）接管（见 StatusBar.tsx/.css）。 */
+
 .desktop-shell-header-cell {
   min-width: 0;
-  min-height: var(--shell-titlebar-height);
+  /* The shell height includes the native macOS inset; the header row does not. */
+  min-height: var(--shell-titlebar-content-height, 40px);
   background: transparent;
 }
 
@@ -67,23 +85,27 @@ body {
 }
 
 .desktop-shell-header-hotzone:focus-visible {
-  outline: 2px solid var(--ring);
+  outline: 2px solid hsl(var(--ring));
   outline-offset: -2px;
 }
 
 .desktop-shell-header-cell--nav {
   background: transparent;
   border-right: 0;
+  transition:
+    width var(--resize-dur) var(--resize-ease),
+    padding var(--resize-dur) var(--resize-ease);
+  will-change: width;
 }
 
 .desktop-shell-header-cell--workspace {
   background: transparent;
   border: 0;
   box-shadow: none;
-  transition: padding-left 200ms cubic-bezier(0.25, 0.1, 0.25, 1),
-              background-color 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              -webkit-backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0);
+  transition: padding-left var(--resize-dur) var(--resize-ease),
+              background-color 400ms var(--ease-shell),
+              backdrop-filter 400ms var(--ease-shell),
+              -webkit-backdrop-filter 400ms var(--ease-shell);
 }
 
 .desktop-shell-toolbar-group {
@@ -153,6 +175,11 @@ body {
   color: var(--shell-navigation-section-label);
 }
 
+.desktop-shell-sidebar-section-label {
+  font-size: 13px;
+  line-height: 18px;
+}
+
 .settings-nav-item-label {
   color: var(--shell-navigation-foreground);
 }
@@ -164,6 +191,9 @@ body {
 .desktop-shell-sidebar-row,
 .desktop-shell-nav-row,
 .desktop-shell-thread-row {
+  /* ⚠️ 32px 是桌面密度。移动统一抽屉内由 responsive-utilities.css 的
+     [data-mobile-unified-drawer] 前缀选择器（特异性更高）豁免为 ≥44px
+     触控高度，勿在此处直接加大数值或删除该豁免。 */
   min-height: 32px !important;
   justify-content: flex-start !important;
   border-radius: var(--shell-nav-row-radius) !important;
@@ -173,6 +203,11 @@ body {
   box-shadow: none !important;
   font-size: 14px !important;
   font-weight: 400 !important;
+
+  /* active/hover 切换的颜色过渡（类选择器特异性覆盖 interaction.css 的 :where 默认值） */
+  transition:
+    background-color var(--dropdown-close-dur, 150ms) var(--ease-standard),
+    color var(--dropdown-close-dur, 150ms) var(--ease-standard);
 }
 
 .desktop-shell-thread-row {
@@ -183,12 +218,28 @@ body {
   color: var(--shell-navigation-foreground);
 }
 
-.desktop-shell-sidebar-row:hover:not(.desktop-shell-sidebar-row--active),
+/* F（2026-07 移动端审计）：hover 只在真正支持悬停的指针上生效——
+   触屏 sticky hover 会让"最后点按的行"在移动统一抽屉里保持高亮不退。
+   focus-visible / :active 保持全设备生效（键盘可达 + 触屏按压反馈）。 */
+@media (hover: hover) {
+  .desktop-shell-sidebar-row:hover:not(.desktop-shell-sidebar-row--active),
+  .desktop-shell-sidebar-row:focus-visible:not(.desktop-shell-sidebar-row--active),
+  .desktop-shell-nav-row:hover:not(.desktop-shell-nav-row--active),
+  .desktop-shell-nav-row:focus-visible:not(.desktop-shell-nav-row--active),
+  .desktop-shell-thread-row:hover:not(.desktop-shell-thread-row--active),
+  .desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active) {
+    background: var(--interactive-hover) !important;
+    color: var(--shell-navigation-foreground) !important;
+  }
+}
+
+/* 触屏等无 hover 设备：保留键盘焦点态，并补 :active 按压反馈 */
 .desktop-shell-sidebar-row:focus-visible:not(.desktop-shell-sidebar-row--active),
-.desktop-shell-nav-row:hover:not(.desktop-shell-nav-row--active),
 .desktop-shell-nav-row:focus-visible:not(.desktop-shell-nav-row--active),
-.desktop-shell-thread-row:hover:not(.desktop-shell-thread-row--active),
-.desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active) {
+.desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active),
+.desktop-shell-sidebar-row:active:not(.desktop-shell-sidebar-row--active),
+.desktop-shell-nav-row:active:not(.desktop-shell-nav-row--active),
+.desktop-shell-thread-row:active:not(.desktop-shell-thread-row--active) {
   background: var(--interactive-hover) !important;
   color: var(--shell-navigation-foreground) !important;
 }
@@ -198,6 +249,17 @@ body {
   background: var(--interactive-selected) !important;
   color: var(--shell-navigation-foreground) !important;
   font-weight: 400 !important;
+}
+
+/* 操作区只用颜色反馈，避免父级导航行在图标 hover 时出现圆角底色。 */
+.desktop-shell-sidebar-row:has([data-sidebar-row-actions]:hover) {
+  background: transparent !important;
+}
+
+.desktop-shell-sidebar-row--active,
+.desktop-shell-nav-row--active,
+.desktop-shell-thread-row--active {
+  position: relative;
 }
 
 .desktop-shell-thread-row--active {
@@ -243,58 +305,217 @@ body {
   );
 }
 
-/* ─── Sidebar scroll-fade (mask-image approach) ─── */
-.desktop-shell-sidebar-session-scroll-shell {
-  --desktop-shell-sidebar-session-fade-size: 28px;
-  position: relative;
-  isolation: isolate;
-}
-
-.desktop-shell-sidebar-session-scroll-viewport {
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black var(--desktop-shell-sidebar-session-fade-size),
-    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black var(--desktop-shell-sidebar-session-fade-size),
-    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
-    transparent 100%
-  );
-}
-
 .desktop-shell-header-title {
   min-width: 0;
+  width: min(360px, 34vw);
+  max-width: 100%;
+  overflow: hidden;
   font-size: 14px;
   line-height: 1.25;
   font-weight: 500;
   color: var(--shell-navigation-foreground);
 }
 
+.desktop-shell-header-title-input {
+  height: var(--shell-control-size);
+  min-height: var(--shell-control-size);
+  max-height: var(--shell-control-size);
+  padding-top: 0;
+  padding-bottom: 0;
+  font: inherit;
+  color: inherit;
+  border-color: hsl(var(--primary) / 0.55);
+}
+
+.desktop-shell-header-title-input:hover {
+  border-color: hsl(var(--primary) / 0.75);
+}
+
+.desktop-shell-header-title-input:focus,
+.desktop-shell-header-title-input:focus-visible {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.18);
+}
+
 .desktop-shell-workspace {
   background: var(--shell-workspace-panel);
   box-shadow: none;
-  transition: background-color 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              -webkit-backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0);
+  transition: background-color 400ms var(--ease-shell),
+              backdrop-filter 400ms var(--ease-shell),
+              -webkit-backdrop-filter 400ms var(--ease-shell);
 }
 
 .desktop-shell-workspace[data-sidebar-visible="true"] {
   overflow: hidden;
 }
 
+/* Chat can intentionally hide its mobile chrome in favour of an in-canvas
+   drawer trigger. Remove the otherwise reserved toolbar inset at the same time. */
+@media (width < 768px) {
+  [data-shell-role="app-shell"]:not(:has([data-mobile-shell="header"])) .desktop-shell-workspace {
+    padding-top: 0 !important;
+  }
+}
+
 .desktop-shell-view-layer {
   isolation: isolate;
 }
 
+/*
+ * 桌面壳层内容入场动画（transitions-dev 观感语言，与标题栏 TextSwap 成组）：
+ * 淡入 + 上移 8px 归位 + blur 2px 聚焦，只动 opacity/transform/filter。
+ * 三处消费：视图层激活（ViewLayerRenderer 激活时挂类）、侧栏内容整体替换、
+ * 设置页 tab 切换（后两者靠 keyed 重挂载重触发）。
+ * 用 animation 而非 transition：激活/重挂载即重播；离场侧不做动画，
+ * visibility:hidden 同帧生效是刻意行为。
+ * 不设 fill-mode：动画结束回到元素静止样式，避免 filter 残留在视图层上
+ * 形成常驻 containing block，影响 fixed 定位后代。
+ */
+@keyframes desktop-shell-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--text-swap-translate-y, 8px));
+    filter: blur(var(--text-swap-blur, 2px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.desktop-shell-content-enter {
+  animation: desktop-shell-content-enter var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+/*
+ * P2-12: 移动壳（<768，与 useIsMobile / MOBILE_SHELL.breakpointMax 同界）视图切换
+ * 改用轻量横向位移：12px 右侧滑入 + fade，消费 --page-slide-* token，不做 blur
+ * （移动 WebView 上 filter 逐帧代价高）。离场侧仍为 visibility:hidden 同帧生效。
+ * 断点用 range 语法 (width < 768px)：与 JS 侧 !(min-width:768px) 精确互补，
+ * 767.x 小数视口宽（显示缩放/分屏）下不漏判（2026-07 移动端审计 E）。
+ */
+@media (width < 768px) {
+  @keyframes mobile-shell-content-enter {
+    from {
+      opacity: 0;
+      transform: translateX(var(--page-slide-distance, 12px));
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .desktop-shell-view-layer.desktop-shell-content-enter {
+    animation: mobile-shell-content-enter var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+}
+
+/*
+ * 主题亮暗切换过渡：切换瞬间由 useTheme.ts 在 <html> 上挂临时 class，
+ * 期间全局颜色属性平滑过渡，过渡结束后移除，避免常驻 transition 拖慢其他交互。
+ * 特异性 (0,2,0) 高于绝大多数单类/工具类的 transition 声明，可临时接管；
+ * 极少数更高特异性的组件过渡不受影响（表现为该元素瞬时换色，可接受）。
+ */
+:root.theme-transitioning,
+:root.theme-transitioning *,
+:root.theme-transitioning *::before,
+:root.theme-transitioning *::after {
+  transition:
+    background-color var(--theme-transition-dur, 220ms) var(--ease-standard),
+    color var(--theme-transition-dur, 220ms) var(--ease-standard),
+    border-color var(--theme-transition-dur, 220ms) var(--ease-standard),
+    fill var(--theme-transition-dur, 220ms) var(--ease-standard);
+}
+
 .sidebar-shell-surface {
   background: var(--shell-navigation-surface);
-  border-right: 1px solid var(--shell-seam);
-  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+  border-right: 1px solid var(--shell-sidebar-divider);
+  box-shadow: 10px 0 24px -26px hsl(var(--foreground) / 0.32);
+}
+
+.desktop-shell-sidebar-top-accessory {
+  /* Keep titlebar controls out of the sidebar's animated layout layer. */
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  transition: none !important;
+  animation: none !important;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.desktop-shell-sidebar-track {
+  position: relative;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.desktop-shell-sidebar-motion-surface {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: var(--sidebar-expanded-width);
+  transform: translateX(var(--shell-sidebar-translate-x));
+  transition:
+    width var(--resize-dur) var(--resize-ease),
+    transform var(--resize-dur) var(--resize-ease);
+  will-change: width, transform;
+}
+
+[data-shell-role="app-shell"][data-sidebar-visible="false"]
+  .desktop-shell-sidebar-motion-surface {
+  pointer-events: none;
+}
+
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .t-resize,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-motion-surface,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--nav,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--workspace {
+  transition: none;
+}
+
+.desktop-shell-sidebar-resize-handle {
+  position: fixed;
+  z-index: 1200;
+  top: var(--shell-titlebar-height);
+  bottom: 0;
+  left: calc(var(--shell-navigation-width) - 6px);
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.desktop-shell-sidebar-resize-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 40px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--shell-navigation-foreground) 52%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scaleY(0.72);
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.desktop-shell-sidebar-resize-handle:hover .desktop-shell-sidebar-resize-indicator,
+.desktop-shell-sidebar-resize-handle:focus-visible .desktop-shell-sidebar-resize-indicator {
+  opacity: 0.56;
+  transform: translate(-50%, -50%) scaleY(1);
+}
+
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-resize-indicator {
+  opacity: 0.76;
+  transform: translate(-50%, -50%) scaleY(1);
 }
 
 :root.dark .sidebar-shell-surface {
@@ -316,8 +537,16 @@ body {
   border-radius: var(--radius-shell-row);
 }
 
-.sidebar-shell-item:hover,
-.sidebar-shell-item:focus-visible {
+/* F（2026-07 移动端审计）：hover 收窄到悬停指针，避免触屏 sticky hover 残留高亮 */
+@media (hover: hover) {
+  .sidebar-shell-item:hover,
+  .sidebar-shell-item:focus-visible {
+    background: var(--interactive-hover);
+  }
+}
+
+.sidebar-shell-item:focus-visible,
+.sidebar-shell-item:active {
   background: var(--interactive-hover);
 }
 
@@ -437,6 +666,10 @@ body {
   border-color: var(--button-danger-border);
   background: var(--button-danger-surface);
   color: var(--button-danger-foreground);
+}
+
+.study-shell-badge--borderless {
+  border-color: transparent;
 }
 
 /*
@@ -585,8 +818,10 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* 让 body 占满视口，但实际内容高度由容器按标题栏扣减 */
+  /* 让 body 占满视口，但实际内容高度由容器按标题栏扣减。
+     dvh 优先（Android 软键盘/动态工具栏下取真实可视高度），vh 兜底旧内核 */
   height: 100vh;
+  height: 100dvh;
   /* Windows下使用系统窗口装饰，不应有圆角 */
   /* 在macOS等平台会通过media query覆盖 */
   border-radius: 0;
@@ -594,15 +829,23 @@ body {
 
 #root {
   background-color: var(--surface-root);
-  overflow: hidden;
-  /* 交由 .app 进行高度扣减，root 保持视口高 */
+  /*
+   * 根容器是结构边界，绝不能成为可编程滚动容器。
+   * overflow:hidden 仍允许 focus/scrollIntoView 改写 scrollTop；一旦异常内容
+   * 超过一屏，就会把两个区域同时暴露出来。clip 从机制上禁止根滚动。
+   */
+  overflow: hidden; /* 旧 WebView 回退；useShellScrollGuard 仍会强制归零 */
+  overflow: clip;
+  /* 交由 .app 进行高度扣减，root 保持视口高（dvh 优先，vh 兜底） */
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   /* Windows下使用系统窗口装饰，不应有圆角 */
   border-radius: 0;
   position: relative;
   box-shadow: 0 0 0 1px var(--border-soft);
   max-height: 100vh;
+  max-height: 100dvh;
 }
 
 .app {
@@ -610,9 +853,11 @@ body {
   border-radius: 0;
   overflow: hidden;
   background-color: var(--surface-elevated);
-  /* 保持视口高度，页面内部通过 absolute top/bottom 扣除标题栏空间 */
+  /* 保持视口高度，页面内部通过 absolute top/bottom 扣除标题栏空间（dvh 优先） */
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
 }
 
 .sidebar {
@@ -627,7 +872,9 @@ main {
   border-bottom-right-radius: 0;
   overflow: hidden;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
 }
 /* 设置页面样式 */
 .settings {
@@ -657,7 +904,9 @@ main {
   /* 保留整体背景模糊强度，增强沉浸感，适配亮暗主题 */
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  z-index: 10000;
+  /* 全屏图片查看器独立档位（= Z_INDEX.imageViewer 6000）：
+     曾用 --z-modal 导致被移动顶栏(1100)/弹窗(3000)盖住（H-2） */
+  z-index: var(--z-image-viewer, 6000);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -685,20 +934,14 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: var(--z-modal);
 }
 
-/* 统一其他自定义遮罩类为现代预览器风格 */
-:where(
-  .modal-overlay,
-  .tag-selector-modal,
-  .create-tag-modal,
-  .scm__overlay,
-  .anki-preview-modal-overlay,
-  .template-manager-backdrop,
-  .tag-tree-modal-backdrop,
-  .image-viewer-overlay
-) {
+/* 统一其他自定义遮罩类为现代预览器风格
+   （2026-07 清理：modal-overlay / tag-selector-modal / create-tag-modal /
+   scm__overlay / template-manager-backdrop / tag-tree-modal-backdrop /
+   anki-preview-modal-overlay 对应组件已删或改用 UnifiedModal，选择器移除） */
+:where(.image-viewer-overlay) {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -711,14 +954,40 @@ main {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  z-index: 10000 !important;
+  z-index: var(--z-modal) !important;
+}
+
+/* 材质档位降级：reduced/minimal 档下全屏遮罩改用半透明 scrim 替代 backdrop 模糊
+   （全屏 backdrop-filter 是 WebView2 上单帧成本最高的操作之一） */
+:root[data-wb-material='reduced'] .edit-modal-overlay,
+:root[data-wb-material='minimal'] .edit-modal-overlay,
+:root[data-wb-material='reduced'] .image-viewer-overlay,
+:root[data-wb-material='minimal'] .image-viewer-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--overlay) !important;
+}
+
+:root[data-wb-material='reduced'] .modern-image-viewer-overlay,
+:root[data-wb-material='minimal'] .modern-image-viewer-overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: hsl(var(--background) / 0.88);
+}
+
+:root[data-wb-material='reduced'] .modern-image-viewer-container,
+:root[data-wb-material='minimal'] .modern-image-viewer-container {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: hsl(var(--card) / 0.97);
 }
 
 
 .modern-image-viewer-container {
   position: relative;
   width: 100vw;  /* 全屏铺满 */
-  height: 100vh; /* 全屏铺满 */
+  height: 100vh; /* 全屏铺满（dvh 优先，vh 兜底） */
+  height: 100dvh;
   /* 玻璃态质感：依赖主题变量实现亮暗自适应 */
   background: hsl(var(--card) / 0.62);
   backdrop-filter: blur(28px);
@@ -748,7 +1017,10 @@ main {
 .modern-viewer-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* N-6 补丁：居中改由首尾子元素的 auto margin 承担（见下）。
+     justify-content:center 在内容溢出滚动容器时会把两端都推出裁剪区
+     （左端不可滚达，实测 400px 宽下首个按钮被裁 4px），flex-start 无此问题 */
+  justify-content: flex-start;
   gap: 2px;
   height: 36px;
   padding: 0 8px;
@@ -759,15 +1031,21 @@ main {
   /* N-6: 窄屏控件溢出时允许横向滚动，避免裁切不可达 */
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.modern-viewer-toolbar::-webkit-scrollbar {
-  display: none;
 }
 
 .modern-viewer-toolbar > * {
   flex-shrink: 0;
+}
+
+/* N-6: 溢出时保证最左侧控件可滚动到达 ——
+   justify-content: center 在内容溢出时会把起始端裁到滚动区外，
+   改用首尾 auto margin：空间充足时等分居中，溢出时退化为可完整滚动的左对齐 */
+.modern-viewer-toolbar > *:first-child {
+  margin-left: auto;
+}
+
+.modern-viewer-toolbar > *:last-child {
+  margin-right: auto;
 }
 
 /* N-5: 触屏上放大预览工具栏触控目标 */
@@ -786,22 +1064,6 @@ main {
   flex-shrink: 0;
 }
 
-.modern-viewer-footer {
-  background: hsl(var(--popover) / 0.85);
-  border-top: 1px solid hsl(var(--border) / 0.5);
-  color: hsl(var(--muted-foreground));
-}
-
-.modern-viewer-content {
-  background: hsl(var(--card) / 0.55);
-}
-
-.modern-viewer-muted-card {
-  background: hsl(var(--muted) / 0.65);
-  border: 1px solid hsl(var(--border) / 0.45);
-  color: hsl(var(--muted-foreground));
-}
-
 .modern-viewer-icon-button {
   display: inline-flex;
   align-items: center;
@@ -814,12 +1076,23 @@ main {
   background: transparent;
   color: hsl(var(--muted-foreground));
   cursor: pointer;
-  transition: color .15s ease, background .15s ease;
+  transition: color .15s ease, background .15s ease, transform .15s ease;
 }
 
 .modern-viewer-icon-button:hover:not([disabled]) {
   color: hsl(var(--foreground));
-  background: hsl(var(--accent));
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.modern-viewer-icon-button:active:not([disabled]) {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted));
+  transform: scale(0.94);
+}
+
+.modern-viewer-icon-button:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.65);
+  outline-offset: 1px;
 }
 
 /* N-5: 触屏上预览工具栏按钮放大到 ≥36px */
@@ -836,6 +1109,16 @@ main {
   cursor: not-allowed;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .modern-viewer-icon-button {
+    transition: none;
+  }
+
+  .modern-viewer-icon-button:active:not([disabled]) {
+    transform: none;
+  }
+}
+
 .modern-viewer-icon-button--primary {
   color: hsl(var(--primary));
 }
@@ -843,10 +1126,6 @@ main {
 .modern-viewer-icon-button--primary:hover:not([disabled]) {
   background: hsl(var(--primary) / 0.15);
   color: hsl(var(--primary));
-}
-
-.modern-viewer-icon-button--success {
-  color: hsl(142 71% 45%);
 }
 
 .modern-viewer-icon-button--danger {
@@ -867,30 +1146,84 @@ main {
   line-height: 1;
 }
 
-.modern-viewer-hint {
-  background: hsl(var(--foreground) / 0.85);
-  color: hsl(var(--background));
-  box-shadow: 0 12px 28px -18px hsl(var(--foreground) / 0.4);
+/* ---- 统一预览工具栏（UnifiedPreviewToolbar）玻璃质感升级 ---- */
+
+/* 玻璃底栏修饰类：半透明 + 背景模糊 + 顶部内亮线，参考 wb-browser 玻璃做法 */
+.modern-viewer-toolbar--glass {
+  gap: 4px;
+  background: hsl(var(--card) / 0.82);
+  backdrop-filter: blur(12px) saturate(1.35);
+  -webkit-backdrop-filter: blur(12px) saturate(1.35);
+  border-top: 1px solid hsl(var(--border) / 0.45);
+  box-shadow: inset 0 1px 0 hsl(var(--background) / 0.35);
 }
 
-.modern-viewer-loading-backdrop {
-  background: hsl(var(--background) / 0.78);
+.dark .modern-viewer-toolbar--glass {
+  background: hsl(var(--card) / 0.72);
+  box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.06);
 }
 
-.modern-viewer-warning-card {
-  background: hsl(var(--warning) / 0.18);
-  border: 1px solid hsl(var(--warning) / 0.45);
-  color: hsl(var(--warning-foreground));
+/* 工具栏分组容器：缩放组｜页码组｜字号组 */
+.modern-viewer-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
-.modern-viewer-warning-card .modern-viewer-warning-icon {
-  color: hsl(var(--warning));
+/* 缩放百分比触发按钮（点击弹出档位菜单） */
+.modern-viewer-zoom-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .15s ease, background .15s ease;
 }
 
-.modern-viewer-safe-hint {
-  background: hsl(var(--success) / 0.18);
-  border: 1px solid hsl(var(--success) / 0.35);
-  color: hsl(var(--success));
+.modern-viewer-zoom-trigger:hover,
+.modern-viewer-zoom-trigger[aria-expanded="true"] {
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.modern-viewer-zoom-trigger:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.65);
+  outline-offset: 1px;
+}
+
+.modern-viewer-zoom-trigger-caret {
+  margin-left: 2px;
+  color: hsl(var(--muted-foreground));
+  opacity: 0.7;
+  flex-shrink: 0;
+  transition: opacity .15s ease;
+}
+
+.modern-viewer-zoom-trigger:hover .modern-viewer-zoom-trigger-caret,
+.modern-viewer-zoom-trigger[aria-expanded="true"] .modern-viewer-zoom-trigger-caret {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .modern-viewer-zoom-trigger {
+    height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modern-viewer-zoom-trigger,
+  .modern-viewer-zoom-trigger-caret {
+    transition: none;
+  }
 }
 
 @keyframes fade-in {
@@ -1027,6 +1360,15 @@ main {
   /* 确保内容区域可以正确显示，避免被裁剪 */
   contain: layout style;
 }
+
+/*
+ * 学习桌面：关闭 layout containment。
+ * WebView2 在「祖先 contain:layout + 子树大量 transform/backdrop-filter」时
+ * 会算错合成脏区，出现水平撕裂、壁纸只铺半屏、Dock 视觉上漂到中部。
+ */
+.content-body.content-body--workbench {
+  contain: style;
+}
 @media (prefers-reduced-motion: no-preference) {
   @keyframes chatMessageEnter {
     from {
@@ -1061,38 +1403,23 @@ main {
 /* OverlayScrollbars print preservation (milestone v1.1). Ensure printing expands
    overlay-scroll containers so content is never clipped at print time. */
 @media print {
+  [data-overlayscrollbars],
+  [data-overlayscrollbars-padding],
   [data-overlayscrollbars-viewport] {
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
   }
-}
 
-/* Native scrollbar styling for the ScrollArea primitive's `nativeScrollbars`
-   fallback path (used on iOS WebView to preserve rubber-band + inertia).
-   Moved from study-ui so DeepStudent can own this style end-to-end. */
-.scroll-area--native {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-  scrollbar-gutter: stable;
-}
+  .os-scrollbar {
+    display: none !important;
+  }
 
-.scroll-area--native::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.scroll-area--native::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 999px;
-}
-
-.scroll-area--native::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
-.scroll-area--native::-webkit-scrollbar-track {
-  background: transparent;
+  .scroll-area--native {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
 }
 
 .content-body.settings-view {
@@ -1106,8 +1433,32 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-shell-role="app-shell"],
+  [data-shell-role="app-shell"][data-sidebar-visible] {
+    transition: none;
+  }
+
+  .desktop-shell-sidebar-top-accessory,
+  .desktop-shell-sidebar-motion-surface,
+  .desktop-shell-sidebar-resize-indicator,
+  .desktop-shell-header-cell--nav,
   .desktop-shell-header-cell--workspace,
   .desktop-shell-workspace {
     transition: none;
+  }
+
+  .desktop-shell-sidebar-row,
+  .desktop-shell-nav-row,
+  .desktop-shell-thread-row,
+  :root.theme-transitioning,
+  :root.theme-transitioning *,
+  :root.theme-transitioning *::before,
+  :root.theme-transitioning *::after {
+    transition: none;
+  }
+
+  .desktop-shell-content-enter,
+  .desktop-shell-view-layer.desktop-shell-content-enter {
+    animation: none;
   }
 }

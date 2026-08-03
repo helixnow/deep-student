@@ -1,7 +1,8 @@
 /**
- * Skills Management - 全屏技能编辑器
+ * Skills Management - 页面内全区技能编辑器
  *
- * 从卡片位置扩展到全屏的编辑器，使用 CodeMirror 编辑指令内容
+ * 从卡片位置扩展到覆盖整个技能页面的内联编辑视图（absolute 于页面容器内，
+ * 不逃出 OS 窗口），使用 CodeMirror 编辑指令内容
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -12,22 +13,23 @@ import { markdown } from '@codemirror/lang-markdown';
 import { EditorView } from '@codemirror/view';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { Input } from '../ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { X } from '@phosphor-icons/react';
-import { Z_INDEX } from '@/config/zIndex';
 import { HorizontalResizable } from '../shared/Resizable';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
+import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/features/chat/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
 import { CodeMirrorScrollOverlay } from './CodeMirrorScrollOverlay';
+import { SkillPackageSummary } from './SkillPackageSummary';
 
 // ============================================================================
 // 类型定义
@@ -110,28 +112,28 @@ function validateForm(
 
   if (!isEdit) {
     if (!trimmedId) {
-      errors.id = t('skills:validation.id_required', '请输入技能 ID');
+      errors.id = t('skills:validation.id_required');
     } else if (!/^[a-z0-9-]+$/.test(trimmedId)) {
-      errors.id = t('skills:validation.id_invalid', '技能 ID 只能包含小写字母、数字和连字符（a-z, 0-9, -）');
+      errors.id = t('skills:validation.id_invalid');
     } else if (trimmedId.length > 64) {
-      errors.id = t('skills:validation.id_invalid', '技能 ID 不能超过 64 个字符');
+      errors.id = t('skills:validation.id_invalid');
     }
   }
 
   if (!trimmedName) {
-    errors.name = t('skills:validation.name_required', '请输入技能名称');
+    errors.name = t('skills:validation.name_required');
   } else if (trimmedName.length > 64) {
-    errors.name = t('skills:validation.name_too_long', '名称不能超过 64 个字符');
+    errors.name = t('skills:validation.name_too_long');
   } else if (!isBuiltinSkill) {
     if (/(deep-student|deepstudent)/i.test(trimmedName)) {
-      errors.name = t('skills:validation.name_reserved', '名称不能包含 deep-student 等保留字');
+      errors.name = t('skills:validation.name_reserved');
     }
   }
 
   if (!trimmedDesc) {
-    errors.description = t('skills:validation.description_required', '请输入技能描述');
+    errors.description = t('skills:validation.description_required');
   } else if (trimmedDesc.length > 1024) {
-    errors.description = t('skills:validation.description_too_long', '描述不能超过 1024 个字符');
+    errors.description = t('skills:validation.description_too_long');
   }
 
   return errors;
@@ -287,13 +289,19 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
       onClose();
     } catch (error) {
       console.error('[SkillFullscreenEditor] 保存失败:', error);
+      // 操作闭环：保存失败必须有可见反馈（成功通知由 onSave 内部发出）
+      showGlobalNotification(
+        'error',
+        t('skills:management.save_failed'),
+        String(error),
+      );
     } finally {
       setIsSaving(false);
     }
   }, [formData, isEdit, isBuiltinSkill, onSave, onClose, t]);
 
   const handleCloseRequest = useCallback(() => {
-    if (isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
+    if (isDirty && !unifiedConfirm(t('skills:editor.unsaved_changes_confirm'))) {
       return;
     }
     onClose();
@@ -337,8 +345,8 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         <motion.div
           ref={containerRef}
           layoutId={layoutId}
-          className="fixed inset-0 bg-background overflow-hidden"
-          style={{ zIndex: Z_INDEX.fullscreenContent, willChange: 'transform' }}
+          className="absolute inset-0 z-30 bg-background overflow-hidden"
+          style={{ willChange: 'transform' }}
           initial={{ opacity: layoutId ? 1 : 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: layoutId ? 1 : 0 }}
@@ -350,24 +358,24 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         >
           <form onSubmit={handleSubmit} className="h-full flex flex-col">
             {/* 顶部工具栏 */}
-            <div className="flex-none flex items-center justify-between px-4 py-2 border-b border-border/20 bg-background">
+            <div className="flex-none flex items-center justify-between px-5 py-2 border-b border-border/20 bg-background sm:px-6 lg:px-7">
               <h2 className="text-sm font-medium text-foreground/80 truncate">
-                {isEdit ? formData.name || skill?.id : t('skills:editor.new_skill', '新建技能')}
+                {isEdit ? formData.name || skill?.id : t('skills:editor.new_skill')}
               </h2>
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 size="icon"
                 onClick={handleCloseRequest}
-                aria-label={t('common:actions.close', '关闭')}
+                aria-label={t('common:actions.close')}
               >
                 <X size={18} />
-              </NotionButton>
+              </DsButton>
             </div>
             <div className="flex-1 min-h-0">
             <HorizontalResizable
-              initial={0.35}
-              minLeft={0.25}
+              initial={0.4}
+              minLeft={0.3}
               minRight={0.4}
               className="h-full"
               left={
@@ -377,18 +385,18 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 }}
               >
-                <CustomScrollArea className="flex-1" viewportClassName="p-4">
-                  <div className="space-y-4">
+                <CustomScrollArea className="flex-1">
+                  <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6 lg:px-7 lg:py-7">
                     {/* ID 字段（仅创建模式） */}
                     {!isEdit && (
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('skills:editor.id', '技能 ID')} *
+                          {t('skills:editor.id')} *
                         </Label>
                         <Input
                           value={formData.id}
                           onChange={(e) => updateField('id', (e.target as HTMLInputElement).value)}
-                          placeholder={t('skills:editor.id_placeholder', '例如：code-reviewer')}
+                          placeholder={t('skills:editor.id_placeholder')}
                           className={cn(
                             'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                             errors.id && 'border-destructive'
@@ -398,7 +406,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           <p className="text-xs text-destructive">{errors.id}</p>
                         )}
                         <p className="text-[10px] text-muted-foreground/60">
-                          {t('skills:editor.id_hint', '只能包含字母、数字、连字符和下划线')}
+                          {t('skills:editor.id_hint')}
                         </p>
                       </div>
                     )}
@@ -406,13 +414,16 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     {/* 名称 */}
                     <div className="space-y-2">
                       <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                        {t('skills:editor.name', '名称')} *
+                        {t('skills:editor.name')} *
                       </Label>
+                      {skill && (
+                        <SkillPackageSummary skill={skill} variant="editor" />
+                      )}
                       <Input
                         value={formData.name}
                         onChange={(e) => updateField('name', (e.target as HTMLInputElement).value)}
                         onBlur={suggestId}
-                        placeholder={t('skills:editor.name_placeholder', '小写字母/数字/连字符')}
+                        placeholder={t('skills:editor.name_placeholder')}
                         className={cn(
                           'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                           errors.name && 'border-destructive'
@@ -426,13 +437,13 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     {/* 描述 */}
                     <div className="space-y-2">
                       <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                        {t('skills:editor.description', '描述')} *
+                        {t('skills:editor.description')} *
                       </Label>
                       <Textarea
                         ref={descriptionRef}
                         value={formData.description}
                         onChange={(e) => updateField('description', (e.target as HTMLTextAreaElement).value)}
-                        placeholder={t('skills:editor.description_placeholder', '简要描述技能功能')}
+                        placeholder={t('skills:editor.description_placeholder')}
                         className={cn(
                           'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors resize-none min-h-[80px] overflow-hidden',
                           errors.description && 'border-destructive'
@@ -450,7 +461,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     <div className="grid gap-4 grid-cols-2">
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('skills:editor.version', '版本')}
+                          {t('skills:editor.version')}
                         </Label>
                         <Input
                           value={formData.version}
@@ -461,12 +472,12 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('skills:editor.author', '作者')}
+                          {t('skills:editor.author')}
                         </Label>
                         <Input
                           value={formData.author}
                           onChange={(e) => updateField('author', (e.target as HTMLInputElement).value)}
-                          placeholder={t('skills:editor.author_placeholder', '可选')}
+                          placeholder={t('skills:editor.author_placeholder')}
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10"
 />
                       </div>
@@ -476,7 +487,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     <div className="grid gap-4 grid-cols-2">
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('skills:editor.priority', '优先级')}
+                          {t('skills:editor.priority')}
                         </Label>
                         <Input
                           type="number"
@@ -492,33 +503,33 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10 w-24"
 />
                         <p className="text-[10px] text-muted-foreground/60">
-                          {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
+                          {t('skills:editor.priority_hint')}
                         </p>
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('skills:editor.skill_type', '技能类型')}
+                          {t('skills:editor.skill_type')}
                         </Label>
                         <div className="grid grid-cols-2 gap-2">
-                          <NotionButton
+                          <DsButton
                             type="button"
                             variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                             onClick={() => updateField('skillType', 'standalone')}
                             className="w-full"
                           >
-                            {t('skills:editor.skill_type_standalone', '独立')}
-                          </NotionButton>
-                          <NotionButton
+                            {t('skills:editor.skill_type_standalone')}
+                          </DsButton>
+                          <DsButton
                             type="button"
                             variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                             onClick={() => updateField('skillType', 'composite')}
                             className="w-full"
                           >
-                            {t('skills:editor.skill_type_composite', '组合')}
-                          </NotionButton>
+                            {t('skills:editor.skill_type_composite')}
+                          </DsButton>
                         </div>
                         <p className="text-[10px] text-muted-foreground/60">
-                          {t('skills:editor.skill_type_hint', 'standalone=独立技能，composite=组合技能')}
+                          {t('skills:editor.skill_type_hint')}
                         </p>
                       </div>
                     </div>
@@ -526,46 +537,31 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     {/* 依赖技能 */}
                     <div className="space-y-2">
                       <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                        {t('skills:editor.dependencies', '依赖技能')}
+                        {t('skills:editor.dependencies')}
                       </Label>
                       <TagInput
                         value={formData.dependencies ?? []}
                         onChange={(next) => updateField('dependencies', next)}
-                        placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
+                        placeholder={t('skills:editor.skill_list_placeholder')}
 />
                       <p className="text-[10px] text-muted-foreground/60">
-                        {t('skills:editor.dependencies_hint', '硬依赖：激活此技能时自动加载')}
+                        {t('skills:editor.dependencies_hint')}
                       </p>
                     </div>
 
                     <div className="space-y-2">
                       <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                        {t('skills:editor.related_skills', '关联技能')}
+                        {t('skills:editor.related_skills')}
                       </Label>
                       <TagInput
                         value={formData.relatedSkills ?? []}
                         onChange={(next) => updateField('relatedSkills', next)}
-                        placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
+                        placeholder={t('skills:editor.skill_list_placeholder')}
 />
                       <p className="text-[10px] text-muted-foreground/60">
-                        {t('skills:editor.related_skills_hint', '软关联：仅用于推荐，不会自动加载')}
+                        {t('skills:editor.related_skills_hint')}
                       </p>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                        {t('skills:editor.allowed_tools', '允许工具')}
-                      </Label>
-                      <TagInput
-                        value={formData.allowedTools ?? []}
-                        onChange={(next) => updateField('allowedTools', next)}
-                        placeholder={t('skills:editor.allowed_tools_placeholder', '用逗号分隔，例如 builtin-web_search, server-a::fetch')}
-/>
-                      <p className="text-[10px] text-muted-foreground/60">
-                        {t('skills:editor.allowed_tools_hint', '权限白名单：支持工具名以及 server::tool 的外部服务器粒度约束')}
-                      </p>
-                    </div>
-
 
                     {/* 绑定工具 */}
                     <div className="pt-4 border-t border-border/20">
@@ -578,25 +574,25 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 </CustomScrollArea>
 
                 {/* 左侧底部：操作按钮 */}
-                <div className="flex-none p-4 border-t border-border/20 flex items-center gap-2 bg-background relative z-10">
-                  <NotionButton
+                <div className="flex-none px-5 py-4 border-t border-border/20 flex items-center gap-2 bg-background relative z-10 sm:px-6 lg:px-7">
+                  <DsButton
                     type="button"
                     variant="ghost"
                     onClick={handleCloseRequest}
                     disabled={isSaving}
                     className="flex-1 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
                   >
-                    {t('common:actions.cancel', '取消')}
-                  </NotionButton>
-                  <NotionButton
+                    {t('common:actions.cancel')}
+                  </DsButton>
+                  <DsButton
                     type="submit"
                     disabled={isSaving}
                     className="flex-1 shadow-md hover:shadow-lg transition-colors"
                   >
                     {isSaving
-                      ? t('common:actions.saving', '保存中...')
-                      : t('common:actions.save', '保存')}
-                  </NotionButton>
+                      ? t('common:actions.saving')
+                      : t('common:actions.save')}
+                  </DsButton>
                 </div>
               </motion.div>
               }
@@ -639,7 +635,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     // 动画期间显示轻量占位符
                     <div className="h-full flex items-center justify-center bg-muted/20">
                       <div className="text-muted-foreground/50 text-sm">
-                        {t('common:loading', '加载中...')}
+                        {t('common:loading')}
                       </div>
                     </div>
                   )}

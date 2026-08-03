@@ -1,0 +1,58 @@
+# 版本号三重校验（reusable）
+#
+# 校验 tag 版本号与 tag 指向代码里三处版本声明一致
+# （package.json / src-tauri/Cargo.toml / src-tauri/tauri.conf.json）。
+# release.yml / rebuild-release.yml / hotfix-linux-release.yml 共用，
+# 消除此前三份逐行复制的校验实现。
+#
+# 脚本取自 workflow ref（默认分支），release 代码树单独 checkout 到
+# release-src/ —— 这样重建早于本脚本落地的旧 tag 也能正常校验。
+
+name: Verify Release Version (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: '要校验的 tag（如 v0.9.42）'
+        required: true
+        type: string
+    outputs:
+      tag_name:
+        description: '透传 tag'
+        value: ${{ jobs.verify.outputs.tag_name }}
+      version:
+        description: '去掉 v 前缀的版本号'
+        value: ${{ jobs.verify.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag_name: ${{ steps.verify.outputs.tag_name }}
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      # 工作流自身 ref 的 checkout：提供 scripts/ci/
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # release 代码树：可能是不含 scripts/ci 的旧 tag
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.tag_name }}
+          path: release-src
+
+      - name: Verify version consistency
+        id: verify
+        run: |
+          echo "=== Verify tool manifest ==="
+          echo "jq        : $(jq --version)"
+          echo "actions   : checkout v7.0.0 (SHA-pinned)"
+
+          TAG="${{ inputs.tag_name }}"
+          (cd release-src && bash "$GITHUB_WORKSPACE/scripts/ci/verify-version-consistency.sh" "$TAG")
+          echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"

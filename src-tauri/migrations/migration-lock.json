@@ -1,0 +1,917 @@
+{
+  "$schema": "deep-student migration lock manifest",
+  "version": 1,
+  "generatedBy": "node scripts/check-migrations.mjs --update",
+  "entries": [
+    {
+      "database": "browser",
+      "version": 20260711,
+      "name": "init",
+      "path": "browser/V20260711__init.sql",
+      "sha256": "d14dbf4d8c25a3efee1b03d3b51887ffb4bdc0ef4d76942f83a2038f30eb6061",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260130,
+      "name": "init",
+      "path": "chat_v2/V20260130__init.sql",
+      "sha256": "bcd65839f254c12ec92467822444d9a921952a419d1ed9c8f099edea5fe97da0",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260131,
+      "name": "add_change_log",
+      "path": "chat_v2/V20260131__add_change_log.sql",
+      "sha256": "426c86293f7e8b57d504181968b0bd9fa8f506b3812be36895cc640c632a8d89",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260201,
+      "name": "add_sync_fields",
+      "path": "chat_v2/V20260201__add_sync_fields.sql",
+      "sha256": "9340a2aa73367c425b099c0ea50c3ff22197ba926c2bd05b150b82b4bc4db57c",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260202,
+      "name": "schema_repair",
+      "path": "chat_v2/V20260202__schema_repair.sql",
+      "sha256": "a50bd34083eda57e1f6025e130f673fbb463a5c647baeb5618ef10529bb61b5e",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260203,
+      "name": "ensure_subagent_task",
+      "path": "chat_v2/V20260203__ensure_subagent_task.sql",
+      "sha256": "30ba4c6c4ed8913b19ee8b66e13e7939a1bfcc8e9367e2ce177b284fc18d7d1c",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260204,
+      "name": "session_groups",
+      "path": "chat_v2/V20260204__session_groups.sql",
+      "sha256": "aea3ca04ade5c3a8507b38046b6c216c8048621f9f42a3694509e29a01174cae",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260207,
+      "name": "add_active_skill_ids_json",
+      "path": "chat_v2/V20260207__add_active_skill_ids_json.sql",
+      "sha256": "a95642a0025af6c79df9a8f8cb11a0b0f9e9b54db59c949ba018ca8ab375d9f6",
+      "dangers": [
+        "add_column_backfill"
+      ]
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260221,
+      "name": "group_pinned_resources",
+      "path": "chat_v2/V20260221__group_pinned_resources.sql",
+      "sha256": "2b68513660ae62efe732a04cc6affbdd34fb5845c347408a6233f14ccdeba9d6",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260301,
+      "name": "content_search_and_tags",
+      "path": "chat_v2/V20260301__content_search_and_tags.sql",
+      "sha256": "ec145f928723973586b76ffbc5661dada0b7f74d252736b645a025f2f5a5d1e5",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260302,
+      "name": "subagent_task_schema_align",
+      "path": "chat_v2/V20260302__subagent_task_schema_align.sql",
+      "sha256": "a70c3bc0089e91385342624a42e5eff88a0713cc7dcb4c99af50c3b97fb8e709",
+      "dangers": [
+        "add_column_backfill"
+      ]
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260306,
+      "name": "add_skill_state_json",
+      "path": "chat_v2/V20260306__add_skill_state_json.sql",
+      "sha256": "81746a2b914904acfc452a6fcad44a78a7103ccb147566ad6070ba797b1bb1fd",
+      "dangers": [
+        "add_column_backfill"
+      ]
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260502,
+      "name": "archive_legacy_deleted_sessions",
+      "path": "chat_v2/V20260502__archive_legacy_deleted_sessions.sql",
+      "sha256": "dc49c41bcd3121aa26ad28b5aed5b20f8e966116a3505dd142a66d6d3ce50212",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260510,
+      "name": "add_compaction",
+      "path": "chat_v2/V20260510__add_compaction.sql",
+      "sha256": "874a8c04d27b7f13c3a99f509f58438531d16c8dd70a600f98c246566b17351f",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260516,
+      "name": "add_title_locked",
+      "path": "chat_v2/V20260516__add_title_locked.sql",
+      "sha256": "66af4dd29767e219a740296a9f01b1359509102906d61aae2dbfa94a4038fed9",
+      "dangers": [
+        "add_not_null_column"
+      ]
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260523,
+      "name": "add_missing_sync_coverage",
+      "path": "chat_v2/V20260523__add_missing_sync_coverage.sql",
+      "sha256": "e08fa60d79b12615900ec70d9b23bff080d179708598200ed4ab327f5211728d",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260524,
+      "name": "add_change_log_field_deltas",
+      "path": "chat_v2/V20260524__add_change_log_field_deltas.sql",
+      "sha256": "424922d9296f99f6eb1e6415408c9e54f60d0a8c1ec89502164e2ceac1e1cc7d",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260527,
+      "name": "add_workspace_deletion_queue",
+      "path": "chat_v2/V20260527__add_workspace_deletion_queue.sql",
+      "sha256": "2ef597e4d5df0b557496c096303b7c635e230c431081aa77232146f3f6d81c35",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260528,
+      "name": "resources_type_check_rebuild",
+      "path": "chat_v2/V20260528__resources_type_check_rebuild.sql",
+      "sha256": "d26aa729034a8d99c35bd01f4126ccfdf28b7f963d5a1bdec5c3b25387be32fa",
+      "dangers": [
+        "drop_table"
+      ]
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260711,
+      "name": "session_tags_sync_coverage",
+      "path": "chat_v2/V20260711__session_tags_sync_coverage.sql",
+      "sha256": "ab85c56f76bcfb79c652ea170fc8a27f4779c9b30e3a9972fa1114a315321d04",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260717,
+      "name": "group_preferred_runtime_root",
+      "path": "chat_v2/V20260717__group_preferred_runtime_root.sql",
+      "sha256": "8d5415b4710011dec53d2b42af57341d32e818019fee81541c72599d4a7076e7",
+      "dangers": []
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260719,
+      "name": "fts_blocktype_coverage_and_indexes",
+      "path": "chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql",
+      "sha256": "a0d87d7616eb6c7a25de221cce6d12df90ca0790330bf230e70a91aa473a8c92",
+      "dangers": [
+        "delete_without_where"
+      ]
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260720,
+      "name": "compaction_lineage_and_sync",
+      "path": "chat_v2/V20260720__compaction_lineage_and_sync.sql",
+      "sha256": "183fca857c66925ea5d8b35398d0e410cd0806aae7ef0191d2999512a01f4930",
+      "dangers": [
+        "add_column_backfill"
+      ]
+    },
+    {
+      "database": "chat_v2",
+      "version": 20260721,
+      "name": "workspace_deletion_intent_journal",
+      "path": "chat_v2/V20260721__workspace_deletion_intent_journal.sql",
+      "sha256": "508e43bd6fce24220ca286162210902d547aa8e51eade709920677be537b5162",
+      "dangers": []
+    },
+    {
+      "database": "llm_usage",
+      "version": 20260130,
+      "name": "init",
+      "path": "llm_usage/V20260130__init.sql",
+      "sha256": "1ecbbad998a93a04f79f4d49221539a1df20b44b196a1231e2ef1875e6392aff",
+      "dangers": []
+    },
+    {
+      "database": "llm_usage",
+      "version": 20260131,
+      "name": "add_change_log",
+      "path": "llm_usage/V20260131__add_change_log.sql",
+      "sha256": "155d03ed6926360379cd067fa0ad86b0d9957313c0c344bbb369eadc8c90b126",
+      "dangers": []
+    },
+    {
+      "database": "llm_usage",
+      "version": 20260201,
+      "name": "add_sync_fields",
+      "path": "llm_usage/V20260201__add_sync_fields.sql",
+      "sha256": "23783fa690ffb284c6769b0c03559529894c1bb1e66c11c1c5d6016769888816",
+      "dangers": []
+    },
+    {
+      "database": "llm_usage",
+      "version": 20260202,
+      "name": "fix_change_log_record_id",
+      "path": "llm_usage/V20260202__fix_change_log_record_id.sql",
+      "sha256": "c34285d6f8019cd479ae54ac590db31a21ec408a463ea229b0864010b644ce8d",
+      "dangers": []
+    },
+    {
+      "database": "llm_usage",
+      "version": 20260524,
+      "name": "add_change_log_field_deltas",
+      "path": "llm_usage/V20260524__add_change_log_field_deltas.sql",
+      "sha256": "424922d9296f99f6eb1e6415408c9e54f60d0a8c1ec89502164e2ceac1e1cc7d",
+      "dangers": []
+    },
+    {
+      "database": "llm_usage",
+      "version": 20260525,
+      "name": "drop_daily_change_log_triggers",
+      "path": "llm_usage/V20260525__drop_daily_change_log_triggers.sql",
+      "sha256": "1e0de720c59271fd3effef97fc1f64a4ede56034e55ddfa451dc57f86c9cfe41",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260130,
+      "name": "init",
+      "path": "mistakes/V20260130__init.sql",
+      "sha256": "7d94c403ef4d3c85432f405cd884bc475bc8b18ce2055dc3557da04489169ab9",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260131,
+      "name": "add_change_log",
+      "path": "mistakes/V20260131__add_change_log.sql",
+      "sha256": "f0dff0103db38b857974237c101138ab9902c74f0c9f932c6632bc7315c91544",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260201,
+      "name": "add_sync_fields",
+      "path": "mistakes/V20260201__add_sync_fields.sql",
+      "sha256": "14544f4ec1801321eca98e02e0576aeb9c901e08b7f32575294e56d30be191cb",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260207,
+      "name": "add_template_preview_data",
+      "path": "mistakes/V20260207__add_template_preview_data.sql",
+      "sha256": "fc32fcb06cb03e3e4e342d909aeb685016376c83936abc27908ebf23ccd910c3",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260208,
+      "name": "add_hot_query_indexes",
+      "path": "mistakes/V20260208__add_hot_query_indexes.sql",
+      "sha256": "18375f2200e5dad930f866ec48728ad306fca52569e79891180812d618524e73",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260209,
+      "name": "anki_card_dedup_unique",
+      "path": "mistakes/V20260209__anki_card_dedup_unique.sql",
+      "sha256": "9b2c59def9da5d34a92bac1c610aa17a1ca2cc4921f743b682d00ba14b1accda",
+      "dangers": [
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "mistakes",
+      "version": 20260523,
+      "name": "add_missing_sync_coverage",
+      "path": "mistakes/V20260523__add_missing_sync_coverage.sql",
+      "sha256": "f6561da52feb4f74ec8e4d531c40f562fb3e46754a9f52e82a46570eb1e824e7",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260524,
+      "name": "add_change_log_field_deltas",
+      "path": "mistakes/V20260524__add_change_log_field_deltas.sql",
+      "sha256": "424922d9296f99f6eb1e6415408c9e54f60d0a8c1ec89502164e2ceac1e1cc7d",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260705,
+      "name": "add_document_tasks_source_session_id",
+      "path": "mistakes/V20260705__add_document_tasks_source_session_id.sql",
+      "sha256": "995a277cf14864964caae8420c02f2f7f5e1eb8b6cf78d5e644bb62b54be46b3",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260709,
+      "name": "flashcard_fsrs",
+      "path": "mistakes/V20260709__flashcard_fsrs.sql",
+      "sha256": "52bd45a4c24f892e1007ce1d8bd26aadd392fd4ce9bb85ac1ffa0dd5c1aeb80b",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260710,
+      "name": "anki_export_receipt",
+      "path": "mistakes/V20260710__anki_export_receipt.sql",
+      "sha256": "f504e86310a6e3469d46a29d2bf00c7ca571619767cbeb62cd2b06362b8a644c",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260711,
+      "name": "fsrs_sync_coverage",
+      "path": "mistakes/V20260711__fsrs_sync_coverage.sql",
+      "sha256": "8d7be366f74956bc59f2a7cd012cb5bc67f520649564cc962d48a7a09f803a9f",
+      "dangers": [
+        "add_column_backfill"
+      ]
+    },
+    {
+      "database": "mistakes",
+      "version": 20260712,
+      "name": "fsrs_undo_snapshot",
+      "path": "mistakes/V20260712__fsrs_undo_snapshot.sql",
+      "sha256": "ba1e4f9b2718a79e1281d2f814504eaca1acf0e3a554287b75b16d1931fa070b",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260713,
+      "name": "apkg_card_identity",
+      "path": "mistakes/V20260713__apkg_card_identity.sql",
+      "sha256": "d1713638dfb3c85ed12dbf74b378dd8ac4127358772d28b561f302ed000595e3",
+      "dangers": [
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "mistakes",
+      "version": 20260714,
+      "name": "automation_scheduler",
+      "path": "mistakes/V20260714__automation_scheduler.sql",
+      "sha256": "22a71514a6f75221f6b089e491da224c73bf6e95613f978d05df8f6ecf058431",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260715,
+      "name": "harden_automation_runtime",
+      "path": "mistakes/V20260715__harden_automation_runtime.sql",
+      "sha256": "d6e4b884b53aa799988c8aefe7253d8e79d5b9b02b9cd1b1edee2983fa927fb6",
+      "dangers": [
+        "add_not_null_column"
+      ]
+    },
+    {
+      "database": "mistakes",
+      "version": 20260720,
+      "name": "fsrs_mastery_outbox",
+      "path": "mistakes/V20260720__fsrs_mastery_outbox.sql",
+      "sha256": "94cdb64f3bcd22548cc318f4c85cd88d63c3ee8ab561b39694fd58c57bfd8556",
+      "dangers": [
+        "add_column_backfill",
+        "add_not_null_column"
+      ]
+    },
+    {
+      "database": "mistakes",
+      "version": 20260721,
+      "name": "trusted_automation_profile",
+      "path": "mistakes/V20260721__trusted_automation_profile.sql",
+      "sha256": "647321d1b2bd7b2664b1d11ef151fc35e6c7767a317d48182662e74fe4af7064",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260722,
+      "name": "fsrs_scheduler_hardening",
+      "path": "mistakes/V20260722__fsrs_scheduler_hardening.sql",
+      "sha256": "38480bd5fdb3725d120d0d55d1522605e5e55a3a1815295fa633a472b73711b1",
+      "dangers": [
+        "add_not_null_column"
+      ]
+    },
+    {
+      "database": "mistakes",
+      "version": 20260723,
+      "name": "template_user_state",
+      "path": "mistakes/V20260723__template_user_state.sql",
+      "sha256": "98575aa6a762376c1bd53cf00bdfa5da2d2412332a3b7f58c19454a33299465c",
+      "dangers": []
+    },
+    {
+      "database": "mistakes",
+      "version": 20260724,
+      "name": "anki_dedup_index_exclude_deleted",
+      "path": "mistakes/V20260724__anki_dedup_index_exclude_deleted.sql",
+      "sha256": "99bc6dba815dfa36d11a6ebf6e6b453b15f536adb9a257d5f9e265bc4fb03302",
+      "dangers": [
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260130,
+      "name": "init",
+      "path": "vfs/V20260130__init.sql",
+      "sha256": "52fa01506331fe23061b257209a1f0b55cf84c79f4c4d0c6633ee1ba8fdd280c",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260131,
+      "name": "add_change_log",
+      "path": "vfs/V20260131__add_change_log.sql",
+      "sha256": "e29b75d748083c9a7169fe57a64d646fdaba1388556f56e1b7cc36e48cded497",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260201,
+      "name": "add_sync_fields",
+      "path": "vfs/V20260201__add_sync_fields.sql",
+      "sha256": "4f0cd478999a687649802d0038bbd9f2eca2f177f70ab24e352d5f0df916fe85",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260202,
+      "name": "add_segments_fk",
+      "path": "vfs/V20260202__add_segments_fk.sql",
+      "sha256": "d085bbe0bef5e1659172b137ece770f47c3630309beb0b11a759882e713d174c",
+      "dangers": [
+        "drop_table",
+        "table_rebuild",
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260203,
+      "name": "schema_repair",
+      "path": "vfs/V20260203__schema_repair.sql",
+      "sha256": "38ce396b55949dc5ac925d1809b63f4cb9bcd99b9079a0218bfc32e69509685f",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260204,
+      "name": "add_pdf_processing_status",
+      "path": "vfs/V20260204__add_pdf_processing_status.sql",
+      "sha256": "366eaa30e8daadedc7e7e2f1968a0846bde9edb79fa576dbeafea13c9730c42d",
+      "dangers": [
+        "add_column_backfill"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260205,
+      "name": "add_compressed_blob_hash",
+      "path": "vfs/V20260205__add_compressed_blob_hash.sql",
+      "sha256": "7c332723b94b76bb52001d0fed2985784a3690563e9e6040cac378d374d3b527",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260206,
+      "name": "repair_vfs_index_segments_unit",
+      "path": "vfs/V20260206__repair_vfs_index_segments_unit.sql",
+      "sha256": "06652a34036665740c5fa1e83666fae96f77a8aadaf46016bfbf801053adbda5",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260207,
+      "name": "unify_deleted_at_type",
+      "path": "vfs/V20260207__unify_deleted_at_type.sql",
+      "sha256": "351adb4e666885b19ce2cab956a22329ef4759d7ec31db40feccc98fb6bab731",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260208,
+      "name": "add_questions_last_attempt_date_index",
+      "path": "vfs/V20260208__add_questions_last_attempt_date_index.sql",
+      "sha256": "3270c5b4a2f151aea2245964dd6408d1752c991b1261fd2dc19c5f9981c20f55",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260209,
+      "name": "add_questions_images",
+      "path": "vfs/V20260209__add_questions_images.sql",
+      "sha256": "a8c5645090704d5767933c82efac630e1f62d52136e1f9c98d60723c8ba05cf2",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260210,
+      "name": "add_answer_submissions",
+      "path": "vfs/V20260210__add_answer_submissions.sql",
+      "sha256": "0b9611f1c3e3d8eff2d79b328d4531a98acabab58e99ef0c3120333a1f1968a0",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260211,
+      "name": "fix_change_log_record_id",
+      "path": "vfs/V20260211__fix_change_log_record_id.sql",
+      "sha256": "a3f595a3f8554aeb544e45e59ad14598cb7698406d9c5f5c809353d93bc8a0a0",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260212,
+      "name": "add_mindmap_versions",
+      "path": "vfs/V20260212__add_mindmap_versions.sql",
+      "sha256": "1e38efdc3c7a6956a711f3762a6ab1132654553629cdcc0cd5697dc4ff7d8345",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260213,
+      "name": "add_index_status_perf_indexes",
+      "path": "vfs/V20260213__add_index_status_perf_indexes.sql",
+      "sha256": "36281772ecb736ac674091b524f38cb1a9aa37933fbfb2c8fb082c64b4f66940",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260214,
+      "name": "drop_notes_versions",
+      "path": "vfs/V20260214__drop_notes_versions.sql",
+      "sha256": "eab0eb605f24479621dcb055b275264d52490f8f0f2f99475b8a40b7a9339b97",
+      "dangers": [
+        "drop_table"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260215,
+      "name": "add_import_checkpoint",
+      "path": "vfs/V20260215__add_import_checkpoint.sql",
+      "sha256": "1849573fab874645fc43478e7c0e78b24426445bb29581524f185318d01317bc",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260227,
+      "name": "add_memory_audit_log",
+      "path": "vfs/V20260227__add_memory_audit_log.sql",
+      "sha256": "967a2b984bac79107d58a249400f1001a529ac8e7cf5ce02f4a6694ee4326c42",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260302,
+      "name": "normalize_folder_items_timestamps",
+      "path": "vfs/V20260302__normalize_folder_items_timestamps.sql",
+      "sha256": "c57ca757417bccecedde4ae01c6d2524e72937c53be600d2fd6915a0aff603b1",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260303,
+      "name": "add_memory_write_idempotency",
+      "path": "vfs/V20260303__add_memory_write_idempotency.sql",
+      "sha256": "ac7d77903ab396036c89de046e55b346a8142701ed4a76186107d8a50a2c34a3",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260304,
+      "name": "harden_memory_folder_items_and_audit_indexes",
+      "path": "vfs/V20260304__harden_memory_folder_items_and_audit_indexes.sql",
+      "sha256": "f7fe56d60d271da4bb701f871c9f962167ffcf73f25df698d5cf2ba7a44911c2",
+      "dangers": [
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260305,
+      "name": "add_answer_submission_idempotency",
+      "path": "vfs/V20260305__add_answer_submission_idempotency.sql",
+      "sha256": "48485c4840284ee1e5ff8afc6d6fc70c8ec5817984b7e889fa832c061ed26dbf",
+      "dangers": [
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260306,
+      "name": "canonicalize_folder_item_mounts",
+      "path": "vfs/V20260306__canonicalize_folder_item_mounts.sql",
+      "sha256": "c98c14af04cc5c015a36086e352332af499b515afcfbe018a6a5953b824b5625",
+      "dangers": [
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260308,
+      "name": "add_todo_tables",
+      "path": "vfs/V20260308__add_todo_tables.sql",
+      "sha256": "21f6599841b3328b5478932a3ac37ea5dde9df358721aa9ce44c05fbdd6587e3",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260309,
+      "name": "decouple_todo_from_vfs",
+      "path": "vfs/V20260309__decouple_todo_from_vfs.sql",
+      "sha256": "54efaf24bce0bf612b1fc7c98b907e987c3f0246f3e868070f5b77bc4ddaad17",
+      "dangers": [
+        "drop_table",
+        "table_rebuild"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260310,
+      "name": "add_pomodoro",
+      "path": "vfs/V20260310__add_pomodoro.sql",
+      "sha256": "32ba669c9786c99f7663fcf70ffb0b71b2f015b026e8e2f1f746c00a72ea5dcb",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260311,
+      "name": "todo_constraints",
+      "path": "vfs/V20260311__todo_constraints.sql",
+      "sha256": "568b64e3c543d24a64006e0d3c089f1f01ec982f021cbdd9d58c6e8f6f94c614",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260312,
+      "name": "add_blob_deletion_queue",
+      "path": "vfs/V20260312__add_blob_deletion_queue.sql",
+      "sha256": "c37100d8a0a34db0850343e1c9b123f50a3c0e8af44d818d0f7f6324864929dd",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260523,
+      "name": "add_missing_sync_coverage",
+      "path": "vfs/V20260523__add_missing_sync_coverage.sql",
+      "sha256": "a59f4471699bf64331552fff66f5543acd85ffc83558510dd5b734895c1ff23e",
+      "dangers": [
+        "unique_constraint"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260524,
+      "name": "add_change_log_field_deltas",
+      "path": "vfs/V20260524__add_change_log_field_deltas.sql",
+      "sha256": "424922d9296f99f6eb1e6415408c9e54f60d0a8c1ec89502164e2ceac1e1cc7d",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260525,
+      "name": "repair_legacy_questions_change_log_record_ids",
+      "path": "vfs/V20260525__repair_legacy_questions_change_log_record_ids.sql",
+      "sha256": "43ccf097f88fb89683e97ccff3eb256aa07a6c38b8df6dcb96feb6eac2d2da27",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260526,
+      "name": "add_blob_metadata_sync",
+      "path": "vfs/V20260526__add_blob_metadata_sync.sql",
+      "sha256": "f03dbf24dc5b2e6c6fdd7418c0c05fb29b350eb520c0f9e6e46a2c0400396edf",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260527,
+      "name": "add_asset_deletion_queue",
+      "path": "vfs/V20260527__add_asset_deletion_queue.sql",
+      "sha256": "7974131e4b516b21a69dca0556539e7721b4ea8de5e9d5db26d85adfdbe6fe08",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260610,
+      "name": "fix_questions_fts_triggers",
+      "path": "vfs/V20260610__fix_questions_fts_triggers.sql",
+      "sha256": "0a5aed8415da67683cc72f52209bf64184e909a45367bee32d1950e672482632",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260611,
+      "name": "add_lance_orphan_queue",
+      "path": "vfs/V20260611__add_lance_orphan_queue.sql",
+      "sha256": "60bc83611c2bc3026ca7aff9810d19218086f25b291b689052d672ced124f853",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260612,
+      "name": "todo_insert_self_ref_check",
+      "path": "vfs/V20260612__todo_insert_self_ref_check.sql",
+      "sha256": "e4940807365e34596b7a1c75157f93d90d283dbe3067376ad8f34e5e5bea64e0",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260613,
+      "name": "pomodoro_timestamps_and_constraints",
+      "path": "vfs/V20260613__pomodoro_timestamps_and_constraints.sql",
+      "sha256": "59e5fff862396a05086bae4d458da55d5e2bffbcbc5aedf9e6705adfaade5c0a",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260614,
+      "name": "todo_parent_check_softdelete_fix",
+      "path": "vfs/V20260614__todo_parent_check_softdelete_fix.sql",
+      "sha256": "6b9e95edd65d8d78e13d860e41b42ddc5c9b39046aed71aad1a752ba644018da",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260615,
+      "name": "todo_cycle_check_full_graph",
+      "path": "vfs/V20260615__todo_cycle_check_full_graph.sql",
+      "sha256": "004aabca04dd2d3ae7c876dfd59324f1567aa4ffcac63b50859a239d01c995a3",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260714,
+      "name": "add_vector_index_profiles",
+      "path": "vfs/V20260714__add_vector_index_profiles.sql",
+      "sha256": "f8cdc88a233524f9e3806b0d1a4dc846707088e1eefc796b5f0100721b35c658",
+      "dangers": [
+        "add_column_backfill",
+        "add_not_null_column"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260715,
+      "name": "automation_todo_delivery_receipts",
+      "path": "vfs/V20260715__automation_todo_delivery_receipts.sql",
+      "sha256": "25cefe0bc7101b017fb31254ef767448397f7895da7c211553fb2856d4105fdf",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260718,
+      "name": "add_mastery_tables",
+      "path": "vfs/V20260718__add_mastery_tables.sql",
+      "sha256": "fbf1f854099a99857448fca3e9cf4a0c30c0c403670fc77bc22884f1e88e698d",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260719,
+      "name": "mastery_events_signal",
+      "path": "vfs/V20260719__mastery_events_signal.sql",
+      "sha256": "fa5537ddaee1973ebba33861b3ef0d362ea83a6ef5a1768ffb4729c7d4379137",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260720,
+      "name": "mastery_events_sync",
+      "path": "vfs/V20260720__mastery_events_sync.sql",
+      "sha256": "b103885ec3adfbbfbb27ba3bf1ad1ebe355b4a168022ce0fe4cc708c98021949",
+      "dangers": [
+        "add_column_backfill",
+        "add_not_null_column"
+      ]
+    },
+    {
+      "database": "vfs",
+      "version": 20260721,
+      "name": "pomodoro_backfill_updated_at",
+      "path": "vfs/V20260721__pomodoro_backfill_updated_at.sql",
+      "sha256": "8835d16334f7ff69a42d40db112e45b7a1bec4784afe1d6ed7d9da77dd0999d3",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260722,
+      "name": "note_tags",
+      "path": "vfs/V20260722__note_tags.sql",
+      "sha256": "3cca02aeb64f51e0932137ce619528df78980d600d134940bab99e77ec85004c",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260723,
+      "name": "translation_soft_delete_repair_and_indexes",
+      "path": "vfs/V20260723__translation_soft_delete_repair_and_indexes.sql",
+      "sha256": "77e93094f5ec60542253f829f1bd79a52d9a5248376c999cdedb6559f93a8604",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260724,
+      "name": "notes_fts",
+      "path": "vfs/V20260724__notes_fts.sql",
+      "sha256": "d0aad30cbd52192b0d59c90c3535c87e9cb2079622ad271f33862f92a3867947",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260725,
+      "name": "note_links",
+      "path": "vfs/V20260725__note_links.sql",
+      "sha256": "d22c0033b1ee56423949e305f7dc5f2c9d75543f896581d06a19f963325c23d9",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260726,
+      "name": "mindmap_content_updated_at",
+      "path": "vfs/V20260726__mindmap_content_updated_at.sql",
+      "sha256": "544c3dc9536404af25b0b05e417141c242aaf165000b3d472b87abf78a0f7fc5",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260727,
+      "name": "todo_completed_at_index",
+      "path": "vfs/V20260727__todo_completed_at_index.sql",
+      "sha256": "327c795204f2df3052d28c81396f0f8f97c0ffd9480b93b8b65d2dd951cfad3f",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260728,
+      "name": "todo_reminder_index_and_list_sort",
+      "path": "vfs/V20260728__todo_reminder_index_and_list_sort.sql",
+      "sha256": "f1c890407c4fd1acf616852ecc944586ab9bcaf2727fab23cf45f4fbc27b1fb6",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260801,
+      "name": "todo_pomodoro_stats_indexes",
+      "path": "vfs/V20260801__todo_pomodoro_stats_indexes.sql",
+      "sha256": "2f1dadfaeae3a3220f129c9319d088cf2915f805e7d54dac3c5153243fc5b8b1",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260806,
+      "name": "mindmap_versions_lookup_index",
+      "path": "vfs/V20260806__mindmap_versions_lookup_index.sql",
+      "sha256": "d9aec2e39df489c6ea33edefcc7f986ca66c2fe21ab8f51beb878242e1e6a1b3",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260807,
+      "name": "question_structured_data",
+      "path": "vfs/V20260807__question_structured_data.sql",
+      "sha256": "81fbf663f3a07ed8e9ac5d6bf5fd3d13ffaf8d329fc46006944677afba9c4581",
+      "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260808,
+      "name": "file_deletion_intent_journal",
+      "path": "vfs/V20260808__file_deletion_intent_journal.sql",
+      "sha256": "6f3aed34ac12166a5bd0540383e8e3a366a2442b0adae51464031557aec65dff",
+      "dangers": []
+    }
+  ]
+}

@@ -60,14 +60,14 @@ export interface SkillStateSnapshot {
   modeRequiredBundleIds?: string[];
   agenticSessionSkillIds?: string[];
   branchLocalSkillIds?: string[];
-  effectiveAllowedInternalTools?: string[];
-  effectiveAllowedExternalTools?: string[];
   effectiveAllowedExternalServers?: string[];
   version?: number;
 }
 
 export interface ReplaySkillPayloadSnapshot {
   activeSkillIds?: string[];
+  /** Backend-only execution scope used by unattended/worker runtimes. */
+  executionAllowedTools?: string[];
   skillContents?: Record<string, string>;
   skillDependencies?: Record<string, string[]>;
   skillEmbeddedTools?: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>>;
@@ -76,11 +76,94 @@ export interface ReplaySkillPayloadSnapshot {
 }
 
 export interface VariantMeta {
+  executionSnapshot?: ModelExecutionSnapshot;
+  canonicalArtifacts?: CanonicalContentPart[];
   skillSnapshotBefore?: SkillStateSnapshot;
   skillSnapshotAfter?: SkillStateSnapshot;
   skillRuntimeBefore?: ReplaySkillPayloadSnapshot;
   skillRuntimeAfter?: ReplaySkillPayloadSnapshot;
 }
+
+export interface CapabilityState {
+  configured: boolean;
+  healthy: boolean;
+  circuitOpen: boolean;
+  protocolCompatible: boolean;
+  indexCompatible: boolean;
+  reason?: string;
+}
+
+export interface CapabilitySnapshot {
+  textEmbedding: CapabilityState;
+  multimodalEmbedding: CapabilityState;
+  textModel: CapabilityState;
+  multimodalModel: CapabilityState;
+  ocr: CapabilityState;
+}
+
+export type GenerationRoute =
+  | 'text_model_direct'
+  | 'multimodal_model_direct'
+  | 'multimodal_observation_then_text_model'
+  | 'ocr_then_text_model'
+  | 'text_model_without_image'
+  | 'unavailable';
+
+export interface ModelExecutionSnapshot {
+  requestedModelId?: string;
+  resolvedModelId: string;
+  resolvedModelName: string;
+  resolvedModelIsMultimodal: boolean;
+  capabilitySnapshot: CapabilitySnapshot;
+  generationPlan: {
+    planner: {
+      route: GenerationRoute;
+      activeModel: 'text' | 'multimodal' | null;
+      fallbackFrom: 'text' | 'multimodal' | null;
+      sendsOriginalImages: boolean;
+      usesOcr: boolean;
+      degraded: boolean;
+    };
+    auxiliaryMultimodalConfigId?: string;
+    imageBudget: number;
+    historyImageBudget: number;
+  };
+  executionRoute?: GenerationRoute;
+  frozenAt: number;
+}
+
+export type CanonicalContentPart =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image_ref';
+      imageId: string;
+      resourceId?: string;
+      sourceId?: string;
+      blobHash?: string;
+      contentHash?: string;
+      mimeType: string;
+      pinned: boolean;
+      retrievalHit: boolean;
+    }
+  | {
+      type: 'file_ref';
+      fileId: string;
+      resourceId?: string;
+      blobHash?: string;
+      contentHash?: string;
+      mimeType: string;
+      name?: string;
+    }
+  | { type: 'citation_ref'; citationId: string; resourceId?: string; label?: string }
+  | {
+      type: 'derived_artifact_ref';
+      artifactId: string;
+      artifactType: string;
+      sourceImageIds: string[];
+      producerModelId?: string;
+      content: string;
+      createdAt: number;
+    };
 
 // ============================================================================
 // 消息角色
@@ -144,6 +227,21 @@ export interface Message {
   /** 持久化稳定 ID（用于数据库关联） */
   persistentStableId?: string;
 
+  // ========== 分支 / 编辑血缘（对齐后端 BackendMessageForRestore） ==========
+
+  /**
+   * 父消息 ID（分支血缘）。
+   * 后端 chat_v2_branch_session / 编辑重发链路会写入该字段；
+   * 前端恢复时保留，用于渲染分支树与「从此处分支」定位。
+   */
+  parentId?: string;
+
+  /**
+   * 被本消息取代的旧消息 ID（编辑/重试语义）。
+   * 与 parentId 一样由后端维护，前端只读透传。
+   */
+  supersedes?: string;
+
   // ========== 多模型并行变体 (Variant) ==========
 
   /** 当前激活的变体 ID */
@@ -167,6 +265,12 @@ export interface Message {
 export interface MessageMeta {
   /** 生成此消息使用的模型 ID */
   modelId?: string;
+
+  /** Immutable model/capability route captured before this turn started. */
+  executionSnapshot?: ModelExecutionSnapshot;
+
+  /** Stable typed refs; image bytes are resolved only for an individual request. */
+  canonicalContent?: CanonicalContentPart[];
 
   /** 生成此消息使用的模型显示名称（用于 UI 展示） */
   modelDisplayName?: string;

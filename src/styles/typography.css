@@ -1,11 +1,11 @@
 /* =========================================
-   Global Typography (Notion-inspired)
+   Global Typography (clean-inspired)
    ========================================= */
 
 /* 
  * 设计原则:
  * 1. 系统字体优先 - 原生感、性能好
- * 2. 适中行高 (1.5) - Notion 标准
+ * 2. 适中行高 (1.5) - 常见正文标准
  * 3. 无额外字间距 - 干净简洁
  * 4. 中文优化 - 自动 fallback
  */
@@ -40,7 +40,7 @@ button, input, select, textarea {
 	font-size: inherit;
 }
 
-/* 标题系统 - Notion 风格 */
+/* 标题系统 - 简洁风格 */
 h1, h2, h3, h4, h5, h6 {
 	font-weight: var(--font-weight-semibold);
 	letter-spacing: var(--letter-spacing-normal);

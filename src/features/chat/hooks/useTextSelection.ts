@@ -21,12 +21,28 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 /** 触屏 selectionchange 防抖时长：长按/拖手柄期间持续触发，稳定后再弹工具栏 */
 const TOUCH_SELECTION_DEBOUNCE_MS = 300;
 
+// 模块级缓存 coarse pointer 查询结果：直渲长列表时每条消息都挂着 scroll 监听，
+// 滚动期间每个 handler 都调用本函数，不能每次都重跑 window.matchMedia。
+// coarse pointer 在桌面/移动运行期基本不变，缓存后监听 change 事件兜底更新。
+let coarsePointerQuery: MediaQueryList | null | undefined;
+let coarsePointerMatches = false;
+
 const isTouchPrimaryPointer = (): boolean => {
-  try {
-    return window.matchMedia?.('(pointer: coarse)').matches ?? false;
-  } catch {
-    return false;
+  if (coarsePointerQuery === undefined) {
+    try {
+      coarsePointerQuery = window.matchMedia?.('(pointer: coarse)') ?? null;
+      if (coarsePointerQuery) {
+        coarsePointerMatches = coarsePointerQuery.matches;
+        // 老 WebView 可能没有 addEventListener，此时降级为首次结果一次性缓存
+        coarsePointerQuery.addEventListener?.('change', (e) => {
+          coarsePointerMatches = e.matches;
+        });
+      }
+    } catch {
+      coarsePointerQuery = null;
+    }
   }
+  return coarsePointerQuery ? coarsePointerMatches : false;
 };
 
 export interface SelectionRect {
@@ -104,6 +120,11 @@ export function useTextSelection(
   const [contextAfter, setContextAfter] = useState('');
   // 防止 mousedown 在工具栏上时清除选择
   const isToolbarInteraction = useRef(false);
+  // 用 ref 镜像 isVisible，保证 document 级监听器引用稳定（避免每次显隐都解绑/重绑）
+  const isVisibleRef = useRef(false);
+  useEffect(() => {
+    isVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   const clear = useCallback(() => {
     setSelectedText('');
@@ -161,6 +182,7 @@ export function useTextSelection(
   }, [containerRef, clear]);
 
   // 检测选中文本（桌面鼠标路径）
+  const pendingRafRef = useRef<number | null>(null);
   const handleMouseUp = useCallback((e: MouseEvent) => {
     // 仅处理左键（右键/中键不应触发浮动工具栏）
     if (e.button !== 0) {
@@ -174,45 +196,79 @@ export function useTextSelection(
     }
 
     // 延迟一帧确保 selection 已更新
-    requestAnimationFrame(() => {
+    if (pendingRafRef.current !== null) {
+      cancelAnimationFrame(pendingRafRef.current);
+    }
+    pendingRafRef.current = requestAnimationFrame(() => {
+      pendingRafRef.current = null;
       evaluateSelection();
     });
   }, [evaluateSelection]);
 
   // mousedown 时检查是否点击在工具栏上
   const handleMouseDown = useCallback((e: MouseEvent) => {
+    // 最速短路：工具栏未显示时无事可做——closest 命中的只可能是别的消息的
+    // 工具栏（全局选区唯一，本实例不可见即选区不在本容器内），置不置
+    // isToolbarInteraction 都不影响本实例 mouseup 评估的结果（评估后仍是清除态）
+    if (!isVisibleRef.current) {
+      return;
+    }
     const target = e.target as Element;
     if (target.closest('[data-selection-toolbar]')) {
       isToolbarInteraction.current = true;
       return;
     }
     // 点击其他区域时清除
-    if (isVisible) {
-      clear();
-    }
-  }, [isVisible, clear]);
+    clear();
+  }, [clear]);
 
-  // 滚动时隐藏
+  // 滚动/窗口尺寸变化时隐藏（选区 rect 已失效）。
+  // P1-10 触屏优化：触屏上系统选区在滚动后依然存在，"一滚就永久消失"会让
+  // 工具栏很难点到——先隐藏，滚动停稳后重新评估选区并按新 rect 重新定位。
+  const scrollSettleTimerRef = useRef<number | null>(null);
   const handleScroll = useCallback(() => {
-    if (isVisible) {
+    if (isTouchPrimaryPointer()) {
+      // 最速短路：工具栏未显示、当前无选区且无待触发的停稳定时器时，
+      // 停稳后重评估必然是无事可做的 clear 空转，直接返回避免长列表
+      // 滚动时每条消息都做定时器续期。有选区时仍需续期定时器，
+      // 保证 P1-10 的"滚动停稳后重新弹出"行为不变
+      if (!isVisibleRef.current && scrollSettleTimerRef.current === null) {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) {
+          return;
+        }
+      }
+      if (isVisibleRef.current) {
+        clear();
+      }
+      if (scrollSettleTimerRef.current !== null) {
+        window.clearTimeout(scrollSettleTimerRef.current);
+      }
+      scrollSettleTimerRef.current = window.setTimeout(() => {
+        scrollSettleTimerRef.current = null;
+        evaluateSelection();
+      }, 250);
+      return;
+    }
+    if (isVisibleRef.current) {
       clear();
     }
-  }, [isVisible, clear]);
+  }, [clear, evaluateSelection]);
 
   // Escape 键关闭
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape' && isVisible) {
+    if (e.key === 'Escape' && isVisibleRef.current) {
       clear();
       window.getSelection()?.removeAllRanges();
     }
-  }, [isVisible, clear]);
+  }, [clear]);
 
   // 右键时隐藏浮动工具栏，让右键菜单独占
   const handleContextMenu = useCallback(() => {
-    if (isVisible) {
+    if (isVisibleRef.current) {
       clear();
     }
-  }, [isVisible, clear]);
+  }, [clear]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -228,6 +284,23 @@ export function useTextSelection(
     // 监听 selectionchange 并防抖，选区稳定后评估
     let selectionChangeTimer: number | null = null;
     const handleSelectionChange = () => {
+      // ★ M4 修复：快速短路——直渲长列表时每条消息都挂着本监听，
+      // 选区折叠（无选区）且工具栏未显示时直接返回，不进防抖/评估；
+      // 选区存在但锚点不在本消息容器内（且工具栏未显示）同样跳过
+      const sel = window.getSelection();
+      const collapsed = !sel || sel.isCollapsed;
+      if (!isVisibleRef.current) {
+        if (collapsed) {
+          if (selectionChangeTimer !== null) {
+            window.clearTimeout(selectionChangeTimer);
+            selectionChangeTimer = null;
+          }
+          return;
+        }
+        if (sel?.anchorNode && !container.contains(sel.anchorNode)) {
+          return;
+        }
+      }
       if (selectionChangeTimer !== null) {
         window.clearTimeout(selectionChangeTimer);
       }
@@ -241,9 +314,11 @@ export function useTextSelection(
       document.addEventListener('selectionchange', handleSelectionChange);
     }
 
-    // 滚动监听：找到最近的可滚动父元素
-    const scrollParent = container.closest('.chat-history-viewport') || container.parentElement;
-    scrollParent?.addEventListener('scroll', handleScroll, { passive: true });
+    // 滚动监听：捕获阶段监听 document，任何滚动容器（聊天视口、嵌套代码块等）
+    // 滚动都会让选区的视口 rect 失效，统一隐藏工具栏
+    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    // 窗口 resize 时文本会重排，选区 rect 失效，直接隐藏
+    window.addEventListener('resize', handleScroll);
 
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
@@ -256,7 +331,16 @@ export function useTextSelection(
           window.clearTimeout(selectionChangeTimer);
         }
       }
-      scrollParent?.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', handleScroll);
+      if (scrollSettleTimerRef.current !== null) {
+        window.clearTimeout(scrollSettleTimerRef.current);
+        scrollSettleTimerRef.current = null;
+      }
+      if (pendingRafRef.current !== null) {
+        cancelAnimationFrame(pendingRafRef.current);
+        pendingRafRef.current = null;
+      }
     };
   }, [containerRef, handleMouseUp, handleMouseDown, handleScroll, handleKeyDown, handleContextMenu, evaluateSelection]);
 

@@ -8,6 +8,7 @@ import React, { useState, useCallback } from 'react';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { cn } from '@/utils/cn';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   Play,
   Square,
@@ -85,9 +86,9 @@ const StatusIcon: React.FC<{ status: BlockStatus; className?: string }> = ({ sta
     case 'pending':
       return <Clock className={cn('w-3 h-3 text-muted-foreground', className)} />;
     case 'running':
-      return <CircleNotch className={cn('w-3 h-3 text-blue-500 animate-spin', className)} />;
+      return <CircleNotch className={cn('w-3 h-3 text-info animate-spin', className)} />;
     case 'success':
-      return <CheckCircle className={cn('w-3 h-3 text-green-500', className)} />;
+      return <CheckCircle className={cn('w-3 h-3 text-success', className)} />;
     case 'error':
       return <WarningCircle className={cn('w-3 h-3 text-destructive', className)} />;
   }
@@ -207,14 +208,14 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           <span className="font-medium text-sm">控制面板</span>
           <div className="flex items-center gap-2">
             <span className={cn(
-              'px-1.5 py-0.5 text-[10px] rounded font-mono',
-              sessionStatus === 'idle' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' :
-              sessionStatus === 'streaming' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' :
-              'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300'
+              'px-1.5 py-0.5 text-2xs rounded font-mono',
+              sessionStatus === 'idle' ? 'bg-success/10 text-success' :
+              sessionStatus === 'streaming' ? 'bg-info/10 text-info' :
+              'bg-warning/10 text-warning'
             )}>
               {sessionStatus === 'idle' ? '空闲' : sessionStatus === 'streaming' ? '流式中' : sessionStatus}
             </span>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {messageCount} 消息 / {blockCount} 块
             </span>
           </div>
@@ -224,7 +225,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
       {/* 全局渲染偏好 */}
       <div className="flex-shrink-0 px-3 py-2 border-b border-border space-y-1.5 bg-muted/20">
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground tracking-wider font-medium w-12">
+          <span className="text-2xs text-muted-foreground tracking-wider font-medium w-12">
             预设
           </span>
           <div className="flex gap-0.5 flex-1">
@@ -235,7 +236,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 onClick={() => onPresetChange(p)}
                 title={getStreamingPresetHint(p)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 text-[10px] rounded transition-colors',
+                  'flex-1 px-1 py-0.5 text-2xs rounded transition-colors',
                   preset === p
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
@@ -246,11 +247,11 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
             ))}
           </div>
         </div>
-        <p className="pl-[3.375rem] text-[10px] leading-relaxed text-muted-foreground/80">
+        <p className="pl-[3.375rem] text-2xs leading-relaxed text-muted-foreground/80">
           {getStreamingPresetHint(preset)}
         </p>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground tracking-wider font-medium w-12">
+          <span className="text-2xs text-muted-foreground tracking-wider font-medium w-12">
             模式
           </span>
           <div className="flex gap-0.5 flex-1">
@@ -261,7 +262,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 onClick={() => onRenderModeChange(m)}
                 title={getRenderModeHint(m)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 text-[10px] rounded transition-colors',
+                  'flex-1 px-1 py-0.5 text-2xs rounded transition-colors',
                   renderMode === m
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
@@ -272,7 +273,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
             ))}
           </div>
         </div>
-        <p className="pl-[3.375rem] text-[10px] leading-relaxed text-muted-foreground/80">
+        <p className="pl-[3.375rem] text-2xs leading-relaxed text-muted-foreground/80">
           {getRenderModeHint(renderMode)}
         </p>
       </div>
@@ -308,7 +309,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           <div className="flex-shrink-0 px-3 py-2 border-b border-border flex flex-wrap gap-1.5">
             <button
               onClick={handleClear}
-              className="px-2 py-1 text-[11px] rounded bg-muted hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center gap-1"
+              className="px-2.5 py-1.5 min-h-7 text-[11px] rounded bg-muted hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center gap-1"
             >
               <Trash size={12} />
               清空
@@ -317,7 +318,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               onClick={handleAbort}
               disabled={sessionStatus === 'idle'}
               className={cn(
-                'px-2 py-1 text-[11px] rounded flex items-center gap-1 transition-colors',
+                'px-2.5 py-1.5 min-h-7 text-[11px] rounded flex items-center gap-1 transition-colors',
                 sessionStatus === 'idle'
                   ? 'bg-muted text-muted-foreground/50 cursor-not-allowed'
                   : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
@@ -328,7 +329,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
             </button>
             <button
               onClick={handleInjectAll}
-              className="px-2 py-1 text-[11px] rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1"
+              className="px-2.5 py-1.5 min-h-7 text-[11px] rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1"
             >
               <Stack size={12} />
               注入全部
@@ -338,7 +339,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           {/* 状态选择器 */}
           <div className="flex-shrink-0 px-3 py-2 border-b border-border space-y-2">
             <div>
-              <div className="text-[10px] text-muted-foreground mb-1.5 font-medium tracking-wider">
+              <div className="text-2xs text-muted-foreground mb-1.5 font-medium tracking-wider">
                 注入状态
               </div>
               <div className="flex gap-1">
@@ -360,7 +361,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               </div>
             </div>
             <div>
-              <div className="text-[10px] text-muted-foreground mb-1 font-medium tracking-wider">
+              <div className="text-2xs text-muted-foreground mb-1 font-medium tracking-wider">
                 流式节奏
               </div>
               <select
@@ -378,7 +379,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           </div>
 
           {/* 可滚动内容区 */}
-          <div className="flex-1 overflow-y-auto">
+          <CustomScrollArea className="min-h-0 flex-1">
             <CollapsibleSection
               title="预设场景"
               icon={<Lightning size={14} />}
@@ -401,7 +402,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                       <Play size={12} className="text-muted-foreground group-hover:text-primary transition-colors" />
                       <span className="font-medium">{scenario.label}</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground ml-[18px] mt-0.5">
+                    <div className="text-2xs text-muted-foreground ml-[18px] mt-0.5">
                       {scenario.description}
                     </div>
                   </button>
@@ -425,18 +426,18 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                        <span className="font-mono text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground">
                           {template.type}
                         </span>
                         <span className="font-medium">{template.label}</span>
                       </div>
                       {template.supportsStreaming && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-300">
+                        <span className="text-2xs px-1 py-0.5 rounded bg-info/10 text-info">
                           流式
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                    <div className="text-2xs text-muted-foreground mt-0.5">
                       {template.description}
                     </div>
                   </button>
@@ -458,7 +459,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                   className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `ask_user`</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                  <div className="mt-0.5 text-2xs text-muted-foreground">
                     接管输入栏，显示带选项和自定义输入的真实调试弹条。
                   </div>
                 </button>
@@ -468,7 +469,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                   className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_approval`</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                  <div className="mt-0.5 text-2xs text-muted-foreground">
                     验证敏感度徽章、参数展开，以及批准/拒绝后的 resolved 态。
                   </div>
                 </button>
@@ -478,7 +479,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                   className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_limit`</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                  <div className="mt-0.5 text-2xs text-muted-foreground">
                     直接走输入栏 continue 交互，检查阻塞态与恢复行为。
                   </div>
                 </button>
@@ -499,13 +500,13 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                   className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">Todo sample 数据</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                  <div className="mt-0.5 text-2xs text-muted-foreground">
                     注入一组带 running / completed / pending 状态的 todo_list 示例，调试折叠摘要和步骤高亮。
                   </div>
                 </button>
               </div>
             </CollapsibleSection>
-          </div>
+          </CustomScrollArea>
         </div>
       )}
 
@@ -556,7 +557,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
         {title}
       </div>
       {badge && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+        <span className="text-2xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
           {badge}
         </span>
       )}

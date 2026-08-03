@@ -36,6 +36,8 @@ export interface TabPanelContainerProps {
   onClose: (tabId: string) => void;
   onTitleChange: (tabId: string, title: string) => void;
   onCloseSplitView?: () => void;
+  /** 各标签页重载计数，用于强制 remount UnifiedAppPanel */
+  tabReloadKeys?: Record<string, number>;
   className?: string;
 }
 
@@ -51,13 +53,69 @@ const PanelLoading: React.FC<{ label?: string }> = ({ label }) => (
 );
 
 // ============================================================================
+// 单个保活面板（memo：切换标签时不重渲染其余隐藏面板）
+// ============================================================================
+
+interface TabPanelItemProps {
+  tab: OpenTab;
+  visible: boolean;
+  reloadNonce: number;
+  loadingLabel: string;
+  onClose: (tabId: string) => void;
+  onTitleChange: (tabId: string, title: string) => void;
+}
+
+/**
+ * ★ 2026-07-08（保活审计）：之前每次 TabPanelContainer 渲染都为所有保活
+ * tab 新建 onClose/onTitleChange 闭包，导致切换标签时全部隐藏面板跟着
+ * 重渲染。抽成 memo 组件 + 稳定回调后，切换只重渲染显隐状态变化的两个面板。
+ */
+const TabPanelItem = React.memo<TabPanelItemProps>(({
+  tab, visible, reloadNonce, loadingLabel, onClose, onTitleChange,
+}) => {
+  const handleClose = useCallback(() => onClose(tab.tabId), [onClose, tab.tabId]);
+  const handleTitleChange = useCallback(
+    (title: string) => onTitleChange(tab.tabId, title),
+    [onTitleChange, tab.tabId]
+  );
+
+  return (
+    <div
+      className={cn(
+        'absolute inset-0 min-h-0 flex-col',
+        // ui-rise-in：切换标签时重新挂类，内容轻量升入（与 ExamContentView 视图切换
+        // 同一动效词汇；reduced-motion 由 ui-motion.css 统一降级）
+        visible ? 'flex ui-rise-in' : 'hidden',
+      )}
+    >
+      <Suspense fallback={<PanelLoading label={loadingLabel} />}>
+        <UnifiedAppPanel
+          type={tab.type}
+          resourceId={tab.resourceId}
+          dstuPath={tab.dstuPath}
+          onClose={handleClose}
+          onTitleChange={handleTitleChange}
+          isActive={visible}
+          focusOnActive={visible}
+          reloadNonce={reloadNonce}
+          className="h-full w-full min-h-0 flex-1"
+        />
+      </Suspense>
+    </div>
+  );
+});
+
+TabPanelItem.displayName = 'TabPanelItem';
+
+// ============================================================================
 // 组件实现
 // ============================================================================
 
 export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
-  tabs, activeTabId, splitView, onClose, onTitleChange, onCloseSplitView, className,
+  tabs, activeTabId, splitView, onClose, onTitleChange, onCloseSplitView, tabReloadKeys, className,
 }) => {
-  const { t } = useTranslation('common');
+  // 同时加载 learningHub 命名空间（分屏标题使用 learningHub:splitView.title）
+  const { t } = useTranslation(['common', 'learningHub']);
 
   const handleClose = useCallback((tabId: string) => onClose(tabId), [onClose]);
   const handleTitleChange = useCallback((tabId: string, title: string) => onTitleChange(tabId, title), [onTitleChange]);
@@ -85,25 +143,18 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
       .map(([id]) => id)
   );
 
-  // 渲染单个 tab 面板内容（保活逻辑）
+  // 渲染单个 tab 面板内容（保活逻辑，见 TabPanelItem）
+  const loadingLabel = t('loading');
   const renderTabPanel = (tab: OpenTab, visible: boolean) => (
-    <div
+    <TabPanelItem
       key={tab.tabId}
-      className="absolute inset-0"
-      style={{ display: visible ? 'flex' : 'none' }}
-    >
-      <Suspense fallback={<PanelLoading label={t('loading', '加载中...')} />}>
-        <UnifiedAppPanel
-          type={tab.type}
-          resourceId={tab.resourceId}
-          dstuPath={tab.dstuPath}
-          onClose={() => handleClose(tab.tabId)}
-          onTitleChange={(title) => handleTitleChange(tab.tabId, title)}
-          isActive={visible}
-          className="h-full w-full"
-        />
-      </Suspense>
-    </div>
+      tab={tab}
+      visible={visible}
+      reloadNonce={tabReloadKeys?.[tab.tabId] ?? 0}
+      loadingLabel={loadingLabel}
+      onClose={handleClose}
+      onTitleChange={handleTitleChange}
+    />
   );
 
   // ★ F7 修复：普通模式与分屏模式共用同一棵 PanelGroup 树。
@@ -117,11 +168,11 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
     <PanelGroup
       direction="horizontal"
       autoSaveId="learning-hub-split-view"
-      className={cn('h-full', className)}
+      className={cn('h-full min-h-0 overflow-hidden', className)}
     >
       {/* 左侧面板：普通模式下占满全宽 */}
       <Panel defaultSize={splitView ? 50 : 100} minSize={25} id="split-left" order={1}>
-        <div className="relative h-full">
+        <div className="relative h-full min-h-0 overflow-hidden">
           {/* ★ Y3 修复：右侧分屏 tab 不在左侧重复渲染。
               之前左侧 map 中包含右侧 tab 的隐藏实例，导致同一资源双实例
               （重复加载、重复事件监听、编辑器互相干扰） */}
@@ -142,24 +193,26 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
 
           {/* 右侧面板：分屏 tab */}
           <Panel defaultSize={50} minSize={25} id="split-right" order={2}>
-            <div className="relative h-full">
+            <div className="relative h-full min-h-0 overflow-hidden">
               {/* 右侧面板顶部关闭按钮 */}
               <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
                 <div className="bg-background/80 backdrop-blur-sm shadow-sm border border-border rounded-md px-2 py-1 text-xs text-muted-foreground font-medium flex items-center gap-1.5">
                   <SidebarSimple size={14} />
-                  {t('learningHub:splitView.title', '分屏视图')}
+                  {t('learningHub:splitView.title')}
                 </div>
                 <button
+                  type="button"
                   onClick={onCloseSplitView}
                   className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm"
-                  title={t('actions.close', '关闭分屏')}
+                  title={t('learningHub:splitView.close')}
+                  aria-label={t('learningHub:splitView.close')}
                 >
                   <X size={14} />
                 </button>
               </div>
               {rightTab ? renderTabPanel(rightTab, true) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  {t('noContent', '无内容')}
+                  {t('learningHub:splitView.empty')}
                 </div>
               )}
             </div>

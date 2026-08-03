@@ -12,6 +12,23 @@ import { generateId, createBlockInternal } from './createChatStore';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+function extractToolOutputError(toolOutput: unknown): string | undefined {
+  if (!toolOutput || typeof toolOutput !== 'object') return undefined;
+
+  const output = toolOutput as Record<string, unknown>;
+  const error = output.error;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error) return String(error);
+
+  if (output.success === false) {
+    const message = output.message ?? output.reason;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+
+  return undefined;
+}
+
 export function createBlockActions(
   set: SetState,
   getState: GetState,
@@ -22,7 +39,6 @@ export function createBlockActions(
         /**
          * 🔧 P3重构：抽取公共的块创建逻辑
          * createBlock 和 createBlockWithId 共享此内部实现
-         * 注意：flushSync 已移至 createBlockInternal 内部
          */
         createBlock: (messageId: string, type: BlockType): string => {
           const blockId = generateId('blk');
@@ -97,6 +113,9 @@ export function createBlockActions(
                 // ✅ 健壮性优化：只有块存在时才从活跃集合移除
                 if (status === 'success' || status === 'error') {
                   draft.activeBlockIds = removeFromSet(draft.activeBlockIds, blockId);
+                } else {
+                  // A transient tool retry reopens the same logical block after an error.
+                  draft.activeBlockIds = addToSet(draft.activeBlockIds, blockId);
                 }
               }
             })(s);
@@ -129,6 +148,9 @@ export function createBlockActions(
                   !!(toolOutput as Record<string, unknown>).error ||
                   (toolOutput as Record<string, unknown>).success === false
                 );
+                draftBlock.error = hasError
+                  ? extractToolOutputError(toolOutput) ?? draftBlock.error
+                  : undefined;
                 draftBlock.status = hasError ? 'error' : 'success';
                 draftBlock.endedAt = Date.now();
                 // ✅ 健壮性优化：只有块存在时才从活跃集合移除

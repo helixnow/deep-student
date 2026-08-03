@@ -4,9 +4,10 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, Chat, CircleNotch, User, Robot, CaretDown } from '@phosphor-icons/react';
+import { MagnifyingGlass, Chat, CircleNotch, User, Robot, CaretDown, ArrowClockwise } from '@phosphor-icons/react';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
 import type { ContentSearchResult } from '../../hooks/useContentSearch';
 
 const INITIAL_ITEMS_PER_SESSION = 3;
@@ -14,14 +15,18 @@ const INITIAL_ITEMS_PER_SESSION = 3;
 interface SearchResultListProps {
   results: ContentSearchResult[];
   loading: boolean;
+  error?: string | null;
   query: string;
+  onRetry?: () => void;
   onSelectResult: (sessionId: string) => void;
 }
 
 export const SearchResultList: React.FC<SearchResultListProps> = ({
   results,
   loading,
+  error,
   query,
+  onRetry,
   onSelectResult,
 }) => {
   const { t } = useTranslation(['chatV2']);
@@ -44,6 +49,26 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
       <div className="flex items-center justify-center py-12 text-muted-foreground">
         <CircleNotch size={20} className="animate-spin mr-2" />
         <span className="text-sm">{t('search.searching')}</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground" role="alert">
+        <MagnifyingGlass size={32} className="mb-2 opacity-40" />
+        <span className="text-sm">{t('search.contentSearchFailed')}</span>
+        {onRetry && (
+          <DsButton
+            variant="default"
+            size="sm"
+            className="mt-3 min-h-11 gap-1.5"
+            onClick={onRetry}
+          >
+            <ArrowClockwise size={15} />
+            {t('error.retry')}
+          </DsButton>
+        )}
       </div>
     );
   }
@@ -92,7 +117,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
               <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
                 {getSessionTitleText(title, t('page.untitled'))}
               </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60 shrink-0">
+              <span className="text-2xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60 shrink-0">
                 {items.length}
               </span>
             </button>
@@ -110,7 +135,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
                       <Robot size={12} className="text-primary/40 mt-0.5 shrink-0" />
                     )}
                     <p
-                      className="text-xs text-muted-foreground line-clamp-2 leading-relaxed [&_mark]:bg-yellow-200/60 [&_mark]:dark:bg-yellow-500/30 [&_mark]:rounded-sm [&_mark]:px-0.5"
+                      className="text-xs text-muted-foreground line-clamp-2 leading-relaxed [&_mark]:bg-warning/30 [&_mark]:rounded-sm [&_mark]:px-0.5"
                       dangerouslySetInnerHTML={{ __html: item.snippet }}
                     />
                   </div>
@@ -119,7 +144,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
               {hasMore && (
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleExpanded(sessionId); }}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  className="flex items-center gap-1 px-2 py-0.5 text-2xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
                 >
                   <CaretDown size={12} className={cn('transition-transform', isExpanded && 'rotate-180')} />
                   {isExpanded

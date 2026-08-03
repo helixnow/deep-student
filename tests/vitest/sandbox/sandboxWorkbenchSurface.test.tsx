@@ -9,6 +9,15 @@ vi.mock('@/hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ isSmallScreen: false }),
 }));
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => ({
+      'sandbox.open': '打开沙箱工作台',
+      'sandbox.refresh': '刷新',
+    }[key] ?? key),
+  }),
+}));
+
 describe('SandboxWorkbenchSurface', () => {
   beforeEach(() => {
     useSandboxWorkbenchStore.setState({

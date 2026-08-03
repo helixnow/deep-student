@@ -3,7 +3,7 @@
  *
  * 验证前端 API 层调用 Tauri invoke 时：
  *   1. 传递正确的命令名称
- *   2. 参数格式正确（camelCase → snake_case 转换等）
+ *   2. 参数格式正确（invoke args 使用 camelCase，Tauri v2 自动映射到 Rust snake_case）
  *   3. 返回值符合约定的类型结构
  *   4. 边缘情况处理（空响应、null 字段、可选字段缺失）
  */
@@ -69,6 +69,10 @@ import type {
   BackupVerifyResponse,
   AutoVerifyResponse,
 } from '@/types/dataGovernance';
+import {
+  INCREMENTAL_BACKUP_REMOVED_MESSAGE,
+  INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
+} from '@/types/dataGovernance';
 
 import type {
   BackupJobStartResponse,
@@ -110,15 +114,14 @@ describe('DataGovernanceApi.runBackup() contract', () => {
     message: 'Backup job queued',
   };
 
-  it('calls invoke with correct command name and snake_case params', async () => {
+  it('calls invoke with correct command name and camelCase params (Tauri v2 auto-maps to snake_case)', async () => {
     mockInvoke.mockResolvedValue(mockResponse);
-    await runBackup('full', undefined, true, ['images', 'documents']);
+    await runBackup('full', true, ['images', 'documents']);
 
     expectSingleInvoke('data_governance_run_backup', {
-      backup_type: 'full',
-      base_version: undefined,
-      include_assets: true,
-      asset_types: ['images', 'documents'],
+      backupType: 'full',
+      includeAssets: true,
+      assetTypes: ['images', 'documents'],
     });
   });
 
@@ -127,10 +130,9 @@ describe('DataGovernanceApi.runBackup() contract', () => {
     await runBackup();
 
     expectSingleInvoke('data_governance_run_backup', {
-      backup_type: undefined,
-      base_version: undefined,
-      include_assets: undefined,
-      asset_types: undefined,
+      backupType: undefined,
+      includeAssets: undefined,
+      assetTypes: undefined,
     });
   });
 
@@ -146,16 +148,34 @@ describe('DataGovernanceApi.runBackup() contract', () => {
     expect(typeof result.kind).toBe('string');
   });
 
-  it('passes incremental backup params correctly', async () => {
+  // Incremental backup was removed (round-1 A2 / S0); the API no longer
+  // accepts an "incremental" type or a baseVersion param. Historical
+  // incremental packages are still recognized in listings but rejected on
+  // restore. This test now asserts the full-only contract with assets.
+  it('supports full backup with assets and no baseVersion param', async () => {
     mockInvoke.mockResolvedValue(mockResponse);
-    await runBackup('incremental', 'v1.0.0');
+    await runBackup('full', true);
 
     expectSingleInvoke('data_governance_run_backup', {
-      backup_type: 'incremental',
-      base_version: 'v1.0.0',
-      include_assets: undefined,
-      asset_types: undefined,
+      backupType: 'full',
+      includeAssets: true,
+      assetTypes: undefined,
     });
+    const invokeArgs = mockInvoke.mock.calls[0]![1] as Record<string, unknown>;
+    expect(invokeArgs).not.toHaveProperty('baseVersion');
+    expect(invokeArgs.backupType).not.toBe('incremental');
+  });
+
+  it('exposes English create/restore rejection messages aligned with Rust constants', () => {
+    expect(INCREMENTAL_BACKUP_REMOVED_MESSAGE).toBe(
+      'Incremental backup has been removed; use full backup or cloud sync',
+    );
+    expect(INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE).toBe(
+      'Legacy incremental backup cannot be restored; use a full backup or cloud sync',
+    );
+    expect(INCREMENTAL_BACKUP_REMOVED_MESSAGE).not.toEqual(
+      INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
+    );
   });
 });
 
@@ -171,13 +191,13 @@ describe('DataGovernanceApi.restoreBackup() contract', () => {
     message: 'Restore job queued',
   };
 
-  it('calls invoke with correct command and backupId → snake_case params', async () => {
+  it('calls invoke with correct command and camelCase params', async () => {
     mockInvoke.mockResolvedValue(mockResponse);
     await restoreBackup('backup-2026-02-07');
 
     expectSingleInvoke('data_governance_restore_backup', {
-      backup_id: 'backup-2026-02-07',
-      restore_assets: undefined,
+      backupId: 'backup-2026-02-07',
+      restoreAssets: undefined,
     });
   });
 
@@ -186,8 +206,8 @@ describe('DataGovernanceApi.restoreBackup() contract', () => {
     await restoreBackup('backup-2026-02-07', true);
 
     expectSingleInvoke('data_governance_restore_backup', {
-      backup_id: 'backup-2026-02-07',
-      restore_assets: true,
+      backupId: 'backup-2026-02-07',
+      restoreAssets: true,
     });
   });
 
@@ -249,7 +269,9 @@ describe('DataGovernanceApi.getBackupList() contract', () => {
       expect(typeof backup.path).toBe('string');
       expect(typeof backup.size).toBe('number');
       expect(Array.isArray(backup.databases)).toBe(true);
-      expect(['full', 'incremental']).toContain(backup.backup_type);
+      expect(['full', 'incremental', 'partial_overlay', 'legacy_unknown']).toContain(
+        backup.backup_type,
+      );
     }
   });
 
@@ -469,12 +491,12 @@ describe('DataGovernanceApi.getAuditLogs() contract', () => {
 
   const mockPagedResponse = { logs: mockLogs, total: 2 };
 
-  it('passes all filter params as snake_case', async () => {
+  it('passes all filter params as camelCase', async () => {
     mockInvoke.mockResolvedValue(mockPagedResponse);
     await getAuditLogs('Backup', 'Completed', 50);
 
     expectSingleInvoke('data_governance_get_audit_logs', {
-      operation_type: 'Backup',
+      operationType: 'Backup',
       status: 'Completed',
       limit: 50,
       offset: undefined,
@@ -486,7 +508,7 @@ describe('DataGovernanceApi.getAuditLogs() contract', () => {
     await getAuditLogs();
 
     expectSingleInvoke('data_governance_get_audit_logs', {
-      operation_type: undefined,
+      operationType: undefined,
       status: undefined,
       limit: undefined,
       offset: undefined,
@@ -498,7 +520,7 @@ describe('DataGovernanceApi.getAuditLogs() contract', () => {
     await getAuditLogs('Restore', undefined, 10);
 
     expectSingleInvoke('data_governance_get_audit_logs', {
-      operation_type: 'Restore',
+      operationType: 'Restore',
       status: undefined,
       limit: 10,
       offset: undefined,
@@ -510,7 +532,7 @@ describe('DataGovernanceApi.getAuditLogs() contract', () => {
     await getAuditLogs(undefined, undefined, 20, 40);
 
     expectSingleInvoke('data_governance_get_audit_logs', {
-      operation_type: undefined,
+      operationType: undefined,
       status: undefined,
       limit: 20,
       offset: 40,
@@ -896,12 +918,12 @@ describe('DataGovernanceApi Schema API contract', () => {
       dependencies: ['chat_v2'],
     };
 
-    it('passes databaseId as snake_case param', async () => {
+    it('passes databaseId as camelCase param', async () => {
       mockInvoke.mockResolvedValue(mockDetail);
       await getDatabaseStatus('vfs');
 
       expectSingleInvoke('data_governance_get_database_status', {
-        database_id: 'vfs',
+        databaseId: 'vfs',
       });
     });
 
@@ -932,12 +954,12 @@ describe('DataGovernanceApi Schema API contract', () => {
 
 describe('DataGovernanceApi Backup Management contract', () => {
   describe('deleteBackup()', () => {
-    it('passes backupId as snake_case param', async () => {
+    it('passes backupId as camelCase param', async () => {
       mockInvoke.mockResolvedValue(true);
       await deleteBackup('backup-2026-02-07');
 
       expectSingleInvoke('data_governance_delete_backup', {
-        backup_id: 'backup-2026-02-07',
+        backupId: 'backup-2026-02-07',
       });
     });
 
@@ -964,7 +986,7 @@ describe('DataGovernanceApi Backup Management contract', () => {
       await verifyBackup('backup-id');
 
       expectSingleInvoke('data_governance_verify_backup', {
-        backup_id: 'backup-id',
+        backupId: 'backup-id',
       });
     });
 
@@ -981,12 +1003,12 @@ describe('DataGovernanceApi Backup Management contract', () => {
   });
 
   describe('cancelBackup()', () => {
-    it('passes jobId as snake_case param', async () => {
+    it('passes jobId as camelCase param', async () => {
       mockInvoke.mockResolvedValue(true);
       await cancelBackup('job-123');
 
       expectSingleInvoke('data_governance_cancel_backup', {
-        job_id: 'job-123',
+        jobId: 'job-123',
       });
     });
   });
@@ -1010,7 +1032,7 @@ describe('DataGovernanceApi Backup Management contract', () => {
       await getBackupJob('job-123');
 
       expectSingleInvoke('data_governance_get_backup_job', {
-        job_id: 'job-123',
+        jobId: 'job-123',
       });
     });
 
@@ -1063,12 +1085,12 @@ describe('DataGovernanceApi Resume Jobs contract', () => {
       message: 'Job resumed from checkpoint',
     };
 
-    it('passes jobId as snake_case param', async () => {
+    it('passes jobId as camelCase param', async () => {
       mockInvoke.mockResolvedValue(mockResponse);
       await resumeBackupJob('job-failed-1');
 
       expectSingleInvoke('data_governance_resume_backup_job', {
-        job_id: 'job-failed-1',
+        jobId: 'job-failed-1',
       });
     });
 
@@ -1171,16 +1193,16 @@ describe('DataGovernanceApi.backupTiered() contract', () => {
     message: 'Tiered backup queued',
   };
 
-  it('passes all params as snake_case', async () => {
+  it('passes all params as camelCase', async () => {
     mockInvoke.mockResolvedValue(mockResponse);
     await backupTiered(['core', 'important'], ['vfs'], ['llm_usage'], true, 104857600);
 
     expectSingleInvoke('data_governance_backup_tiered', {
       tiers: ['core', 'important'],
-      include_databases: ['vfs'],
-      exclude_databases: ['llm_usage'],
-      include_assets: true,
-      max_asset_size: 104857600,
+      includeDatabases: ['vfs'],
+      excludeDatabases: ['llm_usage'],
+      includeAssets: true,
+      maxAssetSize: 104857600,
     });
   });
 
@@ -1190,10 +1212,10 @@ describe('DataGovernanceApi.backupTiered() contract', () => {
 
     expectSingleInvoke('data_governance_backup_tiered', {
       tiers: undefined,
-      include_databases: undefined,
-      exclude_databases: undefined,
-      include_assets: undefined,
-      max_asset_size: undefined,
+      includeDatabases: undefined,
+      excludeDatabases: undefined,
+      includeAssets: undefined,
+      maxAssetSize: undefined,
     });
   });
 });
@@ -1219,13 +1241,13 @@ describe('DataGovernanceApi.backupAndExportZip() contract', () => {
     );
 
     expectSingleInvoke('data_governance_backup_and_export_zip', {
-      output_path: '/tmp/full-backup.zip',
-      compression_level: 6,
-      add_to_backup_list: true,
-      use_tiered: true,
+      outputPath: '/tmp/full-backup.zip',
+      compressionLevel: 6,
+      addToBackupList: true,
+      useTiered: true,
       tiers: ['core', 'important'],
-      include_assets: true,
-      asset_types: ['images'],
+      includeAssets: true,
+      assetTypes: ['images'],
     });
   });
 });
@@ -1243,15 +1265,15 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
   };
 
   describe('exportZip()', () => {
-    it('passes all params as snake_case', async () => {
+    it('passes all params as camelCase', async () => {
       mockInvoke.mockResolvedValue(mockResponse);
       await exportZip('backup-id', '/tmp/export.zip', 6, true);
 
       expectSingleInvoke('data_governance_export_zip', {
-        backup_id: 'backup-id',
-        output_path: '/tmp/export.zip',
-        compression_level: 6,
-        include_checksums: true,
+        backupId: 'backup-id',
+        outputPath: '/tmp/export.zip',
+        compressionLevel: 6,
+        includeChecksums: true,
       });
     });
 
@@ -1260,22 +1282,22 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
       await exportZip('backup-id');
 
       expectSingleInvoke('data_governance_export_zip', {
-        backup_id: 'backup-id',
-        output_path: undefined,
-        compression_level: undefined,
-        include_checksums: undefined,
+        backupId: 'backup-id',
+        outputPath: undefined,
+        compressionLevel: undefined,
+        includeChecksums: undefined,
       });
     });
   });
 
   describe('importZip()', () => {
-    it('passes zipPath as snake_case param', async () => {
+    it('passes zipPath as camelCase param', async () => {
       mockInvoke.mockResolvedValue({ ...mockResponse, kind: 'import' });
       await importZip('/tmp/backup.zip', 'imported-backup');
 
       expectSingleInvoke('data_governance_import_zip', {
-        zip_path: '/tmp/backup.zip',
-        backup_id: 'imported-backup',
+        zipPath: '/tmp/backup.zip',
+        backupId: 'imported-backup',
       });
     });
 
@@ -1284,8 +1306,8 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
       await importZip('/tmp/backup.zip');
 
       expectSingleInvoke('data_governance_import_zip', {
-        zip_path: '/tmp/backup.zip',
-        backup_id: undefined,
+        zipPath: '/tmp/backup.zip',
+        backupId: undefined,
       });
     });
   });
@@ -1297,12 +1319,12 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
 
 describe('DataGovernanceApi Asset Management contract', () => {
   describe('scanAssets()', () => {
-    it('passes assetTypes as snake_case param', async () => {
+    it('passes assetTypes as camelCase param', async () => {
       mockInvoke.mockResolvedValue({ by_type: {}, total_files: 0, total_size: 0 });
       await scanAssets(['images', 'documents']);
 
       expectSingleInvoke('data_governance_scan_assets', {
-        asset_types: ['images', 'documents'],
+        assetTypes: ['images', 'documents'],
       });
     });
 
@@ -1311,7 +1333,7 @@ describe('DataGovernanceApi Asset Management contract', () => {
       await scanAssets();
 
       expectSingleInvoke('data_governance_scan_assets', {
-        asset_types: undefined,
+        assetTypes: undefined,
       });
     });
   });
@@ -1327,13 +1349,13 @@ describe('DataGovernanceApi Asset Management contract', () => {
   });
 
   describe('restoreWithAssets()', () => {
-    it('passes params as snake_case', async () => {
+    it('passes params as camelCase', async () => {
       mockInvoke.mockResolvedValue({ success: true, backup_id: 'id', duration_ms: 100, databases_restored: [] });
       await restoreWithAssets('backup-id', true);
 
       expectSingleInvoke('data_governance_restore_with_assets', {
-        backup_id: 'backup-id',
-        restore_assets: true,
+        backupId: 'backup-id',
+        restoreAssets: true,
       });
     });
   });
@@ -1350,7 +1372,7 @@ describe('DataGovernanceApi Asset Management contract', () => {
       await verifyBackupWithAssets('backup-id');
 
       expectSingleInvoke('data_governance_verify_backup_with_assets', {
-        backup_id: 'backup-id',
+        backupId: 'backup-id',
       });
     });
   });
@@ -1435,12 +1457,12 @@ describe('DataGovernanceApi.checkDiskSpaceForRestore() contract', () => {
     backup_size: 1073741824,
   };
 
-  it('passes backupId as snake_case param', async () => {
+  it('passes backupId as camelCase param', async () => {
     mockInvoke.mockResolvedValue(mockResponse);
     await checkDiskSpaceForRestore('backup-2026-02-07');
 
     expectSingleInvoke('data_governance_check_disk_space_for_restore', {
-      backup_id: 'backup-2026-02-07',
+      backupId: 'backup-2026-02-07',
     });
   });
 
@@ -1477,11 +1499,34 @@ describe('DataGovernanceApi.checkDiskSpaceForRestore() contract', () => {
     mockInvoke.mockRejectedValue(new Error('Command not found'));
     const result = await checkDiskSpaceForRestore('any-backup');
 
-    // The API has a try-catch that returns a safe fallback
+    // 仅明确的旧后端 CommandNotFound 可兼容放行。
     expect(result.has_enough_space).toBe(true);
     expect(result.available_bytes).toBe(0);
     expect(result.required_bytes).toBe(0);
     expect(result.backup_size).toBe(0);
+  });
+
+  it('returns fallback only for an explicit command-not-found code', async () => {
+    mockInvoke.mockRejectedValue({ code: 'TAURI_COMMAND_NOT_FOUND', message: 'missing' });
+
+    await expect(checkDiskSpaceForRestore('any-backup')).resolves.toMatchObject({
+      has_enough_space: true,
+      available_bytes: 0,
+    });
+  });
+
+  it('fails closed when the disk-space check itself fails', async () => {
+    const error = new Error('permission denied while reading filesystem statistics');
+    mockInvoke.mockRejectedValue(error);
+
+    await expect(checkDiskSpaceForRestore('any-backup')).rejects.toBe(error);
+  });
+
+  it('does not treat an embedded unknown-command phrase as CommandNotFound', async () => {
+    const error = new Error('filesystem probe returned an unknown command response');
+    mockInvoke.mockRejectedValue(error);
+
+    await expect(checkDiskSpaceForRestore('any-backup')).rejects.toBe(error);
   });
 });
 
@@ -1598,16 +1643,16 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
     expect(mockInvoke.mock.calls[0]![0]).toBe('data_governance_cleanup_audit_logs');
     const args = mockInvoke.mock.calls[0]![1] as Record<string, unknown>;
     expect(args).toMatchObject(expected);
-    expect(args.confirmation_token).toMatch(/^AUDIT_CLEANUP_\d+$/);
+    expect(args.confirmationToken).toMatch(/^AUDIT_CLEANUP_\d+$/);
   }
 
-  it('passes keepRecent and beforeDays as snake_case params', async () => {
+  it('passes keepRecent and beforeDays as camelCase params', async () => {
     mockInvoke.mockResolvedValue(42);
     await cleanupAuditLogs(100, 30);
 
     expectCleanupInvoke({
-      keep_recent: 100,
-      before_days: 30,
+      keepRecent: 100,
+      beforeDays: 30,
     });
   });
 
@@ -1616,8 +1661,8 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
     await cleanupAuditLogs();
 
     expectCleanupInvoke({
-      keep_recent: undefined,
-      before_days: undefined,
+      keepRecent: undefined,
+      beforeDays: undefined,
     });
   });
 
@@ -1626,8 +1671,8 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
     await cleanupAuditLogs(50);
 
     expectCleanupInvoke({
-      keep_recent: 50,
-      before_days: undefined,
+      keepRecent: 50,
+      beforeDays: undefined,
     });
   });
 
@@ -1636,8 +1681,8 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
     await cleanupAuditLogs(undefined, 90);
 
     expectCleanupInvoke({
-      keep_recent: undefined,
-      before_days: 90,
+      keepRecent: undefined,
+      beforeDays: 90,
     });
   });
 
@@ -1663,7 +1708,7 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
 
 describe('DataGovernanceApi.getMaintenanceStatus() contract', () => {
   it('calls invoke with correct command name and no params', async () => {
-    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false });
+    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false, blocked_components: [] });
     await getMaintenanceStatus();
 
     expect(mockInvoke).toHaveBeenCalledTimes(1);
@@ -1672,19 +1717,24 @@ describe('DataGovernanceApi.getMaintenanceStatus() contract', () => {
   });
 
   it('returns maintenance status as false', async () => {
-    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false });
+    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: false, blocked_components: [] });
     const result = await getMaintenanceStatus();
 
     expect(result).toHaveProperty('is_in_maintenance_mode');
     expect(typeof result.is_in_maintenance_mode).toBe('boolean');
     expect(result.is_in_maintenance_mode).toBe(false);
+    expect(result.blocked_components).toEqual([]);
   });
 
-  it('returns maintenance status as true', async () => {
-    mockInvoke.mockResolvedValue({ is_in_maintenance_mode: true });
+  it('returns maintenance status and blocked components as true', async () => {
+    mockInvoke.mockResolvedValue({
+      is_in_maintenance_mode: true,
+      blocked_components: ['vfs', 'workspaces'],
+    });
     const result = await getMaintenanceStatus();
 
     expect(result.is_in_maintenance_mode).toBe(true);
+    expect(result.blocked_components).toEqual(['vfs', 'workspaces']);
   });
 });
 

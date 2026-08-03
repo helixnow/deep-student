@@ -21,6 +21,8 @@
         "fullscreen": false,
         "center": true,
         "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
         "transparent": true,
         "skipTaskbar": false,
         "alwaysOnTop": false,

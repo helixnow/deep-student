@@ -9,7 +9,8 @@ import { SPSS_PROJECT_SKILL_FIXTURES } from './spssProjectSkillFixtures';
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async (command: string, args: { path: string }) => {
-    if (command === 'skill_list_directories' && args.path === PROJECT_SKILLS_ROOT) {
+    const normalizedPath = path.normalize(args.path);
+    if (command === 'skill_list_directories' && normalizedPath === PROJECT_SKILLS_ROOT) {
       return [
         {
           name: 'spss-paper-analysis',
@@ -28,6 +29,13 @@ const { invokeMock } = vi.hoisted(() => ({
         path: args.path,
         content: SPSS_PROJECT_SKILL_FIXTURES[skillId],
       };
+    }
+
+    if (command === 'skill_list_package_files') {
+      return [
+        { path: 'SKILL.md', size: 1024 },
+        { path: 'references/example.md', size: 256 },
+      ];
     }
 
     throw new Error(`Unexpected invoke call: ${command} ${JSON.stringify(args)}`);
@@ -67,6 +75,12 @@ describe('SPSS project skill loader', () => {
     const toolSkill = skillRegistry.get('statistics-tools');
 
     expect(mainSkill?.location).toBe('project');
+    expect(mainSkill?.packageSource).toBe('project');
+    expect(mainSkill?.trustStatus).toBe('untrusted');
+    expect(mainSkill?.packageFiles?.map((file) => file.path)).toEqual([
+      'SKILL.md',
+      'references/example.md',
+    ]);
     expect(toolSkill?.location).toBe('project');
     expect(mainSkill?.name).toBe('SPSS 论文分析');
     expect(toolSkill?.embeddedTools?.map((tool) => tool.name)).toEqual([

@@ -2,14 +2,14 @@
  * 外部搜索引擎配置组件
  * 
  * 从 Settings.tsx 拆分：EngineSettingsSection
- * Notion 风格：简洁、无边框、双栏布局
+ * 简洁风格：简洁、无边框、双栏布局
  */
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
@@ -51,7 +51,7 @@ interface ProviderStrategy {
 
 type ProviderStrategiesMap = Record<string, ProviderStrategy>;
 
-// 内部组件：设置行 - Notion 风格（与 ModelAssignmentRow 保持一致的结构）
+// 内部组件：设置行 - 简洁风格（与 ModelAssignmentRow 保持一致的结构）
 const SettingRow = ({
   title,
   description,
@@ -63,16 +63,17 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 overflow-hidden", settingsQuietInteractiveRowClassName, className)}>
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className={cn("group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 overflow-hidden", settingsQuietInteractiveRowClassName, className)}>
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
+    <div className="w-full md:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end md:justify-start">
       {children}
     </div>
   </div>
@@ -87,7 +88,7 @@ export const EngineSettingsSection: React.FC<{
   const [engineTesting, setEngineTesting] = React.useState<string | null>(null);
   const [engineResults, setEngineResults] = React.useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
   const [providerSaving, setProviderSaving] = React.useState(false);
-  const [activeEngine, setActiveEngine] = React.useState<string>('google_cse');
+  const [activeEngine, setActiveEngine] = React.useState<string>('bing_rss');
 
   React.useEffect(() => {
     const loadData = async () => {
@@ -125,7 +126,7 @@ export const EngineSettingsSection: React.FC<{
       const msg = ok ? t('status.test_success', { ns: 'settings' }) : String(res?.message || '');
       setEngineResults(prev => ({ ...prev, [id]: { ok, msg, ms: res?.response_time } }));
     } catch (e: unknown) {
-      setEngineResults(prev => ({ ...prev, [id]: { ok: false, msg: `${t('settings:status.test_failed', '测试失败')}: ${e}` } }));
+      setEngineResults(prev => ({ ...prev, [id]: { ok: false, msg: `${t('settings:status.test_failed')}: ${e}` } }));
     } finally {
       setEngineTesting(null);
     }
@@ -133,9 +134,9 @@ export const EngineSettingsSection: React.FC<{
 
   const StrategySummary: React.FC<{ id: string }> = ({ id }) => {
     const s = providerStrategies?.[id] || providerStrategies?.default;
-    if (!s) return <div className="text-[11px] text-muted-foreground/70">{t('settings:config_status.not_configured_use_default')}</div>;
+    if (!s) return <div className="text-xs text-muted-foreground/70">{t('settings:config_status.not_configured_use_default')}</div>;
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70 mt-1">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-muted-foreground/70 mt-1">
         <div>{t('settings:advanced_search.providers.timeout_ms')}: {s.timeout_ms ?? '-'}ms</div>
         <div>{t('settings:advanced_search.providers.max_retries')}: {s.max_retries ?? '-'}</div>
         <div>{t('settings:advanced_search.providers.initial_delay_ms')}: {s.initial_retry_delay_ms ?? '-'}ms</div>
@@ -184,7 +185,7 @@ export const EngineSettingsSection: React.FC<{
     return (
       <div className="mt-6 grid gap-4 text-xs grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
           <Input
             type="number"
             min={1000}
@@ -194,7 +195,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
           <Input
             type="number"
             min={0}
@@ -204,7 +205,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
           <Input
             type="number"
             min={0}
@@ -214,7 +215,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
           <Input
             type="number"
             min={0}
@@ -224,7 +225,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
           <Input
             type="number"
             min={0}
@@ -234,7 +235,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
           <Input
             type="number"
             min={0}
@@ -244,7 +245,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
           <Input
             type="number"
             min={0}
@@ -262,24 +263,24 @@ export const EngineSettingsSection: React.FC<{
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="text-sm font-medium text-foreground">{t('settings:advanced_search.providers.strategy_title', '策略配置')}</h3>
-            <p className="text-xs text-muted-foreground">{t('settings:advanced_search.providers.strategy_hint', '未配置则回退 default')}</p>
+            <h3 className="text-sm font-medium text-foreground">{t('settings:advanced_search.providers.strategy_title')}</h3>
+            <p className="text-xs text-muted-foreground">{t('settings:advanced_search.providers.strategy_hint')}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {engineResults[id] && (
               <span className={cn(
-                "text-[11px] mr-2",
+                "text-xs mr-2",
                 engineResults[id].ok ? 'text-success' : 'text-destructive'
               )}>
                 {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
               </span>
             )}
-            <NotionButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30">
+            <DsButton onClick={() => testEngine(id)} disabled={engineTesting === id || !enabled} size="sm" variant="ghost" className="border border-border/30">
               {engineTesting === id ? t('settings:status_labels.testing') : t('settings:status_labels.test_availability')}
-            </NotionButton>
-            <NotionButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>
-              {providerSaving ? t('common:actions.saving', '保存中…') : t('settings:advanced_search.providers.save_button')}
-            </NotionButton>
+            </DsButton>
+            <DsButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>
+              {providerSaving ? t('common:actions.saving') : t('settings:advanced_search.providers.save_button')}
+            </DsButton>
           </div>
         </div>
         <div>
@@ -297,22 +298,24 @@ export const EngineSettingsSection: React.FC<{
           <div className="w-full">
             <div className="mb-4 flex items-center justify-between gap-2">
               <div className="text-sm font-medium text-foreground">
-                {t('settings:groups.search_engines_list', '搜索引擎列表')}
+                {t('settings:groups.search_engines_list')}
               </div>
             </div>
             
             <div className="flex flex-col gap-1 mt-4">
-              {['google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
+              {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
                 const labelMap: Record<string, string> = {
+                  bing_rss: t('settings:external_search.bing_rss_name'),
                   google_cse: 'Google CSE',
                   serpapi: 'SerpAPI',
                   tavily: 'Tavily',
                   brave: 'Brave',
                   searxng: 'SearXNG',
-                  zhipu: t('settings:external_search.zhipu_name', '智谱 AI 搜索'),
-                  bocha: t('settings:external_search.bocha_name', '博查 AI 搜索')
+                  zhipu: t('settings:external_search.zhipu_name'),
+                  bocha: t('settings:external_search.bocha_name')
                 };
                 const isConfiguredMap: Record<string, boolean> = {
+                  bing_rss: true,
                   google_cse: !!(config.webSearchGoogleKey && config.webSearchGoogleCx),
                   serpapi: !!config.webSearchSerpApiKey,
                   tavily: !!config.webSearchTavilyKey,
@@ -324,7 +327,7 @@ export const EngineSettingsSection: React.FC<{
                 const isActive = activeEngine === id;
                 const isConfigured = isConfiguredMap[id];
                 return (
-                  <NotionButton
+                  <DsButton
                     key={id}
                     variant="ghost"
                     onClick={() => setActiveEngine(id)}
@@ -343,7 +346,7 @@ export const EngineSettingsSection: React.FC<{
                         <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', isConfigured ? 'bg-success/80' : 'bg-muted-foreground/30')} />
                       </div>
                     </div>
-                  </NotionButton>
+                  </DsButton>
                 );
               })}
             </div>
@@ -351,29 +354,43 @@ export const EngineSettingsSection: React.FC<{
         </div>
 
         <div className="space-y-8 w-full min-w-0">
+          {activeEngine === 'bing_rss' && (
+            <div className="w-full ui-rise-in">
+              <div className="flex flex-col gap-2 mb-6">
+                <h3 className="text-base font-medium text-foreground">
+                  {t('settings:external_search.bing_rss_name')}
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.bing_rss_desc')}
+                </p>
+              </div>
+              {renderEngineFooter('bing_rss', true)}
+            </div>
+          )}
+
           {activeEngine === 'google_cse' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Google CSE</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search', '创建自定义搜索引擎')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.google_cse_desc', 'Google 自定义搜索引擎 API，提供最准确全面的网页搜索。')}
+                  {t('settings:descriptions.google_cse_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchGoogleKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleKey: v }))} placeholder="GOOGLE_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
                           <Input
                     type="text"
                     value={config.webSearchGoogleCx}
@@ -381,7 +398,7 @@ export const EngineSettingsSection: React.FC<{
                     placeholder="GOOGLE_CSE_CX"
                     className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
                   />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('google_cse', !!(config.webSearchGoogleKey && config.webSearchGoogleCx))}
@@ -389,25 +406,25 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'serpapi' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SerpAPI</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key', '注册并获取 SerpAPI Key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.serpapi_desc', '封装了 Google、Bing 等多个引擎的聚合搜索 API。')}
+                  {t('settings:descriptions.serpapi_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSerpApiKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSerpApiKey: v }))} placeholder="SERPAPI_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('serpapi', !!config.webSearchSerpApiKey)}
@@ -415,25 +432,25 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'tavily' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Tavily</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key', '注册并获取 Tavily API Key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.tavily_desc', '专为大语言模型打造的检索优化型搜索引擎。')}
+                  {t('settings:descriptions.tavily_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchTavilyKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTavilyKey: v }))} placeholder="TAVILY_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('tavily', !!config.webSearchTavilyKey)}
@@ -441,25 +458,25 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'brave' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Brave</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key', '申请 Brave Search API Key')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.brave_desc', '注重隐私的独立网页搜索引擎。')}
+                  {t('settings:descriptions.brave_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBraveKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBraveKey: v }))} placeholder="BRAVE_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('brave', !!config.webSearchBraveKey)}
@@ -467,23 +484,23 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'searxng' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SearXNG</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs', 'SearXNG 部署文档')}>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.searxng_desc', '免费开源、聚合多个搜索源的元搜索引擎。')}
+                  {t('settings:descriptions.searxng_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
                           <Input
                     type="text"
                     value={config.webSearchSearxngEndpoint}
@@ -491,12 +508,12 @@ export const EngineSettingsSection: React.FC<{
                     placeholder="https://searx.example.com"
                     className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
                   />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSearxngKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngKey: v }))} placeholder="SEARXNG_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('searxng', !!config.webSearchSearxngEndpoint)}
@@ -504,25 +521,25 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'zhipu' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.zhipu_name', '智谱 AI 搜索')}</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply', '申请智谱大模型 API')}>
+                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.zhipu_name')}</h3>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.zhipu_desc', '智谱提供的国产化互联网搜索聚合服务。')}
+                  {t('settings:descriptions.zhipu_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchZhipuKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchZhipuKey: v }))} placeholder="ZHIPU_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('zhipu', !!config.webSearchZhipuKey)}
@@ -530,25 +547,25 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'bocha' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.bocha_name', '博查 AI 搜索')}</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply', '申请博查 API')}>
+                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.bocha_name')}</h3>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply')}>
                       <ArrowSquareOut size={14} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.bocha_desc', '专注于中文资料索引的轻量级检索服务。')}
+                  {t('settings:descriptions.bocha_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBochaKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBochaKey: v }))} placeholder="BOCHA_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('bocha', !!config.webSearchBochaKey)}
@@ -559,7 +576,7 @@ export const EngineSettingsSection: React.FC<{
       </div>
 
       <div className="pt-8 border-t border-border/40 mt-8">
-        <h3 className="text-base font-semibold text-foreground mb-4">{t('settings:groups.global_search_settings', '全局搜索配置')}</h3>
+        <h3 className="text-base font-semibold text-foreground mb-4">{t('settings:groups.global_search_settings')}</h3>
         <div className="space-y-px">
           <SettingRow
           title={t('settings:field_labels.default_search_engine')}
@@ -580,6 +597,7 @@ export const EngineSettingsSection: React.FC<{
                 placeholder={t('settings:external_search.engine_options.none')}
                 options={[
                   { value: noneValue, label: t('settings:external_search.engine_options.none') },
+                  { value: 'bing_rss', label: t('settings:external_search.engine_options.bing_rss') },
                   { value: 'google_cse', label: t('settings:external_search.engine_options.google_cse'), disabled: !(config.webSearchGoogleKey && config.webSearchGoogleCx) },
                   { value: 'serpapi', label: t('settings:external_search.engine_options.serpapi'), disabled: !config.webSearchSerpApiKey },
                   { value: 'tavily', label: t('settings:external_search.engine_options.tavily'), disabled: !config.webSearchTavilyKey },
@@ -613,7 +631,7 @@ export const EngineSettingsSection: React.FC<{
               }}
               className="!w-24 h-8 text-xs bg-transparent"
             />
-            <span className="text-[11px] text-muted-foreground/70">ms</span>
+            <span className="text-xs text-muted-foreground/70">ms</span>
           </div>
         </SettingRow>
       </div>

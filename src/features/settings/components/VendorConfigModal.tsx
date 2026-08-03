@@ -1,11 +1,11 @@
 import React, { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Key, LinkSimple, NotePencil, Trash, Prohibit } from '@phosphor-icons/react';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
@@ -36,6 +36,7 @@ const defaultVendor: VendorConfig = {
   id: '',
   name: '',
   providerType: 'custom',
+  authMode: 'api_key',
   apiProtocol: 'openai_chat_completions',
   supportsOpenAIResponses: false,
   baseUrl: '',
@@ -63,6 +64,10 @@ const providerTypeOptions = [
   { value: 'moonshot', labelKey: 'settings:vendor_modal.providers.moonshot', defaultLabel: 'Moonshot' },
   { value: 'nvidia', labelKey: 'settings:vendor_modal.providers.nvidia', defaultLabel: 'NVIDIA' },
   { value: 'mimo', labelKey: 'settings:vendor_modal.providers.mimo', defaultLabel: 'Xiaomi MiMo' },
+  { value: 'grok', labelKey: 'settings:vendor_modal.providers.grok', defaultLabel: 'xAI (Grok)' },
+  { value: 'ernie', labelKey: 'settings:vendor_modal.providers.ernie', defaultLabel: 'Baidu ERNIE' },
+  { value: 'mistral', labelKey: 'settings:vendor_modal.providers.mistral', defaultLabel: 'Mistral' },
+  { value: 'openrouter', labelKey: 'settings:vendor_modal.providers.openrouter', defaultLabel: 'OpenRouter' },
   { value: 'ollama', labelKey: 'settings:vendor_modal.providers.ollama', defaultLabel: 'Ollama' },
 ];
 
@@ -73,9 +78,12 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
   const { t } = useTranslation(['settings', 'common']);
   const [formData, setFormData] = useState<VendorConfig>(vendor ?? defaultVendor);
   const [headersInput, setHeadersInput] = useState('');
+  const [apiKeysInput, setApiKeysInput] = useState('');
+  const [protocolManuallySelected, setProtocolManuallySelected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forceClearApiKey, setForceClearApiKey] = useState(false);
   const isEditing = Boolean(vendor && vendor.id);
+  const usesNoApiKey = formData.authMode === 'none' || formData.noApiKey === true;
 
   const effectiveProviderType =
     ((!formData.providerType || formData.providerType === 'custom') && formData.baseUrl.trim()
@@ -96,6 +104,8 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       const isMaskedKey = vendor.apiKey === '***' || /^\*+$/.test(vendor.apiKey);
       setFormData({
         ...vendor,
+        authMode: vendor.authMode ?? (vendor.noApiKey ? 'none' : 'api_key'),
+        noApiKey: vendor.authMode === 'none' || vendor.noApiKey === true,
         apiProtocol: normalizeApiProtocolForProviderType(vendor.apiProtocol, vendor.providerType, {
           baseUrl: vendor.baseUrl,
         }),
@@ -108,6 +118,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           ? JSON.stringify(vendor.headers, null, 2)
           : ''
       );
+      setApiKeysInput((vendor.apiKeys ?? []).join('\n'));
     } else {
       setFormData({
         ...defaultVendor,
@@ -116,9 +127,12 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
         }),
       });
       setHeadersInput('');
+      setApiKeysInput('');
     }
     setError(null);
     setForceClearApiKey(false);
+    // 已持久化的协议属于用户选择；编辑 custom 网关 URL 时不得按推断默认值覆盖。
+    setProtocolManuallySelected(Boolean(vendor?.apiProtocol));
   }, [vendor, open]);
 
   const handleSave = () => {
@@ -139,11 +153,12 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
     if (headersInput.trim()) {
       try {
         const parsed = JSON.parse(headersInput);
-        if (parsed && typeof parsed === 'object') {
-          parsedHeaders = Object.fromEntries(
-            Object.entries(parsed).map(([key, value]) => [key, String(value)])
-          );
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('headers must be a JSON object');
         }
+        parsedHeaders = Object.fromEntries(
+          Object.entries(parsed).map(([key, value]) => [key, String(value)])
+        );
       } catch (parseError: unknown) {
         setError(t('settings:vendor_modal.headers_parse_error'));
         return;
@@ -161,13 +176,20 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       supportsOpenAIResponses: formData.supportsOpenAIResponses,
     });
     const supportsOpenAIResponses = protocolImpliesResponsesSupport(normalizedProtocol);
+    const apiKeys = apiKeysInput
+      .split(/[\n,]/)
+      .map(key => key.trim());
 
     const payload: VendorConfig = {
       ...formData,
       providerType,
+      authMode: usesNoApiKey ? 'none' : (formData.authMode === 'none' ? 'api_key' : formData.authMode ?? 'api_key'),
+      // 兼容尚未迁移的前端状态；后端持久化以 authMode 为准。
+      noApiKey: usesNoApiKey,
       apiProtocol: normalizedProtocol,
       supportsOpenAIResponses,
-      apiKey: finalApiKey,
+      apiKey: usesNoApiKey ? '' : finalApiKey,
+      apiKeys: usesNoApiKey ? [] : apiKeys,
       headers: parsedHeaders,
       id: formData.id || '',
       isBuiltin: formData.isBuiltin ?? false,
@@ -228,7 +250,19 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       </div>
       <div>
         <Label htmlFor={providerTypeSelectId}>{t('settings:vendor_modal.provider_label')}</Label>
-        <Select value={formData.providerType || 'custom'} onValueChange={(val) => setFormData(prev => ({ ...prev, providerType: val }))}>
+        <Select
+          value={formData.providerType || 'custom'}
+          onValueChange={(val) => {
+            const nextProtocol = defaultApiProtocolForProvider(val, { baseUrl: formData.baseUrl });
+            setProtocolManuallySelected(false);
+            setFormData(prev => ({
+              ...prev,
+              providerType: val,
+              apiProtocol: nextProtocol,
+              supportsOpenAIResponses: protocolImpliesResponsesSupport(nextProtocol),
+            }));
+          }}
+        >
           <SelectTrigger className="mt-2">
             <SelectValue />
           </SelectTrigger>
@@ -246,6 +280,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
         <Select
           value={selectedProtocol ?? defaultApiProtocolForProvider(effectiveProviderType, { baseUrl: formData.baseUrl, supportsOpenAIResponses: formData.supportsOpenAIResponses })}
           onValueChange={(val) => {
+            setProtocolManuallySelected(true);
             const nextProtocol = normalizeApiProtocolForProviderType(val as ApiProtocol, effectiveProviderType, {
               baseUrl: formData.baseUrl,
               supportsOpenAIResponses: protocolImpliesResponsesSupport(val as ApiProtocol),
@@ -282,10 +317,68 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
         <Input
           id={baseUrlInputId}
           value={formData.baseUrl}
-          onChange={e => setFormData(prev => ({ ...prev, baseUrl: e.target.value }))}
+          onChange={e => {
+            const baseUrl = e.target.value;
+            setFormData(prev => {
+              if (protocolManuallySelected || (prev.providerType && prev.providerType !== 'custom')) {
+                return { ...prev, baseUrl };
+              }
+              const inferredProvider = inferProviderTypeFromBaseUrl(baseUrl) ?? prev.providerType;
+              const nextProtocol = defaultApiProtocolForProvider(inferredProvider, { baseUrl });
+              return {
+                ...prev,
+                baseUrl,
+                apiProtocol: nextProtocol,
+                supportsOpenAIResponses: protocolImpliesResponsesSupport(nextProtocol),
+              };
+            });
+          }}
           placeholder="https://api.openai.com/v1"
           className="mt-2 font-mono"
         />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="vendor-max-tokens-limit">
+            {t('settings:vendor_modal.max_tokens_limit_label')}
+          </Label>
+          <Input
+            id="vendor-max-tokens-limit"
+            type="number"
+            min={1}
+            step={1}
+            value={formData.maxTokensLimit ?? ''}
+            onChange={event => setFormData(prev => ({
+              ...prev,
+              maxTokensLimit: event.target.value
+                ? Math.max(1, Math.trunc(Number(event.target.value)))
+                : undefined,
+            }))}
+            placeholder={t('settings:vendor_modal.optional_placeholder')}
+            className="mt-2"
+          />
+        </div>
+        <div>
+          <Label htmlFor="vendor-default-timeout">
+            {t('settings:vendor_modal.timeout_ms_label')}
+          </Label>
+          <Input
+            id="vendor-default-timeout"
+            type="number"
+            min={1000}
+            max={120000}
+            step={1000}
+            value={formData.defaultTimeoutMs ?? ''}
+            onChange={event => setFormData(prev => ({
+              ...prev,
+              defaultTimeoutMs: event.target.value
+                ? Math.min(120000, Math.max(1000, Math.trunc(Number(event.target.value))))
+                : undefined,
+            }))}
+            placeholder="10000"
+            className="mt-2"
+          />
+        </div>
       </div>
       {/* 无需密钥（自搭建后端） */}
       {!formData.isBuiltin && (
@@ -294,23 +387,27 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             <Prohibit className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <div className="space-y-0.5">
               <Label htmlFor="vendor-no-api-key" className="text-sm font-normal leading-none cursor-pointer">
-                {t('settings:vendor_modal.no_api_key_label', { defaultValue: '无需 API Key' })}
+                {t('settings:vendor_modal.no_api_key_label')}
               </Label>
               <p className="text-xs text-muted-foreground">
-                {t('settings:vendor_modal.no_api_key_desc', { defaultValue: '适用于自搭建后端（Ollama / vLLM / llama.cpp 等）' })}
+                {t('settings:vendor_modal.no_api_key_desc')}
               </p>
             </div>
           </div>
           <Switch
             id="vendor-no-api-key"
-            checked={formData.noApiKey ?? false}
-            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, noApiKey: checked }))}
+            checked={usesNoApiKey}
+            onCheckedChange={(checked) => setFormData(prev => ({
+              ...prev,
+              noApiKey: checked,
+              authMode: checked ? 'none' : 'api_key',
+            }))}
           />
         </div>
       )}
-      {isEditing && (
-        <>
-          {!formData.noApiKey && (
+      <>
+        {!usesNoApiKey && (
+          <>
           <div>
             <Label className="inline-flex items-center gap-1.5">
               <Key className="h-3.5 w-3.5" aria-hidden="true" />
@@ -329,7 +426,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             />
             {vendor && vendor.id && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <NotionButton
+                <DsButton
                   type="button"
                   size="sm"
                   variant="danger"
@@ -341,7 +438,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
                 >
                   <Trash className="h-3.5 w-3.5" />
                   {t('settings:vendor_modal.clear_api_key')}
-                </NotionButton>
+                </DsButton>
                 {forceClearApiKey && (
                   <div className="text-xs text-destructive">
                     {t('settings:vendor_modal.clear_api_key_warning')}
@@ -350,39 +447,56 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
               </div>
             )}
           </div>
-          )}
           <div>
-            <Label className="inline-flex items-center gap-1.5">
-              <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{t('settings:vendor_modal.notes_label')}</span>
-            </Label>
+            <Label>{t('settings:vendor_modal.backup_api_keys_label', { defaultValue: 'Backup API keys' })}</Label>
             <Textarea
-              value={formData.notes ?? ''}
-              onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              placeholder={t('settings:vendor_modal.notes_placeholder')}
-              className="mt-2"
+              value={apiKeysInput}
+              onChange={event => setApiKeysInput(event.target.value)}
+              placeholder={t('settings:vendor_modal.backup_api_keys_placeholder', {
+                defaultValue: 'One API key per line',
+              })}
+              className="scroll-area--native mt-2 font-mono"
               rows={3}
             />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {t('settings:vendor_modal.backup_api_keys_hint', {
+                defaultValue: 'Used in order for failover. Masked entries keep the stored keys.',
+              })}
+            </p>
           </div>
-          <div>
-            <Label>{t('settings:vendor_modal.headers_label')}</Label>
-            <Textarea
-              value={headersInput}
-              onChange={e => setHeadersInput(e.target.value)}
-              placeholder={t('settings:vendor_modal.headers_placeholder')}
-              className="mt-2 font-mono"
-              rows={3}
-            />
-          </div>
-        </>
-      )}
+          </>
+        )}
+        <div>
+          <Label className="inline-flex items-center gap-1.5">
+            <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{t('settings:vendor_modal.notes_label')}</span>
+          </Label>
+          <Textarea
+            value={formData.notes ?? ''}
+            onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+            placeholder={t('settings:vendor_modal.notes_placeholder')}
+            className="scroll-area--native mt-2"
+            rows={3}
+          />
+        </div>
+        <div>
+          <Label>{t('settings:vendor_modal.headers_label')}</Label>
+          <Textarea
+            value={headersInput}
+            onChange={e => setHeadersInput(e.target.value)}
+            placeholder={t('settings:vendor_modal.headers_placeholder')}
+            className="scroll-area--native mt-2 font-mono"
+            rows={3}
+          />
+        </div>
+      </>
     </div>
   );
 
   // 嵌入模式：直接返回内容，不使用 Dialog 包裹（标题和保存按钮由全局移动端顶栏提供）
   if (embeddedMode) {
     return (
-      <div className="h-full flex flex-col bg-background">
+      <div className="flex h-full min-h-0 flex-col bg-background">
         <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-4 py-4 pb-safe">
           {formContent}
         </CustomScrollArea>
@@ -392,23 +506,23 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
 
   // 模态框模式
   return (
-    <NotionDialog open={open} onOpenChange={onClose} maxWidth="max-w-lg">
-        <NotionDialogHeader>
-          <NotionDialogTitle>
+    <DsDialog open={open} onOpenChange={onClose} maxWidth="max-w-lg">
+        <DsDialogHeader>
+          <DsDialogTitle>
             {vendor ? t('settings:vendor_modal.title_edit') : t('settings:vendor_modal.title_new')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>{t('settings:vendor_modal.subtitle')}</NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogTitle>
+          <DsDialogDescription>{t('settings:vendor_modal.subtitle')}</DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody overlayScroll>
           {formContent}
-        </NotionDialogBody>
-        <NotionDialogFooter className="!border-t-0">
-          <NotionButton variant="ghost" size="sm" onClick={onClose}>
+        </DsDialogBody>
+        <DsDialogFooter className="!border-t-0">
+          <DsButton variant="ghost" size="sm" onClick={onClose}>
             {t('common:actions.cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={handleSave}>{t('common:actions.save')}</NotionButton>
-        </NotionDialogFooter>
-    </NotionDialog>
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={handleSave}>{t('common:actions.save')}</DsButton>
+        </DsDialogFooter>
+    </DsDialog>
   );
 });
 

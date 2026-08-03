@@ -31,10 +31,10 @@ describe('MessageList empty state source guards', () => {
     expect(source).toContain('emptyStateGroupName?: string | null');
     expect(source).toContain('emptyStateGroupName = null');
     expect(source).toContain("t('messageList.empty.primaryAction'");
-    expect(source).toContain("defaultValue: '今天想学点什么？'");
+    expect(source).not.toContain("defaultValue: '今天想学点什么？'");
     expect(source).toContain("t('messageList.empty.primaryActionInGroup'");
     expect(source).toContain('groupName: emptyStateGroupName');
-    expect(source).toContain("defaultValue: '在「{{groupName}}」里学点什么？'");
+    expect(source).not.toContain("defaultValue: '在「{{groupName}}」里学点什么？'");
     expect(source).toContain('title={emptyStatePrimaryAction}');
     expect(emptyBlock).not.toContain('<p className="text-base text-muted-foreground">{emptyStateGroupName}</p>');
 
@@ -44,10 +44,20 @@ describe('MessageList empty state source guards', () => {
     expect(source).not.toContain(`defaultValue: '${oldWorkspaceHintText}'`);
     expect(source).not.toContain("defaultValue: '查看建议起点'");
     expect(source).not.toContain('<Sparkles');
-    expect(source).not.toContain('<NotionButton');
+    expect(source).not.toContain('<DsButton');
     expect(source).not.toContain(`messageList.empty.${oldWorkspaceHintKey}`);
     expect(source).not.toContain(`messageList.empty.${oldShowSuggestionsKey}`);
     expect(emptyBlock).not.toContain("const starterPrompt = t('messageList.empty.suggestion2');");
+  });
+
+  it('never renders suggestion prompt chips in the empty state (removed by product decision)', () => {
+    const source = readSource(messageListPath);
+    const emptyStateShellSource = readSource(threadEmptyStateShellPath);
+
+    for (const forbidden of ['thread-empty-suggestions', 'messageList.empty.suggestion', 'DEFAULT_SUGGESTION_KEYS']) {
+      expect(source).not.toContain(forbidden);
+      expect(emptyStateShellSource).not.toContain(forbidden);
+    }
   });
 
   it('passes only real group names into the empty state and keeps ungrouped sessions generic', () => {

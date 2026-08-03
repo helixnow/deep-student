@@ -7,13 +7,11 @@
   background: transparent;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   padding: 0 32px;
-  margin-bottom: -200px;
 }
 
 /* 代码编辑模式：撑满父容器，禁止外部滚动 */
 .minimal-template-editor.code-mode {
   height: 100%;
-  margin-bottom: 0;
   padding: 0;
   gap: 0;
   overflow: hidden;
@@ -40,6 +38,10 @@
 }
 
 .minimal-template-editor.no-sidebar .editor-content {
+  padding: 0;
+}
+
+.minimal-template-editor.no-sidebar .editor-content-viewport {
   padding: 24px;
 }
 
@@ -139,7 +141,9 @@
 .editor-content {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+}
+
+.editor-content-viewport {
   padding: 24px;
 }
 
@@ -299,6 +303,7 @@
   white-space: pre;
   caret-color: hsl(var(--foreground));
   font-variant-ligatures: none;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .code-editor textarea::placeholder {
@@ -311,26 +316,6 @@
   .code-editor textarea {
     min-height: 160px;
   }
-}
-
-/* 滚动条样式 */
-.code-editor textarea::-webkit-scrollbar {
-  width: 12px;
-  background: hsl(var(--code-bg));
-}
-
-.code-editor textarea::-webkit-scrollbar-track {
-  background: hsl(var(--code-bg));
-}
-
-.code-editor textarea::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground));
-  border-radius: 6px;
-  border: 3px solid hsl(var(--code-bg));
-}
-
-.code-editor textarea::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--foreground) / 0.5);
 }
 
 /* 开关按钮 - 已使用 shadcn Switch 组件，移除自定义样式 */
@@ -436,25 +421,10 @@
   gap: 8px;
 }
 
-/* 底部操作栏 - 参考设置页面风格 */
-.editor-footer {
-  background: transparent;
-  border-top: none;
-  padding: 24px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: auto;
-}
-
+/* 底部操作栏：布局改由 TSX 内联 Tailwind 承担，此处仅保留仍被引用的 .footer-info */
 .footer-info {
   font-size: 14px;
   color: hsl(var(--muted-foreground));
-}
-
-.footer-actions {
-  display: flex;
-  gap: 12px;
 }
 
 /* 加载状态 */
@@ -483,7 +453,7 @@
     padding: 0;
   }
 
-  .minimal-template-editor.no-sidebar .editor-content {
+  .minimal-template-editor.no-sidebar .editor-content-viewport {
     padding: 16px 12px;
   }
 
@@ -499,11 +469,6 @@
     padding: 12px;
     gap: 8px;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .editor-nav::-webkit-scrollbar {
-    display: none;
   }
 
   .nav-item {
@@ -516,7 +481,7 @@
     border-radius: 8px;
   }
 
-  .editor-content {
+  .editor-content-viewport {
     padding: 12px;
   }
 
@@ -553,24 +518,6 @@
     min-height: 120px;
   }
 
-  /* 移动端优化按钮布局 */
-  .editor-footer,
-  .setting-section .flex.items-center.justify-between {
-    flex-direction: column;
-    gap: 16px;
-    align-items: stretch;
-  }
-
-  .footer-actions,
-  .setting-section .flex.gap-3 {
-    width: 100%;
-    flex-direction: column;
-  }
-
-  .footer-actions > *,
-  .setting-section .flex.gap-3 > * {
-    width: 100%;
-  }
 }
 
 /* 细节优化 - 已移除 builtin-badge，使用 shadcn 组件 */
@@ -678,36 +625,6 @@
   max-width: 100%;
 }
 
-/* 预览内容的滚动条 */
-.prompt-preview .preview-content::-webkit-scrollbar {
-  width: 12px;
-  background: hsl(var(--code-bg));
-}
-
-.prompt-preview .preview-content::-webkit-scrollbar-track {
-  background: hsl(var(--code-bg));
-}
-
-.prompt-preview .preview-content::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground));
-  border-radius: 6px;
-  border: 3px solid hsl(var(--code-bg));
-}
-
-.prompt-preview .preview-content::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--foreground) / 0.5);
-}
-
-/* 水平滚动条样式 */
-.prompt-preview .preview-content::-webkit-scrollbar:horizontal {
-  height: 12px;
-}
-
-/* 移动端横向滚动屏 - 隐藏滚动条 */
-.template-code-split-panel > .snap-x::-webkit-scrollbar {
-  display: none;
-}
-
 /* ============================================================
  * 模板代码分栏布局 - 参考技能编辑器 (SkillFullscreenEditor)
  * ============================================================ */
@@ -809,13 +726,15 @@
   color: hsl(var(--foreground));
 }
 
-/* 隐藏原生滚动条，使用自研滚动条覆盖 */
-.template-codemirror-editor .cm-scroller {
-  scrollbar-width: none;
-}
+/* 桌面端隐藏原生滚动条，由 CodeMirrorScrollOverlay 自管。 */
+@media (min-width: 768px) {
+  .template-codemirror-editor .cm-scroller {
+    scrollbar-width: none;
+  }
 
-.template-codemirror-editor .cm-scroller::-webkit-scrollbar {
-  display: none;
+  .template-codemirror-editor .cm-scroller::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* 搜索高亮 */
@@ -832,5 +751,9 @@
 @media (max-width: 767.98px) {
   .template-code-split-panel {
     min-height: 0;
+  }
+
+  .template-codemirror-editor .cm-scroller {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 }

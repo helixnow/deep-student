@@ -30,9 +30,11 @@ mod traits;
 mod webdav;
 
 pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
+pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
-    get_device_id, rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager,
-    DownloadResult, SyncStatus, UploadResult,
+    generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
+    rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
+    SyncStatus, UploadResult,
 };
 pub use traits::{CloudStorage, FileInfo, ListOutcome, Result};
 
@@ -50,6 +52,8 @@ use webdav::WebDavStorage;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CloudSyncProgressEvent {
+    /// 关联一次完整操作，避免并发/迟到事件串台。
+    operation_id: String,
     /// 操作类型: "upload" | "download"
     operation: &'static str,
     /// 阶段标识: "transferring" | "done"
@@ -79,7 +83,7 @@ fn emit_sync_progress(app: &AppHandle, event: CloudSyncProgressEvent) {
 /// 实现了 CloudStorage trait 的存储实例
 pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn CloudStorage>> {
     // 验证配置
-    config.validate().map_err(|e| AppError::validation(e))?;
+    config.validate().map_err(AppError::validation)?;
 
     let root = config.root();
 
@@ -212,7 +216,10 @@ pub async fn cloud_storage_exists(
 
 /// 获取同步状态
 #[tauri::command]
-pub async fn cloud_sync_get_status(app: AppHandle, mut config: CloudStorageConfig) -> Result<SyncStatus> {
+pub async fn cloud_sync_get_status(
+    app: AppHandle,
+    mut config: CloudStorageConfig,
+) -> Result<SyncStatus> {
     crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
@@ -243,9 +250,15 @@ pub async fn cloud_sync_upload(
     note: Option<String>,
 ) -> Result<UploadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
+    let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+        crate::backup_common::DataGovernanceOperationKind::Backup,
+        None,
+    )?;
+    let operation_id = _operation.operation_id().to_string();
+
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
     // 临时文件在 ZIP 附近创建，上传成功后删除
-    let mut encrypted_temp: Option<std::path::PathBuf> = None;
+    let mut encrypted_temp: Option<tempfile::TempPath> = None;
     let actual_upload_path: std::path::PathBuf = if let Some(pwd) = config
         .encryption_password
         .as_deref()
@@ -255,18 +268,32 @@ pub async fn cloud_sync_upload(
         // [F14] 流式分块加密到临时文件（同目录 → 同一文件系统，rename/上传快），
         // 内存占用恒定，避免多 GB 备份一次性读入内存导致 OOM。
         let original = std::path::Path::new(&zip_path);
-        let temp_path = original.with_extension("zip.dsbk");
+        let parent = original
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let temp_path = tempfile::Builder::new()
+            .prefix(".cloud-upload-")
+            .suffix(".dsbk")
+            .tempfile_in(parent)
+            .map_err(|e| AppError::file_system(format!("创建加密临时文件失败: {}", e)))?
+            .into_temp_path();
         crate::crypto::backup_crypto::encrypt_backup_file(original, &temp_path, pwd)
             .map_err(|e| AppError::internal(format!("加密备份失败: {}", e)))?;
-        encrypted_temp = Some(temp_path.clone());
-        temp_path
+        let path = temp_path.to_path_buf();
+        encrypted_temp = Some(temp_path);
+        path
     } else {
         std::path::Path::new(&zip_path).to_path_buf()
     };
 
     let file_size = std::fs::metadata(&actual_upload_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+        .map_err(|error| {
+            AppError::file_system(format!(
+                "读取待上传备份大小失败 {:?}: {}",
+                actual_upload_path, error
+            ))
+        })?
+        .len();
 
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
@@ -274,6 +301,7 @@ pub async fn cloud_sync_upload(
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id: operation_id.clone(),
             operation: "upload",
             stage: "transferring",
             stage_label: "正在上传文件...",
@@ -284,6 +312,7 @@ pub async fn cloud_sync_upload(
     );
 
     let handle = app_handle.clone();
+    let progress_operation_id = operation_id.clone();
     let progress_cb: traits::UploadProgressCallback = Box::new(move |done, total| {
         let pct = if total > 0 {
             (done as f32 / total as f32 * 95.0).min(95.0)
@@ -293,6 +322,7 @@ pub async fn cloud_sync_upload(
         emit_sync_progress(
             &handle,
             CloudSyncProgressEvent {
+                operation_id: progress_operation_id.clone(),
                 operation: "upload",
                 stage: "transferring",
                 stage_label: "正在上传文件...",
@@ -307,16 +337,15 @@ pub async fn cloud_sync_upload(
         .upload_with_progress(&actual_upload_path, app_version, note, Some(progress_cb))
         .await;
 
-    // 无论成功失败都清理临时加密文件
-    if let Some(temp) = encrypted_temp {
-        let _ = std::fs::remove_file(&temp);
-    }
+    // TempPath 在成功和错误路径都会自动清理，且每次操作使用独立随机文件名。
+    drop(encrypted_temp);
 
     let result = upload_result?;
 
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id,
             operation: "upload",
             stage: "done",
             stage_label: "上传完成",
@@ -340,12 +369,18 @@ pub async fn cloud_sync_download(
     local_dir: String,
 ) -> Result<DownloadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
+    let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+        crate::backup_common::DataGovernanceOperationKind::Restore,
+        None,
+    )?;
+    let operation_id = _operation.operation_id().to_string();
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
 
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id: operation_id.clone(),
             operation: "download",
             stage: "transferring",
             stage_label: "正在下载备份...",
@@ -356,6 +391,7 @@ pub async fn cloud_sync_download(
     );
 
     let handle = app_handle.clone();
+    let progress_operation_id = operation_id.clone();
     let progress_cb: traits::DownloadProgressCallback = Box::new(move |done, total| {
         let pct = if total > 0 {
             (done as f32 / total as f32 * 95.0).min(95.0)
@@ -365,6 +401,7 @@ pub async fn cloud_sync_download(
         emit_sync_progress(
             &handle,
             CloudSyncProgressEvent {
+                operation_id: progress_operation_id.clone(),
                 operation: "download",
                 stage: "transferring",
                 stage_label: "正在下载备份...",
@@ -387,11 +424,20 @@ pub async fn cloud_sync_download(
     // 支持"用户上传时加密，下载设备未配置密码"的场景：返回明确错误
     let downloaded_path = std::path::Path::new(&result.local_path);
     let head = {
-        let mut buf = vec![0u8; 4];
-        if let Ok(mut f) = std::fs::File::open(downloaded_path) {
-            use std::io::Read;
-            let _ = f.read(&mut buf);
-        }
+        use std::io::Read;
+        let mut buf = [0u8; 4];
+        let mut file = std::fs::File::open(downloaded_path).map_err(|error| {
+            AppError::file_system(format!(
+                "打开已下载备份进行格式识别失败 {:?}: {}",
+                downloaded_path, error
+            ))
+        })?;
+        file.read_exact(&mut buf).map_err(|error| {
+            AppError::validation(format!(
+                "已下载备份过短或无法读取 {:?}: {}",
+                downloaded_path, error
+            ))
+        })?;
         buf
     };
     let is_encrypted = crate::crypto::backup_crypto::is_encrypted_backup(&head);
@@ -412,21 +458,25 @@ pub async fn cloud_sync_download(
         let parent = downloaded_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
-        let temp_path = parent.join(format!(".decrypt-{}.tmp", uuid::Uuid::new_v4().simple()));
+        let temp_path = tempfile::Builder::new()
+            .prefix(".cloud-decrypt-")
+            .suffix(".tmp")
+            .tempfile_in(parent)
+            .map_err(|e| AppError::file_system(format!("创建解密临时文件失败: {}", e)))?
+            .into_temp_path();
         crate::crypto::backup_crypto::decrypt_backup_file(downloaded_path, &temp_path, pwd)
             .map_err(|e| {
-                let _ = std::fs::remove_file(&temp_path);
                 AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
             })?;
-        std::fs::rename(&temp_path, downloaded_path).map_err(|e| {
-            let _ = std::fs::remove_file(&temp_path);
-            AppError::file_system(format!("保存解密后 ZIP 失败: {}", e))
-        })?;
+        temp_path
+            .persist(downloaded_path)
+            .map_err(|e| AppError::file_system(format!("保存解密后 ZIP 失败: {}", e.error)))?;
     }
 
     emit_sync_progress(
         &app_handle,
         CloudSyncProgressEvent {
+            operation_id,
             operation: "download",
             stage: "done",
             stage_label: "下载完成",
@@ -447,6 +497,10 @@ pub async fn cloud_sync_delete_version(
     version_id: String,
 ) -> Result<()> {
     crate::secure_store::hydrate_cloud_config(&app, &mut config);
+    let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+        crate::backup_common::DataGovernanceOperationKind::Prune,
+        None,
+    )?;
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
     manager.delete_version(&version_id).await

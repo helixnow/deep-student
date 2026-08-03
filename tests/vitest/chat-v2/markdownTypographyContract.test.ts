@@ -19,11 +19,34 @@ describe('chat v2 markdown typography contract', () => {
     resolve(process.cwd(), 'src/features/chat/components/renderers/BlockedMarkdownRenderer.tsx'),
     'utf-8',
   );
+  const contentBlockSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/plugins/blocks/content.tsx'),
+    'utf-8',
+  );
+  const messageItemSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/MessageItem.tsx'),
+    'utf-8',
+  );
+  const streamingBlocksCssSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/renderers/streamingBlocks.css'),
+    'utf-8',
+  );
 
-  it('defines shared reading-rhythm tokens for assistant markdown output', () => {
-    expect(chatCssSource).toContain('--chat-md-font-size:');
-    expect(chatCssSource).toContain('--chat-md-line-height:');
-    expect(chatCssSource).toContain('--chat-md-letter-spacing:');
+  it('defines shared session typography tokens with a 16px/400 body baseline', () => {
+    expect(chatCssSource).toContain('--chat-body-font-size: var(--font-size-lg);');
+    expect(chatCssSource).toContain('--chat-body-font-weight: var(--font-weight-normal);');
+    expect(chatCssSource).toContain('--chat-user-font-size: var(--chat-body-font-size);');
+    expect(chatCssSource).toContain('--chat-user-font-weight: var(--chat-body-font-weight);');
+    expect(chatCssSource).toContain('--chat-user-line-height: 1.65;');
+    expect(chatCssSource).toContain('--chat-status-line-height: var(--line-height-relaxed);');
+    expect(chatCssSource).toContain('--chat-failure-line-height: var(--line-height-relaxed);');
+    expect(chatCssSource).toContain('--chat-emphasis-font-size: var(--chat-body-font-size);');
+    expect(chatCssSource).toContain('--chat-emphasis-font-weight: var(--font-weight-semibold);');
+    expect(chatCssSource).toContain('--chat-heading-font-size: var(--chat-body-font-size);');
+    expect(chatCssSource).toContain('--chat-heading-font-weight: var(--font-weight-semibold);');
+    expect(chatCssSource).toContain('--chat-md-font-size: var(--chat-body-font-size);');
+    expect(chatCssSource).toContain('--chat-md-line-height: var(--chat-body-line-height);');
+    expect(chatCssSource).toContain('--chat-md-letter-spacing: var(--chat-body-letter-spacing);');
     expect(chatCssSource).toContain('--chat-md-paragraph-gap:');
     expect(chatCssSource).toContain('--chat-md-heading-top-gap:');
     expect(chatCssSource).toContain('--chat-md-heading-bottom-gap:');
@@ -36,30 +59,51 @@ describe('chat v2 markdown typography contract', () => {
   });
 
   it('uses the shared rhythm tokens in markdown base styles and assistant overrides', () => {
-    expect(markdownCssSource).toContain('font-size: var(--chat-md-font-size);');
+    expect(markdownCssSource).toContain('font-size: var(--chat-body-font-size);');
+    expect(markdownCssSource).toContain('font-weight: var(--chat-body-font-weight);');
     expect(markdownCssSource).toContain('line-height: var(--chat-md-line-height);');
-    expect(markdownCssSource).toContain('letter-spacing: var(--chat-md-letter-spacing);');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-paragraph-gap) 0;');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-block-gap) 0;');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-table-gap) 0;');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-list-item-gap) 0;');
+    expect(markdownCssSource).toContain('letter-spacing: var(--chat-body-letter-spacing);');
+    expect(markdownCssSource).toContain('font-size: var(--chat-emphasis-font-size);');
+    expect(markdownCssSource).toContain('font-weight: var(--chat-emphasis-font-weight);');
+    expect(markdownCssSource).toContain('font-size: var(--chat-heading-h2-font-size);');
+    expect(markdownCssSource).toContain('font-weight: var(--chat-heading-font-weight);');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-paragraph-gap) * 0.5) 0;');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-block-gap) * 0.5) 0;');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-table-gap) * 0.5) 0;');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-list-item-gap) * 0.5) 0;');
 
-    expect(beautifyCssSource).toContain('font-size: var(--chat-md-font-size);');
-    expect(beautifyCssSource).toContain('line-height: var(--chat-md-line-height);');
-    expect(beautifyCssSource).toContain('letter-spacing: var(--chat-md-letter-spacing);');
+    expect(beautifyCssSource).toContain('font-size: var(--chat-body-font-size);');
+    expect(beautifyCssSource).toContain('font-weight: var(--chat-body-font-weight);');
+    expect(beautifyCssSource).toContain('line-height: var(--chat-body-line-height);');
+    expect(beautifyCssSource).toContain('letter-spacing: var(--chat-body-letter-spacing);');
+    expect(beautifyCssSource).toContain('.chat-v2 .user-message-bubble .chat-message-body');
+    expect(beautifyCssSource).toContain('font-size: var(--chat-user-font-size);');
+    expect(beautifyCssSource).toContain('font-weight: var(--chat-user-font-weight);');
+    expect(beautifyCssSource).not.toContain('.user-message-bubble .prose');
+  });
+
+  it('routes Markdown and non-Markdown message states through semantic session classes', () => {
+    expect(contentBlockSource).toContain('chat-message-body chat-message-body--markdown');
+    expect(contentBlockSource).not.toContain('prose-p:text-md');
+    expect(contentBlockSource).not.toContain('prose-li:text-md');
+    expect(messageItemSource).toContain("isUser && 'chat-message-user'");
+    expect(messageItemSource).toContain('className="chat-message-status mt-2"');
+    expect(messageItemSource).toContain('className="chat-message-failure"');
+    expect(messageItemSource).not.toContain('prose-p:text-md');
+    expect(messageItemSource).not.toContain('text-md leading-relaxed');
+  });
+
+  it('keeps native macOS font smoothing available to Markdown content', () => {
+    expect(markdownCssSource).not.toContain('-webkit-font-smoothing: antialiased;');
+    expect(markdownCssSource).not.toContain('-moz-osx-font-smoothing: grayscale;');
   });
 
   it('keeps secondary reading surfaces comfortably readable instead of cramped', () => {
-    const ragSourceContentRuleStart = markdownCssSource.indexOf('.chat-v2 .rag-source-content {');
-    const ragSourceContentRuleEnd = markdownCssSource.indexOf('}', ragSourceContentRuleStart);
-    const ragSourceContentRule = markdownCssSource.slice(ragSourceContentRuleStart, ragSourceContentRuleEnd);
-
     expect(markdownCssSource).toContain('font-size: var(--chat-md-compact-font-size);');
     expect(markdownCssSource).toContain('line-height: var(--chat-md-compact-line-height);');
     expect(markdownCssSource).toContain('padding: var(--chat-md-compact-gap);');
-    expect(ragSourceContentRuleStart).toBeGreaterThan(-1);
-    expect(ragSourceContentRule).toContain('font-style: normal;');
+    expect(markdownCssSource).toContain('.chat-v2 .thinking-content {');
   });
 
   it('keeps empty-line handling lightweight instead of relying on many forceful overrides', () => {
@@ -110,5 +154,33 @@ describe('chat v2 markdown typography contract', () => {
     expect(blockedMarkdownRendererSource).toContain('block-type-${block.type}');
     expect(markdownCssSource).toContain('.chat-v2 .blocked-markdown > .markdown-content.block-type-table {');
     expect(markdownCssSource).toContain('.chat-v2 .blocked-markdown > .markdown-content.block-type-table + .markdown-content {');
+  });
+
+  it('restores native markdown rhythm at the streamed block boundary', () => {
+    expect(streamingBlocksCssSource).toContain('display: flow-root;');
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block[data-block-type="paragraph"],',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      'margin: calc(var(--chat-md-paragraph-gap) * 0.5) 0;',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block[data-block-type="heading"] {',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      'margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block[data-block-type="hr"] {',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      'margin: calc(var(--chat-md-block-gap) * 0.675) 0;',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block:first-child {',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block:last-child {',
+    );
   });
 });

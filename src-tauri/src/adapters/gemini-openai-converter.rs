@@ -107,6 +107,10 @@ pub enum OpenAIContentPart {
     Text { text: String },
     #[serde(rename = "image_url")]
     ImageUrl { image_url: OpenAIImageUrl },
+    /// 未知/暂不支持的 content part（如 input_audio、video_url、input_file 等）。
+    /// 反序列化时降级捕获，转换阶段跳过并记 warning，避免整个请求解析失败。
+    #[serde(other)]
+    Unsupported,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -238,6 +242,10 @@ pub struct GeminiInlineData {
 pub struct GeminiFunctionCall {
     pub name: String,
     pub args: Value,
+    /// Gemini 3.x 原生函数调用 id：模型返回时携带，回传历史必须原样保留。
+    /// 自造的 UUID 兜底 id（旧模型无原生 id 时）不会写入该字段。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,6 +253,29 @@ pub struct GeminiFunctionCall {
 pub struct GeminiFunctionResponse {
     pub name: String,
     pub response: Value,
+    /// Gemini 3.x 严格配对：functionResponse 必须带上与 functionCall 匹配的 id，
+    /// 缺失时 generateContent 不报错但会返回空响应（finishReason: STOP）。
+    /// 仅当持有原生 id 时写入；自造 UUID 不发回 API。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+}
+
+/// 判断 tool_call id 是否为本转换器自造的兜底 id（`call-<uuid>` 形式）。
+/// 自造 id 仅用于 OpenAI 侧的内部配对，不能发回 Gemini API。
+fn is_synthetic_tool_call_id(id: &str) -> bool {
+    id.strip_prefix("call-")
+        .map(|rest| Uuid::parse_str(rest).is_ok())
+        .unwrap_or(false)
+}
+
+/// 提取原生（非自造）tool_call id：空串与合成 id 均视为无原生 id
+fn native_tool_call_id(id: &str) -> Option<String> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() || is_synthetic_tool_call_id(trimmed) {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -531,13 +562,7 @@ pub fn build_gemini_request_with_version(
             // - Gemini 3 Pro: 仅支持 "low", "high"
             // - Gemini 3 Flash: 支持 "minimal", "low", "medium", "high"
             let level = match effort.to_ascii_lowercase().as_str() {
-                "minimal" | "none" | "unset" => {
-                    if is_gemini_3_flash {
-                        "minimal"
-                    } else {
-                        "low"
-                    } // Pro 不支持 minimal
-                }
+                "minimal" | "none" | "unset" if is_gemini_3_flash => "minimal", // Pro 不支持 minimal
                 "low" => "low",
                 "medium" => {
                     if is_gemini_3_flash {
@@ -560,9 +585,9 @@ pub fn build_gemini_request_with_version(
                 "none" | "unset" => Some(0),
                 _ => None,
             };
-            if let Some(b) = budget {
-                let clamped = b.clamp(-1, 2_147_483_647);
-                thinking_budget = Some(clamped);
+            // 显式 thinkingConfig 是 Gemini 原生配置，旧 reasoning_effort 仅作回退。
+            if thinking_budget.is_none() {
+                thinking_budget = budget.map(|b| b.clamp(-1, 2_147_483_647));
             }
         }
     }
@@ -647,7 +672,7 @@ pub fn build_gemini_request_with_version(
 
     let final_version = resolved_version
         .as_deref()
-        .or_else(|| version_in_base.as_deref())
+        .or(version_in_base.as_deref())
         .unwrap_or("v1");
 
     let base_root_trimmed = base_root.trim_end_matches('/');
@@ -724,9 +749,12 @@ pub fn parse_gemini_stream_line(
     pending_tool_calls: &Arc<Mutex<HashMap<i64, (String, String)>>>,
 ) -> Vec<StreamEvent> {
     let mut events = Vec::new();
+    let Some(payload) = crate::utils::sse_buffer::extract_stream_data_payload(line) else {
+        return events;
+    };
 
     // 检查是否是结束标记
-    if line.trim() == "data: [DONE]" {
+    if payload.trim() == "[DONE]" {
         events.push(StreamEvent::Done);
         if let Ok(mut state) = pending_tool_calls.lock() {
             state.clear();
@@ -734,16 +762,8 @@ pub fn parse_gemini_stream_line(
         return events;
     }
 
-    // 检查是否以"data: "开头
-    if !line.starts_with("data: ") {
-        return events;
-    }
-
-    // 提取JSON部分
-    let json_str = &line[6..]; // 跳过"data: "
-
     // 尝试解析JSON
-    let json_value: Value = match serde_json::from_str(json_str) {
+    let json_value: Value = match serde_json::from_str(&payload) {
         Ok(v) => v,
         Err(_) => return events, // 忽略非JSON行
     };
@@ -860,12 +880,31 @@ pub fn parse_gemini_stream_line(
                                 let args_str = serde_json::to_string(&args)
                                     .unwrap_or_else(|_| "{}".to_string());
 
+                                // Gemini 3.x 返回原生 id，必须原样保留（回传严格配对）；
+                                // 旧模型无 id 时才用自造 UUID 兜底
+                                let native_id = function_call
+                                    .get("id")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.trim().is_empty())
+                                    .map(|s| s.to_string());
+
                                 let mut state = pending_tool_calls
                                     .lock()
                                     .expect("Gemini tool state poisoned");
                                 let entry = state.entry(index).or_insert_with(|| {
-                                    (format!("call-{}", Uuid::new_v4()), name.to_string())
+                                    (
+                                        native_id
+                                            .clone()
+                                            .unwrap_or_else(|| format!("call-{}", Uuid::new_v4())),
+                                        name.to_string(),
+                                    )
                                 });
+                                // 原生 id 晚于首个 chunk 到达时，用它替换自造兜底 id
+                                if let Some(nid) = native_id {
+                                    if is_synthetic_tool_call_id(&entry.0) {
+                                        entry.0 = nid;
+                                    }
+                                }
                                 let tool_call = json!({
                                     "id": entry.0,
                                     "type": "function",
@@ -1005,12 +1044,29 @@ pub fn parse_gemini_stream_line(
                                 let args_str = serde_json::to_string(&args)
                                     .unwrap_or_else(|_| "{}".to_string());
 
+                                // 与主路径一致：优先保留原生 id，无原生 id 才自造 UUID
+                                let native_id = function_call
+                                    .get("id")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.trim().is_empty())
+                                    .map(|s| s.to_string());
+
                                 let mut state = pending_tool_calls
                                     .lock()
                                     .expect("Gemini tool state poisoned");
                                 let entry = state.entry(index).or_insert_with(|| {
-                                    (format!("call-{}", Uuid::new_v4()), name.to_string())
+                                    (
+                                        native_id
+                                            .clone()
+                                            .unwrap_or_else(|| format!("call-{}", Uuid::new_v4())),
+                                        name.to_string(),
+                                    )
                                 });
+                                if let Some(nid) = native_id {
+                                    if is_synthetic_tool_call_id(&entry.0) {
+                                        entry.0 = nid;
+                                    }
+                                }
 
                                 let tool_call = json!({
                                     "id": entry.0,
@@ -1224,8 +1280,16 @@ pub fn convert_gemini_nonstream_response_to_openai(
                             let args_str =
                                 serde_json::to_string(&args).unwrap_or_else(|_| "{}".to_string());
 
+                            // Gemini 3.x 原生 id 必须保留（回传严格配对）；无 id 才自造 UUID
+                            let id = function_call
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .filter(|s| !s.trim().is_empty())
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| format!("call-{}", Uuid::new_v4()));
+
                             tool_calls.push(json!({
-                                "id": format!("call-{}", Uuid::new_v4()),
+                                "id": id,
                                 "type": "function",
                                 "function": {
                                     "name": name,
@@ -1452,6 +1516,8 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                                 function_call: Some(GeminiFunctionCall {
                                     name: tool_call.function.name.clone(),
                                     args,
+                                    // 仅回传原生 id；自造 `call-<uuid>` 不发回 API
+                                    id: native_tool_call_id(&tool_call.id),
                                 }),
                                 function_response: None,
                                 // 第一个 functionCall part 携带 thoughtSignature
@@ -1496,6 +1562,13 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                         let response_value: Value = serde_json::from_str(&response_text)
                             .unwrap_or_else(|_| json!({"result": response_text}));
 
+                        // Gemini 3.x 严格 id 配对：回传原生 id；
+                        // 自造兜底 id 不发回（旧模型按 name 配对即可）
+                        let response_id = message
+                            .tool_call_id
+                            .as_deref()
+                            .and_then(native_tool_call_id);
+
                         let new_part = GeminiPart {
                             text: None,
                             inline_data: None,
@@ -1503,13 +1576,14 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
                             function_response: Some(GeminiFunctionResponse {
                                 name: name.clone(),
                                 response: response_value,
+                                id: response_id,
                             }),
                             thought_signature: None,
                         };
 
                         // 🔧 Gemini 要求角色交替：多个 functionResponse 必须合并到同一个 user content 块
                         // 官方文档示例：并行工具调用的结果在一个 user 消息中包含多个 functionResponse parts
-                        let should_merge = contents.last().map_or(false, |last: &GeminiContent| {
+                        let should_merge = contents.last().is_some_and(|last: &GeminiContent| {
                             last.role == "user"
                                 && last.parts.iter().all(|p| p.function_response.is_some())
                         });
@@ -1539,7 +1613,7 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
         for content in contents.drain(..) {
             let should_merge = merged_contents
                 .last()
-                .map_or(false, |last| last.role == content.role);
+                .is_some_and(|last| last.role == content.role);
             if should_merge {
                 let last = merged_contents.last_mut().unwrap();
                 let merged_count = content.parts.len();
@@ -1695,10 +1769,10 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
         match value {
             Value::Object(map) => {
                 // 如果 type=array 但缺少 items，补充默认 items
-                if map.get("type").and_then(|v| v.as_str()) == Some("array") {
-                    if !map.contains_key("items") {
-                        map.insert("items".to_string(), json!({"type": "string"}));
-                    }
+                if map.get("type").and_then(|v| v.as_str()) == Some("array")
+                    && !map.contains_key("items")
+                {
+                    map.insert("items".to_string(), json!({"type": "string"}));
                 }
                 // 如果有 items 但 items 缺少 type，补充默认 type
                 if let Some(items) = map.get_mut("items") {
@@ -1845,6 +1919,14 @@ fn convert_openai_content_to_gemini_parts(
                                 thought_signature: None,
                             });
                         }
+                    }
+                    OpenAIContentPart::Unsupported => {
+                        // 未知 content part（如 input_audio/video_url/input_file）：
+                        // 降级跳过而非让整个请求失败
+                        log::warn!(
+                            "[GeminiConverter] Skipping unsupported content part type (e.g. audio/video/file); \
+                             only text and image_url are converted"
+                        );
                     }
                 }
             }
@@ -2046,6 +2128,33 @@ mod tests {
             StreamEvent::ContentChunk(text) => assert_eq!(text, "Hello"),
             _ => panic!("Expected ContentChunk"),
         }
+    }
+
+    #[test]
+    fn test_parse_gemini_stream_line_accepts_bare_ndjson() {
+        let line = r#"{"candidates":[{"content":{"parts":[{"text":"NDJSON"}]}}]}"#;
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "NDJSON"
+        ));
+    }
+
+    #[test]
+    fn test_parse_gemini_stream_event_and_data_block() {
+        let line = concat!(
+            "event: message\n",
+            r#"data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}"#,
+        );
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "Hello"
+        ));
     }
 
     #[test]
@@ -2381,6 +2490,280 @@ mod tests {
         .expect("req");
 
         assert!(req.url.contains("/v1beta/"));
+    }
+
+    #[test]
+    fn test_gemini_25_explicit_thinking_budget_overrides_reasoning_effort() {
+        let cases = [
+            (
+                json!({
+                    "model": "gemini-2.5-flash",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "reasoning_effort": "high",
+                    "thinkingConfig": {
+                        "thinkingBudget": 0,
+                        "includeThoughts": false
+                    }
+                }),
+                0,
+            ),
+            (
+                json!({
+                    "model": "gemini-2.5-pro",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "reasoning_effort": "minimal",
+                    "google_thinking_config": {
+                        "thinking_budget": -1,
+                        "include_thoughts": true
+                    }
+                }),
+                -1,
+            ),
+        ];
+
+        for (openai_body, expected_budget) in cases {
+            let req = build_gemini_request(
+                "https://generativelanguage.googleapis.com",
+                "k",
+                openai_body.get("model").and_then(Value::as_str).unwrap(),
+                &openai_body,
+            )
+            .expect("request");
+
+            assert_eq!(
+                req.body
+                    .pointer("/generationConfig/thinkingConfig/thinkingBudget")
+                    .and_then(Value::as_i64),
+                Some(expected_budget)
+            );
+        }
+    }
+
+    #[test]
+    fn test_gemini_25_reasoning_effort_supplies_budget_without_explicit_config() {
+        let openai_body = json!({
+            "model": "gemini-2.5-flash",
+            "messages": [{"role": "user", "content": "hi"}],
+            "reasoning_effort": "high"
+        });
+
+        let req = build_gemini_request(
+            "https://generativelanguage.googleapis.com",
+            "k",
+            "gemini-2.5-flash",
+            &openai_body,
+        )
+        .expect("request");
+
+        assert_eq!(
+            req.body
+                .pointer("/generationConfig/thinkingConfig/thinkingBudget")
+                .and_then(Value::as_i64),
+            Some(24576)
+        );
+    }
+
+    #[test]
+    fn test_stream_function_call_preserves_native_id() {
+        // Gemini 3.x 返回原生 functionCall.id，必须原样保留而非替换成自造 UUID
+        let line = r#"data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"fc-native-123","name":"get_weather","args":{"location":"Tokyo"}}}]}}]}"#;
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCall(value) => {
+                assert_eq!(value.get("id").unwrap(), "fc-native-123");
+            }
+            _ => panic!("Expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn test_stream_function_call_without_id_falls_back_to_uuid() {
+        // 旧模型无原生 id：保持 call-<uuid> 兜底
+        let line = r#"data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{}}}]}}]}"#;
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::ToolCall(value) => {
+                let id = value.get("id").unwrap().as_str().unwrap();
+                assert!(
+                    is_synthetic_tool_call_id(id),
+                    "expected synthetic id, got {}",
+                    id
+                );
+            }
+            _ => panic!("Expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn test_stream_late_native_id_replaces_synthetic() {
+        // 首个 chunk 无 id、后续 chunk 带原生 id 时，兜底 id 应被替换
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let line1 = r#"data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"f","args":{}}}]}}]}"#;
+        let _ = parse_gemini_stream_line(line1, &state);
+        let line2 = r#"data: {"candidates":[{"content":{"parts":[{"functionCall":{"id":"fc-late","name":"f","args":{"a":1}}}]}}]}"#;
+        let events = parse_gemini_stream_line(line2, &state);
+        match &events[0] {
+            StreamEvent::ToolCall(value) => {
+                assert_eq!(value.get("id").unwrap(), "fc-late");
+            }
+            _ => panic!("Expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn test_nonstream_function_call_preserves_native_id() {
+        let gemini_response = json!({
+            "candidates": [{
+                "content": {
+                    "parts": [
+                        {"functionCall": {"id": "fc-abc", "name": "func", "args": {"k": "v"}}}
+                    ]
+                },
+                "index": 0
+            }]
+        });
+
+        let result =
+            convert_gemini_nonstream_response_to_openai(&gemini_response, "gemini-3.5-flash")
+                .unwrap();
+        let tool_calls = result["choices"][0]["message"]["tool_calls"]
+            .as_array()
+            .unwrap();
+        assert_eq!(tool_calls[0].get("id").unwrap(), "fc-abc");
+    }
+
+    #[test]
+    fn test_native_id_round_trip_into_function_call_and_response() {
+        // 原生 id + thoughtSignature：functionCall 与 functionResponse 都应携带 id
+        let openai_body = json!({
+            "model": "gemini-3.5-flash",
+            "messages": [
+                {"role": "user", "content": "What's the weather?"},
+                {"role": "assistant", "thought_signature": "sig-1", "tool_calls": [
+                    {
+                        "id": "fc-native-1",
+                        "type": "function",
+                        "function": {"name": "get_weather", "arguments": "{\"location\": \"Tokyo\"}"}
+                    }
+                ]},
+                {"role": "tool", "tool_call_id": "fc-native-1", "name": "get_weather", "content": "{\"temp\": 25}"}
+            ]
+        });
+
+        let request = build_gemini_request(
+            "https://generativelanguage.googleapis.com",
+            "test-api-key",
+            "gemini-3.5-flash",
+            &openai_body,
+        )
+        .expect("request");
+
+        let contents = request.body.get("contents").unwrap().as_array().unwrap();
+        assert_eq!(contents.len(), 3);
+
+        // functionCall part 应携带原生 id
+        let fc = contents[1]["parts"][0]
+            .get("functionCall")
+            .expect("functionCall kept");
+        assert_eq!(fc.get("id").unwrap(), "fc-native-1");
+        assert_eq!(fc.get("name").unwrap(), "get_weather");
+
+        // functionResponse part 应携带匹配的 id 与 name
+        let fr = contents[2]["parts"][0]
+            .get("functionResponse")
+            .expect("functionResponse kept");
+        assert_eq!(fr.get("id").unwrap(), "fc-native-1");
+        assert_eq!(fr.get("name").unwrap(), "get_weather");
+    }
+
+    #[test]
+    fn test_synthetic_id_not_sent_back_to_api() {
+        // 自造 call-<uuid> 兜底 id 不应写入 functionCall/functionResponse 的 id 字段
+        let synthetic_id = format!("call-{}", uuid::Uuid::new_v4());
+        let openai_body = json!({
+            "model": "gemini-2.5-flash",
+            "messages": [
+                {"role": "user", "content": "What's the weather?"},
+                {"role": "assistant", "thought_signature": "sig-1", "tool_calls": [
+                    {
+                        "id": synthetic_id,
+                        "type": "function",
+                        "function": {"name": "get_weather", "arguments": "{}"}
+                    }
+                ]},
+                {"role": "tool", "tool_call_id": synthetic_id, "name": "get_weather", "content": "{\"temp\": 25}"}
+            ]
+        });
+
+        let request = build_gemini_request(
+            "https://generativelanguage.googleapis.com",
+            "test-api-key",
+            "gemini-2.5-flash",
+            &openai_body,
+        )
+        .expect("request");
+
+        let contents = request.body.get("contents").unwrap().as_array().unwrap();
+        let fc = contents[1]["parts"][0]
+            .get("functionCall")
+            .expect("functionCall kept");
+        assert!(fc.get("id").is_none(), "synthetic id must not be sent back");
+        let fr = contents[2]["parts"][0]
+            .get("functionResponse")
+            .expect("functionResponse kept");
+        assert!(fr.get("id").is_none(), "synthetic id must not be sent back");
+    }
+
+    #[test]
+    fn test_unknown_content_part_degrades_instead_of_failing() {
+        // 未知 content part（音频/视频/文件等）应降级跳过而非整请求反序列化失败
+        let openai_body = json!({
+            "model": "gemini-3.5-flash",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this"},
+                        {"type": "input_audio", "input_audio": {"data": "base64...", "format": "wav"}},
+                        {"type": "video_url", "video_url": {"url": "https://example.com/v.mp4"}},
+                        {"type": "input_file", "file_data": "..."}
+                    ]
+                }
+            ]
+        });
+
+        let result = build_gemini_request(
+            "https://generativelanguage.googleapis.com",
+            "test-api-key",
+            "gemini-3.5-flash",
+            &openai_body,
+        );
+
+        assert!(result.is_ok(), "unknown parts must not fail the request");
+        let request = result.unwrap();
+        let contents = request.body.get("contents").unwrap().as_array().unwrap();
+        let parts = contents[0].get("parts").unwrap().as_array().unwrap();
+        // 只保留 text part，未知 part 被跳过
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].get("text").unwrap(), "Describe this");
+    }
+
+    #[test]
+    fn test_is_synthetic_tool_call_id() {
+        assert!(is_synthetic_tool_call_id(&format!(
+            "call-{}",
+            uuid::Uuid::new_v4()
+        )));
+        // Gemini 原生 id / 其他形态不算合成 id
+        assert!(!is_synthetic_tool_call_id("fc-native-123"));
+        assert!(!is_synthetic_tool_call_id("call-123")); // call- 前缀但非 UUID
+        assert!(!is_synthetic_tool_call_id(""));
     }
 
     #[test]

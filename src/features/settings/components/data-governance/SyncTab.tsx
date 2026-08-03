@@ -22,7 +22,8 @@ import {
   FileText,
 } from "@phosphor-icons/react";
 
-import { NotionButton } from "@/components/ui/NotionButton";
+import { DsButton } from "@/components/ui/DsButton";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Badge } from "@/components/ui/shad/Badge";
 import {
   Table,
@@ -165,12 +166,12 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <h3 className="text-base font-medium text-foreground">
               {t("data:governance.database_sync_status")}
             </h3>
-            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
               {t("data:governance.experimental_badge")}
             </span>
           </div>
           <div className="flex gap-2">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={onRefresh}
@@ -182,8 +183,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 className={`mr-1.5 ${loading ? "animate-spin" : ""}`}
               />
               {t("common:actions.refresh")}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="default"
               size="sm"
               onClick={onDetectConflicts}
@@ -192,11 +193,15 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             >
               <MagnifyingGlass size={14} className="mr-1.5" />
               {t("data:governance.detect_conflicts")}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 
-        <div className="rounded-lg border border-border/40 overflow-x-auto">
+        <CustomScrollArea
+          orientation="horizontal"
+          fullHeight={false}
+          className="rounded-lg border border-border/40"
+        >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
@@ -268,7 +273,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               )}
             </TableBody>
           </Table>
-        </div>
+        </CustomScrollArea>
       </div>
 
       <div className="border-t border-border/40" />
@@ -280,11 +285,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <h3 className="text-base font-medium text-foreground">
               {t("data:governance.cloud_sync_title")}
             </h3>
-            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
               {t("data:governance.experimental_badge")}
             </span>
           </div>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={onToggleCloudSettingsEditor}
@@ -292,7 +297,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           >
             <Cloud size={14} className="mr-1.5" />
             {t("data:governance.open_cloud_settings")}
-          </NotionButton>
+          </DsButton>
         </div>
 
         {!cloudSyncConfigured ? (
@@ -305,14 +310,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               {t("data:governance.cloud_sync_not_configured_desc")}
             </p>
             <div className="pl-6 pt-1">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
                 className="bg-background hover:bg-[var(--interactive-hover)]"
               >
                 {t("data:governance.cloud_sync_configure_now")}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         ) : (
@@ -365,7 +370,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <NotionButton
+              <DsButton
                 variant="default"
                 size="sm"
                 onClick={() => onRunSync("bidirectional", syncStrategy)}
@@ -374,8 +379,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
                 {t("data:governance.sync_bidirectional")}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => onRunSync("upload", syncStrategy)}
@@ -384,8 +389,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               >
                 <Upload size={14} className="mr-1.5" />
                 {t("data:governance.sync_upload")}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => onRunSync("download", syncStrategy)}
@@ -394,7 +399,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               >
                 <Download size={14} className="mr-1.5" />
                 {t("data:governance.sync_download")}
-              </NotionButton>
+              </DsButton>
             </div>
 
             {/* 同步进度 */}
@@ -455,7 +460,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                       </div>
                       <div className="flex items-center gap-2 pl-[18px]">
                         {onRetrySync && (
-                          <NotionButton
+                          <DsButton
                             variant="ghost"
                             size="sm"
                             onClick={onRetrySync}
@@ -464,10 +469,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                           >
                             <ArrowClockwise size={12} className="mr-1" />
                             {t("common:actions.retry")}
-                          </NotionButton>
+                          </DsButton>
                         )}
                         {onViewAuditLog && (
-                          <NotionButton
+                          <DsButton
                             variant="ghost"
                             size="sm"
                             onClick={onViewAuditLog}
@@ -475,7 +480,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                           >
                             <FileText size={12} className="mr-1" />
                             {t("data:governance.view_audit_log")}
-                          </NotionButton>
+                          </DsButton>
                         )}
                       </div>
                     </div>
@@ -513,10 +518,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
           {conflicts.needs_migration && (
             <p className="text-xs text-amber-700">
-              {t("data:governance.schema_mismatch_needs_migration", {
-                defaultValue:
-                  "检测到 Schema 不匹配，请先完成迁移后再执行冲突解决。",
-              })}
+              {t("data:governance.schema_mismatch_needs_migration")}
             </p>
           )}
 
@@ -527,7 +529,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
           {/* 冲突解决策略 */}
           <div className="flex flex-wrap gap-2 pt-2">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts("keep_local")}
@@ -535,8 +537,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.keep_local")}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts("use_cloud")}
@@ -544,8 +546,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.use_cloud")}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts("keep_latest")}
@@ -553,8 +555,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.keep_latest")}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => onResolveConflicts("manual")}
@@ -562,7 +564,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.manual")}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}

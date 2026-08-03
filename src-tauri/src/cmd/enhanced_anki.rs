@@ -8,9 +8,73 @@ use crate::models::{
 };
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tauri::{State, Window};
 
 type Result<T> = std::result::Result<T, AppError>;
+
+fn has_valid_cloze_marker(text: &str) -> bool {
+    let mut search_from = 0usize;
+    while let Some(relative_start) = text[search_from..].find("{{c") {
+        let number_start = search_from + relative_start + 3;
+        let digit_count = text[number_start..]
+            .bytes()
+            .take_while(u8::is_ascii_digit)
+            .count();
+        if digit_count == 0 {
+            search_from = number_start;
+            continue;
+        }
+        let number_end = number_start + digit_count;
+        let Ok(number) = text[number_start..number_end].parse::<u64>() else {
+            search_from = number_end;
+            continue;
+        };
+        if number == 0 || !text[number_end..].starts_with("::") {
+            search_from = number_end;
+            continue;
+        }
+        let answer_start = number_end + 2;
+        let remainder = &text[answer_start..];
+        let Some(relative_close) = remainder.find("}}") else {
+            return false;
+        };
+        if let Some(relative_nested) = remainder.find("{{c") {
+            if relative_nested < relative_close {
+                search_from = answer_start + relative_nested;
+                continue;
+            }
+        }
+        let body = &remainder[..relative_close];
+        let answer = body.split_once("::").map_or(body, |(answer, _)| answer);
+        if !answer.trim().is_empty() {
+            return true;
+        }
+        search_from = answer_start + relative_close + 2;
+    }
+    false
+}
+
+fn has_valid_cloze_text(card: &crate::models::AnkiCard) -> bool {
+    card.text.as_deref().is_some_and(has_valid_cloze_marker)
+        || card.extra_fields.iter().any(|(field, value)| {
+            field.trim().eq_ignore_ascii_case("text") && has_valid_cloze_marker(value)
+        })
+        || has_valid_cloze_marker(&card.front)
+}
+
+fn validate_anki_card_update(card: &crate::models::AnkiCard) -> Result<()> {
+    if has_valid_cloze_text(card) {
+        return Ok(());
+    }
+    if card.front.trim().is_empty() {
+        return Err(AppError::validation("卡片正面不能为空"));
+    }
+    if card.back.trim().is_empty() {
+        return Err(AppError::validation("卡片背面不能为空"));
+    }
+    Ok(())
+}
 
 // ★ 2026-02 清理：以下内联 JSON 清理函数已随 extract_memories_from_chat 一起删除
 // - clean_ai_response_for_json_inline
@@ -171,7 +235,7 @@ pub async fn get_document_tasks(
     println!("获取文档任务列表: {}", documentId);
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -187,8 +251,10 @@ pub async fn get_task_cards(
 ) -> Result<Vec<crate::models::AnkiCard>> {
     println!("🃏 获取任务卡片: {}", task_id);
 
+    // 统一使用 Anki 专属数据库句柄（与制卡写入路径一致），
+    // 避免未来拆库时读写落在不同数据库
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -204,16 +270,11 @@ pub async fn update_anki_card(
 ) -> Result<()> {
     println!("更新ANKI卡片: {}", card.id);
 
-    // 验证卡片数据
-    if card.front.trim().is_empty() {
-        return Err(AppError::validation("卡片正面不能为空"));
-    }
-    if card.back.trim().is_empty() {
-        return Err(AppError::validation("卡片背面不能为空"));
-    }
+    // Cloze 的 Text 是有效内容，Extra/back 可以为空；Basic 仍需完整正反面。
+    validate_anki_card_update(&card)?;
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -232,7 +293,7 @@ pub async fn delete_anki_card(card_id: String, state: State<'_, AppState>) -> Re
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -251,7 +312,7 @@ pub async fn delete_document_task(task_id: String, state: State<'_, AppState>) -
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -274,7 +335,7 @@ pub async fn delete_document_session(
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -302,7 +363,7 @@ pub async fn export_apkg_for_selection(
     }
 
     let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
-        state.database.clone(),
+        state.anki_database.clone(),
         state.llm_manager.clone(),
     );
 
@@ -323,13 +384,74 @@ pub async fn get_document_cards(
 ) -> Result<Vec<crate::models::AnkiCard>> {
     println!("获取文档的所有卡片: {}", documentId);
 
-    let cards = state
-        .anki_database
-        .get_cards_for_document(&documentId)
-        .map_err(|e| AppError::database(format!("获取文档卡片失败: {}", e)))?;
+    let cards = crate::anki::AnkiCardRepository::list_by_document(
+        state.anki_database.as_ref(),
+        &documentId,
+    )
+    .map_err(|e| AppError::database(format!("获取文档卡片失败: {}", e)))?;
 
     println!("找到 {} 张卡片", cards.len());
     Ok(cards)
+}
+
+fn build_anki_library_list_response(
+    items: Vec<crate::models::AnkiLibraryCard>,
+    page: u32,
+    page_size: u32,
+    total: u64,
+    review_states: Vec<crate::fsrs_review_service::FsrsAgentReviewStateSnapshot>,
+) -> Result<serde_json::Value> {
+    let mut reviews_by_card = review_states
+        .into_iter()
+        .map(|state| (state.anki_card_id.clone(), state))
+        .collect::<HashMap<_, _>>();
+
+    let items = items
+        .into_iter()
+        .map(|item| {
+            let card_id = item.card.id.clone();
+            let version = item.card.updated_at.clone();
+            let review_state = reviews_by_card.remove(&card_id);
+            let review_version = review_state.as_ref().map(|state| state.review_version);
+            let latest_review = review_state.and_then(|state| {
+                state.latest_review.map(|latest| {
+                    serde_json::json!({
+                        "logId": latest.log_id,
+                        "reviewedAt": chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                            latest.review_ms,
+                        )
+                        .map(|timestamp| timestamp.to_rfc3339()),
+                        "rating": latest.rating,
+                        "undoable": latest.undoable,
+                    })
+                })
+            });
+            let mut value = serde_json::to_value(item)
+                .map_err(|error| AppError::internal(format!("序列化卡片库条目失败: {error}")))?;
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| AppError::internal("卡片库条目序列化结果不是对象"))?;
+            object.insert("version".to_string(), serde_json::Value::String(version));
+            object.insert(
+                "reviewVersion".to_string(),
+                serde_json::to_value(review_version).map_err(|error| {
+                    AppError::internal(format!("序列化卡片复习版本失败: {error}"))
+                })?,
+            );
+            object.insert(
+                "latestReview".to_string(),
+                latest_review.unwrap_or(serde_json::Value::Null),
+            );
+            Ok(value)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(serde_json::json!({
+        "items": items,
+        "page": page,
+        "pageSize": page_size,
+        "total": total,
+    }))
 }
 
 /// 分页查询卡片库（Prompt C）
@@ -337,7 +459,7 @@ pub async fn get_document_cards(
 pub async fn list_anki_library_cards(
     request: crate::models::ListAnkiCardsRequest,
     state: State<'_, AppState>,
-) -> Result<crate::models::AnkiCardListResponse> {
+) -> Result<serde_json::Value> {
     let page = request.page.unwrap_or(1).max(1);
     let page_size = request.page_size.unwrap_or(12).clamp(1, 200);
     let (items, total) = state
@@ -351,12 +473,21 @@ pub async fn list_anki_library_cards(
         )
         .map_err(|e| AppError::database(format!("获取卡片库失败: {}", e)))?;
 
-    Ok(crate::models::AnkiCardListResponse {
-        items,
-        page,
-        page_size,
-        total,
-    })
+    let card_ids = items
+        .iter()
+        .map(|item| item.card.id.clone())
+        .collect::<Vec<_>>();
+    let review_service =
+        crate::fsrs_review_service::FsrsReviewService::new(state.anki_database.clone());
+    let mut review_states = Vec::with_capacity(card_ids.len());
+    for chunk in card_ids.chunks(100) {
+        review_states.extend(
+            review_service
+                .get_review_states_for_library(crate::database::AnkiLibraryScope::agent(), chunk)?,
+        );
+    }
+
+    build_anki_library_list_response(items, page, page_size, total, review_states)
 }
 
 /// 🔧 Phase 1: 恢复卡住的制卡任务（崩溃恢复）
@@ -431,6 +562,31 @@ pub async fn get_anki_stats(state: State<'_, AppState>) -> Result<serde_json::Va
         .anki_database
         .get_anki_stats()
         .map_err(|e| AppError::database(format!("获取统计失败: {}", e)))
+}
+
+/// 为 document_id 写入 source_session_id（任务台跳回聊天）
+///
+/// 仅在 source_session_id 为空时写入，避免覆盖已有来源。
+#[tauri::command]
+#[allow(non_snake_case)] // Tauri 前端传入 camelCase 参数名
+pub async fn set_document_session_source(
+    documentId: String,
+    sessionId: String,
+    state: State<'_, AppState>,
+) -> Result<()> {
+    let document_id = documentId.trim();
+    let session_id = sessionId.trim();
+    if document_id.is_empty() {
+        return Err(AppError::validation("documentId 不能为空".to_string()));
+    }
+    if session_id.is_empty() {
+        return Err(AppError::validation("sessionId 不能为空".to_string()));
+    }
+
+    state
+        .anki_database
+        .set_document_session_source(document_id, session_id)
+        .map_err(|e| AppError::database(format!("设置文档来源会话失败: {}", e)))
 }
 
 /// 导出/下载卡片库
@@ -636,3 +792,145 @@ pub async fn mark_pending_memory_candidates_saved(
 // - build_memory_extraction_prompt
 // - parse_memory_candidates
 // - coerce_value_to_memory_candidates
+
+#[cfg(test)]
+mod tests {
+    use crate::fsrs_review_service::{FsrsAgentLatestReviewSnapshot, FsrsAgentReviewStateSnapshot};
+    use crate::models::{AnkiCard, AnkiLibraryCard};
+    use std::collections::HashMap;
+
+    fn validation_card(front: &str, back: &str, text: Option<&str>) -> AnkiCard {
+        AnkiCard {
+            front: front.to_string(),
+            back: back.to_string(),
+            text: text.map(str::to_string),
+            tags: Vec::new(),
+            images: Vec::new(),
+            id: "card-validation".to_string(),
+            task_id: "task-validation".to_string(),
+            is_error_card: false,
+            error_content: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            extra_fields: HashMap::new(),
+            template_id: None,
+        }
+    }
+
+    fn library_card(id: &str, updated_at: &str, enqueued: bool) -> AnkiLibraryCard {
+        AnkiLibraryCard {
+            card: AnkiCard {
+                id: id.to_string(),
+                updated_at: updated_at.to_string(),
+                ..validation_card("front", "back", None)
+            },
+            source_type: Some("chatanki".to_string()),
+            source_id: Some("document-1".to_string()),
+            state_id: enqueued.then(|| format!("state-{id}")),
+            state: enqueued.then_some(0),
+            due_ms: enqueued.then_some(1_784_000_000_000),
+            suspended: false,
+            enqueued,
+            is_due: enqueued,
+        }
+    }
+
+    #[test]
+    fn library_list_response_exposes_independent_content_and_review_versions() {
+        let response = super::build_anki_library_list_response(
+            vec![
+                library_card("card-reviewed", "content-v2", true),
+                library_card("card-unenqueued", "content-v1", false),
+            ],
+            2,
+            20,
+            22,
+            vec![FsrsAgentReviewStateSnapshot {
+                anki_card_id: "card-reviewed".to_string(),
+                card_state_id: "state-card-reviewed".to_string(),
+                state: 0,
+                suspended: false,
+                due_ms: 1_784_000_000_000,
+                last_review_ms: Some(1_783_999_000_000),
+                review_version: 7,
+                latest_review: Some(FsrsAgentLatestReviewSnapshot {
+                    log_id: "log-7".to_string(),
+                    rating: 3,
+                    review_ms: 1_783_999_000_000,
+                    undoable: true,
+                }),
+            }],
+        )
+        .expect("library response");
+
+        assert_eq!(response["page"], 2);
+        assert_eq!(response["pageSize"], 20);
+        assert_eq!(response["total"], 22);
+        assert_eq!(response["items"][0]["version"], "content-v2");
+        assert_eq!(response["items"][0]["reviewVersion"], 7);
+        assert_eq!(response["items"][0]["latestReview"]["logId"], "log-7");
+        assert_eq!(response["items"][0]["latestReview"]["rating"], 3);
+        assert_eq!(response["items"][0]["latestReview"]["undoable"], true);
+        assert!(response["items"][0]["latestReview"]["reviewedAt"].is_string());
+        assert_eq!(response["items"][1]["version"], "content-v1");
+        assert!(response["items"][1]["reviewVersion"].is_null());
+        assert!(response["items"][1]["latestReview"].is_null());
+    }
+
+    #[test]
+    fn valid_cloze_text_allows_an_empty_back() {
+        let card = validation_card(
+            "The {{c1::answer}} remains editable",
+            "",
+            Some("The {{c1::answer}} remains editable"),
+        );
+        assert!(super::has_valid_cloze_text(&card));
+        assert!(super::validate_anki_card_update(&card).is_ok());
+
+        let mut custom_fields = validation_card("", "", None);
+        custom_fields.extra_fields.insert(
+            "Text".to_string(),
+            "Multiple {{c2::deletions::hint}} work".to_string(),
+        );
+        assert!(super::has_valid_cloze_text(&custom_fields));
+        assert!(super::validate_anki_card_update(&custom_fields).is_ok());
+    }
+
+    #[test]
+    fn malformed_or_empty_cloze_text_does_not_bypass_basic_validation() {
+        for text in ["plain text", "{{c0::zero}}", "{{c1::}}", "{{c1::open"] {
+            let card = validation_card(text, "", Some(text));
+            assert!(
+                !super::has_valid_cloze_text(&card),
+                "unexpectedly valid: {text}"
+            );
+            assert_eq!(
+                super::validate_anki_card_update(&card)
+                    .expect_err("invalid Cloze cannot bypass Basic validation")
+                    .message,
+                "卡片背面不能为空"
+            );
+        }
+    }
+
+    #[test]
+    fn get_document_tasks_uses_anki_database() {
+        let source = include_str!("enhanced_anki.rs");
+        let function = source
+            .split_once("pub async fn get_document_tasks(")
+            .expect("get_document_tasks command must exist")
+            .1
+            .split_once("pub async fn get_task_cards(")
+            .expect("get_task_cards command must follow get_document_tasks")
+            .0;
+
+        assert!(
+            function.contains("state.anki_database.clone()"),
+            "get_document_tasks must read document_tasks from the Anki database"
+        );
+        assert!(
+            !function.contains("state.database.clone()"),
+            "get_document_tasks must not fall back to the legacy primary database"
+        );
+    }
+}

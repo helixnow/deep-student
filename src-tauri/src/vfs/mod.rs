@@ -34,11 +34,15 @@ pub mod lance_store;
 pub mod multimodal_service;
 pub mod ocr_utils;
 pub mod pdf_processing_service;
+pub mod pomodoro_handlers;
 pub mod ref_handlers;
 pub mod repos;
+pub mod retrieval_planner;
 pub mod todo_handlers;
 pub mod types;
+pub mod unified_retriever;
 pub mod unit_builder;
+pub mod upload_saga;
 
 pub use database::{VfsDatabase, VfsDatabaseStats, VfsPool, VfsPooledConnection};
 pub use embedding_service::{
@@ -71,7 +75,17 @@ pub use repos::{
     VfsMindMapRepo, VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo, VfsTextbookRepo, VfsTodoRepo,
     VfsTranslationRepo,
 };
+pub use retrieval_planner::{
+    fuse_route_results, plan_generation, plan_retrieval, ActiveGenerationModel, CapabilityKind,
+    CapabilitySnapshot, CapabilityState, FusedRetrievalHit, FusedRetrievalResult, GenerationPlan,
+    GenerationRoute, IndexProfileCapability, PlannedRetrievalRoute, QueryModality, RetrievalHit,
+    RetrievalHitProvenance, RetrievalIdentity, RetrievalPlan, RetrievalRouteFailure,
+    RetrievalRouteKind, RetrievalRouteResult,
+};
 pub use types::*;
+pub use unified_retriever::{
+    UnifiedRetrievalRequest, UnifiedRetrievalResponse, VfsUnifiedRetriever,
+};
 
 // 统一文本抽取策略（供 DSTU 等其他模块调用）
 pub use ref_handlers::extract_file_text_with_strategy;

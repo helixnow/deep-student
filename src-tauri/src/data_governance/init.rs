@@ -31,7 +31,7 @@ use tracing::{debug, error, info};
 use crate::data_governance::audit::AuditError;
 use crate::data_governance::migration::{MigrationCoordinator, MigrationError};
 use crate::data_governance::schema_registry::SchemaRegistry;
-use crate::data_governance::DataGovernanceError;
+use crate::data_governance::{DataGovernanceError, StartupComponentHealth};
 
 /// 初始化结果
 pub struct InitializationResult {
@@ -41,6 +41,8 @@ pub struct InitializationResult {
     pub report: InitializationReport,
     /// 审计数据库连接（用于注册到 State）
     pub audit_db: Option<crate::data_governance::audit::AuditDatabase>,
+    /// Stable per-component startup health, including safely isolated failures.
+    pub component_health: StartupComponentHealth,
 }
 
 impl std::fmt::Debug for InitializationResult {
@@ -49,6 +51,7 @@ impl std::fmt::Debug for InitializationResult {
             .field("registry", &self.registry)
             .field("report", &self.report)
             .field("audit_db", &self.audit_db.is_some())
+            .field("component_health", &self.component_health)
             .finish()
     }
 }
@@ -140,6 +143,7 @@ pub fn initialize_with_report(
 ) -> Result<InitializationResult, DataGovernanceError> {
     let start = Instant::now();
     let mut report = InitializationReport::new();
+    let mut audit_warning: Option<String> = None;
 
     info!(
         app_data_dir = %app_data_dir.display(),
@@ -149,7 +153,7 @@ pub fn initialize_with_report(
     // 步骤 1: 确保数据目录存在
     ensure_directories(app_data_dir)?;
 
-    // 步骤 2: 初始化审计日志（fail-close）
+    // 步骤 2: 初始化审计日志。审计是独立组件，失败时仅降级审计能力。
     let audit_db = match initialize_audit_log(app_data_dir) {
         Ok(db) => {
             report.audit_initialized = true;
@@ -157,19 +161,27 @@ pub fn initialize_with_report(
             Some(db)
         }
         Err(e) => {
-            error!(error = %e, "审计日志初始化失败，终止启动");
-            return Err(DataGovernanceError::Backup(format!(
-                "审计日志初始化失败: {}",
-                e
-            )));
+            let warning = format!("审计日志初始化失败: {}", e);
+            error!(error = %e, "审计日志初始化失败，以降级模式继续");
+            report.add_warning(warning.clone());
+            audit_warning = Some(warning);
+            None
         }
     };
 
-    // 步骤 3: 运行数据库迁移（fail-close）
+    // 步骤 3: 运行数据库迁移。全局预检/快照错误仍会返回 Err；
+    // 可安全隔离的单库错误由 MigrationReport 表达。
     let mut coordinator = MigrationCoordinator::new(app_data_dir.to_path_buf());
+    if audit_db.is_none() {
+        coordinator = coordinator.with_audit_db(None);
+    }
     let migration_report = coordinator
         .run_all()
         .map_err(DataGovernanceError::Migration)?;
+    let mut component_health = migration_report.component_health.clone();
+    if let Some(warning) = audit_warning {
+        component_health.mark_degraded("audit", warning);
+    }
 
     report.migrations_success = migration_report.success;
     report.migrations_applied = migration_report
@@ -184,10 +196,11 @@ pub fn initialize_with_report(
         "数据库迁移完成"
     );
 
-    // 步骤 4: 聚合 Schema 状态（fail-close）
-    let registry = coordinator
-        .aggregate_schema_registry()
+    // 步骤 4: 聚合可用数据库的 Schema 状态；单库读取错误继续隔离。
+    let mut registry = coordinator
+        .aggregate_schema_registry_with_health(&mut component_health)
         .map_err(DataGovernanceError::Migration)?;
+    component_health.apply_database_dependency_closure();
 
     info!(
         global_version = registry.global_version,
@@ -195,15 +208,34 @@ pub fn initialize_with_report(
         "Schema 状态聚合完成"
     );
 
-    // 步骤 5: 验证依赖关系（fail-close）
+    // 步骤 5: 验证部分 Registry。依赖问题转化为组件阻断，而非全局错误。
     if let Err(e) = registry.check_dependencies() {
-        error!(error = %e, "依赖关系检查失败，终止启动");
-        return Err(DataGovernanceError::Migration(
-            MigrationError::DependencyNotSatisfied {
-                database: "schema_registry".to_string(),
-                dependency: e.to_string(),
-            },
-        ));
+        error!(error = %e, "依赖关系检查失败，以部分 Registry 继续");
+        if let crate::data_governance::schema_registry::SchemaRegistryError::DependencyNotSatisfied {
+            database,
+            missing_dependency,
+        } = &e
+        {
+            component_health.mark_dependency_blocked(
+                database.as_str(),
+                missing_dependency.as_str(),
+                e.to_string(),
+            );
+            registry.databases.remove(database);
+            registry.global_version = registry.calculate_global_version();
+        }
+        report.add_warning(format!("Schema dependency validation degraded: {}", e));
+    }
+
+    for issue in component_health.issues() {
+        if issue.component != "audit" {
+            let warning = issue
+                .reason
+                .unwrap_or_else(|| format!("{} startup degraded", issue.component));
+            if !report.warnings.contains(&warning) {
+                report.add_warning(warning);
+            }
+        }
     }
 
     report.total_duration_ms = start.elapsed().as_millis() as u64;
@@ -218,6 +250,7 @@ pub fn initialize_with_report(
         registry,
         report,
         audit_db,
+        component_health,
     })
 }
 

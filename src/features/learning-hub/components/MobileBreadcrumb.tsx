@@ -10,9 +10,16 @@
 
 import React, { useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CaretRight } from '@phosphor-icons/react';
 import type { BreadcrumbItem } from '../stores/finderStore';
+
+/**
+ * 触屏面包屑命中区扩展：padding 撑出 ≥40px 高的点击热区，
+ * 负 margin 抵消占位，标题行排版与桌面完全一致（r3 建议后续#5）。
+ */
+const CRUMB_TOUCH_HIT_CLASS =
+  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!-mx-1.5 [@media(pointer:coarse)]:!-my-2.5';
 
 export interface MobileBreadcrumbProps {
   /** 根目录标题 */
@@ -84,7 +91,8 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
     observer.observe(container);
 
     return () => observer.disconnect();
-  }, [checkOverflow, breadcrumbs]);
+    // rootTitle 变化也会影响测量宽度，需要重新检测
+  }, [checkOverflow, breadcrumbs, rootTitle]);
 
   // 如果没有面包屑，只显示根目录标题
   if (breadcrumbs.length === 0) {
@@ -109,10 +117,10 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
         )}
         aria-hidden={displayMode !== 'full'}
       >
-        {/* 根目录 */}
-        <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className="!h-auto !p-0 hover:text-primary truncate max-w-[120px]">
+        {/* 根目录（触屏用 padding+负 margin 扩大命中区，视觉排版不变） */}
+        <DsButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className={cn('!h-auto !p-0 hover:text-primary truncate max-w-[120px]', CRUMB_TOUCH_HIT_CLASS)}>
           {rootTitle}
-        </NotionButton>
+        </DsButton>
 
         {/* 面包屑路径 */}
         {breadcrumbs.map((item, index) => (
@@ -123,9 +131,9 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
               <span className="truncate max-w-[120px]">{item.name}</span>
             ) : (
               // 中间层级（可点击）
-              <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(index)} className="!h-auto !p-0 hover:text-primary truncate max-w-[120px]">
+              <DsButton variant="ghost" size="sm" onClick={() => onNavigate?.(index)} className={cn('!h-auto !p-0 hover:text-primary truncate max-w-[120px]', CRUMB_TOUCH_HIT_CLASS)}>
                 {item.name}
-              </NotionButton>
+              </DsButton>
             )}
           </React.Fragment>
         ))}
@@ -141,11 +149,21 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
           )}
           aria-hidden={displayMode !== 'collapsed'}
         >
-          <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className="!h-auto !p-0 hover:text-primary truncate max-w-[80px]">
+          <DsButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className={cn('!h-auto !p-0 hover:text-primary truncate max-w-[80px]', CRUMB_TOUCH_HIT_CLASS)}>
             {rootTitle}
-          </NotionButton>
+          </DsButton>
           <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
-          <span className="text-muted-foreground">…</span>
+          {/* 折叠层级入口：点击回到上一级（被折叠的最近层级），对齐 FinderToolbar 的 … 按钮 */}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => onNavigate?.(breadcrumbs.length - 2)}
+            className={cn('!h-auto !p-0 text-muted-foreground hover:text-primary', CRUMB_TOUCH_HIT_CLASS)}
+            title={breadcrumbs[breadcrumbs.length - 2]?.name}
+            aria-label={breadcrumbs[breadcrumbs.length - 2]?.name || '…'}
+          >
+            …
+          </DsButton>
           <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
           <span className="truncate max-w-[140px]">{currentFolder.name}</span>
         </div>

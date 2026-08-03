@@ -44,6 +44,9 @@ pub struct NoteAppendArgs {
     /// 可选：追加到指定章节末尾
     #[serde(default)]
     pub section: Option<String>,
+    /// note_read 返回的 OCC 基线
+    #[serde(rename = "expected_updated_at", alias = "expectedUpdatedAt")]
+    pub expected_updated_at: String,
 }
 
 /// note_replace 工具参数
@@ -59,6 +62,9 @@ pub struct NoteReplaceArgs {
     /// 是否使用正则表达式
     #[serde(default)]
     pub is_regex: bool,
+    /// note_read 返回的 OCC 基线
+    #[serde(rename = "expected_updated_at", alias = "expectedUpdatedAt")]
+    pub expected_updated_at: String,
 }
 
 /// note_set 工具参数
@@ -69,6 +75,9 @@ pub struct NoteSetArgs {
     pub note_id: String,
     /// 新的完整内容
     pub content: String,
+    /// note_read 返回的 OCC 基线
+    #[serde(rename = "expected_updated_at", alias = "expectedUpdatedAt")]
+    pub expected_updated_at: String,
 }
 
 /// note_create 工具参数
@@ -83,6 +92,9 @@ pub struct NoteCreateArgs {
     /// 标签列表（可选）
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    /// 目标文件夹 ID（可选；None 表示根目录）
+    #[serde(default, rename = "folder_id", alias = "folderId")]
+    pub folder_id: Option<String>,
 }
 
 /// note_create 工具结果
@@ -111,6 +123,8 @@ pub struct NoteReadResult {
     pub word_count: usize,
     /// 是否为章节内容
     pub is_section: bool,
+    /// 下一次写入必须携带的 OCC 基线
+    pub updated_at: String,
 }
 
 /// 追加结果
@@ -156,7 +170,7 @@ impl NoteReadTool {
 
     /// 工具描述
     pub fn description() -> &'static str {
-        "读取笔记的内容。可指定 noteId 读取特定笔记，或指定 section 只读取特定章节。"
+        "读取笔记内容和 updatedAt OCC 基线。写入前必须完整读取并原样传递该版本。"
     }
 
     /// 工具 schema（OpenAI Function Calling 格式）
@@ -196,7 +210,7 @@ impl NoteAppendTool {
 
     /// 工具描述
     pub fn description() -> &'static str {
-        "追加内容到笔记末尾。可指定 noteId 操作特定笔记，或指定 section 追加到特定章节。"
+        "追加内容到笔记末尾。必须先 note_read，并传入 expected_updated_at。"
     }
 
     /// 工具 schema
@@ -220,9 +234,15 @@ impl NoteAppendTool {
                         "section": {
                             "type": "string",
                             "description": "要追加到的章节标题（如 '## 代码实现'）。不指定则追加到末尾。"
+                        },
+                        "expected_updated_at": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "note_read 返回的 updatedAt OCC 基线"
                         }
                     },
-                    "required": ["content"]
+                    "required": ["content", "expected_updated_at"],
+                    "additionalProperties": false
                 }
             }
         })
@@ -240,7 +260,7 @@ impl NoteReplaceTool {
 
     /// 工具描述
     pub fn description() -> &'static str {
-        "替换笔记中的内容。可指定 noteId 操作特定笔记。支持普通文本和正则表达式。"
+        "替换笔记中的内容。必须先 note_read，并传入 expected_updated_at。"
     }
 
     /// 工具 schema
@@ -268,9 +288,15 @@ impl NoteReplaceTool {
                         "isRegex": {
                             "type": "boolean",
                             "description": "是否使用正则表达式（默认 false）"
+                        },
+                        "expected_updated_at": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "note_read 返回的 updatedAt OCC 基线"
                         }
                     },
-                    "required": ["search", "replace"]
+                    "required": ["search", "replace", "expected_updated_at"],
+                    "additionalProperties": false
                 }
             }
         })
@@ -288,7 +314,7 @@ impl NoteSetTool {
 
     /// 工具描述
     pub fn description() -> &'static str {
-        "设置笔记的完整内容。可指定 noteId 操作特定笔记。⚠️ 谨慎使用，会覆盖原有内容。"
+        "设置笔记完整内容。必须先 note_read 并传入 expected_updated_at。⚠️ 会覆盖原内容。"
     }
 
     /// 工具 schema
@@ -308,9 +334,15 @@ impl NoteSetTool {
                         "content": {
                             "type": "string",
                             "description": "笔记的新完整内容（支持 Markdown 格式）"
+                        },
+                        "expected_updated_at": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "note_read 返回的 updatedAt OCC 基线"
                         }
                     },
-                    "required": ["content"]
+                    "required": ["content", "expected_updated_at"],
+                    "additionalProperties": false
                 }
             }
         })
@@ -357,9 +389,14 @@ impl NoteCreateTool {
                             "type": "array",
                             "items": { "type": "string" },
                             "description": "标签列表（可选）"
+                        },
+                        "folder_id": {
+                            "type": "string",
+                            "description": "目标文件夹 ID（可选；省略表示根目录）"
                         }
                     },
-                    "required": ["title"]
+                    "required": ["title"],
+                    "additionalProperties": false
                 }
             }
         })
@@ -820,12 +857,35 @@ mod tests {
     }
 
     #[test]
+    fn note_write_schemas_require_occ_baseline() {
+        for schema in [
+            NoteAppendTool.schema(),
+            NoteReplaceTool.schema(),
+            NoteSetTool.schema(),
+        ] {
+            let parameters = &schema["function"]["parameters"];
+            let required = parameters["required"].as_array().expect("required array");
+            assert!(required
+                .iter()
+                .any(|value| value.as_str() == Some("expected_updated_at")));
+            assert_eq!(parameters["additionalProperties"], false);
+            assert_eq!(
+                parameters["properties"]["expected_updated_at"]["minLength"],
+                1
+            );
+        }
+    }
+
+    #[test]
     fn test_note_create_schema_has_required_title() {
         let schema = NoteCreateTool.schema();
         let function = schema.get("function").unwrap();
         let parameters = function.get("parameters").unwrap();
         let required = parameters.get("required").unwrap().as_array().unwrap();
         assert!(required.iter().any(|v| v.as_str() == Some("title")));
+        assert_eq!(parameters["properties"]["folder_id"]["type"], "string");
+        assert_eq!(parameters["properties"]["tags"]["type"], "array");
+        assert_eq!(parameters["additionalProperties"], false);
     }
 
     #[test]

@@ -4,9 +4,11 @@
 
 // 声明所有子模块，以便在 crate 内可见
 pub mod adapters;
+pub mod anki;
 pub mod anki_connect_service;
 #[allow(dead_code)]
 pub mod apkg_exporter_service;
+pub mod apkg_importer_service;
 #[allow(dead_code)]
 pub mod backup_job_manager;
 pub mod batch_operations;
@@ -24,17 +26,21 @@ pub mod debug_commands;
 pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
 pub mod debug_logger;
 
-pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
+pub mod anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿，非 UI 主线程 ANR，见模块文档）
 pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
+pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
 #[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
+#[allow(dead_code)]
+pub mod cloud_config_commands;
 #[allow(dead_code)]
 pub mod cloud_storage;
 pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
+pub mod diagnostics;
 #[allow(dead_code)]
 pub mod document_parser;
 pub mod document_processing_service;
@@ -48,6 +54,8 @@ pub mod exam_sheet_service;
 pub mod feature_flags;
 pub mod figure_extractor;
 pub mod file_manager;
+pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
+pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod injection_budget;
 pub mod json_validator;
 #[allow(dead_code)]
@@ -56,6 +64,7 @@ pub mod lance_vector_store;
 pub mod llm_manager;
 pub mod llm_structurer;
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
+pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
 #[cfg(feature = "mcp")]
 pub mod mcp;
 #[allow(dead_code)]
@@ -69,11 +78,13 @@ pub mod notes_exporter;
 pub mod notes_manager;
 pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
 pub mod ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
+pub mod openai_codex;
 pub mod package_manager;
 pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
+pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub mod providers;
 pub mod qbank_grading;
 #[allow(dead_code)]
@@ -82,14 +93,18 @@ pub mod question_export_service;
 #[allow(dead_code)]
 pub mod question_import_service;
 pub mod question_sync_service;
+pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
+pub mod secret_prompt;
 pub mod secure_store;
 pub mod services;
 pub mod spaced_repetition;
 pub mod startup_cleanup;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
+pub mod system_notification;
+pub mod system_permissions;
 #[allow(dead_code)]
 pub mod test_utils;
 pub mod textbooks_db;
@@ -126,11 +141,7 @@ use std::sync::OnceLock;
 use tokio::sync::{Mutex, RwLock};
 // Register Tauri plugins for dialog, opener and http
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_dialog;
-use tauri_plugin_fs;
-use tauri_plugin_http;
-use tauri_plugin_log::{Target, TargetKind};
-use tauri_plugin_opener;
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 // Sentry for Rust (后端)
 use sentry::ClientInitGuard;
 use tracing::{debug, error, info, warn};
@@ -144,6 +155,79 @@ pub fn set_global_app_handle(app_handle: AppHandle) {
 
 pub fn get_global_app_handle() -> Option<&'static AppHandle> {
     GLOBAL_APP_HANDLE.get()
+}
+
+pub struct BackendSentryState(std::sync::Arc<std::sync::Mutex<Option<ClientInitGuard>>>);
+
+fn init_backend_sentry_client() -> Option<ClientInitGuard> {
+    let configured_dsn = std::env::var("SENTRY_DSN")
+        .ok()
+        .or_else(|| option_env!("SENTRY_DSN").map(str::to_string));
+    let raw_dsn = match configured_dsn {
+        Some(value) if !value.trim().is_empty() => value,
+        _ => {
+            warn!("[Sentry] user consent is enabled, but backend DSN is not configured");
+            return None;
+        }
+    };
+    let dsn = match raw_dsn.parse::<sentry::types::Dsn>() {
+        Ok(value) => value,
+        Err(_) => {
+            warn!("[Sentry] backend DSN is invalid; error reporting remains disabled");
+            return None;
+        }
+    };
+    let guard = sentry::init(sentry::ClientOptions {
+        dsn: Some(dsn),
+        release: Some(env!("SENTRY_RELEASE").into()),
+        send_default_pii: false,
+        // Panic/ANR are captured explicitly through Hub::main so consent can be
+        // changed at runtime without stale thread-local integrations.
+        default_integrations: false,
+        ..Default::default()
+    });
+    sentry::Hub::main().bind_client(sentry::Hub::current().client());
+    info!("[Sentry] backend error reporting enabled by user consent");
+    Some(guard)
+}
+
+mod backend_sentry_command {
+    use super::{init_backend_sentry_client, BackendSentryState};
+    use log::info;
+
+    #[tauri::command]
+    pub async fn set_backend_sentry_enabled(
+        enabled: bool,
+        state: tauri::State<'_, BackendSentryState>,
+        app_state: tauri::State<'_, crate::commands::AppState>,
+    ) -> Result<bool, String> {
+        let sentry_state = state.0.clone();
+        let database = app_state.database.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut guard = sentry_state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            database
+                .save_setting("sentry_error_reporting_enabled", &enabled.to_string())
+                .map_err(|e| format!("保存错误报告授权失败: {}", e))?;
+            if enabled {
+                if guard.is_none() {
+                    *guard = init_backend_sentry_client();
+                }
+                Ok(guard.is_some())
+            } else {
+                let previous = guard.take();
+                sentry::Hub::main().bind_client(None);
+                sentry::Hub::current().bind_client(None);
+                drop(guard);
+                drop(previous);
+                info!("[Sentry] backend error reporting disabled");
+                Ok(false)
+            }
+        })
+        .await
+        .map_err(|e| format!("更新错误报告授权任务失败: {}", e))?
+    }
 }
 // tracing 日志初始化由 tauri-plugin-log 统一管理
 
@@ -187,35 +271,268 @@ fn prepare_linux_appimage_runtime_env() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // 环境变量在 run() 最前面设置（审阅 34 P2-3 / 19 P2-2）：
+    // 此时 Sentry/tokio/ANR 看门狗等工作线程尚未启动，set_var 不存在
+    // 多线程 getenv 数据竞争；原先放在 setup 闭包里时该前提不成立。
+    // Windows WebView2 参数由 tauri.windows.conf.json 的 additionalBrowserArgs 注入。
+    // ANTI-REGRESSION（2026-07-10）：禁止在此处或 tauri.windows.conf.json 的
+    // additionalBrowserArgs 里加 --disable-gpu / --disable-gpu-compositing /
+    // CalculateNativeWinOcclusion。OS 模式 translate3d 拖窗依赖 GPU 合成；
+    // 全局软件渲染会造成固定起拖卡顿。仅保留 OOUI/SmartScreen 相关 disable-features；
+    // 显卡级问题用设备白名单回退，勿全局禁用。macOS/Linux 无此开关，勿在平台 conf 仿写。
+
+    // 始终开启 Rust backtrace，便于 crash 日志定位
+    std::env::set_var("RUST_BACKTRACE", "1");
+
+    // 默认压降第三方过度详细的日志（可用 RUST_LOG 覆盖）
+    if std::env::var("RUST_LOG").is_err() {
+        // info 级别，且降低 lance/lancedb 噪声
+        std::env::set_var("RUST_LOG", "info,lance=warn,lancedb=warn,tracing=warn");
+    }
+
     #[cfg(target_os = "linux")]
     prepare_linux_appimage_runtime_env();
 
     // 统一使用 tauri-plugin-log 初始化日志系统，避免与 tracing_subscriber/全局 logger 冲突
 
-    // 初始化 Sentry（若有环境变量 SENTRY_DSN）
-    let _sentry_guard: Option<ClientInitGuard> = {
-        let dsn = std::env::var("SENTRY_DSN").ok();
-        dsn.map(|dsn| {
-            let guard = sentry::init((
-                dsn,
-                sentry::ClientOptions {
-                    release: Some(env!("CARGO_PKG_VERSION").into()),
-                    ..Default::default()
-                },
-            ));
-            tracing::info!("sentry initialized");
-            guard
-        })
+    // 构建 Tauri 应用
+    let builder = tauri::Builder::default().on_page_load(|webview, payload| {
+        // 在前端 bundle 执行前安装极小的错误桥，覆盖入口脚本加载失败/白屏。
+        // main.tsx 成功启动后会注销这些监听，再由统一 errorReporter 接管。
+        if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            let _ = webview.eval(
+                r#"
+                (() => {
+                  window.__DSTU_BOOT_DIAGNOSTICS_CLEANUP__?.();
+                  let active = true;
+                  const report = (kind, message, stack, extra) => {
+                    const invoke = window.__TAURI_INTERNALS__?.invoke;
+                    if (!active || typeof invoke !== 'function') return;
+                    void invoke('report_frontend_log', {
+                      payload: {
+                        level: 'ERROR',
+                        kind,
+                        message: String(message || kind),
+                        stack: stack || null,
+                        route: location.hash || location.pathname,
+                        url: location.href,
+                        user_agent: navigator.userAgent,
+                        extra: extra || null,
+                      },
+                    }).catch(() => {});
+                  };
+                  const onError = event => {
+                    const target = event.target;
+                    const resource = target && target !== window
+                      ? (target.src || target.href || target.tagName)
+                      : null;
+                    report(
+                      resource ? 'BOOT_RESOURCE_ERROR' : 'BOOT_WINDOW_ERROR',
+                      event.message || ('Failed to load resource: ' + (resource || 'unknown')),
+                      event.error?.stack,
+                      resource ? { resource } : null,
+                    );
+                  };
+                  const onRejection = event => {
+                    const reason = event.reason;
+                    report(
+                      'BOOT_UNHANDLED_REJECTION',
+                      reason instanceof Error ? reason.message : String(reason),
+                      reason instanceof Error ? reason.stack : null,
+                    );
+                  };
+                  const onCsp = event => {
+                    report(
+                      'BOOT_CSP_VIOLATION',
+                      'CSP blocked ' + event.blockedURI + ' via ' + event.violatedDirective,
+                    );
+                  };
+                  window.addEventListener('error', onError, true);
+                  window.addEventListener('unhandledrejection', onRejection, true);
+                  window.addEventListener('securitypolicyviolation', onCsp, true);
+                  const blankTimer = setTimeout(() => {
+                    const root = document.getElementById('root');
+                    if (!root || root.childElementCount === 0) {
+                      report('BOOT_BLANK_SCREEN', 'Application root is empty after startup timeout');
+                    }
+                  }, 8000);
+                  window.__DSTU_BOOT_DIAGNOSTICS_CLEANUP__ = () => {
+                    active = false;
+                    clearTimeout(blankTimer);
+                    window.removeEventListener('error', onError, true);
+                    window.removeEventListener('unhandledrejection', onRejection, true);
+                    window.removeEventListener('securitypolicyviolation', onCsp, true);
+                    delete window.__DSTU_BOOT_DIAGNOSTICS_CLEANUP__;
+                  };
+                })();
+                "#,
+            );
+        }
+
+        if std::env::var_os("TAURI_LAB_INSTANCE_ID").is_none() {
+            return;
+        }
+
+        info!(
+            "[tauri-lab] page load event: {:?} {}",
+            payload.event(),
+            payload.url()
+        );
+
+        if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            let _ = webview.eval(
+                r#"
+                (() => {
+                  if (window.__TAURI_LAB_BOOT_DIAGNOSTICS__) return;
+                  window.__TAURI_LAB_BOOT_DIAGNOSTICS__ = true;
+                  const report = (level, message, stack) => {
+                    const invoke = window.__TAURI_INTERNALS__?.invoke;
+                    if (typeof invoke !== 'function') return;
+                    void invoke('tauri_lab_frontend_log', {
+                      level,
+                      message: '[bootstrap] ' + message,
+                      stack: stack || null,
+                    }).catch(() => {});
+                  };
+                  const serialize = value => {
+                    if (value instanceof Error) {
+                      return value.name + ': ' + value.message;
+                    }
+                    if (typeof value === 'string') return value;
+                    try {
+                      return JSON.stringify(value);
+                    } catch (_) {
+                      return String(value);
+                    }
+                  };
+                  for (const level of ['warn', 'error']) {
+                    const original = console[level]?.bind(console);
+                    console[level] = (...args) => {
+                      try { original?.(...args); } catch (_) {}
+                      const error = args.find(value => value instanceof Error);
+                      report(
+                        level,
+                        'console.' + level + ': ' + args.map(serialize).join(' '),
+                        error instanceof Error ? error.stack : null,
+                      );
+                    };
+                  }
+                  window.addEventListener('error', event => {
+                    const target = event.target;
+                    const resource = target?.src || target?.href || target?.tagName;
+                    report(
+                      'error',
+                      event.message || ('resource error: ' + (resource || 'unknown')),
+                      event.error?.stack,
+                    );
+                  }, true);
+                  window.addEventListener('unhandledrejection', event => {
+                    const reason = event.reason;
+                    report(
+                      'error',
+                      reason instanceof Error ? reason.message : String(reason),
+                      reason instanceof Error ? reason.stack : null,
+                    );
+                  }, true);
+                  window.addEventListener('securitypolicyviolation', event => {
+                    report(
+                      'error',
+                      'CSP blocked ' + event.blockedURI + ' via ' + event.violatedDirective,
+                    );
+                  }, true);
+                  report('info', 'page started: ' + location.href);
+                  const observeRoot = () => {
+                    const root = document.getElementById('root');
+                    if (!root) return;
+                    new MutationObserver(() => {
+                      report(
+                        'info',
+                        'root mutation children=' + root.childElementCount
+                          + ' html=' + root.innerHTML.slice(0, 240),
+                      );
+                    }).observe(root, { childList: true, subtree: true });
+                  };
+                  if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', observeRoot, { once: true });
+                  } else {
+                    observeRoot();
+                  }
+                  setTimeout(() => {
+                    const root = document.getElementById('root');
+                    const moduleScript = document.querySelector('script[type="module"][src]');
+                    report(
+                      'info',
+                      'ready=' + document.readyState
+                        + ' rootChildren=' + (root?.childElementCount ?? -1)
+                        + ' bodyChildren=' + document.body.childElementCount
+                        + ' moduleSrc=' + (moduleScript?.src || 'missing'),
+                    );
+                    const portal = document.querySelector('body > .fixed.inset-0');
+                    if (portal) {
+                      const style = getComputedStyle(portal);
+                      const rect = portal.getBoundingClientRect();
+                      report(
+                        'info',
+                        'portal opacity=' + style.opacity
+                          + ' display=' + style.display
+                          + ' visibility=' + style.visibility
+                          + ' rect=' + rect.width + 'x' + rect.height
+                          + ' text=' + (portal.textContent || '').slice(0, 160),
+                      );
+                    } else {
+                      report(
+                        'info',
+                        'portal missing bodyHtml=' + document.body.innerHTML.slice(0, 500),
+                      );
+                    }
+                  }, 3000);
+                })();
+                "#,
+            );
+        }
+    });
+
+    // 单实例锁（审阅 34 P1-2，2026-07-08）：防止双开进程共享同一套
+    // SQLite/数据空间（A/B 切换标记、周期自动化调度器、更新器均不可重入）。
+    // 官方要求该插件必须最先注册；仅桌面端启用。
+    // 第二个实例启动时，把已有实例的主窗口带到前台。
+    #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+    let builder = if std::env::var_os("TAURI_LAB_INSTANCE_ID").is_some() {
+        // tauri-lab isolates HOME, bundle id, device id, and metrics per instance.
+        // The plugin keys its lock from the compiled Tauri identifier, so it would
+        // otherwise collapse every isolated E2E instance into the production app.
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
     };
 
-    // 构建 Tauri 应用
-    let builder = tauri::Builder::default()
+    let builder = builder
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init());
+
+    #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+    let builder = builder.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(|app, _shortcut, event| {
+                if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    return;
+                }
+                // 当前应用只注册了快速学习这一个全局快捷键；toggle 内部
+                // 会校验 enabled 设置，关闭后按键不再有任何响应。
+                crate::quick_assistant::toggle(app);
+            })
+            .build(),
+    );
 
     // 桌面端专用：自动更新 + 进程管理（仅 macOS/Windows/Linux）
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
@@ -253,34 +570,35 @@ pub fn run() {
         info!("🔧 [DataGovernance] 数据治理命令将在 invoke_handler 中注册");
     }
 
+    let mut log_plugin_builder = tauri_plugin_log::Builder::new()
+        .clear_targets()
+        .target(Target::new(TargetKind::LogDir {
+            file_name: Some("deep-student".to_string()),
+        }))
+        .max_file_size(10 * 1024 * 1024)
+        .rotation_strategy(RotationStrategy::KeepSome(5))
+        .timezone_strategy(TimezoneStrategy::UseLocal)
+        .level(log::LevelFilter::Info)
+        .level_for("lance", log::LevelFilter::Warn)
+        .level_for("lance_encoding", log::LevelFilter::Warn)
+        .level_for("lance_io", log::LevelFilter::Warn)
+        .level_for("tracing", log::LevelFilter::Warn)
+        .level_for("h2", log::LevelFilter::Warn)
+        .level_for("hyper", log::LevelFilter::Warn)
+        .level_for("rustls", log::LevelFilter::Warn)
+        .level_for("reqwest", log::LevelFilter::Warn)
+        .level_for("deep_student_lib", log::LevelFilter::Info);
+
+    // 调试日志只写 stdout。不要启用 TargetKind::Webview：
+    // 后台日志 emit 与主线程 resize/focus 窗口事件可能争用 WebView 锁，
+    // 形成锁反转并让 Windows 主窗口触发 AppHangB1。
+    #[cfg(debug_assertions)]
+    {
+        log_plugin_builder = log_plugin_builder.target(Target::new(TargetKind::Stdout));
+    }
+
     builder
-        // 统一日志插件：落盘到各平台推荐目录；开发期也输出到 Stdout/Webview
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .clear_targets()
-                // 写入各平台推荐日志目录（记录所有级别）
-                .target(Target::new(TargetKind::LogDir {
-                    file_name: Some("deep-student".to_string()),
-                }))
-                // 开发期输出到终端（过滤掉 TRACE 和 DEBUG）
-                .target(Target::new(TargetKind::Stdout))
-                // 开发期输出到浏览器控制台（过滤掉 TRACE 和 DEBUG）
-                .target(Target::new(TargetKind::Webview))
-                // 设置全局日志级别为 INFO，屏蔽掉 DEBUG 和 TRACE
-                .level(log::LevelFilter::Info)
-                // 特别屏蔽一些第三方库的日志
-                .level_for("lance", log::LevelFilter::Warn)
-                .level_for("lance_encoding", log::LevelFilter::Warn)
-                .level_for("lance_io", log::LevelFilter::Warn)
-                .level_for("tracing", log::LevelFilter::Warn)
-                .level_for("h2", log::LevelFilter::Warn)
-                .level_for("hyper", log::LevelFilter::Warn)
-                .level_for("rustls", log::LevelFilter::Warn)
-                .level_for("reqwest", log::LevelFilter::Warn)
-                // 我们自己的模块保持 INFO 级别
-                .level_for("deep_student_lib", log::LevelFilter::Info)
-                .build(),
-        )
+        .plugin(log_plugin_builder.build())
         //.manage(init_app_state())
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -304,13 +622,44 @@ pub fn run() {
                     fallback
                 });
 
-            // 初始化崩溃日志（即使后续仍有致命错误，也能落盘）
-            crate::crash_logger::init_crash_logging(base_app_data_dir.clone());
+            // 所有可反馈日志统一到系统推荐日志目录：
+            // macOS ~/Library/Logs/<identifier>，Windows %LOCALAPPDATA%/<identifier>/logs。
+            let app_log_dir = app_handle.path().app_log_dir().unwrap_or_else(|e| {
+                let fallback = base_app_data_dir.join("logs");
+                warn!(
+                    "[startup] 获取系统日志目录失败: {}，使用应用数据目录回退: {}",
+                    e,
+                    fallback.display()
+                );
+                fallback
+            });
+            if let Err(e) = std::fs::create_dir_all(&app_log_dir) {
+                error!(
+                    "[startup] 创建系统日志目录失败（结构化日志将尝试降级写入）: {}",
+                    e
+                );
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(e) = std::fs::set_permissions(
+                    &app_log_dir,
+                    std::fs::Permissions::from_mode(0o700),
+                ) {
+                    warn!("[startup] 收紧日志目录权限失败: {}", e);
+                }
+            }
 
-            // 启动 ANR 看门狗（所有平台，检测后端线程阻塞）
+            // 初始化崩溃日志（即使后续仍有致命错误，也能落盘）
+            crate::crash_logger::init_crash_logging(app_log_dir.clone());
+
+            // 启动异步运行时看门狗（所有平台）。
+            // 注意：心跳跑在 tokio runtime 上，检测的是 tokio worker 饥饿
+            // （如全局锁风暴导致所有 invoke 停摆），不是 UI 主线程 ANR，
+            // 详见 anr_watchdog.rs 模块文档（审阅 19 P2-1 修正）。
             crate::anr_watchdog::start_anr_watchdog();
 
-            // 定期发送心跳以驱动 ANR 检测
+            // 定期发送心跳以驱动运行时饥饿检测
             tauri::async_runtime::spawn(async {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(3));
                 loop {
@@ -326,37 +675,82 @@ pub fn run() {
                 );
             }
 
-            // Windows WebView2 稳定性：禁用 GPU 合成以规避部分 Win10 设备崩溃
-            // SAFETY: std::env::set_var 在此处于应用启动的单线程初始化阶段调用，
-            // 尚未创建任何工作线程，因此不存在多线程环境变量竞争的未定义行为风险。
-            #[cfg(target_os = "windows")]
-            {
-                std::env::set_var(
-                    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-                    "--disable-gpu --disable-gpu-compositing --disable-features=CalculateNativeWinOcclusion",
-                );
-            }
-            // 始终开启 Rust backtrace，便于 crash 日志定位
-            // SAFETY: 同上，单线程启动阶段调用
-            std::env::set_var("RUST_BACKTRACE", "1");
+            // 注意（审阅 34 P1-1 / 19 P1-1，2026-07-08）：
+            // WebView2 参数必须走 tauri.windows.conf.json 的 additionalBrowserArgs；
+            // Wry 会覆盖 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS，setup 阶段设置也已过晚。
+            // RUST_BACKTRACE / RUST_LOG 已移至 run() 开头（真正的单线程阶段）。
+            // ANTI-REGRESSION：勿在此 set_var WEBVIEW2_* 注入 --disable-gpu*；见 windows conf。
 
-            // 默认压降第三方过度详细的日志（可用 RUST_LOG 覆盖）
-            if std::env::var("RUST_LOG").is_err() {
-                // info 级别，且降低 lance/lancedb 噪声
-                // SAFETY: 同上，单线程启动阶段调用
-                std::env::set_var("RUST_LOG", "info,lance=warn,lancedb=warn,tracing=warn");
+            // 在打开任何业务数据库前扫描数据时间线冲突。可恢复冲突不再让 Tauri
+            // setup 失败；后端只注册恢复状态并保持窗口可用，由前端 Recovery Shell
+            // 引导用户选择。该分支绝不能继续初始化 AppState/数据治理/后台任务。
+            let startup_recovery_state =
+                match crate::data_space::prepare_startup_recovery(&base_app_data_dir) {
+                    Ok(incident) => crate::data_space::StartupRecoveryState::new(
+                        base_app_data_dir.clone(),
+                        incident,
+                    ),
+                    Err(error) => {
+                        error!(
+                            "[startup] 数据空间恢复预检失败，进入可交互恢复模式: {}",
+                            error
+                        );
+                        crate::data_space::StartupRecoveryState::failed(
+                            base_app_data_dir.clone(),
+                            "startup_preflight",
+                            error,
+                        )
+                    }
+                };
+            let startup_recovery_required = startup_recovery_state.is_recovery_required();
+            app.manage(startup_recovery_state);
+
+            if startup_recovery_required {
+                warn!(
+                    "[startup] 检测到待处理的数据时间线冲突，进入恢复专用启动模式；业务数据库保持关闭"
+                );
+                crate::debug_logger::init_global_logger(app_log_dir);
+                crate::debug_logger::start_periodic_flush();
+                return Ok(());
             }
 
             // 初始化数据空间管理器（A/B 双数据空间）并应用 pending 切换
-            crate::data_space::init_data_space_manager(base_app_data_dir.clone());
+            if let Err(e) = crate::data_space::init_data_space_manager(base_app_data_dir.clone()) {
+                error!(
+                    "[startup] 数据空间初始化失败，进入可交互恢复模式: {}",
+                    e
+                );
+                app.state::<crate::data_space::StartupRecoveryState>()
+                    .set_failure("data_space_init", &e);
+                crate::debug_logger::init_global_logger(app_log_dir);
+                crate::debug_logger::start_periodic_flush();
+                return Ok(());
+            }
             let data_space = crate::data_space::get_data_space_manager()
                 .expect("DataSpaceManager not initialized");
             let active_app_data_dir = data_space.active_dir();
             if let Err(e) = std::fs::create_dir_all(&active_app_data_dir) {
                 error!(
-                    "[startup] 创建活动数据目录失败（将继续以降级模式运行）: {}",
+                    "[startup] 创建活动数据目录失败，进入可交互恢复模式: {}",
                     e
                 );
+                app.state::<crate::data_space::StartupRecoveryState>()
+                    .set_failure("active_data_directory", &e);
+                crate::debug_logger::init_global_logger(app_log_dir);
+                crate::debug_logger::start_periodic_flush();
+                return Ok(());
+            }
+            // 上次进程若在虚拟 URI 复制阶段崩溃，临时 ZIP 可能包含完整用户数据；
+            // 新进程启动时没有可恢复任务所有权，必须主动清理。
+            let stale_zip_exports = active_app_data_dir.join("temp_zip_export");
+            if stale_zip_exports.exists() {
+                if let Err(e) = std::fs::remove_dir_all(&stale_zip_exports) {
+                    warn!(
+                        "[startup] 清理遗留 ZIP 临时导出目录失败 {}: {}",
+                        stale_zip_exports.display(),
+                        e
+                    );
+                }
             }
 
             // 移动端兜底：将 TMP/TEMP 等变量设置到活动数据目录的 tmp/ 下，避免 Lance/Arrow 产生跨挂载点临时文件
@@ -375,26 +769,48 @@ pub fn run() {
 
             // 在任何数据库初始化之前，执行启动阶段清理（若存在清理标记）
             if crate::startup_cleanup::should_purge_on_start(&base_app_data_dir) {
-                match crate::startup_cleanup::purge_active_data_dir(&active_app_data_dir) {
+                match crate::startup_cleanup::purge_all_local_data(
+                    &base_app_data_dir,
+                    &active_app_data_dir,
+                ) {
                     Ok(report) => {
                         info!("启动阶段已执行数据清理:\n{}", report.details);
                         if report.had_errors {
-                            warn!("启动阶段数据清理存在失败项，保留清理标记以便下次启动重试");
-                        } else if let Err(e) =
+                            let error = std::io::Error::other(
+                                "启动阶段数据清理不完整，已保留清理标记并拒绝打开业务库",
+                            );
+                            error!("{}", error);
+                            app.state::<crate::data_space::StartupRecoveryState>()
+                                .set_failure("startup_cleanup", &error);
+                            crate::debug_logger::init_global_logger(app_log_dir);
+                            crate::debug_logger::start_periodic_flush();
+                            return Ok(());
+                        }
+                        if let Err(e) =
                             crate::startup_cleanup::clear_purge_marker(&base_app_data_dir)
                         {
-                            warn!("清除清理标记失败: {}", e);
+                            error!("清除清理标记失败，拒绝打开业务库: {}", e);
+                            app.state::<crate::data_space::StartupRecoveryState>()
+                                .set_failure("startup_cleanup_marker", &e);
+                            crate::debug_logger::init_global_logger(app_log_dir);
+                            crate::debug_logger::start_periodic_flush();
+                            return Ok(());
                         }
                     }
                     Err(e) => {
                         error!("启动阶段数据清理失败: {}", e);
-                        // 即使清理失败也继续启动，避免应用卡死
+                        app.state::<crate::data_space::StartupRecoveryState>()
+                            .set_failure("startup_cleanup", &e);
+                        crate::debug_logger::init_global_logger(app_log_dir);
+                        crate::debug_logger::start_periodic_flush();
+                        return Ok(());
                     }
                 }
             }
 
             // 初始化全局调试日志记录器
-            crate::debug_logger::init_global_logger(base_app_data_dir.clone());
+            crate::debug_logger::init_global_logger(app_log_dir);
+            crate::debug_logger::start_periodic_flush();
 
             // 启动内置 Prometheus 指标服务
             crate::metrics_server::ensure_metrics_server(&app_handle);
@@ -405,10 +821,17 @@ pub fn run() {
             #[cfg(feature = "data_governance")]
             let mut data_governance_init_failed = false;
             #[cfg(feature = "data_governance")]
+            let component_health_state =
+                crate::data_governance::StartupComponentHealthState::default();
+            #[cfg(feature = "data_governance")]
+            let mut startup_component_health =
+                crate::data_governance::StartupComponentHealth::default();
+            #[cfg(feature = "data_governance")]
             {
                 use tracing::{info, warn};
 
                 info!("🔧 [DataGovernance] 开始初始化数据治理系统...");
+                app.manage(component_health_state.clone());
 
                 // 审计健康状态（用于前端识别审计失真）
                 let audit_health_state = std::sync::Arc::new(
@@ -418,6 +841,8 @@ pub fn run() {
 
                 match crate::data_governance::initialize_with_report(&active_app_data_dir) {
                     Ok(result) => {
+                        startup_component_health = result.component_health.clone();
+                        component_health_state.replace(startup_component_health.clone());
                         let report = &result.report;
 
                         if report.is_fully_successful() {
@@ -484,6 +909,31 @@ pub fn run() {
                                 audit_health.record_failure("审计数据库初始化失败，默认实例创建失败");
                             }
                         }
+
+                        match crate::data_governance::commands_restore::finalize_restore_activation(
+                            &active_app_data_dir,
+                        ) {
+                            Ok(true) => info!("✅ [DataGovernance] 恢复槽激活事务已提交"),
+                            Ok(false) => {}
+                            Err(error) => {
+                                data_governance_init_failed = true;
+                                crate::data_governance::commands::persist_migration_error(
+                                    &active_app_data_dir,
+                                    &error,
+                                );
+                                let _ = app_handle.emit(
+                                    "data-governance-migration-status",
+                                    serde_json::json!({
+                                        "success": false,
+                                        "error": error,
+                                        "degraded_mode": true,
+                                        "maintenance_mode_forced": true,
+                                        "restore_activation_failed": true
+                                    }),
+                                );
+                                warn!("恢复槽激活事务提交失败，强制进入维护模式");
+                            }
+                        }
                     }
                     Err(e) => {
                         let error_msg = e.to_string();
@@ -507,7 +957,8 @@ pub fn run() {
                                 "success": false,
                                 "recovered": true,
                                 "error": error_msg,
-                                "message": "数据库升级失败，已自动恢复到升级前状态。部分新功能可能不可用，建议更新应用。"
+                                "maintenance_mode_forced": true,
+                                "message": "数据库升级失败，已恢复到升级前状态并进入只读维护模式。请先导出备份或更新应用后重试。"
                             }));
 
                             let coordinator = crate::data_governance::MigrationCoordinator::new(active_app_data_dir.clone());
@@ -539,7 +990,16 @@ pub fn run() {
                                 let audit_db_arc = std::sync::Arc::new(default_audit_db);
                                 app.manage(audit_db_arc);
                             }
-                            // data_governance_init_failed 保持 false：应用正常启动，不进入维护模式
+                            // 新二进制不能在未声明兼容的旧 schema 上继续业务写入。
+                            // 保持应用可启动以便诊断/导出，但进入 fail-close 维护模式。
+                            data_governance_init_failed = true;
+                            for component in ["vfs", "mistakes", "chat_v2", "llm_usage"] {
+                                startup_component_health.mark_blocked(
+                                    component,
+                                    format!("迁移失败后已恢复旧版数据结构: {}", error_msg),
+                                );
+                            }
+                            component_health_state.replace(startup_component_health.clone());
                         } else {
                             warn!("⚠️ [DataGovernance] 初始化失败（将以降级模式继续运行）: {}", error_msg);
                             warn!(
@@ -548,6 +1008,20 @@ pub fn run() {
                             );
                             data_governance_init_failed =
                                 crate::data_governance::should_force_maintenance_mode_on_init_failure(&e);
+                            if data_governance_init_failed {
+                                for component in ["vfs", "mistakes", "chat_v2", "llm_usage"] {
+                                    startup_component_health.mark_blocked(
+                                        component,
+                                        format!("启动迁移无法建立安全状态: {}", error_msg),
+                                    );
+                                }
+                            } else {
+                                startup_component_health.mark_degraded(
+                                    "mistakes",
+                                    error_msg.clone(),
+                                );
+                            }
+                            component_health_state.replace(startup_component_health.clone());
 
                             crate::data_governance::commands::persist_migration_error(&active_app_data_dir, &error_msg);
 
@@ -578,21 +1052,94 @@ pub fn run() {
                 }
             }
 
+            #[cfg(feature = "data_governance")]
+            if startup_component_health.requires_core_recovery() {
+                warn!(
+                    blocked_components = ?startup_component_health.blocked_components(),
+                    "[DataGovernance] 核心数据域不可安全打开，进入治理恢复启动模式"
+                );
+                return Ok(());
+            }
+
             // 构建并注册全局 AppState（使用当前活动的数据空间目录）
             let state = build_app_state(active_app_data_dir.clone(), app_handle.clone());
+            let sentry_consented = state
+                .database
+                .get_setting("sentry_error_reporting_enabled")
+                .ok()
+                .flatten()
+                .is_some_and(|value| value == "true");
+            let sentry_guard = if sentry_consented {
+                init_backend_sentry_client()
+            } else {
+                None
+            };
+            app.manage(BackendSentryState(std::sync::Arc::new(
+                std::sync::Mutex::new(sentry_guard),
+            )));
             app.manage(state);
 
+            // 插件系统（编译期注册；依赖 AppState）
+            {
+                let plugin_manager = crate::plugins::PluginManager::new(app.handle().clone());
+                app.manage(plugin_manager);
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // 稍延后，等 DB/LLM 就绪
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    handle.state::<crate::plugins::PluginManager>().bootstrap_enabled().await;
+                });
+                info!("✅ PluginManager 已注册");
+            }
 
             // 数据治理初始化失败时进入维护模式，阻断写入路径
             #[cfg(feature = "data_governance")]
             {
                 if data_governance_init_failed {
                     let app_state: tauri::State<crate::commands::AppState> = app.state();
-                    if let Err(e) = app_state.database.enter_maintenance_mode() {
-                        tracing::warn!(error = %e, "数据治理初始化失败后进入维护模式失败");
-                    } else {
-                        tracing::warn!("⚠️ [DataGovernance] 初始化失败后已进入维护模式");
+                    let maintenance_result = (|| -> Result<(), String> {
+                        app_state
+                            .database
+                            .enter_maintenance_mode()
+                            .map_err(|e| format!("主数据库: {}", e))?;
+                        app_state
+                            .database_manager
+                            .enter_maintenance_mode()
+                            .map_err(|e| format!("数据库连接池: {}", e))?;
+                        if let Some(vfs) = &app_state.vfs_db {
+                            vfs.enter_maintenance_mode()
+                                .map_err(|e| format!("VFS: {}", e))?;
+                        }
+                        if let Some(chat) =
+                            app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>()
+                        {
+                            chat.enter_maintenance_mode()
+                                .map_err(|e| format!("Chat V2: {}", e))?;
+                        }
+                        if let Some(usage) =
+                            app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
+                        {
+                            usage
+                                .enter_maintenance_mode()
+                                .map_err(|e| format!("LLM Usage: {}", e))?;
+                        }
+                        if let Some(workspaces) = app.try_state::<std::sync::Arc<
+                            crate::chat_v2::workspace::WorkspaceCoordinator,
+                        >>() {
+                            workspaces
+                                .enter_maintenance_mode()
+                                .map_err(|e| format!("工作区: {}", e))?;
+                        }
+                        Ok(())
+                    })();
+                    if let Err(e) = maintenance_result {
+                        tracing::error!(error = %e, "数据治理初始化失败后无法建立完整维护屏障");
+                        return Err(Box::new(std::io::Error::other(format!(
+                            "无法建立完整数据治理维护屏障: {}",
+                            e
+                        ))));
                     }
+                    tracing::warn!("⚠️ [DataGovernance] 初始化失败后已进入全组件维护模式");
                 }
             }
 
@@ -632,12 +1179,51 @@ pub fn run() {
                 info!("✅ [Backup] BackupJobManagerState 已注册为 Tauri State（单例模式）");
             }
 
-            // 初始化 Chat V2（使用统一初始化函数）
-            match crate::chat_v2::init_chat_v2(&active_app_data_dir) {
+            // 按组件健康状态初始化扩展数据库；一个独立组件失败不能再拖入全站维护。
+            #[cfg(feature = "data_governance")]
+            let initialize_chat_v2 =
+                !data_governance_init_failed && !startup_component_health.is_blocked("chat_v2");
+            #[cfg(not(feature = "data_governance"))]
+            let initialize_chat_v2 = true;
+            #[cfg(feature = "data_governance")]
+            let initialize_llm_usage =
+                !data_governance_init_failed && !startup_component_health.is_blocked("llm_usage");
+            #[cfg(not(feature = "data_governance"))]
+            let initialize_llm_usage = true;
+
+            if initialize_chat_v2 {
+                // 初始化 Chat V2（使用统一初始化函数）
+                match crate::chat_v2::init_chat_v2(&active_app_data_dir) {
                 Ok(chat_v2_db) => {
                     info!("✅ Chat V2 统一初始化完成: {}", chat_v2_db.db_path().display());
                     let chat_v2_db_arc = std::sync::Arc::new(chat_v2_db);
                     app.manage(chat_v2_db_arc.clone());
+
+                    // 在任何 workspace 被重新打开前收敛上次崩溃留下的 prepared
+                    // 删除意图；否则未被本次会话访问的工作区会无限期停在中间态。
+                    let workspaces_dir = active_app_data_dir.join("workspaces");
+                    match rusqlite::Connection::open(chat_v2_db_arc.db_path()) {
+                        Ok(conn) => {
+                            match crate::data_governance::file_deletion_queue::recover_workspace_deletions(
+                                &conn,
+                                &workspaces_dir,
+                            ) {
+                                Ok(count) if count > 0 => info!(
+                                    "✅ [AppSetup] 已恢复 {} 个 prepared 工作区删除意图",
+                                    count
+                                ),
+                                Ok(_) => {}
+                                Err(error) => tracing::warn!(
+                                    "[AppSetup] 工作区删除意图恢复失败: {}",
+                                    error
+                                ),
+                            }
+                        }
+                        Err(error) => tracing::warn!(
+                            "[AppSetup] 无法打开工作区删除日志: {}",
+                            error
+                        ),
+                    }
 
                     // 🆕 先初始化 ApprovalManager（用于敏感工具审批，文档 29 P1-3）
                     // 必须在 Pipeline 之前创建，以便 Pipeline 关联
@@ -647,7 +1233,6 @@ pub fn run() {
 
                     // 🔧 P0 修复：先初始化 WorkspaceCoordinator，再传入 Pipeline
                     // 这样 Pipeline 才能注册 WorkspaceToolExecutor 和 SubagentExecutor
-                    let workspaces_dir = active_app_data_dir.join("workspaces");
                     std::fs::create_dir_all(&workspaces_dir).ok();
                     let workspace_coordinator = std::sync::Arc::new(
                         crate::chat_v2::workspace::WorkspaceCoordinator::new(workspaces_dir)
@@ -665,6 +1250,11 @@ pub fn run() {
                     // 🆕 传入 vfs_db，用于统一资源库（检索结果存储等）
                     // 🆕 使用 with_approval_manager 关联审批管理器（文档 29 P1-3）
                     // 🆕 使用 with_workspace_coordinator 关联工作区协调器（文档 30）
+                    // 与 builder 级 ChatV2State 共享 Kill Switch，使 tool_loop 断电优先于会话档位
+                    let chat_v2_kill_switch = app
+                        .state::<std::sync::Arc<crate::chat_v2::ChatV2State>>()
+                        .kill_switch
+                        .clone();
                     let chat_v2_pipeline = std::sync::Arc::new(
                         crate::chat_v2::pipeline::ChatV2Pipeline::new(
                             chat_v2_db_arc.clone(),
@@ -678,20 +1268,37 @@ pub fn run() {
                             Some(app_state.inner().notes_manager.clone()), // NotesManager
                         )
                         .with_approval_manager(approval_manager) // 🆕 关联审批管理器
+                        .with_kill_switch(chat_v2_kill_switch) // 🆕 工具环共享一键断电
                         .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
                         .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
                     );
+                    let recovery_pipeline = chat_v2_pipeline.clone();
+                    tauri::async_runtime::spawn(async move {
+                        recovery_pipeline.recover_pending_memory_flushes().await;
+                    });
                     app.manage(chat_v2_pipeline);
                     info!("✅ Chat V2 Pipeline 初始化成功（已启用敏感工具审批、工作区协作）");
                 }
                 Err(e) => {
                     error!("⚠️ Chat V2 数据库初始化失败（将以降级模式继续运行）: {}", e);
                     // 不阻止应用启动，但 Chat V2 功能将不可用
+                    #[cfg(feature = "data_governance")]
+                    {
+                        startup_component_health.mark_blocked(
+                            "chat_v2",
+                            format!("Chat V2 数据库初始化失败: {}", e),
+                        );
+                        component_health_state.replace(startup_component_health.clone());
+                    }
                 }
+                }
+            } else {
+                warn!("⚠️ [DataGovernance] Chat V2 组件被单独隔离，跳过数据库与工作区初始化");
             }
 
-            // 初始化 LLM Usage 统计数据库
-            match crate::llm_usage::LlmUsageDatabase::new(&active_app_data_dir) {
+            if initialize_llm_usage {
+                // 初始化 LLM Usage 统计数据库
+                match crate::llm_usage::LlmUsageDatabase::new(&active_app_data_dir) {
                 Ok(llm_usage_db) => {
                     info!("✅ LLM Usage 数据库初始化完成: {}", llm_usage_db.db_path().display());
                     let llm_usage_db_arc = std::sync::Arc::new(llm_usage_db);
@@ -703,7 +1310,30 @@ pub fn run() {
                 }
                 Err(e) => {
                     error!("⚠️ LLM Usage 数据库初始化失败（统计功能将不可用）: {}", e);
+                    #[cfg(feature = "data_governance")]
+                    {
+                        startup_component_health.mark_blocked(
+                            "llm_usage",
+                            format!("LLM Usage 数据库初始化失败: {}", e),
+                        );
+                        component_health_state.replace(startup_component_health.clone());
+                    }
                 }
+                }
+            } else {
+                warn!("⚠️ [DataGovernance] LLM Usage 组件被单独隔离，跳过统计数据库初始化");
+            }
+
+            // Workbench 内置浏览器：manage 未打开的 DB + Service（不无条件 ensure_open）
+            {
+                let browser_db = std::sync::Arc::new(crate::browser::BrowserDatabase::new(
+                    active_app_data_dir.clone(),
+                ));
+                let browser_svc =
+                    crate::browser::BrowserService::new(app_handle.clone(), browser_db);
+                crate::browser::BrowserService::boot_cleanup(&app_handle);
+                app.manage(browser_svc);
+                info!("✅ BrowserService 已注册（lazy DB；boot_cleanup 已扫孤儿窗）");
             }
 
             // 初始化 MCP 客户端（已熔断后端模式；仅当 mcp.mode=backend 时才初始化）
@@ -726,7 +1356,8 @@ pub fn run() {
             }
 
 
-            // 启动后异步触发一次 Lance 聊天表的轻量优化（压缩合并+清理近期旧版本+索引优化）
+            // 启动后异步触发一次 Lance 聊天表与遗留 KB 宽表的轻量优化
+            // （压缩合并+清理近期旧版本+索引优化）
             {
                 let database_for_maint = database.clone();
                 tauri::async_runtime::spawn(async move {
@@ -734,6 +1365,7 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(6)).await;
                     if let Ok(store) = crate::lance_vector_store::LanceVectorStore::new(database_for_maint.clone()) {
                         let _ = store.optimize_chat_tables(Some(7), None, false).await; // 默认清理 >7 天版本
+                        let _ = store.optimize_kb_tables(Some(7), None, false).await; // KB 宽表同样吞错，不影响启动
                     }
                 });
             }
@@ -764,14 +1396,85 @@ pub fn run() {
                 let database_for_backup = database.clone();
                 let database_manager_for_backup = app_state.inner().database_manager.clone();
                 let file_manager_for_backup = app_state.inner().file_manager.clone();
+                let app_handle_for_backup = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     crate::backup_config::start_auto_backup_scheduler(
+                        app_handle_for_backup,
                         database_for_backup,
                         database_manager_for_backup,
                         file_manager_for_backup,
                     ).await;
                 });
             }
+
+            // 周期自动化调度器
+            {
+                let database_for_automation = database.clone();
+                let vfs_db_for_automation = app_state.inner().vfs_db.clone();
+                let app_handle_for_automation = app_handle.clone();
+                crate::background_tasks::spawn(async move {
+                    crate::chat_v2::automations::start_automation_scheduler(
+                        database_for_automation,
+                        vfs_db_for_automation,
+                        app_handle_for_automation,
+                    )
+                    .await;
+                });
+            }
+
+            // 有启用自动化时，用户关闭主窗口默认转为后台驻留。应用仍可通过
+            // Dock/任务栏再次启动；single-instance 回调会唤回这一窗口。显式“退出”
+            // 仍走 RunEvent::ExitRequested，不拦截。
+            #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+            if let Some(window) = app.get_webview_window("main") {
+                let database_for_close = database.clone();
+                let window_for_close = window.clone();
+                let app_for_close = app_handle.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        let keep_quick_assistant_background = database_for_close
+                            .get_setting("quick_assistant.background_enabled")
+                            .ok()
+                            .flatten()
+                            .as_deref()
+                            == Some("true");
+                        if !crate::chat_v2::automations::automation_app_is_exiting()
+                            && (crate::chat_v2::automations::should_keep_automation_background(
+                                &database_for_close,
+                            ) || keep_quick_assistant_background)
+                        {
+                            api.prevent_close();
+                            let _ = window_for_close.hide();
+                            // 「从不通知」档全局生效：后台驻留提示同样受
+                            // 统一策略约束（background/always 档照常提示）。
+                            if !crate::system_notification::notifications_disabled(
+                                &database_for_close,
+                            ) {
+                                use tauri_plugin_notification::NotificationExt;
+                                let _ = app_for_close
+                                    .notification()
+                                    .builder()
+                                    .title("Deep Student 正在后台运行")
+                                    .body("已启用的定时任务会继续按计划执行。")
+                                    .show();
+                            }
+                        } else if !crate::chat_v2::automations::automation_app_is_exiting() {
+                            #[cfg(target_os = "macos")]
+                            {
+                                // macOS keeps the process alive after the last
+                                // window closes. Background residency being off
+                                // therefore means "close quits", otherwise
+                                // headless jobs would retain a windowless app.
+                                crate::chat_v2::automations::mark_automation_app_exiting();
+                                app_for_close.exit(0);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 快速学习小窗按需创建。不要在 setup 阶段同步构建第二个隐藏
+            // WebView；Windows 上它会与主窗口启动事件争用 UI 消息循环。
 
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
@@ -795,22 +1498,36 @@ pub fn run() {
                         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
                         .unwrap_or(false);
 
-                    if standard_window_for_e2e {
-                        info!("[setup] DSTU_E2E_STANDARD_WINDOW 已启用，跳过自定义 macOS 标题栏样式以便 UI 自动化访问");
-                        #[allow(unused_unsafe)]
-                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
-                        unsafe {
-                            use cocoa::base::{id, nil, YES};
-                            use cocoa::foundation::NSString;
-                            use objc::{msg_send, sel, sel_impl};
+                    // 使用虚拟标题栏：内容延伸到窗口顶部，隐藏原生标题文字，保留左侧红黄绿按钮。
+                    // E2E 实例也必须使用相同 chrome，否则真实截图会额外出现一整行系统标题栏。
+                    #[allow(unused_unsafe)]
+                    #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
+                    unsafe {
+                        use cocoa::appkit::{
+                            NSApp, NSApplication, NSWindowStyleMask, NSWindowTitleVisibility,
+                        };
+                        use cocoa::base::{id, nil, NO, YES};
+                        use objc::{msg_send, sel, sel_impl};
 
-                            if let Ok(ns_window_raw) = window.ns_window() {
-                                let ns_window = ns_window_raw as id;
+                        if let Ok(ns_window_raw) = window.ns_window() {
+                            let ns_window = ns_window_raw as id;
+                            let _: () = msg_send![ns_window, setStyleMask:
+                                NSWindowStyleMask::NSTitledWindowMask
+                                | NSWindowStyleMask::NSClosableWindowMask
+                                | NSWindowStyleMask::NSMiniaturizableWindowMask
+                                | NSWindowStyleMask::NSResizableWindowMask
+                                | NSWindowStyleMask::NSFullSizeContentViewWindowMask
+                            ];
+                            let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
+                            let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
+                            let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
+
+                            if standard_window_for_e2e {
+                                use cocoa::foundation::NSString;
                                 let ax_window = NSString::alloc(nil).init_str("AXWindow");
                                 let ax_standard_window =
                                     NSString::alloc(nil).init_str("AXStandardWindow");
                                 let ax_title = NSString::alloc(nil).init_str("Deep Student");
-
                                 let _: () = msg_send![ns_window, setAccessibilityElement: YES];
                                 let _: () = msg_send![ns_window, setAccessibilityRole: ax_window];
                                 let _: () =
@@ -818,40 +1535,28 @@ pub fn run() {
                                 let _: () = msg_send![ns_window, setAccessibilityTitle: ax_title];
                                 let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
                                 let _: () = msg_send![ns_window, orderFrontRegardless];
-                            } else {
-                                warn!("获取 macOS NSWindow 失败，跳过 E2E 可访问性窗口设置");
+                                // tauri-lab 直接启动 bundle 内二进制，不经过 LaunchServices。
+                                // 显式激活应用，确保窗口能接收真实鼠标/键盘事件。
+                                let ns_app = NSApp();
+                                ns_app.activateIgnoringOtherApps_(YES);
+                                info!(
+                                    "[setup] DSTU_E2E_STANDARD_WINDOW 已启用，沿用全尺寸 macOS 标题栏并补充可访问性窗口元数据"
+                                );
                             }
+                        } else {
+                            warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
                         }
-                    } else {
-                        // 设置 macOS 特定的窗口属性
-                        #[allow(unused_unsafe)]
-                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
-                        unsafe {
-                            use cocoa::base::{id, YES, NO};
-                            use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
-                            use objc::{msg_send, sel, sel_impl};
 
-                            if let Ok(ns_window_raw) = window.ns_window() {
-                                let ns_window = ns_window_raw as id;
-
-                                // 使用虚拟标题栏：全尺寸内容视图，隐藏原生标题栏但保留红绿灯按钮
-                                let _: () = msg_send![ns_window, setStyleMask:
-                                    NSWindowStyleMask::NSTitledWindowMask
-                                    | NSWindowStyleMask::NSClosableWindowMask
-                                    | NSWindowStyleMask::NSMiniaturizableWindowMask
-                                    | NSWindowStyleMask::NSResizableWindowMask
-                                    | NSWindowStyleMask::NSFullSizeContentViewWindowMask
-                                ];
-
-                                // 使用透明标题栏
-                                let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
-                                let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
-
-                                // 仅允许标注的区域拖拽：关闭整窗背景拖拽，避免任意区域拖动窗口
-                                let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
-                            } else {
-                                warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
-                            }
+                        // Mount the native Sidebar material before React renders.
+                        // The native surface is exposed only through the
+                        // transparent macOS sidebar/titlebar WebView layers.
+                        if let Err(e) = window_vibrancy::apply_vibrancy(
+                            &window,
+                            window_vibrancy::NSVisualEffectMaterial::Sidebar,
+                            None,
+                            None,
+                        ) {
+                            warn!("[setup] 启动页原生毛玻璃应用失败: {}", e);
                         }
                     }
                 } else {
@@ -859,10 +1564,16 @@ pub fn run() {
                 }
             }
 
+            // Windows 的页面侧合成器自愈由 useCompositorNudge 负责。
+            // 不要在 WindowEvent 回调中同步调用 with_webview / WebView2 COM：
+            // resize/focus 事件与 WebView 日志或 IPC 并发时可能发生锁反转，
+            // 阻塞 Tauri UI 消息循环并触发 Windows AppHangB1。
+
             Ok(())
         })
         // Provide ChatV2State for Chat V2 stream management (Arc wrapped for spawn usage)
         .manage(std::sync::Arc::new(crate::chat_v2::ChatV2State::new()))
+        .manage(crate::secret_prompt::SecretPromptStore::default())
         // NOTE: ChatV2Pipeline is now initialized in setup() closure after AppState is available
         .invoke_handler(tauri::generate_handler![
             // =================================================
@@ -889,6 +1600,7 @@ pub fn run() {
             crate::commands::inspect_pdf_text_for_qbank,
             crate::commands::import_question_bank,
             crate::commands::import_question_bank_stream,
+            crate::commands::cancel_question_bank_import,
             // 断点续导
             crate::commands::resume_question_import,
             crate::commands::list_importing_sessions,
@@ -898,6 +1610,7 @@ pub fn run() {
             crate::commands::qbank_remove_question_image,
             // CSV 导入导出命令
             crate::commands::import_questions_csv,
+            crate::commands::cancel_questions_csv_import,
             crate::commands::export_questions_csv,
             crate::commands::get_csv_preview,
             crate::commands::get_csv_exportable_fields,
@@ -906,13 +1619,27 @@ pub fn run() {
 
             crate::commands::get_enhanced_statistics,
 
+            // macOS 窗口毛玻璃（侧边栏半透明）
+            crate::commands::set_sidebar_vibrancy,
+            crate::commands::set_window_appearance,
+            crate::commands::sync_titlebar_sidebar_material,
+
             // 通用设置保存/读取命令
             crate::commands::save_setting,
             crate::commands::get_setting,
             crate::commands::delete_setting,
             crate::commands::get_settings_by_prefix,
             crate::commands::delete_settings_by_prefix,
+            backend_sentry_command::set_backend_sentry_enabled,
+            // 快速学习小窗窗口管理
+            crate::quick_assistant::quick_assistant_show,
+            crate::quick_assistant::quick_assistant_hide,
+            crate::quick_assistant::quick_assistant_apply_enabled,
             crate::voice_input::voice_input_transcribe,
+            crate::secret_prompt::secret_prompt_submit,
+            crate::secret_prompt::secret_prompt_status,
+            crate::secret_prompt::secret_prompt_discard,
+            crate::secret_prompt::secret_prompt_capabilities,
             // 调试日志管理
             crate::commands::get_debug_logs_info,
             crate::commands::clear_debug_logs,
@@ -936,11 +1663,20 @@ pub fn run() {
             crate::commands::save_api_configurations,
             crate::commands::get_model_assignments,
             crate::commands::save_model_assignments,
+            // LLM Failover 策略（fallback 链 / key 轮换 / 用途分模型路由）
+            crate::llm_manager::routing::llm_get_failover_policy,
+            crate::llm_manager::routing::llm_set_failover_policy,
             crate::commands::get_vendor_configs,
             crate::commands::save_vendor_configs,
+            crate::commands::fetch_vendor_models,
             crate::commands::get_model_profiles,
             crate::commands::save_model_profiles,
             crate::commands::test_api_connection,
+            crate::cmd::openai_codex::openai_codex_auth_status,
+            crate::cmd::openai_codex::openai_codex_login_start,
+            crate::cmd::openai_codex::openai_codex_login_cancel,
+            crate::cmd::openai_codex::openai_codex_logout,
+            crate::cmd::openai_codex::openai_codex_usage,
 
             crate::commands::get_model_adapter_options,
             crate::commands::save_model_adapter_options,
@@ -1001,9 +1737,13 @@ pub fn run() {
             crate::cmd::enhanced_anki::recover_stuck_document_tasks,
             crate::cmd::enhanced_anki::list_document_sessions,
             crate::cmd::enhanced_anki::get_anki_stats,
+            crate::cmd::enhanced_anki::set_document_session_source,
             // ★ 4.2 防休眠（制卡等长任务）
             crate::cmd::power::set_prevent_sleep,
             crate::cmd::power::get_prevent_sleep,
+            // 移动端支撑：图片压缩（上传前减载）+ 网络质量探测（弱网降级）
+            crate::cmd::media::compress_image,
+            crate::cmd::network::network_probe,
             // 状态恢复相关命令
             crate::commands::get_recent_document_tasks,
             crate::commands::get_all_recent_cards,
@@ -1016,6 +1756,8 @@ pub fn run() {
             crate::translation::translate_text_stream,
             crate::translation::chat_popover::stream_chat_translation_aligned,
             crate::translation::chat_popover::stream_chat_translation_plain,
+            crate::translation::candidates::translate_text_candidates,
+            crate::translation::candidates::cancel_translation_candidates,
             crate::commands::ocr_extract_text,
             // Essay Grading Commands
             crate::essay_grading::essay_grading_stream,
@@ -1049,6 +1791,7 @@ pub fn run() {
             crate::commands::read_file_text,
             crate::commands::get_file_size,
             crate::commands::pdfstream_check_access,
+            crate::file_stream_protocol::filestream_check_access,
             crate::commands::hash_file,
             crate::commands::read_file_bytes,
             crate::commands::copy_file,
@@ -1068,7 +1811,9 @@ pub fn run() {
             crate::commands::get_test_logs,
             crate::commands::open_log_file,
             crate::commands::open_logs_folder,
+            crate::system_permissions::open_system_permission_settings,
             crate::commands::report_frontend_log,
+            crate::diagnostics::export_diagnostics_bundle,
             crate::commands::save_template_debug_data,
             crate::commands::export_unified_backup_data,
             // 备份配置
@@ -1098,6 +1843,8 @@ pub fn run() {
             crate::secure_store::secure_get_cloud_credentials,
             crate::secure_store::secure_delete_cloud_credentials,
             crate::secure_store::secure_store_is_available,
+            crate::secure_store::secure_store_get_keystore_protection,
+            crate::secure_store::secure_store_set_keystore_protection,
             // AnkiConnect compatibility
             crate::commands::anki_get_deck_names,
             // =================================================
@@ -1116,6 +1863,9 @@ pub fn run() {
             crate::debug_commands::tauri_lab_frontend_log,
             crate::debug_commands::debug_vfs_migration_status,
             crate::debug_commands::debug_vfs_textbook_pages,
+            // DevTools 开关（仅 debug 构建或启用 devtools feature 时注册）
+            #[cfg(any(debug_assertions, feature = "devtools"))]
+            crate::debug_commands::toggle_devtools,
             // =================================================
             // Vector Index Management
             // =================================================
@@ -1138,6 +1888,16 @@ pub fn run() {
             crate::commands::export_mcp_config,
             // 2026-06-12 补注册：设置页 MCP 编辑器与 mcpService 启动预热已在调用
             crate::commands::preheat_mcp_tools,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::start_mcp_oauth,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::cancel_mcp_oauth,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::revoke_mcp_oauth,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::get_mcp_oauth_status,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::get_mcp_oauth_access_token,
             crate::commands::test_all_search_engines
 
             // =============== Notes (isolated) ===============
@@ -1176,12 +1936,24 @@ pub fn run() {
             ,crate::commands::notes_hard_delete
             ,crate::commands::notes_empty_trash
             ,crate::commands::notes_list_deleted
+            // 笔记链接图（backlinks / outgoing / rebuild / unlinked mentions）
+            ,crate::commands::notes_get_backlinks
+            ,crate::commands::notes_get_outgoing_links
+            ,crate::commands::notes_rebuild_links
+            ,crate::commands::notes_unlinked_mentions
             // Canvas AI 工具命令（智能笔记）
             ,crate::commands::canvas_note_read
             ,crate::commands::canvas_note_append
             ,crate::commands::canvas_note_replace
             ,crate::commands::canvas_note_set
             // DataSpace (A/B) commands
+            ,crate::data_space::get_startup_recovery_status
+            ,crate::data_space::retry_startup_recovery_preflight
+            ,crate::data_space::list_startup_recovery_incidents
+            ,crate::data_space::resolve_startup_recovery
+            ,crate::data_space::open_startup_recovery_incident_folder
+            ,crate::data_space::export_startup_recovery_incident
+            ,crate::data_space::export_startup_recovery_report
             ,crate::data_space::get_data_space_info
             ,crate::data_space::mark_data_space_pending_switch_to_inactive
             ,crate::data_space::purge_all_database_files
@@ -1212,11 +1984,18 @@ pub fn run() {
             // Chat V2 - 新版聊天后端命令
             // =================================================
             ,crate::chat_v2::handlers::send_message::chat_v2_send_message
+            ,crate::chat_v2::handlers::send_message::chat_v2_wake_session
             ,crate::chat_v2::handlers::send_message::chat_v2_cancel_stream
             ,crate::chat_v2::handlers::send_message::chat_v2_retry_message
             ,crate::chat_v2::handlers::send_message::chat_v2_edit_and_resend
             ,crate::chat_v2::handlers::send_message::chat_v2_continue_message
+            ,crate::chat_v2::kill_switch::chat_v2_emergency_stop
+            ,crate::chat_v2::kill_switch::chat_v2_resume_agents
+            ,crate::chat_v2::kill_switch::chat_v2_resume_automations
+            ,crate::chat_v2::kill_switch::chat_v2_kill_switch_status
             ,crate::chat_v2::handlers::load_session::chat_v2_load_session
+            // 消息分页加载（移动端渐进式历史补页）
+            ,crate::chat_v2::handlers::load_messages_page::chat_v2_load_messages_page
             ,crate::chat_v2::handlers::manage_session::chat_v2_create_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_get_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_update_session_settings
@@ -1224,6 +2003,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::manage_session::chat_v2_save_session
             ,crate::chat_v2::handlers::block_actions::chat_v2_delete_message
             ,crate::chat_v2::handlers::block_actions::chat_v2_copy_block_content
+            ,crate::chat_v2::handlers::block_actions::chat_v2_compact_session
+            ,crate::chat_v2::handlers::block_actions::chat_v2_undo_compaction
             ,crate::chat_v2::handlers::block_actions::chat_v2_update_block_content
             ,crate::chat_v2::handlers::block_actions::chat_v2_update_block_tool_output
             ,crate::chat_v2::handlers::block_actions::chat_v2_get_anki_cards_from_block_by_document_id
@@ -1264,6 +2045,23 @@ pub fn run() {
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_respond
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_cancel
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_clear_approval_history
+            // Ask / Plan / Craft 会话档位
+            ,crate::chat_v2::handlers::manage_session::chat_v2_set_authority_mode
+            ,crate::chat_v2::handlers::manage_session::chat_v2_set_permission_preset
+            ,crate::chat_v2::handlers::manage_session::chat_v2_plan_gate_respond
+            ,crate::chat_v2::runtime_roots::chat_v2_list_runtime_roots
+            ,crate::chat_v2::runtime_roots::chat_v2_list_runtime_directory
+            ,crate::chat_v2::runtime_roots::chat_v2_set_workspace_root
+            ,crate::chat_v2::runtime_roots::chat_v2_reset_workspace_root
+            ,crate::chat_v2::runtime_roots::chat_v2_authorize_runtime_root
+            ,crate::chat_v2::runtime_roots::chat_v2_revoke_runtime_root
+            ,crate::chat_v2::runtime_roots::chat_v2_set_skill_trust
+            ,crate::chat_v2::runtime_roots::chat_v2_resolve_runtime_path
+            ,crate::chat_v2::runtime_roots::chat_v2_delete_artifact
+            ,crate::chat_v2::runtime_roots::chat_v2_revert_artifact_write
+            ,crate::chat_v2::runtime_roots::chat_v2_revert_workspace_change
+            ,crate::chat_v2::runtime_roots::chat_v2_read_runtime_file
+            ,crate::chat_v2::tools::attachment_stage_executor::chat_v2_stage_context_attachments
             // 🆕 用户提问命令（轻量级问答交互）
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
             // Canvas 工具前端回调命令（完全前端模式）
@@ -1275,6 +2073,12 @@ pub fn run() {
             ,crate::chat_v2::handlers::migration::chat_v2_rollback_migration
             // 内容搜索 + 标签管理命令
             ,crate::chat_v2::handlers::search_handlers::chat_v2_search_content
+            // 会话元信息搜索（标题/描述/标签 LIKE）
+            ,crate::chat_v2::handlers::search_handlers::chat_v2_search_sessions
+            // 会话导出（markdown / json）
+            ,crate::chat_v2::handlers::export_handlers::chat_v2_export_session
+            // 事件发射失败计数（只读诊断）
+            ,crate::chat_v2::events::chat_v2_get_emit_failure_count
             ,crate::chat_v2::handlers::search_handlers::rebuild_chat_fts
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_session_tags
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_tags_batch
@@ -1296,25 +2100,35 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_get_document
             ,crate::chat_v2::handlers::workspace_handlers::workspace_list_all
             ,crate::chat_v2::handlers::workspace_handlers::workspace_run_agent
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_list_agent_profiles
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_read_agent_profile_file
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_save_agent_profile_file
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_delete_agent_profile_file
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_agent
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
             ,crate::chat_v2::handlers::workspace_handlers::workspace_restore_executions
-            // ⚠️ DEPRECATED 资源库命令 — 前端已迁移到 VFS (vfs_* 命令)，零引用。
-            // 保留注册以兼容旧版前端，计划在下一次大版本中移除。参见 P1-#9。
-            ,crate::chat_v2::handlers::resource_handlers::resource_create_or_reuse
-            ,crate::chat_v2::handlers::resource_handlers::resource_get
-            ,crate::chat_v2::handlers::resource_handlers::resource_get_latest
-            ,crate::chat_v2::handlers::resource_handlers::resource_exists
-            ,crate::chat_v2::handlers::resource_handlers::resource_increment_ref
-            ,crate::chat_v2::handlers::resource_handlers::resource_decrement_ref
-            ,crate::chat_v2::handlers::resource_handlers::resource_get_versions_by_source
+            // COMPAT-REMOVED 2026-07-20 (owner: platform-chat, remove target: vNext)
+            // 旧 resource_* 命令已注销：前端零 invoke，替代路径 = vfs_* / VfsResourceRepo。
+            // chat_v2::resource_repo 仍保留只读兼容层（见该模块头注释），勿再注册 resource_*。
             // 🆕 Skills 文件系统命令
             ,crate::chat_v2::skills::skill_list_directories
+            ,crate::chat_v2::skills::skill_list_package_files
             ,crate::chat_v2::skills::skill_read_file
             ,crate::chat_v2::skills::skill_create
             ,crate::chat_v2::skills::skill_update
             ,crate::chat_v2::skills::skill_delete
+            ,crate::chat_v2::skills::skill_import_zip
+            ,crate::chat_v2::skill_updates::skill_check_updates
+            ,crate::chat_v2::skill_updates::skill_update_from_source
+            ,crate::chat_v2::skill_requires::skill_probe_requires
+            ,crate::chat_v2::skill_taps::skill_tap_catalog
+            ,crate::chat_v2::skill_taps::skill_tap_install
+            ,crate::chat_v2::skill_taps::skill_export_tap
+            ,crate::chat_v2::skill_market_client::skill_market_search
+            ,crate::chat_v2::skill_market_client::skill_market_skill_detail
+            ,crate::chat_v2::skill_market_client::skill_market_verify
+            ,crate::chat_v2::skill_market_client::skill_market_download_and_scan
             // =================================================
             // VFS 虚拟文件系统命令
             // =================================================
@@ -1414,6 +2228,8 @@ pub fn run() {
             // VFS 多模态统一管理命令（2026-01）
             ,crate::vfs::handlers::vfs_multimodal_index
             ,crate::vfs::handlers::vfs_multimodal_search
+            ,crate::vfs::handlers::vfs_multimodal_search_detailed
+            ,crate::vfs::handlers::vfs_inspect_retrieval_capabilities
             ,crate::vfs::handlers::vfs_multimodal_stats
             ,crate::vfs::handlers::vfs_multimodal_delete
             ,crate::vfs::handlers::vfs_multimodal_index_resource
@@ -1424,6 +2240,7 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_get_mindmap_versions
             ,crate::vfs::handlers::vfs_get_mindmap_version_content
             ,crate::vfs::handlers::vfs_get_mindmap_version
+            ,crate::vfs::handlers::vfs_restore_mindmap_version
             ,crate::vfs::handlers::vfs_update_mindmap
             ,crate::vfs::handlers::vfs_delete_mindmap
             ,crate::vfs::handlers::vfs_list_mindmaps
@@ -1451,6 +2268,7 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_completed
             ,crate::vfs::todo_handlers::todo_search
             ,crate::vfs::todo_handlers::todo_get_active_summary
+            ,crate::vfs::todo_handlers::todo_counts_snapshot
             ,crate::vfs::todo_handlers::todo_ai_breakdown
             // 待办回收站命令
             ,crate::vfs::todo_handlers::todo_list_deleted_lists
@@ -1461,6 +2279,9 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_deleted_items
             ,crate::vfs::todo_handlers::todo_purge_item
             ,crate::vfs::todo_handlers::todo_purge_deleted_items
+            // 清单重排 / 跨清单移动
+            ,crate::vfs::todo_handlers::todo_reorder_lists
+            ,crate::vfs::todo_handlers::todo_move_item
             // 番茄钟命令
             ,crate::vfs::todo_handlers::pomodoro_create_record
             ,crate::vfs::todo_handlers::pomodoro_get_record
@@ -1468,6 +2289,26 @@ pub fn run() {
             ,crate::vfs::todo_handlers::pomodoro_today_stats
             ,crate::vfs::todo_handlers::pomodoro_list_today
             ,crate::vfs::todo_handlers::pomodoro_daily_stats
+            ,crate::vfs::pomodoro_handlers::pomodoro_delete_record
+            ,crate::vfs::pomodoro_handlers::pomodoro_list_range
+            ,crate::vfs::pomodoro_handlers::pomodoro_streak
+            ,crate::vfs::pomodoro_handlers::pomodoro_hourly_stats
+            ,crate::vfs::pomodoro_handlers::pomodoro_stats_by_todo
+            ,crate::vfs::pomodoro_handlers::pomodoro_stats_overview
+            ,crate::vfs::pomodoro_handlers::pomodoro_todo_focus_summary
+            // 待办批量操作 / 回收站增强 / 统计聚合命令（2026-07-20）
+            ,crate::vfs::todo_handlers::todo_batch_complete
+            ,crate::vfs::todo_handlers::todo_batch_reschedule
+            ,crate::vfs::todo_handlers::todo_batch_move
+            ,crate::vfs::todo_handlers::todo_batch_delete
+            ,crate::vfs::todo_handlers::todo_batch_restore
+            ,crate::vfs::todo_handlers::todo_batch_purge
+            ,crate::vfs::todo_handlers::todo_trash_counts
+            ,crate::vfs::todo_handlers::todo_stats_overview
+            ,crate::vfs::todo_handlers::todo_list_items_with_stats
+            // 遗留补齐轮 r3（2026-07-20）：批量优先级 / 全量标签词表
+            ,crate::vfs::todo_handlers::todo_batch_set_priority
+            ,crate::vfs::todo_handlers::todo_list_all_tags
             // 索引诊断命令
             ,crate::vfs::handlers::vfs_debug_index_status
             ,crate::vfs::handlers::vfs_reset_disabled_to_pending
@@ -1637,6 +2478,8 @@ pub fn run() {
             ,crate::memory::handlers::memory_batch_delete
             ,crate::memory::handlers::memory_batch_move
             ,crate::memory::handlers::memory_update_tags
+            ,crate::memory::handlers::memory_restore_stale
+            ,crate::memory::handlers::memory_restore_archived
             ,crate::memory::handlers::memory_get_tags
             ,crate::memory::handlers::memory_add_relation
             ,crate::memory::handlers::memory_remove_relation
@@ -1671,14 +2514,53 @@ pub fn run() {
             ,crate::review_plan_service::review_plan_get_or_create
             ,crate::review_plan_service::review_plan_get_calendar_data
             // =================================================
-            // 题目集同步冲突策略
+            // FSRS 闪卡复习（M2：近似调度，独立于 anki_cards / review_plans）
             // =================================================
-            ,crate::question_sync_service::qbank_sync_check
-            ,crate::question_sync_service::qbank_get_sync_conflicts
-            ,crate::question_sync_service::qbank_resolve_sync_conflict
-            ,crate::question_sync_service::qbank_batch_resolve_conflicts
-            ,crate::question_sync_service::qbank_set_sync_enabled
-            ,crate::question_sync_service::qbank_update_sync_config
+            ,crate::cmd::fsrs_review::fsrs_enqueue_cards
+            ,crate::cmd::fsrs_review::fsrs_get_due
+            ,crate::cmd::fsrs_review::fsrs_preview_intervals
+            ,crate::cmd::fsrs_review::fsrs_rate
+            ,crate::cmd::fsrs_review::fsrs_get_stats
+            ,crate::cmd::fsrs_review::fsrs_undo_last_review
+            ,crate::cmd::fsrs_review::fsrs_suspend_card
+            ,crate::cmd::fsrs_review::fsrs_unsuspend_card
+            ,crate::cmd::fsrs_review::fsrs_get_review_statistics
+            ,crate::cmd::fsrs_review::fsrs_get_scheduler_config
+            ,crate::cmd::fsrs_review::fsrs_update_scheduler_config
+            ,crate::cmd::fsrs_review::fsrs_reset_card_progress
+            // =================================================
+            // APKG 本地导入
+            // =================================================
+            ,crate::cmd::apkg_import::import_apkg_to_library
+            // =================================================
+            // Workbench 内置浏览器（B1e；content 窗零 capability，见 capabilities/browser-content.json）
+            // =================================================
+            ,crate::cmd::browser::browser_open_session
+            ,crate::cmd::browser::browser_navigate
+            ,crate::cmd::browser::browser_back
+            ,crate::cmd::browser::browser_forward
+            ,crate::cmd::browser::browser_reload
+            ,crate::cmd::browser::browser_get_state
+            ,crate::cmd::browser::browser_get_surface_host_mode
+            ,crate::cmd::browser::browser_set_surface_bounds
+            ,crate::cmd::browser::browser_set_surface_visibility
+            ,crate::cmd::browser::browser_content_user_input
+            ,crate::cmd::browser::browser_close
+            ,crate::cmd::browser::browser_focus
+            ,crate::cmd::browser::browser_release_surface_focus
+            ,crate::cmd::browser::browser_take_over
+            ,crate::cmd::browser::browser_snapshot
+            ,crate::cmd::browser::browser_click
+            ,crate::cmd::browser::browser_type
+            ,crate::cmd::browser::browser_set_input_files
+            ,crate::cmd::browser::browser_list_downloads
+            ,crate::cmd::browser::browser_list_task_downloads
+            ,crate::cmd::browser::browser_scroll
+            // COMPAT-REMOVED 2026-07-20 (owner: learning-qbank, remove target: vNext)
+            // 题库专属 qbank_*_sync_* 冲突命令已注销：QuestionSyncService::detect_conflicts /
+            // save_conflict 无生产调用方，question_sync_conflicts 表无真实生产者。
+            // 真冲突源 = data_governance __sync_conflicts（RecordConflictsPanel）。
+            // 保留 QuestionSyncService::mark_as_modified / content_hash 与历史 DB 列迁移。
             // =================================================
             // 数据治理系统命令（2026-01-30）
             // 注意：data_governance 已在 default features 中启用
@@ -1708,6 +2590,9 @@ pub fn run() {
             // 恢复命令
             ,crate::data_governance::commands_restore::data_governance_restore_backup
             // 同步命令
+            ,crate::cloud_config_commands::cloud_config_ssot_save
+            ,crate::cloud_config_commands::cloud_config_ssot_get
+            ,crate::cloud_config_commands::cloud_config_ssot_clear
             ,crate::data_governance::commands_sync::data_governance_get_sync_status
             ,crate::data_governance::commands_sync::data_governance_detect_conflicts
             ,crate::data_governance::commands_sync::data_governance_resolve_conflicts
@@ -1745,6 +2630,34 @@ pub fn run() {
             ,crate::data_governance::commands::data_governance_get_migration_diagnostic_report
             ,crate::data_governance::commands::data_governance_run_slot_c_empty_db_test
             ,crate::data_governance::commands::data_governance_run_slot_d_clone_db_test
+            // =================================================
+            // Chat V2 自动化：立即运行（headless agent turn）
+            // =================================================
+            ,crate::chat_v2::automations::chat_v2_automation_list
+            ,crate::chat_v2::automations::chat_v2_automation_create
+            ,crate::chat_v2::automations::chat_v2_automation_set_enabled
+            ,crate::chat_v2::automations::chat_v2_automation_update
+            ,crate::chat_v2::automations::chat_v2_automation_delete
+            ,crate::chat_v2::automations::chat_v2_automation_run_now
+            ,crate::chat_v2::automations::chat_v2_automation_runs
+            ,crate::chat_v2::automations::chat_v2_automation_retry_run
+            ,crate::chat_v2::automations::chat_v2_automation_cancel_run
+            ,crate::chat_v2::automations::chat_v2_automation_summary
+            ,crate::chat_v2::automations::chat_v2_automation_set_background_enabled
+            // =================================================
+            // plugins (iLink Bot etc.)
+            // =================================================
+            ,crate::plugins::plugin_list
+            ,crate::plugins::plugin_start
+            ,crate::plugins::plugin_stop
+            ,crate::plugins::plugin_get_status
+            ,crate::plugins::plugin_get_config
+            ,crate::plugins::plugin_set_config
+            ,crate::plugins::plugin_set_enabled
+            ,crate::plugins::plugin_begin_login
+            ,crate::plugins::plugin_cancel_login
+            ,crate::plugins::plugin_logout
+            ,crate::plugins::plugin_unbind
         ])
         // 注册 pdfstream:// 自定义协议，用于 PDF 流式加载（支持 HTTP Range Request）
         .register_uri_scheme_protocol("pdfstream", |ctx, request| {
@@ -1776,13 +2689,188 @@ pub fn run() {
                 }
             }
         })
+        // 注册 filestream:// 自定义协议，用于媒体（音频/视频/图片）与通用 blob 流式加载
+        .register_uri_scheme_protocol("filestream", |ctx, request| {
+            let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(ctx.app_handle());
+            let blob_dirs = crate::file_stream_protocol::resolve_blob_dirs(ctx.app_handle());
+            match crate::file_stream_protocol::handle_asset_protocol(
+                &request,
+                &allowed_dirs,
+                &blob_dirs,
+            ) {
+                Ok(response) => response,
+                Err(e) => {
+                    error!("filestream:// 协议处理失败: {}", e);
+                    let cors_origin =
+                        crate::file_stream_protocol::cors_origin_for_request(&request);
+                    tauri::http::Response::builder()
+                        .status(500)
+                        .header("Access-Control-Allow-Origin", cors_origin.clone())
+                        .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                        .header("Access-Control-Allow-Headers", "Range")
+                        .header("Vary", "Origin")
+                        .body(b"Internal Server Error".to_vec())
+                        .unwrap_or_else(|_| {
+                            tauri::http::Response::new(b"Internal Server Error".to_vec())
+                        })
+                }
+            }
+        })
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application")
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                tauri::async_runtime::block_on(crate::background_tasks::shutdown());
+        .run(|_app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
+                crate::chat_v2::automations::mark_automation_app_exiting();
+                if let Some(pm) = _app_handle.try_state::<crate::plugins::PluginManager>() {
+                    tauri::async_runtime::block_on(pm.shutdown_all());
+                }
+                tauri::async_runtime::block_on(async {
+                    crate::debug_logger::flush_global_logger().await;
+                    crate::debug_log_service::flush_pending_debug_log_writes().await;
+                    crate::background_tasks::shutdown().await;
+                    crate::debug_logger::flush_global_logger().await;
+                    crate::debug_log_service::flush_pending_debug_log_writes().await;
+                });
             }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if let Some(window) = _app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+
+                #[allow(unused_unsafe)]
+                unsafe {
+                    use cocoa::appkit::{NSApp, NSApplication};
+                    use cocoa::base::YES;
+
+                    let ns_app = NSApp();
+                    ns_app.activateIgnoringOtherApps_(YES);
+                }
+            }
+            _ => {}
         });
+}
+
+/// Starts the durable VFS index consumer. SQLite owns pending/failed state and
+/// the Lance orphan queue, so an interrupted run resumes on the next tick or
+/// application start without relying on an in-memory job list.
+fn start_vfs_index_worker(
+    vfs_db: Arc<crate::vfs::VfsDatabase>,
+    llm_manager: Arc<crate::llm_manager::LLMManager>,
+    lance_store: Arc<crate::vfs::VfsLanceStore>,
+) {
+    crate::background_tasks::spawn(async move {
+        let mut last_run: Option<std::time::Instant> = None;
+        let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
+        loop {
+            if crate::background_tasks::BACKGROUND_TASKS.is_closed() {
+                break;
+            }
+
+            let basic = crate::vfs::VfsIndexingService::new(vfs_db.clone());
+            let config = match basic.get_indexing_config() {
+                Ok(config) => config,
+                Err(error) => {
+                    tracing::warn!("[VfsIndexWorker] Failed to load config: {}", error);
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+            let interval = std::time::Duration::from_secs(config.interval_secs.max(1) as u64);
+            let due = last_run.is_none_or(|last| last.elapsed() >= interval);
+            if !config.enabled || !due {
+                let remaining = last_run
+                    .map(|last| interval.saturating_sub(last.elapsed()))
+                    .unwrap_or(interval)
+                    .min(std::time::Duration::from_secs(5));
+                tokio::time::sleep(remaining.max(std::time::Duration::from_millis(100))).await;
+                continue;
+            }
+            last_run = Some(std::time::Instant::now());
+
+            let full = match crate::vfs::VfsFullIndexingService::new(
+                vfs_db.clone(),
+                llm_manager.clone(),
+                lance_store.clone(),
+            ) {
+                Ok(service) => service,
+                Err(error) => {
+                    tracing::warn!(
+                        "[VfsIndexWorker] Failed to initialize text worker: {}",
+                        error
+                    );
+                    continue;
+                }
+            };
+
+            // Keep jobs pending while a capability is unconfigured. Configuration
+            // changes are picked up by a later tick without exhausting retry_count.
+            let text_embedding_configured = llm_manager.get_embedding_model_config().await.is_ok();
+            if text_embedding_configured {
+                last_embedding_unconfigured_log = None;
+                match full.process_pending_batch(config.batch_size).await {
+                    Ok((success, failed)) if success > 0 || failed > 0 => tracing::info!(
+                        "[VfsIndexWorker] text batch completed: success={}, failed={}",
+                        success,
+                        failed
+                    ),
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!("[VfsIndexWorker] text batch failed: {}", error)
+                    }
+                }
+            } else {
+                // Throttle: default interval is 5s; do not warn on every tick.
+                let should_log = last_embedding_unconfigured_log
+                    .is_none_or(|last| last.elapsed() >= std::time::Duration::from_secs(300));
+                if should_log {
+                    tracing::warn!(
+                        "[VfsIndexWorker] Text embedding model not configured; skipping text indexing batch. Set default in 嵌入维度管理 (or model_assignments.embedding_model_config_id)."
+                    );
+                    last_embedding_unconfigured_log = Some(std::time::Instant::now());
+                }
+                if let Err(error) = full.drain_lance_orphan_queue(200).await {
+                    // Deletion compensation itself does not require an embedding provider.
+                    tracing::warn!("[VfsIndexWorker] Orphan cleanup failed: {}", error);
+                }
+            }
+
+            if llm_manager.is_multimodal_rag_configured().await {
+                let multimodal = crate::vfs::VfsMultimodalService::new(
+                    vfs_db.clone(),
+                    llm_manager.clone(),
+                    lance_store.clone(),
+                );
+                match multimodal.process_pending_batch(config.batch_size).await {
+                    Ok((success, failed)) if success > 0 || failed > 0 => tracing::info!(
+                        "[VfsIndexWorker] multimodal batch completed: success={}, failed={}",
+                        success,
+                        failed
+                    ),
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!("[VfsIndexWorker] multimodal batch failed: {}", error)
+                    }
+                }
+            }
+
+            // Throttled Lance maintenance (compact + prune + index-delta merge).
+            // The interval check lives inside maybe_optimize_all, so calling it on
+            // every tick is cheap; failures must never affect the indexing loop.
+            match lance_store.maybe_optimize_all().await {
+                Ok(optimized) if optimized > 0 => tracing::info!(
+                    "[VfsIndexWorker] Lance auto-optimize completed: {} tables",
+                    optimized
+                ),
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!("[VfsIndexWorker] Lance auto-optimize failed: {}", error)
+                }
+            }
+        }
+        tracing::info!("[VfsIndexWorker] stopped");
+    });
 }
 
 // Helper to build the global application state
@@ -1817,20 +2905,26 @@ fn build_app_state(
     app_handle.manage(vfs_db.clone());
 
     // ★ VfsLanceStore：非核心，可降级
-    match crate::vfs::VfsLanceStore::new(vfs_db.clone()) {
+    let vfs_lance_store = match crate::vfs::VfsLanceStore::new(vfs_db.clone()) {
         Ok(store) => {
-            app_handle.manage(std::sync::Arc::new(store));
+            let store = std::sync::Arc::new(store);
+            app_handle.manage(store.clone());
+            Some(store)
         }
         Err(e) => {
             log::error!("[AppState] VfsLanceStore init failed, degrading: {}", e);
+            None
         }
-    }
+    };
 
     let llm_manager = Arc::new(
         crate::llm_manager::LLMManager::new(database.clone(), file_manager.clone())
             .expect("Failed to initialise LLMManager"),
     );
     app_handle.manage(llm_manager.clone());
+    if let Some(lance_store) = vfs_lance_store {
+        start_vfs_index_worker(vfs_db.clone(), llm_manager.clone(), lance_store);
+    }
     let exam_sheet_service = Arc::new(
         crate::exam_sheet_service::ExamSheetService::new(
             database.clone(),
@@ -1872,6 +2966,8 @@ fn build_app_state(
         String,
         std::collections::HashSet<usize>,
     >::new()));
+    let csv_import_cancellations = Arc::new(dashmap::DashMap::new());
+    let question_import_cancellations = Arc::new(dashmap::DashMap::new());
 
     let notes_manager = Arc::new(
         crate::notes_manager::NotesManager::new_with_vfs(notes_database.clone(), vfs_db.clone())
@@ -1938,7 +3034,34 @@ fn build_app_state(
     // 若上次会话在"提交后、清扫前"崩溃，残留的 0 引用 blob 在此回收。
     {
         let vfs_db_sweep = vfs_db.clone();
+        let active_dir_sweep = app_data_dir.clone();
         tauri::async_runtime::spawn_blocking(move || {
+            let _operation = match crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+                crate::backup_common::DataGovernanceOperationKind::DeletePropagation,
+                None,
+            ) {
+                Ok(operation) => operation,
+                Err(error) => {
+                    tracing::warn!(
+                        "[AppSetup] 跳过启动删除恢复：另一数据治理操作正在运行: {}",
+                        error
+                    );
+                    return;
+                }
+            };
+
+            match crate::data_governance::file_deletion_queue::recover_asset_deletions(
+                &active_dir_sweep,
+            ) {
+                Ok(count) if count > 0 => {
+                    tracing::info!("[AppSetup] Recovered {} prepared asset deletions", count);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("[AppSetup] Prepared asset deletion recovery failed: {}", e);
+                }
+            }
+
             match crate::vfs::repos::VfsBlobRepo::cleanup_unreferenced(&vfs_db_sweep) {
                 Ok(count) if count > 0 => {
                     tracing::info!("[AppSetup] Swept {} unreferenced blobs", count);
@@ -2008,8 +3131,21 @@ fn build_app_state(
                     }
                 }
                 Err(e) => {
+                    tracing::warn!("[AppSetup] Retrieval sweep skipped (no connection): {}", e);
+                }
+            }
+
+            // ★ 2026-07-20：一次性回填笔记链接图（修复 DSTU 时期写路径不维护
+            // note_links 的存量缺口）。带 KV 标志（vfs_indexing_config），
+            // 成功后不再执行；失败不写标志，下次启动自动重试。
+            match crate::vfs::repos::VfsNoteRepo::backfill_note_links_once(&vfs_db_sweep, 500) {
+                Ok(true) => {
+                    tracing::info!("[AppSetup] One-time note links backfill completed");
+                }
+                Ok(false) => {}
+                Err(e) => {
                     tracing::warn!(
-                        "[AppSetup] Retrieval sweep skipped (no connection): {}",
+                        "[AppSetup] Note links backfill failed (will retry next launch): {}",
                         e
                     );
                 }
@@ -2060,6 +3196,8 @@ fn build_app_state(
         pdf_ocr_pauses,
         pdf_ocr_sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())), // 🎯 Initialize sessions map
         pdf_ocr_skip_pages,
+        csv_import_cancellations,
+        question_import_cancellations,
         app_handle,
         active_database: RwLock::new(crate::commands::ActiveDatabaseKind::Production),
         question_bank_service,

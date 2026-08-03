@@ -8,7 +8,6 @@ import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, useSpring } from 'framer-motion';
 import { Textarea } from '@/components/ui/shad/Textarea';
-import '../styles/settings-textarea-scrollbar.css';
 
 export const settingsQuietHoverClassName = 'hover:bg-[color:var(--sidebar-quiet-hover)]';
 
@@ -45,12 +44,6 @@ export const settingsQuietTableRowClassName = cn(
   settingsQuietHoverClassName,
 );
 
-export const settingsMobileSheetCloseButtonClassName = cn(
-  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--button-radius)] text-[color:var(--text-secondary)]',
-  'transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)]',
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none',
-);
-
 export interface SettingSectionProps {
   title: string;
   description?: string;
@@ -79,15 +72,16 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
       className
     )}
   >
+    {/* 双栏切换点与 isSmallScreen（<768）对齐 */}
     {!hideHeader && (
-      <div className="flex flex-col gap-1 mb-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-1 mb-6 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1 min-w-0 flex-1">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+          <h2 className="text-xl font-semibold text-foreground md:text-lg">{title}</h2>
           {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="text-[15px] leading-relaxed text-muted-foreground md:text-sm">{description}</p>
           )}
         </div>
-        {rightSlot && <div className="ml-0 sm:ml-4 flex-shrink-0">{rightSlot}</div>}
+        {rightSlot && <div className="ml-0 md:ml-4 flex-shrink-0">{rightSlot}</div>}
       </div>
     )}
     <div className={cn('space-y-6 w-full', contentClassName)}>
@@ -105,25 +99,25 @@ export interface SettingItemProps {
 
 export const SettingItem: React.FC<SettingItemProps> = ({ label, description, children, badge }) => (
   <div className="py-3 w-full">
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-sm font-medium text-foreground">{label}</label>
+          <label className="text-base font-medium text-foreground md:text-sm">{label}</label>
           {badge && (
             <span className={`px-2 py-0.5 text-xs rounded-full ${
               badge === 'Beta' ? 'bg-primary/20 text-primary' :
-              (badge === '开发中' || badge === 'In Development') ? 'bg-orange-100 text-orange-700' :
-              'bg-purple-100 text-purple-700'
+              (badge === '开发中' || badge === 'In Development') ? 'bg-warning/15 text-warning' :
+              'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
             }`}>
               {badge}
             </span>
           )}
         </div>
         {description && (
-          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{description}</p>
+          <p className="mt-1 text-sm text-muted-foreground leading-relaxed md:text-xs">{description}</p>
         )}
       </div>
-      <div className="sm:ml-4 flex-shrink-0 w-full sm:w-auto">
+      <div className="md:ml-4 flex-shrink-0 w-full md:w-auto">
         {children}
       </div>
     </div>
@@ -160,7 +154,7 @@ export const SettingsTextarea = React.forwardRef<HTMLTextAreaElement, React.Text
   ({ className, ...props }, ref) => (
     <Textarea
       ref={ref}
-      className={cn('settings-textarea-scrollbar', className)}
+      className={cn('scroll-area--native', className)}
       {...props}
     />
   )

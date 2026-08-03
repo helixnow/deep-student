@@ -12,7 +12,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { BlockRendererWithStore } from './BlockRenderer';
 import { ContextRefsDisplay, hasContextRefs } from './ContextRefsDisplay';
 import type { ContextRef } from '../context/types';
@@ -21,7 +21,7 @@ import { useBlocksByIds } from '../hooks/useChatStore';
 import { useImagePreviewsFromRefs } from '../hooks/useImagePreviewsFromRefs';
 import { useFilePreviewsFromRefs } from '../hooks/useFilePreviewsFromRefs';
 import { ParallelVariantView } from './Variant';
-import { MessageActions, MessageInlineEdit, UserMessageBubble } from './message';
+import { MessageActions, MessageInlineEdit, MessageTouchActionBar, UserMessageBubble } from './message';
 import { resolveSingleVariantDisplayMeta } from './message/variantMetaResolver';
 import { TokenUsageDisplay } from './TokenUsageDisplay';
 // 🔧 移除 ModelRetryDialog，改用底部面板模型选择重试
@@ -31,15 +31,16 @@ import { ActivityTimelineWithStore, isTimelineBlockType } from './ActivityTimeli
 
 import type { ChatStore, Block } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
+import { isStoreSubagentSession } from '../core/subagentSession';
 import { getModelDisplayName, formatMessageTime } from '@/utils/formatUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useLongPress } from '@/hooks/mobile';
 // 🔧 编辑/重试调试日志
 import { logChatV2 } from '../debug/chatV2Logger';
-// 🆕 调试信息导出
-import { copyDebugInfoToClipboard } from '../debug/exportSessionDebug';
 // 🆕 开发者选项：显示请求体 + 过滤配置
-import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from '../hooks/useDevShowRawRequest';
+import { useDevShowRawRequest, useCopyFilterConfig } from '../hooks/useDevShowRawRequest';
+import { RawRequestPreview, type RawRequestPreviewProps, type RawRequest } from './message/RawRequestPreview';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { TextShimmer } from './ui/TextShimmer';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -51,6 +52,8 @@ import { useTextSelection } from '../hooks/useTextSelection';
 import { SelectionToolbar } from './SelectionToolbar';
 import { TranslationPopover } from './TranslationPopover';
 import { ExplainPopover } from './ExplainPopover';
+import { generateCardsFromSelection } from '../services/selectionCardGeneration';
+import { MessageSearchProvider } from './messageSearchContext';
 
 // ============================================================================
 // 辅助函数
@@ -103,376 +106,9 @@ function hasSharedContextSources(message: { sharedContext?: {
 }
 
 // ============================================================================
-// 复制过滤：按 CopyFilterConfig 分段处理请求体
+// 请求体预览：已抽为独立组件 ./message/RawRequestPreview
+//（★ 中-7 修复：删除本文件内嵌的重复旧副本，统一引用独立实现）
 // ============================================================================
-
-type RawRequest = { _source?: string; model?: string; url?: string; body?: unknown; logFilePath?: string };
-
-function parseJsonSafe(text: string): unknown {
-  try { return JSON.parse(text); } catch { return null; }
-}
-
-async function applyCopyFilter(
-  raw: RawRequest,
-  _isBackendLlm: boolean,
-  fallbackText: string,
-  cfg: CopyFilterConfig,
-  t: (key: string, options?: Record<string, unknown>) => string,
-  notify: (type: 'warning' | 'info', msg: string) => void,
-): Promise<string> {
-  const needsFullSource = cfg.images === 'full' || cfg.tools === 'full';
-
-  let body: Record<string, unknown> | null = null;
-  let usedRawBody = false;
-
-  if (needsFullSource && raw.logFilePath) {
-    try {
-      const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
-      const fullContent = await tauriInvoke<string>('read_debug_log_file', { path: raw.logFilePath });
-      body = JSON.parse(fullContent) as Record<string, unknown>;
-    } catch {
-      notify('warning', t('messageItem.rawRequest.logReadFailed'));
-      body = (raw.body ? raw.body : raw) as Record<string, unknown>;
-      usedRawBody = true;
-    }
-  } else if (needsFullSource && !raw.logFilePath) {
-    notify('warning', t('messageItem.rawRequest.persistentLogRequired'));
-    body = (raw.body ? raw.body : raw) as Record<string, unknown>;
-    usedRawBody = true;
-  } else {
-    body = (raw.body ? raw.body : raw) as Record<string, unknown>;
-    usedRawBody = true;
-  }
-
-  if (body && usedRawBody && typeof body === 'object' && !Array.isArray(body) && body.messages === undefined && fallbackText) {
-    try {
-      const parsed = JSON.parse(fallbackText);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.messages !== undefined) {
-        body = parsed as Record<string, unknown>;
-      }
-    } catch { /* fallbackText parse failed, keep original body */ }
-  }
-
-  if (!body) return fallbackText || '{}';
-
-  const result: Record<string, unknown> = {};
-
-  // 标量参数始终保留
-  for (const k of ['model', 'stream', 'temperature', 'max_tokens', 'max_completion_tokens', 'tool_choice']) {
-    if (body[k] !== undefined) result[k] = body[k];
-  }
-
-  // Thinking
-  if (cfg.thinking === 'full') {
-    for (const k of ['enable_thinking', 'thinking_budget', 'thinking']) {
-      if (body[k] !== undefined) result[k] = body[k];
-    }
-  }
-
-  // Messages
-  const msgs = body.messages as Array<{ role?: string; content?: unknown }> | undefined;
-  if (msgs) {
-    if (cfg.messages === 'full') {
-      result.messages = filterImages(msgs, cfg.images);
-    } else if (cfg.messages === 'truncate') {
-      result.messages = filterImages(msgs, cfg.images).map((m: Record<string, unknown>) => {
-        if (typeof m.content === 'string' && m.content.length > cfg.messageTruncateLength) {
-          return { ...m, content: m.content.slice(0, cfg.messageTruncateLength) + `...[truncated, total ${m.content.length} chars]` };
-        }
-        if (Array.isArray(m.content)) {
-          return { ...m, content: truncateMultimodalContent(m.content as Array<Record<string, unknown>>, cfg) };
-        }
-        return m;
-      });
-    } else {
-      result.messages_summary = msgs.map(m => ({
-        role: m.role,
-        content_type: Array.isArray(m.content) ? 'multimodal' : 'text',
-        content_size: typeof m.content === 'string' ? m.content.length : Array.isArray(m.content) ? m.content.length : 0,
-      }));
-    }
-  }
-
-  // Tools
-  const toolsArr = body.tools as Array<Record<string, unknown>> | undefined;
-  if (toolsArr) {
-    if (cfg.tools === 'full') {
-      result.tools = toolsArr;
-    } else if (cfg.tools === 'summary') {
-      const names = extractToolNames(toolsArr);
-      result.tools = [{ _summary: `${toolsArr.length} tools: [${names.join(', ')}]` }];
-    } else if (cfg.tools === 'names_only') {
-      result.tool_names = extractToolNames(toolsArr);
-    }
-    // 'remove' → 不包含 tools
-  }
-
-  return JSON.stringify(result, null, 2);
-}
-
-function extractToolNames(toolsArr: Array<Record<string, unknown>>): string[] {
-  return toolsArr.flatMap(t => {
-    const name = (t.function as Record<string, unknown> | undefined)?.name;
-    if (typeof name === 'string') return [name];
-    const summary = t._summary;
-    if (typeof summary === 'string') {
-      const match = summary.match(/\[(.+)\]/);
-      return match ? match[1].split(',').map(s => s.trim()) : [];
-    }
-    return [];
-  });
-}
-
-function filterImages(msgs: Array<Record<string, unknown>>, mode: CopyFilterConfig['images']): Array<Record<string, unknown>> {
-  if (mode === 'full') return msgs;
-  return msgs.map(msg => {
-    if (!Array.isArray(msg.content)) return msg;
-    const filtered = (msg.content as Array<Record<string, unknown>>)
-      .map(part => {
-        if (part.type !== 'image_url') return part;
-        if (mode === 'remove') return null;
-        const urlVal = (part.image_url as Record<string, unknown> | undefined)?.url;
-        if (typeof urlVal === 'string' && urlVal.startsWith('data:')) {
-          const base64Len = urlVal.indexOf(',') >= 0 ? urlVal.length - urlVal.indexOf(',') - 1 : urlVal.length;
-          return { type: 'image_url', image_url: { url: `[base64 image: ~${Math.round(base64Len * 3 / 4 / 1024)}KB, ${base64Len} chars]` } };
-        }
-        return part;
-      })
-      .filter(Boolean);
-    return { ...msg, content: filtered };
-  });
-}
-
-function truncateMultimodalContent(parts: Array<Record<string, unknown>>, cfg: CopyFilterConfig): Array<Record<string, unknown>> {
-  return parts.map(part => {
-    if (part.type === 'text' && typeof part.text === 'string' && part.text.length > cfg.messageTruncateLength) {
-      return { ...part, text: part.text.slice(0, cfg.messageTruncateLength) + `...[truncated, total ${part.text.length} chars]` };
-    }
-    return part;
-  });
-}
-
-// ============================================================================
-// 请求体统计信息提取
-// ============================================================================
-
-interface RequestBodyStats {
-  bodyChars: number;
-  messageCount: number;
-  imageCount: number;
-  toolCount: number;
-  toolCallMsgCount: number;
-  toolResultMsgCount: number;
-  systemPromptChars: number;
-}
-
-function extractRequestStats(body: unknown): RequestBodyStats {
-  const stats: RequestBodyStats = {
-    bodyChars: 0,
-    messageCount: 0,
-    imageCount: 0,
-    toolCount: 0,
-    toolCallMsgCount: 0,
-    toolResultMsgCount: 0,
-    systemPromptChars: 0,
-  };
-
-  if (!body || typeof body !== 'object') return stats;
-
-  stats.bodyChars = JSON.stringify(body).length;
-  const obj = body as Record<string, unknown>;
-
-  const msgs = obj.messages as Array<Record<string, unknown>> | undefined;
-  if (Array.isArray(msgs)) {
-    stats.messageCount = msgs.length;
-    for (const msg of msgs) {
-      const role = msg.role as string | undefined;
-      if (role === 'system' && typeof msg.content === 'string') {
-        stats.systemPromptChars += msg.content.length;
-      }
-      if (role === 'tool') stats.toolResultMsgCount++;
-      if (msg.tool_calls) stats.toolCallMsgCount++;
-
-      if (Array.isArray(msg.content)) {
-        for (const part of msg.content as Array<Record<string, unknown>>) {
-          if (part.type === 'image_url') stats.imageCount++;
-        }
-      }
-    }
-  }
-
-  const tools = obj.tools as unknown[] | undefined;
-  if (Array.isArray(tools)) {
-    stats.toolCount = tools.length;
-
-    // 后端标准级别会把 tools 合并为一个 _summary 对象，尝试从中提取数量
-    if (tools.length === 1) {
-      const first = tools[0] as Record<string, unknown>;
-      if (typeof first._summary === 'string') {
-        const match = (first._summary as string).match(/^(\d+) tools:/);
-        if (match) stats.toolCount = parseInt(match[1], 10);
-      }
-    }
-  }
-
-  return stats;
-}
-
-function formatStatsLine(
-  stats: RequestBodyStats,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  const parts: string[] = [];
-  parts.push(t('messageItem.rawRequest.stats.bodyChars', { kb: (stats.bodyChars / 1024).toFixed(1) }));
-  parts.push(t('messageItem.rawRequest.stats.messages', { count: stats.messageCount }));
-  if (stats.imageCount > 0) parts.push(t('messageItem.rawRequest.stats.images', { count: stats.imageCount }));
-  if (stats.toolCount > 0) parts.push(t('messageItem.rawRequest.stats.tools', { count: stats.toolCount }));
-  if (stats.toolCallMsgCount > 0) parts.push(t('messageItem.rawRequest.stats.toolCalls', { count: stats.toolCallMsgCount }));
-  if (stats.toolResultMsgCount > 0) parts.push(t('messageItem.rawRequest.stats.toolResults', { count: stats.toolResultMsgCount }));
-  return parts.join(' · ');
-}
-
-// ============================================================================
-// 请求体预览子组件（独立组件以遵守 Hooks 规则）
-// ============================================================================
-
-interface RawRequestPreviewProps {
-  rawRequests?: Array<{ _source: string; model: string; url: string; body: unknown; logFilePath?: string; round: number }>;
-  rawRequest?: RawRequest;
-  copyFilterConfig: CopyFilterConfig;
-}
-
-function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }: RawRequestPreviewProps) {
-  const { t } = useTranslation();
-  const rounds = rawRequests ?? [];
-  const fallbackRaw = rawRequest;
-
-  const allRounds = rounds.length > 0 ? rounds : (fallbackRaw ? [{
-    _source: fallbackRaw._source ?? '',
-    model: fallbackRaw.model ?? '',
-    url: fallbackRaw.url ?? '',
-    body: fallbackRaw._source === 'backend_llm' ? fallbackRaw.body : fallbackRaw,
-    logFilePath: fallbackRaw.logFilePath,
-    round: 1,
-  }] : []);
-
-  const [selectedRound, setSelectedRound] = React.useState(allRounds.length);
-
-  React.useEffect(() => {
-    setSelectedRound(allRounds.length);
-  }, [allRounds.length]);
-
-  if (allRounds.length === 0) return null;
-
-  const activeIdx = Math.min(selectedRound, allRounds.length) - 1;
-  const current = allRounds[activeIdx];
-  const isBackendLlm = current._source === 'backend_llm';
-  const displayBody = current.body;
-  const displayText = JSON.stringify(displayBody, null, 2);
-  const stats = extractRequestStats(displayBody);
-
-  const handleCopy = async () => {
-    try {
-      const needsFullSource = copyFilterConfig.images === 'full' || copyFilterConfig.tools === 'full';
-      let textToCopy = displayText;
-
-      if (needsFullSource && current.logFilePath) {
-        try {
-          const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
-          const fullContent = await tauriInvoke<string>('read_debug_log_file', { path: current.logFilePath });
-          const fullBody = JSON.parse(fullContent);
-          const asRaw: RawRequest = {
-            _source: current._source,
-            model: current.model,
-            url: current.url,
-            body: fullBody,
-            logFilePath: current.logFilePath,
-          };
-          textToCopy = await applyCopyFilter(asRaw, isBackendLlm, displayText, copyFilterConfig, t, showGlobalNotification);
-        } catch {
-          showGlobalNotification('warning', t('messageItem.rawRequest.logReadFailed'));
-        }
-      }
-
-      await copyTextToClipboard(textToCopy);
-      showGlobalNotification('success', t('messageItem.rawRequest.copySuccess'));
-    } catch (error: unknown) {
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.rawRequest.copyFailed'));
-    }
-  };
-
-  return (
-    <div className="mt-4 rounded-md border border-border/50 bg-muted/30 p-3">
-      <div className="mb-2 text-xs font-medium text-muted-foreground flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-          </svg>
-          {isBackendLlm
-            ? `${t('messageItem.rawRequest.title')} — ${current.model}`
-            : t('messageItem.rawRequest.title')}
-          {current.logFilePath && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400">{t('messageItem.rawRequest.persisted')}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <NotionButton variant="ghost" size="sm" onClick={handleCopy} title={t('messageItem.rawRequest.copy')}>
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            {t('messageItem.rawRequest.copy')}
-          </NotionButton>
-        </div>
-      </div>
-
-      <div className="mb-2 text-[11px] text-muted-foreground/70 flex flex-wrap gap-x-2.5 gap-y-0.5">
-        <span>{formatStatsLine(stats, t)}</span>
-      </div>
-
-      {allRounds.length > 1 && (
-        <div className="mb-2 flex items-center gap-1 flex-wrap">
-          {allRounds.map((r, i) => {
-            const rStats = extractRequestStats(r.body);
-            return (
-              <button
-                key={i}
-                onClick={() => setSelectedRound(i + 1)}
-                className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
-                  i === activeIdx
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-muted-foreground/60 hover:bg-[var(--interactive-hover)]'
-                }`}
-                title={rStats.toolCallMsgCount > 0
-                  ? t('messageItem.rawRequest.roundTooltipWithToolCalls', {
-                    round: i + 1,
-                    messageCount: rStats.messageCount,
-                    toolCallMsgCount: rStats.toolCallMsgCount,
-                  })
-                  : t('messageItem.rawRequest.roundTooltip', {
-                    round: i + 1,
-                    messageCount: rStats.messageCount,
-                  })}
-              >
-                R{i + 1}
-                {rStats.toolCallMsgCount > 0 && <span className="ml-0.5 opacity-60">🔧</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {isBackendLlm && current.url && (
-        <div className="mb-1.5 text-[11px] text-muted-foreground/70 font-mono truncate" title={current.url}>
-          POST {current.url}
-        </div>
-      )}
-
-      <pre className="overflow-x-auto rounded bg-background/80 p-2 text-xs text-foreground/80 font-mono max-h-80 overflow-y-auto">
-        {displayText}
-      </pre>
-    </div>
-  );
-}
 
 // ============================================================================
 // Props 定义
@@ -491,6 +127,8 @@ export interface MessageItemProps {
   isFirst?: boolean;
   /** 是否是最新一条消息（用于默认展开操作区） */
   isLatest?: boolean;
+  /** 当前会话内搜索词，用于消息正文的具体文本高亮 */
+  searchQuery?: string;
 }
 
 // ============================================================================
@@ -512,11 +150,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   showActions = true,
   isFirst = false,
   isLatest = false,
+  searchQuery = '',
 }) => {
   // 📊 细粒度打点：MessageItem render
   sessionSwitchPerf.mark('mi_render', { messageId });
   
-  const { t } = useTranslation('chatV2');
+  const { t, i18n } = useTranslation('chatV2');
+  const locale = i18n.resolvedLanguage ?? i18n.language;
 
   // 🆕 开发者选项：是否显示请求体 + 过滤级别
   const showRawRequest = useDevShowRawRequest();
@@ -530,12 +170,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     activeVariant,
     isMultiVariant,
     displayBlockIds,
-    getVariantBlocks,
     switchVariant,
     cancelVariant,
     retryVariant,
     deleteVariant,
-    stopAllVariants,
     retryAllVariants,
   } = useVariantUI({ store, messageId });
 
@@ -561,34 +199,30 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🔧 P1修复：同时检查 sending/streaming/aborting 状态，与 Store 守卫保持一致
   const isLocked = sessionStatus === 'sending' || sessionStatus === 'streaming' || sessionStatus === 'aborting' || hasActiveBlock;
 
+  // 子代理会话只读：触发指令等消息可看不可改（编辑/重发会绕过 workspace 运行时）
+  const storeSessionId = useStore(store, (s) => s.sessionId);
+  const storeMode = useStore(store, (s) => s.mode);
+  const storeSessionMetadata = useStore(store, (s) => s.sessionMetadata);
+  const isReadOnlySession = isStoreSubagentSession({
+    sessionId: storeSessionId,
+    mode: storeMode,
+    sessionMetadata: storeSessionMetadata,
+  });
+
   // 派生状态：是否可以编辑/删除
   // 注意：这里使用本地派生状态而非调用 store.canEdit/canDelete
   // 因为需要额外检查 message.role === 'user'，且 Hook 规则不允许条件调用
   const canEdit = useMemo(() => {
     if (!message) return false;
-    if (isLocked) return false;
+    if (isLocked || isReadOnlySession) return false;
     return message.role === 'user'; // 只有用户消息可编辑
-  }, [message, isLocked]);
-
-  // 🔧 调试日志：记录 canEdit 状态变化
-  useEffect(() => {
-    if (message?.role === 'user') {
-      logChatV2('message', 'ui', 'canEdit_computed', {
-        messageId,
-        canEdit,
-        isLocked,
-        sessionStatus,
-        hasActiveBlock,
-        displayBlockIds,
-      }, canEdit ? 'info' : 'warning', { messageId });
-    }
-  }, [canEdit, isLocked, sessionStatus, hasActiveBlock, messageId, message?.role, displayBlockIds]);
+  }, [message, isLocked, isReadOnlySession]);
 
   const canDelete = useMemo(() => {
     if (!message) return false;
-    if (isLocked) return false;
+    if (isLocked || isReadOnlySession) return false;
     return true; // 非锁定状态下可删除
-  }, [message, isLocked]);
+  }, [message, isLocked, isReadOnlySession]);
 
   // 判断是否是用户消息
   const isUser = message?.role === 'user';
@@ -615,40 +249,81 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🆕 文本选择浮动工具栏
   const messageContentRef = useRef<HTMLDivElement>(null);
   const textSelection = useTextSelection(messageContentRef);
+  // P0-3: 选区工具栏的定位容器 = 消息根元素（position: relative），
+  // SelectionToolbar 在其内部 absolute 定位、随消息一起滚动
+  const messageRootRef = useRef<HTMLDivElement>(null);
 
-  // 🆕 翻译 Popover 状态
+  // P0-2: 移动端长按消息（~450ms）呼出消息下方的内联操作条（非 Sheet / 非 Portal）。
+  // 多变体消息有独立的卡片工具栏，不参与。
+  const [touchBarOpen, setTouchBarOpen] = useState(false);
+  const longPressEnabled = isSmallScreen && !isMultiVariant;
+  const handleMessageLongPress = useCallback(() => {
+    // ★ P0 修复：长按已经拉起文字选区时让位系统选择（否则 SelectionToolbar
+    // 的复制片段/AI解释/翻译在触屏永远不可达），仅"空长按"呼出消息操作条
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && String(selection).trim().length > 0) {
+      return;
+    }
+    // 长按误起的折叠选区一并清掉，避免操作条与系统选区手柄叠加
+    selection?.removeAllRanges();
+    textSelection.clear();
+    setTouchBarOpen(true);
+  }, [textSelection]);
+  const longPress = useLongPress({
+    onLongPress: handleMessageLongPress,
+    disabled: !longPressEnabled,
+    // ★ P0 修复：延时 450→600ms 让系统文本选择（~500ms）先行；
+    // 不再抑制原生 contextmenu / 选择菜单，与系统选区共存
+    delay: 600,
+    preventContextMenu: false,
+  });
+  // 交互元素（按钮/链接/输入框）上按住不算长按；桌面路径不挂任何监听
+  const longPressBind = useMemo(() => {
+    if (!longPressEnabled) return {};
+    return {
+      ...longPress.bind,
+      onPointerDown: (e: React.PointerEvent) => {
+        const target = e.target as Element | null;
+        if (target?.closest('button, a, input, textarea, select, [role="button"], [contenteditable="true"]')) {
+          return;
+        }
+        longPress.bind.onPointerDown(e);
+      },
+    };
+  }, [longPressEnabled, longPress.bind]);
+  const closeTouchBar = useCallback(() => setTouchBarOpen(false), []);
+
+  // 🆕 翻译 Popover 状态（P0-3：内联卡片挂在消息 DOM 流内，不再需要选区 rect）
   const [translationPopoverState, setTranslationPopoverState] = useState<{
     isVisible: boolean;
     sourceText: string;
-    rect: typeof textSelection.selectionRect;
     contextBefore: string;
     contextAfter: string;
-  }>({ isVisible: false, sourceText: '', rect: null, contextBefore: '', contextAfter: '' });
+  }>({ isVisible: false, sourceText: '', contextBefore: '', contextAfter: '' });
 
   // 🆕 解释 Popover 状态
   const [explainPopoverState, setExplainPopoverState] = useState<{
     isVisible: boolean;
     sourceText: string;
-    rect: typeof textSelection.selectionRect;
-  }>({ isVisible: false, sourceText: '', rect: null });
+  }>({ isVisible: false, sourceText: '' });
 
   // 选中文本后的操作回调：发送消息
   const handleSelectionSendMessage = useCallback((content: string) => {
+    if (isReadOnlySession) return;
     store.getState().sendMessage(content);
-  }, [store]);
+  }, [isReadOnlySession, store]);
 
   // 选中文本后的操作回调：解释（打开 popover）
   const handleSelectionExplain = useCallback((text: string) => {
     setExplainPopoverState({
       isVisible: true,
       sourceText: text,
-      rect: textSelection.selectionRect,
     });
-  }, [textSelection.selectionRect]);
+  }, []);
 
   // 关闭解释 popover
   const handleExplainPopoverClose = useCallback(() => {
-    setExplainPopoverState({ isVisible: false, sourceText: '', rect: null });
+    setExplainPopoverState({ isVisible: false, sourceText: '' });
   }, []);
 
   // 选中文本后的操作回调：翻译（打开 popover）
@@ -656,15 +331,14 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     setTranslationPopoverState({
       isVisible: true,
       sourceText: text,
-      rect: textSelection.selectionRect,
       contextBefore: textSelection.contextBefore,
       contextAfter: textSelection.contextAfter,
     });
-  }, [textSelection.selectionRect, textSelection.contextBefore, textSelection.contextAfter]);
+  }, [textSelection.contextBefore, textSelection.contextAfter]);
 
   // 关闭翻译 popover
   const handleTranslationPopoverClose = useCallback(() => {
-    setTranslationPopoverState({ isVisible: false, sourceText: '', rect: null, contextBefore: '', contextAfter: '' });
+    setTranslationPopoverState({ isVisible: false, sourceText: '', contextBefore: '', contextAfter: '' });
   }, []);
 
   // 选中文本后的操作回调：添加到聊天输入框
@@ -673,9 +347,26 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       detail: { content: text, autoSend: false },
     }));
   }, []);
+
+  // 选中文本后的操作回调：划词制卡
+  const handleSelectionMakeCards = useCallback((text: string) => {
+    const sessionId = store.getState().sessionId;
+    void generateCardsFromSelection({
+      selectedText: text,
+      sessionId,
+      contextBefore: textSelection.contextBefore,
+      contextAfter: textSelection.contextAfter,
+      t,
+    });
+  }, [store, textSelection.contextBefore, textSelection.contextAfter, t]);
   
   // 🧮 Token 汇总：多变体判断不依赖并行视图开关
   const hasMultipleVariants = variants.length > 1;
+  // 🔧 性能：memo 聚合结果，保持 usage 对象引用稳定，让 TokenUsageDisplay 的 memo 生效
+  const aggregatedUsage = useMemo(
+    () => (hasMultipleVariants ? aggregateVariantUsage(variants) : undefined),
+    [hasMultipleVariants, variants]
+  );
   const singleVariantDisplay = useMemo(
     () => resolveSingleVariantDisplayMeta(message, variants),
     [message, variants]
@@ -710,7 +401,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const hasConsumableAssistantContent = useMemo(() => {
     if (isUser) return false;
     return extractMessageContent().length > 0;
-  }, [extractMessageContent, isUser, sessionStatus, message?.id, activeVariant?.id]);
+  }, [extractMessageContent, isUser]);
 
   const assistantFailureDetails = useMemo(() => {
     if (isUser) return null;
@@ -745,8 +436,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     if (headingMatch) return headingMatch[1].trim().slice(0, 100);
     const firstLine = content.split('\n')[0].replace(/<\/?[^>]+>/g, '').trim();
     if (firstLine.length > 0) return firstLine.slice(0, 60) + (firstLine.length > 60 ? '...' : '');
-    return `Chat Note ${new Date().toLocaleDateString()}`;
-  }, []);
+    return t('messageItem.actions.noteDefaultTitle', {
+      date: new Date().toLocaleDateString(locale),
+    });
+  }, [locale, t]);
 
   // 复制消息内容
   // 默认只复制 content 块（向后兼容）；当 content 为空时，回退包含 thinking / tool 结果
@@ -762,6 +455,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     } catch (error: unknown) {
       console.error('[MessageItem] Copy failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+      // 🔧 修复：向上抛出，让调用方（MessageActions 等）不要展示"已复制"的成功对勾
+      throw error;
     }
   }, [message, extractMessageContent, t]);
 
@@ -771,15 +466,26 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const [isDeletingMultiMessage, setIsDeletingMultiMessage] = useState(false);
   const [isRetryingFailure, setIsRetryingFailure] = useState(false);
 
+  // 🔧 修复：复制反馈定时器需要在卸载时清理，避免卸载后 setState
+  const multiCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (multiCopiedTimerRef.current) clearTimeout(multiCopiedTimerRef.current);
+  }, []);
+
   const handleMultiVariantCopy = useCallback(async () => {
     if (multiCopied) return;
-    await handleCopy();
+    try {
+      await handleCopy();
+    } catch {
+      // 复制失败：错误提示由 handleCopy 内部展示，不显示成功态对勾
+      return;
+    }
     setMultiCopied(true);
-    setTimeout(() => setMultiCopied(false), 2000);
+    multiCopiedTimerRef.current = setTimeout(() => setMultiCopied(false), 2000);
   }, [multiCopied, handleCopy]);
 
   const handleRetryAllVariantsInline = useCallback(async () => {
-    if (!retryAllVariants || isLocked || isRetryingAllVariants) return;
+    if (!retryAllVariants || isReadOnlySession || isLocked || isRetryingAllVariants) return;
     setIsRetryingAllVariants(true);
     try {
       await retryAllVariants();
@@ -788,7 +494,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     } finally {
       setIsRetryingAllVariants(false);
     }
-  }, [retryAllVariants, isLocked, isRetryingAllVariants]);
+  }, [retryAllVariants, isReadOnlySession, isLocked, isRetryingAllVariants]);
 
   const handleDeleteMultiMessageInline = useCallback(async () => {
     if (!canDelete || isDeletingMultiMessage) return;
@@ -804,62 +510,20 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [canDelete, isDeletingMultiMessage, store, messageId, t]);
 
-  // 复制调试信息（JSON 格式，完整不截断）
-  const handleCopyDebug = useCallback(async () => {
-    try {
-      await copyDebugInfoToClipboard(store, 'json');
-      showGlobalNotification('success', t('debug.copySuccessDesc'), t('debug.copySuccess'));
-    } catch (error: unknown) {
-      showGlobalNotification('error', t('debug.copyFailed'));
-    }
-  }, [store, t]);
+  // 🔧 P1-4: 重试破坏性确认改为内联确认条（替代 window.confirm，禁模态）
+  // 记录待确认的"将被删除的后续消息数"；null 表示未展开确认条
+  const [retryConfirmCount, setRetryConfirmCount] = useState<number | null>(null);
 
-  // 重试消息
-  const handleRetry = useCallback(async () => {
-    // 🔧 调试日志：记录 handleRetry 调用
-    logChatV2('message', 'ui', 'handleRetry_called', {
-      messageId,
-      isLocked,
-      hasMessage: !!message,
-    }, 'info', { messageId });
-
-    if (!message || isLocked) {
-      // 🔧 调试日志：记录 handleRetry 被阻止
-      logChatV2('message', 'ui', 'handleRetry_blocked', {
-        messageId,
-        reason: !message ? 'message=null' : 'isLocked=true',
-        isLocked,
-      }, 'warning', { messageId });
-      return;
-    }
-
-    // 🔧 L-015 修复：重试前检查是否有后续消息将被删除，需用户确认
-    const currentState = store.getState();
-    const msgIndex = currentState.messageOrder.indexOf(messageId);
-    const subsequentCount = msgIndex >= 0 ? currentState.messageOrder.length - msgIndex - 1 : 0;
-
-    if (subsequentCount > 0) {
-      // eslint-disable-next-line no-alert -- 这是一个阻断性确认，和当前删除后续消息的破坏性操作直接绑定
-      const confirmed = window.confirm(
-        t('messageItem.actions.retryDeleteConfirm', { count: subsequentCount })
-      );
-      if (!confirmed) {
-        logChatV2('message', 'ui', 'handleRetry_cancelled_by_user', {
-          messageId,
-          subsequentCount,
-        }, 'info', { messageId });
-        return;
-      }
-    }
-
+  // 真正执行重试（确认后 / 无后续消息时直接调用）
+  const performRetry = useCallback(async () => {
+    if (isReadOnlySession) return;
+    setRetryConfirmCount(null);
     try {
       await store.getState().retryMessage(messageId);
-      // 🔧 调试日志：retryMessage 调用返回（无异常）
       logChatV2('message', 'ui', 'handleRetry_completed', {
         messageId,
       }, 'success', { messageId });
     } catch (error: unknown) {
-      // 🔧 调试日志：retryMessage 抛出异常
       logChatV2('message', 'ui', 'handleRetry_error', {
         messageId,
         error: getErrorMessage(error),
@@ -867,21 +531,58 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       console.error('[MessageItem] Retry failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.retryFailed'));
     }
-  }, [message, messageId, isLocked, store, t]);
+  }, [isReadOnlySession, messageId, store, t]);
+
+  // 重试入口：有后续消息将被删除时先展开内联确认条，否则直接重试
+  const handleRetry = useCallback(async () => {
+    if (!message || isReadOnlySession || isLocked) {
+      logChatV2('message', 'ui', 'handleRetry_blocked', {
+        messageId,
+        reason: !message ? 'message=null' : isReadOnlySession ? 'readOnlySession=true' : 'isLocked=true',
+        isLocked,
+      }, 'warning', { messageId });
+      return;
+    }
+
+    // 🔧 L-015: 重试会删除后续消息，需用户确认（内联确认条，非阻塞）
+    const currentState = store.getState();
+    const msgIndex = currentState.messageOrder.indexOf(messageId);
+    const subsequentCount = msgIndex >= 0 ? currentState.messageOrder.length - msgIndex - 1 : 0;
+
+    if (subsequentCount > 0) {
+      setRetryConfirmCount(subsequentCount);
+      return;
+    }
+
+    await performRetry();
+  }, [message, messageId, isReadOnlySession, isLocked, store, performRetry]);
+
+  const handleRetryConfirmCancel = useCallback(() => {
+    logChatV2('message', 'ui', 'handleRetry_cancelled_by_user', {
+      messageId,
+      subsequentCount: retryConfirmCount,
+    }, 'info', { messageId });
+    setRetryConfirmCount(null);
+  }, [messageId, retryConfirmCount]);
+
+  // 会话进入锁定态（如另一条消息开始流式）时自动收起确认条，避免过期确认
+  useEffect(() => {
+    if (isLocked) setRetryConfirmCount(null);
+  }, [isLocked]);
 
   const handleRetryFromFailureBar = useCallback(async () => {
-    if (isRetryingFailure || isLocked) return;
+    if (isReadOnlySession || isRetryingFailure || isLocked) return;
     setIsRetryingFailure(true);
     try {
       await handleRetry();
     } finally {
       setIsRetryingFailure(false);
     }
-  }, [handleRetry, isLocked, isRetryingFailure]);
+  }, [handleRetry, isReadOnlySession, isLocked, isRetryingFailure]);
 
   // 重新发送用户消息
   const handleResend = useCallback(async () => {
-    if (!message || isLocked) return;
+    if (!message || isLocked || isReadOnlySession) return;
     const blocks = getDisplayBlocks();
     const contentBlock = blocks.find((b) => b.type === 'content');
     const currentContent = contentBlock?.content || '';
@@ -897,18 +598,23 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       console.error('[MessageItem] Resend failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.resendFailed'));
     }
-  }, [message, messageId, isLocked, getDisplayBlocks, store, t]);
+  }, [message, messageId, isLocked, isReadOnlySession, getDisplayBlocks, store, t]);
 
   // 编辑状态
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [isInlineEditing, setIsInlineEditing] = useState(false);
   const [editText, setEditText] = useState('');
+
+  // P0-2: 进入内联编辑时收起长按操作条（操作条在编辑态不渲染，同时复位 select-none）
+  useEffect(() => {
+    if (isInlineEditing) {
+      setTouchBarOpen(false);
+    }
+  }, [isInlineEditing]);
   
   // 🔧 上下文引用预览回调
   // 发射事件让上层组件（ChatContainer/ChatV2Page）处理跳转到 Learning Hub
   const handleContextRefPreview = useCallback((ref: ContextRef) => {
-    console.log('[MessageItem] Context ref preview:', ref);
-    
     // 发射自定义事件，携带 ContextRef 信息
     // 事件将被 ChatContainer 或 App 层监听并处理跳转
     dispatchContextRefPreview(ref, message?._meta?.contextSnapshot?.pathMap);
@@ -1006,6 +712,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       }, 'error', { messageId });
       console.error('[MessageItem] Edit failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.editFailed'));
+      // 🔧 修复：提交失败时恢复编辑态，避免用户已修改的内容丢失（editText 仍保留在 state 中）
+      setIsInlineEditing(true);
     } finally {
       setIsSubmittingEdit(false);
     }
@@ -1031,7 +739,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 🔧 P0 修复：继续执行——优先调用后端 continue_message（同消息内继续），失败时 fallback 到 sendMessage
   const handleContinue = useCallback(async () => {
-    if (isLocked) {
+    if (isReadOnlySession || isLocked) {
       // 使用 getState() 获取实时状态用于日志，避免将 sessionStatus/hasActiveBlock 加入依赖数组
       const s = store.getState();
       console.warn('[MessageItem] handleContinue blocked: isLocked=true', {
@@ -1047,7 +755,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       console.error('[MessageItem] Continue failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.continueFailed'));
     }
-  }, [isLocked, store, messageId, activeVariant?.id, t]);
+  }, [isReadOnlySession, isLocked, store, messageId, activeVariant?.id, t]);
 
   // 🆕 保存为 VFS 笔记
   const handleSaveAsNote = useCallback(async () => {
@@ -1074,7 +782,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🆕 会话分支：从此消息处创建新会话
   const isBranchingRef = useRef(false);
   const handleBranch = useCallback(async () => {
-    if (isBranchingRef.current || isLocked || !message) return;
+    if (isBranchingRef.current || isReadOnlySession || isLocked || !message) return;
     isBranchingRef.current = true;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -1095,9 +803,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     } finally {
       isBranchingRef.current = false;
     }
-  }, [isLocked, message, store, messageId, t]);
+  }, [isReadOnlySession, isLocked, message, store, messageId, t]);
 
-  // 🆕 导出为 Markdown 文件
+  // 🆕 导出为 Markdown 文件（入口：MessageActions 更多菜单）
   const handleExportMarkdown = useCallback(async () => {
     if (!message) return;
     const text = extractMessageContent();
@@ -1130,23 +838,29 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }));
   }, []);
 
-  // 🔒 审计修复: 将 useCallback 移到条件返回之前，避免 React Hooks 调用顺序违规
-  // 🔧 P0修复：使用精确的 store 选择器判断块是否正在流式生成
-  const isBlockStreaming = useCallback((blockId: string) => {
-    return store.getState().activeBlockIds.has(blockId);
-  }, [store]);
-
   // 消息不存在
   if (!message) {
     return null;
   }
 
   return (
-    <div
+    <MessageSearchProvider query={searchQuery}>
+      <div
+      ref={messageRootRef}
+      // P0-2: 移动端长按呼出内联操作条（桌面路径 longPressBind 为空对象，零监听）
+      {...longPressBind}
       className={cn(
         // 与 InputBar/MessageList 空态/scroll 按钮共享 px-4 md:px-8，避免左右不对齐
-        'group px-4 py-4 md:px-8',
+        // P0-3: relative = SelectionToolbar 的 absolute 定位容器
+        'group relative px-4 py-4 md:px-8',
+        // 🔧 P0-B1: 接通 chat.css / chat-beautify.css 的
+        // `.message.assistant .message-content` 排版选择器（此前 DOM 缺类名导致
+        // Streamdown-inspired Typography 整段失效）
+        'message',
+        isUser ? 'user' : 'assistant',
         !isUser && 'bg-background',
+        // 操作条展开期间抑制文字选择，避免误触拖选；关闭/进入编辑态自动复位
+        touchBarOpen && 'select-none',
         // 第一条消息添加顶部间距
         isFirst && 'pt-6',
         className
@@ -1155,23 +869,31 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       {/* 📱 移动端多变体：使用垂直布局，不显示外层头像（卡片内已有） */}
       {isMobileMultiVariant ? (
         <ThreadContentShell className="group">
+          {/* P0-2: 多变体内容同样包进 message-selectable-area 并挂载共享 ref，
+              使选区工具栏（翻译/解释/复制）在移动端多变体下可用 */}
+          <div className="min-w-0 message-content message-selectable-area" ref={messageContentRef}>
           {/* 多变体内容：居中显示，使用全宽 */}
           <ParallelVariantView
             store={store}
             messageId={messageId}
             variants={variants}
             activeVariantId={activeVariant?.id}
-            onSwitchVariant={switchVariant}
-            onCancelVariant={cancelVariant}
-            onRetryVariant={retryVariant}
-            onDeleteVariant={deleteVariant}
-            onRetryAllVariants={retryAllVariants}
-            onDeleteMessage={handleDelete}
+            onSwitchVariant={isReadOnlySession ? undefined : switchVariant}
+            onCancelVariant={isReadOnlySession ? undefined : cancelVariant}
+            onRetryVariant={isReadOnlySession ? undefined : retryVariant}
+            onDeleteVariant={isReadOnlySession ? undefined : deleteVariant}
+            onRetryAllVariants={isReadOnlySession ? undefined : retryAllVariants}
+            onDeleteMessage={isReadOnlySession ? undefined : handleDelete}
             onCopy={handleCopy}
             isLocked={isLocked}
-            onBranchSession={handleBranch}
+            onBranchSession={isReadOnlySession ? undefined : handleBranch}
+            onSaveAsNote={handleSaveAsNote}
+            onExportMarkdown={handleExportMarkdown}
+            messageTimestamp={message?.timestamp}
+            aggregatedUsage={aggregatedUsage}
             hideMessageLevelActions={!isSmallScreen}
           />
+          </div>
         </ThreadContentShell>
       ) : (
         /* 💻 桌面端/非多变体：消息内容布局 */
@@ -1179,8 +901,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           // 与输入栏 (InputBarUI: max-w-thread) 严格对齐
           width={isMultiVariant ? 'full' : 'thread'}
         >
-          {/* 消息内容 */}
-          <div className="min-w-0 message-selectable-area" ref={messageContentRef}>
+          {/* 消息内容（message-content: 接通 assistant 阅读排版选择器） */}
+          <div className="min-w-0 message-content message-selectable-area" ref={messageContentRef}>
             {/* 内联编辑模式 */}
             {isUser && isInlineEditing ? (
               <MessageInlineEdit
@@ -1199,16 +921,20 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     messageId={messageId}
                     variants={variants}
                     activeVariantId={activeVariant?.id}
-                    onSwitchVariant={switchVariant}
-                    onCancelVariant={cancelVariant}
-                    onRetryVariant={retryVariant}
-                    onDeleteVariant={deleteVariant}
-                    onRetryAllVariants={retryAllVariants}
-                    onDeleteMessage={handleDelete}
+                    onSwitchVariant={isReadOnlySession ? undefined : switchVariant}
+                    onCancelVariant={isReadOnlySession ? undefined : cancelVariant}
+                    onRetryVariant={isReadOnlySession ? undefined : retryVariant}
+                    onDeleteVariant={isReadOnlySession ? undefined : deleteVariant}
+                    onRetryAllVariants={isReadOnlySession ? undefined : retryAllVariants}
+                    onDeleteMessage={isReadOnlySession ? undefined : handleDelete}
                     onCopy={handleCopy}
                     isLocked={isLocked}
-                    onContinue={handleContinue}
-                    onBranchSession={handleBranch}
+                    onContinue={isReadOnlySession ? undefined : handleContinue}
+                    onBranchSession={isReadOnlySession ? undefined : handleBranch}
+                    onSaveAsNote={handleSaveAsNote}
+                    onExportMarkdown={handleExportMarkdown}
+                    messageTimestamp={message?.timestamp}
+                    aggregatedUsage={aggregatedUsage}
                     hideMessageLevelActions={!isSmallScreen}
                   />
                 ) : (
@@ -1216,8 +942,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 <div className={cn(
                   'space-y-2',
                   isUser && 'flex flex-col items-end',
-                  // 用户消息优化字体和间距
-                  isUser && 'text-[15px] leading-relaxed tracking-wide'
+                  isUser && 'chat-message-user'
                 )}>
                   {/* 🚀 P1 性能优化：分组渲染使用 BlockRendererWithStore 独立订阅 */}
                   {(() => {
@@ -1229,10 +954,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           {isSteered && (
                             <div
                               className="flex items-center justify-end gap-1 mb-1.5 text-xs text-muted-foreground/70 select-none"
-                              aria-label={t('queue.steeredBadge', '已引导对话')}
+                              aria-label={t('queue.steeredBadge')}
                             >
                               <ArrowBendDownRight size={12} weight="regular" aria-hidden="true" />
-                              <span>{t('queue.steeredBadge', '已引导对话')}</span>
+                              <span>{t('queue.steeredBadge')}</span>
                             </div>
                           )}
                           <UserMessageBubble>
@@ -1257,23 +982,20 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       // 🔧 重连中：显示重连文本（正文样式），而非"正在思考"
                       if (shouldShowReconnectInline && streamReconnectState) {
                         return (
-                          <div
-                            className={cn(
-                              'prose prose-sm dark:prose-invert max-w-none',
-                              'text-foreground',
-                              'prose-p:text-[15px] prose-p:leading-relaxed prose-p:tracking-wide'
-                            )}
-                          >
-                            <p className="m-0 text-[15px] leading-relaxed tracking-wide text-foreground">
-                              <TextShimmer className="text-[15px] leading-relaxed tracking-wide text-foreground" duration={1.6} spread={3}>
+                          <div className="chat-message-status">
+                            <p className="m-0 chat-message-status__text">
+                              <TextShimmer className="chat-message-status__text" duration={1.6} spread={3}>
                                 {reconnectInlineText}
                               </TextShimmer>
                             </p>
                           </div>
                         );
                       }
+                      // 首 token 前只显示轻量状态文案，避免用未知正文结构做骨架占位
                       return (
-                        <ThinkingIndicator />
+                        <div className="chat-fade-in">
+                          <ThinkingIndicator />
+                        </div>
                       );
                     }
 
@@ -1443,46 +1165,64 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           )}
 
           {!isInlineEditing && !isWaitingForContent && shouldShowReconnectInline && streamReconnectState && (
-            <div
-              className={cn(
-                'prose prose-sm dark:prose-invert max-w-none',
-                'text-foreground',
-                'prose-p:text-[15px] prose-p:leading-relaxed prose-p:tracking-wide',
-                'mt-2'
-              )}
-            >
-              <p className="m-0 text-[15px] leading-relaxed tracking-wide text-foreground">
-                <TextShimmer className="text-[15px] leading-relaxed tracking-wide text-foreground" duration={1.6} spread={3}>
+            <div className="chat-message-status mt-2">
+              <p className="m-0 chat-message-status__text">
+                <TextShimmer className="chat-message-status__text" duration={1.6} spread={3}>
                   {reconnectInlineText}
                 </TextShimmer>
               </p>
             </div>
           )}
 
-          {showActions && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure && (
+          {showActions && !isReadOnlySession && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure && (
             <div className="mt-2">
-              <div
-                className={cn(
-                  'prose prose-sm dark:prose-invert max-w-none',
-                  'text-foreground',
-                  'prose-p:text-[15px] prose-p:leading-relaxed prose-p:tracking-wide'
-                )}
-              >
-                <p className="m-0 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-foreground">
+              <div className="chat-message-failure">
+                <p className="m-0 whitespace-pre-wrap break-words">
                   {assistantFailureDetails || t('messageItem.failure.genericError')}
                 </p>
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleRetryFromFailureBar}
-                  disabled={isLocked || isRetryingFailure}
+                  disabled={isReadOnlySession || isLocked || isRetryingFailure}
                   className="text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 >
                   <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
                   {t('messageItem.failure.retry')}
-                </NotionButton>
+                </DsButton>
+              </div>
+            </div>
+          )}
+
+          {/* 🔧 P1-4: 重试破坏性操作的内联确认条（替代 window.confirm；无模态） */}
+          {!isUser && retryConfirmCount !== null && (
+            <div
+              className={cn(
+                'chat-fade-in mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5',
+                'rounded-[var(--chat-radius-md,12px)] border border-border/60 bg-muted/40 px-3 py-2'
+              )}
+              role="alert"
+              data-slot="message-retry-inline-confirm"
+            >
+              <span className="text-ui leading-relaxed text-foreground/85">
+                {t('messageItem.actions.retryDeleteConfirm', { count: retryConfirmCount })}
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                <DsButton variant="ghost" size="sm" onClick={handleRetryConfirmCancel}>
+                  {t('common:actions.cancel')}
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={performRetry}
+                  disabled={isReadOnlySession || isLocked}
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <ArrowCounterClockwise className="w-3.5 h-3.5" />
+                  {t('messageItem.actions.retryConfirmAction')}
+                </DsButton>
               </div>
             </div>
           )}
@@ -1506,8 +1246,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {message.timestamp && (
                       <span
-                        className="text-[10px] leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
-                        title={new Date(message.timestamp).toLocaleString()}
+                        className="text-2xs leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
+                        title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
                       </span>
@@ -1519,14 +1259,14 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {!isSmallScreen && (
                   <div className="flex items-center gap-1 min-w-0">
                     {!isUser && !isMultiVariant && singleVariantModelId && (
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           store.getState().setModelRetryTarget(messageId);
                           store.getState().setPanelState('model', true);
                         }}
-                        disabled={isLocked}
+                        disabled={isReadOnlySession || isLocked}
                         className={cn(
                           '!h-auto !px-1.5 !py-0.5 mr-1',
                           'text-[11px] text-muted-foreground/70',
@@ -1535,7 +1275,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         title={t('messageItem.modelRetry.clickToRetry')}
                       >
                         {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
-                      </NotionButton>
+                      </DsButton>
                     )}
                     {!isMultiVariant && (
                       <MessageActions
@@ -1547,17 +1287,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         alwaysExpanded={showAssistantFooterAlways}
                         anchorCopyToEnd={isUser}
                         onCopy={handleCopy}
-                        onRetry={!isUser && !isMultiVariant ? handleRetry : undefined}
-                        onResend={isUser ? handleResend : undefined}
-                        onEdit={isUser ? handleEdit : undefined}
+                        onRetry={!isUser && !isMultiVariant && !isReadOnlySession ? handleRetry : undefined}
+                        onResend={isUser && !isReadOnlySession ? handleResend : undefined}
+                        onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
-                        onBranchSession={handleBranch}
+                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
+                        onBranchSession={isReadOnlySession ? undefined : handleBranch}
                       />
                     )}
                     {!isUser && isMultiVariant && (
                       <div className="flex items-center gap-1">
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
@@ -1565,31 +1306,31 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           aria-label={t('messageItem.actions.copy')}
                           title={t('messageItem.actions.copy')}
                         >
-                          {multiCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                        </NotionButton>
-                        <NotionButton
+                          {multiCopied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                        </DsButton>
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
                           onClick={handleBranch}
-                          disabled={isLocked}
+                          disabled={isReadOnlySession || isLocked}
                           aria-label={t('messageItem.actions.branch')}
                           title={t('messageItem.actions.branch')}
                         >
                           <GitBranch className="w-4 h-4" />
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
                           onClick={handleRetryAllVariantsInline}
-                          disabled={isLocked || isRetryingAllVariants}
+                          disabled={isReadOnlySession || isLocked || isRetryingAllVariants}
                           aria-label={t('variant.retryAll')}
                           title={t('variant.retryAll')}
                         >
                           <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingAllVariants && 'animate-spin')} />
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
@@ -1600,13 +1341,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           title={t('messageItem.actions.delete')}
                         >
                           <Trash className={cn('w-4 h-4', isDeletingMultiMessage && 'animate-pulse')} />
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     )}
                     {message.timestamp && (
                       <span
                         className="text-[11px] text-muted-foreground/50 flex items-center ml-1 whitespace-nowrap shrink-0"
-                        title={new Date(message.timestamp).toLocaleString()}
+                        title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
                       </span>
@@ -1626,20 +1367,22 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         canDelete={canDelete}
                         alwaysExpanded={showAssistantFooterAlways}
                         onCopy={handleCopy}
-                        onRetry={!isUser && !isMultiVariant ? handleRetry : undefined}
-                        onResend={isUser ? handleResend : undefined}
-                        onEdit={isUser ? handleEdit : undefined}
+                        onRetry={!isUser && !isMultiVariant && !isReadOnlySession ? handleRetry : undefined}
+                        onResend={isUser && !isReadOnlySession ? handleResend : undefined}
+                        onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
-                        onBranchSession={handleBranch}
+                        onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
+                        onBranchSession={isReadOnlySession ? undefined : handleBranch}
                         compactMobile
+                        tokenUsage={!isUser ? (hasMultipleVariants ? aggregatedUsage : singleVariantUsage) : undefined}
                       />
                     )}
                     {/* 移动端用户消息的时间显示 */}
                     {isUser && message.timestamp && (
                       <span
-                        className="text-[10px] leading-none text-muted-foreground/45 flex items-center"
-                        title={new Date(message.timestamp).toLocaleString()}
+                        className="text-2xs leading-none text-muted-foreground/45 flex items-center"
+                        title={new Date(message.timestamp).toLocaleString(locale)}
                       >
                         {formatMessageTime(message.timestamp)}
                       </span>
@@ -1653,12 +1396,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {!isUser && !hasMultipleVariants && singleVariantUsage && (
                       <TokenUsageDisplay usage={singleVariantUsage} compact />
                     )}
-                    {!isUser && hasMultipleVariants && (() => {
-                      const aggregatedUsage = aggregateVariantUsage(variants);
-                      return aggregatedUsage ? (
-                        <TokenUsageDisplay usage={aggregatedUsage} compact />
-                      ) : null;
-                    })()}
+                    {!isUser && hasMultipleVariants && aggregatedUsage && (
+                      <TokenUsageDisplay usage={aggregatedUsage} compact />
+                    )}
                   </div>
                 )}
               </div>
@@ -1674,44 +1414,63 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
               copyFilterConfig={copyFilterConfig}
             />
           )}
+
+          {/* P0-2: 长按呼出的内联操作条（DOM 流内展开，非 Sheet/Portal） */}
+          {longPressEnabled && !isInlineEditing && (
+            <MessageTouchActionBar
+              open={touchBarOpen}
+              isUser={isUser}
+              isLocked={isLocked}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              onCopy={handleCopy}
+              onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
+              onRetry={!isUser && !isReadOnlySession ? handleRetry : undefined}
+              onDelete={handleDelete}
+              onClose={closeTouchBar}
+            />
+          )}
         </div>
       </ThreadContentShell>
       )}
 
       {/* 🔧 移除模态框，改用底部面板 */}
 
-      {/* 🆕 文本选中浮动工具栏 */}
+      {/* 🆕 文本选中工具栏（P0-3: absolute 定位在消息根元素内，随消息滚动） */}
       <SelectionToolbar
         selectedText={textSelection.selectedText}
         selectionRect={textSelection.selectionRect}
         isVisible={textSelection.isVisible && !translationPopoverState.isVisible && !explainPopoverState.isVisible}
+        containerRef={messageRootRef}
         onClear={textSelection.clear}
-        onSendMessage={handleSelectionSendMessage}
+        onSendMessage={isReadOnlySession ? undefined : handleSelectionSendMessage}
         onExplain={handleSelectionExplain}
         onTranslate={handleSelectionTranslate}
         onAddToChat={handleSelectionAddToChat}
+        onMakeCards={handleSelectionMakeCards}
       />
 
-      {/* 🆕 翻译 Popover */}
-      <TranslationPopover
-        sourceText={translationPopoverState.sourceText}
-        selectionRect={translationPopoverState.rect}
-        isVisible={translationPopoverState.isVisible}
-        contextBefore={translationPopoverState.contextBefore}
-        contextAfter={translationPopoverState.contextAfter}
-        onClose={handleTranslationPopoverClose}
-        onAddToInput={handleSelectionAddToChat}
-      />
-
-      {/* 🆕 解释 Popover */}
-      <ExplainPopover
-        sourceText={explainPopoverState.sourceText}
-        selectionRect={explainPopoverState.rect}
-        isVisible={explainPopoverState.isVisible}
-        onClose={handleExplainPopoverClose}
-        onAddToInput={handleSelectionAddToChat}
-      />
-    </div>
+      {/* 🆕 翻译/解释内联卡片（P0-3: DOM 流内展开在消息下方，与消息列对齐） */}
+      {(translationPopoverState.isVisible || explainPopoverState.isVisible) && (
+        <ThreadContentShell width={isMultiVariant ? 'full' : 'thread'}>
+          <TranslationPopover
+            sourceText={translationPopoverState.sourceText}
+            isVisible={translationPopoverState.isVisible}
+            contextBefore={translationPopoverState.contextBefore}
+            contextAfter={translationPopoverState.contextAfter}
+            onClose={handleTranslationPopoverClose}
+            onAddToInput={handleSelectionAddToChat}
+          />
+          <ExplainPopover
+            sourceText={explainPopoverState.sourceText}
+            isVisible={explainPopoverState.isVisible}
+            onClose={handleExplainPopoverClose}
+            onAddToInput={handleSelectionAddToChat}
+          />
+        </ThreadContentShell>
+      )}
+      </div>
+    </MessageSearchProvider>
   );
 };
 
@@ -1727,7 +1486,8 @@ export const MessageItem = React.memo(MessageItemInner, (prevProps, nextProps) =
     prevProps.showActions === nextProps.showActions &&
     prevProps.className === nextProps.className &&
     prevProps.isFirst === nextProps.isFirst &&
-    prevProps.isLatest === nextProps.isLatest
+    prevProps.isLatest === nextProps.isLatest &&
+    prevProps.searchQuery === nextProps.searchQuery
   );
 });
 

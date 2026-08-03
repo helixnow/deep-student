@@ -1,0 +1,339 @@
+/**
+ * ExposeOverlay（O7 专属样式）
+ * ---------------------------------------------------------------------------
+ * 类名一律 wb-expose- 前缀；不重定义 workbench.css 契约类
+ * （背景暗化通过组合 .wb-expose-backdrop 获得；玻璃标签用 .wb-glass）。
+ *
+ * 纪律：
+ *   - 所有动画仅 transform / opacity；
+ *   - 曲线/时长引用 O1 motion.css token（--wb-ease-spring-soft /
+ *     --wb-motion-gentle），带同值回退；
+ *   - z-index 走 O1 刻度（backdrop 用 --wb-z-expose-backdrop，命中层用
+ *     --wb-z-overlay）；backdrop 必须低于窗口层（既有裁决不变）；
+ *   - minimal 材质档与 prefers-reduced-motion 下时长归零。
+ *
+ * 结构：
+ *   .wb-expose-root                 overlay 定位层
+ *     .wb-expose-backdrop           暗化背景（契约类，z=expose-backdrop）
+ *     .wb-expose-hitlayer           命中/键盘层（z=overlay）
+ *       .wb-expose-empty            空态提示（裸文字，无卡片）
+ *       .wb-expose-cell             缩略命中格（含标题 + 关闭）
+ */
+
+.wb-expose-root {
+  position: absolute;
+  inset: 0;
+
+  --wb-expose-ease: var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.12, 0.36, 1));
+  --wb-expose-duration: var(--wb-motion-gentle, 320ms);
+  --wb-expose-hover-duration: var(--wb-hover-duration, var(--wb-motion-quick, 150ms));
+  --wb-expose-hover-ease: var(--wb-hover-ease, var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)));
+  --wb-expose-dissolve-duration: var(--wb-motion-quick, 150ms);
+  --wb-expose-dissolve-ease: var(--wb-ease-in, cubic-bezier(0.5, 0.05, 0.8, 0.4));
+}
+
+/* ==========================================================================
+ * 背景暗化淡入淡出（契约类 .wb-expose-backdrop 提供材质；此处只管层序与动效）
+ * ========================================================================== */
+
+.wb-expose-root > .wb-expose-backdrop {
+  z-index: var(--wb-z-expose-backdrop, 5);
+  opacity: 1;
+  transition: opacity var(--wb-expose-duration) var(--wb-expose-ease);
+  pointer-events: none;
+}
+
+.wb-expose-root[data-phase='closing'] > .wb-expose-backdrop {
+  opacity: 0;
+}
+
+.wb-expose-root[data-phase='entering'] > .wb-expose-backdrop {
+  animation: wb-expose-backdrop-in var(--wb-expose-duration) var(--wb-expose-ease) both;
+}
+
+@keyframes wb-expose-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==========================================================================
+ * 命中层
+ * ========================================================================== */
+
+.wb-expose-hitlayer {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-overlay, 9500);
+  pointer-events: auto;
+}
+
+.wb-expose-root[data-phase='closing'] .wb-expose-hitlayer {
+  pointer-events: none;
+}
+
+.wb-expose-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 空态提示：裸文字直接浮在暗化 backdrop 上（无卡片包裹） */
+.wb-expose-empty-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.875rem;
+  text-align: center;
+  color: var(--text-primary, hsl(var(--foreground)));
+  text-shadow: 0 1px 8px hsl(var(--shadow-base, 0 0% 0%) / 18%);
+}
+
+/* 空态副行提示（Esc 返回桌面） */
+.wb-expose-empty-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+}
+
+/* ==========================================================================
+ * 单元格：hover 高亮 / 选中描边 / 标题浮现 / 关闭按钮
+ * ========================================================================== */
+
+.wb-expose-cell {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  opacity: 1;
+  transform: translateZ(0);
+  transition:
+    opacity var(--wb-expose-duration) var(--wb-expose-ease),
+    transform var(--wb-expose-hover-duration) var(--wb-expose-hover-ease);
+  will-change: transform, opacity;
+}
+
+.wb-expose-root[data-phase='closing'] .wb-expose-cell {
+  opacity: 0;
+}
+
+/*
+ * 目标框直接使用最终网格坐标，真实窗口则通过 FLIP 飞向该位置。
+ * 入场/重排完成前隐藏并禁用框，避免框先到、窗口后到造成错位和误点。
+ */
+.wb-expose-root[data-phase='entering'] .wb-expose-cell {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 非 hover / 非选中：轻微暗化（根上有 hover 目标时） */
+.wb-expose-hitlayer[data-dim='true'] .wb-expose-cell:not(:hover):not([data-selected='true']) {
+  opacity: 0.72;
+}
+
+/*
+ * hover/选中只做描边 + 标签浮现，不再对命中格做 scale/translate：
+ * 真实窗口的 transform 由 TS FLIP 独立控制，格子单独抬升会造成
+ * 「描边动了、窗口没动」的错位感（对齐 macOS Mission Control）。
+ */
+.wb-expose-cell:hover,
+.wb-expose-cell[data-selected='true'] {
+  z-index: 1;
+}
+
+.wb-expose-cell-pick {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+}
+
+.wb-expose-cell-hit {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  border-radius: 10px;
+  box-shadow: 0 0 0 0 transparent;
+  transition:
+    box-shadow var(--wb-expose-hover-duration) var(--wb-expose-hover-ease),
+    opacity var(--wb-expose-hover-duration) var(--wb-expose-hover-ease);
+  pointer-events: none;
+}
+
+.wb-expose-cell:hover .wb-expose-cell-hit,
+.wb-expose-cell[data-selected='true'] .wb-expose-cell-hit {
+  box-shadow:
+    0 0 0 2px color-mix(in hsl, hsl(var(--foreground)) 55%, transparent 45%),
+    var(--wb-shadow-lifted, 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
+}
+
+.wb-expose-cell:focus-within .wb-expose-cell-hit,
+.wb-expose-cell[data-selected='true'] .wb-expose-cell-hit {
+  box-shadow:
+    var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65)),
+    var(--wb-shadow-lifted, 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
+}
+
+/* 标题：默认隐，hover / 选中浮现 */
+.wb-expose-label {
+  position: absolute;
+  left: 50%;
+  /* block + 行高垂直居中：flex 容器会把文本包成匿名 item，ellipsis 失效 */
+  display: block;
+  box-sizing: border-box;
+  height: 1.75rem;
+  max-width: 100%;
+  padding: 0 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  line-height: calc(1.75rem - 2px);
+  text-align: center;
+  color: var(--text-primary, hsl(var(--foreground)));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--wb-shadow-popover, 0 14px 44px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--wb-expose-hover-duration) var(--wb-expose-hover-ease),
+    transform var(--wb-expose-hover-duration) var(--wb-expose-hover-ease);
+}
+
+.wb-expose-cell:hover .wb-expose-label,
+.wb-expose-cell[data-selected='true'] .wb-expose-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 关闭按钮：hover / 选中 / focus-within 浮现 */
+.wb-expose-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: color-mix(in hsl, hsl(var(--background)) 72%, transparent 28%);
+  /* 亮暗内容之上均可辨的细描边 */
+  box-shadow: 0 0 0 1px color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  color: hsl(var(--foreground));
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.86);
+  pointer-events: none;
+  transition:
+    opacity var(--wb-expose-hover-duration) var(--wb-expose-hover-ease),
+    transform var(--wb-expose-hover-duration) var(--wb-expose-hover-ease);
+}
+
+.wb-expose-cell:hover .wb-expose-close,
+.wb-expose-cell[data-selected='true'] .wb-expose-close,
+.wb-expose-cell:focus-within .wb-expose-close {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.wb-expose-close:hover,
+.wb-expose-close:focus-visible {
+  background: color-mix(in hsl, hsl(var(--destructive, 0 72% 51%)) 78%, transparent 22%);
+  color: hsl(var(--destructive-foreground, 0 0% 100%));
+  outline: none;
+}
+
+/* 焦点环仅在键盘焦点时出现；hover 只换色不加环 */
+.wb-expose-close:focus-visible {
+  box-shadow: var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65));
+}
+
+/* 按压反馈（specificity 需盖过 hover 浮现规则的 scale(1)） */
+.wb-expose-cell .wb-expose-close:active {
+  transform: scale(0.92);
+}
+
+/* 单元格消散（关闭窗口） */
+.wb-expose-cell[data-dissolving='true'] {
+  pointer-events: none;
+  animation: wb-expose-dissolve var(--wb-expose-dissolve-duration) var(--wb-expose-dissolve-ease) both;
+}
+
+@keyframes wb-expose-dissolve {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.92);
+  }
+}
+
+/* 真实窗口 DOM 上的 FLIP 标记类（由 TS 挂载；过渡直写 style 引用 token） */
+.wb-expose-flip {
+  will-change: transform;
+}
+
+/*
+ * App Exposé（P2）：非目标应用的窗口原位淡出（由 TS 打 data-expose-dimmed，
+ * 退出/卸载时移除）。窗口壳不在 .wb-expose-root 内，时长直接引用全局 token。
+ */
+[data-wb-window-id][data-expose-dimmed] {
+  opacity: 0.12;
+  pointer-events: none;
+  transition: opacity var(--wb-motion-gentle, 320ms) var(--wb-ease-out, ease-out);
+}
+
+/*
+ * P2 GPU 缓解：俯瞰 FLIP 期间窗口内 backdrop-filter 每帧重采样成本高。
+ * `.wb-titlebar` 契约本身无 blur；`.wb-glass` 等有。对已 FLIP 的窗临时关掉。
+ * 缩略态下玻璃变实色 tint，退出俯瞰即恢复——可接受，无明显闪变。
+ */
+[data-wb-window-id][data-expose-transform] .wb-glass,
+[data-wb-window-id][data-expose-transform] .wb-titlebar {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ==========================================================================
+ * 降级：minimal / reduced-motion → 时长归零
+ * ========================================================================== */
+
+:root[data-wb-material='minimal'] .wb-expose-root {
+  --wb-expose-duration: 0ms;
+  --wb-expose-hover-duration: 0ms;
+  --wb-expose-dissolve-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] [data-wb-window-id][data-expose-dimmed] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-expose-root {
+    --wb-expose-duration: 0ms;
+    --wb-expose-hover-duration: 0ms;
+    --wb-expose-dissolve-duration: 0ms;
+  }
+
+  [data-wb-window-id][data-expose-dimmed] {
+    transition: none;
+  }
+}

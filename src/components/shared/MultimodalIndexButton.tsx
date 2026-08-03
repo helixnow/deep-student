@@ -9,13 +9,13 @@
  * 设计文档: docs/multimodal-user-memory-design.md
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Database, CircleNotch, CheckCircle, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import multimodalRagService, { type SourceType, MULTIMODAL_INDEX_ENABLED } from '@/services/multimodalRagService';
+import multimodalRagService, { type SourceType, MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
 import type { VfsMultimodalIndexResourceOutput } from '@/api/vfsRagApi';
 import { cn } from '@/lib/utils';
 
@@ -69,10 +69,18 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const [status, setStatus] = useState<IndexStatus>('idle');
   const [lastResult, setLastResult] = useState<VfsMultimodalIndexResourceOutput | null>(null);
 
-  // ★ 多模态索引已禁用，不渲染按钮。恢复 MULTIMODAL_INDEX_ENABLED = true 后自动显示
-  if (!MULTIMODAL_INDEX_ENABLED) {
-    return null;
-  }
+  // 状态回落定时器：卸载时清理，避免 unmount 后 setState
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleIdleReset = useCallback(() => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = setTimeout(() => {
+      resetTimerRef.current = null;
+      setStatus('idle');
+    }, 3000);
+  }, []);
+  useEffect(() => () => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+  }, []);
 
   // 执行索引
   const handleIndex = useCallback(async () => {
@@ -93,7 +101,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'success',
-        t('common:multimodal.indexSuccess', {
+        t('common:chat.multimodal.indexSuccess', {
           pages: result.indexedPages,
         })
       );
@@ -101,20 +109,20 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
       onIndexComplete?.(result);
 
       // 3秒后恢复 idle 状态
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     } catch (error: unknown) {
       console.error('多模态索引失败:', error);
       setStatus('error');
 
       showGlobalNotification(
         'error',
-        t('common:multimodal.indexError')
+        t('common:chat.multimodal.indexError')
       );
 
       // 3秒后恢复 idle 状态
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     }
-  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, t]);
+  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, scheduleIdleReset, t]);
 
   // 强制重建索引
   const handleRebuild = useCallback(async () => {
@@ -135,26 +143,26 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'success',
-        t('common:multimodal.rebuildSuccess', {
+        t('common:chat.multimodal.rebuildSuccess', {
           pages: result.indexedPages,
         })
       );
 
       onIndexComplete?.(result);
 
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     } catch (error: unknown) {
       console.error('多模态索引重建失败:', error);
       setStatus('error');
 
       showGlobalNotification(
         'error',
-        t('common:multimodal.rebuildError')
+        t('common:chat.multimodal.rebuildError')
       );
 
-      setTimeout(() => setStatus('idle'), 3000);
+      scheduleIdleReset();
     }
-  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, t]);
+  }, [sourceType, sourceId, subLibraryId, status, onIndexComplete, scheduleIdleReset, t]);
 
   // 获取按钮图标
   const getIcon = () => {
@@ -174,31 +182,37 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const getLabel = () => {
     switch (status) {
       case 'indexing':
-        return t('common:multimodal.indexing');
+        return t('common:chat.multimodal.indexing');
       case 'success':
-        return t('common:multimodal.indexed');
+        return t('common:chat.multimodal.indexed');
       case 'error':
-        return t('common:multimodal.indexFailed');
+        return t('common:chat.multimodal.indexFailed');
       default:
-        return t('common:multimodal.index');
+        return t('common:chat.multimodal.index');
     }
   };
 
   // 获取 tooltip 内容
   const getTooltip = () => {
     if (lastResult && status === 'success') {
-      return t('common:multimodal.indexResultTooltip', {
+      return t('common:chat.multimodal.indexResultTooltip', {
         pages: lastResult.indexedPages,
         failed: lastResult.failedPages.length,
+        dimension: lastResult.dimension,
       });
     }
-    return t('common:multimodal.indexTooltip');
+    return t('common:chat.multimodal.indexTooltip');
   };
+
+  // 构建不包含该能力时隐藏入口（early return 放在 hooks 之后）。
+  if (!MULTIMODAL_INDEX_SUPPORTED) {
+    return null;
+  }
 
   return (
     <div className={cn('inline-flex items-center gap-1', className)}>
       <CommonTooltip content={<p className="text-xs">{getTooltip()}</p>} position="bottom" maxWidth={320}>
-        <NotionButton
+        <DsButton
           variant={variant}
           size={size}
           onClick={handleIndex}
@@ -210,19 +224,21 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
         >
           {getIcon()}
           {showLabel && <span className="ml-1.5">{getLabel()}</span>}
-        </NotionButton>
+        </DsButton>
       </CommonTooltip>
 
       {/* 重建按钮（仅在成功后显示） */}
       {status === 'success' && (
-        <CommonTooltip content={<p className="text-xs">{t('common:multimodal.rebuild')}</p>} position="bottom">
-          <NotionButton
+        <CommonTooltip content={<p className="text-xs">{t('common:chat.multimodal.rebuild')}</p>} position="bottom">
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={handleRebuild}
- className="w-8 h-8"           >
+            aria-label={t('common:chat.multimodal.rebuild')}
+            className="w-8 h-8"
+          >
             <ArrowClockwise size={14} />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
       )}
     </div>

@@ -15,7 +15,7 @@
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // ============================================================================
 // Mocks
@@ -44,6 +44,11 @@ vi.mock('@/api/dataGovernance', () => ({
     slimBackup: false,
   }),
   setBackupConfig: vi.fn().mockResolvedValue(undefined),
+}));
+
+const mockShowGlobalNotification = vi.hoisted(() => vi.fn());
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: (...args: unknown[]) => mockShowGlobalNotification(...args),
 }));
 
 import { OverviewTab } from '@/features/settings';
@@ -450,5 +455,48 @@ describe('BackupTab verification status indicators', () => {
     expect(
       screen.getByText(/验证失败|data:governance\.verification_failed/i),
     ).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// 测试组 6：legacy incremental 拒恢复（创建入口已下线）
+// ============================================================================
+
+describe('BackupTab legacy incremental restore rejection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('labels incremental packages and blocks restore without calling onRestoreBackup', () => {
+    const onRestoreBackup = vi.fn();
+
+    render(
+      <BackupTab
+        {...defaultBackupTabProps}
+        onRestoreBackup={onRestoreBackup}
+      />,
+    );
+
+    expect(
+      screen.getByText('data:governance.incremental_legacy_unsupported'),
+    ).toBeInTheDocument();
+
+    const backupTable = screen.getByRole('table');
+    const restoreButtons = within(backupTable).getAllByRole('button', {
+      name: 'data:governance.restore',
+    });
+    expect(restoreButtons.length).toBeGreaterThanOrEqual(2);
+
+    // sampleBackups[1] is incremental
+    fireEvent.click(restoreButtons[1]!);
+
+    expect(mockShowGlobalNotification).toHaveBeenCalledWith(
+      'warning',
+      'data:governance.restore_incremental_not_supported',
+    );
+    expect(onRestoreBackup).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/data:governance\.confirm_restore/i),
+    ).not.toBeInTheDocument();
   });
 });

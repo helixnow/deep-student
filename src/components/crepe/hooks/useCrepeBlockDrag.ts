@@ -2,11 +2,12 @@
  * Crepe 编辑器块拖拽 Hook
  * 使用 Pointer Events 替代原生 HTML5 Drag & Drop API
  * 解决 Tauri WebView 下原生拖拽失效的问题
- * 
- * 关键修复：
+ *
+ * 关键设计：
  * 1. 在 wrapper 上捕获 pointer，而不是在 block handle 元素上
- * 2. 使用 useRef 保存 blockHandle 引用，避免 pointer capture 后丢失
- * 3. 正确的事件流：pointerdown 记录 → pointermove 拖拽 → pointerup 放置
+ * 2. 定位一律基于被拖块/内容列的真实 rect（兼容缩放与窄边距），不用魔法数
+ * 3. 拖拽预览为克隆块的半透明幽灵卡（简洁风格），源块淡化留在文档中
+ * 4. 边缘自动滚动使用二次加速曲线；Escape / pointercancel / 窗口失焦可取消拖拽
  */
 
 import { useCallback, useRef, useEffect, useState } from 'react';
@@ -46,23 +47,34 @@ export interface UseCrepeBlockDragReturn {
 }
 
 const DRAG_THRESHOLD = 8; // 最小拖拽距离阈值
+const SOURCE_DIM_OPACITY = '0.32';
+const GHOST_MIN_WIDTH = 180;
+const GHOST_MAX_WIDTH = 480;
+const GHOST_MAX_CONTENT_HEIGHT = 120;
+const GHOST_GRAB_INSET = 10; // 抓取点相对幽灵卡边缘的最小内缩
+const AUTOSCROLL_EDGE = 56; // 距滚动容器上下边缘触发自动滚动的区域高度
+const AUTOSCROLL_MAX_SPEED = 22; // px / frame
 
 /**
  * 基于 Pointer Events 的块拖拽实现
  * 完全不依赖原生 HTML5 Drag & Drop API
  */
 export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBlockDragReturn {
-  const { crepeRef, containerRef, wrapperRef, dropIndicatorRef, enabled = true } = options;
+  const { crepeRef, wrapperRef, dropIndicatorRef, enabled = true } = options;
 
   const [dragState, setDragState] = useState<BlockDragState | null>(null);
   const dragStateRef = useRef<BlockDragState | null>(null);
-  
+
   // 拖拽过程中的状态（使用 ref 避免闭包问题）
   const pointerStartPos = useRef<{ x: number; y: number } | null>(null);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
-  const blockHandleRef = useRef<Element | null>(null); // 保存 block handle 引用
+  const blockHandleRef = useRef<Element | null>(null);
   const pointerIdRef = useRef<number | null>(null);
-  const previewElementRef = useRef<HTMLElement | null>(null); // 克隆的预览元素
+  const ghostElementRef = useRef<HTMLElement | null>(null);
+  const ghostGrabOffsetRef = useRef({ x: GHOST_GRAB_INSET, y: GHOST_GRAB_INSET });
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
 
   /**
    * 获取 ProseMirror view
@@ -86,119 +98,73 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     }
   }, [crepeRef]);
 
+  const getProseMirrorElement = useCallback((): HTMLElement | null => {
+    return wrapperRef.current?.querySelector('.ProseMirror') as HTMLElement | null;
+  }, [wrapperRef]);
+
+  /** 把文档内任意位置收敛到对应顶层块的位置 */
+  const resolveTopLevelPos = useCallback((view: any, rawPos: number): number | null => {
+    const clamped = Math.max(0, Math.min(rawPos, view.state.doc.content.size));
+    const $pos = view.state.doc.resolve(clamped);
+    const pos = $pos.depth > 0 ? $pos.before(1) : clamped;
+    return view.state.doc.nodeAt(pos) ? pos : null;
+  }, []);
+
   /**
-   * 根据 block handle 位置找到对应的 ProseMirror 节点位置
+   * 根据 block handle 位置找到对应的 ProseMirror 顶层节点
+   *
+   * 用 handle 垂直中心命中的顶层块 DOM + posAtDOM 求位置，不再依赖
+   * posAtCoords(x + 100) 的魔法水平偏移；rect 是布局后的真实坐标，
+   * 缩放和窄侧边距下同样成立。
    */
   const findNodePosFromBlockHandle = useCallback((blockHandle: Element): { pos: number; node: any } | null => {
     const view = getView();
-    if (!view) return null;
+    const proseMirror = getProseMirrorElement();
+    if (!view || !proseMirror) return null;
 
-    const rect = blockHandle.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
+    const handleRect = blockHandle.getBoundingClientRect();
+    const centerY = handleRect.top + handleRect.height / 2;
 
-    // 在 block handle 右侧一点找到编辑器内容
-    const pos = view.posAtCoords({ left: x + 100, top: y });
-    if (!pos || pos.inside < 0) return null;
+    let matched: Element | null = null;
+    let nearest: Element | null = null;
+    let nearestDistance = Infinity;
+    for (const child of Array.from(proseMirror.children)) {
+      const rect = child.getBoundingClientRect();
+      if (rect.height <= 0) continue;
+      if (centerY >= rect.top && centerY <= rect.bottom) {
+        matched = child;
+        break;
+      }
+      const distance = Math.min(Math.abs(centerY - rect.top), Math.abs(centerY - rect.bottom));
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = child;
+      }
+    }
+    const blockElement = matched ?? nearest;
 
-    // 找到根节点
-    let $pos = view.state.doc.resolve(pos.inside);
-    while ($pos.depth > 1) {
-      $pos = view.state.doc.resolve($pos.before($pos.depth));
+    let rawPos = -1;
+    if (blockElement) {
+      try {
+        rawPos = view.posAtDOM(blockElement, 0);
+      } catch {
+        rawPos = -1;
+      }
+    }
+    if (rawPos < 0) {
+      // 兜底：从内容列实际左缘（ProseMirror rect + padding-left）取样
+      const pmRect = proseMirror.getBoundingClientRect();
+      const paddingLeft = Number.parseFloat(getComputedStyle(proseMirror).paddingLeft) || 0;
+      const probeX = Math.min(pmRect.left + paddingLeft + 4, pmRect.right - 4);
+      const hit = view.posAtCoords({ left: probeX, top: centerY });
+      if (!hit) return null;
+      rawPos = hit.inside >= 0 ? hit.inside : hit.pos;
     }
 
-    const node = view.state.doc.nodeAt($pos.pos);
-    if (!node) return null;
-
-    return { pos: $pos.pos, node };
-  }, [getView]);
-
-  /**
-   * 根据 Y 坐标计算目标插入位置
-   */
-  const calculateTargetPos = useCallback((clientY: number): { pos: number; insertBefore: boolean; blockIndex: number } | null => {
-    const view = getView();
-    const wrapper = wrapperRef.current;
-    if (!view || !wrapper) return null;
-
-    const proseMirror = wrapper.querySelector('.ProseMirror');
-    if (!proseMirror) return null;
-
-    const blocks = proseMirror.querySelectorAll(':scope > *');
-    let closestBlock: Element | null = null;
-    let closestDistance = Infinity;
-    let insertBefore = true;
-    let closestBlockIndex = -1;
-
-    blocks.forEach((block, index) => {
-      const rect = block.getBoundingClientRect();
-      const blockMiddle = rect.top + rect.height / 2;
-      const distance = Math.abs(clientY - blockMiddle);
-
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestBlock = block;
-        insertBefore = clientY < blockMiddle;
-        closestBlockIndex = index;
-      }
-    });
-
-    if (!closestBlock || closestBlockIndex < 0) return null;
-
-    // 计算 ProseMirror 文档中的插入位置
-    let targetPos = 0;
-    let currentBlockIndex = 0;
-    view.state.doc.forEach((node: any, offset: number) => {
-      if (currentBlockIndex === closestBlockIndex) {
-        targetPos = insertBefore ? offset : offset + node.nodeSize;
-      }
-      currentBlockIndex++;
-    });
-
-    return { pos: targetPos, insertBefore, blockIndex: closestBlockIndex };
-  }, [getView, wrapperRef]);
-
-  /**
-   * 更新 drop indicator 位置
-   */
-  const updateDropIndicator = useCallback((clientY: number) => {
-    const wrapper = wrapperRef.current;
-    const indicator = dropIndicatorRef.current;
-    if (!wrapper || !indicator) return;
-
-    const proseMirror = wrapper.querySelector('.ProseMirror');
-    if (!proseMirror) return;
-
-    const wrapperRect = wrapper.getBoundingClientRect();
-    const blocks = proseMirror.querySelectorAll(':scope > *');
-    let closestBlock: Element | null = null;
-    let closestDistance = Infinity;
-    let insertBefore = true;
-
-    blocks.forEach((block) => {
-      const rect = block.getBoundingClientRect();
-      const blockMiddle = rect.top + rect.height / 2;
-      const distance = Math.abs(clientY - blockMiddle);
-
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestBlock = block;
-        insertBefore = clientY < blockMiddle;
-      }
-    });
-
-    if (closestBlock) {
-      const blockRect = closestBlock.getBoundingClientRect();
-      const indicatorY = insertBefore
-        ? blockRect.top - wrapperRect.top
-        : blockRect.bottom - wrapperRect.top;
-
-      indicator.style.top = `${indicatorY}px`;
-      indicator.style.display = 'block';
-    } else {
-      indicator.style.display = 'none';
-    }
-  }, [wrapperRef, dropIndicatorRef]);
+    const pos = resolveTopLevelPos(view, rawPos);
+    if (pos === null) return null;
+    return { pos, node: view.state.doc.nodeAt(pos) };
+  }, [getView, getProseMirrorElement, resolveTopLevelPos]);
 
   /**
    * 隐藏 drop indicator
@@ -206,9 +172,81 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
   const hideDropIndicator = useCallback(() => {
     const indicator = dropIndicatorRef.current;
     if (indicator) {
-      indicator.style.display = 'none';
+      delete indicator.dataset.visible;
     }
   }, [dropIndicatorRef]);
+
+  /**
+   * 单次扫描同时更新目标插入位置与 drop indicator。
+   * indicator 垂直位移走 transform（配合样式表的 transform 过渡平滑跟随），
+   * 目标位置用 posAtDOM 求得，避免 DOM 子元素与 doc 子节点索引错位。
+   */
+  const applyDropTarget = useCallback((clientY: number) => {
+    const view = getView();
+    const wrapper = wrapperRef.current;
+    const proseMirror = getProseMirrorElement();
+    if (!view || !wrapper || !proseMirror) return;
+
+    let closestBlock: Element | null = null;
+    let closestDistance = Infinity;
+    let insertBefore = true;
+
+    for (const block of Array.from(proseMirror.children)) {
+      const rect = block.getBoundingClientRect();
+      if (rect.height <= 0) continue;
+      const middle = rect.top + rect.height / 2;
+      const distance = Math.abs(clientY - middle);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestBlock = block;
+        insertBefore = clientY < middle;
+      }
+    }
+
+    if (!closestBlock) {
+      hideDropIndicator();
+      return;
+    }
+
+    let targetPos = -1;
+    try {
+      const rawPos = view.posAtDOM(closestBlock, 0);
+      const topPos = resolveTopLevelPos(view, rawPos);
+      if (topPos !== null) {
+        const node = view.state.doc.nodeAt(topPos);
+        targetPos = insertBefore ? topPos : topPos + node.nodeSize;
+      }
+    } catch {
+      targetPos = -1;
+    }
+
+    if (dragStateRef.current && targetPos >= 0) {
+      dragStateRef.current.targetInsertPos = targetPos;
+      dragStateRef.current.insertBefore = insertBefore;
+    }
+
+    const indicator = dropIndicatorRef.current;
+    if (indicator) {
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const blockRect = closestBlock.getBoundingClientRect();
+      const y = (insertBefore ? blockRect.top : blockRect.bottom) - wrapperRect.top;
+      const wasVisible = indicator.dataset.visible === 'true';
+      indicator.style.top = '0px';
+      indicator.style.left = `${blockRect.left - wrapperRect.left}px`;
+      indicator.style.width = `${blockRect.width}px`;
+      if (!wasVisible) {
+        // 首次出现直接落位，之后的移动才走样式表的 transform 过渡（避免从原点扫过）
+        indicator.style.transition = 'none';
+      }
+      // -1px 让 2px 高度的插入条在块边界上下居中
+      indicator.style.transform = `translate3d(0, ${y - 1}px, 0)`;
+      if (!wasVisible) {
+        void indicator.offsetHeight;
+        indicator.style.transition = '';
+      }
+      indicator.dataset.visible = 'true';
+    }
+  }, [getView, wrapperRef, getProseMirrorElement, resolveTopLevelPos, hideDropIndicator, dropIndicatorRef]);
 
   /**
    * 执行块移动操作
@@ -222,6 +260,14 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       if (!sourceNode) return false;
 
       const sourceNodeSize = sourceNode.nodeSize;
+      // 目标落在源块自身边界（块前/块后）时是 no-op，跳过以免产生冗余历史步骤
+      if (targetPos === sourcePos || targetPos === sourcePos + sourceNodeSize) {
+        return false;
+      }
+      // 防御：目标位置不允许落进源块内部（嵌套块坐标计算异常时的兜底）
+      if (targetPos > sourcePos && targetPos < sourcePos + sourceNodeSize) {
+        return false;
+      }
       let tr = view.state.tr;
 
       if (targetPos > sourcePos) {
@@ -238,8 +284,6 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
 
       view.dispatch(tr.scrollIntoView());
       view.focus();
-
-      console.log('[useCrepeBlockDrag] Block move completed:', { sourcePos, targetPos });
       return true;
     } catch (err) {
       console.error('[useCrepeBlockDrag] Block move failed:', err);
@@ -248,76 +292,203 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
   }, [getView]);
 
   /**
-   * 创建拖拽预览（克隆原始 DOM 元素，放在 wrapper 内保持样式）
+   * 移除拖拽幽灵预览
    */
-  const createDragPreview = useCallback((element: HTMLElement, clientY: number) => {
-    // 移除之前的预览
-    if (previewElementRef.current) {
-      previewElementRef.current.remove();
+  const removeDragGhost = useCallback(() => {
+    if (ghostElementRef.current) {
+      ghostElementRef.current.remove();
+      ghostElementRef.current = null;
     }
+  }, []);
+
+  /**
+   * 创建 简洁风格的半透明块幽灵预览：克隆被拖块内容、限制宽高、
+   * 底部渐隐裁剪。克隆容器借用 milkdown / ProseMirror 类名以复用既有
+   * 排版样式，纯 cloneNode 成本低（不做逐属性 computed style 拷贝）。
+   */
+  const createDragGhost = useCallback((element: HTMLElement, clientX: number, clientY: number) => {
+    removeDragGhost();
 
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    // 克隆元素
-    const clone = element.cloneNode(true) as HTMLElement;
     const rect = element.getBoundingClientRect();
-    
-    // 移除选中状态样式
-    clone.classList.remove('ProseMirror-selectednode');
-    clone.removeAttribute('data-selected');
-    
-    // 设置预览样式（使用 fixed 定位跟随鼠标）
-    clone.classList.add('crepe-drag-preview-clone');
-    clone.style.cssText = `
-      position: fixed !important;
-      left: ${rect.left}px;
-      top: ${clientY - 20}px;
-      width: ${rect.width}px;
-      pointer-events: none;
-      z-index: 9999;
-      opacity: 0.92;
-      transform: scale(0.98);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-      border-radius: 6px;
-      background: hsl(var(--background));
-      overflow: hidden;
-      max-height: 200px;
-      margin: 0 !important;
-      padding: inherit;
-    `;
+    const width = Math.max(GHOST_MIN_WIDTH, Math.min(rect.width + 24, GHOST_MAX_WIDTH));
+    ghostGrabOffsetRef.current = {
+      x: Math.min(Math.max(clientX - rect.left, GHOST_GRAB_INSET), width - GHOST_GRAB_INSET),
+      y: Math.min(Math.max(clientY - rect.top, GHOST_GRAB_INSET), GHOST_MAX_CONTENT_HEIGHT - GHOST_GRAB_INSET),
+    };
 
-    // 放在 wrapper 内部以继承样式作用域
-    wrapper.appendChild(clone);
-    previewElementRef.current = clone;
-  }, [wrapperRef]);
+    const ghost = document.createElement('div');
+    // 根节点带上 crepe-editor-wrapper 类：幽灵挂到 body 后仍能命中
+    // `.crepe-editor-wrapper .milkdown` 等作用域选择器与 --crepe-* 变量
+    ghost.className = 'crepe-editor-wrapper crepe-drag-ghost';
+    // 定位属性用 important 防御样式表覆盖；视觉属性走设计 token
+    ghost.style.setProperty('position', 'fixed', 'important');
+    ghost.style.setProperty('left', '0', 'important');
+    ghost.style.setProperty('top', '0', 'important');
+    ghost.style.setProperty('margin', '0', 'important');
+    // 覆盖 .crepe-editor-wrapper 基础规则的 min-height:300px
+    ghost.style.setProperty('min-height', '0', 'important');
+    ghost.style.setProperty('pointer-events', 'none', 'important');
+    ghost.style.setProperty('z-index', '9999', 'important');
+    ghost.style.width = `${width}px`;
+    ghost.style.boxSizing = 'border-box';
+    ghost.style.padding = '8px 12px';
+    ghost.style.borderRadius = 'var(--notes-radius-popup, 12px)';
+    ghost.style.background = 'hsl(var(--background) / 0.92)';
+    ghost.style.border = '1px solid hsl(var(--border))';
+    ghost.style.boxShadow = 'var(--notes-popup-shadow, 0 8px 24px hsl(var(--foreground) / 0.14))';
+    ghost.style.opacity = '0.85';
+    ghost.style.willChange = 'transform';
+    ghost.style.transform = `translate3d(${clientX - ghostGrabOffsetRef.current.x}px, ${clientY - ghostGrabOffsetRef.current.y}px, 0)`;
+
+    // 借用编辑器类名让克隆内容套用既有排版；布局相关属性内联复位
+    const scope = document.createElement('div');
+    scope.className = 'milkdown';
+    scope.style.setProperty('padding', '0', 'important');
+    scope.style.setProperty('margin', '0', 'important');
+    scope.style.setProperty('background', 'transparent', 'important');
+
+    const content = document.createElement('div');
+    content.className = 'ProseMirror';
+    content.setAttribute('contenteditable', 'false');
+    content.style.setProperty('min-height', '0', 'important');
+    content.style.setProperty('padding', '0', 'important');
+    content.style.setProperty('margin', '0', 'important');
+    content.style.maxHeight = `${GHOST_MAX_CONTENT_HEIGHT}px`;
+    content.style.overflow = 'hidden';
+    const fadeMask = 'linear-gradient(to bottom, black 72%, transparent 100%)';
+    content.style.setProperty('-webkit-mask-image', fadeMask);
+    content.style.setProperty('mask-image', fadeMask);
+
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.classList.remove('ProseMirror-selectednode');
+    clone.removeAttribute('contenteditable');
+    clone.removeAttribute('id');
+    clone.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+    clone.querySelectorAll('[contenteditable]').forEach((node) => node.removeAttribute('contenteditable'));
+    clone.style.setProperty('margin', '0', 'important');
+    clone.style.setProperty('opacity', '1', 'important');
+
+    content.appendChild(clone);
+    scope.appendChild(content);
+    ghost.appendChild(scope);
+    // 挂到 body 而非 wrapper：wrapper 可能位于带 transform 的移动端滑动轨道内，
+    // position:fixed 会相对轨道定位导致幽灵跟手错位；样式作用域由根节点类名保留
+    document.body.appendChild(ghost);
+    ghostElementRef.current = ghost;
+  }, [wrapperRef, removeDragGhost]);
 
   /**
-   * 更新拖拽预览位置
+   * 更新拖拽幽灵位置（transform 合成层移动，不触发布局）
    */
-  const updateDragPreview = useCallback((clientX: number, clientY: number) => {
-    const preview = previewElementRef.current;
-    if (!preview) return;
-
-    const rect = preview.getBoundingClientRect();
-    preview.style.left = `${clientX - rect.width / 2}px`;
-    preview.style.top = `${clientY - 20}px`;
+  const updateDragGhost = useCallback((clientX: number, clientY: number) => {
+    const ghost = ghostElementRef.current;
+    if (!ghost) return;
+    const offset = ghostGrabOffsetRef.current;
+    ghost.style.transform = `translate3d(${clientX - offset.x}px, ${clientY - offset.y}px, 0)`;
   }, []);
 
-  /**
-   * 移除拖拽预览
-   */
-  const removeDragPreview = useCallback(() => {
-    if (previewElementRef.current) {
-      previewElementRef.current.remove();
-      previewElementRef.current = null;
+  const applyBodyCursor = useCallback(() => {
+    document.body.style.setProperty('cursor', 'grabbing', 'important');
+  }, []);
+
+  const restoreBodyCursor = useCallback(() => {
+    document.body.style.removeProperty('cursor');
+  }, []);
+
+  /** 找到编辑器所在的第一个可滚动祖先，用于边缘自动滚动 */
+  const findScrollContainer = useCallback((): HTMLElement | null => {
+    let el: HTMLElement | null = getProseMirrorElement();
+    while (el) {
+      if (el.scrollHeight > el.clientHeight + 1) {
+        const { overflowY } = getComputedStyle(el);
+        if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+          return el;
+        }
+      }
+      el = el.parentElement;
+    }
+    return (document.scrollingElement as HTMLElement | null) ?? null;
+  }, [getProseMirrorElement]);
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
     }
   }, []);
+
+  /** 自动滚动帧：二次加速曲线，越贴近边缘滚得越快；滚动后重算落点 */
+  const autoScrollTick = useCallback(() => {
+    autoScrollFrameRef.current = null;
+    if (!isDraggingRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const pointer = lastPointerRef.current;
+    if (container && pointer) {
+      const isRoot = container === document.scrollingElement
+        || container === document.documentElement
+        || container === document.body;
+      let top: number;
+      let bottom: number;
+      if (isRoot) {
+        top = 0;
+        bottom = window.innerHeight;
+      } else {
+        const rect = container.getBoundingClientRect();
+        top = rect.top;
+        bottom = rect.bottom;
+      }
+
+      let delta = 0;
+      const topDistance = pointer.y - top;
+      const bottomDistance = bottom - pointer.y;
+      if (topDistance < AUTOSCROLL_EDGE) {
+        const t = Math.min(1, Math.max(0, (AUTOSCROLL_EDGE - topDistance) / AUTOSCROLL_EDGE));
+        delta = -Math.ceil(AUTOSCROLL_MAX_SPEED * t * t);
+      } else if (bottomDistance < AUTOSCROLL_EDGE) {
+        const t = Math.min(1, Math.max(0, (AUTOSCROLL_EDGE - bottomDistance) / AUTOSCROLL_EDGE));
+        delta = Math.ceil(AUTOSCROLL_MAX_SPEED * t * t);
+      }
+
+      if (delta !== 0) {
+        const previous = container.scrollTop;
+        container.scrollTop = previous + delta;
+        if (container.scrollTop !== previous) {
+          applyDropTarget(pointer.y);
+        }
+      }
+    }
+
+    autoScrollFrameRef.current = requestAnimationFrame(() => autoScrollTick());
+  }, [applyDropTarget]);
+
+  const startAutoScroll = useCallback(() => {
+    if (autoScrollFrameRef.current === null) {
+      autoScrollFrameRef.current = requestAnimationFrame(() => autoScrollTick());
+    }
+  }, [autoScrollTick]);
+
+  const releasePointerCaptureIfAny = useCallback(() => {
+    const wrapper = wrapperRef.current;
+    const pointerId = pointerIdRef.current;
+    if (wrapper && pointerId !== null) {
+      try {
+        if (wrapper.hasPointerCapture(pointerId)) {
+          wrapper.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // 忽略
+      }
+    }
+  }, [wrapperRef]);
 
   /**
    * 开始拖拽
    */
-  const startDrag = useCallback((blockHandle: Element, clientY: number) => {
+  const startDrag = useCallback((blockHandle: Element, clientX: number, clientY: number) => {
     if (!enabled) return;
 
     const nodeInfo = findNodePosFromBlockHandle(blockHandle);
@@ -326,30 +497,26 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       return;
     }
 
-    // 创建 NodeSelection
     const view = getView();
     if (view && NodeSelection.isSelectable(nodeInfo.node)) {
       const nodeSelection = NodeSelection.create(view.state.doc, nodeInfo.pos);
       view.dispatch(view.state.tr.setSelection(nodeSelection));
     }
 
-    // 获取被拖拽的 DOM 元素
+    // nodeDOM 同步可得，无需等待选中态渲染帧
     let draggedElement: HTMLElement | null = null;
-    const container = containerRef.current;
-    if (container) {
-      // 需要等待 DOM 更新
-      requestAnimationFrame(() => {
-        const selected = container.querySelector('.ProseMirror-selectednode') as HTMLElement;
-        if (selected) {
-          selected.style.opacity = '0.5';
-          if (dragStateRef.current) {
-            dragStateRef.current.draggedElement = selected;
-          }
-          
-          // 🔧 克隆元素作为拖拽预览（保持原有样式）
-          createDragPreview(selected, clientY);
-        }
-      });
+    if (view) {
+      try {
+        const dom = view.nodeDOM(nodeInfo.pos);
+        if (dom instanceof HTMLElement) draggedElement = dom;
+      } catch {
+        draggedElement = null;
+      }
+    }
+    if (draggedElement) {
+      // 先按原始状态创建预览，再淡化留在文档中的源块
+      createDragGhost(draggedElement, clientX, clientY);
+      draggedElement.style.opacity = SOURCE_DIM_OPACITY;
     }
 
     const state: BlockDragState = {
@@ -359,30 +526,83 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       targetInsertPos: -1,
       insertBefore: true,
       draggedElement,
-      previewPosition: { x: 0, y: clientY },
+      previewPosition: { x: clientX, y: clientY },
     };
 
     dragStateRef.current = state;
     setDragState(state);
     isDraggingRef.current = true;
+    lastPointerRef.current = { x: clientX, y: clientY };
+    scrollContainerRef.current = findScrollContainer();
 
     // 设置 data-dragging 属性，用于隐藏浮动工具栏
     const wrapper = wrapperRef.current;
     if (wrapper) {
       wrapper.dataset.dragging = 'true';
     }
+    applyBodyCursor();
 
-    // 立即显示 drop indicator
-    updateDropIndicator(clientY)
+    applyDropTarget(clientY);
+    startAutoScroll();
+  }, [
+    enabled,
+    findNodePosFromBlockHandle,
+    getView,
+    createDragGhost,
+    findScrollContainer,
+    wrapperRef,
+    applyBodyCursor,
+    applyDropTarget,
+    startAutoScroll,
+  ]);
 
-    console.log('[useCrepeBlockDrag] Drag started:', { sourcePos: nodeInfo.pos, nodeType: nodeInfo.node?.type?.name });
-  }, [enabled, findNodePosFromBlockHandle, getView, containerRef, updateDropIndicator]);
+  const resetInteractionRefs = useCallback(() => {
+    dragStateRef.current = null;
+    setDragState(null);
+    isDraggingRef.current = false;
+    pointerStartPos.current = null;
+    lastPointerRef.current = null;
+    blockHandleRef.current = null;
+    pointerIdRef.current = null;
+    scrollContainerRef.current = null;
+  }, []);
+
+  /**
+   * 清理函数（含取消拖拽路径：Escape / pointercancel / 窗口失焦 / 卸载）
+   */
+  const cleanup = useCallback(() => {
+    stopAutoScroll();
+    releasePointerCaptureIfAny();
+    restoreBodyCursor();
+
+    if (dragStateRef.current?.draggedElement) {
+      dragStateRef.current.draggedElement.style.opacity = '';
+    }
+    hideDropIndicator();
+    removeDragGhost();
+
+    const wrapper = wrapperRef.current;
+    if (wrapper) {
+      delete wrapper.dataset.dragging;
+    }
+
+    resetInteractionRefs();
+  }, [
+    stopAutoScroll,
+    releasePointerCaptureIfAny,
+    restoreBodyCursor,
+    hideDropIndicator,
+    removeDragGhost,
+    wrapperRef,
+    resetInteractionRefs,
+  ]);
 
   /**
    * Pointer Down 处理器
    */
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (!enabled) return;
+    if (e.button !== 0) return;
 
     const target = e.target as Element;
     const blockHandle = target.closest('.milkdown-block-handle');
@@ -393,7 +613,6 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     if (operationItem) {
       const allItems = blockHandle.querySelectorAll('.operation-item');
       const itemIndex = Array.from(allItems).indexOf(operationItem);
-      // 跳过加号按钮（第一个 operation-item，索引为 0）
       if (itemIndex === 0) return;
     }
 
@@ -401,7 +620,6 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     e.preventDefault();
     e.stopPropagation();
 
-    // 保存状态
     pointerStartPos.current = { x: e.clientX, y: e.clientY };
     blockHandleRef.current = blockHandle;
     pointerIdRef.current = e.pointerId;
@@ -425,39 +643,22 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
 
     // 超过阈值才开始拖拽
     if (!isDraggingRef.current && distance >= DRAG_THRESHOLD) {
-      startDrag(blockHandleRef.current, e.clientY);
+      startDrag(blockHandleRef.current, e.clientX, e.clientY);
     }
 
-    // 正在拖拽时更新位置
     if (isDraggingRef.current && dragStateRef.current) {
-      updateDropIndicator(e.clientY);
-
-      // 更新目标位置
-      const targetInfo = calculateTargetPos(e.clientY);
-      if (targetInfo) {
-        dragStateRef.current.targetInsertPos = targetInfo.pos;
-        dragStateRef.current.insertBefore = targetInfo.insertBefore;
-      }
-
-      // 更新拖拽预览位置
-      updateDragPreview(e.clientX, e.clientY);
+      lastPointerRef.current = { x: e.clientX, y: e.clientY };
+      applyDropTarget(e.clientY);
+      updateDragGhost(e.clientX, e.clientY);
       dragStateRef.current.previewPosition = { x: e.clientX, y: e.clientY };
     }
-  }, [enabled, startDrag, updateDropIndicator, calculateTargetPos, updateDragPreview]);
+  }, [enabled, startDrag, applyDropTarget, updateDragGhost]);
 
   /**
    * Pointer Up 处理器
    */
-  const onPointerUp = useCallback((e: React.PointerEvent) => {
-    // 释放 pointer 捕获
-    const wrapper = wrapperRef.current;
-    if (wrapper && pointerIdRef.current !== null) {
-      try {
-        wrapper.releasePointerCapture(pointerIdRef.current);
-      } catch {
-        // 忽略
-      }
-    }
+  const onPointerUp = useCallback((_e: React.PointerEvent) => {
+    releasePointerCaptureIfAny();
 
     // 如果没有开始拖拽，清理并返回
     if (!isDraggingRef.current || !dragStateRef.current) {
@@ -469,12 +670,14 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
 
     const { sourcePos, targetInsertPos, draggedElement } = dragStateRef.current;
 
+    stopAutoScroll();
+    restoreBodyCursor();
+
     // 恢复被拖拽元素的样式
     if (draggedElement) {
       draggedElement.style.opacity = '';
     }
 
-    // 隐藏 drop indicator
     hideDropIndicator();
 
     // 执行块移动
@@ -482,46 +685,51 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       executeBlockMove(sourcePos, targetInsertPos);
     }
 
-    // 移除拖拽预览
-    removeDragPreview();
+    removeDragGhost();
 
-    // 移除 data-dragging 属性
-    if (wrapper) {
-      delete wrapper.dataset.dragging;
-    }
-
-    // 清理状态
-    dragStateRef.current = null;
-    setDragState(null);
-    isDraggingRef.current = false;
-    pointerStartPos.current = null;
-    blockHandleRef.current = null;
-    pointerIdRef.current = null;
-  }, [wrapperRef, hideDropIndicator, executeBlockMove, removeDragPreview]);
-
-  /**
-   * 清理函数
-   */
-  const cleanup = useCallback(() => {
-    if (dragStateRef.current?.draggedElement) {
-      dragStateRef.current.draggedElement.style.opacity = '';
-    }
-    hideDropIndicator();
-    removeDragPreview();
-    
-    // 移除 data-dragging 属性
     const wrapper = wrapperRef.current;
     if (wrapper) {
       delete wrapper.dataset.dragging;
     }
-    
-    dragStateRef.current = null;
-    setDragState(null);
-    isDraggingRef.current = false;
-    pointerStartPos.current = null;
-    blockHandleRef.current = null;
-    pointerIdRef.current = null;
-  }, [hideDropIndicator, wrapperRef, removeDragPreview]);
+
+    resetInteractionRefs();
+  }, [
+    releasePointerCaptureIfAny,
+    stopAutoScroll,
+    restoreBodyCursor,
+    hideDropIndicator,
+    executeBlockMove,
+    removeDragGhost,
+    wrapperRef,
+    resetInteractionRefs,
+  ]);
+
+  // 取消路径：Escape 取消拖拽（不落块）、pointercancel、窗口失焦
+  useEffect(() => {
+    if (!enabled) return;
+
+    const cancelActiveDrag = () => {
+      if (isDraggingRef.current || pointerStartPos.current) {
+        cleanup();
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isDraggingRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        cleanup();
+      }
+    };
+
+    window.addEventListener('pointercancel', cancelActiveDrag);
+    window.addEventListener('blur', cancelActiveDrag);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('pointercancel', cancelActiveDrag);
+      window.removeEventListener('blur', cancelActiveDrag);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [enabled, cleanup]);
 
   // 组件卸载时清理
   useEffect(() => {

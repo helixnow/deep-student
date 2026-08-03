@@ -1,6 +1,9 @@
 /**
  * Chat V2 - InputBar 输入框组件
  *
+ * @deprecated Legacy 简易输入栏，主聊天路径已由 `input-bar/InputBarV2` 接管。
+ * 仅保留给测试与迁移期外部挂载点使用；新功能请只改 InputBarV2 侧，不要双改。
+ *
  * 职责：订阅 canSend/sessionStatus，控制发送/停止按钮
  */
 
@@ -8,8 +11,9 @@ import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { PaperPlaneRight, Square, CircleNotch, Paperclip } from '@phosphor-icons/react';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useSessionStatus, useInputValue, useCanSend, useAttachments } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
 import { ATTACHMENT_MAX_COUNT } from '../core/constants';
@@ -54,6 +58,10 @@ export const InputBar: React.FC<InputBarProps> = ({
   maxAttachments = ATTACHMENT_MAX_COUNT,
 }) => {
   const { t } = useTranslation('chatV2');
+
+  // ★ L1 修复：与 InputBarUI 的 C-11 约定对齐——移动端软键盘没有 Shift+Enter，
+  // Enter 应为换行，发送只走按钮
+  const isMobile = useIsMobile();
 
   // Refs
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -130,6 +138,13 @@ export const InputBar: React.FC<InputBarProps> = ({
   // 键盘事件
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // 🔧 IME 修复：中文输入法合成期间的 Enter 是「确认候选词」，不能触发发送
+      // keyCode 229 兜底覆盖部分 Windows 输入法/旧 WebView 不上报 isComposing 的情况
+      const nativeEvent = e.nativeEvent as KeyboardEvent;
+      if (nativeEvent.isComposing || nativeEvent.keyCode === 229) {
+        return;
+      }
+
       // Ctrl/Cmd + Enter 发送
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -141,8 +156,8 @@ export const InputBar: React.FC<InputBarProps> = ({
         return;
       }
 
-      // Enter 发送（非 Shift）
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter 发送（非 Shift；移动端 Enter=换行，见上方 isMobile 说明）
+      if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
         e.preventDefault();
         if (isStreaming) {
           handleStop();
@@ -151,7 +166,7 @@ export const InputBar: React.FC<InputBarProps> = ({
         }
       }
     },
-    [isStreaming, handleSend, handleStop]
+    [isStreaming, isMobile, handleSend, handleStop]
   );
 
   return (
@@ -173,7 +188,7 @@ export const InputBar: React.FC<InputBarProps> = ({
             // 使用 children 模式，不显示 DropZone
             className="flex-shrink-0"
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -188,7 +203,7 @@ export const InputBar: React.FC<InputBarProps> = ({
               title={t('inputBar.addAttachment')}
             >
               <Paperclip size={20} />
-            </NotionButton>
+            </DsButton>
           </AttachmentUploader>
         )}
 
@@ -205,18 +220,19 @@ export const InputBar: React.FC<InputBarProps> = ({
             className={cn(
               'w-full px-4 py-3 pr-12',
               'bg-muted/30 border border-border/50 rounded-2xl', // 更圆润
-              'resize-none overflow-hidden transition-all duration-200',
+              // ★ L1 修复：达到 maxHeight 后允许内部滚动，光标不再滑出可视区
+              'resize-none overflow-y-auto transition-all duration-200',
               'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 focus:bg-background',
               'placeholder:text-muted-foreground/70',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              'text-[15px] leading-relaxed' // 调整字号和行高
+              'text-md leading-relaxed' // 调整字号和行高
             )}
             style={{ minHeight: '48px', maxHeight: '200px' }}
           />
         </div>
 
         {/* 发送/停止按钮 */}
-        <NotionButton
+        <DsButton
           variant={isStreaming ? 'danger' : 'primary'}
           size="icon"
           iconOnly
@@ -240,11 +256,11 @@ export const InputBar: React.FC<InputBarProps> = ({
           ) : (
             <PaperPlaneRight size={20} className="ml-0.5" />
           )}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 快捷键提示 */}
-      <div className="mt-2 text-[10px] text-muted-foreground/60 text-center select-none">
+      <div className="mt-2 text-2xs text-muted-foreground/60 text-center select-none">
         {t('inputBar.shortcut')}
       </div>
     </div>

@@ -27,14 +27,14 @@ import {
   CheckCircle,
   CircleNotch,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Label } from '@/components/ui/shad/Label';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { formatBytes } from '@/types/dataGovernance';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -204,7 +204,7 @@ export const MediaCacheSection: React.FC = () => {
                 formatBytes(stats?.totalSize ?? 0)
               )}
             </div>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={loadStats}
@@ -212,7 +212,7 @@ export const MediaCacheSection: React.FC = () => {
               className="h-7 w-7 p-0"
             >
               <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       </div>
@@ -234,7 +234,7 @@ export const MediaCacheSection: React.FC = () => {
                 {t('data:governance.cache.estimated_free')}: {formatBytes(selectedSize)}
               </span>
             )}
-            <NotionButton
+            <DsButton
               variant="danger"
               size="sm"
               onClick={() => setShowConfirm(true)}
@@ -258,7 +258,7 @@ export const MediaCacheSection: React.FC = () => {
                   {t('data:governance.cache.clear_cache')}
                 </>
               )}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 
@@ -306,7 +306,7 @@ export const MediaCacheSection: React.FC = () => {
       </div>
 
       {/* 确认对话框 */}
-      <NotionAlertDialog
+      <DsAlertDialog
         open={showConfirm}
         onOpenChange={setShowConfirm}
         icon={<Trash size={20} className="text-red-500" />}
@@ -357,7 +357,7 @@ export const MediaCacheSection: React.FC = () => {
             <strong>{formatBytes(selectedSize)}</strong>
           </p>
         </div>
-      </NotionAlertDialog>
+      </DsAlertDialog>
     </div>
   );
 };

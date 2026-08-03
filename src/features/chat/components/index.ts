@@ -30,28 +30,16 @@ export type { AttachmentUploaderProps } from './AttachmentUploader';
 export { AttachmentPreview } from './AttachmentPreview';
 export type { AttachmentPreviewProps } from './AttachmentPreview';
 
-export { ChatParamsPanel } from './ChatParamsPanel';
-export type { ChatParamsPanelProps, ModelConfig } from './ChatParamsPanel';
-
-export { SystemPromptEditor } from './SystemPromptEditor';
-export type {
-  SystemPromptEditorProps,
-  SystemPromptTemplate,
-  PromptVariable,
-} from './SystemPromptEditor';
-
 // 变体组件（多模型并行）
 export {
   VariantStatusIcon,
   VariantSwitcher,
   VariantActions,
-  ParallelStreamingView,
 } from './Variant';
 export type {
   VariantStatusIconProps,
   VariantSwitcherProps,
   VariantActionsProps,
-  ParallelStreamingViewProps,
 } from './Variant';
 
 // 上下文引用显示组件
@@ -61,6 +49,8 @@ export type { ContextRefsDisplayProps } from './ContextRefsDisplay';
 // Agent 能力增强组件（文档 29）
 export { ToolApprovalCard } from './ToolApprovalCard';
 export type { ApprovalRequestData, ToolApprovalCardProps } from './ToolApprovalCard';
+export { PlanGateCard } from './PlanGateCard';
+export type { PlanGateRequestData, PlanGateCardProps } from './PlanGateCard';
 export { CompletionCard } from './CompletionCard';
 export type { CompletionData, CompletionCardProps } from './CompletionCard';
 

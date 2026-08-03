@@ -1,9 +1,66 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { ArrowClockwise, SidebarSimple } from '@phosphor-icons/react';
 
+import { useMobileHeader } from '@/components/layout';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { DsButton } from '@/components/ui/DsButton';
+import {
+  LEGACY_SANDBOX_OWNER_KEY,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '../store/useSandboxWorkbenchStore';
 import { SandboxWorkbenchSurface } from '../components/SandboxWorkbenchSurface';
 
 export function SandboxWorkbenchPage() {
-  return <SandboxWorkbenchSurface className="h-full" />;
+  const { t } = useTranslation('workbench');
+  const { isSmallScreen } = useBreakpoint();
+  const hasSession = useSandboxWorkbenchStore((state) => (
+    selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).activeSession !== null
+  ));
+  const inspectorOpen = useSandboxWorkbenchStore((state) => (
+    selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).inspectorOpen
+  ));
+  const refreshSession = useSandboxWorkbenchStore((state) => state.refreshSession);
+  const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
+
+  // D-1: 移动端顶栏标题（sandbox-workbench 独立视图形态；
+  // 作为 chat-v2 右屏嵌入时不经过本页面组件，不受影响）
+  // ★ 2026-07-08（移动端审计 D-6）：小屏隐藏 Surface 自绘 SandboxToolbar
+  // 避免双顶栏，刷新/检查器动作收进统一顶栏右侧。
+  useMobileHeader('sandbox-workbench', {
+    title: t('sandbox.title'),
+    rightActions: hasSession ? (
+      <>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label={t('sandbox.refresh')}
+          onClick={() => refreshSession(LEGACY_SANDBOX_OWNER_KEY)}
+        >
+          <ArrowClockwise size={18} />
+        </DsButton>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+          onClick={() => setInspectorOpen(!inspectorOpen, LEGACY_SANDBOX_OWNER_KEY)}
+        >
+          <SidebarSimple size={18} />
+        </DsButton>
+      </>
+    ) : undefined,
+  }, [t, hasSession, inspectorOpen, refreshSession, setInspectorOpen]);
+
+  return (
+    <SandboxWorkbenchSurface
+      className="h-full"
+      hideToolbar={isSmallScreen}
+      ownerKey={LEGACY_SANDBOX_OWNER_KEY}
+    />
+  );
 }
 
 export default SandboxWorkbenchPage;

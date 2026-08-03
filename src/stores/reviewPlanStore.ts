@@ -122,18 +122,32 @@ export interface BatchCreateResult {
 /** 复习质量评分 */
 export type ReviewQuality = 0 | 1 | 2 | 3 | 4 | 5;
 
+/**
+ * 复习卡片渲染所需的题目字段。
+ *
+ * 是 questionBankStore.Question 的结构子集（snake_case 字段同名同型），
+ * 视图层可直接把 store 的 Question 赋给它，无需 as 断言桥接。
+ * 注意与 api/questionBankApi.Question（camelCase）不是同一形状，请勿混用。
+ */
+export interface ReviewSessionQuestion {
+  id: string;
+  content: string;
+  answer?: string;
+  explanation?: string;
+  question_type: string;
+  difficulty?: string;
+  tags: string[];
+  /**
+   * 🆕 2026-07 题型扩展：matching/ordering/numeric 等结构化题型的数据
+   * （对象或 JSON 字符串）。可选字段，旧数据/旧调用方不受影响。
+   */
+  structured_data?: unknown;
+}
+
 /** 带题目信息的复习项 */
 export interface ReviewItemWithQuestion {
   plan: ReviewPlan;
-  question?: {
-    id: string;
-    content: string;
-    answer?: string;
-    explanation?: string;
-    question_type: string;
-    difficulty?: string;
-    tags: string[];
-  };
+  question?: ReviewSessionQuestion;
 }
 
 // ============================================================================
@@ -143,6 +157,8 @@ export interface ReviewItemWithQuestion {
 export interface ReviewSessionState {
   /** 是否正在进行复习会话 */
   isActive: boolean;
+  /** 会话所属题目集，防止切换资源后在另一题目集中恢复错误队列 */
+  examId: string | null;
   /** 当前复习队列 */
   queue: ReviewItemWithQuestion[];
   /** 当前复习索引 */
@@ -225,7 +241,7 @@ interface ReviewPlanState {
   getReviewHistory: (planId: string, limit?: number) => Promise<ReviewHistory[]>;
 
   // Actions - 复习会话
-  startSession: (items: ReviewItemWithQuestion[]) => void;
+  startSession: (items: ReviewItemWithQuestion[], examId?: string) => void;
   endSession: () => void;
   submitReview: (quality: ReviewQuality, userAnswer?: string) => Promise<void>;
   skipCurrentQuestion: () => void;
@@ -245,6 +261,20 @@ interface ReviewPlanState {
 // 请求版本保护：仅允许最新请求回写状态
 let dueReviewsRequestSeq = 0;
 let allPlansRequestSeq = 0;
+let statsRequestSeq = 0;
+let calendarRequestSeq = 0;
+// 会话评分提交去重：防止快速连按（键盘 1-4 连击）对同一题重复提交
+let submitInFlight = false;
+
+// ★ 本地日期（与视图层 formatLocalDate 一致）。
+// toISOString() 是 UTC 日期，UTC+8 用户在本地 00:00-08:00 会得到前一天，
+// 导致"今日到期/已逾期"的 selector 与视图判断整天级错位。
+const formatLocalDate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 // ============================================================================
 // Store 实现
@@ -260,6 +290,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       currentExamId: null,
       session: {
         isActive: false,
+        examId: null,
         queue: [],
         currentIndex: 0,
         startTime: null,
@@ -278,6 +309,8 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
         // 切换考试上下文时，失效旧请求，避免跨考试回写
         dueReviewsRequestSeq += 1;
         allPlansRequestSeq += 1;
+        statsRequestSeq += 1;
+        calendarRequestSeq += 1;
         set({ currentExamId: examId });
       },
 
@@ -339,10 +372,13 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       },
 
       loadStats: async (examId) => {
+        // ★ 竞态修复：快速切换题目集时，旧请求的统计不允许回写覆盖新请求
+        const requestId = ++statsRequestSeq;
         try {
           const stats = await invoke<ReviewStats>('review_plan_get_stats', {
             examId: examId || null,
           });
+          if (requestId !== statsRequestSeq) return;
           set({ stats });
         } catch (err: unknown) {
           debugLog.error('[ReviewPlanStore] loadStats failed:', err);
@@ -351,15 +387,20 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
 
       refreshStats: async (examId) => {
         // 🔒 审计修复: 添加 try-catch（原代码是 store 中唯一缺少错误处理的 API 方法）
+        const requestId = ++statsRequestSeq;
         try {
           const stats = await invoke<ReviewStats>('review_plan_refresh_stats', {
             examId: examId ?? null,
           });
-          set({ stats });
+          if (requestId === statsRequestSeq) {
+            set({ stats });
+          }
           return stats;
         } catch (err: unknown) {
           debugLog.error('[ReviewPlanStore] refreshStats failed:', err);
-          set({ error: String(err) });
+          if (requestId === statsRequestSeq) {
+            set({ error: String(err) });
+          }
           return get().stats;
         }
       },
@@ -574,10 +615,13 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       },
 
       // 复习会话
-      startSession: (items) => {
+      startSession: (items, examId) => {
+        // 空队列不进入会话态，避免出现"进行中但无题可复习"的残留状态
+        if (items.length === 0) return;
         set({
           session: {
             isActive: true,
+            examId: examId ?? items[0]?.plan.exam_id ?? null,
             queue: items,
             currentIndex: 0,
             startTime: Date.now(),
@@ -593,6 +637,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
         set({
           session: {
             isActive: false,
+            examId: null,
             queue: [],
             currentIndex: 0,
             startTime: null,
@@ -607,12 +652,17 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       submitReview: async (quality, userAnswer) => {
         const { session, processReview } = get();
         if (!session.isActive || session.currentIndex >= session.queue.length) return;
+        // ★ 竞态修复：评分请求在途时忽略后续提交（键盘 1-4 连击会对同一题重复提交）
+        if (submitInFlight) return;
 
         const currentItem = session.queue[session.currentIndex];
+        // 记录会话标识：请求返回时若会话已结束/被替换，不再回写会话进度
+        const sessionStartTime = session.startTime;
         const timeSpent = session.questionStartTime
           ? Math.floor((Date.now() - session.questionStartTime) / 1000)
           : 0;
 
+        submitInFlight = true;
         try {
           const result = await processReview(
             currentItem.plan.id,
@@ -622,6 +672,16 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
           );
 
           set((state) => {
+            // ★ 状态残留修复：请求在途时会话被 endSession/startSession 替换，
+            // 不能把上一个会话的结果写进新会话（会污染进度与统计）
+            if (
+              !state.session.isActive ||
+              state.session.startTime !== sessionStartTime ||
+              state.session.queue[state.session.currentIndex]?.plan.id !==
+                currentItem.plan.id
+            ) {
+              return {};
+            }
             const newResults = [
               ...state.session.results,
               {
@@ -651,11 +711,24 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
         } catch (err: unknown) {
           debugLog.error('[ReviewPlanStore] submitReview failed:', err);
           throw err;
+        } finally {
+          submitInFlight = false;
         }
       },
 
       skipCurrentQuestion: () => {
+        // ★ 状态机边界修复：评分请求在途时忽略跳过。
+        // 否则"按 3 评分 → 立刻按 → 跳过"会让索引先行越过在途题，
+        // 请求返回后 currentIndex 对不上被判为会话已替换，completedCount 漏计。
+        if (submitInFlight) return;
         set((state) => {
+          // 无活动会话或已到队尾时为空操作，避免残留状态被误推进
+          if (
+            !state.session.isActive ||
+            state.session.currentIndex >= state.session.queue.length
+          ) {
+            return {};
+          }
           const newIndex = state.session.currentIndex + 1;
           const isComplete = newIndex >= state.session.queue.length;
 
@@ -679,8 +752,10 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
 
       getSessionProgress: () => {
         const { session } = get();
+        // ★ 边界修复：会话完成瞬间 currentIndex === queue.length，
+        // 未夹取时进度会短暂显示 "11 / 10"
         return {
-          current: session.currentIndex + 1,
+          current: Math.min(session.currentIndex + 1, session.queue.length),
           total: session.queue.length,
         };
       },
@@ -700,6 +775,8 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
 
       // 日历数据
       loadCalendarData: async (startDate, endDate, examId) => {
+        // ★ 竞态修复：快速翻月/切换题目集时只允许最新请求回写
+        const requestId = ++calendarRequestSeq;
         try {
           const data = await invoke<CalendarHeatmapData[]>(
             'review_plan_get_calendar_data',
@@ -709,8 +786,10 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
               examId: examId || null,
             },
           );
+          if (requestId !== calendarRequestSeq) return;
           set({ calendarData: data });
         } catch (err: unknown) {
+          if (requestId !== calendarRequestSeq) return;
           debugLog.error('[ReviewPlanStore] loadCalendarData failed:', err);
           showGlobalNotification('error', i18n.t('common:calendar.loadFailed'));
         }
@@ -722,12 +801,12 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       },
 
       getOverdueCount: () => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatLocalDate(new Date());
         return get().dueReviews.filter((p) => p.next_review_date < today).length;
       },
 
       getTodayDueCount: () => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatLocalDate(new Date());
         return get().dueReviews.filter((p) => p.next_review_date === today).length;
       },
     })),

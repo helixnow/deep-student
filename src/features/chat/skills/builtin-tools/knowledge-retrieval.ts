@@ -10,6 +10,22 @@
 
 import type { SkillDefinition } from '../types';
 
+/**
+ * "知识库主动检索"系统提示词片段。
+ *
+ * 由加号菜单 → 知识库 → 主动检索开关（features: kbProactive）控制，
+ * 开启后追加到 system prompt，要求模型在回答前优先检索本地知识库，
+ * 弥补渐进披露架构下模型可能凭通用知识直接作答、跳过检索的问题。
+ */
+export const PROACTIVE_KB_SYSTEM_PROMPT = `## 知识库优先（用户已开启主动检索）
+
+用户已开启"知识库主动检索"开关，本会话中你必须更主动地使用本地知识库：
+
+1. 回答任何可能与用户学习资料（笔记、教材、题库/错题、翻译、文档、图片/PDF）相关的问题之前，先调用 \`builtin-unified_search\` 检索本地知识库；如果尚未获得该工具，先通过 \`load_skills\` 加载 \`knowledge-retrieval\` 技能组。
+2. 即使你认为凭已有知识足以回答，也应先检索一次，并把用户资料中检索到的内容作为首要依据，用 [知识库-N] 等格式标注引用。
+3. 仅当检索结果为空或明显不相关时，才基于通用知识回答，并向用户说明知识库中未找到相关内容。
+4. 无需询问用户是否需要检索，直接执行。`;
+
 export const knowledgeRetrievalSkill: SkillDefinition = {
   id: 'knowledge-retrieval',
   name: 'knowledge-retrieval',
@@ -48,12 +64,14 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
 
 ## 读取完整文档
 
-检索结果包含 **readResourceId**（推荐）、**sourceId**、**resourceId** 字段。读取完整文档时优先使用 **readResourceId**：
+检索结果的 snippet 为片段预览（超长时会被截断）。检索结果包含 **readResourceId**（推荐）、**sourceId**、**resourceId** 字段。读取完整文档时优先使用 **readResourceId**：
 
 \`\`\`
 1. unified_search(查询) → 获得 readResourceId: "note_abc123"
 2. resource_read(resource_id: "note_abc123") → 完整文档内容
 \`\`\`
+
+记忆结果（citationTag 为 \`[记忆-N]\`）请改用 **noteId** 字段调用 \`builtin-memory_read\` 读取完整记忆。
 
 ### 按页读取（PDF/教材/文件）
 
@@ -108,7 +126,7 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-unified_search',
-      description: '统一搜索：同时搜索知识库文档、图片/PDF、用户记忆，合并返回最相关结果。这是默认的搜索工具，一次调用即可获取所有本地知识。\n\n**返回的 ID 字段说明**：每条结果包含 readResourceId（DSTU 格式，如 note_xxx/tb_xxx）、sourceId、resourceId（VFS UUID）。调用 resource_read 时传 readResourceId（优先）或 sourceId，不要传 resourceId（VFS UUID 格式）。调用 memory_read 时传记忆结果的 noteId 字段。\n\n引用方式：[知识库-N] 引用文本，[图片-N] 引用图片，[记忆-N] 引用记忆。pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染页面图片。',
+      description: '统一搜索：同时搜索知识库文档（文本向量）、图片/PDF 页面（VL 多模态向量）、用户记忆，合并返回最相关结果。这是默认的搜索工具，一次调用即可获取所有本地知识；扫描件、截图、手写笔记、整卷识别等视觉内容同样由本工具检索（已取代独立的 rag_search/multimodal_search）。\n\n**返回的 ID 字段说明**：每条结果包含 readResourceId（DSTU 格式，如 note_xxx/tb_xxx）、sourceId、resourceId（VFS UUID）。调用 resource_read 时传 readResourceId（优先）或 sourceId，不要传 resourceId（VFS UUID 格式）。调用 memory_read 时传记忆结果的 noteId 字段。\n\n引用方式：[知识库-N] 引用文本，[图片-N] 引用图片，[记忆-N] 引用记忆。pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染页面图片。',
       inputSchema: {
         type: 'object',
         properties: {

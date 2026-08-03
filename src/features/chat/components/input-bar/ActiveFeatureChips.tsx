@@ -8,7 +8,7 @@
 import React from 'react';
 import { X, Brain, StackSimple, Network, BookOpen, GraduationCap, Wrench, Globe, CreditCard, Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 
 // ============================================================================
@@ -45,7 +45,7 @@ const colorClasses: Record<string, string> = {
   default: 'bg-muted/80 text-foreground hover:bg-[var(--interactive-hover)]',
   purple: 'bg-muted/80 text-purple-600 hover:bg-[var(--interactive-hover)] dark:text-purple-400',
   blue: 'bg-muted/80 text-blue-600 hover:bg-[var(--interactive-hover)] dark:text-blue-400',
-  green: 'bg-muted/80 text-emerald-600 hover:bg-[var(--interactive-hover)] dark:text-emerald-400',
+  green: 'bg-muted/80 text-green-600 hover:bg-[var(--interactive-hover)] dark:text-green-400',
   orange: 'bg-muted/80 text-orange-600 hover:bg-[var(--interactive-hover)] dark:text-orange-400',
 };
 
@@ -59,8 +59,9 @@ interface FeatureChipProps {
 }
 
 const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
+  const { t } = useTranslation(['common']);
   const colorClass = colorClasses[feature.color || 'default'];
-  
+
   return (
     <div
       className={cn(
@@ -73,9 +74,10 @@ const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
         {feature.icon}
       </span>
       <span className="truncate max-w-[120px]">{feature.label}</span>
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10" aria-label={`Close ${feature.label}`}>
+      {/* ★ M5：16px 关闭按钮触屏命中区用伪元素扩到 ≥44px（chip 本体不可点，重叠无害） */}
+      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('chatV2:common.closeNamed', { name: feature.label })}>
         <X size={10} weight="bold" />
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };
@@ -94,7 +96,7 @@ export const ActiveFeatureChips: React.FC<ActiveFeatureChipsProps> = ({
   return (
     <div
       className={cn(
-        'flex flex-wrap gap-1.5 mb-2 animate-in fade-in slide-in-from-bottom-1 duration-200',
+        'flex flex-wrap gap-1.5 mb-2 ui-rise-in',
         className
       )}
     >
@@ -192,7 +194,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
       id: 'mcp',
       label: mcpServerCount === 1 
         ? t('analysis:input_bar.mcp.title')
-        : `${t('analysis:input_bar.mcp.title')} (${mcpServerCount})`,
+        : t('chatV2:inputBar.plusMenu.mcpServersCount', { count: mcpServerCount }),
       icon: <Wrench size={14} weight="bold" />,
       onClose: options.onToggleMcp,
       color: 'orange',

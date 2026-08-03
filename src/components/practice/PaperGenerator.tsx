@@ -7,16 +7,15 @@
  * - 导出为 PDF/Word（待实现）
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
-import { Slider } from '@/components/ui/shad/Slider';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
@@ -34,9 +33,19 @@ import {
   CheckCircle,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
-import { useQuestionBankStore, PaperConfig, PaperExportFormat, GeneratedPaper, Question } from '@/stores/questionBankStore';
+import {
+  useQuestionBankStore,
+  PaperConfig,
+  PaperExportFormat,
+  GeneratedPaper,
+  Question,
+  PRACTICE_QUESTION_TYPES,
+} from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
+import { CountStepperRow } from './CountStepperRow';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 interface PaperGeneratorProps {
   examId: string;
@@ -45,15 +54,14 @@ interface PaperGeneratorProps {
   className?: string;
 }
 
-const QUESTION_TYPE_KEYS = [
-  'single_choice', 'multiple_choice', 'fill_blank', 'short_answer', 'essay', 'calculation', 'proof',
-];
+// 组卷可配置的题型（含 2026-07 新增 true_false/numeric/matching/ordering）
+const QUESTION_TYPE_KEYS = PRACTICE_QUESTION_TYPES.filter((key) => key !== 'other');
 
 const DIFFICULTY_KEYS = [
-  { key: 'easy', color: 'text-emerald-600 bg-emerald-500/10' },
-  { key: 'medium', color: 'text-amber-600 bg-amber-500/10' },
-  { key: 'hard', color: 'text-orange-600 bg-orange-500/10' },
-  { key: 'very_hard', color: 'text-rose-600 bg-rose-500/10' },
+  { key: 'easy', color: 'bg-success/10 text-success' },
+  { key: 'medium', color: 'bg-warning/10 text-warning' },
+  { key: 'hard', color: 'bg-warning/10 text-warning' },
+  { key: 'very_hard', color: 'bg-destructive/10 text-destructive' },
 ];
 
 const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode }> = [
@@ -80,7 +88,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   } = useQuestionBankStore();
   
   // 配置状态
-  const [title, setTitle] = useState(() => t('paper.defaultTitle', '练习试卷'));
+  const [title, setTitle] = useState(() => t('paper.defaultTitle'));
   const [typeSelection, setTypeSelection] = useState<Record<string, number>>({});
   const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -92,6 +100,15 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   // UI 状态
   const [showPreview, setShowPreview] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!showPreview) return;
+    return registerBackHandler(() => {
+      setShowPreview(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showPreview]);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   
   // 计算总题数
   const totalQuestions = useMemo(() => {
@@ -137,26 +154,33 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
       export_format: exportFormat,
     };
     
+    setGenerationError(null);
     try {
       const paper = await generatePaper(examId, config);
       setShowPreview(true);
       onGenerate?.(paper);
     } catch (err: unknown) {
       console.error('Failed to generate paper:', err);
+      const message = getErrorMessage(err);
+      setGenerationError(message);
+      showGlobalNotification(
+        'error',
+        t('paper.generateFailed', { error: message }),
+      );
     }
-  }, [examId, title, typeSelection, selectedDifficulties, selectedTags, shuffle, includeAnswers, includeExplanations, exportFormat, generatePaper, onGenerate]);
+  }, [examId, title, typeSelection, selectedDifficulties, selectedTags, shuffle, includeAnswers, includeExplanations, exportFormat, generatePaper, onGenerate, t]);
   
   // 导出试卷：Markdown 直接落盘（复用 save 对话框 + save_text_to_file 后端命令）；
   // PDF/Word 暂未实现，给出明确提示而非静默无反应（修复此前点击导出无任何反馈的缺口）。
   const handleExport = useCallback(async () => {
     if (!generatedPaper) return;
     if (exportFormat !== 'markdown') {
-      showGlobalNotification('info', t('paper.exportComingSoon', 'PDF / Word 导出即将推出，可先用 Markdown 导出或预览'));
+      showGlobalNotification('info', t('paper.exportComingSoon'));
       return;
     }
     try {
-      const answerLabel = t('paper.answer', '答案');
-      const explanationLabel = t('paper.explanation', '解析');
+      const answerLabel = t('paper.answer');
+      const explanationLabel = t('paper.explanation');
       const lines: string[] = [`# ${generatedPaper.title}`, ''];
       generatedPaper.questions.forEach((q, i) => {
         lines.push(`## ${i + 1}. ${q.content}`, '');
@@ -175,17 +199,17 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
 
       const { save } = await import('@tauri-apps/plugin-dialog');
       const path = await save({
-        title: t('paper.exportTitle', '导出试卷'),
+        title: t('paper.exportTitle'),
         defaultPath: `${generatedPaper.title || 'paper'}.md`,
         filters: [{ name: 'Markdown', extensions: ['md'] }],
       });
       if (!path) return;
 
       await invoke('save_text_to_file', { path, content });
-      showGlobalNotification('success', t('paper.exportSuccess', '试卷已导出'));
+      showGlobalNotification('success', t('paper.exportSuccess'));
     } catch (err: unknown) {
       console.error('Failed to export paper:', err);
-      showGlobalNotification('error', t('paper.exportFailed', '导出失败，请重试'));
+      showGlobalNotification('error', t('paper.exportFailed'));
     }
   }, [generatedPaper, exportFormat, includeAnswers, includeExplanations, t]);
   
@@ -205,30 +229,33 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   // 预览界面
   if (showPreview && generatedPaper) {
     return (
-      <div className={cn('space-y-4', className)}>
+      <div className={cn('ui-rise-in space-y-4', className)}>
         <Card className="bg-transparent border-transparent shadow-none">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText size={20} className="text-sky-500" />
-                {generatedPaper.title}
+          <CardHeader className="px-3 pb-4 sm:px-6">
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle
+                className="flex min-w-0 items-center gap-2 text-base"
+                title={generatedPaper.title}
+              >
+                <FileText size={18} className="shrink-0 text-primary" />
+                <span className="truncate">{generatedPaper.title}</span>
               </CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Badge variant="secondary">
-                  {generatedPaper.questions.length} {t('paper.questions', '题')}
+                  {generatedPaper.questions.length} {t('paper.questions')}
                 </Badge>
-                <NotionButton
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={() => setShowPreview(false)}
                 >
-                  {t('paper.back', '返回配置')}
-                </NotionButton>
+                  {t('paper.back')}
+                </DsButton>
                 {exportFormat !== 'preview' && (
-                  <NotionButton size="sm" onClick={handleExport}>
+                  <DsButton size="sm" onClick={handleExport}>
                     <Download size={16} className="mr-1" />
-                    {t('paper.export', '导出')}
-                  </NotionButton>
+                    {t('paper.export')}
+                  </DsButton>
                 )}
               </div>
             </div>
@@ -236,11 +263,11 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         </Card>
         
         {/* 试卷内容 */}
-        <CustomScrollArea className="h-[calc(100vh-280px)]">
-          <div className="space-y-4 pr-4">
+        <CustomScrollArea className="max-h-[min(60vh,520px)]" fullHeight={false}>
+          <div className="space-y-4 pr-0 sm:pr-4">
             {generatedPaper.questions.map((question, idx) => (
-              <Card key={question.id} className="overflow-hidden">
-                <NotionButton variant="ghost" size="sm" className="!w-full !text-left !p-4 !h-auto !rounded-none hover:bg-[var(--interactive-hover)]" onClick={() => toggleQuestion(question.id)}>
+              <Card key={question.id} className="overflow-hidden [content-visibility:auto] [contain-intrinsic-size:auto_72px]">
+                <DsButton variant="ghost" size="sm" className="!w-full !text-left !p-4 !h-auto !rounded-none hover:bg-[var(--interactive-hover)]" onClick={() => toggleQuestion(question.id)}>
                   <div className="flex items-start gap-3">
                     <Badge variant="outline" className="flex-shrink-0 font-mono">
                       {idx + 1}
@@ -254,13 +281,13 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                       <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
                     )}
                   </div>
-                </NotionButton>
+                </DsButton>
                 
                 {expandedQuestions.has(question.id) && (
-                  <CardContent className="pt-0 space-y-3">
+                  <CardContent className="ui-rise-in pt-0 space-y-3">
                     {/* 选项 */}
                     {question.options && question.options.length > 0 && (
-                      <div className="space-y-2 ml-8">
+                      <div className="ml-0 space-y-2 sm:ml-8">
                         {question.options.map((opt) => (
                           <div key={opt.key} className="flex items-start gap-2 text-sm">
                             <span className="font-medium text-muted-foreground">{opt.key}.</span>
@@ -272,10 +299,10 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                     
                     {/* 答案 */}
                     {includeAnswers && question.answer && (
-                      <div className="ml-8 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                        <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 mb-1">
+                      <div className="ml-0 rounded-md border border-success/20 bg-success/5 p-3 sm:ml-8">
+                        <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-success">
                           <CheckCircle size={16} />
-                          {t('paper.answer', '答案')}
+                          {t('paper.answer')}
                         </div>
                         <div className="text-sm"><MarkdownRenderer content={question.answer} /></div>
                       </div>
@@ -283,9 +310,9 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                     
                     {/* 解析 */}
                     {includeExplanations && question.explanation && (
-                      <div className="ml-8 p-3 rounded-lg bg-sky-500/5 border border-sky-500/20">
-                        <div className="text-sm font-medium text-sky-600 mb-1">
-                          {t('paper.explanation', '解析')}
+                      <div className="ml-0 rounded-md border border-primary/20 bg-primary/5 p-3 sm:ml-8">
+                        <div className="mb-1 text-sm font-medium text-primary">
+                          {t('paper.explanation')}
                         </div>
                         <div className="text-sm text-muted-foreground"><MarkdownRenderer content={question.explanation} /></div>
                       </div>
@@ -300,23 +327,23 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     );
   }
   
-  // 配置界面
+  // 配置界面（与其余练习模式配置面板统一：透明背景、无边框）
   return (
-    <Card className={cn('', className)}>
-      <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <FileText size={20} className="text-sky-500" />
-          {t('paper.title', '组卷生成器')}
+    <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
+      <CardHeader className="px-0 pb-4 sm:px-6">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FileText size={18} className="text-primary" />
+          {t('paper.title')}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 px-0 sm:px-6">
         {/* 试卷标题 */}
         <div className="space-y-2">
-          <Label>{t('paper.paperTitle', '试卷标题')}</Label>
+          <Label>{t('paper.paperTitle')}</Label>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={t('paper.titlePlaceholder', '请输入试卷标题')}
+            placeholder={t('paper.titlePlaceholder')}
 />
         </div>
         
@@ -324,27 +351,21 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         <div className="space-y-3">
           <Label className="flex items-center gap-1">
             <GearSix size={16} />
-            {t('paper.typeSelection', '题型配置')}
+            {t('paper.typeSelection')}
           </Label>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {QUESTION_TYPE_KEYS.map((key) => (
-              <div key={key} className="flex items-center gap-3">
-                <span className="text-sm w-20">{t(`questionType.${key}`)}</span>
-                <Slider
-                  value={[typeSelection[key] || 0]}
-                  onValueChange={(v) => handleTypeChange(key, v[0])}
-                  max={20}
-                  step={1}
-                  className="flex-1"
+              <CountStepperRow
+                key={key}
+                label={t(`questionType.${key}`)}
+                value={typeSelection[key] || 0}
+                onChange={(value) => handleTypeChange(key, value)}
+                max={20}
 />
-                <span className="text-sm w-8 text-right font-medium">
-                  {typeSelection[key] || 0}
-                </span>
-              </div>
             ))}
           </div>
           <div className="text-sm text-muted-foreground">
-            {t('paper.totalSelected', '共选择')} <span className="font-medium text-foreground">{totalQuestions}</span> {t('paper.questions', '题')}
+            {t('paper.totalSelected')} <span className="font-medium text-foreground tabular-nums">{totalQuestions}</span> {t('paper.questions')}
           </div>
         </div>
         
@@ -352,24 +373,24 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         <div className="space-y-3">
           <Label className="flex items-center gap-1">
             <Target size={16} />
-            {t('paper.difficultyFilter', '难度筛选')}
-            <span className="text-muted-foreground text-xs">{t('paper.noRestriction', '（不选则不限制）')}</span>
+            {t('paper.difficultyFilter')}
+            <span className="text-muted-foreground text-xs">{t('paper.noRestriction')}</span>
           </Label>
           <div className="flex flex-wrap gap-2">
             {DIFFICULTY_KEYS.map(({ key, color }) => (
-              <NotionButton
+              <DsButton
                 key={key}
                 variant="ghost" size="sm"
                 onClick={() => toggleDifficulty(key)}
                 className={cn(
-                  '!px-3 !py-1.5 !rounded-full !h-auto text-sm font-medium',
+                  '!h-auto !rounded-md !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm font-medium',
                   selectedDifficulties.includes(key)
                     ? color
                     : 'bg-muted text-muted-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 {t(`difficultyLevel.${key}`)}
-              </NotionButton>
+              </DsButton>
             ))}
           </div>
         </div>
@@ -379,24 +400,24 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           <div className="space-y-3">
             <Label className="flex items-center gap-1">
               <Tag size={16} />
-              {t('paper.tagsFilter', '标签筛选')}
-              <span className="text-muted-foreground text-xs">{t('paper.noRestriction', '（不选则不限制）')}</span>
+              {t('paper.tagsFilter')}
+              <span className="text-muted-foreground text-xs">{t('paper.noRestriction')}</span>
             </Label>
             <div className="flex flex-wrap gap-2">
               {availableTags.map((tag) => (
-                <NotionButton
+                <DsButton
                   key={tag}
                   variant="ghost" size="sm"
                   onClick={() => toggleTag(tag)}
                   className={cn(
-                    '!px-3 !py-1.5 !rounded-full !h-auto text-sm',
+                    '!h-auto !rounded-md !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm',
                     selectedTags.includes(tag)
-                      ? 'bg-sky-500/20 text-sky-600'
+                      ? 'bg-primary/10 text-primary'
                       : 'bg-muted text-muted-foreground hover:bg-[var(--interactive-hover)]'
                   )}
                 >
                   {tag}
-                </NotionButton>
+                </DsButton>
               ))}
             </div>
           </div>
@@ -405,59 +426,68 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         {/* 其他选项 */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label>{t('paper.shuffle', '打乱题目顺序')}</Label>
+            <Label>{t('paper.shuffle')}</Label>
             <Switch checked={shuffle} onCheckedChange={setShuffle} />
           </div>
           <div className="flex items-center justify-between">
-            <Label>{t('paper.includeAnswers', '包含答案')}</Label>
+            <Label>{t('paper.includeAnswers')}</Label>
             <Switch checked={includeAnswers} onCheckedChange={setIncludeAnswers} />
           </div>
           <div className="flex items-center justify-between">
-            <Label>{t('paper.includeExplanations', '包含解析')}</Label>
+            <Label>{t('paper.includeExplanations')}</Label>
             <Switch checked={includeExplanations} onCheckedChange={setIncludeExplanations} />
           </div>
         </div>
         
         {/* 导出格式 */}
         <div className="space-y-2">
-          <Label>{t('paper.exportFormat', '导出格式')}</Label>
-          <div className="grid grid-cols-4 gap-2">
+          <Label>{t('paper.exportFormat')}</Label>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {EXPORT_FORMAT_KEYS.map(({ key, icon }) => (
-              <NotionButton
+              <DsButton
                 key={key}
                 variant="ghost" size="sm"
                 onClick={() => setExportFormat(key)}
                 className={cn(
                   '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg border',
                   exportFormat === key
-                    ? 'border-sky-500 bg-sky-500/10 text-sky-600'
+                    ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 {icon}
                 <span className="text-xs">{t(`paper.format.${key}`)}</span>
-              </NotionButton>
+              </DsButton>
             ))}
           </div>
         </div>
+
+        {generationError && (
+          <div
+            role="alert"
+            className="ui-rise-in flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            <span>{t('paper.generateFailed', { error: generationError })}</span>
+          </div>
+        )}
         
-        <NotionButton
+        <DsButton
           onClick={handleGenerate}
           disabled={isLoadingPractice || totalQuestions === 0}
-          className="w-full h-12 text-lg"
+          className="h-9 w-full text-sm"
         >
           {isLoadingPractice ? (
             <>
               <CircleNotch size={20} className="mr-2 animate-spin" />
-              {t('paper.generating', '生成中...')}
+              {t('paper.generating')}
             </>
           ) : (
             <>
               <FileText size={20} className="mr-2" />
-              {t('paper.generate', '生成试卷')}
+              {t('paper.generate')}
             </>
           )}
-        </NotionButton>
+        </DsButton>
       </CardContent>
     </Card>
   );

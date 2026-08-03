@@ -12,7 +12,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  z-index: 9999;
+  z-index: var(--z-toast);
   pointer-events: none;
 }
 
@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   gap: 0;
-  z-index: 9999;
+  z-index: var(--z-toast);
   color: hsl(var(--foreground));
   background: var(--notif-fill);
   border: 1px solid var(--notif-stroke-color);
@@ -55,7 +55,7 @@
 }
 
 .unified-notification.show {
-  animation: notificationIn 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: notificationIn 220ms var(--ease-standard);
 }
 
 .unified-notification.hide {
@@ -141,16 +141,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-height: 1.35em;
-  transition: max-height 250ms cubic-bezier(0.22, 1, 0.36, 1), white-space 0ms 250ms;
+  transition: max-height 250ms var(--ease-standard), white-space 0ms 250ms;
 }
 
 .unified-notification-text.expanded {
   white-space: normal;
   word-break: break-word;
   overflow-wrap: break-word;
-  max-height: 60vh;
+  max-height: 60dvh;
   overflow-y: auto;
-  transition: max-height 300ms cubic-bezier(0.22, 1, 0.36, 1), white-space 0ms;
+  transition: max-height 300ms var(--ease-standard), white-space 0ms;
 }
 
 .unified-notification-count {
@@ -165,7 +165,7 @@
   border: 1px solid hsl(var(--notif-accent) / 0.22);
   background: hsl(var(--notif-accent) / 0.08);
   color: hsl(var(--foreground) / 0.72);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   line-height: 1;
 }
@@ -295,11 +295,52 @@
   }
 }
 
+/* ★ 2026-07-08 移动端审计：触屏设备关闭/复制按钮触控目标放大
+   （基准 18px 对指尖过小；桌面鼠标环境保持紧凑） */
+@media (pointer: coarse) {
+  .unified-notification-close,
+  .unified-notification-copy {
+    position: relative;
+    width: 32px;
+    height: 32px;
+  }
+
+  /* L-6：视觉保持 32px，用透明伪元素把命中区扩到 44×44（TouchTarget extend
+     同款做法）。相邻按钮扩区有少量重叠，按 DOM 后者（关闭钮）优先，可接受。 */
+  .unified-notification-close::before,
+  .unified-notification-copy::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+
+  .unified-notification-close {
+    margin-right: -8px;
+  }
+
+  .unified-notification-close-icon,
+  .unified-notification-copy-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .unified-notification-action {
+    min-height: 32px;
+    padding: 0 6px;
+  }
+}
+
 /* 响应式设计 - 移动端优化
    CSS-3: 断点与 shell <768 对齐；top 避让 56px 移动顶栏（--mobile-header-total-height 已含安全区） */
 @media (max-width: 767.98px) {
   .notification-container {
-    top: calc(var(--mobile-header-total-height, calc(56px + env(safe-area-inset-top, 0px))) + 8px);
+    /* 容器挂在 body 上，--mobile-header-total-height（app-shell 作用域）不可见时
+       fallback 必须走 :root 级 --android-safe-area-top 链（Android env() 不可靠） */
+    top: calc(var(--mobile-header-total-height, calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))) + 8px);
     left: 50%;
     right: auto;
     width: calc(100vw - 20px);
@@ -332,5 +373,25 @@
 
   .unified-notification-text {
     font-size: 12px;
+  }
+
+  /* ★ 2026-07-20（R11）：移动端收起态放宽为最多两行 —— 两击确认
+     （unifiedConfirm）的「再次点击确认」提示与长错误文案在单行省略下
+     不点开完全读不到；两行 clamp 保证关键信息首屏可见。
+     展开态（.expanded，专属更高优先级选择器）仍走整段换行 + 60vh 滚动。 */
+  .unified-notification-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-height: 2.7em;
+  }
+
+  .unified-notification-text.expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    max-height: 60dvh;
   }
 }

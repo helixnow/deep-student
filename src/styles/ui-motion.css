@@ -1,0 +1,473 @@
+/**
+ * ui-motion — real open/close animations for shared UI primitives.
+ *
+ * Replaces the tailwindcss-animate vocabulary (fade-in-0 / zoom-in-95 /
+ * slide-in-from-* / slide-out-to-*) that was never installed and therefore
+ * produced no CSS. All durations / easings consume transitions-dev tokens
+ * (src/styles/transitions-dev.css — consumed only, never modified) with
+ * literal fallbacks.
+ *
+ * Mechanics:
+ * - Enter classes (*-in) run their animation as soon as the element mounts.
+ *   Radix portals mount content with data-state="open", so this also covers
+ *   data-[state=open] without extra gating; non-Radix "open = mount"
+ *   components (custom Popover / Tooltip / Tabs) get the same entry for free.
+ * - Exit classes (*-out) only animate while the element carries
+ *   data-state="closed". Radix keeps the node mounted until animationend,
+ *   which is what makes exit animations work.
+ * - Keyframes only touch opacity and the independent `translate` / `scale`
+ *   properties, so they compose with — and never clobber — inline `transform`
+ *   used for positioning (Tooltip/Popover) or drag gestures (SidebarSheet),
+ *   and with Tailwind translate-* utilities (Select side offsets).
+ *
+ * Class inventory (reduced-motion degradation at the bottom of this file):
+ * - .ui-fade-in / .ui-fade-out
+ *   Overlay / backdrop fade. --modal-open-dur (250ms) in, --modal-close-dur
+ *   (150ms) out, --modal-ease.
+ * - .ui-zoom-fade-in / .ui-zoom-fade-out
+ *   Dropdown-style zoom + fade: scale 0.97 -> 1 in (--dropdown-open-dur,
+ *   250ms), scale -> 0.99 + fade out (--dropdown-close-dur, 150ms),
+ *   --dropdown-ease. Transform origin via --ui-zoom-origin (default
+ *   `top center`); optional entry offset via --ui-enter-x / --ui-enter-y
+ *   (default 0) to emulate the old slide-in-from-top-2 nudges.
+ * - .ui-slide-in-{top,bottom,left,right} / .ui-slide-out-{top,bottom,left,right}
+ *   Full panel slide from/to a screen edge (Sheet). --panel-open-dur (400ms)
+ *   in, --panel-close-dur (350ms) out, --panel-ease.
+ * - .ui-rise-in / .ui-drop-in
+ *   Mount entry: fade + 4px rise (or descend). --dropdown-close-dur (150ms),
+ *   --dropdown-ease. For tab panels, banners and similar mount-on-switch
+ *   surfaces.
+ * - .ui-slide-fade-in
+ *   Mount entry: fade + drift from --ui-enter-x / --ui-enter-y (arbitrary
+ *   offsets). --dropdown-open-dur (250ms), --dropdown-ease.
+ * - .ui-tooltip-in
+ *   Tooltip entry: fade + scale 0.97 + 2px drift toward final position.
+ *   Direction/origin follow the element's data-side attribute
+ *   (top/bottom/left/right). --dropdown-close-dur (150ms), --dropdown-ease.
+ * - .ui-state-colors
+ *   Not an open/close animation: smooth color/background/border/shadow
+ *   transition for active-state swaps (tab triggers, segmented controls).
+ *   --dropdown-close-dur (150ms), --dropdown-ease.
+ */
+
+/* ============ Keyframes (opacity / translate / scale only) ============ */
+
+@keyframes ui-kf-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ui-kf-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ui-kf-zoom-fade-in {
+  from {
+    opacity: 0;
+    scale: var(--dropdown-pre-scale, 0.97);
+    translate: var(--ui-enter-x, 0) var(--ui-enter-y, 0);
+  }
+
+  to {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-zoom-fade-out {
+  from {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+
+  to {
+    opacity: 0;
+    scale: var(--dropdown-closing-scale, 0.99);
+    translate: var(--ui-enter-x, 0) var(--ui-enter-y, 0);
+  }
+}
+
+@keyframes ui-kf-slide-in-top {
+  from {
+    translate: 0 -100%;
+  }
+
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-slide-out-top {
+  from {
+    translate: 0 0;
+  }
+
+  to {
+    translate: 0 -100%;
+  }
+}
+
+@keyframes ui-kf-slide-in-bottom {
+  from {
+    translate: 0 100%;
+  }
+
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-slide-out-bottom {
+  from {
+    translate: 0 0;
+  }
+
+  to {
+    translate: 0 100%;
+  }
+}
+
+@keyframes ui-kf-slide-in-left {
+  from {
+    translate: -100% 0;
+  }
+
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-slide-out-left {
+  from {
+    translate: 0 0;
+  }
+
+  to {
+    translate: -100% 0;
+  }
+}
+
+@keyframes ui-kf-slide-in-right {
+  from {
+    translate: 100% 0;
+  }
+
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-slide-out-right {
+  from {
+    translate: 0 0;
+  }
+
+  to {
+    translate: 100% 0;
+  }
+}
+
+@keyframes ui-kf-rise-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-drop-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-slide-fade-in {
+  from {
+    opacity: 0;
+    translate: var(--ui-enter-x, 0) var(--ui-enter-y, 0);
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-kf-tooltip-in {
+  from {
+    opacity: 0;
+    scale: var(--dropdown-pre-scale, 0.97);
+    translate: var(--ui-enter-x, 0) var(--ui-enter-y, 2px);
+  }
+
+  to {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+/* ============ Overlay fade (modal tokens) ============ */
+
+.ui-fade-in {
+  animation: ui-kf-fade-in var(--modal-open-dur, 250ms) var(--modal-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-fade-out[data-state="closed"] {
+  animation: ui-kf-fade-out var(--modal-close-dur, 150ms) var(--modal-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Dropdown zoom-fade (dropdown tokens) ============ */
+
+.ui-zoom-fade-in,
+.ui-zoom-fade-out {
+  transform-origin: var(--ui-zoom-origin, top center);
+}
+
+.ui-zoom-fade-in {
+  animation: ui-kf-zoom-fade-in var(--dropdown-open-dur, 250ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-zoom-fade-out[data-state="closed"] {
+  animation: ui-kf-zoom-fade-out var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Panel edge slides (panel tokens) ============ */
+
+.ui-slide-in-top {
+  animation: ui-kf-slide-in-top var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-out-top[data-state="closed"] {
+  animation: ui-kf-slide-out-top var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-in-bottom {
+  animation: ui-kf-slide-in-bottom var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-out-bottom[data-state="closed"] {
+  animation: ui-kf-slide-out-bottom var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-in-left {
+  animation: ui-kf-slide-in-left var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-out-left[data-state="closed"] {
+  animation: ui-kf-slide-out-left var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-in-right {
+  animation: ui-kf-slide-in-right var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-slide-out-right[data-state="closed"] {
+  animation: ui-kf-slide-out-right var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Mount rise-in / drop-in (tab panels, banners etc.) ============ */
+
+.ui-rise-in {
+  animation: ui-kf-rise-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* Mount entry: fade + 4px descend. For banners / bars sliding in from above. */
+.ui-drop-in {
+  animation: ui-kf-drop-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/*
+ * Mount entry with custom offset: fade + drift from --ui-enter-x / --ui-enter-y
+ * (set via Tailwind arbitrary properties, e.g. [--ui-enter-x:32px]).
+ * For inset panels / list blocks whose old slide-in-from-* offsets exceeded 4px.
+ */
+.ui-slide-fade-in {
+  animation: ui-kf-slide-fade-in var(--dropdown-open-dur, 250ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Tooltip entry (data-side aware) ============ */
+
+.ui-tooltip-in {
+  --ui-enter-x: 0;
+  --ui-enter-y: 2px;
+
+  transform-origin: bottom center;
+  animation: ui-kf-tooltip-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.ui-tooltip-in[data-side="bottom"] {
+  --ui-enter-x: 0;
+  --ui-enter-y: -2px;
+
+  transform-origin: top center;
+}
+
+.ui-tooltip-in[data-side="left"] {
+  --ui-enter-x: 2px;
+  --ui-enter-y: 0;
+
+  transform-origin: center right;
+}
+
+.ui-tooltip-in[data-side="right"] {
+  --ui-enter-x: -2px;
+  --ui-enter-y: 0;
+
+  transform-origin: center left;
+}
+
+/* ============ Active-state color swap (not open/close) ============ */
+
+.ui-state-colors {
+  transition:
+    color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    background-color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    border-color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    box-shadow var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.ui-fade-in-slow {
+  animation: ui-kf-fade-in 500ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Reduced motion: degrade to instant state changes ============ */
+
+/*
+ * Same selectors re-declared at equal specificity; this block sits at the end
+ * of the file so source order wins (stylelint forbids !important here).
+ * Removing the exit animation also makes Radix unmount immediately.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ui-fade-in,
+  .ui-zoom-fade-in,
+  .ui-slide-in-top,
+  .ui-slide-in-bottom,
+  .ui-slide-in-left,
+  .ui-slide-in-right,
+  .ui-rise-in,
+  .ui-drop-in,
+  .ui-slide-fade-in,
+  .ui-tooltip-in,
+  .ui-fade-in-slow {
+    animation: none;
+  }
+
+  .ui-fade-out[data-state="closed"],
+  .ui-zoom-fade-out[data-state="closed"],
+  .ui-slide-out-top[data-state="closed"],
+  .ui-slide-out-bottom[data-state="closed"],
+  .ui-slide-out-left[data-state="closed"],
+  .ui-slide-out-right[data-state="closed"] {
+    animation: none;
+  }
+
+  .ui-state-colors {
+    transition: none;
+  }
+}
+
+/* ============ Mobile primitives（2026-07 mobile 基建，追加区） ============ */
+
+/*
+ * - .ui-press
+ *   触控按压反馈：active 时整体缩至 --m-press-scale（默认 0.97）。
+ *   使用独立 `scale` 属性，不会覆盖 inline transform / translate 定位。
+ *   （纯 CSS 实现；原 JS 侧 usePressable 因零消费已于 2026-07 移除。）
+ * - .ui-press-coarse
+ *   同 .ui-press，但仅在 (pointer: coarse) 下生效——共享按钮 primitive
+ *   （buttonPrimitiveContract → DsButton / shad Button）默认挂载此类，
+ *   给触屏统一按压反馈而不改变桌面鼠标的 active 手感
+ *   （桌面 active 由 native-feel/interaction.css 的 translateY(0.5px) 承担）。
+ * - .ui-slide-up-panel
+ *   底部内联面板（非全屏 sheet）挂载入场：fade + 自 --m-sheet-distance
+ *   （默认 16px）上滑。全屏 Sheet 请继续使用 .ui-slide-in-bottom。
+ * 三者的 reduced-motion 降级见文件末尾追加块（同特异性靠源顺序覆盖）。
+ */
+
+@keyframes ui-kf-slide-up-panel {
+  from {
+    opacity: 0;
+    translate: 0 var(--m-sheet-distance, 16px);
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.ui-press {
+  transition: scale var(--m-press-dur, 120ms) var(--m-press-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.ui-press:active {
+  scale: var(--m-press-scale, 0.97);
+}
+
+/*
+ * 双写类名抬高特异性（0,2,0）：本文件先于 Tailwind utilities 引入，
+ * 单类声明会被按钮自带的 transition-[…] 工具类覆盖。shorthand 里除 scale
+ * 外补上 interaction.css 默认过渡的同组颜色属性，触屏下不丢失 hover/active
+ * 的颜色过渡（stylelint 禁 !important，故用特异性取胜）。
+ */
+@media (pointer: coarse) {
+  .ui-press-coarse.ui-press-coarse {
+    transition:
+      scale var(--m-press-dur, 120ms) var(--m-press-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease,
+      opacity 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .ui-press-coarse:active {
+    scale: var(--m-press-scale, 0.97);
+  }
+}
+
+.ui-slide-up-panel {
+  animation: ui-kf-slide-up-panel var(--m-sheet-dur, 260ms) var(--m-sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+/* ============ Mobile primitives: reduced motion ============ */
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-press,
+  .ui-press-coarse.ui-press-coarse {
+    transition: none;
+  }
+
+  .ui-press:active,
+  .ui-press-coarse:active {
+    scale: 1;
+  }
+
+  .ui-slide-up-panel {
+    animation: none;
+  }
+}

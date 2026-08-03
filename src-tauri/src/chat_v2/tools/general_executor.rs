@@ -12,9 +12,12 @@ use serde_json::json;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::is_canvas_tool;
-use crate::chat_v2::events::event_types;
+use super::mcp_content_materializer::{materialize_mcp_tool_output, McpOutputProvenance};
+use super::types::is_external_mcp_tool_name;
+use crate::chat_v2::runtime_roots::artifact_root;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::tools::ToolContext;
+use tauri::Manager;
 
 // ============================================================================
 // 通用工具执行器
@@ -62,6 +65,13 @@ impl ToolExecutor for GeneralToolExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
+        // External MCP command tools still pass through this executor. Keep the
+        // raw arguments for execution, but never expose shell secrets through
+        // events or persisted tool-block input.
+        let audited_arguments = crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+            &call.name,
+            &call.arguments,
+        );
 
         log::debug!(
             "[GeneralToolExecutor] Executing tool: name={}, id={}",
@@ -70,14 +80,14 @@ impl ToolExecutor for GeneralToolExecutor {
         );
 
         // 1. 发射工具调用开始事件
-        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
+        ctx.emit_tool_call_start(&call.name, audited_arguments.clone(), Some(&call.id));
 
         // 2. 构建工具上下文
         let tool_ctx = ToolContext {
             db: ctx.main_db.as_ref().map(|db| db.as_ref()),
             mcp_client: None,
             supports_tools: true,
-            window: Some(&ctx.window),
+            window: Some(ctx.window_ref()),
             stream_event: None,
             stage: Some("tool_call"),
             memory_enabled: None, // 🔧 P1-36: 通用工具执行不涉及记忆开关
@@ -85,7 +95,7 @@ impl ToolExecutor for GeneralToolExecutor {
         };
 
         // 3. 执行工具调用（超时由 ToolExecutorRegistry 统一控制）
-        let (ok, data, error, _usage, _citations, _inject) = ctx
+        let (ok, data, error, usage, _citations, _inject) = ctx
             .tool_registry
             .call_tool(&call.name, &call.arguments, &tool_ctx)
             .await;
@@ -95,7 +105,34 @@ impl ToolExecutor for GeneralToolExecutor {
         // 4. 处理结果
         if ok {
             // 工具调用成功
-            let output = data.unwrap_or(json!(null));
+            let mut output = data.unwrap_or(json!(null));
+            if is_external_mcp_tool_name(&call.name) {
+                let app = ctx.window_ref().app_handle().clone();
+                let artifact = artifact_root(&app, &ctx.session_id, true)?;
+                let provenance = McpOutputProvenance::from_usage(&call.name, usage.as_ref());
+                output = match materialize_mcp_tool_output(output, artifact.path, provenance).await
+                {
+                    Ok(output) => output,
+                    Err(error_msg) => {
+                        ctx.emit_tool_call_error(&error_msg);
+                        let result = ToolResultInfo::failure(
+                            Some(call.id.clone()),
+                            Some(ctx.block_id.clone()),
+                            call.name.clone(),
+                            audited_arguments,
+                            error_msg,
+                            duration_ms,
+                        );
+                        if let Err(error) = ctx.save_tool_block(&result) {
+                            log::warn!(
+                                "[GeneralToolExecutor] Failed to save MCP materialization error block: {}",
+                                error
+                            );
+                        }
+                        return Ok(result);
+                    }
+                };
+            }
             ctx.emit_tool_call_end(Some(json!({
                 "result": output,
                 "durationMs": duration_ms,
@@ -111,7 +148,7 @@ impl ToolExecutor for GeneralToolExecutor {
                 Some(call.id.clone()),
                 Some(ctx.block_id.clone()),
                 call.name.clone(),
-                call.arguments.clone(),
+                audited_arguments.clone(),
                 output,
                 duration_ms,
             );
@@ -138,7 +175,7 @@ impl ToolExecutor for GeneralToolExecutor {
                 Some(call.id.clone()),
                 Some(ctx.block_id.clone()),
                 call.name.clone(),
-                call.arguments.clone(),
+                audited_arguments,
                 error_msg,
                 duration_ms,
             );
@@ -154,12 +191,7 @@ impl ToolExecutor for GeneralToolExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         // 默认提升到 Medium，避免审批机制被通用执行器绕过
-        const LOW_RISK_TOOLS: &[&str] = &[
-            // 明确的只读/外部检索工具
-            "web_search",
-            "mcp_brave_search",
-            "mcp_web_search",
-        ];
+        const LOW_RISK_TOOLS: &[&str] = &["web_search"];
 
         const HIGH_RISK_TOOLS: &[&str] = &[
             // 明确的高风险工具
@@ -168,12 +200,21 @@ impl ToolExecutor for GeneralToolExecutor {
             "mcp_file_delete",
         ];
 
-        if HIGH_RISK_TOOLS.contains(&tool_name) {
+        if HIGH_RISK_TOOLS.contains(&tool_name)
+            || crate::chat_v2::approval_scope::is_high_risk_external_mcp_tool(tool_name)
+        {
             log::debug!(
                 "[GeneralToolExecutor] Tool '{}' is registered as high-risk -> High sensitivity",
                 tool_name
             );
             return ToolSensitivity::High;
+        }
+
+        // An external server controls the implementation behind its advertised
+        // name. It must not inherit a local low-risk classification merely by
+        // calling itself `web_search` or `brave_search`.
+        if is_external_mcp_tool_name(tool_name) {
+            return ToolSensitivity::Medium;
         }
 
         if LOW_RISK_TOOLS.contains(&tool_name) {
@@ -216,14 +257,18 @@ mod tests {
     fn test_sensitivity_level() {
         let executor = GeneralToolExecutor::new();
 
-        // 明确的低风险工具
+        // 只有本地受信实现可以按名称降为 Low
         assert_eq!(
             executor.sensitivity_level("web_search"),
             ToolSensitivity::Low
         );
         assert_eq!(
             executor.sensitivity_level("mcp_brave_search"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_web_search"),
+            ToolSensitivity::Medium
         );
 
         // 默认 Medium
@@ -235,6 +280,14 @@ mod tests {
         // 明确高风险
         assert_eq!(
             executor.sensitivity_level("mcp_shell_execute"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_builtin-execute_command"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_builtin-file_write"),
             ToolSensitivity::High
         );
     }

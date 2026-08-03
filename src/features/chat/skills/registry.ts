@@ -17,6 +17,8 @@ import type {
   SkillLoadConfig,
 } from './types';
 import { SKILL_DEFAULT_PRIORITY } from './types';
+import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
+import { isSkillPromptVisible } from './runtimeAdmission';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
 
@@ -96,13 +98,42 @@ class SkillRegistry {
   // ==========================================================================
 
   /**
+   * 🔒 P1（2026-07-08 审阅 22 P1-1）：builtin 命名空间保护。
+   *
+   * 加载顺序为 builtin → global → project，且项目目录自动扫描
+   * .agents/skills、.claude/skills 等外部目录；若允许同 id 静默覆盖，
+   * 任意仓库放置一个与内置工具组同 id 的 SKILL.md 即可整体替换内置技能的
+   * 指令正文与全部工具 description（SKILL.md 供应链攻击的标准入口）。
+   * 因此：已注册的内置技能不可被非内置来源的同 id 技能覆盖。
+   *
+   * @returns 是否允许写入
+   */
+  private guardRegistration(skill: SkillDefinition): boolean {
+    const existing = this.skills.get(skill.id);
+    if (!existing) return true;
+
+    const existingIsBuiltin = existing.location === 'builtin' || existing.isBuiltin === true;
+    const incomingIsBuiltin = skill.location === 'builtin' || skill.isBuiltin === true;
+    if (existingIsBuiltin && !incomingIsBuiltin) {
+      console.warn(
+        LOG_PREFIX,
+        `Blocked non-builtin skill "${skill.id}" (${skill.sourcePath || 'unknown source'}) from overriding builtin skill with same id`
+      );
+      return false;
+    }
+
+    console.warn(LOG_PREFIX, `Skill "${skill.id}" already exists, will be overwritten`);
+    return true;
+  }
+
+  /**
    * 注册 skill
    *
    * @param skill Skill 定义
    */
   register(skill: SkillDefinition): void {
-    if (this.skills.has(skill.id)) {
-      console.warn(LOG_PREFIX, `Skill "${skill.id}" already exists, will be overwritten`);
+    if (!this.guardRegistration(skill)) {
+      return;
     }
 
     this.skills.set(skill.id, skill);
@@ -116,16 +147,18 @@ class SkillRegistry {
    * @param skills Skill 定义列表
    */
   registerMany(skills: SkillDefinition[]): void {
+    let registeredCount = 0;
     for (const skill of skills) {
       // 内部注册，不触发通知
-      if (this.skills.has(skill.id)) {
-        console.warn(LOG_PREFIX, `Skill "${skill.id}" already exists, will be overwritten`);
+      if (!this.guardRegistration(skill)) {
+        continue;
       }
       this.skills.set(skill.id, skill);
+      registeredCount++;
       console.log(LOG_PREFIX, `Registered skill: ${skill.id} (${skill.name})`);
     }
     // 批量完成后统一通知
-    if (skills.length > 0) {
+    if (registeredCount > 0) {
       notifyUpdate();
     }
   }
@@ -199,14 +232,22 @@ class SkillRegistry {
       description: skill.description,
       version: skill.version,
       author: skill.author,
+      license: skill.license,
+      homepage: skill.homepage,
+      tags: skill.tags,
+      compatibility: skill.compatibility,
       priority: skill.priority,
       allowedTools: skill.allowedTools,
       tools: skill.tools,
       disableAutoInvoke: skill.disableAutoInvoke,
+      userInvocable: skill.userInvocable,
+      argumentHint: skill.argumentHint,
       embeddedTools: skill.embeddedTools,
       skillType: skill.skillType,
       relatedSkills: skill.relatedSkills,
       dependencies: skill.dependencies,
+      requires: skill.requires,
+      manifestVersion: skill.manifestVersion,
     }));
   }
 
@@ -240,17 +281,32 @@ class SkillRegistry {
    * @returns 格式化的元数据 prompt
    */
   generateMetadataPrompt(): string {
-    // 过滤掉禁用自动调用的 skills
+    // Model-facing metadata is restricted to trusted, enabled skills.
+    const promptVisibleIds = new Set(
+      this.getAll().filter(isSkillPromptVisible).map((skill) => skill.id)
+    );
     const autoInvokeSkills = this.getAllMetadata().filter(
-      (skill) => !skill.disableAutoInvoke
+      (skill) => promptVisibleIds.has(skill.id) && !skill.disableAutoInvoke
     );
 
     if (autoInvokeSkills.length === 0) {
       return '';
     }
 
+    // 加载期 requires 门控：本机缺少声明依赖的技能不进入推荐列表
+    const availableSkills = autoInvokeSkills.filter((skill) =>
+      isSkillRequiresSatisfied(skill.id)
+    );
+    const gatedSkills = autoInvokeSkills.filter(
+      (skill) => !isSkillRequiresSatisfied(skill.id)
+    );
+
+    if (availableSkills.length === 0 && gatedSkills.length === 0) {
+      return '';
+    }
+
     // 生成技能列表
-    const skillList = autoInvokeSkills
+    const skillList = availableSkills
       .map((skill) => {
         let line = `- **${skill.name}** (id: \`${skill.id}\`)`;
         if (skill.description) {
@@ -259,6 +315,27 @@ class SkillRegistry {
         return line;
       })
       .join('\n');
+
+    // 被门控的技能作为附注：告知 LLM 存在但缺依赖，不要尝试加载
+    const gatedList = gatedSkills
+      .map((skill) => {
+        const gate = getRequiresGate(skill.id);
+        const missing = [
+          ...(gate?.missingBins ?? []).map((name) => `缺少命令 ${name}`),
+          ...(gate?.missingEnv ?? []).map((name) => `缺少环境变量 ${name}`),
+          ...(gate?.missingPythonPackages ?? []).map((name) => `缺少 Python 包 ${name}`),
+        ].join('、');
+        return `- \`${skill.id}\`：${missing || '依赖不满足'}`;
+      })
+      .join('\n');
+
+    const gatedSection = gatedSkills.length > 0
+      ? `
+
+以下技能因本机缺少运行依赖暂不可用（不要加载；如需使用请提示用户安装缺失依赖）：
+
+${gatedList}`
+      : '';
 
     return `<available_skills>
 ## 可用技能
@@ -273,7 +350,7 @@ ${skillList}
 
 注意：
 - 支持同时激活多个技能，根据需要组合使用
-- 技能激活后持续生效直到用户取消
+- 技能激活后持续生效直到用户取消${gatedSection}
 </available_skills>`;
   }
 
@@ -285,7 +362,7 @@ ${skillList}
   generateSummary(): string {
     const count = this.skills.size;
     if (count === 0) {
-      return i18n.t('chatV2:skills.noSkillsLoaded', { defaultValue: 'No skills loaded' });
+      return i18n.t('chatV2:skills.noSkillsLoaded');
     }
 
     const locations = {
@@ -295,14 +372,22 @@ ${skillList}
     };
 
     const parts: string[] = [];
-    if (locations.global > 0) parts.push(`${i18n.t('chatV2:skills.locationGlobal', { defaultValue: 'global' })} ${locations.global}`);
-    if (locations.project > 0) parts.push(`${i18n.t('chatV2:skills.locationProject', { defaultValue: 'project' })} ${locations.project}`);
-    if (locations.builtin > 0) parts.push(`${i18n.t('chatV2:skills.locationBuiltin', { defaultValue: 'builtin' })} ${locations.builtin}`);
+    if (locations.global > 0) parts.push(i18n.t('chatV2:skills.locationCount', {
+      location: i18n.t('chatV2:skills.locationGlobal'),
+      count: locations.global,
+    }));
+    if (locations.project > 0) parts.push(i18n.t('chatV2:skills.locationCount', {
+      location: i18n.t('chatV2:skills.locationProject'),
+      count: locations.project,
+    }));
+    if (locations.builtin > 0) parts.push(i18n.t('chatV2:skills.locationCount', {
+      location: i18n.t('chatV2:skills.locationBuiltin'),
+      count: locations.builtin,
+    }));
 
     return i18n.t('chatV2:skills.loadedSummary', {
       count,
       details: parts.join(', '),
-      defaultValue: `Loaded ${count} skills (${parts.join(', ')})`,
     });
   }
 

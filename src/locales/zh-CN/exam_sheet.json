@@ -182,7 +182,14 @@
     "noSession": "未指定题目集会话",
     "loadFailed": "加载题目集会话失败",
     "sessionNotFound": "未找到题目集会话",
-    "deprecatedPanel": "此入口已废弃，请通过学习资源管理器访问题目集功能。"
+    "deprecatedPanel": "此入口已废弃，请通过学习资源管理器访问题目集功能。",
+    "delete_question_failed": "删除题目失败，请重试",
+    "loadQuestionsFailed": "题目加载失败",
+    "manual_grade_failed": "评分同步失败，请手动重试",
+    "note_update_unavailable": "当前模式不支持保存笔记",
+    "save_note_failed": "保存笔记失败",
+    "submit_failed": "提交答案失败，请重试",
+    "toggle_favorite_failed": "收藏操作失败，请重试"
   },
   "viewMode": {
     "edit": "编辑",
@@ -198,6 +205,7 @@
       "new": "未学习",
       "correctRate": "正确率",
       "noData": "暂无统计数据",
+      "noDataHint": "完成几道练习后，这里会展示进度与正确率统计",
       "progress": "学习进度",
       "accuracy": "正确率",
       "excellent": "优秀",
@@ -253,21 +261,7 @@
     "reviewCount": "{{count}} 道待复习",
     "selectTag": "选择标签",
     "inputAnswer": "请输入答案...",
-    "import": {
-      "button": "导入题目",
-      "title": "导入题目集",
-      "description": "支持 JSON 和 TXT/Markdown 格式导入",
-      "name": "题目集名称",
-      "namePlaceholder": "输入题目集名称（可选）",
-      "file": "上传文件",
-      "selectFile": "选择文件",
-      "supportedFormats": "支持 .json, .txt, .md",
-      "content": "题目内容",
-      "showExample": "查看格式示例",
-      "import": "导入",
-      "importing": "导入中...",
-      "success": "导入成功！"
-    },
+    "import": "导入题目",
     "export": {
       "title": "导出题目",
       "description": "将 {{count}} 道题目导出为文件",
@@ -305,7 +299,8 @@
         "is_favorite": "收藏",
         "user_note": "笔记",
         "created_at": "创建时间",
-        "updated_at": "更新时间"
+        "updated_at": "更新时间",
+        "images": "关联图片"
       },
       "encodingDesc": {
         "utf8": "通用编码，推荐使用",
@@ -343,13 +338,22 @@
         "status": "状态",
         "attempts": "答题次数",
         "correctCount": "正确次数"
-      }
+      },
+      "columnsPreview": "导出列预览",
+      "savedTo": "已保存到",
+      "openFolder": "打开所在文件夹",
+      "openFolderFailed": "打开所在文件夹失败",
+      "done": "完成",
+      "exportedCount": "已导出 {{count}} 道题目",
+      "fieldsHint": "点击切换要导出的字段，题干内容为必选"
     },
     "search": "搜索题目...",
     "empty": "暂无题目",
     "label": "题号",
     "content": "题目",
     "attempts": "答题",
+    "manage": "管理",
+    "paginationInfo": "共 {{total}} 条",
     "edit": {
       "title": "编辑题目",
       "content": "题目内容",
@@ -381,7 +385,10 @@
         "calculation": "计算题",
         "proof": "证明题",
         "other": "其他"
-      }
+      },
+      "discardDescription": "放弃后无法恢复本次编辑内容。",
+      "optionsAnswerHint": "点击字母设为答案",
+      "moreOptional": "解析与笔记（选填）"
     },
     "create": {
       "title": "新建题目",
@@ -389,6 +396,30 @@
       "submit": "创建题目",
       "missingExamId": "缺少题目集 ID",
       "contentRequired": "题目内容不能为空"
+    },
+    "actionUnavailable": "当前操作不可用",
+    "confirmDelete": "确认删除",
+    "confirmDeleteBatch": "确定要删除选中的 {{count}} 道题目吗？此操作无法撤销。",
+    "confirmDeleteSingle": "确定要删除这道题目吗？此操作无法撤销。",
+    "confirmReset": "确认重置进度",
+    "confirmResetBatch": "确定要重置选中的 {{count}} 道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。",
+    "confirmResetSingle": "确定要重置这道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。",
+    "favoriteUpdateFailed": "更新收藏失败",
+    "favoriteUpdated": "收藏状态已更新",
+    "favorites": {
+      "browse": "浏览题目",
+      "empty": "暂无收藏题目",
+      "hint": "点击题目上的星星图标可添加收藏",
+      "loadFailed": "收藏加载失败",
+      "title": "收藏",
+      "toggleFailed": "更新收藏失败",
+      "truncated": "仅显示前 {{count}} 条收藏，共 {{total}} 条"
+    },
+    "history": {
+      "description": "查看题目的修改历史和答题记录",
+      "empty": "暂无历史记录",
+      "emptyHint": "答题和编辑题目后会自动生成记录",
+      "title": "历史记录"
     }
   },
   "csv": {
@@ -399,6 +430,8 @@
     "select_file_failed": "选择文件失败",
     "drop_or_click": "拖拽 CSV 文件到此处，或点击选择",
     "supported_formats": "支持 UTF-8 和 GBK 编码",
+    "format_hint": "CSV 需包含表头行，支持中英文列名",
+    "format_example": "题干,选项,答案,解析,标签",
     "drag_not_supported": "请点击选择文件按钮来选择 CSV 文件",
     "preview_failed": "预览 CSV 文件失败：{{error}}",
     "file_info": "{{rows}} 行数据，{{cols}} 列，编码：{{encoding}}",
@@ -408,6 +441,7 @@
     "select_field": "选择字段...",
     "no_mapping": "不映射",
     "suggested": "推荐",
+    "required": "必需",
     "mapping_valid": "字段映射有效，可以开始导入",
     "mapping_required": "请至少映射「题干内容」字段",
     "data_preview": "数据预览（前 {{count}} 行）",
@@ -441,7 +475,19 @@
     "error_row": "行 {{row}}：{{message}}",
     "import_failed_generic": "导入失败",
     "csv_file_fallback": "CSV 文件",
-    "drop_csv_here": "松开鼠标上传 CSV 文件"
+    "drop_csv_here": "松开鼠标上传 CSV 文件",
+    "cancelling_import": "正在取消...",
+    "import_cancel_failed": "取消导入失败，请稍后重试。",
+    "import_cancel_unavailable": "导入已结束，无法再取消。",
+    "import_cancelled_before_start": "导入已取消，尚未写入任何数据。",
+    "import_in_progress_close_blocked": "导入进行中，请先取消导入后再关闭窗口",
+    "mapping_duplicate": "存在重复映射，请确保每个目标字段只映射一次",
+    "result_success": "成功",
+    "result_skipped": "跳过",
+    "result_failed": "失败",
+    "error_details_count": "错误详情（共 {{count}} 条）",
+    "error_row_label": "行 {{row}}",
+    "error_more": "还有 {{count}} 条错误未显示"
   },
   "image": {
     "alt_card": "题目卡片",
@@ -458,6 +504,7 @@
   },
   "uploader": {
     "session_name_default": "整卷识别",
+    "image_import_name": "图片导入",
     "drop_or_click": "点击或拖放文件到这里",
     "take_photo": "拍照导入",
     "supported_formats_all": "图片 (PNG/JPG/WebP/HEIC) 或 文档 (DOCX/XLSX/XLS/PDF/TXT/MD)",
@@ -472,6 +519,11 @@
     "reading_document": "正在读取文档...",
     "parsing_document": "正在解析文档...",
     "processing": "处理中...",
+    "cancel_import": "取消导入",
+    "cancelling_import": "正在取消...",
+    "import_cancelled": "导入已取消。已完成的内容会保留。",
+    "cancel_unavailable": "导入已结束，无法再取消。",
+    "cancel_failed": "取消导入失败，请重试。",
     "start_recognize": "开始识别",
     "parse_document": "解析文档",
     "done": "完成",
@@ -497,8 +549,6 @@
     "no_content": "(无内容)",
     "options_count": "{{count}} 个选项",
     "answer_prefix": "答案: {{answer}}",
-    "tip_image": "图片将通过 OCR 识别题目",
-    "tip_document": "文档将解析文本后由 AI 识别题目结构",
     "file_type_image": "图片",
     "file_type_document": "文档",
     "import_failed_prefix": "导入失败: {{error}}",
@@ -518,17 +568,56 @@
     "filter_excluded_count": "已排除 {{count}} 题",
     "filter_hint": "展开可取消勾选不需要录入的题目（如已掌握的题目）",
     "filter_delete_failed": "删除排除题目失败",
-    "view_questions_filtered": "确认导入 {{count}} 题"
+    "view_questions_filtered": "确认导入 {{count}} 题",
+    "extracting_figures": "正在提取配图 {{current}}/{{total}}...",
+    "preprocessing": "正在预处理文档...",
+    "rendering_pages": "正在渲染页面 {{current}}/{{total}}...",
+    "structuring_questions": "正在结构化题目 {{current}}/{{total}}...",
+    "pdf_quality_title": "PDF 文本层质量较低（有效字符 {{count}}）",
+    "pdf_quality_description": "可选择直接使用解析文本，或启用 OCR 进行识别。",
+    "pdf_quality_empty_preview": "（无可预览文本）",
+    "pdf_use_extracted_text": "仅使用解析文本",
+    "pdf_enable_ocr": "启用 OCR",
+    "header_title": "识别导入",
+    "header_desc": "上传图片或文档，AI 自动识别题目并录入当前题目集",
+    "steps": {
+      "select": "选择文件",
+      "processing": "智能解析",
+      "summary": "确认录入"
+    },
+    "manual_create_link": "没有文件？手动新建一道题",
+    "tips_combined": "图片将通过 OCR 识别，文档解析文本后由 AI 识别题目结构",
+    "drop_active": "松开以添加文件",
+    "page_status_label": "逐页识别状态",
+    "page_n": "第 {{page}} 页",
+    "cancel_confirm_hint": "确定取消导入？已解析的题目会保留。",
+    "cancel_confirm_yes": "确认取消",
+    "cancel_confirm_no": "继续导入",
+    "resume_failed": "恢复导入失败: {{error}}",
+    "phases": {
+      "preparing": "准备",
+      "recognizing": "识别",
+      "parsing": "解析",
+      "done": "完成"
+    }
   },
   "questionTypes": {
     "single_choice": "单选",
     "multiple_choice": "多选",
     "indefinite_choice": "不定项",
+    "true_false": "判断",
     "fill_blank": "填空",
+    "matching": "匹配",
+    "ordering": "排序",
+    "numeric": "数值",
     "short_answer": "简答",
     "essay": "论述",
     "calculation": "计算",
     "proof": "证明",
     "other": "其他"
+  },
+  "editor": {
+    "discardDraftDescription": "离开当前视图会清除尚未提交或保存的内容。",
+    "discardDraftTitle": "放弃未提交的内容？"
   }
 }

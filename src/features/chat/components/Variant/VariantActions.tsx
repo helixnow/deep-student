@@ -10,7 +10,7 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -90,11 +90,6 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
   const showRetry = canRetryVariant(variant.status) && onRetry;
   const showDelete = !isLastVariant && onDelete;
 
-  // 如果没有任何可用操作，不显示菜单
-  if (!showCancel && !showRetry && !showDelete) {
-    return null;
-  }
-
   // 处理取消
   const handleCancel = useCallback(async () => {
     if (!onCancel || isLoading) return;
@@ -143,12 +138,17 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
     }
   }, [onDelete, messageId, variant.id, isLoading, t]);
 
+  // 如果没有任何可用操作，不显示菜单（early return 必须在所有 hooks 之后）
+  if (!showCancel && !showRetry && !showDelete) {
+    return null;
+  }
+
   return (
     <AppMenu>
       <AppMenuTrigger asChild>
-        <NotionButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn(isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
+        <DsButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn(isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
           <DotsThree size={16} />
-        </NotionButton>
+        </DsButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={160}>
         {/* 取消 */}

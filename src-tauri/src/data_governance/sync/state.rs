@@ -23,7 +23,7 @@ impl SyncStateStore {
         let base_dir = dirs::data_local_dir()
             .or_else(dirs::data_dir)
             .or_else(dirs::config_dir)
-            .unwrap_or_else(|| std::env::temp_dir());
+            .unwrap_or_else(std::env::temp_dir);
         let dir = base_dir.join("deep-student").join("sync");
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("sync_state.db");
@@ -86,6 +86,16 @@ impl SyncStateStore {
                 last_applied_offset INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (instance_id, source_device_id, kind)
+            );
+            CREATE TABLE IF NOT EXISTS tombstone_event_publish (
+                instance_id TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                operation_id TEXT NOT NULL,
+                seq INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (instance_id, device_id, kind, operation_id),
+                UNIQUE (instance_id, device_id, kind, seq)
             );
             CREATE TABLE IF NOT EXISTS instance_binding (
                 instance_id TEXT PRIMARY KEY,
@@ -186,6 +196,92 @@ impl SyncStateStore {
             )
             .map_err(|e| SyncError::Database(format!("写入 tombstone 水位失败: {}", e)))?;
             Ok(())
+        })
+    }
+
+    /// 为不可变删除事件保留稳定序号。同一 operation_id 重试总是返回原序号，
+    /// PUT 失败也不会改用新 key 产生重复事件。
+    pub fn reserve_tombstone_event_seq(
+        &self,
+        instance_id: &str,
+        device_id: &str,
+        kind: &str,
+        operation_id: &str,
+        cloud_max_seq: u64,
+    ) -> Result<u64, SyncError> {
+        self.reserve_tombstone_event_seq_with_existing(
+            instance_id,
+            device_id,
+            kind,
+            operation_id,
+            cloud_max_seq,
+            None,
+        )
+    }
+
+    /// `cloud_existing_seq` 用于本地 sync_state 丢失后的幂等恢复：若云端已存在同一
+    /// operation_id，重新绑定原序号，而不是产生第二个删除事件。
+    pub fn reserve_tombstone_event_seq_with_existing(
+        &self,
+        instance_id: &str,
+        device_id: &str,
+        kind: &str,
+        operation_id: &str,
+        cloud_max_seq: u64,
+        cloud_existing_seq: Option<u64>,
+    ) -> Result<u64, SyncError> {
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction().map_err(|e| {
+                SyncError::Database(format!("开始 tombstone 事件序号事务失败: {}", e))
+            })?;
+            if let Some(existing) = tx
+                .query_row(
+                    "SELECT seq FROM tombstone_event_publish
+                     WHERE instance_id=?1 AND device_id=?2 AND kind=?3 AND operation_id=?4",
+                    params![instance_id, device_id, kind, operation_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取 tombstone 事件序号失败: {}", e)))?
+            {
+                tx.commit().map_err(|e| {
+                    SyncError::Database(format!("提交 tombstone 事件序号事务失败: {}", e))
+                })?;
+                return Ok(existing.max(0) as u64);
+            }
+
+            let local_max: i64 = tx
+                .query_row(
+                    "SELECT COALESCE(MAX(seq), 0) FROM tombstone_event_publish
+                     WHERE instance_id=?1 AND device_id=?2 AND kind=?3",
+                    params![instance_id, device_id, kind],
+                    |row| row.get(0),
+                )
+                .map_err(|e| SyncError::Database(format!("读取 tombstone 最大序号失败: {}", e)))?;
+            let next = match cloud_existing_seq {
+                Some(existing) if existing > 0 => i64::try_from(existing).unwrap_or(i64::MAX),
+                _ => local_max
+                    .max(i64::try_from(cloud_max_seq).unwrap_or(i64::MAX))
+                    .saturating_add(1),
+            };
+            tx.execute(
+                "INSERT INTO tombstone_event_publish
+                 (instance_id, device_id, kind, operation_id, seq, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    instance_id,
+                    device_id,
+                    kind,
+                    operation_id,
+                    next,
+                    Utc::now().to_rfc3339()
+                ],
+            )
+            .map_err(|e| SyncError::Database(format!("保留 tombstone 事件序号失败: {}", e)))?;
+            tx.commit().map_err(|e| {
+                SyncError::Database(format!("提交 tombstone 事件序号事务失败: {}", e))
+            })?;
+            Ok(next.max(0) as u64)
         })
     }
 
@@ -396,22 +492,90 @@ impl SyncStateStore {
         reason: &str,
     ) -> Result<(), SyncError> {
         self.with_conn(|conn| {
-            conn.execute(
+            let transaction = conn.unchecked_transaction().map_err(|e| {
+                SyncError::Database(format!("开始设备轮换事务失败: {}", e))
+            })?;
+            transaction.execute(
                 "INSERT OR REPLACE INTO device_history(old_device_id, new_device_id, rotated_at, reason)
                  VALUES(?1, ?2, ?3, ?4)",
                 params![old_device_id, new_device_id, Utc::now().to_rfc3339(), reason],
             )
             .map_err(|e| SyncError::Database(format!("记录设备轮换失败: {}", e)))?;
-            conn.execute(
+            transaction.execute(
                 "UPDATE consume_cursor SET last_seq=0, updated_at=?1",
                 params![Utc::now().to_rfc3339()],
             )
             .map_err(|e| SyncError::Database(format!("重置消费游标失败: {}", e)))?;
-            conn.execute("DELETE FROM legacy_processed_key", [])
+            transaction.execute("DELETE FROM legacy_processed_key", [])
                 .map_err(|e| SyncError::Database(format!("清理 legacy processed key 失败: {}", e)))?;
-            conn.execute("DELETE FROM tombstone_watermark", [])
+            transaction.execute("DELETE FROM tombstone_watermark", [])
                 .map_err(|e| SyncError::Database(format!("重置 tombstone 水位失败: {}", e)))?;
+            transaction.commit().map_err(|e| {
+                SyncError::Database(format!("提交设备轮换事务失败: {}", e))
+            })?;
             Ok(())
         })
+    }
+
+    /// 清空本机数据后重置所有“已消费”状态。
+    ///
+    /// `upload_seq` 故意保留：同一 device_id 在远端可能已有历史对象，序号回退会
+    /// 复用旧 key，并被其他设备的 consume cursor 静默跳过。其余状态若保留，
+    /// 空白本地库会误以为历史云端变更已经消费，形成永久缺行。
+    pub fn reset_default_after_local_purge() -> Result<(), SyncError> {
+        let store = Self::open_default()?;
+        store.with_conn(|conn| {
+            let transaction = conn
+                .unchecked_transaction()
+                .map_err(|e| SyncError::Database(format!("开始清空同步基线事务失败: {}", e)))?;
+            for table in [
+                "consume_cursor",
+                "legacy_processed_key",
+                "tombstone_watermark",
+                "instance_binding",
+                "device_history",
+            ] {
+                transaction
+                    .execute(&format!("DELETE FROM {}", table), [])
+                    .map_err(|e| {
+                        SyncError::Database(format!("清空同步状态表 {} 失败: {}", table, e))
+                    })?;
+            }
+            transaction
+                .commit()
+                .map_err(|e| SyncError::Database(format!("提交清空同步基线事务失败: {}", e)))?;
+            Ok(())
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn memory_store() -> SyncStateStore {
+        let conn = Connection::open_in_memory().unwrap();
+        SyncStateStore::init(&conn).unwrap();
+        SyncStateStore {
+            conn: Arc::new(Mutex::new(conn)),
+        }
+    }
+
+    #[test]
+    fn tombstone_event_sequence_is_monotonic_and_idempotent() {
+        let store = memory_store();
+        let first = store
+            .reserve_tombstone_event_seq("instance", "device", "assets", "operation-a", 0)
+            .unwrap();
+        let retry = store
+            .reserve_tombstone_event_seq("instance", "device", "assets", "operation-a", 99)
+            .unwrap();
+        let next = store
+            .reserve_tombstone_event_seq("instance", "device", "assets", "operation-b", 7)
+            .unwrap();
+
+        assert_eq!(first, 1);
+        assert_eq!(retry, first);
+        assert_eq!(next, 8);
     }
 }

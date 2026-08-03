@@ -11,9 +11,10 @@ use super::router::{InboxOverflow, MessageRouter};
 use super::sleep_manager::{SleepManager, WakeResultInfo};
 use super::subagent_task::SubagentTaskManager;
 use super::types::*;
+use crate::backup_common::{DataGovernanceOperationGuard, DataGovernanceOperationKind};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::data_governance::file_deletion_queue::enqueue_workspace_deletion;
+use crate::chat_v2::runtime_roots::cleanup_session_runtime_roots;
 use tauri::AppHandle;
 
 struct WorkspaceInstance {
@@ -34,6 +35,8 @@ pub struct WorkspaceCoordinator {
     chat_v2_db: Option<Arc<ChatV2Database>>,
     /// 事件发射器，用于向前端发射工作区事件
     emitter: WorkspaceEventEmitter,
+    /// Used to remove per-worker artifacts/temp after permanent session deletion.
+    app_handle: Option<AppHandle>,
 }
 
 impl WorkspaceCoordinator {
@@ -44,12 +47,27 @@ impl WorkspaceCoordinator {
             instances: RwLock::new(HashMap::new()),
             chat_v2_db: None,
             emitter: WorkspaceEventEmitter::new(None),
+            app_handle: None,
         }
+    }
+
+    /// 自定义子代理定义目录：`{workspaces_dir}/agents/*.md`（契约 C6）。
+    /// 只负责路径拼接，不负责创建目录。
+    pub fn custom_agents_dir(&self) -> std::path::PathBuf {
+        self.workspaces_dir.join("agents")
+    }
+
+    /// 自定义子代理 persona 提案区：`{workspaces_dir}/agents-pending/`。
+    /// 与 agents/ 同级的独立目录（不与 skill 提案区混用），由
+    /// custom_agent_propose 写入、custom_agent_apply 审批后落盘。
+    pub fn custom_agents_pending_dir(&self) -> std::path::PathBuf {
+        self.workspaces_dir.join("agents-pending")
     }
 
     /// 设置 AppHandle，用于发射事件到前端
     pub fn with_app_handle(mut self, app_handle: AppHandle) -> Self {
-        self.emitter = WorkspaceEventEmitter::new(Some(app_handle));
+        self.emitter = WorkspaceEventEmitter::new(Some(app_handle.clone()));
+        self.app_handle = Some(app_handle);
         self
     }
 
@@ -217,10 +235,14 @@ impl WorkspaceCoordinator {
             instances.remove(workspace_id)
         };
         if let Some(instance) = removed_instance {
+            // 🔧 生命周期泄漏修复：实例移除前取消所有未决睡眠，
+            // 否则超时 timer（最长 60 分钟）仍在后台跑并写已移除的 DB
+            instance.sleep_manager.cancel_all_active("workspace_closed");
             instance
                 .repo
                 .update_workspace_status(WorkspaceStatus::Completed)?;
         } else if let Ok(instance) = self.get_instance(workspace_id) {
+            instance.sleep_manager.cancel_all_active("workspace_closed");
             let _ = instance
                 .repo
                 .update_workspace_status(WorkspaceStatus::Completed);
@@ -242,6 +264,12 @@ impl WorkspaceCoordinator {
     }
 
     pub fn delete_workspace(&self, workspace_id: &str) -> Result<(), String> {
+        let _operation = DataGovernanceOperationGuard::try_acquire(
+            DataGovernanceOperationKind::DeletePropagation,
+            None,
+        )
+        .map_err(|error| error.to_string())?;
+
         // 在关闭/删除之前获取 worker 会话列表，用于清理 ChatSession
         let worker_session_ids = self
             .list_agents(workspace_id)
@@ -255,36 +283,13 @@ impl WorkspaceCoordinator {
             .unwrap_or_default();
 
         self.close_workspace(workspace_id)?;
-        let db_path = self.workspaces_dir.join(format!("ws_{}.db", workspace_id));
-        let deleted_size = std::fs::metadata(&db_path).ok().map(|m| m.len());
         self.db_manager.delete(workspace_id)?;
-
-        if let Some(db) = &self.chat_v2_db {
-            match db.get_conn_safe() {
-                Ok(conn) => {
-                    if let Err(err) = enqueue_workspace_deletion(&conn, workspace_id, deleted_size)
-                    {
-                        log::warn!(
-                            "[WorkspaceCoordinator] 写入工作区删除队列失败（不阻塞删除）: workspace_id={}, err={}",
-                            workspace_id,
-                            err
-                        );
-                    }
-                }
-                Err(err) => {
-                    log::warn!(
-                        "[WorkspaceCoordinator] 打开 chat_v2.db 写删除队列失败（不阻塞删除）: {}",
-                        err
-                    );
-                }
-            }
-        }
 
         // 从 workspace_index 删除记录
         self.remove_from_index(workspace_id)?;
 
         // 清理关联的 worker ChatSession（避免残留会话）
-        self.cleanup_agent_sessions(&worker_session_ids);
+        self.cleanup_agent_sessions(&worker_session_ids)?;
 
         Ok(())
     }
@@ -299,10 +304,23 @@ impl WorkspaceCoordinator {
     ) -> Result<WorkspaceAgent, String> {
         let instance = self.get_instance(workspace_id)?;
 
+        // 配额只统计非终态（idle/running）agent：已完成/失败/取消的 worker 不再占用名额
         let agents = instance.repo.list_agents()?;
-        if agents.len() >= MAX_AGENTS_PER_WORKSPACE {
+        let active_agents = agents
+            .iter()
+            .filter(|a| {
+                matches!(
+                    a.status,
+                    AgentStatus::Idle
+                        | AgentStatus::Queued
+                        | AgentStatus::Running
+                        | AgentStatus::Interrupted
+                )
+            })
+            .count();
+        if active_agents >= MAX_AGENTS_PER_WORKSPACE {
             return Err(format!(
-                "Workspace has reached maximum agent limit: {}",
+                "Workspace has reached maximum active agent limit: {}",
                 MAX_AGENTS_PER_WORKSPACE
             ));
         }
@@ -348,7 +366,13 @@ impl WorkspaceCoordinator {
         );
 
         // worker 进入终态时，尝试通过状态信号唤醒 coordinator，避免仅靠 timeout 恢复
-        if matches!(status, AgentStatus::Completed | AgentStatus::Failed) {
+        if matches!(
+            status,
+            AgentStatus::Completed
+                | AgentStatus::Failed
+                | AgentStatus::Cancelled
+                | AgentStatus::Closed
+        ) {
             match instance.sleep_manager.check_and_wake_by_agent_status(
                 workspace_id,
                 session_id,
@@ -383,6 +407,25 @@ impl WorkspaceCoordinator {
         instance.repo.list_agents()
     }
 
+    pub fn get_agent(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+    ) -> Result<Option<WorkspaceAgent>, String> {
+        self.get_instance(workspace_id)?.repo.get_agent(session_id)
+    }
+
+    pub fn update_agent_metadata(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<(), String> {
+        self.get_instance(workspace_id)?
+            .repo
+            .update_agent_metadata(session_id, metadata.as_ref())
+    }
+
     /// 🆕 P38: 检查某个代理在指定时间后是否发送过消息
     pub fn has_agent_sent_message_since(
         &self,
@@ -415,6 +458,13 @@ impl WorkspaceCoordinator {
         }
         let mut normalized_type = message_type;
         if target_id.is_none() && !matches!(normalized_type, MessageType::Broadcast) {
+            // 诊断辅助：完成信封等定向消息若未带 target 会被强制广播，这里留痕便于排查
+            log::debug!(
+                "[WorkspaceCoordinator] send_message without target → forced broadcast: sender={}, original_type={:?}, workspace={}",
+                sender_id,
+                normalized_type,
+                workspace_id
+            );
             normalized_type = MessageType::Broadcast;
         }
         if target_id.is_some() && matches!(normalized_type, MessageType::Broadcast) {
@@ -474,6 +524,21 @@ impl WorkspaceCoordinator {
         Ok(message)
     }
 
+    /// Attach protocol metadata to an already-routed message. Runtime-owned
+    /// completion delivery uses this to persist correlation identifiers alongside
+    /// the normal workspace message envelope.
+    pub fn update_message_metadata(
+        &self,
+        workspace_id: &str,
+        message_id: &str,
+        metadata: &serde_json::Value,
+    ) -> Result<(), String> {
+        let instance = self.get_instance(workspace_id)?;
+        instance
+            .repo
+            .update_message_metadata(message_id, Some(metadata))
+    }
+
     pub fn drain_inbox(
         &self,
         workspace_id: &str,
@@ -500,27 +565,35 @@ impl WorkspaceCoordinator {
             return Ok(Vec::new());
         }
 
+        // 以实际 drained 的 message_id 精确标记 processed，保证内存 FIFO 与 DB 一致。
+        // （旧实现按 priority DESC 取前 N 条做交集，混合优先级时会漏标已消费消息，
+        //  重启后 restore_from_db 会把这些消息重新投喂导致重复执行。）
         let mut messages = Vec::new();
-        let mut inbox_ids = Vec::new();
 
         for message_id in &message_ids {
             if let Some(message) = instance.repo.get_message(message_id)? {
                 messages.push(message);
             }
-        }
-
-        let inbox_items = instance.repo.get_unread_inbox(session_id, limit)?;
-        for item in inbox_items {
-            if message_ids.contains(&item.message_id) {
-                inbox_ids.push(item.id);
-            }
-        }
-
-        if !inbox_ids.is_empty() {
-            instance.repo.mark_inbox_processed(&inbox_ids)?;
+            // 即使消息体已不存在，也要把 inbox 记录标记为 processed，避免重启后重放悬空引用
+            instance
+                .repo
+                .mark_inbox_processed_by_message(session_id, message_id)?;
         }
 
         Ok(messages)
+    }
+
+    /// 🆕 契约 C12：查询某 agent inbox 中待消费（unread）的消息数
+    ///
+    /// 直接查 ws 库 inbox 表（DB 为准），不依赖内存 InboxManager——
+    /// 未加载的工作区实例经 get_instance 惰性恢复后同样可查。
+    pub fn pending_inbox_count(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+    ) -> Result<usize, String> {
+        let instance = self.get_instance(workspace_id)?;
+        instance.repo.count_unread_inbox(session_id)
     }
 
     pub fn has_pending_messages(&self, workspace_id: &str, session_id: &str) -> bool {
@@ -645,6 +718,34 @@ impl WorkspaceCoordinator {
     pub fn get_sleep_manager(&self, workspace_id: &str) -> Result<Arc<SleepManager>, String> {
         let instance = self.get_instance(workspace_id)?;
         Ok(Arc::clone(&instance.sleep_manager))
+    }
+
+    /// 取消所有已加载工作区的未决睡眠（幂等）。
+    ///
+    /// 供未来在应用退出钩子（如 lib.rs 的 on_exit / window close）接线调用，
+    /// 确保退出前所有阻塞在 coordinator_sleep 上的 Pipeline 收到取消式唤醒、
+    /// 超时任务被中止，不残留写半关闭 DB 的后台 timer。
+    /// 当前尚未在 lib.rs 挂载；close_workspace / delete_workspace 已在
+    /// 实例移除前对单个工作区做同样的收敛。
+    pub fn shutdown_all_sleeps(&self) {
+        let instances: Vec<Arc<WorkspaceInstance>> = {
+            let map = self.instances.read().unwrap_or_else(|poisoned| {
+                log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+                poisoned.into_inner()
+            });
+            map.values().cloned().collect()
+        };
+
+        let mut total = 0usize;
+        for instance in instances {
+            total += instance.sleep_manager.cancel_all_active("app_shutdown");
+        }
+        if total > 0 {
+            log::info!(
+                "[WorkspaceCoordinator] shutdown_all_sleeps cancelled {} pending sleep(s)",
+                total
+            );
+        }
     }
 
     /// 🔧 P33 修复：发射唤醒事件（供 handler 调用）
@@ -787,23 +888,48 @@ impl WorkspaceCoordinator {
     }
 
     /// 🆕 清理关联的 worker ChatSession
-    fn cleanup_agent_sessions(&self, worker_session_ids: &[String]) {
+    fn cleanup_agent_sessions(&self, worker_session_ids: &[String]) -> Result<(), String> {
+        if worker_session_ids.is_empty() {
+            return Ok(());
+        }
         let db = match &self.chat_v2_db {
             Some(db) => db,
-            None => return,
-        };
-        for session_id in worker_session_ids {
-            if let Err(e) = ChatV2Repo::delete_session_v2(db, session_id) {
-                log::warn!(
-                    "[WorkspaceCoordinator] Failed to delete worker session {}: {:?}",
-                    session_id,
-                    e
-                );
+            None => {
+                return Err(
+                    "工作区已删除，但 Chat V2 数据库不可用，关联 worker 会话未清理".to_string(),
+                )
             }
+        };
+        let mut errors = Vec::new();
+        for session_id in worker_session_ids {
+            let Some(app_handle) = &self.app_handle else {
+                errors.push(format!(
+                    "{}: AppHandle 不可用，无法清理 runtime root",
+                    session_id
+                ));
+                continue;
+            };
+            if let Err(error) = cleanup_session_runtime_roots(app_handle, session_id) {
+                errors.push(format!("{}: runtime root 清理失败: {}", session_id, error));
+                continue;
+            }
+            if let Err(e) = ChatV2Repo::delete_session_v2(db, session_id) {
+                errors.push(format!("{}: worker 会话删除失败: {:?}", session_id, e));
+                continue;
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "工作区已删除，但部分关联会话清理失败: {}",
+                errors.join("; ")
+            ))
         }
     }
 
     fn get_instance(&self, workspace_id: &str) -> Result<Arc<WorkspaceInstance>, String> {
+        // 快路径：读锁命中缓存
         {
             let instances = self.instances.read().unwrap_or_else(|poisoned| {
                 log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
@@ -814,6 +940,28 @@ impl WorkspaceCoordinator {
             }
         }
 
+        // 慢路径（双检锁）：持有写锁做二次检查后再构建实例。
+        // 构建包含 inbox 恢复、restore_and_activate_sleeps 等副作用，
+        // 必须保证每个工作区只执行一次，否则会出现副作用重复与实例分裂
+        // （两个 SleepManager 各持一份 active_sleeps，超时任务互相干扰）。
+        // 构建只涉及本工作区 DB 与新建组件，不会回调 self.instances，无死锁风险。
+        let mut instances = self.instances.write().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (write)! Attempting recovery");
+            poisoned.into_inner()
+        });
+        if let Some(instance) = instances.get(workspace_id) {
+            return Ok(Arc::clone(instance));
+        }
+
+        let instance = self.load_instance(workspace_id)?;
+        instances.insert(workspace_id.to_string(), Arc::clone(&instance));
+
+        Ok(instance)
+    }
+
+    /// 从磁盘加载并初始化工作区实例（含 inbox / sleep 恢复副作用）。
+    /// 仅应在 get_instance 的写锁临界区内调用。
+    fn load_instance(&self, workspace_id: &str) -> Result<Arc<WorkspaceInstance>, String> {
         let db = self.db_manager.get_or_create(workspace_id)?;
         let repo = Arc::new(WorkspaceRepo::new(Arc::clone(&db)));
 
@@ -886,7 +1034,7 @@ impl WorkspaceCoordinator {
             }
         }
 
-        let instance = Arc::new(WorkspaceInstance {
+        Ok(Arc::new(WorkspaceInstance {
             workspace,
             db,
             repo,
@@ -894,15 +1042,7 @@ impl WorkspaceCoordinator {
             router,
             sleep_manager,
             task_manager,
-        });
-
-        let mut instances = self.instances.write().unwrap_or_else(|poisoned| {
-            log::error!("[WorkspaceCoordinator] RwLock poisoned (write)! Attempting recovery");
-            poisoned.into_inner()
-        });
-        instances.insert(workspace_id.to_string(), Arc::clone(&instance));
-
-        Ok(instance)
+        }))
     }
 
     /// 获取子代理任务管理器
@@ -911,10 +1051,19 @@ impl WorkspaceCoordinator {
         Ok(Arc::clone(&instance.task_manager))
     }
 
+    /// 🆕 B2（一键断电）：已加载（内存中）工作区 ID 列表，供紧急停止等全局操作遍历。
+    pub fn loaded_workspace_ids(&self) -> Vec<WorkspaceId> {
+        let instances = self.instances.read().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+            poisoned.into_inner()
+        });
+        instances.keys().cloned().collect()
+    }
+
     /// 进入维护模式：暂停所有活跃工作区的数据库连接池
     ///
     /// 在备份/恢复操作期间调用，确保 ws_*.db 文件不被锁定。
-    /// 单个工作区失败不阻断其他工作区。
+    /// 所有工作区都必须成功暂停，否则调用方不能宣称获得一致快照。
     pub fn enter_maintenance_mode(&self) -> Result<(), String> {
         let instances = self.instances.read().unwrap_or_else(|poisoned| {
             log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
@@ -922,6 +1071,7 @@ impl WorkspaceCoordinator {
         });
 
         let mut failures = Vec::new();
+        let mut entered = Vec::new();
         for (id, instance) in instances.iter() {
             if let Err(e) = instance.db.enter_maintenance_mode() {
                 log::warn!(
@@ -930,6 +1080,8 @@ impl WorkspaceCoordinator {
                     e
                 );
                 failures.push(format!("{}: {}", id, e));
+            } else {
+                entered.push((id, instance));
             }
         }
 
@@ -939,11 +1091,28 @@ impl WorkspaceCoordinator {
                 instances.len()
             );
         } else {
+            let mut rollback_failures = Vec::new();
+            for (id, instance) in entered {
+                if let Err(error) = instance.db.exit_maintenance_mode() {
+                    rollback_failures.push(format!("{}: {}", id, error));
+                }
+            }
             log::warn!(
-                "[WorkspaceCoordinator] {} 个工作区进入维护模式失败: {:?}",
+                "[WorkspaceCoordinator] {} 个工作区进入维护模式失败，已回滚其余工作区: {:?}",
                 failures.len(),
                 failures
             );
+            let rollback_detail = if rollback_failures.is_empty() {
+                String::new()
+            } else {
+                format!("；回滚失败: {}", rollback_failures.join("; "))
+            };
+            return Err(format!(
+                "{} 个工作区无法进入维护模式: {}{}",
+                failures.len(),
+                failures.join("; "),
+                rollback_detail
+            ));
         }
 
         Ok(())
@@ -979,8 +1148,178 @@ impl WorkspaceCoordinator {
                 failures.len(),
                 failures
             );
+            return Err(format!(
+                "{} 个工作区无法退出维护模式（失败工作区保持 fail-close）: {}",
+                failures.len(),
+                failures.join("; ")
+            ));
         }
 
         Ok(())
+    }
+
+    /// 是否仍有已加载工作区处于排空/维护状态。
+    ///
+    /// 数据治理状态查询必须把工作区库纳入聚合；否则主库已恢复、某个
+    /// `ws_*.db` 仍 fail-close 时，前端会错误撤掉维护提示。
+    pub fn is_in_maintenance_mode(&self) -> bool {
+        let instances = self.instances.read().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+            poisoned.into_inner()
+        });
+        instances
+            .values()
+            .any(|instance| instance.db.is_in_maintenance_mode())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    const COORD: &str = "coord_sess";
+
+    fn setup_coordinator() -> (TempDir, WorkspaceCoordinator, Workspace) {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let coordinator = WorkspaceCoordinator::new(temp_dir.path().to_path_buf());
+        let workspace = coordinator
+            .create_workspace(COORD, Some("test".to_string()))
+            .expect("create workspace");
+        coordinator
+            .register_agent(&workspace.id, COORD, AgentRole::Coordinator, None, None)
+            .expect("register coordinator");
+        (temp_dir, coordinator, workspace)
+    }
+
+    #[test]
+    fn drain_inbox_marks_exact_drained_messages_processed() {
+        let (_dir, coordinator, ws) = setup_coordinator();
+        coordinator
+            .register_agent(&ws.id, "worker_1", AgentRole::Worker, None, None)
+            .expect("register worker");
+
+        // 先发低优先级 result（priority 0），再发高优先级 task（priority 1）：
+        // 内存 FIFO 按到达顺序先取 result，而 DB 按 priority DESC 排序时 task 在前，
+        // 旧实现的交集逻辑会漏标已消费的 result。
+        let result_msg = coordinator
+            .send_message(
+                &ws.id,
+                "worker_1",
+                Some(COORD),
+                MessageType::Result,
+                "result content".to_string(),
+            )
+            .expect("send result");
+        let task_msg = coordinator
+            .send_message(
+                &ws.id,
+                "worker_1",
+                Some(COORD),
+                MessageType::Task,
+                "task content".to_string(),
+            )
+            .expect("send task");
+
+        let drained = coordinator
+            .drain_inbox(&ws.id, COORD, 1)
+            .expect("drain inbox");
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].id, result_msg.id);
+
+        // DB 中只有被实际消费的 result 标记 processed，task 仍 unread
+        let instance = coordinator.get_instance(&ws.id).expect("instance");
+        let unread = instance
+            .repo
+            .get_unread_inbox(COORD, 10)
+            .expect("unread inbox");
+        assert_eq!(unread.len(), 1);
+        assert_eq!(unread[0].message_id, task_msg.id);
+
+        // 再次 drain 取回 task 后收件箱清空（重启不会重复投喂）
+        let drained2 = coordinator
+            .drain_inbox(&ws.id, COORD, 10)
+            .expect("drain again");
+        assert_eq!(drained2.len(), 1);
+        assert_eq!(drained2[0].id, task_msg.id);
+        assert!(instance
+            .repo
+            .get_unread_inbox(COORD, 10)
+            .expect("unread inbox")
+            .is_empty());
+    }
+
+    #[test]
+    fn close_workspace_cancels_active_sleeps() {
+        use super::super::sleep_manager::{SleepBlockData, WakeCondition, WakeReason};
+
+        let (_dir, coordinator, ws) = setup_coordinator();
+        let sleep_manager = coordinator
+            .get_sleep_manager(&ws.id)
+            .expect("sleep manager");
+
+        // 不设 timeout，避免依赖 tokio runtime
+        let data = SleepBlockData::new(
+            ws.id.clone(),
+            COORD.to_string(),
+            Vec::new(),
+            WakeCondition::ResultMessage,
+        );
+        let mut rx = sleep_manager.begin_sleep(&data).expect("begin sleep");
+        assert!(sleep_manager.is_sleep_active(&data.id));
+
+        coordinator
+            .close_workspace(&ws.id)
+            .expect("close workspace");
+
+        // 未决睡眠收到取消式唤醒，注册表被清空
+        let payload = rx.try_recv().expect("cancel payload delivered");
+        assert_eq!(payload.reason, WakeReason::Cancelled);
+        assert_eq!(payload.awakened_by, "system");
+        assert!(!sleep_manager.is_sleep_active(&data.id));
+    }
+
+    #[test]
+    fn register_agent_quota_ignores_terminal_agents() {
+        let (_dir, coordinator, ws) = setup_coordinator();
+
+        // 已注册 1 个 coordinator，再补足到 MAX_AGENTS_PER_WORKSPACE 个非终态 agent
+        for i in 1..MAX_AGENTS_PER_WORKSPACE {
+            coordinator
+                .register_agent(
+                    &ws.id,
+                    &format!("worker_{}", i),
+                    AgentRole::Worker,
+                    None,
+                    None,
+                )
+                .expect("register worker");
+        }
+
+        // 全部非终态 → 达到上限，注册被拒绝
+        let err = coordinator
+            .register_agent(&ws.id, "worker_overflow", AgentRole::Worker, None, None)
+            .expect_err("quota exceeded");
+        assert!(err.contains("maximum active agent limit"));
+
+        // 部分 worker 进入终态（completed/cancelled）后应释放配额
+        coordinator
+            .update_agent_status(&ws.id, "worker_1", AgentStatus::Completed)
+            .expect("mark completed");
+        coordinator
+            .update_agent_status(&ws.id, "worker_2", AgentStatus::Cancelled)
+            .expect("mark cancelled");
+
+        coordinator
+            .register_agent(&ws.id, "worker_new_1", AgentRole::Worker, None, None)
+            .expect("register after completed freed quota");
+        coordinator
+            .register_agent(&ws.id, "worker_new_2", AgentRole::Worker, None, None)
+            .expect("register after cancelled freed quota");
+
+        // 配额重新占满后再次拒绝
+        assert!(coordinator
+            .register_agent(&ws.id, "worker_overflow_2", AgentRole::Worker, None, None)
+            .is_err());
     }
 }

@@ -1,0 +1,614 @@
+.wb-agent-control-app-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.wb-agent-control-popover {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(480px, calc(100vh - 128px));
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+  border-radius: 12px;
+  color: hsl(var(--foreground));
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
+  /* 入场手感对齐 workbench motion token：从 Dock 侧（右下角）弹出 */
+  --ui-zoom-origin: bottom right;
+  --dropdown-open-dur: var(--wb-motion-standard, 280ms);
+  --dropdown-ease: var(--wb-ease-spring, cubic-bezier(0.32, 1.12, 0.36, 1));
+}
+
+/* PopoverContent ships an opaque bg-popover utility; adapt it back to the
+ * workbench glass contract at a higher specificity. */
+.wb-agent-control-popover.wb-glass {
+  border-color: var(--wb-glass-border);
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-glass-blur-strong);
+  backdrop-filter: var(--wb-glass-blur-strong);
+}
+
+.wb-agent-control-popover.wb-glass-lens {
+  overflow: visible;
+}
+
+.wb-agent-control-popover::after {
+  content: '';
+  position: absolute;
+  right: 17px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  transform: rotate(45deg);
+  border-right: 1px solid var(--wb-glass-border, hsl(var(--border) / 48%));
+  border-bottom: 1px solid var(--wb-glass-border, hsl(var(--border) / 48%));
+  border-radius: 2px;
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  pointer-events: none;
+}
+
+.wb-agent-control-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.wb-agent-control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px 9px;
+}
+
+.wb-agent-control-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wb-agent-control-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: hsl(var(--foreground) / 82%);
+}
+
+.wb-agent-control-mark-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.wb-agent-control-mark i {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--wb-glass-bg-strong, hsl(var(--background)));
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground));
+}
+
+.wb-agent-control-mark[data-mode='background'] i {
+  background: hsl(var(--warning, 38 92% 50%));
+}
+
+.wb-agent-control-mark[data-mode='follow'] i {
+  background: hsl(var(--success, 142 72% 38%));
+}
+
+.wb-agent-control-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.wb-agent-control-header p {
+  max-width: 230px;
+  margin: 2px 0 0;
+  /* 玻璃底上的小字号说明抬高一档对比度 */
+  color: hsl(var(--foreground) / 72%);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.wb-agent-control-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 3px 2px;
+  border-radius: 0;
+  color: hsl(var(--foreground) / 68%);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.wb-agent-control-mode-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground));
+}
+
+.wb-agent-control-mode-badge[data-mode='background'] i {
+  background: hsl(var(--warning, 38 92% 50%));
+}
+
+.wb-agent-control-mode-badge[data-mode='follow'] i {
+  background: hsl(var(--success, 142 72% 38%));
+}
+
+.wb-agent-control-mode-control {
+  padding: 8px 12px 9px;
+  border-top: 1px solid hsl(var(--border) / 38%);
+  border-bottom: 0;
+  background: transparent;
+}
+
+.wb-agent-control-mode-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wb-agent-control-mode-heading > span,
+.wb-agent-capabilities-title {
+  color: hsl(var(--foreground) / 86%);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.wb-agent-control-segmented {
+  flex: 0 0 auto;
+  justify-self: end;
+  background: hsl(var(--foreground) / 6%);
+}
+
+.wb-agent-control-segmented .study-shell-segmented-thumb {
+  border-color: transparent;
+  box-shadow: 0 1px 3px hsl(var(--shadow-base, 0 0% 0%) / 12%);
+}
+
+.wb-agent-control-segmented .study-shell-segmented-button {
+  height: 25px;
+  padding-inline: 9px;
+  font-size: 10.5px;
+}
+
+.wb-agent-control-mode-description,
+.wb-agent-control-error {
+  margin: 5px 0 0;
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+.wb-agent-control-mode-description {
+  color: hsl(var(--foreground) / 70%);
+}
+
+.wb-agent-control-error {
+  color: hsl(var(--destructive));
+}
+
+.wb-agent-capabilities {
+  padding: 8px 12px 0;
+  border-top: 1px solid hsl(var(--border) / 34%);
+}
+
+.wb-agent-capabilities-header,
+.wb-agent-capabilities-heading,
+.wb-agent-capabilities-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.wb-agent-capabilities-header {
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 22px;
+  margin-bottom: 4px;
+}
+
+.wb-agent-capabilities-heading {
+  gap: 6px;
+}
+
+.wb-agent-capabilities-title {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.wb-agent-capabilities-heading > span {
+  color: hsl(var(--foreground) / 54%);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.wb-agent-capabilities-toggle {
+  gap: 3px;
+  min-height: 24px;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 9.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wb-agent-capabilities-toggle:hover,
+.wb-agent-capabilities-toggle:focus-visible {
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
+  color: hsl(var(--foreground));
+}
+
+/* 键盘焦点保留 workbench 统一焦点环（a11y，不随材质降级） */
+.wb-agent-capabilities-toggle:focus-visible {
+  outline: var(--wb-focus-ring-width, 2px) solid
+    var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline-offset: 1px;
+}
+
+.wb-agent-capabilities-toggle svg {
+  transition: transform 140ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-agent-capabilities-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.wb-agent-capabilities-list,
+.wb-agent-capability-groups {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-agent-capability-groups {
+  display: grid;
+}
+
+.wb-agent-capability-group {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 37px;
+  padding: 4px 0;
+  border-bottom: 1px solid hsl(var(--border) / 28%);
+}
+
+.wb-agent-capability-group:last-child {
+  border-bottom: 0;
+}
+
+.wb-agent-capability-group-icon,
+.wb-agent-capability-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 0;
+  background: transparent;
+  color: hsl(var(--foreground) / 68%);
+}
+
+.wb-agent-capability-group-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.wb-agent-capability-group-copy,
+.wb-agent-capability-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.wb-agent-capability-group-copy {
+  gap: 1px;
+}
+
+.wb-agent-capability-group-copy > span {
+  color: hsl(var(--foreground) / 88%);
+  font-size: 10.5px;
+  font-weight: 550;
+  line-height: 1.35;
+}
+
+.wb-agent-capability-group-copy small {
+  overflow: hidden;
+  color: hsl(var(--foreground) / 62%);
+  font-size: 9.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-agent-capability-row {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid hsl(var(--border) / 28%);
+}
+
+.wb-agent-capability-row:last-child {
+  border-bottom: 0;
+}
+
+.wb-agent-capability-icon {
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+}
+
+.wb-agent-capability-copy {
+  gap: 1px;
+}
+
+.wb-agent-capability-app {
+  color: hsl(var(--foreground) / 88%);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.wb-agent-capability-actions {
+  min-width: 0;
+  color: hsl(var(--foreground) / 62%);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.wb-agent-capabilities-safety {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 8px 0 9px;
+  border-top: 1px solid hsl(var(--border) / 30%);
+  background: transparent;
+  color: hsl(var(--foreground) / 64%);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.wb-agent-capabilities-safety svg {
+  flex: none;
+  margin-top: 1px;
+  color: hsl(var(--success, 142 64% 32%));
+}
+
+.wb-agent-kill-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.wb-agent-kill-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 12px 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--destructive) / 42%);
+  background: hsl(var(--destructive) / 12%);
+  color: color-mix(in srgb, hsl(var(--destructive)) 72%, black);
+}
+
+:root.dark .wb-agent-kill-banner,
+:root[data-theme='dark'] .wb-agent-kill-banner {
+  color: color-mix(in srgb, hsl(var(--destructive)) 45%, white);
+  background: hsl(var(--destructive) / 28%);
+  border-color: hsl(var(--destructive) / 48%);
+}
+
+.wb-agent-kill-banner p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.wb-agent-kill-banner small,
+.wb-agent-kill-confirm-copy {
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: 0.88;
+}
+
+.wb-agent-kill-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.wb-agent-kill-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wb-agent-kill-confirm p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--foreground) / 78%);
+}
+
+.wb-agent-emergency-stop {
+  height: 30px;
+  min-height: 30px;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 8px;
+  border-color: hsl(var(--destructive) / 55%);
+  background: hsl(var(--destructive));
+  color: #fff;
+  font-weight: 600;
+}
+
+.wb-agent-emergency-stop:hover:not(:disabled) {
+  background: color-mix(in srgb, hsl(var(--destructive)) 88%, black);
+  border-color: hsl(var(--destructive) / 70%);
+}
+
+.wb-agent-emergency-stop:disabled {
+  opacity: 0.55;
+}
+
+.wb-dock-item[data-kill-switch='tripped'] {
+  box-shadow: 0 0 0 2px hsl(var(--destructive) / 55%);
+}
+
+.wb-agent-kill-dock-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1.5px solid hsl(var(--background));
+  background: hsl(var(--destructive));
+  pointer-events: none;
+}
+
+.wb-agent-kill-dock-badge[data-state='paused'] {
+  background: hsl(var(--warning));
+}
+
+.wb-agent-control-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 7px 10px 8px;
+  border-top: 1px solid hsl(var(--border) / 38%);
+  border-radius: 0 0 12px 12px;
+  background: transparent;
+}
+
+.wb-agent-control-actions button {
+  gap: 5px;
+}
+
+.wb-agent-control-open-chat {
+  height: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  border-radius: 7px;
+  background: hsl(var(--foreground) / 8%);
+  color: hsl(var(--foreground) / 88%);
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
+}
+
+.wb-agent-control-open-chat:hover {
+  background: hsl(var(--foreground) / 12%);
+}
+
+.wb-agent-control-open-chat:active {
+  transform: scale(0.97);
+}
+
+.wb-agent-control-actions button:last-child {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 8px;
+}
+
+.wb-agent-capabilities[data-variant='settings'] {
+  width: min(100%, 560px);
+  padding: 0;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capabilities-header {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-row {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+  padding: 8px 0;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-icon {
+  width: 27px;
+  height: 27px;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-app {
+  font-size: 11px;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-actions {
+  font-size: 10px;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capabilities-safety {
+  margin: 10px 0 0;
+  padding: 9px 0 0;
+  background: transparent;
+}
+
+@media (width >= 900px) {
+  .wb-agent-capabilities[data-variant='settings'] .wb-agent-capabilities-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-agent-control-popover,
+  .wb-agent-control-open-chat,
+  .wb-agent-capabilities-toggle svg {
+    animation: none;
+    transition: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-agent-control-open-chat,
+:root[data-wb-material='reduced'] .wb-agent-control-open-chat {
+  transition: none;
+}

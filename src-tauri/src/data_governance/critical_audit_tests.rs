@@ -834,20 +834,57 @@ mod critical_audit_tests {
     }
 
     // ============================================================================
-    // 🟡 问题 6: 增量备份恢复路径完全缺失
+    // 问题 6 / S0: 增量备份空壳已下线
     //
-    // 验证：backup_incremental() 存在但没有 restore_incremental()
+    // (a) 创建增量立即 Err；(b) 旧增量 manifest 恢复诚实拒绝
     // ============================================================================
 
-    /// 测试：对增量备份 manifest 调用 restore()，证明不会恢复任何数据库
-    ///
-    /// 问题 6: 增量备份可以创建但无法恢复
+    /// S0: backup_incremental() 必须返回明确的下线错误，且不写产物
+    #[test]
+    fn test_issue6_incremental_create_returns_removed_error() {
+        let backup_dir = TempDir::new().unwrap();
+        let manager = BackupManager::new(backup_dir.path().to_path_buf());
+        let base_id = "20260101_000000";
+        std::fs::create_dir_all(backup_dir.path().join(base_id)).unwrap();
+
+        let before: Vec<_> = std::fs::read_dir(backup_dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect();
+
+        let err = manager
+            .backup_incremental(base_id)
+            .expect_err("S0: incremental create must fail");
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("Incremental backup has been removed"),
+            "S0: create error must state incremental was removed, got: {}",
+            msg
+        );
+        assert!(
+            matches!(
+                err,
+                crate::data_governance::backup::BackupError::IncrementalBackupRemoved(_)
+            ),
+            "S0: expected IncrementalBackupRemoved variant"
+        );
+
+        let after: Vec<_> = std::fs::read_dir(backup_dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(before, after, "S0: create must not write backup artifacts");
+    }
+
+    /// S0: 对旧增量 manifest 调用 restore()，必须 IncrementalRestoreNotSupported
     #[test]
     fn test_issue6_incremental_restore_silently_restores_nothing() {
         let backup_dir = TempDir::new().unwrap();
         let manager = BackupManager::new(backup_dir.path().to_path_buf());
 
-        // 构建一个增量备份 manifest，其中只有 _changes.json 文件
+        // 构建一个旧版增量备份 manifest（仅 _changes.json 元信息）
         let mut manifest = BackupManifest::new("1.0.0");
         manifest.backup_id = "incr_test".to_string();
         manifest.is_incremental = true;
@@ -879,19 +916,30 @@ mod critical_audit_tests {
             .len();
         manifest.save_to_file(&sub.join("manifest.json")).unwrap();
 
-        // 调用 restore — restore() 内部只处理 .db 结尾的文件
         let result = manager.restore(&manifest);
 
-        // 关键断言：restore 对于增量 manifest "成功"了，但实际上什么数据库也没恢复
-        // Issue 6 已修复：restore() 应拒绝增量备份并返回明确错误
         assert!(
             result.is_err(),
-            "Issue 6 FIXED: restore() should reject incremental backup"
+            "S0: restore() should reject incremental backup"
         );
-        let msg = format!("{}", result.unwrap_err());
+        let err = result.unwrap_err();
         assert!(
-            msg.contains("incremental") || msg.contains("增量"),
-            "Issue 6 FIXED: error should mention incremental restore not supported, got: {}",
+            matches!(
+                err,
+                crate::data_governance::backup::BackupError::IncrementalRestoreNotSupported(_)
+            ),
+            "S0: must be IncrementalRestoreNotSupported (honest reject), got: {}",
+            err
+        );
+        let msg = format!("{}", err);
+        assert!(
+            msg.to_lowercase().contains("incremental"),
+            "S0: error should mention incremental restore not supported, got: {}",
+            msg
+        );
+        assert!(
+            !msg.contains("增量"),
+            "S0: restore ban message must be English (i18n lives in UI), got: {}",
             msg
         );
     }

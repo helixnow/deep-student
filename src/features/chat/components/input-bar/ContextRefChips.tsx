@@ -13,7 +13,7 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, FileText, BookOpen, ClipboardText, Translate, PencilSimple, Folder, Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { ContextRef } from '../../resources/types';
 
 // ============================================================================
@@ -80,6 +80,31 @@ const getTypeLabelKey = (typeId: string): string => {
   }
 };
 
+// ============================================================================
+// 显示语义（P2 梳理）
+//
+// 一个 pending ContextRef 只在一个 UI 位置可视化，避免重复气泡：
+// 1. 附件 chips（AttachmentPreviewChips + 附件面板）——上传附件与资源库
+//    引用（note/textbook/exam/essay/translation/mindmap/todo/image/file）
+//    都会同步创建伪附件（见 useVfsContextInject / useReferenceToChat），
+//    因此这些 typeId 在此隐藏。
+// 2. 技能系统（skill / skill_instruction）——由技能 chips/面板单独可视化。
+// 3. 本组件 ——兜底显示其余类型；当前主要是 folder（文件夹引用没有伪附件，
+//    在这里以气泡形式展示，可单个移除）。autoLoaded 引用（默认技能、会话
+//    恢复）不属于用户手动组合的上下文，同样不显示。
+// ============================================================================
+
+/** 已由附件 chips 可视化的类型（有对应伪附件） */
+const ATTACHMENT_VISUALIZED_TYPES = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file', 'mindmap', 'todo']);
+
+/** 已由技能系统可视化的类型 */
+const SKILL_VISUALIZED_TYPES = new Set(['skill', 'skill_instruction']);
+
+/** 该引用是否已在其他 UI 位置可视化（是则本组件不重复显示） */
+function isVisualizedElsewhere(typeId: string): boolean {
+  return ATTACHMENT_VISUALIZED_TYPES.has(typeId) || SKILL_VISUALIZED_TYPES.has(typeId);
+}
+
 /**
  * 根据类型 ID 获取 Chip 颜色样式
  */
@@ -119,10 +144,8 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
   ({ refs, onRemove, onClearAll, disabled = false, className }) => {
     const { t } = useTranslation(['chatV2', 'common']);
 
-  const vfsResourceTypes = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file', 'mindmap', 'todo', 'skill_instruction', 'skill']);
-    
     const displayRefs = useMemo(() => {
-      return refs.filter((ref) => !vfsResourceTypes.has(ref.typeId) && !ref.autoLoaded);
+      return refs.filter((ref) => !isVisualizedElsewhere(ref.typeId) && !ref.autoLoaded);
     }, [refs]);
 
     // 没有需要显示的引用时不渲染
@@ -163,9 +186,9 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
               <Icon size={12} weight="bold" className="shrink-0" />
               <span className="truncate max-w-[80px]">{label}</span>
               {!disabled && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`${t('common:actions.remove')} ${label}`} title={t('common:actions.remove')}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={t('chatV2:common.removeNamed', { name: label })} title={t('common:actions.remove')}>
                   <X size={10} weight="bold" />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           );
@@ -173,9 +196,9 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
 
         {/* 清空所有按钮 */}
         {displayRefs.length > 1 && !disabled && (
-          <NotionButton variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title={t('chatV2:contextRef.clearAll')}>
+          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title={t('chatV2:contextRef.clearAll')}>
             {t('common:actions.clear_all')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );

@@ -11,7 +11,10 @@
  * - 代码块(fence)和行内代码(`)内部不计数
  * - 奇数个标记自动补尾闭合
  * - 半截 [link 截断（等闭合后完整显示）
+ * - 半截引用标记（[知识库-… / [PDF@… 等）保留原文不截断（P0-1 防闪烁）
  */
+
+import { isDanglingCitationStart } from '../../utils/citationRemarkPlugin';
 
 export type Range = { start: number; end: number };
 
@@ -52,6 +55,27 @@ export const isIndexExcluded = (index: number, ranges: Range[]) => {
   return false;
 };
 
+// 结构性标记不参与配对计数：
+// - `* item` 的列表标记 `*`（否则奇数个列表项会在尾部补出多余的 `*`）
+// - `***` / `___` / `---` 水平线（否则一条 hr 会永久打乱后续 **bold 的奇偶配对）
+const HR_LINE_RE = /^[ \t]*(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$/;
+const LIST_MARKER_RE = /^[ \t]*\*[ \t]/;
+
+const computeStructuralExcludedRanges = (content: string): Range[] => {
+  const ranges: Range[] = [];
+  let offset = 0;
+  for (const line of content.split('\n')) {
+    if (HR_LINE_RE.test(line)) {
+      ranges.push({ start: offset, end: offset + line.length });
+    } else if (LIST_MARKER_RE.test(line)) {
+      const markerIndex = line.indexOf('*');
+      ranges.push({ start: offset + markerIndex, end: offset + markerIndex + 1 });
+    }
+    offset += line.length + 1;
+  }
+  return ranges;
+};
+
 /**
  * 对未闭合的 markdown 标记进行自动闭合。
  * 仅在流式期间调用（静态已完成消息通常标记已配对，但本函数是幂等的）。
@@ -68,29 +92,66 @@ export const sanitizeDanglingMarkdown = (content: string): { text: string; touch
   }
 
   // 2. 半截 link [text](url  → 截断到 [ 之前（等闭合后完整渲染）
-  const linkMatch = text.match(/!?(\[[^\]]*)$/);
-  if (linkMatch && linkMatch.index !== undefined) {
-    text = text.slice(0, linkMatch.index);
-    touched = true;
+  // 仅当悬垂 `[` 位于最后一行且不在代码区内时才截断：
+  // - 旧实现 `[^\]]*` 可跨行匹配，几行之前的普通 `[`（如 arr[i）会把
+  //   后续所有正文连同刚补上的 ``` 闭栏一起吞掉
+  // - 代码内的 `[`（行内代码/围栏）不是链接起始，不应触发截断
+  // - P0-1：半截引用标记（[知识库-… / [PDF@… / [思维导图:… 等）不是链接。
+  //   截掉会让引用前的文本随 token 反复缩短/回涨（徽章闪烁根因），
+  //   保留原文，闭合 `]` 到达后由 citation remark 插件正常接管渲染。
+  const preExcluded = computeExcludedRanges(text);
+  const linkMatch = text.match(/!?\[[^\]\n]*$/);
+  if (
+    linkMatch &&
+    linkMatch.index !== undefined &&
+    !isIndexExcluded(linkMatch.index, preExcluded)
+  ) {
+    const matched = linkMatch[0];
+    const isCitationLike =
+      matched.startsWith('[') && isDanglingCitationStart(matched.slice(1));
+    if (!isCitationLike) {
+      text = text.slice(0, linkMatch.index);
+      touched = true;
+    }
   }
 
-  // 3. 配对标记计数（排除代码块/行内代码内的标记）
-  const excluded = computeExcludedRanges(text);
+  // 3. 配对标记计数（排除代码块/行内代码/列表标记/hr 行内的标记）
+  const excluded = mergeRanges([
+    ...computeExcludedRanges(text),
+    ...computeStructuralExcludedRanges(text),
+  ]);
   const counts: Record<string, number> = Object.create(null);
   const bump = (token: string) => {
     counts[token] = (counts[token] || 0) + 1;
   };
 
   const pairedTokens = ['**', '__', '~~'];
-  const singleTokens = ['*', '_', '~', '`'];
+  // 注意：不再对单个 `~` 计数/补尾。remark-gfm 默认 singleTilde=true，
+  // 给 "约~5ms" 这类正文补 `~` 会凭空生成删除线，比留着原字符更糟。
+  const singleTokens = ['*', '_', '`'];
+
+  // 词内字符判断：CommonMark 规则下 `_` 两侧都是字母数字时不构成强调边界
+  const isWordChar = (c: string | undefined): boolean => !!c && /[A-Za-z0-9]/.test(c);
 
   for (let i = 0; i < text.length; i++) {
     if (isIndexExcluded(i, excluded)) continue;
 
+    const ch = text[i];
+    // 反斜杠转义的标记（\* \_ \` 等）不参与配对计数
+    if (ch === '\\') {
+      i++;
+      continue;
+    }
+
     let matched = false;
     for (const token of pairedTokens) {
       if (text.startsWith(token, i)) {
-        bump(token);
+        // snake__case 之类词内 `__` 不构成强调，跳过计数
+        const intraword =
+          token === '__' && isWordChar(text[i - 1]) && isWordChar(text[i + token.length]);
+        if (!intraword) {
+          bump(token);
+        }
         i += token.length - 1;
         matched = true;
         break;
@@ -98,10 +159,13 @@ export const sanitizeDanglingMarkdown = (content: string): { text: string; touch
     }
     if (matched) continue;
 
-    const ch = text[i];
     if (singleTokens.includes(ch)) {
       if (ch === '`' && text.startsWith('```', i)) {
         i += 2;
+        continue;
+      }
+      // snake_case 之类词内 `_` 不构成强调，跳过计数
+      if (ch === '_' && isWordChar(text[i - 1]) && isWordChar(text[i + 1])) {
         continue;
       }
       bump(ch);

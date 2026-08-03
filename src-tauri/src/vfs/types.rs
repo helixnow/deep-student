@@ -45,17 +45,13 @@ where
 /// - `External`: 内容存储在外部文件，通过 blobs 表索引
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum StorageMode {
     /// 内嵌存储
+    #[default]
     Inline,
     /// 外部存储（大文件）
     External,
-}
-
-impl Default for StorageMode {
-    fn default() -> Self {
-        StorageMode::Inline
-    }
 }
 
 impl std::fmt::Display for StorageMode {
@@ -400,6 +396,10 @@ pub struct VfsTextbook {
     #[serde(default)]
     pub bookmarks: Vec<Value>,
 
+    /// PDF 高亮批注（持久化于关联 resources.metadata_json.extra.highlights）
+    #[serde(default)]
+    pub highlights: Vec<Value>,
+
     /// 封面缓存键
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover_key: Option<String>,
@@ -604,8 +604,16 @@ pub struct VfsMindMap {
     /// 创建时间
     pub created_at: String,
 
-    /// 更新时间
+    /// 更新时间（任何元数据/内容写入都会推进，参与同步 LWW）
     pub updated_at: String,
+
+    /// 内容更新时间（★ 2026-07 B5：OCC 内容锁基线）
+    ///
+    /// 仅在 MindMapDocument 内容实际变化（或版本恢复）时推进；
+    /// 收藏/重命名等纯元数据操作不改动此列，避免编辑端乐观锁伪冲突。
+    /// 旧库迁移前读取时由 SQL COALESCE 回退到 updated_at。
+    #[serde(default)]
+    pub content_updated_at: String,
 
     /// 软删除时间
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -649,7 +657,11 @@ pub struct VfsMindMapVersion {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 
-    /// 来源：'chat_update' | 'chat_edit_nodes' | 'manual' | 'auto'
+    /// 来源语义（★ 2026-07 扩展）：
+    /// - `manual` / `auto` / NULL：编辑器保存类快照，参与 30 分钟合并窗口与 20 条保留剪枝
+    /// - `chat_create` / `chat_update` / `chat_edit_nodes`：聊天引用（mv_*）指向的不可变快照，永不剪枝
+    /// - `pre_chat_backup`：聊天改写前的用户内容备份（可剪枝，不合并）
+    /// - `restore_backup`：版本恢复前的当前内容备份（可剪枝，不合并）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
 
@@ -736,7 +748,7 @@ pub struct VfsUpdateMindMapParams {
 
 /// 待办列表元数据（todo_lists 表）
 ///
-/// 独立于 VFS 资源系统，类比 Todoist 的"项目"概念。
+/// 独立于 VFS 资源系统的任务分组（项目）概念。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfsTodoList {
@@ -1031,9 +1043,11 @@ pub struct VfsUpdateTodoItemParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_pomodoros: Option<i32>,
 
-    /// 新已完成番茄数
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub completed_pomodoros: Option<i32>,
+    /// 乐观锁：调用方上次读取时的 `updated_at`（可选；None 保持旧行为）
+    ///
+    /// R1-04 / docs/dev/acr：不匹配时返回含 `TODO_CONFLICT` 的错误。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_updated_at: Option<String>,
 }
 
 /// 活跃待办摘要（用于 System Prompt 注入）
@@ -1115,6 +1129,14 @@ pub struct PomodoroRecord {
 
     /// 创建时间（ISO 8601）
     pub created_at: String,
+
+    /// 更新时间（ISO 8601，云同步 LWW 基准；历史行可能为空）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+
+    /// 软删除时间（ISO 8601；为空表示未删除）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
 }
 
 fn default_pomodoro_type() -> String {
@@ -1168,10 +1190,14 @@ pub struct CreatePomodoroRecordParams {
 pub struct PomodoroTodayStats {
     /// 今日完成的番茄数
     pub completed_count: usize,
-    /// 今日总专注时长（秒）
+    /// 今日总专注时长（秒，completed + interrupted 的 actual_duration，
+    /// 与 `PomodoroDailyStat.focus_seconds` 口径一致）
     pub total_focus_seconds: i64,
     /// 今日中断次数
     pub interrupted_count: usize,
+    /// 今日严格口径专注时长（秒，仅 completed 的 actual_duration）
+    #[serde(default)]
+    pub completed_focus_seconds: i64,
 }
 
 /// 番茄钟单日聚合（按本地日期分桶，用于趋势/热力图）
@@ -1186,6 +1212,42 @@ pub struct PomodoroDailyStat {
     pub focus_seconds: i64,
     /// 当日中断次数
     pub interrupted_count: usize,
+}
+
+/// 番茄钟连续专注天数统计（按本地日聚合 completed work 记录）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroStreakStats {
+    /// 当前连续天数（今天无记录时从昨天起算，仍可保持连续）
+    pub current_streak_days: i64,
+    /// 历史最长连续天数
+    pub longest_streak_days: i64,
+}
+
+/// 番茄钟按一天中小时分桶的聚合（0-23，看何时最专注）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroHourlyStat {
+    /// 本地小时（0-23）
+    pub hour: u8,
+    /// 该小时开始的已完成工作番茄数
+    pub completed_count: i64,
+    /// 该小时开始的专注时长（秒，completed + interrupted 的 actual_duration）
+    pub focus_seconds: i64,
+}
+
+/// 番茄钟按任务聚合的统计（专注时长排行）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroTodoStat {
+    /// 任务 ID
+    pub todo_item_id: String,
+    /// 任务标题（软删任务仍返回标题；任务行已物理删除时为 None）
+    pub todo_title: Option<String>,
+    /// 已完成工作番茄数
+    pub completed_count: i64,
+    /// 专注时长（秒，completed + interrupted 的 actual_duration）
+    pub focus_seconds: i64,
 }
 
 // ============================================================================
@@ -2001,6 +2063,7 @@ pub struct VfsUploadAttachmentResult {
 /// 与前端 `ResourceListItem['previewType']` 保持一致
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum PreviewType {
     /// Markdown 预览
     Markdown,
@@ -2016,6 +2079,8 @@ pub enum PreviewType {
     Xlsx,
     /// PowerPoint 演示文稿预览（pptx）
     Pptx,
+    /// EPUB 电子书阅读器
+    Epub,
     /// 纯文本预览（txt/md/html/csv/json 等）
     Text,
     /// 音频预览（mp3/wav/ogg/m4a/flac/aac）
@@ -2023,13 +2088,8 @@ pub enum PreviewType {
     /// 视频预览（mp4/webm/mov/avi/mkv）
     Video,
     /// 无预览
+    #[default]
     None,
-}
-
-impl Default for PreviewType {
-    fn default() -> Self {
-        PreviewType::None
-    }
 }
 
 impl std::fmt::Display for PreviewType {
@@ -2042,6 +2102,7 @@ impl std::fmt::Display for PreviewType {
             PreviewType::Docx => write!(f, "docx"),
             PreviewType::Xlsx => write!(f, "xlsx"),
             PreviewType::Pptx => write!(f, "pptx"),
+            PreviewType::Epub => write!(f, "epub"),
             PreviewType::Text => write!(f, "text"),
             PreviewType::Audio => write!(f, "audio"),
             PreviewType::Video => write!(f, "video"),
@@ -2067,6 +2128,7 @@ impl PreviewType {
             "xls" | "ods" | "xlsb" => PreviewType::Text,
             // PowerPoint 演示文稿（仅 OOXML）
             "pptx" => PreviewType::Pptx,
+            "epub" => PreviewType::Epub,
             // 图片
             "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg" | "bmp" => PreviewType::Image,
             // 音频
@@ -2074,8 +2136,9 @@ impl PreviewType {
             // 视频
             "mp4" | "webm" | "mov" | "avi" | "mkv" | "m4v" | "wmv" | "flv" => PreviewType::Video,
             // 文本类型
-            "txt" | "md" | "markdown" | "html" | "htm" | "csv" | "json" | "xml" | "rtf"
-            | "epub" => PreviewType::Text,
+            "txt" | "md" | "markdown" | "html" | "htm" | "csv" | "json" | "xml" | "rtf" => {
+                PreviewType::Text
+            }
             // 默认无预览
             _ => PreviewType::None,
         }
@@ -2086,7 +2149,7 @@ impl PreviewType {
         filename
             .rsplit('.')
             .next()
-            .map(|ext| Self::from_extension(ext))
+            .map(Self::from_extension)
             .unwrap_or(PreviewType::None)
     }
 }
@@ -2390,61 +2453,44 @@ pub struct ResourceInjectModes {
 //
 // ref_handlers.rs 和 vfs_resolver.rs 共享同一默认值，
 // 确保首次发送与编辑重发的行为一致。
-// 默认最大化策略：给模型尽可能多的信息。
+// 默认保留源信息，但避免重复注入 OCR：图片为原图，PDF 为原生文本 + 页面原图。
 // ============================================================================
 
 /// 解析图片注入模式，返回 (include_image, include_ocr, downgraded_non_multimodal)
 ///
-/// 当用户未显式选择模式时，使用最大化默认值 (image + ocr)。
-/// 非多模态模型自动降级：移除 image 模式。
+/// 当用户未显式选择模式时，仅注入原图；OCR 只在显式选择时注入。
+/// 模式不随当前模型能力改写，TM 的视觉降级由 Chat context compiler 统一处理。
 pub fn resolve_image_inject_modes(
     image_modes: Option<&Vec<ImageInjectMode>>,
-    is_multimodal: bool,
+    _is_multimodal: bool,
 ) -> (bool, bool, bool) {
-    let (mut include_image, include_ocr) = match image_modes {
+    let (include_image, include_ocr) = match image_modes {
         Some(modes) if !modes.is_empty() => (
             modes.contains(&ImageInjectMode::Image),
             modes.contains(&ImageInjectMode::Ocr),
         ),
-        // 默认最大化：图片 + OCR 同时注入
-        _ => (true, true),
+        _ => (true, false),
     };
-
-    let downgraded_non_multimodal = !is_multimodal && include_image;
-    if downgraded_non_multimodal {
-        include_image = false;
-    }
-    (include_image, include_ocr, downgraded_non_multimodal)
+    (include_image, include_ocr, false)
 }
 
 /// 解析 PDF 注入模式，返回 (include_text, include_ocr, include_image, downgraded_non_multimodal)
 ///
-/// 当用户未显式选择模式时，使用最大化默认值 (text + ocr + image)。
-/// 非多模态模型自动降级：移除 image 模式。
+/// 当用户未显式选择模式时，注入原生文本和页面原图，不重复注入 OCR。
+/// 模式不随当前模型能力改写，TM 的视觉降级由 Chat context compiler 统一处理。
 pub fn resolve_pdf_inject_modes(
     pdf_modes: Option<&Vec<PdfInjectMode>>,
-    is_multimodal: bool,
+    _is_multimodal: bool,
 ) -> (bool, bool, bool, bool) {
-    let (include_text, include_ocr, mut include_image) = match pdf_modes {
+    let (include_text, include_ocr, include_image) = match pdf_modes {
         Some(modes) if !modes.is_empty() => (
             modes.contains(&PdfInjectMode::Text),
             modes.contains(&PdfInjectMode::Ocr),
             modes.contains(&PdfInjectMode::Image),
         ),
-        // 默认最大化：text + ocr + image
-        _ => (true, true, true),
+        _ => (true, false, true),
     };
-
-    let downgraded_non_multimodal = !is_multimodal && include_image;
-    if downgraded_non_multimodal {
-        include_image = false;
-    }
-    (
-        include_text,
-        include_ocr,
-        include_image,
-        downgraded_non_multimodal,
-    )
+    (include_text, include_ocr, include_image, false)
 }
 
 /// VFS 资源引用（用于引用模式上下文注入）
@@ -2484,6 +2530,7 @@ pub struct VfsResourceRef {
 /// 用于前端发送多个资源引用到后端。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct VfsContextRefData {
     /// 资源引用列表
     pub refs: Vec<VfsResourceRef>,
@@ -2495,16 +2542,6 @@ pub struct VfsContextRefData {
     /// 原始请求的资源数量
     #[serde(default)]
     pub total_count: usize,
-}
-
-impl Default for VfsContextRefData {
-    fn default() -> Self {
-        Self {
-            refs: Vec::new(),
-            truncated: false,
-            total_count: 0,
-        }
-    }
 }
 
 /// 解析后的资源（发送时动态获取）
@@ -3000,6 +3037,10 @@ mod tests {
             "\"pptx\""
         );
         assert_eq!(
+            serde_json::to_string(&PreviewType::Epub).unwrap(),
+            "\"epub\""
+        );
+        assert_eq!(
             serde_json::to_string(&PreviewType::Text).unwrap(),
             "\"text\""
         );
@@ -3029,6 +3070,8 @@ mod tests {
         assert_eq!(PreviewType::from_extension("xlsb"), PreviewType::Text);
         // PowerPoint
         assert_eq!(PreviewType::from_extension("pptx"), PreviewType::Pptx);
+        // EPUB
+        assert_eq!(PreviewType::from_extension("epub"), PreviewType::Epub);
         // 图片
         assert_eq!(PreviewType::from_extension("png"), PreviewType::Image);
         assert_eq!(PreviewType::from_extension("jpg"), PreviewType::Image);
@@ -3059,6 +3102,7 @@ mod tests {
         assert_eq!(PreviewType::from_filename("report.docx"), PreviewType::Docx);
         assert_eq!(PreviewType::from_filename("data.xlsx"), PreviewType::Xlsx);
         assert_eq!(PreviewType::from_filename("slides.pptx"), PreviewType::Pptx);
+        assert_eq!(PreviewType::from_filename("book.epub"), PreviewType::Epub);
         assert_eq!(PreviewType::from_filename("image.png"), PreviewType::Image);
         assert_eq!(PreviewType::from_filename("readme.txt"), PreviewType::Text);
         assert_eq!(PreviewType::from_filename("config.json"), PreviewType::Text);
@@ -3159,6 +3203,7 @@ mod tests {
             last_opened_at: None,
             last_page: Some(50),
             bookmarks: vec![],
+            highlights: vec![],
             cover_key: None,
             status: "active".to_string(),
             created_at: "2025-01-01".to_string(),

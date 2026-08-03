@@ -69,9 +69,9 @@ vi.mock('@/components/ui/shad/Input', () => ({
     )),
 }));
 
-vi.mock('@/components/ui/NotionButton', () => ({
-    NotionButton: ({ children, onClick, className, ...props }: MockButtonProps & { [key: string]: unknown }) => (
-        <button data-testid="notion-button" onClick={onClick} className={className} {...props}>
+vi.mock('@/components/ui/DsButton', () => ({
+    DsButton: ({ children, onClick, className, ...props }: MockButtonProps & { [key: string]: unknown }) => (
+        <button data-testid="card-button" onClick={onClick} className={className} {...props}>
             {children}
         </button>
     ),
@@ -120,6 +120,58 @@ describe('NotesSidebarSearch', () => {
         expect(screen.getByPlaceholderText('notes:sidebar.search.search_placeholder')).toBeInTheDocument();
     });
 
+    it('根节点应带有 notes-sidebar-search class（命令面板聚焦依赖）', () => {
+        const { container } = render(<NotesSidebarSearch />);
+
+        const root = container.querySelector('.notes-sidebar-search');
+        expect(root).not.toBeNull();
+        // 命令面板通过 `.notes-sidebar-search input` 定位输入框
+        expect(root?.querySelector('input')).not.toBeNull();
+    });
+
+    describe('搜索结果键盘导航', () => {
+        it('输入词存在时 ↑/↓/Enter 应触发导航回调', () => {
+            const onResultNavigate = vi.fn();
+            const onResultSubmit = vi.fn();
+            render(
+                <NotesSidebarSearch
+                    onResultNavigate={onResultNavigate}
+                    onResultSubmit={onResultSubmit}
+                />,
+            );
+
+            const input = screen.getByTestId('search-input');
+            fireEvent.change(input, { target: { value: 'query' } });
+
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            expect(onResultNavigate).toHaveBeenCalledWith(1);
+
+            fireEvent.keyDown(input, { key: 'ArrowUp' });
+            expect(onResultNavigate).toHaveBeenCalledWith(-1);
+
+            fireEvent.keyDown(input, { key: 'Enter' });
+            expect(onResultSubmit).toHaveBeenCalledTimes(1);
+        });
+
+        it('输入为空时不应触发导航回调', () => {
+            const onResultNavigate = vi.fn();
+            const onResultSubmit = vi.fn();
+            render(
+                <NotesSidebarSearch
+                    onResultNavigate={onResultNavigate}
+                    onResultSubmit={onResultSubmit}
+                />,
+            );
+
+            const input = screen.getByTestId('search-input');
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            expect(onResultNavigate).not.toHaveBeenCalled();
+            expect(onResultSubmit).not.toHaveBeenCalled();
+        });
+    });
+
     it('应该能输入搜索词', async () => {
         render(<NotesSidebarSearch />);
 
@@ -141,7 +193,7 @@ describe('NotesSidebarSearch', () => {
             expect(mockPerformSearch).toHaveBeenCalledWith('test query', []);
         });
 
-        const clearButton = screen.getAllByTestId('notion-button').at(-1);
+        const clearButton = screen.getAllByTestId('card-button').at(-1);
         if (!clearButton) {
             throw new Error('Clear button not found');
         }
@@ -159,7 +211,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 点击过滤器按钮
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons.find(btn => btn.querySelector('svg'));
         if (filterButton) {
             fireEvent.click(filterButton);
@@ -178,7 +230,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 点击过滤器按钮打开弹窗
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons[0]; // 第一个按钮是过滤器按钮
         fireEvent.click(filterButton);
 
@@ -207,7 +259,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 打开过滤器
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons[0];
         fireEvent.click(filterButton);
 
@@ -244,7 +296,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 打开过滤器并选择标签
-        const filterButtons = screen.getAllByTestId('notion-button');
+        const filterButtons = screen.getAllByTestId('card-button');
         const filterButton = filterButtons[0];
         fireEvent.click(filterButton);
 

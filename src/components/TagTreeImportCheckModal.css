@@ -7,16 +7,41 @@
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  z-index: 10000 !important;
+  z-index: var(--z-modal) !important;
+}
+
+/* 材质档位降级：全屏 backdrop-filter 换半透明 scrim */
+:root[data-wb-material='reduced'] .tag-tree-modal-backdrop,
+:root[data-wb-material='minimal'] .tag-tree-modal-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--overlay) !important;
 }
 
 .tag-tree-modal {
   background: var(--surface-elevated);
   padding: 24px 32px;
   border-radius: 8px;
-  width: 420px;
+  width: min(420px, 100%);
   max-width: 90%;
   box-shadow: 0 10px 40px hsl(var(--shadow-base) / 0.2);
+  /* 小视口下限制高度，中部内容区滚动 */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+}
+
+.tag-tree-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 窄屏收缩内边距 */
+@media (max-width: 767.98px) {
+  .tag-tree-modal {
+    padding: 16px 20px;
+  }
 }
 
 .tag-tree-modal h3 {
@@ -24,38 +49,40 @@
   font-size: 20px;
 }
 
-.summary {
+/* 以下通用类名（.summary/.warning-list/.actions 等）一律收敛到 .tag-tree-modal
+   作用域内，避免全局泄漏污染其他同名类（如 TemplateJsonPreviewPage 的 .actions） */
+.tag-tree-modal .summary {
   margin-bottom: 16px;
 }
 
-.warning-list {
+.tag-tree-modal .warning-list {
   color: hsl(var(--warning));
   padding-left: 0;
   margin: 8px 0;
   list-style: none;
 }
 
-.error-list {
+.tag-tree-modal .error-list {
   color: hsl(var(--destructive));
   padding-left: 0;
   margin: 8px 0;
   list-style: none;
 }
 
-.warning-list li,
-.error-list li {
+.tag-tree-modal .warning-list li,
+.tag-tree-modal .error-list li {
   margin-bottom: 4px;
   font-size: 14px;
 }
 
-.actions {
+.tag-tree-modal .actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 20px;
 }
 
-.actions button {
+.tag-tree-modal .actions button {
   padding: 6px 12px;
   border: none;
   border-radius: 4px;
@@ -63,17 +90,17 @@
   font-size: 14px;
 }
 
-.actions button.confirm-btn {
+.tag-tree-modal .actions button.confirm-btn {
   background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
 }
 
-.actions button.confirm-btn:disabled {
+.tag-tree-modal .actions button.confirm-btn:disabled {
   background: hsl(var(--muted-foreground));
   cursor: not-allowed;
 }
 
-.actions button:not(.confirm-btn) {
+.tag-tree-modal .actions button:not(.confirm-btn) {
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
 }
@@ -98,54 +125,54 @@
   color: hsl(var(--foreground));
 }
 
-.summary p {
+.tag-tree-modal .summary p {
   margin: 4px 0;
   font-size: 15px;
   color: hsl(var(--foreground));
 }
 
-.rules,
-.warning-list,
-.error-list {
+.tag-tree-modal .rules,
+.tag-tree-modal .warning-list,
+.tag-tree-modal .error-list {
   font-size: 14px;
 }
 
-.rules ul {
+.tag-tree-modal .rules ul {
   padding-left: 0;
   margin: 4px 0 8px 0;
   list-style: none;
 }
 
-.rules .rule-status {
+.tag-tree-modal .rules .rule-status {
   font-size: 13px;
   margin-top: 4px;
   color: hsl(var(--primary));
 }
 
-.hard-rule-list li::marker,
-.error-list li::marker {
+.tag-tree-modal .hard-rule-list li::marker,
+.tag-tree-modal .error-list li::marker {
   color: hsl(var(--destructive));
 }
 
-.soft-rule-list li::marker,
-.warning-list li::marker {
+.tag-tree-modal .soft-rule-list li::marker,
+.tag-tree-modal .warning-list li::marker {
   color: hsl(var(--warning));
 }
 
-.warning-list li,
-.error-list li,
-.rules li {
+.tag-tree-modal .warning-list li,
+.tag-tree-modal .error-list li,
+.tag-tree-modal .rules li {
   margin-bottom: 4px;
 }
 
-.actions button {
+.tag-tree-modal .actions button {
   font-weight: 500;
 }
 
-.actions button.confirm-btn:not(:disabled):hover {
+.tag-tree-modal .actions button.confirm-btn:not(:disabled):hover {
   background: hsl(var(--primary) / 0.9);
 }
 
-.actions button:not(.confirm-btn):hover {
+.tag-tree-modal .actions button:not(.confirm-btn):hover {
   background: hsl(var(--border));
 }

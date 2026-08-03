@@ -1,0 +1,47 @@
+/* Finder 局部入场动画。
+   原实现来自 card-animations.css（animate-fade-in / animate-pop-in），
+   迁移后缓动改用 transitions-dev token（src/styles/transitions-dev.css）。 */
+
+@keyframes finder-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes finder-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  70% {
+    transform: scale(1.02);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.finder-fade-in {
+  animation: finder-fade-in 200ms var(--resize-ease) forwards;
+}
+
+/* 徽章弹出保留回弹观感，使用 transitions-dev 的 spring 缓动 token */
+.finder-pop-in {
+  animation: finder-pop-in 300ms var(--digit-ease) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .finder-fade-in,
+  .finder-pop-in {
+    animation: none;
+  }
+}

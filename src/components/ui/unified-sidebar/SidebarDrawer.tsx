@@ -1,14 +1,19 @@
 /**
  * SidebarDrawer - 抽屉式侧边栏
  *
- * 用于移动端和平板场景，从左侧或右侧滑出显示侧边栏内容
- * 支持滑动关闭、自定义宽度等功能
+ * @deprecated 已废弃（2026-07 移动端 UI 规范）：移动端禁止模态浮层，
+ * UnifiedSidebar 小屏已强制 panel 内联模式，不再触达本组件（Radix Sheet 模态）。
+ * 移动端侧栏统一由 MobileSlidingLayout 页内推拉抽屉承载。
+ * 文件保留仅为兼容仍显式使用 displayMode='drawer' 的桌面路径
+ * （以及 migrationFoundation.source.test.ts 的源码规范断言），勿在新代码中使用。
+ *
+ * 从左侧或右侧滑出显示侧边栏内容，支持滑动关闭、自定义宽度等功能
  *
  * ★ 2024-12 更新：增加统一的移动端头部布局支持
  */
 
 import React, { useRef, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useTranslation } from 'react-i18next';
 import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
@@ -112,17 +117,18 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       <SheetContent
         side={side}
         className={cn(
+          // 开闭滑入滑出由 SheetContent 按 side 提供（ui-slide-in-* / ui-slide-out-*）
           'sidebar-shell-drawer !p-0 overflow-hidden flex flex-col [&>button]:hidden',
-          side === 'left' && 'data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
-          side === 'right' && 'data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
           className
         )}
         style={{
           width: actualWidth,
           maxWidth: actualWidth,
-          // 从顶栏下方开始，不覆盖顶栏
-          top: 'calc(48px + var(--topbar-safe-area, 20px))',
-          height: 'calc(100% - 48px - var(--topbar-safe-area, 20px))',
+          // 从顶栏下方开始，不覆盖顶栏。
+          // P0-3: 移动壳的真实顶栏高度是 --mobile-header-total-height（56px + 安全区），
+          // 优先消费它；未定义时（桌面壳）回退到旧的 48px + --topbar-safe-area 估算。
+          top: 'var(--mobile-header-total-height, calc(48px + var(--topbar-safe-area, 20px)))',
+          height: 'calc(100% - var(--mobile-header-total-height, calc(48px + var(--topbar-safe-area, 20px))))',
           transform: translateX !== 0 ? 'translateX(' + translateX + 'px)' : undefined,
           transition: isDragging ? 'none' : 'transform 0.2s ease-out',
         }}
@@ -135,9 +141,9 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           {showHeader && (
             <div className="flex items-center gap-3 px-4 py-3 shrink-0 border-b border-border/50">
               {/* 关闭按钮 */}
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
                 <X size={20} weight="regular" />
-              </NotionButton>
+              </DsButton>
 
               {/* 标题区域 */}
               {(headerTitle || headerSubtitle) && (

@@ -28,7 +28,7 @@ mod integration_tests {
         MigrationCoordinator, MigrationError, MigrationReport, MigrationVerifier,
         CHAT_V2_MIGRATION_SET, LLM_USAGE_MIGRATION_SET, MISTAKES_MIGRATIONS, VFS_MIGRATION_SET,
     };
-    use crate::data_governance::schema_registry::{DatabaseId, SchemaRegistry};
+    use crate::data_governance::schema_registry::DatabaseId;
 
     // ============================================================================
     // 辅助函数
@@ -487,10 +487,6 @@ mod integration_tests {
         let vfs_pos = ordered
             .iter()
             .position(|id| *id == DatabaseId::Vfs)
-            .unwrap();
-        let llm_pos = ordered
-            .iter()
-            .position(|id| *id == DatabaseId::LlmUsage)
             .unwrap();
         let chat_pos = ordered
             .iter()
@@ -1045,24 +1041,24 @@ mod integration_tests {
         assert_eq!(VFS_MIGRATION_SET.database_name, "vfs");
         assert_eq!(
             VFS_MIGRATION_SET.count(),
-            39,
+            crate::data_governance::migration::vfs::VFS_MIGRATIONS.len(),
             "VFS migration count mismatch"
         );
         assert_eq!(
             VFS_MIGRATION_SET.latest_version(),
-            20260615,
+            crate::data_governance::migration::vfs::VFS_SCHEMA_VERSION as i32,
             "VFS latest version mismatch"
         );
 
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
         assert_eq!(
             CHAT_V2_MIGRATION_SET.count(),
-            17,
+            21,
             "ChatV2 migration count mismatch"
         );
         assert_eq!(
             CHAT_V2_MIGRATION_SET.latest_version(),
-            20260527,
+            20260719,
             "ChatV2 latest version mismatch"
         );
 

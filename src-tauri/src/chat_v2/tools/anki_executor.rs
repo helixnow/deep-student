@@ -26,7 +26,6 @@ use tokio::time::{timeout, Duration};
 
 // ★ 2026-01 改造：tool_ids 不再需要，Anki 工具名通过前缀匹配识别
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 const FRONTEND_BRIDGE_TIMEOUT_MS: u64 = 120_000;
@@ -115,10 +114,13 @@ impl ToolExecutor for AnkiToolExecutor {
         self.execute_frontend_bridge(call, ctx, start_time).await
     }
 
-    fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
-        // ★ 2026-02-09: anki_export_cards 降为 Low
-        // 理由：导出卡片是创建性操作，与 chatanki_export 同理，不应打断制卡体验流
-        ToolSensitivity::Low
+    fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
+        match Self::strip_prefix(tool_name) {
+            // Export crosses the local card-generation boundary and follows
+            // the same data-egress policy as chatanki_export.
+            "anki_export_cards" => ToolSensitivity::Medium,
+            _ => ToolSensitivity::Low,
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -294,8 +296,8 @@ impl AnkiToolExecutor {
         let event_name = format!("anki_tool_result:{}", call.id);
         let (tx, rx) = oneshot::channel::<AnkiToolResultPayload>();
         let tx_arc = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
-        let expected_label = ctx.window.label().to_string();
-        let w = ctx.window.clone();
+        let expected_label = ctx.window_ref().label().to_string();
+        let w = ctx.window_ref().clone();
         let tx_arc_closure = tx_arc.clone();
         let listener_id = w.listen(event_name.clone(), move |e| {
             let payload = e.payload();
@@ -313,7 +315,7 @@ impl AnkiToolExecutor {
             }
         });
 
-        if let Err(e) = ctx.window.emit("anki_tool_call", &event_payload) {
+        if let Err(e) = ctx.window_ref().emit("anki_tool_call", &event_payload) {
             let error_msg = format!("Failed to emit Anki tool call event: {}", e);
             ctx.emit_tool_call_error(&error_msg);
             log::error!("[AnkiToolExecutor] {}", error_msg);
@@ -331,7 +333,7 @@ impl AnkiToolExecutor {
                 log::warn!("[AnkiToolExecutor] Failed to save tool block: {}", e);
             }
 
-            let _ = ctx.window.unlisten(listener_id);
+            ctx.window_ref().unlisten(listener_id);
             return Ok(result);
         }
 
@@ -348,7 +350,7 @@ impl AnkiToolExecutor {
             .unwrap_or(FRONTEND_BRIDGE_TIMEOUT_MS);
         match timeout(Duration::from_millis(timeout_ms), rx).await {
             Err(_) => {
-                let _ = ctx.window.unlisten(listener_id);
+                ctx.window_ref().unlisten(listener_id);
                 let error_msg = "Anki tool call timed out".to_string();
                 ctx.emit_tool_call_error(&error_msg);
                 let result = ToolResultInfo::failure(
@@ -362,10 +364,10 @@ impl AnkiToolExecutor {
                 if let Err(e) = ctx.save_tool_block(&result) {
                     log::warn!("[AnkiToolExecutor] Failed to save tool block: {}", e);
                 }
-                return Ok(result);
+                Ok(result)
             }
             Ok(Err(_)) => {
-                let _ = ctx.window.unlisten(listener_id);
+                ctx.window_ref().unlisten(listener_id);
                 let error_msg = "Anki tool result channel closed".to_string();
                 ctx.emit_tool_call_error(&error_msg);
                 let result = ToolResultInfo::failure(
@@ -379,10 +381,10 @@ impl AnkiToolExecutor {
                 if let Err(e) = ctx.save_tool_block(&result) {
                     log::warn!("[AnkiToolExecutor] Failed to save tool block: {}", e);
                 }
-                return Ok(result);
+                Ok(result)
             }
             Ok(Ok(payload)) => {
-                let _ = ctx.window.unlisten(listener_id);
+                ctx.window_ref().unlisten(listener_id);
                 let duration_ms = start_time.elapsed().as_millis() as u64;
                 let output = if let Some(result) = payload.result {
                     result
@@ -468,6 +470,10 @@ mod tests {
         assert_eq!(
             executor.sensitivity_level("builtin-anki_generate_cards"),
             ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-anki_export_cards"),
+            ToolSensitivity::Medium
         );
     }
 
