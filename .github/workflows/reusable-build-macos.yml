@@ -32,6 +32,11 @@ on:
         description: '构建的 tag（如 v0.9.42）'
         required: true
         type: string
+      allow_unsigned:
+        description: '仅供手动恢复发布：缺少 Apple 生产签名凭据时允许未公证构建'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -63,11 +68,14 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
         run: |
           MISSING=""
-          for VAR in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD \
-                     APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID \
-                     TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+          REQUIRED_VARS="TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          if [ "$ALLOW_UNSIGNED" != "1" ]; then
+            REQUIRED_VARS="APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID $REQUIRED_VARS"
+          fi
+          for VAR in $REQUIRED_VARS; do
             if [ -z "${!VAR}" ]; then
               MISSING="${MISSING} ${VAR}"
             fi
@@ -77,6 +85,10 @@ jobs:
             echo "::error::Missing secrets:${MISSING}"
             echo "::error::Configure them in repository/organization secrets. Unsigned builds are only allowed via local scripts (e.g. scripts/build_all.sh with DS_ALLOW_UNSIGNED=1)."
             exit 1
+          fi
+          if [ "$ALLOW_UNSIGNED" = "1" ]; then
+            echo "::warning::Building macOS without Developer ID signing or Apple notarization under an explicit manual rebuild override."
+            exit 0
           fi
           echo "✅ All required macOS production signing secrets are present"
 
@@ -133,6 +145,7 @@ jobs:
       # 不污染 login keychain；keychain 密码为一次性随机值；构建结束
       # (无论成败) 由 post 步骤删除。
       - name: Import Apple signing certificate
+        if: ${{ !inputs.allow_unsigned }}
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -222,6 +235,7 @@ jobs:
       # codesign --verify --strict + stapler validate + spctl --assess:
       # 任何一项不通过, 产物一律不允许进入 publish。
       - name: Verify codesign / notarization / staple / Gatekeeper
+        if: ${{ !inputs.allow_unsigned }}
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
