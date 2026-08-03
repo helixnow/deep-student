@@ -28,6 +28,11 @@ on:
         description: '要重建的 tag (如 v0.9.22), 必须是已存在的 tag'
         required: true
         type: string
+      allow_missing_migration_fixtures:
+        description: '管理员恢复发布：外部 full migration fixture 未配置时，生产迁移测试通过后继续'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: rebuild-${{ github.event.inputs.tag_name }}
@@ -55,6 +60,7 @@ jobs:
     uses: ./.github/workflows/reusable-migration-gate.yml
     with:
       tag_name: ${{ needs.verify.outputs.tag_name }}
+      allow_missing_fixtures: ${{ inputs.allow_missing_migration_fixtures }}
     secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
