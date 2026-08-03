@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
+import { toggleDevtools } from '@/dev/devtools';
 import { Minus, ArrowsOut, X } from '@phosphor-icons/react';
 // ★ 图谱模块已废弃 - IrecAutoNotePlugin 已移除
 // import IrecAutoNotePlugin from './plugins/IrecAutoNotePlugin';
@@ -851,7 +852,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
 
   const panel = (
     <div
-      className="dstu-dbg-root fixed z-debug"
+      className="dstu-dbg-root fixed"
       style={{ 
         left: pos.x, 
         top: pos.y, 
@@ -908,20 +909,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 </DsButton>
                 <DsButton
                   onClick={async () => {
-                    try {
-                      const { WebviewWindow } = await import('@tauri-apps/api/window');
-                      const webview: any = WebviewWindow.getCurrent();
-                      if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
-                        await webview.closeDevtools?.();
-                      } else {
-                        await webview.openDevtools?.();
-                      }
-                    } catch {
-                      try {
-                        const { WebviewWindow } = await import('@tauri-apps/api/window');
-                        const webview: any = WebviewWindow.getCurrent();
-                        await webview.toggleDevtools?.();
-                      } catch { /* not available */ }
+                    const opened = await toggleDevtools();
+                    if (opened === null) {
+                      console.warn('[DebugPanel] DevTools 不可用：当前构建未启用 devtools');
                     }
                   }}
                   variant="ghost"

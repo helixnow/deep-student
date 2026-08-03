@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, Bug, House } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
+import { toggleDevtools } from '@/dev/devtools';
 import { Z_INDEX } from '@/config/zIndex';
 
 export const LEARNING_HUB_MOBILE_RESET_EVENT = 'learning-hub:mobile-reset';
@@ -50,26 +51,9 @@ function clampPosition(position: FabPosition): FabPosition {
 }
 
 async function openDevTools() {
-  try {
-    const { WebviewWindow } = await import('@tauri-apps/api/window');
-    const webview = WebviewWindow.getCurrent() as {
-      isDevtoolsOpen?: () => Promise<boolean>;
-      openDevtools?: () => Promise<void>;
-      closeDevtools?: () => Promise<void>;
-      toggleDevtools?: () => Promise<void>;
-    };
-    if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
-      await webview.closeDevtools?.();
-    } else {
-      await webview.openDevtools?.();
-    }
-  } catch {
-    try {
-      const { WebviewWindow } = await import('@tauri-apps/api/window');
-      await (WebviewWindow.getCurrent() as { toggleDevtools?: () => Promise<void> }).toggleDevtools?.();
-    } catch {
-      console.info('[DevMobileRecovery] 请在浏览器中按 F12 打开 DevTools');
-    }
+  const opened = await toggleDevtools();
+  if (opened === null) {
+    console.info('[DevMobileRecovery] DevTools 不可用：请在浏览器中按 F12 打开 DevTools');
   }
 }
 

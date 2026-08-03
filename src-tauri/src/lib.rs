@@ -1863,6 +1863,9 @@ pub fn run() {
             crate::debug_commands::tauri_lab_frontend_log,
             crate::debug_commands::debug_vfs_migration_status,
             crate::debug_commands::debug_vfs_textbook_pages,
+            // DevTools 开关（仅 debug 构建或启用 devtools feature 时注册）
+            #[cfg(any(debug_assertions, feature = "devtools"))]
+            crate::debug_commands::toggle_devtools,
             // =================================================
             // Vector Index Management
             // =================================================

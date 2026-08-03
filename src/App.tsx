@@ -108,6 +108,7 @@ import {
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
+import { toggleDevtools } from './dev/devtools';
 import { useIsUILabEnabled } from './utils/uiLabToggle';
 import { sessionManager } from './features/chat/core/session/sessionManager';
 import { setSessionSidebarViewContext } from './features/chat/hooks/useSessionSidebarIndicators';
@@ -1815,7 +1816,8 @@ function App() {
   // 历史管理已迁移到 useNavigationHistory Hook
 
   // 开发者工具快捷键支持 (仅生产模式，仅 Ctrl+Shift+I / Cmd+Alt+I)
-  // 注：F12 由命令系统 dev.open-devtools 统一处理，此处不再重复
+  // 注：F12 由命令系统 dev.open-devtools 统一处理；debug 构建下 Cmd+Alt+I 由
+  // Tauri 注入热键处理，此处仅覆盖生产 web 部署场景（统一走自有命令 toggle_devtools）
   const handleDevtoolsKeyDown = useCallback(async (event: Event) => {
     const isProduction = !window.location.hostname.includes('localhost') &&
                         !window.location.hostname.includes('127.0.0.1') &&
@@ -1831,28 +1833,9 @@ function App() {
 
     keyboardEvent.preventDefault();
     keyboardEvent.stopPropagation();
-    try {
-      const { WebviewWindow } = await import('@tauri-apps/api/window');
-      const webview = WebviewWindow.getCurrent() as {
-        isDevtoolsOpen?: () => Promise<boolean>;
-        closeDevtools?: () => Promise<void>;
-        openDevtools?: () => Promise<void>;
-        toggleDevtools?: () => Promise<void>;
-      };
-      if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
-        await webview.closeDevtools?.();
-      } else {
-        await webview.openDevtools?.();
-      }
-    } catch (e) {
-      debugLog.warn('[App] devtools open/close failed, trying toggle:', e);
-      try {
-        const { WebviewWindow } = await import('@tauri-apps/api/window');
-        const webview = WebviewWindow.getCurrent() as {
-          toggleDevtools?: () => Promise<void>;
-        };
-        await webview.toggleDevtools?.();
-      } catch (e2) { debugLog.warn('[App] devtools toggle also failed:', e2); }
+    const opened = await toggleDevtools();
+    if (opened === null) {
+      debugLog.warn('[App] DevTools 不可用：当前构建未启用 devtools（需 debug 构建或 --features devtools）');
     }
   }, []);
 

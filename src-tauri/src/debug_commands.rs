@@ -458,3 +458,26 @@ pub async fn debug_vfs_textbook_pages(
 
     Ok(results)
 }
+
+// ================================================
+// DevTools 切换命令
+// ================================================
+// 包装 Tauri 公开 Rust API（open_devtools / close_devtools / is_devtools_open），
+// 而非直接调用内部命令 plugin:webview|internal_toggle_devtools（internal 前缀
+// 无兼容性承诺，升级 Tauri 可能改名/改行为）。
+// 仅在 debug 构建或启用 devtools feature 时编译注册；release 未启用时命令
+// 不存在，前端 invoke 会得到 "command not found"，由前端统一降级处理。
+// ================================================
+
+/// 切换当前 WebView 的 DevTools（Web Inspector）开关，返回切换后的打开状态。
+#[cfg(any(debug_assertions, feature = "devtools"))]
+#[tauri::command]
+pub fn toggle_devtools(webview: tauri::WebviewWindow) -> Result<bool, String> {
+    if webview.is_devtools_open() {
+        webview.close_devtools();
+        Ok(false)
+    } else {
+        webview.open_devtools();
+        Ok(true)
+    }
+}

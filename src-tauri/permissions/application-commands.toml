@@ -740,6 +740,7 @@ commands.allow = [
   "todo_trash_counts",
   "todo_update_item",
   "todo_update_list",
+  "toggle_devtools",
   "translate_text_candidates",
   "translate_text_stream",
   "trigger_task_processing",

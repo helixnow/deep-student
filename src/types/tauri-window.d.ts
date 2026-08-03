@@ -3,10 +3,6 @@ declare module '@tauri-apps/api/window' {
   export const appWindow: any;
   export class WebviewWindow {
     static getCurrent(): any;
-    isDevtoolsOpen?(): Promise<boolean>;
-    openDevtools?(): Promise<void>;
-    closeDevtools?(): Promise<void>;
-    toggleDevtools?(): Promise<void>;
   }
 
   /**
