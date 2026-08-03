@@ -358,7 +358,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         >
           <form onSubmit={handleSubmit} className="h-full flex flex-col">
             {/* 顶部工具栏 */}
-            <div className="flex-none flex items-center justify-between px-4 py-2 border-b border-border/20 bg-background">
+            <div className="flex-none flex items-center justify-between px-5 py-2 border-b border-border/20 bg-background sm:px-6 lg:px-7">
               <h2 className="text-sm font-medium text-foreground/80 truncate">
                 {isEdit ? formData.name || skill?.id : t('skills:editor.new_skill')}
               </h2>
@@ -374,8 +374,8 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
             </div>
             <div className="flex-1 min-h-0">
             <HorizontalResizable
-              initial={0.35}
-              minLeft={0.25}
+              initial={0.4}
+              minLeft={0.3}
               minRight={0.4}
               className="h-full"
               left={
@@ -385,8 +385,8 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 }}
               >
-                <CustomScrollArea className="flex-1" viewportClassName="p-4">
-                  <div className="space-y-4">
+                <CustomScrollArea className="flex-1">
+                  <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6 lg:px-7 lg:py-7">
                     {/* ID 字段（仅创建模式） */}
                     {!isEdit && (
                       <div className="space-y-2">
@@ -574,7 +574,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 </CustomScrollArea>
 
                 {/* 左侧底部：操作按钮 */}
-                <div className="flex-none p-4 border-t border-border/20 flex items-center gap-2 bg-background relative z-10">
+                <div className="flex-none px-5 py-4 border-t border-border/20 flex items-center gap-2 bg-background relative z-10 sm:px-6 lg:px-7">
                   <DsButton
                     type="button"
                     variant="ghost"

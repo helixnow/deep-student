@@ -1250,7 +1250,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 渲染主内容 ==========
   const renderMainContent = () => (
     <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-      <div className="study-shell-toolbar flex-shrink-0 px-4 sm:px-8 py-3 sticky top-0 z-10 space-y-3">
+      <div className="study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10 py-3 sticky top-0 z-10 space-y-3">
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
             <span className="font-medium text-foreground truncate">{t('skills:management.all_skills')}</span>
@@ -1489,28 +1489,30 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       <CustomScrollArea
         className="flex-1 min-h-0"
         viewportRef={listViewportRef}
-        viewportClassName="px-4 sm:px-8 pt-4 sm:pt-6 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
+        viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
       >
-        {/* 技能源浏览器 / 上游更新确认：列表顶部内联展开（非模态，不遮挡页面） */}
-        {tapBrowserOpen && (
-          <SkillTapBrowser onClose={() => setTapBrowserOpen(false)} />
-        )}
-        {renderUpdateConfirm()}
-        {renderZipImportConfirm()}
-        {renderInlineConfirms()}
-        <SkillsList
-          skills={filteredSkills}
-          selectedSkillId={selectedSkillId}
-          defaultSkillIds={defaultSkillIds}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onToggleDefault={handleToggleDefault}
-          onResetToOriginal={handleResetToDefault}
-          onExport={handleExport}
-          onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
-          cardRefsMap={cardRefsMap}
-          editingSkillId={editorOpen ? editingSkill?.id : null}
-/>
+        <div className="px-5 pt-5 sm:px-8 sm:pt-7 lg:px-10">
+          {/* 技能源浏览器 / 上游更新确认：列表顶部内联展开（非模态，不遮挡页面） */}
+          {tapBrowserOpen && (
+            <SkillTapBrowser onClose={() => setTapBrowserOpen(false)} />
+          )}
+          {renderUpdateConfirm()}
+          {renderZipImportConfirm()}
+          {renderInlineConfirms()}
+          <SkillsList
+            skills={filteredSkills}
+            selectedSkillId={selectedSkillId}
+            defaultSkillIds={defaultSkillIds}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onToggleDefault={handleToggleDefault}
+            onResetToOriginal={handleResetToDefault}
+            onExport={handleExport}
+            onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
+            cardRefsMap={cardRefsMap}
+            editingSkillId={editorOpen ? editingSkill?.id : null}
+          />
+        </div>
       </CustomScrollArea>
     </div>
   );

@@ -131,7 +131,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   }
 
   return (
-    <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-3', className)}>
+    <div className={cn('grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5', className)}>
       {skills.map((skill) => {
         const isDefaultEnabled = defaultSkillIds.includes(skill.id);
         const isSelected = selectedSkillId === skill.id;
