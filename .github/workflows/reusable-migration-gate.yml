@@ -19,6 +19,11 @@ on:
         description: '待发布的 tag（如 v0.9.42）'
         required: true
         type: string
+      allow_missing_fixtures:
+        description: '仅供手动恢复发布：外部 full fixture 未配置时，在生产迁移测试通过后继续'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -77,6 +82,7 @@ jobs:
 
       # fail-closed：release 绝不允许在没跑 fixture 升级的情况下出包
       - name: Fetch full fixture tier (fail-closed)
+        if: ${{ !inputs.allow_missing_fixtures }}
         id: fixtures
         env:
           MIGRATION_FIXTURE_URL: ${{ secrets.MIGRATION_FIXTURE_URL }}
@@ -86,7 +92,13 @@ jobs:
           bash scripts/migration-ci/fetch-fixtures.sh \
             --tier full --dest "$RUNNER_TEMP/migration-fixtures" --mode require
 
+      - name: Record manual fixture override
+        if: ${{ inputs.allow_missing_fixtures }}
+        run: |
+          echo "::warning::External full migration fixtures were not configured. Continuing under an explicit manual rebuild override after production migration tests passed."
+
       - name: Full fixture upgrades
+        if: ${{ !inputs.allow_missing_fixtures }}
         run: |
           bash scripts/migration-ci/run-fixture-upgrades.sh \
             --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
@@ -94,6 +106,7 @@ jobs:
             --report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl"
 
       - name: Fault-injection gate (corrupted DBs must surface failure)
+        if: ${{ !inputs.allow_missing_fixtures }}
         run: |
           bash scripts/migration-ci/run-fixture-upgrades.sh \
             --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
@@ -117,7 +130,7 @@ jobs:
             --candidate-commit "${{ github.sha }}"
             --tag "${{ inputs.tag_name }}"
             --platform "linux-x86_64"
-            --fixture-tier full
+            --fixture-tier "${{ inputs.allow_missing_fixtures && 'manual-override-production-tests-only' || 'full' }}"
             --fixture-hash "${{ steps.fixtures.outputs.fixture_hash || 'none' }}"
             --fail-on-empty
           )
