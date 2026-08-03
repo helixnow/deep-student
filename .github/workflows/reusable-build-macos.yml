@@ -46,6 +46,7 @@ jobs:
     timeout-minutes: 120
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
+      SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -110,7 +111,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Install Sentry CLI (pinned)
-        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
         run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
 
       - name: Print build tool manifest
@@ -278,7 +279,7 @@ jobs:
           echo "✅ Updater archive + signature present"
 
       - name: Upload native symbols to Sentry
-        if: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' }}
+        if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
