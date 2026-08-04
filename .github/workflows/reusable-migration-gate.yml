@@ -46,10 +46,10 @@ jobs:
           fetch-depth: 0
 
       # Rebuilds intentionally execute the tagged production migration code,
-      # but old tags may predate the checked-in release fixtures. Overlay only
-      # the fixture data from the caller workflow revision; no application or
-      # migration source is taken from main.
-      - name: Overlay checked-in full fixtures from workflow revision
+      # but old tags may predate the checked-in release fixtures and harness
+      # template synchronization. Overlay only release-gate data/tooling from
+      # the caller revision; no application or migration source comes from main.
+      - name: Overlay release gate inputs from workflow revision
         run: |
           FIXTURE_PATH="src-tauri/tests/migration-fixtures/full"
           if git cat-file -e "${GITHUB_SHA}:${FIXTURE_PATH}" 2>/dev/null; then
@@ -57,6 +57,12 @@ jobs:
             echo "✅ Release fixtures loaded from workflow revision ${GITHUB_SHA}"
           else
             echo "ℹ️ No checked-in full fixtures at workflow revision ${GITHUB_SHA}; external fixture configuration is required"
+          fi
+
+          HARNESS_TEMPLATE="scripts/migration-ci/fixture-upgrade-harness.rs"
+          if git cat-file -e "${GITHUB_SHA}:${HARNESS_TEMPLATE}" 2>/dev/null; then
+            git checkout "$GITHUB_SHA" -- "$HARNESS_TEMPLATE"
+            echo "✅ Fixture harness template loaded from workflow revision ${GITHUB_SHA}"
           fi
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
