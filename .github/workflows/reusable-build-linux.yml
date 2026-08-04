@@ -30,11 +30,16 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # Ubuntu 24.04 hosted runners repeatedly received service shutdown signals
+    # during long Rust release builds. Use the mature image for release recovery.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+      CARGO_PROFILE_RELEASE_DEBUG: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
     steps:
       # ── updater 签名密钥预检（fail-closed, 在任何耗时步骤之前）──
       - name: Preflight — require updater signing key (fail-closed)
@@ -93,6 +98,8 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: './src-tauri -> target'
+          shared-key: release-linux-x86_64
+          cache-on-failure: true
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
@@ -114,6 +121,7 @@ jobs:
           echo "rustc           : $(rustc --version)"
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}"
           echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
           echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
 
