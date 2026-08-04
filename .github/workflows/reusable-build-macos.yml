@@ -269,7 +269,15 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx tauri build --target ${{ matrix.target }} -- --locked
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
+        run: |
+          if [[ "$ALLOW_UNSIGNED" == "1" ]]; then
+            # Empty APPLE_* variables override tauri.conf.json and make Tauri
+            # invoke codesign with identity "". Remove them so the configured
+            # ad-hoc identity ("-") is used for unsigned recovery bundles.
+            unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          fi
+          npx tauri build --target ${{ matrix.target }} -- --locked
 
       # ── 签名/公证结果强制验证（fail-closed）──
       # codesign --verify --strict + stapler validate + spctl --assess:
