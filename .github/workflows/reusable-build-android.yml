@@ -38,8 +38,10 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       CARGO_PROFILE_RELEASE_LTO: 'false'
-      CARGO_PROFILE_RELEASE_OPT_LEVEL: '2'
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '32'
+      # Recovery APKs run on preemptible hosted runners. Keep release semantics
+      # while reducing LLVM work enough to finish before another runner reclaim.
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: '1'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '128'
       CARGO_PROFILE_RELEASE_DEBUG: '0'
     steps:
       # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
@@ -168,7 +170,7 @@ jobs:
           echo "rustc           : $(rustc --version)"
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
-          echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}"
+          echo "release profile : opt-level=${CARGO_PROFILE_RELEASE_OPT_LEVEL}, lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}"
           echo "java            : $(java -version 2>&1 | head -1)"
           echo "ndk             : 27.0.12077973 (pinned)"
           echo "build-tools     : 35.0.0 (pinned) / platforms: android-35 (pinned)"
