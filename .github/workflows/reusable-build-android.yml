@@ -277,7 +277,12 @@ jobs:
         run: |
           set +e
           echo "Starting Android build with 120 minute timeout"
-          timeout --signal=TERM --kill-after=60s 120m npx tauri android build --target aarch64 -- --locked
+          # The default Tauri command builds both APK and AAB. This release path
+          # only signs and publishes the APK, while the redundant AAB task
+          # invokes the Rust Android build again and keeps hosted runners alive
+          # long enough to be reclaimed during the final link.
+          timeout --signal=TERM --kill-after=60s 120m \
+            npx tauri android build --target aarch64 --apk --ci -- --locked
           status=$?
           set -e
 
