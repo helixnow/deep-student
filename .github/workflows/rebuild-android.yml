@@ -126,6 +126,9 @@ jobs:
     with:
       ref: ${{ needs.preflight.outputs.source_ref }}
       version: ${{ needs.preflight.outputs.version }}
+      # One-release recovery authorization: future tags keep the full default
+      # feature set and normal release optimization profile.
+      lean_recovery: ${{ needs.preflight.outputs.tag_name == 'v0.9.43' }}
     secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
