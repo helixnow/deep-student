@@ -112,7 +112,7 @@ jobs:
           gh release view "$TAG" --repo "$GITHUB_REPO" --json assets -q '.assets[].name' > old-assets.txt
           cat old-assets.txt | while IFS= read -r name; do
             [[ -z "$name" ]] && continue
-            if [[ "$name" == *.AppImage || "$name" == *.AppImage.tar.gz || "$name" == *.AppImage.tar.gz.sig || "$name" == *.deb || "$name" == *.rpm ]]; then
+            if [[ "$name" == *.AppImage || "$name" == *.AppImage.sig || "$name" == *.AppImage.tar.gz || "$name" == *.AppImage.tar.gz.sig || "$name" == *.deb || "$name" == *.rpm ]]; then
               echo "Deleting old Linux asset: $name"
               gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPO" -y || true
             fi
@@ -139,29 +139,23 @@ jobs:
             exit 0
           fi
 
-          TAR=$(find linux-assets -maxdepth 1 -name "*_x86_64.AppImage.tar.gz" | head -1)
-          if [[ -z "$TAR" ]]; then
-            TAR=$(find linux-assets -maxdepth 1 -name "*.AppImage.tar.gz" | head -1)
-          fi
-          if [[ -z "$TAR" ]]; then
-            echo "::error::No AppImage updater tarball found"
+          UPDATER=$(find linux-assets -maxdepth 1 -name "*_x86_64.AppImage" ! -name "*.sig" | head -1)
+          [[ -z "$UPDATER" ]] && UPDATER=$(find linux-assets -maxdepth 1 -name "*_x86_64.AppImage.tar.gz" | head -1)
+          [[ -z "$UPDATER" ]] && UPDATER=$(find linux-assets -maxdepth 1 -name "*.AppImage.tar.gz" | head -1)
+          if [[ -z "$UPDATER" ]]; then
+            echo "::error::No AppImage updater artifact found"
             exit 1
           fi
 
-          SIG_FILE=""
-          if [[ -f "${TAR}.sig" ]]; then
-            SIG_FILE="${TAR}.sig"
-          else
-            SIG_FILE=$(find linux-assets -maxdepth 1 -name "$(basename "$TAR").sig" | head -1)
-          fi
-          if [[ -z "$SIG_FILE" || ! -f "$SIG_FILE" ]]; then
-            echo "::error::No signature found for $(basename "$TAR")"
+          SIG_FILE="${UPDATER}.sig"
+          if [[ ! -f "$SIG_FILE" ]]; then
+            echo "::error::No signature found for $(basename "$UPDATER")"
             exit 1
           fi
 
-          TAR_NAME=$(basename "$TAR")
+          UPDATER_NAME=$(basename "$UPDATER")
           SIGNATURE=$(cat "$SIG_FILE")
-          URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/${TAR_NAME}"
+          URL="https://github.com/${GITHUB_REPO}/releases/download/${TAG}/${UPDATER_NAME}"
 
           jq --arg url "$URL" --arg sig "$SIGNATURE" '
             .platforms["linux-x86_64"] = {"url": $url, "signature": $sig}
@@ -228,16 +222,17 @@ jobs:
             exit 0
           fi
 
-          TAR=$(find linux-assets -maxdepth 1 -name "*_x86_64.AppImage.tar.gz" | head -1)
-          [[ -z "$TAR" ]] && TAR=$(find linux-assets -maxdepth 1 -name "*.AppImage.tar.gz" | head -1)
-          if [[ -z "$TAR" || ! -f "${TAR}.sig" ]]; then
-            echo "::error::AppImage tarball or signature missing for R2 latest.json patch"
+          UPDATER=$(find linux-assets -maxdepth 1 -name "*_x86_64.AppImage" ! -name "*.sig" | head -1)
+          [[ -z "$UPDATER" ]] && UPDATER=$(find linux-assets -maxdepth 1 -name "*_x86_64.AppImage.tar.gz" | head -1)
+          [[ -z "$UPDATER" ]] && UPDATER=$(find linux-assets -maxdepth 1 -name "*.AppImage.tar.gz" | head -1)
+          if [[ -z "$UPDATER" || ! -f "${UPDATER}.sig" ]]; then
+            echo "::error::AppImage updater artifact or signature missing for R2 latest.json patch"
             exit 1
           fi
 
-          TAR_NAME=$(basename "$TAR")
-          SIGNATURE=$(cat "${TAR}.sig")
-          jq --arg url "${R2_BASE}/${TAR_NAME}" --arg sig "$SIGNATURE" '
+          UPDATER_NAME=$(basename "$UPDATER")
+          SIGNATURE=$(cat "${UPDATER}.sig")
+          jq --arg url "${R2_BASE}/${UPDATER_NAME}" --arg sig "$SIGNATURE" '
             .platforms["linux-x86_64"] = {"url": $url, "signature": $sig}
           ' /tmp/r2-latest.json > /tmp/r2-latest.patched.json
 

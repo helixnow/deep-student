@@ -272,11 +272,21 @@ jobs:
           DIR="artifacts/linux-x86_64"
           [[ -d "$DIR" ]] || fail "linux-x86_64: artifact directory missing: ${DIR}"
           if [[ -d "$DIR" ]]; then
-            TAR=$(find_exactly_one "$DIR" "*_x86_64.AppImage.tar.gz" "linux-x86_64 updater archive") || true
-            if [[ -n "${TAR:-}" ]]; then
+            if find "$DIR" -name "*_x86_64.AppImage.tar.gz" ! -name "*.sig" -print -quit | grep -q .; then
+              TAR=$(find_exactly_one "$DIR" "*_x86_64.AppImage.tar.gz" "linux-x86_64 updater archive") || true
               SIG=$(check_updater_sig "$TAR" "linux-x86_64") || true
               if [[ -n "${SIG:-}" ]]; then
                 add_platform "linux-x86_64" "$TAR" "$SIG"
+              fi
+            else
+              # Tauri v2 (createUpdaterArtifacts=true) signs the AppImage
+              # itself; v1Compatible uses the .AppImage.tar.gz archive.
+              APPIMAGE=$(find_exactly_one "$DIR" "*_x86_64.AppImage" "linux-x86_64 updater AppImage") || true
+              if [[ -n "${APPIMAGE:-}" ]]; then
+                SIG=$(check_updater_sig "$APPIMAGE" "linux-x86_64") || true
+                if [[ -n "${SIG:-}" ]]; then
+                  add_platform "linux-x86_64" "$APPIMAGE" "$SIG"
+                fi
               fi
             fi
             find_exactly_one "$DIR" "*.AppImage" "linux-x86_64 AppImage" > /dev/null || true
@@ -349,6 +359,7 @@ jobs:
           find artifacts -name "*.exe" -exec cp {} release-files/ \;
           find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
           find artifacts -name "*.AppImage" -exec cp {} release-files/ \;
+          find artifacts -name "*.AppImage.sig" -exec cp {} release-files/ \;
           find artifacts -name "*.AppImage.tar.gz" -exec cp {} release-files/ \;
           find artifacts -name "*.AppImage.tar.gz.sig" -exec cp {} release-files/ \;
           find artifacts -name "*.deb" -exec cp {} release-files/ \;

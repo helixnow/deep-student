@@ -5,6 +5,8 @@
 #
 # fail-closed：updater 签名密钥及密码缺失时立即
 # 失败 —— 否则会静默产出没有 .sig 的 AppImage, 到 publish 阶段才炸。
+# Tauri v2 的 createUpdaterArtifacts=true 使用 AppImage 本体作为 updater
+# 产物；v1Compatible 才会生成 AppImage.tar.gz。这里兼容两种格式。
 
 name: Build Linux (reusable)
 
@@ -154,6 +156,20 @@ jobs:
       - name: Rename updater artifacts with arch suffix
         run: |
           BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+
+          # Tauri v2: AppImage 本体就是 updater 产物，签名文件为
+          # <app>.AppImage.sig。文件名可改，签名仍对应文件内容。
+          for f in "$BUNDLE_DIR"/*.AppImage; do
+            [ -f "$f" ] || continue
+            BASE=$(basename "$f" .AppImage | tr ' ' '.')
+            TARGET="$BUNDLE_DIR/${BASE}_x86_64.AppImage"
+            if [ "$f" != "$TARGET" ]; then
+              mv "$f" "$TARGET"
+              [ -f "$f.sig" ] && mv "$f.sig" "$TARGET.sig"
+            fi
+          done
+
+          # Tauri v1Compatible: updater archive + signature.
           for f in "$BUNDLE_DIR"/*.AppImage.tar.gz; do
             [ -f "$f" ] || continue
             BASE=$(basename "$f" .AppImage.tar.gz | tr ' ' '.')
@@ -168,14 +184,18 @@ jobs:
         run: |
           set -euo pipefail
           BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
-          TAR_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz' ! -name '*.sig' | wc -l | tr -d ' ')
-          SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz.sig' | wc -l | tr -d ' ')
-          if [ "$TAR_COUNT" -ne 1 ] || [ "$SIG_COUNT" -ne 1 ]; then
-            echo "::error::Expected exactly 1 updater archive + 1 .sig, got ${TAR_COUNT} archive(s) / ${SIG_COUNT} sig(s)"
+          V2_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage' ! -name '*.sig' | wc -l | tr -d ' ')
+          V2_SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.sig' | wc -l | tr -d ' ')
+          V1_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz' ! -name '*.sig' | wc -l | tr -d ' ')
+          V1_SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*_x86_64.AppImage.tar.gz.sig' | wc -l | tr -d ' ')
+          V2_OK=$([ "$V2_COUNT" -eq 1 ] && [ "$V2_SIG_COUNT" -eq 1 ] && echo 1 || echo 0)
+          V1_OK=$([ "$V1_COUNT" -eq 1 ] && [ "$V1_SIG_COUNT" -eq 1 ] && echo 1 || echo 0)
+          if [ "$V2_OK" -ne 1 ] && [ "$V1_OK" -ne 1 ]; then
+            echo "::error::Expected Tauri v2 AppImage + .sig or v1Compatible tarball + .sig; got v2 ${V2_COUNT}/${V2_SIG_COUNT}, v1 ${V1_COUNT}/${V1_SIG_COUNT}"
             ls -la "$BUNDLE_DIR" || true
             exit 1
           fi
-          echo "✅ Updater archive + signature present"
+          echo "✅ Updater artifact + signature present"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -185,5 +205,6 @@ jobs:
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig
