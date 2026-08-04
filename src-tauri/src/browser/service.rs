@@ -284,8 +284,8 @@ impl BrowserService {
 
     async fn reject_closed_gate(&self, message: &str) -> BrowserResult<()> {
         // Gate 关闭后不能留下仍可访问网络的 native content window。
-        if let Some(win) = window::content_window(&self.app) {
-            let _ = win.hide();
+        if window::content_window(&self.app).is_some() {
+            let _ = window::set_content_visibility(&self.app, false, false);
         }
         if let Err(error) = self.close_session_inner("gates_closed").await {
             warn!("[browser] gate-close cleanup failed: {}", error);

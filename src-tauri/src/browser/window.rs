@@ -716,6 +716,15 @@ pub fn set_content_occlusions(
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+pub fn set_content_occlusions(
+    _app: &AppHandle,
+    _occlusions: &[Rect],
+    _input_occlusions: &[Rect],
+) -> Result<(), String> {
+    Err(MOBILE_UNSUPPORTED.into())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub fn set_content_bounds(_app: &AppHandle, _bounds: Rect) -> Result<(), String> {
     Err(MOBILE_UNSUPPORTED.into())
 }
