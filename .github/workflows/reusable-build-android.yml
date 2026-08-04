@@ -38,10 +38,11 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       CARGO_PROFILE_RELEASE_LTO: 'false'
-      # Recovery APKs run on preemptible hosted runners. Keep release semantics
-      # while reducing LLVM work enough to finish before another runner reclaim.
-      CARGO_PROFILE_RELEASE_OPT_LEVEL: '1'
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '128'
+      # Recovery APKs run on preemptible hosted runners. Keep release cfg and
+      # stripping, but remove expensive LLVM optimization/LTO. The
+      # android-release feature excludes only the optional AWS S3 client.
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: '0'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '256'
       CARGO_PROFILE_RELEASE_DEBUG: '0'
     steps:
       # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
@@ -170,7 +171,7 @@ jobs:
           echo "rustc           : $(rustc --version)"
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
-          echo "release profile : opt-level=${CARGO_PROFILE_RELEASE_OPT_LEVEL}, lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}"
+          echo "release profile : opt-level=${CARGO_PROFILE_RELEASE_OPT_LEVEL}, lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}, features=android-release"
           echo "java            : $(java -version 2>&1 | head -1)"
           echo "ndk             : 27.0.12077973 (pinned)"
           echo "build-tools     : 35.0.0 (pinned) / platforms: android-35 (pinned)"
@@ -285,7 +286,7 @@ jobs:
           # invokes the Rust Android build again and keeps hosted runners alive
           # long enough to be reclaimed during the final link.
           timeout --signal=TERM --kill-after=60s 120m \
-            npx tauri android build --target aarch64 --apk --ci -- --locked
+            npx tauri android build --target aarch64 --apk --ci -- --locked --no-default-features --features android-release
           status=$?
           set -e
 
