@@ -129,7 +129,15 @@ download_pdfium() {
     
     # 下载
     if command -v curl &> /dev/null; then
-        curl -L -o "$archive_path" "$url"
+        curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            --connect-timeout 30 \
+            --output "$archive_path" \
+            "$url"
     elif command -v wget &> /dev/null; then
         wget -O "$archive_path" "$url"
     else
