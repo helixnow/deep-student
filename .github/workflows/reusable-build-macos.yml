@@ -111,6 +111,23 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.tag_name }}
 
+      - name: Overlay release pdfium tooling from workflow revision
+        run: |
+          WORKFLOW_SHA="${{ github.sha }}"
+          for FILE in \
+            scripts/download-pdfium.sh \
+            scripts/prepare-pdfium-macos.sh \
+            scripts/verify-macos-pdfium-bundle.sh
+          do
+            git cat-file -e "${WORKFLOW_SHA}:${FILE}" || {
+              echo "::error::Missing ${FILE} at workflow revision ${WORKFLOW_SHA}"
+              exit 1
+            }
+            git show "${WORKFLOW_SHA}:${FILE}" > "${FILE}"
+            chmod +x "${FILE}"
+          done
+          echo "✅ Overlaid macOS pdfium release tooling from ${WORKFLOW_SHA}"
+
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
