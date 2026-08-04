@@ -47,15 +47,29 @@ env:
 
 jobs:
   build:
-    runs-on: macos-latest
-    timeout-minutes: 180
+    # macos-latest is ARM64. Running the Intel target there forces a very slow
+    # cross-architecture release build, so each target must use its native host.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
+      # The repository release profile uses one codegen unit + ThinLTO + packed
+      # debug info. On standard hosted macOS runners that made the final rustc /
+      # dSYM phase exceed three hours. Keep symbols only when they can actually
+      # be uploaded, and favor a bounded, reproducible release build otherwise.
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+      CARGO_PROFILE_RELEASE_DEBUG: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'packed' || 'off' }}
     strategy:
       fail-fast: false
       matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
     steps:
       # ── 生产签名 secrets 预检（fail-closed, 在任何耗时步骤之前）──
       - name: Preflight — require production signing secrets (fail-closed)
@@ -118,6 +132,8 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: './src-tauri -> target'
+          shared-key: release-${{ matrix.target }}
+          cache-on-failure: true
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
@@ -139,6 +155,8 @@ jobs:
           echo "rustc           : $(rustc --version)"
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "runner          : ${{ matrix.runner }} ($(uname -m))"
+          echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}, split-debuginfo=${CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO}"
           echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
           echo "xcode           : $(xcodebuild -version | tr '\n' ' ')"
           echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"

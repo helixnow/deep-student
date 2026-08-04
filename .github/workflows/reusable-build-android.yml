@@ -31,10 +31,15 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 150
+    # Pin the mature hosted image: ubuntu-latest/24.04 repeatedly terminated
+    # the runner service mid-build even after the Android Rust errors were fixed.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
     steps:
       # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
       - name: Preflight — require Android signing secrets (fail-closed)
@@ -143,6 +148,8 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: './src-tauri -> target'
+          shared-key: release-android-aarch64
+          cache-on-failure: true
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
@@ -160,6 +167,7 @@ jobs:
           echo "rustc           : $(rustc --version)"
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}"
           echo "java            : $(java -version 2>&1 | head -1)"
           echo "ndk             : 27.0.12077973 (pinned)"
           echo "build-tools     : 35.0.0 (pinned) / platforms: android-35 (pinned)"
