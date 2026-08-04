@@ -25,6 +25,11 @@ on:
         description: '产物命名用版本号（如 0.9.42）'
         required: true
         type: string
+      lean_recovery:
+        description: '仅限明确授权的恢复构建：禁用可选 S3 并使用快速 release profile'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -38,10 +43,10 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       CARGO_PROFILE_RELEASE_LTO: 'false'
-      # Recovery APKs run on preemptible hosted runners. Keep release semantics
-      # while reducing LLVM work enough to finish before another runner reclaim.
-      CARGO_PROFILE_RELEASE_OPT_LEVEL: '1'
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '128'
+      # v0.9.43 recovery uses a faster profile after repeated hosted-runner
+      # reclamations. Normal callers retain the previous release settings.
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.lean_recovery && '0' || '1' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.lean_recovery && '256' || '128' }}
       CARGO_PROFILE_RELEASE_DEBUG: '0'
     steps:
       # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
@@ -170,7 +175,7 @@ jobs:
           echo "rustc           : $(rustc --version)"
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
-          echo "release profile : opt-level=${CARGO_PROFILE_RELEASE_OPT_LEVEL}, lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}"
+          echo "release profile : opt-level=${CARGO_PROFILE_RELEASE_OPT_LEVEL}, lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}, lean-recovery=${{ inputs.lean_recovery }}"
           echo "java            : $(java -version 2>&1 | head -1)"
           echo "ndk             : 27.0.12077973 (pinned)"
           echo "build-tools     : 35.0.0 (pinned) / platforms: android-35 (pinned)"
@@ -284,8 +289,13 @@ jobs:
           # only signs and publishes the APK, while the redundant AAB task
           # invokes the Rust Android build again and keeps hosted runners alive
           # long enough to be reclaimed during the final link.
-          timeout --signal=TERM --kill-after=60s 120m \
-            npx tauri android build --target aarch64 --apk --ci -- --locked
+          if [[ "${{ inputs.lean_recovery }}" == "true" ]]; then
+            timeout --signal=TERM --kill-after=60s 120m \
+              npx tauri android build --target aarch64 --apk --ci -- --locked --no-default-features --features android-release
+          else
+            timeout --signal=TERM --kill-after=60s 120m \
+              npx tauri android build --target aarch64 --apk --ci -- --locked
+          fi
           status=$?
           set -e
 

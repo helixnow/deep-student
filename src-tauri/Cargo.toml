@@ -372,6 +372,18 @@ devtools = ["tauri/devtools"]
 #   cargo tauri android build --no-default-features --features mobile-slim
 mobile-slim = ["sqlite", "builtin_free_models", "data_governance"]
 
+# Android recovery/release profile: keep core functionality while excluding
+# the optional AWS S3 client, whose dependency graph dominates hosted-runner
+# compile time. Cloud-storage APIs use their existing "not enabled" path.
+android-release = [
+    "sqlite",
+    "lance",
+    "mcp",
+    "builtin_free_models",
+    "tokenizer_tiktoken",
+    "data_governance",
+]
+
 # =============================================================================
 # Clippy / rustc lint gate (code-quality plan W0–W1 / C3)
 # =============================================================================
