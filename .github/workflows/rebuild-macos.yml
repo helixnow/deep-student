@@ -1,18 +1,13 @@
-# Emergency macOS-only rebuild for an existing draft or published release.
-# The user explicitly accepts ad-hoc, non-notarized recovery bundles.
+# One-release emergency macOS rebuild for v0.9.43.
+# Remove this workflow after the release recovery is complete.
 
-name: Rebuild macOS Release Assets
+name: Recover v0.9.43 macOS Assets
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag_name:
-        description: '目标 Release tag（如 v0.9.43）'
-        required: true
-        type: string
+  workflow_dispatch: {}
 
 concurrency:
-  group: rebuild-macos-${{ github.event.inputs.tag_name }}-${{ github.workflow_sha }}
+  group: recover-v0.9.43-macos-${{ github.workflow_sha }}
   cancel-in-progress: false
 
 permissions:
@@ -22,7 +17,7 @@ jobs:
   verify:
     uses: ./.github/workflows/reusable-verify-version.yml
     with:
-      tag_name: ${{ github.event.inputs.tag_name }}
+      tag_name: v0.9.43
 
   build-macos:
     needs: [verify]
@@ -76,7 +71,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          TAG="${{ needs.verify.outputs.tag_name }}"
+          TAG="v0.9.43"
           gh release view "$TAG" --repo "$GH_REPO" --json assets -q '.assets[].name' |
             while IFS= read -r name; do
               [[ -z "$name" ]] && continue
@@ -90,6 +85,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          TAG="${{ needs.verify.outputs.tag_name }}"
+          TAG="v0.9.43"
           gh release upload "$TAG" macos-assets/* --repo "$GH_REPO" --clobber
           echo "✅ macOS ARM64 + Intel assets uploaded to ${TAG}"
