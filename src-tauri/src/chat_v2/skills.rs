@@ -1599,7 +1599,7 @@ fn atomic_exchange_directories(left: &Path, right: &Path) -> std::io::Result<()>
             left.as_ptr(),
             libc::AT_FDCWD,
             right.as_ptr(),
-            libc::RENAME_EXCHANGE,
+            libc::RENAME_EXCHANGE as libc::c_uint,
         )
     };
     if result == 0 {
