@@ -121,7 +121,11 @@ jobs:
             .platforms |= with_entries(
               .value.url = ($base + "/" + (.value.url | split("/") | last))
             )
-            | if $apk != "" then .apk_url = $apk else . end
+            | if $apk != "" then
+                .apk_url = $apk
+                | .android = ((.android // {}) + {status: "available", url: $apk})
+              else .
+              end
           ' release-assets/latest.json > r2-latest.json
 
           echo "Original:"

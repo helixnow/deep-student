@@ -212,7 +212,10 @@ jobs:
 
           if [ -f /tmp/current-latest.json ]; then
             APK_URL="${R2_BASE}/${APK_NAME}"
-            jq --arg apk "$APK_URL" '.apk_url = $apk' /tmp/current-latest.json > /tmp/updated-latest.json
+            jq --arg apk "$APK_URL" '
+              .apk_url = $apk
+              | .android = ((.android // {}) + {status: "available", url: $apk})
+            ' /tmp/current-latest.json > /tmp/updated-latest.json
 
             echo "Updated latest.json:"
             cat /tmp/updated-latest.json
