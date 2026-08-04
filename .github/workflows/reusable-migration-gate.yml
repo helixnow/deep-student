@@ -45,6 +45,20 @@ jobs:
           ref: ${{ inputs.tag_name }}
           fetch-depth: 0
 
+      # Rebuilds intentionally execute the tagged production migration code,
+      # but old tags may predate the checked-in release fixtures. Overlay only
+      # the fixture data from the caller workflow revision; no application or
+      # migration source is taken from main.
+      - name: Overlay checked-in full fixtures from workflow revision
+        run: |
+          FIXTURE_PATH="src-tauri/tests/migration-fixtures/full"
+          if git cat-file -e "${GITHUB_SHA}:${FIXTURE_PATH}" 2>/dev/null; then
+            git checkout "$GITHUB_SHA" -- "$FIXTURE_PATH"
+            echo "✅ Release fixtures loaded from workflow revision ${GITHUB_SHA}"
+          else
+            echo "ℹ️ No checked-in full fixtures at workflow revision ${GITHUB_SHA}; external fixture configuration is required"
+          fi
+
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
