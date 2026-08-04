@@ -40,7 +40,10 @@ on:
         type: boolean
 
 concurrency:
-  group: rebuild-android-${{ github.event.inputs.tag_name }}
+  # Keep retries for the same workflow revision serialized, but do not let a
+  # runner that is permanently stuck on an older revision block a recovery
+  # workflow after its fix has been merged.
+  group: rebuild-android-${{ github.event.inputs.tag_name }}-${{ github.workflow_sha }}
   cancel-in-progress: false
 
 permissions:
