@@ -137,7 +137,7 @@ describe('VendorConfigModal add vendor flow', () => {
     }));
   }, 15000);
 
-  it('does not offer the phantom responses protocol for DeepSeek and normalizes back to chat completions', async () => {
+  it('offers the responses protocol for official DeepSeek and defaults to it since V4-Flash GA', async () => {
     const user = userEvent.setup();
     const handleSave = vi.fn();
 
@@ -154,20 +154,21 @@ describe('VendorConfigModal add vendor flow', () => {
     const [providerSelect, protocolSelect] = screen.getAllByRole('combobox');
     const baseUrlInput = screen.getByLabelText('接口地址');
 
-    await user.type(nameInput, 'DeepSeek 镜像');
+    await user.type(nameInput, 'DeepSeek 官方');
     await user.type(baseUrlInput, 'https://api.deepseek.com/v1');
     await user.selectOptions(providerSelect, 'deepseek');
 
-    // DeepSeek 无 Responses 端点（2026-07 调研 07）：协议下拉不得出现 openai_responses。
-    expect(screen.queryByRole('option', { name: 'OpenAI Responses' })).not.toBeInTheDocument();
-    expect(protocolSelect).toHaveValue('openai_chat_completions');
+    // 2026-07-31 V4-Flash 正式版公测：官方 Responses API 已开放，协议下拉提供
+    // openai_responses 且默认选中（模型级门控在 ShadApiEditModal 按模型收敛）。
+    expect(screen.getByRole('option', { name: 'OpenAI Responses' })).toBeInTheDocument();
+    expect(protocolSelect).toHaveValue('openai_responses');
 
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     expect(handleSave).toHaveBeenCalledWith(expect.objectContaining({
       providerType: 'deepseek',
-      apiProtocol: 'openai_chat_completions',
-      supportsOpenAIResponses: false,
+      apiProtocol: 'openai_responses',
+      supportsOpenAIResponses: true,
       baseUrl: 'https://api.deepseek.com/v1',
     }));
   }, 15000);

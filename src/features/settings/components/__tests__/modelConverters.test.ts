@@ -344,6 +344,64 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     const profile = convertApiConfigToProfile(api, baseVendor.id) as ModelProfile & { contextWindow?: number };
     expect(profile.contextWindow).toBe(1_000_000);
   });
+
+  it('defaults official DeepSeek V4-Flash models to Responses (2026-08 V4-Flash GA)', () => {
+    for (const model of ['deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner']) {
+      const profile: ModelProfile = { ...baseProfile, model };
+
+      const api = convertProfileToApiConfig(profile, baseVendor);
+
+      expect(api.apiProtocol, model).toBe('openai_responses');
+    }
+
+    // legacy 别名映射到 flash：显式 responses 也能保留
+    const flashProfile: ModelProfile = {
+      ...baseProfile,
+      model: 'deepseek-v4-flash',
+      apiProtocol: 'openai_responses',
+    };
+    const flashApi = convertProfileToApiConfig(flashProfile, baseVendor);
+    expect(flashApi.apiProtocol).toBe('openai_responses');
+  });
+
+  it('keeps official DeepSeek V4-Pro and V3.x on chat completions even when responses is requested', () => {
+    for (const model of ['deepseek-v4-pro', 'deepseek-v3.2', 'deepseek-v3.1']) {
+      const profile: ModelProfile = {
+        ...baseProfile,
+        model,
+        apiProtocol: 'openai_responses',
+      };
+
+      const api = convertProfileToApiConfig(profile, baseVendor);
+      expect(api.apiProtocol, model).toBe('openai_chat_completions');
+
+      const roundTripped = convertApiConfigToProfile(api, baseVendor.id);
+      expect(roundTripped.apiProtocol, model).toBe('openai_chat_completions');
+    }
+
+    // 协议可选项：flash 解锁 responses，pro 不可选
+    const flashAllowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
+      providerType: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-v4-flash',
+    });
+    expect(flashAllowed).toContain('openai_responses');
+
+    const proAllowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
+      providerType: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-v4-pro',
+    });
+    expect(proAllowed).not.toContain('openai_responses');
+    expect(proAllowed).toContain('openai_chat_completions');
+
+    // 空模型（供应商级上下文）不降级
+    const vendorLevel = getAllowedApiProtocolsForModelAdapter('deepseek', {
+      providerType: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/v1',
+    });
+    expect(vendorLevel).toContain('openai_responses');
+  });
 });
 
 describe('settings modelConverters Qwen provider support', () => {

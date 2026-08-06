@@ -119,6 +119,22 @@ describe('apiCapabilityEngine DeepSeek version inference', () => {
     expect(caps.supportsReasoningEffort).toBe(true);
     expect(caps.contextWindow).toBe(1_000_000);
   });
+
+  it('marks V4-Flash and legacy aliases as web-search capable (Responses server-side search)', () => {
+    const flashCaps = inferApiCapabilities({ id: 'deepseek-v4-flash', providerScope: 'deepseek' });
+    const chatCaps = inferApiCapabilities({ id: 'deepseek-chat', providerScope: 'deepseek' });
+    const reasonerCaps = inferApiCapabilities({ id: 'deepseek-reasoner', providerScope: 'deepseek' });
+
+    expect(flashCaps.webSearch).toBe(true);
+    expect(chatCaps.webSearch).toBe(true);
+    expect(reasonerCaps.webSearch).toBe(true);
+
+    // V4-Pro（正式版发布前无 Responses）与 V3.x 仍视为不支持
+    const proCaps = inferApiCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
+    const v32Caps = inferApiCapabilities({ id: 'deepseek-ai/DeepSeek-V3.2', providerScope: 'siliconflow' });
+    expect(proCaps.webSearch).toBe(false);
+    expect(v32Caps.webSearch).toBe(false);
+  });
 });
 
 describe('apiCapabilityEngine NVIDIA model inference', () => {

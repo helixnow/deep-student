@@ -233,6 +233,10 @@ const WEB_SEARCH_WHITELIST_REGEXES: RegExp[] = [
   // Gemini 2.x/3.x 系列（排除 image/tts 专用模型）
   /gemini-(?:2|3)(?:\.\d)?(?!.*(?:image|tts))[\w.-]*$/i,
   /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i,
+  // DeepSeek V4-Flash 官方 Responses API 原生支持服务端 web_search
+  // （2026-07-31 正式版公测，仅 v4-flash 系列及 legacy 别名）
+  /deepseek-v4-flash/i,
+  /^deepseek-(?:chat|reasoner)$/i,
 ];
 
 // Gemini Thinking 支持：2.5系列（除了image/tts）、3系列

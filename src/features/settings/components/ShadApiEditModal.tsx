@@ -355,6 +355,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       providerType: formData.providerType,
       baseUrl: formData.baseUrl,
       supportsOpenAIResponses: formData.supportsOpenAIResponses,
+      model: formData.model,
     }));
     return adapterProtocols.map(protocol => ({
       value: protocol,
@@ -370,11 +371,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       }),
       description:
         protocol === 'openai_responses' && !allowed.has(protocol)
-          ? t('settings:api.modal.responses_unavailable', 'Enable OpenAI Responses on this provider before selecting it for a model.')
+          ? t('settings:api.modal.responses_unavailable', 'OpenAI Responses is not available for this model or provider.')
           : t(`settings:api.modal.protocols.${protocol}.description`, { defaultValue: '' }) || undefined,
       disabled: !allowed.has(protocol),
     }));
-  }, [formData.modelAdapter, formData.providerType, formData.baseUrl, formData.supportsOpenAIResponses, t]);
+  }, [formData.modelAdapter, formData.providerType, formData.baseUrl, formData.supportsOpenAIResponses, formData.model, t]);
 
   const inferenceTimeoutRef = useRef<number | null>(null);
   const lastInferredModelRef = useRef<string | null>(api.model ?? null);

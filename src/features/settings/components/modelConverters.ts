@@ -12,19 +12,46 @@ import {
 
 const OPENAI_COMPATIBLE_PROTOCOLS: ApiProtocol[] = ['openai_chat_completions', 'openai_responses'];
 
+/**
+ * DeepSeek 官方 Responses API 模型级门控（与后端 deepseek_model_supports_openai_responses
+ * 保持一致，2026-08 调研：Responses 端点 2026-07-31 随 V4-Flash 正式版公测）：
+ * - 当前仅 `deepseek-v4-flash` 与 legacy 别名（deepseek-chat/deepseek-reasoner，
+ *   映射到 flash 的非思考/思考模式）支持；
+ * - V4-Pro 正式版发布前与 V3.x 系列走 Responses 会 404，必须回落 chat_completions；
+ * - 空模型名（供应商级上下文）视为可支持，避免把已解锁的供应商默认误降级。
+ */
+export const deepseekModelSupportsResponses = (model?: string | null): boolean => {
+  const normalized = (model ?? '').trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized.includes('deepseek-v4-flash') ||
+    normalized === 'deepseek-chat' ||
+    normalized === 'deepseek-reasoner'
+  );
+};
+
 export const defaultOpenAiCompatibleProtocol = (args: {
   providerType?: string | null;
   adapter?: string | null;
   model?: string | null;
   baseUrl?: string | null;
   supportsOpenAIResponses?: boolean | null;
-}): ApiProtocol =>
-  resolvePreferredProtocol({
+}): ApiProtocol => {
+  const preferred = resolvePreferredProtocol({
     providerType: args.providerType,
     adapter: args.adapter,
     baseUrl: args.baseUrl,
     supportsOpenAIResponses: args.supportsOpenAIResponses,
   });
+  if (
+    preferred === 'openai_responses' &&
+    (args.providerType ?? '').toLowerCase() === 'deepseek' &&
+    !deepseekModelSupportsResponses(args.model)
+  ) {
+    return 'openai_chat_completions';
+  }
+  return preferred;
+};
 
 export const getAllowedApiProtocolsForProviderType = (providerType?: string | null): ApiProtocol[] =>
   getAllowedProtocolsForProviderType(providerType);
@@ -65,6 +92,7 @@ export const getAllowedApiProtocolsForModelAdapter = (
     providerType?: string | null;
     baseUrl?: string | null;
     supportsOpenAIResponses?: boolean | null;
+    model?: string | null;
   }
 ): ApiProtocol[] => {
   const normalized = (adapter ?? '').toLowerCase() as ModelAdapter | '';
@@ -86,7 +114,7 @@ export const getAllowedApiProtocolsForModelAdapter = (
     return [nativeProtocol];
   }
 
-  const openAiProtocols = providerProtocols.filter((protocol): protocol is ApiProtocol =>
+  let openAiProtocols = providerProtocols.filter((protocol): protocol is ApiProtocol =>
     OPENAI_COMPATIBLE_PROTOCOLS.includes(protocol)
   );
   if (
@@ -96,7 +124,14 @@ export const getAllowedApiProtocolsForModelAdapter = (
       supportsOpenAIResponses: options.supportsOpenAIResponses,
     })
   ) {
-    return openAiProtocols.filter(protocol => protocol !== 'openai_responses');
+    openAiProtocols = openAiProtocols.filter(protocol => protocol !== 'openai_responses');
+  } else if (
+    (options.providerType ?? '').toLowerCase() === 'deepseek' &&
+    !deepseekModelSupportsResponses(options.model)
+  ) {
+    // DeepSeek 官方 Responses API 仅对 V4-Flash 系列开放：非 flash 模型（V3.x/
+    // V4-Pro 正式版前）即使供应商已解锁 responses 也不可选，避免选中即 404。
+    openAiProtocols = openAiProtocols.filter(protocol => protocol !== 'openai_responses');
   }
   return openAiProtocols;
 };
@@ -129,6 +164,7 @@ export const normalizeApiProtocolForModelAdapter = (
     providerType,
     baseUrl: options?.baseUrl,
     supportsOpenAIResponses: options?.supportsOpenAIResponses,
+    model: options?.model,
   });
   if (explicitProtocol && allowed.includes(explicitProtocol)) {
     return explicitProtocol;

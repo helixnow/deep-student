@@ -738,6 +738,22 @@ impl ChatV2Pipeline {
                 }
             }
 
+            // 🔧 Prompt cache（G6）：工具 schema 确定性排序。
+            // Anthropic 等 provider 将 tools 纳入缓存前缀，顺序跨轮漂移会
+            // 整段打爆缓存；DeepSeek/OpenAI 虽不把 tools 计入消息前缀，
+            // 稳定排序亦无害。custom_tools 由客户端 schema_tool_ids（注入器）
+            // 与 MCP 追加合并而来，顺序依赖客户端与发现时序，必须收敛。
+            if let Some(custom_tools) = llm_context
+                .get_mut("custom_tools")
+                .and_then(|v| v.as_array_mut())
+            {
+                custom_tools.sort_by(|a, b| {
+                    let name_a = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let name_b = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    name_a.cmp(name_b)
+                });
+            }
+
             // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
             // run-scoped UUID；否则旧 StreamHooksGuard 的异步 cleanup 可能删除新注册的 hook。
             // 使用 `_var_` 分隔符与多变体键（chat_v2_event_{session}_{variant}）约定一致，
@@ -1271,6 +1287,20 @@ impl ChatV2Pipeline {
             // 在 LLM 调用完成后，从 adapter 取出收集到的工具调用进行处理。
             // ============================================================
             let tool_calls = adapter.take_tool_calls();
+
+            // 🆕 服务端联网搜索（DeepSeek Responses web_search 工具）：搜索结果由
+            // 服务端直接注入模型上下文，无本地工具调用；把来源收集到
+            // ctx.retrieved_sources.web_search，供 save_results 持久化检索块。
+            if let Some(web_sources) = adapter.take_web_search_sources() {
+                if !web_sources.is_empty() {
+                    log::info!(
+                        "[ChatV2::pipeline] Server-side web search sources: {} (session={})",
+                        web_sources.len(),
+                        ctx.session_id
+                    );
+                    ctx.retrieved_sources.web_search = Some(web_sources);
+                }
+            }
 
             // 如果有工具调用，执行并递归
             if !tool_calls.is_empty() {
