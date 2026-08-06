@@ -237,6 +237,23 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   const hasSidebar = sidebar !== null && sidebar !== undefined;
   const isMobileDrawerFullBleed = isMobileLayout && hasSidebar && Boolean(mobileHeader?.config.hidden);
 
+  // 容器永不横向滚动：轨道平移只由 track 的 transform 表达，任何来源的 scrollLeft
+  // 污染（焦点滚动 / scrollIntoView / 键盘导航）都会让三屏整体偏移一列。
+  // overflow:clip 已让容器不可滚动（scrollLeft 恒 0）；此处 scroll 监听作为
+  // 不支持 clip 的旧 WebView 兜底，把一切尝试归零。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const guardScrollLeft = () => {
+      if (container.scrollLeft !== 0) {
+        container.scrollLeft = 0;
+      }
+    };
+    guardScrollLeft();
+    container.addEventListener('scroll', guardScrollLeft, { passive: true });
+    return () => container.removeEventListener('scroll', guardScrollLeft);
+  }, []);
+
   // 监听容器宽度变化。
   // 用 useLayoutEffect：首帧在绘制前完成测量，避免 containerWidth=0 的回退几何
   //（track 宽 calc(100% + sidebarWidth) 与三屏总宽不符）闪现一帧
@@ -804,7 +821,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     <div
       ref={containerRef}
       className={cn(
-        'relative h-full overflow-hidden',
+        // ★ overflow-clip 而非 overflow-hidden：本容器是滑动轨道，一切平移只能由
+        // track 的 transform 表达。overflow:hidden 仍是可滚动容器，焦点滚动 /
+        // scrollIntoView / 键盘导航会把 scrollLeft 推偏，导致三屏整体偏移一列
+        // （症状：左/中/右停止位全部对不上窗口边缘，右屏永远进不来）。
+        // overflow:clip 不创建滚动容器，scrollLeft 恒为 0，滚动意图被直接忽略。
+        'relative h-full overflow-clip',
         // select-none 仅在拖拽期间生效：常驻会让所有移动页面继承 user-select:none，
         // 未自行恢复的页面长按选择/复制会静默失效
         isDragging && 'select-none',
