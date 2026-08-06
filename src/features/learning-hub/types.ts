@@ -13,6 +13,7 @@ import type { ContextRef } from '@/features/chat/context/types';
 import type { ReferenceNode } from '@/features/notes/types/reference';
 import type { FolderItemType, VfsFolderItem } from '@/dstu/types/folder';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
+import type React from 'react';
 
 // ============================================================================
 // 工作模式
@@ -154,6 +155,10 @@ export interface LearningHubSidebarProps {
    * Workbench Files 窗应传 `isActive`，避免与 legacy LH 双监听。
    */
   commandsEnabled?: boolean;
+  /** ★ 多选模式变化通知（供外部全局顶栏渲染勾选切换按钮的激活态） */
+  onMultiSelectModeChange?: (active: boolean) => void;
+  /** ★ 外部全局顶栏可调用的多选模式切换句柄（由本组件持续写入最新闭包） */
+  multiSelectToggleRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 /**

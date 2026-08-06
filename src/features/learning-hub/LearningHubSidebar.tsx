@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -177,6 +177,8 @@ export function LearningHubSidebar({
   hostId: _hostId,
   sessionActive,
   commandsEnabled,
+  onMultiSelectModeChange,
+  multiSelectToggleRef,
 }: LearningHubSidebarProps) {
   const { isActive: isLearningHubViewActive } = useViewVisibility('learning-hub');
   const commandEventsEnabled = commandsEnabled ?? isLearningHubViewActive;
@@ -2219,6 +2221,28 @@ export function LearningHubSidebar({
     clearSelection();
   }, [clearSelection]);
 
+  // 多选模式切换（与旧次顶栏按钮同一语义；移动端聊天内嵌模式改由全局顶栏触发）
+  const toggleMultiSelect = useCallback(() => {
+    if (isMultiSelectMode) {
+      setIsMultiSelectMode(false);
+      handleClearSelection();
+    } else {
+      setIsMultiSelectMode(true);
+    }
+  }, [isMultiSelectMode, handleClearSelection]);
+
+  // 把最新 toggle 句柄写入外部 ref（全局顶栏按钮持有），供外部随时调用
+  useLayoutEffect(() => {
+    if (multiSelectToggleRef) {
+      multiSelectToggleRef.current = toggleMultiSelect;
+    }
+  });
+
+  // 多选态变化通知外部（全局顶栏按钮的激活高亮）
+  useEffect(() => {
+    onMultiSelectModeChange?.(isMultiSelectMode);
+  }, [isMultiSelectMode, onMultiSelectModeChange]);
+
   // ★ 执行批量软删除（非 trash；带 Undo toast）
   const executeBatchDelete = useCallback(async (idsToDelete: Set<string>) => {
     setIsBatchProcessing(true);
@@ -3063,8 +3087,10 @@ export function LearningHubSidebar({
           </div>
         )}
 
-        {/* ★ Canvas 模式顶部工具栏：多选模式 + 关闭按钮 */}
-        {mode === 'canvas' && (
+        {/* ★ Canvas 模式顶部工具栏：多选模式 + 关闭按钮。
+            移动端聊天内嵌（hideToolbarAndNav）不渲染此条：面板完全使用全局
+            顶栏，多选切换按钮由 ChatV2Page 放到全局顶栏右上角。 */}
+        {mode === 'canvas' && !hideToolbarAndNav && (
           <div data-wb-blur-surface className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-2 py-1.5 border-b backdrop-blur-lg shrink-0">
             <div className="flex items-center gap-1.5 min-w-0">
               {isMultiSelectMode ? (
@@ -3121,14 +3147,7 @@ export function LearningHubSidebar({
                   isSmallScreen ? 'h-11 w-11' : 'h-7 w-7',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
-                onClick={() => {
-                  if (isMultiSelectMode) {
-                    setIsMultiSelectMode(false);
-                    handleClearSelection();
-                  } else {
-                    setIsMultiSelectMode(true);
-                  }
-                }}
+                onClick={toggleMultiSelect}
                 title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect') : t('finder.canvas.multiSelect')}
               >
                 <ListChecks className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
