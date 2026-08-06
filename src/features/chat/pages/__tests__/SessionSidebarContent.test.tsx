@@ -168,7 +168,8 @@ describe('useSessionSidebarContent', () => {
     rerender(<SidebarHarness unifiedMobileDrawer fixedHeader />);
 
     expect(screen.getByRole('button', { name: '新对话' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '所有对话' })).toBeInTheDocument();
+    // 移动端统一抽屉不再提供「所有对话」入口（会话浏览由搜索与命令 / 会话搜索承担）
+    expect(screen.queryByRole('button', { name: '所有对话' })).not.toBeInTheDocument();
     expect(screen.queryByText('会话')).not.toBeInTheDocument();
   });
 
