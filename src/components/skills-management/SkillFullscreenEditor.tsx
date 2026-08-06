@@ -30,6 +30,7 @@ import { SKILL_DEFAULT_PRIORITY } from '@/features/chat/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
 import { CodeMirrorScrollOverlay } from './CodeMirrorScrollOverlay';
 import { SkillPackageSummary } from './SkillPackageSummary';
+import './SkillFullscreenEditor.css';
 
 // ============================================================================
 // 类型定义
