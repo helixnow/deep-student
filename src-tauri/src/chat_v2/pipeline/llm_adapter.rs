@@ -632,12 +632,29 @@ impl ChatV2LLMAdapter {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = Some(sources.clone());
 
-            let block_id = self
-                .web_search_block_id
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone()
-                .unwrap_or_else(Self::generate_block_id);
+            // 兜底：服务端未发进度事件（in_progress/searching）直接 completed 时，
+            // 必须补发 start 事件，否则前端永远不会创建 web_search 块
+            let block_id = {
+                let mut guard = self
+                    .web_search_block_id
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                match guard.clone() {
+                    Some(existing) => existing,
+                    None => {
+                        let generated = Self::generate_block_id();
+                        self.emitter.emit_start(
+                            event_types::WEB_SEARCH,
+                            &self.message_id,
+                            Some(&generated),
+                            None,
+                            None,
+                        );
+                        *guard = Some(generated.clone());
+                        generated
+                    }
+                }
+            };
 
             let duration_ms = self
                 .web_search_started_at
@@ -698,12 +715,6 @@ impl ChatV2LLMAdapter {
                 .web_search_started_at
                 .lock()
                 .unwrap_or_else(|e| e.into_inner()) = Some(std::time::Instant::now());
-            self.emitter.emit_chunk(
-                event_types::WEB_SEARCH,
-                &block_id,
-                &format!("searching {}", stage),
-                None,
-            );
         }
     }
 

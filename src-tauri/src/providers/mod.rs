@@ -927,7 +927,11 @@ impl OpenAIResponsesAdapter {
     /// - 随 assistant message 返回的 `annotations: [{type:"url_citation",url,title}]`
     fn extract_web_search_sources(item: &Value) -> Vec<Value> {
         let mut sources: Vec<Value> = Vec::new();
-        if let Some(results) = item.get("search_results").and_then(Value::as_array) {
+        let results = item
+            .get("search_results")
+            .or_else(|| item.get("web_search_sources"))
+            .and_then(Value::as_array);
+        if let Some(results) = results {
             for result in results {
                 let url = result.get("url").and_then(Value::as_str).unwrap_or_default();
                 if url.is_empty() {
@@ -1566,7 +1570,12 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                         .unwrap_or(0);
                     self.emit_response_tool_call(item, output_index, &mut events);
                     if item.get("type").and_then(Value::as_str) == Some("web_search_call") {
-                        self.emit_web_search_item(item, "completed", &mut events);
+                        // 以 item 自身状态为准：output_item.done 时搜索可能仍在进行
+                        let stage = item
+                            .get("status")
+                            .and_then(Value::as_str)
+                            .unwrap_or("completed");
+                        self.emit_web_search_item(item, stage, &mut events);
                     }
                 }
             }
@@ -4235,6 +4244,35 @@ mod tests {
         ));
         assert!(!OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
             "https://api.openai.com/v1"
+        ));
+    }
+
+    #[test]
+    fn openai_responses_adapter_accepts_deepseek_web_search_sources_shape() {
+        let adapter = OpenAIResponsesAdapter::new();
+        // DeepSeek 可能的 `web_search_sources` 字段形态与 `status` 非 completed 的
+        // output_item.done（阶段应以 item 自身状态为准）
+        let events = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_ds","status":"in_progress","web_search_sources":[{"url":"https://example.com/ds","title":"DeepSeek Source"}]}}"#,
+        );
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["id"] == json!("ws_ds")
+                    && payload["stage"] == json!("in_progress")
+                    && payload.get("sources").is_none()
+        ));
+
+        // completed 时同样识别 web_search_sources 形态
+        let completed = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.completed","item":{"id":"ws_ds","status":"completed","web_search_sources":[{"url":"https://example.com/ds","title":"DeepSeek Source","text":"desc"}]}}"#,
+        );
+        assert!(matches!(
+            completed.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["stage"] == json!("completed")
+                    && payload["sources"][0]["title"] == json!("DeepSeek Source")
+                    && payload["sources"][0]["snippet"] == json!("desc")
         ));
     }
 
