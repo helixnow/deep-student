@@ -43,9 +43,11 @@ const BUILTIN_MODEL_CONFIGS: &[BuiltinModelConfig] = &[
     },
     BuiltinModelConfig {
         id: "builtin-sf-vision",
-        name: "SiliconFlow - zai-org/GLM-4.6V",
+        // 2026-08：zai-org/GLM-4.6V 已从硅基流动下架，内置视觉模型改用
+        // 仍可用的 Qwen3-VL-8B（与一键分配预设保持一致）。
+        name: "SiliconFlow - Qwen/Qwen3-VL-8B-Instruct",
         base_url: "https://api.siliconflow.cn/v1",
-        model: "zai-org/GLM-4.6V",
+        model: "Qwen/Qwen3-VL-8B-Instruct",
         is_multimodal: true,
         is_reasoning: true,
         is_embedding: false,

@@ -126,9 +126,12 @@ jobs:
     with:
       ref: ${{ needs.preflight.outputs.source_ref }}
       version: ${{ needs.preflight.outputs.version }}
-      # One-release recovery authorization: future tags keep the full default
-      # feature set and normal release optimization profile.
-      lean_recovery: ${{ needs.preflight.outputs.tag_name == 'v0.9.43' }}
+      # ★ 2026-08-06：不再允许 lean 恢复构建作为正式发布。
+      # v0.9.43 曾用 lean_recovery=true（opt-level=0）重建，产物
+      # libdeep_student_lib.so 达 330MB，低内存设备启动 OOM 闪退。
+      # 恢复构建改为始终使用正常 release profile（opt-level=1）；
+      # 若确需 lean 抢救 CI，请先修复构建时间问题，不要发版。
+      lean_recovery: false
     secrets: inherit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -149,6 +152,37 @@ jobs:
         with:
           name: android-arm64
           path: android-output
+
+      # ── 发布守卫：拒绝 lean 恢复构建产物 ──
+      # v0.9.43 曾用 lean_recovery=true（opt-level=0 + codegen-units=256）重建，
+      # 产物 libdeep_student_lib.so 高达 330MB（正常优化构建约 116MB），
+      # 低内存设备启动时 dlopen/重定位 OOM → APK 闪退。lean 恢复构建
+      # 只用于救活 CI，绝不能作为正式发布分发。
+      - name: Guard — refuse to publish lean recovery build
+        run: |
+          APK_FILE=$(ls android-output/*.apk | head -1)
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::No APK artifact found for publish"
+            exit 1
+          fi
+          if ! command -v unzip >/dev/null 2>&1; then
+            echo "::error::unzip not available for APK guard"
+            exit 1
+          fi
+          SO_SIZE=$(unzip -l "$APK_FILE" | awk '/libdeep_student_lib\.so/ {print $1; exit}')
+          echo "APK: $APK_FILE, libdeep_student_lib.so size: ${SO_SIZE:-unknown} bytes"
+          if [ -z "$SO_SIZE" ]; then
+            echo "::error::libdeep_student_lib.so missing from APK"
+            exit 1
+          fi
+          # 正常优化构建约 116MB（v0.9.42）；lean opt-level=0 产物 330MB。
+          # 阈值 250MB：超过即判定为 lean 恢复构建，禁止发布。
+          if [ "$SO_SIZE" -gt 262144000 ]; then
+            echo "::error::refusing to publish: libdeep_student_lib.so is ${SO_SIZE} bytes (>250MB) — this is a lean recovery build (opt-level=0)."
+            echo "::error::Rebuild with lean_recovery=false using the normal release profile, then retry publish."
+            exit 1
+          fi
+          echo "✅ APK passes lean-build guard"
 
       - name: Delete old APK from Release
         env:
@@ -212,10 +246,18 @@ jobs:
 
           if [ -f /tmp/current-latest.json ]; then
             APK_URL="${R2_BASE}/${APK_NAME}"
-            jq --arg apk "$APK_URL" '
-              .apk_url = $apk
-              | .android = ((.android // {}) + {status: "available", url: $apk})
-            ' /tmp/current-latest.json > /tmp/updated-latest.json
+            # 版本校验：latest.json 指向的 version 必须与目标 tag 一致，
+            # 防止在更新版本已发布后重建旧 tag 时把更新版 latest.json 指向旧包。
+            LATEST_VERSION=$(jq -r '.version // empty' /tmp/current-latest.json)
+            TAG_VERSION="${{ needs.preflight.outputs.version }}"
+            if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$TAG_VERSION" ]; then
+              echo "::error::R2 latest.json version (${LATEST_VERSION}) != target tag version (${TAG_VERSION})."
+              echo "::error::Refusing to repoint latest.json at an older build. Publish the newer version instead, or sync this tag to a separate channel."
+              exit 1
+            fi
+            jq --arg apk "$APK_URL" \
+               '.apk_url = $apk | .android = (.android // {} | .status = "available" | .url = $apk)' \
+               /tmp/current-latest.json > /tmp/updated-latest.json
 
             echo "Updated latest.json:"
             cat /tmp/updated-latest.json

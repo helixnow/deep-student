@@ -268,9 +268,15 @@ fn get_pdfium_candidate_paths() -> Vec<std::path::PathBuf> {
 
     #[cfg(target_os = "linux")]
     {
+        // 1. 可执行文件同目录（dev: target/debug/libpdfium.so）
         paths.push(exe_dir.join("libpdfium.so"));
-        paths.push(exe_dir.join("lib/libpdfium.so"));
+        // 2. Tauri 资源目录（deb/rpm: /usr/lib/deep-student/，AppImage: $APPDIR/usr/lib/deep-student/）
+        paths.push(exe_dir.join("../lib/deep-student/libpdfium.so"));
         paths.push(exe_dir.join("../Resources/libpdfium.so"));
+        // AppImage 下 APPDIR 环境变量指向解包目录
+        if let Ok(appdir) = std::env::var("APPDIR") {
+            paths.push(std::path::PathBuf::from(appdir).join("usr/lib/deep-student/libpdfium.so"));
+        }
     }
 
     #[cfg(target_os = "android")]

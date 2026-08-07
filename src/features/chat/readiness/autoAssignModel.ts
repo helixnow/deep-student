@@ -69,6 +69,7 @@ function isImageGenerationModel(api: ApiConfig): boolean {
 /** 是否为可用的多模态模型（含 vision 能力推断） */
 function isMultimodalModel(api: ApiConfig): boolean {
   if (!api.enabled || api.isEmbedding || api.isReranker) return false;
+  if (isDiscontinuedOcrModel(api)) return false;
   if (api.isMultimodal === true) return true;
   const caps = inferApiCapabilities({
     id: api.model,
@@ -76,6 +77,17 @@ function isMultimodalModel(api: ApiConfig): boolean {
     providerScope: api.providerScope ?? api.providerType,
   });
   return caps.vision;
+}
+
+/**
+ * 已知已停止服务的 OCR/VLM 模型组合（提供商 base_url + 模型名）。
+ * 与 Rust 侧 llm_manager::is_discontinued_ocr_model 保持一致。
+ * 2026-08：硅基流动已下架 zai-org/GLM-4.6V。
+ */
+export function isDiscontinuedOcrModel(api: ApiConfig): boolean {
+  const url = (api.baseUrl ?? '').toLowerCase();
+  const model = (api.model ?? '').toLowerCase();
+  return url.includes('siliconflow') && model.includes('glm-4.6v');
 }
 
 /**
@@ -185,8 +197,8 @@ async function ensureAllVisionModelsRegisteredAsOcr(): Promise<void> {
       if (engine.configId === SYSTEM_OCR_CONFIG_ID) continue;
 
       const config = configMap.get(engine.configId);
-      // API 配置不存在或已禁用，需要移除
-      if (!config || !config.enabled) {
+      // API 配置不存在、已禁用、或模型已停服（如硅基流动已下架 GLM-4.6V），需要移除
+      if (!config || !config.enabled || isDiscontinuedOcrModel(config)) {
         enginesToRemove.push(engine.configId);
       }
     }
@@ -223,9 +235,10 @@ async function ensureAllVisionModelsRegisteredAsOcr(): Promise<void> {
     const existingConfigIds = new Set(currentEngines.map(e => e.configId));
     let registeredCount = 0;
 
-    // 遍历所有配置，注册视觉模型
+    // 遍历所有配置，注册视觉模型（跳过已停服模型，如硅基流动已下架的 GLM-4.6V）
     for (const config of configs) {
       if (existingConfigIds.has(config.id)) continue; // 已注册，跳过
+      if (isDiscontinuedOcrModel(config)) continue; // 停服模型不注册
       if (!isMultimodalModel(config)) continue; // 复用已有的多模态判断逻辑
 
       // 注册为 OCR 引擎

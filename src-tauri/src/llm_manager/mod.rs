@@ -2145,6 +2145,10 @@ impl OcrRuntimeCandidate {
 ///
 /// 停服模型请求必然失败，若仍排在候选首位，会让整个 OCR 链路在重试后失败。
 /// 2026-08：硅基流动已下架 `zai-org/GLM-4.6V`。
+///
+/// 注意：仅匹配硅基流动（base_url 含 siliconflow）+ `zai-org/` 命名空间的
+/// GLM-4.6V；智谱官方 API 的 `glm-4.6v` 不带 `zai-org/` 前缀且仍在服务，
+/// 不能误伤。
 pub(crate) fn is_discontinued_ocr_model(config: &ApiConfig) -> bool {
     let url = config.base_url.to_lowercase();
     let model = config.model.to_lowercase();
@@ -6037,7 +6041,8 @@ impl LLMManager {
                 let mut needs_save = crate::cmd::ocr::migrate_paddle_ocr_models(&mut models);
 
                 // GLM-4.1V → 迁移：同时更新关联的 ApiConfig.model
-                // 硅基流动已下架 zai-org/GLM-4.6V，该提供商下迁移到 Qwen3-VL-8B。
+                // 硅基流动已下架 zai-org/GLM-4.6V，该提供商下迁移到 Qwen3-VL-8B；
+                // 智谱官方模型名不带 zai-org/ 前缀，迁移到 glm-4.6v。
                 let api_configs_result = self.get_api_configs().await;
                 let is_siliconflow = |config_id: &str| -> bool {
                     match &api_configs_result {
@@ -6045,6 +6050,16 @@ impl LLMManager {
                             .iter()
                             .find(|c| c.id == config_id)
                             .map(|c| c.base_url.to_lowercase().contains("siliconflow"))
+                            .unwrap_or(false),
+                        Err(_) => false,
+                    }
+                };
+                let is_zhipu_official = |config_id: &str| -> bool {
+                    match &api_configs_result {
+                        Ok(configs) => configs
+                            .iter()
+                            .find(|c| c.id == config_id)
+                            .map(|c| c.base_url.to_lowercase().contains("bigmodel"))
                             .unwrap_or(false),
                         Err(_) => false,
                     }
@@ -6057,7 +6072,11 @@ impl LLMManager {
                     .map(|m| m.config_id.clone())
                     .collect();
 
-                if crate::cmd::ocr::migrate_glm_ocr_models(&mut models, is_siliconflow) {
+                if crate::cmd::ocr::migrate_glm_ocr_models(
+                    &mut models,
+                    is_siliconflow,
+                    is_zhipu_official,
+                ) {
                     needs_save = true;
                     // 同步更新 ApiConfig 中的 model 字段，确保实际 API 调用也使用新模型
                     if !glm_migrate_ids.is_empty() {
@@ -6075,13 +6094,16 @@ impl LLMManager {
                                                     .replace("GLM-4.1V", "Qwen3-VL-8B")
                                                     .replace("4.1V", "Qwen3-VL-8B"),
                                             )
-                                        } else {
+                                        } else if cfg.base_url.to_lowercase().contains("bigmodel") {
                                             (
-                                                "zai-org/GLM-4.6V".to_string(),
+                                                "glm-4.6v".to_string(),
                                                 cfg.name
                                                     .replace("GLM-4.1V", "GLM-4.6V")
                                                     .replace("4.1V", "4.6V"),
                                             )
+                                        } else {
+                                            // 无法确定提供商，保持原模型不变
+                                            continue;
                                         };
                                     info!(
                                         "[OCR] 同步更新 ApiConfig model: {} → {} (id={})",

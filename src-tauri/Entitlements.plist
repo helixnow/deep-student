@@ -4,5 +4,16 @@
 <dict>
   <key>com.apple.security.device.audio-input</key>
   <true/>
+  <!--
+    pdfium 修复（2026-08-06）：
+    libpdfium.dylib 来自 bblanchon/pdfium-binaries，是 adhoc/linker-signed，
+    没有 Team ID。App 启用 hardened runtime 后，dlopen 该 dylib 会被
+    library validation 以 "different Team IDs" 拒绝，导致 PDF 渲染/文本
+    提取/PDF-OCR 全部不可用（用户现象：pdfium 依赖"没打进去"）。
+    此 entitlement 允许加载非同一 Team ID 的签名动态库，是使用第三方
+    预编译 dylib 的通用做法（Electron/Tauri 应用打包 ffmpeg 等同理）。
+  -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
 </dict>
 </plist>

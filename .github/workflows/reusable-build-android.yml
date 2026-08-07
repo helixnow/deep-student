@@ -330,7 +330,10 @@ jobs:
 
           BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
 
-          "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
+          # extractNativeLibs=false 时未压缩 .so 需 16KB 页对齐（AGP 8.x 打包已满足，
+          # Android 15+ 16KB 页设备强制要求）。用 -P 16 显式对齐而非旧的 -v 4，
+          # 避免重新压缩/对齐后破坏 AGP 原有对齐导致安装失败。
+          "${BUILD_TOOLS}/zipalign" -P 16 -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
 
           "${BUILD_TOOLS}/apksigner" sign \
             --ks /tmp/release.keystore \
@@ -341,6 +344,18 @@ jobs:
             --out /tmp/signed.apk
 
           "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
+
+          # 发布守卫：lean 恢复构建（opt-level=0）会产生约 330MB 的未优化
+          # libdeep_student_lib.so（正常优化构建约 116MB），低内存设备启动
+          # dlopen/重定位 OOM → APK 闪退（v0.9.43 线上事故）。超过阈值即失败。
+          SO_SIZE=$(unzip -l /tmp/signed.apk | awk '/libdeep_student_lib\.so/ {print $1; exit}')
+          echo "libdeep_student_lib.so size: ${SO_SIZE:-unknown} bytes (threshold: 250MB)"
+          if [ -z "$SO_SIZE" ] || [ "$SO_SIZE" -gt 262144000 ]; then
+            echo "::error::libdeep_student_lib.so is ${SO_SIZE:-missing} bytes — this is a lean recovery build (opt-level=0)."
+            echo "::error::Refusing to sign/publish. Rebuild with the normal release profile (lean_recovery=false)."
+            rm -f /tmp/release.keystore
+            exit 1
+          fi
 
           VERSION="${{ inputs.version }}"
           mkdir -p android-output
