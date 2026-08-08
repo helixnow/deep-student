@@ -51,7 +51,7 @@ function writeBuildConfigFixture(
 test('Android release code is one above nightly and build numbers remain monotonic', () => {
   assert.equal(ANDROID_VERSION_CODE, PUBLISHED_ANDROID_VERSION_CODE + 1);
   assert.equal(resolveAndroidVersionCode(ANDROID_VERSION_BASE_APP_VERSION), ANDROID_VERSION_CODE);
-  assert.equal(resolveAndroidVersionCode('0.9.44'), ANDROID_VERSION_CODE + 1);
+  assert.equal(resolveAndroidVersionCode('0.9.45'), ANDROID_VERSION_CODE + 1);
   assert.ok(resolveAndroidVersionCode('0.10.0') > ANDROID_VERSION_CODE + 1);
   assert.throws(() => resolveAndroidVersionCode('0.9.41'), /predates Android baseline/);
   for (const nonStableVersion of [
@@ -137,14 +137,14 @@ test('package, Cargo, and Tauri versions must stay aligned', () => {
     writeBuildConfigFixture(root);
     assert.equal(validateBuildConfiguration(root).appVersion, ANDROID_VERSION_BASE_APP_VERSION);
 
-    writeBuildConfigFixture(root, { cargoVersion: '0.9.44' });
+    writeBuildConfigFixture(root, { cargoVersion: '0.9.45' });
     assert.throws(() => validateBuildConfiguration(root), /Application versions must match/);
 
-    writeBuildConfigFixture(root, { tauriVersion: '0.9.44' });
+    writeBuildConfigFixture(root, { tauriVersion: '0.9.45' });
     assert.throws(() => validateBuildConfiguration(root), /Application versions must match/);
 
     writeBuildConfigFixture(root, {
-      packageVersion: '0.9.44',
+      packageVersion: '0.9.45',
       cargoVersion: ANDROID_VERSION_BASE_APP_VERSION,
       tauriVersion: ANDROID_VERSION_BASE_APP_VERSION,
     });
@@ -221,7 +221,7 @@ test('local Android build uses release versionCode instead of internal build num
 
 test('Rust build metadata uses the same baseline and never counts unrelated refs', () => {
   const buildScript = readFileSync(join(projectRoot, 'src-tauri', 'build.rs'), 'utf-8');
-  assert.match(buildScript, /const BUILD_NUMBER_BASE: u32 = 14635;/u);
+  assert.match(buildScript, /const BUILD_NUMBER_BASE: u32 = 14636;/u);
   assert.match(buildScript, new RegExp(BUILD_NUMBER_BASE_COMMIT, 'u'));
   assert.match(buildScript, /"rev-list",\s*"--count"/u);
   assert.match(buildScript, /verify_application_versions\(\)/u);
