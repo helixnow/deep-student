@@ -210,6 +210,14 @@
       "dangers": []
     },
     {
+      "database": "chat_v2",
+      "version": 20260806,
+      "name": "prompt_cache_replay_consistency",
+      "path": "chat_v2/V20260806__prompt_cache_replay_consistency.sql",
+      "sha256": "78648898fcce5784c7139dc362781c56a7b7b360fbc3b4b6c5182c5faf20f6d3",
+      "dangers": []
+    },
+    {
       "database": "llm_usage",
       "version": 20260130,
       "name": "init",
