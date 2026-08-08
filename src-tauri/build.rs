@@ -7,8 +7,8 @@ mod app_command_parser;
 const ANDROID_RECORD_AUDIO_PERMISSION: &str = "android.permission.RECORD_AUDIO";
 const ANDROID_MODIFY_AUDIO_SETTINGS_PERMISSION: &str = "android.permission.MODIFY_AUDIO_SETTINGS";
 const APP_COMMAND_PERMISSION_FILE: &str = "permissions/application-commands.toml";
-const BUILD_NUMBER_BASE: u32 = 14633;
-const BUILD_NUMBER_BASE_COMMIT: &str = "4d65d159da028a3f476837a30c03b892343e00cc";
+const BUILD_NUMBER_BASE: u32 = 14635;
+const BUILD_NUMBER_BASE_COMMIT: &str = "754055aaca6a8a96575256feb44b92501226f6c2";
 const BUILD_NUMBER_MAX: u32 = 2_100_000_000;
 
 fn main() {
