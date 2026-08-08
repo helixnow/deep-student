@@ -10,6 +10,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.44](https://github.com/helixnow/deep-student/compare/v0.9.43...v0.9.44) (2026-08-08)
+
+
+### Features
+
+* VLM grounding fallback, prompt-cache replay consistency, deepseek Responses API, release metadata refresh ([#152](https://github.com/helixnow/deep-student/issues/152)) ([f473a6d](https://github.com/helixnow/deep-student/commit/f473a6d6495ecf848997eee5a46b5827e49ba7fb))
+
+
+### Bug Fixes
+
+* **android:** guard desktop-only browser APIs ([c6c497c](https://github.com/helixnow/deep-student/commit/c6c497c2ad8a16817bb52809b482d686d6563e14))
+* **android:** guard desktop-only browser APIs ([dd44bce](https://github.com/helixnow/deep-student/commit/dd44bce27b539f9544ab50a8c28ec9ed4d120281))
+* **ci:** allow explicit fixture override for release recovery ([f5a88a8](https://github.com/helixnow/deep-student/commit/f5a88a83f33c5985d88bf7fd1938155c95987685))
+* **ci:** allow explicit fixture override for release recovery ([7ddc93d](https://github.com/helixnow/deep-student/commit/7ddc93df77e7090acc045ab69ee7273aa40eb29f))
+* **ci:** allow explicit unsigned desktop release recovery ([d1875b6](https://github.com/helixnow/deep-student/commit/d1875b6d08759bd239d7dd9ffb873a13a54a1d0e))
+* **ci:** allow explicit unsigned desktop release recovery ([04361b6](https://github.com/helixnow/deep-student/commit/04361b685eb34a388907f4a24980536cef75f4c0))
+* **ci:** build only Android APK ([0b199ae](https://github.com/helixnow/deep-student/commit/0b199ae84b52437634975df31e1f5b7f76cdaa51))
+* **ci:** build only Android APK ([608f2ad](https://github.com/helixnow/deep-student/commit/608f2ad5e550826bbe083d0c44b993cc53795866))
+* **ci:** build only NSIS on Windows releases ([5cf2819](https://github.com/helixnow/deep-student/commit/5cf281909eb61ec3faef3135eac4669014f9c87d))
+* **ci:** build only NSIS on Windows releases ([b41a835](https://github.com/helixnow/deep-student/commit/b41a83532b3e5b30d48c11d422d50bd65afdf892))
+* **ci:** extend macOS release build timeout ([db16fd8](https://github.com/helixnow/deep-student/commit/db16fd864ca3a1b74f3361b9cbb7d5ffacc4e11a))
+* **ci:** extend macOS release build timeout ([f6accc4](https://github.com/helixnow/deep-student/commit/f6accc47133b9c85beb4eb18033fec400938a007))
+* **ci:** fetch full history for migration release gate ([cdd9d73](https://github.com/helixnow/deep-student/commit/cdd9d73aad25929061cb5fc35018a986799dc6a9))
+* **ci:** fetch full history for migration release gate ([211f138](https://github.com/helixnow/deep-student/commit/211f1386463b31427e2e01777364d2e5f36126cb))
+* **ci:** finish v0.9.43 Android recovery build ([9834207](https://github.com/helixnow/deep-student/commit/983420766c0dbbc0f49ae0501420669823081ed1))
+* **ci:** flatten Linux hotfix artifacts ([fdee8aa](https://github.com/helixnow/deep-student/commit/fdee8aa2a0d0a4fc354d8c87b679510f04901c02))
+* **ci:** flatten Linux hotfix artifacts ([#146](https://github.com/helixnow/deep-student/issues/146)) ([b10b0bb](https://github.com/helixnow/deep-student/commit/b10b0bb9cdbf2fce55b563f535365ce1a37298b3))
+* **ci:** isolate Android recovery queues ([cccad99](https://github.com/helixnow/deep-student/commit/cccad99f46c18b3f27904789712f562357e5e736))
+* **ci:** isolate Android recovery queues ([793b196](https://github.com/helixnow/deep-student/commit/793b1961db34d17a491aef047110f9842809cf5b))
+* **ci:** make unsigned macOS recovery builds work ([336d6a3](https://github.com/helixnow/deep-student/commit/336d6a3e7a62427bbb2089206b92a9ffd9852186))
+* **ci:** make unsigned macOS recovery builds work ([#147](https://github.com/helixnow/deep-student/issues/147)) ([30fdf51](https://github.com/helixnow/deep-student/commit/30fdf51cd832b38daf8d660ff06b7c6fa1780c03))
+* **ci:** mark rebuilt Android release available ([3e2e914](https://github.com/helixnow/deep-student/commit/3e2e91496d4bd06b93dd923c8eed7ae8f7154387))
+* **ci:** mark rebuilt Android release available ([e80b159](https://github.com/helixnow/deep-student/commit/e80b159ca0e90c2f6fc65263d1bd1e9eace2672b))
+* **ci:** multipart upload large R2 release assets ([30b830c](https://github.com/helixnow/deep-student/commit/30b830cec4918bfd6137dadd4990635b4aa6ec9c))
+* **ci:** multipart upload large R2 release assets ([2d9de10](https://github.com/helixnow/deep-student/commit/2d9de1089a5203678c6af61c072e85bafe051367))
+* **ci:** overlay macOS release tooling ([7bc74ca](https://github.com/helixnow/deep-student/commit/7bc74cae697163a14609cfb03c5974ae81e48d32))
+* **ci:** overlay macOS release tooling ([32586f3](https://github.com/helixnow/deep-student/commit/32586f30ee6da642296815837b7b8f9cfdda5e49))
+* **ci:** overlay release fixture harness ([41f72ef](https://github.com/helixnow/deep-student/commit/41f72efcb4829f6f0a072e68cbe0d70c8b13a5b4))
+* **ci:** overlay release fixture harness ([943b067](https://github.com/helixnow/deep-student/commit/943b06725d59ba82feda4dce9280eb154a1e88e5))
+* **ci:** provision release migration fixture ([0e6f8d1](https://github.com/helixnow/deep-student/commit/0e6f8d1fa5b23ab7163edb489f85ad6c3a0333b8))
+* **ci:** provision strict release migration fixture ([cb54533](https://github.com/helixnow/deep-student/commit/cb54533344ecfc5de2439c2ce44bfdb02c5d5d8d))
+* **ci:** reduce Android release compile latency ([342e961](https://github.com/helixnow/deep-student/commit/342e961f0237ed8b9f031d6892df961f7c810117))
+* **ci:** reduce Android release compile latency ([#145](https://github.com/helixnow/deep-student/issues/145)) ([4240f4d](https://github.com/helixnow/deep-student/commit/4240f4d9e74cac5da4fdcca451caf32d7fc5ede0))
+* **ci:** refresh release lock metadata before packaging ([ea7896c](https://github.com/helixnow/deep-student/commit/ea7896c2bbd2f1960b52300f8be31c9d804f96a1))
+* **ci:** refresh release lock metadata before packaging ([9df69c4](https://github.com/helixnow/deep-student/commit/9df69c4c98eaa2797653728615675b28cae3a148))
+* **ci:** retry pdfium downloads ([201be66](https://github.com/helixnow/deep-student/commit/201be668e5a974779725416b3d0f81c631f175fd))
+* **ci:** retry pdfium downloads ([a677bbc](https://github.com/helixnow/deep-student/commit/a677bbcaa025aed975105ab992ce902f4366ecd3))
+* **ci:** shorten Android release compilation ([058808a](https://github.com/helixnow/deep-student/commit/058808ad9d11009eace360120a244ee9cda445dd))
+* **ci:** shorten Android release compilation ([f0f5145](https://github.com/helixnow/deep-student/commit/f0f514502a111c191833f8f8262219d611b5f071))
+* **ci:** stabilize release builds across hosted runners ([bac0b36](https://github.com/helixnow/deep-student/commit/bac0b366972605da2e22eb75704314e5219eb20e))
+* **ci:** stabilize release builds across hosted runners ([5740392](https://github.com/helixnow/deep-student/commit/5740392e4029ef7a1d40ab3fecafdefad10329b5))
+* **ci:** support Tauri v2 Linux updater artifacts ([78ad9bc](https://github.com/helixnow/deep-student/commit/78ad9bc67b0ad898ef40ec23cca4ac1567a0fdca))
+* **ci:** support Tauri v2 Linux updater artifacts ([#144](https://github.com/helixnow/deep-student/issues/144)) ([d420ec0](https://github.com/helixnow/deep-student/commit/d420ec0dfe8bee9f9b59aa2dc0ff6e9b32389125))
+* **ci:** use lean Android release feature profile ([5738930](https://github.com/helixnow/deep-student/commit/5738930ef28aaf1605638c3a3ec2e2d5d2e3a537))
+
 ## [0.9.43](https://github.com/helixnow/deep-student/compare/v0.9.42...v0.9.43) (2026-08-03)
 
 
