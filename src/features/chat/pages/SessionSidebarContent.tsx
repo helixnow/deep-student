@@ -776,19 +776,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         ) : null}
         {!isInitialLoading && shouldShowSearch && renderSearchInput()}
         {renderStudySidebarContent(unified)}
-        {unified && (
-          <div className="mt-2 border-t border-[color:var(--shell-navigation-border)] px-1 pt-3">
-            <DsButton
-              variant="ghost"
-              size="sm"
-              className="min-h-11 w-full justify-start gap-2.5 rounded-xl px-2.5 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
-              onClick={handleOpenBrowser}
-            >
-              <SquaresFour size={17} />
-              {t('browser.allSessions')}
-            </DsButton>
-          </div>
-        )}
       </div>
     );
 

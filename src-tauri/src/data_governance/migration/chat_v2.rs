@@ -461,6 +461,29 @@ pub const V20260721_WORKSPACE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationD
 ])
 .idempotent();
 
+/// V20260806: Prompt-cache replay 一致性（llm_content / tool_call_id / round_text）
+///
+/// 三个侧通道列仅供 history.rs 重放时逐字复现 live 字节（provider 前缀缓存
+/// 跨轮命中要求历史与 live 完全一致）：
+/// - `llm_content`：用户消息内容块，live 实际发送给 LLM 的完整文本；
+/// - `tool_call_id`：工具结果块，provider 原始 tool-call id；
+/// - `round_text`：工具结果块，工具调用前的伴随文本（text-before-tool-use）。
+pub const V20260806_PROMPT_CACHE_REPLAY_CONSISTENCY: MigrationDef = MigrationDef::new(
+    20260806,
+    "prompt_cache_replay_consistency",
+    include_str!("../../../migrations/chat_v2/V20260806__prompt_cache_replay_consistency.sql"),
+)
+.with_expected_tables(&["chat_v2_blocks"])
+.with_expected_columns(&[
+    ("chat_v2_blocks", "llm_content"),
+    ("chat_v2_blocks", "tool_call_id"),
+    ("chat_v2_blocks", "round_text"),
+])
+.with_expected_queries(&[
+    "SELECT llm_content, tool_call_id, round_text FROM chat_v2_blocks LIMIT 0",
+])
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -486,6 +509,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260719_FTS_BLOCKTYPE_COVERAGE,
     V20260720_COMPACTION_LINEAGE_AND_SYNC,
     V20260721_WORKSPACE_DELETION_INTENT_JOURNAL,
+    V20260806_PROMPT_CACHE_REPLAY_CONSISTENCY,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -505,7 +529,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 23); // V20260130 ~ V20260721
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 24); // V20260130 ~ V20260806
     }
 
     #[test]
@@ -697,7 +721,7 @@ mod tests {
         let expected_versions = vec![
             20260130, 20260131, 20260201, 20260202, 20260203, 20260204, 20260207, 20260221,
             20260301, 20260302, 20260306, 20260502, 20260510, 20260516, 20260523, 20260524,
-            20260527, 20260528, 20260711, 20260717, 20260719, 20260720, 20260721,
+            20260527, 20260528, 20260711, 20260717, 20260719, 20260720, 20260721, 20260806,
         ];
         let actual_versions: Vec<_> = CHAT_V2_MIGRATION_SET
             .pending(0)
@@ -709,7 +733,7 @@ mod tests {
             let remaining: Vec<_> = CHAT_V2_MIGRATION_SET.pending(*version).collect();
             assert_eq!(remaining.len(), expected_versions.len() - index - 1);
         }
-        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260721).count(), 0);
+        assert_eq!(CHAT_V2_MIGRATION_SET.pending(20260806).count(), 0);
     }
 
     #[test]

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { DotsThreeVertical, Plus } from '@phosphor-icons/react';
+import { DotsThreeVertical, ListChecks, Plus } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
+import { cn } from '@/lib/utils';
 import type { TFunction } from 'i18next';
 import type { ChatSession } from '../types/session';
 import type { BreadcrumbItem } from '@/features/learning-hub/stores/finderStore';
@@ -41,6 +42,10 @@ export interface UseChatPageLayoutDeps {
   closeGroupEditor: () => void;
   /** 打开当前会话的对话设置面板 */
   openCurrentSessionSettings: () => void;
+  /** 移动端右屏资源库：多选模式是否激活（全局顶栏勾选按钮高亮） */
+  resourceMultiSelectActive: boolean;
+  /** 移动端右屏资源库：多选模式切换句柄（由 LearningHubSidebar 持续写入） */
+  resourceMultiSelectToggleRef: React.MutableRefObject<(() => void) | null>;
 }
 
 export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
@@ -53,6 +58,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     openAppTitle, closeMobileOpenApp,
     groupEditorOpen, groupEditorMode, closeGroupEditor,
     openCurrentSessionSettings,
+    resourceMultiSelectActive, resourceMultiSelectToggleRef,
   } = deps;
 
   const currentSessionGroupKey = currentSession ? (currentSession.groupId || 'ungrouped') : null;
@@ -152,6 +158,27 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
       ),
       showBackArrow: true,
       onMenuClick: () => setMobileResourcePanelOpen(false),
+      // ★ 学习资源面板不再自带次顶栏：仅把「勾选文件」切换按钮放到全局顶栏右上角
+      rightActions: (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => resourceMultiSelectToggleRef.current?.()}
+          className={cn(
+            resourceMultiSelectActive
+              && 'bg-primary/10 text-primary hover:bg-primary/15',
+          )}
+          aria-label={resourceMultiSelectActive
+            ? t('learningHub:finder.canvas.exitMultiSelect')
+            : t('learningHub:finder.canvas.multiSelect')}
+          title={resourceMultiSelectActive
+            ? t('learningHub:finder.canvas.exitMultiSelect')
+            : t('learningHub:finder.canvas.multiSelect')}
+        >
+          <ListChecks size={20} />
+        </DsButton>
+      ),
     }
   ) : (groupEditorOpen && viewMode !== 'browser') ? {
     title: groupEditorMode === 'edit'
@@ -182,6 +209,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     mobileSandboxOpen, closeMobileSandbox, openAppTitle, closeMobileOpenApp,
     groupEditorOpen, groupEditorMode, closeGroupEditor, sessionSheetOpen,
     setSessionSheetOpen,
+    resourceMultiSelectActive, resourceMultiSelectToggleRef,
   ]);
 
   return {

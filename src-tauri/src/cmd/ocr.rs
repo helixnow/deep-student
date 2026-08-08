@@ -32,20 +32,50 @@ pub fn migrate_paddle_ocr_models(models: &mut [OcrModelConfig]) -> bool {
     changed
 }
 
-/// 自动迁移：将旧版 GLM-4.1V 替换为 GLM-4.6V
+/// 自动迁移：将旧版 GLM-4.1V 替换为可用的视觉模型
 ///
-/// GLM-4.1V-9B-Thinking (9B) 是低质量模型，已被 GLM-4.6V (106B MoE) 替代。
+/// GLM-4.1V-9B-Thinking (9B) 是低质量模型。迁移目标按提供商区分：
+/// - 硅基流动（`is_siliconflow=true`）：`zai-org/GLM-4.6V` 已于 2026-08 下架，
+///   迁移到仍可用的 Qwen3-VL-8B（engine 改为 generic_vlm）；
+/// - 智谱官方（`is_zhipu_official=true`）：官方 API 模型名不带 `zai-org/` 前缀，
+///   迁移到 `glm-4.6v`；
+/// - 其他提供商：保持原模型不变（避免迁移到目标提供商不存在的模型名）。
 /// 返回 true 表示有变更需要保存。
-pub fn migrate_glm_ocr_models(models: &mut [OcrModelConfig]) -> bool {
+pub fn migrate_glm_ocr_models(
+    models: &mut [OcrModelConfig],
+    is_siliconflow: impl Fn(&str) -> bool,
+    is_zhipu_official: impl Fn(&str) -> bool,
+) -> bool {
     let mut changed = false;
     for model in models.iter_mut() {
         if model.engine_type == "glm4v_ocr" && model.model.to_lowercase().contains("glm-4.1v") {
-            model.model = "zai-org/GLM-4.6V".to_string();
-            if model.name.contains("4.1V") || model.name.contains("4.1v") {
-                model.name = model.name.replace("4.1V", "4.6V").replace("4.1v", "4.6V");
+            if is_siliconflow(&model.config_id) {
+                model.model = "Qwen/Qwen3-VL-8B-Instruct".to_string();
+                model.engine_type = "generic_vlm".to_string();
+                if model.name.contains("4.1V") || model.name.contains("4.1v") {
+                    model.name = model
+                        .name
+                        .replace("4.1V", "Qwen3-VL-8B")
+                        .replace("4.1v", "Qwen3-VL-8B");
+                }
+                changed = true;
+                println!(
+                    "[OCR] 已自动迁移 GLM-4.1V → Qwen/Qwen3-VL-8B-Instruct (硅基流动, engine: generic_vlm)"
+                );
+            } else if is_zhipu_official(&model.config_id) {
+                model.model = "glm-4.6v".to_string();
+                model.engine_type = "glm4v_ocr".to_string();
+                if model.name.contains("4.1V") || model.name.contains("4.1v") {
+                    model.name = model
+                        .name
+                        .replace("4.1V", "GLM-4.6V")
+                        .replace("4.1v", "GLM-4.6V");
+                }
+                changed = true;
+                println!("[OCR] 已自动迁移 GLM-4.1V → glm-4.6v (智谱官方, engine: glm4v_ocr)");
+            } else {
+                println!("[OCR] 跳过 GLM-4.1V 迁移（无法确定提供商，保持原模型）");
             }
-            changed = true;
-            println!("[OCR] 已自动迁移 GLM-4.1V → GLM-4.6V");
         }
     }
     changed
@@ -206,14 +236,37 @@ pub async fn get_available_ocr_models(
         if needs_save {
             println!("[OCR] 已自动迁移 PaddleOCR-VL 配置到 1.5 版本");
         }
-        if migrate_glm_ocr_models(&mut models) {
+        // 迁移前先获取 API 配置，判断各 OCR 引擎所属提供商（硅基流动已下架 GLM-4.6V，
+        // 智谱官方模型名不带 zai-org/ 前缀）
+        let api_configs_result = state.llm_manager.get_api_configs().await;
+        let is_siliconflow = |config_id: &str| -> bool {
+            match &api_configs_result {
+                Ok(configs) => configs
+                    .iter()
+                    .find(|c| c.id == config_id)
+                    .map(|c| c.base_url.to_lowercase().contains("siliconflow"))
+                    .unwrap_or(false),
+                Err(_) => false,
+            }
+        };
+        let is_zhipu_official = |config_id: &str| -> bool {
+            match &api_configs_result {
+                Ok(configs) => configs
+                    .iter()
+                    .find(|c| c.id == config_id)
+                    .map(|c| c.base_url.to_lowercase().contains("bigmodel"))
+                    .unwrap_or(false),
+                Err(_) => false,
+            }
+        };
+        if migrate_glm_ocr_models(&mut models, is_siliconflow, is_zhipu_official) {
             needs_save = true;
         }
 
         // 交叉验证：过滤掉 config_id 对应的 API 配置已被删除的孤儿引擎
         // 注意：仅在成功获取 API 配置时才执行清理，避免临时 DB 错误导致误删全部引擎
         // SystemOcr 使用合成 config_id，跳过验证
-        if let Ok(api_configs) = state.llm_manager.get_api_configs().await {
+        if let Ok(api_configs) = api_configs_result {
             let valid_config_ids: std::collections::HashSet<String> =
                 api_configs.iter().map(|c| c.id.clone()).collect();
             let before_len = models.len();
@@ -228,6 +281,28 @@ pub async fn get_available_ocr_models(
                 }
                 println!(
                     "[OCR] 已清理 {} 个孤儿 OCR 引擎（对应 API 配置已删除）",
+                    before_len - models.len()
+                );
+            }
+
+            // 2026-08: 清除已停服模型的 OCR 引擎（如硅基流动已下架的 zai-org/GLM-4.6V），
+            // 避免其留在列表中占据优先位、被自动注册重新加回、或被一键分配选中。
+            let before_len = models.len();
+            let discontinued: std::collections::HashSet<String> = api_configs
+                .iter()
+                .filter(|c| crate::llm_manager::is_discontinued_ocr_model(c))
+                .map(|c| c.id.clone())
+                .collect();
+            models.retain(|m| {
+                m.config_id == SYSTEM_OCR_CONFIG_ID || !discontinued.contains(&m.config_id)
+            });
+            if models.len() < before_len {
+                needs_save = true;
+                for (i, model) in models.iter_mut().enumerate() {
+                    model.priority = i as u32;
+                }
+                println!(
+                    "[OCR] 已清理 {} 个已停服的 OCR 引擎（对应模型已下架）",
                     before_len - models.len()
                 );
             }
@@ -472,6 +547,19 @@ pub async fn add_ocr_engine(
             .as_str()
             .to_string()
     });
+
+    // 2026-08: 拒绝添加已停服模型（如硅基流动已下架的 zai-org/GLM-4.6V）。
+    // 该 config 必须真实存在于 API 配置列表中以判断 base_url/提供商。
+    if let Ok(api_configs) = state.llm_manager.get_api_configs().await {
+        if let Some(config) = api_configs.iter().find(|c| c.id == config_id) {
+            if crate::llm_manager::is_discontinued_ocr_model(config) {
+                return Err(AppError::validation(format!(
+                    "模型 {} 已被服务商停服（硅基流动已下架 zai-org/GLM-4.6V），无法添加为 OCR 引擎",
+                    config.model
+                )));
+            }
+        }
+    }
 
     let max_priority = models.iter().map(|m| m.priority).max().unwrap_or(0);
 

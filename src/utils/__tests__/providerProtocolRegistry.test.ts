@@ -16,18 +16,23 @@ describe('providerProtocolRegistry', () => {
     expect(entry?.default_protocol).toBe('openai_responses');
   });
 
-  it('keeps DeepSeek on chat completions by default', () => {
+  it('defaults official DeepSeek to Responses since V4-Flash GA (2026-08)', () => {
+    // 2026-07-31 V4-Flash 正式版公测：官方 Responses API 已可用（仅 v4-flash 系列），
+    // 供应商默认路由切到 responses；模型级门控由 modelConverters 负责。
+    expect(getProviderProtocolRecord('deepseek')?.supports_openai_responses).toBe(true);
+    expect(getProviderProtocolRecord('deepseek')?.default_protocol).toBe('openai_responses');
+    expect(getAllowedProtocolsForProviderType('deepseek')).toContain('openai_responses');
     expect(
       resolvePreferredProtocol({
         providerType: 'deepseek',
         baseUrl: 'https://api.deepseek.com/v1',
         adapter: 'deepseek',
       }),
-    ).toBe('openai_chat_completions');
+    ).toBe('openai_responses');
   });
 
   it('no longer exposes the phantom responses protocol for providers without a responses endpoint', () => {
-    for (const provider of ['deepseek', 'zhipu', 'moonshot', 'minimax', 'mimo', 'nvidia', 'siliconflow', 'mistral']) {
+    for (const provider of ['zhipu', 'moonshot', 'minimax', 'mimo', 'nvidia', 'siliconflow', 'mistral']) {
       expect(getAllowedProtocolsForProviderType(provider)).not.toContain('openai_responses');
     }
   });

@@ -73,6 +73,8 @@ interface DataImportExportProps {
   embedded?: boolean;
   /** 显示模式：'all' 全部显示，'stats' 只显示统计，'manage' 只显示管理 */
   mode?: 'all' | 'stats' | 'manage';
+  /** ★ 移动端顶栏返回回调（回上级视图）；提供后顶栏显示返回箭头而非全局历史导航 */
+  onBack?: () => void;
 }
 
 const DataManagementContent: React.FC<{
@@ -260,7 +262,7 @@ const StatCard = ({
   );
 };
 
-export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, embedded = false, mode = 'all' }) => {
+export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, embedded = false, mode = 'all', onBack }) => {
   const { t } = useTranslation(['data', 'common']);
   const { isSmallScreen } = useBreakpoint();
 
@@ -271,6 +273,9 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   // 移动端设计哲学：页内不再渲染桌面 HeaderTemplate，导出操作收进统一顶栏
   useMobileHeader('data-management', {
     title: t('common:navigation.data_management'),
+    // ★ 顶栏统一：提供返回箭头（回聊天）而非全局历史导航的 返回+前进 双按钮
+    showBackArrow: !embedded && typeof onBack === 'function',
+    onMenuClick: () => onBack?.(),
     rightActions: (
       <DsButton
         variant="ghost"
@@ -282,7 +287,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [t]);
+  }, [t, embedded, onBack]);
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,

@@ -929,7 +929,6 @@ mod tests {
     #[test]
     fn providers_without_responses_endpoint_no_longer_allow_openai_responses() {
         for provider in [
-            "deepseek",
             "zhipu",
             "moonshot",
             "minimax",
@@ -950,6 +949,38 @@ mod tests {
                 "openai_chat_completions"
             );
         }
+    }
+
+    #[test]
+    fn official_deepseek_defaults_to_responses_while_non_flash_models_stay_on_chat() {
+        // 2026-07-31 V4-Flash 正式版公测：官方 Responses API 已开放，deepseek
+        // 供应商默认路由切到 responses；模型级门控由 effective_api_protocol_for_config
+        // 执行（仅 v4-flash 系列及 legacy 别名放行，V4-Pro/V3.x 回落 chat_completions）。
+        let allowed = provider_allowed_protocols(Some("deepseek"));
+        assert!(allowed.contains(&"openai_responses".to_string()));
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(Some("deepseek"), Some("general"), "", None),
+            "openai_responses"
+        );
+
+        let flash = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        assert!(should_use_openai_responses_for_config(&flash));
+
+        // V4-Pro 正式版发布前即使显式选中 responses 也回落到 chat_completions
+        let pro = ApiConfig {
+            model: "deepseek-v4-pro".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            ..flash.clone()
+        };
+        assert!(!should_use_openai_responses_for_config(&pro));
     }
 
     #[test]
@@ -2110,6 +2141,20 @@ impl OcrRuntimeCandidate {
     }
 }
 
+/// 已知已停止服务的 OCR/VLM 模型组合（提供商 base_url 片段 + 模型名）。
+///
+/// 停服模型请求必然失败，若仍排在候选首位，会让整个 OCR 链路在重试后失败。
+/// 2026-08：硅基流动已下架 `zai-org/GLM-4.6V`。
+///
+/// 注意：仅匹配硅基流动（base_url 含 siliconflow）+ `zai-org/` 命名空间的
+/// GLM-4.6V；智谱官方 API 的 `glm-4.6v` 不带 `zai-org/` 前缀且仍在服务，
+/// 不能误伤。
+pub(crate) fn is_discontinued_ocr_model(config: &ApiConfig) -> bool {
+    let url = config.base_url.to_lowercase();
+    let model = config.model.to_lowercase();
+    url.contains("siliconflow") && model.contains("glm-4.6v")
+}
+
 fn build_ocr_runtime_candidates(
     available: &[OcrModelConfig],
     configs: &[ApiConfig],
@@ -2143,6 +2188,12 @@ fn build_ocr_runtime_candidates(
             continue;
         };
         if !config.enabled || !config.is_multimodal {
+            continue;
+        }
+        // 跳过已知已停服的模型（如硅基流动已下架的 GLM-4.6V），避免其排在最前
+        // 白白消耗请求与重试时间后整体失败。
+        if is_discontinued_ocr_model(config) {
+            info!("[OCR] 跳过已停服模型: {} ({})", config.model, config.name);
             continue;
         }
         let effective_engine =
@@ -2865,19 +2916,64 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
         .unwrap_or_else(|| "openai_chat_completions".to_string())
 }
 
+/// DeepSeek 官方 Responses API 能力判定（2026-07-31 V4-Flash 正式版公测公告）：
+/// - 当前仅 `deepseek-v4-flash` 与 legacy 别名（`deepseek-chat`/`deepseek-reasoner`，
+///   两者映射到 flash 的非思考/思考模式）支持；
+/// - `deepseek-v4-pro` 正式版「尽快发布」，发布前走 Responses 会 404，故门控到
+///   chat_completions；其他 V3.x 系列同样不支持；
+/// - 空模型名（协议归一化路径构造的临时 config）视为可支持，避免已有配置被误降级。
+fn deepseek_model_supports_openai_responses(model: &str) -> bool {
+    let normalized = model.trim().to_lowercase();
+    if normalized.is_empty() {
+        return true;
+    }
+    normalized.contains("deepseek-v4-flash")
+        || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
+}
+
+/// 是否为 DeepSeek 官方端点（provider_type/provider_scope 为 deepseek，或
+/// base_url 指向 api.deepseek.com）。仅官方端点适用 Responses/服务端搜索门控；
+/// SiliconFlow 等第三方托管的 deepseek 模型由各自注册表条目单独裁决。
+pub(crate) fn is_official_deepseek_config(config: &ApiConfig) -> bool {
+    let provider = normalize_provider_protocol_registry_value(config.provider_type.as_deref());
+    let scope = normalize_provider_protocol_registry_value(config.provider_scope.as_deref());
+    if provider == "deepseek" || scope == "deepseek" {
+        return true;
+    }
+    normalize_base_url_for_provider_protocol_registry(&config.base_url).contains("api.deepseek.com")
+}
+
 fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
-    if let Some(protocol) = config.api_protocol.as_deref() {
+    let explicit_responses = if let Some(protocol) = config.api_protocol.as_deref() {
         let normalized = normalize_provider_protocol_registry_value(Some(protocol));
         match normalized.as_str() {
             "openai_responses" if should_honor_explicit_openai_responses_protocol(config) => {
-                return normalized;
+                Some(normalized)
             }
-            "openai_responses" => {}
+            "openai_responses" => None,
             "openai_chat_completions" | "anthropic_messages" | "google_generate_content" => {
                 return normalized;
             }
-            _ => {}
+            _ => None,
         }
+    } else {
+        None
+    };
+
+    // DeepSeek 官方 Responses API 仅对 V4-Flash 系列开放：其他官方模型（V3.x/
+    // V4-Pro 正式版发布前）即使显式选中 openai_responses 也回落到 chat_completions，
+    // 避免命中 404（2026-08 调研：Responses 端点 deepseek-v4-flash 已公测）。
+    if let Some(resolved) = explicit_responses {
+        if is_official_deepseek_config(config)
+            && !deepseek_model_supports_openai_responses(&config.model)
+        {
+            warn!(
+                "[LLM Manager] deepseek-v4-pro/V3.x 暂不支持官方 Responses API，回落到 openai_chat_completions: model={}, base_url={}",
+                config.model, config.base_url
+            );
+            return "openai_chat_completions".to_string();
+        }
+        return resolved;
     }
 
     resolve_preferred_protocol_for_provider(
@@ -2980,6 +3076,7 @@ fn normalize_model_profile_protocol_config(
     let config = ApiConfig {
         provider_type: vendor.map(|item| item.provider_type.clone()),
         base_url: vendor.map(|item| item.base_url.clone()).unwrap_or_default(),
+        model: profile.model.clone(),
         model_adapter: profile.model_adapter.clone(),
         api_protocol: Some("openai_responses".to_string()),
         supports_openai_responses: vendor.and_then(|item| item.supports_openai_responses),
@@ -3210,6 +3307,11 @@ pub trait LLMStreamHooks: Send + Sync {
     fn on_tool_call(&self, _msg: &ChatMessage) {}
     fn on_tool_result(&self, _msg: &ChatMessage) {}
     fn on_usage(&self, _usage: &serde_json::Value) {}
+    /// 🆕 2026-08: 服务端联网搜索（OpenAI Responses `web_search` 工具）状态回调。
+    /// 载荷格式：`{"id": "...", "stage": "in_progress"|"searching"|"completed",
+    /// "sources": [{"title","url","snippet"}]}`。默认空实现，chat_v2 适配器
+    /// 通过它转发 web_search 块事件并收集来源。
+    fn on_web_search(&self, _payload: &serde_json::Value) {}
     fn on_complete(&self, _final_text: &str, _reasoning: Option<&str>) {}
 }
 
@@ -5717,6 +5819,13 @@ impl LLMManager {
         // 尝试按优先级找到第一个有效的配置
         for ocr_config in &enabled_models {
             if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
+                if is_discontinued_ocr_model(config) {
+                    warn!(
+                        "[OCR] 引擎 {} 对应的模型 {} 已停服，跳过",
+                        ocr_config.engine_type, config.model
+                    );
+                    continue;
+                }
                 if config.is_multimodal {
                     debug!(
                         "[OCR] 使用引擎 {} 对应的模型配置: id={}, model={} (priority={})",
@@ -5749,6 +5858,13 @@ impl LLMManager {
             .ok_or_else(|| {
                 AppError::configuration(format!("找不到 ID 为 {} 的模型配置", model_id))
             })?;
+
+        if is_discontinued_ocr_model(&config) {
+            return Err(AppError::configuration(format!(
+                "当前配置的 OCR 模型 {} 已被服务商停服（如硅基流动已下架 zai-org/GLM-4.6V），请在设置中更换 OCR 引擎",
+                config.model
+            )));
+        }
 
         if !config.is_multimodal {
             return Err(AppError::configuration(
@@ -5921,7 +6037,30 @@ impl LLMManager {
             if let Ok(mut models) = serde_json::from_str::<Vec<OcrModelConfig>>(&json) {
                 let mut needs_save = crate::cmd::ocr::migrate_paddle_ocr_models(&mut models);
 
-                // GLM-4.1V → 4.6V 迁移：同时更新关联的 ApiConfig.model
+                // GLM-4.1V → 迁移：同时更新关联的 ApiConfig.model
+                // 硅基流动已下架 zai-org/GLM-4.6V，该提供商下迁移到 Qwen3-VL-8B；
+                // 智谱官方模型名不带 zai-org/ 前缀，迁移到 glm-4.6v。
+                let api_configs_result = self.get_api_configs().await;
+                let is_siliconflow = |config_id: &str| -> bool {
+                    match &api_configs_result {
+                        Ok(configs) => configs
+                            .iter()
+                            .find(|c| c.id == config_id)
+                            .map(|c| c.base_url.to_lowercase().contains("siliconflow"))
+                            .unwrap_or(false),
+                        Err(_) => false,
+                    }
+                };
+                let is_zhipu_official = |config_id: &str| -> bool {
+                    match &api_configs_result {
+                        Ok(configs) => configs
+                            .iter()
+                            .find(|c| c.id == config_id)
+                            .map(|c| c.base_url.to_lowercase().contains("bigmodel"))
+                            .unwrap_or(false),
+                        Err(_) => false,
+                    }
+                };
                 let glm_migrate_ids: Vec<String> = models
                     .iter()
                     .filter(|m| {
@@ -5930,25 +6069,45 @@ impl LLMManager {
                     .map(|m| m.config_id.clone())
                     .collect();
 
-                if crate::cmd::ocr::migrate_glm_ocr_models(&mut models) {
+                if crate::cmd::ocr::migrate_glm_ocr_models(
+                    &mut models,
+                    is_siliconflow,
+                    is_zhipu_official,
+                ) {
                     needs_save = true;
                     // 同步更新 ApiConfig 中的 model 字段，确保实际 API 调用也使用新模型
                     if !glm_migrate_ids.is_empty() {
-                        if let Ok(mut api_configs) = self.get_api_configs().await {
+                        if let Ok(mut api_configs) = api_configs_result {
                             let mut api_changed = false;
                             for cfg in api_configs.iter_mut() {
                                 if glm_migrate_ids.contains(&cfg.id)
                                     && cfg.model.to_lowercase().contains("glm-4.1v")
                                 {
+                                    let (new_model, new_name) =
+                                        if cfg.base_url.to_lowercase().contains("siliconflow") {
+                                            (
+                                                "Qwen/Qwen3-VL-8B-Instruct".to_string(),
+                                                cfg.name
+                                                    .replace("GLM-4.1V", "Qwen3-VL-8B")
+                                                    .replace("4.1V", "Qwen3-VL-8B"),
+                                            )
+                                        } else if cfg.base_url.to_lowercase().contains("bigmodel") {
+                                            (
+                                                "glm-4.6v".to_string(),
+                                                cfg.name
+                                                    .replace("GLM-4.1V", "GLM-4.6V")
+                                                    .replace("4.1V", "4.6V"),
+                                            )
+                                        } else {
+                                            // 无法确定提供商，保持原模型不变
+                                            continue;
+                                        };
                                     info!(
-                                        "[OCR] 同步更新 ApiConfig model: {} → zai-org/GLM-4.6V (id={})",
-                                        cfg.model, cfg.id
+                                        "[OCR] 同步更新 ApiConfig model: {} → {} (id={})",
+                                        cfg.model, new_model, cfg.id
                                     );
-                                    cfg.model = "zai-org/GLM-4.6V".to_string();
-                                    cfg.name = cfg
-                                        .name
-                                        .replace("GLM-4.1V", "GLM-4.6V")
-                                        .replace("4.1V", "4.6V");
+                                    cfg.model = new_model;
+                                    cfg.name = new_name;
                                     api_changed = true;
                                 }
                             }

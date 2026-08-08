@@ -5094,6 +5094,20 @@ mod tests {
         }
     }
 
+    /// 只应用截止到指定版本的迁移（用于模拟旧二进制停在历史版本的库）。
+    ///
+    /// v20260721 指纹恢复测试需要"库 schema 恰好等于 v20260721 规范"，
+    /// 若把后续迁移（如 V20260806 新增三列）也应用上去，实际 schema 与
+    /// 已记录的 v20260721 canonical 指纹必然漂移。
+    fn apply_chat_v2_migrations_through(conn: &rusqlite::Connection, version: i32) {
+        for migration in CHAT_V2_MIGRATIONS
+            .iter()
+            .filter(|migration| migration.refinery_version <= version)
+        {
+            conn.execute_batch(migration.sql).unwrap();
+        }
+    }
+
     fn chat_v2_migration_set_through(version: i32) -> MigrationSet {
         let migrations = CHAT_V2_MIGRATIONS
             .iter()
@@ -5689,7 +5703,7 @@ mod tests {
         let (coordinator, temp_dir) = create_test_coordinator();
         let db_path = temp_dir.path().join("chat_v2.db");
         let conn = rusqlite::Connection::open(&db_path).unwrap();
-        apply_chat_v2_migrations(&conn);
+        apply_chat_v2_migrations_through(&conn, CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION as i32);
         let prior = seed_chat_v2_prior_scope_fingerprint_for(
             &coordinator,
             &conn,
@@ -5742,7 +5756,7 @@ mod tests {
         let (coordinator, temp_dir) = create_test_coordinator();
         let db_path = temp_dir.path().join("chat_v2.db");
         let conn = rusqlite::Connection::open(&db_path).unwrap();
-        apply_chat_v2_migrations(&conn);
+        apply_chat_v2_migrations_through(&conn, CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION as i32);
         let historical = seed_chat_v2_historical_scope_fingerprint(
             &coordinator,
             &conn,

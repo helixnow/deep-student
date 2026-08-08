@@ -82,7 +82,6 @@ import {
 import { SkillsList } from './SkillsList';
 import { SkillEditorModal, type SkillFormData } from './SkillEditorModal';
 import { SkillFullscreenEditor } from './SkillFullscreenEditor';
-import './SkillFullscreenEditor.css';
 import { SkillTapBrowser } from './SkillTapBrowser';
 
 // ============================================================================

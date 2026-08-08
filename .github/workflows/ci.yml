@@ -17,7 +17,7 @@ permissions:
 # 非 release job 统一注入确定性构建号，保持默认浅 checkout 便宜。
 # （审查 F16：此前该值在 3 个文件里重复 10 处，改契约要改 10 处）
 env:
-  DEEP_STUDENT_BUILD_NUMBER: '14635'
+  DEEP_STUDENT_BUILD_NUMBER: '14636'
 
 jobs:
   # Only this contract job needs full history. Non-release jobs use the
@@ -180,6 +180,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
 
+      # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so（2026-08-06
+      # 起 Linux 版 PDF/OCR 补齐），CI 工作区未随仓库提交该二进制，必须预先下载。
+      - name: Prepare target-specific pdfium
+        run: |
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
+
       - name: Format check
         working-directory: src-tauri
         run: cargo fmt --check
@@ -221,6 +232,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+
+      - name: Prepare target-specific pdfium
+        run: |
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
 
       - name: Validate pinned provider composition
         run: |
@@ -389,6 +409,15 @@ jobs:
         with:
           tool: cargo-nextest
 
+      - name: Prepare target-specific pdfium
+        run: |
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
+
       - name: Build and archive all test binaries
         working-directory: src-tauri
         run: cargo nextest archive --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst"
@@ -501,6 +530,15 @@ jobs:
       # 生产统一迁移框架测试（src/data_governance/migration*），
       # run-migration-tests.sh 解析 cargo 汇总并强制通过数 >= --min-tests，
       # 杜绝 "0 passed; 0 failed" 假绿。
+      - name: Prepare target-specific pdfium
+        run: |
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
+
       - name: Production migration tests (non-zero count enforced)
         run: bash scripts/migration-ci/run-migration-tests.sh --min-tests 50
 

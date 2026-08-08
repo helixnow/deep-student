@@ -11,11 +11,11 @@ const projectRoot = join(__dirname, '..');
 
 // Android 的商店发布号显式固定在 tracked config 中；内部 build number
 // 只计算 nightly 基线之后从 HEAD 可达的提交，避免 --all 因 refs 不同而漂移。
-export const PUBLISHED_ANDROID_VERSION_CODE = 14633;
-export const ANDROID_VERSION_CODE = 14634;
-export const ANDROID_VERSION_BASE_APP_VERSION = '0.9.42';
-export const BUILD_NUMBER_BASE = 14633;
-export const BUILD_NUMBER_BASE_COMMIT = '4d65d159da028a3f476837a30c03b892343e00cc';
+export const PUBLISHED_ANDROID_VERSION_CODE = 14635;
+export const ANDROID_VERSION_CODE = 14636;
+export const ANDROID_VERSION_BASE_APP_VERSION = '0.9.43';
+export const BUILD_NUMBER_BASE = 14635;
+export const BUILD_NUMBER_BASE_COMMIT = '754055aaca6a8a96575256feb44b92501226f6c2';
 export const ANDROID_VERSION_CODE_MAX = 2_100_000_000;
 const SEMVER_MAJOR_STRIDE = 10_000_000;
 const SEMVER_MINOR_STRIDE = 100_000;

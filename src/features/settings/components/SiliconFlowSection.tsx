@@ -732,7 +732,9 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   // OCR 专用模型预设（支持多引擎，按优先级排列，全部默认启用）
   // 注意：这些模型会自动根据名称推断适配器类型
   // OCR-VLM（专业 OCR，快速/便宜）排在前面，通用 VLM（能力强/较贵）排在后面
-  // 普通 OCR 任务自动使用前面的快速模型；题目集导入通过 VlmGroundingService 独立选择 GLM-4.6V
+  // 普通 OCR 任务自动使用前面的快速模型；题目集导入通过 VlmGroundingService
+  // 按候选优先级选择（GLM 视觉模型已从预设移除：zai-org/GLM-4.6V 已下架，
+  // 迁移逻辑会自动跳过停服模型并切换到下一个可用候选）。
   const PRESET_OCR_MODELS = [
     { 
       model: 'PaddlePaddle/PaddleOCR-VL-1.5', 
@@ -753,13 +755,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       name: 'SiliconFlow - DeepSeek-OCR',
       engineType: 'deepseek_ocr',
       description: t('settings:siliconflow_ocr.deepseek_ocr'),
-      isFree: false,
-    },
-    {
-      model: 'zai-org/GLM-4.6V',
-      name: 'SiliconFlow - GLM-4.6V',
-      engineType: 'glm4v_ocr',
-      description: t('settings:siliconflow_ocr.glm4v_ocr'),
       isFree: false,
     },
     {
@@ -999,9 +994,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
                 priority: idx,
               };
             }),
-            // 保留用户自定义引擎（非预设的 model 且非预设的 engineType）
+            // 保留用户自定义引擎（非预设的 model 且非预设的 engineType），
+            // 但剔除已停服模型（硅基流动已下架 zai-org/GLM-4.6V；本页操作的都是
+            // 硅基流动配置，直接按模型名判断即可）
             ...existingEngines.filter(e =>
               !PRESET_OCR_MODELS.some(p => p.model === e.model || p.engineType === e.engineType)
+              && !(e.model?.toLowerCase().includes('glm-4.6v') ?? false)
             ),
           ].map((e, i) => ({ ...e, priority: i }));
 

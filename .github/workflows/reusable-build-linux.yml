@@ -130,6 +130,18 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
+      # 2026-08-06: Linux 此前完全没有打包 libpdfium.so，PDF 预览/文本提取/OCR
+      # 在 Linux 上一直不可用（老问题，随本次 OCR/pdfium 修复一并补齐）。
+      # 与 macOS/Windows 一致：构建前下载 x64 pdfium 放入 resources。
+      - name: Prepare target-specific pdfium
+        run: |
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
+
       - name: Build Tauri app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

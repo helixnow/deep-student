@@ -15,7 +15,7 @@ use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::llm_manager::{
     build_provider_adapter, normalize_nonstream_response_to_openai, LLMManager,
@@ -354,7 +354,49 @@ impl VlmGroundingService {
         image_data_url: &str,
         text_hint: Option<&str>,
     ) -> Result<VlmPageAnalysis, AppError> {
-        let config = self.get_vlm_config().await?;
+        let candidates = self.get_vlm_config_candidates().await;
+        if candidates.is_empty() {
+            return Err(AppError::configuration(
+                "未找到可用的 VLM 模型（需要 GLM-4.6V / Qwen-VL 等多模态模型），请在设置中配置",
+            ));
+        }
+
+        let mut last_error: Option<AppError> = None;
+        for config in &candidates {
+            match self
+                .analyze_single_page_with_config(config, image_data_url, text_hint)
+                .await
+            {
+                Ok(analysis) => {
+                    if last_error.is_some() {
+                        info!(
+                            "[VLM-Grounding] 切换到 {} ({}) 后成功",
+                            config.model, config.name
+                        );
+                    }
+                    return Ok(analysis);
+                }
+                Err(e) => {
+                    warn!(
+                        "[VLM-Grounding] 模型 {} ({}) 分析失败: {}，尝试下一个候选",
+                        config.model, config.name, e
+                    );
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        Err(last_error
+            .unwrap_or_else(|| AppError::configuration("所有 VLM 候选模型均失败，请检查模型配置")))
+    }
+
+    /// 使用指定配置执行单页分析（候选循环的内部实现）
+    async fn analyze_single_page_with_config(
+        &self,
+        config: &crate::llm_manager::ApiConfig,
+        image_data_url: &str,
+        text_hint: Option<&str>,
+    ) -> Result<VlmPageAnalysis, AppError> {
         let api_key = self
             .llm_manager
             .decrypt_api_key_if_needed(&config.api_key)?;
@@ -397,13 +439,13 @@ impl VlmGroundingService {
             }
         }
 
-        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
+        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(config);
 
         let mut preq = self
             .llm_manager
             .prepare_provider_request(
                 provider.as_ref(),
-                &config,
+                config,
                 &request_body,
                 Some(&api_key),
                 None,
@@ -494,7 +536,7 @@ impl VlmGroundingService {
             let resp_json: Value = serde_json::from_str(&body)
                 .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
 
-            let openai_like = normalize_nonstream_response_to_openai(&config, &resp_json)?;
+            let openai_like = normalize_nonstream_response_to_openai(config, &resp_json)?;
             let content = openai_like["choices"][0]["message"]["content"]
                 .as_str()
                 .ok_or_else(|| AppError::llm("VLM 响应格式错误：无法提取 content"))?;
@@ -524,7 +566,45 @@ impl VlmGroundingService {
         let b64 = base64::engine::general_purpose::STANDARD.encode(image_bytes);
         let data_url = format!("data:{};base64,{}", mime, b64);
 
-        let config = self.get_vlm_config().await?;
+        let candidates = self.get_vlm_config_candidates().await;
+        if candidates.is_empty() {
+            return Err(AppError::configuration(
+                "未找到可用的 VLM 模型（需要 GLM-4.6V / Qwen-VL 等多模态模型），请在设置中配置",
+            ));
+        }
+
+        let mut last_error: Option<AppError> = None;
+        for config in &candidates {
+            match self.describe_image_with_config(config, &data_url).await {
+                Ok(description) => {
+                    if last_error.is_some() {
+                        info!(
+                            "[VLM-Grounding] 图片描述切换到 {} ({}) 后成功",
+                            config.model, config.name
+                        );
+                    }
+                    return Ok(description);
+                }
+                Err(e) => {
+                    warn!(
+                        "[VLM-Grounding] 图片描述模型 {} ({}) 失败: {}，尝试下一个候选",
+                        config.model, config.name, e
+                    );
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        Err(last_error
+            .unwrap_or_else(|| AppError::configuration("所有 VLM 候选模型均失败，请检查模型配置")))
+    }
+
+    /// 使用指定配置描述单张图片（候选循环的内部实现）
+    async fn describe_image_with_config(
+        &self,
+        config: &crate::llm_manager::ApiConfig,
+        data_url: &str,
+    ) -> Result<String, AppError> {
         let api_key = self
             .llm_manager
             .decrypt_api_key_if_needed(&config.api_key)?;
@@ -573,13 +653,13 @@ impl VlmGroundingService {
             }
         }
 
-        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
+        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(config);
 
         let mut preq = self
             .llm_manager
             .prepare_provider_request(
                 provider.as_ref(),
-                &config,
+                config,
                 &request_body,
                 Some(&api_key),
                 None,
@@ -627,7 +707,7 @@ impl VlmGroundingService {
         let resp_json: Value = serde_json::from_str(&body)
             .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
 
-        let openai_like = normalize_nonstream_response_to_openai(&config, &resp_json)?;
+        let openai_like = normalize_nonstream_response_to_openai(config, &resp_json)?;
         let content = openai_like["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("");
@@ -1414,14 +1494,50 @@ impl VlmGroundingService {
     /// 5. 其他 Qwen-VL
     /// 6. GLM-4.xV 兜底（包含 Thinking/小参数等）
     /// 7. 任意多模态模型
-    pub(crate) async fn get_vlm_config(&self) -> Result<crate::llm_manager::ApiConfig, AppError> {
-        let configs = self
-            .llm_manager
-            .get_api_configs()
-            .await
-            .map_err(|e| AppError::configuration(format!("获取模型配置失败: {}", e)))?;
+    /// 获取 VLM 候选配置列表（按优先级排序，供故障切换使用）
+    ///
+    /// 与旧 `get_vlm_config` 的选择逻辑保持一致，但不再只返回第一个匹配，
+    /// 而是返回所有可用候选。调用方逐个尝试，失败时自动切换到下一个模型，
+    /// 避免单一模型（如已停服的 GLM-4.6V）失败导致整体 OCR 不可用。
+    pub(crate) async fn get_vlm_config_candidates(&self) -> Vec<crate::llm_manager::ApiConfig> {
+        let configs = self.llm_manager.get_api_configs().await.unwrap_or_default();
 
-        // ===== Tier 0: 从 OCR 引擎配置中查找 GLM-4.6V =====
+        // 黑名单：GLM-4.1V / GLM-4.0V / GLM-4V- 质量差，即使在 OCR 引擎中也跳过
+        let is_blacklisted = |model: &str| {
+            let lower = model.to_lowercase();
+            lower.contains("glm-4.1v") || lower.contains("glm-4.0v") || lower.contains("glm-4v-")
+        };
+
+        let mut result: Vec<crate::llm_manager::ApiConfig> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut push = |config: &crate::llm_manager::ApiConfig, tier: &str| {
+            if is_blacklisted(&config.model) {
+                info!(
+                    "[VLM-Grounding] 跳过黑名单模型: {} ({})",
+                    config.model, config.name
+                );
+                return;
+            }
+            if crate::llm_manager::is_discontinued_ocr_model(config) {
+                info!(
+                    "[VLM-Grounding] 跳过已停服模型: {} ({})",
+                    config.model, config.name
+                );
+                return;
+            }
+            if !config.enabled || !config.is_multimodal {
+                return;
+            }
+            if seen.insert(config.id.clone()) {
+                info!(
+                    "[VLM-Grounding] 候选 ({}): {} ({})",
+                    tier, config.model, config.name
+                );
+                result.push(config.clone());
+            }
+        };
+
+        // ===== Tier 0: 从 OCR 引擎配置中查找 GLM 视觉模型 =====
         // OCR 引擎（ocr.available_models）和普通模型列表是两套独立存储，
         // 一键分配会把 GLM-4.6V 加到 OCR 引擎但不一定在普通模型列表中。
         let ocr_models = self.llm_manager.get_available_ocr_models().await;
@@ -1432,29 +1548,9 @@ impl VlmGroundingService {
             .collect();
         ocr_glm.sort_by_key(|m| m.priority);
 
-        // 黑名单：GLM-4.1V / GLM-4.0V / GLM-4V- 质量差，即使在 OCR 引擎中也跳过
-        let is_blacklisted = |model: &str| {
-            let lower = model.to_lowercase();
-            lower.contains("glm-4.1v") || lower.contains("glm-4.0v") || lower.contains("glm-4v-")
-        };
-
         for ocr_cfg in &ocr_glm {
-            if let Some(config) = configs
-                .iter()
-                .find(|c| c.id == ocr_cfg.config_id && c.enabled)
-            {
-                if is_blacklisted(&config.model) {
-                    info!(
-                        "[VLM-Grounding] 跳过黑名单 OCR 引擎模型: {} ({})",
-                        config.model, config.name
-                    );
-                    continue;
-                }
-                info!(
-                    "[VLM-Grounding] 使用 OCR 引擎中的 VLM 模型 (Tier0-GLM): {} ({})",
-                    config.model, config.name
-                );
-                return Ok(config.clone());
+            if let Some(config) = configs.iter().find(|c| c.id == ocr_cfg.config_id) {
+                push(config, "Tier0-GLM");
             }
         }
 
@@ -1494,54 +1590,45 @@ impl VlmGroundingService {
         ];
 
         for matcher in &vlm_model_priorities {
-            if let Some(config) = configs
-                .iter()
-                .find(|c| c.enabled && c.is_multimodal && matcher(&c.model.to_lowercase()))
-            {
-                info!(
-                    "[VLM-Grounding] 使用 VLM 模型: {} ({})",
-                    config.model, config.name
-                );
-                return Ok(config.clone());
+            for config in configs.iter().filter(|c| matcher(&c.model.to_lowercase())) {
+                push(config, "name-match");
             }
         }
 
         // ===== Tier 6: OCR 引擎中的通用 VLM 模型 =====
         for ocr_cfg in &ocr_vlm {
-            if let Some(config) = configs
-                .iter()
-                .find(|c| c.id == ocr_cfg.config_id && c.enabled)
-            {
-                if is_blacklisted(&config.model) {
-                    info!(
-                        "[VLM-Grounding] 跳过黑名单 OCR 通用 VLM: {} ({})",
-                        config.model, config.name
-                    );
-                    continue;
-                }
-                info!(
-                    "[VLM-Grounding] 使用 OCR 引擎中的通用 VLM: {} ({})",
-                    config.model, config.name
-                );
-                return Ok(config.clone());
+            if let Some(config) = configs.iter().find(|c| c.id == ocr_cfg.config_id) {
+                push(config, "Tier6-OCR-VLM");
             }
         }
 
-        // ===== Tier 7: 任意多模态模型（排除黑名单） =====
-        if let Some(config) = configs
-            .iter()
-            .find(|c| c.enabled && c.is_multimodal && !is_blacklisted(&c.model))
-        {
-            info!(
-                "[VLM-Grounding] 回退使用多模态模型: {} ({})",
-                config.model, config.name
-            );
-            return Ok(config.clone());
+        // ===== Tier 7: 任意多模态模型 =====
+        for config in configs.iter() {
+            push(config, "Tier7-any-multimodal");
         }
 
-        Err(AppError::configuration(
-            "未找到可用的 VLM 模型（需要 GLM-4.6V / Qwen-VL 等多模态模型），请在设置中配置",
-        ))
+        debug!(
+            "[VLM-Grounding] VLM 候选模型: {}",
+            result
+                .iter()
+                .map(|c| format!("{}({})", c.model, c.name))
+                .collect::<Vec<_>>()
+                .join(" → ")
+        );
+
+        result
+    }
+
+    pub(crate) async fn get_vlm_config(&self) -> Result<crate::llm_manager::ApiConfig, AppError> {
+        self.get_vlm_config_candidates()
+            .await
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                AppError::configuration(
+                    "未找到可用的 VLM 模型（需要 GLM-4.6V / Qwen-VL 等多模态模型），请在设置中配置",
+                )
+            })
     }
 
     /// 按归一化坐标从页面图片中裁切配图区域

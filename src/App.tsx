@@ -2463,14 +2463,14 @@ function App() {
   // data-management: 依赖仅在导入对话框打开/语言切换时变化
   const dataManagementContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <LazyDataImportExport />
+      <LazyDataImportExport onBack={() => setCurrentView('chat-v2')} />
       <LazyImportConversationDialog
         open={showImportConversation}
         onOpenChange={setShowImportConversation}
         onImportSuccess={handleImportConversationSuccess}
       />
     </Suspense>
-  ), [showImportConversation, handleImportConversationSuccess]);
+  ), [showImportConversation, handleImportConversationSuccess, setCurrentView]);
 
   // 🚀 使用抽取的 ViewLayerRenderer 组件
   const renderViewLayer = (

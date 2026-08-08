@@ -43,6 +43,10 @@ pub enum StreamEvent {
     /// 在工具调用场景下，需要缓存此签名并在后续请求中回传
     ThoughtSignature(String),
     ToolCall(Value),
+    /// 🆕 2026-08: 服务端联网搜索状态（OpenAI Responses `web_search` 工具）。
+    /// 载荷：`{"id","stage":"in_progress"|"searching"|"completed",
+    /// "sources":[{"title","url","snippet"}]}`。sources 仅在 completed 阶段携带。
+    WebSearchCall(Value),
     Usage(Value),
     SafetyBlocked(Value),
     Done,
@@ -572,6 +576,14 @@ pub struct OpenAIResponsesAdapter {
     /// Tool calls can be repeated by `response.function_call_arguments.done`,
     /// `response.output_item.done`, and the terminal response fallback.
     emitted_tool_call_ids: Mutex<HashSet<String>>,
+    /// Server-side web search calls can be reported by `response.web_search_call.*`
+    /// events, `response.output_item.done`, and the terminal response fallback.
+    /// Deduplicate by item/call id so the UI renders a single search block.
+    emitted_web_search_ids: Mutex<HashSet<String>>,
+    /// Ids of web_search_call items already emitted at `completed` stage with
+    /// sources. A source-less completed event may be upgraded by the terminal
+    /// response fallback that extracts annotations from the final message.
+    emitted_web_search_with_sources_ids: Mutex<HashSet<String>>,
 }
 
 impl Default for OpenAIResponsesAdapter {
@@ -593,6 +605,7 @@ impl OpenAIResponsesAdapter {
             || host.ends_with(".maas.aliyuncs.com")
             || host == "qianfan.baidubce.com"
             || host.ends_with(".volces.com")
+            || host == "api.deepseek.com"
     }
 
     pub fn new() -> Self {
@@ -603,6 +616,8 @@ impl OpenAIResponsesAdapter {
             emitted_reasoning: std::sync::atomic::AtomicBool::new(false),
             saw_reasoning_item: std::sync::atomic::AtomicBool::new(false),
             emitted_tool_call_ids: Mutex::new(HashSet::new()),
+            emitted_web_search_ids: Mutex::new(HashSet::new()),
+            emitted_web_search_with_sources_ids: Mutex::new(HashSet::new()),
         }
     }
 
@@ -902,6 +917,186 @@ impl OpenAIResponsesAdapter {
         if let Some(output) = response.get("output").and_then(Value::as_array) {
             for (index, item) in output.iter().enumerate() {
                 self.emit_response_tool_call(item, index as i64, events);
+            }
+        }
+    }
+
+    /// 从 web_search_call item / 事件载荷中提取来源列表。
+    /// 兼容两种返回形态：
+    /// - item 自带 `search_results: [{url,title,text|snippet}]`
+    /// - 随 assistant message 返回的 `annotations: [{type:"url_citation",url,title}]`
+    fn extract_web_search_sources(item: &Value) -> Vec<Value> {
+        let mut sources: Vec<Value> = Vec::new();
+        let results = item
+            .get("search_results")
+            .or_else(|| item.get("web_search_sources"))
+            .and_then(Value::as_array);
+        if let Some(results) = results {
+            for result in results {
+                let url = result
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if url.is_empty() {
+                    continue;
+                }
+                let title = result
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let snippet = result
+                    .get("text")
+                    .or_else(|| result.get("snippet"))
+                    .or_else(|| result.get("description"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                sources.push(json!({
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet,
+                }));
+            }
+        }
+        if let Some(content) = item.get("content").and_then(Value::as_array) {
+            for part in content {
+                if let Some(annotations) = part.get("annotations").and_then(Value::as_array) {
+                    for annotation in annotations {
+                        let annotation_type =
+                            annotation.get("type").and_then(Value::as_str).unwrap_or("");
+                        if annotation_type != "url_citation" {
+                            continue;
+                        }
+                        let url = annotation
+                            .get("url")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default();
+                        if url.is_empty() {
+                            continue;
+                        }
+                        let title = annotation
+                            .get("title")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
+                        let snippet = annotation
+                            .get("title")
+                            .or_else(|| annotation.get("snippet"))
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
+                        if sources
+                            .iter()
+                            .any(|existing| existing.get("url") == Some(&json!(url)))
+                        {
+                            continue;
+                        }
+                        sources.push(json!({
+                            "title": title,
+                            "url": url,
+                            "snippet": snippet,
+                        }));
+                    }
+                }
+            }
+        }
+        sources
+    }
+
+    /// 组装 web_search_call 载荷并去重发射。
+    fn emit_web_search_item(&self, item: &Value, stage: &str, events: &mut Vec<StreamEvent>) {
+        let id = item
+            .get("id")
+            .or_else(|| item.get("call_id"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let sources = item
+            .get("sources")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_else(|| Self::extract_web_search_sources(item));
+        let has_sources = !sources.is_empty();
+
+        if stage == "completed" {
+            let already_emitted = match self.emitted_web_search_ids.lock() {
+                Ok(mut seen) => !seen.insert(id.clone()),
+                Err(_) => false,
+            };
+            // 终端响应兜底可能携带流式事件缺失的来源：已发射过「带来源」的
+            // completed 才整体跳过；无来源的 completed 允许被终端兜底升级。
+            if already_emitted && self.emitted_web_search_with_sources(id.as_str()) {
+                return;
+            }
+            if has_sources {
+                self.mark_web_search_with_sources(id.as_str());
+            }
+        } else {
+            let _ = self
+                .emitted_web_search_ids
+                .lock()
+                .map(|mut seen| seen.insert(id.clone()));
+        }
+
+        let mut payload = json!({
+            "id": id,
+            "stage": stage,
+        });
+        if stage == "completed" {
+            payload["sources"] = json!(sources);
+        }
+        events.push(StreamEvent::WebSearchCall(payload));
+    }
+
+    fn emitted_web_search_with_sources(&self, id: &str) -> bool {
+        self.emitted_web_search_with_sources_ids
+            .lock()
+            .map(|set| set.contains(id))
+            .unwrap_or(false)
+    }
+
+    fn mark_web_search_with_sources(&self, id: &str) {
+        let _ = self
+            .emitted_web_search_with_sources_ids
+            .lock()
+            .map(|mut set| set.insert(id.to_string()));
+    }
+
+    /// 终端响应兜底：从 `response.output` 提取 web_search_call 条目
+    /// （含 search_results），并收集消息 annotations 中缺失的来源。
+    fn emit_web_search_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
+        let mut fallback_sources: Vec<Value> = Vec::new();
+        if let Some(output) = response.get("output").and_then(Value::as_array) {
+            for item in output {
+                let item_type = item.get("type").and_then(Value::as_str).unwrap_or("");
+                if item_type == "web_search_call" {
+                    let stage = item
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("completed");
+                    self.emit_web_search_item(item, stage, events);
+                    fallback_sources.extend(Self::extract_web_search_sources(item));
+                }
+            }
+        }
+        // 部分实现把搜索结果只放在 message 的 annotations 里：若 output 中
+        // 没有任何带 search_results 的 web_search_call 条目，则从 annotations
+        // 兜底汇总为一个 completed 载荷。
+        if fallback_sources.is_empty() {
+            if let Some(output) = response.get("output").and_then(Value::as_array) {
+                for item in output {
+                    if item.get("type").and_then(Value::as_str) == Some("message") {
+                        fallback_sources.extend(Self::extract_web_search_sources(item));
+                    }
+                }
+            }
+            if !fallback_sources.is_empty() {
+                self.emit_web_search_item(
+                    &json!({ "id": "resp_web_search", "sources": fallback_sources }),
+                    "completed",
+                    events,
+                );
             }
         }
     }
@@ -1375,7 +1570,35 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                         .or_else(|| item.get("index").and_then(Value::as_i64))
                         .unwrap_or(0);
                     self.emit_response_tool_call(item, output_index, &mut events);
+                    if item.get("type").and_then(Value::as_str) == Some("web_search_call") {
+                        // 以 item 自身状态为准：output_item.done 时搜索可能仍在进行
+                        let stage = item
+                            .get("status")
+                            .and_then(Value::as_str)
+                            .unwrap_or("completed");
+                        self.emit_web_search_item(item, stage, &mut events);
+                    }
                 }
+            }
+            // 服务端联网搜索状态事件（DeepSeek Responses web_search 工具）
+            "response.web_search_call.in_progress" | "response.web_search_call.searching" => {
+                let stage = parsed
+                    .get("stage")
+                    .and_then(Value::as_str)
+                    .unwrap_or("searching");
+                let id = parsed
+                    .get("call_id")
+                    .or_else(|| parsed.get("item_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                events.push(StreamEvent::WebSearchCall(json!({
+                    "id": id,
+                    "stage": stage,
+                })));
+            }
+            "response.web_search_call.completed" => {
+                let item = parsed.get("item").unwrap_or(&parsed);
+                self.emit_web_search_item(item, "completed", &mut events);
             }
             "response.function_call_arguments.done" | "response.function_call.arguments.done" => {
                 let name = parsed.get("name").and_then(|v| v.as_str());
@@ -1432,6 +1655,7 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 // stream consumers retain their established event ordering.
                 self.emit_reasoning_items_from_response(response, &mut events);
                 self.emit_tool_calls_from_response(response, &mut events);
+                self.emit_web_search_from_response(response, &mut events);
                 events.push(StreamEvent::Done);
             }
             "response.incomplete" | "response.cancelled" | "response.canceled" => {
@@ -1450,6 +1674,7 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                         }
                     }
                     self.emit_reasoning_items_from_response(response, &mut events);
+                    self.emit_web_search_from_response(response, &mut events);
                     if let Some(usage) = response.get("usage") {
                         events.push(StreamEvent::Usage(usage.clone()));
                     }
@@ -3930,6 +4155,132 @@ mod tests {
         assert_eq!(tool_calls[0]["index"], json!(1));
         assert_eq!(tool_calls[0]["id"], json!("call_2"));
         assert!(matches!(terminal.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_responses_adapter_emits_server_side_web_search_progress_events() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let events = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.searching","call_id":"ws_1"}"#,
+        );
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["id"] == json!("ws_1") && payload["stage"] == json!("searching")
+                    && payload.get("sources").is_none()
+        ));
+
+        let completed = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.completed","item":{"id":"ws_1","status":"completed","search_results":[{"url":"https://example.com/a","title":"Alpha"},{"url":"https://example.com/b","title":"Beta","text":"beta snippet"}]}}"#,
+        );
+        assert!(matches!(
+            completed.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["id"] == json!("ws_1")
+                    && payload["stage"] == json!("completed")
+                    && payload["sources"][0]["title"] == json!("Alpha")
+                    && payload["sources"][1]["snippet"] == json!("beta snippet")
+        ));
+    }
+
+    #[test]
+    fn openai_responses_adapter_extracts_web_search_from_output_item_done() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let events = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","output_index":1,"item":{"type":"web_search_call","id":"ws_2","status":"completed","search_results":[{"url":"https://example.com/2","title":"Second"}]}}"#,
+        );
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["id"] == json!("ws_2")
+                    && payload["stage"] == json!("completed")
+                    && payload["sources"][0]["url"] == json!("https://example.com/2")
+        ));
+    }
+
+    #[test]
+    fn openai_responses_adapter_terminal_fallback_extracts_annotations_without_duplicating() {
+        let adapter = OpenAIResponsesAdapter::new();
+
+        // 流式阶段：completed 事件已带 search_results
+        let streamed = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.completed","item":{"id":"ws_3","status":"completed","search_results":[{"url":"https://example.com/1","title":"One"}]}}"#,
+        );
+        assert_eq!(
+            streamed
+                .iter()
+                .filter(|event| matches!(event, StreamEvent::WebSearchCall(_)))
+                .count(),
+            1
+        );
+
+        // 终端响应：同一 id 不再重复发射（seen with sources）
+        let terminal = adapter.parse_stream(
+            r#"data: {"type":"response.completed","response":{"id":"r1","output":[{"type":"web_search_call","id":"ws_3","status":"completed","search_results":[{"url":"https://example.com/1","title":"One"}]},{"type":"message","content":[{"type":"output_text","text":"answer","annotations":[{"type":"url_citation","url":"https://example.com/1","title":"One"}]}]}]}}"#,
+        );
+        assert!(!terminal
+            .iter()
+            .any(|event| matches!(event, StreamEvent::WebSearchCall(_))));
+        assert!(matches!(terminal.last(), Some(StreamEvent::Done)));
+
+        // 流式阶段无来源（仅 annotations 形态）：终端兜底补发来源
+        let only_annotations = adapter.parse_stream(
+            r#"data: {"type":"response.completed","response":{"id":"r2","output":[{"type":"message","content":[{"type":"output_text","text":"answer","annotations":[{"type":"url_citation","url":"https://example.com/9","title":"Nine"}]}]}]}}"#,
+        );
+        assert!(matches!(
+            only_annotations.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["stage"] == json!("completed")
+                    && payload["sources"][0]["url"] == json!("https://example.com/9")
+        ));
+    }
+
+    #[test]
+    fn deepseek_official_host_preserves_thinking_extensions() {
+        assert!(
+            OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
+                "https://api.deepseek.com/v1"
+            )
+        );
+        assert!(
+            !OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
+                "https://siliconflow.cn/v1"
+            )
+        );
+        assert!(
+            !OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
+                "https://api.openai.com/v1"
+            )
+        );
+    }
+
+    #[test]
+    fn openai_responses_adapter_accepts_deepseek_web_search_sources_shape() {
+        let adapter = OpenAIResponsesAdapter::new();
+        // DeepSeek 可能的 `web_search_sources` 字段形态与 `status` 非 completed 的
+        // output_item.done（阶段应以 item 自身状态为准）
+        let events = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_ds","status":"in_progress","web_search_sources":[{"url":"https://example.com/ds","title":"DeepSeek Source"}]}}"#,
+        );
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["id"] == json!("ws_ds")
+                    && payload["stage"] == json!("in_progress")
+                    && payload.get("sources").is_none()
+        ));
+
+        // completed 时同样识别 web_search_sources 形态
+        let completed = adapter.parse_stream(
+            r#"data: {"type":"response.web_search_call.completed","item":{"id":"ws_ds","status":"completed","web_search_sources":[{"url":"https://example.com/ds","title":"DeepSeek Source","text":"desc"}]}}"#,
+        );
+        assert!(matches!(
+            completed.first(),
+            Some(StreamEvent::WebSearchCall(payload))
+                if payload["stage"] == json!("completed")
+                    && payload["sources"][0]["title"] == json!("DeepSeek Source")
+                    && payload["sources"][0]["snippet"] == json!("desc")
+        ));
     }
 
     #[test]

@@ -26,8 +26,8 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{
-    build_provider_adapter, normalize_nonstream_response_to_openai, parser,
-    request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
+    build_provider_adapter, is_official_deepseek_config, normalize_nonstream_response_to_openai,
+    parser, request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
     ImagePayload, LLMManager, MergedChatMessage, Result, AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 
@@ -369,6 +369,86 @@ fn is_qwen_config(config: &ApiConfig) -> bool {
         .map(|value| value.eq_ignore_ascii_case("qwen"))
         .unwrap_or(false)
         || config.model_adapter.eq_ignore_ascii_case("qwen")
+}
+
+/// 是否为 function 类型的 web_search 工具定义（本地执行路径，前端注入的
+/// `{"type":"function","function":{"name":"web_search",...}}` 或扁平格式）。
+#[inline]
+fn is_web_search_function_tool(tool: &Value) -> bool {
+    let name = tool
+        .get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(Value::as_str)
+        .or_else(|| tool.get("name").and_then(Value::as_str))
+        .unwrap_or_default();
+    name.trim().trim_start_matches("builtin-") == "web_search"
+}
+
+/// DeepSeek 官方 + Responses 协议下启用服务端联网搜索：
+/// - 协议必须是 openai_responses（`{"type":"web_search"}` 仅 Responses 支持）
+/// - 必须是官方 DeepSeek 端点（模型级门控已在上游保证 v4-flash 系列）
+/// - 模型支持工具
+/// - 会话未显式关闭 web 搜索（chat_v2 的 `web_search_enabled` 开关）
+///
+/// 启用后本地 function 版 web_search 会被替换为服务端原生工具，避免双重搜索。
+#[inline]
+fn server_side_web_search_enabled(
+    config: &ApiConfig,
+    llm_context: &HashMap<String, Value>,
+) -> bool {
+    if !config.supports_tools || !should_use_openai_responses_for_config(config) {
+        return false;
+    }
+    if !is_official_deepseek_config(config) {
+        return false;
+    }
+    if llm_context
+        .get("web_search_enabled")
+        .and_then(|v| v.as_bool())
+        == Some(false)
+    {
+        return false;
+    }
+    true
+}
+
+/// 向请求 tools 数组注入服务端 web_search 原生工具，并移除本地 function 版本。
+#[inline]
+fn apply_server_side_web_search_tool(tools: &mut Vec<Value>) {
+    tools.retain(|tool| !is_web_search_function_tool(tool));
+    if !tools
+        .iter()
+        .any(|tool| tool.get("type").and_then(Value::as_str) == Some("web_search"))
+    {
+        tools.push(json!({ "type": "web_search" }));
+    }
+}
+
+/// 把服务端 web_search 载荷转换为前端检索块格式的编号来源列表
+/// （与 builtin_retrieval_executor::execute_web 的 emit_end 载荷对齐）。
+#[inline]
+fn numbered_web_search_sources(payload: &Value) -> Value {
+    let sources = payload
+        .get("sources")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let numbered: Vec<Value> = sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| {
+            json!({
+                "index": index + 1,
+                "citationTag": format!("[搜索-{}]", index + 1),
+                "typeIndex": index + 1,
+                "title": source.get("title").cloned().unwrap_or(Value::Null),
+                "url": source.get("url").cloned().unwrap_or(Value::Null),
+                "snippet": source.get("snippet").cloned().unwrap_or(Value::Null),
+                "source_type": "web_search",
+            })
+        })
+        .collect();
+    Value::Array(numbered)
 }
 
 #[inline]
@@ -1193,6 +1273,174 @@ mod tests {
         };
 
         assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_official_deepseek_v4_flash_defaults_to_responses() {
+        for model in ["deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"] {
+            let config = ApiConfig {
+                model_adapter: "deepseek".to_string(),
+                provider_type: Some("deepseek".to_string()),
+                base_url: "https://api.deepseek.com/v1".to_string(),
+                model: model.to_string(),
+                supports_reasoning: true,
+                is_reasoning: true,
+                ..Default::default()
+            };
+
+            assert!(
+                should_use_openai_responses_for_config(&config),
+                "model={model} should default to Responses"
+            );
+            assert!(build_provider_adapter(&config).requires_explicit_stream_completion());
+        }
+    }
+
+    #[test]
+    fn test_official_deepseek_v4_pro_and_v3_stay_on_chat_completions_even_with_explicit_responses()
+    {
+        for model in ["deepseek-v4-pro", "deepseek-v3.2", "deepseek-v3.1"] {
+            let config = ApiConfig {
+                model_adapter: "deepseek".to_string(),
+                provider_type: Some("deepseek".to_string()),
+                api_protocol: Some("openai_responses".to_string()),
+                base_url: "https://api.deepseek.com/v1".to_string(),
+                model: model.to_string(),
+                supports_reasoning: true,
+                is_reasoning: true,
+                ..Default::default()
+            };
+
+            assert!(
+                !should_use_openai_responses_for_config(&config),
+                "model={model} must stay on chat completions"
+            );
+            // 传输端点必须落在 /chat/completions（而不是 /responses）
+            let request = build_provider_adapter(&config)
+                .build_request(
+                    &config.base_url,
+                    "test-key",
+                    &config.model,
+                    &json!({"messages": []}),
+                )
+                .expect("request should build");
+            assert!(
+                request.url.contains("/chat/completions"),
+                "model={model} request url: {}",
+                request.url
+            );
+        }
+    }
+
+    #[test]
+    fn test_third_party_deepseek_v4_flash_hosting_keeps_registry_default() {
+        // SiliconFlow 等第三方托管的 deepseek-v4-flash 无 Responses 端点，
+        // 即使模型名可支持也不应切到 Responses。
+        let config = ApiConfig {
+            model_adapter: "deepseek".to_string(),
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("siliconflow".to_string()),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            model: "deepseek-ai/DeepSeek-V4-Flash".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+
+        assert!(!should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn server_side_web_search_injection_only_for_official_deepseek_responses() {
+        let base = ApiConfig {
+            model_adapter: "deepseek".to_string(),
+            provider_type: Some("deepseek".to_string()),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            supports_tools: true,
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        let enabled_context: HashMap<String, Value> = HashMap::new();
+
+        assert!(server_side_web_search_enabled(&base, &enabled_context));
+
+        // 会话显式关闭 web 搜索 → 不注入
+        let mut disabled_context = enabled_context.clone();
+        disabled_context.insert("web_search_enabled".to_string(), json!(false));
+        assert!(!server_side_web_search_enabled(&base, &disabled_context));
+
+        // chat completions 协议 → 不注入
+        let mut chat_config = base.clone();
+        chat_config.api_protocol = Some("openai_chat_completions".to_string());
+        assert!(!server_side_web_search_enabled(
+            &chat_config,
+            &enabled_context
+        ));
+
+        // 非官方托管（SiliconFlow）→ 不注入
+        let mut third_party = base.clone();
+        third_party.provider_type = Some("siliconflow".to_string());
+        third_party.provider_scope = Some("siliconflow".to_string());
+        third_party.base_url = "https://api.siliconflow.cn/v1".to_string();
+        assert!(!server_side_web_search_enabled(
+            &third_party,
+            &enabled_context
+        ));
+
+        // 模型不支持工具 → 不注入
+        let mut no_tools = base.clone();
+        no_tools.supports_tools = false;
+        assert!(!server_side_web_search_enabled(&no_tools, &enabled_context));
+    }
+
+    #[test]
+    fn server_side_web_search_tool_replaces_local_function_tool() {
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "web_search", "parameters": {} } }),
+            json!({ "type": "function", "function": { "name": "builtin-web_search", "parameters": {} } }),
+            json!({ "type": "function", "function": { "name": "rag_search", "parameters": {} } }),
+        ];
+        apply_server_side_web_search_tool(&mut tools);
+
+        let types: Vec<&str> = tools
+            .iter()
+            .map(|tool| tool["type"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(types, vec!["function", "web_search"]);
+        assert_eq!(tools[1], json!({ "type": "web_search" }));
+        assert_eq!(tools[0]["function"]["name"], json!("rag_search"));
+
+        // 幂等：已有原生工具时不重复追加
+        apply_server_side_web_search_tool(&mut tools);
+        assert_eq!(
+            tools
+                .iter()
+                .filter(|tool| tool.get("type").and_then(Value::as_str) == Some("web_search"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn numbered_web_search_sources_aligns_with_retrieval_block_schema() {
+        let payload = json!({
+            "id": "ws_1",
+            "stage": "completed",
+            "sources": [
+                { "title": "Alpha", "url": "https://a.example.com", "snippet": "snippet A" },
+                { "title": "Beta", "url": "https://b.example.com" }
+            ]
+        });
+        let numbered = numbered_web_search_sources(&payload);
+        assert_eq!(numbered[0]["index"], json!(1));
+        assert_eq!(numbered[0]["citationTag"], json!("[搜索-1]"));
+        assert_eq!(numbered[0]["typeIndex"], json!(1));
+        assert_eq!(numbered[0]["source_type"], json!("web_search"));
+        assert_eq!(numbered[0]["url"], json!("https://a.example.com"));
+        assert_eq!(numbered[1]["index"], json!(2));
+        assert_eq!(numbered[1]["citationTag"], json!("[搜索-2]"));
     }
 
     #[test]
@@ -2848,7 +3096,13 @@ impl LLMManager {
 
         if has_custom_tools && config.supports_tools {
             // 使用自定义工具（Pipeline 接管执行，但需要 LLM 知道工具 schema）
-            let tools = Value::Array(custom_tools.unwrap_or_default());
+            let mut tools = custom_tools.unwrap_or_default();
+            // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
+            if server_side_web_search_enabled(&config, context) {
+                apply_server_side_web_search_tool(&mut tools);
+                debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses）");
+            }
+            let tools = Value::Array(tools);
             debug!(
                 "[LLM] 使用 context 注入的自定义工具，数量: {}",
                 tools.as_array().map(|a| a.len()).unwrap_or(0)
@@ -2864,7 +3118,14 @@ impl LLMManager {
             }
         } else if !disable_tools && tools_enabled && config.supports_tools {
             // 构建工具列表，包含本地工具和 MCP 工具
-            let tools = self.build_tools_with_mcp(&window).await;
+            let mut tools = self.build_tools_with_mcp(&window).await;
+            // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
+            if server_side_web_search_enabled(&config, context) {
+                if let Some(tools_array) = tools.as_array_mut() {
+                    apply_server_side_web_search_tool(tools_array);
+                    debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses, legacy 路径）");
+                }
+            }
 
             // 只有在工具列表非空时才设置 tools 和 tool_choice
             if tools.as_array().map(|arr| !arr.is_empty()).unwrap_or(false) {
@@ -3075,6 +3336,29 @@ impl LLMManager {
         request_bytes = serde_json::to_string(&request_body)
             .unwrap_or_default()
             .len();
+
+        // 🔧 Prompt-cache 分叉点定位（G7）：CHAT_V2_CACHE_DEBUG=1 时记录
+        // messages 指纹。相邻两次请求若指纹相同则前缀未变（应高命中）；
+        // 指纹不同则按消息条数/长度逐段 diff 定位"第一个分叉点"——分叉点
+        // 之前是缓存命中区，之后全部 miss（下游测量法 §三.2）。
+        if std::env::var("CHAT_V2_CACHE_DEBUG")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+        {
+            use sha2::{Digest, Sha256};
+            if let Some(messages_json) = request_body.get("messages") {
+                let mut hasher = Sha256::new();
+                if let Ok(serialized) = serde_json::to_string(messages_json) {
+                    hasher.update(serialized.as_bytes());
+                    debug!(
+                        "[PromptCache] request fingerprint: model={}, messages={}, sha256={}",
+                        config.model,
+                        messages.len(),
+                        format!("{:x}", hasher.finalize())
+                    );
+                }
+            }
+        }
 
         // 简化：不再在此处估算输入token
 
@@ -3869,6 +4153,29 @@ impl LLMManager {
                                     }
                                     if let Some(h) = self.get_hook(stream_event).await {
                                         h.on_usage(&usage_value);
+                                    }
+                                }
+                                crate::providers::StreamEvent::WebSearchCall(payload) => {
+                                    // 🆕 服务端联网搜索（DeepSeek Responses web_search 工具）：
+                                    // - 转发给 hook（chat_v2 适配器 → web_search 块事件 + 来源收集）
+                                    // - 同时发射 legacy 兼容事件 {stream_event}_web_search
+                                    if let Some(h) = self.get_hook(stream_event).await {
+                                        h.on_web_search(&payload);
+                                    }
+                                    let stage = payload
+                                        .get("stage")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("completed");
+                                    let search_payload = json!({
+                                        "sources": numbered_web_search_sources(&payload),
+                                        "stage": stage,
+                                        "tool_name": "web_search",
+                                    });
+                                    if let Err(e) = window.emit(
+                                        &format!("{}_web_search", stream_event),
+                                        &search_payload,
+                                    ) {
+                                        warn!("发送服务端 web_search 事件失败: {}", e);
                                     }
                                 }
                                 crate::providers::StreamEvent::SafetyBlocked(safety_info) => {

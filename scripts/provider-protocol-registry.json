@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-07-20",
+  "updated_at": "2026-08-06",
   "purpose": "统一维护供应商协议能力、默认协议与 OpenAI-compatible Responses 支持声明，供前后端共享路由决策。supports_openai_responses=true 仅解锁可选协议，默认路由由 default_protocol 决定。后端已按 effective_api_protocol 选择传输适配器；但同一供应商不同协议若使用不同根路径，仍需用户配置对应 Base URL。",
   "providers": [
     {
@@ -50,12 +50,13 @@
     {
       "provider_type": "deepseek",
       "allowed_protocols": [
-        "openai_chat_completions"
+        "openai_chat_completions",
+        "openai_responses"
       ],
-      "default_protocol": "openai_chat_completions",
+      "default_protocol": "openai_responses",
       "official": true,
-      "supports_openai_responses": false,
-      "notes": "无 OpenAI Responses 端点（2026-07 调研 07），已从 allowed_protocols 移除以避免用户选中即 404。官方 Anthropic 端点 api.deepseek.com/anthropic 暂不声明，见顶部 purpose 遗留说明。"
+      "supports_openai_responses": true,
+      "notes": "官方 Responses API 已于 2026-07-31 随 V4-Flash 正式版公测（base_url 不变，见 api-docs.deepseek.com/guides/responses_api），当前仅 deepseek-v4-flash 及 legacy 别名（deepseek-chat/deepseek-reasoner，映射到 flash）支持，V4-Pro 正式版发布后开放。模型级门控由后端 effective_api_protocol_for_config 与前端 modelConverters 共同执行：非 flash 系列默认回落 chat_completions，避免 404。服务端 web_search 工具（{'type':'web_search'}）仅在 Responses 协议下可用。官方 Anthropic 端点 api.deepseek.com/anthropic 暂不声明，见顶部 purpose 遗留说明。"
     },
     {
       "provider_type": "siliconflow",

@@ -166,9 +166,20 @@ test('fetch-fixtures.sh require mode fails closed without secrets', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-'));
   const res = spawnSync(
     'bash',
-    [join(toolsDir, 'fetch-fixtures.sh'), '--tier', 'full', '--dest', dir, '--mode', 'require'],
+    [join(toolsDir, 'fetch-fixtures.sh'), '--tier', 'scale', '--dest', dir, '--mode', 'require'],
     { env: { ...process.env, MIGRATION_FIXTURE_URL: '', GITHUB_OUTPUT: '' }, encoding: 'utf8' }
   );
   assert.notEqual(res.status, 0);
   assert.match(String(res.stderr), /fail-closed/);
+});
+
+test('fetch-fixtures.sh require mode falls back to checked-in fixtures when present', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fx-'));
+  const res = spawnSync(
+    'bash',
+    [join(toolsDir, 'fetch-fixtures.sh'), '--tier', 'full', '--dest', dir, '--mode', 'require'],
+    { env: { ...process.env, MIGRATION_FIXTURE_URL: '', GITHUB_OUTPUT: '' }, encoding: 'utf8' }
+  );
+  assert.equal(res.status, 0);
+  assert.match(String(res.stdout), /fixtures_available=true/);
 });

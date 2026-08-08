@@ -138,6 +138,10 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   // 移动端设计哲学：页内不再放返回/导出按钮，操作统一收进顶栏
   useMobileHeader('dashboard', {
     title: tCommon('navigation.dashboard', '总览'),
+    // ★ 顶栏统一：与设置/学习资源等子页一致，显示返回箭头（回聊天），
+    // 而不是全局历史导航的 返回+前进 双按钮
+    showBackArrow: !embedded && typeof onBack === 'function',
+    onMenuClick: () => onBack?.(),
     rightActions: (
       <DsButton
         variant="ghost"
@@ -150,7 +154,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [tCommon, t]);
+  }, [tCommon, t, embedded, onBack]);
 
   // 导出数据
   const exportData = useCallback(async () => {
@@ -568,7 +572,8 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           }
 
           .sota-content {
-            padding: 16px;
+            /* 底部预留安全区，避免内容被系统手势条/底部指示条遮挡 */
+            padding: 16px 16px calc(16px + var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
           }
 
           .sota-stats-grid {

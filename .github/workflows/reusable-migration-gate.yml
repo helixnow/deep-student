@@ -92,6 +92,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
 
+      # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so，
+      # 与 ci.yml 的 ubuntu cargo job 保持一致，预先下载。
+      - name: Prepare target-specific pdfium
+        run: |
+          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
+            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+          else
+            bash scripts/download-pdfium.sh linux-x64
+          fi
+          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
+
       # 生产统一迁移框架测试（src/data_governance/migration*），
       # run-migration-tests.sh 解析 cargo 汇总并强制通过数 >= --min-tests，
       # 杜绝 "0 passed; 0 failed" 假绿。

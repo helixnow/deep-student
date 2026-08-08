@@ -165,6 +165,12 @@ pub struct ChatV2LLMAdapter {
     args_delta_buffer: std::sync::Mutex<HashMap<String, String>>,
     /// 🔧 F2 修复：最近一次收到流式数据的时刻（用于空闲超时判定）
     last_activity_at: std::sync::Mutex<std::time::Instant>,
+    /// 🆕 2026-08: 服务端联网搜索（DeepSeek Responses web_search 工具）块 ID
+    web_search_block_id: std::sync::Mutex<Option<String>>,
+    /// 🆕 服务端搜索开始时刻（用于 end 事件 durationMs）
+    web_search_started_at: std::sync::Mutex<Option<std::time::Instant>>,
+    /// 🆕 服务端搜索收集到的来源（供 pipeline 持久化检索块）
+    cached_web_search_sources: std::sync::Mutex<Option<Vec<SourceInfo>>>,
 }
 
 impl ChatV2LLMAdapter {
@@ -196,6 +202,9 @@ impl ChatV2LLMAdapter {
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
             args_delta_buffer: std::sync::Mutex::new(HashMap::new()),
             last_activity_at: std::sync::Mutex::new(std::time::Instant::now()),
+            web_search_block_id: std::sync::Mutex::new(None),
+            web_search_started_at: std::sync::Mutex::new(None),
+            cached_web_search_sources: std::sync::Mutex::new(None),
         }
     }
 
@@ -504,6 +513,18 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
+        *self
+            .web_search_block_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .web_search_started_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .cached_web_search_sources
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
         // 🔧 F2：重试视为一次新的流，重置空闲计时
         self.touch_activity();
         log::info!(
@@ -557,6 +578,147 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
+    }
+
+    /// 🆕 获取并清空服务端搜索收集到的来源（供 pipeline 保存检索块）。
+    pub fn take_web_search_sources(&self) -> Option<Vec<SourceInfo>> {
+        self.cached_web_search_sources
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+    }
+
+    /// 🆕 把服务端搜索载荷渲染为前端检索块事件。
+    /// 载荷格式见 `StreamEvent::WebSearchCall`：
+    /// `{"id","stage":"in_progress"|"searching"|"completed","sources":[{"title","url","snippet"}]}`
+    fn handle_web_search(&self, payload: &Value) {
+        let stage = payload
+            .get("stage")
+            .and_then(Value::as_str)
+            .unwrap_or("completed");
+
+        if stage == "completed" {
+            let sources: Vec<SourceInfo> = payload
+                .get("sources")
+                .and_then(Value::as_array)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .filter_map(|entry| {
+                            let url = entry.get("url").and_then(Value::as_str).unwrap_or_default();
+                            if url.is_empty() {
+                                return None;
+                            }
+                            Some(SourceInfo {
+                                title: entry
+                                    .get("title")
+                                    .and_then(Value::as_str)
+                                    .map(str::to_string),
+                                url: Some(url.to_string()),
+                                snippet: entry
+                                    .get("snippet")
+                                    .and_then(Value::as_str)
+                                    .map(str::to_string),
+                                score: None,
+                                metadata: Some(json!({
+                                    "sourceType": "web_search",
+                                })),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // 供 pipeline 持久化
+            *self
+                .cached_web_search_sources
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(sources.clone());
+
+            // 兜底：服务端未发进度事件（in_progress/searching）直接 completed 时，
+            // 必须补发 start 事件，否则前端永远不会创建 web_search 块
+            let block_id = {
+                let mut guard = self
+                    .web_search_block_id
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                match guard.clone() {
+                    Some(existing) => existing,
+                    None => {
+                        let generated = Self::generate_block_id();
+                        self.emitter.emit_start(
+                            event_types::WEB_SEARCH,
+                            &self.message_id,
+                            Some(&generated),
+                            None,
+                            None,
+                        );
+                        *guard = Some(generated.clone());
+                        generated
+                    }
+                }
+            };
+
+            let duration_ms = self
+                .web_search_started_at
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .map(|started| started.elapsed().as_millis() as u64)
+                .unwrap_or(0);
+
+            let numbered_sources: Vec<Value> = sources
+                .iter()
+                .enumerate()
+                .map(|(index, source)| {
+                    json!({
+                        "index": index + 1,
+                        "citationTag": format!("[搜索-{}]", index + 1),
+                        "typeIndex": index + 1,
+                        "title": source.title,
+                        "url": source.url,
+                        "snippet": source.snippet,
+                        "score": source.score,
+                        "source_type": "web_search",
+                    })
+                })
+                .collect();
+
+            self.emitter.emit_end(
+                event_types::WEB_SEARCH,
+                &block_id,
+                Some(json!({
+                    "sources": numbered_sources,
+                    "count": sources.len(),
+                    "durationMs": duration_ms,
+                })),
+                None,
+            );
+        } else {
+            // in_progress / searching：创建（或复用）web_search 块
+            let mut guard = self
+                .web_search_block_id
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let block_id = match guard.clone() {
+                Some(existing) => existing,
+                None => {
+                    let generated = Self::generate_block_id();
+                    self.emitter.emit_start(
+                        event_types::WEB_SEARCH,
+                        &self.message_id,
+                        Some(&generated),
+                        None,
+                        None,
+                    );
+                    *guard = Some(generated.clone());
+                    generated
+                }
+            };
+            *self
+                .web_search_started_at
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(std::time::Instant::now());
+        }
     }
 
     /// 处理 LLM 调用错误
@@ -1079,6 +1241,15 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             *guard = Some(u);
         }
         // 移除每次调用的日志输出，避免流式响应时产生大量重复日志
+    }
+
+    fn on_web_search(&self, payload: &Value) {
+        self.touch_activity();
+        log::info!(
+            "[ChatV2::pipeline] Server-side web search: stage={:?}",
+            payload.get("stage").and_then(Value::as_str)
+        );
+        self.handle_web_search(payload);
     }
 
     fn on_complete(&self, _final_text: &str, _reasoning: Option<&str>) {

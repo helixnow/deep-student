@@ -201,6 +201,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   }, [activateSandboxOwner, sandboxOwnerKey]);
   // 移动端：资源库右侧滑屏状态
   const [mobileResourcePanelOpen, setMobileResourcePanelOpen] = useState(false);
+  // ★ 移动端右屏资源库多选状态：学习资源面板不再自带次顶栏，多选切换按钮
+  // 上移全局顶栏（useChatPageLayout 渲染），此处仅镜像状态 + 透传切换句柄。
+  const [resourceMultiSelectActive, setResourceMultiSelectActive] = useState(false);
+  const resourceMultiSelectToggleRef = useRef<(() => void) | null>(null);
   // 移动端：分组编辑器资源选择回调（右面板复用，返回 'added'|'removed'|false）
   const groupPickerAddRef = useRef<((sourceId: string) => 'added' | 'removed' | false) | null>(null);
   // 移动端：分组已关联资源 ID 集合（用于右面板高亮显示）
@@ -953,7 +957,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
   const openCurrentSessionSettings = useCallback(() => {
     if (!currentSessionId) return;
-    sessionManager.get(currentSessionId)?.getState().setPanelState('advanced', true);
+    const store = sessionManager.get(currentSessionId);
+    if (!store) return;
+    // ★ 顶栏 ⋯ 会话设置按钮：切换语义。原实现无条件 setPanelState(..., true)，
+    // 面板已打开时再点会重放底部滑入动画而非关闭（顶栏按钮成为死入口）。
+    const { panelStates, setPanelState } = store.getState();
+    setPanelState('advanced', !panelStates.advanced);
   }, [currentSessionId]);
 
   // ===== 页面布局 hook =====
@@ -970,6 +979,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     groupEditorMode: editingGroup ? 'edit' : 'create',
     closeGroupEditor: requestCloseGroupEditor,
     openCurrentSessionSettings,
+    resourceMultiSelectActive,
+    resourceMultiSelectToggleRef,
   });
 
   // ★ 标题更新回调
@@ -1245,6 +1256,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
                   sessionActive={mobileResourcePanelOpen}
                   commandsEnabled={false}
                   onClose={() => setMobileResourcePanelOpen(false)}
+                  onMultiSelectModeChange={setResourceMultiSelectActive}
+                  multiSelectToggleRef={resourceMultiSelectToggleRef}
                   onOpenApp={(item) => {
                     if (groupPickerAddRef.current) {
                       const result = groupPickerAddRef.current(item.id);
