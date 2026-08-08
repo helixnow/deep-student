@@ -17,7 +17,7 @@ permissions:
 # 非 release job 统一注入确定性构建号，保持默认浅 checkout 便宜。
 # （审查 F16：此前该值在 3 个文件里重复 10 处，改契约要改 10 处）
 env:
-  DEEP_STUDENT_BUILD_NUMBER: '14636'
+  DEEP_STUDENT_BUILD_NUMBER: '14637'
 
 jobs:
   # Only this contract job needs full history. Non-release jobs use the
