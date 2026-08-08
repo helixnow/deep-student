@@ -26,10 +26,9 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{
-    build_provider_adapter, normalize_nonstream_response_to_openai, parser,
-    request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
+    build_provider_adapter, is_official_deepseek_config, normalize_nonstream_response_to_openai,
+    parser, request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
     ImagePayload, LLMManager, MergedChatMessage, Result, AUTH_MODE_OPENAI_CODEX_OAUTH,
-    is_official_deepseek_config,
 };
 
 /// 流式请求的单请求超时上限（秒）
@@ -1298,7 +1297,8 @@ mod tests {
     }
 
     #[test]
-    fn test_official_deepseek_v4_pro_and_v3_stay_on_chat_completions_even_with_explicit_responses() {
+    fn test_official_deepseek_v4_pro_and_v3_stay_on_chat_completions_even_with_explicit_responses()
+    {
         for model in ["deepseek-v4-pro", "deepseek-v3.2", "deepseek-v3.1"] {
             let config = ApiConfig {
                 model_adapter: "deepseek".to_string(),
@@ -1317,7 +1317,12 @@ mod tests {
             );
             // 传输端点必须落在 /chat/completions（而不是 /responses）
             let request = build_provider_adapter(&config)
-                .build_request(&config.base_url, "test-key", &config.model, &json!({"messages": []}))
+                .build_request(
+                    &config.base_url,
+                    "test-key",
+                    &config.model,
+                    &json!({"messages": []}),
+                )
                 .expect("request should build");
             assert!(
                 request.url.contains("/chat/completions"),
@@ -1369,14 +1374,20 @@ mod tests {
         // chat completions 协议 → 不注入
         let mut chat_config = base.clone();
         chat_config.api_protocol = Some("openai_chat_completions".to_string());
-        assert!(!server_side_web_search_enabled(&chat_config, &enabled_context));
+        assert!(!server_side_web_search_enabled(
+            &chat_config,
+            &enabled_context
+        ));
 
         // 非官方托管（SiliconFlow）→ 不注入
         let mut third_party = base.clone();
         third_party.provider_type = Some("siliconflow".to_string());
         third_party.provider_scope = Some("siliconflow".to_string());
         third_party.base_url = "https://api.siliconflow.cn/v1".to_string();
-        assert!(!server_side_web_search_enabled(&third_party, &enabled_context));
+        assert!(!server_side_web_search_enabled(
+            &third_party,
+            &enabled_context
+        ));
 
         // 模型不支持工具 → 不注入
         let mut no_tools = base.clone();
@@ -3330,7 +3341,10 @@ impl LLMManager {
         // messages 指纹。相邻两次请求若指纹相同则前缀未变（应高命中）；
         // 指纹不同则按消息条数/长度逐段 diff 定位"第一个分叉点"——分叉点
         // 之前是缓存命中区，之后全部 miss（下游测量法 §三.2）。
-        if std::env::var("CHAT_V2_CACHE_DEBUG").map(|v| v == "1").unwrap_or(false) {
+        if std::env::var("CHAT_V2_CACHE_DEBUG")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+        {
             use sha2::{Digest, Sha256};
             if let Some(messages_json) = request_body.get("messages") {
                 let mut hasher = Sha256::new();

@@ -5703,10 +5703,7 @@ mod tests {
         let (coordinator, temp_dir) = create_test_coordinator();
         let db_path = temp_dir.path().join("chat_v2.db");
         let conn = rusqlite::Connection::open(&db_path).unwrap();
-        apply_chat_v2_migrations_through(
-            &conn,
-            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION as i32,
-        );
+        apply_chat_v2_migrations_through(&conn, CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION as i32);
         let prior = seed_chat_v2_prior_scope_fingerprint_for(
             &coordinator,
             &conn,
@@ -5759,10 +5756,7 @@ mod tests {
         let (coordinator, temp_dir) = create_test_coordinator();
         let db_path = temp_dir.path().join("chat_v2.db");
         let conn = rusqlite::Connection::open(&db_path).unwrap();
-        apply_chat_v2_migrations_through(
-            &conn,
-            CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION as i32,
-        );
+        apply_chat_v2_migrations_through(&conn, CHAT_V2_WORKSPACE_DELETION_JOURNAL_VERSION as i32);
         let historical = seed_chat_v2_historical_scope_fingerprint(
             &coordinator,
             &conn,

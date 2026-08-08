@@ -933,7 +933,10 @@ impl OpenAIResponsesAdapter {
             .and_then(Value::as_array);
         if let Some(results) = results {
             for result in results {
-                let url = result.get("url").and_then(Value::as_str).unwrap_or_default();
+                let url = result
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 if url.is_empty() {
                     continue;
                 }
@@ -960,10 +963,8 @@ impl OpenAIResponsesAdapter {
             for part in content {
                 if let Some(annotations) = part.get("annotations").and_then(Value::as_array) {
                     for annotation in annotations {
-                        let annotation_type = annotation
-                            .get("type")
-                            .and_then(Value::as_str)
-                            .unwrap_or("");
+                        let annotation_type =
+                            annotation.get("type").and_then(Value::as_str).unwrap_or("");
                         if annotation_type != "url_citation" {
                             continue;
                         }
@@ -4236,15 +4237,21 @@ mod tests {
 
     #[test]
     fn deepseek_official_host_preserves_thinking_extensions() {
-        assert!(OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
-            "https://api.deepseek.com/v1"
-        ));
-        assert!(!OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
-            "https://siliconflow.cn/v1"
-        ));
-        assert!(!OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
-            "https://api.openai.com/v1"
-        ));
+        assert!(
+            OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
+                "https://api.deepseek.com/v1"
+            )
+        );
+        assert!(
+            !OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
+                "https://siliconflow.cn/v1"
+            )
+        );
+        assert!(
+            !OpenAIResponsesAdapter::preserves_provider_reasoning_extensions(
+                "https://api.openai.com/v1"
+            )
+        );
     }
 
     #[test]

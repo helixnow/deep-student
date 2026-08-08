@@ -592,7 +592,10 @@ impl ChatV2LLMAdapter {
     /// 载荷格式见 `StreamEvent::WebSearchCall`：
     /// `{"id","stage":"in_progress"|"searching"|"completed","sources":[{"title","url","snippet"}]}`
     fn handle_web_search(&self, payload: &Value) {
-        let stage = payload.get("stage").and_then(Value::as_str).unwrap_or("completed");
+        let stage = payload
+            .get("stage")
+            .and_then(Value::as_str)
+            .unwrap_or("completed");
 
         if stage == "completed" {
             let sources: Vec<SourceInfo> = payload

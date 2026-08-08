@@ -53,7 +53,10 @@ pub fn migrate_glm_ocr_models(
                 model.model = "Qwen/Qwen3-VL-8B-Instruct".to_string();
                 model.engine_type = "generic_vlm".to_string();
                 if model.name.contains("4.1V") || model.name.contains("4.1v") {
-                    model.name = model.name.replace("4.1V", "Qwen3-VL-8B").replace("4.1v", "Qwen3-VL-8B");
+                    model.name = model
+                        .name
+                        .replace("4.1V", "Qwen3-VL-8B")
+                        .replace("4.1v", "Qwen3-VL-8B");
                 }
                 changed = true;
                 println!(
@@ -63,16 +66,15 @@ pub fn migrate_glm_ocr_models(
                 model.model = "glm-4.6v".to_string();
                 model.engine_type = "glm4v_ocr".to_string();
                 if model.name.contains("4.1V") || model.name.contains("4.1v") {
-                    model.name = model.name.replace("4.1V", "GLM-4.6V").replace("4.1v", "GLM-4.6V");
+                    model.name = model
+                        .name
+                        .replace("4.1V", "GLM-4.6V")
+                        .replace("4.1v", "GLM-4.6V");
                 }
                 changed = true;
-                println!(
-                    "[OCR] 已自动迁移 GLM-4.1V → glm-4.6v (智谱官方, engine: glm4v_ocr)"
-                );
+                println!("[OCR] 已自动迁移 GLM-4.1V → glm-4.6v (智谱官方, engine: glm4v_ocr)");
             } else {
-                println!(
-                    "[OCR] 跳过 GLM-4.1V 迁移（无法确定提供商，保持原模型）"
-                );
+                println!("[OCR] 跳过 GLM-4.1V 迁移（无法确定提供商，保持原模型）");
             }
         }
     }

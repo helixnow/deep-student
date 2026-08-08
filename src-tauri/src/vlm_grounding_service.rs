@@ -386,9 +386,8 @@ impl VlmGroundingService {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            AppError::configuration("所有 VLM 候选模型均失败，请检查模型配置")
-        }))
+        Err(last_error
+            .unwrap_or_else(|| AppError::configuration("所有 VLM 候选模型均失败，请检查模型配置")))
     }
 
     /// 使用指定配置执行单页分析（候选循环的内部实现）
@@ -576,10 +575,7 @@ impl VlmGroundingService {
 
         let mut last_error: Option<AppError> = None;
         for config in &candidates {
-            match self
-                .describe_image_with_config(config, &data_url)
-                .await
-            {
+            match self.describe_image_with_config(config, &data_url).await {
                 Ok(description) => {
                     if last_error.is_some() {
                         info!(
@@ -599,9 +595,8 @@ impl VlmGroundingService {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            AppError::configuration("所有 VLM 候选模型均失败，请检查模型配置")
-        }))
+        Err(last_error
+            .unwrap_or_else(|| AppError::configuration("所有 VLM 候选模型均失败，请检查模型配置")))
     }
 
     /// 使用指定配置描述单张图片（候选循环的内部实现）
@@ -1505,11 +1500,7 @@ impl VlmGroundingService {
     /// 而是返回所有可用候选。调用方逐个尝试，失败时自动切换到下一个模型，
     /// 避免单一模型（如已停服的 GLM-4.6V）失败导致整体 OCR 不可用。
     pub(crate) async fn get_vlm_config_candidates(&self) -> Vec<crate::llm_manager::ApiConfig> {
-        let configs = self
-            .llm_manager
-            .get_api_configs()
-            .await
-            .unwrap_or_default();
+        let configs = self.llm_manager.get_api_configs().await.unwrap_or_default();
 
         // 黑名单：GLM-4.1V / GLM-4.0V / GLM-4V- 质量差，即使在 OCR 引擎中也跳过
         let is_blacklisted = |model: &str| {

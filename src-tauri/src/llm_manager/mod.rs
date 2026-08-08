@@ -2193,10 +2193,7 @@ fn build_ocr_runtime_candidates(
         // 跳过已知已停服的模型（如硅基流动已下架的 GLM-4.6V），避免其排在最前
         // 白白消耗请求与重试时间后整体失败。
         if is_discontinued_ocr_model(config) {
-            info!(
-                "[OCR] 跳过已停服模型: {} ({})",
-                config.model, config.name
-            );
+            info!("[OCR] 跳过已停服模型: {} ({})", config.model, config.name);
             continue;
         }
         let effective_engine =
