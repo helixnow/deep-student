@@ -378,15 +378,16 @@ jobs:
           esac
           echo "Verified bundled pdfium: $ARCH_INFO"
 
-      - name: Rename updater artifacts with arch suffix
+      - name: Rename updater artifacts with version and arch suffix
         run: |
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
           ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
+          VERSION=$(node -p "require('./package.json').version")
           for f in "$BUNDLE_DIR"/*.app.tar.gz; do
             [ -f "$f" ] || continue
             BASE=$(basename "$f" .app.tar.gz | tr ' ' '.')
-            mv "$f" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz"
-            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${ARCH}.app.tar.gz.sig"
+            mv "$f" "$BUNDLE_DIR/${BASE}_${VERSION}_${ARCH}.app.tar.gz"
+            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${VERSION}_${ARCH}.app.tar.gz.sig"
           done
           echo "📦 Renamed updater artifacts:"
           ls -la "$BUNDLE_DIR"/
