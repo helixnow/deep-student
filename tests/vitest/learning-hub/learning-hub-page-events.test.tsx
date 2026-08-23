@@ -49,9 +49,14 @@ vi.mock('@/components/layout', () => ({
   DEFAULT_GESTURE_IGNORE_SELECTOR: '[data-no-gesture]',
 }));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));
-vi.mock('@/features/learning-hub/stores/finderStore', () => ({
-  useFinderStore: (selector: (state: typeof finderState) => unknown) => selector(finderState),
-}));
+vi.mock('@/features/learning-hub/stores/finderStore', () => {
+  const useFinderStore = (selector: (state: typeof finderState) => unknown) => selector(finderState);
+  return {
+    useFinderStore,
+    useHostFinderStore: () => useFinderStore,
+    FINDER_HOST_IDS: { files: 'files', page: 'page', pageMobile: 'page-mobile', canvas: 'canvas', canvasMobile: 'canvas-mobile', groupPicker: 'group-picker' },
+  };
+});
 vi.mock('@/features/learning-hub/components/DstuAppLauncher', () => ({ DstuAppLauncher: () => null }));
 vi.mock('@/features/learning-hub/components/TabBar', () => ({ TabBar: () => null }));
 vi.mock('@/features/learning-hub/apps/TabPanelContainer', () => ({

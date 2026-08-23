@@ -73,7 +73,10 @@ vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen:
 vi.mock('@/features/learning-hub/stores/finderStore', () => {
   const useFinderStore = ((selector?: (state: typeof finderState) => unknown) => selector ? selector(finderState) : finderState) as typeof import('@/features/learning-hub/stores/finderStore').useFinderStore;
   (useFinderStore as any).getState = () => finderState;
-  return { useFinderStore };
+  return {
+    useFinderStore,
+    useHostFinderStore: () => useFinderStore,
+  };
 });
 vi.mock('@/features/learning-hub/stores/recentStore', () => ({
   useRecentStore: (selector: (state: { addRecent: typeof sidebarMocks.addRecent }) => unknown) => selector({ addRecent: sidebarMocks.addRecent }),
