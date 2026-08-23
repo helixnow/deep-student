@@ -22,8 +22,9 @@ import {
   FileText,
 } from "@phosphor-icons/react";
 
-import { DsButton } from "@/components/ui/DsButton";
+import { DsButton, type DsButtonVariant } from "@/components/ui/DsButton";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
+import { DsAlertDialog } from "@/components/ui/DsDialog";
 import { Badge } from "@/components/ui/shad/Badge";
 import {
   Table,
@@ -53,6 +54,26 @@ import {
   formatEta,
 } from "@/types/dataGovernance";
 import type { StorageProvider } from "@/utils/cloudStorageApi";
+
+/** 冲突解决确认弹窗里策略名称的 i18n key（静态映射以兼容类型化 i18n） */
+const strategyLabelKeys = {
+  keep_local: "sync:strategy_info.keep_local",
+  use_cloud: "sync:strategy_info.use_cloud",
+  keep_latest: "sync:strategy_info.keep_latest",
+  manual: "sync:strategy_info.manual",
+} as const;
+
+/**
+ * 确认按钮变体：use_cloud 会用云端覆盖本地（最危险）用 danger；
+ * keep_local 覆盖云端、keep_latest 按时间覆盖较旧一方，用 warning；
+ * manual 不立即覆盖数据，用 default。
+ */
+const strategyConfirmVariants: Record<MergeStrategy, DsButtonVariant> = {
+  keep_local: "warning",
+  use_cloud: "danger",
+  keep_latest: "warning",
+  manual: "default",
+};
 
 export interface SyncTabProps {
   syncStatus: SyncStatusResponse | null;
@@ -100,7 +121,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   onRetrySync,
   onViewAuditLog,
 }) => {
-  const { t } = useTranslation(["data", "common"]);
+  const { t } = useTranslation(["data", "common", "sync"]);
+  // 待确认的数据库级冲突解决策略：点击策略按钮先弹确认，确认后才执行
+  const [pendingResolveStrategy, setPendingResolveStrategy] =
+    React.useState<MergeStrategy | null>(null);
   const syncDatabases = syncStatus?.databases ?? [];
   const showSyncProgress = syncRunning || Boolean(syncProgress?.error);
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
@@ -110,9 +134,16 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       syncProgress.phase === "downloading") &&
     syncProgress.total > 1024
       ? `${formatBytes(syncProgress.current)} / ${formatBytes(syncProgress.total)}`
-      : syncProgress
+        : syncProgress
         ? `${syncProgress.current} / ${syncProgress.total} ${t("data:governance.items")}`
         : "";
+
+  const handleConfirmResolve = () => {
+    if (pendingResolveStrategy) {
+      onResolveConflicts(pendingResolveStrategy);
+    }
+    setPendingResolveStrategy(null);
+  };
 
   return (
     <div className="space-y-8">
@@ -166,7 +197,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <h3 className="text-base font-medium text-foreground">
               {t("data:governance.database_sync_status")}
             </h3>
-            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+            <span
+              className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+              title={t("sync:experimentalBadgeTooltip")}
+            >
               {t("data:governance.experimental_badge")}
             </span>
           </div>
@@ -285,7 +319,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <h3 className="text-base font-medium text-foreground">
               {t("data:governance.cloud_sync_title")}
             </h3>
-            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+            <span
+              className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+              title={t("sync:experimentalBadgeTooltip")}
+            >
               {t("data:governance.experimental_badge")}
             </span>
           </div>
@@ -527,12 +564,12 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             {t("data:governance.conflict_impact_hint")}
           </p>
 
-          {/* 冲突解决策略 */}
+          {/* 冲突解决策略（点击后先弹确认，确认后才执行） */}
           <div className="flex flex-wrap gap-2 pt-2">
             <DsButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts("keep_local")}
+              onClick={() => setPendingResolveStrategy("keep_local")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
@@ -541,7 +578,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts("use_cloud")}
+              onClick={() => setPendingResolveStrategy("use_cloud")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
@@ -550,7 +587,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts("keep_latest")}
+              onClick={() => setPendingResolveStrategy("keep_latest")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
@@ -559,7 +596,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts("manual")}
+              onClick={() => setPendingResolveStrategy("manual")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
@@ -568,6 +605,31 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* 数据库级冲突解决确认弹窗：描述写明会覆盖另一版本且建议先本地备份 */}
+      <DsAlertDialog
+        open={pendingResolveStrategy !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingResolveStrategy(null);
+        }}
+        title={t("sync:confirmConflictResolveTitle")}
+        description={
+          pendingResolveStrategy
+            ? t("sync:confirmConflictResolveDescription", {
+                strategy: t(strategyLabelKeys[pendingResolveStrategy]),
+              })
+            : undefined
+        }
+        confirmText={t("common:actions.confirm")}
+        cancelText={t("common:actions.cancel")}
+        confirmVariant={
+          pendingResolveStrategy
+            ? strategyConfirmVariants[pendingResolveStrategy]
+            : "default"
+        }
+        onConfirm={handleConfirmResolve}
+        disabled={loading}
+      />
 
       {/* 记录级冲突面板（__sync_conflicts 表） */}
       <RecordConflictsPanel refreshSignal={conflictRefreshSignal} />
