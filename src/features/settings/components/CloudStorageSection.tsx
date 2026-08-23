@@ -25,6 +25,7 @@ import { TauriAPI } from '@/utils/tauriApi';
 import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
+import { isMobilePlatform } from '@/utils/platform';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -143,6 +144,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 删除确认对话框状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteVersionId, setPendingDeleteVersionId] = useState<string | null>(null);
+  // 清除配置确认对话框状态（danger 操作必须显式确认）
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   // P2-12 移动端契约：版本删除确认改为按钮两段式行内确认（4 秒未确认自动复位）
   const { isSmallScreen } = useBreakpoint();
   const [confirmingDeleteVersionId, setConfirmingDeleteVersionId] = useState<string | null>(null);
@@ -531,6 +534,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [t, onConfigChanged]);
 
   const shouldShowFtpOption = FTP_STORAGE_EXPERIMENTAL_ENABLED || hasStoredFtpConfig || provider === 'ftp';
+  // Android/移动端后端未提供 FTP 支持：复用 S3 禁用卡片模式（可见但不可选）
+  const ftpDisabledOnMobile = isMobilePlatform();
 
   // 测试连接（先检查不安全连接）
   const testConnection = useCallback(async () => {
@@ -816,12 +821,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setRestoreConfirmOpen(true);
   }, [connectionStatus, t]);
 
-  // 从云端恢复
-  const handleRestore = useCallback(async () => {
-    const versionId = pendingRestoreVersionId;
-    if (!versionId) return;
-    
-    setRestoreConfirmOpen(false);
+  // 失败重试上下文：记录最近一次恢复的版本号，供进度面板「重试」使用
+  const lastRestoreVersionIdRef = useRef<string | null>(null);
+
+  // 从云端恢复（核心执行逻辑，确认框与重试按钮共用）
+  const performRestore = useCallback(async (versionId: string) => {
+    lastRestoreVersionIdRef.current = versionId;
     setDownloading(true);
     setRestoreVersionId(versionId);
     setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: t('cloudStorage:progress.downloadCloud'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
@@ -878,12 +883,36 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [
     buildConfig,
-    pendingRestoreVersionId,
     resolveBackupId,
     setStage,
     t,
     waitForGovernanceJob,
   ]);
+
+  // 恢复确认框的确认回调
+  const handleRestore = useCallback(async () => {
+    const versionId = pendingRestoreVersionId;
+    if (!versionId) return;
+    setRestoreConfirmOpen(false);
+    await performRestore(versionId);
+  }, [pendingRestoreVersionId, performRestore]);
+
+  // 上传/下载失败后的重试：按失败操作类型重新触发完整流程
+  const retryFailedOperation = useCallback(() => {
+    if (!opProgress?.error) return;
+    if (opProgress.operation === 'upload') {
+      setOpProgress(null);
+      void handleBackupAndUpload();
+      return;
+    }
+    const versionId = lastRestoreVersionIdRef.current;
+    if (!versionId) {
+      setOpProgress(null);
+      return;
+    }
+    setOpProgress(null);
+    void performRestore(versionId);
+  }, [opProgress, handleBackupAndUpload, performRestore]);
 
   // 打开删除确认对话框
   const openDeleteConfirm = useCallback((versionId: string) => {
@@ -993,27 +1022,42 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            onClick={() => setProvider('ftp')}
+            onClick={() => !ftpDisabledOnMobile && setProvider('ftp')}
+            disabled={ftpDisabledOnMobile}
             className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
-              provider === 'ftp'
-                ? 'border-primary bg-primary/5'
-                : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
+              ftpDisabledOnMobile
+                ? 'opacity-50 border-border'
+                : provider === 'ftp'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
             }`}
           >
-            {provider === 'ftp' && (
+            {provider === 'ftp' && !ftpDisabledOnMobile && (
               <div className="absolute right-2 top-2">
                 <CheckCircle size={16} className="text-primary" />
               </div>
             )}
-            <span className="font-medium">{t('cloudStorage:provider.ftp')}</span>
-            <span className="text-xs text-warning line-clamp-2 whitespace-normal">
-              {t('cloudStorage:provider.ftpDescExperimental')}
+            <span className={`font-medium ${ftpDisabledOnMobile ? 'line-through' : ''}`}>
+              {t('cloudStorage:provider.ftp')}
+            </span>
+            <span className={`text-xs line-clamp-2 whitespace-normal ${
+              ftpDisabledOnMobile ? 'text-destructive/70' : 'text-warning'
+            }`}>
+              {ftpDisabledOnMobile
+                ? t('cloudStorage:provider.ftpDisabledMobile')
+                : t('cloudStorage:provider.ftpDescExperimental')}
             </span>
           </DsButton>
         )}
       </div>
 
-      <Tabs value={provider} onValueChange={(v) => setProvider(v as cloudApi.StorageProvider)}>
+      <Tabs
+        value={provider}
+        onValueChange={(v) => {
+          if (v === 'ftp' && ftpDisabledOnMobile) return;
+          setProvider(v as cloudApi.StorageProvider);
+        }}
+      >
           {/* WebDAV 配置 */}
           <TabsContent value="webdav" className="space-y-4 mt-0">
             <div className="space-y-2">
@@ -1233,7 +1277,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <DsButton onClick={saveConfig} disabled={!isConfigValid()}>
             {t('cloudStorage:actions.save')}
           </DsButton>
-          <DsButton variant="danger" onClick={clearConfig}>
+          <DsButton variant="danger" onClick={() => setClearConfirmOpen(true)}>
             {t('cloudStorage:actions.clearConfig')}
           </DsButton>
         </div>
@@ -1327,14 +1371,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 )}
 
                 {opProgress.error && (
-                  <DsButton
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs text-muted-foreground"
-                    onClick={() => setOpProgress(null)}
-                  >
-                    关闭
-                  </DsButton>
+                  <div className="flex gap-2">
+                    <DsButton
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs"
+                      disabled={uploading || downloading}
+                      onClick={retryFailedOperation}
+                    >
+                      {t('common:actions.retry')}
+                    </DsButton>
+                    <DsButton
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs text-muted-foreground"
+                      onClick={() => setOpProgress(null)}
+                    >
+                      {t('common:actions.close')}
+                    </DsButton>
+                  </div>
                 )}
               </div>
             )}
@@ -1463,6 +1518,31 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       onConfirm={handleRestore}
     >
       <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.restartNotice')}</p>
+    </DsAlertDialog>
+  );
+
+  // 清除配置确认对话框（danger：涉及凭据与加密密码删除，必须显式确认）
+  const clearConfirmDialog = (
+    <DsAlertDialog
+      open={clearConfirmOpen}
+      onOpenChange={setClearConfirmOpen}
+      title={t('cloudStorage:clearConfirm.title')}
+      description={t('cloudStorage:clearConfirm.description')}
+      confirmText={t('cloudStorage:clearConfirm.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="danger"
+      onConfirm={() => {
+        setClearConfirmOpen(false);
+        void clearConfig();
+      }}
+    >
+      <p className="text-sm font-medium text-destructive">
+        {t('cloudStorage:clearConfirm.encryptionWarning')}
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {t('cloudStorage:clearConfirm.cloudFilesKept')}
+      </p>
     </DsAlertDialog>
   );
 
@@ -1524,6 +1604,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         </div>
         {restoreConfirmDialog}
         {deleteConfirmDialog}
+        {clearConfirmDialog}
         {insecureFtpWarningDialog}
         {insecureWebdavWarningDialog}
       </>
@@ -1547,6 +1628,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       </Card>
       {restoreConfirmDialog}
       {deleteConfirmDialog}
+      {clearConfirmDialog}
       {insecureFtpWarningDialog}
       {insecureWebdavWarningDialog}
     </>

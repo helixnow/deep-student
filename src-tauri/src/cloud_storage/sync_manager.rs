@@ -20,6 +20,12 @@ const MANIFESTS_DIR: &str = "manifests";
 const BACKUPS_DIR: &str = "backups";
 /// 默认保留版本数
 const DEFAULT_MAX_VERSIONS: usize = 10;
+/// 云端加密标记对象（相对云 root 的路径）。
+///
+/// 一旦某个云 root 出现过端到端加密（DSBK）备份，就写入此标记；此后未配置
+/// `encryption_password` 的设备会被拒绝向同一 root 上传明文备份，避免同一
+/// 恢复链上明文/密文混布。
+const ENCRYPTION_MARKER_FILE: &str = ".encryption-marker";
 
 pub(crate) fn normalize_device_id(device_id: &str) -> String {
     let trimmed = device_id.trim();
@@ -84,6 +90,21 @@ impl Default for CloudManifest {
             updated_at: Utc::now(),
         }
     }
+}
+
+/// 云端加密标记
+///
+/// 该对象存在即表示对应云 root 出现过端到端加密备份；内容仅用于诊断，
+/// 判定逻辑只看「对象是否存在」（内容损坏时按存在处理，fail-closed）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptionMarker {
+    /// 标记格式版本
+    pub version: u32,
+    /// 首次写入标记的设备 ID
+    pub created_by_device: String,
+    /// 首次写入时间
+    pub created_at: DateTime<Utc>,
 }
 
 /// 同步状态
@@ -376,6 +397,74 @@ impl CloudSyncManager {
     pub async fn list_versions(&self) -> Result<Vec<BackupVersion>> {
         let manifest = self.get_manifest().await?;
         Ok(manifest.versions)
+    }
+
+    /// 读取云端加密标记。
+    ///
+    /// 标记对象存在但内容损坏时按「存在」处理（fail-closed）：宁可多拦一次
+    /// 明文上传，也不能让被破坏的标记悄悄放行明文。
+    pub async fn read_encryption_marker(&self) -> Result<Option<EncryptionMarker>> {
+        match self.storage.get(ENCRYPTION_MARKER_FILE).await? {
+            Some(data) => match serde_json::from_slice::<EncryptionMarker>(&data) {
+                Ok(marker) => Ok(Some(marker)),
+                Err(error) => {
+                    tracing::warn!(
+                        "云端加密标记 {} 内容无法解析，按存在处理: {}",
+                        ENCRYPTION_MARKER_FILE,
+                        error
+                    );
+                    Ok(Some(EncryptionMarker {
+                        version: 0,
+                        created_by_device: "unknown".to_string(),
+                        created_at: Utc::now(),
+                    }))
+                }
+            },
+            None => Ok(None),
+        }
+    }
+
+    /// 幂等写入云端加密标记：已存在则保持原样（保留首次写入者与时间）。
+    pub async fn persist_encryption_marker(&self) -> Result<EncryptionMarker> {
+        if let Some(existing) = self.read_encryption_marker().await? {
+            return Ok(existing);
+        }
+        let marker = EncryptionMarker {
+            version: 1,
+            created_by_device: self.device_id.clone(),
+            created_at: Utc::now(),
+        };
+        let data = serde_json::to_vec_pretty(&marker)
+            .map_err(|e| AppError::internal(format!("序列化加密标记失败: {e}")))?;
+        self.storage.put(ENCRYPTION_MARKER_FILE, &data).await?;
+        Ok(marker)
+    }
+
+    /// 明文上传前置检查：该云 root 出现过加密备份（存在标记）时拒绝。
+    pub async fn ensure_plaintext_upload_allowed(&self) -> Result<()> {
+        if self.read_encryption_marker().await?.is_some() {
+            return Err(AppError::configuration(
+                "该云端目录已存在端到端加密备份，为避免明文/密文混布，已拒绝未加密上传。\
+                 请在云存储配置里填写相同的加密密码后重试。"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// 上传前的端到端加密一致性策略：
+    /// - 本次上传加密：先幂等写入云端加密标记（失败则整个上传失败），
+    ///   保证标记先于任何密文对象可见；
+    /// - 本次上传明文：若该 root 已有加密标记则直接拒绝。
+    pub async fn enforce_encryption_policy_before_upload(
+        &self,
+        encryption_enabled: bool,
+    ) -> Result<()> {
+        if encryption_enabled {
+            self.persist_encryption_marker().await.map(|_| ())
+        } else {
+            self.ensure_plaintext_upload_allowed().await
+        }
     }
 
     /// 上传备份文件（SOTA 流式上传）
@@ -1112,5 +1201,181 @@ mod device_id_tests {
         write(&path, "../evil");
         let normalized = read_device_id_file(&path).unwrap();
         assert!(normalized.starts_with("device-"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::traits::FileInfo;
+    use super::*;
+    use async_trait::async_trait;
+    use std::collections::BTreeMap;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct MemoryStorage {
+        files: Mutex<BTreeMap<String, (Vec<u8>, DateTime<Utc>)>>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for Arc<MemoryStorage> {
+        fn provider_name(&self) -> &'static str {
+            "memory"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), (data.to_vec(), Utc::now()));
+            Ok(())
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .get(key)
+                .map(|(data, _)| data.clone()))
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            let mut files: Vec<FileInfo> = self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .map(|(key, (data, modified))| FileInfo {
+                    key: key.clone(),
+                    size: data.len() as u64,
+                    last_modified: *modified,
+                    etag: None,
+                })
+                .collect();
+            files.sort_by(|left, right| right.last_modified.cmp(&left.last_modified));
+            Ok(files)
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            self.files.lock().unwrap().remove(key);
+            Ok(())
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .get(key)
+                .map(|(data, modified)| FileInfo {
+                    key: key.to_string(),
+                    size: data.len() as u64,
+                    last_modified: *modified,
+                    etag: None,
+                }))
+        }
+    }
+
+    fn manager_on(storage: &Arc<MemoryStorage>, device_id: &str) -> CloudSyncManager {
+        CloudSyncManager::new(Box::new(Arc::clone(storage)), device_id.to_string())
+    }
+
+    #[tokio::test]
+    async fn plaintext_upload_allowed_without_marker() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-a");
+
+        assert!(manager.read_encryption_marker().await.unwrap().is_none());
+        manager
+            .enforce_encryption_policy_before_upload(false)
+            .await
+            .expect("无标记时明文上传应放行");
+    }
+
+    #[tokio::test]
+    async fn plaintext_upload_rejected_when_marker_present() {
+        let storage = Arc::new(MemoryStorage::default());
+
+        // 另一台设备曾经加密上传，在该 root 留下标记
+        let other_device = manager_on(&storage, "device-a");
+        other_device.persist_encryption_marker().await.unwrap();
+
+        // 本机未配置 encryption_password：cloud_sync_upload 会先执行策略检查，
+        // 检查失败即 upload 失败（不会有任何对象被写入 backups/）。
+        let manager = manager_on(&storage, "device-b");
+        let error = manager
+            .enforce_encryption_policy_before_upload(false)
+            .await
+            .expect_err("有加密标记且无密码时必须拒绝明文上传");
+        assert!(
+            error.to_string().contains("加密"),
+            "错误应提示需要加密密码: {error}"
+        );
+        assert!(
+            !storage
+                .files
+                .lock()
+                .unwrap()
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR)),
+            "被拒绝的明文上传不应产生任何备份对象"
+        );
+        // 标记本身保持不变
+        let marker = manager.read_encryption_marker().await.unwrap().unwrap();
+        assert_eq!(marker.created_by_device, "device-a");
+    }
+
+    #[tokio::test]
+    async fn encrypted_upload_succeeds_and_keeps_marker() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-a");
+
+        // 配置了密码：策略检查幂等写入标记后放行上传
+        manager
+            .enforce_encryption_policy_before_upload(true)
+            .await
+            .expect("有密码时上传前策略应放行");
+        let first = manager.read_encryption_marker().await.unwrap().unwrap();
+        assert_eq!(first.version, 1);
+        assert_eq!(first.created_by_device, "device-a");
+
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.dsbk");
+        std::fs::write(&zip, b"DSBK pretend-encrypted payload").unwrap();
+        let result = manager
+            .upload(&zip, Some("1.0.0".into()), None)
+            .await
+            .expect("加密上传应成功");
+        assert_eq!(result.version.device_id, "device-a");
+
+        // 再次加密上传：标记保持（不被覆盖，首次写入者信息不变）
+        manager
+            .enforce_encryption_policy_before_upload(true)
+            .await
+            .unwrap();
+        let second = manager.read_encryption_marker().await.unwrap().unwrap();
+        assert_eq!(second.created_at, first.created_at);
+        assert_eq!(second.created_by_device, first.created_by_device);
+    }
+
+    #[tokio::test]
+    async fn corrupted_marker_still_blocks_plaintext_upload() {
+        let storage = Arc::new(MemoryStorage::default());
+        storage.files.lock().unwrap().insert(
+            ENCRYPTION_MARKER_FILE.to_string(),
+            (b"not-json".to_vec(), Utc::now()),
+        );
+
+        let manager = manager_on(&storage, "device-a");
+        assert!(
+            manager.ensure_plaintext_upload_allowed().await.is_err(),
+            "标记损坏时必须 fail-closed，拒绝明文上传"
+        );
     }
 }

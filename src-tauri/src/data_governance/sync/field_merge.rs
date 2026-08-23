@@ -74,17 +74,14 @@ const FIELD_MERGE_REGISTRY: &[(&str, &[&str])] = &[
     ),
     ("notes", &["tags", "is_favorite"]),
     ("files", &["tags_json", "is_favorite"]),
-    (
-        "review_plans",
-        &[
-            "total_reviews",
-            "total_correct",
-            "interval_days",
-            "consecutive_failures",
-        ],
-    ),
+    // [R02] interval_days / consecutive_failures 故意缺席：二者都不是单调计数——
+    // 复习失败会把 interval_days 缩短、复习成功会把 consecutive_failures 清零，
+    // MaxValue 会把这些合法的"下降"用旧的大值回弹掉，冲突时走行级 LWW。
+    ("review_plans", &["total_reviews", "total_correct"]),
     // completed_pomodoros 故意缺席：派生缓存，由 pomodoro_counts 重算（TD-02）
-    ("todo_items", &["estimated_pomodoros", "tags_json"]),
+    // [R02] estimated_pomodoros 故意缺席：用户手输预估值可以合法调低，
+    // MaxValue 会让"5 改成 3"被另一台设备的旧值 5 回弹，冲突时走行级 LWW。
+    ("todo_items", &["tags_json"]),
     ("essays", &["is_favorite"]),
     ("translations", &["is_favorite"]),
     ("todo_lists", &["is_favorite"]),
@@ -169,15 +166,14 @@ fn field_merge_strategy(table_name: &str, column_name: &str) -> Option<FieldMerg
     match (table_name, column_name) {
         (_, "tags") | (_, "tags_json") => Some(FieldMergeStrategy::TagSetUnion),
 
+        // MaxValue 只允许真正单调递增的计数。
+        // [R02] review_plans.interval_days / consecutive_failures 与
+        // todo_items.estimated_pomodoros 均可合法下降，不得用 MaxValue 回弹；
+        // TD-02: completed_pomodoros 是派生缓存，走行级 LWW + apply 后重算。
         ("questions", "attempt_count")
         | ("questions", "correct_count")
         | ("review_plans", "total_reviews")
-        | ("review_plans", "total_correct")
-        | ("review_plans", "interval_days")
-        | ("review_plans", "consecutive_failures") => Some(FieldMergeStrategy::MaxValue),
-
-        // TD-02: completed_pomodoros 不在此列——派生缓存走行级 LWW + apply 后重算
-        ("todo_items", "estimated_pomodoros") => Some(FieldMergeStrategy::MaxValue),
+        | ("review_plans", "total_correct") => Some(FieldMergeStrategy::MaxValue),
 
         ("questions", "is_favorite")
         | ("questions", "is_bookmarked")
@@ -421,16 +417,52 @@ mod tests {
         assert!(!changed);
         assert!(conflict);
 
-        // estimated_pomodoros（用户手输预估值）仍保留 max 合并
+        // [R02] estimated_pomodoros（用户手输预估值）也不再 max 合并：
+        // 用户把预估从 5 调低到 3 时，MaxValue 会用旧值 5 回弹，因此走行级 LWW。
         let (est, est_changed, est_conflict) = merge_field(
             "todo_items",
             "estimated_pomodoros",
             Some(&json!(3)),
             Some(&json!(5)),
         );
-        assert_eq!(est, json!(5));
-        assert!(est_changed);
-        assert!(!est_conflict);
+        assert_eq!(est, json!(5), "行级 LWW：远端值直落");
+        assert!(!est_changed);
+        assert!(est_conflict);
+    }
+
+    #[test]
+    fn regression_r02_non_monotonic_fields_are_not_max_merged() {
+        // interval_days（复习失败会缩短）、consecutive_failures（成功会清零）、
+        // estimated_pomodoros（用户可调低）都可合法下降，MaxValue 会回弹这些下降。
+        for (table, column) in [
+            ("review_plans", "interval_days"),
+            ("review_plans", "consecutive_failures"),
+            ("todo_items", "estimated_pomodoros"),
+        ] {
+            assert!(
+                !field_merge_columns_for_table(table).contains(&column),
+                "{}.{} must not be in the auto field-merge picklist",
+                table,
+                column
+            );
+            // 远端把值合法调低（10 -> 2）：必须按行级 LWW 直落，不得 max 回弹成 10
+            let (result, changed, conflict) =
+                merge_field(table, column, Some(&json!(10)), Some(&json!(2)));
+            assert_eq!(result, json!(2), "{}.{} 不得 MaxValue 回弹", table, column);
+            assert!(!changed);
+            assert!(conflict);
+        }
+
+        // 真正单调的计数仍保留 max 合并
+        let (result, changed, conflict) = merge_field(
+            "review_plans",
+            "total_reviews",
+            Some(&json!(10)),
+            Some(&json!(7)),
+        );
+        assert_eq!(result, json!(10));
+        assert!(changed);
+        assert!(!conflict);
     }
 
     #[test]
