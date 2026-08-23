@@ -327,8 +327,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   // 分层备份状态
   const [useTieredBackup, setUseTieredBackup] = useState(false);
   const [addToBackupList, setAddToBackupList] = useState(true);
-  const [selectedTiers, setSelectedTiers] = useState<BackupTier[]>(['core']);
-  const [includeAssets, setIncludeAssets] = useState(false);
+  // R04-backup-defaults：默认勾选 core + important 且包含资产，
+  // 使默认分层导出覆盖 vfs_blobs（文件库原始文件）等重要资产目录；用户仍可自由增减。
+  const [selectedTiers, setSelectedTiers] = useState<BackupTier[]>(['core', 'important']);
+  const [includeAssets, setIncludeAssets] = useState(true);
   const [selectedAssetTypes, setSelectedAssetTypes] = useState<AssetType[]>([]);
   const [compressionLevel, setCompressionLevel] = useState(6);
   const [isActionRunning, setIsActionRunning] = useState(false);
@@ -371,6 +373,13 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         : [...prev, assetType]
     );
   };
+
+  // vfs_blobs（文件库原始文件）只由 important 层的资产目录提供（见后端 BackupTier::asset_directories）：
+  // 必须勾选 important 层并开启“包含资产文件”，且资产类型过滤为空（=全部）或显式包含 vfs_blobs。
+  const tieredSelectionCoversVfsBlobs =
+    includeAssets &&
+    selectedTiers.includes('important') &&
+    (selectedAssetTypes.length === 0 || selectedAssetTypes.includes('vfs_blobs'));
 
   const handleBackupAndExport = () => {
     if (useTieredBackup && selectedTiers.length === 0) {
@@ -531,6 +540,20 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   '分层备份（包括默认的核心层）只覆盖所选层级，产物是部分归档，不能整槽恢复，仅支持导出与检查。',
               })}
             </p>
+            {!tieredSelectionCoversVfsBlobs && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
+              >
+                <Warning size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {t('data:governance.tiered_backup_vfs_blobs_missing_warning', {
+                    defaultValue:
+                      '当前选择不包含文件库原始文件（vfs_blobs）：导出的部分归档不能整槽恢复，vfs_blobs 中的文件也无法从该归档找回。如需覆盖，请勾选「重要数据 (P1)」层级并开启「包含资产文件」（若筛选了资产类型，需保留 vfs_blobs）。',
+                  })}
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {BACKUP_TIERS.map((tier) => (
                 <div
@@ -563,7 +586,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   {t('data:governance.include_assets_desc')}
                 </p>
               </div>
-              <Switch checked={includeAssets} onCheckedChange={setIncludeAssets} />
+              <Switch
+                checked={includeAssets}
+                onCheckedChange={setIncludeAssets}
+                aria-label={t('data:governance.include_assets')}
+              />
             </div>
 
             {includeAssets && (
