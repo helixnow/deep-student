@@ -1,10 +1,25 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('i18next', () => ({
-  default: {
-    t: (_key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? _key,
-  },
-}));
+// 完整覆盖 i18next 表面：产品模块图谱中 src/i18n.ts 会在模块加载时执行
+// `i18n.use(...).init(...)` 与 `i18n.on('languageChanged', ...)`，只 mock `t`
+// 会让本文件在收集阶段就崩溃（default.use is not a function）。
+vi.mock('i18next', () => {
+  const t = (_key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? _key;
+  const i18nMock = {
+    t,
+    isInitialized: true,
+    language: 'zh-CN',
+    use: () => i18nMock,
+    init: () => Promise.resolve(t),
+    on: () => i18nMock,
+    off: () => i18nMock,
+    addResourceBundle: () => i18nMock,
+    hasResourceBundle: () => true,
+    loadNamespaces: () => Promise.resolve(),
+    changeLanguage: () => Promise.resolve(t),
+  };
+  return { default: i18nMock };
+});
 
 import { createSkillActions } from '@/features/chat/core/store/skillActions';
 import type { ChatStoreState, GetState, SetState } from '@/features/chat/core/store/types';
