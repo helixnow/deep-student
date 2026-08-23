@@ -896,7 +896,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             onBlur={() => void commitRename()}
             aria-label={t('todo:actions.renameList')}
             className={cn(
-              'h-8 w-full rounded-[var(--radius-shell-control)] border',
+              'h-8 w-full rounded-[var(--radius-shell-control)] border [@media(pointer:coarse)]:h-11',
               'border-[color:var(--shell-navigation-border)]',
               'bg-[color:var(--interactive-hover)] px-2.5 text-ui',
               'text-[color:var(--shell-navigation-foreground)]',
@@ -992,7 +992,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             onBlur={() => void handleCreateList()}
             placeholder={t('todo:actions.newListPlaceholder')}
             className={cn(
-              'h-8 w-full rounded-[var(--radius-shell-control)] border',
+              'h-8 w-full rounded-[var(--radius-shell-control)] border [@media(pointer:coarse)]:h-11',
               'border-[color:var(--shell-navigation-border)]',
               'bg-[color:var(--interactive-hover)] px-2.5 text-ui',
               'text-[color:var(--shell-navigation-foreground)]',
@@ -1083,8 +1083,9 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('todo:actions.searchLists', '搜索列表...')}
             className={cn(
-              'h-8 w-full rounded-[var(--radius-shell-control)] border border-transparent',
-              'bg-[color:var(--interactive-hover)]/60 pl-8 pr-8 text-ui text-[color:var(--shell-navigation-foreground)]',
+              'h-8 w-full rounded-[var(--radius-shell-control)] border border-transparent [@media(pointer:coarse)]:h-11',
+              // coarse 下清除按钮命中区扩到 44px，右侧留白同步放宽避免文字压到按钮下
+              'bg-[color:var(--interactive-hover)]/60 pl-8 pr-8 text-ui text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:pr-11',
               'outline-none placeholder:text-[color:var(--shell-navigation-muted)]',
               'focus:border-[color:var(--shell-navigation-border)] focus:bg-[color:var(--interactive-hover)]',
               'transition-colors',
@@ -1094,7 +1095,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-8 [@media(pointer:coarse)]:right-0"
+              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:right-0"
               aria-label={t('common:actions.clear')}
             >
               <X size={12} />

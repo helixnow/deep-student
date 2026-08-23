@@ -124,7 +124,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               placeholder={t('sidebar.search_placeholder')}
               aria-label={t('sidebar.search_placeholder')}
               className={cn(
-                'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
+                'h-8 [@media(pointer:coarse)]:h-11 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
                 'pl-8 pr-2.5 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
                 'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
                 'focus-visible:outline-none focus-visible:ring-0 focus-visible:border-[color:var(--border)] focus-visible:bg-background',

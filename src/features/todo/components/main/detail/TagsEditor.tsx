@@ -212,7 +212,7 @@ export const TagsEditor: React.FC<{
           commitDraft();
         }}
         placeholder={t('todo:tags.addPlaceholder')}
-        className="h-6 w-28 min-w-0 flex-shrink-0 border-0 bg-transparent px-1 text-xs focus-visible:ring-0 placeholder:text-muted-foreground/50"
+        className="h-6 w-28 min-w-0 flex-shrink-0 border-0 bg-transparent px-1 text-xs focus-visible:ring-0 placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
       />
 
       {/* 内联建议 popover：绝对定位不推挤布局；mousedown preventDefault 保住输入焦点 */}

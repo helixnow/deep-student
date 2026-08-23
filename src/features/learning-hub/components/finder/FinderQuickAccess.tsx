@@ -334,6 +334,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     disabled={searchDisabled}
                     className={cn(
                       'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
+                      '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base',
                       'pl-8 pr-8 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
                       'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
                       '[&::-webkit-search-cancel-button]:hidden'
@@ -355,7 +356,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     disabled={searchDisabled}
-                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20"
+                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20 [@media(pointer:coarse)]:h-11"
                   />
                 )}
                 {searchQuery && (

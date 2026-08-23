@@ -680,7 +680,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                         {!canEditTags ? null : isAddingTag ? (
                             <Input
                                 ref={tagInputRef}
-                                className="h-6 w-28 text-[11px] px-2 py-0"
+                                className="h-6 w-28 text-[11px] px-2 py-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40"
                                 value={tagInput}
                                 placeholder={t('notes:context.add_tag')}
                                 onChange={e => setTagInput(e.target.value)}

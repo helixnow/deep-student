@@ -239,7 +239,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
               ? t('settings:vendor_model_fetcher.search_placeholder')
               : t('settings:vendor_model_fetcher.search_placeholder_empty')
             }
-            className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
             disabled={models.length === 0}
           />
         </div>

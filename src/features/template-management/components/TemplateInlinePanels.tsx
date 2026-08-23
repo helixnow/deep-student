@@ -122,7 +122,8 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           )}
         </div>
 
-        <label className="wb-tm-panel-checkline">
+        {/* 触屏：勾选行整体升到 44px 命中高度（checkbox 本体 16px 不足触控标准） */}
+        <label className="wb-tm-panel-checkline [@media(pointer:coarse)]:min-h-11">
           <Checkbox
             checked={overwriteExisting}
             onCheckedChange={(v) => onOverwriteChange(Boolean(v))}

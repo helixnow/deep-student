@@ -1227,7 +1227,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t('practice:questionBank.searchPlaceholder')}
               className={cn(
-                'pl-9 h-8 sm:h-9 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm',
+                'pl-9 h-8 sm:h-9 [@media(pointer:coarse)]:h-11 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm [@media(pointer:coarse)]:text-base',
                 '[&::-webkit-search-cancel-button]:hidden',
                 (searchQuery || isLoading) && 'pr-8'
               )}

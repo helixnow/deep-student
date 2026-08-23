@@ -177,7 +177,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
           variant="ghost"
           size="icon"
           iconOnly
-          className="!h-6 !w-6 shrink-0"
+          className="!h-6 !w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 shrink-0"
           onClick={handleClose}
           disabled={creating}
           aria-label={t('chatV2:workspace.createAgent.cancel')}

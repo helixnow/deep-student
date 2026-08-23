@@ -273,7 +273,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               }
               size="sm"
               variant="ghost"
-              className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+              className="h-8 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
               width={160}
             />
 
@@ -297,7 +297,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
                 placeholder={t('settings:memory.defaultFolderName')}
-                className="h-8 text-xs bg-transparent flex-1"
+                className="h-8 [@media(pointer:coarse)]:h-11 text-xs bg-transparent flex-1"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleCreateFolder();
@@ -344,7 +344,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
             ]}
             size="sm"
             variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            className="h-8 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={120}
           />
         </SettingRow>
@@ -372,7 +372,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
             ]}
             size="sm"
             variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            className="h-8 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={120}
           />
         </SettingRow>

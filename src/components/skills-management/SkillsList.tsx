@@ -212,6 +212,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       "flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer border select-none",
                       // 移动端触控目标：加高 + 负 margin 抵消行高膨胀
                       "max-lg:min-h-9 max-lg:px-2.5 max-lg:-my-1.5",
+                      // 触屏（含 ≥lg 触屏平板）补足 44px 触控目标；!important 压过 max-lg:min-h-9
+                      "[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5",
                       isDefaultEnabled 
                         ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-transparent"
                         : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"
@@ -260,7 +262,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
                   onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
                   title={
                     isDisabledSkill

@@ -1404,7 +1404,8 @@ ${resolvedPath}`);
             </p>
             <div className="space-y-2">
               {exportTierOptions.map((option) => (
-                <label key={option.id} className="flex items-start gap-3">
+                // 触屏：整行 label 是命中区，升到 44px 触控标准（checkbox 本体 16px 不足）
+                <label key={option.id} className="flex items-start gap-3 [@media(pointer:coarse)]:min-h-11">
                   <Checkbox
                     checked={exportBackupTiers.includes(option.id)}
                     onCheckedChange={() => toggleExportTier(option.id)}

@@ -309,7 +309,7 @@ export const PdfSettingsSection: React.FC = () => {
             ]}
             size="sm"
             variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+            className="h-8 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={80}
           />
         </SettingRow>

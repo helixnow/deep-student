@@ -677,7 +677,8 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
       </div>
 
       <div className="skill-market-filter-row">
-        <label>
+        {/* 触屏：13px checkbox + 11px 文案不足触控标准，label 整体升到 44px 命中高度 */}
+        <label className="[@media(pointer:coarse)]:min-h-11">
           <input
             type="checkbox"
             checked={nonSuspiciousOnly}

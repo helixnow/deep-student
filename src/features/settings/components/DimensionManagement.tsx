@@ -690,7 +690,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         size="sm"
                                         onClick={() => setExpandedRow(null)}
                                         disabled={updating}
-                                        className="h-7 text-xs"
+                                        className="h-7 [@media(pointer:coarse)]:!h-11 text-xs"
                                       >
                                         {t('common:cancel')}
                                       </DsButton>
@@ -699,7 +699,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         size="sm"
                                         onClick={handleConfirmChangeModel}
                                         disabled={updating || !selectedModelId}
-                                        className="h-7 text-xs"
+                                        className="h-7 [@media(pointer:coarse)]:!h-11 text-xs"
                                       >
                                         {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                                         {t('common:confirm')}
@@ -776,7 +776,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         tabIndex={isConfirmingDelete ? 0 : -1}
                                         onClick={() => setConfirmingDeleteRow(null)}
                                         disabled={deleting}
-                                        className="h-6 px-2 text-xs"
+                                        className="h-6 [@media(pointer:coarse)]:!h-11 px-2 text-xs"
                                       >
                                         {t('common:cancel')}
                                       </DsButton>
@@ -786,7 +786,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         tabIndex={isConfirmingDelete ? 0 : -1}
                                         onClick={() => handleDeleteDimension(dim)}
                                         disabled={deleting}
-                                        className="h-6 px-2 text-xs"
+                                        className="h-6 [@media(pointer:coarse)]:!h-11 px-2 text-xs"
                                       >
                                         {deleting && isConfirmingDelete
                                           ? <CircleNotch size={12} className="mr-1 animate-spin" />
@@ -928,7 +928,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               tabIndex={isConfirmingDelete ? 0 : -1}
                               onClick={() => setConfirmingDeleteRow(null)}
                               disabled={deleting}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {t('common:cancel')}
                             </DsButton>
@@ -938,7 +938,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               tabIndex={isConfirmingDelete ? 0 : -1}
                               onClick={() => handleDeleteDimension(dim)}
                               disabled={deleting}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {deleting && isConfirmingDelete
                                 ? <CircleNotch size={12} className="mr-1 animate-spin" />
@@ -992,7 +992,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               size="sm"
                               onClick={() => setExpandedRow(null)}
                               disabled={updating}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {t('common:cancel')}
                             </DsButton>
@@ -1001,7 +1001,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               size="sm"
                               onClick={handleConfirmChangeModel}
                               disabled={updating || !selectedModelId}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                               {t('common:confirm')}

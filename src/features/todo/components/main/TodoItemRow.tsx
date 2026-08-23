@@ -315,7 +315,7 @@ const RowTitleEditor: React.FC<{
       }}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
-      className="h-6 min-h-0 w-full rounded border border-[color:hsl(var(--primary))]/50 bg-background px-1 py-0 text-sm font-medium focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 selection:bg-[color:hsl(var(--primary))]/30"
+      className="h-6 min-h-0 w-full rounded border border-[color:hsl(var(--primary))]/50 bg-background px-1 py-0 text-sm font-medium focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 selection:bg-[color:hsl(var(--primary))]/30 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
     />
   );
 };

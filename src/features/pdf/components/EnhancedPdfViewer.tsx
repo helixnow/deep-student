@@ -2637,7 +2637,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <div className="ds-pdf__page-overlay">
             <button
               type="button"
-              className={`ds-pdf__select-btn ${isSelected ? 'selected' : ''}`}
+              className={`ds-pdf__select-btn [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:justify-center ${isSelected ? 'selected' : ''}`}
               onClick={() => handleTogglePageSelect(pageNum)}
               aria-label={isSelected ? t('textbook:deselect_page') : t('textbook:select_page')}
             >
@@ -3059,7 +3059,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   type="button"
                   role="tab"
                   aria-selected={sidebarMode === 'outline'}
-                  className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'outline' ? 'active' : ''}`}
+                  className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'outline' ? 'active' : ''}`}
                   onClick={() => setSidebarMode('outline')}
                 >
                   {t('pdf:toolbar.outline')}
@@ -3069,7 +3069,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 type="button"
                 role="tab"
                 aria-selected={sidebarMode === 'thumbnails'}
-                className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
+                className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
                 onClick={() => setSidebarMode('thumbnails')}
               >
                 {t('pdf:toolbar.thumbnails')}
@@ -3499,7 +3499,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     {editingBookmarkId === bm.id ? (
                       <input
                         type="text"
-                        className="ds-bookmark-title-input"
+                        className="ds-bookmark-title-input [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-[16px]"
                         value={editingBookmarkTitle}
                         onChange={(e) => setEditingBookmarkTitle(e.target.value)}
                         onKeyDown={(e) => {

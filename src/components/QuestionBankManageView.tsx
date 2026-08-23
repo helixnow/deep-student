@@ -486,7 +486,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               value={filters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               className={cn(
-                'pl-9 h-8 text-sm bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
+                'pl-9 h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
                 '[&::-webkit-search-cancel-button]:hidden',
                 filters.search && 'pr-8'
               )}
@@ -1053,7 +1053,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   }
                 }}
                 placeholder={t('learningHub:exam.library.batchAddTagPlaceholder')}
-                className="h-8 w-40 flex-1 min-w-[8rem] bg-background text-sm"
+                className="h-8 [@media(pointer:coarse)]:h-11 w-40 flex-1 min-w-[8rem] bg-background text-sm [@media(pointer:coarse)]:text-base"
               />
               <DsButton
                 variant="ghost"
