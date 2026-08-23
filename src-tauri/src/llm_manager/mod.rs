@@ -5,7 +5,6 @@ mod model2_pipeline;
 pub(crate) mod parser;
 mod rag_extension;
 pub mod routing;
-pub mod utf8_stream;
 
 // 🔒 URL 日志脱敏工具（Gemini 等把 API key 放在 query 中），供 llm_manager 外的调用方复用
 pub(crate) use model2_pipeline::sanitize_url_for_log;
