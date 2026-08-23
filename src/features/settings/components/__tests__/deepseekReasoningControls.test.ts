@@ -23,4 +23,12 @@ describe('DeepSeek reasoning control mapping', () => {
     expect(control.kind).toBe('v32-budget-effort');
     expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
   });
+
+  it('exposes the native max depth for GPT-5.6 settings controls', () => {
+    const control = resolveDeepSeekReasoningControl('gpt-5.6', false);
+
+    expect(control.kind).toBe('openai-effort');
+    expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    expect(control.canDisable).toBe(true);
+  });
 });

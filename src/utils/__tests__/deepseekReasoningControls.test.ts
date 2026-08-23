@@ -26,6 +26,9 @@ describe('DeepSeek runtime reasoning controls', () => {
     ['gpt-oss-120b', 'openai-compatible', ['low', 'medium', 'high'], false],
     ['gpt-5.1', 'openai', ['low', 'medium', 'high'], true],
     ['gpt-5.5', 'openai_codex', ['low', 'medium', 'high', 'xhigh'], false],
+    ['gpt-5.6', 'openai', ['low', 'medium', 'high', 'xhigh', 'max'], true],
+    ['gpt-5.6-sol', 'openai_codex', ['low', 'medium', 'high', 'xhigh', 'max'], false],
+    ['gpt-5.6-terra', 'openai_codex', ['low', 'medium', 'high', 'xhigh', 'max'], false],
     ['codex-mini-latest', 'openai_codex', ['low', 'medium', 'high'], false],
     ['gpt-5', 'openai_codex', ['minimal', 'low', 'medium', 'high'], false],
   ] as const)('crops OpenAI/Codex effort levels for %s', (model, providerType, values, canDisable) => {
@@ -234,6 +237,26 @@ describe('DeepSeek runtime reasoning controls', () => {
         thinkingBudget: 32768,
       })
     ).toEqual({ enableThinking: true, reasoningEffort: 'xhigh', thinkingBudget: undefined });
+  });
+
+  it('keeps the max runtime depth for GPT-5.6 instead of falling back', () => {
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control: resolveDeepSeekRuntimeReasoningControl({ model: 'gpt-5.6', providerType: 'openai' }),
+        enableThinking: true,
+        reasoningEffort: 'max',
+        thinkingBudget: 32768,
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'max', thinkingBudget: undefined });
+
+    // 非 5.6 的 GPT-5 系列不认识 max，仍回退到 medium
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control: resolveDeepSeekRuntimeReasoningControl({ model: 'gpt-5.5', providerType: 'openai' }),
+        enableThinking: true,
+        reasoningEffort: 'max',
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'medium', thinkingBudget: undefined });
   });
 
   it('clears versioned runtime depth fields for toggle-only models', () => {

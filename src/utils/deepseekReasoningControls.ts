@@ -68,6 +68,12 @@ const OPENAI_CODEX_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'XHigh' },
 ];
 
+/** GPT-5.6 在 xhigh 之上原生支持 max 档，不能复用 codex 档位表。 */
+const GPT56_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+  ...OPENAI_CODEX_EFFORT_OPTIONS,
+  { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
+];
+
 const LOW_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
@@ -332,6 +338,13 @@ function resolveOpenAiEffortControl(
       kind: 'openai-effort',
       options: MINIMAL_LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
       canDisable: false,
+    });
+  }
+  if (/gpt-5\.6(?:[.\-_/]|$)/.test(modelId)) {
+    return finalize({
+      kind: 'openai-effort',
+      options: GPT56_EFFORT_OPTIONS,
+      canDisable: true,
     });
   }
   if (/gpt-5\.[45](?:[.\-_/]|$)/.test(modelId)) {
