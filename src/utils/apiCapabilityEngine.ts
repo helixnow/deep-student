@@ -110,9 +110,10 @@ const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   // Claude 4.6 系列
   'claude-opus-4-6',
   'claude-opus-4.6',
-  // Claude 2026 系列：opus-4-7/4-8 已被 'claude-opus-4' 前缀覆盖；Sonnet 5 / Fable 5 需显式列出
+  // Claude 2026 系列：opus-4-7/4-8 已被 'claude-opus-4' 前缀覆盖；Sonnet 5 / Fable 5 / Mythos 5 需显式列出
   'claude-sonnet-5',
   'claude-fable-5',
+  'claude-mythos-5',
   'claude-haiku-5',
   'vision',
   // 智谱仅 V 系列支持视觉，避免把 glm-4.7/4.6/5 等纯文本模型误判为多模态
@@ -273,6 +274,7 @@ const CLAUDE_THINKING_PATTERNS = [
   // 注意：这些模型需 adaptive thinking + output_config.effort（type:"enabled" 会 400，见 r4 P0-#1）
   'claude-sonnet-5',
   'claude-fable-5',
+  'claude-mythos-5',
   'claude-haiku-5',
 ];
 
@@ -338,8 +340,8 @@ const DEFAULT_CONTEXT_WINDOW = 100_000;
 const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   // GPT-5.6：1.05M tokens
   { pattern: /gpt-5\.6/i, window: 1_050_000 },
-  // Claude 2026 主线与 Kimi K3：1M tokens
-  { pattern: /claude-(?:fable-5|sonnet-5|opus-4[-.](?:7|8))/i, window: 1_000_000 },
+  // Claude 2026 主线与 Kimi K3：1M tokens（Mythos 5 与 Fable 5 同代，按主线对齐）
+  { pattern: /claude-(?:fable-5|mythos-5|sonnet-5|opus-4[-.](?:7|8))/i, window: 1_000_000 },
   { pattern: /kimi-k3/i, window: 1_000_000 },
   // MiniMax M2.7 与 Doubao Evolving：1M tokens
   { pattern: /minimax-m2\.7|doubao-seed-evolving/i, window: 1_000_000 },

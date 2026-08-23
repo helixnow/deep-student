@@ -62,6 +62,25 @@ describe('apiCapabilityEngine vision inference', () => {
     expect(caps.functionCalling).toBe(true);
     expect(caps.reasoning).toBe(true);
     expect(caps.contextWindow).toBe(32768);
+    expect(caps.contextWindowSource).toBe('registry');
+  });
+
+  it('reports context window source for registry hits, rule hits and defaults', () => {
+    const qwen = inferApiCapabilities({ id: 'qwen3.5-32b', providerScope: 'siliconflow' });
+    expect(qwen.contextWindow).toBe(32_768);
+    expect(qwen.contextWindowSource).toBe('registry');
+
+    const glm = inferApiCapabilities({ id: 'glm-4.5v' });
+    expect(glm.contextWindow).toBe(64_000);
+    expect(glm.contextWindowSource).toBe('registry');
+
+    const ruleHit = inferApiCapabilities({ id: 'claude-fable-5' });
+    expect(ruleHit.contextWindow).toBe(1_000_000);
+    expect(ruleHit.contextWindowSource).toBe('rule');
+
+    const miss = inferApiCapabilities({ id: 'mystery-model-x' });
+    expect(miss.contextWindow).toBe(100_000);
+    expect(miss.contextWindowSource).toBe('default');
   });
 
   it('keeps generic open-source Qwen3.5 records when provider scope is absent', () => {
@@ -158,6 +177,21 @@ describe('apiCapabilityEngine 2026-07 model refresh', () => {
     expect(caps.vision).toBe(true);
     expect(caps.functionCalling).toBe(true);
     expect(caps.supportsThinkingTokens).toBe(true);
+  });
+
+  it('treats Claude Mythos 5 as a multimodal adaptive-thinking model with 1M context', () => {
+    const caps = inferApiCapabilities({ id: 'claude-mythos-5' });
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
+  it('keeps Claude Mythos 5 snapshot ids vision + thinking capable', () => {
+    const caps = inferApiCapabilities({ id: 'claude-mythos-5-20260615' });
+    expect(caps.vision).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
   });
 
   it('treats Claude Sonnet 5 and Opus 4.8 as vision + thinking capable', () => {
