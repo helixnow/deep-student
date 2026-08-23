@@ -554,6 +554,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 停用端到端加密：走后端显式 API，只删除加密密码、保留传输凭据。
   // 留空保存不是停用（保存的合并语义把空字段视为「保留现有值」），
   // 这里是唯一的停用入口，必须经 danger 确认框确认。
+  // 注意：停用只影响本机密码，不会移除云端加密标记——已有标记的根目录
+  // 之后的明文上传会被后端拒绝（见 enforce_encryption_policy_before_upload）。
   const disableEncryption = useCallback(async () => {
     try {
       const status = await cloudApi.clearEncryptionPassword();
@@ -1620,7 +1622,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     </DsAlertDialog>
   );
 
-  // 停用端到端加密确认对话框（danger：删除本机加密密码，未另存则已加密备份永久不可解密）
+  // 停用端到端加密确认对话框（danger：删除本机加密密码，未另存则已加密备份永久不可解密）。
+  // [R06-e2ee-copy] 第二段说明与后端 R02 上传策略一致：已写入加密标记
+  // （.encryption-marker）的云端根目录会拒绝明文上传，而不是静默降级为明文；
+  // 用户需重新填写原密码或更换云端根目录才能继续备份。
   const disableEncryptionConfirmDialog = (
     <DsAlertDialog
       open={disableEncryptionConfirmOpen}
