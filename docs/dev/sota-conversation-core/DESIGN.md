@@ -63,12 +63,15 @@
 - 分支复制带上 replay 三列；OpenAI `prompt_cache_key` 可沿用源 session。
 - compaction 阈值必须先于 FIFO 头删触发。
 
-### P2 OpenAI Responses 原生多轮（可选，DeepSeek 不做）
+### P2 协议增强（跟 Codex 无状态，不跟 OpenCode 链式）
 
-- 仅 OpenAI / Codex：配置项允许 `store` + 保存 `response.id`，后续带 `previous_response_id`。
-- 仅追加本轮 input items；失败回落全量重放。
-- DeepSeek 保持全量重放，并把完整 `web_search_call` output item 与
-  `function_call` 一样写入历史、下一轮原样放进 `input`。
+- **不把 `store:true` + `previous_response_id` 当默认优化。** Codex 官方靠全量重放 + 稳定 key。
+  链式仅作远期可选。
+- DeepSeek：完整 `web_search_call` 写入历史并原样回传 `input`。
+- Anthropic：保留顶层 automatic；只补 tools 尾 + system 尾两个显式保险断点（不要拆掉 auto）。
+- GPT-5.6+：稳定指令改放 developer `input_text` 并打 `prompt_cache_breakpoint`
+  （顶层 `instructions` 打不了断点）；评估 `prompt_cache_options`。
+- Codex 非聊天调用面禁止随机 cache key，改 caller 级稳定串。
 
 ### P3 DeepSeek / OpenAI hosted 能力
 

@@ -32,7 +32,9 @@ OpenCode、Pi Agent、Claude Code、Codex 的行业前沿。
 | [ROUND-01-prefix-paths.md](./ROUND-01-prefix-paths.md) | 第一轮补充：live/replay 分叉总表 |
 | [ROUND-01-replay.md](./ROUND-01-replay.md) | 第一轮补充：V20260806 未接线，A/B 分层 |
 | [ROUND-01-pipeline.md](./ROUND-01-pipeline.md) | 第一轮补充：变体混拼、workspace 注入、分支复制 |
-| [DESIGN.md](./DESIGN.md) | 随调研收敛的优化方案（草案 → 可落地） |
+| [ROUND-01-codex-claude.md](./ROUND-01-codex-claude.md) | 第二轮：Claude Code / Codex 交叉验证 |
+| [DESIGN.md](./DESIGN.md) | 随调研收敛的优化方案 |
+| [ROUND-02-synthesis.md](./ROUND-02-synthesis.md) | 第一轮全部完成后的冻结落地顺序 |
 
 ## 当前判断（会随轮次更新）
 

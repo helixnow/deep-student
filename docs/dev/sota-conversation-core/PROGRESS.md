@@ -8,11 +8,11 @@
 | 轮次 | 状态 | 子代理数 | 产出 |
 | --- | --- | --- | --- |
 | 0 立项 | 完成 | 0 | 本目录、目标、审阅范围 |
-| 1 预审 + 并行切片 | 进行中 | 10 + 补位 | [ROUND-01-findings.md](./ROUND-01-findings.md)、[ROUND-01-telemetry.md](./ROUND-01-telemetry.md) |
-| 2 对标补全 | 进行中 | replay + Claude/Codex | [ROUND-01-opencode-pi.md](./ROUND-01-opencode-pi.md) |
-| 3 覆盖度矩阵收敛 | 排队 | — | 官方字段 × 实现 |
-| 4 方案冻结 | 排队 | — | 更新 DESIGN.md |
-| 5+ 落地与测试 | 未开始 | 修复子代理 | 独立实现分支 |
+| 1 预审 + 并行切片 | 完成 | 12 | 见 README 索引 |
+| 2 对标补全 | 完成 | Claude/Codex + replay | [ROUND-01-codex-claude.md](./ROUND-01-codex-claude.md) |
+| 3 覆盖度矩阵收敛 | 完成 | — | [ROUND-01-native-coverage.md](./ROUND-01-native-coverage.md) |
+| 4 方案冻结 | 完成 | — | [ROUND-02-synthesis.md](./ROUND-02-synthesis.md) |
+| 5+ 落地与测试 | 开始 | 修复子代理 | 独立实现分支 |
 
 ## 第一轮已派出的子代理（模型约定：`claude-fable-5-thinking-xhigh`）
 
@@ -29,7 +29,7 @@
 | [b0ca75ca](b0ca75ca-0edf-4ca5-81ad-efcabefe32d5) | 2026 Responses 官方能力覆盖度（已完成） |
 | [414d5fd1](414d5fd1-4b9c-440f-ad1b-f70d7f4c4439) | 各协议 cached_tokens 测量是否正确（已完成） |
 | [b9e1515d](b9e1515d-cbd0-4606-a003-75d9107395a1) | V20260806 replay 列是否真正写入/回放（已完成：未落地） |
-| 4d4caf7e | Claude Code × Codex 对标（第二轮补位） |
+| [4d4caf7e](4d4caf7e-9e8e-4dc7-aefe-26d49eff2411) | Claude Code × Codex 对标（已完成） |
 
 因异步子代理上限为 10，以下课题排入第二轮：
 
