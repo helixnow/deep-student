@@ -6973,7 +6973,8 @@ impl SyncManager {
                                 // [R02] 安全可交换字段（tag 并集、布尔 OR、单调计数 max）仍折叠进
                                 // 胜出的本地行：否则"本地胜的一端只剩本地 tag、云端胜的一端已并集"，
                                 // 两台设备会永久分叉。折叠写入不抑制 change log，随下一轮上传收敛。
-                                Self::fold_safe_field_merge_into_local(conn, &change_to_apply)?;
+                                // [R04] 折叠受策略门约束：Manual/KeepLocal 下不自动改写本地行。
+                                Self::fold_safe_field_merge_into_local(conn, &change_to_apply, policy)?;
                                 conflict_result.rejected += 1;
                                 apply_result.skipped_count += 1;
                             }
@@ -7410,11 +7411,21 @@ impl SyncManager {
     /// 而云端胜的一端做了并集，两台设备会停在分叉状态。折叠产生的 UPDATE 不抑制
     /// change log（触发器照常记 pending），合并结果随下一轮上传传播给对端。
     ///
+    /// [R04] 折叠只在 `KeepLatest`（自动 LWW 裁决）下进行：`KeepLocal`（含上游
+    /// `MergeStrategy::Manual` 映射到的 KeepLocal）是用户显式指令"本地行原样保留 /
+    /// 等待手动裁决"，自动改写本地行会违背该指令——云端败方 payload 已完整入
+    /// `__sync_conflicts`，用户可在冲突面板手动采纳。KeepCloud 下 Local 不会胜出，
+    /// 本函数不可达。
+    ///
     /// 返回是否有字段被实际折叠。
     fn fold_safe_field_merge_into_local(
         conn: &Connection,
         change: &SyncChangeWithData,
+        policy: conflict_resolver::ConflictPolicy,
     ) -> Result<bool, SyncError> {
+        if policy != conflict_resolver::ConflictPolicy::KeepLatest {
+            return Ok(false);
+        }
         if change.operation == ChangeOperation::Delete {
             return Ok(false);
         }
@@ -7470,7 +7481,14 @@ impl SyncManager {
             let remote_val = data.get(*col_name).expect("picklist filtered on presence");
             let (merged_val, was_merged, merge_conflict) =
                 field_merge::merge_field(table_name, col_name, Some(local_val), Some(remote_val));
-            if !was_merged || merge_conflict || &merged_val == local_val {
+            // [R04] 比较前先 canonicalize：SQLite TEXT 列里的 '["a","b"]' 与合并产物
+            // Array(["a","b"]) 语义等价但原始比较不等，会产生空转 UPDATE（触发器
+            // 记 pending → 无意义上传回声）。canonicalize 抹平字符串/JSON 形态差异。
+            if !was_merged
+                || merge_conflict
+                || Self::canonicalize_sync_value_for_compare(&merged_val)
+                    == Self::canonicalize_sync_value_for_compare(local_val)
+            {
                 continue;
             }
             let update_pk_predicate = Self::build_primary_key_predicate_from(&pk_columns, 2)?;
@@ -7543,59 +7561,98 @@ impl SyncManager {
                 // 本地行且不可恢复（INV-1 违例）。被 LWW 拒绝的 DELETE 不写
                 // __sync_delete_versions，较新的本地行随下一轮上传正常收敛。
                 if !skip_lww {
-                    if let Some(cloud_ms) = Self::lww_timestamp_millis(&change.changed_at) {
-                        let now = chrono::Utc::now();
-                        let drift_ms = cloud_ms - now.timestamp_millis();
-                        if drift_ms > hlc::MAX_DRIFT_MS {
-                            tracing::warn!(
-                                "[sync] DELETE 时间戳漂移过大，转入隔离区: {}.{} = {}, drift_ms={}",
-                                change.table_name,
-                                id_column,
-                                change.record_id,
-                                drift_ms
-                            );
-                            return Err(SyncError::ClockDriftSuspected {
-                                table: change.table_name.clone(),
-                                record_id: change.record_id.clone(),
-                                drift_ms,
-                            });
-                        }
+                    // [R04] changed_at 不可解析时 fail-closed：漂移检查与 LWW 门都无法
+                    // 运行，此前会直落到无条件删除（hard-delete 表不可恢复，INV-1 违例）。
+                    // 返回非 transient 错误 → 调用方 quarantine_change 落隔离区
+                    // （可见、可重放/手动处理），绝不静默硬删。
+                    // skip_lww=true 的强制路径不受影响：冲突已被 resolve_one 显式裁决。
+                    let Some(cloud_ms) = Self::lww_timestamp_millis(&change.changed_at) else {
+                        tracing::warn!(
+                            "[sync] DELETE changed_at 不可解析，fail-closed 转入隔离区: {}.{} = {}, changed_at={:?}",
+                            change.table_name,
+                            id_column,
+                            change.record_id,
+                            change.changed_at
+                        );
+                        return Err(SyncError::Database(format!(
+                            "DELETE changed_at 不可解析，fail-closed 拒绝删除: {}.{} = {}, changed_at={:?}",
+                            change.table_name, id_column, change.record_id, change.changed_at
+                        )));
+                    };
+                    let now = chrono::Utc::now();
+                    let drift_ms = cloud_ms - now.timestamp_millis();
+                    if drift_ms > hlc::MAX_DRIFT_MS {
+                        tracing::warn!(
+                            "[sync] DELETE 时间戳漂移过大，转入隔离区: {}.{} = {}, drift_ms={}",
+                            change.table_name,
+                            id_column,
+                            change.record_id,
+                            drift_ms
+                        );
+                        return Err(SyncError::ClockDriftSuspected {
+                            table: change.table_name.clone(),
+                            record_id: change.record_id.clone(),
+                            drift_ms,
+                        });
+                    }
 
-                        if Self::table_has_column(conn, &change.table_name, "updated_at") {
-                            let local_data_opt = Self::get_record_data(
-                                conn,
-                                &change.table_name,
-                                &change.record_id,
-                                id_column,
-                            )?;
+                    if Self::table_has_column(conn, &change.table_name, "updated_at") {
+                        let local_data_opt = Self::get_record_data(
+                            conn,
+                            &change.table_name,
+                            &change.record_id,
+                            id_column,
+                        )?;
 
-                            if let Some(local_data) = local_data_opt {
-                                let local_ts = local_data
-                                    .get("updated_at")
-                                    .and_then(Self::timestamp_value_to_lww_string);
-                                if local_ts.as_deref().is_some_and(|local_ts| {
-                                    let (local_dev, cloud_dev) = Self::lww_device_pair(
-                                        &local_data,
-                                        None,
-                                        change.source_device_id.as_deref(),
-                                    );
-                                    Self::compare_lww_timestamps(
-                                        local_ts,
-                                        local_dev,
-                                        &local_data.to_string(),
-                                        &change.changed_at,
-                                        cloud_dev,
-                                        "",
-                                    ) == std::cmp::Ordering::Greater
-                                }) {
-                                    tracing::debug!(
-                                        "[sync] LWW skip DELETE: {}.{} = {} (本地 update 更新)",
-                                        change.table_name,
-                                        id_column,
-                                        change.record_id
-                                    );
-                                    return Ok(false);
+                        if let Some(local_data) = local_data_opt {
+                            let local_ts = local_data
+                                .get("updated_at")
+                                .and_then(Self::timestamp_value_to_lww_string);
+                            if local_ts.as_deref().is_some_and(|local_ts| {
+                                let (local_dev, cloud_dev) = Self::lww_device_pair(
+                                    &local_data,
+                                    None,
+                                    change.source_device_id.as_deref(),
+                                );
+                                Self::compare_lww_timestamps(
+                                    local_ts,
+                                    local_dev,
+                                    &local_data.to_string(),
+                                    &change.changed_at,
+                                    cloud_dev,
+                                    "",
+                                ) == std::cmp::Ordering::Greater
+                            }) {
+                                tracing::debug!(
+                                    "[sync] LWW skip DELETE: {}.{} = {} (本地 update 更新)",
+                                    change.table_name,
+                                    id_column,
+                                    change.record_id
+                                );
+                                // [R04/INV-1] 输掉 LWW 的 DELETE 与 UPSERT SkipStale 对称：
+                                // 慢钟设备的删除意图不能只 debug 丢弃——以 Null payload
+                                // （与 resolve_one 的 DELETE 冲突表示一致）落
+                                // __sync_conflicts（side='cloud'），用户可见、可手动采纳。
+                                // 本地行已 tombstone 时删除意图已达成（纯回声），不记录；
+                                // 重复投递由 (table, record, side, data_hash) 部分唯一索引去重。
+                                let already_tombstoned = local_data
+                                    .get("deleted_at")
+                                    .map(|v| !v.is_null())
+                                    .unwrap_or(false);
+                                if !already_tombstoned {
+                                    conflict_resolver::ConflictResolver::save_conflict_record(
+                                        conn,
+                                        conflict_resolver::ConflictRecordToSave {
+                                            table_name: &change.table_name,
+                                            record_id: &change.record_id,
+                                            side: conflict_resolver::ConflictSide::Cloud,
+                                            data: &serde_json::Value::Null,
+                                            winning_device_id: None,
+                                            losing_device_id: change.source_device_id.as_deref(),
+                                        },
+                                    )?;
                                 }
+                                return Ok(false);
                             }
                         }
                     }
@@ -12818,6 +12875,119 @@ mod tests {
     }
 
     #[test]
+    fn regression_r04_keep_local_policy_does_not_fold_safe_fields() {
+        // [R04] KeepLocal（含上游 MergeStrategy::Manual 映射到的 KeepLocal）是用户
+        // 显式指令"本地行原样保留 / 等待手动裁决"：自动折叠会违背该指令。
+        // 云端败方 payload 已完整入 __sync_conflicts，用户可在冲突面板手动采纳。
+        let conn = create_test_db();
+        create_notes_table_for_r02(&conn, r#"["local"]"#, "2026-02-10T00:00:00Z");
+        insert_test_change_log(&conn, "notes", "note-r02", "UPDATE", 0);
+
+        let changes = vec![notes_update_change_for_r02(
+            json!(["remote"]),
+            "2026-02-11T00:00:00Z", // 即使云端更新，KeepLocal 也裁决 Local 胜
+        )];
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLocal,
+            Some("device-cloud"),
+            Some("device-local"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(conflict_result.rejected, 1, "KeepLocal：云端整行变更被拒绝");
+        let (tags, favorite): (String, i64) = conn
+            .query_row(
+                "SELECT tags, is_favorite FROM notes WHERE id='note-r02'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            tags, r#"["local"]"#,
+            "KeepLocal/Manual 下不得自动折叠改写本地行"
+        );
+        assert_eq!(favorite, 0, "布尔 OR 也不得在 KeepLocal 下折叠");
+
+        let cloud_side: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_conflicts
+                 WHERE table_name='notes' AND record_id='note-r02' AND side='cloud'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(cloud_side > 0, "云端败方 payload 仍应入冲突表供手动采纳");
+    }
+
+    #[test]
+    fn regression_r04_fold_skips_semantically_equal_local_values() {
+        // [R04] 折叠比较前先 canonicalize：远端 tags 是本地子集时并集结果与本地
+        // 语义等价（仅 TEXT/Array 形态差异），不得产生空转 UPDATE（触发器会记
+        // pending → 无意义上传回声）。
+        let conn = create_test_db();
+        create_notes_table_for_r02(&conn, r#"["local","remote"]"#, "2026-02-10T00:00:00Z");
+
+        let change = SyncChangeWithData {
+            table_name: "notes".to_string(),
+            record_id: "note-r02".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "note-r02",
+                "tags": ["remote"], // 本地子集：并集 == 本地集合
+                "updated_at": "2026-02-09T00:00:00Z",
+            })),
+            changed_at: "2026-02-09T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("device-cloud".to_string()),
+            source_seq: None,
+        };
+
+        let folded = SyncManager::fold_safe_field_merge_into_local(
+            &conn,
+            &change,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+        )
+        .unwrap();
+        assert!(!folded, "语义等价（远端为本地子集）不得产生空转写");
+
+        let tags: String = conn
+            .query_row("SELECT tags FROM notes WHERE id='note-r02'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(tags, r#"["local","remote"]"#, "本地值保持原样");
+
+        // 对照：真正的新增 tag 仍会折叠
+        let change_with_new_tag = SyncChangeWithData {
+            data: Some(json!({
+                "id": "note-r02",
+                "tags": ["extra"],
+                "updated_at": "2026-02-09T00:00:00Z",
+            })),
+            ..change
+        };
+        let folded = SyncManager::fold_safe_field_merge_into_local(
+            &conn,
+            &change_with_new_tag,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+        )
+        .unwrap();
+        assert!(folded, "真正的集合增量仍应折叠");
+        let tags: String = conn
+            .query_row("SELECT tags FROM notes WHERE id='note-r02'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(tags, r#"["extra","local","remote"]"#);
+    }
+
+    #[test]
     fn regression_r02_stale_delete_without_tombstone_is_rejected() {
         // [R02/INV-1] test_records 没有 deleted_at 列：较旧的 DELETE 不得无条件
         // 物理删除更新的本地行（hard delete 不可恢复）。LWW 拒绝后本地行保留。
@@ -12947,6 +13117,126 @@ mod tests {
         assert_eq!(count, 1, "慢钟败方写入应入冲突表且重复投递被去重");
         assert_eq!(side, "cloud");
         assert!(data_json.contains("slow-clock-write"), "败方 payload 可见");
+        assert_eq!(losing_device.as_deref(), Some("device-slow"));
+    }
+
+    #[test]
+    fn regression_r04_delete_with_unparseable_changed_at_fails_closed() {
+        // [R04/INV-1] changed_at 不可解析时漂移检查与 LWW 门都无法运行，
+        // 此前会直落到无条件硬删（不可恢复）。必须 fail-closed：
+        // 变更进隔离区（可见、可重放/手动处理），本地行原样保留。
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params![
+                "delete-version-record",
+                "must-survive",
+                "2026-07-10T13:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let bad_delete = operation_change(
+            ChangeOperation::Delete,
+            "not-a-timestamp", // HLC / RFC3339 / SQLite datetime / 毫秒数均解析失败
+            None,
+            "device-bad-clock",
+            3,
+        );
+        let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &[bad_delete],
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("device-bad-clock"),
+            Some("device-local"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(
+            result.failure_count, 1,
+            "changed_at 不可解析的 DELETE 必须 fail-closed 而非静默应用/跳过"
+        );
+
+        let survivors: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(survivors, 1, "本地行不得被不可解析时间戳的 DELETE 硬删");
+
+        let quarantined: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_quarantine
+                 WHERE table_name='test_records' AND record_id='delete-version-record'
+                   AND operation='DELETE'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(quarantined, 1, "fail-closed 的 DELETE 必须落隔离区（可见、可处理）");
+    }
+
+    #[test]
+    fn regression_r04_stale_delete_losing_lww_lands_in_sync_conflicts() {
+        // [R04/INV-1] 输掉 LWW 的 DELETE 与 UPSERT SkipStale 对称：慢钟设备的
+        // 删除意图不得只 debug 丢弃，必须以 Null payload（与 resolve_one 的
+        // DELETE 冲突表示一致）落 __sync_conflicts（side='cloud'），且重复投递去重。
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params![
+                "delete-version-record",
+                "newer-local",
+                "2026-07-10T13:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let stale_delete = operation_change(
+            ChangeOperation::Delete,
+            "2026-07-10T12:00:00Z", // 早于本地 updated_at → 输掉 LWW
+            None,
+            "device-slow",
+            1,
+        );
+        for _ in 0..2 {
+            let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+                &conn,
+                &[stale_delete.clone()],
+                None,
+                conflict_resolver::ConflictPolicy::KeepLatest,
+                Some("device-slow"),
+                Some("device-local"),
+            )
+            .unwrap();
+            assert_eq!(result.success_count, 0);
+            assert_eq!(result.skipped_count, 1, "较旧 DELETE 仍应被 LWW 拒绝");
+        }
+
+        let survivors: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(survivors, 1, "更新的本地行保留");
+
+        let (count, side, data_json, losing_device): (i64, String, String, Option<String>) = conn
+            .query_row(
+                "SELECT COUNT(*), side, data_json, losing_device_id FROM __sync_conflicts
+                 WHERE table_name='test_records' AND record_id='delete-version-record'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "败方 DELETE 应入冲突表且重复投递被去重");
+        assert_eq!(side, "cloud");
+        assert_eq!(data_json, "null", "DELETE 败方以 Null payload 表示（与 resolve_one 一致）");
         assert_eq!(losing_device.as_deref(), Some("device-slow"));
     }
 

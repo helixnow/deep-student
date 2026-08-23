@@ -9,7 +9,7 @@
 //! LWW/conflict handling.
 //!
 //! - `set_union`: union of tag sets (JSON string arrays)
-//! - `max_value`: max of concurrent values (attempt_count, correct_count)
+//! - `max_value`: max of concurrent values (review_plans.total_reviews / total_correct)
 //! - `or_merge`: boolean OR (is_favorite, is_bookmarked)
 //!
 //! ## TD-02: `todo_items.completed_pomodoros` 不参与字段级合并
@@ -62,15 +62,14 @@ const NOTES_NUMERIC_VALUE_TAG_PREFIXES: &[&str] =
 const NOTES_ENUM_VALUE_TAG_PREFIXES: &[&str] = &["_type:", "_purpose:", "_daily_log_date:"];
 
 const FIELD_MERGE_REGISTRY: &[(&str, &[&str])] = &[
+    // [R04] attempt_count / correct_count 故意缺席（对照 interval_days 的先例）：
+    // 1. 二者不是严格单调——重置/清空做题统计是合法下降，MaxValue 会用旧的大值回弹；
+    // 2. 二者是每次作答原子更新的关联对（attempt+1，答对时 correct+1），逐列独立取
+    //    max 会撕裂配对（A 设备 5/2、B 设备 4/4 → max 得 5/4，对应不存在的做题历史，
+    //    虚增正确率）。冲突时走行级 LWW，整对以同一侧为准。
     (
         "questions",
-        &[
-            "attempt_count",
-            "correct_count",
-            "is_favorite",
-            "is_bookmarked",
-            "tags",
-        ],
+        &["is_favorite", "is_bookmarked", "tags"],
     ),
     ("notes", &["tags", "is_favorite"]),
     ("files", &["tags_json", "is_favorite"]),
@@ -169,11 +168,12 @@ fn field_merge_strategy(table_name: &str, column_name: &str) -> Option<FieldMerg
         // MaxValue 只允许真正单调递增的计数。
         // [R02] review_plans.interval_days / consecutive_failures 与
         // todo_items.estimated_pomodoros 均可合法下降，不得用 MaxValue 回弹；
-        // TD-02: completed_pomodoros 是派生缓存，走行级 LWW + apply 后重算。
-        ("questions", "attempt_count")
-        | ("questions", "correct_count")
-        | ("review_plans", "total_reviews")
-        | ("review_plans", "total_correct") => Some(FieldMergeStrategy::MaxValue),
+        // TD-02: completed_pomodoros 是派生缓存，走行级 LWW + apply 后重算；
+        // [R04] questions.attempt_count / correct_count 是关联对且可合法重置，
+        // 逐列独立 max 会撕裂配对、回弹重置，冲突时走行级 LWW（见 registry 注释）。
+        ("review_plans", "total_reviews") | ("review_plans", "total_correct") => {
+            Some(FieldMergeStrategy::MaxValue)
+        }
 
         ("questions", "is_favorite")
         | ("questions", "is_bookmarked")
@@ -466,6 +466,30 @@ mod tests {
     }
 
     #[test]
+    fn regression_r04_question_counters_are_not_max_merged() {
+        // [R04] attempt_count / correct_count 是每次作答原子更新的关联对，且统计
+        // 可合法重置归零：
+        // - 逐列独立 MaxValue 会撕裂配对：A 设备 5/2、B 设备 4/4 → max 得 5/4，
+        //   对应不存在的做题历史并虚增正确率；
+        // - 重置（10 → 0）会被另一台设备的旧值回弹。
+        // 因此二者移出 MaxValue（对照 interval_days 先例），冲突时走行级 LWW，
+        // 整对以同一侧为准。
+        for column in ["attempt_count", "correct_count"] {
+            assert!(
+                !field_merge_columns_for_table("questions").contains(&column),
+                "questions.{} must not be in the auto field-merge picklist",
+                column
+            );
+            // 远端把统计合法重置（10 -> 0）：必须按行级 LWW 直落，不得 max 回弹成 10
+            let (result, changed, conflict) =
+                merge_field("questions", column, Some(&json!(10)), Some(&json!(0)));
+            assert_eq!(result, json!(0), "questions.{} 不得 MaxValue 回弹", column);
+            assert!(!changed);
+            assert!(conflict);
+        }
+    }
+
+    #[test]
     fn regression_m21_ordered_json_arrays_fall_back_to_lww_conflict() {
         let remote = json!([{"resource_id": "res_remote", "kind": "question"}]);
         let (result, changed, conflict) = merge_field(
@@ -506,13 +530,7 @@ mod tests {
     fn regression_m22_picklist_only_exposes_convergent_strategies() {
         assert_eq!(
             field_merge_columns_for_table("questions"),
-            vec![
-                "attempt_count",
-                "correct_count",
-                "is_favorite",
-                "is_bookmarked",
-                "tags",
-            ]
+            vec!["is_favorite", "is_bookmarked", "tags"]
         );
         assert!(!field_merge_columns_for_table("resources").contains(&"ref_count"));
         assert!(!field_merge_columns_for_table("questions").contains(&"images_json"));
