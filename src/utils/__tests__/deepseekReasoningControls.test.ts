@@ -173,6 +173,7 @@ describe('DeepSeek runtime reasoning controls', () => {
   it.each([
     'gpt-5.3-codex',
     'gemini-2.5-pro',
+    'kimi-k3',
     'kimi-k2.7-code',
     'kimi-k2-thinking',
     'kimi-thinking-preview',
@@ -200,6 +201,33 @@ describe('DeepSeek runtime reasoning controls', () => {
     'kimi-k2.6',
     'MiniMax-M3',
   ])('keeps modern adaptive thinking models disableable: %s', (model) => {
+    expect(resolveDeepSeekRuntimeReasoningControl({ model }).canDisable).toBe(true);
+  });
+
+  // 后端 moonshot 适配器对 K3+ 固定发送 reasoning_effort=max 且推理不可关闭；
+  // 前端必须 forced（canDisable=false），且不发明后端不接受的档位选项。
+  it.each([
+    'kimi-k3',
+    'kimi-k3-0905-preview',
+    'moonshotai/Kimi-K3-Instruct',
+    'kimi-k3.1',
+  ])('aligns Kimi K3+ with the backend forced reasoning_effort=max contract: %s', (model) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model });
+
+    expect(control.kind).toBe('toggle-only');
+    expect(control.options).toEqual([]);
+    expect(control.canDisable).toBe(false);
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({ control, enableThinking: false })
+    ).toEqual({ enableThinking: true, reasoningEffort: undefined, thinkingBudget: undefined });
+  });
+
+  it.each([
+    'kimi-k2.6',
+    'kimi-k2-0905-preview',
+    'kimi-latest',
+    'moonshot-v1-128k',
+  ])('does not misclassify non-K3 Kimi/Moonshot models as forced K3: %s', (model) => {
     expect(resolveDeepSeekRuntimeReasoningControl({ model }).canDisable).toBe(true);
   });
 
