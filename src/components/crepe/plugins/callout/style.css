@@ -114,6 +114,13 @@
   outline-offset: 1px;
 }
 
+/* 触屏无 hover：chevron 常显（弱化），否则无法发现折叠入口 */
+@media (hover: none) {
+  .crepe-callout__fold {
+    opacity: 0.5;
+  }
+}
+
 .crepe-callout__fold-svg {
   display: block;
   width: 0.85em;

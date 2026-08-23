@@ -1083,6 +1083,10 @@ export const IndexStatusView: React.FC = () => {
   useEffect(() => {
     if (!mobileMoreOpen) return;
     return registerBackHandler(() => {
+      // 视图离屏时（MobileSlidingLayout 给非可见屏加 inert / display:none 隐藏保活 tab）
+      // 让行给当前活跃层，避免消费活跃视图的返回键（对照 NoteContentView / ExamContentView 守卫）
+      const el = mobileMoreRef.current;
+      if (!el || el.closest('[inert]') || el.offsetParent === null) return false;
       setMobileMoreOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -1820,7 +1824,7 @@ export const IndexStatusView: React.FC = () => {
                           <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
                           <span className="font-medium text-xs truncate">{t('indexStatus.detail.ocrAndExtractedTitle')}</span>
                         </div>
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6" aria-label={t('common:close')}>
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e: React.MouseEvent) => { e.stopPropagation(); closeInspectPanel(); }} className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('common:close')}>
                           <X className="h-3.5 w-3.5" />
                         </DsButton>
                       </div>

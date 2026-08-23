@@ -413,7 +413,7 @@ const QuestionGridCard: React.FC<{
         </span>
       </div>
       
-      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow]" />
+      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 transition-[background-color,border-color,color,box-shadow]" />
     </div>
   );
 };
@@ -503,7 +503,7 @@ const QuestionListRow: React.FC<{
         )}
       </div>
       
-      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
+      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
     </DsButton>
   );
 };

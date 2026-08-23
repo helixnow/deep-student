@@ -3106,7 +3106,7 @@ export function LearningHubSidebar({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-6 text-xs px-1.5"
+                        className="h-6 text-xs px-1.5 [@media(pointer:coarse)]:!h-11"
                         onClick={selectedIds.size === items.length ? handleClearSelection : handleSelectAll}
                         title={selectedIds.size === items.length ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}
                       >
@@ -3118,7 +3118,7 @@ export function LearningHubSidebar({
                       <DsButton
                         variant="primary"
                         size="sm"
-                        className="h-6 text-xs px-2"
+                        className="h-6 text-xs px-2 [@media(pointer:coarse)]:!h-11"
                         onClick={handleBatchAddToChat}
                         disabled={isBatchProcessing || isInjecting}
                       >

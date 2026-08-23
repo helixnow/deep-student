@@ -324,7 +324,7 @@ const ReviewQuestionCard: React.FC<{
               'shrink-0 transition-transform duration-200 ease-standard',
               isExpanded
                 ? 'rotate-90 text-muted-foreground/60'
-                : 'text-muted-foreground/0 group-hover:text-muted-foreground/60'
+                : 'text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40'
             )}
           />
         </button>
