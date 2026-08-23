@@ -281,7 +281,9 @@ impl CloudStorageConfig {
                 Ok(())
             }
             #[cfg(target_os = "android")]
-            StorageProvider::Ftp => Err("FTP/FTPS storage is not available on Android.".into()),
+            StorageProvider::Ftp => {
+                Err(crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.into())
+            }
             #[cfg(not(target_os = "android"))]
             StorageProvider::Ftp => {
                 let config = self.ftp.as_ref().ok_or("缺少 FTP 配置")?;
@@ -623,6 +625,28 @@ mod tests {
         config.ftp.as_mut().unwrap().host = "localhost".into();
         config.ftp.as_mut().unwrap().use_tls = false;
         assert!(config.validate().is_ok());
+    }
+
+    #[cfg(target_os = "android")]
+    #[test]
+    fn test_ftp_rejected_on_android() {
+        // 即使配置完整,Android 运行时校验也必须以与 create_storage
+        // 相同的可映射错误信息拒绝 FTP。
+        let config = CloudStorageConfig {
+            provider: StorageProvider::Ftp,
+            ftp: Some(FtpConfig {
+                host: "ftp.example.com".into(),
+                port: 21,
+                username: "user".into(),
+                password: "pass".into(),
+                use_tls: true,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.validate().expect_err("FTP must be rejected on Android"),
+            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
+        );
     }
 
     #[test]
