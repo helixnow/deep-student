@@ -101,6 +101,9 @@
   "resource": {
     "create_resource_failed": "创建资源失败: {{error}}"
   },
+  "record_conflict_panel": {
+    "title": "记录级冲突（{{count}}）"
+  },
   "conflict_type": {
     "schema_mismatch": "Schema 版本不匹配",
     "schema_mismatch_desc": "本地和云端的数据库结构版本不同，需要进行迁移",
