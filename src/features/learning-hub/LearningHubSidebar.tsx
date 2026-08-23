@@ -83,7 +83,15 @@ const MemoryView = lazy(() => import('./views/MemoryView'));
 // ★ 2026-01-31: 懒加载桌面视图
 import { DesktopView, type CreateResourceType } from './components/finder';
 import type { DesktopRootConfig } from './stores/desktopStore';
-import { useFinderStore, type FinderPath, type QuickAccessType } from './stores/finderStore';
+import {
+  useFinderStoreFor,
+  setActiveFinderHostId,
+  getActiveFinderHostId,
+  resolveFinderHostId,
+  DEFAULT_FINDER_HOST_ID,
+  type FinderPath,
+  type QuickAccessType,
+} from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -174,7 +182,7 @@ export function LearningHubSidebar({
   toolbarPortalTarget,
   toolbarPortalMode = 'window',
   highlightedIds,
-  hostId: _hostId,
+  hostId,
   sessionActive,
   commandsEnabled,
   onMultiSelectModeChange,
@@ -189,6 +197,9 @@ export function LearningHubSidebar({
 
   // ========== 页面生命周期监控 ==========
   usePageMount('learning-hub-sidebar', 'LearningHubSidebar');
+
+  // ★ LH-HOST：每个宿主一份访达状态（currentPath / searchQuery / selectedIds / viewMode）
+  const finderStore = useFinderStoreFor(hostId);
 
   // Store state
   const {
@@ -223,7 +234,7 @@ export function LearningHubSidebar({
     navigateTo: storeNavigateTo,
     quickAccessNavigate: storeQuickAccessNavigate,
     queryItemsForPath,
-  } = useFinderStore();
+  } = finderStore();
 
   const [canvasPath, setCanvasPath] = useState<FinderPath>(createCanvasFinderPath);
   const [canvasHistory, setCanvasHistory] = useState<FinderPath[]>(() => [createCanvasFinderPath()]);
@@ -366,7 +377,7 @@ export function LearningHubSidebar({
     inlineEdit,
     startInlineEdit,
     cancelInlineEdit,
-  } = useFinderStore();
+  } = finderStore();
   
   // Container ref for keyboard shortcuts scope
   const containerRef = useRef<HTMLDivElement>(null);
@@ -569,6 +580,19 @@ export function LearningHubSidebar({
   // ★ 文档28 Prompt 8: 同步 finderStore 与 LearningHubNavigationContext
   useLearningHubNavigationSafe();
 
+  // ★ LH-HOST：把本宿主注册为「活跃访达」，让 App 级前进/后退壳层作用在本桶上。
+  // canvas 宿主自带局部列表状态，不参与全局导航壳层。
+  useEffect(() => {
+    if (mode === 'canvas' || sessionActive === false) return;
+    const bucketId = resolveFinderHostId(hostId);
+    setActiveFinderHostId(bucketId);
+    return () => {
+      if (getActiveFinderHostId() === bucketId) {
+        setActiveFinderHostId(DEFAULT_FINDER_HOST_ID);
+      }
+    };
+  }, [mode, hostId, sessionActive]);
+
   // ★ 2026-01-15: 完全移除双向同步逻辑
   // 原因：LearningHubNavigationContext 现在直接使用 finderStore 的历史栈（goBack/goForward）
   // 不再需要 navContext ↔ finderStore 的同步，因为它们现在共享同一个数据源
@@ -614,7 +638,7 @@ export function LearningHubSidebar({
             'learning-hub-sidebar',
             'LearningHubSidebar',
             'data_ready',
-            `${useFinderStore.getState().items.length} items`,
+            `${finderStore.getState().items.length} items`,
             { duration: Date.now() - start }
           );
         }
@@ -629,7 +653,7 @@ export function LearningHubSidebar({
     return () => {
       isCancelled = true;
     };
-  }, [mode, sessionActive, currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh]);
+  }, [mode, sessionActive, currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh, finderStore]);
 
   // Handle open item
   const handleOpen = (item: DstuNode) => {
@@ -726,7 +750,7 @@ export function LearningHubSidebar({
           // R2-04：内联重命名进行中延迟 silent refresh（非永久跳过），避免丢 agent 变更
           const trySilentRefresh = () => {
             // canvas 宿主有独立列表；勿被全局 fullscreen 的 inlineEdit 卡住刷新
-            if (mode !== 'canvas' && useFinderStore.getState().inlineEdit.editingId) {
+            if (mode !== 'canvas' && finderStore.getState().inlineEdit.editingId) {
               watchDebounceRef.current = setTimeout(() => {
                 watchDebounceRef.current = null;
                 trySilentRefresh();
@@ -747,7 +771,7 @@ export function LearningHubSidebar({
         watchDebounceRef.current = null;
       }
     };
-  }, [sessionActive, currentPath.viewKind, handleSilentRefresh, mode]);
+  }, [sessionActive, currentPath.viewKind, handleSilentRefresh, mode, finderStore]);
 
   const ensureCreatableView = useCallback(() => {
     if (canCreateInCurrentView) {
@@ -1966,16 +1990,16 @@ export function LearningHubSidebar({
       pendingFolderDraftRef.current = null;
       setPendingFolderDraft(null);
     }
-    if (useFinderStore.getState().inlineEdit.editingId === itemId) {
+    if (finderStore.getState().inlineEdit.editingId === itemId) {
       cancelInlineEdit();
     }
-  }, [cancelInlineEdit]);
+  }, [cancelInlineEdit, finderStore]);
 
   useEffect(() => {
     if (!pendingFolderDraft) return;
     setPendingFolderDraft(null);
     pendingFolderDraftRef.current = null;
-    if (isPendingFolderId(useFinderStore.getState().inlineEdit.editingId)) {
+    if (isPendingFolderId(finderStore.getState().inlineEdit.editingId)) {
       cancelInlineEdit();
     }
     // 路径变化后草稿不应跟随到另一个文件夹。

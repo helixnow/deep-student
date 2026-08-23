@@ -57,7 +57,11 @@ import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
-import { useFinderStore } from './stores/finderStore';
+import { useFinderStoreFor } from './stores/finderStore';
+
+/** ★ LH-HOST：学习中心页的两个宿主桶（桌面 / 移动端各自独立） */
+export const LEARNING_HUB_DESKTOP_HOST_ID = 'page';
+export const LEARNING_HUB_MOBILE_HOST_ID = 'page-mobile';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
@@ -487,14 +491,18 @@ export const LearningHubPage: React.FC = () => {
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
-  const finderCurrentPath = useFinderStore(state => state.currentPath);
-  const finderGoUp = useFinderStore(state => state.goUp);
-  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
-  const finderRefresh = useFinderStore(state => state.refresh);
-  const finderQuickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
-  const finderEnterFolder = useFinderStore(state => state.enterFolder);
-  const finderSearchQuery = useFinderStore(state => state.searchQuery);
-  const finderSetSearchQuery = useFinderStore(state => state.setSearchQuery);
+  // ★ LH-HOST：页面顶栏/抽屉必须读写与本页访达同一个宿主桶
+  const useHostFinderStore = useFinderStoreFor(
+    isSmallScreen ? LEARNING_HUB_MOBILE_HOST_ID : LEARNING_HUB_DESKTOP_HOST_ID,
+  );
+  const finderCurrentPath = useHostFinderStore(state => state.currentPath);
+  const finderGoUp = useHostFinderStore(state => state.goUp);
+  const finderJumpToBreadcrumb = useHostFinderStore(state => state.jumpToBreadcrumb);
+  const finderRefresh = useHostFinderStore(state => state.refresh);
+  const finderQuickAccessNavigate = useHostFinderStore(state => state.quickAccessNavigate);
+  const finderEnterFolder = useHostFinderStore(state => state.enterFolder);
+  const finderSearchQuery = useHostFinderStore(state => state.searchQuery);
+  const finderSetSearchQuery = useHostFinderStore(state => state.setSearchQuery);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const finderViewCapabilities = getViewCapabilities(finderCurrentPath.viewKind);
 
@@ -1248,7 +1256,7 @@ export const LearningHubPage: React.FC = () => {
           >
             <LearningHubSidebar
               mode="fullscreen"
-              hostId="page-mobile"
+              hostId={LEARNING_HUB_MOBILE_HOST_ID}
               sessionActive={isLearningHubViewActive && screenPosition === 'center'}
               // 📱 命令事件监听不能只在中屏开启：左抽屉「新建文件夹」是同步派发
               // learningHub:create-folder，此刻 screenPosition 仍为 'left'，
@@ -1287,7 +1295,7 @@ export const LearningHubPage: React.FC = () => {
           <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
-              hostId="page"
+              hostId={LEARNING_HUB_DESKTOP_HOST_ID}
               sessionActive={isLearningHubViewActive}
               commandsEnabled={isLearningHubViewActive}
               onOpenPreview={handleOpenApp}

@@ -73,7 +73,17 @@ vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen:
 vi.mock('@/features/learning-hub/stores/finderStore', () => {
   const useFinderStore = ((selector?: (state: typeof finderState) => unknown) => selector ? selector(finderState) : finderState) as typeof import('@/features/learning-hub/stores/finderStore').useFinderStore;
   (useFinderStore as any).getState = () => finderState;
-  return { useFinderStore };
+  return {
+    useFinderStore,
+    // LH-HOST：宿主分桶后组件通过 useFinderStoreFor(hostId) 取 store；
+    // 本测试只关心单宿主行为，所有 hostId 都回同一个 mock。
+    useFinderStoreFor: () => useFinderStore,
+    getFinderStore: () => useFinderStore,
+    resolveFinderHostId: (hostId?: string | null) => hostId ?? 'default',
+    setActiveFinderHostId: vi.fn(),
+    getActiveFinderHostId: () => 'default',
+    DEFAULT_FINDER_HOST_ID: 'default',
+  };
 });
 vi.mock('@/features/learning-hub/stores/recentStore', () => ({
   useRecentStore: (selector: (state: { addRecent: typeof sidebarMocks.addRecent }) => unknown) => selector({ addRecent: sidebarMocks.addRecent }),
