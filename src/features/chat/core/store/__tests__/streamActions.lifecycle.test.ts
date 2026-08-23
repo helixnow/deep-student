@@ -145,4 +145,92 @@ describe('completeStream lifecycle cleanup', () => {
       'Stream ended with error before tool execution',
     );
   });
+
+  it('surfaces the normalized terminal error on orphan preparing blocks', () => {
+    const preparing: Block = {
+      id: 'blk_prep',
+      type: 'mcp_tool',
+      status: 'pending',
+      messageId: 'msg_1',
+      toolName: 'load_skills',
+      isPreparing: true,
+    };
+    const msg = {
+      id: 'msg_1',
+      role: 'assistant',
+      blockIds: ['blk_prep'],
+    } as unknown as Message;
+
+    const harness = createHarness({
+      sessionStatus: 'streaming',
+      currentStreamingMessageId: 'msg_1',
+      blocks: new Map([['blk_prep', preparing]]),
+      messageMap: new Map([['msg_1', msg]]),
+    });
+
+    harness.actions.completeStream('error', 'Load failed: upstream 429 rate limit exceeded');
+
+    const block = harness.getState().blocks.get('blk_prep');
+    expect(block?.status).toBe('error');
+    expect(block?.isPreparing).toBe(false);
+    expect(block?.error).toBe('Load failed: upstream 429 rate limit exceeded');
+  });
+
+  it('falls back to the generic error wording when terminalError is blank', () => {
+    const preparing: Block = {
+      id: 'blk_prep',
+      type: 'mcp_tool',
+      status: 'pending',
+      messageId: 'msg_1',
+      toolName: 'load_skills',
+      isPreparing: true,
+    };
+    const msg = {
+      id: 'msg_1',
+      role: 'assistant',
+      blockIds: ['blk_prep'],
+    } as unknown as Message;
+
+    const harness = createHarness({
+      sessionStatus: 'streaming',
+      currentStreamingMessageId: 'msg_1',
+      blocks: new Map([['blk_prep', preparing]]),
+      messageMap: new Map([['msg_1', msg]]),
+    });
+
+    harness.actions.completeStream('error', '   ');
+
+    expect(harness.getState().blocks.get('blk_prep')?.error).toBe(
+      'Stream ended with error before tool execution',
+    );
+  });
+
+  it('ignores terminalError on the cancelled path', () => {
+    const preparing: Block = {
+      id: 'blk_prep',
+      type: 'mcp_tool',
+      status: 'pending',
+      messageId: 'msg_1',
+      toolName: 'load_skills',
+      isPreparing: true,
+    };
+    const msg = {
+      id: 'msg_1',
+      role: 'assistant',
+      blockIds: ['blk_prep'],
+    } as unknown as Message;
+
+    const harness = createHarness({
+      sessionStatus: 'streaming',
+      currentStreamingMessageId: 'msg_1',
+      blocks: new Map([['blk_prep', preparing]]),
+      messageMap: new Map([['msg_1', msg]]),
+    });
+
+    harness.actions.completeStream('cancelled', 'Load failed: upstream 429 rate limit exceeded');
+
+    expect(harness.getState().blocks.get('blk_prep')?.error).toBe(
+      'Stream cancelled before tool execution',
+    );
+  });
 });

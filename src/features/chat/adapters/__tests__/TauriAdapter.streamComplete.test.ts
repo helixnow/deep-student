@@ -223,7 +223,11 @@ describe('ChatV2TauriAdapter stream_complete sequencing', () => {
     await vi.advanceTimersByTimeAsync(100);
 
     expect(store.completeStream).toHaveBeenCalledTimes(1);
-    expect(store.completeStream).toHaveBeenCalledWith(reason);
+    expect(store.completeStream).toHaveBeenCalledWith(
+      reason,
+      // stream_error 额外传入归一化后的终态错误，供孤儿 preparing 块展示
+      ...(reason === 'error' ? [expect.stringMatching(/connection failed/i)] : []),
+    );
     expect(store.completeStream).not.toHaveBeenCalledWith('success');
   });
 

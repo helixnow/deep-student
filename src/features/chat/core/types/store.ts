@@ -679,8 +679,13 @@ export interface ChatStore {
    * 完成流式生成
    * 将 sessionStatus 重置为 idle，清理流式状态
    * @param reason - 完成原因：'success' 正常完成，'error' 流式错误，'cancelled' 用户取消
+   * @param terminalError - 归一化后的用户可见终态错误文本，仅 reason === 'error' 时生效；
+   *                        用于让孤儿 preparing 块显示后端真实原因，而不是通用兜底文案
    */
-  completeStream(reason?: 'success' | 'error' | 'cancelled'): void;
+  completeStream(
+    reason?: 'success' | 'error' | 'cancelled',
+    terminalError?: string,
+  ): void;
 
   // ========== 对话参数 Actions ==========
 

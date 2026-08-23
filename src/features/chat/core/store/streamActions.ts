@@ -9,7 +9,10 @@ export function createStreamActions(
   getState: GetState,
 ) {
   return {
-        completeStream: (reason: 'success' | 'error' | 'cancelled' = 'success'): void => {
+        completeStream: (
+          reason: 'success' | 'error' | 'cancelled' = 'success',
+          terminalError?: string,
+        ): void => {
           const state = getState();
           // 🔧 P0修复：支持 streaming 和 aborting 状态
           // aborting 状态时，后端可能仍然发送 stream_complete/stream_error
@@ -108,6 +111,12 @@ export function createStreamActions(
             // 3. 清理仍停留在 preparing 的孤儿块（pending，不会被上面的 running 检查捕获）。
             // 文案必须跟 reason 一致：success 路径绝不能写 "cancelled"，否则会出现
             // 「加载技能组执行失败 / Stream cancelled…」闪红后再成功的误报。
+            // error 路径优先展示调用方传入的归一化终态错误，通用兜底文案会掩盖后端真实原因。
+            const normalizedTerminalError = terminalError?.trim();
+            const preparingErrorText =
+              reason === 'error'
+                ? normalizedTerminalError || 'Stream ended with error before tool execution'
+                : 'Stream cancelled before tool execution';
             const removedPreparingIds: string[] = [];
             for (const blockId of messageBlockIds) {
               const block = newBlocks.get(blockId);
@@ -127,10 +136,7 @@ export function createStreamActions(
                     ...block,
                     isPreparing: false,
                     status: 'error',
-                    error:
-                      reason === 'error'
-                        ? 'Stream ended with error before tool execution'
-                        : 'Stream cancelled before tool execution',
+                    error: preparingErrorText,
                     endedAt: now,
                   });
                 }
