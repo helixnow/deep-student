@@ -1,0 +1,232 @@
+//! P0-ZIP 契约测试：导出 ZIP → 导入 → restore 的端到端行为锁定。
+//!
+//! 契约（本文件锁定的不变量）：
+//! 1. 真实 `backup_full` 产物在本地是 disaster_recovery 级快照
+//!    （`validate_for_slot_restore` 通过）。
+//! 2. `export_backup_to_zip` 会把清单改写为便携归档（剥离本地加密材料，
+//!    `mark_partial` + `key_policy=excluded_portable`），`import_backup_from_zip`
+//!    必须能完整导入该 ZIP，且导入的数据库字节与源备份逐位一致。
+//! 3. 对导入产物执行恢复时，结果必须二选一：
+//!    - 要么 `validate_for_slot_restore` 通过且 `restore_with_assets` 真正
+//!      恢复成功（数据落回数据槽）；
+//!    - 要么返回**可操作错误**（明确拒绝，用户可依此走部分恢复/重新导出路径）。
+//!    绝不允许第三种状态：被归类为 disaster_recovery（validate 通过）却恢复
+//!    失败，或恢复未发生却被当成功——`classify_recovery_kind` 与实际 restore
+//!    共用 `validate_for_slot_restore`，两者必须一致。
+//!
+//! 仅新增测试，不修改生产代码。全流程在临时目录内完成，不触碰真实数据。
+
+#![cfg(feature = "data_governance")]
+
+use std::path::{Path, PathBuf};
+
+use deep_student_lib::data_governance::backup::{
+    export_backup_to_zip, zip_export::import_backup_from_zip, BackupManager, BackupManifest,
+    ZipExportOptions,
+};
+use rusqlite::Connection;
+use tempfile::TempDir;
+
+const MARKER_VALUE: &str = "p0-zip-roundtrip-marker";
+
+/// 在 `base/slots/slotA` 布局下创建四个核心数据库（含标记数据），
+/// 返回 slotA 路径。传入 slot 路径可让 BackupManager 不依赖全局
+/// DataSpaceManager（`app_data_dir.parent() == "slots"` 时直接使用）。
+fn create_slot_with_databases(base: &Path) -> PathBuf {
+    let slot = base.join("slots").join("slotA");
+    std::fs::create_dir_all(slot.join("databases")).expect("create slot layout");
+
+    let databases = [
+        slot.join("databases").join("vfs.db"),
+        slot.join("chat_v2.db"),
+        slot.join("mistakes.db"),
+        slot.join("llm_usage.db"),
+    ];
+    for path in &databases {
+        let conn = Connection::open(path).expect("open sqlite db");
+        conn.execute_batch(&format!(
+            "CREATE TABLE roundtrip_marker (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO roundtrip_marker(value) VALUES ('{MARKER_VALUE}');"
+        ))
+        .expect("seed marker data");
+    }
+    slot
+}
+
+fn read_marker(db_path: &Path) -> Option<String> {
+    let conn = Connection::open(db_path).ok()?;
+    conn.query_row(
+        "SELECT value FROM roundtrip_marker LIMIT 1",
+        [],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+}
+
+/// 完整链路：backup_full → 导出 ZIP → 导入 → 恢复契约。
+#[test]
+fn zip_roundtrip_restore_succeeds_or_returns_actionable_error() {
+    // ---------- 1. 源数据槽 + 真实完整备份 ----------
+    let source_root = TempDir::new().expect("source root");
+    let source_slot = create_slot_with_databases(source_root.path());
+
+    let backup_dir = source_root.path().join("recovery").join("backups");
+    let mut manager = BackupManager::new(backup_dir.clone());
+    manager.set_app_data_dir(source_slot.clone());
+    manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+
+    let manifest = manager.backup_full().expect("backup_full 应成功");
+    assert!(
+        manifest.validate_for_slot_restore().is_ok(),
+        "本地 backup_full 产物必须是 disaster_recovery 级完整快照"
+    );
+    let backup_subdir = backup_dir.join(&manifest.backup_id);
+    assert!(backup_subdir.is_dir(), "备份目录应存在");
+
+    // ---------- 2. 导出 ZIP ----------
+    let export_root = TempDir::new().expect("export root");
+    let zip_path = export_root.path().join("roundtrip.zip");
+    let export_result = export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(zip_path.clone()),
+            include_checksums: true,
+            ..Default::default()
+        },
+    )
+    .expect("导出 ZIP 应成功");
+    assert!(zip_path.is_file(), "ZIP 文件应已生成");
+    assert!(export_result.file_count > 0, "ZIP 应包含文件");
+
+    // ---------- 3. 导入 ZIP（模拟另一台设备 / 灾后环境） ----------
+    let restore_root = TempDir::new().expect("restore root");
+    let restore_slot = create_slot_with_databases(restore_root.path());
+    // 恢复目标槽先写入不同数据，验证 restore 是否真的发生
+    for db in ["chat_v2.db", "mistakes.db", "llm_usage.db"] {
+        let conn = Connection::open(restore_slot.join(db)).expect("open target db");
+        conn.execute("UPDATE roundtrip_marker SET value = 'pre-restore-data'", [])
+            .expect("seed pre-restore data");
+    }
+
+    let restore_backup_dir = restore_root.path().join("recovery").join("backups");
+    let imported_dir = restore_backup_dir.join(&manifest.backup_id);
+    std::fs::create_dir_all(&restore_backup_dir).expect("create restore backup dir");
+    let imported_files =
+        import_backup_from_zip(&zip_path, &imported_dir).expect("导入 ZIP 应成功");
+    assert!(imported_files > 0, "导入应至少解出一个文件");
+
+    // 导入的数据库字节必须与源备份逐位一致（ZIP 往返不丢数据）。
+    for db in ["vfs.db", "chat_v2.db", "mistakes.db", "llm_usage.db"] {
+        let original = deep_student_lib::backup_common::calculate_file_hash(
+            &backup_subdir.join(db),
+        )
+        .expect("hash original");
+        let imported = deep_student_lib::backup_common::calculate_file_hash(
+            &imported_dir.join(db),
+        )
+        .expect("hash imported");
+        assert_eq!(original, imported, "{db} 在 ZIP 往返后字节不一致");
+    }
+
+    let imported_manifest =
+        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+            .expect("导入产物必须携带可解析的 manifest");
+
+    // ---------- 4. 恢复契约：成功，或可操作错误；分类与结果必须一致 ----------
+    let mut restore_manager = BackupManager::new(restore_backup_dir.clone());
+    restore_manager.set_app_data_dir(restore_slot.clone());
+    restore_manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+
+    let slot_restore_verdict = imported_manifest.validate_for_slot_restore();
+    let restore_result = restore_manager.restore_with_assets(&imported_manifest, false);
+
+    match slot_restore_verdict {
+        Ok(()) => {
+            // 被归类为 disaster_recovery（restorable=true）→ 恢复必须真正成功。
+            restore_result.expect("被归类为 disaster_recovery 的备份恢复必须成功");
+            for db in ["chat_v2.db", "mistakes.db", "llm_usage.db"] {
+                assert_eq!(
+                    read_marker(&restore_slot.join(db)).as_deref(),
+                    Some(MARKER_VALUE),
+                    "disaster_recovery 恢复后 {db} 必须回到备份内容"
+                );
+            }
+        }
+        Err(classification_error) => {
+            // 被归类为 partial_archive（restorable=false）→ restore 必须显式拒绝，
+            // 且给出可操作错误；绝不能悄悄“成功”。
+            let restore_error = restore_result.expect_err(
+                "validate_for_slot_restore 拒绝的备份，restore_with_assets 不得报成功\
+                 （否则 partial_archive 会被当成 disaster_recovery 成功）",
+            );
+            let message = restore_error.to_string();
+            assert!(
+                !message.trim().is_empty(),
+                "恢复拒绝必须携带可操作错误信息"
+            );
+            assert!(
+                !classification_error.to_string().trim().is_empty(),
+                "分类拒绝必须携带可操作错误信息"
+            );
+            // 恢复未发生：目标槽数据必须保持原状，不能被半恢复破坏。
+            for db in ["chat_v2.db", "mistakes.db", "llm_usage.db"] {
+                assert_eq!(
+                    read_marker(&restore_slot.join(db)).as_deref(),
+                    Some("pre-restore-data"),
+                    "被拒绝的恢复不得改动目标槽 {db}"
+                );
+            }
+        }
+    }
+}
+
+/// 便携 ZIP 的分类必须与实际 restore 门禁使用同一判定：
+/// 对同一份导入清单，`validate_for_slot_restore`（classify_recovery_kind 的
+/// 依据）为 Err 时，restore 也必须为 Err —— 二者不允许出现分叉。
+#[test]
+fn imported_manifest_classification_matches_restore_gate() {
+    let source_root = TempDir::new().expect("source root");
+    let source_slot = create_slot_with_databases(source_root.path());
+
+    let backup_dir = source_root.path().join("recovery").join("backups");
+    let mut manager = BackupManager::new(backup_dir.clone());
+    manager.set_app_data_dir(source_slot);
+    manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+    let manifest = manager.backup_full().expect("backup_full 应成功");
+
+    let zip_dir = TempDir::new().expect("zip dir");
+    let zip_path = zip_dir.path().join("classification.zip");
+    export_backup_to_zip(
+        &backup_dir.join(&manifest.backup_id),
+        &ZipExportOptions {
+            output_path: Some(zip_path.clone()),
+            ..Default::default()
+        },
+    )
+    .expect("导出 ZIP 应成功");
+
+    let import_root = TempDir::new().expect("import root");
+    let imported_dir = import_root.path().join("backups").join(&manifest.backup_id);
+    std::fs::create_dir_all(imported_dir.parent().unwrap()).expect("create import parent");
+    import_backup_from_zip(&zip_path, &imported_dir).expect("导入 ZIP 应成功");
+
+    let imported_manifest =
+        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+            .expect("导入 manifest 可解析");
+
+    let import_slot = create_slot_with_databases(import_root.path());
+    let mut restore_manager =
+        BackupManager::new(import_root.path().join("backups"));
+    restore_manager.set_app_data_dir(import_slot);
+    restore_manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+
+    let classified_restorable = imported_manifest.validate_for_slot_restore().is_ok();
+    let restore_outcome = restore_manager.restore_with_assets(&imported_manifest, false);
+
+    assert_eq!(
+        classified_restorable,
+        restore_outcome.is_ok(),
+        "recovery_kind 分类（validate_for_slot_restore）与实际 restore 门禁出现分叉：\
+         classified_restorable={classified_restorable}, restore={restore_outcome:?}"
+    );
+}
