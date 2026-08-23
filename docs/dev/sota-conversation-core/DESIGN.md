@@ -34,15 +34,21 @@
 - Gemini 流式把 `cachedContentTokenCount` 抬到顶层 `cached_tokens`。
 - `record_llm_usage` 真实写入 `token_source` 与 adapter/协议；OpenAI CC 补 `stream_options.include_usage`。
 
-### P1 前缀冻结
+### P1 前缀冻结（优先级：回放一致 → 迁出 system → Anthropic 断点 → 目录/tools）
 
-- 技能注入锚定：首次插入后位置冻结，或正文随 `load_skills` 工具结果驻留 transcript，
-  禁止每轮删除再插到新偏移（OpenCode/Pi 已证明瞬态重插会切断历史前缀）。
-- tools 排序改为「首见轮次 + 名字」append-only；字母序会把新工具插进中间。
-- `learner_profile` / `active_todos` / RAG context 移出 instructions，放进当前 user 尾部。
-  会话内稳定的画像可留在 system。
-- Anthropic：4 断点（tools → system → 最后 2 条消息）。
-- 确认 `llm_content` 覆盖 runtime_facts；`prompt_builder` 增加跨轮前缀快照测试。
+- **用户消息发送/回放字节一致**：落库或确定性重建与 live 相同的
+  `<user_query>` + `<injected_context>`（含该轮 runtime_facts）。这是 agentic 场景收益最大的单点。
+- turn-volatile 整段迁出 system：format_guide、按 query 重排的 user_profile、todos、
+  citation/context、canvas → 当前 user 的 `<injected_context>`。system 只留 latex /
+  instructions / AGENTS / user_preferences + **固定**引用规则。
+- `<available_skills>` 改 `excludeLoaded=false`，或整块移出 system；已加载状态用 tool result 表达。
+- 技能正文首次加载后位置冻结（或随 tool result 驻留）；环内新技能插到工具结果之后，不要插到当前 user 之前。
+- tools 会话内冻结；新工具延迟到下一稳定窗口。排序「首见轮次 + 名字」；G6 上移到 schema 合并处（含多变体）。
+- `web_search` engine enum 不要写进 schema。
+- Anthropic：删除无效顶层 `cache_control`；system 用 block 数组，在稳定段末尾与历史尾部打合法断点（≤4）。
+- DeepSeek 默认协议路径也要跑模型门控；`is_official_deepseek_config` 校验 base_url。
+- user_profile 停止按当前 query 重排；microcompact 只在 compaction 事件批量推进。
+- `prompt_builder` 跨轮前缀快照测试。
 
 ### P2 OpenAI Responses 原生多轮（可选，DeepSeek 不做）
 
