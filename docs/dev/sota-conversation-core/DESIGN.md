@@ -43,6 +43,8 @@
 
 - **用户消息发送/回放字节一致**：落库或确定性重建与 live 相同的
   `<user_query>` + `<injected_context>`（含该轮 runtime_facts）。这是 agentic 场景收益最大的单点。
+  同步：检索脱敏视图、`thought_signature`、空 `reasoning_content` 边界、Responses reasoning item
+  都必须按 live 字节重放；有无瞬态技能不得改变连续 user 合并规则。
 - turn-volatile 整段迁出 system：format_guide、按 query 重排的 user_profile、todos、
   citation/context、canvas → 当前 user 的 `<injected_context>`。system 只留 latex /
   instructions / AGENTS / user_preferences + **固定**引用规则。

@@ -20,7 +20,7 @@
 | --- | --- |
 | [6de9f30f](6de9f30f-2bd1-4bea-9033-65139f5adb0c) | OpenAI Responses 适配器原生能力 vs 兼容层（已完成） |
 | [17351f7e](17351f7e-9a67-4fe0-9e97-41f31c61bab1) | DeepSeek Responses 门控、web_search、缓存字段（已完成） |
-| ddb6d831 | 多轮缓存前缀断裂路径 |
+| [ddb6d831](ddb6d831-cacf-4899-9b32-54af663b45ab) | 多轮缓存前缀断裂路径（已完成） |
 | [5df53cf1](5df53cf1-bd09-4c34-a36f-24e053aa04ba) | 技能注入与工具变化对缓存的影响（已完成） |
 | [9859559e](9859559e-9c33-4fde-a58e-16d7910cebe7) | 系统提示词稳定性与构建顺序（已完成） |
 | [d3ab2581](d3ab2581-4092-434f-b965-925e046e6dee) | 工具面 / hosted tools / 回传格式（已完成） |
