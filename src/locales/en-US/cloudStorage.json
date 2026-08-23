@@ -43,9 +43,9 @@
     "secretAccessKeyPlaceholder": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "region": "Region (Optional)",
     "regionPlaceholder": "us-east-1",
-    "regionHint": "Some S3-compatible services may not require this",
+    "regionHint": "For AWS S3 this must match the bucket's actual region; some S3-compatible services may not require this",
     "pathStyle": "Use Path Style",
-    "pathStyleHint": "Required for self-hosted services like MinIO",
+    "pathStyleHint": "Required for self-hosted services like MinIO; do not enable for Alibaba Cloud OSS",
     "insecureWarning": {
       "title": "Insecure S3 Connection",
       "description": "You are using plaintext HTTP (http://) to connect to the S3 service. Your Access Key, Secret Key, and data will be transmitted in cleartext over the network and may be intercepted. It is recommended to use HTTPS (https://) for encrypted connections.",
