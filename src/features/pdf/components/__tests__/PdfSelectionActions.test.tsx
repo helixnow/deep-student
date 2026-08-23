@@ -1,0 +1,216 @@
+/**
+ * PDF 划词能力接入的行为契约。
+ *
+ * `pdfSelectionToolbar.source.test.ts` 只锁「接线接对了」；这里跑真组件，
+ * 验证用户实际点下去会发生什么：
+ * 1. 文本层关闭时整套能力不挂载（不能在没有选区的阅读器上冒出工具条）
+ * 2. 工具条只渲染 PDF 真的接了的能力，不摆灰色假入口
+ * 3. 保存为笔记 → 先弹目录选择器，而不是闷头写根目录
+ * 4. 解释 / 翻译 → 内联结果面板，且面板打开时工具条让位
+ * 5. 制卡 → 复用 selectionCardGeneration，带上下文
+ * 6. 添加到聊天 → 走既有 CHAT_V2_SET_INPUT 全局事件
+ */
+
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
+
+const generateCardsFromSelection = vi.fn();
+const saveAsNoteStart = vi.fn();
+
+let selectionState = {
+  selectedText: '',
+  selectionRect: null as null | { top: number; left: number; width: number; height: number; bottom: number },
+  isVisible: false,
+  contextBefore: '',
+  contextAfter: '',
+  clear: vi.fn(),
+};
+
+vi.mock('@/stores/viewStore', () => ({
+  useViewStore: (selector: (s: { currentView: string }) => unknown) =>
+    selector({ currentView: 'workbench' }),
+}));
+
+vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => false }));
+
+vi.mock('@/shared/selection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/shared/selection')>();
+  return { ...actual, useTextSelection: () => selectionState };
+});
+
+vi.mock('@/shared/notes', () => ({
+  useSaveAsNoteFlow: () => ({
+    start: saveAsNoteStart,
+    isSaving: false,
+    pickerProps: { open: false, onOpenChange: () => {}, onConfirm: () => {}, title: '选择保存目录', inline: false },
+  }),
+  SaveAsNoteFolderPicker: () => null,
+}));
+
+vi.mock('@/features/chat/components/ExplainPopover', () => ({
+  ExplainPopover: ({ sourceText }: { sourceText: string }) => (
+    <div data-testid="explain-popover">{sourceText}</div>
+  ),
+}));
+
+vi.mock('@/features/chat/components/TranslationPopover', () => ({
+  TranslationPopover: ({ sourceText, contextBefore }: { sourceText: string; contextBefore: string }) => (
+    <div data-testid="translate-popover" data-context-before={contextBefore}>
+      {sourceText}
+    </div>
+  ),
+}));
+
+vi.mock('@/features/chat/services/selectionCardGeneration', () => ({
+  generateCardsFromSelection: (...args: unknown[]) => generateCardsFromSelection(...args),
+}));
+
+import { PdfSelectionActions } from '../PdfSelectionActions';
+
+const SELECTED = '费曼路径积分表述';
+
+function renderActions(props: Partial<React.ComponentProps<typeof PdfSelectionActions>> = {}) {
+  // 阅读器根节点先于选区存在；延后一帧挂载，工具条才量得到定位容器
+  const Host: React.FC = () => {
+    const containerRef = React.useRef<HTMLDivElement>(null);
+    const [mounted, setMounted] = React.useState(false);
+    React.useEffect(() => setMounted(true), []);
+    return (
+      <div ref={containerRef} style={{ position: 'relative' }}>
+        {mounted && (
+          <PdfSelectionActions
+            containerRef={containerRef}
+            enabled
+            isMobileLike={false}
+            documentTitle="量子力学讲义"
+            {...props}
+          />
+        )}
+      </div>
+    );
+  };
+  return render(<Host />);
+}
+
+const button = (name: string) => screen.getByRole('button', { name, hidden: true });
+
+beforeEach(() => {
+  cleanup();
+  generateCardsFromSelection.mockReset();
+  saveAsNoteStart.mockReset();
+  selectionState = {
+    selectedText: SELECTED,
+    selectionRect: { top: 200, left: 100, width: 120, height: 20, bottom: 220 },
+    isVisible: true,
+    contextBefore: '前文',
+    contextAfter: '后文',
+    clear: vi.fn(),
+  };
+});
+
+describe('PdfSelectionActions mounting', () => {
+  it('renders nothing while the text layer is off', () => {
+    renderActions({ enabled: false });
+    expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
+  });
+
+  it('renders nothing when there is no active selection', () => {
+    selectionState = { ...selectionState, isVisible: false, selectedText: '', selectionRect: null };
+    renderActions();
+    expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
+  });
+
+  it('shows only the capabilities the reader actually wired', () => {
+    renderActions();
+    for (const label of ['复制', '解释', '翻译', '保存为笔记', '制卡', '添加到聊天']) {
+      expect(button(label)).toBeEnabled();
+    }
+  });
+});
+
+describe('save as note', () => {
+  it('opens the folder picker flow with the document title as provenance', () => {
+    renderActions();
+    fireEvent.click(button('保存为笔记'));
+
+    expect(saveAsNoteStart).toHaveBeenCalledWith({
+      content: `> 量子力学讲义\n\n${SELECTED}`,
+    });
+  });
+
+  it('omits the quote line when the document has no title', () => {
+    renderActions({ documentTitle: undefined });
+    fireEvent.click(button('保存为笔记'));
+    expect(saveAsNoteStart).toHaveBeenCalledWith({ content: SELECTED });
+  });
+});
+
+describe('explain / translate results', () => {
+  it('opens the explain panel inline and yields the toolbar to it', () => {
+    renderActions();
+    act(() => {
+      fireEvent.click(button('解释'));
+    });
+
+    expect(screen.getByTestId('explain-popover').textContent).toBe(SELECTED);
+    expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
+  });
+
+  it('passes the surrounding context to the translation popover', () => {
+    renderActions();
+    act(() => {
+      fireEvent.click(button('翻译'));
+    });
+
+    const popover = screen.getByTestId('translate-popover');
+    expect(popover.textContent).toBe(SELECTED);
+    expect(popover.getAttribute('data-context-before')).toBe('前文');
+  });
+
+  it('closes the panel from its close button', () => {
+    renderActions();
+    act(() => {
+      fireEvent.click(button('解释'));
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: '关闭', hidden: true }));
+    });
+
+    expect(screen.queryByTestId('explain-popover')).toBeNull();
+  });
+
+  it('shows results in an inline region, never a modal dialog', () => {
+    renderActions();
+    act(() => {
+      fireEvent.click(button('翻译'));
+    });
+    expect(screen.queryByRole('dialog', { hidden: true })).toBeNull();
+    expect(screen.getByRole('region', { hidden: true })).toBeTruthy();
+  });
+});
+
+describe('cards and chat handoff', () => {
+  it('routes card generation through the shared selection pipeline', () => {
+    renderActions();
+    fireEvent.click(button('制卡'));
+
+    expect(generateCardsFromSelection).toHaveBeenCalledTimes(1);
+    const input = generateCardsFromSelection.mock.calls[0][0];
+    expect(input.selectedText).toBe(SELECTED);
+    expect(input.contextBefore).toBe('前文');
+    expect(input.contextAfter).toBe('后文');
+  });
+
+  it('hands the selection to chat over the existing global event', () => {
+    renderActions();
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener('CHAT_V2_SET_INPUT', listener);
+    fireEvent.click(button('添加到聊天'));
+    window.removeEventListener('CHAT_V2_SET_INPUT', listener);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].detail).toEqual({ content: SELECTED, autoSend: false });
+  });
+});
