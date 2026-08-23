@@ -269,16 +269,73 @@ fn ensure_model_accepts_message_modalities(
     Ok(())
 }
 
+const PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS: usize = 200;
+
+/// 上游把 reason/code/message 写成字符串、数字或布尔的情况都存在，统一取标量文本。
+fn provider_stream_scalar_text(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+fn provider_stream_error_detail(value: &Value) -> Option<String> {
+    let raw = provider_stream_scalar_text(value.pointer("/details/message"))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/details/error/message")))
+        .or_else(|| provider_stream_scalar_text(value.get("details")))
+        .or_else(|| provider_stream_scalar_text(value.get("message")))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/error/message")))?;
+
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    if collapsed.chars().count() > PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS {
+        let head: String = collapsed
+            .chars()
+            .take(PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS)
+            .collect();
+        Some(format!("{head}..."))
+    } else {
+        Some(collapsed)
+    }
+}
+
+fn provider_stream_failure_classification(prefix: &str, reason: &str) -> Option<String> {
+    match reason {
+        "max_output_tokens" | "max_tokens" => Some(format!(
+            "{prefix}（达到模型输出上限）；已保留已生成内容，可重试或发送“继续”"
+        )),
+        "response.cancelled" | "response.canceled" | "cancelled" | "canceled" => {
+            Some(format!("{prefix}（上游取消）；已保留已生成内容，可重试"))
+        }
+        "content_filter" | "safety" => {
+            Some(format!("{prefix}（内容安全策略中止）；已保留已生成内容"))
+        }
+        _ if reason.starts_with("response.incomplete") => {
+            Some(format!("{prefix}；已保留已生成内容，可重试或发送“继续”"))
+        }
+        _ => None,
+    }
+}
+
 fn provider_stream_failure_message(
     value: &Value,
     requires_explicit_completion: bool,
     is_codex: bool,
 ) -> String {
-    let terminal_reason = value.get("reason").and_then(Value::as_str);
-    let detail_reason = value
-        .pointer("/details/reason")
-        .and_then(Value::as_str)
-        .or_else(|| value.pointer("/details/code").and_then(Value::as_str));
+    let terminal_reason = provider_stream_scalar_text(value.get("reason"));
+    let detail_reason = provider_stream_scalar_text(value.pointer("/details/reason"))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/details/code")));
     let prefix = if is_codex {
         "OpenAI Codex 回复未完整结束"
     } else if requires_explicit_completion {
@@ -287,20 +344,20 @@ fn provider_stream_failure_message(
         "模型回复未完整结束"
     };
 
-    match detail_reason.or(terminal_reason) {
-        Some("max_output_tokens" | "max_tokens") => {
-            format!("{prefix}（达到模型输出上限）；已保留已生成内容，可重试或发送“继续”")
-        }
-        Some("response.cancelled" | "response.canceled" | "cancelled" | "canceled") => {
-            format!("{prefix}（上游取消）；已保留已生成内容，可重试")
-        }
-        Some("content_filter" | "safety") => {
-            format!("{prefix}（内容安全策略中止）；已保留已生成内容")
-        }
-        Some(reason) if reason.starts_with("response.incomplete") => {
-            format!("{prefix}；已保留已生成内容，可重试或发送“继续”")
-        }
-        _ => format!("{prefix}；已保留已生成内容，可重试"),
+    // 数字状态码（如 details.code=499）无法分类，此时仍要回退到顶层 reason 的已知分类。
+    let classified = detail_reason
+        .as_deref()
+        .and_then(|reason| provider_stream_failure_classification(prefix, reason))
+        .or_else(|| {
+            terminal_reason
+                .as_deref()
+                .and_then(|reason| provider_stream_failure_classification(prefix, reason))
+        })
+        .unwrap_or_else(|| format!("{prefix}；已保留已生成内容，可重试"));
+
+    match provider_stream_error_detail(value) {
+        Some(detail) => format!("{classified}；上游返回：{detail}"),
+        None => classified,
     }
 }
 
