@@ -13,6 +13,14 @@ use crate::cloud_storage::{
 
 pub const CLOUD_CONFIG_SSOT_SETTING_KEY: &str = "cloud_storage.config.safe_v1";
 
+/// Stable message for every backend path that rejects FTP on Android.
+///
+/// Must stay byte-identical to the message emitted by
+/// `cloud_storage::create_storage` and `CloudStorageConfig::validate` so the
+/// frontend can map all rejection paths to one localized notice.
+pub const FTP_UNSUPPORTED_ON_ANDROID_MESSAGE: &str =
+    "FTP/FTPS storage is not available on Android.";
+
 const MAX_ENDPOINT_CHARS: usize = 2_048;
 const MAX_IDENTITY_CHARS: usize = 512;
 const MAX_ROOT_CHARS: usize = 256;
@@ -107,6 +115,17 @@ pub enum CloudConfigSsotError {
     Storage(String),
     #[error("cloud credentials are unavailable or incomplete: {0}")]
     CredentialsUnavailable(String),
+}
+
+impl CloudConfigSsotError {
+    /// FTP can never work on this platform, so neither saving nor loading such
+    /// a record is allowed. Carried as `Invalid` (so existing consumers such
+    /// as the data-governance tool map it to `CLOUD_CONFIG_INVALID`) with a
+    /// message identical to the `create_storage` rejection for frontend
+    /// mapping.
+    fn ftp_unsupported_on_platform() -> Self {
+        Self::Invalid(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string())
+    }
 }
 
 fn bounded_text(
@@ -264,6 +283,12 @@ impl SafeCloudStorageConfig {
                 root,
                 allow_insecure,
             } => {
+                // Mirror `create_storage`: Android has no FTP backend, so an
+                // FTP record must fail at save AND at load instead of
+                // persisting a configuration that can never validate.
+                if cfg!(target_os = "android") {
+                    return Err(CloudConfigSsotError::ftp_unsupported_on_platform());
+                }
                 if ftp.port == 0 {
                     return Err(CloudConfigSsotError::Invalid(
                         "ftp.port must be between 1 and 65535".to_string(),
@@ -476,6 +501,19 @@ mod tests {
         }
     }
 
+    fn ftp(host: &str, use_tls: bool, allow_insecure: bool) -> SafeCloudStorageConfig {
+        SafeCloudStorageConfig::Ftp {
+            ftp: SafeFtpConfig {
+                host: host.to_string(),
+                port: 21,
+                username: "student".to_string(),
+                use_tls,
+            },
+            root: None,
+            allow_insecure,
+        }
+    }
+
     fn test_database() -> (tempfile::TempDir, crate::database::Database) {
         let dir = tempfile::TempDir::new().expect("tempdir");
         let database = crate::database::Database::new(&dir.path().join("settings.db"))
@@ -546,22 +584,69 @@ mod tests {
     #[test]
     fn public_plaintext_ftp_requires_persisted_opt_in() {
         let (_dir, database) = test_database();
-        let host = "ftp.security-contract.test";
-        let config = SafeCloudStorageConfig::Ftp {
-            ftp: SafeFtpConfig {
-                host: host.to_string(),
-                port: 21,
-                username: "student".to_string(),
-                use_tls: false,
-            },
-            root: None,
-            allow_insecure: true,
-        };
+        let config = ftp("ftp.security-contract.test", false, true);
 
         let stored = save_cloud_config_ssot(&database, config).expect("persist FTP opt-in");
         let mut runtime = stored.into_runtime_config();
         assert!(runtime.insecure_transport_authorized);
         runtime.ftp.as_mut().unwrap().password = "secret".to_string();
         assert!(runtime.validate().is_ok());
+    }
+
+    #[test]
+    fn ftp_platform_error_matches_create_storage_message() {
+        assert_eq!(
+            FTP_UNSUPPORTED_ON_ANDROID_MESSAGE, "FTP/FTPS storage is not available on Android.",
+            "message must stay identical to the create_storage rejection so \
+             the frontend can map every backend path the same way",
+        );
+        let error = CloudConfigSsotError::ftp_unsupported_on_platform();
+        assert_eq!(
+            error,
+            CloudConfigSsotError::Invalid(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string()),
+        );
+        assert!(
+            error
+                .to_string()
+                .contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE),
+            "the IPC string must contain the mappable create_storage message"
+        );
+    }
+
+    #[cfg(target_os = "android")]
+    #[test]
+    fn android_rejects_ftp_on_save_and_persists_nothing() {
+        let (_dir, database) = test_database();
+        let denied = save_cloud_config_ssot(&database, ftp("ftp.example.test", true, false))
+            .expect_err("FTP must not be persistable on Android");
+        assert_eq!(denied, CloudConfigSsotError::ftp_unsupported_on_platform());
+        assert!(denied
+            .to_string()
+            .contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
+        assert!(
+            matches!(
+                load_cloud_config_ssot(&database),
+                Err(CloudConfigSsotError::NotConfigured)
+            ),
+            "a rejected save must leave the SSOT empty"
+        );
+    }
+
+    #[cfg(target_os = "android")]
+    #[test]
+    fn android_rejects_stored_ftp_record_on_load() {
+        let (_dir, database) = test_database();
+        let encoded = r#"{
+            "provider":"ftp",
+            "ftp":{"host":"ftp.example.test","port":21,"username":"student","useTls":true}
+        }"#;
+        database
+            .save_setting(CLOUD_CONFIG_SSOT_SETTING_KEY, encoded)
+            .expect("seed a desktop-written FTP record");
+        assert_eq!(
+            load_cloud_config_ssot(&database)
+                .expect_err("desktop-written FTP records must fail closed on Android"),
+            CloudConfigSsotError::ftp_unsupported_on_platform(),
+        );
     }
 }
