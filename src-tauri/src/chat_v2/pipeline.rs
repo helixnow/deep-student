@@ -881,13 +881,6 @@ impl ChatV2Pipeline {
         self.load_chat_history(ctx).await?;
         // 🆕 FIFO 截断可见化：实际丢弃了消息时向前端发 context_trimmed 事件
         self.notify_context_trimmed(ctx, &emitter);
-        // Recompile canonical history/current content for this turn's frozen TM/MM capability.
-        // This is where transient image base64 is resolved and where auxiliary-MM/OCR fallback
-        // happens for text-only active models.
-        tokio::select! {
-            result = self.compile_frozen_context(ctx) => result?,
-            _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
-        }
 
         // 阶段 3：并行执行检索
         if cancel_token.is_cancelled() {
@@ -907,8 +900,19 @@ impl ChatV2Pipeline {
             .await;
         ctx.add_retrieval_refs_to_snapshot(retrieval_refs);
 
-        // 阶段 4：构建系统提示
+        // 阶段 4：构建系统提示（P1-10 拆分：稳定 system 返回，
+        // turn-volatile 块写入 ctx.turn_volatile_context 供编译注入 injected_context）
         let system_prompt = self.build_system_prompt(ctx).await;
+
+        // 阶段 4.5：编译冻结上下文（原阶段 2 尾；P1-10 后移到检索与
+        // 系统提示拆分之后，使 turn-volatile 块随当前 user 消息一起编译冻结）。
+        // Recompile canonical history/current content for this turn's frozen TM/MM capability.
+        // This is where transient image base64 is resolved and where auxiliary-MM/OCR fallback
+        // happens for text-only active models.
+        tokio::select! {
+            result = self.compile_frozen_context(ctx) => result?,
+            _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
+        }
 
         // 阶段 5：调用 LLM（带工具递归）
         if cancel_token.is_cancelled() {

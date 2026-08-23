@@ -1,13 +1,22 @@
 use super::*;
 
 impl ChatV2Pipeline {
-    /// 构建系统提示
+    /// 构建系统提示（P1-10 拆分形态）
     ///
     /// 使用 prompt_builder 模块统一格式化，采用 XML 标签分隔各部分，
     /// 统一引用格式为 `[类型-编号]`，并添加使用指引。
-    /// 如果有 Canvas 笔记，也会一并注入。
     /// 若会话绑定了 workspace（或配置了全局 AGENTS.md），注入 `<project_agents_instructions>`。
-    pub(crate) async fn build_system_prompt(&self, ctx: &PipelineContext) -> String {
+    ///
+    /// ## P1-10：turn-volatile 迁出 system
+    /// 返回拆分后的两段并把 turn-volatile 块写入 `ctx.turn_volatile_context`：
+    /// - `stable_system`：跨轮字节稳定的 system（LaTeX / instructions / AGENTS /
+    ///   preferences / 固定引用规则），直接交给 LLM 调用；
+    /// - turn-volatile（格式 hints / 画像 / 检索 context / Canvas 笔记）随后由
+    ///   compile_frozen_context 编入当前 user 消息的 `<injected_context>`，
+    ///   经 V20260806 `llm_content` 列落库保证回放字节一致。
+    ///
+    /// 因此本方法必须在 `compile_frozen_context` **之前**调用。
+    pub(crate) async fn build_system_prompt(&self, ctx: &mut PipelineContext) -> String {
         let canvas_note = self.build_canvas_note_info(ctx).await;
 
         // 读取用户画像摘要（如果 VFS 可用）
@@ -16,13 +25,15 @@ impl ChatV2Pipeline {
         // AGENTS.md：会话绑定 workspace 根 → ~/.deep-student/AGENTS.md
         let agents_instructions = self.load_project_agents_instructions(ctx);
 
-        prompt_builder::build_system_prompt_with_profile_and_agents(
+        let parts = prompt_builder::build_system_prompt_with_profile_and_agents(
             &ctx.options,
             &ctx.retrieved_sources,
             canvas_note,
             user_profile,
             agents_instructions,
-        )
+        );
+        ctx.turn_volatile_context = parts.turn_volatile;
+        parts.stable_system
     }
 
     /// 解析会话绑定 workspace 根并加载 AGENTS.md 常驻指令

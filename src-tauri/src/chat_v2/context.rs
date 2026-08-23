@@ -387,6 +387,12 @@ pub(crate) struct PipelineContext {
     pub(crate) execution_snapshot: Option<ModelExecutionSnapshot>,
     /// 检索到的来源
     pub(crate) retrieved_sources: MessageSources,
+    /// 🆕 P1-10：本轮 turn-volatile 块（格式 hints / 画像 / 待办 / 检索 context /
+    /// Canvas 笔记），由 prompt_builder 拆分产出，注入当前 user 消息的
+    /// `<injected_context>` 而非 system——system 是 input 第 0 位，逐轮变化
+    /// 会打碎全部历史 prompt cache。必须在 compile_frozen_context 之前赋值，
+    /// 编译后随 compiled_current_user_message 冻结并经 V20260806 llm_content 落库。
+    pub(crate) turn_volatile_context: Option<String>,
     /// 发送选项
     pub(crate) options: SendOptions,
     /// 工具调用结果
@@ -514,6 +520,7 @@ impl PipelineContext {
             canonical_content: Vec::new(),
             execution_snapshot: None,
             retrieved_sources: MessageSources::default(),
+            turn_volatile_context: None,
             options: request.options.unwrap_or_default(),
             tool_results: Vec::new(),
             final_content: String::new(),
@@ -1187,12 +1194,23 @@ impl PipelineContext {
         )
     }
 
+    /// 组装 `<injected_context>` 内的内容块
+    ///
+    /// ## P1-10：turn-volatile 迁出 system
+    /// 顺序：runtime_facts → 用户上下文引用（formattedBlocks）→ turn-volatile 块
+    /// （格式 hints / 画像 / 待办 / 检索 context / Canvas 笔记）。
+    /// turn-volatile 块由 prompt_builder 拆分产出，各块内部已按旧 system
+    /// 注入规则完成 XML 转义，此处按预编排 XML 段原样拼接（同 runtime_facts）。
     pub(crate) fn build_injected_context_blocks(
         runtime_facts: &str,
         refs: &[SendContextRef],
+        turn_volatile: Option<&str>,
     ) -> Vec<ContentBlock> {
         let mut blocks = vec![ContentBlock::text(runtime_facts.to_string())];
         blocks.extend(Self::build_user_content_from_context_refs(refs));
+        if let Some(volatile) = turn_volatile.filter(|text| !text.is_empty()) {
+            blocks.push(ContentBlock::text(volatile.to_string()));
+        }
         blocks
     }
 
@@ -1231,8 +1249,11 @@ impl PipelineContext {
     /// - 合并后的用户内容文本
     /// - 从 formattedBlocks 中提取的图片 base64 列表
     pub(crate) fn get_combined_user_content(&self) -> (String, Vec<String>) {
-        let injected_blocks =
-            Self::build_injected_context_blocks(&self.runtime_facts, &self.user_context_refs);
+        let injected_blocks = Self::build_injected_context_blocks(
+            &self.runtime_facts,
+            &self.user_context_refs,
+            self.turn_volatile_context.as_deref(),
+        );
         let (context_text, context_images) =
             Self::collect_injected_context_text_and_images(&injected_blocks);
         let combined_text =
@@ -1337,8 +1358,11 @@ impl PipelineContext {
         }
 
         // 2. 处理上下文引用的 formattedBlocks（保持原始顺序）
-        let injected_blocks =
-            Self::build_injected_context_blocks(&self.runtime_facts, &self.user_context_refs);
+        let injected_blocks = Self::build_injected_context_blocks(
+            &self.runtime_facts,
+            &self.user_context_refs,
+            self.turn_volatile_context.as_deref(),
+        );
         if !injected_blocks.is_empty() {
             blocks.push(ContentBlock::text("<injected_context>".to_string()));
             blocks.extend(injected_blocks);
@@ -1568,5 +1592,68 @@ mod citation_tests {
         let output = json!({ "sources": [{ "imageUrl": "asset://x" }] });
         assert!(sanitize_retrieval_output_for_llm("builtin-note_read", &output).is_none());
         assert!(sanitize_retrieval_output_for_llm("mcp_custom_tool", &output).is_none());
+    }
+}
+
+// ============================================================
+// P1-10：turn-volatile 迁入当前 user <injected_context> 的单元测试
+// ============================================================
+
+#[cfg(test)]
+mod turn_volatile_tests {
+    use super::*;
+
+    const FIXED_FACTS: &str = "<runtime_facts>\n当前日期: 2026-08-23\n</runtime_facts>";
+
+    fn build_user_text(volatile: Option<&str>) -> String {
+        let blocks = PipelineContext::build_injected_context_blocks(FIXED_FACTS, &[], volatile);
+        let (text, images) = PipelineContext::collect_injected_context_text_and_images(&blocks);
+        assert!(images.is_empty());
+        PipelineContext::wrap_user_message_text("同一个问题", Some(text.as_str()))
+    }
+
+    #[test]
+    fn injected_context_carries_turn_volatile_blocks() {
+        let volatile = "<active_todos>\n以下是用户当前的待办事项：\n1. 复习\n</active_todos>";
+        let combined = build_user_text(Some(volatile));
+
+        // user_query 在前且不含 volatile 内容
+        let query_end = combined.find("</user_query>").expect("user_query block");
+        assert!(!combined[..query_end].contains("active_todos"));
+
+        // volatile 落在 <injected_context> 内部
+        let ic_start = combined
+            .find("<injected_context>")
+            .expect("injected_context open");
+        let ic_end = combined
+            .find("</injected_context>")
+            .expect("injected_context close");
+        let injected = &combined[ic_start..ic_end];
+        assert!(injected.contains("<runtime_facts>"));
+        assert!(injected.contains(volatile));
+    }
+
+    /// P1-10 跨轮快照（user 消息侧）：volatile 逐轮变化时，
+    /// `<injected_context>` 之前的字节（user_query + 包装骨架）逐轮不变，
+    /// 变化只发生在 injected_context 内部。
+    #[test]
+    fn cross_turn_changes_stay_inside_injected_context() {
+        let round1 = build_user_text(Some("<context>\n[知识库-1] 第一轮命中\n</context>"));
+        let round2 = build_user_text(Some("<context>\n[知识库-1] 第二轮命中\n</context>"));
+
+        let prefix1 = &round1[..round1.find("<injected_context>").unwrap()];
+        let prefix2 = &round2[..round2.find("<injected_context>").unwrap()];
+        assert_eq!(prefix1, prefix2);
+        assert!(round1.contains("第一轮命中") && !round1.contains("第二轮命中"));
+        assert!(round2.contains("第二轮命中") && !round2.contains("第一轮命中"));
+    }
+
+    #[test]
+    fn empty_turn_volatile_keeps_previous_block_shape() {
+        let none = PipelineContext::build_injected_context_blocks(FIXED_FACTS, &[], None);
+        assert_eq!(none.len(), 1);
+        // 空串等价于无 volatile，不追加空文本块
+        let empty = PipelineContext::build_injected_context_blocks(FIXED_FACTS, &[], Some(""));
+        assert_eq!(empty.len(), 1);
     }
 }
