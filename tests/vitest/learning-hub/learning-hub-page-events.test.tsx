@@ -56,6 +56,7 @@ vi.mock('@/features/learning-hub/stores/finderStore', () => {
     // LH-HOST：页面按宿主取 store；本测试只跑桌面宿主，回同一个 mock 即可
     useFinderStoreFor: () => useFinderStore,
     getFinderStore: () => useFinderStore,
+    FINDER_HOST_IDS: { page: 'page', pageMobile: 'page-mobile' },
   };
 });
 vi.mock('@/features/learning-hub/components/DstuAppLauncher', () => ({ DstuAppLauncher: () => null }));

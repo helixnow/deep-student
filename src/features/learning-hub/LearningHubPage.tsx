@@ -57,11 +57,7 @@ import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
-import { useFinderStoreFor } from './stores/finderStore';
-
-/** ★ LH-HOST：学习中心页的两个宿主桶（桌面 / 移动端各自独立） */
-export const LEARNING_HUB_DESKTOP_HOST_ID = 'page';
-export const LEARNING_HUB_MOBILE_HOST_ID = 'page-mobile';
+import { useFinderStoreFor, FINDER_HOST_IDS } from './stores/finderStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
@@ -493,7 +489,7 @@ export const LearningHubPage: React.FC = () => {
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
   // ★ LH-HOST：页面顶栏/抽屉必须读写与本页访达同一个宿主桶
   const useHostFinderStore = useFinderStoreFor(
-    isSmallScreen ? LEARNING_HUB_MOBILE_HOST_ID : LEARNING_HUB_DESKTOP_HOST_ID,
+    isSmallScreen ? FINDER_HOST_IDS.pageMobile : FINDER_HOST_IDS.page,
   );
   const finderCurrentPath = useHostFinderStore(state => state.currentPath);
   const finderGoUp = useHostFinderStore(state => state.goUp);
@@ -1256,7 +1252,7 @@ export const LearningHubPage: React.FC = () => {
           >
             <LearningHubSidebar
               mode="fullscreen"
-              hostId={LEARNING_HUB_MOBILE_HOST_ID}
+              hostId={FINDER_HOST_IDS.pageMobile}
               sessionActive={isLearningHubViewActive && screenPosition === 'center'}
               // 📱 命令事件监听不能只在中屏开启：左抽屉「新建文件夹」是同步派发
               // learningHub:create-folder，此刻 screenPosition 仍为 'left'，
@@ -1295,7 +1291,7 @@ export const LearningHubPage: React.FC = () => {
           <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
-              hostId={LEARNING_HUB_DESKTOP_HOST_ID}
+              hostId={FINDER_HOST_IDS.page}
               sessionActive={isLearningHubViewActive}
               commandsEnabled={isLearningHubViewActive}
               onOpenPreview={handleOpenApp}

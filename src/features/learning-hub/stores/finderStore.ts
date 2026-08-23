@@ -380,13 +380,36 @@ export const DEFAULT_FINDER_HOST_ID = 'default';
 export const FINDER_PERSIST_KEY_PREFIX = 'learning-hub-finder';
 
 /**
+ * 全部访达宿主标识。
+ *
+ * 宿主方（渲染 `LearningHubSidebar` 的页面）与读取方（顶栏面包屑等）必须引用同一
+ * 个常量，否则会重新退化成「读到别人桶」的串台问题。
+ */
+export const FINDER_HOST_IDS = {
+  /** workbench Files 窗口 */
+  files: 'files',
+  /** 学习中心页（桌面） */
+  page: 'page',
+  /** 学习中心页（移动端） */
+  pageMobile: 'page-mobile',
+  /** Chat 画布侧的资源库（桌面） */
+  canvas: 'canvas',
+  /** Chat 画布侧的资源库（移动端右屏） */
+  canvasMobile: 'canvas-mobile',
+  /** 分组编辑器里的资源选择器 */
+  groupPicker: 'group-picker',
+} as const;
+
+export type FinderHostId = (typeof FINDER_HOST_IDS)[keyof typeof FINDER_HOST_IDS];
+
+/**
  * 与 default 桶共享状态的宿主。
  *
  * workbench Files 窗口的 activation / agent driver / 拖拽与悬浮预览 hook 直接引用
  * `useFinderStore`（即 default 桶），它们不在本次改动范围内，所以 files 宿主继续
  * 落在 default 桶；page / page-mobile / canvas / group-picker 等宿主各自独立。
  */
-const HOSTS_SHARING_DEFAULT_BUCKET = new Set(['files']);
+const HOSTS_SHARING_DEFAULT_BUCKET = new Set<string>([FINDER_HOST_IDS.files]);
 
 /** 把宿主标识解析为实际的桶标识 */
 export function resolveFinderHostId(hostId?: string | null): string {
@@ -1158,13 +1181,13 @@ export function getFinderStore(hostId?: string | null): FinderStoreApi {
   return store;
 }
 
-/** 仅供测试：丢弃已创建的宿主桶 */
+/** 仅供测试：清空已创建的宿主桶，并把活跃宿主复位到 default */
 export function resetFinderStoreRegistryForTests(): void {
   for (const [bucketId, store] of finderStoreRegistry) {
-    if (bucketId === DEFAULT_FINDER_HOST_ID) continue;
     store.getState().reset();
-    finderStoreRegistry.delete(bucketId);
+    if (bucketId !== DEFAULT_FINDER_HOST_ID) finderStoreRegistry.delete(bucketId);
   }
+  setActiveFinderHostId(DEFAULT_FINDER_HOST_ID);
 }
 
 /** default 桶：保持旧的模块级单例语义，外部（agent driver / Files 窗口）继续直接引用 */
