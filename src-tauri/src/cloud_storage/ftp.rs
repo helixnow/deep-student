@@ -238,6 +238,20 @@ impl FtpStorage {
             || err.contains("不存在")
     }
 
+    /// 父目录缺失时各服务器的 cwd 回复不统一：vsftpd 是 `550 Failed to change
+    /// directory.`，proftpd/pyftpdlib 是 `550 ...: No such file or directory`。删除
+    /// 场景下父目录不可达等价于目标文件已不存在，按成功处理；权限类 550 仍上报错误。
+    fn is_missing_directory_error(error: &AppError) -> bool {
+        if Self::is_not_found_error(error) {
+            return true;
+        }
+        let err = error.to_string().to_lowercase();
+        err.contains("550")
+            && !err.contains("permission denied")
+            && !err.contains("access denied")
+            && !err.contains("access is denied")
+    }
+
     fn parse_list_entry(line: &str) -> Option<FtpListEntry> {
         let parsed = FtpListFile::from_mlsx_line(line)
             .or_else(|_| FtpListFile::try_from(line))
@@ -826,7 +840,13 @@ impl CloudStorage for FtpStorage {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
                     let full_parent = self.remote_path(parent_path);
-                    client.cwd(&Self::absolute_path(&full_parent)).await?;
+                    if let Err(err) = client.cwd(&Self::absolute_path(&full_parent)).await {
+                        if !Self::is_missing_directory_error(&err) {
+                            return Err(err);
+                        }
+                        let _ = client.quit().await;
+                        return Ok(());
+                    }
                 }
             }
 
@@ -1085,6 +1105,28 @@ mod tests {
         );
 
         assert!(FtpStorage::is_not_found_error(&error));
+    }
+
+    #[test]
+    fn missing_parent_directory_cwd_is_treated_as_absent() {
+        for message in [
+            "FTP CWD 失败：Invalid response: [550] 550 Failed to change directory.",
+            "FTP CWD 失败：Invalid response: [550] 550 /root/data_governance/assets: No such file or directory",
+        ] {
+            let error = AppError::file_system(message);
+            assert!(
+                FtpStorage::is_missing_directory_error(&error),
+                "expected {message} to be treated as a missing directory"
+            );
+        }
+    }
+
+    #[test]
+    fn permission_denied_cwd_is_still_an_error() {
+        let error =
+            AppError::file_system("FTP CWD 失败：Invalid response: [550] 550 Permission denied.");
+
+        assert!(!FtpStorage::is_missing_directory_error(&error));
     }
 
     #[test]
