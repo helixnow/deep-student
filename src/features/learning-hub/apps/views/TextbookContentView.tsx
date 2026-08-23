@@ -62,7 +62,6 @@ const LoadingSpinner: React.FC = () => {
  */
 const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   node,
-  isActive = true,
 }) => {
   const { t } = useTranslation(['textbook', 'common', 'learningHub']);
   const {
@@ -78,14 +77,6 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
   // 页面选择状态
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
-
-  // ★ isActive 门控（对齐 FileContentView）：并排/多标签打开两本教材时，
-  // 全局 pdf-page-refs:clear / :remove 事件只能作用在活跃视图上，
-  // 否则后打开的一本会清空前一本的页码高亮。
-  const isActiveRef = useRef(isActive);
-  useEffect(() => {
-    isActiveRef.current = isActive;
-  }, [isActive]);
 
   // ★ 追踪最新值的 ref（persist controller merge 用）
   const nodePathRef = useRef(node.path);
@@ -150,14 +141,11 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   // ★ 标签页：通过 sourceId 过滤，避免多个 PDF tab 互相干扰
   useEffect(() => {
     const handleClear = (event: Event) => {
-      // ★ 非活跃标签页不响应全局清除事件
-      if (!isActiveRef.current) return;
       const detail = (event as CustomEvent<{ sourceId?: string }>).detail;
       if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
       setSelectedPages(new Set());
     };
     const handleRemove = (event: Event) => {
-      if (!isActiveRef.current) return;
       const detail = (event as CustomEvent<{ page: number; sourceId?: string }>).detail;
       if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
       setSelectedPages((prev) => {
