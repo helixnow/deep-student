@@ -22,6 +22,7 @@ import { resolvePopoverPosition, type PopoverPosition } from '@/components/ui/sh
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
 import { Z_INDEX } from '@/config/zIndex';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { cn } from '../../../lib/utils';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { listTextbooks, listExamSessions } from './api';
@@ -275,6 +276,19 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         break;
     }
   }, [moveActive, activeIndex, displayItems, handleSelect, onOpenChange]);
+
+  // 📱 Android 系统返回键：自绘浮层无 data-state="open"，Radix Escape 兜底
+  // 匹配不到，打开时显式注册 overlay 级返回 handler，否则返回键会穿透到底层
+  // 导航。ref 保持注册稳定，避免 onOpenChange 变化导致注销重注、破坏栈语义。
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      onOpenChangeRef.current(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open]);
 
   // 打开时：Esc 收起 + 点击面板/锚点以外收起 + 聚焦搜索框
   useEffect(() => {

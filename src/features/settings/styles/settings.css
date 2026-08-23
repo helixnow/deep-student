@@ -13,7 +13,8 @@ body .settings-mobile-sheet {
   position: fixed;
   isolation: isolate;
 
-  --settings-mobile-sheet-header-height: calc(56px + var(--mobile-safe-area-top, env(safe-area-inset-top, 0)));
+  /* Sheet 顶部本身已停在 10dvh（低于状态栏），header 不再叠加 safe-area-top，避免顶部死区。 */
+  --settings-mobile-sheet-header-height: 56px;
 
   background: var(--surface-muted);
   color: var(--mobile-sheet-foreground);
@@ -46,7 +47,7 @@ body .settings-mobile-sheet-overlay {
   min-height: 56px;
   height: var(--settings-mobile-sheet-header-height);
   gap: 0.5rem;
-  padding: var(--mobile-safe-area-top, env(safe-area-inset-top, 0px)) calc(0.75rem + var(--mobile-safe-area-right, env(safe-area-inset-right, 0px))) 0 calc(0.75rem + var(--mobile-safe-area-left, env(safe-area-inset-left, 0px)));
+  padding: 0 calc(0.75rem + var(--mobile-safe-area-right, env(safe-area-inset-right, 0px))) 0 calc(0.75rem + var(--mobile-safe-area-left, env(safe-area-inset-left, 0px)));
   border-bottom: 0;
   position: absolute;
   top: 0;

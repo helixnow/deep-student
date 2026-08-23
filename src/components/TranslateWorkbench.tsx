@@ -1050,6 +1050,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               isSyncScroll={isSyncScroll}
               setIsSyncScroll={setIsSyncScroll}
               settingsAsPage={externalSettingsNavigation}
+              isActive={isActive}
               onSwapLanguages={handleSwapLanguages}
               onFilesDropped={handleFilesDropped}
               onSavePrompt={handleSavePrompt}

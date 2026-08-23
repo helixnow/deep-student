@@ -1347,6 +1347,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           onModesChange={loadModes}
           onApplySuggestion={handleApplySuggestion}
           settingsAsPage={externalSettingsNavigation}
+          isActive={isActive}
           roundNavigation={totalRounds > 0 ? {
             currentIndex: currentRoundIndex,
             total: totalRounds,

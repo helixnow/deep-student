@@ -53,6 +53,8 @@ interface TranslationMainProps {
   setIsSyncScroll: (val: boolean) => void;
   /** OS 宿主提供外部设置标签时，设置替换完整主区且隐藏内部齿轮入口 */
   settingsAsPage?: boolean;
+  /** ★ 标签页保活：当前是否为活跃标签页；非活跃（display:none 驻留）实例不注册返回键。未传视为活跃 */
+  isActive?: boolean;
 
   // Actions
   onSwapLanguages: () => void;
@@ -153,6 +155,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   isSyncScroll,
   setIsSyncScroll,
   settingsAsPage = false,
+  isActive,
   onSwapLanguages,
   onFilesDropped,
   onSavePrompt,
@@ -209,13 +212,15 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   const layoutControlValue: LayoutMode = isDesktopNarrow ? 'stacked' : layoutMode;
 
   // ========== 移动端：设置区展开时注册 Android 返回键（返回 = 收起设置） ==========
+  // ★ 标签页保活：TabPanelContainer 用 display:none 驻留非活跃实例，
+  //   其设置区若曾展开会持续注册返回键并吞掉活跃标签页的返回操作，故 isActive gate。
   useEffect(() => {
-    if (useSettingsPage || !showPromptEditor) return;
+    if (isActive === false || useSettingsPage || !showPromptEditor) return;
     return registerBackHandler(() => {
       setShowPromptEditor(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [useSettingsPage, showPromptEditor, setShowPromptEditor]);
+  }, [isActive, useSettingsPage, showPromptEditor, setShowPromptEditor]);
 
   // ========== 同步滚动 ==========
   // 通过根容器捕获阶段监听 scroll，按 [data-translation-scroll="source"|"target"]
@@ -300,9 +305,11 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
     // 工具栏挤出容器（此前源语言按钮 x=-14 左侧被裁剪）
     <div data-wb-blur-surface className="h-12 shrink-0 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-1 sm:gap-2 px-3 sm:px-4 border-b bg-background/50 backdrop-blur z-20">
       {/* 左：布局切换（仅桌面；窄容器时强制上下布局并禁用）。
+          断点用 md 与 isSmallScreen(md=768) 对齐：sm(640-767) 属移动壳、
+          effectiveStacked 已强制上下分栏，若在此区间显示切换器则控件失真。
           ⚠️ display:none 的子项会从 grid 流中移除，后续列会左移错位，
           三列都用 col-start 显式定位（P1：移动端语言组曾因此掉进 1fr 列溢出） */}
-      <div className="col-start-1 hidden sm:flex items-center justify-start">
+      <div className="col-start-1 hidden md:flex items-center justify-start">
         <SegmentedControl<LayoutMode>
           ariaLabel={t('translation:workbench.layout.label')}
           value={layoutControlValue}

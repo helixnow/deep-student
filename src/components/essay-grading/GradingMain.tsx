@@ -79,6 +79,8 @@ interface GradingMainProps {
   onModesChange?: () => void;
   /** OS 宿主提供外部设置标签时，设置在所有窗口宽度下都替换完整主区 */
   settingsAsPage?: boolean;
+  /** ★ 标签页保活：当前是否为活跃标签页；非活跃（display:none 驻留）实例不注册返回键。未传视为活跃 */
+  isActive?: boolean;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -149,6 +151,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   currentRound,
   onModesChange,
   settingsAsPage = false,
+  isActive,
   roundNavigation,
 }) => {
   // 容器级断点：工作台可能运行在 workbench 窗口里（窗口远窄于视口），
@@ -198,13 +201,15 @@ export const GradingMain: React.FC<GradingMainProps> = ({
 
   // 移动端设置区展开时注册 Android 返回键（返回 = 收起内联设置区块）。
   // 桌面端设置是独立整页视图（标签页语义），不属于 overlay，不劫持返回键。
+  // ★ 标签页保活：TabPanelContainer 用 display:none 驻留非活跃实例，
+  //   其设置区若曾展开会持续注册返回键并吞掉活跃标签页的返回操作，故 isActive gate。
   useEffect(() => {
-    if (useSettingsPage || !showPromptEditor) return;
+    if (isActive === false || useSettingsPage || !showPromptEditor) return;
     return registerBackHandler(() => {
       setShowPromptEditor(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [useSettingsPage, showPromptEditor, setShowPromptEditor]);
+  }, [isActive, useSettingsPage, showPromptEditor, setShowPromptEditor]);
 
   // ========== 共享面板（各断点复用同一份 props，状态源唯一：showPromptEditor） ==========
   const inputPanel = (
