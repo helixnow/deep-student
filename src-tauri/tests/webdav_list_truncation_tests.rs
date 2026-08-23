@@ -7,12 +7,11 @@
 //!
 //! 本文件用**进程内假 WebDAV 服务器**（原生 TCP + 手写 HTTP 207 响应）锁定：
 //! - 750 个文件（坚果云单页上限形态，751 个 response）→ 必须判定 truncated；
-//! - 101 个文件（102 个 response，不在任何整百/750 边界）→ 不得判定 truncated；
-//! - 100 个文件（101 个 response）→ 期望不判定 truncated，但当前启发式
-//!   `(response_count - 1) % 100 == 0` 会把「恰好 100 个文件」误报为截断
-//!   （假阳性）。该用例以 `#[ignore]` 标注，等 R02-webdav 修复启发式后取消。
-//!
-//! 仅新增测试，不修改生产代码。
+//! - 101 个文件（102 个 response，不在任何已知截断边界）→ 不得判定 truncated；
+//! - 100 个文件（101 个 response）→ 不得判定 truncated。早期启发式把所有
+//!   整百 response 数当作截断信号，「恰好 100 个文件」被误报为截断（假阳性）；
+//!   R02-webdav 已把启发式收紧到已知边界（坚果云 750/751、千级网关），
+//!   该用例的 `#[ignore]` 已随修复取消。
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -195,19 +194,17 @@ async fn list_with_101_files_is_not_truncated() {
 
 /// 恰好 100 个文件（101 个 DAV:response）是完整列表，不应判定 truncated。
 ///
-/// 已知问题（等 R02-webdav 修复后取消 ignore）：当前生产启发式
-/// `response_count >= 100 && (response_count - 1) % 100 == 0`
-/// 把「100 个文件 + 目录自身 = 101 个 response」误判为分页截断（假阳性），
-/// 导致恰好 100 个文件的健康目录被永久拒绝同步。
-/// 取消 ignore 的方式：删除下方 `#[ignore]` 属性即可；断言本身即为期望契约。
+/// 历史假阳性：旧启发式 `response_count >= 100 && (response_count - 1) % 100 == 0`
+/// 把「100 个文件 + 目录自身 = 101 个 response」误判为分页截断，
+/// 导致恰好 100 个文件的健康目录被永久拒绝同步。R02-webdav 已将启发式
+/// 收紧到已知边界（750/751 与千级），本用例锁定修复不回归。
 #[tokio::test]
-#[ignore = "已知假阳性：100 个文件被当前启发式误判为 truncated，等 R02-webdav 修复合入后取消 ignore"]
 async fn list_with_exactly_100_files_should_not_be_truncated() {
     let outcome = list_outcome_for_file_count(100).await;
     assert_eq!(outcome.files.len(), 100, "应解析出全部 100 个文件条目");
     assert!(
         !outcome.truncated,
-        "恰好 100 个文件是完整列表，不应被启发式误判为 truncated（当前生产代码存在该假阳性）"
+        "恰好 100 个文件是完整列表，不应被启发式误判为 truncated"
     );
 }
 
