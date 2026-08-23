@@ -111,21 +111,21 @@ impl WebDavStorage {
     /// WebDAV 没有通用分页协议，无法向服务器确认列表完整性，只能按已知
     /// 上限做 fail-closed 启发式：
     /// - 坚果云在 750 个 response 处截断（含集合自身则表现为 750 或 751）；
-    /// - 个别网关按 1000 的整数倍截断。
+    /// - 个别网关在 1000 个 response 处截断（含集合自身则表现为 1000 或 1001）。
     ///
     /// 早期版本把所有"整百"（100/101/200/...）都当作截断信号，导致目录里
     /// 恰好有 99 或 100 个真实条目（加集合自身共 100/101 个 response）时
     /// 出现假阳性、整个同步被拒绝推进。低边界误报率过高且未见真实服务在
     /// 100/200 处截断的案例，故收紧到已知边界。
     ///
+    /// 之后又发现"所有 1000 的整数倍"同样误伤：目录里恰好有 1999 或 2000
+    /// 个真实条目（2000/2001 个 response）时被误判为截断。未见真实服务在
+    /// 2000+ 处按千截断的案例，故进一步收紧为 1000/1001 单档。
+    ///
     /// `response_count` 是 multistatus 里 DAV:response 的总数，
     /// 通常包含被列举集合自身，即真实条目数 + 1。
     fn is_suspicious_response_count(response_count: usize) -> bool {
-        if matches!(response_count, 750 | 751) {
-            return true;
-        }
-        response_count >= 1000
-            && (response_count % 1000 == 0 || (response_count - 1) % 1000 == 0)
+        matches!(response_count, 750 | 751 | 1000 | 1001)
     }
 
     /// 构建 Basic 认证头
@@ -1419,18 +1419,31 @@ mod tests {
         assert!(WebDavStorage::is_suspicious_response_count(751));
         assert!(!WebDavStorage::is_suspicious_response_count(749));
         assert!(!WebDavStorage::is_suspicious_response_count(752));
-        // 千级网关边界
+        // 千级网关边界收紧为 1000/1001 单档
+        assert!(!WebDavStorage::is_suspicious_response_count(999));
         assert!(WebDavStorage::is_suspicious_response_count(1000));
         assert!(WebDavStorage::is_suspicious_response_count(1001));
         assert!(!WebDavStorage::is_suspicious_response_count(1002));
+        // 1999/2000 个真实条目（+ 集合自身 = 2000/2001 个 response）
+        // 不再是截断信号——修复千倍数假阳性
+        assert!(!WebDavStorage::is_suspicious_response_count(1999));
+        assert!(!WebDavStorage::is_suspicious_response_count(2000));
+        assert!(!WebDavStorage::is_suspicious_response_count(2001));
+        assert!(!WebDavStorage::is_suspicious_response_count(3000));
+        assert!(!WebDavStorage::is_suspicious_response_count(3001));
     }
 
     #[tokio::test]
     async fn list_outcome_truncation_matrix_via_fake_server() {
-        // 需求矩阵：750 个条目 → truncated；99/100/101 → 不截断
-        for (entries, expected_truncated) in
-            [(99usize, false), (100, false), (101, false), (750, true)]
-        {
+        // 需求矩阵：750 个条目 → truncated；99/100/101/1999/2000 → 不截断
+        for (entries, expected_truncated) in [
+            (99usize, false),
+            (100, false),
+            (101, false),
+            (750, true),
+            (1999, false),
+            (2000, false),
+        ] {
             let xml = multistatus_xml("/sync/", entries);
             let responder: Responder = Arc::new(move |method, _path, _idx| {
                 assert_eq!(method, "PROPFIND", "列举只应使用 PROPFIND");
