@@ -1,7 +1,8 @@
 //! Real cloud provider contract tests.
 //!
-//! Start the local services first:
-//! `docker compose -f scripts/dev/docker-compose.sync-test.yml up -d`
+//! Start the local services first, using the same composition and startup
+//! sequence as CI's Cloud Provider Contract Gate:
+//! `npm run dstu-test:cloud:up` (wraps `scripts/dev/docker-compose.sync-test.yml`)
 //!
 //! Then run:
 //! `DS_SYNC_TEST_DOCKER=1 cargo test --test sync_provider_contract_tests -- --ignored`
