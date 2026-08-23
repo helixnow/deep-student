@@ -1801,9 +1801,15 @@ pub async fn vfs_upload_attachment(
                     let modes = status.progress.ready_modes.clone();
                     let stage = status.progress.stage.clone();
                     // ★ v2.1: 判断是否需要继续处理（未完成且非错误状态）
-                    let needs_resume = stage != "completed"
-                        && stage != "completed_with_issues"
-                        && stage != "error";
+                    // ★ #64: completed_with_issues 不再一律视为稳定终态——
+                    // 若上次留有可重试失败（如图片 OCR 网络错误），重新引用同一文件时
+                    // 自动续跑流水线（已完成阶段幂等跳过），否则 OCR 永久停在「未就绪」，
+                    // 且内容去重会让重新上传同一张图片也命中同一条死状态。
+                    let needs_resume = match stage.as_str() {
+                        "completed" | "error" => false,
+                        "completed_with_issues" => status.progress.has_retriable_failure(),
+                        _ => true,
+                    };
                     (Some(stage), Some(percent), Some(modes), needs_resume)
                 }
                 _ => {

@@ -271,6 +271,11 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
           const chipStatus = computeChipStatus(attachment, normalizedStoreStatus);
           const isBusy = chipStatus.lifecycle === 'uploading' || chipStatus.lifecycle === 'processing';
           const isError = chipStatus.lifecycle === 'error';
+          // ★ #64：partial（如「未就绪：OCR 文本」）同样提供重试入口。
+          // 后端 retry() 本就接受 completed_with_issues，此前只有 error 态
+          // 露出重试按钮，OCR 一次失败后用户没有任何恢复途径（重新上传
+          // 会被内容去重命中同一条失败记录），只能永远看着「未就绪」。
+          const isPartial = chipStatus.lifecycle === 'partial';
           const truncationLikely = !isError && willLikelyTruncate(attachment);
           const modeSummary = chipStatus.selectedModes.length > 0
             ? formatModeSummary(chipStatus.selectedModes)
@@ -408,8 +413,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   />
                 )}
               </DsButton>
-              {/* 错误态内联重试（chip 外侧尾随，44px 触控命中区） */}
-              {isError && onRetry && attachment.sourceId && !disabled && (
+              {/* 错误态/部分未就绪态内联重试（chip 外侧尾随，44px 触控命中区） */}
+              {(isError || isPartial) && onRetry && attachment.sourceId && !disabled && (
                 <button
                   type="button"
                   onClick={(event) => {
@@ -418,7 +423,12 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   }}
                   aria-label={t('chatV2:common.retryNamed', { name: attachment.name })}
                   title={t('common:retry')}
-                  className="relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-destructive/40 text-destructive transition-colors hover:bg-destructive/10 motion-reduce:transition-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                  className={cn(
+                    "relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
+                    isError
+                      ? 'border-destructive/40 text-destructive hover:bg-destructive/10'
+                      : 'border-warning/40 text-warning hover:bg-warning/10'
+                  )}
                 >
                   <ArrowClockwise size={12} weight="bold" aria-hidden="true" />
                 </button>
