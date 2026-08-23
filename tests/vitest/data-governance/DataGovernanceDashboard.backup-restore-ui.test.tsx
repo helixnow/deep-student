@@ -324,7 +324,7 @@ describe('DataGovernanceDashboard backup/restore interactions (Issue #15)', () =
     render(<DataGovernanceDashboard embedded />);
 
     // 找到备份标签并点击
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -337,7 +337,7 @@ describe('DataGovernanceDashboard backup/restore interactions (Issue #15)', () =
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -352,7 +352,7 @@ describe('DataGovernanceDashboard backup/restore interactions (Issue #15)', () =
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -503,7 +503,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -543,7 +543,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -593,7 +593,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -622,7 +622,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -650,7 +650,7 @@ describe('DataGovernanceDashboard backup operations (Issue #15)', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', { name: /备份|data:governance\.tab_backup/i });
+    const backupTab = await screen.findByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
