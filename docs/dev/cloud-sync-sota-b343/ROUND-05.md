@@ -37,7 +37,4 @@
 
 ## 合入状态（父代理填写）
 
-| 代理 | 状态 | 说明 |
-|---|---|---|
-| R05-docs | 分支已推送 | 仅本目录文档 |
-| 其余九路 | 未开始 | — |
+已收口：五路分支合入本枝（`r05-android-ftp` / `r05-ftp-i18n` / `r05-tests` / `r05-zip-resume` / `r05-webdav-1k`，另含直接提交），实际留档见 [FIX-QUEUE](./FIX-QUEUE.md) Round 05 与 [FINDINGS-R05](./FINDINGS-R05.md)。R05-guide 未交付转 R06；六路极端测试由 `r05-tests` 部分覆盖，剩余并入 R06。
