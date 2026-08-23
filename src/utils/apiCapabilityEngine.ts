@@ -21,6 +21,14 @@ export interface ApiModelDescriptor {
   providerScope?: string;
 }
 
+/**
+ * 上下文窗口的推断来源：
+ * - 'registry'：模型注册表（model-capability-registry.json）确认的 max_context_tokens
+ * - 'rule'：CONTEXT_WINDOW_RULES 或内置硬规则（如 DeepSeek V4）命中
+ * - 'default'：未命中任何规则，返回 DEFAULT_CONTEXT_WINDOW 兜底值
+ */
+export type ContextWindowSource = 'registry' | 'rule' | 'default';
+
 export interface InferredApiCapabilities {
   reasoning: boolean;
   vision: boolean;
@@ -33,8 +41,10 @@ export interface InferredApiCapabilities {
   supportsReasoningEffort: boolean;
   supportsThinkingTokens: boolean;
   supportsHybridReasoning: boolean;
-  /** 推断的上下文窗口大小（tokens），基于模型 ID/名称的启发式匹配 */
+  /** 推断的上下文窗口大小（tokens），基于注册表记录或模型 ID/名称的启发式匹配 */
   contextWindow: number;
+  /** contextWindow 的来源；'default' 表示未命中任何注册表记录或规则 */
+  contextWindowSource: ContextWindowSource;
 }
 
 const toLower = (value: string | undefined | null): string => (value ?? '').toLowerCase();
@@ -444,15 +454,15 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
  * 使用 first-match-wins 策略，具体模式优先于通用模式。
  *
  * @param fingerprint - 小写的 "id name" 拼接字符串
- * @returns 推断的上下文窗口大小（tokens）
+ * @returns 命中规则时返回窗口大小（tokens），未命中返回 null
  */
-function inferContextWindow(fingerprint: string): number {
+function inferContextWindow(fingerprint: string): number | null {
   for (const rule of CONTEXT_WINDOW_RULES) {
     if (rule.pattern.test(fingerprint)) {
       return rule.window;
     }
   }
-  return DEFAULT_CONTEXT_WINDOW;
+  return null;
 }
 
 const matchesPatternList = (value: string, patterns: (string | RegExp)[]): boolean => {
@@ -686,15 +696,32 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     !imageModel &&
     (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isMimoHybridReasoning || isRegistryHybridReasoning);
 
-  // 上下文窗口推断：使用 id + name 拼接作为指纹，提高匹配率
-  const inferredWindow = inferContextWindow(`${id} ${name}`);
-  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isDeepSeekV4EffortCapable;
-  const contextWindow =
-    shouldUseDeepSeekV4Context
-      ? 1_000_000
-      : modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
+  // 上下文窗口推断：注册表确认值 > 规则命中 > 默认兜底。
+  // 命中来源通过 contextWindowSource 回传，调用方（如 inferModelContextWindow）
+  // 据此判断"是否命中"，而不是用数值大小去猜——注册表确认的小上下文
+  // （如 qwen3.5-32b=32768、glm-4.5v=64000）同样是有效命中。
+  const ruleWindow = inferContextWindow(`${id} ${name}`);
+  const registryWindow =
+    modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
       ? modelCapabilities.max_context_tokens
-      : inferredWindow;
+      : null;
+  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isDeepSeekV4EffortCapable;
+
+  let contextWindow: number;
+  let contextWindowSource: ContextWindowSource;
+  if (shouldUseDeepSeekV4Context) {
+    contextWindow = 1_000_000;
+    contextWindowSource = 'rule';
+  } else if (registryWindow !== null) {
+    contextWindow = registryWindow;
+    contextWindowSource = 'registry';
+  } else if (ruleWindow !== null) {
+    contextWindow = ruleWindow;
+    contextWindowSource = 'rule';
+  } else {
+    contextWindow = DEFAULT_CONTEXT_WINDOW;
+    contextWindowSource = 'default';
+  }
 
   return {
     reasoning,
@@ -709,5 +736,6 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     supportsThinkingTokens,
     supportsHybridReasoning,
     contextWindow,
+    contextWindowSource,
   };
 }

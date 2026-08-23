@@ -57,6 +57,42 @@ describe('modelCapabilities DeepSeek version defaults', () => {
   });
 });
 
+describe('inferModelContextWindow registry small-context passthrough', () => {
+  it('keeps registry-confirmed qwen3.5-32b at 32768 instead of lifting to >=100K', () => {
+    const descriptor = { id: 'qwen3.5-32b', providerScope: 'siliconflow' };
+
+    expect(inferModelContextWindow(descriptor)).toBe(32_768);
+    // P0 回归：命中注册表后不得再走 maxOutputTokens 启发式（旧逻辑会抬到 >=100K）
+    expect(inferModelContextWindow(descriptor, 8_192)).toBe(32_768);
+    expect(inferModelContextWindow(descriptor, 65_536)).toBe(32_768);
+  });
+
+  it('keeps SiliconFlow provider-prefixed Qwen3.5-32B ids at 32768', () => {
+    expect(
+      inferModelContextWindow({ id: 'Qwen/Qwen3.5-32B', providerScope: 'siliconflow' }, 8_192)
+    ).toBe(32_768);
+  });
+
+  it('keeps registry-confirmed glm-4.5v at 64000 instead of lifting to >=100K', () => {
+    expect(inferModelContextWindow('glm-4.5v')).toBe(64_000);
+    expect(inferModelContextWindow('glm-4.5v', 8_192)).toBe(64_000);
+    expect(inferModelContextWindow({ id: 'glm-4.5v' }, 96_000)).toBe(64_000);
+  });
+
+  it('keeps rule hits above the fallback unchanged', () => {
+    expect(inferModelContextWindow('claude-fable-5', 8_192)).toBe(1_000_000);
+    expect(inferModelContextWindow('gemini-2.5-pro')).toBe(1_000_000);
+  });
+
+  it('still applies the maxOutputTokens heuristic only for unmatched models', () => {
+    // 未命中且无 maxOutputTokens：返回 DEFAULT_FALLBACK_CONTEXT_WINDOW (100_000)
+    expect(inferModelContextWindow('mystery-model-x')).toBe(100_000);
+    // 未命中 + maxOutputTokens：max(100_000, 4 * maxOutputTokens)
+    expect(inferModelContextWindow('mystery-model-x', 8_192)).toBe(100_000);
+    expect(inferModelContextWindow('mystery-model-x', 50_000)).toBe(200_000);
+  });
+});
+
 describe('modelCapabilities OpenAI GPT-5 defaults', () => {
   it('uses OpenAI GPT-5.5 defaults with reasoning effort and verbosity', () => {
     expect(getModelDefaultParameters('gpt-5.5', { providerScope: 'openai' })).toMatchObject({
