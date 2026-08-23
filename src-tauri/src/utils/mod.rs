@@ -6,5 +6,6 @@ pub mod token_budget;
 pub mod unicode;
 
 pub mod fetch;
+pub mod model_special_tokens;
 pub mod sse_buffer;
 pub mod text;

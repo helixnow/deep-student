@@ -20,6 +20,8 @@ pub(crate) struct VariantLLMAdapter {
     in_think_tag: Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: Mutex<String>,
+    /// 🔧 issue #122：GLM/Qwen 特殊 token 流式剥离器（白名单与 anki 管线一致）
+    special_token_stripper: Mutex<crate::utils::model_special_tokens::SpecialTokenStreamStripper>,
     /// tool_call_id → preparing block_id 映射
     preparing_block_ids: Mutex<HashMap<String, String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲）
@@ -45,6 +47,9 @@ impl VariantLLMAdapter {
             finalized_thinking_block_id: Mutex::new(None),
             in_think_tag: Mutex::new(false),
             think_tag_buffer: Mutex::new(String::new()),
+            special_token_stripper: Mutex::new(
+                crate::utils::model_special_tokens::SpecialTokenStreamStripper::new(),
+            ),
             preparing_block_ids: Mutex::new(HashMap::new()),
             args_delta_buffer: Mutex::new(HashMap::new()),
             last_activity_at: Mutex::new(std::time::Instant::now()),
@@ -93,6 +98,19 @@ impl VariantLLMAdapter {
     }
 
     fn finalize_all_inner(&self, include_authoritative_content: bool) {
+        // 🔧 issue #122：先吐出特殊 token 剥离器暂存的尾部（正常内容，不得吞掉）
+        let stripper_residual = self
+            .special_token_stripper
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !stripper_residual.is_empty() {
+            self.think_tag_buffer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push_str(&stripper_residual);
+        }
+
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
         self.finalize_thinking();
@@ -386,6 +404,10 @@ impl VariantLLMAdapter {
             .think_tag_buffer
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = String::new();
+        self.special_token_stripper
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
         // 🔧 F2：新一轮视为新的流，重置空闲计时
         self.touch_activity();
         self.ctx.reset_for_new_round();
@@ -404,13 +426,24 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
             return;
         }
 
+        // 🔧 issue #122：GLM/Qwen 泄漏的特殊 token 在进入内容管线前剥离；
+        // 跨 chunk 撕裂的 token 由剥离器暂存尾部前缀处理
+        let cleaned = self
+            .special_token_stripper
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if cleaned.is_empty() {
+            return;
+        }
+
         // 🔧 <think> 标签解析：将 chunk 追加到缓冲区并处理
         {
             let mut buffer = self
                 .think_tag_buffer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            buffer.push_str(text);
+            buffer.push_str(&cleaned);
         }
         self.process_think_tag_buffer();
     }

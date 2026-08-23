@@ -155,6 +155,10 @@ pub struct ChatV2LLMAdapter {
     in_think_tag: std::sync::Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: std::sync::Mutex<String>,
+    /// 🔧 issue #122：GLM/Qwen 特殊 token（`<|end_of_box|>` 等）流式剥离器，
+    /// 在内容进入 think 标签缓冲/前端 CONTENT 块之前剥离，白名单与 anki 管线一致
+    special_token_stripper:
+        std::sync::Mutex<crate::utils::model_special_tokens::SpecialTokenStreamStripper>,
     /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
     cached_thought_signature: std::sync::Mutex<Option<String>>,
     /// Complete OpenAI Responses reasoning item for the current tool round.
@@ -197,6 +201,9 @@ impl ChatV2LLMAdapter {
             api_usage: std::sync::Mutex::new(None),
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
+            special_token_stripper: std::sync::Mutex::new(
+                crate::utils::model_special_tokens::SpecialTokenStreamStripper::new(),
+            ),
             cached_thought_signature: std::sync::Mutex::new(None),
             cached_response_reasoning_item: std::sync::Mutex::new(None),
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
@@ -329,6 +336,20 @@ impl ChatV2LLMAdapter {
     }
 
     fn finalize_all_inner(&self, include_authoritative_content: bool) {
+        // 🔧 issue #122：先吐出特殊 token 剥离器暂存的尾部
+        // （疑似 token 前缀但流已结束，属于正常内容，不得吞掉）
+        let stripper_residual = self
+            .special_token_stripper
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !stripper_residual.is_empty() {
+            self.think_tag_buffer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push_str(&stripper_residual);
+        }
+
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
 
@@ -497,6 +518,10 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
+        self.special_token_stripper
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
         *self
             .cached_thought_signature
             .lock()
@@ -1014,13 +1039,24 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
+        // 🔧 issue #122：GLM/Qwen 泄漏的特殊 token（`<|end_of_box|>` 等）在进入
+        // 内容管线前剥离；跨 chunk 撕裂的 token 由剥离器暂存尾部前缀处理
+        let cleaned = self
+            .special_token_stripper
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if cleaned.is_empty() {
+            return;
+        }
+
         // 🔧 <think> 标签解析：将 chunk 追加到缓冲区并处理
         {
             let mut buffer = self
                 .think_tag_buffer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            buffer.push_str(text);
+            buffer.push_str(&cleaned);
         }
         self.process_think_tag_buffer();
     }
