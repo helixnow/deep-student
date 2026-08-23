@@ -703,7 +703,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
                 className={cn(
                   'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
                   isTouchPrimary
-                    ? '!h-10 !w-10 opacity-100'
+                    ? '!h-11 !w-11 opacity-100'
                     : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                 )}
                 aria-label={t('chatBlock.quoteToInput')}
@@ -721,7 +721,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               className={cn(
                 'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
                 isTouchPrimary
-                  ? '!h-10 !w-10 opacity-100'
+                  ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
               )}
               aria-label={t('chatV2.editCard', { index: index + 1 })}
@@ -738,7 +738,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               className={cn(
                 'bg-background/80 backdrop-blur border hover:bg-destructive/10',
                 isTouchPrimary
-                  ? '!h-10 !w-10 opacity-100'
+                  ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
               )}
               aria-label={t('chatV2.deleteCard')}

@@ -1327,9 +1327,14 @@ export const LearningHubPage: React.FC = () => {
           </div>
         </Panel>
 
-        {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度 */}
+        {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度。
+            触屏热区走库内建 hitAreaMargins（coarse 19px → 6+2×19=44px），
+            ::after 范式对 react-resizable-panels 的 rect 命中检测不生效 */}
         {hasOpenApp && (
-          <PanelResizeHandle className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50">
+          <PanelResizeHandle
+            hitAreaMargins={{ coarse: 19, fine: 5 }}
+            className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50"
+          >
             <DotsSixVertical size={12} className="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
           </PanelResizeHandle>
         )}

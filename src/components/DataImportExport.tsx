@@ -159,15 +159,17 @@ const BackupListItem: React.FC<{
         </div>
       </div>
       {/* ★ 2026-07-08（移动端审计 D-5 / P0）：恢复/保存按钮原为 hover 显现，
-          触屏没有 hover —— 备份恢复入口完全不可达。<md 常显，桌面保持 hover 交互。 */}
-      <div className="flex gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+          触屏没有 hover —— 备份恢复入口完全不可达。
+          按指针类型而非 md 断点区分：pointer:coarse（含 ≥768px 触屏平板）常显，
+          pointer:fine 保持 hover / 键盘聚焦显现。 */}
+      <div className="flex gap-2 transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100 [@media(pointer:fine)]:group-focus-within:opacity-100">
         {onSave && (
           <DsButton
             variant="ghost"
             size="sm"
             onClick={() => onSave(backup.backup_id)}
             title={t('data:backup_list.save_button')}
-            className="h-11 px-3 md:h-9"
+            className="h-11 px-3 [@media(pointer:fine)]:h-9"
           >
             <FloppyDisk className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
             {t('data:backup_list.save_button')}
@@ -185,7 +187,7 @@ const BackupListItem: React.FC<{
                   defaultValue: 'Partial archives cannot replace the data slot',
                 })
           }
-          className="h-11 px-3 md:h-9"
+          className="h-11 px-3 [@media(pointer:fine)]:h-9"
         >
           <DownloadSimple className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
           {t('data:backup_list.restore_button')}

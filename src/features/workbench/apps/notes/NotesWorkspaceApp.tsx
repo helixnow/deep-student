@@ -1718,6 +1718,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   useEffect(() => {
     if (sizeClass !== 'compact' || !explorerOpen) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏工作台里的笔记窗口仍保持挂载，explorer 打开态也随之滞留——
+      // 此时不消费返回键、不误关 explorer，交还给当前活跃视图
+      // （对照 NotesEditorHeader 的同款守卫）
+      const el = hostRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setExplorerOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);

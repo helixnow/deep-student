@@ -246,7 +246,7 @@ const RowHoverActions: React.FC<{
   const buttonClass = cn(
     dense ? '!w-5 !h-5' : '!w-6 !h-6',
     '!p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-    '[@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:-m-2',
+    '[@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-2',
     'hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground'
   );
   return (

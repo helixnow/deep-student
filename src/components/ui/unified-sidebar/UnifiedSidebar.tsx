@@ -54,7 +54,20 @@ const SIDEBAR_STYLES = {
     item: { padding: 'gap-2.5 px-2 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-3' },
-    actions: { gap: 'gap-0.5', opacity: 'opacity-0 group-hover:opacity-100', btnPadding: 'p-1', iconSize: 'w-3 h-3' },
+    /**
+     * 行内编辑/删除操作。
+     * 2026-08 移动端审计：≥768 的触屏平板走本 desktop 档，hover-only + 约 20px
+     * 视觉按钮在无 hover 设备上不可达。coarse 指针下改为常显，并用
+     * --touch-target-size（44px）补足触控目标（基类在 lg 以上收缩为 32px）；
+     * gap 同步加大避免误触删除。细指针桌面维持原 hover 渐显 + 紧凑尺寸，
+     * 另补 focus-within 常显保证键盘可达。
+     */
+    actions: {
+      gap: 'gap-0.5 [@media(pointer:coarse)]:gap-1',
+      opacity: 'opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100',
+      btnPadding: 'p-1 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
+      iconSize: 'w-3 h-3 [@media(pointer:coarse)]:w-4 [@media(pointer:coarse)]:h-4',
+    },
   },
   /** 移动端样式（drawer/sheet 模式） */
   mobile: {

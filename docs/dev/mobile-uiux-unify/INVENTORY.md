@@ -31,4 +31,4 @@
 - Settings 小屏标题、GradingMain 640–767：Round 3 已修；Sheet 底安全区 / overlay 返回：Round 10–11 已修。
 - 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
 - 导图工具条 40→44、热力图年份/刷新 coarse 44、`shad/Table` 横滚：Round 11 已修。
-- **仍开**：工作台笔记窄窗返回守卫；侧栏/备份 hover-only（≥768 coarse）；ModelPicker/题库行/制卡块 36–40px；LearningHub 分屏手柄。
+- **仍开**：NotesSearchOverlay / ImageContentView 保活；笔记 compact 分屏可拖；Chat/Sandbox 手柄；HorizontalResizable / 引用选择器 / 时间线 <44；TextbookCard 死代码；PromptPanel 自绘 h-12。

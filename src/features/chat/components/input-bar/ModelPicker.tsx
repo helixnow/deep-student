@@ -473,7 +473,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--menu-shell-row-radius)] text-[color:var(--menu-shell-muted-foreground)] opacity-0 transition group-hover:opacity-100',
                 // 触屏无 hover：保持常显，否则"设为默认"入口不可达
                 '[@media(pointer:coarse)]:opacity-100',
-                'relative after:absolute after:-inset-2 after:content-[\'\']',
+                // coarse 指针下 -inset-3 使命中区达 44px（20+12×2），细指针维持 36px 免误触
+                'relative after:absolute after:-inset-2 after:content-[\'\'] [@media(pointer:coarse)]:after:-inset-3',
                 'hover:bg-[color:var(--menu-shell-row-hover)]',
                 (disabled || savingDefault) && 'pointer-events-none opacity-25'
               )}
