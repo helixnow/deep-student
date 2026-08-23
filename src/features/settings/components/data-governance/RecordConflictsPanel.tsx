@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { Warning, CheckCircle, PencilSimple, CircleNotch, ArrowClockwise, Trash } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow } from '@/api/dataGovernance';
+import { getDatabaseDisplayName } from '@/types/dataGovernance';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -62,8 +63,31 @@ function tryFormatJson(s: string): string {
   }
 }
 
+/**
+ * 本地化展示冲突检出时间。
+ *
+ * `detected_at` 来自 SQLite `datetime('now')`，格式为不带时区标记的 UTC
+ * （"YYYY-MM-DD HH:MM:SS"）。直接 `new Date()` 会被按本地时区解析，
+ * 因此先补上 UTC 标记再转为用户本地时间。无法解析时原样返回。
+ */
+export function formatDetectedAt(detectedAt: string): string {
+  const trimmed = detectedAt.trim();
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  const normalized = hasTimezone ? trimmed : `${trimmed.replace(' ', 'T')}Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return detectedAt;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
 export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }> = ({ refreshSignal }) => {
-  const { t } = useTranslation(['data', 'common']);
+  const { t } = useTranslation(['data', 'common', 'sync']);
   const [rows, setRows] = useState<RecordConflictRow[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -251,10 +275,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         <div>
           <CardTitle className="flex items-center gap-2">
             <Warning size={16} className="text-amber-500" />
-            {t('data:governance.conflict_panel_title', {
-              pairs: pairs.length,
-              rows: rows.length,
-              total: totalGroups,
+            {/* 标题只报未解决冲突总数；「已加载 X/Y」的分页细节留给下方加载更多按钮 */}
+            {t('sync:record_conflict_panel.title', {
+              count: Math.max(totalGroups, pairs.length),
             })}
           </CardTitle>
           <CardDescription>
@@ -343,7 +366,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
               {/* 窄屏：标识行 + 三个操作按钮允许换行，避免 400px 横向溢出 */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-mono break-all">
-                  <span className="text-muted-foreground">{p.databaseName}</span>
+                  <span className="text-muted-foreground" title={p.databaseName}>
+                    {getDatabaseDisplayName(p.databaseName, t)}
+                  </span>
                   <span className="mx-1 text-muted-foreground">·</span>
                   <span>{p.tableName}</span>
                   <span className="mx-1 text-muted-foreground">·</span>
@@ -386,7 +411,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                 <div className="rounded border border-border/30 bg-muted/20 p-2">
                   <div className="text-muted-foreground mb-1">
                     {t('data:governance.local')} {latestLocal?.winning_device_id && <span>（{latestLocal.winning_device_id.slice(0, 8)}...）</span>}
-                    {latestLocal?.detected_at && <span className="ml-1">{latestLocal.detected_at.slice(0, 19)}</span>}
+                    {latestLocal?.detected_at && <span className="ml-1">{formatDetectedAt(latestLocal.detected_at)}</span>}
                   </div>
                   <CustomScrollArea className="h-40">
                     <pre className="whitespace-pre-wrap break-words">
@@ -406,7 +431,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       <div className="text-muted-foreground mb-1">
                         {t('data:governance.cloud')}{p.clouds.length > 1 ? ` ${index + 1}/${p.clouds.length}` : ''}
                         {cloud.winning_device_id && <span>（{cloud.winning_device_id.slice(0, 8)}...）</span>}
-                        {cloud.detected_at && <span className="ml-1">{cloud.detected_at.slice(0, 19)}</span>}
+                        {cloud.detected_at && <span className="ml-1">{formatDetectedAt(cloud.detected_at)}</span>}
                         {cloud.id === latestCloud?.id && p.clouds.length > 1 && (
                           <span className="ml-1">{t('data:governance.latest')}</span>
                         )}

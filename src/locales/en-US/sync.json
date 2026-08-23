@@ -101,6 +101,9 @@
   "resource": {
     "create_resource_failed": "Failed to create resource: {{error}}"
   },
+  "record_conflict_panel": {
+    "title": "Record Conflicts ({{count}})"
+  },
   "conflict_type": {
     "schema_mismatch": "Schema Version Mismatch",
     "schema_mismatch_desc": "Local and cloud database schema versions differ, migration needed",
