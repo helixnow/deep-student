@@ -284,7 +284,7 @@ export function DsDialogTitle({ className, children, ...props }: React.HTMLAttri
 
 export function DsDialogDescription({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn('text-[13px] text-muted-foreground leading-relaxed', className)} {...props}>
+    <p className={cn('text-ui font-normal text-muted-foreground leading-relaxed', className)} {...props}>
       {children}
     </p>
   );
@@ -463,7 +463,7 @@ export function DsAlertDialog({
             <div className="flex-1 min-w-0 space-y-1.5">
               <h3 className="text-base font-semibold leading-tight text-foreground">{title}</h3>
               {description && (
-                <p className="text-[13px] text-muted-foreground leading-relaxed">{description}</p>
+                <p className="text-ui font-normal text-muted-foreground leading-relaxed">{description}</p>
               )}
             </div>
           </div>
