@@ -934,7 +934,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       ) : (
         <button
           type="button"
-          className="wb-tm-tab"
+          className="wb-tm-tab [@media(pointer:coarse)]:min-h-11"
           data-active="true"
           aria-current="page"
         >

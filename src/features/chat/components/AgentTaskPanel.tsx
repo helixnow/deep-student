@@ -551,7 +551,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                         type="button"
                         disabled={download.state !== 'completed'}
                         onClick={() => void revealResultFile(download.rootId, download.relativePath)}
-                        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] disabled:cursor-default disabled:opacity-60"
+                        // ★ 触控目标：触屏行高提到 44px（列表内加高只增加滚动量）
+                        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] disabled:cursor-default disabled:opacity-60 [@media(pointer:coarse)]:h-11"
                         title={download.locator}
                       >
                         <DownloadSimple size={12} className="shrink-0" />
@@ -584,6 +585,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                             'rounded-full border border-[color:var(--border-soft)]',
                             'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
                             'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer',
+                            // ★ 触控目标：触屏 chip 高度提到 44px
+                            '[@media(pointer:coarse)]:min-h-11',
                           )}
                           title={item.label}
                         >

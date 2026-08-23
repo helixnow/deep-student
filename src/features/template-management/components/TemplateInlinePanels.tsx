@@ -73,7 +73,10 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
       <p className="wb-tm-panel-desc">{t('import_external_dialog_desc')}</p>
 
       <details className="wb-tm-panel-details">
-        <summary>{t('templateMgmt.import_rules_toggle')}</summary>
+        {/* 触屏：summary 命中区升到 44px（保留 list-item display，不丢失展开三角标） */}
+        <summary className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-3">
+          {t('templateMgmt.import_rules_toggle')}
+        </summary>
         <ul className="wb-tm-panel-rules">
           <li>{t('import_external_rule_1')}</li>
           <li>{t('import_external_rule_2')}</li>

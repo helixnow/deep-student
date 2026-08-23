@@ -1189,7 +1189,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         </div>
 
         {/* 视图切换 */}
-        <DsButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isListLoading} aria-label={t('memory.aria.refresh')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isListLoading} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise className={cn('w-4 h-4', isListLoading && 'animate-spin')} />
         </DsButton>
         <DsButton

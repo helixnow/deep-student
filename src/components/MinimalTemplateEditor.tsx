@@ -811,7 +811,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       value={formData.note_type}
                       onValueChange={(value) => setFormData({...formData, note_type: value})}
                     >
-                      <SelectTrigger className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
+                      <SelectTrigger className="flex h-9 [@media(pointer:coarse)]:h-11 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
                         <SelectValue placeholder={t('note_type_placeholder')} />
                       </SelectTrigger>
                       <SelectContent>
@@ -1034,7 +1034,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 });
                               }}
                             >
-                              <SelectTrigger className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
+                              <SelectTrigger className="flex h-9 [@media(pointer:coarse)]:h-11 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>

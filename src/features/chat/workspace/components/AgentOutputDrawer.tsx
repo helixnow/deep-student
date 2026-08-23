@@ -300,7 +300,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className={cn('h-8 lg:h-6 px-2 text-xs', isDispatchOpen && 'bg-primary/10 text-primary')}
+            className={cn('h-8 lg:h-6 px-2 text-xs [@media(pointer:coarse)]:!h-11', isDispatchOpen && 'bg-primary/10 text-primary')}
             aria-expanded={isDispatchOpen}
             onClick={(e) => {
               e.stopPropagation();

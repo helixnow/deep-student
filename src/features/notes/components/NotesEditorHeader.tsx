@@ -641,7 +641,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 aria-autocomplete="list"
                                 aria-invalid={tagError ? true : undefined}
                                 aria-describedby={tagError ? tagErrorId : undefined}
-                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
+                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
                             />
                             {(isLoadingTagSuggestions || tagSuggestions.length > 0) && (
                                 <CustomScrollArea
@@ -689,7 +689,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     ) : (
                         <button
                             type="button"
-                            className="inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-border/70 px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:border-border hover:text-foreground [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
+                            className="inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-border/70 px-2 text-[11px] leading-none text-muted-foreground/70 transition-colors duration-150 hover:border-border hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
                             onClick={() => setTagInputOpen(true)}
                             aria-label={t('notes:header.add_tags')}
                         >

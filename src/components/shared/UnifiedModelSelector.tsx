@@ -399,7 +399,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('chat_host:model_panel.search_placeholder')}
-              className="h-7 text-xs pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
+              className="h-7 [@media(pointer:coarse)]:h-11 text-xs [@media(pointer:coarse)]:text-[16px] pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
               disabled={disabled}
 />
           </div>

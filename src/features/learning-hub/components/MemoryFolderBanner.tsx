@@ -491,7 +491,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setBatchImportType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-2xs', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>
@@ -540,7 +540,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setNewType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-2xs', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>

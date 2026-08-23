@@ -2445,7 +2445,7 @@ export const IndexStatusView: React.FC = () => {
                   ))}
                 </div>
               )}
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:close')}>
                 <X className="h-4 w-4" />
               </DsButton>
             </div>

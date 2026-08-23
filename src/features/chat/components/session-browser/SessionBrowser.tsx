@@ -668,7 +668,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             {/* 分组模式滑块切换 */}
             {(
-              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5">
+              <div className="relative flex items-center h-8 [@media(pointer:coarse)]:h-11 rounded-lg bg-muted/50 p-0.5">
                 <button
                   onClick={() => setGroupMode('time')}
                   className={cn(
@@ -724,7 +724,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             {/* 桌面端搜索框 + 模式切换 */}
             <div className="hidden sm:flex items-center gap-1">
-              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5">
+              <div className="relative flex items-center h-8 [@media(pointer:coarse)]:h-11 rounded-lg bg-muted/50 p-0.5">
                 <button
                   onClick={() => setSearchMode('title')}
                   className={cn(

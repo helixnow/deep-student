@@ -292,7 +292,7 @@ const SourceImagesBubble: React.FC<{
     <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 [@media(pointer:coarse)]:min-h-11 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setExpanded(v => !v)}
       >
         <ImageIcon size={14} className="flex-shrink-0" />

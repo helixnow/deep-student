@@ -544,7 +544,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               options={presetOptions}
               size="sm"
               variant="ghost"
-              className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+              className="h-8 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
               width={100}
             />
           ) : (
@@ -555,7 +555,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               disabled={!loaded || wallpaperImportPending}
               aria-busy={wallpaperImportPending}
               onClick={() => void chooseCustomWallpaper()}
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 [@media(pointer:coarse)]:!h-11 gap-1.5 text-xs"
             >
               {wallpaperImportPending ? (
                 <CircleNotch size={14} className="animate-spin" aria-hidden="true" />
@@ -578,7 +578,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                 // noop
               }
             }}
-            className="h-8 gap-1.5 text-xs"
+            className="h-8 [@media(pointer:coarse)]:!h-11 gap-1.5 text-xs"
           >
             {t('workbench:settings.wallpaper.manage', '管理壁纸')}
           </DsButton>
@@ -613,7 +613,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                 const px = Math.max(TILE_MARGIN_MIN, Math.min(TILE_MARGIN_MAX, parsed));
                 saveTileMargins({ ...tileMargins, px });
               }}
-              className="!w-20 h-8 text-xs bg-transparent"
+              className="!w-20 h-8 [@media(pointer:coarse)]:h-11 text-xs [@media(pointer:coarse)]:text-[16px] bg-transparent"
             />
             <span className="text-xs text-muted-foreground/70">px</span>
           </div>

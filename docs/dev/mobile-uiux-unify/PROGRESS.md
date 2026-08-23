@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–29 已落地；当前队列见下。
+- **轮次**：Round 2–30 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -39,12 +39,12 @@
 | 27 | claude-fable-5-thinking-xhigh ×10 | 灯箱底栏、面包屑、记忆空态、MCP 加环境变量、导出全选、PromptPanel、位置筛选 | 见 ROUND-27-FIXES.md |
 | 28 | claude-fable-5-thinking-xhigh ×10 | 画布导航宽屏 coarse、标签清除、导出分段、笔记折叠、设置输入、技能确认条 | 见 ROUND-28-FIXES.md |
 | 29 | claude-fable-5-thinking-xhigh ×10 | 维度确认、MCP 筛选输入、Todo 重命名、Vendor 搜索、设置/题库/PDF/技能残留 | 见 ROUND-29-FIXES.md |
+| 30 | claude-fable-5-thinking-xhigh ×10 | 模型搜索、笔记加标签、日历导航、模板 Select、迁移横幅、壁纸、Agent 下载行 | 见 ROUND-30-FIXES.md |
 
-## 进行中的修复队列（Round 30+）
+## 进行中的修复队列（Round 31+）
 
-- UnifiedModelSelector 搜索 28；NotesEditorHeader 加标签 36
-- MiniCalendar 导航 36；MinimalTemplateEditor Select 36；MigrationStatusBanner 36
-- WorkbenchSettings 壁纸输入；AgentTaskPanel 下载行
+- MigrationStatusBanner 关闭约 34；GroupEditor 顶栏宽屏 coarse
+- ShadApiEditModal 输入 40；ChangesSection chip；MemoryView 其余 icon
 - ShortcutSettings 属 #166 不碰；内联引用 chip 设计未决
 
 ## 已落地

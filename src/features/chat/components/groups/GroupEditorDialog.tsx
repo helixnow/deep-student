@@ -583,7 +583,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     value={defaultRuntimeRootId}
                     onChange={(e) => handleSelectRuntimeRoot(e.target.value)}
                     disabled={rootsLoading || isAuthorizingRoot}
-                    className="h-9 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
+                    className="h-9 [@media(pointer:coarse)]:h-11 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
                   >
                     <option value="">{t('page.groupDefaultRuntimeRootNone')}</option>
                     {defaultRuntimeRootId
@@ -604,7 +604,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     variant="ghost"
                     onClick={() => void handleBrowseAndAuthorizeRoot()}
                     disabled={isAuthorizingRoot}
-                    className="h-8 px-3 shrink-0"
+                    className="h-8 [@media(pointer:coarse)]:!h-11 px-3 shrink-0"
                   >
                     {isAuthorizingRoot ? (
                       <CircleNotch size={14} className="mr-1.5 animate-spin" />
@@ -618,7 +618,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       variant="ghost"
                       onClick={clearRuntimeRoot}
                       disabled={isAuthorizingRoot}
-                      className="h-8 px-3 shrink-0 text-muted-foreground hover:text-destructive"
+                      className="h-8 [@media(pointer:coarse)]:!h-11 px-3 shrink-0 text-muted-foreground hover:text-destructive"
                       title={t('common:clear')}
                     >
                       <X size={14} className="mr-1.5" />
@@ -791,7 +791,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               <DsButton
                 variant="warning"
                 onClick={onArchive}
-                className="h-8 px-3"
+                className="h-8 [@media(pointer:coarse)]:!h-11 px-3"
               >
                 <Archive size={14} className="mr-1.5" />
                 {t('page.archiveGroup')}
