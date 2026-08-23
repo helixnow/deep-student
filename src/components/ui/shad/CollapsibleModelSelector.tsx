@@ -140,7 +140,7 @@ export function CollapsibleModelSelector({
                   <span>{t('model_selector.total_model_count', { count: totalCount })}</span>
                   {cacheTimeText && (
                     <span className="flex items-center gap-1">
-                      {isFromCache && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted">{t('model_selector.cached')}</span>}
+                      {isFromCache && <span className="text-2xs px-1.5 py-0.5 rounded bg-muted">{t('model_selector.cached')}</span>}
                       {cacheTimeText}
                     </span>
                   )}
