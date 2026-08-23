@@ -14,21 +14,30 @@
 //!    绝不允许第三种状态：被归类为 disaster_recovery（validate 通过）却恢复
 //!    失败，或恢复未发生却被当成功——`classify_recovery_kind` 与实际 restore
 //!    共用 `validate_for_slot_restore`，两者必须一致。
+//! 4. **加密全保真闭环**（R02 新增）：提供备份密码导出时，敏感数据连同原始
+//!    manifest 一起密封进 `portable_secrets.dsbk`；导入时提供同一密码即可解封
+//!    回原始完整快照，`validate_for_slot_restore` 通过且整槽恢复真正成功。
+//!    缺少密码或密码错误时导入必须返回可操作错误。
+//! 5. **诚实分类**：未加密便携 ZIP 导入后恒为 partial_archive
+//!    （`key_policy=excluded_portable` + `PartialOverlay`），validate 与
+//!    restore 都必须显式拒绝，不允许伪装成 disaster_recovery。
 //!
-//! 仅新增测试，不修改生产代码。全流程在临时目录内完成，不触碰真实数据。
+//! 全流程在临时目录内完成，不触碰真实数据。
 
 #![cfg(feature = "data_governance")]
 
 use std::path::{Path, PathBuf};
 
 use deep_student_lib::data_governance::backup::{
-    export_backup_to_zip, zip_export::import_backup_from_zip, BackupManager, BackupManifest,
-    SnapshotKind, ZipExportOptions,
+    export_backup_to_zip,
+    zip_export::{import_backup_from_zip, import_backup_from_zip_with_password},
+    BackupKeyPolicy, BackupManager, BackupManifest, SnapshotKind, ZipExportOptions,
 };
 use rusqlite::Connection;
 use tempfile::TempDir;
 
 const MARKER_VALUE: &str = "p0-zip-roundtrip-marker";
+const ENCRYPTION_PASSWORD: &str = "test-backup-passphrase";
 
 /// 在 `base/slots/slotA` 布局下创建四个核心数据库（含标记数据），
 /// 返回 slotA 路径。传入 slot 路径可让 BackupManager 不依赖全局
@@ -242,4 +251,244 @@ fn imported_manifest_classification_matches_restore_gate() {
         "recovery_kind 分类（validate_for_slot_restore）与实际 restore 门禁出现分叉：\
          classified_restorable={classified_restorable}, restore={restore_outcome:?}"
     );
+}
+
+/// 构造一份来自合成数据槽的完整备份，返回（备份根目录守卫、备份根、清单）。
+fn create_full_backup(
+) -> (TempDir, PathBuf, BackupManifest) {
+    let source_root = TempDir::new().expect("source root");
+    let source_slot = create_slot_with_databases(source_root.path());
+
+    let backup_dir = source_root.path().join("recovery").join("backups");
+    let mut manager = BackupManager::new(backup_dir.clone());
+    manager.set_app_data_dir(source_slot);
+    manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+    let manifest = manager
+        .backup_with_assets(None)
+        .expect("backup_with_assets 应成功");
+    (source_root, backup_dir, manifest)
+}
+
+/// R02 加密全保真闭环：带密码导出 → 带密码导入解封 → validate 通过 → 整槽恢复成功。
+///
+/// 这是换机（云盘/ZIP 搬运）场景的核心契约：加密 ZIP 在另一台设备上
+/// 必须能还原为与本地完整快照同等的可恢复备份。
+#[test]
+fn encrypted_zip_roundtrip_restores_full_slot() {
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    assert!(
+        manifest.validate_for_slot_restore().is_ok(),
+        "闭环前提：本地完整备份必须可整槽恢复，实际: {:?}",
+        manifest.validate_for_slot_restore().map_err(|e| e.to_string())
+    );
+    let backup_subdir = backup_dir.join(&manifest.backup_id);
+
+    // ---------- 加密导出 ----------
+    let export_root = TempDir::new().expect("export root");
+    let zip_path = export_root.path().join("encrypted-full-fidelity.zip");
+    export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(zip_path.clone()),
+            encryption_password: Some(ENCRYPTION_PASSWORD.to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("加密全保真导出应成功");
+
+    // 外层 ZIP 必须携带密封载荷，且外层清单声明 included_encrypted、
+    // 自身不可整槽恢复（未解封前不允许伪装成 disaster_recovery）。
+    {
+        let file = std::fs::File::open(&zip_path).expect("open zip");
+        let mut archive = zip::ZipArchive::new(file).expect("parse zip");
+        let names: Vec<String> = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_string())
+            .collect();
+        assert!(
+            names.iter().any(|name| name == "portable_secrets.dsbk"),
+            "加密导出必须包含密封载荷 portable_secrets.dsbk，实际条目: {names:?}"
+        );
+        let mut outer_manifest_bytes = Vec::new();
+        std::io::Read::read_to_end(
+            &mut archive.by_name("manifest.json").expect("outer manifest"),
+            &mut outer_manifest_bytes,
+        )
+        .expect("read outer manifest");
+        let outer: BackupManifest =
+            serde_json::from_slice(&outer_manifest_bytes).expect("parse outer manifest");
+        assert_eq!(outer.key_policy, BackupKeyPolicy::IncludedEncrypted);
+        assert_eq!(outer.snapshot_kind, SnapshotKind::PartialOverlay);
+        let sealed_error = outer
+            .validate_for_slot_restore()
+            .expect_err("未解封的外层清单不得通过整槽恢复验证")
+            .to_string();
+        assert!(
+            sealed_error.contains("密码"),
+            "未解封清单的拒绝必须提示提供备份密码，实际: {sealed_error}"
+        );
+    }
+
+    // ---------- 另一台设备：带密码导入并解封 ----------
+    let restore_root = TempDir::new().expect("restore root");
+    let restore_slot = create_slot_with_databases(restore_root.path());
+    for db in ["chat_v2.db", "mistakes.db", "llm_usage.db"] {
+        let conn = Connection::open(restore_slot.join(db)).expect("open target db");
+        conn.execute("UPDATE roundtrip_marker SET value = 'pre-restore-data'", [])
+            .expect("seed pre-restore data");
+    }
+    let restore_backup_dir = restore_root.path().join("recovery").join("backups");
+    let imported_dir = restore_backup_dir.join(&manifest.backup_id);
+    std::fs::create_dir_all(&restore_backup_dir).expect("create restore backup dir");
+    import_backup_from_zip_with_password(&zip_path, &imported_dir, Some(ENCRYPTION_PASSWORD))
+        .expect("带密码导入加密全保真 ZIP 应成功");
+
+    // 解封后：载荷已删除，原始清单还原，数据库字节与源备份一致。
+    assert!(
+        !imported_dir.join("portable_secrets.dsbk").exists(),
+        "解封完成后密封载荷不得残留"
+    );
+    for db in ["vfs.db", "chat_v2.db", "mistakes.db", "llm_usage.db"] {
+        let original =
+            deep_student_lib::backup_common::calculate_file_hash(&backup_subdir.join(db))
+                .expect("hash original");
+        let imported =
+            deep_student_lib::backup_common::calculate_file_hash(&imported_dir.join(db))
+                .expect("hash imported");
+        assert_eq!(original, imported, "{db} 在加密 ZIP 往返后字节不一致");
+    }
+    let imported_manifest =
+        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+            .expect("解封后的原始清单可解析");
+    assert_eq!(imported_manifest.snapshot_kind, SnapshotKind::Full);
+    assert_ne!(
+        imported_manifest.key_policy,
+        BackupKeyPolicy::IncludedEncrypted,
+        "解封必须还原原始 key_policy"
+    );
+    imported_manifest
+        .validate_for_slot_restore()
+        .expect("解封后的清单必须通过整槽恢复验证（加密全保真闭环）");
+
+    // ---------- 整槽恢复必须真正成功 ----------
+    let mut restore_manager = BackupManager::new(restore_backup_dir);
+    restore_manager.set_app_data_dir(restore_slot.clone());
+    restore_manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+    restore_manager
+        .restore_with_assets(&imported_manifest, false)
+        .expect("加密全保真 ZIP 解封后的整槽恢复必须成功");
+    for db in ["chat_v2.db", "mistakes.db", "llm_usage.db"] {
+        assert_eq!(
+            read_marker(&restore_slot.join(db)).as_deref(),
+            Some(MARKER_VALUE),
+            "加密闭环恢复后 {db} 必须回到备份内容"
+        );
+    }
+}
+
+/// 加密全保真 ZIP 缺少密码时，导入必须返回提示提供备份密码的可操作错误。
+#[test]
+fn encrypted_zip_import_without_password_returns_actionable_error() {
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    let export_root = TempDir::new().expect("export root");
+    let zip_path = export_root.path().join("needs-password.zip");
+    export_backup_to_zip(
+        &backup_dir.join(&manifest.backup_id),
+        &ZipExportOptions {
+            output_path: Some(zip_path.clone()),
+            encryption_password: Some(ENCRYPTION_PASSWORD.to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("加密导出应成功");
+
+    let import_root = TempDir::new().expect("import root");
+    let imported_dir = import_root.path().join("imported");
+    let error = import_backup_from_zip(&zip_path, &imported_dir)
+        .expect_err("缺少密码导入加密 ZIP 必须失败")
+        .to_string();
+    assert!(
+        error.contains("备份密码"),
+        "缺少密码的拒绝必须提示提供备份密码，实际: {error}"
+    );
+}
+
+/// 密码错误时导入必须失败，且错误信息可操作（提示密码错误或载荷损坏）。
+#[test]
+fn encrypted_zip_import_with_wrong_password_fails() {
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    let export_root = TempDir::new().expect("export root");
+    let zip_path = export_root.path().join("wrong-password.zip");
+    export_backup_to_zip(
+        &backup_dir.join(&manifest.backup_id),
+        &ZipExportOptions {
+            output_path: Some(zip_path.clone()),
+            encryption_password: Some(ENCRYPTION_PASSWORD.to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("加密导出应成功");
+
+    let import_root = TempDir::new().expect("import root");
+    let imported_dir = import_root.path().join("imported");
+    let error = import_backup_from_zip_with_password(
+        &zip_path,
+        &imported_dir,
+        Some("totally-wrong-password"),
+    )
+    .expect_err("错误密码导入必须失败")
+    .to_string();
+    assert!(
+        error.contains("备份密码错误") || error.contains("解封"),
+        "错误密码的拒绝必须可操作，实际: {error}"
+    );
+}
+
+/// 未加密便携 ZIP 的诚实分类：导入产物恒为 partial_archive，
+/// validate 与 restore 都必须显式拒绝（锁定去除误导 disaster_recovery 标签）。
+#[test]
+fn unencrypted_portable_zip_is_honestly_partial() {
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    let export_root = TempDir::new().expect("export root");
+    let zip_path = export_root.path().join("portable.zip");
+    export_backup_to_zip(
+        &backup_dir.join(&manifest.backup_id),
+        &ZipExportOptions {
+            output_path: Some(zip_path.clone()),
+            ..Default::default()
+        },
+    )
+    .expect("未加密便携导出应成功");
+
+    let import_root = TempDir::new().expect("import root");
+    let imported_dir = import_root.path().join("backups").join(&manifest.backup_id);
+    std::fs::create_dir_all(imported_dir.parent().unwrap()).expect("create import parent");
+    import_backup_from_zip(&zip_path, &imported_dir).expect("导入未加密便携 ZIP 应成功");
+
+    let imported_manifest =
+        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+            .expect("导入清单可解析");
+    assert_eq!(
+        imported_manifest.key_policy,
+        BackupKeyPolicy::ExcludedPortable
+    );
+    assert_eq!(
+        imported_manifest.snapshot_kind,
+        SnapshotKind::PartialOverlay
+    );
+    let classification_error = imported_manifest
+        .validate_for_slot_restore()
+        .expect_err("未加密便携 ZIP 不得通过整槽恢复验证（诚实分类）")
+        .to_string();
+    assert!(
+        !classification_error.trim().is_empty(),
+        "分类拒绝必须携带可操作错误信息"
+    );
+
+    let import_slot = create_slot_with_databases(import_root.path());
+    let mut restore_manager = BackupManager::new(import_root.path().join("backups"));
+    restore_manager.set_app_data_dir(import_slot);
+    restore_manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+    restore_manager
+        .restore_with_assets(&imported_manifest, false)
+        .expect_err("未加密便携 ZIP 的整槽恢复必须显式拒绝");
 }

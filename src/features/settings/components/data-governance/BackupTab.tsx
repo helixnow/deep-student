@@ -489,6 +489,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <p className="text-sm text-muted-foreground">
             {t('data:governance.export_backup_desc')}
           </p>
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            {t('data:governance.portable_zip_honest_note', {
+              defaultValue:
+                '未加密的导出 ZIP 是便携归档：不包含本地加密密钥与审计记录，在其他设备导入后不能整槽恢复，API 密钥等凭据需要重新录入。',
+            })}
+          </p>
         </div>
 
         <div className="space-y-3">
@@ -519,6 +525,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
         {useTieredBackup && (
           <div className="space-y-4 pl-4 border-l-2 border-border/40">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {t('data:governance.tiered_backup_honest_note', {
+                defaultValue:
+                  '分层备份（包括默认的核心层）只覆盖所选层级，产物是部分归档，不能整槽恢复，仅支持导出与检查。',
+              })}
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {BACKUP_TIERS.map((tier) => (
                 <div

@@ -411,6 +411,12 @@ impl SnapshotKind {
 #[serde(rename_all = "snake_case")]
 pub enum BackupKeyPolicy {
     IncludedLocal,
+    /// Sensitive material (crypto keys, audit database, export-isolated
+    /// domains) is present but sealed inside a password-encrypted payload of a
+    /// portable archive. The package must be unsealed at import time (which
+    /// restores the original `IncludedLocal`/`NotPresent` manifest) before it
+    /// can be considered for slot replacement.
+    IncludedEncrypted,
     ExcludedPortable,
     NotPresent,
     LegacyUnknown,
@@ -1102,6 +1108,12 @@ impl BackupManifest {
             BackupKeyPolicy::ExcludedPortable | BackupKeyPolicy::LegacyUnknown => {
                 return Err(BackupError::Manifest(
                     "可替换数据槽的完整快照不得排除或隐式声明密钥策略".to_string(),
+                ));
+            }
+            BackupKeyPolicy::IncludedEncrypted => {
+                return Err(BackupError::Manifest(
+                    "备份的敏感数据仍处于密码加密封存状态；请在导入 ZIP 时提供备份密码完成解封，再执行整槽恢复"
+                        .to_string(),
                 ));
             }
             _ => {}
