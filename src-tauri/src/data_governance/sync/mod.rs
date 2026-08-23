@@ -731,8 +731,10 @@ pub struct SyncManager {
     /// - `None` 或空字符串：所有 payload 明文上传（向后兼容旧数据）
     /// - `Some(pw)` 非空：文本 payload 使用 `DSBK` 容器加密（AES-256-GCM + Argon2id）
     ///
-    /// 解密端自动探测：遇到 `DSBK` 魔数走解密，否则当明文处理。这让加密可以
-    /// 平滑启用，不破坏已存在的明文云端数据。
+    /// 解密端探测规则（[R04-sync-e2ee] 防降级）：
+    /// - 遇到 `DSBK` 魔数走解密；
+    /// - 无 `DSBK` 头的明文仅在本端**未启用**加密时放行；本端已启用加密时
+    ///   一律显式报错（不再静默接受明文），避免密文被明文对象静默替换。
     #[cfg(feature = "data_governance")]
     encryption_password: Option<String>,
 }
@@ -782,12 +784,17 @@ impl SyncManager {
         }
     }
 
-    /// 解密下载的 payload（若魔数匹配则解密；否则原样返回，向后兼容老明文数据）
+    /// 解密下载的 payload（若魔数匹配则解密）
     ///
     /// 失败模式：
     /// - 数据带 `DSBK` 头但本端未配密码 → 返回错误（提示用户设置密码）
     /// - 数据带 `DSBK` 头但密码错误 → 返回错误
-    /// - 数据未加密（无 `DSBK` 头） → 原样返回（兼容）
+    /// - 数据未加密（无 `DSBK` 头）且本端**未启用**加密 → 原样返回（兼容明文模式）
+    /// - 数据未加密（无 `DSBK` 头）但本端**已启用**加密 → 返回错误（[R04-sync-e2ee]）
+    ///
+    /// 最后一条是防降级：本机已配置加密密码时，静默接受明文会让攻击者
+    /// （或一台配置错误的旧设备）用明文对象替换密文对象而不被察觉。
+    /// 老明文数据在加密启用后必须显式处理（见错误信息），不再自动放行。
     #[cfg(feature = "data_governance")]
     fn decode_payload(&self, data: &[u8]) -> Result<Vec<u8>, SyncError> {
         if crate::crypto::backup_crypto::is_encrypted_backup(data) {
@@ -806,6 +813,15 @@ impl SyncManager {
                         .to_string(),
                 )),
             }
+        } else if self.encryption_enabled() {
+            Err(SyncError::Database(
+                "本机已启用同步加密，但云端 payload 缺少 DSBK 加密头（明文数据）。\
+                 为防止端到端加密被静默降级，已拒绝读取该数据。\
+                 若这是启用加密前遗留的旧明文数据：请先在云同步设置里暂时清除加密密码，\
+                 完成一次下载同步把云端数据合并到本地，再清空该云端目录（或改用新目录）\
+                 并重新配置密码后执行完整上传；若确认不需要加密，请清除加密密码后重试。"
+                    .to_string(),
+            ))
         } else {
             Ok(data.to_vec())
         }
@@ -1538,7 +1554,8 @@ impl SyncManager {
                 .map_err(|e| SyncError::Network(format!("下载设备清单失败 {}: {}", file.key, e)))?;
             if let Some(bytes) = bytes {
                 // [P0-2] 透明解密：data_governance feature 下走 decode_payload；
-                // 老明文数据 + 加密数据都由 decode_payload 自动识别 DSBK 魔数分流
+                // DSBK 魔数自动分流。[R04-sync-e2ee] 本端启用加密后，明文对象
+                // 会被 decode_payload 显式拒绝（防降级），不再静默当明文读。
                 //
                 // [P2 fail-close] 解密失败必须硬错误，与变更文件路径口径一致。
                 // 此前静默 continue 会让密码配错的设备把云端视为近空实例：
@@ -11118,6 +11135,71 @@ mod tests {
         assert!(!SyncManager::missing_sequence_is_proven(1, 1, 1));
         assert!(SyncManager::missing_sequence_is_proven(1, 2, 0));
         assert!(SyncManager::missing_sequence_is_proven(6, 7, 5));
+    }
+
+    // ============ [R04-sync-e2ee] decode_payload 防降级 ============
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_accepts_plaintext_when_encryption_disabled() {
+        let plaintext: &[u8] = br#"{"hello":"world"}"#;
+
+        let manager = SyncManager::new("device-plain".to_string());
+        assert_eq!(manager.decode_payload(plaintext).unwrap(), plaintext);
+
+        // 空密码等价于未启用加密（with_encryption 会过滤空字符串）
+        let manager = SyncManager::with_encryption("device-plain".to_string(), Some(String::new()));
+        assert!(!manager.encryption_enabled());
+        assert_eq!(manager.decode_payload(plaintext).unwrap(), plaintext);
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_rejects_plaintext_when_encryption_enabled() {
+        let manager =
+            SyncManager::with_encryption("device-enc".to_string(), Some("pw-123".to_string()));
+        let error = manager
+            .decode_payload(br#"{"hello":"world"}"#)
+            .expect_err("本机启用加密时必须拒绝无 DSBK 头的明文 payload");
+        let message = error.to_string();
+        assert!(message.contains("已启用同步加密"), "错误应说明原因: {message}");
+        assert!(
+            message.contains("DSBK"),
+            "错误应指出缺少 DSBK 加密头: {message}"
+        );
+        assert!(
+            message.contains("清除加密密码"),
+            "错误应给出可操作的处理路径: {message}"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_roundtrips_encrypted_payload() {
+        let manager =
+            SyncManager::with_encryption("device-enc".to_string(), Some("pw-123".to_string()));
+        let plaintext = b"sync payload bytes";
+        let encoded = manager.encode_payload(plaintext).unwrap();
+        assert!(
+            crate::crypto::backup_crypto::is_encrypted_backup(&encoded),
+            "启用加密后 encode_payload 输出必须是 DSBK 容器"
+        );
+        assert_eq!(manager.decode_payload(&encoded).unwrap(), plaintext);
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn decode_payload_rejects_encrypted_payload_without_password() {
+        let sender =
+            SyncManager::with_encryption("device-a".to_string(), Some("pw-123".to_string()));
+        let encoded = sender.encode_payload(b"secret").unwrap();
+
+        let receiver = SyncManager::new("device-b".to_string());
+        let message = receiver
+            .decode_payload(&encoded)
+            .expect_err("未配置密码的设备必须拒绝 DSBK payload")
+            .to_string();
+        assert!(message.contains("未配置加密密码"), "{message}");
     }
 
     fn create_test_manifest(
