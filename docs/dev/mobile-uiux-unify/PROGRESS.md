@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–15 已落地；当前队列见下。
+- **轮次**：Round 2–16 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -25,14 +25,14 @@
 | 13 | claude-fable-5-thinking-xhigh ×10 | 子屏顶栏接管、Resizable fixed、Epub isActive、预览死代码、触控 | 见 ROUND-13-FIXES.md |
 | 14 | claude-fable-5-thinking-xhigh ×10 | 笔记窄窗返回、侧栏/备份 hover、题库/制卡/分屏手柄 44 | 见 ROUND-14-FIXES.md |
 | 15 | claude-fable-5-thinking-xhigh ×10 | 搜索/图片保活、compact 分屏冻结、手柄 44、删 Header 孤儿 | 见 ROUND-15-FIXES.md |
+| 16 | claude-fable-5-thinking-xhigh ×10 | 搜索条保活、闪卡 hover、引用选择器/标签 X 44、删 Sidebar 孤儿 | 见 ROUND-16-FIXES.md |
 
-## 进行中的修复队列（Round 16+）
+## 进行中的修复队列（Round 17+）
 
-- ReferenceSelector 关闭/清除 `!h-6`
-- MessageSearchBar portal 保活吞返回
-- 闪卡库行操作 hover-only
-- NotesContextPanel / TagFilter / SkillSelector / SandboxToolbar / 题库确认 / MCP 预览 <44
-- notes-tabs-bar.css / NoteTagsEditor 可能新孤儿
+- 导图大纲格式/色板、访达搜索清除、Anki SessionRow 大屏 coarse
+- ImageViewer / modern-viewer-icon-button 36；ContextRefsDisplay hover-only
+- CloudStorage / 开源致谢 / EmbeddedToolsEditor <44
+- 新孤儿 NotesSidebarSearch / AddReferenceDropdown
 
 ## 已落地
 

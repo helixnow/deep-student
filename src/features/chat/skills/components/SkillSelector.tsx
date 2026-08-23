@@ -319,7 +319,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 onClick={() => deleteBundle(bundle.id)}
                 aria-label={t('skills:bundles.delete', { name: bundle.name })}
                 title={t('skills:bundles.delete', { name: bundle.name })}
-                className="relative ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100 after:absolute after:-inset-2 after:content-['']"
+                // coarse 下 -inset-[15px]：14px 按钮（10px 图标 + p-0.5）+ 2×15px = 44px 触控目标
+                className="relative ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[15px]"
               >
                 <X size={10} />
               </button>

@@ -435,7 +435,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
           size="icon"
           iconOnly
           onClick={() => onOpenChange(false)}
-          className="!h-6 !w-6 !rounded-full hover:bg-[var(--interactive-hover)]"
+          className="!h-6 !w-6 !rounded-full hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           aria-label={t('notes:a11y.close')}
         >
           <X className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
@@ -566,7 +566,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="!h-6 text-[11px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            className="!h-6 text-[11px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!h-11"
           >
             {t('common:cancel')}
           </DsButton>

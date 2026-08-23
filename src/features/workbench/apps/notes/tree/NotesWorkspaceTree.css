@@ -461,16 +461,18 @@
   color: hsl(var(--foreground));
 }
 
-/* 触屏（仿 FavoritesSection .nfs-unfavorite）：hover 不可达，行内按钮常显并放大触控目标 */
+/* 触屏（仿 FavoritesSection .nfs-unfavorite）：hover 不可达，行内按钮常显并放大触控目标。
+   44px 触控目标，负 margin 抵消占位（实际占用仍 36px） */
 @media (pointer: coarse) {
   .nwt-row-more,
   .nwt-link-drag {
     opacity: 1;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    margin: -4px;
   }
 
   .nwt-link-drag {
-    flex: 0 0 36px;
+    flex: 0 0 44px;
   }
 }

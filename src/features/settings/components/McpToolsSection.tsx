@@ -439,11 +439,11 @@ function ServerListItem({
                 <div className="h-7" style={{ width: isBuiltin ? 28 : 124 }} aria-hidden="true" />
               ) : (
               <>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
                 <Eye className="w-3.5 h-3.5" />
               </DsButton>
               {!isBuiltin && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
                   {isTesting ? (
                     <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
                   ) : (
@@ -458,10 +458,10 @@ function ServerListItem({
               )}
               {!isBuiltin && (
                 <>
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
                     <PencilSimple className="w-3.5 h-3.5" />
                   </DsButton>
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
                     <Trash className="w-3.5 h-3.5" />
                   </DsButton>
                 </>

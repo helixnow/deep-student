@@ -608,12 +608,12 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
+                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-7"
                             >
                                 {canEditTags && editingTag === tag ? (
                                     <span className="flex items-center gap-1">
                                         <Input
-                                            className="h-4 w-20 px-1 py-0 text-[11px]"
+                                            className="h-4 w-20 px-1 py-0 text-[11px] [@media(pointer:coarse)]:h-7"
                                             value={renameValue}
                                             onChange={e => setRenameValue(e.target.value)}
                                             onKeyDown={e => {
@@ -625,7 +625,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         />
                                         <DsButton
                                             variant="ghost" iconOnly size="sm"
-                                            className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
+                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                             onClick={handleRenameTag}
                                             disabled={isRenamingTag}
                                             aria-label={t('notes:header.confirm_rename')}
@@ -634,7 +634,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         </DsButton>
                                         <DsButton
                                             variant="ghost" iconOnly size="sm"
-                                            className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
+                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                             onClick={handleCancelRenameTag}
                                             disabled={isRenamingTag}
                                             aria-label={t('notes:header.cancel_rename')}
@@ -649,7 +649,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             <>
                                                 <DsButton
                                                     variant="ghost" iconOnly size="sm"
-                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity"
+                                                    className="relative !h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleStartRenameTag(tag);
@@ -661,7 +661,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                 </DsButton>
                                                 <DsButton
                                                     variant="ghost" iconOnly size="sm"
-                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity"
+                                                    className="relative !h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleRemoveTag(tag);

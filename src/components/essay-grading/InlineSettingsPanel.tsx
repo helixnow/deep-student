@@ -905,7 +905,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 iconOnly
                                 onClick={() => handleReorderDimension(index, index - 1)}
                                 disabled={index === 0}
-                                className="!h-9 !w-8 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
+                                className="!h-11 !w-11 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
                                 aria-label={t('essay_grading:settings_panel.move_dimension_up')}
                                 title={t('essay_grading:settings_panel.move_dimension_up')}
                               >
@@ -917,7 +917,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 iconOnly
                                 onClick={() => handleReorderDimension(index, index + 1)}
                                 disabled={index === formData.score_dimensions.length - 1}
-                                className="!h-9 !w-8 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
+                                className="!h-11 !w-11 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
                                 aria-label={t('essay_grading:settings_panel.move_dimension_down')}
                                 title={t('essay_grading:settings_panel.move_dimension_down')}
                               >
@@ -929,7 +929,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               size="icon"
                               iconOnly
                               onClick={() => handleRemoveDimension(index)}
-                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                               aria-label={t('essay_grading:settings_panel.remove_dimension')}
                               title={t('essay_grading:settings_panel.remove_dimension')}
                             >

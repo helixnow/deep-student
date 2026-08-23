@@ -119,7 +119,8 @@ export const SessionTagBadges: React.FC<{
               }}
               aria-label={tag}
               // 触屏无 hover：pointer-coarse 下常显；伪元素扩大命中区（视觉仍为 10px 图标）
-              className="ml-0.5 relative opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:opacity-60 after:absolute after:-inset-2 after:content-['']"
+              // coarse 下 -inset-[17px]：10px 图标 + 2×17px = 44px 触控目标
+              className="ml-0.5 relative opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:opacity-60 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[17px]"
             >
               <X size={10} />
             </button>

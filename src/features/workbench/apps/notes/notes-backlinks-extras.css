@@ -227,12 +227,14 @@
   outline-offset: 1px;
 }
 
-/* 触屏：hover 不可达，「新建」按钮常显并放大触控目标 */
+/* 触屏：hover 不可达，「新建」按钮常显并放大触控目标。
+   44px 触控目标，负 margin 抵消占位（实际占用仍 36px） */
 @media (pointer: coarse) {
   .notes-backlinks-panel-create-button {
     opacity: 1;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    margin: -4px;
   }
 }
 

@@ -237,7 +237,7 @@ html.is-android-webview [contenteditable="true"] {
   min-height: 22px !important;
 }
 
-/* h-[24px] - NoteTagsEditor 等 */
+/* h-[24px] - QuestionBankManageView 等 */
 .h-\[24px\] {
   min-height: 24px !important;
   flex-shrink: 0 !important;

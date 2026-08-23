@@ -35,6 +35,7 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   onNavigate,
 }) => {
   const { t } = useTranslation('chatV2');
+  const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
@@ -50,6 +51,13 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   // 与 InputBarUI 组合面板、InlineImageViewer 的 overlay 语义一致。
   useEffect(() => {
     return registerBackHandler(() => {
+      // 保活守卫：宿主视图在被隐藏的保活层里仍保持挂载时，搜索条也随之滞留——
+      // 此时不消费返回键、不触发关闭回调，交还给当前活跃视图
+      // （对照 EnhancedPdfViewer 的同款守卫）。visibility:hidden 不清布局盒
+      // （getClientRects 仍有返回值），需单独查 computed 值。
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -97,6 +105,7 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
 
   const content = (
     <div
+      ref={rootRef}
       className={cn(
         isHeaderPlacement
           ? 'relative flex h-full min-w-0 w-full items-center justify-end'

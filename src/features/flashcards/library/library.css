@@ -182,7 +182,9 @@
   opacity: 1;
 }
 
-@media (hover: none) {
+/* 触屏常显行内操作：按指针类型而非 hover 能力区分，
+   覆盖报告 hover 能力的触屏平板（对照 FavoritesSection .nfs-unfavorite） */
+@media (pointer: coarse) {
   .fc-lib-row-actions {
     opacity: 1;
   }
@@ -417,6 +419,13 @@
   .fc-lib-chip {
     min-height: 40px;
     padding: 8px 12px;
+  }
+
+  /* 行内操作钮（入队/复习/暂停/删除/展开）：DsButton 在 lg 断点后压缩高度，
+     宽屏触屏平板会跌破触控基线，这里兜底 ≥44px */
+  .fc-lib-row-actions button {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 

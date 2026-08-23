@@ -151,8 +151,8 @@ const TreeNode: React.FC<{
           {/* Navigate button */}
           <DsButton
             variant="ghost" size="icon" iconOnly
-            // 触屏放大命中区（≥32px），负 margin 抵消占位保持行高稳定
-            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8 [@media(pointer:coarse)]:-my-1.5 transition-opacity"
+            // 触屏放大命中区（≥44px），负 margin 抵消占位保持行高稳定
+            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-3 transition-opacity"
             onClick={(e) => { e.stopPropagation(); onNavigate?.(node.folder.id); }}
             title={t('memory.open_folder')}
             aria-label={t('memory.open_folder')}

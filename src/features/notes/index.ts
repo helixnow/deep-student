@@ -6,7 +6,6 @@
 export { NotesCrepeEditor } from './NotesCrepeEditor';
 export { NotesContextPanel } from './NotesContextPanel';
 export { NotesLibraryManager } from './NotesLibraryManager';
-export { NotesSidebarV2 } from './NotesSidebarV2';
 export { AIDiffPanel } from './AIDiffPanel';
 export { InvalidReferenceOverlay } from './InvalidReferenceOverlay';
 

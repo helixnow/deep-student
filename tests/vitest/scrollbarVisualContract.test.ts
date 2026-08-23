@@ -47,10 +47,6 @@ const notesTreeSource = readFileSync(
   resolve(srcRoot, 'features/notes/DndFileTree/DndFileTree.tsx'),
   'utf-8',
 );
-const notesSidebarSource = readFileSync(
-  resolve(srcRoot, 'features/notes/NotesSidebarV2.tsx'),
-  'utf-8',
-);
 const finderListSource = readFileSync(
   resolve(srcRoot, 'features/learning-hub/components/finder/FinderFileList.tsx'),
   'utf-8',
@@ -307,8 +303,6 @@ describe('repository-wide scrollbar integration contract', () => {
     expect(messageListSource).toContain('viewportRef={viewportCallbackRef}');
     expect(messageListSource).toContain('getScrollElement: () => viewportElement');
 
-    expect(notesSidebarSource).toContain('viewportRef={searchListRef}');
-    expect(notesSidebarSource).toContain('viewportRef={treeViewportRef}');
     expect(notesTreeSource).toContain('getScrollElement: () => scrollViewportRef.current');
     expect(notesTreeSource).not.toContain('getScrollElement: () => treeRef.current');
 

@@ -283,7 +283,7 @@ const RowHoverActions: React.FC<{
             variant="danger" size="sm"
             disabled={deleteLoading}
             onClick={(e) => { e.stopPropagation(); onDeleteAction(); }}
-            className="!h-5 !px-1.5 !py-0 text-[10px] opacity-100 [@media(pointer:coarse)]:!h-8"
+            className="!h-5 !px-1.5 !py-0 text-[10px] opacity-100 [@media(pointer:coarse)]:!h-11"
             aria-label={t('learningHub:exam.library.confirmDeleteShort')}
           >
             {deleteLoading ? <CircleNotch size={10} className="animate-spin" /> : <Trash size={10} />}
@@ -1244,7 +1244,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 size="icon"
                 iconOnly
                 onClick={handleSearchClear}
-                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 aria-label={t('learningHub:exam.library.clearSearch')}
                 title={t('learningHub:exam.library.clearSearch')}
               >
