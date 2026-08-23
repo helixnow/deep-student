@@ -1611,7 +1611,11 @@
     "makeCardsFailed": "制卡启动失败",
     "makeCardsDeckName": "划词制卡",
     "makeCardsRequirements": "根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。",
-    "openTaskDashboard": "打开任务台"
+    "openTaskDashboard": "打开任务台",
+    "saveAsNote": "保存为笔记",
+    "saveAsNotePickFolder": "选择保存目录",
+    "saveAsNoteDefaultTitle": "未命名笔记",
+    "openNote": "打开笔记"
   },
   "explainPopover": {
     "thinking": "思考中...",
