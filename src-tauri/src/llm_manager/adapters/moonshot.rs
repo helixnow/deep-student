@@ -378,7 +378,12 @@ mod tests {
         assert!(MoonshotAdapter::is_k25_or_later("kimi-k2.6"));
         assert!(MoonshotAdapter::is_k25_or_later("kimi-k2.7-code"));
         assert!(MoonshotAdapter::is_k25_or_later("kimi-k2.10"));
-        assert!(MoonshotAdapter::is_k25_or_later("kimi-k3"));
+
+        // K3+ 走独立路径（is_k3_or_later），不属于 K2.x 新代际
+        assert!(!MoonshotAdapter::is_k25_or_later("kimi-k3"));
+        assert!(MoonshotAdapter::is_k3_or_later("kimi-k3"));
+        assert!(MoonshotAdapter::is_k3_or_later("kimi-k3-0905-preview"));
+        assert!(!MoonshotAdapter::is_k3_or_later("kimi-k2.7-code"));
 
         // 旧代际不命中
         assert!(!MoonshotAdapter::is_k25_or_later("kimi-k2"));
