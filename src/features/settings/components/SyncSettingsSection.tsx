@@ -60,7 +60,7 @@ interface SyncSettingsSectionProps {
 export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   embedded = false,
 }) => {
-  const { t } = useTranslation(['data', 'common']);
+  const { t } = useTranslation(['data', 'common', 'sync']);
 
   // 本地化的同步阶段名称
   const localizedPhaseNames = useMemo<Record<SyncPhase, string>>(
@@ -327,6 +327,13 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <CardTitle className="text-base">
                 {t('data:sync_settings.sync_status')}
               </CardTitle>
+              {/* 与数据治理面板 SyncTab 的同款入口保持一致：实验版徽章 + 备份提示 */}
+              <span
+                className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+                title={t('sync:experimentalBadgeTooltip')}
+              >
+                {t('data:governance.experimental_badge')}
+              </span>
             </div>
             <DsButton
               variant="ghost"
@@ -387,6 +394,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <Progress
                 value={(syncSummary.syncedDatabases / syncSummary.totalDatabases) * 100}
                 className="h-2"
+                aria-label={t('data:sync_settings.db_sync_progress_label')}
               />
               <div className="grid grid-cols-2 gap-2 mt-3">
                 {syncStatus.databases.map((db) => (
@@ -517,7 +525,11 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   </div>
 
                   {/* 进度条 */}
-                  <Progress value={syncProgress.percent} className="h-2" />
+                  <Progress
+                    value={syncProgress.percent}
+                    className="h-2"
+                    aria-label={t('data:sync_settings.sync_progress_label')}
+                  />
 
                   {/* 详细信息 */}
                   <div className="text-sm text-muted-foreground flex justify-between flex-wrap gap-2">

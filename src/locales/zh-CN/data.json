@@ -580,6 +580,8 @@
     "pending_changes": "有 {{count}} 个待同步变更",
     "status_unknown": "同步状态未知",
     "databases": "数据库",
+    "db_sync_progress_label": "数据库同步进度",
+    "sync_progress_label": "同步进度",
     "last_sync": "上次同步",
     "sync_actions": "同步操作",
     "sync_actions_description": "选择同步方向执行数据同步",

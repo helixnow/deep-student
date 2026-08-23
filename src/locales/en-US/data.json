@@ -580,6 +580,8 @@
     "pending_changes": "{{count}} pending change(s)",
     "status_unknown": "Sync status unknown",
     "databases": "Databases",
+    "db_sync_progress_label": "Database sync progress",
+    "sync_progress_label": "Sync progress",
     "last_sync": "Last sync",
     "sync_actions": "Sync Actions",
     "sync_actions_description": "Choose a sync direction to synchronize data",
