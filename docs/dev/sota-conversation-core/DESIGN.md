@@ -18,12 +18,16 @@
 
 ## 候选工作包（实现阶段再拆 PR）
 
-### P0 观测与 cache key
+### P0 观测与 cache key（按供应商分流）
 
-- 解析 `usage.input_tokens_details.cached_tokens`（及 output details）。
-- 为 OpenAI / DeepSeek Responses 写入稳定的 `prompt_cache_key`（会话 id，禁止 UUID 回落）。
-- Codex 空 session 时禁止 `new_v4()` 作为 cache key。
+- **所有 Responses 路径**：解析 `usage.input_tokens_details.cached_tokens`
+  （以及 `output_tokens_details.reasoning_tokens`）。CC 路径继续读
+  `prompt_tokens_details` / `prompt_cache_hit_tokens`。
+- **OpenAI / Codex**：稳定 `prompt_cache_key` = 会话 id；禁止 `Uuid::new_v4()` 回落。
+- **DeepSeek**：不要写 `prompt_cache_key` / `previous_response_id` / `store:true`
+  （官方明确不支持，静默忽略）。唯一杠杆是前缀字节稳定。
 - `cache-hit-report.py` 增加 protocol / provider 维度。
+- 真正实现 `V20260806`：写入并回放 `llm_content` / `tool_call_id` / `round_text`。
 
 ### P1 前缀冻结
 
@@ -33,11 +37,11 @@
   或 session-stable 段（仅在未变更时保持）。
 - 确认 `llm_content` 覆盖 runtime_facts，历史不得用「今天」重写昨天的 user 字节。
 
-### P2 Responses 原生多轮（可选）
+### P2 OpenAI Responses 原生多轮（可选，DeepSeek 不做）
 
-- 配置项：允许 store + 保存 `response.id`，后续请求带 `previous_response_id`。
-- 仅追加本轮 input items，而不是全量重放。
-- 失败时自动回落全量重放（兼容网关）。
+- 仅 OpenAI / Codex：配置项允许 `store` + 保存 `response.id`，后续带 `previous_response_id`。
+- 仅追加本轮 input items；失败回落全量重放。
+- DeepSeek 保持全量重放 + `web_search_call` 原样回传。
 
 ### P3 DeepSeek / OpenAI hosted 能力
 

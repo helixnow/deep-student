@@ -34,16 +34,18 @@
 - Claude Code × Codex 缓存与协议对比
 - replay consistency 是「重试字节一致」还是「多轮前缀稳定」
 
-## 已确认的高优先级风险（父代理预审，待子代理交叉验证）
+## 已确认的高优先级风险（父代理预审 + 官方文档）
 
-1. `prompt_cache_key` 仅在 Codex OAuth 路径写入；官方 OpenAI / DeepSeek Responses 未设。
-2. Codex 路径在 session_id 为空时用 `Uuid::new_v4()`，会把 cache key 变成每请求随机值。
-3. usage 解析只读 `prompt_tokens_details.cached_tokens`，未读 Responses 原生
-   `input_tokens_details.cached_tokens`，命中率可能被系统性低估。
-4. `store: false` 默认正确（桌面隐私），但因此无法使用 `previous_response_id` 服务端状态链。
-5. 系统提示动态段（learner_profile / todos / format_guide）仍在 instructions 内，
-   会缩短可命中的稳定前缀。
-6. 中途 `load_skills` 若改变 tools 数组，Anthropic / OpenAI / DeepSeek 的整段前缀都会断。
+1. Responses usage 三处漏读 `input_tokens_details.cached_tokens`（OpenAI 与 DeepSeek
+   Responses 官方字段）。命中率报告可能长期显示 0。
+2. `V20260806` 的 `llm_content` / `tool_call_id` / `round_text` **只有迁移没有写入/回放**。
+3. `prompt_cache_key` 仅 Codex 写入；空 session 回落 `Uuid::new_v4()`。对 OpenAI 有害；
+   对 DeepSeek 官方会静默忽略，不是修复点。
+4. DeepSeek Responses 无状态，不能靠 `previous_response_id`。SOTA = 前缀稳定 +
+   `web_search_call` 原样回传。
+5. `store: false` 对桌面隐私正确；OpenAI 链式多轮必须做成显式开关。
+6. 系统提示动态段（learner_profile / todos / format_guide）仍在 instructions 内。
+7. 中途 `load_skills` 若改变 tools，各厂商整段前缀都会断。
 
 ## 实现分支（尚未创建）
 

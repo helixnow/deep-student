@@ -41,6 +41,29 @@
 初步结论：**不是「只做了 404 级兼容」；也还不是「按 Responses 语义建模的原生客户端」。**
 更接近「高质量的传输转换器 + 少量供应商特例」。
 
+### 官方能力对照（2026-08 公开文档，父代理已核对）
+
+**OpenAI Responses**
+
+- 多轮原语是 `previous_response_id` / `conversation`，可与全量 `input` 二选一。
+- `prompt_cache_key` 是路由提示：把共享长前缀的请求打到同一缓存分片。
+- 命中读 `usage.input_tokens_details.cached_tokens`（CC 才是 `prompt_tokens_details`）。
+- GPT-5.6+ 改为「断点处精确匹配」，默认隐式断点在最新 user/tool 消息；不再自动回退到最长未标记前缀。
+- `store` 默认在官方服务端为 true；我们显式改成 false。
+
+**DeepSeek Responses**（`api-docs.deepseek.com/guides/responses_api`）
+
+- **无状态**：`previous_response_id` / `conversation` / `store` / `prompt_cache_key` **均不支持**。
+  给 DeepSeek 加 cache key 或链式 id 会被静默忽略，不是优化项。
+- 缓存是磁盘前缀自动命中；V4 的 prefix unit 在「本轮 user 结束」和「assistant 结束」两个边界落盘，
+  后续请求必须完整复用某个 unit，中间改一个字节就会整段 miss。
+- 原生工具只吃 `function` + `web_search`；`web_search_call` 必须原样回传，服务端自己恢复搜索结果。
+- Responses usage 的缓存字段是 `input_tokens_details.cached_tokens`（不是 CC 的 `prompt_cache_hit_tokens`）。
+- `include` / `encrypted_content` / hosted file_search 等不支持。
+
+因此：**对 DeepSeek，SOTA 等于「字节级前缀稳定 + hosted web_search 回传 + Responses usage 解析」。**
+对 OpenAI，才谈得上 `previous_response_id` 与 `prompt_cache_key`。
+
 ## 2. 缓存命中：设计有意识，测量和前缀仍有断裂点
 
 ### 已做对的地方
@@ -68,18 +91,21 @@
 | 每日 `runtime_facts` 日期变化 | `context.rs` 1165 | 只影响**当前** user 消息则无妨；若历史被重编译则断整段对话前缀 | 中（取决于重放路径） |
 | 历史附件按「当前模型能力」重编译 | `history.rs` 549 | 换模型或能力门控变化会改旧 user 字节 | 中 |
 | 变体分支 skill snapshot 不同 | `multi_variant.rs` 831 | 同 session 不同前缀 | 中 |
-| `prompt_cache_key` 缺失或随机 | Codex / 非 Codex | 路由不到同一缓存分片，或永远 miss | 高 |
-| Responses cached_tokens 漏解析 | `extract_usage_tokens` / `llm_adapter.rs` | `input_tokens_details.cached_tokens` 未读，断裂被测量掩盖 | 高（观测） |
+| `prompt_cache_key` 缺失或随机 | 仅 OpenAI / Codex | 路由不到同一缓存分片，或永远 miss | 高（OpenAI）；DeepSeek 官方忽略该字段 |
+| Responses cached_tokens 漏解析 | `extract_usage_tokens` / `llm_adapter.rs` / `providers/mod.rs` `build_usage_event` | 三处都只读 `prompt_tokens_details.cached_tokens`，不读 Responses 的 `input_tokens_details.cached_tokens`。OpenAI 与 DeepSeek Responses 命中会被系统性记成 0 | 高（观测） |
+| `V20260806` 列未落地 | 迁移有 `llm_content` / `tool_call_id` / `round_text`；`repo.rs` INSERT 与 `persistence.rs` 均未写这些列 | 注释声称「targeted UPDATE 保证重放字节一致」，实现是空的。跨日 `runtime_facts`、历史重编译、合成 `tc_{block_id}` 仍可能发生 | 高 |
 
 ### 不同协议的命中条件（预审）
 
-- **OpenAI / DeepSeek 自动前缀缓存**：从请求第一个字节起必须一致。tools、
-  instructions、input 历史都算。`prompt_cache_key` 是分片提示，不是前缀本身。
+- **OpenAI 自动前缀缓存**：从请求第一个字节起必须一致。tools、instructions、
+  input 历史都算。`prompt_cache_key` 只是分片路由提示。GPT-5.6+ 在断点处精确匹配。
+- **DeepSeek 磁盘前缀缓存**：无 cache key。V4 prefix unit 落在本轮 user / assistant
+  边界；后续必须完整复用某个 unit。`prompt_cache_key` / `previous_response_id` 无效。
 - **Anthropic `cache_control`**：最多 4 个 breakpoint；system + tools 必须稳定且在前。
   `model2_pipeline.rs` ~2628 有 ephemeral 标记，需确认是否只打在 system 文本、
   工具变化时是否失效。
-- **Responses `store` + `previous_response_id`**：命中的是服务端状态，不是客户端重放前缀。
-  当前默认关掉。
+- **OpenAI `store` + `previous_response_id`**：服务端状态链。当前默认 `store:false`。
+  DeepSeek 不支持此路径。
 
 ## 3. 技能与系统提示：比「全塞进 system」好，仍不是 SOTA
 
