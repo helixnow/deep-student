@@ -17,8 +17,8 @@ import type { StoreApi } from 'zustand';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
+import { useSaveAsNoteFlow } from '@/shared/notes';
 import { logChatV2 } from '../../debug/chatV2Logger';
 import type { Block, ChatStore, Message } from '../../core/types';
 import { extractMessageContentFromBlocks, extractNoteTitle } from './messageItemUtils';
@@ -375,7 +375,9 @@ export function useMessageActions({
     }
   }, [isLocked, store, messageId, activeVariantId, t]);
 
-  // 保存为 VFS 笔记
+  // 保存为 VFS 笔记：先选目录，写入后 toast 带「打开笔记」
+  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'chat-message' });
+  const startSaveAsNote = saveAsNoteFlow.start;
   const handleSaveAsNote = useCallback(async () => {
     if (!message) return;
     const text = extractMessageContent();
@@ -383,19 +385,8 @@ export function useMessageActions({
       showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
       return;
     }
-    const title = extractNoteTitle(text);
-    try {
-      const result = await notesDstuAdapter.createNote(title, text);
-      if (result.ok) {
-        showGlobalNotification('success', t('messageItem.actions.saveAsNoteSuccess', { title }));
-      } else {
-        showGlobalNotification('error', result.error.toUserMessage(), t('messageItem.actions.saveAsNoteFailed'));
-      }
-    } catch (error: unknown) {
-      console.error('[MessageItem] Save as note failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.saveAsNoteFailed'));
-    }
-  }, [message, extractMessageContent, t]);
+    startSaveAsNote({ content: text, title: extractNoteTitle(text) });
+  }, [message, extractMessageContent, startSaveAsNote, t]);
 
   // 会话分支：从此消息处创建新会话
   const isBranchingRef = useRef(false);
@@ -488,6 +479,8 @@ export function useMessageActions({
     handleDelete,
     handleContinue,
     handleSaveAsNote,
+    /** 交给宿主渲染 <SaveAsNoteFolderPicker {...saveAsNotePickerProps} /> */
+    saveAsNotePickerProps: saveAsNoteFlow.pickerProps,
     handleBranch,
     handleExportMarkdown,
     handleOpenNote,

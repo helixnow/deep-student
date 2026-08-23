@@ -51,6 +51,7 @@ import {
   resolvePdfAnnotationSaveBaseline,
   subscribePdfAnnotationChanges,
 } from '../pdfAnnotationEvents';
+import { PdfSelectionActions } from './PdfSelectionActions';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
@@ -2761,6 +2762,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           </DsButton>
         </div>
       )}
+
+      {/* 阅读划词工具条（共享层 SelectionToolbar）：解释 / 翻译 / 保存为笔记 /
+          生成卡片 / 添加到聊天。挂在选区下方，与上方的高亮选色菜单错开。 */}
+      <PdfSelectionActions
+        containerRef={containerRef}
+        enabled={resolvedEnableTextSelection}
+        isMobileLike={isMobileLike}
+        documentTitle={resourcePath ? resourcePath.split('/').pop() : undefined}
+      />
 
       {/* 高亮菜单：桌面为选区上方浮动菜单；移动端改为 viewer 内底部内联色板条
           （absolute bottom，非 fixed body 层，避让底栏与 safe-area） */}

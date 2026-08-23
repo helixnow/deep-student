@@ -1868,6 +1868,52 @@
 }
 
 /* ============================================================================
+   划词结果面板（解释 / 翻译）
+   —— 内联在阅读器内的底部面板，不是 Dialog：窄屏不会溢出，
+      底部避让底栏 + 进度细线 + Home Indicator。
+   ============================================================================ */
+
+.ds-pdf__selection-panel {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  max-height: 55%;
+  min-height: 0;
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 8px 24px hsl(var(--ring) / 0.12);
+}
+
+.ds-pdf-viewer.chrome-hidden .ds-pdf__selection-panel {
+  bottom: calc(var(--ds-pdf-safe-bottom) + 10px);
+}
+
+.ds-pdf__selection-panel-close {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.ds-pdf__selection-panel-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 桌面端限宽靠右，避免遮住整页正文 */
+@media (min-width: 768px) {
+  .ds-pdf__selection-panel {
+    left: auto;
+    width: min(460px, 46%);
+  }
+}
+
+/* ============================================================================
    Reduced motion（置于文件末尾，覆盖上方所有 media 块内的过渡声明）
    ============================================================================ */
 
