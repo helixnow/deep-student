@@ -38,8 +38,18 @@
 2. `README_CN.md` 云同步一句：桌面 WebDAV / S3（FTP 实验性），Android 目前仅 WebDAV。
 3. 本文件（ROUND-02.md）。
 
+## 合入状态（父代理已合并进 `cursor/cloud-sync-sota-b343`）
+
+| 代理 | 状态 | 说明 |
+|---|---|---|
+| R02-docs / tests / ftp / e2ee / sync-engine / cloud-ui / sync-ui | 已合入 | 冲突 0 |
+| R02-webdav / backup / identity | 云环境中断，重试中 | 仍为 P0/P1 缺口 |
+
+已合入要点：清除配置确认、库级冲突确认、FTP list 截断与超时、E2EE 上传标记、字段合并生产可达、无 tombstone 迟到 DELETE LWW、慢钟败方进冲突表、半配置/截断/ZIP 契约测试、Android 文档事实。
+
 ## 合入后待办
 
 - [ ] R02-backup 合入后回写用户指南「当前版本限制」块（若整槽恢复已打通则删除该块）。
-- [ ] R02-cloud-ui 合入后核对指南中 Android 界面描述（S3/FTP 入口是否已按平台隐藏）。
+- [x] R02-cloud-ui 已合入：移动端 FTP 禁用卡片 + 清除确认。
+- [ ] R02-webdav / identity 重试合入。
 - [ ] R03 复审时核对文档与代码事实无漂移。
