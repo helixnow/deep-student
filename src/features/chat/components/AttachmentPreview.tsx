@@ -266,6 +266,8 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
           className={cn(
             'absolute inset-0 flex items-center justify-center',
             'bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity',
+            // 触屏无 hover：放大入口半透明常显（与本组件删除按钮的 coarse 豁免同理）
+            '[@media(pointer:coarse)]:opacity-60',
             'cursor-pointer z-10'
           )}
           onClick={onPreviewClick}

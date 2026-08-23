@@ -28,6 +28,7 @@ import IndexDiagnosticPanel from './IndexDiagnosticPanel';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useTranslation } from 'react-i18next';
 import {
   Database,
@@ -1077,6 +1078,15 @@ export const IndexStatusView: React.FC = () => {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [mobileMoreOpen]);
+
+  // Android 系统返回键：菜单打开时先关菜单（overlay 档），不退整个视图
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    return registerBackHandler(() => {
+      setMobileMoreOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [mobileMoreOpen]);
   
   // 打开/收起重置内联确认条（替代阻塞式对话框）
   const toggleResetConfirm = useCallback(() => {
@@ -2050,14 +2060,14 @@ export const IndexStatusView: React.FC = () => {
               {mobileMoreOpen && (
                 <div className="absolute right-0 top-full mt-1 z-dropdown min-w-[160px] rounded-md border bg-popover shadow-md py-1 ui-zoom-fade-in">
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--interactive-hover)] transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11"
                     onClick={() => { setShowTestPanel(v => !v); setMobileMoreOpen(false); }}
                   >
                     <TestTube className="h-3.5 w-3.5" />
                     {t('indexStatus.action.recallTest')}
                   </button>
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors [@media(pointer:coarse)]:min-h-11"
                     disabled={resetting || batchIndexing || mmIndexing}
                     onClick={() => { toggleResetConfirm(); setMobileMoreOpen(false); }}
                   >
@@ -2301,7 +2311,7 @@ export const IndexStatusView: React.FC = () => {
               onClick={handleUnifiedIndex}
               disabled={batchIndexing || mmIndexing}
               className={cn(
-                '!h-8 !rounded-lg !px-3 text-[12px] font-medium shadow-sm',
+                '!h-8 !rounded-lg !px-3 text-[12px] font-medium shadow-sm [@media(pointer:coarse)]:!h-11',
                 batchIndexing || mmIndexing
                   ? 'bg-muted text-muted-foreground shadow-none'
                   : 'bg-foreground text-background hover:bg-foreground/90 dark:bg-foreground dark:text-background'
@@ -2322,7 +2332,7 @@ export const IndexStatusView: React.FC = () => {
                 onClick={() => { loadData(); }}
                 disabled={isLoading || batchIndexing}
                 title={t('indexStatus.action.refreshTitle')}
-                className="!h-8 !rounded-lg !px-2 text-[11px] bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06]"
+                className="!h-8 !rounded-lg !px-2 text-[11px] bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11"
               >
                 <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                 {t('indexStatus.action.refresh')}
@@ -2332,7 +2342,7 @@ export const IndexStatusView: React.FC = () => {
                 size="sm"
                 onClick={() => setShowTestPanel(!showTestPanel)}
                 className={cn(
-                  '!h-8 !rounded-lg !px-2 text-[11px] border border-black/[0.04] dark:border-white/[0.06]',
+                  '!h-8 !rounded-lg !px-2 text-[11px] border border-black/[0.04] dark:border-white/[0.06] [@media(pointer:coarse)]:!h-11',
                   showTestPanel
                     ? 'bg-primary/10 text-primary border-primary/20'
                     : 'bg-muted/60 hover:bg-muted'
@@ -2350,7 +2360,7 @@ export const IndexStatusView: React.FC = () => {
               disabled={resetting || batchIndexing || mmIndexing}
               title={t('indexStatus.action.resetStateTitle')}
               className={cn(
-                '!h-8 !rounded-lg text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/5',
+                '!h-8 !rounded-lg text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/5 [@media(pointer:coarse)]:!h-11',
                 resetConfirmOpen && 'text-destructive bg-destructive/5'
               )}
             >
@@ -2380,12 +2390,12 @@ export const IndexStatusView: React.FC = () => {
                 size="sm"
                 onClick={handleResetAllIndexState}
                 disabled={resetting}
-                className="!h-7 text-[11px]"
+                className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11"
               >
                 {resetting ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowCounterClockwise className="h-3.5 w-3.5" />}
                 {t('indexStatus.confirm.confirmReset')}
               </DsButton>
-              <DsButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-[11px]">
+              <DsButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                 {t('indexStatus.confirm.cancel')}
               </DsButton>
             </div>
@@ -2420,7 +2430,7 @@ export const IndexStatusView: React.FC = () => {
                       onClick={() => setTestMode(mode)}
                       aria-pressed={testMode === mode}
                       className={cn(
-                        '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent',
+                        '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
                         testMode === mode
                           ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
                           : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
@@ -2533,8 +2543,8 @@ export const IndexStatusView: React.FC = () => {
         </div>
       )}
 
-      {/* 筛选栏 — macOS segmented / capsule 风格 */}
-      <div data-wb-blur-surface className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl sticky top-0 z-10">
+      {/* 筛选栏 — macOS segmented / capsule 风格（滚动发生在下方 CustomScrollArea 内，无需 sticky） */}
+      <div data-wb-blur-surface className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl">
         <CustomScrollArea className="min-w-0 flex-1" orientation="horizontal" fullHeight={false}>
           <div className="flex w-max min-w-full items-center gap-2">
             <span className="text-[11px] font-medium text-muted-foreground/80 shrink-0">{t('indexStatus.filter.typeFilter')}</span>
@@ -2549,7 +2559,7 @@ export const IndexStatusView: React.FC = () => {
                     size="sm"
                     onClick={() => setSelectedType(type)}
                     className={cn(
-                      '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent',
+                      '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent [@media(pointer:coarse)]:!h-11',
                       isActive
                         ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
                         : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
@@ -2618,7 +2628,7 @@ export const IndexStatusView: React.FC = () => {
                       size="sm"
                       onClick={() => toggleGroup(state)}
                       className={cn(
-                        'flex-1 !h-8 !justify-start !gap-2 !rounded-none !px-3 md:!px-4 !py-0 text-[12px] font-medium !bg-transparent',
+                        'flex-1 !h-8 !justify-start !gap-2 !rounded-none !px-3 md:!px-4 !py-0 text-[12px] font-medium !bg-transparent [@media(pointer:coarse)]:!h-11',
                         'hover:brightness-[0.98] dark:hover:brightness-110'
                       )}
                     >
@@ -2639,7 +2649,7 @@ export const IndexStatusView: React.FC = () => {
                         onClick={() => setRetryFailedConfirmOpen((v) => !v)}
                         disabled={retryingFailed || batchIndexing || mmIndexing}
                         className={cn(
-                          '!h-6 !rounded-md !px-2 mr-2 md:mr-3 text-[11px] shrink-0 text-danger hover:bg-danger/10',
+                          '!h-6 !rounded-md !px-2 mr-2 md:mr-3 text-[11px] shrink-0 text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
                           retryFailedConfirmOpen && 'bg-danger/10'
                         )}
                       >
@@ -2659,11 +2669,11 @@ export const IndexStatusView: React.FC = () => {
                           <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
+                          <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                             {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                             {t('indexStatus.confirm.confirmRetry')}
                           </DsButton>
-                          <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
+                          <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                             {t('indexStatus.confirm.cancel')}
                           </DsButton>
                         </div>
@@ -2694,7 +2704,7 @@ export const IndexStatusView: React.FC = () => {
                     onClick={() => setRetryFailedConfirmOpen((v) => !v)}
                     disabled={retryingFailed || batchIndexing || mmIndexing}
                     className={cn(
-                      '!h-6 !rounded-md !px-2 text-[11px] text-danger hover:bg-danger/10',
+                      '!h-6 !rounded-md !px-2 text-[11px] text-danger hover:bg-danger/10 [@media(pointer:coarse)]:!h-11',
                       retryFailedConfirmOpen && 'bg-danger/10'
                     )}
                   >
@@ -2711,11 +2721,11 @@ export const IndexStatusView: React.FC = () => {
                         <div className="text-[11px] text-muted-foreground mt-0.5">{t('indexStatus.confirm.retryFailedDescription', { count: failedResources.length })}</div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px]">
+                        <DsButton variant="primary" size="sm" onClick={handleRetryAllFailed} disabled={retryingFailed} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                           {retryingFailed ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowsClockwise className="h-3.5 w-3.5" />}
                           {t('indexStatus.confirm.confirmRetry')}
                         </DsButton>
-                        <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px]">
+                        <DsButton variant="ghost" size="sm" onClick={() => setRetryFailedConfirmOpen(false)} className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11">
                           {t('indexStatus.confirm.cancel')}
                         </DsButton>
                       </div>
@@ -2744,7 +2754,7 @@ export const IndexStatusView: React.FC = () => {
               size="sm"
               onClick={handleLoadMore}
               disabled={loadingMore}
-              className="!h-7 text-[11px]"
+              className="!h-7 text-[11px] [@media(pointer:coarse)]:!h-11"
             >
               {loadingMore ? (
                 <>

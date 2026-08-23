@@ -138,7 +138,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   const isMinimalChatHeader = viewMode !== 'browser' && isEmptyNewChat;
 
   // 顶栏分支与移动端可见内容一一对应：
-  // 右屏（沙箱 > 资源预览 > 资源库列表）→ 中屏子屏（Anki 卡片编辑 > 分组编辑器）→ 默认（浏览视图/聊天）
+  // 右屏（沙箱 > 资源预览 > 资源库列表）→ 中屏子屏（分组编辑器）→ 默认（浏览视图/聊天）
   useMobileHeader('chat-v2', mobileSandboxOpen ? {
     title: t('common:navigation.sandbox_workbench', '沙箱工作台'),
     showBackArrow: true,

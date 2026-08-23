@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CaretDown, CaretUp, MagnifyingGlass, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
@@ -73,7 +74,7 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   const isHeaderPlacement = placement === 'header';
   const hasQuery = query.trim().length > 0;
 
-  return (
+  const content = (
     <div
       className={cn(
         isHeaderPlacement
@@ -165,4 +166,10 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
       </div>
     </div>
   );
+
+  // header 形态由调用方（MessageList）portal 到桌面壳顶栏插槽；floating 形态
+  // 用 fixed 定位，必须 portal 到 body——MobileSlidingLayout 的 track 常驻
+  // transform（containing block 约定），in-tree fixed 会以 track 为包含块错位。
+  if (isHeaderPlacement) return content;
+  return createPortal(content, document.body);
 };

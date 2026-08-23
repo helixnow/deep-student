@@ -1237,6 +1237,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
       onNavigate={scrollToMessageForAgent}
     />
   ) : null;
+  // header 形态 portal 到桌面壳顶栏插槽；floating 形态（小屏 / 无顶栏插槽）由
+  // MessageSearchBar 自身 portal 到 document.body——小屏下本组件位于
+  // MobileSlidingLayout 的 track 内（常驻 transform），in-tree fixed 会错位。
   const searchBarPortal = searchBar && desktopChatHeaderTarget && !isSmallScreen
     ? createPortal(searchBar, desktopChatHeaderTarget)
     : searchBar;

@@ -4,6 +4,7 @@ import { ArrowClockwise, SidebarSimple } from '@phosphor-icons/react';
 
 import { useMobileHeader } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
 import {
   LEGACY_SANDBOX_OWNER_KEY,
@@ -30,6 +31,10 @@ export function SandboxWorkbenchPage() {
   // 避免双顶栏，刷新/检查器动作收进统一顶栏右侧。
   useMobileHeader('sandbox-workbench', {
     title: t('sandbox.title'),
+    // ★ 顶栏统一：返回箭头回聊天主视图（与设置/总览等子页一致）。
+    // viewStore.setCurrentView 仅允许 App.tsx 写入，跨组件导航走 NAVIGATE_TO_VIEW 事件。
+    showBackArrow: true,
+    onMenuClick: () => dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' }),
     rightActions: hasSession ? (
       <>
         <DsButton

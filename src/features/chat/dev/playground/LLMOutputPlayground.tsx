@@ -21,6 +21,10 @@ import {
   ArrowCounterClockwise,
   Columns,
 } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { useMobileHeader } from '@/components/layout';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { AgentTaskPanel } from '../../components/AgentTaskPanel';
 import { MessageList } from '../../components/MessageList';
 import { InputBarV2 } from '../../components/input-bar';
@@ -44,13 +48,15 @@ import {
 const ALL_PRESETS: StreamingSmoothingPreset[] = ['natural', 'realtime', 'balanced', 'silky', 'fluid'];
 
 export const LLMOutputPlayground: React.FC = () => {
+  const { isSmallScreen } = useBreakpoint();
+
   // 主 store
   const storeA = useMemo(() => createPlaygroundStore(), []);
   // Compare 模式才使用的副 store
   const storeB = useMemo(() => createPlaygroundStore(), []);
 
-  // UI 状态
-  const [showPanel, setShowPanel] = useState(true);
+  // UI 状态（小屏控制面板默认收起，避免和聊天区并排挤压）
+  const [showPanel, setShowPanel] = useState(() => !isSmallScreen);
   const [compareMode, setCompareMode] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() =>
     document.documentElement.classList.contains('dark'),
@@ -76,6 +82,29 @@ export const LLMOutputPlayground: React.FC = () => {
     clearAllMessages(storeA);
     clearAllMessages(storeB);
   }, [storeA, storeB]);
+
+  // 本页无 onBack prop（App.tsx 直挂），返回统一走全局导航事件回 chat-v2
+  const handleBackToChat = useCallback(() => {
+    dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view: 'chat-v2' });
+  }, []);
+
+  // 移动端统一顶栏：标题 + 返回箭头（回 chat-v2）；右侧仅控制面板开关（≤2 动作约定）
+  useMobileHeader('llm-playground', {
+    title: 'LLM 输出调试台',
+    showBackArrow: true,
+    onMenuClick: handleBackToChat,
+    rightActions: (
+      <DsButton
+        variant="ghost"
+        size="icon"
+        aria-label={showPanel ? '收起控制面板' : '打开控制面板'}
+        onClick={() => setShowPanel((v) => !v)}
+        className={showPanel ? '!text-primary' : undefined}
+      >
+        <SidebarSimple size={18} />
+      </DsButton>
+    ),
+  }, [handleBackToChat, showPanel]);
 
   // 在 Compare 模式下手动同步触发同一场景到两边
   const handleCompareTrigger = useCallback(
@@ -114,7 +143,8 @@ export const LLMOutputPlayground: React.FC = () => {
 
   return (
     <div className="chat-v2 flex flex-col h-full bg-background">
-      {/* 顶部工具栏 */}
+      {/* 顶部工具栏（移动端由统一顶栏承载，自绘 header 仅桌面渲染） */}
+      {!isSmallScreen && (
       <header className="flex-shrink-0 h-10 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-3 z-10">
         <div className="flex items-center gap-2">
           <h1 className="text-sm font-semibold">LLM 输出调试台</h1>
@@ -181,9 +211,10 @@ export const LLMOutputPlayground: React.FC = () => {
           </button>
         </div>
       </header>
+      )}
 
       {/* 主内容区 */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* 聊天区域（普通 / Compare） */}
         <div className="flex-1 flex flex-col min-w-0 bg-[color:var(--shell-workspace-panel)]">
           {compareMode ? (
@@ -218,9 +249,15 @@ export const LLMOutputPlayground: React.FC = () => {
           )}
         </div>
 
-        {/* 控制面板（窄屏允许收缩，避免固定宽度溢出） */}
+        {/* 控制面板：桌面并排；小屏改为覆盖式抽屉，不与聊天区并排挤压 */}
         {showPanel && (
-          <div className="w-[340px] max-w-full flex-shrink">
+          <div
+            className={cn(
+              isSmallScreen
+                ? 'absolute inset-y-0 right-0 z-20 w-full max-w-[340px] bg-background shadow-xl'
+                : 'w-[340px] max-w-full flex-shrink',
+            )}
+          >
             <PlaygroundControlPanel
               store={storeA}
               preset={presetA}

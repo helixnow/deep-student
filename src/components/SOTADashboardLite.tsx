@@ -149,12 +149,13 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         iconOnly
         aria-label={t('export_stats_button')}
         onClick={() => exportDataRef.current()}
+        disabled={!data}
         className="!h-11 !w-11"
       >
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [tCommon, t, embedded, onBack]);
+  }, [tCommon, t, embedded, onBack, !data]);
 
   // 导出数据
   const exportData = useCallback(async () => {

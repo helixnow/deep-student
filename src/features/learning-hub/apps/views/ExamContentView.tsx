@@ -18,6 +18,8 @@ import {
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
+import { useIsMobile } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   useQuestionBankStore,
   validateQbankPracticeHandoff,
@@ -298,6 +300,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   );
 
   const sessionId = node.id;
+  const isSmallScreen = useIsMobile();
 
   // 渲染日志放入 effect，保持 render 纯函数（避免 StrictMode 双调用产生重复日志）
   useEffect(() => {
@@ -1669,6 +1672,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // ACR 演出优化轮：flash 限定在本视图 DOM 内（qbank 可多窗，全局查找会闪错窗口）
   const agentFlashRootRef = useRef<HTMLDivElement | null>(null);
+
+  // 📱 硬件返回键（移动端）：viewMode 处于非根态（非 list/launcher）时，
+  // 返回键先执行页内返回（practice 回启动台，二级视图回题库列表），
+  // 而不是让 MobileSlidingLayout 直接把整个右屏收回中屏。
+  //
+  // ⚠️ 必须注册 overlay 档：右屏收回的 handler 也注册在 overlay 档（见
+  // MobileSlidingLayout 的 A-5 注释），view 档在右屏打开时永远轮不到。
+  // 本 handler 仅在进入非根态时才注册（必然晚于布局 mount 时的注册），
+  // 同优先级后注册者先执行，因此能先拿到事件；之后打开的浮层（Dialog/
+  // AppMenu 等）注册更晚仍优先于本 handler，「先关浮层」语义不受影响。
+  const hardwareBackRef = useRef({ viewMode, isActive, requestViewMode });
+  hardwareBackRef.current = { viewMode, isActive, requestViewMode };
+  const isNonRootViewMode = viewMode !== 'list' && viewMode !== 'launcher';
+  useEffect(() => {
+    if (!isSmallScreen || !isNonRootViewMode) return;
+    return registerBackHandler(() => {
+      const { viewMode: mode, isActive: active, requestViewMode: request } = hardwareBackRef.current;
+      if (active === false || mode === 'list' || mode === 'launcher') return false;
+      // 右屏离屏时（MobileSlidingLayout 给非可见屏加 inert）让行给布局/导航层
+      if (agentFlashRootRef.current?.closest('[inert]')) return false;
+      // requestViewMode 内部的草稿/复习/CSV 导入守卫可能弹确认面板或阻断；
+      // 无论结果如何都消费本次返回，避免确认面板刚弹出整个右屏就被收走
+      request(mode === 'practice' ? 'launcher' : 'list');
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, isNonRootViewMode]);
 
   // ========== Tab 栏滑动选中指示器 + 方向键可达 ==========
   const tabListRef = useRef<HTMLDivElement | null>(null);

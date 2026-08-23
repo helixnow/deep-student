@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 1 审查已收回 10/16；Round 2 补扫 + 首批修复进行中。
+- **轮次**：Round 2 首批 P0/P1 已落地并过契约测试；Round 3 处理 Settings 标题、作文断点、stale 返回键。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -11,7 +11,8 @@
 |---|---|---|---|
 | 0 | 父代理 cursor-grok-4.6-high-fast | 建分支、列视图、划边界、写方案 | 见 INVENTORY.md |
 | 1 | claude-fable-5-thinking-xhigh ×10 | 全页只读审查（6 个因并发上限未启动） | 见 ROUND-01-AUDIT.md |
-| 2 | claude-fable-5-thinking-xhigh ×10 | 补扫 + 落地 P0/P1 | 进行中 |
+| 2 | claude-fable-5-thinking-xhigh ×10 | 落地 P0/P1 + 补扫 | 见 ROUND-02-FIXES.md |
+| 3 | claude-fable-5-thinking-xhigh ×N | Settings / 作文 / stale 返回 / 触控 | 进行中 |
 
 ## 进行中的修复队列
 

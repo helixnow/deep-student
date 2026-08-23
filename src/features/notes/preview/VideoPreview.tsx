@@ -11,6 +11,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { DsButton } from '@/components/ui/DsButton';
@@ -64,6 +65,8 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   const { t } = useTranslation(['notes']);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // 触屏（coarse pointer）：无 hover/mousemove 可依赖，tap 交互与桌面不同
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   
   // 状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -178,6 +181,22 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
     }
   }, [isPlaying]);
 
+  // 触屏 tap 视频：控制栏隐藏时首次 tap 只唤出控制栏，
+  // 控制栏可见时再 tap 才切换播放（避免误触暂停）；桌面 click 直接切换
+  const handleVideoTap = useCallback(() => {
+    if (isCoarsePointer && !showControls) {
+      showControlsWithTimeout();
+      return;
+    }
+    togglePlay();
+  }, [isCoarsePointer, showControls, showControlsWithTimeout, togglePlay]);
+
+  // 触屏：开始播放后无 mousemove 事件驱动隐藏，主动调度控制栏自动隐藏
+  useEffect(() => {
+    if (!isCoarsePointer || !isPlaying) return;
+    showControlsWithTimeout();
+  }, [isCoarsePointer, isPlaying, showControlsWithTimeout]);
+
   // 视频事件处理
   useEffect(() => {
     const video = videoRef.current;
@@ -203,12 +222,21 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
 
     const handlePause = () => {
       setIsPlaying(false);
+      // 取消播放期间挂起的自动隐藏，暂停时控制栏保持常显
+      if (hideControlsTimer.current) {
+        clearTimeout(hideControlsTimer.current);
+        hideControlsTimer.current = null;
+      }
       setShowControls(true);
     };
 
     const handleEnded = () => {
       setIsPlaying(false);
       setCurrentTime(0);
+      if (hideControlsTimer.current) {
+        clearTimeout(hideControlsTimer.current);
+        hideControlsTimer.current = null;
+      }
       setShowControls(true);
     };
 
@@ -363,8 +391,9 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         'relative flex h-full flex-col items-center justify-center bg-black outline-none',
         className
       )}
-      onMouseMove={showControlsWithTimeout}
-      onMouseLeave={() => isPlaying && setShowControls(false)}
+      // 触屏下忽略 tap 派生的合成 mouse 事件，避免抢在 click 前唤出控制栏
+      onMouseMove={isCoarsePointer ? undefined : showControlsWithTimeout}
+      onMouseLeave={isCoarsePointer ? undefined : () => isPlaying && setShowControls(false)}
       onKeyDown={handleKeyDown}
       tabIndex={0}
     >
@@ -382,7 +411,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         poster={posterUrl}
         preload="metadata"
         className="max-h-full max-w-full object-contain"
-        onClick={togglePlay}
+        onClick={handleVideoTap}
       />
 
       {/* 视频加载失败 */}
@@ -491,7 +520,8 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                 >
                   <VolumeIcon className="h-4 w-4" />
                 </DsButton>
-                <div className="w-0 overflow-hidden group-hover:w-20 transition-all duration-200">
+                {/* 音量滑杆：桌面 hover 展开；触屏无 hover，常显固定宽度 */}
+                <div className="w-0 overflow-hidden group-hover:w-20 transition-all duration-200 [@media(pointer:coarse)]:w-20">
                   <Slider
                     value={[isMuted ? 0 : volume]}
                     max={1}

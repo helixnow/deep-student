@@ -1051,15 +1051,15 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     setSkillToDelete(null);
   }, []);
 
-  // 行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
+  // 行内确认横幅 / 技能源浏览器渲染在列表顶部：打开时把列表滚回顶部保证可见
   const listViewportRef = useRef<HTMLDivElement>(null);
-  const anyInlineConfirmOpen =
-    updateConfirmOpen || zipConfirmOpen ||
+  const anyInlinePanelOpen =
+    tapBrowserOpen || updateConfirmOpen || zipConfirmOpen ||
     deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen;
   useEffect(() => {
-    if (!anyInlineConfirmOpen) return;
+    if (!anyInlinePanelOpen) return;
     listViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [anyInlineConfirmOpen]);
+  }, [anyInlinePanelOpen]);
 
   // ========== 移动端统一顶栏配置 ==========
   const headerTitle = useMemo(() => {
@@ -1249,7 +1249,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 渲染主内容 ==========
   const renderMainContent = () => (
     <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-      <div className="study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10 py-3 sticky top-0 z-10 space-y-3">
+      <div className="study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10 py-3 space-y-3">
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
             <span className="font-medium text-foreground truncate">{t('skills:management.all_skills')}</span>
@@ -1599,7 +1599,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={handleCancelUpdates}
             disabled={updating}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -1608,7 +1608,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={() => void handleConfirmUpdates()}
             disabled={updating}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs"
           >
             {updating ? t('skills:management.update_applying') : t('skills:management.update_apply')}
           </DsButton>
@@ -1768,7 +1768,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={handleCancelZipInstall}
             disabled={zipInstalling}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -1777,7 +1777,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={() => void handleConfirmZipInstall()}
             disabled={zipInstalling}
-            className="h-7 px-2.5 text-xs"
+            className="!h-9 px-3 text-xs"
           >
             {zipInstalling
               ? t('skills:tap.installing')

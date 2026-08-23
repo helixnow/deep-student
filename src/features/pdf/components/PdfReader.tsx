@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
 import { useMobileHeader } from '@/components/layout';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
 import { TauriAPI } from '@/utils/tauriApi';
 import '../styles/pdf-reader.css';
@@ -23,6 +24,10 @@ export const PdfReader: React.FC = () => {
   // 换文件只能退出视图重进 —— 把打开文件动作收进统一顶栏右侧。
   useMobileHeader('pdf-reader', {
     title: t('common:navigation.pdf_reader'),
+    // ★ 顶栏统一：返回箭头回聊天主视图（与设置/总览等子页一致）。
+    // viewStore.setCurrentView 仅允许 App.tsx 写入，跨组件导航走 NAVIGATE_TO_VIEW 事件。
+    showBackArrow: true,
+    onMenuClick: () => dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' }),
     rightActions: (
       <DsButton
         variant="ghost"

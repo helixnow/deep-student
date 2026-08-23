@@ -252,6 +252,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           className={cn(
             'absolute inset-0 flex items-center justify-center',
             'bg-black/40 opacity-0 group-hover:opacity-100',
+            // 触屏无 hover：放大操作遮罩半透明常显（同下方尺寸信息的 coarse 处理）
+            '[@media(pointer:coarse)]:opacity-60',
             'transition-opacity rounded-lg',
             'pointer-events-none'
           )}

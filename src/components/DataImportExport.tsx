@@ -268,9 +268,12 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
 
   // 供 useMobileHeader rightActions 调用（handleExport 在下方定义）
   const handleExportRef = useRef<() => void>(() => {});
+  const [isExporting, setIsExporting] = useState(false);
 
   // D-1: 移动端顶栏标题（data-management 视图直挂本组件）
   // 移动端设计哲学：页内不再渲染桌面 HeaderTemplate，导出操作收进统一顶栏
+  // ★ 嵌入 Settings 统计页（embedded）时禁用：不写 data-management 键，
+  // 避免覆盖/清掉独立视图实例的顶栏配置
   useMobileHeader('data-management', {
     title: t('common:navigation.data_management'),
     // ★ 顶栏统一：提供返回箭头（回聊天）而非全局历史导航的 返回+前进 双按钮
@@ -283,11 +286,12 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         iconOnly
         aria-label={t('common:header.export')}
         onClick={() => handleExportRef.current()}
+        disabled={isExporting}
       >
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [t, embedded, onBack]);
+  }, [t, embedded, onBack, isExporting], !embedded);
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -298,7 +302,6 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   const [activeTab, setActiveTab] = useState('backup');
   // 获取会话统计数据，用于合并趋势图
   const chatStats = useChatV2Stats(false);
-  const [isExporting, setIsExporting] = useState(false);
   const [exportBackupTiers, setExportBackupTiers] = useState<BackupTier[]>([]);
   
   const formatEta = (seconds: number): string => {

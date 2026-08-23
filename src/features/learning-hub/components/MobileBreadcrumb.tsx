@@ -15,11 +15,11 @@ import { CaretRight } from '@phosphor-icons/react';
 import type { BreadcrumbItem } from '../stores/finderStore';
 
 /**
- * 触屏面包屑命中区扩展：padding 撑出 ≥40px 高的点击热区，
+ * 触屏面包屑命中区扩展：padding 撑出 ≈44px 高的点击热区，
  * 负 margin 抵消占位，标题行排版与桌面完全一致（r3 建议后续#5）。
  */
 const CRUMB_TOUCH_HIT_CLASS =
-  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!-mx-1.5 [@media(pointer:coarse)]:!-my-2.5';
+  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!py-3 [@media(pointer:coarse)]:!-mx-1.5 [@media(pointer:coarse)]:!-my-3';
 
 export interface MobileBreadcrumbProps {
   /** 根目录标题 */

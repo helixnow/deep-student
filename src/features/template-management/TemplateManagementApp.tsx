@@ -116,7 +116,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   onTemplateSelected,
   onCancel,
   onBackToAnki,
-  onOpenJsonPreview: _onOpenJsonPreview,
+  onOpenJsonPreview,
   onDesktopShellBackVisibilityChange,
   refreshToken = 0,
   workbenchWindowId,
@@ -657,43 +657,78 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     backToBrowse();
   }, [confirmDiscardEditorChanges, backToBrowse]);
 
+  // 编辑态返回统一语义（顶栏返回箭头与 Android 系统返回共用）：
+  // 停留在左/右屏时先回中屏，已在中屏才走脏检查退出编辑。
+  const handleEditorBack = useCallback(() => {
+    if (screenPosition !== 'center') {
+      setScreenPosition('center');
+      return;
+    }
+    handleCancelEdit();
+  }, [screenPosition, handleCancelEdit]);
+
+  // 选择模式小屏顶栏直接作为「返回制卡」出口（有 onCancel 才启用）
+  const selectingHeaderBack = isSelectingMode && Boolean(onCancel);
+
   // 浏览态保留面包屑 + 菜单；编辑态切换为明确返回，并在右侧保留编辑器导航入口。
   useMobileHeader('template-management', {
     title: isEditingMode
       ? (activeTab === 'create' ? t('tab_create') : editingTemplate?.name || t('tab_edit'))
       : undefined,
     titleNode: isEditingMode ? undefined : BreadcrumbNav,
-    showMenu: !isEditingMode,
-    showBackArrow: isEditingMode,
+    showMenu: !isEditingMode && !selectingHeaderBack,
+    showBackArrow: isEditingMode || selectingHeaderBack,
     onMenuClick: isEditingMode
-      ? handleCancelEdit
-      : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
+      ? handleEditorBack
+      : selectingHeaderBack
+        ? onCancel
+        : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
     rightActions: isEditingMode ? (
-      <DsButton
-        variant="ghost"
-        size="sm"
-        iconOnly
-        aria-label={t('manager_title')}
-        title={t('manager_title')}
-        onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
-      >
-        <Gear size={18} />
-      </DsButton>
+      <>
+        {isCodeMode && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label={t('template_code')}
+            title={t('template_code')}
+            aria-pressed={screenPosition === 'right'}
+            onClick={() => setScreenPosition(prev => (prev === 'right' ? 'center' : 'right'))}
+          >
+            <Code size={18} />
+          </DsButton>
+        )}
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label={t('manager_title')}
+          title={t('manager_title')}
+          onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
+        >
+          <Gear size={18} />
+        </DsButton>
+      </>
     ) : undefined,
-  }, [isEditingMode, activeTab, editingTemplate?.name, BreadcrumbNav, handleCancelEdit, t]);
+  }, [isEditingMode, activeTab, editingTemplate?.name, BreadcrumbNav, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, t]);
 
-  // Android 返回优先收起编辑器抽屉，其次走与顶栏相同的脏检查返回路径。
+  // Android 返回优先收起编辑器左右屏，其次走与顶栏相同的脏检查返回路径。
   useEffect(() => {
     if (!isSmallScreen || !isEditingMode) return;
     return registerBackHandler(() => {
-      if (screenPosition !== 'center') {
-        setScreenPosition('center');
-        return true;
-      }
-      handleCancelEdit();
+      handleEditorBack();
       return true;
     }, BACK_PRIORITY.view);
-  }, [isSmallScreen, isEditingMode, screenPosition, handleCancelEdit]);
+  }, [isSmallScreen, isEditingMode, handleEditorBack]);
+
+  // 选择模式小屏：Android 系统返回与顶栏返回箭头一致，直接取消选择返回制卡。
+  useEffect(() => {
+    if (!isSmallScreen || !isSelectingMode || !onCancel) return;
+    return registerBackHandler(() => {
+      onCancel();
+      return true;
+    }, BACK_PRIORITY.view);
+  }, [isSmallScreen, isSelectingMode, onCancel]);
 
   // 面包屑「Anki 制卡」离开守卫与取消编辑共用同一脏检查
   leaveEditorGuardRef.current = confirmDiscardEditorChanges;
@@ -771,6 +806,17 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               description={t('total_templates', { count: filteredTemplates.length })}
               className={templateSidebarRowClassName(activeTab === 'browse')}
             />
+            {!isSelectingMode && onOpenJsonPreview && (
+              <UnifiedSidebarItem
+                id="json-preview"
+                isSelected={false}
+                onClick={onOpenJsonPreview}
+                icon={Code}
+                title={t('json_preview.open_button')}
+                description={t('json_preview.open_button_hint')}
+                className={templateSidebarRowClassName()}
+              />
+            )}
           </div>
         )}
 
@@ -928,6 +974,20 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 <Download size={14} weight="bold" />
               </DsButton>
             </CommonTooltip>
+            {onOpenJsonPreview && (
+              <CommonTooltip content={t('json_preview.open_button_hint')}>
+                <DsButton
+                  variant="utility"
+                  size="icon"
+                  iconOnly
+                  onClick={onOpenJsonPreview}
+                  aria-label={t('json_preview.open_button')}
+                  className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                >
+                  <Code size={14} />
+                </DsButton>
+              </CommonTooltip>
+            )}
           </>
         )}
         {isSelectingMode && onCancel && (
@@ -1174,7 +1234,12 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           {editorNavItems.map(({ id, icon, label, selected }) =>
             renderMobileDrawerRow(`editor-${id}`, icon, label, () => {
               setEditorTab(id);
-              closeMobileDrawer();
+              // 代码编辑在小屏由右屏全屏承载，选中「模板代码」直接滑到右屏
+              if (id === 'templates') {
+                setScreenPosition('right');
+              } else {
+                closeMobileDrawer();
+              }
             }, selected),
           )}
         </>
@@ -1185,6 +1250,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             setActiveTab('browse');
             closeMobileDrawer();
           }, activeTab === 'browse')}
+          {!isSelectingMode && onOpenJsonPreview && renderMobileDrawerRow('json-preview', Code, t('json_preview.open_button'), () => {
+            onOpenJsonPreview();
+            closeMobileDrawer();
+          })}
           {!isSelectingMode && (
             <>
               <span className={mobileDrawerSectionLabelClassName}>{t('import_section')}</span>
