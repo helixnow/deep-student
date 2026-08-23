@@ -83,7 +83,7 @@ const MemoryView = lazy(() => import('./views/MemoryView'));
 // ★ 2026-01-31: 懒加载桌面视图
 import { DesktopView, type CreateResourceType } from './components/finder';
 import type { DesktopRootConfig } from './stores/desktopStore';
-import { useHostFinderStore, type FinderPath, type QuickAccessType } from './stores/finderStore';
+import { useFinderStore, type FinderPath, type QuickAccessType } from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -139,6 +139,12 @@ const CANVAS_FALLBACK_PATH = {
   folderId: null as string | null,
   typeFilter: null as null,
 };
+const createCanvasFinderPath = (): FinderPath => ({
+  viewKind: 'folder',
+  breadcrumbs: [],
+  folderId: null,
+  typeFilter: null,
+});
 const PENDING_FOLDER_ID_PREFIX = '__pending_new_folder__';
 
 type SoftDeleteTarget = { id: string; type: string; name: string };
@@ -168,7 +174,7 @@ export function LearningHubSidebar({
   toolbarPortalTarget,
   toolbarPortalMode = 'window',
   highlightedIds,
-  hostId,
+  hostId: _hostId,
   sessionActive,
   commandsEnabled,
   onMultiSelectModeChange,
@@ -183,9 +189,6 @@ export function LearningHubSidebar({
 
   // ========== 页面生命周期监控 ==========
   usePageMount('learning-hub-sidebar', 'LearningHubSidebar');
-
-  // ★ LH-HOST Step2：按 hostId 取对应的 finder 桶；未登记 hostId 落默认桶（旧行为）
-  const useHostFinder = useHostFinderStore(hostId);
 
   // Store state
   const {
@@ -220,12 +223,11 @@ export function LearningHubSidebar({
     navigateTo: storeNavigateTo,
     quickAccessNavigate: storeQuickAccessNavigate,
     queryItemsForPath,
-  } = useHostFinder();
+  } = useFinderStore();
 
-  // ★ LH-HOST Step2：canvas 宿主的「导航位置」不再是组件本地 state，而是
-  // hostId 桶内的 store。外部顶栏（ChatV2Page 移动端面包屑）因此能读到画布
-  // 自己的落点，不再串到学习中心那一桶。
-  // 列表 / 选中 / 搜索仍留在本地：canvas 走本地活名过滤而非后端搜索。
+  const [canvasPath, setCanvasPath] = useState<FinderPath>(createCanvasFinderPath);
+  const [canvasHistory, setCanvasHistory] = useState<FinderPath[]>(() => [createCanvasFinderPath()]);
+  const [canvasHistoryIndex, setCanvasHistoryIndex] = useState(0);
   const [canvasItems, setCanvasItems] = useState<DstuNode[]>([]);
   const [canvasIsLoading, setCanvasIsLoading] = useState(false);
   const [canvasError, setCanvasError] = useState<string | null>(null);
@@ -234,10 +236,10 @@ export function LearningHubSidebar({
   const [canvasSearchQuery, setCanvasSearchQuery] = useState('');
   const canvasRequestIdRef = useRef(0);
 
-  // 导航位置统一由宿主桶 store 承载（canvas 与 fullscreen 桶不同，天然隔离）。
-  const currentPath = storeCurrentPath;
-  const history = storeHistory;
-  const historyIndex = storeHistoryIndex;
+  // Canvas uses an isolated file-browser state: never reuse the global path/items/search.
+  const currentPath = mode === 'canvas' ? canvasPath : storeCurrentPath;
+  const history = mode === 'canvas' ? canvasHistory : storeHistory;
+  const historyIndex = mode === 'canvas' ? canvasHistoryIndex : storeHistoryIndex;
   const items = mode === 'canvas' ? canvasItems : storeItems;
   const isLoading = mode === 'canvas' ? canvasIsLoading : storeIsLoading;
   const error = mode === 'canvas' ? canvasError : storeError;
@@ -364,7 +366,7 @@ export function LearningHubSidebar({
     inlineEdit,
     startInlineEdit,
     cancelInlineEdit,
-  } = useHostFinder();
+  } = useFinderStore();
   
   // Container ref for keyboard shortcuts scope
   const containerRef = useRef<HTMLDivElement>(null);
@@ -387,50 +389,89 @@ export function LearningHubSidebar({
     };
   }, []);
 
-  // canvas 的列表/选中/搜索仍是本地态，导航后需要跟着清一次
-  const resetCanvasLocalSelection = useCallback(() => {
+  const navigateCanvasTo = useCallback((path: FinderPath) => {
+    setCanvasHistory((previous) => {
+      const next = [...previous.slice(0, canvasHistoryIndex + 1), path];
+      setCanvasHistoryIndex(next.length - 1);
+      return next;
+    });
+    setCanvasPath(path);
     setCanvasSelectedIds(new Set());
     setCanvasLastSelectedId(null);
-  }, []);
-  const resetCanvasLocalState = useCallback(() => {
-    resetCanvasLocalSelection();
     setCanvasSearchQuery('');
-  }, [resetCanvasLocalSelection]);
+  }, [canvasHistoryIndex]);
 
-  const navigateCanvasTo = useCallback((path: FinderPath) => {
-    storeNavigateTo(path);
-    resetCanvasLocalState();
-  }, [storeNavigateTo, resetCanvasLocalState]);
-
-  const enterCanvasFolder = useCallback(async (folderId: string, folderName?: string, folderPath?: string) => {
-    await storeEnterFolder(folderId, folderName, folderPath);
-    resetCanvasLocalState();
-  }, [storeEnterFolder, resetCanvasLocalState]);
+  const enterCanvasFolder = useCallback(async (folderId: string, _folderName?: string, _folderPath?: string) => {
+    const breadcrumbsResult = await folderApi.getBreadcrumbs(folderId);
+    const breadcrumbs = breadcrumbsResult.ok
+      ? breadcrumbsResult.value.map((crumb, index, all) => ({
+          id: crumb.id,
+          name: crumb.name,
+          dstuPath: `/${all.slice(0, index + 1).map((item) => item.name).join('/')}`,
+        }))
+      : [];
+    navigateCanvasTo({
+      viewKind: 'folder',
+      folderId,
+      breadcrumbs,
+      typeFilter: null,
+    });
+  }, [navigateCanvasTo]);
 
   const goCanvasBack = useCallback(() => {
-    storeGoBack();
-    resetCanvasLocalSelection();
-  }, [storeGoBack, resetCanvasLocalSelection]);
+    if (canvasHistoryIndex <= 0) return;
+    const index = canvasHistoryIndex - 1;
+    setCanvasHistoryIndex(index);
+    setCanvasPath(canvasHistory[index]);
+    setCanvasSelectedIds(new Set());
+    setCanvasLastSelectedId(null);
+  }, [canvasHistory, canvasHistoryIndex]);
 
   const goCanvasForward = useCallback(() => {
-    storeGoForward();
-    resetCanvasLocalSelection();
-  }, [storeGoForward, resetCanvasLocalSelection]);
+    if (canvasHistoryIndex >= canvasHistory.length - 1) return;
+    const index = canvasHistoryIndex + 1;
+    setCanvasHistoryIndex(index);
+    setCanvasPath(canvasHistory[index]);
+    setCanvasSelectedIds(new Set());
+    setCanvasLastSelectedId(null);
+  }, [canvasHistory, canvasHistoryIndex]);
 
   const jumpCanvasToBreadcrumb = useCallback((index: number) => {
-    storeJumpToBreadcrumb(index);
-    resetCanvasLocalState();
-  }, [storeJumpToBreadcrumb, resetCanvasLocalState]);
+    if (index === -1) {
+      navigateCanvasTo(createCanvasFinderPath());
+      return;
+    }
+    if (index < 0 || index >= canvasPath.breadcrumbs.length - 1) return;
+    const breadcrumbs = canvasPath.breadcrumbs.slice(0, index + 1);
+    navigateCanvasTo({
+      viewKind: 'folder',
+      folderId: breadcrumbs[index].id,
+      breadcrumbs,
+      typeFilter: null,
+    });
+  }, [canvasPath, navigateCanvasTo]);
 
   const navigateCanvasQuickAccess = useCallback((type: QuickAccessType) => {
-    storeQuickAccessNavigate(type);
-    resetCanvasLocalState();
-  }, [storeQuickAccessNavigate, resetCanvasLocalState]);
+    const target = getQuickAccessTarget(type);
+    navigateCanvasTo({
+      viewKind: target.viewKind,
+      breadcrumbs: [],
+      folderId: null,
+      typeFilter: target.typeFilter,
+    });
+  }, [navigateCanvasTo]);
 
   const goCanvasUp = useCallback(() => {
-    storeGoUp();
-    resetCanvasLocalState();
-  }, [storeGoUp, resetCanvasLocalState]);
+    if (canvasPath.breadcrumbs.length === 0) return;
+    const breadcrumbs = canvasPath.breadcrumbs.slice(0, -1);
+    const parent = breadcrumbs[breadcrumbs.length - 1] ?? null;
+    navigateCanvasTo({
+      viewKind: 'folder',
+      breadcrumbs,
+      folderId: parent ? parent.id : null,
+      typeFilter: null,
+    });
+  }, [canvasPath.breadcrumbs, navigateCanvasTo]);
 
   const goBack = mode === 'canvas' ? goCanvasBack : storeGoBack;
   const goForward = mode === 'canvas' ? goCanvasForward : storeGoForward;
@@ -486,7 +527,7 @@ export function LearningHubSidebar({
   const refreshCanvas = useCallback(async () => {
     if (!isMountedRef.current) return;
     const requestId = ++canvasRequestIdRef.current;
-    const pathSnapshot = currentPath;
+    const pathSnapshot = canvasPath;
     const querySnapshot = canvasSearchQuery.trim();
     setCanvasIsLoading(true);
     setCanvasError(null);
@@ -511,12 +552,12 @@ export function LearningHubSidebar({
       setCanvasError(result.error.message);
     }
     setCanvasIsLoading(false);
-  }, [canvasLastSelectedId, currentPath, canvasSearchQuery, queryItemsForPath]);
+  }, [canvasLastSelectedId, canvasPath, canvasSearchQuery, queryItemsForPath]);
 
   useEffect(() => {
     if (mode !== 'canvas' || sessionActive === false) return;
     void refreshCanvas();
-  }, [mode, currentPath, canvasSearchQuery, refreshCanvas, sessionActive]);
+  }, [mode, canvasPath, canvasSearchQuery, refreshCanvas, sessionActive]);
 
   // ★ 2025-12-31: 移除组件挂载时的 reset() 调用
   // 原因: finderStore 使用 persist 中间件保存导航状态到 localStorage
@@ -573,7 +614,7 @@ export function LearningHubSidebar({
             'learning-hub-sidebar',
             'LearningHubSidebar',
             'data_ready',
-            `${useHostFinder.getState().items.length} items`,
+            `${useFinderStore.getState().items.length} items`,
             { duration: Date.now() - start }
           );
         }
@@ -588,7 +629,7 @@ export function LearningHubSidebar({
     return () => {
       isCancelled = true;
     };
-  }, [mode, sessionActive, currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh, useHostFinder]);
+  }, [mode, sessionActive, currentPathDisplay, currentPath.viewKind, currentPath.folderId, currentPath.typeFilter, debouncedSearchQuery, searchQuery, finderRefresh]);
 
   // Handle open item
   const handleOpen = (item: DstuNode) => {
@@ -685,7 +726,7 @@ export function LearningHubSidebar({
           // R2-04：内联重命名进行中延迟 silent refresh（非永久跳过），避免丢 agent 变更
           const trySilentRefresh = () => {
             // canvas 宿主有独立列表；勿被全局 fullscreen 的 inlineEdit 卡住刷新
-            if (mode !== 'canvas' && useHostFinder.getState().inlineEdit.editingId) {
+            if (mode !== 'canvas' && useFinderStore.getState().inlineEdit.editingId) {
               watchDebounceRef.current = setTimeout(() => {
                 watchDebounceRef.current = null;
                 trySilentRefresh();
@@ -706,7 +747,7 @@ export function LearningHubSidebar({
         watchDebounceRef.current = null;
       }
     };
-  }, [sessionActive, currentPath.viewKind, handleSilentRefresh, mode, useHostFinder]);
+  }, [sessionActive, currentPath.viewKind, handleSilentRefresh, mode]);
 
   const ensureCreatableView = useCallback(() => {
     if (canCreateInCurrentView) {
@@ -1925,16 +1966,16 @@ export function LearningHubSidebar({
       pendingFolderDraftRef.current = null;
       setPendingFolderDraft(null);
     }
-    if (useHostFinder.getState().inlineEdit.editingId === itemId) {
+    if (useFinderStore.getState().inlineEdit.editingId === itemId) {
       cancelInlineEdit();
     }
-  }, [cancelInlineEdit, useHostFinder]);
+  }, [cancelInlineEdit]);
 
   useEffect(() => {
     if (!pendingFolderDraft) return;
     setPendingFolderDraft(null);
     pendingFolderDraftRef.current = null;
-    if (isPendingFolderId(useHostFinder.getState().inlineEdit.editingId)) {
+    if (isPendingFolderId(useFinderStore.getState().inlineEdit.editingId)) {
       cancelInlineEdit();
     }
     // 路径变化后草稿不应跟随到另一个文件夹。

@@ -362,65 +362,7 @@ function getDstuListOptionsForPath(
 /** 历史记录最大条数，防止内存无限增长 */
 const MAX_HISTORY_SIZE = 100;
 
-// ============================================================================
-// ★ LH-HOST Step2：按 hostId 分桶
-//
-// finderStore 原本是全局单例，chat canvas / 学习中心 / 分组选择器共用一份
-// 导航位置、选中集合与 viewMode，互相带走落点。这里按「宿主桶」拆分 store
-// 实例：同一桶内的宿主共享状态（page 与 page-mobile 是同一个学习中心，
-// 窄宽屏切换不该丢落点），跨桶完全隔离。
-//
-// 默认桶保持 `learning-hub-finder` 这个 persist key 与 `useFinderStore`
-// 导出不变，workbench Files 窗、agent driver、mcp-debug 等既有全局调用点
-// 无需改动即可继续工作。
-// ============================================================================
-
-/** 默认桶 ID：承载 workbench Files 窗与未声明 hostId 的遗留调用点 */
-export const DEFAULT_FINDER_BUCKET = 'default';
-
-/** 已登记的 Finder 宿主 ID（与 LearningHubSidebar 的 hostId prop 一一对应） */
-export const FINDER_HOST_IDS = {
-  files: 'files',
-  page: 'page',
-  pageMobile: 'page-mobile',
-  canvas: 'canvas',
-  canvasMobile: 'canvas-mobile',
-  groupPicker: 'group-picker',
-} as const;
-
-export type FinderHostId = typeof FINDER_HOST_IDS[keyof typeof FINDER_HOST_IDS];
-
-/**
- * hostId → 桶 ID 映射。
- *
- * 未登记的 hostId 一律落到默认桶（保持旧行为，不会因为新增宿主而静默丢状态）。
- */
-const FINDER_BUCKET_BY_HOST: Record<string, string> = {
-  files: DEFAULT_FINDER_BUCKET,
-  page: 'page',
-  'page-mobile': 'page',
-  canvas: 'canvas',
-  'canvas-mobile': 'canvas',
-  'group-picker': 'group-picker',
-};
-
-/** 把 hostId 归一化为桶 ID；未知 / 缺省 hostId 落默认桶。 */
-export function resolveFinderBucketId(hostId?: string | null): string {
-  if (!hostId) return DEFAULT_FINDER_BUCKET;
-  return FINDER_BUCKET_BY_HOST[hostId] ?? DEFAULT_FINDER_BUCKET;
-}
-
-/** persist key：默认桶沿用历史 key，其余桶各自独立，刷新后不串台。 */
-function persistNameForBucket(bucketId: string): string {
-  return bucketId === DEFAULT_FINDER_BUCKET
-    ? 'learning-hub-finder'
-    : `learning-hub-finder:${bucketId}`;
-}
-
-export type FinderStoreApi = ReturnType<typeof createFinderStore>;
-
-export function createFinderStore(bucketId: string) {
-  return create<FinderState>()(
+export const useFinderStore = create<FinderState>()(
   persist(
     (set, get) => ({
       // 导航状态
@@ -1079,7 +1021,7 @@ export function createFinderStore(bucketId: string) {
       },
     }),
     {
-      name: persistNameForBucket(bucketId),
+      name: 'learning-hub-finder',
       partialize: (state) => ({
         viewMode: state.viewMode,
         sortBy: state.sortBy,
@@ -1088,55 +1030,4 @@ export function createFinderStore(bucketId: string) {
       }),
     }
   )
-  );
-}
-
-// ============================================================================
-// 桶注册表
-// ============================================================================
-
-const finderStoreRegistry = new Map<string, FinderStoreApi>();
-
-/** 取（并按需创建）某个桶的 store 实例。 */
-export function getFinderStoreForBucket(bucketId: string): FinderStoreApi {
-  const existing = finderStoreRegistry.get(bucketId);
-  if (existing) return existing;
-  const created = createFinderStore(bucketId);
-  finderStoreRegistry.set(bucketId, created);
-  return created;
-}
-
-/** 取某个宿主（hostId）对应的 store 实例。 */
-export function getFinderStoreForHost(hostId?: string | null): FinderStoreApi {
-  return getFinderStoreForBucket(resolveFinderBucketId(hostId));
-}
-
-/** 已实例化的桶 ID 列表（调试 / 测试用）。 */
-export function listFinderBuckets(): string[] {
-  return Array.from(finderStoreRegistry.keys());
-}
-
-/** 仅供测试：清空注册表，让下一次 get 重新建实例。 */
-export function __resetFinderStoreRegistryForTests(): void {
-  finderStoreRegistry.clear();
-  finderStoreRegistry.set(DEFAULT_FINDER_BUCKET, useFinderStore);
-}
-
-/**
- * 默认桶 store。
- *
- * 保持既有 `useFinderStore(selector)` / `useFinderStore.getState()` 用法不变，
- * 未声明 hostId 的调用点行为与改造前一致。
- */
-export const useFinderStore: FinderStoreApi = getFinderStoreForBucket(DEFAULT_FINDER_BUCKET);
-
-/**
- * React 侧取宿主桶 store 的便捷 hook。
- *
- * 返回的是 store 本身（同一 hostId 下引用稳定），调用方按普通 zustand hook 使用：
- * `const finder = useHostFinderStore(hostId); const items = finder((s) => s.items);`
- */
-export function useHostFinderStore(hostId?: string | null): FinderStoreApi {
-  const bucketId = resolveFinderBucketId(hostId);
-  return getFinderStoreForBucket(bucketId);
-}
+);

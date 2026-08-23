@@ -57,7 +57,7 @@ import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
-import { useHostFinderStore, FINDER_HOST_IDS } from './stores/finderStore';
+import { useFinderStore } from './stores/finderStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
@@ -487,17 +487,14 @@ export const LearningHubPage: React.FC = () => {
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
-  // ★ LH-HOST Step2：本页两个 LearningHubSidebar 宿主是 page / page-mobile，
-  // 同属 `page` 桶；顶栏读的必须是同一桶，否则窄宽屏切换会读到别的宿主。
-  const useFinder = useHostFinderStore(FINDER_HOST_IDS.page);
-  const finderCurrentPath = useFinder(state => state.currentPath);
-  const finderGoUp = useFinder(state => state.goUp);
-  const finderJumpToBreadcrumb = useFinder(state => state.jumpToBreadcrumb);
-  const finderRefresh = useFinder(state => state.refresh);
-  const finderQuickAccessNavigate = useFinder(state => state.quickAccessNavigate);
-  const finderEnterFolder = useFinder(state => state.enterFolder);
-  const finderSearchQuery = useFinder(state => state.searchQuery);
-  const finderSetSearchQuery = useFinder(state => state.setSearchQuery);
+  const finderCurrentPath = useFinderStore(state => state.currentPath);
+  const finderGoUp = useFinderStore(state => state.goUp);
+  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
+  const finderRefresh = useFinderStore(state => state.refresh);
+  const finderQuickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
+  const finderEnterFolder = useFinderStore(state => state.enterFolder);
+  const finderSearchQuery = useFinderStore(state => state.searchQuery);
+  const finderSetSearchQuery = useFinderStore(state => state.setSearchQuery);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const finderViewCapabilities = getViewCapabilities(finderCurrentPath.viewKind);
 
