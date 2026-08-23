@@ -307,7 +307,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 disabled={disabled}
                 title={bundle.skillIds.join(', ')}
                 aria-label={t('skills:bundles.activate', { name: bundle.name })}
-                className="inline-flex items-center gap-1 text-foreground hover:opacity-80 disabled:opacity-50"
+                className="inline-flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 text-foreground hover:opacity-80 disabled:opacity-50"
               >
                 <Stack size={11} />
                 {bundle.name}
@@ -333,7 +333,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               <button
                 type="button"
                 onClick={() => setBundleNameInput('')}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--composer-panel-control-border)] px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--composer-panel-control-border)] px-2 py-0.5 [@media(pointer:coarse)]:min-h-11 text-[11px] text-muted-foreground hover:text-foreground"
               >
                 <Stack size={11} />
                 {t('skills:bundles.save_current', { count: activeSkillIds.length })}
@@ -350,7 +350,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   }}
                   placeholder={t('skills:bundles.name_placeholder')}
                   aria-label={t('skills:bundles.name_placeholder')}
-                  className="h-6 max-lg:h-8 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] outline-none focus:border-[color:var(--button-primary-border)]"
+                  className="h-6 max-lg:h-8 [@media(pointer:coarse)]:!h-11 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] outline-none focus:border-[color:var(--button-primary-border)]"
                 />
                 {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联确认按钮 */}
                 <button
@@ -358,7 +358,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   onClick={handleSaveBundle}
                   disabled={!(bundleNameInput ?? '').trim()}
                   aria-label={t('common:actions.confirm')}
-                  className="relative rounded-md p-1 text-muted-foreground hover:text-foreground disabled:opacity-40 after:absolute after:-inset-2 after:content-['']"
+                  className="relative rounded-md p-1 text-muted-foreground hover:text-foreground disabled:opacity-40 after:absolute after:-inset-2 [@media(pointer:coarse)]:after:-inset-3 after:content-['']"
                 >
                   <Check size={12} weight="bold" />
                 </button>

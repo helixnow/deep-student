@@ -639,7 +639,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               setDockSize(next);
               void persist(WORKBENCH_SETTING_KEYS.dockSize, String(next), next);
             }}
-            className="h-5 min-w-0 flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-5 [@media(pointer:coarse)]:h-11 min-w-0 flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
           />
           <output
             aria-live="polite"

@@ -621,7 +621,7 @@ export function AutomationScheduleEditor({
                     placeholder={t(`${P}.timezoneSearch`)}
                     aria-label={t(`${P}.timezoneSearch`)}
                     onChange={(event) => setTimezoneQuery(event.target.value)}
-                    className={cn(fieldClassName, 'h-8 pl-8 text-xs')}
+                    className={cn(fieldClassName, 'h-8 pl-8 text-xs [@media(pointer:coarse)]:h-11')}
                   />
                 </div>
                 <CustomScrollArea className="mt-1.5 max-h-48 min-h-0" fullHeight={false}>

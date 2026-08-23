@@ -291,7 +291,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
         variant="ghost"
         size="sm"
         onClick={onClear}
-        className="ml-auto h-7 gap-1 !px-2 text-xs text-muted-foreground"
+        className="ml-auto h-7 gap-1 !px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:h-11"
       >
         <X size={13} />
         {t('todo:bulk.clear', { defaultValue: '清除选择' })}

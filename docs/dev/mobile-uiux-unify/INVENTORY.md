@@ -31,4 +31,4 @@
 - Settings 小屏标题、GradingMain 640–767：Round 3 已修；Sheet 底安全区 / overlay 返回：Round 10–11 已修。
 - 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
 - 导图工具条 40→44、热力图年份/刷新 coarse 44、`shad/Table` 横滚：Round 11 已修。
-- **仍开**：页码输入 24、Finder 搜索 40、LanguageSelect 40、会话分组 40、SegmentedControl/Switch、MCP chip 36。
+- **仍开**：灯箱底栏 36、学习中心面包屑/空态 CTA、MCP 加环境变量、导出全选、PromptPanel 32–40。

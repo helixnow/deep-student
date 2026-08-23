@@ -223,7 +223,7 @@ export function SandboxWorkbenchSurface({
             <button
               type="button"
               onClick={handleClear}
-              className="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
+              className="rounded-full border border-border px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
             >
               {t('sandbox.clearSession')}
             </button>

@@ -148,7 +148,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             {loadingError || t('textbook.loadError')}
           </span>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!h-11">
           <ArrowClockwise size={12} />
           {t('textbook.retry')}
         </DsButton>
@@ -223,8 +223,8 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
               placeholder={String(currentPage)}
               className={cn(
                 'w-10 h-6 text-center text-sm rounded',
-                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大，页码位数多时加宽
-                '[@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:w-14',
+                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大，页码位数多时加宽，高度提到 44px 触控目标
+                '[@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:w-14 [@media(pointer:coarse)]:h-11',
                 'bg-muted/50 border border-border/50',
                 'focus:outline-none focus:ring-1 focus:ring-primary',
                 'placeholder:text-foreground'
@@ -254,7 +254,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
         </div>
 
         {/* 右侧：缩略图切换 */}
-        <DsButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn(isThumbExpanded && 'bg-muted/50 text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn('[@media(pointer:coarse)]:!h-11', isThumbExpanded && 'bg-muted/50 text-foreground')}>
           <Image size={12} />
           {t('textbook.preview')}
         </DsButton>

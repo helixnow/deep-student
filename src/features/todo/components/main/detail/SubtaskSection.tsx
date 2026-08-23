@@ -426,7 +426,7 @@ export const SubtaskSection: React.FC<{
             }
           }}
           placeholder={t('todo:subtasks.addPlaceholder')}
-          className="h-7 flex-1 border-0 bg-transparent px-0 text-ui focus-visible:ring-0 placeholder:text-muted-foreground/50"
+          className="h-7 flex-1 border-0 bg-transparent px-0 text-ui focus-visible:ring-0 placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:h-11"
         />
       </div>
     </div>

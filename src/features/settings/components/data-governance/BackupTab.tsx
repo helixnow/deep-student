@@ -611,7 +611,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={handleBackupAndExport}
             disabled={loading || isBackupRunning}
-            className="h-9"
+            className="h-9 [@media(pointer:coarse)]:!h-11"
           >
             {isBackupRunning ? (
               <CircleNotch size={16} className="mr-2 animate-spin" />
@@ -625,12 +625,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={onImportZip}
             disabled={loading || isBackupRunning}
-            className="h-9"
+            className="h-9 [@media(pointer:coarse)]:!h-11"
           >
             <Upload className="h-4 w-4 mr-1.5" />
             {t('data:governance.import_button')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9">
+          <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9 [@media(pointer:coarse)]:!h-11">
             <ArrowClockwise size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
             {t('common:actions.refresh')}
           </DsButton>

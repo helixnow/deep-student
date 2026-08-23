@@ -3018,7 +3018,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
               aria-pressed={active}
               onClick={() => void handleBulkOverride(toolNames, level === 'default' ? null : level)}
               className={cn(
-                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5',
+                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5',
                 active && level === 'default' && 'bg-background text-foreground shadow-sm',
                 active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
                 !active && 'text-muted-foreground hover:text-foreground'
@@ -3056,7 +3056,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
               aria-pressed={active}
               onClick={() => void handleSetGroupOverride(kind, group, level === 'default' ? null : level)}
               className={cn(
-                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5',
+                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-2.5',
                 active && level === 'default' && 'bg-background text-foreground shadow-sm',
                 active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
                 !active && 'text-muted-foreground hover:text-foreground'
@@ -3461,7 +3461,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         onClick={() => setGroupMode(mode)}
                         aria-pressed={groupMode === mode}
                         className={cn(
-                          '!h-6 !px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-3',
+                          '!h-6 !px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3',
                           groupMode === mode && 'bg-background text-foreground shadow-sm'
                         )}
                       >
@@ -3595,7 +3595,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedTools(new Set())}
-                              className="!h-6 text-xs [@media(pointer:coarse)]:!h-9"
+                              className="!h-6 text-xs [@media(pointer:coarse)]:!h-11"
                             >
                               {t('settings:tool_permissions.clear_selection')}
                             </DsButton>

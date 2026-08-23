@@ -820,8 +820,8 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               </DsButton>
             )}
           </div>
-          {/* 分组滑块独占一行：三分段等宽拉伸，40px 触控高度，图标+文字标签 */}
-          <div className="relative flex items-stretch h-10 rounded-lg bg-muted/50 p-0.5">
+          {/* 分组滑块独占一行：三分段等宽拉伸，40px 触控高度（coarse 指针下 44px），图标+文字标签 */}
+          <div className="relative flex items-stretch h-10 [@media(pointer:coarse)]:h-11 rounded-lg bg-muted/50 p-0.5">
             <button
               onClick={() => setGroupMode('time')}
               className={cn(

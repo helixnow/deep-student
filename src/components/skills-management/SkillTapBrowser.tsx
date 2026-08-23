@@ -543,7 +543,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
               type="button"
               onClick={() => void handleBrowse(source.url)}
               disabled={loading}
-              className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 text-[11px] transition-colors hover:bg-[var(--interactive-hover)]"
+              className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-[11px] transition-colors hover:bg-[var(--interactive-hover)]"
             >
               <GithubLogo size={11} />
               {source.label}

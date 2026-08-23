@@ -916,7 +916,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56"
+                  className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56 [@media(pointer:coarse)]:h-11"
                 />
               </div>
             )}
