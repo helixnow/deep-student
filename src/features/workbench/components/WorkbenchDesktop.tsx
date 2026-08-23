@@ -46,7 +46,7 @@ import {
 import { RESOURCE_APP_TYPE_IDS } from '../apps/content/typeMap';
 import { NOTES_APP_TYPE_ID } from '../apps/notes/register';
 import { normalizeSingletonAppWindows } from '../core/snapshotWindowPolicy';
-import type { SnapZone, WorkbenchWindow } from '../core/types';
+import type { SnapZone, WorkbenchSnapshotV1, WorkbenchWindow } from '../core/types';
 import { setActiveSnapZone } from '../core/snapZoneStore';
 import { WallpaperLayer, DEFAULT_WALLPAPER, type WallpaperConfig } from './WallpaperLayer';
 import { DesktopContextMenu, useDesktopGestures } from './DesktopContextMenu';
@@ -97,6 +97,8 @@ const SETTING_KEYS = {
   dockSize: 'desktop.workbenchDockSize',
   dockAutohide: 'desktop.workbenchDockAutohide',
   restoreSession: 'desktop.workbenchRestoreSession',
+  /** 桌面组件（日程小组件）显隐；缺省显示，桌面右键菜单与设置页共用该 key */
+  desktopWidgets: 'desktop.workbenchDesktopWidgets',
   devPanel: 'desktop.workbenchDevPanel',
 } as const;
 
@@ -274,7 +276,13 @@ export const WorkbenchDesktop: React.FC = () => {
   const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
   const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
+  const [desktopWidgets, setDesktopWidgets] = useState(true);
   const [devPanel, setDevPanel] = useState(false);
+  /**
+   * 「恢复上次桌面」次级 CTA 的可用性：仅在关闭自动恢复、且启动时确有快照的
+   * 冷启动首屏提供。不翻转 restoreSession 默认值（老用户不会突然被恢复一屏窗口）。
+   */
+  const [restorableSnapshot, setRestorableSnapshot] = useState<WorkbenchSnapshotV1 | null>(null);
   // 壁纸管理面板：入口方（桌面右键菜单 / 设置页）派发事件，这里统一打开
   const [wallpaperManagerOpen, setWallpaperManagerOpen] = useState(false);
 
@@ -303,6 +311,7 @@ export const WorkbenchDesktop: React.FC = () => {
         marginsVal,
         dockSizeVal,
         autohideVal,
+        desktopWidgetsVal,
         devPanelVal,
       ] = await Promise.all([
         readSetting(SETTING_KEYS.materialTier),
@@ -310,6 +319,7 @@ export const WorkbenchDesktop: React.FC = () => {
         readSetting(SETTING_KEYS.tileMargins),
         readSetting(SETTING_KEYS.dockSize),
         readSetting(SETTING_KEYS.dockAutohide),
+        readSetting(SETTING_KEYS.desktopWidgets),
         readSetting(SETTING_KEYS.devPanel),
       ]);
       if (cancelled) return;
@@ -323,6 +333,8 @@ export const WorkbenchDesktop: React.FC = () => {
       setTileMargins(parseJson<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
+      // 桌面组件缺省显示（保持现状），只有显式 'false' 才隐藏
+      setDesktopWidgets(String(desktopWidgetsVal ?? '') !== 'false');
       // 无启动参数时强制关闭 HUD；带参时默认开（可用设置关掉）
       if (isWorkbenchDiagnosticsRequested()) {
         setDevPanel(devPanelVal == null || String(devPanelVal) === '' || String(devPanelVal) === 'true');
@@ -347,6 +359,9 @@ export const WorkbenchDesktop: React.FC = () => {
           break;
         case SETTING_KEYS.dockSize:
           setDockSize(parseDockSize(value));
+          break;
+        case SETTING_KEYS.desktopWidgets:
+          setDesktopWidgets(value !== false);
           break;
         case SETTING_KEYS.devPanel:
           setDevPanel(isWorkbenchDiagnosticsRequested() && value === true);
@@ -450,6 +465,14 @@ export const WorkbenchDesktop: React.FC = () => {
       setHydrated(true);
       // 快照恢复完成后补投运行中的长活实例（番茄钟等）
       resyncProjections();
+
+      // 未开启自动恢复时探测一次快照：有内容就在空桌面上给一个显式的
+      // 「恢复上次桌面」入口（首屏之后再读，不拖慢冷启动）
+      if (!shouldRestoreSession) {
+        const snapshot = await loadSnapshot();
+        if (disposed) return;
+        if (snapshot && snapshot.windows.length > 0) setRestorableSnapshot(snapshot);
+      }
     })();
 
     return () => {
@@ -463,6 +486,21 @@ export const WorkbenchDesktop: React.FC = () => {
       stopScheduler();
     };
   }, []);
+
+  /** 空桌面 CTA：把探测到的快照按与自动恢复完全相同的链路 hydrate 一次 */
+  const restoreLastSession = useCallback(() => {
+    const snapshot = restorableSnapshot;
+    if (!snapshot) return;
+    setRestorableSnapshot(null);
+    void (async () => {
+      const windows = await pruneSnapshotWindows(snapshot.windows);
+      useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
+        preserveExisting: true,
+      });
+      if (snapshot.dockPinned.length > 0) setDockPinned(snapshot.dockPinned);
+      resyncProjections();
+    })();
+  }, [restorableSnapshot]);
 
   // ---- 快捷键（俯瞰 / 切换器 / 平铺全集 / 速查表）----
   useWorkbenchShortcuts({ enabled: true });
@@ -531,6 +569,10 @@ export const WorkbenchDesktop: React.FC = () => {
       // overflow-clip（非 hidden）：结构容器不可成为滚动容器，否则 WebKit 的
       // reveal-selection/caret 会在拖选文本时把整个桌面（窗口+Dock）滚出去
       className="absolute inset-0 overflow-clip"
+      // isolation:isolate：桌面内部的 --wb-z-* 刻度（Dock 9000 / 菜单栏 9050 /
+      // overlay 9500+）全部关进本根节点的 stacking context，不再与应用全局的
+      // Dialog / Toast（body 层 portal）比大小——层序表本身不动。
+      style={{ isolation: 'isolate' }}
     >
       {/* 壁纸挂在根节点（延伸到菜单栏背后），玻璃顶条才有真实背景可采样 */}
       <div className="wb-wallpaper-frame" aria-hidden="true">
@@ -551,10 +593,16 @@ export const WorkbenchDesktop: React.FC = () => {
         onKeyDown={gestures.onDesktopKeyDown}
         onDoubleClick={gestures.onDesktopDoubleClick}
       >
-        {hydrated && <DesktopAgendaWidget />}
+        {/* 桌面组件可关：关掉后窄工作区不再被 340px 日程组件挤占 */}
+        {hydrated && desktopWidgets && <DesktopAgendaWidget />}
         {/* 桌面快捷方式图标层：与资源库「桌面」视图共用 desktopStore，双向同步 */}
         {hydrated && <DesktopShortcutsLayer />}
-        {hydrated && orderedWindows.length === 0 && <EmptyDesktop />}
+        {hydrated && orderedWindows.length === 0 && (
+          <EmptyDesktop
+            restoreAvailable={restorableSnapshot !== null}
+            onRestoreSession={restoreLastSession}
+          />
+        )}
 
         {/* 窗口层：自成 stacking context（COORDINATION 裁决），内部 zIndex 与 overlay 定值互不干扰。
             层本身指针穿透（空桌面引导可点），窗口壳 / 中缝各自恢复 pointer-events */}

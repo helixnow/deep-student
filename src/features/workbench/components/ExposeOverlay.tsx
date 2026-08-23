@@ -186,6 +186,26 @@ function clearOrphanedExposeTransforms() {
     .forEach((el) => el.removeAttribute('data-expose-degrade'));
 }
 
+/**
+ * 俯瞰期间把真实窗口层整体设为 inert + aria-hidden：
+ * 缩略窗只是「被 transform 缩小的真实 DOM」，读屏会把背后每个窗口的完整内容
+ * 都念一遍；命中层（role=dialog）才是本会话唯一的可交互 / 可朗读界面。
+ * 直接操作 DOM（与本组件的 transform 注入同一路数），避免 WorkbenchDesktop
+ * 因俯瞰开合而整树重渲染。
+ */
+function setWindowLayerInert(inert: boolean): void {
+  if (typeof document === 'undefined') return;
+  document.querySelectorAll<HTMLElement>('[data-wb-window-layer]').forEach((layer) => {
+    if (inert) {
+      layer.setAttribute('inert', '');
+      layer.setAttribute('aria-hidden', 'true');
+    } else {
+      layer.removeAttribute('inert');
+      layer.removeAttribute('aria-hidden');
+    }
+  });
+}
+
 function parseCssDurationMs(raw: string): number | null {
   const v = raw.trim();
   if (!v) return null;
@@ -481,6 +501,7 @@ const ExposeOverlayComponent: React.FC = () => {
       exitTimerRef.current = null;
     }
     setRendered(true);
+    setWindowLayerInert(true);
 
     // App Exposé（P2）：exposeAppTypeId 非 null 时只俯瞰该应用的窗口。
     // 最小化窗口两种模式统一排除：macOS App Exposé 会显示最小化窗口，
@@ -638,6 +659,9 @@ const ExposeOverlayComponent: React.FC = () => {
     if (exposeOpen || !rendered) return;
     setPhase('closing');
     setHoveredId(null);
+    // 退场即解除窗口层 inert：飞回途中窗口就该重新可聚焦（handlePick 随后
+    // 会把焦点落回目标窗壳），不能等退场计时器
+    setWindowLayerInert(false);
     // aria-live：退出播报一次；重置会话播报状态
     if (announcedOpenRef.current) {
       announcedOpenRef.current = false;
@@ -676,6 +700,7 @@ const ExposeOverlayComponent: React.FC = () => {
     restoreAll(false);
     for (const id of [...restoreTimersRef.current.keys()]) finishPendingRestore(id);
     clearDimmed();
+    setWindowLayerInert(false);
     clearOrphanedExposeTransforms();
     releaseHeavyPause();
     if (dissolveTimerRef.current) clearTimeout(dissolveTimerRef.current);

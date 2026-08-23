@@ -1,3 +1,11 @@
+/**
+ * ImmersiveHint 专属样式（全部 wb-immersive- 前缀，不重定义契约类）
+ * ---------------------------------------------------------------------------
+ * - 顶缘胶囊提示：玻璃底 + 弱边，压在沉浸窗口之上（--wb-z-hud）；
+ * - 淡出后 pointer-events:none，绝不挡住窗口顶部内容；
+ * - 动画仅 transform / opacity；reduced-motion 与 minimal 材质档下时长归零。
+ */
+
 .wb-immersive-hint {
   position: absolute;
   top: 10px;
@@ -66,6 +74,7 @@
   outline-offset: 1px;
 }
 
+/* 触控：退出按钮给足 44px 命中高度，提示条整体加大 */
 @media (pointer: coarse) {
   .wb-immersive-hint {
     padding: 8px 8px 8px 16px;

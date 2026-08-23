@@ -386,6 +386,7 @@
     "hint": "Open apps from the Dock below to get started — windows can be freely arranged, tiled and compared side by side.",
     "actionsLabel": "Quick start",
     "actionFiles": "Open Files",
+    "actionRestoreSession": "Restore last desktop",
     "actionFilesDesc": "Browse notes, textbooks, and all resources",
     "actionApps": "All apps",
     "actionFlashcards": "Flashcards",
@@ -456,7 +457,9 @@
     "materialTier": "Visual material",
     "showDesktop": "Show desktop",
     "restoreWindows": "Restore windows",
+    "showWidgets": "Show desktop widgets",
     "shortcuts": "Keyboard shortcuts",
+    "replayTour": "Replay quick tour",
     "settings": "Desktop settings…"
   },
   "immersive": {
@@ -664,8 +667,18 @@
       "desc": "Hides the Dock when not in use. Move the pointer to the bottom edge to reveal it."
     },
     "restoreSession": {
-      "title": "Restore last desktop on launch",
-      "desc": "On next launch, restore previously open windows and layout. Off by default for faster cold starts; desktop state is still saved so you can turn this on later."
+      "title": "Automatically restore last desktop on launch",
+      "desc": "When on, every launch reopens all of your previous windows. Off by default for faster cold starts — desktop state is still saved, and the empty desktop offers a one-off \"Restore last desktop\" button."
+    },
+    "desktopWidgets": {
+      "title": "Show desktop widgets",
+      "desc": "Show the calendar and today's agenda widget on the desktop. Turning it off frees horizontal space on narrow windows and small screens (also toggleable from the desktop context menu)."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "desc": "Window management shortcuts for the Study Desktop. On the desktop, press ? or use the desktop context menu to open the cheatsheet anytime.",
+      "show": "Show all {{count}}",
+      "hide": "Hide list"
     },
     "menubarAutohide": {
       "title": "Automatically Hide Menu Bar",

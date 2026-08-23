@@ -158,6 +158,8 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
       : focusedTypeId
     : t('menubar.appName');
 
+  // 关窗一律走 requestCloseAnimated：canClose（未保存确认）+ 退场动画统一，
+  // 菜单栏不得绕过 guard 直接 store.closeWindow
   const closeAllOfApp = () => {
     if (!focusedWindowId) return;
     void requestCloseAppWindowsAnimated(focusedWindowId);
