@@ -19,13 +19,21 @@ use uuid::Uuid;
 
 use super::config::FtpConfig;
 use super::traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, Result, UploadProgressCallback,
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
 };
 use crate::models::AppError;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+
+/// FTP 数据通道单步操作（建立数据连接、LIST/MLSD、单次读取、传输收尾）的超时上限。
+/// 被动模式下服务器或中间防火墙静默丢包时数据通道会无限挂起，必须有超时兜底。
+const FTP_DATA_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// 递归列举时最多访问的目录数（与 WebDAV 的遍历上限保持同一量级）。
+/// 超过上限时停止遍历并通过 `ListOutcome::truncated` 上报，绝不静默返回部分结果。
+const FTP_LIST_MAX_DIRS: usize = 200;
 
 /// 带进度的异步读取器包装器
 /// 在每次 read() 后回调已传输字节数
@@ -228,14 +236,54 @@ impl FtpStorage {
             .unwrap_or(("", key))
     }
 
+    /// 从 FTP 错误消息中提取三位状态码。
+    ///
+    /// suppaftp 的 UnexpectedResponse 格式为 "Invalid response: [550] 550 ..."，
+    /// 优先解析方括号内的状态码；退路为扫描独立的 4xx/5xx 三位数字标记。
+    fn extract_status_code(message: &str) -> Option<u16> {
+        if let Some(start) = message.find('[') {
+            let rest = &message[start + 1..];
+            if let Some(end) = rest.find(']') {
+                if let Ok(code) = rest[..end].trim().parse::<u16>() {
+                    if (100..600).contains(&code) {
+                        return Some(code);
+                    }
+                }
+            }
+        }
+        message
+            .split_whitespace()
+            .filter_map(|token| {
+                let token = token.trim_matches(|c: char| !c.is_ascii_digit());
+                if token.len() == 3 {
+                    token.parse::<u16>().ok()
+                } else {
+                    None
+                }
+            })
+            .find(|code| (400..600).contains(code))
+    }
+
+    /// 仅当 FTP 状态码在白名单（550/501）内且服务器消息明确表达"不存在"时才
+    /// 归类为 not-found。
+    ///
+    /// 550 在 FTP 中是多义状态码（不存在/无权限/磁盘错误共用同一码），无法归类
+    /// 的 550 必须按真实错误上抛，绝不能当作"文件不存在"从而把删除/下载误判为
+    /// 成功。也不再使用无状态码门槛的宽泛子串匹配（如任意 "not found"）。
     fn is_not_found_error(error: &AppError) -> bool {
         let err = error.to_string().to_lowercase();
-        (err.contains("501") && err.contains("no such directory"))
-            || (err.contains("550") && err.contains("not retrievable"))
-            || err.contains("not found")
-            || err.contains("no such file")
+        let Some(code) = Self::extract_status_code(&err) else {
+            return false;
+        };
+        if !matches!(code, 550 | 501) {
+            return false;
+        }
+        err.contains("no such file")
             || err.contains("no such directory")
-            || err.contains("不存在")
+            || err.contains("not retrievable")
+            || err.contains("does not exist")
+            || err.contains("file not found")
+            || err.contains("directory not found")
     }
 
     fn parse_list_entry(line: &str) -> Option<FtpListEntry> {
@@ -262,7 +310,9 @@ impl FtpStorage {
         let temp_name = format!("{final_name}.tmp-{nonce}");
         // 包装 reader 以支持进度回调
         let (mut progress_reader, _) = ProgressReader::new(reader, file_size, progress);
-        client.put_file(&temp_name, &mut progress_reader).await?;
+        client
+            .put_file(&temp_name, &mut progress_reader, file_size)
+            .await?;
         if let Err(err) = client.rename(&temp_name, final_name).await {
             let _ = client.rm(&temp_name).await;
             return Err(err);
@@ -340,6 +390,42 @@ enum FtpClient {
 }
 
 impl FtpClient {
+    /// 给数据通道 future 加超时，防止被动模式下数据连接被静默丢弃时无限挂起
+    async fn data_timeout<T>(
+        op: &str,
+        duration: Duration,
+        fut: impl std::future::Future<Output = Result<T>>,
+    ) -> Result<T> {
+        tokio::time::timeout(duration, fut).await.map_err(|_| {
+            AppError::network(format!(
+                "FTP {op} 数据通道超时（{} 秒），已中断以避免无限挂起",
+                duration.as_secs()
+            ))
+        })?
+    }
+
+    /// 单次数据通道读取（带空闲超时）：只要数据仍在流动就不会误伤慢速传输
+    async fn read_with_timeout(
+        reader: &mut (impl AsyncRead + std::marker::Unpin),
+        buf: &mut [u8],
+    ) -> Result<usize> {
+        tokio::time::timeout(FTP_DATA_TIMEOUT, reader.read(buf))
+            .await
+            .map_err(|_| {
+                AppError::network(format!(
+                    "FTP 数据通道读取超时（{} 秒），已中断以避免无限挂起",
+                    FTP_DATA_TIMEOUT.as_secs()
+                ))
+            })?
+            .map_err(|e| AppError::file_system(format!("FTP 读取数据失败：{}", e)))
+    }
+
+    /// 整体上传超时：基础 120 秒 + 按最低 64 KiB/s 吞吐折算的传输时间。
+    /// suppaftp 在内部完成整个 STOR 拷贝，无法按块注入空闲超时，只能设总上限。
+    fn transfer_timeout(total_size: u64) -> Duration {
+        Duration::from_secs(120).saturating_add(Duration::from_secs(total_size / (64 * 1024)))
+    }
+
     async fn stream_to_file(
         reader: &mut (impl AsyncRead + std::marker::Unpin),
         temp_path: &Path,
@@ -354,10 +440,7 @@ impl FtpClient {
         let mut tmp = [0u8; 64 * 1024];
 
         loop {
-            let n = reader
-                .read(&mut tmp)
-                .await
-                .map_err(|e| AppError::file_system(format!("FTP 读取数据失败：{}", e)))?;
+            let n = Self::read_with_timeout(reader, &mut tmp).await?;
             if n == 0 {
                 break;
             }
@@ -410,16 +493,28 @@ impl FtpClient {
         &mut self,
         filename: &str,
         reader: &mut (impl AsyncRead + std::marker::Unpin),
+        total_size: u64,
     ) -> Result<u64> {
+        let limit = Self::transfer_timeout(total_size);
         match self {
-            FtpClient::Plain(stream) => stream
-                .put_file(filename, reader)
+            FtpClient::Plain(stream) => {
+                Self::data_timeout("STOR", limit, async {
+                    stream
+                        .put_file(filename, reader)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e)))
+                })
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e))),
-            FtpClient::Secure(stream) => stream
-                .put_file(filename, reader)
+            }
+            FtpClient::Secure(stream) => {
+                Self::data_timeout("STOR", limit, async {
+                    stream
+                        .put_file(filename, reader)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e)))
+                })
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e))),
+            }
         }
     }
 
@@ -427,49 +522,55 @@ impl FtpClient {
     async fn retr_to_vec(&mut self, filename: &str) -> Result<Vec<u8>> {
         match self {
             FtpClient::Plain(stream) => {
-                let mut data_stream = stream
-                    .retr_as_stream(filename)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let mut data_stream = Self::data_timeout("RETR", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .retr_as_stream(filename)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))
+                })
+                .await?;
                 let mut buf = Vec::new();
                 let mut tmp = [0u8; 8192];
                 loop {
-                    let n = data_stream
-                        .read(&mut tmp)
-                        .await
-                        .map_err(|e| AppError::file_system(format!("FTP 读取数据失败：{}", e)))?;
+                    let n = Self::read_with_timeout(&mut data_stream, &mut tmp).await?;
                     if n == 0 {
                         break;
                     }
                     buf.extend_from_slice(&tmp[..n]);
                 }
-                stream
-                    .finalize_retr_stream(data_stream)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Self::data_timeout("RETR 收尾", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .finalize_retr_stream(data_stream)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))
+                })
+                .await?;
                 Ok(buf)
             }
             FtpClient::Secure(stream) => {
-                let mut data_stream = stream
-                    .retr_as_stream(filename)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let mut data_stream = Self::data_timeout("RETR", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .retr_as_stream(filename)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))
+                })
+                .await?;
                 let mut buf = Vec::new();
                 let mut tmp = [0u8; 8192];
                 loop {
-                    let n = data_stream
-                        .read(&mut tmp)
-                        .await
-                        .map_err(|e| AppError::file_system(format!("FTP 读取数据失败：{}", e)))?;
+                    let n = Self::read_with_timeout(&mut data_stream, &mut tmp).await?;
                     if n == 0 {
                         break;
                     }
                     buf.extend_from_slice(&tmp[..n]);
                 }
-                stream
-                    .finalize_retr_stream(data_stream)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Self::data_timeout("RETR 收尾", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .finalize_retr_stream(data_stream)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))
+                })
+                .await?;
                 Ok(buf)
             }
         }
@@ -484,29 +585,41 @@ impl FtpClient {
     ) -> Result<String> {
         match self {
             FtpClient::Plain(stream) => {
-                let mut data_stream = stream
-                    .retr_as_stream(filename)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let mut data_stream = Self::data_timeout("RETR", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .retr_as_stream(filename)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))
+                })
+                .await?;
                 let checksum =
                     Self::stream_to_file(&mut data_stream, temp_path, total_size, progress).await?;
-                stream
-                    .finalize_retr_stream(data_stream)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Self::data_timeout("RETR 收尾", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .finalize_retr_stream(data_stream)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))
+                })
+                .await?;
                 Ok(checksum)
             }
             FtpClient::Secure(stream) => {
-                let mut data_stream = stream
-                    .retr_as_stream(filename)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let mut data_stream = Self::data_timeout("RETR", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .retr_as_stream(filename)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))
+                })
+                .await?;
                 let checksum =
                     Self::stream_to_file(&mut data_stream, temp_path, total_size, progress).await?;
-                stream
-                    .finalize_retr_stream(data_stream)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Self::data_timeout("RETR 收尾", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .finalize_retr_stream(data_stream)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))
+                })
+                .await?;
                 Ok(checksum)
             }
         }
@@ -515,27 +628,47 @@ impl FtpClient {
     /// suppaftp v7: list 返回 Result<Vec<String>>
     async fn list(&mut self, path: Option<&str>) -> Result<Vec<String>> {
         match self {
-            FtpClient::Plain(stream) => stream
-                .list(path)
+            FtpClient::Plain(stream) => {
+                Self::data_timeout("LIST", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .list(path)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e)))
+                })
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e))),
-            FtpClient::Secure(stream) => stream
-                .list(path)
+            }
+            FtpClient::Secure(stream) => {
+                Self::data_timeout("LIST", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .list(path)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e)))
+                })
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e))),
+            }
         }
     }
 
     async fn mlsd(&mut self, path: Option<&str>) -> Result<Vec<String>> {
         match self {
-            FtpClient::Plain(stream) => stream
-                .mlsd(path)
+            FtpClient::Plain(stream) => {
+                Self::data_timeout("MLSD", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .mlsd(path)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP MLSD 失败：{}", e)))
+                })
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP MLSD 失败：{}", e))),
-            FtpClient::Secure(stream) => stream
-                .mlsd(path)
+            }
+            FtpClient::Secure(stream) => {
+                Self::data_timeout("MLSD", FTP_DATA_TIMEOUT, async {
+                    stream
+                        .mlsd(path)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP MLSD 失败：{}", e)))
+                })
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP MLSD 失败：{}", e))),
+            }
         }
     }
 
@@ -737,6 +870,10 @@ impl CloudStorage for FtpStorage {
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+        Ok(self.list_outcome(prefix).await?.files)
+    }
+
+    async fn list_outcome(&self, prefix: &str) -> Result<ListOutcome> {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
@@ -745,10 +882,19 @@ impl CloudStorage for FtpStorage {
             let start = prefix.trim_matches('/').to_string();
             let mut dirs = vec![start];
             let mut visited_dirs = std::collections::HashSet::new();
+            let mut truncated = false;
 
             while let Some(relative_dir) = dirs.pop() {
                 if !visited_dirs.insert(relative_dir.clone()) {
                     continue;
+                }
+                if visited_dirs.len() > FTP_LIST_MAX_DIRS {
+                    tracing::warn!(
+                        "[FtpStorage] 递归列举已访问 {FTP_LIST_MAX_DIRS} 个目录，\
+                         停止遍历并将结果标记为截断"
+                    );
+                    truncated = true;
+                    break;
                 }
                 let full_dir = Self::join_paths(&self.root, &relative_dir);
                 let full_dir_abs = Self::absolute_path(&full_dir);
@@ -806,7 +952,7 @@ impl CloudStorage for FtpStorage {
 
             // 按修改时间降序排列
             files.sort_by_key(|b| std::cmp::Reverse(b.last_modified));
-            Ok(files)
+            Ok(ListOutcome { files, truncated })
         })
         .await
     }
@@ -1088,6 +1234,67 @@ mod tests {
     }
 
     #[test]
+    fn test_not_found_whitelist_accepts_explicit_missing_messages() {
+        for message in [
+            "FTP SIZE 失败：Invalid response: [550] 550 No such file or directory.",
+            "FTP MLSD 失败：Invalid response: [501] 501 No such directory.",
+            "FTP CWD 失败：Invalid response: [550] 550 /a/b: No such file or directory",
+            "FTP DELETE 失败：Invalid response: [550] 550 File not found.",
+        ] {
+            assert!(
+                FtpStorage::is_not_found_error(&AppError::file_system(message)),
+                "应归类为 not-found: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_broad_not_found_substring_no_longer_matches() {
+        // 无状态码门槛的宽泛 "not found" 不再把任意错误当成"文件不存在"
+        for message in [
+            "FTP DELETE 失败：object not found",
+            "FTP CWD 失败：host not found",
+            "连接失败：server not found in DNS",
+            "FTP SIZE 失败：目标不存在",
+        ] {
+            assert!(
+                !FtpStorage::is_not_found_error(&AppError::file_system(message)),
+                "缺少状态码时不得归类为 not-found: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unclassifiable_550_is_not_treated_as_missing() {
+        // 550 是多义状态码：无法确认"不存在"语义时必须按真实错误上抛，
+        // 不能把权限/磁盘错误误判为删除成功或文件不存在
+        for message in [
+            "FTP DELETE 失败：Invalid response: [550] 550 Permission denied.",
+            "FTP CWD 失败：Invalid response: [550] 550 Failed to change directory.",
+            "FTP RM 失败：Invalid response: [550] 550 Requested action not taken.",
+        ] {
+            assert!(
+                !FtpStorage::is_not_found_error(&AppError::file_system(message)),
+                "无法归类的 550 不得当作 not-found: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_extract_status_code() {
+        assert_eq!(
+            FtpStorage::extract_status_code("invalid response: [550] 550 no such file"),
+            Some(550)
+        );
+        assert_eq!(
+            FtpStorage::extract_status_code("ftp cwd 失败：550 no such directory."),
+            Some(550)
+        );
+        assert_eq!(FtpStorage::extract_status_code("object not found"), None);
+        assert_eq!(FtpStorage::extract_status_code("connection reset"), None);
+    }
+
+    #[test]
     fn ftp_contract_source_guards() {
         let source = include_str!("ftp.rs");
         let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
@@ -1128,6 +1335,42 @@ mod tests {
         assert!(
             source.contains("dirs.push(key)"),
             "FTP list must recursively traverse directories"
+        );
+
+        assert!(
+            production_source.contains("async fn list_outcome"),
+            "FTP list must expose truncation state via list_outcome"
+        );
+        assert!(
+            production_source.contains("truncated = true"),
+            "FTP list must mark traversal limits as truncated instead of \
+             unconditionally reporting complete"
+        );
+        assert!(
+            production_source.contains("FTP_LIST_MAX_DIRS"),
+            "FTP recursive listing must be bounded by a directory limit"
+        );
+
+        assert!(
+            !production_source.contains("err.contains(\"not found\")"),
+            "not-found classification must not rely on the broad \"not found\" substring"
+        );
+        assert!(
+            production_source.contains("fn extract_status_code"),
+            "not-found classification must be gated on an FTP status-code whitelist"
+        );
+
+        assert!(
+            production_source.contains("FTP_DATA_TIMEOUT"),
+            "FTP data-channel operations must be bounded by tokio timeouts"
+        );
+        assert!(
+            production_source.contains("fn transfer_timeout"),
+            "FTP STOR uploads must have an overall timeout bound"
+        );
+        assert!(
+            production_source.contains("read_with_timeout"),
+            "FTP RETR reads must use idle timeouts to avoid passive-mode hangs"
         );
 
         let get_body = source
