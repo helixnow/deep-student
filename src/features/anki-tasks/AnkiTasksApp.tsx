@@ -504,17 +504,17 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="wb-at-subtitle">{t('taskDashboard.subtitle')}</p>
             </div>
             <div className="wb-at-toolbar">
-              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
+              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7 [@media(pointer:coarse)]:!h-11">
                 <ArrowsDownUp size={14} />
                 <span className="text-[11px]">{sortLabel}</span>
               </DsButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
-                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7" aria-label={t('taskDashboard.recoverStuck')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7 [@media(pointer:coarse)]:!h-11" aria-label={t('taskDashboard.recoverStuck')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
@@ -651,7 +651,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           <DsButton
             variant="outline"
             onClick={onOpenTemplateManagement}
-            className="w-full justify-center h-9"
+            className="w-full justify-center h-11"
           >
             {t('taskDashboard.openTemplateLib')}
           </DsButton>
@@ -709,7 +709,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px]"
               />
               {search && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
                   <X size={12} />
                 </DsButton>
               )}

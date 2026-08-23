@@ -52,7 +52,7 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
           <span>{t('tags.filterTitle')}</span>
         </div>
         {selectedTags.size > 0 && (
-          <DsButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs">
+          <DsButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs [@media(pointer:coarse)]:!h-11">
             {t('tags.clearFilter')}
           </DsButton>
         )}

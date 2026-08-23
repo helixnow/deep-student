@@ -635,7 +635,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
             onClick={handleRefresh}
             aria-label={t('trendChart.refreshData')}
           >

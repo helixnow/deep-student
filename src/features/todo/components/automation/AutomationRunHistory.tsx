@@ -631,7 +631,7 @@ export function AutomationRunHistory({
             onChange={(event) => setAutomationFilter(event.target.value)}
             aria-label={t('todo:automation.history.filterByTask')}
             className={cn(
-              'h-7 max-w-52 truncate bg-transparent px-2 text-xs text-muted-foreground',
+              'h-7 max-w-52 truncate bg-transparent px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:h-11',
               'transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             )}
             style={{
@@ -659,7 +659,7 @@ export function AutomationRunHistory({
               aria-pressed={statusFilter === filter.value}
               onClick={() => setStatusFilter(filter.value)}
               className={cn(
-                'h-7 px-2 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                'h-7 px-2 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:h-11',
                 statusFilter === filter.value
                   ? 'bg-muted font-medium text-foreground'
                   : 'text-muted-foreground hover:text-foreground',

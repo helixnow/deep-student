@@ -1457,7 +1457,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="ml-auto flex items-center gap-1.5">
                       {/* 来源筛选 */}
                       <Select value={auditSourceFilter} onValueChange={setAuditSourceFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0">
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:min-h-11">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1471,7 +1471,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </Select>
                       {/* 成功/失败筛选 */}
                       <Select value={auditSuccessFilter} onValueChange={setAuditSuccessFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0">
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:min-h-11">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1608,10 +1608,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   </div>
 
                   <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isMutating} className="flex-1 !h-9">
+                    <DsButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isMutating} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
                       {t('common:cancel')}
                     </DsButton>
-                    <DsButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isMutating || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9">
+                    <DsButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isMutating || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
                       {isMutating && <CircleNotch size={16} className="animate-spin" />}
                       {t('memory.batch_import_confirm')}
                     </DsButton>
@@ -1711,10 +1711,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   </div>
 
                   <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isMutating} className="flex-1 !h-9">
+                    <DsButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isMutating} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
                       {t('common:cancel')}
                     </DsButton>
-                    <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isMutating || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9">
+                    <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isMutating || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
                       {isMutating && <CircleNotch size={16} className="animate-spin" />}
                       {t('common:create')}
                     </DsButton>

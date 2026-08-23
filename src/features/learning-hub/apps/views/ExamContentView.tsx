@@ -100,6 +100,7 @@ const Sm2ReviewPanel: React.FC<{ examId: string; isActive?: boolean }> = ({ exam
             examId={examId}
             className="p-4"
             onClose={() => setShowCalendar(false)}
+            isActive={isActive}
           />
         ) : isSessionActive ? (
           <ReviewSession examId={examId} isActive={isActive} />
@@ -2361,6 +2362,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onRequestedModeHandled={() => setLauncherRequestedMode(null)}
               currentQuestionId={sessionCurrentQuestionId}
               markedQuestionIds={favoriteQuestionIds}
+              isActive={isActive}
             />
           ) : viewMode === 'manage' && hasQuestions ? (
             <QuestionBankManageView

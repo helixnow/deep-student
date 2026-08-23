@@ -319,6 +319,10 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   const handleCancelRef = useRef(handleCancel);
   handleCancelRef.current = handleCancel;
 
+  // 保活可见性守卫锚点：skills-management 保活隐藏后编辑器可能带着 open=true
+  // 滞留在隐藏层里，返回键 handler 须先确认嵌入根节点可见才消费事件
+  const embeddedRootRef = useRef<HTMLDivElement>(null);
+
   // 嵌入模式（移动端子屏）：
   // 1. Android 返回键 = 带脏检查的取消。注册在 MobileSlidingLayout 的
   //    overlay handler 之后（同优先级后注册者先执行），否则滑动布局会先
@@ -327,6 +331,11 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   useEffect(() => {
     if (!embeddedMode || !open) return;
     const unregister = registerBackHandler(() => {
+      // 保活守卫：隐藏保活层中滞留的编辑器不吞返回键，也不为不可见编辑器
+      // 弹未保存更改确认（对照 EnhancedPdfViewer 的同款守卫）
+      const el = embeddedRootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       handleCancelRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -703,7 +712,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   // 嵌入模式：直接返回表单内容
   if (embeddedMode) {
     return (
-      <div className="h-full flex flex-col bg-background">
+      <div ref={embeddedRootRef} className="h-full flex flex-col bg-background">
         {formContent}
       </div>
     );

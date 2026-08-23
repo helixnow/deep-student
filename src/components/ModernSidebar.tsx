@@ -1130,7 +1130,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 <SidebarUnreadReplyDot />
               ) : (
                 <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)] group-hover/thread-row:opacity-0 group-focus-within/thread-row:opacity-0">
-                  <span className={pinned ? 'mr-12 inline-block' : undefined}>{relativeTime}</span>
+                  {/* 触屏（coarse pointer）没有 hover：活动行的操作簇常显，时间戳同步让位 */}
+                  <span className={cn(pinned && 'mr-12 inline-block', isActive && '[@media(pointer:coarse)]:opacity-0')}>{relativeTime}</span>
                 </span>
               )}
             >
@@ -1187,7 +1188,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 !px-2 text-[11px]"
+                className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 onClick={resetDeleteConfirmation}
               >
                 {t('common:cancel')}
@@ -1195,7 +1196,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive"
+                className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 onClick={() => void handleRecentSessionDelete(session.id)}
               >
                 {t('common:delete')}
@@ -1204,16 +1205,22 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </div>
         )}
 
-        {/* 行内快捷操作：置顶与归档组成右侧操作簇，hover 或 focus 时可见。 */}
+        {/* 行内快捷操作：置顶与归档组成右侧操作簇，hover 或 focus 时可见；
+            触屏（coarse pointer）没有 hover，活动行常显保证可达。 */}
         {!collapsed && (
-          <div className="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100">
+          <div
+            className={cn(
+              'pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100',
+              isActive && '[@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100'
+            )}
+          >
             {/* eslint-disable-next-line ds-components/no-native-button */}
             <button
               type="button"
               data-testid="recent-session-pin-icon"
               aria-label={pinned ? t('sidebar:aria.unpin_session') : t('sidebar:aria.pin_session')}
               className={cn(
-                'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                 pinned && 'text-[color:var(--shell-navigation-foreground)]'
               )}
               onClick={(event) => {
@@ -1232,7 +1239,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   type="button"
                   aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}
                   className={cn(
-                    'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                     isConfirmingArchive
                       ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
                       : 'bg-transparent text-[color:var(--shell-navigation-muted)] hover:text-destructive'
@@ -1529,7 +1536,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const conversationHeaderAction = (
     <span
       data-sidebar-section-action="create-conversation"
-      className="relative z-10 ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)] opacity-0 transition-opacity duration-150 group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 motion-reduce:transition-none"
+      className="relative z-10 ml-auto flex shrink-0 items-center gap-1 text-[color:var(--shell-navigation-foreground)] opacity-0 transition-opacity duration-150 group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 [@media(pointer:coarse)]:opacity-100 motion-reduce:transition-none"
     >
       <CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut('mod+n')}>
         <DsButton
@@ -1537,7 +1544,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           size="icon"
           iconOnly
           aria-label={newConversationLabel}
-          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
+          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           onClick={(event) => {
             event.stopPropagation();
             window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
@@ -1631,7 +1638,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={toggleAllTopicsLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         onClick={handleToggleAllTopicGroups}
                       >
                         {areAllTopicGroupsExpanded ? (
@@ -1647,7 +1654,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={createTopicLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)]"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         onClick={handleCreateRecentGroup}
                       >
                         <FolderPlus className="size-3.5" strokeWidth={2} />

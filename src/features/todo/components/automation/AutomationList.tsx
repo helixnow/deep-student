@@ -394,7 +394,7 @@ function AutomationCard({
             variant="ghost"
             size="icon"
             iconOnly
-            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             aria-label={t('todo:automation.card.runNowAria', { name: automation.name })}
             title={t('todo:automation.card.runNow')}
             disabled={rowBusy}
@@ -410,7 +410,7 @@ function AutomationCard({
             size="icon"
             iconOnly
             className={cn(
-              '!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
+              '!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
               expanded && 'bg-primary/10 text-primary',
             )}
             aria-label={t('todo:automation.card.editAria', { name: automation.name })}
@@ -424,7 +424,7 @@ function AutomationCard({
           {automation.heartbeat ? (
             // 心跳探活任务不可删除（与设置侧一致）
             <span title={t('settings:automation.delete.heartbeat_blocked')}>
-              <DsButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" disabled aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}>
+              <DsButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" disabled aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}>
                 <Trash size={15} aria-hidden />
               </DsButton>
             </span>
@@ -433,7 +433,7 @@ function AutomationCard({
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-7 !w-7 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+              className="!h-7 !w-7 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}
               title={t('todo:automation.card.delete')}
               disabled={rowBusy}

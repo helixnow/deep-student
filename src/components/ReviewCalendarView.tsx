@@ -45,6 +45,8 @@ interface ReviewCalendarViewProps {
   examId?: string;
   className?: string;
   onClose?: () => void;
+  /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
+  isActive?: boolean;
 }
 
 interface DayDetailProps {
@@ -459,6 +461,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   examId,
   className,
   onClose,
+  isActive,
 }) => {
   const { t } = useTranslation(['review', 'common']);
 
@@ -484,13 +487,15 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  // isActive === false：保活隐藏（display:none 标签页）的实例不注册返回键 handler，
+  // 避免吞掉当前活跃视图的返回键（未传 isActive 的宿主行为不变）
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || isActive === false) return;
     return registerBackHandler(() => {
       setSelectedDate(null);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [selectedDate]);
+  }, [selectedDate, isActive]);
   // 月份切换方向（驱动滑动过渡的入场方向）
   const [slideDir, setSlideDir] = useState<'left' | 'right'>('left');
 

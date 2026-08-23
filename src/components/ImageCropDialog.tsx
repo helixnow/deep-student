@@ -68,6 +68,8 @@ export function ImageCropDialog({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  // 内联工具根节点：Android 返回键 handler 的可见性守卫用（保活隐藏实例不吞返回键）
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Load source images when dialog opens
   useEffect(() => {
@@ -213,6 +215,13 @@ export function ImageCropDialog({
   useEffect(() => {
     if (!open) return;
     return registerBackHandler(() => {
+      // 可见性守卫（同 EnhancedPdfViewer）：保活但不可见的实例（display:none
+      // 标签页）不得吞掉活跃视图的返回键、不得触发关闭回调。
+      // visibility:hidden 不清布局盒（getClientRects 仍有返回值），需单独查 computed 值。
+      const el = rootRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onOpenChange(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -344,6 +353,7 @@ export function ImageCropDialog({
   if (!open) return null;
   return (
     <div
+      ref={rootRef}
       className="absolute inset-0 z-30 flex flex-col bg-background"
       role="dialog"
       aria-label={t('question_bank.source_images')}

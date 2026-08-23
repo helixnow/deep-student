@@ -221,7 +221,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             variant="utility"
             size="sm"
             onClick={handleComplete}
-            className="h-7 gap-1 !px-2 text-xs"
+            className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:h-11"
           >
             <CheckCircle size={13} />
             {t('todo:bulk.complete', { defaultValue: '完成' })}
@@ -232,7 +232,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             size="sm"
             // 点击时刻取「今天」：操作条可能跨午夜常驻（对齐 RescheduleMenu 的口径）
             onClick={() => handleReschedule(localToday())}
-            className="h-7 gap-1 !px-2 text-xs"
+            className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:h-11"
           >
             <CalendarPlus size={13} />
             {t('todo:reschedule.today')}
@@ -242,7 +242,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             variant="utility"
             size="sm"
             onClick={() => handleReschedule(formatLocalDate(addDays(new Date(), 1)))}
-            className="h-7 gap-1 !px-2 text-xs"
+            className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:h-11"
           >
             <CalendarPlus size={13} />
             {t('todo:reschedule.tomorrow')}

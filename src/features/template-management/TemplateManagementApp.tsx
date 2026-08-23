@@ -132,6 +132,11 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const [editorPortalTarget, setEditorPortalTarget] = useState<HTMLDivElement | null>(null);
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
 
+  // 保活可见性守卫锚点：本视图在 ViewLayerRenderer 隐藏保活层里仍保持挂载
+  // （visibility:hidden），返回键 handler 须先确认根节点可见才消费事件
+  // （对照 EnhancedPdfViewer / TodoMainPanel 的同款守卫）
+  const rootRef = useRef<HTMLDivElement>(null);
+
   // 离开编辑器的脏检查守卫（在下方编辑器状态就绪后赋值；面包屑点击时经 ref 调用，
   // 避免 useMemo 工厂在渲染期引用尚未声明的回调触发 TDZ）
   const leaveEditorGuardRef = useRef<() => boolean>(() => true);
@@ -228,6 +233,11 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   useEffect(() => {
     if (!isSmallScreen || !activePanel) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏保活层中的导入/导出面板不吞其他视图的返回键。
+      // visibility:hidden 不清除布局盒（getClientRects 仍有返回值），须单独查 computed visibility。
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setActivePanel(null);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -716,6 +726,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   useEffect(() => {
     if (!isSmallScreen || !isEditingMode) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏保活层中滞留的编辑态不吞返回键，也不为不可见编辑器弹脏检查
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       handleEditorBack();
       return true;
     }, BACK_PRIORITY.view);
@@ -725,6 +739,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   useEffect(() => {
     if (!isSmallScreen || !isSelectingMode || !onCancel) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏保活层中滞留的选择模式不消费返回键，交还当前活跃视图
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCancel();
       return true;
     }, BACK_PRIORITY.view);
@@ -1284,7 +1302,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   if (isSmallScreen) {
     // ===== 移动端布局：MobileSlidingLayout =====
     layout = (
-      <div className="wb-tm-root overflow-hidden">
+      <div ref={rootRef} className="wb-tm-root overflow-hidden">
         <MobileSlidingLayout
           sidebar={mobileDrawerContent}
           rightPanel={
@@ -1312,7 +1330,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     layout = (
       <>
         {sidebarPortal}
-        <div className="wb-tm-root overflow-hidden">
+        <div ref={rootRef} className="wb-tm-root overflow-hidden">
           <div className="wb-tm-body flex-row">
             {mainContent}
           </div>
@@ -1322,7 +1340,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   } else {
     // ===== workbench 窗口 / 无壳侧栏：顶部标签导航 =====
     layout = (
-      <div className="wb-tm-root overflow-hidden">
+      <div ref={rootRef} className="wb-tm-root overflow-hidden">
         {workbenchNav}
         <div className="wb-tm-body">
           {mainContent}

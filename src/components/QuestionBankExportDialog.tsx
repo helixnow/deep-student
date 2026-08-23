@@ -213,6 +213,8 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   inlineStepRef.current = inlineStep;
   const exportOutcomeRef = useRef<ExportOutcome | null>(null);
   exportOutcomeRef.current = exportOutcome;
+  // 内联面板根节点：Android 返回键 handler 的可见性守卫用（保活隐藏实例不吞返回键）
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -238,6 +240,13 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   useEffect(() => {
     if (!inline || !open) return;
     return registerBackHandler(() => {
+      // 可见性守卫（同 EnhancedPdfViewer）：保活但不可见的实例（display:none
+      // 标签页）不得吞掉活跃视图的返回键、不得触发回退/关闭回调。
+      // visibility:hidden 不清布局盒（getClientRects 仍有返回值），需单独查 computed 值。
+      const el = rootRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       handleInlineBack();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -752,6 +761,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
 
     return (
       <div
+        ref={rootRef}
         className="absolute inset-0 z-30 flex flex-col bg-background ui-rise-in"
         role="region"
         aria-label={t('exam_sheet:questionBank.export.title')}

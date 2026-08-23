@@ -401,7 +401,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('settings:dimension_management.create_dimension_title')}
             </h4>
-            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
                <X size={14} />
             </DsButton>
           </div>
@@ -468,7 +468,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           )}
           
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/20">
-            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 text-xs flex-1 md:flex-none">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 [@media(pointer:coarse)]:h-11 text-xs flex-1 md:flex-none">
               {t('common:cancel')}
             </DsButton>
             <DsButton 
@@ -476,7 +476,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               size="sm" 
               onClick={handleCreateDimension} 
               disabled={creating || !newDimension}
-              className="h-7 text-xs flex-1 md:flex-none"
+              className="h-7 [@media(pointer:coarse)]:h-11 text-xs flex-1 md:flex-none"
             >
               {creating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
               {t('common:create')}
@@ -533,7 +533,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <p className="text-xs text-muted-foreground/50 mb-4 max-w-md px-4">
               {t('settings:dimension_management.no_data_hint')}
             </p>
-            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 text-xs">
+            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 [@media(pointer:coarse)]:h-11 text-xs">
               {t('settings:dimension_management.create_first_dimension')}
             </DsButton>
           </div>

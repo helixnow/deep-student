@@ -74,7 +74,8 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
             disabled={disabled}
             aria-label={`${translate('common:remove')} ${t}`}
             title={translate('common:remove')}
- className="w-5 h-5 ml-1 inline-flex items-center justify-center rounded hover:bg-[var(--interactive-hover)] disabled:opacity-50"
+            // coarse 指针下用伪元素把 20px 命中区外扩至 44px（视觉仍是小叉）
+            className="w-5 h-5 ml-1 relative inline-flex items-center justify-center rounded hover:bg-[var(--interactive-hover)] disabled:opacity-50 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
           >
             <X size={12} className="text-muted-foreground" />
           </button>

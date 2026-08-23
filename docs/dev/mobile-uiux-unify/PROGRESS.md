@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–11 已落地并提交；当前队列见下。
+- **轮次**：Round 2–12 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -21,14 +21,15 @@
 | 9 | claude-fable-5-thinking-xhigh | 灯箱返回、作文/翻译 isActive、Sheet 去 safe-top | 见 ROUND-09-FIXES.md |
 | 10 | claude-fable-5-thinking-xhigh | skills/anki enabled、改期守卫、Settings overlay 返回 | 见 ROUND-10-FIXES.md |
 | 11 | claude-fable-5-thinking-xhigh ×10 | 导图 44px、删 NotesHome/VideoPreview、Sheet 底安全区、Table 横滚 | 见 ROUND-11-FIXES.md |
+| 12 | claude-fable-5-thinking-xhigh ×10 | 侧栏 hover、自动化顶栏、保活 isActive、MCP/插件返回、触控补齐 | 见 ROUND-12-FIXES.md |
 
-## 进行中的修复队列（Round 12+）
+## 进行中的修复队列（Round 13+）
 
-- ModernSidebar：named-group hover 在 coarse 平板不可见；行操作钮 <44
-- Todo 自动化工作区：640–767 与统一顶栏双标题
-- 保活视图缺 isActive：练习启动器/计时/模考、题库编辑/导出/历史、导图 MobileNodeToolbar、skills、template-management
-- PluginsTab 二级详情、MCP 自绘菜单未接 overlay 返回
-- 残留触控 <44：Anki 工具条、AppSelect、Tabs、Todo 批量条、MemoryView Select
+- 题库历史/导出/裁剪、翻译 DSTU 预览仍自绘 h-12 顶栏
+- 翻译/作文小屏仍用 VerticalResizable
+- Todo 行 coarse 隐藏拖柄/删除，需确认替代入口
+- EpubPreview 目录侧栏缺 isActive
+- 导图 `.mm-action-btn` coarse 28px
 
 ## 已落地
 

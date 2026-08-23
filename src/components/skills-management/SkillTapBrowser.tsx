@@ -150,8 +150,15 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
   // Android 返回键：面板挂载（= 打开）期间注册 overlay handler，返回键先关本面板
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const rootRef = useRef<HTMLElement>(null);
   useEffect(() => {
     return registerBackHandler(() => {
+      // 保活守卫：skills-management 视图在被隐藏的保活层里仍保持挂载
+      // （visibility:hidden），本面板也随之滞留——此时不消费返回键，
+      // 交还给当前活跃视图（对照 EnhancedPdfViewer 的同款守卫）
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -811,6 +818,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
 
   return (
     <section
+      ref={rootRef}
       aria-label={t('skills:tap.title')}
       className={cn(
         'mb-4 rounded-lg border border-border/60 bg-[color:var(--surface-raised,transparent)]',

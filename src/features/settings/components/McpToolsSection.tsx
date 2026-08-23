@@ -46,6 +46,7 @@ import {
 import { cn } from '@/lib/utils';
 import { isAndroid } from '@/utils/platform';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 import { isBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
@@ -944,7 +945,7 @@ function ServerEditPanel({
                               className="flex-1 text-xs font-mono"
                               placeholder="value"
                             />
-                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:text-destructive" aria-label="remove">
                               <Trash className="w-3.5 h-3.5" />
                             </DsButton>
                           </div>
@@ -1413,7 +1414,7 @@ function NewServerEditItem({
                                 className="flex-1 text-xs font-mono"
                                 placeholder="value"
                               />
-                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:text-destructive" aria-label="remove">
                                 <Trash className="w-3.5 h-3.5" />
                               </DsButton>
                             </div>
@@ -1528,6 +1529,17 @@ function ActionMenu({
   // P0-3 移动端契约：不使用 fixed 遮罩下拉，改为按钮下方页内内联展开
   const { isSmallScreen } = useBreakpoint();
   const [isOpen, setIsOpen] = useState(false);
+
+  // 📱 Android 返回键：本菜单为自绘浮层（桌面 fixed 遮罩 / 移动内联展开），
+  // 无 data-state="open"，协调器 Radix 兜底探测不到；打开期间显式注册
+  // overlay 档 handler 先关菜单（对照 FinderBatchToolbar 排序菜单）。
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      setIsOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen]);
 
   const menuItems = (
     <>
@@ -1665,6 +1677,21 @@ export function PresetServerSelector({
       window.removeEventListener('keydown', onKeyDown, true);
     };
   }, [isOpen, closeSelector]);
+
+  // 📱 Android 返回键：选择器为自绘浮层（桌面 fixed 遮罩 / 移动内联展开），
+  // 无 data-state="open"，Radix 兜底探测不到；打开期间显式注册 overlay 档
+  // handler。层级语义：先关权限确认（移动内联卡 / 桌面 Sheet），再关预置列表。
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      if (pendingPreset) {
+        closePermissionDrawer();
+      } else {
+        closeSelector();
+      }
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen, pendingPreset, closePermissionDrawer, closeSelector]);
 
   const confirmInstall = useCallback(() => {
     if (!pendingPreset) return;
@@ -2322,7 +2349,7 @@ function ShellCommandRulesSection() {
                 disabled={saving}
                 onClick={() => void handleDefaultEffect(effect)}
                 aria-pressed={defaultEffect === effect}
-                className={cn('!h-7 !px-2 text-xs', defaultEffect === effect && actionClass[effect])}
+                className={cn('!h-7 !px-2 text-xs [@media(pointer:coarse)]:!h-11', defaultEffect === effect && actionClass[effect])}
               >
                 {t(`settings:tool_permissions.shell_rules.action_${effect}`)}
               </DsButton>
@@ -2333,7 +2360,7 @@ function ShellCommandRulesSection() {
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/5 px-2.5 py-2 text-xs text-warning">
             <Warning className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="flex-1">{t('settings:tool_permissions.shell_rules.default_allow_warning')}</span>
-            <DsButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs [@media(pointer:coarse)]:!h-11">
               {t('settings:tool_permissions.shell_rules.confirm_allow')}
             </DsButton>
           </div>
@@ -2438,9 +2465,9 @@ function ShellCommandRulesSection() {
             </span>
             {selectedRuleIds.size > 0 && (
               <div className="ml-auto flex flex-wrap items-center gap-1">
-                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_enable')}</DsButton>
-                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_disable')}</DsButton>
-                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!h-7 text-xs text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</DsButton>
+                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11">{t('settings:tool_permissions.shell_rules.bulk_enable')}</DsButton>
+                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11">{t('settings:tool_permissions.shell_rules.bulk_disable')}</DsButton>
+                <DsButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!h-7 text-xs [@media(pointer:coarse)]:!h-11 text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</DsButton>
               </div>
             )}
           </div>

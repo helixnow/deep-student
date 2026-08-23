@@ -872,7 +872,7 @@ export const TodoItemDetail: React.FC<{
                       aria-pressed={active}
                       onClick={() => handleToggleWeekday(day)}
                       className={cn(
-                        'h-9 w-9 rounded-full text-xs font-medium transition-colors duration-150 sm:h-6 sm:w-6',
+                        'h-11 w-11 rounded-full text-xs font-medium transition-colors duration-150 sm:h-6 sm:w-6',
                         active
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-muted text-muted-foreground hover:bg-[color:var(--interactive-hover)]',

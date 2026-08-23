@@ -317,7 +317,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         <span>{label}</span>
         <Popover>
           <PopoverTrigger asChild>
-            <DsButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground">
+            <DsButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 text-muted-foreground">
               <InfoIcon size={16} />
             </DsButton>
           </PopoverTrigger>
@@ -1246,7 +1246,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       onChange={e => handleEnvValueChange(key, e.target.value)}
                       placeholder={t('settings:placeholders.env_value')}
                     />
-                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)}>
+                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" onClick={() => removeEnvRow(key)}>
                       <Trash size={16} />
                     </DsButton>
                   </div>

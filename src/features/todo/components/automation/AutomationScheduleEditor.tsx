@@ -317,7 +317,10 @@ export function AutomationScheduleEditor({
                     aria-label={t(`${P}.weekdaysLong.${day}`)}
                     disabled={disabled}
                     onClick={() => toggleDay(day)}
-                    className={cn('h-8 w-8', chipClassName(active, disabled))}
+                    className={cn(
+                      'h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
+                      chipClassName(active, disabled),
+                    )}
                   >
                     {t(`${P}.weekdaysShort.${day}`)}
                   </button>
@@ -386,6 +389,7 @@ export function AutomationScheduleEditor({
         };
         const stepperButtonClassName = cn(
           'inline-flex h-9 w-9 shrink-0 items-center justify-center',
+          '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
           'rounded-[var(--radius-shell-control)] border border-[color:var(--border-soft)]',
           'text-foreground transition-colors duration-150 hover:bg-[color:var(--surface-muted)]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
@@ -443,7 +447,10 @@ export function AutomationScheduleEditor({
                   disabled={disabled}
                   aria-pressed={value.intervalMinutes === minutes}
                   onClick={() => patch({ intervalMinutes: minutes })}
-                  className={cn('h-7 px-2.5', chipClassName(value.intervalMinutes === minutes, disabled))}
+                  className={cn(
+                    'h-7 px-2.5 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3.5',
+                    chipClassName(value.intervalMinutes === minutes, disabled),
+                  )}
                 >
                   {minutes < 60
                     ? t(`${P}.presetMinutes`, { n: minutes })
@@ -550,6 +557,7 @@ export function AutomationScheduleEditor({
             onClick={() => setTimezoneExpanded((prev) => !prev)}
             className={cn(
               'inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-shell-control)]',
+              '[@media(pointer:coarse)]:h-11',
               'border border-[color:var(--border-soft)] px-3 text-xs text-foreground',
               'transition-colors duration-150 hover:bg-[color:var(--surface-muted)]',
               'motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50',
@@ -579,6 +587,7 @@ export function AutomationScheduleEditor({
               onClick={() => handleTimezoneSelect(null)}
               className={cn(
                 'inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-shell-control)]',
+                '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
                 'text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--surface-muted)]',
                 'motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50',
               )}

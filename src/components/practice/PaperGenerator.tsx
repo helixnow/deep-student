@@ -51,6 +51,8 @@ interface PaperGeneratorProps {
   examId: string;
   availableTags?: string[];
   onGenerate?: (paper: GeneratedPaper) => void;
+  /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
+  isActive?: boolean;
   className?: string;
 }
 
@@ -75,6 +77,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   examId,
   availableTags = [],
   onGenerate,
+  isActive,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -101,13 +104,15 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
 
+  // isActive === false：保活隐藏（display:none 标签页）的实例不注册返回键 handler，
+  // 避免吞掉当前活跃视图的返回键（未传 isActive 的宿主行为不变）
   useEffect(() => {
-    if (!showPreview) return;
+    if (!showPreview || isActive === false) return;
     return registerBackHandler(() => {
       setShowPreview(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [showPreview]);
+  }, [showPreview, isActive]);
   const [generationError, setGenerationError] = useState<string | null>(null);
   
   // 计算总题数

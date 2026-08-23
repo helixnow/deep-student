@@ -1009,7 +1009,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   setMobileSearchOpen(false);
                 }}
                 aria-label={t('common:actions.close', '关闭')}
-                className="!h-10 !w-10 flex-shrink-0"
+                className="!h-11 !w-11 flex-shrink-0"
               >
                 <X size={16} />
               </DsButton>
@@ -1168,7 +1168,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                             disabled={reschedulingOverdue}
                             onClick={() => void handleRescheduleOverdueToToday(group.items)}
                             title={t('todo:reschedule.allToTodayHint')}
-                            className="ml-auto h-6 gap-1 !px-2 text-xs"
+                            className="ml-auto h-6 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
                           >
                             <CalendarPlus size={12} />
                             {t('todo:reschedule.allToToday')}

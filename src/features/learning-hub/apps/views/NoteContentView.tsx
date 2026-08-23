@@ -971,7 +971,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         >
           <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">
             <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
-            <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
+            <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={toggleRightPanel} aria-label={t('common:close')}>
               <X size={13} aria-hidden="true" />
             </DsButton>
           </div>

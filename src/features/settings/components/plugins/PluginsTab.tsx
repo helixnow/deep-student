@@ -13,6 +13,8 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { SettingSection, settingsQuietInteractiveRowClassName } from '../SettingsCommon';
 import { SettingRow, SettingsGroup, SwitchRow } from '../settingsTabPrimitives';
 import {
@@ -431,6 +433,7 @@ interface PluginsTabProps {
 
 export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
   const { t } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -480,6 +483,18 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
   };
 
   const selected = plugins.find((p) => p.id === selectedId) || null;
+  const detailOpen = Boolean(selected);
+
+  // 📱 Android 返回键：小屏打开插件详情（IlinkBotConfigPanel 自绘 ArrowLeft 子页）
+  // 时先返回列表。详情打开时才注册，同 overlay 档后注册先执行，保证事件不被
+  // Settings 的 overlay handler（切回分区列表）抢走。
+  useEffect(() => {
+    if (!isSmallScreen || !detailOpen) return;
+    return registerBackHandler(() => {
+      setSelectedId(null);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, detailOpen]);
 
   if (selected) {
     return (

@@ -232,7 +232,17 @@ const StatCardSkeleton: React.FC = () => (
   </div>
 );
 
-export const TodoAutomationWorkspace: React.FC = () => {
+interface TodoAutomationWorkspaceProps {
+  /**
+   * 隐藏页内标题栏（图标 + 标题/副标题 + 刷新/新建动作条）。
+   * 移动壳（<768 独立视图）由 TodoContentView 传入：标题与动作已上移
+   * 统一顶栏（useMobileHeader 的 title / rightActions），页内不再自绘
+   * 第二条顶栏。桌面端与 Workbench 窗口承载（无统一顶栏）保持默认 false。
+   */
+  hideHeader?: boolean;
+}
+
+export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = ({ hideHeader = false }) => {
   const { t, i18n } = useTranslation(['todo', 'settings', 'common']);
   const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
 
@@ -565,8 +575,12 @@ export const TodoAutomationWorkspace: React.FC = () => {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[color:var(--surface-root,var(--background))]">
-      <header className="study-shell-toolbar flex min-h-12 shrink-0 items-center justify-end border-b border-border px-4 sm:min-h-14 sm:justify-between sm:px-6">
-        <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
+      {/* 页内标题栏：移动/桌面分界由 TodoContentView 按 isSmallScreen(<768)
+          经 hideHeader 决定，不再用 sm(640) 断点自行分界（640–767 曾与
+          统一顶栏叠出双标题，<640 残留纯动作条）。渲染时标题块恒显示。 */}
+      {hideHeader ? null : (
+      <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2.5">
           <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-foreground">
@@ -577,7 +591,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <DsButton
             variant="ghost"
             size="icon"
@@ -606,6 +620,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
           </span>
         </div>
       </header>
+      )}
 
       <CustomScrollArea className="min-h-0 flex-1">
         <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
