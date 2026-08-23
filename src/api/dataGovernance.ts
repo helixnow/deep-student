@@ -711,6 +711,10 @@ export async function backupTiered(
  *
  * 默认执行完整备份（数据库 + 资产）并导出 ZIP 到用户指定路径。
  * 若 useTiered=true，则按分层配置执行备份后导出。
+ *
+ * @param encryptionPassword 可选 E2EE 备份密码。提供后执行加密全保真导出：
+ *   敏感数据（本地密钥、审计库等）密封进密码加密载荷，导入时输入同一密码
+ *   即可整槽恢复（跨设备换机闭环）。留空则导出未加密便携 ZIP（不能整槽恢复）。
  */
 export async function backupAndExportZip(
   outputPath: string,
@@ -720,6 +724,7 @@ export async function backupAndExportZip(
   tiers?: BackupTier[],
   includeAssets?: boolean,
   assetTypes?: AssetType[],
+  encryptionPassword?: string,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>(
     "data_governance_backup_and_export_zip",
@@ -731,6 +736,7 @@ export async function backupAndExportZip(
       tiers,
       includeAssets,
       assetTypes,
+      encryptionPassword,
     },
   );
 }
@@ -751,18 +757,21 @@ export async function backupAndExportZip(
  *   - 4-6: 平衡（推荐）
  *   - 7-9: 最大压缩
  * @param includeChecksums 是否包含校验和文件（可选，默认 true）
+ * @param encryptionPassword 可选 E2EE 备份密码（加密全保真导出，见 backupAndExportZip）
  */
 export async function exportZip(
   backupId: string,
   outputPath?: string,
   compressionLevel?: number,
   includeChecksums?: boolean,
+  encryptionPassword?: string,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_export_zip", {
     backupId,
     outputPath,
     compressionLevel,
     includeChecksums,
+    encryptionPassword,
   });
 }
 
@@ -774,14 +783,18 @@ export async function exportZip(
  *
  * @param zipPath ZIP 文件路径
  * @param backupId 解压后的备份 ID（可选，默认从时间戳生成）
+ * @param password 可选 E2EE 备份密码：导入加密全保真包时必须提供与导出时
+ *   相同的密码，才能解封为可整槽恢复的完整快照
  */
 export async function importZip(
   zipPath: string,
   backupId?: string,
+  password?: string,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_import_zip", {
     zipPath,
     backupId,
+    password,
   });
 }
 
