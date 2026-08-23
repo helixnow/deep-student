@@ -12,6 +12,9 @@
 //!   整百 response 数当作截断信号，「恰好 100 个文件」被误报为截断（假阳性）；
 //!   R02-webdav 已把启发式收紧到已知边界（坚果云 750/751、千级网关），
 //!   该用例的 `#[ignore]` 已随修复取消。
+//! - 千级网关边界在 R05 进一步收窄为 1000/1001 单档（与 750/751 对称）：
+//!   2000 个文件（2001 个 response）等千的整数倍不再视为截断信号——
+//!   单次响应能越过 1000 就说明服务端并未在千级截断。
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -217,8 +220,8 @@ async fn list_with_small_directory_is_not_truncated() {
 }
 
 /// 千级网关形态：单目录 1000 个文件（1001 个 DAV:response，命中千级
-/// 响应边界 1000/1001）必须 fail-closed 标记 truncated——与 750 边界同理，
-/// 防止在被网关静默截断的千级列表上推进同步。
+/// 响应边界 1000/1001 单档）必须 fail-closed 标记 truncated——与 750 边界
+/// 同理，防止在被网关静默截断的千级列表上推进同步。
 #[tokio::test]
 async fn list_with_1000_files_is_marked_truncated() {
     let outcome = list_outcome_for_file_count(1000).await;
@@ -226,6 +229,19 @@ async fn list_with_1000_files_is_marked_truncated() {
     assert!(
         outcome.truncated,
         "1000 个文件（1001 个 response）命中千级网关边界，必须标记 truncated"
+    );
+}
+
+/// 千级边界的下侧形态：999 个文件（恰好 1000 个 DAV:response）同样命中
+/// 1000/1001 边界，无法与「网关恰好在 1000 个 response 处截断」区分，
+/// 必须 fail-closed 标记 truncated。
+#[tokio::test]
+async fn list_with_999_files_is_marked_truncated() {
+    let outcome = list_outcome_for_file_count(999).await;
+    assert_eq!(outcome.files.len(), 999, "应解析出全部 999 个文件条目");
+    assert!(
+        outcome.truncated,
+        "999 个文件（1000 个 response）命中千级网关边界，必须标记 truncated"
     );
 }
 
@@ -239,5 +255,19 @@ async fn list_with_1001_files_is_not_truncated() {
     assert!(
         !outcome.truncated,
         "1001 个文件（1002 个 response）不在千级边界上，不得误报 truncated"
+    );
+}
+
+/// 千级收窄验证：2000 个文件（2001 个 DAV:response）是千的整数倍附近，
+/// 但已明显越过 1000/1001 单档边界——服务端能一次返回两千个 response
+/// 就说明并未在千级截断。旧启发式把所有千的整数倍都当截断信号，会把
+/// 恰好两千个文件的健康目录误报为 truncated；收窄后不得误报。
+#[tokio::test]
+async fn list_with_2000_files_is_not_truncated() {
+    let outcome = list_outcome_for_file_count(2000).await;
+    assert_eq!(outcome.files.len(), 2000, "应解析出全部 2000 个文件条目");
+    assert!(
+        !outcome.truncated,
+        "2000 个文件（2001 个 response）已越过千级单档边界，不得误报 truncated"
     );
 }
