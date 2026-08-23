@@ -31,7 +31,9 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
   runHealthCheck: vi.fn(),
   getBackupList: vi.fn(),
+  listBackupJobs: vi.fn(),
   listResumableJobs: vi.fn(),
+  getMaintenanceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   getAuditLogs: vi.fn(),
   runBackup: vi.fn(),
@@ -46,12 +48,23 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   scanAssets: vi.fn(),
   checkDiskSpaceForRestore: vi.fn(),
 }));
+const mockGetBackupConfig = vi.hoisted(() => vi.fn());
+const mockSetBackupConfig = vi.hoisted(() => vi.fn());
+const mockTranslate = vi.hoisted(() => (key: string) => key);
 
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: mockDataGovernanceApi,
+  getBackupConfig: mockGetBackupConfig,
+  setBackupConfig: mockSetBackupConfig,
   BACKUP_JOB_PROGRESS_EVENT: 'backup-job-progress',
   isBackupJobTerminal: (status: string) =>
     status === 'completed' || status === 'failed' || status === 'cancelled',
+}));
+
+// 保持 key-echo 语义：断言直接匹配 i18n key（与 restore-operations 测试一致）
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({
@@ -79,7 +92,28 @@ vi.mock('@/utils/tauriApi', () => ({
   },
 }));
 
-import { DataGovernanceDashboard } from '@/features/settings';
+vi.mock('@/utils/cloudStorageApi', () => ({
+  loadStoredCloudStorageConfigSafe: () => null,
+  loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/features/settings/components/data-governance/OverviewTab', () => ({
+  OverviewTab: () => <div data-testid="overview-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/SyncTab', () => ({
+  SyncTab: () => <div data-testid="sync-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/AuditTab', () => ({
+  AuditTab: () => <div data-testid="audit-tab" />,
+}));
+vi.mock('@/features/settings/components/data-governance/ChatSessionArchiveTab', () => ({
+  ChatSessionArchiveTab: () => <div data-testid="archive-tab" />,
+}));
+
+// ⚠️ 从组件路径直接导入而非 '@/features/settings' barrel：
+// barrel 会拉入整个设置树（AboutTab/@/version、ReactMarkdown 等），
+// 在 vitest 中导致转换图爆炸并卡死 worker（CI 分片超时的根因之一）。
+import { DataGovernanceDashboard } from '@/features/settings/components/DataGovernanceDashboard';
 
 const exportBackupButtonName = /导出备份|data:governance\.export_backup/i;
 
@@ -121,6 +155,22 @@ const sampleBackupList = [
     databases: ['vfs', 'chat_v2'],
   },
 ];
+
+// 文件级默认 mock：外层 beforeEach 先于各 describe 的 beforeEach 执行，
+// vi.clearAllMocks 只清调用记录，不会清除这里设置的实现。
+beforeEach(() => {
+  mockDataGovernanceApi.listBackupJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.getMaintenanceStatus.mockResolvedValue({
+    is_in_maintenance_mode: false,
+    operation: null,
+  });
+  mockGetBackupConfig.mockResolvedValue({
+    backupDirectory: null,
+    autoBackupEnabled: false,
+    autoBackupIntervalHours: 24,
+    maxBackupCount: null,
+  });
+});
 
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
@@ -360,8 +410,10 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
       name: /data:governance\.use_tiered_backup/i,
     }));
 
-    // 关闭“包含资产文件”开关（分层区域内唯一 switch）
-    const includeAssetsSwitch = screen.getByRole('switch');
+    // 关闭“包含资产文件”开关
+    const includeAssetsSwitch = screen.getByRole('switch', {
+      name: /data:governance\.include_assets/i,
+    });
     fireEvent.click(includeAssetsSwitch);
 
     expect(screen.getByText(vfsBlobsWarningPattern)).toBeInTheDocument();

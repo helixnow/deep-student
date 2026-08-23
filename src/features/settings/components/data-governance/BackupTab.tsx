@@ -586,7 +586,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   {t('data:governance.include_assets_desc')}
                 </p>
               </div>
-              <Switch checked={includeAssets} onCheckedChange={setIncludeAssets} />
+              <Switch
+                checked={includeAssets}
+                onCheckedChange={setIncludeAssets}
+                aria-label={t('data:governance.include_assets')}
+              />
             </div>
 
             {includeAssets && (
