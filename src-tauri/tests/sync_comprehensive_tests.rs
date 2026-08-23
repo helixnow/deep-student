@@ -529,30 +529,33 @@ mod tests {
             assert!(merged);
         }
 
-        // --- Max value for pomodoro counters ---
+        // --- estimated_pomodoros: 非单调（用户可合法调低），不再 MaxValue 合并 [R02] ---
 
         #[test]
-        fn test_pomodoro_uses_max_value() {
-            let (result, merged, _) = merge_field(
+        fn test_estimated_pomodoros_falls_back_to_lww_conflict() {
+            let (result, merged, conflict) = merge_field(
                 "todo_items",
                 "estimated_pomodoros",
                 Some(&json!(3)),
                 Some(&json!(4)),
             );
-            assert_eq!(result, json!(4));
-            assert!(merged);
+            assert_eq!(result, json!(4), "行级 LWW：远端值直落");
+            assert!(!merged);
+            assert!(conflict);
         }
 
         #[test]
-        fn test_pomodoro_max_keeps_larger_local() {
-            let (result, merged, _) = merge_field(
+        fn test_estimated_pomodoros_lower_remote_is_not_bounced_by_max() {
+            // 用户把预估从 5 调低到 0：MaxValue 会用旧值 5 回弹，必须走 LWW 直落
+            let (result, merged, conflict) = merge_field(
                 "todo_items",
                 "estimated_pomodoros",
                 Some(&json!(5)),
                 Some(&json!(0)),
             );
-            assert_eq!(result, json!(5));
-            assert!(merged);
+            assert_eq!(result, json!(0));
+            assert!(!merged);
+            assert!(conflict);
         }
 
         // --- Boolean OR (exercised via "notes"."is_favorite") ---
@@ -713,15 +716,17 @@ mod tests {
         }
 
         #[test]
-        fn test_merge_field_interval_days_max() {
-            let (result, merged, _) = merge_field(
+        fn test_merge_field_interval_days_falls_back_to_lww_conflict() {
+            // [R02] interval_days 非单调：复习失败会缩短间隔，MaxValue 会回弹合法下降
+            let (result, merged, conflict) = merge_field(
                 "review_plans",
                 "interval_days",
                 Some(&json!(3)),
                 Some(&json!(7)),
             );
             assert_eq!(result, 7);
-            assert!(merged);
+            assert!(!merged);
+            assert!(conflict);
         }
 
         #[test]
