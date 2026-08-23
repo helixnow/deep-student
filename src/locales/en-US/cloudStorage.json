@@ -193,6 +193,7 @@
     "permissionDenied": "Permission denied",
     "notFound": "File not found",
     "noBackupAvailable": "No backup file available",
+    "ftpDisabledAndroid": "FTP/FTPS storage is not available on Android. Use WebDAV instead, or sync via FTP on a desktop device.",
     "backupDatabaseFailed": "Database backup failed: {{error}}",
     "packageZipFailed": "ZIP packaging failed: {{error}}",
     "uploadFileFailed": "File upload failed: {{error}}",

@@ -193,6 +193,7 @@
     "permissionDenied": "权限不足",
     "notFound": "文件不存在",
     "noBackupAvailable": "没有可用的备份文件",
+    "ftpDisabledAndroid": "Android 端暂不支持 FTP/FTPS 存储。请改用 WebDAV，或在桌面端使用 FTP 同步。",
     "backupDatabaseFailed": "备份数据库失败: {{error}}",
     "packageZipFailed": "打包 ZIP 失败: {{error}}",
     "uploadFileFailed": "上传文件失败: {{error}}",
