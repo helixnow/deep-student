@@ -103,8 +103,11 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   // 页内再启用 MobileSlidingLayout 会出现「窗口抽屉 + 页内滑动侧栏」双导航。
   // 通过 data-wb-sys-app 祖先判定（挂载后布局前完成，无闪烁），
   // 在 Workbench 窗内强制走桌面分支。
+  // 三态：null = 尚未检测（首次 commit）。useMobileHeader 只在判定为
+  // 独立视图（=== false）后启用，窗口化实例连首帧都不会往共享的
+  // 'todo' viewId 写入顶栏配置（见下方 useMobileHeader 的 enabled 参数）。
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [inWorkbenchWindow, setInWorkbenchWindow] = useState(false);
+  const [inWorkbenchWindow, setInWorkbenchWindow] = useState<boolean | null>(null);
   useLayoutEffect(() => {
     setInWorkbenchWindow(Boolean(rootRef.current?.closest('[data-wb-sys-app]')));
   }, []);
@@ -204,10 +207,16 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
     };
   })();
 
+  // enabled = 仅独立 todo 视图写顶栏：窗口化承载（TodoAppWindow）与独立视图
+  // 共用 'todo' viewId，窗口实例若也写入会覆盖独立视图的配置、卸载时还会
+  // 误清其缓存（挂错实例的 onMenuClick，汉堡菜单失灵）。检测未完成（null）
+  // 一并视为禁用，避免首次 commit 抢写；判定落定由 deps 里的
+  // inWorkbenchWindow 触发补写（useLayoutEffect 链在首帧绘制前完成，无闪烁）。
   useMobileHeader(
     'todo',
     headerConfig,
-    [headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen, mobileDetailItem?.title],
+    [headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen, mobileDetailItem?.title, inWorkbenchWindow],
+    inWorkbenchWindow === false,
   );
 
   // ===== 移动端：MobileSlidingLayout =====

@@ -976,7 +976,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             <div
               data-wb-blur-surface
               className={cn(
-                'sticky top-0 md:top-4 z-10 -mx-1 px-1 py-3',
+                // 小屏（移动 Sheet）不粘性，避免滑入 Sheet header；md+ 保持 sticky
+                'static md:sticky md:top-4 z-10 -mx-1 px-1 py-3',
                 'bg-[color:var(--shell-workspace-panel)]/85',
                 'supports-[backdrop-filter]:bg-[color:var(--shell-workspace-panel)]/65 supports-[backdrop-filter]:backdrop-blur-md',
                 'border-b border-border/40',

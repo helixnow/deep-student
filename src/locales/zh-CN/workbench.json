@@ -235,6 +235,9 @@
     "pomodoro": "番茄钟",
     "browser": "浏览器"
   },
+  "legacyFallback": {
+    "desktopOnly": "「{{name}}」仅在桌面端可用"
+  },
   "dock": {
     "label": "程序坞",
     "open": "打开",

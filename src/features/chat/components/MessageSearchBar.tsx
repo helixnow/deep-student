@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import Z_INDEX from '@/config/zIndex';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 export interface MessageSearchBarProps {
   placement?: 'floating' | 'header';
@@ -37,10 +38,30 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
+  }, []);
+
+  // 📱 Android 系统返回键 = 关闭搜索条（自绘浮层，协调器 Radix 兜底覆盖不到），
+  // 与 InputBarUI 组合面板、InlineImageViewer 的 overlay 语义一致。
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, []);
+
+  // 两种形态都 portal 在宿主视图之外（body / 桌面壳顶栏），视图被切走
+  // （visibility:hidden）时不会随之隐藏；监听全局视图切换事件收起搜索条，
+  // 避免悬浮在新视图上方（对照 InputBarUI 组合面板的处理）。
+  useEffect(() => {
+    const handleViewSwitched = () => onCloseRef.current();
+    window.addEventListener('app:view-switched', handleViewSwitched);
+    return () => window.removeEventListener('app:view-switched', handleViewSwitched);
   }, []);
 
   useEffect(() => {

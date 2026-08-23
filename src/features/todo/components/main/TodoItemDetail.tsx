@@ -135,9 +135,18 @@ export const TodoItemDetail: React.FC<{
   const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroRecord[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
+  // 面板根节点（Android 返回键的保活可见性守卫用）
+  const panelRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!calendarOpen) return;
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 保活层里仍保持挂载
+      // （visibility:hidden），日历展开态也随之滞留——此时不消费返回键，
+      // 交还给当前活跃视图（对照 MobileDetailOverlay 的同款守卫）
+      const el = panelRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setCalendarOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -515,6 +524,7 @@ export const TodoItemDetail: React.FC<{
 
   return (
     <aside
+      ref={panelRef}
       data-todo-detail-panel
       onKeyDown={handlePanelKeyDown}
       className={cn(

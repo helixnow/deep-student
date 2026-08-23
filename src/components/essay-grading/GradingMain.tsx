@@ -5,6 +5,7 @@ import { InputPanel } from './InputPanel';
 import { ResultPanel } from './ResultPanel';
 import { InlineSettingsPanel } from './InlineSettingsPanel';
 import { useWbSysSize } from '@/features/workbench/apps/system/useWbSysSize';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
@@ -153,9 +154,14 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   // 容器级断点：工作台可能运行在 workbench 窗口里（窗口远窄于视口），
   // viewport media query 在那里恒等于"桌面大屏"会把三栏挤成一条（O18 同款问题），
   // 故以工作台自身宽度分级：compact(<640) 走移动布局。
+  // 同时兼顾视口断点（与 TranslationMain 同口径）：移动壳视口 <768，
+  // 而 compact 阈值是 640——640~767 的视口若只看容器分级会误走桌面
+  // 分栏 + 设置整页替换且不注册返回键，故两者取并集。
+  // 桌面视口（≥768）下 viewport 分支恒为 false，行为不变。
   const { t } = useTranslation(['essay_grading']);
   const { ref: layoutRef, sizeClass } = useWbSysSize();
-  const isSmallScreen = sizeClass === 'compact';
+  const { isSmallScreen: viewportIsSmallScreen } = useBreakpoint();
+  const isSmallScreen = sizeClass === 'compact' || viewportIsSmallScreen;
   const useSettingsPage = settingsAsPage || !isSmallScreen;
 
   // 左右 / 上下分栏：与翻译工作台同一口径——非小屏默认左右，仅当主区

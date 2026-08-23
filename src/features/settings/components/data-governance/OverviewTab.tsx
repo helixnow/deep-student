@@ -178,7 +178,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               size="sm"
               onClick={onVerifyLatestBackup}
               disabled={loading || isVerifying}
-              className="h-7"
+              className="h-7 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11"
             >
               {isVerifying ? (
                 <Spinner className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -331,11 +331,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </p>
           </div>
           <div className="flex gap-2">
-            <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
+            <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11">
               <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.refresh')}
             </DsButton>
-            <DsButton variant="default" size="sm" onClick={onRunHealthCheck} disabled={loading} className="h-8">
+            <DsButton variant="default" size="sm" onClick={onRunHealthCheck} disabled={loading} className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11">
               <Shield className="h-3.5 w-3.5 mr-1.5" />
               {t('data:governance.run_health_check')}
             </DsButton>

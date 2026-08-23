@@ -197,7 +197,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   // P1-6 移动端 API 配置页两级导航：供应商列表 → 供应商详情
   const [mobileVendorDetailOpen, setMobileVendorDetailOpen] = useState(false);
 
-  // 移动端统一顶栏配置 - 带面包屑导航
+  // 移动端 Sheet header 标题（面包屑）所需状态
   // 获取当前标签页的显示名称（需要在 useMobileHeader 之前定义）
   const activeTab = useSettingsShellStore((state) => state.activeTab);
   const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);
@@ -205,7 +205,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
   const [settingsScrollElement, setSettingsScrollElement] = useState<HTMLDivElement | null>(null);
   
-  // 顶栏标题在 vendorState / mcpSection 就绪后统一计算（见下方 SettingsBreadcrumb）
+  // Sheet header 标题在 vendorState / mcpSection 就绪后统一计算（见下方 settingsBreadcrumbText）
 
   const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   const [uiZoom, setUiZoom] = useState<number>(DEFAULT_UI_ZOOM);
@@ -565,22 +565,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     dismissRightPanel,
   ]);
 
-  const handleMobileHeaderBack = useCallback(() => {
-    if (screenPosition === 'center' && mobileNavView === 'sections') {
-      onBack();
-      return;
-    }
-    handleMobileSettingsBack();
-  }, [screenPosition, mobileNavView, onBack, handleMobileSettingsBack]);
-
   // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
   // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（DsDialog、MobileSlidingLayout）
   // 先行消费；此处只在中屏「分区内容态」接管，与顶栏返回箭头同一条回退链。
   // 分区列表态返回 false，交给应用级视图历史 fallback。
+  // Settings 是 LRU 保活视图：必须 gate isActive，非活跃时注销 handler，否则会吞掉其他页面的返回键。
   const settingsBackStateRef = useRef({ screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen });
   settingsBackStateRef.current = { screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen };
   useEffect(() => {
-    if (!isSmallScreen) return;
+    if (!isSmallScreen || !isActive) return;
     return registerBackHandler(() => {
       const s = settingsBackStateRef.current;
       if (s.screenPosition !== 'center' || s.mobileNavView !== 'content') return false;
@@ -591,7 +584,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       }
       return true;
     }, BACK_PRIORITY.view);
-  }, [isSmallScreen]);
+  }, [isSmallScreen, isActive]);
 
   // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 DsDialog）
   useEffect(() => {
@@ -611,7 +604,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     [sidebarNavItems, activeTab]
   );
 
-  // 顶栏标题：分区列表态显示「系统设置」；分区内容态显示分区名；
+  // 移动端 Sheet header 标题：分区列表态显示「系统设置」；分区内容态显示分区名；
   // API 详情态显示供应商名；右滑面板显示编辑/预览标题
   const settingsBreadcrumbText = useMemo(() => {
     let text = t('settings:title');
@@ -662,12 +655,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     t,
   ]);
 
-  const SettingsBreadcrumb = useMemo(() => (
-    <h1 className="truncate text-lg font-semibold">
-      {settingsBreadcrumbText}
-    </h1>
-  ), [settingsBreadcrumbText]);
-
   const settingsHeaderRightActions = useMemo(() => {
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
@@ -698,16 +685,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     return undefined;
   }, [screenPosition, rightPanelType, t]);
 
-  // 移动端设置统一显示返回箭头：首页返回主页，内容态逐级回退。
-  const showSettingsBackArrow = true;
-
+  // 小屏 Settings 由全屏 Sheet 自绘 header（settings-mobile-sheet-header）承载标题/返回/右侧动作；
+  // 这里仅登记 hidden，让应用壳层隐藏统一顶栏并移除其预留高度。
+  // titleNode 等字段在 hidden 时永不渲染（UnifiedMobileHeader 仅在小屏存在），故不传入。
   useMobileHeader('settings', {
     hidden: isSmallScreen || !isActive,
-    titleNode: SettingsBreadcrumb,
-    onMenuClick: handleMobileHeaderBack,
-    showBackArrow: showSettingsBackArrow,
-    rightActions: settingsHeaderRightActions,
-  }, [SettingsBreadcrumb, settingsHeaderRightActions, handleMobileHeaderBack]);
+  }, [isSmallScreen, isActive]);
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
     const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
@@ -1992,7 +1975,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {loading || isSectionsLevel ? (
                 <>
                   <div className="settings-mobile-sheet-header-action" />
-                  <div className="min-w-0 flex-1" />
+                  <h1 className="truncate text-base font-semibold">{sheetTitle}</h1>
                   <DsButton
                     variant="ghost"
                     size="icon"
@@ -2016,7 +1999,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                   >
                     <CaretLeft size={26} weight="regular" />
                   </DsButton>
-                  <div className="min-w-0 flex-1" />
+                  <h1 className="truncate text-base font-semibold">{sheetTitle}</h1>
                   <div className="settings-mobile-sheet-header-action flex items-center justify-center">
                     {settingsHeaderRightActions}
                   </div>

@@ -30,6 +30,7 @@ import { useMediaPlayback } from './useMediaPlayback';
 import { MediaScrubber } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
 import { isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 const HIDE_CONTROLS_DELAY_MS = 2500;
 
@@ -172,6 +173,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, []);
+
+  // Android 系统返回键：全屏时先退出全屏，而不是退出预览/页面
+  useEffect(() => {
+    if (!isFullscreen) return;
+    return registerBackHandler(() => {
+      void document.exitFullscreen().catch(() => {
+        // 全屏 API 不可用时静默降级
+      });
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isFullscreen]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {

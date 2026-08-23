@@ -177,7 +177,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           width={130}
         />
 
-        <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 w-8 p-0 shrink-0" aria-label={t('common:actions.refresh')}>
+        <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 w-8 p-0 shrink-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:actions.refresh')}>
           <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
         </DsButton>
       </div>
@@ -254,7 +254,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
               size="sm"
               onClick={onLoadMore}
               disabled={loading}
-              className="h-8"
+              className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11"
             >
               {loading ? (
                 <CircleNotch size={14} className="mr-1.5 animate-spin" />

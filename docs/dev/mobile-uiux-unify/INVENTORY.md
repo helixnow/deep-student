@@ -22,10 +22,11 @@
 | llm-playground | DEV | 是（Round 2） | 自绘 header 仅桌面 |
 | notes（组件 `NotesHome`） | 学习资源内嵌 | 是，但 viewId=`notes` | **不是 CurrentView**，配置隔离可能失效 |
 
-## 第 0 轮已看到的违规信号（待子代理核实）
+## 核实后状态
 
-- 页内自绘顶栏/工具栏：`AnkiTasksApp` `wb-at-header`、`TemplateInlinePanels` `wb-tm-panel-header`、`SkillsManagementPage` sticky toolbar、`Settings` `<header>`、flashcards `wb-fc-header`、`SessionSidebarContent` h-11 header、`LLMOutputPlayground` / `IntegrationTest` header。
-- `NotesHome` 使用错误 viewId `notes`。
-- `ui-lab` / `llm-playground` / `chat-v2-test` 未走统一顶栏。
-- 多处 hover-only 操作（部分已有 `pointer:coarse` 补偿，需逐页确认）。
-- 统计页使用 recharts / Card 桌面密度；DimensionManagement 使用 sticky Table。
+- `wb-at-header` / `wb-tm-panel-header` / `wb-fc-header`：已销案（小屏守卫或桌面壳独占）。
+- Skills sticky：Round 2 已删死 class。
+- DEV 双顶栏：Round 2 已收进统一顶栏。
+- `NotesHome`：死代码 + 非法 viewId，契约测试 allowlist，待删。
+- Settings 小屏标题、GradingMain 640–767：Round 3 已修。
+- **仍开**：引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键。

@@ -377,7 +377,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             variant={isAddingNew ? 'default' : 'ghost'}
             size="sm"
             onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
-            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:h-11 text-xs px-2 py-0"
           >
             {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
@@ -387,7 +387,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             size="sm"
             onClick={loadDimensions}
             disabled={loading}
-            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:h-11 text-xs px-2 py-0"
           >
             {t('common:refresh')}
           </DsButton>
@@ -457,7 +457,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                   <Badge
                     key={preset}
                     variant={isSelected ? 'default' : 'outline'}
-                    className={`cursor-pointer text-2xs px-1.5 py-0.5 h-5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
+                    className={`cursor-pointer text-2xs px-1.5 py-0.5 h-5 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-9 [@media(pointer:coarse)]:px-2.5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
                     onClick={() => !exists && setNewDimension(String(preset))}
                   >
                     {preset}
@@ -865,7 +865,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               size="sm"
                               onClick={() => handleSetAsDefault(dim)}
                               disabled={settingDefault || !dim.modelConfigId}
-                              className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:h-10 px-2 active:scale-95"
+                              className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:h-11 px-2 active:scale-95"
                             >
                               <span className="mr-1">⭐</span>
                               {t('settings:dimension_management.set_as_default')}
@@ -877,7 +877,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           size="sm"
                           onClick={() => handleChangeModel(dim)}
                           className={cn(
-                            "text-2xs h-7 [@media(pointer:coarse)]:h-10 px-2 active:scale-95",
+                            "text-2xs h-7 [@media(pointer:coarse)]:h-11 px-2 active:scale-95",
                             isExpanded && "bg-primary/10 text-primary"
                           )}
                         >
@@ -891,7 +891,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           onClick={() => handleToggleDeleteConfirm(dim)}
                           aria-expanded={isConfirmingDelete}
                           className={cn(
-                            "text-2xs h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 p-0 active:scale-95 transition-colors",
+                            "text-2xs h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 p-0 active:scale-95 transition-colors",
                             isConfirmingDelete
                               ? "text-destructive bg-destructive/10"
                               : "text-destructive/60 hover:text-destructive"

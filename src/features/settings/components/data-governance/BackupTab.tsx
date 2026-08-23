@@ -872,7 +872,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         onClick={() => onVerifyBackup(backup.path)}
                         disabled={isBackupRunning}
                         title={t('data:governance.verify')}
@@ -883,7 +883,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('export');
@@ -897,7 +897,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         onClick={() => {
                           if (backup.backup_type === 'incremental') {
                             showGlobalNotification(
@@ -931,7 +931,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('delete');

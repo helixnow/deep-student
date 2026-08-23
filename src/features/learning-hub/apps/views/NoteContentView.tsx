@@ -143,13 +143,14 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
   // 移动端子屏打开时接管 Android 返回键：先关子屏，不退出笔记
+  // （isActive 守卫：保活隐藏的笔记 tab 不注册，避免消费当前活跃视图的返回键）
   useEffect(() => {
-    if (!isSmallScreen || !mobilePanelOpen) return;
+    if (!isActive || !isSmallScreen || !mobilePanelOpen) return;
     return registerBackHandler(() => {
       setMobilePanelOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [isSmallScreen, mobilePanelOpen]);
+  }, [isActive, isSmallScreen, mobilePanelOpen]);
 
   const toggleRightPanel = useCallback(() => {
     setRightPanelVisible((visible) => !visible);
