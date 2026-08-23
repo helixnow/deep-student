@@ -1066,6 +1066,14 @@ impl BackupManifest {
                 INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE.to_string(),
             ));
         }
+        // 加密全保真 ZIP 的外层清单：在 snapshot_kind 检查之前先给出
+        // 可操作指引（提供备份密码解封），而不是笼统的"不是完整快照"。
+        if self.key_policy == BackupKeyPolicy::IncludedEncrypted {
+            return Err(BackupError::Manifest(
+                "备份的敏感数据仍处于密码加密封存状态；请在导入 ZIP 时提供备份密码完成解封，再执行整槽恢复"
+                    .to_string(),
+            ));
+        }
         if self.snapshot_kind != SnapshotKind::Full {
             return Err(BackupError::RestoreFailed(format!(
                 "备份不是可替换数据槽的完整快照: {:?}",
@@ -1108,12 +1116,6 @@ impl BackupManifest {
             BackupKeyPolicy::ExcludedPortable | BackupKeyPolicy::LegacyUnknown => {
                 return Err(BackupError::Manifest(
                     "可替换数据槽的完整快照不得排除或隐式声明密钥策略".to_string(),
-                ));
-            }
-            BackupKeyPolicy::IncludedEncrypted => {
-                return Err(BackupError::Manifest(
-                    "备份的敏感数据仍处于密码加密封存状态；请在导入 ZIP 时提供备份密码完成解封，再执行整槽恢复"
-                        .to_string(),
                 ));
             }
             _ => {}
