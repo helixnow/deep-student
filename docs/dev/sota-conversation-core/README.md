@@ -30,6 +30,7 @@ OpenCode、Pi Agent、Claude Code、Codex 的行业前沿。
 | [ROUND-01-native-coverage.md](./ROUND-01-native-coverage.md) | 第一轮补充：官方字段覆盖度与 V4-Pro 门控过期 |
 | [ROUND-01-tools.md](./ROUND-01-tools.md) | 第一轮补充：工具排序空操作与多变体死键 |
 | [ROUND-01-prefix-paths.md](./ROUND-01-prefix-paths.md) | 第一轮补充：live/replay 分叉总表 |
+| [ROUND-01-replay.md](./ROUND-01-replay.md) | 第一轮补充：V20260806 未接线，A/B 分层 |
 | [DESIGN.md](./DESIGN.md) | 随调研收敛的优化方案（草案 → 可落地） |
 
 ## 当前判断（会随轮次更新）
