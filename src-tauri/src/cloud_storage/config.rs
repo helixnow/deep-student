@@ -644,7 +644,9 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            config.validate().expect_err("FTP must be rejected on Android"),
+            config
+                .validate()
+                .expect_err("FTP must be rejected on Android"),
             crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
         );
     }
