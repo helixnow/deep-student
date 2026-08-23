@@ -8,7 +8,7 @@
  * - 解释 / 翻译 → 复用 chat 的 ExplainPopover / TranslationPopover（两者都只吃
  *   sourceText，不依赖聊天 store）
  * - 保存为笔记 → 复用 @/shared/notes 的目录选择 + 「打开笔记」toast
- * - 生成卡片   → 复用 chat 的 selectionCardGeneration（ChatV2AnkiAdapter）
+ * - 生成卡片   → 复用 chat 的 selectionCardGeneration（内部走既有 CardForge 适配器）
  * - 添加到聊天 → 复用全局 CHAT_V2_SET_INPUT（WorkbenchEventBridge 兜底建窗）
  *
  * 定位契约：
