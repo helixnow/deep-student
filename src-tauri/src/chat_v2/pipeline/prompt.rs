@@ -163,11 +163,10 @@ impl ChatV2Pipeline {
             }
         }
 
-        // 3. 注入相关性排序：截断前按当轮用户消息与各分类摘要的字符 bigram
-        // 重叠度重排，让相关分类优先占用 2000 字符预算；信号太弱时保持原
-        // 固定顺序（行为可预测）。ctx.user_content 即当轮用户消息原文，
-        // 无需改动参数链。
-        let sections = rank_sections_by_relevance(sections, &ctx.user_content);
+        // 3. 注入顺序固定（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1）：
+        // 不再按当轮用户消息重排分类。user_profile 注入在 system 前缀内，
+        // 按 query 重排会让 system 每轮变化、打碎整段 prompt cache；
+        // 固定顺序（分类加载顺序）保证跨轮字节稳定。
 
         // 防止 profile 过大吞噬上下文窗口：按完整 section 截断（不截断到中间位置）
         const PROFILE_MAX_CHARS: usize = 2000;
@@ -357,122 +356,5 @@ impl ChatV2Pipeline {
             persistent_stable_id: None,
             metadata: None,
         }
-    }
-}
-
-/// 打分用查询文本的最大取样字符数（过滤后计）。用户消息可能粘贴长文，
-/// 打分只需开头部分即可代表主题，同时把热路径成本封顶。
-const RELEVANCE_QUERY_MAX_CHARS: usize = 2000;
-
-/// 相关性信号阈值：最高分低于该重叠 bigram 数时视为信号太弱，
-/// 保持原固定顺序（避免个别偶然重叠打乱稳定的注入顺序）。
-const RELEVANCE_MIN_OVERLAP: usize = 2;
-
-/// 提取文本的字符 bigram 集合（小写、仅保留字母/数字/CJK 等字母数字类字符）
-///
-/// 不依赖空格分词，对中文/混排友好；标点与空白被剔除后相邻字符成对，
-/// 属于廉价词法度量的可接受近似。纯同步、零分配外部依赖，可跑在每轮热路径。
-fn char_bigrams(text: &str, max_chars: usize) -> std::collections::HashSet<[char; 2]> {
-    let chars: Vec<char> = text
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(|c| c.to_lowercase())
-        .take(max_chars)
-        .collect();
-    chars.windows(2).map(|w| [w[0], w[1]]).collect()
-}
-
-/// 按与当轮用户消息的词法重叠度对分类 sections 降序重排（截断前调用）
-///
-/// 打分 = 用户消息 bigram 集合与该分类摘要 bigram 集合的交集大小。
-/// 禁止 LLM / embedding 调用（每轮热路径）。回退条件：用户消息过短
-/// 产生不出 bigram，或所有分类得分都低于 `RELEVANCE_MIN_OVERLAP`——
-/// 此时原样返回，维持既有固定顺序。稳定排序保证同分分类相对顺序不变。
-fn rank_sections_by_relevance(
-    sections: Vec<(String, Vec<String>)>,
-    user_text: &str,
-) -> Vec<(String, Vec<String>)> {
-    if sections.len() < 2 {
-        return sections;
-    }
-    let query_bigrams = char_bigrams(user_text, RELEVANCE_QUERY_MAX_CHARS);
-    if query_bigrams.is_empty() {
-        return sections;
-    }
-    let scores: Vec<usize> = sections
-        .iter()
-        .map(|(section, _)| {
-            let section_bigrams = char_bigrams(section, usize::MAX);
-            query_bigrams.intersection(&section_bigrams).count()
-        })
-        .collect();
-    if scores.iter().all(|s| *s < RELEVANCE_MIN_OVERLAP) {
-        return sections;
-    }
-    let mut scored: Vec<(usize, (String, Vec<String>))> =
-        scores.into_iter().zip(sections).collect();
-    // sort_by 是稳定排序：同分 section 保持原有固定顺序
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
-    scored.into_iter().map(|(_, section)| section).collect()
-}
-
-#[cfg(test)]
-mod relevance_tests {
-    use super::{char_bigrams, rank_sections_by_relevance};
-
-    fn section(text: &str) -> (String, Vec<String>) {
-        (text.to_string(), vec![])
-    }
-
-    fn titles(sections: &[(String, Vec<String>)]) -> Vec<&str> {
-        sections.iter().map(|(s, _)| s.as_str()).collect()
-    }
-
-    #[test]
-    fn bigrams_handle_chinese_without_whitespace_tokenization() {
-        let grams = char_bigrams("我在准备高等数学考试", usize::MAX);
-        assert!(grams.contains(&['高', '等']));
-        assert!(grams.contains(&['数', '学']));
-        // 标点/空白被剔除
-        let grams2 = char_bigrams("数学，考试", usize::MAX);
-        assert!(grams2.contains(&['学', '考']));
-    }
-
-    #[test]
-    fn relevant_section_is_promoted_ahead_of_truncation_order() {
-        let sections = vec![
-            section("### 饮食偏好\n喜欢清淡饮食，不吃辣"),
-            section("### 学习目标\n正在准备高等数学期末考试，重点是微积分"),
-            section("### 作息习惯\n习惯晚睡，早上效率低"),
-        ];
-        let ranked = rank_sections_by_relevance(sections, "帮我复习高等数学的微积分部分");
-        assert!(titles(&ranked)[0].contains("学习目标"));
-    }
-
-    #[test]
-    fn falls_back_to_original_order_when_signal_is_weak() {
-        let sections = vec![
-            section("### 饮食偏好\n喜欢清淡饮食"),
-            section("### 作息习惯\n习惯晚睡"),
-        ];
-        // 与所有分类都无重叠 → 保持原顺序
-        let ranked = rank_sections_by_relevance(sections.clone(), "quantum entanglement");
-        assert_eq!(titles(&ranked), titles(&sections));
-        // 用户消息过短产生不出 bigram → 保持原顺序
-        let ranked = rank_sections_by_relevance(sections.clone(), "嗯");
-        assert_eq!(titles(&ranked), titles(&sections));
-    }
-
-    #[test]
-    fn stable_order_for_tied_scores() {
-        let sections = vec![
-            section("### A\n数学笔记"),
-            section("### B\n数学笔记"),
-            section("### C\n英语笔记"),
-        ];
-        let ranked = rank_sections_by_relevance(sections, "数学笔记整理");
-        // A/B 同分，维持原相对顺序
-        assert!(titles(&ranked)[0].contains("### A"));
-        assert!(titles(&ranked)[1].contains("### B"));
     }
 }

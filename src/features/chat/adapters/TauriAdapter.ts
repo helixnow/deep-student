@@ -5259,15 +5259,20 @@ export class ChatV2TauriAdapter {
    *
    * 🔧 2026-01-20: 渐进披露模式下，注入 available_skills 列表
    *
-   * 将 Skills 元数据追加到系统提示后面，用于 LLM 自动发现和激活技能
+   * 将 Skills 元数据追加到系统提示后面，用于 LLM 自动发现和激活技能。
+   *
+   * 缓存前缀约束（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1-8）：
+   * 目录不按已加载状态收缩，会话内保持恒定，避免 system 前缀在
+   * load_skills 之后从第 0 字节变化、打碎整段 prompt cache。
+   * 已加载状态由 load_skills 的 tool result 与瞬态技能消息表达。
    */
   private buildSystemPromptWithSkills(
     basePrompt: string | undefined
   ): string | undefined {
     // The shared generator applies trust/enable visibility before reading any
     // model-facing description or embedded-tool metadata.
-    const skillMetadataPrompt = generateAvailableSkillsPrompt(true, this.sessionId);
-    console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (excludeLoaded=true)');
+    const skillMetadataPrompt = generateAvailableSkillsPrompt();
+    console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (session-constant catalog)');
 
     // 如果没有 skills 元数据，返回原始提示
     if (!skillMetadataPrompt) {

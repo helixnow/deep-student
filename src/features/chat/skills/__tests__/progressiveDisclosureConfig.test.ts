@@ -74,6 +74,41 @@ describe('progressive disclosure defaults', () => {
     });
   });
 
+  it('keeps the available_skills catalog constant after load_skills (loaded state lives in the tool result)', () => {
+    // 缓存前缀约束（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1-8）：
+    // 技能加载后目录不得从 system 收缩，否则 system 前缀从第 0 字节变化，
+    // 整段历史 prompt cache 失效。已加载状态由 tool result 表达。
+    const skill: SkillDefinition = {
+      id: 'legacy-load-test-skill',
+      name: 'Legacy Load Test Skill',
+      description: 'Catalog must stay constant across loads',
+      location: 'builtin',
+      sourcePath: 'builtin://legacy-load-test-skill',
+      content: '# body',
+      embeddedTools: [
+        {
+          name: 'builtin-legacy_test_tool',
+          description: 'Legacy test tool',
+          inputSchema: { type: 'object', properties: {} },
+        },
+      ],
+    };
+    skillRegistry.register(skill);
+
+    const promptBefore = generateAvailableSkillsPrompt();
+    expect(promptBefore).toContain('id="legacy-load-test-skill"');
+
+    const result = JSON.parse(handleLoadSkillsToolCall('legacy-load-test-session', {
+      skills: ['legacy-load-test-skill'],
+    }));
+    expect(result.result.loaded_skill_ids).toContain('legacy-load-test-skill');
+
+    // 目录恒定：加载前后逐字节一致，已加载技能不从 system 目录剔除
+    const promptAfter = generateAvailableSkillsPrompt();
+    expect(promptAfter).toBe(promptBefore);
+    expect(promptAfter).toContain('id="legacy-load-test-skill"');
+  });
+
   it('keeps untrusted descriptions and embedded schemas out of every runtime path', () => {
     const secret = 'UNTRUSTED_SECRET_DESCRIPTION';
     skillRegistry.register({

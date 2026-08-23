@@ -563,25 +563,19 @@ function formatRequiresMissingReason(skillId: string): string {
  * - `disableAutoInvoke` 技能不出现
  * - requires 未满足的技能标注为不可用（不要加载）
  *
- * @param excludeLoaded 是否排除已加载的 Skills
- * @param sessionId 会话 ID（用于检查已加载状态）
+ * 缓存前缀约束（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1-8）：
+ * 目录在会话内必须恒定——不按已加载状态收缩。技能加载后目录缩水会让
+ * system 前缀从第 0 字节变化，导致整段历史的 prompt cache 失效。
+ * 已加载状态由 load_skills 的 tool result（loaded_skill_ids 等）和
+ * 尾部瞬态技能消息表达，不从 system 目录中剔除。
  */
-export function generateAvailableSkillsPrompt(
-  excludeLoaded = false,
-  sessionId?: string
-): string {
+export function generateAvailableSkillsPrompt(): string {
   const skills = skillRegistry.getAll().filter(isSkillPromptVisible);
 
   // 过滤掉 disableAutoInvoke 的 Skills
-  let filteredSkills = skills.filter(s => !s.disableAutoInvoke);
+  const filteredSkills = skills.filter(s => !s.disableAutoInvoke);
 
   // 允许无 embeddedTools 的模式型 Skills（如 research-mode），工具数量为 0
-
-  // 如果需要排除已加载的
-  if (excludeLoaded && sessionId) {
-    const loadedIds = new Set(getLoadedSkills(sessionId).map(s => s.id));
-    filteredSkills = filteredSkills.filter(s => !loadedIds.has(s.id));
-  }
 
   // 加载期 requires 门控：与 registry.generateMetadataPrompt 保持同一语义
   const availableSkills = filteredSkills.filter((skill) =>
