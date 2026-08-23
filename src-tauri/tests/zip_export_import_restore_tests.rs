@@ -443,6 +443,112 @@ fn encrypted_zip_import_with_wrong_password_fails() {
     );
 }
 
+/// R04 错密码不改槽：错误密码导入失败后，目标数据槽必须保持原状；
+/// 即使导入目录残留了外层密封产物，其清单也必须继续拒绝整槽恢复，
+/// restore 门禁同样拒绝，且拒绝过程不得触碰数据槽。
+///
+/// 这是「错密码」与「改槽」之间的最后一道防线：解压发生在解封之前，
+/// 密码错误时磁盘上可能已有外层条目，绝不允许这些半成品被当作可恢复
+/// 备份写回数据槽。
+#[test]
+fn encrypted_zip_wrong_password_never_touches_target_slot() {
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    let export_root = TempDir::new().expect("export root");
+    let zip_path = export_root.path().join("wrong-password-slot-guard.zip");
+    export_backup_to_zip(
+        &backup_dir.join(&manifest.backup_id),
+        &ZipExportOptions {
+            output_path: Some(zip_path.clone()),
+            encryption_password: Some(ENCRYPTION_PASSWORD.to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("加密导出应成功");
+
+    // 目标设备：数据槽内已有用户数据（哨兵值），错密码导入绝不能动它。
+    let restore_root = TempDir::new().expect("restore root");
+    let restore_slot = create_slot_with_databases(restore_root.path());
+    let slot_databases = ["vfs.db", "chat_v2.db", "mistakes.db", "llm_usage.db"];
+    for db in ["chat_v2.db", "mistakes.db", "llm_usage.db"] {
+        let conn = Connection::open(restore_slot.join(db)).expect("open target db");
+        conn.execute("UPDATE roundtrip_marker SET value = 'pre-restore-data'", [])
+            .expect("seed pre-restore data");
+    }
+    let slot_hashes_before: Vec<String> = slot_databases
+        .iter()
+        .map(|db| {
+            let path = if *db == "vfs.db" {
+                restore_slot.join("databases").join(db)
+            } else {
+                restore_slot.join(db)
+            };
+            deep_student_lib::backup_common::calculate_file_hash(&path)
+                .expect("hash slot db before import")
+        })
+        .collect();
+
+    // ---------- 1. 错密码导入必须失败，且错误可操作 ----------
+    let restore_backup_dir = restore_root.path().join("recovery").join("backups");
+    let imported_dir = restore_backup_dir.join(&manifest.backup_id);
+    std::fs::create_dir_all(&restore_backup_dir).expect("create restore backup dir");
+    let import_error = import_backup_from_zip_with_password(
+        &zip_path,
+        &imported_dir,
+        Some("totally-wrong-password"),
+    )
+    .expect_err("错误密码导入必须失败")
+    .to_string();
+    assert!(
+        import_error.contains("备份密码错误") || import_error.contains("解封"),
+        "错误密码的拒绝必须可操作，实际: {import_error}"
+    );
+
+    // ---------- 2. 残留的外层清单（若有）必须继续拒绝整槽恢复 ----------
+    let leftover_manifest_path = imported_dir.join("manifest.json");
+    if leftover_manifest_path.is_file() {
+        let leftover = BackupManifest::load_from_file(&leftover_manifest_path)
+            .expect("残留清单若存在必须可解析（否则无法诚实拒绝）");
+        assert_eq!(
+            leftover.key_policy,
+            BackupKeyPolicy::IncludedEncrypted,
+            "错密码解封失败后残留的只能是未解封的外层密封清单"
+        );
+        leftover
+            .validate_for_slot_restore()
+            .expect_err("未解封的密封清单不得通过整槽恢复验证");
+
+        // 即使有人拿残留清单强行走 restore 门禁，也必须被拒绝。
+        let mut restore_manager = BackupManager::new(restore_backup_dir.clone());
+        restore_manager.set_app_data_dir(restore_slot.clone());
+        restore_manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
+        restore_manager
+            .restore_with_assets(&leftover, false)
+            .expect_err("错密码残留产物的整槽恢复必须显式拒绝");
+    }
+
+    // ---------- 3. 数据槽必须逐字节保持原状 ----------
+    for (db, hash_before) in slot_databases.iter().zip(&slot_hashes_before) {
+        let path = if *db == "vfs.db" {
+            restore_slot.join("databases").join(db)
+        } else {
+            restore_slot.join(db)
+        };
+        let hash_after = deep_student_lib::backup_common::calculate_file_hash(&path)
+            .expect("hash slot db after failed import");
+        assert_eq!(
+            &hash_after, hash_before,
+            "错密码导入/恢复被拒后，数据槽 {db} 不得有任何字节变化"
+        );
+    }
+    for db in ["chat_v2.db", "mistakes.db", "llm_usage.db"] {
+        assert_eq!(
+            read_marker(&restore_slot.join(db)).as_deref(),
+            Some("pre-restore-data"),
+            "错密码流程后 {db} 的用户数据必须原样保留"
+        );
+    }
+}
+
 /// 未加密便携 ZIP 的诚实分类：导入产物恒为 partial_archive，
 /// validate 与 restore 都必须显式拒绝（锁定去除误导 disaster_recovery 标签）。
 #[test]
