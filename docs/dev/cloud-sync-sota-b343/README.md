@@ -71,12 +71,18 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 
 | 轮次 | 状态 | 说明 |
 |---|---|---|
-| R01 只读调研 | 进行中 | 10 个 Fable xhigh 并行审阅逻辑 / 供应商 / UIUX / 安全 / 跨平台 / 跨版本 / 测试缺口 |
-| R02 修复落地 | 未开始 | 按 R01 优先级派修复子代理 |
-| R03 复审 | 未开始 | 独立只读核对修复结果 |
-| R04+ 极端测试与继续打磨 | 未开始 | 跨平台、双向、跨版本、供应商差异 |
+| R01 只读调研 | 已完成 | 10 个 Fable xhigh 并行审阅，产出 [FINDINGS-R01](./FINDINGS-R01.md)：9 P0 |
+| R02 修复落地 | 已合入 | 十路修复全部合入本枝（含中断重试），R01 P0/P1 基本关闭，见 [ROUND-02](./ROUND-02.md) |
+| R03 复审 | 已完成 | xhigh 独立只读复审，产出 [FINDINGS-R03](./FINDINGS-R03.md)：新增 2 P0 / 6 P1 / 2 P2 |
+| R04 修复落地 | 进行中 | 10 个 Fable high 按 FINDINGS-R03 认领独立分支，见 [ROUND-04](./ROUND-04.md) |
+| R05+ 极端测试与继续打磨 | 未开始 | 跨平台、双向、跨版本、供应商差异 |
 
 ## 文档索引
 
 - [ROUND-01.md](./ROUND-01.md) — 第一轮调研任务拆分
+- [FINDINGS-R01.md](./FINDINGS-R01.md) — R01 调研结论（P0/P1/P2）
+- [ROUND-02.md](./ROUND-02.md) — 第二轮修复拆分与合入状态
+- [FINDINGS-R03.md](./FINDINGS-R03.md) — R03 复审结论（R04 输入）
+- [ROUND-04.md](./ROUND-04.md) — 第四轮修复任务拆分
+- [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图

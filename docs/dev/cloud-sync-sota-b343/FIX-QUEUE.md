@@ -2,7 +2,9 @@
 
 认领规则：一个文件同一轮只给一个修复子代理。父代理不改业务逻辑。
 
-## Round 02（进行中）
+## Round 02（已合入）
+
+十路修复已全部合入 `cursor/cloud-sync-sota-b343`（含 webdav / backup / identity 中断重试），认领表留档：
 
 | 代理 | 模型 | 范围 | 文件面（独占） |
 |---|---|---|---|
@@ -17,6 +19,21 @@
 | R02-tests | claude-fable-5-thinking-high | WebDAV 截断行为测、半配置凭据测、ZIP→导入→恢复暴露/锁定 P0-ZIP | 新测优先放 `src-tauri/tests/` 与 `tests/vitest/data-governance/` |
 | R02-docs | claude-fable-5-thinking-high | 用户指南 Android/S3/FTP 事实、本目录进度 | `docs/user-guide/16-数据管理与云同步.md`、本目录 |
 
-## Round 03
+## Round 03（已完成）
 
-独立只读复审：10 个 xhigh 对 R02  diff 做回归与遗漏检查。
+独立只读复审完成，结论见 [FINDINGS-R03](./FINDINGS-R03.md)：R01 P0/P1 基本关闭，新增 2 P0 / 6 P1 / 2 P2 进入 R04。
+
+## Round 04（认领中）
+
+| 代理 | 模型 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| R04-delete | claude-fable-5-thinking-high | P0-DEL-PARSE、P1-DEL-LOSE | sync DELETE 应用路径（`sync/mod.rs` DELETE 门 + 冲突表写入）+ 其测试 |
+| R04-sync-e2ee | claude-fable-5-thinking-high | P0-SYNC-E2EE | `sync_manager.rs` 标记检查、`decode_payload` 拒明文 + 其测试 |
+| R04-qcount | claude-fable-5-thinking-high | P1-QCOUNT | `field_merge.rs` 计数器策略 + 其测试 |
+| R04-fold | claude-fable-5-thinking-high | P1-FOLD-POLICY、P2-FOLD-NOOP | `conflict_resolver.rs` fold 归一 + 其测试 |
+| R04-android-ftp | claude-fable-5-thinking-high | P1-ANDROID-FTP-SSOT | `cloud_config_commands.rs` 保存校验 + 其测试 |
+| R04-e2ee-clear | claude-fable-5-thinking-high | P1-E2EE-CLEAR | 加密密码留空停用语义（后端命令 + 设置面板文案）|
+| R04-tomb-dos | claude-fable-5-thinking-high | P1-TOMB-DOS | tombstone 应用路径坏时钟单条隔离 + 其测试 |
+| R04-ui-pass | claude-fable-5-thinking-high | P2-UI-PASS | Dashboard/BackupTab 密码入口、`cloudStorage.json`（zh/en）+ 相关 vitest |
+| R04-tests | claude-fable-5-thinking-high | 回归与极端测试 | 新测优先放 `src-tauri/tests/` 与 `tests/vitest/data-governance/` |
+| R04-docs | claude-fable-5-thinking-high | 本目录进度文档 | `docs/dev/cloud-sync-sota-b343/**`（本枝已推送） |
