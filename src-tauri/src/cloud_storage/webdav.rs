@@ -116,7 +116,10 @@ impl WebDavStorage {
     /// 早期版本把所有"整百"（100/101/200/...）都当作截断信号，导致目录里
     /// 恰好有 99 或 100 个真实条目（加集合自身共 100/101 个 response）时
     /// 出现假阳性、整个同步被拒绝推进。低边界误报率过高且未见真实服务在
-    /// 100/200 处截断的案例，故收紧到已知边界。
+    /// 100/200 处截断的案例，故收紧到已知边界。千级边界也同样收窄为
+    /// 1000/1001 单档（与 750/751 对称）：单次响应能返回 2000+ 个 response
+    /// 就说明服务端并未在 1000 处截断，把所有千的整数倍当截断信号只会
+    /// 让恰好两三千个文件的健康目录被误报。
     ///
     /// 之后又发现"所有 1000 的整数倍"同样误伤：目录里恰好有 1999 或 2000
     /// 个真实条目（2000/2001 个 response）时被误判为截断。未见真实服务在
@@ -402,13 +405,25 @@ impl WebDavStorage {
     ///
     /// 已确认存在的目录记入 `created_dirs`，后续调用直接跳过对应的 MKCOL，
     /// 避免每次 PUT 都对整条路径重发全链 MKCOL（坚果云等服务对请求频率敏感）。
+    ///
+    /// PUT 路径的调用方对 MKCOL 失败保持容忍（目录可能已存在，真缺目录时
+    /// 后续 PUT 自会失败）；需要区分"目录尚不存在"与"目录建不出来"的调用方
+    /// （如 `check_connection`）应使用 `ensure_directory_tracked`。
     async fn ensure_directory(&self, path: &str) -> Result<()> {
+        self.ensure_directory_tracked(path).await.map(|_| ())
+    }
+
+    /// 同 `ensure_directory`，但额外返回最后一次确定性 MKCOL 失败的状态码
+    /// （403 权限拒绝、507 配额耗尽、重试耗尽后仍持续的 5xx 等）。
+    /// 405/409 是"已存在/父目录缺失"语义，不算失败；3xx 等非错误状态也不算。
+    async fn ensure_directory_tracked(&self, path: &str) -> Result<Option<StatusCode>> {
         let parts: Vec<&str> = path
             .trim_matches('/')
             .split('/')
             .filter(|s| !s.is_empty())
             .collect();
 
+        let mut mkcol_failure: Option<StatusCode> = None;
         let mut current = String::new();
         for part in parts {
             if !current.is_empty() {
@@ -440,13 +455,19 @@ impl WebDavStorage {
                         .insert(current.clone());
                 }
                 StatusCode::CONFLICT => {}
+                other if other.is_client_error() || other.is_server_error() => {
+                    // 确定性失败（403/507，或 request_with_path 重试耗尽后仍
+                    // 持续的 5xx）。这里不中断：目录可能已存在，由调用方决定
+                    // 如何结合后续探测结果处理。
+                    mkcol_failure = Some(other);
+                    tracing::warn!("WebDAV MKCOL {} 失败: {}", current, other);
+                }
                 other => {
-                    // 不是致命错误，目录可能已存在
                     tracing::debug!("WebDAV MKCOL {} 返回 {}", current, other);
                 }
             }
         }
-        Ok(())
+        Ok(mkcol_failure)
     }
 
     /// 解析 PROPFIND 响应获取文件列表（使用 roxmltree 安全解析，防止 XXE 注入）
@@ -676,14 +697,17 @@ impl CloudStorage for WebDavStorage {
     }
 
     async fn check_connection(&self) -> Result<()> {
-        // 先确保同步根目录存在，再做连接探测
-        self.ensure_directory(&self.root).await?;
+        // 先确保同步根目录存在，再做连接探测。记录 MKCOL 的确定性失败
+        // （403 权限拒绝 / 507 配额耗尽 / 重试耗尽的持续 5xx），供 404 判定使用。
+        let mkcol_failure = self.ensure_directory_tracked(&self.root).await?;
 
         // 探测用 PROPFIND Depth:0（WebDAV 核心方法，所有实现必须支持）。
         // 此前用 GET 根集合探测：Nextcloud/sabre-dav 对集合 GET 返回 501，
         // 会把完全健康的服务器误报为连接失败。
-        // 207 Multi-Status（2xx）与 404（服务器可达、认证通过但目录尚不存在）
-        // 都视为连接正常。
+        // 207 Multi-Status（2xx）视为连接正常；404 仅在 MKCOL 未确定性失败时
+        // 容忍（服务器可达、认证通过但目录尚不存在）——若 MKCOL 已实际失败
+        // 且目录确实不存在，说明同步根目录既不存在也创建不了，后续同步必然
+        // 失败，不得报连接成功。
         let root_path = if self.root.is_empty() {
             String::new()
         } else {
@@ -691,11 +715,22 @@ impl CloudStorage for WebDavStorage {
         };
         let url = self.build_path_url(&root_path)?;
         match self.propfind_with_retry(url, "0", "check_connection").await {
-            Ok(_) => Ok(()),
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => match mkcol_failure {
+                None => Ok(()),
+                Some(status) => Err(AppError::network(format!(
+                    "WebDAV 同步目录不存在且无法创建：MKCOL 返回 {} {}，PROPFIND 返回 404",
+                    status,
+                    status.canonical_reason().unwrap_or("")
+                ))),
+            },
             Err(propfind_err) => {
-                // 极少数残缺实现 PROPFIND 不可用时回退 GET：2xx/404 视为可达
+                // 极少数残缺实现 PROPFIND 不可用时回退 GET：2xx 视为可达；
+                // 404 与上面同一判定，仅在 MKCOL 未确定性失败时视为可达。
                 let res = self.request(Method::GET, "", None).await?;
-                if res.status().is_success() || res.status() == StatusCode::NOT_FOUND {
+                if res.status().is_success()
+                    || (res.status() == StatusCode::NOT_FOUND && mkcol_failure.is_none())
+                {
                     Ok(())
                 } else {
                     Err(propfind_err)
@@ -1369,6 +1404,75 @@ mod tests {
         assert_eq!(count_method(&log, "GET"), 0, "PROPFIND 成功时不应回退 GET");
     }
 
+    #[tokio::test]
+    async fn check_connection_fails_when_mkcol_rejected_and_root_missing() {
+        // MKCOL 确定性失败（403 权限拒绝 / 507 配额耗尽 / 重试耗尽的持续 5xx）
+        // 且 PROPFIND 仍 404：同步根目录既不存在也创建不了，后续同步必然失败，
+        // 不得报连接成功。
+        for mkcol_status in [403u16, 507, 500] {
+            let responder: Responder = Arc::new(move |method, _path, _idx| match method {
+                // Retry-After: 0 让 500 的有界重试立即耗尽，避免测试等退避
+                "MKCOL" => (
+                    mkcol_status,
+                    vec![("Retry-After", "0".to_string())],
+                    String::new(),
+                ),
+                "PROPFIND" => (404, vec![], String::new()),
+                _ => (500, vec![], String::new()),
+            });
+            let (endpoint, log) = spawn_fake_dav(responder).await;
+            let storage = storage_for(&endpoint, "sync");
+
+            let err = storage
+                .check_connection()
+                .await
+                .expect_err(&format!("MKCOL {mkcol_status} + PROPFIND 404 不得报连接成功"));
+            assert!(
+                err.to_string().contains("无法创建"),
+                "mkcol_status={mkcol_status} 错误信息应说明目录无法创建: {err}"
+            );
+            assert!(count_method(&log, "MKCOL") >= 1);
+            assert!(count_method(&log, "PROPFIND") >= 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn check_connection_tolerates_404_when_mkcol_succeeds() {
+        // MKCOL 正常（目录已建）而 PROPFIND 仍 404（个别服务的最终一致窗口）
+        // 保持原有容忍语义：服务器可达、认证通过，视为连接正常。
+        let responder: Responder = Arc::new(|method, _path, _idx| match method {
+            "MKCOL" => (201, vec![], String::new()),
+            "PROPFIND" => (404, vec![], String::new()),
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, _log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        storage
+            .check_connection()
+            .await
+            .expect("MKCOL 成功时 PROPFIND 404 仍应视为连接正常");
+    }
+
+    #[tokio::test]
+    async fn check_connection_get_fallback_404_fails_when_mkcol_rejected() {
+        // PROPFIND 不可用（501）走 GET 回退时，GET 404 的容忍同样以
+        // MKCOL 未确定性失败为前提，否则与主路径判定不一致。
+        let responder: Responder = Arc::new(|method, _path, _idx| match method {
+            "MKCOL" => (403, vec![], String::new()),
+            "PROPFIND" => (501, vec![], String::new()),
+            "GET" => (404, vec![], String::new()),
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, _log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        storage
+            .check_connection()
+            .await
+            .expect_err("MKCOL 403 + GET 回退 404 不得报连接成功");
+    }
+
     // ---------- 目录缓存 ----------
 
     #[tokio::test]
@@ -1419,10 +1523,10 @@ mod tests {
         assert!(WebDavStorage::is_suspicious_response_count(751));
         assert!(!WebDavStorage::is_suspicious_response_count(749));
         assert!(!WebDavStorage::is_suspicious_response_count(752));
-        // 千级网关边界收紧为 1000/1001 单档
-        assert!(!WebDavStorage::is_suspicious_response_count(999));
+        // 千级网关边界收紧为 1000/1001 单档（与 750/751 对称）
         assert!(WebDavStorage::is_suspicious_response_count(1000));
         assert!(WebDavStorage::is_suspicious_response_count(1001));
+        assert!(!WebDavStorage::is_suspicious_response_count(999));
         assert!(!WebDavStorage::is_suspicious_response_count(1002));
         // 1999/2000 个真实条目（+ 集合自身 = 2000/2001 个 response）
         // 不再是截断信号——修复千倍数假阳性
