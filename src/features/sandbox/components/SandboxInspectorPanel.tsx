@@ -54,7 +54,7 @@ export function SandboxInspectorPanel({
             onClick={onClose}
             title={t('sandbox.collapse')}
             aria-label={t('sandbox.collapse')}
-            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:-my-1.5"
+            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-2"
           >
             <X size={14} />
           </DsButton>

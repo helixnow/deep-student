@@ -231,7 +231,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             variant="ghost"
                             size="sm"
                             onClick={onCancelTranslation}
-                            className="h-8 px-2 text-muted-foreground"
+                            className={cn(COARSE_HIT, "h-8 px-2 text-muted-foreground")}
                         >
                             <X size={14} className="mr-1" />
                             {t('common:cancel')}
@@ -242,7 +242,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             size="sm"
                             onClick={onTranslate}
                             disabled={!sourceText.trim()}
-                            className="h-8 px-2 text-primary font-medium"
+                            className={cn(COARSE_HIT, "h-8 px-2 text-primary font-medium")}
                         >
                             {t('translation:actions.translate')}
                         </DsButton>
@@ -286,7 +286,8 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                     key={sample}
                                     type="button"
                                     onClick={() => handleSampleClick(sample)}
-                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none"
+                                    // truncate 的 overflow-hidden 会裁掉 ::after 外扩，coarse 直接抬 min-h 到 44px
+                                    className="pointer-events-auto max-w-full truncate rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground active:scale-[0.98] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                                 >
                                     {sample}
                                 </button>

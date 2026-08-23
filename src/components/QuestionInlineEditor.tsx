@@ -822,7 +822,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   </span>
                 )}
               </Label>
-              <DsButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs">
+              <DsButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="ui-press h-5 text-[10px] px-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs">
                 <Plus size={10} className="mr-0.5" />
                 {t('common:actions.add')}
               </DsButton>
@@ -1035,8 +1035,8 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                 <Badge
                   key={tag}
                   variant="secondary"
-                  // 触屏加高命中区（点击即删除标签）
-                  className="cursor-pointer hover:bg-destructive/20 text-xs h-5 [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:px-2"
+                  // 触屏视觉保持小巧，用 after 伪元素把命中区扩到 ≥44px（28 + 8×2）
+                  className="cursor-pointer hover:bg-destructive/20 text-xs h-5 relative [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:px-2 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-y-2 [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:content-['']"
                   onClick={() => handleRemoveTag(tag)}
                 >
                   {tag}
@@ -1110,7 +1110,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       size="sm"
                       iconOnly
                       onClick={() => handleRemoveImage(img.id)}
- className="w-6 h-6 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
+ className="w-6 h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
                     >
                       <Trash size={12} />
                     </DsButton>
@@ -1144,7 +1144,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => setShowOptional((v) => !v)}
-            className="h-6 px-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-10"
+            className="h-6 px-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
             aria-expanded={showOptional}
           >
             {showOptional ? (
@@ -1246,7 +1246,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => setShowDiscardConfirm(false)}
-              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-10 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('learningHub:exam.library.keepEditing')}
             </DsButton>
@@ -1254,7 +1254,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               variant="danger"
               size="sm"
               onClick={onCancel}
-              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-10 text-xs"
+              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs"
             >
               {t('common:actions.discard')}
             </DsButton>
@@ -1268,7 +1268,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => setShowPreview((v) => !v)}
-          className={cn('h-6 text-xs [@media(pointer:coarse)]:!min-h-10', showPreview ? 'text-primary' : 'text-muted-foreground')}
+          className={cn('h-6 text-xs [@media(pointer:coarse)]:!min-h-11', showPreview ? 'text-primary' : 'text-muted-foreground')}
           aria-expanded={showPreview}
         >
           <Eye size={14} className="mr-1" />

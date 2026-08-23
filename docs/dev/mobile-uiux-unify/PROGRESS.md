@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–24 已落地；当前队列见下。
+- **轮次**：Round 2–25 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -34,12 +34,13 @@
 | 22 | claude-fable-5-thinking-xhigh ×10 | 番茄钟关闭、沙箱轨、AccentPicker、侧栏搜索、来源 compact、内联编辑 | 见 ROUND-22-FIXES.md |
 | 23 | claude-fable-5-thinking-xhigh ×10 | 会话卡/判对错/题库更多/模板返回/caret/Anki 模板库 44；删 workspaceShared | 见 ROUND-23-FIXES.md |
 | 24 | claude-fable-5-thinking-xhigh ×12 | 番茄钟簇/题库练习/草稿/加标签/Skill 关闭/CRUD/模板图标/笔记退出/搜索关闭 | 见 ROUND-24-FIXES.md |
+| 25 | claude-fable-5-thinking-xhigh ×10 | 内联剩余 40、检查器/Finder/结果轮次、页导航、会话侧栏、TagInput、FormatBar | 见 ROUND-25-FIXES.md |
 
-## 进行中的修复队列（Round 25+）
+## 进行中的修复队列（Round 26+）
 
-- QuestionInlineEditor 标签 Badge / 图片删除 / 可选字段 40
-- 会话侧栏密集钮 36；SandboxInspector / FinderToolbar / ResultPanel 40
-- MultimodalIndexButton、翻译/导图 FormatBar；共享 SegmentedControl / Switch / TagInput
+- PageNavigator 页码输入 24；Finder 搜索框 40
+- LanguageSelect / 清空确认 36–40；会话分组 segmented 40
+- 共享 SegmentedControl compact / Switch；McpToolsSection chip 36
 
 ## 已落地
 

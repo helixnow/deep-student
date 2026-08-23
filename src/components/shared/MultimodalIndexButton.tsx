@@ -235,7 +235,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
             size="icon"
             onClick={handleRebuild}
             aria-label={t('common:chat.multimodal.rebuild')}
-            className="w-8 h-8"
+            className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <ArrowClockwise size={14} />
           </DsButton>

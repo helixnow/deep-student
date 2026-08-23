@@ -606,7 +606,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               type="button"
               variant="ghost"
               onClick={() => onDelete(index)}
-              className="!h-10 !w-10 text-destructive hover:text-destructive"
+              className="!h-10 !w-10 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               size="icon"
               iconOnly
               aria-label={t('chatV2.deleteCard')}
@@ -1412,7 +1412,7 @@ const ActionButtons: React.FC<{
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="!h-10 !w-10 justify-self-end"
+                className="!h-10 !w-10 justify-self-end [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 aria-label={t('blocks.ankiCards.moreActions')}
                 title={t('blocks.ankiCards.moreActions')}
               >

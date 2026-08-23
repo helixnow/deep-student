@@ -37,6 +37,8 @@ type ToggleStyleProp = 'fontWeight' | 'fontStyle' | 'textDecoration';
 const formatBtnClass = (active: boolean) =>
   cn(
     'ds-btn !w-7 !h-7 !min-w-0 !p-0 justify-center rounded',
+    // coarse 下按钮放大到 44px 触控目标（与 OutlineNodeMenu 格式按钮同款范式）
+    '[@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
     active
       ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
       : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]',
@@ -52,7 +54,7 @@ const ColorSwatchRow: React.FC<{
   clearLabel: string;
   selectLabel: (color: string) => string;
 }> = ({ colors, activeColor, label, icon, onSelect, clearLabel, selectLabel }) => (
-  <div className="flex items-center gap-1" role="group" aria-label={label}>
+  <div className="flex items-center gap-1 [@media(pointer:coarse)]:gap-3" role="group" aria-label={label}>
     <span className="flex items-center gap-1 text-xs text-[var(--mm-text-muted)] select-none pr-0.5">
       {icon}
     </span>
@@ -62,6 +64,8 @@ const ColorSwatchRow: React.FC<{
         type="button"
         className={cn(
           'w-4 h-4 rounded-full border transition-transform hover:scale-110',
+          // coarse：色块放大到 24px，::after 外扩 10px ≈ 44px 命中（与 OutlineNodeMenu 色板同款范式）
+          "relative [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
           activeColor === color
             ? 'border-[var(--mm-primary)] ring-1 ring-[var(--mm-primary)]'
             : 'border-[var(--mm-border)]',
@@ -75,7 +79,7 @@ const ColorSwatchRow: React.FC<{
     ))}
     <button
       type="button"
-      className="w-4 h-4 rounded-full border border-[var(--mm-border)] flex items-center justify-center text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]"
+      className="w-4 h-4 rounded-full border border-[var(--mm-border)] flex items-center justify-center text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)] relative [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
       onClick={() => onSelect(undefined)}
       aria-label={clearLabel}
       title={clearLabel}

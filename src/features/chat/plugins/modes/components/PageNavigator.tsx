@@ -317,8 +317,9 @@ const NavigationButton: React.FC<NavigationButtonProps> = ({
       disabled={disabled}
       aria-label={title}
       title={title}
-      // 触屏（<lg）放大到 36px 触控目标；相邻按钮密排，不用伪元素外扩避免互相重叠
-      className="!w-9 !h-9 lg:!w-7 lg:!h-7"
+      // 📱 44px 触控目标：coarse 指针下放大真实尺寸（flex 布局自动让位，不会互相重叠）；
+      // 相邻按钮仅 gap-1 密排，禁用 after:-inset 伪元素外扩以免热区互相覆盖
+      className="!w-9 !h-9 lg:!w-7 lg:!h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11"
     >
       {children}
     </DsButton>

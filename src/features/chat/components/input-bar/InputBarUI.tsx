@@ -3748,7 +3748,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                 onClick={handleStop}
                 disabled={!canAbort}
                 // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
-                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 !rounded-full shadow-sm')}
+                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full shadow-sm')}
                 aria-label={canAbort
                   ? t('analysis:input_bar.actions.stop')
                   : t('chatV2:inputBar.stopping')}

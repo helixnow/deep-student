@@ -794,7 +794,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             <button
               onClick={() => setSearchMode(searchMode === 'title' ? 'content' : 'title')}
               className={cn(
-                'shrink-0 h-10 min-w-10 px-2.5 rounded-md text-[11px] font-medium transition-colors inline-flex items-center justify-center',
+                'shrink-0 h-10 min-w-10 px-2.5 rounded-md text-[11px] font-medium transition-colors inline-flex items-center justify-center [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                 searchMode === 'content' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'
               )}
               title={searchMode === 'content' ? t('search.contentMode') : t('search.titleMode')}
@@ -809,7 +809,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShowTagFilter(!showTagFilter)}
-                className={cn('shrink-0 !h-10 min-w-10', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
+                className={cn('shrink-0 !h-10 min-w-10 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
                 aria-label={t('tags.filterTitle')}
                 title={t('tags.filterTitle')}
               >

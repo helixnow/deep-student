@@ -104,7 +104,7 @@ const AnkiConnectRefreshButton: React.FC<{
       iconOnly
       onClick={handleClick}
       disabled={refreshing}
-      className="!h-10 !w-10 rounded-full"
+      className="!h-10 !w-10 rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
       title={label}
       aria-label={label}
     >
