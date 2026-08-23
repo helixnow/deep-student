@@ -175,12 +175,15 @@ impl WebDavStorage {
     /// 构建完整 URL
     fn build_path_url(&self, path: &str) -> Result<Url> {
         let mut url = self.base_url.clone();
+        // [#57] base_url.path() 是百分号编码形式，而 path_segments_mut().push
+        // 会把 '%' 再转义一次——端点路径含编码字符（中文/空格）时所有请求 URL
+        // 被双重编码。先解码 base 片段，交由 push 统一做单次编码。
         let base_segments = url
             .path()
             .trim_matches('/')
             .split('/')
             .filter(|segment| !segment.is_empty())
-            .map(ToOwned::to_owned)
+            .map(Self::decode_path)
             .collect::<Vec<_>>();
         let remote_segments = path
             .trim_matches('/')
@@ -589,14 +592,35 @@ impl WebDavStorage {
         Ok(files)
     }
 
-    fn extract_relative_key(&self, href: &str, prefix: &str) -> String {
-        // URL 解码
-        let decoded = urlencoding::decode(href).unwrap_or_else(|_| href.into());
-        let href_path = Url::parse(&decoded)
-            .map(|url| url.path().to_string())
-            .unwrap_or_else(|_| decoded.to_string());
+    /// 对百分号编码的路径解码；解码失败（非法 UTF-8 等）时原样返回。
+    fn decode_path(path: &str) -> String {
+        urlencoding::decode(path)
+            .map(|decoded| decoded.into_owned())
+            .unwrap_or_else(|_| path.to_string())
+    }
 
-        let base_path = self.base_url.path().trim_end_matches('/');
+    fn extract_relative_key(&self, href: &str, prefix: &str) -> String {
+        // [#57] href 与 base_url.path() 必须在同一编码空间里比较。
+        // 旧实现先解码 href 再 Url::parse：绝对 URL 形式的 href 会被重新编码，
+        // 而 base_url.path() 始终是百分号编码形式——端点路径含非 ASCII/空格时
+        // （如坚果云中文同步文件夹 https://dav.jianguoyun.com/dav/我的坚果云/）
+        // strip_prefix 永不命中，列举结果被静默清空：上传（PUT）正常、
+        // 下载/双向同步看不到任何云端文件。
+        // 修复：先提取原始路径（绝对 URL 取 path，相对 href 去掉 query/fragment），
+        // 再把 href 路径与 base 路径统一解码成人类可读形式后比较。
+        let raw_path = match Url::parse(href) {
+            Ok(url) => url.path().to_string(),
+            Err(_) => href
+                .split(['?', '#'])
+                .next()
+                .unwrap_or(href)
+                .to_string(),
+        };
+        let href_path = Self::decode_path(&raw_path);
+
+        let base_path_encoded = self.base_url.path().trim_end_matches('/');
+        let base_path = Self::decode_path(base_path_encoded);
+        let base_path = base_path.trim_end_matches('/');
         let root = self.root.trim_matches('/');
         let root_path = match (base_path.is_empty(), root.is_empty()) {
             (true, true) => String::new(),
@@ -1901,6 +1925,141 @@ mod tests {
                 "entries={entries} 的 truncated 判定错误"
             );
         }
+    }
+
+    /// [#57 回归] 坚果云中文同步文件夹：endpoint 路径含非 ASCII 字符时，
+    /// `Url` 内部保存百分号编码形式，而服务器返回的 href 同样是编码形式。
+    /// 两侧必须统一解码后比较，否则所有文件被静默丢弃——
+    /// 上传正常、下载/双向同步永远列举到 0 个文件。
+    #[test]
+    fn extract_relative_key_decodes_non_ascii_endpoint_path() {
+        let storage = WebDavStorage::new(
+            WebDavConfig {
+                endpoint: "https://dav.jianguoyun.com/dav/我的坚果云/".to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            },
+            "deep-student-sync".to_string(),
+        )
+        .expect("create storage");
+        // Url 内部把中文路径存成百分号编码
+        assert!(storage.base_url.path().contains('%'));
+
+        // 服务器返回编码的路径形式 href（多数 WebDAV 服务的行为）
+        assert_eq!(
+            storage.extract_relative_key(
+                "/dav/%E6%88%91%E7%9A%84%E5%9D%9A%E6%9E%9C%E4%BA%91/deep-student-sync/data_governance/changes/device-a/000000000001-1723372800-nonce.json.zst",
+                "data_governance/changes"
+            ),
+            "data_governance/changes/device-a/000000000001-1723372800-nonce.json.zst"
+        );
+
+        // 绝对 URL 形式 href（RFC 4918 同样允许）
+        assert_eq!(
+            storage.extract_relative_key(
+                "https://dav.jianguoyun.com/dav/%E6%88%91%E7%9A%84%E5%9D%9A%E6%9E%9C%E4%BA%91/deep-student-sync/manifests/device-a.json",
+                ""
+            ),
+            "manifests/device-a.json"
+        );
+
+        // 服务器直接返回未编码 UTF-8 href（部分自建 WebDAV 的行为）
+        assert_eq!(
+            storage.extract_relative_key(
+                "/dav/我的坚果云/deep-student-sync/backups/20260801.zip",
+                "backups"
+            ),
+            "backups/20260801.zip"
+        );
+
+        // 根目录自身应归一化为空 key
+        assert_eq!(
+            storage.extract_relative_key(
+                "/dav/%E6%88%91%E7%9A%84%E5%9D%9A%E6%9E%9C%E4%BA%91/deep-student-sync/",
+                ""
+            ),
+            ""
+        );
+    }
+
+    /// [#57 回归] endpoint 路径含空格（编码为 %20）时同样不能丢文件，
+    /// 且返回的 key 是解码后的形式，可直接交给 build_url 重新编码请求。
+    #[test]
+    fn extract_relative_key_decodes_space_in_endpoint_path() {
+        let storage = WebDavStorage::new(
+            WebDavConfig {
+                endpoint: "http://localhost:8080/My%20Dav/".to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            },
+            "sync root".to_string(),
+        )
+        .expect("create storage");
+
+        let key = storage.extract_relative_key(
+            "/My%20Dav/sync%20root/objects/a%20b.txt",
+            "objects",
+        );
+        assert_eq!(key, "objects/a b.txt");
+        // 解码后的 key 经 build_url 逐段推入时会被重新百分号编码
+        assert_eq!(
+            storage.build_url(&key).unwrap().path(),
+            "/My%20Dav/sync%20root/objects/a%20b.txt"
+        );
+    }
+
+    /// [#57 回归] 端到端：解析坚果云风格（编码 href + Depth:1）的 PROPFIND
+    /// multistatus，非 ASCII endpoint 路径下必须能发现子目录并提取文件 key。
+    #[test]
+    fn parse_propfind_entries_with_encoded_hrefs_lists_files_and_subdirs() {
+        let storage = WebDavStorage::new(
+            WebDavConfig {
+                endpoint: "https://dav.jianguoyun.com/dav/我的坚果云/".to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            },
+            "deep-student-sync".to_string(),
+        )
+        .expect("create storage");
+
+        let base = "/dav/%E6%88%91%E7%9A%84%E5%9D%9A%E6%9E%9C%E4%BA%91/deep-student-sync";
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>{base}/data_governance/changes/</d:href>
+    <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+    <d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>{base}/data_governance/changes/device-a/</d:href>
+    <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+    <d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>{base}/data_governance/changes/instance.json</d:href>
+    <d:propstat><d:prop>
+      <d:resourcetype/>
+      <d:getcontentlength>42</d:getcontentlength>
+      <d:getlastmodified>Fri, 07 Aug 2026 08:00:00 GMT</d:getlastmodified>
+    </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+  </d:response>
+</d:multistatus>"#
+        );
+
+        let (files, subdirs, response_count) = storage
+            .parse_propfind_entries(&xml, "data_governance/changes", "data_governance/changes")
+            .expect("parse entries");
+
+        assert_eq!(response_count, 3);
+        assert_eq!(
+            subdirs,
+            vec!["data_governance/changes/device-a".to_string()],
+            "编码 href 下必须仍能发现待递归的子目录"
+        );
+        assert_eq!(files.len(), 1, "编码 href 下文件不能被静默丢弃");
+        assert_eq!(files[0].key, "data_governance/changes/instance.json");
+        assert_eq!(files[0].size, 42);
     }
 
     #[test]
