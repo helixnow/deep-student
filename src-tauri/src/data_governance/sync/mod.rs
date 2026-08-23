@@ -9555,6 +9555,14 @@ impl SyncManager {
         }
     }
 
+    /// 对象是否落在内容寻址前缀（`data_governance/asset_objects/<sha256>`）。
+    ///
+    /// 只有 legacy 前缀 `data_governance/assets/` 下的对象与逻辑 key 一一对应，可以
+    /// 随 tombstone 物理删除。
+    fn is_content_addressed_asset_object(key: &str) -> bool {
+        Self::validate_remote_object_key(key, Self::ASSET_OBJECTS_PREFIX).is_ok()
+    }
+
     /// 文件级 LWW：本地文件是否胜过云端清单条目。
     ///
     /// [P0 收敛性] 设备分量必须中性（双方相同）：旧实现用 "local-file" vs
@@ -11111,6 +11119,29 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, true)
+            .await
+    }
+
+    /// 保留被 tombstone 覆盖的条目，供删除传播解析物理 object_key。
+    ///
+    /// 过滤版清单会先把 tombstoned 逻辑 key 摘掉，删除传播再去查 `object_key` 必然
+    /// miss，从而回退到 legacy 逻辑路径 `data_governance/assets/{key}`；新布局的对象
+    /// 实际在 `data_governance/asset_objects/{sha256}`，回退路径在 FTP 上会因父目录
+    /// cwd 550 直接硬失败。
+    async fn download_assets_manifest_before_tombstones(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, false)
+            .await
+    }
+
+    async fn download_assets_manifest_with_tombstone_filter(
+        &self,
+        storage: &dyn CloudStorage,
+        filter_tombstones: bool,
+    ) -> Result<AssetDirsManifest, SyncError> {
         let mut manifests = Vec::new();
         if let Some(bytes) = storage
             .get(Self::ASSETS_MANIFEST_KEY)
@@ -11184,15 +11215,17 @@ impl SyncManager {
                 }
             }
         }
-        let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
-        for (key, tombstone) in tombstones.entries {
-            let should_remove = merged
-                .entries
-                .get(&key)
-                .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
-                .unwrap_or(false);
-            if should_remove {
-                merged.entries.remove(&key);
+        if filter_tombstones {
+            let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
+            for (key, tombstone) in tombstones.entries {
+                let should_remove = merged
+                    .entries
+                    .get(&key)
+                    .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
+                    .unwrap_or(false);
+                if should_remove {
+                    merged.entries.remove(&key);
+                }
             }
         }
         Ok(merged)
@@ -11765,7 +11798,9 @@ impl SyncManager {
         // 1. 拉取 asset tombstone 并删除本地/云端对应文件
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let state_store = SyncStateStore::open_default()?;
-        let cloud_manifest = self.download_assets_manifest(storage).await?;
+        let cloud_manifest = self
+            .download_assets_manifest_before_tombstones(storage)
+            .await?;
         let (tombstones, tombstone_advances) =
             tombstone::download_asset_tombstones_after(storage, self, |source| {
                 state_store.get_tombstone_watermark(&instance_id, source, "assets")
@@ -11808,9 +11843,20 @@ impl SyncManager {
                         .and_then(|manifest| manifest.object_key.clone())
                         .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
                     Self::validate_asset_object_key(&remote_key)?;
-                    storage.delete(&remote_key).await.map_err(|e| {
-                        SyncError::Network(format!("删除云端资产失败 {}: {}", remote_key, e))
-                    })?;
+                    if Self::is_content_addressed_asset_object(&remote_key) {
+                        // 内容寻址对象按 sha256 去重，可被多个逻辑 key 共享，是独立的
+                        // retention unit：删除传播只负责摘掉逻辑 key，物理回收交给 GC，
+                        // 否则删掉其中一个 key 会连带打断同内容的其他 key。
+                        tracing::info!(
+                            "[sync] 资产 tombstone 保留内容寻址对象，仅摘除清单条目: {} -> {}",
+                            key,
+                            remote_key
+                        );
+                    } else {
+                        storage.delete(&remote_key).await.map_err(|e| {
+                            SyncError::Network(format!("删除云端资产失败 {}: {}", remote_key, e))
+                        })?;
+                    }
                 }
                 // 本地删除
                 if let Some(local) = local_path {
