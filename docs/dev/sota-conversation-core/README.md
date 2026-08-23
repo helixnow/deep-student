@@ -38,13 +38,8 @@ OpenCode、Pi Agent、Claude Code、Codex 的行业前沿。
 
 ## 当前判断（会随轮次更新）
 
-截至第一轮父代理预审：
+第一轮 12 个切片已完成，方案冻结见 [ROUND-02-synthesis.md](./ROUND-02-synthesis.md)。
 
-- Responses 路径已经不是「完全空白的兼容层」：有 `store` 默认关闭、
-  GPT-5/o 系列 `include=reasoning.encrypted_content`、reasoning item 回放、
-  DeepSeek 官方 `web_search` 托管工具、Codex `prompt_cache_key`。
-- 主体仍是 **Chat Completions → Responses 的机械转换**。缺少
-  `previous_response_id` 链式调用、非 Codex 路径的 `prompt_cache_key`、
-  Responses 原生 `input_tokens_details.cached_tokens` 解析。
-- 系统提示已有「稳定前缀 / 动态后缀」分层，技能以 transient user 消息插入
-  历史末尾，说明团队已意识到前缀缓存。但仍有多处会切断前缀或让命中率不可见。
+- 高质量 CC→Responses 转换层 + 局部原生（encrypted reasoning、DeepSeek web_search、`store:false`）。
+- 跟 Codex 无状态路线，不默认上 `previous_response_id`。
+- 跨轮缓存当前基本看不见、也基本打不中：usage 漏读、V20260806 未接线、system 动态段在历史前面。
