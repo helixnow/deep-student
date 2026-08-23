@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–20 已落地；当前队列见下。
+- **轮次**：Round 2–21 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -30,12 +30,14 @@
 | 18 | claude-fable-5-thinking-xhigh ×10 | 笔记 tab/手柄、收藏、题库头、PDF 侧栏、输入栏 chip、设置 44 | 见 ROUND-18-FIXES.md |
 | 19 | claude-fable-5-thinking-xhigh ×10 | 翻译 Popover、Crepe 工具栏、FolderPicker、作文轮次、chip X | 见 ROUND-19-FIXES.md |
 | 20 | claude-fable-5-thinking-xhigh ×10 | 删 reference-selector、试卷/番茄钟/复习勾选 44、PluginsTab 去自绘返回 | 见 ROUND-20-FIXES.md |
+| 21 | claude-fable-5-thinking-xhigh ×10 | 批量条/会话更多/Agent 抽屉/题库草稿、迁类型删 DndFileTree | 见 ROUND-21-FIXES.md |
 
-## 进行中的修复队列（Round 21+）
+## 进行中的修复队列（Round 22+）
 
-- BulkActionBar 优先级/删除；会话「更多」；AgentOutputDrawer 32
-- MemoryView 备注编辑；题库草稿条；编辑器重做/解析；热力图重试
-- DndFileTree 须先迁 TreeData 再删
+- PomodoroPanel 内联关闭 24；SandboxStatusRail 32
+- AccentPicker sm 收缩；ModernSidebar 搜索/更新角标
+- UnifiedSourcePanel compact 动作 24；QuestionInlineEditor 40
+- QuestionHistoryView 无宿主顶栏 32–36
 
 ## 已落地
 

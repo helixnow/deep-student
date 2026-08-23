@@ -144,7 +144,8 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
               {hasMore && (
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleExpanded(sessionId); }}
-                  className="flex items-center gap-1 px-2 py-0.5 text-2xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  // min-h 保证触屏可点（coarse 下达到 44px 触控目标）
+                  className="flex items-center gap-1 px-2 py-0.5 min-h-7 text-2xs text-muted-foreground/50 hover:text-muted-foreground transition-colors [@media(pointer:coarse)]:min-h-11"
                 >
                   <CaretDown size={12} className={cn('transition-transform', isExpanded && 'rotate-180')} />
                   {isExpanded

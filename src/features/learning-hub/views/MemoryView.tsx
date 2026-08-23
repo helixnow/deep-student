@@ -2349,10 +2349,10 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors"
               />
               <div className="flex gap-2">
-                <DsButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
+                <DsButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11">
                   <X size={12} />{t('common:cancel')}
                 </DsButton>
-                <DsButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
+                <DsButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11">
                   {isLoading ? <CircleNotch size={12} className="animate-spin" /> : <FloppyDisk size={12} />}
                   {t('common:save')}
                 </DsButton>
@@ -2367,8 +2367,9 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 {content || t('memory.no_content')}
               </div>
               {isLongContent && (
+                /* 触屏：裸文字链接命中区太小，coarse 下撑到 ≥44px（-mx 抵消横向扩展，视觉不动） */
                 <button
-                  className="mt-1 text-[11px] text-primary hover:underline"
+                  className="mt-1 text-[11px] text-primary hover:underline [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
                   onClick={(e) => { e.stopPropagation(); setShowFullContent(v => !v); }}
                 >
                   {showFullContent ? t('memory.show_less') : t('memory.show_full')}
@@ -2382,7 +2383,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 variant="ghost" size="sm"
                 onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                 className={cn(
-                  'text-danger hover:bg-danger/10 !h-auto !px-2 !py-1 text-xs transition-colors',
+                  'text-danger hover:bg-danger/10 !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11 transition-colors',
                   confirmingDelete && 'bg-danger/15 font-medium'
                 )}
               >

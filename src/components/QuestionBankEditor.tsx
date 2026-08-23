@@ -1952,7 +1952,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <span className="text-sm font-medium text-info">
                     {t('editor.aiGrading')}
                   </span>
-                  <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
+                  <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground">
                     {t('common:cancel')}
                   </DsButton>
                 </div>
@@ -1994,7 +1994,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         debugLog.warn('[QuestionBankEditor] AI grading retry failed:', err);
                       });
                     }}
-                    className="ml-auto !h-auto !px-2 !py-0.5 text-xs text-info hover:bg-info/10"
+                    className="ml-auto !h-auto !px-2 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-info hover:bg-info/10"
                   >
                     <ArrowClockwise size={12} />
                     {t('editor.aiRetry')}
@@ -2121,7 +2121,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               </div>
               {/* 重做按钮 */}
               {!submitResult.isCorrect && (
-                <DsButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
+                <DsButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
                   <ArrowClockwise size={14} />
                   {t('editor.retry')}
                 </DsButton>
@@ -2131,7 +2131,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {/* 解析折叠（回退到题目自身解析） */}
             {effectiveExplanation && (
               <div className="pt-2 border-t border-foreground/[0.06]">
-                <DsButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 text-warning hover:underline">
+                <DsButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-warning hover:underline">
                   <Lightbulb size={16} />
                   {explanationExpanded ? t('editor.collapseExplanation') : t('editor.viewExplanation')}
                   {explanationExpanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
@@ -2153,7 +2153,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <div className="flex items-center gap-2">
                     <DsAnalysisIconMuted className="w-4 h-4 text-info animate-pulse" />
                     <span className="text-sm text-info">{t('editor.aiAnalyzing')}</span>
-                    <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
+                    <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground">
                       {t('common:cancel')}
                     </DsButton>
                   </div>
@@ -2191,7 +2191,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             debugLog.warn('[QuestionBankEditor] AI analyze retry failed:', err);
                           });
                         }}
-                        className="!h-auto !px-1.5 !py-0.5 text-xs text-info hover:bg-info/10"
+                        className="!h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-info hover:bg-info/10"
                       >
                         <ArrowClockwise size={12} />
                         {t('editor.aiRetry')}
@@ -2233,7 +2233,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         if (feedback) aiFeedbackCacheRef.current.set(qId, feedback);
                       },
                     ).catch((err) => { debugLog.error('[QBankEditor] AI analyze failed:', err); });
-                  }} className="!h-auto !p-0 text-info hover:underline">
+                  }} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-info hover:underline">
                   <DsAnalysisIconMuted className="w-4 h-4" />
                   {t('editor.aiAnalysis')}
                 </DsButton>

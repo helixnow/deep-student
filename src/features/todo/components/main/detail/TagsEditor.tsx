@@ -181,7 +181,8 @@ export const TagsEditor: React.FC<{
               type="button"
               onClick={() => removeTag(tag)}
               aria-label={t('todo:tags.remove', { tag })}
-              className="rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground focus:outline-none [@media(pointer:coarse)]:p-2 [@media(pointer:coarse)]:-m-2"
+              // 触屏：命中区扩到 44px（16 + 14×2，负 margin 保持 chip 布局不变，对照 TodoQuickAdd）
+              className="flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:text-foreground focus:outline-none [@media(pointer:coarse)]:p-3.5 [@media(pointer:coarse)]:-m-3.5 [@media(pointer:coarse)]:box-content"
             >
               <X size={11} />
             </button>

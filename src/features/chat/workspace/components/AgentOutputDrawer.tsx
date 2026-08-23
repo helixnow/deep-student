@@ -321,7 +321,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-8 lg:h-6 px-2 text-xs text-destructive"
+              className="h-8 lg:h-6 px-2 text-xs text-destructive [@media(pointer:coarse)]:!h-11"
               onClick={handleCancel}
             >
               {t('chatV2:workspace.cancel')}
@@ -330,7 +330,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
 
           {/* 高度切换按钮（仅展开时显示） */}
           {isExpanded && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-8 !w-8 lg:!h-6 lg:!w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-8 !w-8 lg:!h-6 lg:!w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
               {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
             </DsButton>
           )}
@@ -340,7 +340,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-8 lg:h-6 px-2 text-xs"
+              className="h-8 lg:h-6 px-2 text-xs [@media(pointer:coarse)]:!h-11"
               onClick={(e) => {
                 e.stopPropagation();
                 onViewFullSession();

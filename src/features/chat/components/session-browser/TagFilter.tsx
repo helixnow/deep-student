@@ -81,7 +81,8 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
       {allTags.length > 12 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 text-2xs text-muted-foreground/60 hover:text-muted-foreground"
+          // min-h 保证触屏可点（coarse 下达到 44px 触控目标）
+          className="flex items-center gap-1 min-h-7 text-2xs text-muted-foreground/60 hover:text-muted-foreground [@media(pointer:coarse)]:min-h-11"
         >
           <CaretDown size={12} className={cn('transition-transform', expanded && 'rotate-180')} />
           {expanded ? t('tags.showLess') : t('tags.showMore', { count: allTags.length - 12 })}

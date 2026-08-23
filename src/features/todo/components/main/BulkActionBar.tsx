@@ -250,7 +250,11 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
 
           <AppMenu>
             <AppMenuTrigger asChild>
-              <DsButton variant="utility" size="sm" className="h-7 gap-1 !px-2 text-xs">
+              <DsButton
+                variant="utility"
+                size="sm"
+                className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:h-11"
+              >
                 <Flag size={13} />
                 {t('todo:fields.priority')}
               </DsButton>
@@ -269,7 +273,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             size="sm"
             onClick={handleDelete}
             className={cn(
-              'h-7 gap-1 !px-2 text-xs transition-colors',
+              'h-7 gap-1 !px-2 text-xs transition-colors [@media(pointer:coarse)]:h-11',
               confirmingDelete
                 ? '!bg-[color:hsl(var(--destructive))] !text-white'
                 : 'hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]',

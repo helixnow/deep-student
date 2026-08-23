@@ -257,7 +257,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
                 {t('dstu:errors.essayParseErrorDetailDesc')}
               </p>
               <button
-                className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+                className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs [@media(pointer:coarse)]:min-h-11 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
                 onClick={() => void loadEssay()}
               >
                 <ArrowClockwise size={12} />

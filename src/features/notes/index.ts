@@ -12,9 +12,8 @@ export { AIDiffPanel } from './AIDiffPanel';
 export { useNotes, useNotesOptional, NotesProvider } from './NotesContext';
 export type { CanvasAIStatus, CanvasNoteMetadata, CanvasModeState, LearningHubContent } from './NotesContext';
 
-// DndFileTree
-export { DndFileTree, ReferenceIcon } from './DndFileTree';
-export type { TreeData, TreeNode, DragInfo, TreeCallbacks, NodeType, ReferenceData, ReferenceNode, SourceDatabase, PreviewType } from './DndFileTree';
+// DndFileTree 组件已于 2026-08 零挂载删除（workbench 笔记树独立实现，见
+// src/features/workbench/apps/notes/tree/）；树数据类型迁至 notesUtils（见下方导出）。
 
 // Preview 组件组（MarkdownPreview/PDFPreview/ImagePreview/ExamPreview）
 // 已于 2026-08 确认零消费方后删除；预览统一走 learning-hub 与 DSTU editors。
@@ -44,9 +43,16 @@ export {
   isValidReferenceNode,
   createReferenceNode,
 } from './types';
-export type { ExtendedFolderStructure, CreateReferenceNodeParams, ExtendedSourceDatabase } from './types';
+export type {
+  ExtendedFolderStructure,
+  CreateReferenceNodeParams,
+  ExtendedSourceDatabase,
+  ReferenceNode,
+  SourceDatabase,
+  PreviewType,
+} from './types';
 
-// Store（兼容空壳，勿在新代码使用；树状态走 DndFileTree/TreeContext）
+// Store（兼容空壳，勿在新代码使用；树状态由 workbench NotesWorkspaceTree 自持）
 export { useNotesTreeStore } from './stores/notesTreeStore';
 
 // Utilities
@@ -155,4 +161,11 @@ export {
   buildTreeData,
   deriveNoteTitleText,
 } from './notesUtils';
-export type { TreeBuildParams, TreeSortMethod } from './notesUtils';
+export type {
+  TreeBuildParams,
+  TreeSortMethod,
+  TreeData,
+  TreeNode,
+  NodeType,
+  ReferenceData,
+} from './notesUtils';

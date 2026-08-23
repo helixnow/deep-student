@@ -644,7 +644,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   }, [clearChecked]);
 
   // 触屏友好：TouchSensor 长按 250ms 激活 + 8px 容差，避免竖向滚动被拖拽排序劫持（R2-07）；
-  // 与 DndFileTree/FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
+  // 与 FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
   const sensors = useTouchFriendlyDndSensors();
 
   const handleDragEnd = useCallback(

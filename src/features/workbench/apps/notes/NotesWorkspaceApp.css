@@ -1181,8 +1181,7 @@
 }
 
 /* 子屏内树行 / 收藏行放大到触控目标（行高 ≥44px） */
-.notes-files-subscreen .notes-tree-row,
-.notes-files-subscreen .rct-tree-item-button {
+.notes-files-subscreen .notes-tree-row {
   min-height: 44px;
 }
 

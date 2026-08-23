@@ -1322,7 +1322,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setPendingEditorAction(null)}
-                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               >
                 {t('learningHub:exam.library.keepEditing')}
               </DsButton>
@@ -1330,7 +1330,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 variant="danger"
                 size="sm"
                 onClick={confirmPendingEditorAction}
-                className="!h-auto !px-2 !py-1 text-xs"
+                className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs"
               >
                 {t('learningHub:exam.library.discardAndContinue')}
               </DsButton>
@@ -1341,37 +1341,37 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         {/* 筛选 Tab — ui-state-colors 让选中态颜色平滑过渡；
             激活中的筛选即使计数归零也保留 chip，避免筛选项凭空消失无法取消 */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             {t('practice:questionBank.all')} {questions.length}
           </DsButton>
           {stats && (stats.newCount > 0 || statusFilter === 'new') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
               {t('practice:questionBank.newQuestions')} {stats.newCount}
             </DsButton>
           )}
           {stats && (stats.review > 0 || statusFilter === 'review') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
               {t('practice:questionBank.needsReview')} {stats.review}
             </DsButton>
           )}
           {stats && (stats.mastered > 0 || statusFilter === 'mastered') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
               {t('practice:questionBank.masteredFilter')} {stats.mastered}
             </DsButton>
           )}
 
           <div className="w-px h-3 bg-border/60 mx-1" />
 
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
             {t('practice:questionBank.difficultyShort.easy')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.medium')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.hard')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
             {t('practice:questionBank.difficultyShort.veryHard')}
           </DsButton>
 
@@ -1388,7 +1388,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                     size="sm"
                     onClick={() => handleTypeToggle(type as QuestionType)}
                     className={cn(
-                      'ui-state-colors !h-auto !px-2 !py-1 !rounded-md text-xs',
+                      'ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs',
                       typeFilter === type
                         ? 'bg-accent text-accent-foreground font-medium'
                         : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'

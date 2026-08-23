@@ -43,10 +43,6 @@ const messageListSource = readFileSync(
   resolve(srcRoot, 'features/chat/components/MessageList.tsx'),
   'utf-8',
 );
-const notesTreeSource = readFileSync(
-  resolve(srcRoot, 'features/notes/DndFileTree/DndFileTree.tsx'),
-  'utf-8',
-);
 const finderListSource = readFileSync(
   resolve(srcRoot, 'features/learning-hub/components/finder/FinderFileList.tsx'),
   'utf-8',
@@ -302,9 +298,6 @@ describe('repository-wide scrollbar integration contract', () => {
   it('binds virtual lists to the real OverlayScrollbars viewport', () => {
     expect(messageListSource).toContain('viewportRef={viewportCallbackRef}');
     expect(messageListSource).toContain('getScrollElement: () => viewportElement');
-
-    expect(notesTreeSource).toContain('getScrollElement: () => scrollViewportRef.current');
-    expect(notesTreeSource).not.toContain('getScrollElement: () => treeRef.current');
 
     expect(finderListSource).toContain('viewportRef={viewportRef}');
     expect(finderListSource).toContain('getScrollElement: () => viewportRef.current');

@@ -1276,7 +1276,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="shell"
                   size="sm"
                   onClick={handleCreate}
-                  className="h-7 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs"
+                  className="h-7 [@media(pointer:coarse)]:!h-11 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs"
                 >
                   <Plus size={14} className="mr-1.5" />
                   {t('skills:management.create')}
