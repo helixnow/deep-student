@@ -172,7 +172,10 @@ fn opened_file_matches_authorized_path(
         else {
             return false;
         };
-        actual_path == expected_path && allowed_dirs.iter().any(|dir| path_is_within(&actual_path, dir))
+        actual_path == expected_path
+            && allowed_dirs
+                .iter()
+                .any(|dir| path_is_within(&actual_path, dir))
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]

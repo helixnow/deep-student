@@ -118,7 +118,10 @@ fn opened_file_matches_authorized_path(
         else {
             return false;
         };
-        actual_path == expected_path && allowed_dirs.iter().any(|dir| path_is_within(&actual_path, dir))
+        actual_path == expected_path
+            && allowed_dirs
+                .iter()
+                .any(|dir| path_is_within(&actual_path, dir))
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -975,7 +978,10 @@ mod tests {
         let response =
             handle_asset_protocol(&request, &allowed_dirs, &blob_dirs).expect("response");
         assert_eq!(response.status(), tauri::http::StatusCode::OK);
-        assert_eq!(response.headers().get("Content-Type").unwrap(), "audio/mpeg");
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "audio/mpeg"
+        );
         assert_eq!(response.body().as_slice(), b"ID3-test-body");
 
         // 白名单外的中文路径 → 403
