@@ -85,7 +85,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       ]);
       if (requestGeneration.current === generation) {
         setRows(list);
-        setTotalGroups(Object.values(counts).reduce((sum, count) => sum + count, 0));
+        // count API 的 total_groups 与本面板的 (table, record) 分组分页口径一致
+        setTotalGroups(counts.total_groups);
       }
     } catch (e: unknown) {
       showGlobalNotification('error', t('data:governance.conflict_load_failed', { error: getErrorMessage(e) }));
