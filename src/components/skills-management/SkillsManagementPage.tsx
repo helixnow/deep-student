@@ -1601,7 +1601,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={handleCancelUpdates}
             disabled={updating}
-            className="!h-9 px-3 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -1610,7 +1610,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={() => void handleConfirmUpdates()}
             disabled={updating}
-            className="!h-9 px-3 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {updating ? t('skills:management.update_applying') : t('skills:management.update_apply')}
           </DsButton>
@@ -1770,7 +1770,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={handleCancelZipInstall}
             disabled={zipInstalling}
-            className="!h-9 px-3 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -1779,7 +1779,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="sm"
             onClick={() => void handleConfirmZipInstall()}
             disabled={zipInstalling}
-            className="!h-9 px-3 text-xs"
+            className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {zipInstalling
               ? t('skills:tap.installing')
@@ -1833,7 +1833,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 size="sm"
                 onClick={handleCancelInlineDelete}
                 disabled={inlineDeleting}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
               </DsButton>
@@ -1842,7 +1842,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 size="sm"
                 onClick={() => void handleInlineConfirmDelete()}
                 disabled={inlineDeleting}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {inlineDeleting ? t('common:actions.deleting') : t('common:actions.delete')}
               </DsButton>
@@ -1867,7 +1867,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelOverwrite}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
               </DsButton>
@@ -1875,7 +1875,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmOverwrite()}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('skills:management.import_overwrite')}
               </DsButton>
@@ -1900,7 +1900,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelZipOverwrite}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('common:actions.cancel')}
               </DsButton>
@@ -1908,7 +1908,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 variant="primary"
                 size="sm"
                 onClick={() => void handleConfirmZipOverwrite()}
-                className="!h-9 px-3 text-xs"
+                className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('skills:management.import_overwrite')}
               </DsButton>

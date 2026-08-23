@@ -114,7 +114,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="ghost"
           size="sm"
           onClick={() => setShowInfo(!showInfo)}
-          className="h-8"
+          className="h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <Question size={14} />
         </DsButton>

@@ -761,7 +761,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         {hasChildren ? (
                                             <DsButton
                                                 variant="ghost" iconOnly size="sm"
-                                                className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent"
+                                                className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent relative [@media(pointer:coarse)]:!w-9 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-1 [@media(pointer:coarse)]:after:-inset-y-1 [@media(pointer:coarse)]:after:content-['']"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     toggleCollapsed(heading.collapseKey);
@@ -777,7 +777,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                 />
                                             </DsButton>
                                         ) : (
-                                            <span className="w-4 shrink-0" aria-hidden="true" />
+                                            <span className="w-4 shrink-0 [@media(pointer:coarse)]:w-9" aria-hidden="true" />
                                         )}
                                         <DsButton
                                             variant="ghost" size="sm"

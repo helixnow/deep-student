@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–27 已落地；当前队列见下。
+- **轮次**：Round 2–28 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -37,12 +37,13 @@
 | 25 | claude-fable-5-thinking-xhigh ×10 | 内联剩余 40、检查器/Finder/结果轮次、页导航、会话侧栏、TagInput、FormatBar | 见 ROUND-25-FIXES.md |
 | 26 | claude-fable-5-thinking-xhigh ×10 | 页码输入、Finder 搜索、翻译选择、分组 segmented、MCP chip、Todo/备份、清 rct-tree | 见 ROUND-26-FIXES.md |
 | 27 | claude-fable-5-thinking-xhigh ×10 | 灯箱底栏、面包屑、记忆空态、MCP 加环境变量、导出全选、PromptPanel、位置筛选 | 见 ROUND-27-FIXES.md |
+| 28 | claude-fable-5-thinking-xhigh ×10 | 画布导航宽屏 coarse、标签清除、导出分段、笔记折叠、设置输入、技能确认条 | 见 ROUND-28-FIXES.md |
 
-## 进行中的修复队列（Round 28+）
+## 进行中的修复队列（Round 29+）
 
-- LearningHub 画布返回/前进/主页宽屏 coarse 16–28
-- TagNavigation 搜索清除 40；导出 SegmentedControl 40
-- 正文内联引用 chip 设计未决
+- DimensionManagement 移动卡确认 28；MCP 规则/权限筛选输入 32
+- TodoItemRow 行内重命名 24；VendorModelFetcher 搜索 28
+- 正文内联引用 chip 设计未决；ShortcutSettings 属 #166 不碰
 
 ## 已落地
 

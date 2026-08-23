@@ -648,7 +648,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             }}
           >
             {/* 全选行 */}
-            <label className="flex min-h-[40px] items-center gap-2.5 px-1">
+            <label className="flex min-h-[40px] [@media(pointer:coarse)]:min-h-[44px] items-center gap-2.5 px-1">
               <Checkbox
                 checked={allSelected || (someSelected ? 'indeterminate' : false)}
                 onCheckedChange={handleSelectAll}

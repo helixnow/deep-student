@@ -659,7 +659,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               setConfig(nextConfig);
               void persist(nextConfig);
             }}
-            className="h-8 w-40 text-xs"
+            className="h-8 w-40 text-xs [@media(pointer:coarse)]:h-11"
           />
         </SettingRow>
 
@@ -687,7 +687,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               setConfig(nextConfig);
               void persist(nextConfig);
             }}
-            className="h-8 w-32 text-xs"
+            className="h-8 w-32 text-xs [@media(pointer:coarse)]:h-11"
           />
         </SettingRow>
 

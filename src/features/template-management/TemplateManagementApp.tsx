@@ -161,7 +161,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             if (!leaveEditorGuardRef.current()) return;
             onBackToAnki?.();
           }}
-          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary [@media(pointer:coarse)]:min-h-11"
+          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary [@media(pointer:coarse)]:!min-h-11"
         >
           {tAnki('page_title')}
         </DsButton>

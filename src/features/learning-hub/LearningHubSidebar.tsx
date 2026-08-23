@@ -3056,7 +3056,7 @@ export function LearningHubSidebar({
             <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
               onClick={goBack}
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back')}
@@ -3066,7 +3066,7 @@ export function LearningHubSidebar({
             <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward')}
@@ -3075,7 +3075,7 @@ export function LearningHubSidebar({
             </DsButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </DsButton>
               {effectivePath.breadcrumbs.map((crumb, index) => (
@@ -3161,7 +3161,7 @@ export function LearningHubSidebar({
                 size="sm"
                 className={cn(
                   'p-0',
-                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7',
+                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={toggleMultiSelect}
@@ -3174,7 +3174,7 @@ export function LearningHubSidebar({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7')}
+                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
                   onClick={onClose}
                   title={t('common:close')}
                 >

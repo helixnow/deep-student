@@ -464,7 +464,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           }
                           className={cn(
                             'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition-colors',
-                            'relative after:absolute after:-inset-2.5 after:content-[\'\']',
+                            // coarse 下 -inset-[13px]：18px 复选框 + 2×13px = 44px 触控目标
+                            'relative after:absolute after:-inset-2.5 after:content-[\'\'] [@media(pointer:coarse)]:after:-inset-[13px]',
                             isActiveSkill
                               ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
                               : 'border-[color:var(--composer-panel-control-border)] text-transparent',

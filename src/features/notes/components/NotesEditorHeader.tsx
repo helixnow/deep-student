@@ -494,7 +494,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                     ) : (
                                         <button
                                             type="button"
-                                            className="flex items-center gap-1 rounded-sm text-muted-foreground/60 hover:text-foreground/80 transition-colors duration-150 cursor-pointer"
+                                            className="relative flex items-center gap-1 rounded-sm text-muted-foreground/60 hover:text-foreground/80 transition-colors duration-150 cursor-pointer [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-1 [@media(pointer:coarse)]:after:-inset-y-4 [@media(pointer:coarse)]:after:content-['']"
                                             onClick={() => handleBreadcrumbClick(item)}
                                             title={item.title}
                                         >
@@ -552,7 +552,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             {showRetry && (
                                 <button
                                     type="button"
-                                    className="underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150"
+                                    className="relative underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-1.5 [@media(pointer:coarse)]:after:-inset-y-4 [@media(pointer:coarse)]:after:content-['']"
                                     onClick={() => {
                                         void onRetrySave?.();
                                     }}

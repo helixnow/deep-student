@@ -132,7 +132,7 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
           placeholder={t('common:anki.settings.export_deck_placeholder')}
           value={settings.anki_connect_default_deck || ''}
           onChange={(event) => savePartial({ anki_connect_default_deck: event.target.value })}
-          className="h-8 w-64 max-w-full bg-transparent text-xs"
+          className="h-8 w-64 max-w-full bg-transparent text-xs [@media(pointer:coarse)]:h-11"
         />
       </SettingRow>
 

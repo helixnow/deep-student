@@ -233,7 +233,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
             size="sm"
             onClick={handleRefresh}
             disabled={loading}
-            className="h-6 px-2 text-muted-foreground/60 hover:text-foreground text-xs"
+            className="h-6 px-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-muted-foreground/60 hover:text-foreground text-xs"
             title={t('common:refresh')}
           >
             {t('common:refresh')}

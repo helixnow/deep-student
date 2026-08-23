@@ -1575,7 +1575,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setConfirmingBatch(null)}
-                  className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                  className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 >
                   {t('common:cancel')}
                 </DsButton>
@@ -1590,7 +1590,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                       void handleBatchResetConfirm();
                     }
                   }}
-                  className="!h-auto !px-2.5 !py-1 text-xs"
+                  className="!h-auto !px-2.5 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs"
                 >
                   {isOperating && <CircleNotch size={12} className="animate-spin" />}
                   {t('learningHub:exam.library.confirm')}

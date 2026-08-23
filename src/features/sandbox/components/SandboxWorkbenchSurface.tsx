@@ -250,8 +250,8 @@ export function SandboxWorkbenchSurface({
               type="button"
               onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
-                // 触屏（coarse 指针）下药丸放大到 ≥40px 触控目标
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-4',
+                // 触屏（coarse 指针）下药丸放大到 ≥44px 触控目标
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-4',
                 viewportPreset === preset
                   ? 'border-foreground/25 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent text-muted-foreground hover:text-foreground'

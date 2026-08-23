@@ -459,7 +459,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                   size="sm"
                   onClick={() => handleSingleSelect(index, option.label)}
                   disabled={isResponding}
-                  className="!h-auto !flex-1 !justify-start !p-0 text-left !bg-transparent !text-inherit hover:!bg-transparent"
+                  className="!h-auto !flex-1 !justify-start !p-0 text-left !bg-transparent !text-inherit hover:!bg-transparent [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!-my-2"
                 >
                   <span className="flex-1">{option.label}</span>
                 </DsButton>

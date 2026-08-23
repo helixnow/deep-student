@@ -370,7 +370,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
               variant="ghost"
               size="sm"
               onClick={() => setShowMeta((v) => !v)}
-              className="!h-auto min-h-8 lg:min-h-0 !p-0.5 !gap-1 text-2xs text-muted-foreground hover:text-foreground"
+              className="!h-auto min-h-8 lg:min-h-0 !p-0.5 !gap-1 text-2xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
             >
               {showMeta ? <CaretDown size={10} /> : <CaretRight size={10} />}
               {t('shellOutput.policy')}

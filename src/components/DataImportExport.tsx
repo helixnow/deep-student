@@ -1469,7 +1469,7 @@ ${resolvedPath}`);
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="ml-2 h-6 px-2 text-xs [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-3"
+                        className="ml-2 h-6 px-2 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
                         onClick={handleExport}
                       >
                         {t('data:actions.retry_button')}

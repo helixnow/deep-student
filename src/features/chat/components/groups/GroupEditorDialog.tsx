@@ -524,8 +524,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       key={iconName}
                       onClick={() => setIcon(iconName)}
                       className={cn(
-                        // 移动端触控目标放大到 44px，桌面保持 36px
-                        "w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer transition-colors",
+                        // 移动端/触屏触控目标放大到 44px，桌面细指针保持 36px
+                        "w-9 h-9 max-md:w-11 max-md:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 flex items-center justify-center rounded-md cursor-pointer transition-colors",
                         icon === iconName
                           ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                           : "hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
@@ -539,7 +539,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   {icon && (
                     <div
                       onClick={() => setIcon('')}
-                      className="w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      className="w-9 h-9 max-md:w-11 max-md:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       title={t('common:clear')}
                     >
                       <X size={16} />

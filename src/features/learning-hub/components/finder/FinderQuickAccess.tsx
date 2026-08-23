@@ -403,7 +403,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 <DsButton 
                   variant="ghost" 
                   size="icon" 
-                  className="h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                  className="relative h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']"
                   title={t('finder.toolbar.new')}
                   disabled={createDisabled}
                 >

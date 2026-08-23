@@ -166,7 +166,7 @@ const SegmentedControl = <T extends string>({
         onClick={() => onChange(opt.value)}
         aria-pressed={value === opt.value}
         className={cn(
-          'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs ui-state-colors [@media(pointer:coarse)]:min-h-10',
+          'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs ui-state-colors [@media(pointer:coarse)]:min-h-11',
           value === opt.value
             ? 'bg-background font-medium text-foreground shadow-sm'
             : 'text-muted-foreground hover:text-foreground'
