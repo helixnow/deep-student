@@ -1350,7 +1350,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <DsButton
                       variant="secondary"
                       size="sm"
-                      className="sm:hidden gap-1.5"
+                      className="md:hidden gap-1.5"
                       disabled={isProcessing}
                       onClick={(e) => {
                         e.stopPropagation();

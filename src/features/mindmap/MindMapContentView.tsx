@@ -1002,12 +1002,19 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     [isActive, resourceId]
   );
 
+  // 移动全屏子屏打开时给容器打标，CSS 据此在移动断点内隐藏 mm-toolbar
+  // （对照演示模式 is-presentation）：避免宿主顶栏+工具栏+子屏顶栏三层
+  // chrome 叠加，且被子屏覆盖不到的工具条不再可点。
+  // showShortcutHelp 在桌面渲染为内联面板，CSS 规则限定移动断点，不影响桌面。
+  const hasMobileSubview =
+    showMobileStructure || showMobileStyle || showMobileMore || showShortcutHelp;
+
   return (
     <>
     {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
     <MindMapActiveContext.Provider value={activeContextValue}>
     <MindMapClipboardEffects />
-    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", presentationMode && "is-presentation", className)}>
+    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", presentationMode && "is-presentation", hasMobileSubview && "has-mobile-subview", className)}>
       {/* Compact workbench toolbar: primary commands stay visible, secondary commands live in More. */}
       <div className="mm-toolbar">
         {/* Left: View Switcher & Undo/Redo */}

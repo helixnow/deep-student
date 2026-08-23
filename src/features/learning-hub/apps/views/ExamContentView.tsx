@@ -581,7 +581,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       const detail = (event as CustomEvent<SettingsRequest>).detail;
       if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
 
-      const open = detail?.open;
+      // 顶栏「更多→设置」不带 open（toggle 语义），而设置面板只在练习视图渲染：
+      // 非 practice 时直接翻转 settingsPanelOpen 既无可见反馈，还会让之后进入
+      // 练习时面板意外弹出。toggle 仅在 practice 有效；非 practice 统一按「打开」
+      // 处理，复用 open === true 的进练习守卫。
+      const open = detail?.open ?? (viewMode === 'practice' ? undefined : true);
       if (open === true && !hasQuestions) {
         detail?.acknowledge?.({
           handled: false,

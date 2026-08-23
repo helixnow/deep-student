@@ -136,6 +136,8 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
 
   // D-1: 移动端顶栏标题（独立视图形态时生效；embedded 形态由宿主视图管理顶栏）
   // 移动端设计哲学：页内不再放返回/导出按钮，操作统一收进顶栏
+  // ★ 嵌入形态（embedded）时禁用：不写 dashboard 键，
+  // 避免覆盖/清掉独立视图实例的顶栏配置
   useMobileHeader('dashboard', {
     title: tCommon('navigation.dashboard', '总览'),
     // ★ 顶栏统一：与设置/学习资源等子页一致，显示返回箭头（回聊天），
@@ -155,7 +157,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         <DownloadSimple size={18} />
       </DsButton>
     ),
-  }, [tCommon, t, embedded, onBack, !data]);
+  }, [tCommon, t, embedded, onBack, !data], !embedded);
 
   // 导出数据
   const exportData = useCallback(async () => {

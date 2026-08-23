@@ -29,4 +29,5 @@
 - DEV 双顶栏：Round 2 已收进统一顶栏。
 - `NotesHome`：死代码 + 非法 viewId，契约测试 allowlist，待删。
 - Settings 小屏标题、GradingMain 640–767：Round 3 已修。
-- **仍开**：引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键。
+- 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
+- **仍开**：导图子屏双 chrome / 工具条 40px；题库统计热力图触屏（tooltip 仅 hover 可达）与图表 28px 钮；Settings Sheet 安全区死区、view 级返回被 Radix 抢先。

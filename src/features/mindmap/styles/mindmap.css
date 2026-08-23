@@ -2084,6 +2084,15 @@
   display: none;
 }
 
+/* 移动全屏子屏（结构/样式/更多/快捷键）打开时隐藏顶部工具栏（对照演示模式
+   is-presentation）：子屏只覆盖内容区，不藏工具栏会形成宿主顶栏+工具栏+
+   子屏顶栏三层 chrome，且工具栏按钮在子屏下仍可点 */
+@media (max-width: 767.98px) {
+  .mindmap-container.has-mobile-subview > .mm-toolbar {
+    display: none;
+  }
+}
+
 .mm-presentation-exit {
   position: absolute;
   top: calc(12px + env(safe-area-inset-top, 0px));
@@ -2478,6 +2487,14 @@
   .mm-search-popover .ds-btn,
   .mm-search-popover input {
     min-height: 40px;
+  }
+
+  /* 搜索条关闭钮（24px）与大纲多选操作钮（28px）不带 ds-btn 类，
+     不被上方规则覆盖：触屏补足 44px（min-h-11）最小命中 */
+  .mm-search-close,
+  .outline-multiselect-btn {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .mm-recite-status-action {
