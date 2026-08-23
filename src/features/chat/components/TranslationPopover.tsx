@@ -785,7 +785,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 ? t('translation:chat_popover.swap_languages')
                 : t('translation:chat_popover.cannot_swap_auto')
             }
-            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground"
+            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
           >
             <ArrowsLeftRight size={12} />
           </DsButton>
@@ -859,7 +859,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleRetry}
                   aria-label={t('common:actions.retry')}
                   title={t('common:actions.retry')}
-                  className="!h-6 !w-6 shrink-0"
+                  className="!h-6 !w-6 shrink-0 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                 >
                   <ArrowsClockwise size={14} />
                 </DsButton>

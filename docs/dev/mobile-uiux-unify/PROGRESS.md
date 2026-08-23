@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–18 已落地；当前队列见下。
+- **轮次**：Round 2–19 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -28,13 +28,13 @@
 | 16 | claude-fable-5-thinking-xhigh ×10 | 搜索条保活、闪卡 hover、引用选择器/标签 X 44、删 Sidebar 孤儿 | 见 ROUND-16-FIXES.md |
 | 17 | claude-fable-5-thinking-xhigh ×10 | 大纲/访达/Anki 行/查看器 44、ContextRefs hover、删搜索孤儿 | 见 ROUND-17-FIXES.md |
 | 18 | claude-fable-5-thinking-xhigh ×10 | 笔记 tab/手柄、收藏、题库头、PDF 侧栏、输入栏 chip、设置 44 | 见 ROUND-18-FIXES.md |
+| 19 | claude-fable-5-thinking-xhigh ×10 | 翻译 Popover、Crepe 工具栏、FolderPicker、作文轮次、chip X | 见 ROUND-19-FIXES.md |
 
-## 进行中的修复队列（Round 19+）
+## 进行中的修复队列（Round 20+）
 
-- TranslationPopover 交换/重试 24；generic 块复制钮
-- NotesCrepeEditor pane 工具栏 28；FolderPickerDialog 展开 20
-- 作文 InputPanel 轮次导航 24
-- notes 可能孤儿：reference-selector、DndFileTree、InvalidReferenceOverlay
+- ExamSheetUploader / 维护横幅 / 番茄钟 / 复习勾选 / 来源翻页 / LLM 刷新 <44
+- NotesEditorHeader 36；TodoQuickAdd chip 32；PluginsTab 自绘返回
+- 删 notes 孤儿：reference-selector、DndFileTree（先迁类型）、InvalidReferenceOverlay
 
 ## 已落地
 

@@ -42,6 +42,10 @@ const INLINE_CONFIRM_TIMEOUT_MS = 3000;
 const COARSE_HIT =
   "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
 
+/** 同上，但适配 24px（h-6）图标钮：-inset-2.5 扩到 ≥44px（平板等 sm+ coarse 设备可见的小钮） */
+const COARSE_HIT_SM =
+  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
+
 /** 缩略图角标删除钮（16px、absolute 定位）：命中区扩到 ~40px */
 const COARSE_HIT_BADGE =
   "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']";
@@ -433,7 +437,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
           {roundNavigation && roundNavigation.total > 1 && (
             <div className="hidden sm:flex items-center gap-1">
-              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150")}>
                 <CaretLeft size={14} />
               </DsButton>
               <div className="flex items-center">
@@ -451,7 +455,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                     disabled={isGrading}
                     aria-label={t('essay_grading:round_navigation.go_to_round', { number: i + 1 })}
                     aria-current={i === roundNavigation.currentIndex ? 'true' : undefined}
-                    className="group/dot flex items-center justify-center w-3.5 h-6 disabled:cursor-not-allowed"
+                    /* coarse：相邻圆点的伪元素横向扩展会被后一个兄弟盖住，改为实际尺寸放大到 44×44（视觉圆点不变） */
+                    className="group/dot flex items-center justify-center w-3.5 h-6 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 disabled:cursor-not-allowed"
                   >
                     <span
                       className={cn(
@@ -464,7 +469,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   </button>
                 ))}
               </div>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150")}>
                 <CaretRight size={14} />
               </DsButton>
             </div>

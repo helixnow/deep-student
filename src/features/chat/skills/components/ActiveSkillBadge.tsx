@@ -103,7 +103,7 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         {getLocalizedSkillName(skill.id, skill.name, t)}
       </span>
       {showCloseButton && onClose && (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} disabled={disabled} className="!h-4 !w-4 !p-0 ml-0.5 hover:bg-foreground/10" aria-label={t('skills:deactivate')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} disabled={disabled} className="!h-4 !w-4 !p-0 ml-0.5 hover:bg-foreground/10 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('skills:deactivate')}>
           <X size={iconSize - 2} />
         </DsButton>
       )}

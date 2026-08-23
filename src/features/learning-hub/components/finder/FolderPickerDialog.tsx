@@ -105,7 +105,19 @@ function FolderNode({
         }}
       >
         {hasChildren ? (
-          <DsButton variant="ghost" size="icon" iconOnly tabIndex={-1} className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            tabIndex={-1}
+            className={cn(
+              '!h-5 !w-5 !p-0.5',
+              // 📱 触屏：命中区扩到 44px，负 margin 抵消尺寸差以保住缩进与行高
+              '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-3'
+            )}
+            onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }}
+            aria-label="toggle"
+          >
             <CaretRight 
               className={cn(
                 'transition-transform duration-200 ease-out',

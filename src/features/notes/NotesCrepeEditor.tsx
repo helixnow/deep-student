@@ -1992,7 +1992,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   iconOnly
                   size="sm"
                   className={cn(
-                    'h-7 w-7 transition-colors',
+                    'h-7 w-7 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                     templateMenuOpen
                       ? 'bg-[var(--interactive-hover)] text-foreground'
                       : 'text-muted-foreground hover:text-foreground',
@@ -2011,7 +2011,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 variant="ghost"
                 iconOnly
                 size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 onClick={() => { void openQuickAssistantWindow(); }}
                 aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
               >
@@ -2025,7 +2025,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 iconOnly
                 size="sm"
                 className={cn(
-                  'h-7 w-7 flex-shrink-0 transition-colors',
+                  'h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                   isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 onClick={() => setIsFindReplaceOpen((prev) => !prev)}
@@ -2046,7 +2046,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   iconOnly
                   size="sm"
                   className={cn(
-                    "h-7 w-7 flex-shrink-0 transition-colors",
+                    "h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11",
                     readingMode
                       ? "bg-[var(--interactive-hover)] text-foreground"
                       : "text-muted-foreground hover:text-foreground"
@@ -2075,7 +2075,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 variant="ghost"
                 iconOnly
                 size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 onClick={toggleFocusMode}
                 aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
                 aria-pressed={focusMode}
