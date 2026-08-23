@@ -12,6 +12,18 @@ import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+// 全局 react-i18next mock 每次渲染都会创建新的 t 函数，而 CloudStorageSection 的
+// 加载 useEffect 依赖 t，会造成无限重渲染。这里用稳定身份的 t 覆盖，行为等价于
+// 真实 react-i18next（t 引用跨渲染稳定），断言使用原始 key。
+vi.mock('react-i18next', () => {
+  const t = (key: string) => key;
+  const translation = { t, i18n: { language: 'zh-CN', changeLanguage: () => Promise.resolve(), t } };
+  return {
+    useTranslation: () => translation,
+    initReactI18next: { type: '3rdParty', init: () => {} },
+  };
+});
+
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
 }));
