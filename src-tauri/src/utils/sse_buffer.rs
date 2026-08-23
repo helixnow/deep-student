@@ -528,9 +528,7 @@ mod tests {
         // flush 按 lossy 语义补一个 U+FFFD，而不是丢弃残留。
         let mut buffer = SseEventBuffer::new();
         let bytes = "data: 中".as_bytes();
-        assert!(buffer
-            .process_bytes(&bytes[..bytes.len() - 1])
-            .is_empty());
+        assert!(buffer.process_bytes(&bytes[..bytes.len() - 1]).is_empty());
         assert_eq!(buffer.flush(), vec!["data: \u{fffd}".to_string()]);
     }
 
