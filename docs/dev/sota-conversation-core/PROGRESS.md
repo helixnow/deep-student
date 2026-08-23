@@ -26,7 +26,7 @@
 | d3ab2581 | 工具面 / hosted tools / 回传格式 |
 | [1fbd7859](1fbd7859-a620-44eb-a054-439a5834af8a) | OpenCode / Pi Agent 对标（已完成） |
 | b35b36be | Chat V2 流水线：裁剪、变体、usage 入库 |
-| b0ca75ca | 2026 Responses 官方能力覆盖度 |
+| [b0ca75ca](b0ca75ca-0edf-4ca5-81ad-efcabefe32d5) | 2026 Responses 官方能力覆盖度（已完成） |
 | [414d5fd1](414d5fd1-4b9c-440f-ad1b-f70d7f4c4439) | 各协议 cached_tokens 测量是否正确（已完成） |
 | b9e1515d | V20260806 replay 列是否真正写入/回放（第二轮补位） |
 | 4d4caf7e | Claude Code × Codex 对标（第二轮补位） |

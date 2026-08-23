@@ -26,6 +26,11 @@
 - **OpenAI / Codex**：稳定 `prompt_cache_key` = 会话 id；禁止 `Uuid::new_v4()` 回落。
 - **DeepSeek**：不要写 `prompt_cache_key` / `previous_response_id` / `store:true`
   （官方明确不支持，静默忽略）。唯一杠杆是前缀字节稳定。
+- **DeepSeek 默认协议也要跑模型门控**：`api_protocol=None` 不得只靠注册表把未支持型号
+  送进 Responses；`is_official_deepseek_config` 必须核对 base_url。
+- **按 2026-08-23 官方文档放开 `deepseek-v4-pro`（及 vision-exp）的 Responses**，同步
+  `effective_api_protocol_for_config`、前端 modelConverters、registry 备注与回归测试。
+  v3 等未列名型号继续回落 CC。
 - `cache-hit-report.py` 增加 protocol / provider / token_source 维度；cached 全 NULL 显示「无测量」而不是 0%。
 - 真正实现 `V20260806`：写入并回放 `llm_content` / `tool_call_id` / `round_text`。
 - reasoning item 按响应顺序收集 `Vec`，与相邻 `function_call` 配对回放；禁止单值覆盖 + 绑死第一个 tool id。

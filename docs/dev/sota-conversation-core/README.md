@@ -27,6 +27,7 @@ OpenCode、Pi Agent、Claude Code、Codex 的行业前沿。
 | [ROUND-01-opencode-pi.md](./ROUND-01-opencode-pi.md) | 第一轮补充：OpenCode / Pi 对标 |
 | [ROUND-01-responses-adapter.md](./ROUND-01-responses-adapter.md) | 第一轮补充：Responses 适配器审阅 |
 | [ROUND-01-cache-prefix.md](./ROUND-01-cache-prefix.md) | 第一轮补充：system/技能/DeepSeek 前缀断裂 |
+| [ROUND-01-native-coverage.md](./ROUND-01-native-coverage.md) | 第一轮补充：官方字段覆盖度与 V4-Pro 门控过期 |
 | [DESIGN.md](./DESIGN.md) | 随调研收敛的优化方案（草案 → 可落地） |
 
 ## 当前判断（会随轮次更新）
