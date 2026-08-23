@@ -69,6 +69,7 @@ import type {
   SubmitResult,
 } from '@/api/questionBankApi';
 import { getNextQuestionIndex, parseNumericInput } from '@/api/questionBankApi';
+import { useQuestionBankStore } from '@/stores/questionBankStore';
 import {
   type ExtendedQuestionType,
   type MatchingPair,
@@ -598,8 +599,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   
   // 连对计数 & 激励（里程碑提示走 showGlobalNotification 统一通知，不再用本地 z-50 toast）
-  const [streakCount, setStreakCount] = useState(0);
-  const [totalCorrectCount, setTotalCorrectCount] = useState(0);
+  // 会话进度提到 questionBankStore：切到错题本 / 统计再回来不清零（仅内存，重启不恢复）
+  const streakCount = useQuestionBankStore((state) => state.practiceSession.streakCount);
+  const totalCorrectCount = useQuestionBankStore((state) => state.practiceSession.totalCorrectCount);
+  const ensurePracticeSession = useQuestionBankStore((state) => state.ensurePracticeSession);
+  const recordPracticeAnswer = useQuestionBankStore((state) => state.recordPracticeAnswer);
+
+  useEffect(() => {
+    ensurePracticeSession(sessionId);
+  }, [sessionId, ensurePracticeSession]);
   
   // 完成庆祝
   const [showCompletionCelebration, setShowCompletionCelebration] = useState(false);
@@ -622,8 +630,6 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   questionStartTimeRef.current = questionStartTime;
   // 单题用时仅在切题时累加、不参与渲染，用 ref 避免多余重渲染
   const questionTimesRef = useRef<Record<string, number>>({});
-  // 本轮已真实作答的题目 ID（完成庆祝以此判定，而非"访问过"的题数估算）
-  const answeredIdsRef = useRef<Set<string>>(new Set());
   const prevQuestionIdRef = useRef<string | undefined>(undefined);
   
   // 填空题多空位
@@ -1116,33 +1122,27 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         });
       }
       
-      // 连对计数逻辑：null (主观题/待判定) 不中断连对，仅 false 中断
+      // 连对与已作答集合由 store 统一推进（null = 主观题待判定，不中断连对）；
+      // 返回值是同帧快照，里程碑与完成判定都读它，避免 setState 异步导致的错位。
+      const progress = recordPracticeAnswer(currentQuestion.id, result.isCorrect ?? null);
+
       if (result.isCorrect) {
-        const newStreak = streakCount + 1;
-        setStreakCount(newStreak);
-        setTotalCorrectCount(prev => prev + 1);
         // 检查里程碑 (3, 5, 10, 15, 20...)：走统一通知（替代原 z-50 本地 toast）
         const milestones = [3, 5, 10, 15, 20, 30, 50];
-        if (milestones.includes(newStreak)) {
+        if (milestones.includes(progress.streakCount)) {
           showGlobalNotification(
             'success',
-            `${t('editor.streakMessage', { count: newStreak })} · ${t('editor.keepItUp')}`,
+            `${t('editor.streakMessage', { count: progress.streakCount })} · ${t('editor.keepItUp')}`,
           );
         }
-      } else if (result.isCorrect === false) {
-        // 仅明确错误时中断连对，null(主观题)不中断
-        setStreakCount(0);
       }
 
       // 检查是否完成所有题目：基于真实已作答题目数（快速翻题只"访问"不作答，不计入）
-      answeredIdsRef.current.add(currentQuestion.id);
-      const answeredCount = answeredIdsRef.current.size;
-      if (answeredCount >= totalQuestions && totalQuestions > 0) {
-        // result.isCorrect 可能为 null（主观题），null 不计为正确也不计为错误
-        const finalCorrectCount = totalCorrectCount + (result.isCorrect === true ? 1 : 0);
+      const totalAnswered = progress.answeredIds.length;
+      if (totalAnswered >= totalQuestions && totalQuestions > 0) {
         setCompletionStats({
-          totalAnswered: answeredCount,
-          correctCount: finalCorrectCount,
+          totalAnswered,
+          correctCount: progress.totalCorrectCount,
           totalTime: resolvedElapsedTime
         });
         if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
@@ -1155,7 +1155,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
-  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, streakCount, totalCorrectCount, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, t, isSubmitting]);
+  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, recordPracticeAnswer, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, t, isSubmitting]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {

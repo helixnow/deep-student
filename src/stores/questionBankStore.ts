@@ -816,6 +816,23 @@ let checkInCalendarRequestSeq = 0;
 // Store 状态
 // ============================================================================
 
+/** 本轮做题进度（仅内存，跨视图切换保留，不跨进程） */
+export interface PracticeSessionProgress {
+  examId: string | null;
+  /** 连续答对数（明确答错清零；主观题待判定不中断） */
+  streakCount: number;
+  totalCorrectCount: number;
+  /** 真实作答过的题目 ID（"访问过"不计入，完成判定以此为准） */
+  answeredIds: string[];
+}
+
+const EMPTY_PRACTICE_SESSION: PracticeSessionProgress = {
+  examId: null,
+  streakCount: 0,
+  totalCorrectCount: 0,
+  answeredIds: [],
+};
+
 interface QuestionBankState {
   // 数据
   questions: Map<string, Question>;
@@ -926,6 +943,21 @@ interface QuestionBankState {
     isCorrect: boolean | null,
   ) => void;
   
+  /**
+   * 做题会话的即时进度（连对 / 已作答集合）。
+   * 提到 store 是为了让「做题 → 错题本 → 回做题」不清零；
+   * 未持久化，所以进程重启后仍然从零开始。
+   */
+  practiceSession: PracticeSessionProgress;
+  /** 切换题集时重置本轮进度；examId 未变则原样保留。 */
+  ensurePracticeSession: (examId: string | null) => void;
+  /** 记录一次作答，返回更新后的快照（调用方需要同帧读到新连对数）。 */
+  recordPracticeAnswer: (
+    questionId: string,
+    isCorrect: boolean | null,
+  ) => PracticeSessionProgress;
+  resetPracticeSession: (examId?: string | null) => void;
+
   // 练习模式状态
   timedSession: TimedPracticeSession | null;
   mockExamSession: MockExamSession | null;
@@ -993,6 +1025,8 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       // 并发防护：请求 ID，确保只有最新请求的结果会被应用
       loadRequestId: 0,
       
+      practiceSession: EMPTY_PRACTICE_SESSION,
+
       // 练习模式状态（2026-01 新增）
       timedSession: null,
       mockExamSession: null,
@@ -1015,6 +1049,32 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setDateRange: (range) => set({ selectedDateRange: range }),
       
       resetFilters: () => set({ filters: {} }),
+
+      ensurePracticeSession: (examId) => {
+        if (get().practiceSession.examId === examId) return;
+        set({ practiceSession: { ...EMPTY_PRACTICE_SESSION, examId } });
+      },
+
+      recordPracticeAnswer: (questionId, isCorrect) => {
+        const previous = get().practiceSession;
+        const next: PracticeSessionProgress = {
+          examId: previous.examId,
+          // null（主观题待判定）既不加连对也不中断
+          streakCount: isCorrect === true
+            ? previous.streakCount + 1
+            : isCorrect === false ? 0 : previous.streakCount,
+          totalCorrectCount: previous.totalCorrectCount + (isCorrect === true ? 1 : 0),
+          answeredIds: previous.answeredIds.includes(questionId)
+            ? previous.answeredIds
+            : [...previous.answeredIds, questionId],
+        };
+        set({ practiceSession: next });
+        return next;
+      },
+
+      resetPracticeSession: (examId = get().practiceSession.examId) => {
+        set({ practiceSession: { ...EMPTY_PRACTICE_SESSION, examId: examId ?? null } });
+      },
 
       // API Actions
       loadQuestions: async (examId, filters, page = 1) => {
