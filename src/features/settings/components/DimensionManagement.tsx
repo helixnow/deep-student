@@ -724,7 +724,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                             size="sm"
                                             onClick={() => setSelectedModelId(model.id)}
                                             className={cn(
-                                              "!h-auto !px-2.5 !py-1 text-xs",
+                                              "!h-auto !px-2.5 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11",
                                               model.id === selectedModelId
                                                 ? "bg-primary/10 text-primary border border-primary/30"
                                                 : "bg-muted/50 text-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground border border-transparent"

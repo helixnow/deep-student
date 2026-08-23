@@ -336,7 +336,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               size="sm"
               onClick={() => setExpanded(true)}
               aria-expanded={false}
-              className="!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none"
+              className="!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-2 [@media(pointer:coarse)]:after:-inset-y-3.5 [@media(pointer:coarse)]:after:content-['']"
             >
               {has ? (
                 <ListChecks size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />

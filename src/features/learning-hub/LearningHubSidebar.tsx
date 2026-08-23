@@ -3084,7 +3084,17 @@ export function LearningHubSidebar({
                   {index === effectivePath.breadcrumbs.length - 1 ? (
                     <span className="truncate text-foreground font-medium">{crumb.name}</span>
                   ) : (
-                    <DsButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => jumpToBreadcrumb(index)}
+                      className={cn(
+                        '!h-auto !p-0 truncate text-muted-foreground hover:text-foreground',
+                        isSmallScreen
+                          ? '!min-h-11 !px-2'
+                          : '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2',
+                      )}
+                    >
                       {crumb.name}
                     </DsButton>
                   )}

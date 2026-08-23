@@ -922,7 +922,7 @@ function ServerEditPanel({
                       <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                         {t('settings:mcp_server_edit.env_vars')}
                       </label>
-                      <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
+                      <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2">
                         + {t('settings:mcp_server_edit.add')}
                       </DsButton>
                     </div>
@@ -1391,7 +1391,7 @@ function NewServerEditItem({
                         <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                           {t('settings:mcp_server_edit.env_vars')}
                         </label>
-                        <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
+                        <DsButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2">
                           + {t('settings:mcp_server_edit.add')}
                         </DsButton>
                       </div>

@@ -1296,7 +1296,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             variant="ghost" size="sm"
             onClick={handleOpenRootPicker}
             disabled={loadingFolders}
-            className={cn('ml-auto !h-auto !px-1.5 !py-0.5', isPickerOpen && 'bg-primary/10 text-primary')}
+            className={cn('ml-auto !h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2', isPickerOpen && 'bg-primary/10 text-primary')}
           >
             {loadingFolders ? (
               <CircleNotch size={12} className="animate-spin" />
@@ -1320,7 +1320,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 title={opt.desc}
                 onClick={() => handleFrequencyChange(opt.value)}
                 className={cn(
-                  'px-2 py-0.5 rounded text-[11px] transition-colors',
+                  'px-2 py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:min-h-11',
                   config.autoExtractFrequency === opt.value
                     ? 'bg-primary/15 text-primary font-medium'
                     : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1570,7 +1570,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setBatchImportType(type)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
                           batchImportType === type
                             ? 'bg-primary/15 text-primary font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1592,7 +1592,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setBatchImportPurpose(p)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
                           batchImportPurpose === p
                             ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1676,7 +1676,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setNewMemoryType(type)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
                           newMemoryType === type
                             ? 'bg-primary/15 text-primary font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1699,7 +1699,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         size="sm"
                         onClick={() => setNewMemoryPurpose(p)}
                         className={cn(
-                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
+                          '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors [@media(pointer:coarse)]:!min-h-11',
                           newMemoryPurpose === p
                             ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
                             : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -1886,7 +1886,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <MemoryIcon size={40} className="mb-3 opacity-40" />
               <span className="text-sm mb-2">{t('memory.empty')}</span>
-              <DsButton variant="ghost" size="sm" onClick={handleOpenCreate} className="text-primary hover:underline !p-0 !h-auto">
+              <DsButton variant="ghost" size="sm" onClick={handleOpenCreate} className="text-primary hover:underline !p-0 !h-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2">
                 {t('memory.create_first')}
               </DsButton>
             </div>
@@ -1961,7 +1961,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           {memory.isStale && !memory.isArchived && (
                             <DsButton
                               variant="ghost" size="sm"
-                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0"
+                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2"
                               title={t('memory.stale_tooltip')}
                               onClick={(event) => { event.stopPropagation(); handleRestoreStale(memory.id); }}
                               aria-label={t('memory.restore_stale')}
@@ -1973,7 +1973,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           {memory.isArchived && (
                             <DsButton
                               variant="ghost" size="sm"
-                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0"
+                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2"
                               title={t('memory.archived_tooltip')}
                               onClick={(event) => { event.stopPropagation(); handleRestoreArchived(memory.id); }}
                               aria-label={t('memory.restore_archived')}
@@ -2005,7 +2005,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         isConfirmingDelete ? (
                           <DsButton
                             variant="ghost" size="sm"
-                            className="!h-auto !px-2 !py-1 text-[11px] text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0"
+                            className="!h-auto !px-2 !py-1 text-[11px] text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
                             onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }}
                             aria-label={t('memory.aria.delete')}
                           >
@@ -2220,7 +2220,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     {isConfirmingDelete ? (
                       <DsButton
                         variant="ghost" size="sm"
-                        className="!h-auto !px-1.5 !py-0.5 text-2xs text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0"
+                        className="!h-auto !px-1.5 !py-0.5 text-2xs text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2"
                         onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                         aria-label={t('memory.aria.delete')}
                       >
@@ -2391,12 +2391,12 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 {confirmingDelete ? t('memory.confirm_delete') : t('common:delete')}
               </DsButton>
               {!isEditing && (
-                <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, content); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs">
+                <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, content); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11">
                   <PencilSimple size={12} />{t('memory.edit')}
                 </DsButton>
               )}
             </div>
-            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium">
+            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:min-h-11">
               <ArrowSquareOut size={12} />{t('memory.open_editor')}
             </DsButton>
           </div>

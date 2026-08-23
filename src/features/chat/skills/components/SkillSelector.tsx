@@ -684,7 +684,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEnableSkill(selectedSkill.id)}
-                      className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
+                      className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     >
                       {t('skills:selector.enable')}
                     </DsButton>
@@ -708,7 +708,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                               variant="ghost"
                               size="sm"
                               onClick={() => handleTrustOverride(selectedSkill.id, 'trusted')}
-                              className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
+                              className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                             >
                               {t('skills:package.trust_enable')}
                             </DsButton>
@@ -732,7 +732,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           size="sm"
                           onClick={() => handleTrustOverride(selectedSkill.id, 'untrusted')}
                           title={t('skills:package.trust_effect_untrusted')}
-                          className="!h-auto !px-1.5 !py-0.5 text-xs hover:underline"
+                          className="!h-auto !px-1.5 !py-0.5 text-xs hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         >
                           {t('skills:package.trust_revoke')}
                         </DsButton>
@@ -800,7 +800,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       onClick={() => toggleDefault(selectedSkill.id)}
                       title={t('skills:default.hint')}
                       className={cn(
-                        '!h-auto !px-2 !py-1 text-xs',
+                        '!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                         isDefault(selectedSkill.id)
                           ? 'text-success'
                           : 'text-[color:var(--composer-panel-muted-foreground)]'
@@ -817,7 +817,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         size="sm"
                         onClick={() => handleEnableSkill(selectedSkill.id)}
                         title={t('skills:package.disabled_hint')}
-                        className="!h-auto !px-2 !py-1 text-xs text-primary"
+                        className="!h-auto !px-2 !py-1 text-xs text-primary [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       >
                         {t('skills:selector.enable')}
                       </DsButton>
@@ -827,7 +827,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         size="sm"
                         onClick={() => handleDisableSkill(selectedSkill.id)}
                         title={t('skills:package.disabled_hint')}
-                        className="!h-auto !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive"
+                        className="!h-auto !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       >
                         {t('skills:selector.disable')}
                       </DsButton>

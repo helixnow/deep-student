@@ -762,7 +762,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             size="sm"
             onClick={() => setDiagnosticsOpen((prev) => !prev)}
             aria-expanded={diagnosticsOpen}
-            className="!h-auto !px-0 !py-2 text-xs text-muted-foreground hover:text-foreground"
+            className="!h-auto !px-0 !py-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
           >
             <CaretDown
               className={cn(

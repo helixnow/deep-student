@@ -335,7 +335,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
                 variant="ghost"
                 size="sm"
                 onClick={openToolPermissionSettings}
-                className="mt-1.5 !h-auto !px-1.5 !py-0.5 text-[11px] text-primary hover:underline"
+                className="mt-1.5 !h-auto !px-1.5 !py-0.5 text-[11px] text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 <ArrowSquareOut size={11} />
                 {t('blocks.mcpTool.openRuntimeSettings')}

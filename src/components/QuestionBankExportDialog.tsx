@@ -130,7 +130,7 @@ const FieldChip: React.FC<{
     onClick={onClick}
     aria-pressed={selected}
     className={cn(
-      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ui-state-colors',
+      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ui-state-colors [@media(pointer:coarse)]:min-h-11',
       selected
         ? 'border-primary/50 bg-primary/10 font-medium text-primary'
         : 'border-border/60 bg-transparent text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
@@ -682,10 +682,10 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 <span className="text-muted-foreground">
                   {t('exam_sheet:questionBank.export.selectedFields', { count: csvFields.size })}
                 </span>
-                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 text-primary hover:underline">
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-primary hover:underline">
                   {t('common:contextMenu.selectAll')}
                 </DsButton>
-                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-muted-foreground hover:text-foreground">
                   {t('common:deselect_all')}
                 </DsButton>
               </div>
@@ -745,7 +745,12 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         <div className="break-all font-mono text-xs text-foreground">{exportOutcome.path}</div>
       </div>
       <div className="flex justify-center">
-        <DsButton variant="outline" size="sm" onClick={() => void handleRevealInFolder()}>
+        <DsButton
+          variant="outline"
+          size="sm"
+          onClick={() => void handleRevealInFolder()}
+          className="[@media(pointer:coarse)]:min-h-11"
+        >
           <FolderOpen size={16} className="mr-1.5" />
           {t('exam_sheet:questionBank.export.openFolder')}
         </DsButton>
@@ -755,7 +760,11 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
 
   // 导出主按钮（两种形态共用）
   const exportButton = (
-    <DsButton onClick={() => void handleExport()} disabled={isExporting || questions.length === 0}>
+    <DsButton
+      onClick={() => void handleExport()}
+      disabled={isExporting || questions.length === 0}
+      className="[@media(pointer:coarse)]:min-h-11"
+    >
       {isExporting ? (
         <CircleNotch size={16} className="mr-2 animate-spin" />
       ) : (
@@ -823,7 +832,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     if (index < inlineStep) setInlineStep(index);
                   }}
                   className={cn(
-                    'flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors motion-reduce:transition-none',
+                    'flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11',
                     index === inlineStep
                       ? 'bg-primary/10 font-medium text-primary'
                       : index < inlineStep
@@ -891,7 +900,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           }}
         >
           {exportOutcome ? (
-            <DsButton onClick={() => onOpenChange(false)}>
+            <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:min-h-11">
               {t('exam_sheet:questionBank.export.done')}
             </DsButton>
           ) : (
@@ -900,11 +909,12 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 variant="ghost"
                 onClick={handleInlineBack}
                 disabled={isExporting}
+                className="[@media(pointer:coarse)]:min-h-11"
               >
                 {inlineStep === 0 ? t('common:cancel') : t('common:actions.previous')}
               </DsButton>
               {inlineStep < 2 ? (
-                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))}>
+                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))} className="[@media(pointer:coarse)]:min-h-11">
                   {t('common:actions.next')}
                 </DsButton>
               ) : (
@@ -937,7 +947,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           onClick={() => onOpenChange(false)}
           disabled={isExporting}
           aria-label={t('common:close')}
-          className="text-muted-foreground"
+          className="text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <X size={16} />
         </DsButton>
@@ -964,12 +974,17 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       {/* 底部操作栏 */}
       <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
         {exportOutcome ? (
-          <DsButton onClick={() => onOpenChange(false)}>
+          <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:min-h-11">
             {t('exam_sheet:questionBank.export.done')}
           </DsButton>
         ) : (
           <>
-            <DsButton variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting}>
+            <DsButton
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={isExporting}
+              className="[@media(pointer:coarse)]:min-h-11"
+            >
               {t('common:cancel')}
             </DsButton>
             {exportButton}
