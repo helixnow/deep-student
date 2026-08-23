@@ -10,6 +10,10 @@
   --surface-overlay-strong: color-mix(in hsl, hsl(var(--card)) 65%, hsl(var(--background)) 35%);
   --surface-divider: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
   --surface-panel-muted: color-mix(in hsl, var(--surface-muted) 82%, var(--surface-elevated) 18%);
+  /* --surface-panel 是 panel family 的基准档（muted < panel < strong）。
+     必须是实底色：数据恢复面板（src/features/data-recovery/*）整片背景都挂在它上面，
+     一旦缺定义 bg-[color:var(--surface-panel)] 会解析失败、退化成透明。 */
+  --surface-panel: var(--surface-elevated);
   --surface-panel-strong: color-mix(in hsl, var(--surface-elevated) 92%, var(--surface-root) 8%);
 
   /* Desktop shell surfaces
@@ -130,6 +134,9 @@
   --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 84%, hsl(var(--foreground)) 16%);
   --button-prominent-border: color-mix(in oklab, hsl(var(--primary)) 34%, hsl(var(--border)) 66%);
   --button-tonal-bg: color-mix(in oklab, hsl(var(--secondary)) 82%, hsl(var(--background)) 18%);
+  /* 次级按钮表面别名：tonal 就是本设计系统的"次级"档，
+     ComposerPlusMenu 等消费方按这个名字取色。 */
+  --button-secondary-surface: var(--button-tonal-bg);
   --button-tonal-hover-bg: color-mix(in oklab, hsl(var(--muted)) 78%, hsl(var(--background)) 22%);
   --button-tonal-active-bg: color-mix(in oklab, hsl(var(--accent)) 82%, hsl(var(--background)) 18%);
   --button-tonal-border: color-mix(in oklab, hsl(var(--border)) 78%, hsl(var(--foreground)) 6%);
@@ -231,7 +238,13 @@
   --text-muted: hsl(var(--muted-foreground));
   --text-inverse: hsl(var(--primary-foreground));
 
-  /* Brand palette + gradients */
+  /* Brand palette + gradients
+     注意 --brand-primary（定义在 shadcn-variables.css）是裸 HSL 分量，消费方必须自己包 hsl()；
+     下面的 --brand-secondary / --brand-accent 则是完整颜色值，因为 tailwind.config.js 的
+     colors.brand.* 直接吐 `var(--brand-secondary)`，不会再包一层函数。 */
+  --accent-primary: hsl(var(--primary));
+  --brand-secondary: hsl(var(--info));
+  --brand-accent: color-mix(in oklab, hsl(var(--primary)) 50%, hsl(var(--info)) 50%);
   --brand-gradient: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 100%);
   --brand-gradient-hover: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 80%, hsl(var(--primary)) 100%);
   --brand-primary-light: color-mix(in hsl, hsl(var(--primary)) 25%, hsl(var(--background)) 75%);
@@ -264,6 +277,64 @@
   --citation-source-memory: var(--warning);
   --citation-source-web-search: var(--success);
   --diagram-node-contrast-text: hsl(var(--destructive-foreground));
+
+  /* Learning-hub 资源图标插画色
+     ------------------------------------------------------------
+     消费方：src/features/learning-hub/icons/ResourceIcons.tsx
+     `-ink` 是与主题无关的色相锚点（原先直接写死在 tsx 里的浅色 hex）。
+     bg / border 与当前卡片表面混合，fg 在暗色下往 --foreground 提亮，
+     因此同一套 SVG 在 .dark 下不再是刺眼的浅色块。调档只需改下面三个
+     mix 比例，不必逐个 hue 重配。 */
+  --resource-icon-gray-ink: #787774;
+  --resource-icon-brown-ink: #976d57;
+  --resource-icon-orange-ink: #cc782f;
+  --resource-icon-yellow-ink: #cf9232;
+  --resource-icon-green-ink: #4f9779;
+  --resource-icon-blue-ink: #2b59c3;
+  --resource-icon-purple-ink: #9a6dd7;
+  --resource-icon-pink-ink: #d65c9d;
+  --resource-icon-red-ink: #d44c47;
+  --resource-icon-surface: hsl(var(--card));
+  --resource-icon-bg-mix: 9%;
+  --resource-icon-border-mix: 26%;
+  --resource-icon-ink-mix: 100%;
+  --resource-icon-ink-tint: hsl(var(--foreground));
+  /* 纸面/高光/暗角：原先是写死的 #FFFFFF 与 black/5% */
+  --resource-icon-paper: hsl(0 0% 100%);
+  --resource-icon-paper-veil: hsl(0 0% 100% / 0.35);
+  --resource-icon-fold-highlight: hsl(0 0% 100% / 0.5);
+  --resource-icon-fold-shade: hsl(0 0% 0% / 0.05);
+  --resource-icon-folder-back: #e8b849;
+  --resource-icon-folder-tab: #d4a53a;
+  --resource-icon-folder-front: #f5c85c;
+  --resource-icon-folder-highlight: hsl(0 0% 100% / 0.4);
+  --resource-icon-gray-bg: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-gray-fg: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-gray-border: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-brown-bg: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-brown-fg: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-brown-border: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-orange-bg: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-orange-fg: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-orange-border: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-yellow-bg: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-yellow-fg: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-yellow-border: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-green-bg: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-green-fg: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-green-border: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-blue-bg: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-blue-fg: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-blue-border: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-purple-bg: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-purple-fg: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-purple-border: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-pink-bg: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-pink-fg: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-pink-border: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+  --resource-icon-red-bg: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+  --resource-icon-red-fg: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+  --resource-icon-red-border: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
 }
 
 :root.dark {
@@ -319,12 +390,49 @@
   --chat-thinking-header-surface: color-mix(in hsl, var(--surface-root) 82%, hsl(var(--muted)) 18%);
   --chat-thinking-hover-surface: color-mix(in hsl, var(--surface-root) 76%, hsl(var(--muted)) 24%);
   --chat-thinking-border: color-mix(in hsl, hsl(var(--border)) 68%, transparent 32%);
+
+  /* 暗色阴影翻转
+     ------------------------------------------------------------
+     亮色档的 4%–10% 黑影落在 9% 灰底上等于不存在，浮层/面板/移动端底栏
+     全糊成一片，层次只能靠边框撑。色相仍保持纯黑：--mobile-sheet-scrim 和
+     --text-shadow-contrast-* 都从 --shadow-base 取色，换成浅色会把遮罩洗掉。
+     alpha 对齐 workbench 暗色档（workbench.tokens.css :root.dark 的
+     --wb-shadow-*，rgba 0.34–0.56）。 */
+  --shadow-base: 0 0% 0%;
+  --shadow-shell-soft: 0 12px 24px hsl(var(--shadow-base) / 0.34);
+  --shadow-shell-panel: 0 16px 32px hsl(var(--shadow-base) / 0.40);
+  --shadow-shell-floating: 0 18px 36px hsl(var(--shadow-base) / 0.52);
+  --shadow-shell-pressed: 0 8px 20px hsl(var(--shadow-base) / 0.38);
+  --shadow-content-subtle: 0 1px 3px hsl(var(--shadow-base) / 0.36);
+  --shadow-content-soft: 0 2px 8px hsl(var(--shadow-base) / 0.44);
+  --shadow-content-elevated: 0 6px 18px hsl(var(--shadow-base) / 0.48);
+  /* 移动端底部 sheet 的上投影：亮色 0.10 在暗色下完全看不见，
+     底栏会和页面内容连成一块。 */
+  --mobile-sheet-shadow: 0 -12px 34px hsl(var(--shadow-base) / 0.56);
   --mobile-sheet-scrim: hsl(var(--shadow-base) / 0.58);
+  /* brand.secondary / brand.accent 在暗底上要提亮，否则 tailwind 的
+     text-brand-secondary / bg-brand-accent 会掉进不可读区间。 */
+  --brand-secondary: color-mix(in oklab, hsl(var(--info)) 80%, hsl(var(--foreground)) 20%);
+  --brand-accent: color-mix(in oklab, var(--brand-secondary) 50%, hsl(var(--primary)) 50%);
   --citation-badge-bg-alpha: 0.15;
   --citation-badge-hover-alpha: 0.25;
   --scrollbar-thumb: color-mix(in oklab, hsl(var(--foreground)) 22%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--foreground)) 36%, transparent);
   --scrollbar-thumb-active: color-mix(in oklab, hsl(var(--foreground)) 50%, transparent);
+
+  /* 资源图标：底更沉、边更实、前景往 --foreground 提亮，
+     -bg / -fg / -border 的 color-mix 公式在亮色档已写好，这里只翻比例。 */
+  --resource-icon-bg-mix: 22%;
+  --resource-icon-border-mix: 40%;
+  --resource-icon-ink-mix: 64%;
+  --resource-icon-paper: color-mix(in oklab, hsl(var(--card)) 76%, hsl(var(--foreground)) 24%);
+  --resource-icon-paper-veil: hsl(0 0% 100% / 0.06);
+  --resource-icon-fold-highlight: hsl(0 0% 100% / 0.07);
+  --resource-icon-fold-shade: hsl(0 0% 0% / 0.28);
+  --resource-icon-folder-back: #a9791f;
+  --resource-icon-folder-tab: #8e6519;
+  --resource-icon-folder-front: #c7962f;
+  --resource-icon-folder-highlight: hsl(0 0% 100% / 0.14);
 }
 
 @media (prefers-reduced-transparency: reduce) {
