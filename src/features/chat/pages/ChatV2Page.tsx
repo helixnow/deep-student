@@ -25,7 +25,7 @@ import { unifiedConfirm } from '@/utils/unifiedDialogs';
 // Learning Hub 学习资源侧边栏
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
-import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import { useFinderStoreFor, FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
 import { useNotesOptional } from '@/features/notes/NotesContext';
 import { lazy, Suspense } from 'react';
 
@@ -212,8 +212,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   // 移动端：分组已关联资源 ID 集合（用于右面板高亮显示）
   const [groupPinnedIds, setGroupPinnedIds] = useState<Set<string>>(new Set());
   // 📱 移动端资源库面包屑导航（用于应用顶栏）
-  const finderCurrentPath = useFinderStore(state => state.currentPath);
-  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
+  // ★ LH-HOST：必须读右屏资源库自己的宿主桶；读全局单例会串到学习中心页 /
+  // workbench Files 窗口的落点上。
+  const useCanvasFinderStore = useFinderStoreFor(FINDER_HOST_IDS.canvasMobile);
+  const finderCurrentPath = useCanvasFinderStore(state => state.currentPath);
+  const finderJumpToBreadcrumb = useCanvasFinderStore(state => state.jumpToBreadcrumb);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const [isLoading, setIsLoading] = useState(false);
   // 🔧 防闪烁：首次加载会话列表期间为 true，避免短暂显示全空状态
@@ -884,7 +887,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         >
           <LearningHubSidebar
             mode="canvas"
-            hostId="canvas"
+            hostId={FINDER_HOST_IDS.canvas}
             sessionActive={canvasSidebarOpen}
             commandsEnabled={false}
             onClose={toggleCanvasSidebar}
@@ -1266,7 +1269,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               ) : (
                 <LearningHubSidebar
                   mode="canvas"
-                  hostId="canvas-mobile"
+                  hostId={FINDER_HOST_IDS.canvasMobile}
                   sessionActive={mobileResourcePanelOpen}
                   commandsEnabled={false}
                   onClose={() => setMobileResourcePanelOpen(false)}

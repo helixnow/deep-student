@@ -12,16 +12,21 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import {
   createFinderPath,
   createFinderStore,
   finderPersistKey,
+  getActiveFinderHostId,
   getFinderStore,
   resolveFinderHostId,
   resolveInitialViewPreferences,
   resetFinderStoreRegistryForTests,
+  setActiveFinderHostId,
+  useActiveFinderState,
   useFinderStore,
   DEFAULT_FINDER_HOST_ID,
+  FINDER_HOST_IDS,
   FINDER_PERSIST_KEY_PREFIX,
   DEFAULT_FINDER_VIEW_PREFERENCES,
 } from '@/features/learning-hub/stores/finderStore';
@@ -95,6 +100,84 @@ describe('finderStore host buckets', () => {
   it('keeps the legacy persist key for the default bucket and namespaces the others', () => {
     expect(finderPersistKey(DEFAULT_FINDER_HOST_ID)).toBe(FINDER_PERSIST_KEY_PREFIX);
     expect(finderPersistKey('page-mobile')).toBe(`${FINDER_PERSIST_KEY_PREFIX}:page-mobile`);
+  });
+
+  it('gives every declared host its own bucket, except files which shares default', () => {
+    const hosts = Object.values(FINDER_HOST_IDS);
+    const buckets = hosts.map(resolveFinderHostId);
+    // 每个宿主一个桶，谁也不和别人共用
+    expect(new Set(buckets).size).toBe(hosts.length);
+    expect(resolveFinderHostId(FINDER_HOST_IDS.files)).toBe(DEFAULT_FINDER_HOST_ID);
+    expect(getFinderStore(FINDER_HOST_IDS.canvas))
+      .not.toBe(getFinderStore(FINDER_HOST_IDS.canvasMobile));
+    expect(getFinderStore(FINDER_HOST_IDS.canvas))
+      .not.toBe(getFinderStore(FINDER_HOST_IDS.page));
+  });
+
+  it('does not leak the learning hub path into the chat canvas bucket', () => {
+    const hubStore = getFinderStore(FINDER_HOST_IDS.page);
+    const canvasStore = getFinderStore(FINDER_HOST_IDS.canvasMobile);
+
+    hubStore.getState().navigateTo(createFinderPath({
+      folderId: 'folder-hub',
+      breadcrumbs: [{ id: 'folder-hub', name: '教材', dstuPath: '/教材' }],
+    }));
+
+    expect(canvasStore.getState().currentPath.folderId).toBeNull();
+    expect(canvasStore.getState().currentPath.breadcrumbs).toEqual([]);
+  });
+});
+
+describe('finderStore active host', () => {
+  beforeEach(() => {
+    resetFinderStoreRegistryForTests();
+  });
+
+  afterEach(() => {
+    resetFinderStoreRegistryForTests();
+  });
+
+  it('falls back to the default bucket when nobody registered', () => {
+    expect(getActiveFinderHostId()).toBe(DEFAULT_FINDER_HOST_ID);
+  });
+
+  it('maps the registered host through the same bucket resolution', () => {
+    setActiveFinderHostId(FINDER_HOST_IDS.files);
+    expect(getActiveFinderHostId()).toBe(DEFAULT_FINDER_HOST_ID);
+
+    setActiveFinderHostId(FINDER_HOST_IDS.pageMobile);
+    expect(getActiveFinderHostId()).toBe(FINDER_HOST_IDS.pageMobile);
+  });
+
+  it('re-points the global navigation shell at whichever host is active', () => {
+    const pageStore = getFinderStore(FINDER_HOST_IDS.page);
+    const mobileStore = getFinderStore(FINDER_HOST_IDS.pageMobile);
+    pageStore.getState().navigateTo(createFinderPath({ folderId: 'folder-desktop' }));
+    mobileStore.getState().navigateTo(createFinderPath({ folderId: 'folder-mobile' }));
+
+    const { result } = renderHook(() => useActiveFinderState((state) => state.currentPath.folderId));
+
+    expect(result.current).toBeNull();
+
+    act(() => setActiveFinderHostId(FINDER_HOST_IDS.page));
+    expect(result.current).toBe('folder-desktop');
+
+    act(() => setActiveFinderHostId(FINDER_HOST_IDS.pageMobile));
+    expect(result.current).toBe('folder-mobile');
+  });
+
+  it('drives goBack on the active host only', () => {
+    const pageStore = getFinderStore(FINDER_HOST_IDS.page);
+    const canvasStore = getFinderStore(FINDER_HOST_IDS.canvas);
+    pageStore.getState().navigateTo(createFinderPath({ folderId: 'folder-desktop' }));
+    canvasStore.getState().navigateTo(createFinderPath({ folderId: 'folder-canvas' }));
+
+    setActiveFinderHostId(FINDER_HOST_IDS.page);
+    const { result } = renderHook(() => useActiveFinderState((state) => state.goBack));
+    act(() => result.current());
+
+    expect(pageStore.getState().currentPath.folderId).toBeNull();
+    expect(canvasStore.getState().currentPath.folderId).toBe('folder-canvas');
   });
 });
 
