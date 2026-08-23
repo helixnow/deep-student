@@ -401,12 +401,12 @@ export const SessionRow: React.FC<{
           {/* 操作按钮（移动端为唯一操作入口，补齐暂停/恢复/跳转聊天） */}
           <div className="flex flex-wrap gap-1.5 pt-1">
             {session.totalCards > 0 && (
-              <DsButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
+              <DsButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="[@media(pointer:coarse)]:!min-h-11">
                 <DownloadSimple size={14} />{t('taskDashboard.exportApkg')}
               </DsButton>
             )}
             {group === 'attention' && (
-              <DsButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
+              <DsButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
                 <ArrowCounterClockwise size={14} />{t('taskDashboard.retryFailed')}
               </DsButton>
             )}
@@ -435,6 +435,7 @@ export const SessionRow: React.FC<{
               variant={deleteConfirm ? 'danger' : 'default'}
               onClick={handleDelete}
               disabled={!!busy}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <Trash size={14} />
               {deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
@@ -542,7 +543,7 @@ export const SessionRow: React.FC<{
                 </div>
               </CustomScrollArea>
               {hasMoreCards && (
-                <DsButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground">
+                <DsButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
                   {showAllCards
                     ? t('taskDashboard.showLessCards')
                     : t('taskDashboard.showMoreCards', { remaining: normalCards.length - CARDS_PAGE_SIZE })}

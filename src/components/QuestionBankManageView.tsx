@@ -510,13 +510,13 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           {showCsvActions && (
             <div className="flex items-center gap-1">
               {onCsvImport && (
-                <DsButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title')}>
+                <DsButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title')}>
                   <Upload size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:csv.import_title')}</span>
                 </DsButton>
               )}
               {onCsvExport && (
-                <DsButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title')}>
+                <DsButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title')}>
                   <Download size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title')}</span>
                 </DsButton>
@@ -524,7 +524,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             </div>
           )}
           
-          <DsButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <DsButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-[44px] text-xs', showFilters ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             <Funnel size={14} />
             {t('common:actions.filter')}
           </DsButton>
@@ -884,7 +884,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <AppMenu>
                       <AppMenuTrigger asChild>
-                        <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8" >
+                        <DsButton variant="ghost" iconOnly size="sm" className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-1.5" aria-label={t('common:more')}>
                           <DotsThree size={16} />
                         </DsButton>
                       </AppMenuTrigger>
@@ -961,7 +961,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-8 px-3 text-xs"
+                className="!h-8 px-3 [@media(pointer:coarse)]:!min-h-[44px] text-xs"
                 onClick={() => {
                   if (deleteConfirmOpen) {
                     setDeleteConfirmOpen(false);
@@ -977,7 +977,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <DsButton
                 variant={deleteConfirmOpen ? 'danger' : 'warning'}
                 size="sm"
-                className="!h-8 px-3 text-xs"
+                className="!h-8 px-3 [@media(pointer:coarse)]:!min-h-[44px] text-xs"
                 disabled={
                   actionLoading === 'delete'
                   || actionLoading === 'reset'

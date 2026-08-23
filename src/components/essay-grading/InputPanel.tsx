@@ -786,7 +786,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             {hasClearableContent && !isGrading && (
               <div className="hidden sm:flex items-center">
                 {desktopClearConfirm.armed ? (
-                  <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className="!h-6 px-2 text-xs transition-colors duration-150">
+                  <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className={cn(COARSE_HIT_SM, "!h-6 px-2 text-xs transition-colors duration-150")}>
                     <Trash size={12} />
                     {t('essay_grading:confirm.clear')}
                   </DsButton>

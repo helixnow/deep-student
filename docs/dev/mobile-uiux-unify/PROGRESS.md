@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–22 已落地；当前队列见下。
+- **轮次**：Round 2–23 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -32,14 +32,14 @@
 | 20 | claude-fable-5-thinking-xhigh ×10 | 删 reference-selector、试卷/番茄钟/复习勾选 44、PluginsTab 去自绘返回 | 见 ROUND-20-FIXES.md |
 | 21 | claude-fable-5-thinking-xhigh ×10 | 批量条/会话更多/Agent 抽屉/题库草稿、迁类型删 DndFileTree | 见 ROUND-21-FIXES.md |
 | 22 | claude-fable-5-thinking-xhigh ×10 | 番茄钟关闭、沙箱轨、AccentPicker、侧栏搜索、来源 compact、内联编辑 | 见 ROUND-22-FIXES.md |
+| 23 | claude-fable-5-thinking-xhigh ×10 | 会话卡/判对错/题库更多/模板返回/caret/Anki 模板库 44；删 workspaceShared | 见 ROUND-23-FIXES.md |
 
-## 进行中的修复队列（Round 23+）
+## 进行中的修复队列（Round 24+）
 
-- SessionBrowser 重命名/导出/删除触屏 36
-- QuestionBankEditor 判对/判错 32；QuestionBankManageView 更多 32
-- InputPanel 清空确认态漏 COARSE_HIT_SM
-- TemplateManagement 选择模式返回 28；paperSave caret 40
-- AnkiTasksApp 打开模板库宽屏 coarse 24
+- 题库列表「开始练习」32；PomodoroPanel / PomodoroAppWindow 控制簇 28
+- 题库编辑器草稿取消/放弃 28；内联添加标签 32；SkillEditorModal 关闭 32
+- InlineSettingsPanel CRUD 行 32；模板管理顶栏图标 coarse 40
+- QuestionBankEditor 题号格子 coarse 40；NotesCrepeEditor 聚焦退出 32
 
 ## 已落地
 

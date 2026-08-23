@@ -161,7 +161,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             if (!leaveEditorGuardRef.current()) return;
             onBackToAnki?.();
           }}
-          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary"
+          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary [@media(pointer:coarse)]:min-h-11"
         >
           {tAnki('page_title')}
         </DsButton>
@@ -898,7 +898,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             onClick={() => {
               onCancel();
             }}
-            className="w-full justify-start gap-2"
+            className="w-full justify-start gap-2 [@media(pointer:coarse)]:min-h-11"
           >
             <ArrowLeft size={16} />
             {t('back_button')}
@@ -913,7 +913,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     <nav className="wb-tm-nav" aria-label={t('manager_title')}>
       {isEditingMode && !isSelectingMode ? (
         <>
-          <button type="button" className="wb-tm-tab" onClick={handleCancelEdit}>
+          <button type="button" className="wb-tm-tab [@media(pointer:coarse)]:min-h-11" onClick={handleCancelEdit}>
             <ArrowLeft size={16} weight="bold" />
             {t('back_to_browse')}
           </button>
@@ -921,7 +921,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <button
               key={id}
               type="button"
-              className="wb-tm-tab"
+              className="wb-tm-tab [@media(pointer:coarse)]:min-h-11"
               data-active={selected ? 'true' : undefined}
               aria-current={selected ? 'page' : undefined}
               onClick={() => setEditorTab(id)}
@@ -1009,7 +1009,12 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           </>
         )}
         {isSelectingMode && onCancel && (
-          <DsButton variant="default" size="sm" onClick={onCancel} className="h-7">
+          <DsButton
+            variant="default"
+            size="sm"
+            onClick={onCancel}
+            className="h-7 [@media(pointer:coarse)]:min-h-11"
+          >
             <ArrowLeft size={14} />
             {t('back_button')}
           </DsButton>
@@ -1096,7 +1101,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <Warning size={16} className="flex-shrink-0" />
             <span className="truncate">{error}</span>
           </span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current" aria-label={t('common:a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:a11y.close')}>
             <X size={14} />
           </DsButton>
         </div>

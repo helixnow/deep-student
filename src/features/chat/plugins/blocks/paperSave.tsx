@@ -244,7 +244,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                     <span>{t('blocks.paperSave.retry')}</span>
                   </DsButton>
                   {hasMultipleSources && (
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-1.5 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-2 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
                       <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
                     </DsButton>
                   )}

@@ -188,20 +188,20 @@ const CardActions: React.FC<CardActionsProps> = ({
         disabled={isDefault}
         aria-label={isDefault ? t('default_template') : t('set_default')}
         title={isDefault ? t('default_template') : t('set_default')}
-        className={cn(isDefault && 'wb-tm-star--active')}
+        className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', isDefault && 'wb-tm-star--active')}
       >
         <Star size={16} weight={isDefault ? 'fill' : 'regular'} />
       </DsButton>
-      <DsButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
+      <DsButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
         <PencilSimple size={16} />
       </DsButton>
-      <DsButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
+      <DsButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
         <Copy size={16} />
       </DsButton>
-      <DsButton variant="utility" size="icon" iconOnly onClick={onExport} aria-label={t('export_tooltip')} title={t('export_tooltip')}>
+      <DsButton variant="utility" size="icon" iconOnly onClick={onExport} aria-label={t('export_tooltip')} title={t('export_tooltip')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
         <Download size={16} />
       </DsButton>
-      <DsButton variant="danger" size="icon" iconOnly onClick={onRequestDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')}>
+      <DsButton variant="danger" size="icon" iconOnly onClick={onRequestDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
         <Trash size={16} />
       </DsButton>
     </div>

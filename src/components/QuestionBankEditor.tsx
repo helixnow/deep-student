@@ -2020,11 +2020,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 )}
                 {onMarkCorrect && (
                   <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 bg-success/10 text-success hover:bg-success/[0.15]">
                       <Check size={14} />
                       {t('editor.iGotItRight')}
                     </DsButton>
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                       <X size={14} />
                       {t('editor.iGotItWrong')}
                     </DsButton>
@@ -2050,11 +2050,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 )}
                 {onMarkCorrect && (
                   <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 bg-success/10 text-success hover:bg-success/[0.15]">
                       <Check size={14} />
                       {t('editor.iGotItRight')}
                     </DsButton>
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                       <X size={14} />
                       {t('editor.iGotItWrong')}
                     </DsButton>

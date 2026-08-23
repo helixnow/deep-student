@@ -584,7 +584,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               </CommonTooltip>
               {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
               {!isSmallScreen && (
-                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
+                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px] [@media(pointer:coarse)]:!min-h-11">
                   {t('taskDashboard.openTemplateLib')}
                 </DsButton>
               )}
@@ -749,7 +749,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <DsButton
                 size="sm"
                 variant="primary"
-                className="mt-2"
+                className="mt-2 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
                   // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图
