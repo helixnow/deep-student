@@ -15,6 +15,7 @@ import {
   pickImageWithTauriDialog,
 } from '@/components/crepe/features/imageUpload';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { generateCardsFromNote } from './generateCardsFromNote';
 import type { MobileEditorToolbarCommands } from './components/MobileEditorToolbar';
 
 type ViewAction = (view: EditorView) => void;
@@ -162,10 +163,12 @@ export async function insertImageFromDevice(
  * 宿主侧扩展（不依赖编辑器实例的命令）。
  * - openFind：打开编辑器内查找替换面板（NotesCrepeEditor 传 setIsFindReplaceOpen(true)）；
  * - noteId：图片上传归档到该笔记的资产目录（P0-4；缺省时 uploader 回退 blob URL）。
+ * - noteTitle：制卡时作为牌组名；缺省时 generateCardsFromNote 回退到通用牌组。
  */
 export interface MobileEditorCommandExtras {
   openFind?: () => void;
   noteId?: string;
+  noteTitle?: string;
 }
 
 export function buildMobileEditorCommands(
@@ -193,6 +196,10 @@ export function buildMobileEditorCommands(
     insertTable: () => editor?.insertTable(),
     // 📱 触屏无 hover 块句柄：当前块操作菜单入口（Turn into / 复制 / 删除等）
     openBlockActions: () => editor?.openBlockMenuAtSelection?.(),
+    // 生成卡片：走与桌面工具栏同一个共享制卡入口，不新起链路
+    generateCards: () => {
+      void generateCardsFromNote({ editor, noteTitle: extras?.noteTitle });
+    },
     // 查找入口：仅宿主接线后暴露，保持未接线宿主的按钮隐藏行为
     ...(extras?.openFind ? { openFind: extras.openFind } : {}),
   };

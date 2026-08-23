@@ -446,6 +446,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const mobileCommands = buildMobileEditorCommands(editorApi, {
     // P0-4：图片上传归档到当前笔记资产目录
     noteId: isDstuMode ? dstuNoteId : contextActive?.id,
+    // 底栏「生成卡片」入口：牌组名取当前笔记标题
+    noteTitle: isDstuMode ? initialTitle : contextActive?.title,
     // 底栏「查找」入口：打开编辑器内联查找替换条
     openFind: () => setIsFindReplaceOpen(true),
   });

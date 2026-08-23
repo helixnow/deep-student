@@ -171,6 +171,7 @@ describe('MobileEditorToolbar', () => {
     expect(byAction('table')).toBeNull();
     expect(byAction('codeblock')).toBeNull();
     expect(byAction('find')).toBeNull();
+    expect(byAction('generateCards')).toBeNull();
   });
 
   it('openFind 注入后展示查找入口并触发回调', () => {
@@ -185,6 +186,20 @@ describe('MobileEditorToolbar', () => {
     expect(find.getAttribute('aria-label')).toBe('查找');
     fireEvent.click(find);
     expect(commands.openFind).toHaveBeenCalledTimes(1);
+  });
+
+  it('generateCards 注入后展示制卡入口并触发回调', () => {
+    const commands: MobileEditorToolbarCommands = {
+      ...mockCommands(),
+      generateCards: vi.fn(),
+    };
+    render(<MobileEditorToolbar commands={commands} visible />);
+
+    const generate = byAction('generateCards');
+    expect(generate).toBeTruthy();
+    expect(generate.getAttribute('aria-label')).toBe('生成卡片');
+    fireEvent.click(generate);
+    expect(commands.generateCards).toHaveBeenCalledTimes(1);
   });
 
   it('toggleStrikethrough 未注入时点击删除线不抛错', () => {
