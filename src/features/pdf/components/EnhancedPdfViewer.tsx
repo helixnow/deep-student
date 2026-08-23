@@ -1089,6 +1089,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       showBookmarkList || showHighlightList || sidebarMode !== 'none' || showSearch;
     if (!hasOverlay) return;
     return registerBackHandler(() => {
+      // 可见性守卫：保活但不可见的实例（ViewLayerRenderer keep-alive 隐藏层 /
+      // 后台标签页）不得吞掉其他页面的返回键。注意 visibility:hidden 不清除
+      // 布局盒（getClientRects 仍有返回值），必须单独查 computed visibility。
+      const el = containerRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       if (showHighlightMenu) {
         setShowHighlightMenu(false);
         return true;

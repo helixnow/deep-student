@@ -58,7 +58,7 @@ const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedA
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useSessionLifecycle } from './useSessionLifecycle';
 import { useSessionEdit } from './useSessionEdit';
-import { useChatPageLayout } from './useChatPageLayout';
+import { useChatPageLayout, openAppInLearningHubRef } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
 import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
@@ -955,6 +955,15 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setMobileResourcePanelOpen(false);
   }, [openApp, handleCloseApp, setMobileResourcePanelOpen]);
 
+  // 移动端右屏资源预览顶栏「在学习中心打开」：挂载期间写入桥接句柄
+  //（与 groupEditorSubmitRef 同模式，见 useChatPageLayout）
+  useEffect(() => {
+    openAppInLearningHubRef.current = handleOpenInLearningHub;
+    return () => {
+      openAppInLearningHubRef.current = null;
+    };
+  }, [handleOpenInLearningHub]);
+
   const openCurrentSessionSettings = useCallback(() => {
     if (!currentSessionId) return;
     const store = sessionManager.get(currentSessionId);
@@ -972,7 +981,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
-    mobileSandboxOpen, closeMobileSandbox,
+    mobileSandboxOpen, closeMobileSandbox, sandboxOwnerKey,
     openAppTitle: openApp ? (openApp.title ?? '') : null,
     closeMobileOpenApp,
     groupEditorOpen,
@@ -1240,6 +1249,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               {sandboxWorkbenchOpen && sandboxActiveSession ? (
                 <SandboxWorkbenchSurface
                   embedded
+                  // 移动端右屏已有统一顶栏（useChatPageLayout 的 mobileSandboxOpen
+                  // 分支，含刷新/检查器动作），再画 SandboxToolbar 会形成双顶栏
+                  //（与 SandboxWorkbenchPage 独立视图的小屏处理对齐）
+                  hideToolbar
                   className="h-full"
                   onClose={handleCloseSandbox}
                   ownerKey={sandboxOwnerKey}

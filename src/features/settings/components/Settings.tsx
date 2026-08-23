@@ -845,6 +845,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     if (event.pointerType === 'mouse' && event.button !== 0) return;
 
     clearSheetDragTimer();
+    // 此处只记录起点，不能立即 setPointerCapture：header 内含返回/关闭/保存按钮，
+    // 捕获会把 pointerup 重定向到 header，干净点按将收不到合成 click。
+    // 与 TodoItemRow 同款：轴锁定确认是下拉手势后（见 handleSheetPointerMove）再捕获。
     sheetDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -853,11 +856,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       isDragging: false,
       suppressNextClick: false,
     };
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is best-effort in older WebViews.
-    }
   }, [clearSheetDragTimer, isActive, isSmallScreen]);
 
   const handleSheetPointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
@@ -868,18 +866,19 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     const deltaY = event.clientY - drag.startY;
     if (!drag.isDragging) {
       // 横向移动不启动下拉关闭，保留顶部栏的点按行为。
+      // 此时尚未捕获指针，直接放弃手势即可。
       if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
         drag.pointerId = null;
-        try {
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        } catch {
-          // Pointer capture is best-effort in older WebViews.
-        }
         return;
       }
       if (deltaY < 8) return;
       drag.isDragging = true;
       drag.suppressNextClick = true;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is best-effort in older WebViews.
+      }
     }
 
     if (deltaY <= 0) return;

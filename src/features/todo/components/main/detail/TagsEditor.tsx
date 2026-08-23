@@ -10,12 +10,13 @@
  * - pill 增删 150ms scale + fade 动效（prefers-reduced-motion 退化为瞬时）
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Plus, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { tweenFast } from '@/styles/motion-springs';
 import { tagDotColor } from './tagColor';
 
@@ -57,6 +58,21 @@ export const TagsEditor: React.FC<{
   // 选项序：匹配建议在前，「创建」行殿后
   const optionCount = matched.length + (canCreate ? 1 : 0);
   const showSuggestions = focused && optionCount > 0;
+
+  // 📱 Android 返回键：建议 listbox 展开时先收起（blur 走既有 onBlur 提交/收起链路），
+  // 再轮到下层 overlay / 视图导航
+  useEffect(() => {
+    if (!showSuggestions) return;
+    return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的保活层里仍保持挂载（visibility:hidden），
+      // 建议展开态也随之滞留——此时不消费返回键（对照 TodoItemDetail 的同款守卫）
+      const el = inputRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      el.blur();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showSuggestions]);
 
   const addTag = useCallback(
     (raw: string) => {

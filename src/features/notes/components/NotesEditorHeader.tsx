@@ -8,6 +8,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { cn } from '@/lib/utils';
 import { springSnap, motionSafe } from '@/styles/motion-springs';
 import { useTagSuggestions } from '../hooks/useTagSuggestions';
@@ -373,6 +374,25 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     useEffect(() => {
         if (tagInputOpen) tagInputRef.current?.focus();
     }, [tagInputOpen]);
+
+    // 📱 Android 返回键：标签建议 listbox 打开时先收起输入行（同 Esc 路径），
+    // 再轮到下层 overlay / 视图导航
+    const tagSuggestionsVisible =
+        canEditTags && tagInputOpen && (isLoadingTagSuggestions || tagSuggestions.length > 0);
+    useEffect(() => {
+        if (!tagSuggestionsVisible) return;
+        return registerBackHandler(() => {
+            // 保活守卫：编辑器 tab 在被隐藏的保活层里仍保持挂载（visibility:hidden），
+            // 建议展开态也随之滞留——此时不消费返回键，交还给当前活跃视图
+            const el = tagInputRef.current;
+            if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+            if (window.getComputedStyle(el).visibility === 'hidden') return false;
+            setTagInput('');
+            setTagError(null);
+            setTagInputOpen(false);
+            return true;
+        }, BACK_PRIORITY.overlay);
+    }, [tagSuggestionsVisible]);
 
     const applyTags = async (next: string[]) => {
         if (!commitTags || isSavingTags) return;

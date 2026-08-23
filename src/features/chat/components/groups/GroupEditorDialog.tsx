@@ -470,7 +470,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-background relative">
-      {/* Action Buttons - Absolute Positioned；小屏「取消」由全局顶栏返回箭头承担 */}
+      {/* Action Buttons - Absolute Positioned；小屏「取消/保存」由全局顶栏返回箭头与保存按钮承担 */}
       <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10 flex items-center gap-2">
           <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:hidden">
             {t('common:cancel')}
@@ -479,7 +479,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             variant="primary" 
             onClick={handleSubmit} 
             disabled={isSaving || !name.trim()}
-            className="h-8 px-3 max-md:h-11"
+            className="h-8 px-3 max-md:hidden"
           >
             {mode === 'create' ? t('common:create') : t('common:save')}
           </DsButton>
