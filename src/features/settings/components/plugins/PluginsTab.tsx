@@ -66,6 +66,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   onPluginChange,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [config, setConfig] = useState<IlinkBotConfig | null>(null);
   const [status, setStatus] = useState<PluginStatusSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -194,7 +195,9 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   return (
     <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
       <SettingSection title={plugin.label} hideHeader>
-        {/* 子页头部：插件名 + 返回列表 */}
+        {/* 子页头部：插件名 + 返回列表。小屏不自绘返回（对照 vendor 详情三屏）：
+            返回交给 Settings 统一顶栏返回链与已注册的 overlay 返回键 handler
+            （见 PluginsTab）；桌面详情内联在设置正文、无顶栏返回链，保留按钮。 */}
         <div className="flex flex-wrap items-start justify-between gap-2 px-1">
           <div className="min-w-0 flex-1">
             <h3 className="text-base font-semibold text-foreground">{plugin.label}</h3>
@@ -202,10 +205,12 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               {plugin.blurb}
             </p>
           </div>
-          <DsButton variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            {t('settings:plugins.back_to_list')}
-          </DsButton>
+          {!isSmallScreen && (
+            <DsButton variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              {t('settings:plugins.back_to_list')}
+            </DsButton>
+          )}
         </div>
 
         {/* 连接 */}
@@ -485,9 +490,10 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
   const selected = plugins.find((p) => p.id === selectedId) || null;
   const detailOpen = Boolean(selected);
 
-  // 📱 Android 返回键：小屏打开插件详情（IlinkBotConfigPanel 自绘 ArrowLeft 子页）
-  // 时先返回列表。详情打开时才注册，同 overlay 档后注册先执行，保证事件不被
-  // Settings 的 overlay handler（切回分区列表）抢走。
+  // 📱 Android 返回键：小屏打开插件详情（IlinkBotConfigPanel 子页，小屏不自绘
+  // 返回按钮，本 handler 即详情逐级回退的唯一入口）时先返回列表。详情打开时才
+  // 注册，同 overlay 档后注册先执行，保证事件不被 Settings 的 overlay handler
+  // （切回分区列表）抢走。
   useEffect(() => {
     if (!isSmallScreen || !detailOpen) return;
     return registerBackHandler(() => {

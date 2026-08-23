@@ -7,7 +7,6 @@ export { NotesCrepeEditor } from './NotesCrepeEditor';
 export { NotesContextPanel } from './NotesContextPanel';
 export { NotesLibraryManager } from './NotesLibraryManager';
 export { AIDiffPanel } from './AIDiffPanel';
-export { InvalidReferenceOverlay } from './InvalidReferenceOverlay';
 
 // Context
 export { useNotes, useNotesOptional, NotesProvider } from './NotesContext';
@@ -16,10 +15,6 @@ export type { CanvasAIStatus, CanvasNoteMetadata, CanvasModeState, LearningHubCo
 // DndFileTree
 export { DndFileTree, ReferenceIcon } from './DndFileTree';
 export type { TreeData, TreeNode, DragInfo, TreeCallbacks, NodeType, ReferenceData, ReferenceNode, SourceDatabase, PreviewType } from './DndFileTree';
-
-// Reference selector
-export { ReferenceSelector, ReferenceSelectorItem, listTextbooks } from './reference-selector';
-export type { ReferenceSelectorProps, ReferenceSelectorType, ReferenceSelectResult, TextbookListItem, UnifiedResourceItem } from './reference-selector';
 
 // Preview 组件组（MarkdownPreview/PDFPreview/ImagePreview/ExamPreview）
 // 已于 2026-08 确认零消费方后删除；预览统一走 learning-hub 与 DSTU editors。

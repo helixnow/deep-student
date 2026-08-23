@@ -31,4 +31,4 @@
 - Settings 小屏标题、GradingMain 640–767：Round 3 已修；Sheet 底安全区 / overlay 返回：Round 10–11 已修。
 - 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
 - 导图工具条 40→44、热力图年份/刷新 coarse 44、`shad/Table` 横滚：Round 11 已修。
-- **仍开**：试卷导入/番茄钟/复习勾选/来源翻页 <44；NotesEditorHeader / TodoQuickAdd；PluginsTab 自绘返回；notes 孤儿目录待删。
+- **仍开**：批量条漏修、会话「更多」、Agent 抽屉 32、备注编辑、题库草稿/解析、热力图重试；DndFileTree 待迁类型后删。

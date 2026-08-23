@@ -792,7 +792,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   </DsButton>
                 ) : (
                   <CommonTooltip content={t('essay_grading:actions.clear')}>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150")}>
                       <Trash size={14} />
                     </DsButton>
                   </CommonTooltip>

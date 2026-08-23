@@ -587,7 +587,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 {canEditTags ? (
                                     <button
                                         type="button"
-                                        className="relative inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']"
+                                        className="relative inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                         onClick={() => handleRemoveTag(tag)}
                                         disabled={isSavingTags}
                                         aria-label={t('notes:header.remove_tag')}

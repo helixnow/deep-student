@@ -1370,7 +1370,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 rounded-full bg-background/90 border shadow-md"
+                    className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 rounded-full bg-background/90 border shadow-md"
                     onClick={() => scrollByAmount('left')}
                     aria-label={t('common:actions.scrollLeft')}
                   >
@@ -1384,7 +1384,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 rounded-full bg-background/90 border shadow-md"
+                    className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 rounded-full bg-background/90 border shadow-md"
                     onClick={() => scrollByAmount('right')}
                     aria-label={t('common:actions.scrollRight')}
                   >

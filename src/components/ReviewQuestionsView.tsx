@@ -243,14 +243,14 @@ const ReviewQuestionCard: React.FC<{
         !isSelected && !isExpanded && 'hover:bg-accent'
       )}
     >
-      <div className="group flex min-h-11 items-center gap-2 px-2 py-1.5 sm:min-h-0">
-        {/* 复选框：触控命中区 ≥44px（移动端），视觉盒保持 16px */}
+      <div className="group flex items-center gap-2 px-2 py-1.5 [@media(pointer:coarse)]:min-h-11">
+        {/* 复选框：触控命中区 ≥44px（coarse 指针，含平板），视觉盒保持 16px */}
         <button
           type="button"
           role="checkbox"
           aria-checked={isSelected}
           aria-label={t('review:questions.selectQuestion', { label: question.questionLabel || `Q${originalIndex + 1}` })}
-          className="flex h-11 w-11 -my-2 -ml-2 shrink-0 items-center justify-center sm:h-6 sm:w-6 sm:-my-0 sm:-ml-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+          className="flex h-6 w-6 shrink-0 items-center justify-center [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-2 [@media(pointer:coarse)]:-ml-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
           onClick={(e) => {
             e.stopPropagation();
             onSelect(!isSelected);

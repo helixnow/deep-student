@@ -1586,7 +1586,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="!h-7 text-xs"
+                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => setShowCancelConfirm(false)}
                     disabled={isCancelling}
                   >
@@ -1595,7 +1595,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <DsButton
                     variant="danger"
                     size="sm"
-                    className="!h-7 text-xs"
+                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => void handleCancelImport()}
                     disabled={isCancelling}
                   >
@@ -1765,7 +1765,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         <DsButton
                           variant="ghost"
                           size="sm"
-                          className="!h-7 text-xs"
+                          className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                           onClick={() => setExcludedCardIds(new Set())}
                         >
                           <CheckSquare size={14} className="mr-1" />
@@ -1774,7 +1774,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         <DsButton
                           variant="ghost"
                           size="sm"
-                          className="!h-7 text-xs"
+                          className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                           onClick={() => setExcludedCardIds(new Set(allCards.map(c => c.card_id)))}
                         >
                           <Square size={14} className="mr-1" />
@@ -1907,7 +1907,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <DsButton
                     variant="warning"
                     size="sm"
-                    className="!h-7 text-xs"
+                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => void handleResumeImport()}
                   >
                     <ArrowClockwise size={14} className="mr-1" />

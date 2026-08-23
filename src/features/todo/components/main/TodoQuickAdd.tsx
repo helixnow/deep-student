@@ -53,8 +53,8 @@ const ParsedChip: React.FC<{
         aria-label={removeLabel}
         title={removeLabel}
         onClick={onRemove}
-        // 触屏：16px 命中区太小，透明 padding 扩到 32px（负 margin 保持 chip 布局不变，对齐 TagsEditor）
-        className="flex h-4 w-4 items-center justify-center rounded-full opacity-60 transition-opacity hover:bg-foreground/10 hover:opacity-100 [@media(pointer:coarse)]:p-2 [@media(pointer:coarse)]:-m-2 [@media(pointer:coarse)]:box-content"
+        // 触屏：16px 命中区太小，透明 padding 扩到 44px（16 + 14×2，负 margin 保持 chip 布局不变）
+        className="flex h-4 w-4 items-center justify-center rounded-full opacity-60 transition-opacity hover:bg-foreground/10 hover:opacity-100 [@media(pointer:coarse)]:p-3.5 [@media(pointer:coarse)]:-m-3.5 [@media(pointer:coarse)]:box-content"
       >
         <X size={9} weight="bold" />
       </button>

@@ -593,7 +593,14 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {/* 刷新按钮 */}
       {!statsOnly && (
         <div className="flex justify-end mb-4">
-          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={loadData}
+            className="text-muted-foreground hover:text-foreground h-8 px-2 [@media(pointer:coarse)]:min-h-11"
+            aria-label={t('actions.refresh')}
+            title={t('actions.refresh')}
+          >
             <ArrowsClockwise size={14} />
           </DsButton>
         </div>

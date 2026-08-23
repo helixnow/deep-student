@@ -10,7 +10,6 @@ import { TreeNode as TreeNodeType } from './types';
 import { ReferenceIcon } from './ReferenceIcon';
 import { Input } from '@/components/ui/shad/Input';
 import { isReferenceId } from '../types/reference';
-import { InvalidReferenceIcon } from '../InvalidReferenceOverlay';
 
 const LEVEL_INDENT = 20;
 const BASE_INDENT = 16;
@@ -617,13 +616,6 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
                 <span>{highlightedTitle}</span>
                 {isFavorite && (
                   <Star className="w-3 h-3 text-warning fill-warning" aria-hidden="true" />
-                )}
-                {/* 失效引用警告图标 */}
-                {isReference && (
-                  <InvalidReferenceIcon
-                    isInvalid={isInvalidReference}
-                    isValidating={referenceData?.isValidating}
-                  />
                 )}
               </span>
             )}
