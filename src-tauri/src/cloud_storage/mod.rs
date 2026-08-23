@@ -34,7 +34,7 @@ pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
     generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
     rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
-    SyncStatus, UploadResult,
+    EncryptionMarker, SyncStatus, UploadResult,
 };
 pub use traits::{CloudStorage, FileInfo, ListOutcome, Result};
 
@@ -256,13 +256,27 @@ pub async fn cloud_sync_upload(
     )?;
     let operation_id = _operation.operation_id().to_string();
 
+    let storage = create_storage(&config).await?;
+    let manager = CloudSyncManager::new(storage, get_device_id());
+
+    let encryption_password = config
+        .encryption_password
+        .clone()
+        .filter(|s| !s.is_empty());
+
+    // [R02-e2ee] 上传前执行端到端加密一致性策略：
+    // - 有密码：先幂等写入云端加密标记（.encryption-marker），保证「出现过加密备份
+    //   的 root」可被后续设备识别；
+    // - 无密码：若该 root 已有加密标记，直接拒绝明文上传，避免同一恢复链上
+    //   明文/密文混布（换机无密码时可能误还原明文旧版本、泄露本应加密的数据）。
+    manager
+        .enforce_encryption_policy_before_upload(encryption_password.is_some())
+        .await?;
+
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
     // 临时文件在 ZIP 附近创建，上传成功后删除
     let mut encrypted_temp: Option<tempfile::TempPath> = None;
-    let actual_upload_path: std::path::PathBuf = if let Some(pwd) = config
-        .encryption_password
-        .as_deref()
-        .filter(|s| !s.is_empty())
+    let actual_upload_path: std::path::PathBuf = if let Some(pwd) = encryption_password.as_deref()
     {
         tracing::info!("[CloudSync] 端到端加密已启用，流式加密上传...");
         // [F14] 流式分块加密到临时文件（同目录 → 同一文件系统，rename/上传快），
@@ -294,9 +308,6 @@ pub async fn cloud_sync_upload(
             ))
         })?
         .len();
-
-    let storage = create_storage(&config).await?;
-    let manager = CloudSyncManager::new(storage, get_device_id());
 
     emit_sync_progress(
         &app_handle,
