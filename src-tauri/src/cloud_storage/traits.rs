@@ -25,7 +25,14 @@ pub type DownloadProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 
 /// 分块上传配置
 pub const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB per chunk
-pub const MIN_MULTIPART_SIZE: u64 = 100 * 1024 * 1024; // 100MB threshold for multipart
+
+/// multipart 上传阈值：16MiB。
+///
+/// 必须与 S3 客户端 120s 的 `operation_attempt_timeout` 匹配：阈值以下的文件走
+/// 单次 PUT（整个请求共用一个 120s 计时），16MiB 在 120s 内只需约 1.1Mbps 上行；
+/// 旧值 100MB 会让慢速链路上接近阈值的文件必然触发单请求超时且无法通过重试恢复。
+/// 阈值以上走 multipart，每个分块（CHUNK_SIZE）各自计时，不受总时长限制。
+pub const MIN_MULTIPART_SIZE: u64 = 16 * 1024 * 1024;
 
 /// 文件信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,8 +153,8 @@ pub trait CloudStorage: Send + Sync {
     /// 流式上传本地文件（SOTA 特性）
     ///
     /// 自动选择最优上传策略：
-    /// - 小文件（<100MB）：直接上传
-    /// - 大文件（≥100MB）：分块上传
+    /// - 小文件（< `MIN_MULTIPART_SIZE`）：直接上传
+    /// - 大文件（≥ `MIN_MULTIPART_SIZE`）：分块上传
     ///
     /// # Arguments
     /// * `key` - 远程文件路径
