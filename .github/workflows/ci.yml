@@ -124,10 +124,6 @@ jobs:
     name: Frontend Tests (Vitest ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      # 与各平台 build job 一致。分片 2 在 forks 池下会顶到 Node 默认堆上限
-      # （Allocation failed / ERR_IPC_CHANNEL_CLOSED），不是断言失败。
-      NODE_OPTIONS: '--max-old-space-size=4096'
     strategy:
       fail-fast: false
       matrix:
