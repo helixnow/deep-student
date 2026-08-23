@@ -993,6 +993,121 @@ mod tests {
     }
 
     #[test]
+    fn provider_failure_keeps_upstream_message_for_numeric_codes() {
+        // OpenRouter/中转站风格：code 是数字，旧实现的 as_str() 失配后丢掉原文
+        let message = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "stream_error",
+                "details": {
+                    "code": 429,
+                    "message": "Provider returned error: rate limit exceeded for gpt-5"
+                }
+            }),
+            false,
+            false,
+        );
+        assert!(message.contains("模型回复未完整结束"));
+        assert!(message.contains("rate limit exceeded for gpt-5"));
+    }
+
+    #[test]
+    fn provider_failure_falls_back_to_nested_and_top_level_messages() {
+        let nested = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.failed",
+                "details": { "error": { "message": "insufficient_quota: 余额不足" } }
+            }),
+            true,
+            false,
+        );
+        assert!(nested.contains("insufficient_quota: 余额不足"));
+
+        let top_level = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "message": "upstream gateway closed the connection"
+            }),
+            false,
+            false,
+        );
+        assert!(top_level.contains("upstream gateway closed the connection"));
+
+        let plain_details = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "stream_error",
+                "details": "Bad gateway"
+            }),
+            false,
+            false,
+        );
+        assert!(plain_details.contains("Bad gateway"));
+    }
+
+    #[test]
+    fn provider_failure_classifies_known_reasons_and_truncates_detail() {
+        let cancelled = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.cancelled",
+                "details": { "code": 499 }
+            }),
+            true,
+            true,
+        );
+        assert!(cancelled.contains("OpenAI Codex"));
+        assert!(cancelled.contains("上游取消"));
+
+        let filtered = provider_stream_failure_message(
+            &json!({
+                "type": "content_blocked",
+                "reason": "safety",
+                "stop_details": { "category": "self_harm" }
+            }),
+            false,
+            false,
+        );
+        assert!(filtered.contains("内容安全策略中止"));
+
+        // 上游把整段 HTML 塞进 message 时，只保留截断后的片段
+        let long_detail = format!("<html>{}</html>", "x".repeat(500));
+        let truncated = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "max_tokens",
+                "details": { "message": long_detail }
+            }),
+            false,
+            false,
+        );
+        assert!(truncated.contains("输出上限"));
+        assert!(truncated.contains("上游返回：<html>"));
+        assert!(truncated.ends_with("..."));
+        let detail_part = truncated
+            .rsplit("上游返回：")
+            .next()
+            .expect("appended detail must exist");
+        assert!(detail_part.chars().count() <= PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS + 3);
+    }
+
+    #[test]
+    fn provider_failure_without_upstream_message_keeps_plain_classification() {
+        let message = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.incomplete",
+                "details": { "reason": "max_output_tokens" }
+            }),
+            true,
+            false,
+        );
+        assert!(message.contains("输出上限"));
+        assert!(!message.contains("上游返回"));
+    }
+
+    #[test]
     fn test_sanitize_request_body_for_audit_redacts_user_profile() {
         let body = json!({
             "messages": [
