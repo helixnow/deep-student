@@ -6,12 +6,13 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
-use reqwest::{Client, Method, StatusCode, Url};
+use reqwest::{header::HeaderMap, Client, Method, StatusCode, Url};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -24,6 +25,12 @@ use super::traits::{
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
 
+/// 单次重试等待的上限。
+///
+/// 部分服务器（或代理）会返回夸张的 Retry-After（如 21600 秒 = 6 小时），
+/// 同步流程不能因此挂起数小时——封顶后按上限等待，重试次数本身有界。
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(30);
+
 /// WebDAV 存储实现
 pub struct WebDavStorage {
     base_url: Url,
@@ -31,6 +38,9 @@ pub struct WebDavStorage {
     password: String,
     root: String,
     http: Client,
+    /// 本会话内已确认存在（MKCOL 成功或已存在）的远程目录缓存。
+    /// 避免每次 PUT 都对整条路径重发全链 MKCOL。
+    created_dirs: Mutex<HashSet<String>>,
 }
 
 impl WebDavStorage {
@@ -59,7 +69,63 @@ impl WebDavStorage {
             password: config.password,
             root: root.trim_matches('/').to_string(),
             http,
+            created_dirs: Mutex::new(HashSet::new()),
         })
+    }
+
+    /// 判断状态码是否值得有界重试。
+    ///
+    /// - 423 Locked：其他客户端持有锁，稍后可能释放
+    /// - 429 Too Many Requests：限流，退避后重试
+    /// - 500/502/503/504：服务端/网关瞬时故障
+    ///
+    /// 其余 4xx（认证/路径/配额）与 501/505/507 是确定性失败，重试无意义。
+    fn is_retryable_status(status: StatusCode) -> bool {
+        matches!(status.as_u16(), 423 | 429 | 500 | 502 | 503 | 504)
+    }
+
+    /// 解析 Retry-After 头（秒数或 HTTP-date，RFC 9110 §10.2.3）。
+    fn parse_retry_after(raw: &str) -> Option<Duration> {
+        let raw = raw.trim();
+        if let Ok(secs) = raw.parse::<u64>() {
+            return Some(Duration::from_secs(secs));
+        }
+        let when = DateTime::parse_from_rfc2822(raw).ok()?;
+        // 过去的时间点（负 delta）视为无效，交由指数退避兜底
+        (when.with_timezone(&Utc) - Utc::now()).to_std().ok()
+    }
+
+    /// 从响应头提取封顶后的 Retry-After 等待时长。
+    fn capped_retry_after(headers: &HeaderMap) -> Option<Duration> {
+        let raw = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+        Some(Self::parse_retry_after(raw)?.min(MAX_RETRY_WAIT))
+    }
+
+    /// 无 Retry-After 时的指数退避（同样受 MAX_RETRY_WAIT 封顶）。
+    fn backoff_delay(attempt: u32) -> Duration {
+        Duration::from_millis(500u64 << attempt).min(MAX_RETRY_WAIT)
+    }
+
+    /// 判断单目录 PROPFIND 的 response 数是否命中已知的服务端静默截断边界。
+    ///
+    /// WebDAV 没有通用分页协议，无法向服务器确认列表完整性，只能按已知
+    /// 上限做 fail-closed 启发式：
+    /// - 坚果云在 750 个 response 处截断（含集合自身则表现为 750 或 751）；
+    /// - 个别网关按 1000 的整数倍截断。
+    ///
+    /// 早期版本把所有"整百"（100/101/200/...）都当作截断信号，导致目录里
+    /// 恰好有 99 或 100 个真实条目（加集合自身共 100/101 个 response）时
+    /// 出现假阳性、整个同步被拒绝推进。低边界误报率过高且未见真实服务在
+    /// 100/200 处截断的案例，故收紧到已知边界。
+    ///
+    /// `response_count` 是 multistatus 里 DAV:response 的总数，
+    /// 通常包含被列举集合自身，即真实条目数 + 1。
+    fn is_suspicious_response_count(response_count: usize) -> bool {
+        if matches!(response_count, 750 | 751) {
+            return true;
+        }
+        response_count >= 1000
+            && (response_count % 1000 == 0 || (response_count - 1) % 1000 == 0)
     }
 
     /// 构建 Basic 认证头
@@ -148,6 +214,10 @@ impl WebDavStorage {
     }
 
     /// 发送 HTTP 请求（带重试）
+    ///
+    /// 网络错误/超时按指数退避重试；423/429/500/502/503/504 也做有界重试，
+    /// 并尊重 Retry-After 头（受 MAX_RETRY_WAIT 封顶）。重试耗尽后把最后一个
+    /// 响应原样返回，由调用方按各自语义生成错误信息。
     async fn request_with_path(
         &self,
         method: Method,
@@ -157,10 +227,13 @@ impl WebDavStorage {
         let url = self.build_path_url(path)?;
         let max_retries = 3;
         let mut last_error = None;
+        let mut pending_delay: Option<Duration> = None;
 
         for attempt in 0..max_retries {
             if attempt > 0 {
-                let delay = std::time::Duration::from_millis(500 * (1 << attempt));
+                let delay = pending_delay
+                    .take()
+                    .unwrap_or_else(|| Self::backoff_delay(attempt));
                 tokio::time::sleep(delay).await;
                 tracing::debug!("WebDAV {} 重试 {}/{}", method, attempt + 1, max_retries);
             }
@@ -180,7 +253,22 @@ impl WebDavStorage {
             // 因此对 get_file 的大文件流式下载无影响（其逐块停滞保护在 get_file 内）。
             // 防止服务器收下 TCP 连接后无限沉默导致 send() 永久挂起。
             match tokio::time::timeout(std::time::Duration::from_secs(120), builder.send()).await {
-                Ok(Ok(resp)) => return Ok(resp),
+                Ok(Ok(resp)) => {
+                    if Self::is_retryable_status(resp.status()) && attempt < max_retries - 1 {
+                        tracing::debug!(
+                            "WebDAV {} {} 返回 {}，将重试",
+                            method,
+                            path,
+                            resp.status()
+                        );
+                        pending_delay = Self::capped_retry_after(resp.headers());
+                        last_error = Some(format!("HTTP {}", resp.status()));
+                        continue;
+                    }
+                    // 最后一次尝试仍是可重试状态时也原样返回，
+                    // 让调用方按自身语义（405/409 容忍等）处理。
+                    return Ok(resp);
+                }
                 Ok(Err(e)) => {
                     last_error = Some(e.to_string());
                     if attempt == max_retries - 1 {
@@ -206,8 +294,9 @@ impl WebDavStorage {
 
     /// 发送 PROPFIND 请求（带 120s 响应头超时、60s 响应体超时、网络错误重试）。
     ///
-    /// 返回 `Ok(None)` 表示目标不存在（404）；非 2xx/404 状态码立即报错不重试
-    /// （客户端错误重试无意义）；网络层失败与超时按指数退避重试。
+    /// 返回 `Ok(None)` 表示目标不存在（404）；确定性客户端错误立即报错不重试；
+    /// 网络层失败与超时按指数退避重试；423/429/500/502/503/504 有界重试并
+    /// 尊重 Retry-After（受 MAX_RETRY_WAIT 封顶）。
     /// 此前 list_outcome/stat 的 PROPFIND 直接裸调 `self.http.send()`，
     /// 无任何超时——服务器收下连接后沉默会让整个同步流程永久挂起。
     async fn propfind_with_retry(
@@ -219,10 +308,13 @@ impl WebDavStorage {
         const PROPFIND_BODY: &str = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
         let max_retries = 3;
         let mut last_error: Option<String> = None;
+        let mut pending_delay: Option<Duration> = None;
 
         for attempt in 0..max_retries {
             if attempt > 0 {
-                let delay = Duration::from_millis(500 * (1 << attempt));
+                let delay = pending_delay
+                    .take()
+                    .unwrap_or_else(|| Self::backoff_delay(attempt));
                 tokio::time::sleep(delay).await;
                 tracing::debug!(
                     "WebDAV PROPFIND {} 重试 {}/{}",
@@ -258,6 +350,15 @@ impl WebDavStorage {
 
             if res.status() == StatusCode::NOT_FOUND {
                 return Ok(None);
+            }
+            if Self::is_retryable_status(res.status()) {
+                pending_delay = Self::capped_retry_after(res.headers());
+                last_error = Some(format!(
+                    "HTTP {} {}",
+                    res.status(),
+                    res.status().canonical_reason().unwrap_or(""),
+                ));
+                continue;
             }
             if !res.status().is_success() {
                 return Err(AppError::network(format!(
@@ -297,7 +398,10 @@ impl WebDavStorage {
             .await
     }
 
-    /// 确保目录存在（递归创建）
+    /// 确保目录存在（递归创建，带会话级缓存）
+    ///
+    /// 已确认存在的目录记入 `created_dirs`，后续调用直接跳过对应的 MKCOL，
+    /// 避免每次 PUT 都对整条路径重发全链 MKCOL（坚果云等服务对请求频率敏感）。
     async fn ensure_directory(&self, path: &str) -> Result<()> {
         let parts: Vec<&str> = path
             .trim_matches('/')
@@ -312,21 +416,34 @@ impl WebDavStorage {
             }
             current.push_str(part);
 
+            if self
+                .created_dirs
+                .lock()
+                .expect("created_dirs 锁中毒")
+                .contains(&current)
+            {
+                continue;
+            }
+
             // MKCOL 创建目录
             let res = self
                 .request_with_path(Self::mkcol_method()?, &format!("{}/", current), None)
                 .await?;
 
-            // 405 METHOD_NOT_ALLOWED 或 409 CONFLICT 表示目录已存在，可以忽略
-            if !matches!(
-                res.status(),
-                StatusCode::OK
-                    | StatusCode::CREATED
-                    | StatusCode::METHOD_NOT_ALLOWED
-                    | StatusCode::CONFLICT
-            ) {
-                // 不是致命错误，目录可能已存在
-                tracing::debug!("WebDAV MKCOL {} 返回 {}", current, res.status());
+            // 405 METHOD_NOT_ALLOWED 表示目录已存在；409 CONFLICT 部分服务也用于
+            // "已存在"，但同样可能表示父目录缺失，因此不进缓存，仅容忍。
+            match res.status() {
+                StatusCode::OK | StatusCode::CREATED | StatusCode::METHOD_NOT_ALLOWED => {
+                    self.created_dirs
+                        .lock()
+                        .expect("created_dirs 锁中毒")
+                        .insert(current.clone());
+                }
+                StatusCode::CONFLICT => {}
+                other => {
+                    // 不是致命错误，目录可能已存在
+                    tracing::debug!("WebDAV MKCOL {} 返回 {}", current, other);
+                }
             }
         }
         Ok(())
@@ -562,16 +679,28 @@ impl CloudStorage for WebDavStorage {
         // 先确保同步根目录存在，再做连接探测
         self.ensure_directory(&self.root).await?;
 
-        // 回退：GET 根目录
-        let res = self.request(Method::GET, "", None).await?;
-        if res.status().is_success() || res.status() == StatusCode::NOT_FOUND {
-            Ok(())
+        // 探测用 PROPFIND Depth:0（WebDAV 核心方法，所有实现必须支持）。
+        // 此前用 GET 根集合探测：Nextcloud/sabre-dav 对集合 GET 返回 501，
+        // 会把完全健康的服务器误报为连接失败。
+        // 207 Multi-Status（2xx）与 404（服务器可达、认证通过但目录尚不存在）
+        // 都视为连接正常。
+        let root_path = if self.root.is_empty() {
+            String::new()
         } else {
-            Err(AppError::network(format!(
-                "WebDAV 连接检测失败: {} {}",
-                res.status(),
-                res.status().canonical_reason().unwrap_or(""),
-            )))
+            format!("{}/", self.root)
+        };
+        let url = self.build_path_url(&root_path)?;
+        match self.propfind_with_retry(url, "0", "check_connection").await {
+            Ok(_) => Ok(()),
+            Err(propfind_err) => {
+                // 极少数残缺实现 PROPFIND 不可用时回退 GET：2xx/404 视为可达
+                let res = self.request(Method::GET, "", None).await?;
+                if res.status().is_success() || res.status() == StatusCode::NOT_FOUND {
+                    Ok(())
+                } else {
+                    Err(propfind_err)
+                }
+            }
         }
     }
 
@@ -613,16 +742,20 @@ impl CloudStorage for WebDavStorage {
             .max(std::time::Duration::from_secs(300));
 
         // 流式 PUT 无法复用 request_with_path 的重试（body 不可克隆），这里
-        // 显式按尝试重建文件流重试：网络错误/超时/5xx 可重试，4xx 立即失败。
+        // 显式按尝试重建文件流重试：网络错误/超时/423/429/500/502/503/504
+        // 可重试（尊重 Retry-After，封顶 MAX_RETRY_WAIT），其余状态立即失败。
         // PUT 是整文件覆盖写，重传天然幂等。
         let max_retries = 3;
         let mut last_error: Option<AppError> = None;
+        let mut pending_delay: Option<Duration> = None;
         // 跨重试的进度高水位：重传从头读文件时不向 UI 上报回跳的进度
         let reported_max = Arc::new(AtomicU64::new(0));
 
         for attempt in 0..max_retries {
             if attempt > 0 {
-                let delay = std::time::Duration::from_millis(500 * (1 << attempt));
+                let delay = pending_delay
+                    .take()
+                    .unwrap_or_else(|| Self::backoff_delay(attempt));
                 tokio::time::sleep(delay).await;
                 tracing::debug!("WebDAV PUT {} 重试 {}/{}", key, attempt + 1, max_retries);
             }
@@ -670,10 +803,11 @@ impl CloudStorage for WebDavStorage {
                         res.status(),
                         res.status().canonical_reason().unwrap_or("")
                     ));
-                    // 4xx 是确定性失败（认证/路径/配额等），重试无意义
-                    if !res.status().is_server_error() {
+                    // 认证/路径/配额（4xx）与 501/507 等是确定性失败，重试无意义
+                    if !Self::is_retryable_status(res.status()) {
                         return Err(err);
                     }
+                    pending_delay = Self::capped_retry_after(res.headers());
                     last_error = Some(err);
                 }
                 Err(e) => {
@@ -867,14 +1001,7 @@ impl CloudStorage for WebDavStorage {
             let (files, subdirs, response_count) =
                 self.parse_propfind_entries(&xml, prefix, &dir)?;
 
-            // WebDAV 没有通用分页协议，部分服务会在 100/200/500/750/1000 等
-            // 边界静默截断。命中整百或坚果云 750 响应边界时 fail-closed，由上层
-            // 拒绝在不完整远端视图上推进同步。
-            let likely_page_boundary = response_count >= 100
-                && (response_count % 100 == 0
-                    || (response_count - 1) % 100 == 0
-                    || matches!(response_count, 750 | 751));
-            if likely_page_boundary {
+            if Self::is_suspicious_response_count(response_count) {
                 tracing::error!(
                     "[WebDAV] PROPFIND 返回 {} 个 response（疑似服务端分页上限），\
                      目录 '{}' 下可能有未列出的文件",
@@ -1017,6 +1144,312 @@ mod tests {
             "backups/one.zip"
         );
         assert_eq!(storage.root, "");
+    }
+
+    // ============================================================
+    // 进程内假 WebDAV 服务器（基于 hyper，不依赖 Docker/外部账号）
+    // ============================================================
+
+    /// (状态码, 响应头, 响应体)
+    type FakeResponse = (u16, Vec<(&'static str, String)>, String);
+    /// (method, path, 全局请求序号) -> 响应
+    type Responder = Arc<dyn Fn(&str, &str, usize) -> FakeResponse + Send + Sync>;
+    type RequestLog = Arc<Mutex<Vec<(String, String)>>>;
+
+    async fn spawn_fake_dav(responder: Responder) -> (String, RequestLog) {
+        use std::sync::atomic::AtomicUsize;
+
+        let log: RequestLog = Arc::new(Mutex::new(Vec::new()));
+        let counter = Arc::new(AtomicUsize::new(0));
+        let log_for_svc = log.clone();
+
+        let make_svc = hyper::service::make_service_fn(move |_conn| {
+            let responder = responder.clone();
+            let log = log_for_svc.clone();
+            let counter = counter.clone();
+            async move {
+                Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |req| {
+                    let responder = responder.clone();
+                    let log = log.clone();
+                    let counter = counter.clone();
+                    async move {
+                        let method = req.method().as_str().to_string();
+                        let path = req.uri().path().to_string();
+                        let idx = counter.fetch_add(1, Ordering::SeqCst);
+                        log.lock().unwrap().push((method.clone(), path.clone()));
+                        let _ = hyper::body::to_bytes(req.into_body()).await;
+                        let (status, headers, body) = responder(&method, &path, idx);
+                        let mut builder = hyper::Response::builder().status(status);
+                        for (name, value) in headers {
+                            builder = builder.header(name, value);
+                        }
+                        Ok::<_, std::convert::Infallible>(
+                            builder
+                                .body(hyper::Body::from(body))
+                                .expect("build fake response"),
+                        )
+                    }
+                }))
+            }
+        });
+
+        let server = hyper::Server::bind(&std::net::SocketAddr::from(([127, 0, 0, 1], 0)))
+            .serve(make_svc);
+        let endpoint = format!("http://{}/", server.local_addr());
+        tokio::spawn(server);
+        (endpoint, log)
+    }
+
+    fn storage_for(endpoint: &str, root: &str) -> WebDavStorage {
+        WebDavStorage::new(
+            WebDavConfig {
+                endpoint: endpoint.to_string(),
+                username: "user".to_string(),
+                password: "pass".to_string(),
+            },
+            root.to_string(),
+        )
+        .expect("create storage for fake server")
+    }
+
+    /// 构造 Depth:1 PROPFIND 的 multistatus 响应：集合自身 + entry_count 个文件。
+    fn multistatus_xml(collection_href: &str, entry_count: usize) -> String {
+        let mut xml = String::from(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">"#);
+        xml.push_str(&format!(
+            "<d:response><d:href>{collection_href}</d:href><d:propstat><d:prop>\
+             <d:resourcetype><d:collection/></d:resourcetype></d:prop>\
+             <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+        ));
+        for i in 0..entry_count {
+            xml.push_str(&format!(
+                "<d:response><d:href>{collection_href}file-{i}.txt</d:href>\
+                 <d:propstat><d:prop><d:resourcetype/>\
+                 <d:getcontentlength>10</d:getcontentlength>\
+                 <d:getlastmodified>Fri, 01 Jan 2021 00:00:00 GMT</d:getlastmodified>\
+                 </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+            ));
+        }
+        xml.push_str("</d:multistatus>");
+        xml
+    }
+
+    fn count_method(log: &RequestLog, method: &str) -> usize {
+        log.lock().unwrap().iter().filter(|(m, _)| m == method).count()
+    }
+
+    // ---------- 重试与 Retry-After ----------
+
+    #[test]
+    fn retry_after_parsing_and_cap() {
+        // 秒数格式
+        assert_eq!(
+            WebDavStorage::parse_retry_after("3"),
+            Some(Duration::from_secs(3))
+        );
+        assert_eq!(WebDavStorage::parse_retry_after("garbage"), None);
+
+        // 6 小时的 Retry-After 必须封顶，不能让同步挂起数小时
+        let mut headers = HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "21600".parse().unwrap());
+        assert_eq!(
+            WebDavStorage::capped_retry_after(&headers),
+            Some(MAX_RETRY_WAIT)
+        );
+
+        // HTTP-date 格式
+        let future = (Utc::now() + chrono::Duration::seconds(10)).to_rfc2822();
+        let parsed = WebDavStorage::parse_retry_after(&future).expect("parse http-date");
+        assert!(parsed <= Duration::from_secs(10) && parsed >= Duration::from_secs(7));
+
+        // 过去的时间点无效，交给指数退避兜底
+        let past = (Utc::now() - chrono::Duration::seconds(60)).to_rfc2822();
+        assert_eq!(WebDavStorage::parse_retry_after(&past), None);
+
+        // 指数退避同样封顶
+        assert_eq!(WebDavStorage::backoff_delay(30), MAX_RETRY_WAIT);
+    }
+
+    #[tokio::test]
+    async fn retries_retryable_statuses_and_respects_retry_after() {
+        for status in [423u16, 429, 500, 502, 503, 504] {
+            let responder: Responder = Arc::new(move |_method, _path, idx| {
+                if idx == 0 {
+                    (status, vec![("Retry-After", "0".to_string())], String::new())
+                } else {
+                    (200, vec![], "payload".to_string())
+                }
+            });
+            let (endpoint, log) = spawn_fake_dav(responder).await;
+            let storage = storage_for(&endpoint, "sync");
+
+            let data = storage
+                .get("obj.bin")
+                .await
+                .unwrap_or_else(|e| panic!("status={status} 应重试后成功: {e}"));
+            assert_eq!(data, Some(b"payload".to_vec()), "status={status}");
+            assert_eq!(count_method(&log, "GET"), 2, "status={status} 应恰好重试一次");
+        }
+    }
+
+    #[tokio::test]
+    async fn does_not_retry_deterministic_client_errors() {
+        let responder: Responder = Arc::new(|_m, _p, _i| (403, vec![], String::new()));
+        let (endpoint, log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        storage.get("obj.bin").await.expect_err("403 必须立即失败");
+        assert_eq!(count_method(&log, "GET"), 1, "确定性 4xx 不应重试");
+    }
+
+    #[tokio::test]
+    async fn retry_is_bounded_when_server_keeps_failing() {
+        let responder: Responder =
+            Arc::new(|_m, _p, _i| (503, vec![("Retry-After", "0".to_string())], String::new()));
+        let (endpoint, log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        storage
+            .get("obj.bin")
+            .await
+            .expect_err("持续 503 重试耗尽后必须失败");
+        assert_eq!(count_method(&log, "GET"), 3, "重试必须有界（3 次尝试）");
+    }
+
+    #[tokio::test]
+    async fn put_file_retries_on_503_with_retry_after() {
+        use std::sync::atomic::AtomicUsize;
+
+        let put_hits = Arc::new(AtomicUsize::new(0));
+        let put_hits_in_responder = put_hits.clone();
+        let responder: Responder = Arc::new(move |method, _path, _idx| match method {
+            "MKCOL" => (405, vec![], String::new()),
+            "PUT" => {
+                if put_hits_in_responder.fetch_add(1, Ordering::SeqCst) == 0 {
+                    (503, vec![("Retry-After", "0".to_string())], String::new())
+                } else {
+                    (201, vec![], String::new())
+                }
+            }
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, _log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("upload.bin");
+        std::fs::write(&local, b"streaming payload").expect("write local file");
+
+        storage
+            .put_file("objects/upload.bin", &local, None)
+            .await
+            .expect("流式 PUT 应在 503 后重试成功");
+        assert_eq!(put_hits.load(Ordering::SeqCst), 2);
+    }
+
+    // ---------- check_connection：PROPFIND Depth:0 ----------
+
+    #[tokio::test]
+    async fn check_connection_survives_collection_get_501() {
+        // Nextcloud/sabre-dav 对集合的 GET 返回 501 Not Implemented；
+        // 探测必须走 PROPFIND Depth:0，不能被 GET 501 误报为连接失败。
+        let responder: Responder = Arc::new(|method, _path, _idx| match method {
+            "MKCOL" => (405, vec![], String::new()),
+            "PROPFIND" => (207, vec![], multistatus_xml("/sync/", 0)),
+            "GET" => (501, vec![], String::new()),
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        storage
+            .check_connection()
+            .await
+            .expect("集合 GET 501 的服务器不应被误报为连接失败");
+        assert!(count_method(&log, "PROPFIND") >= 1, "探测应使用 PROPFIND");
+        assert_eq!(count_method(&log, "GET"), 0, "PROPFIND 成功时不应回退 GET");
+    }
+
+    // ---------- 目录缓存 ----------
+
+    #[tokio::test]
+    async fn directory_cache_skips_repeat_mkcol() {
+        let responder: Responder = Arc::new(|method, _path, _idx| match method {
+            "MKCOL" => (201, vec![], String::new()),
+            "PUT" => (201, vec![], String::new()),
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        storage.put("a/b/one.bin", b"1").await.expect("first put");
+        assert_eq!(
+            count_method(&log, "MKCOL"),
+            3,
+            "首次 PUT 建链：sync、sync/a、sync/a/b"
+        );
+
+        storage.put("a/b/two.bin", b"2").await.expect("second put");
+        assert_eq!(
+            count_method(&log, "MKCOL"),
+            3,
+            "同目录第二次 PUT 不应重发任何 MKCOL"
+        );
+
+        storage.put("a/c/three.bin", b"3").await.expect("third put");
+        assert_eq!(
+            count_method(&log, "MKCOL"),
+            4,
+            "新子目录只需补发缺失的一段 MKCOL"
+        );
+    }
+
+    // ---------- 整百截断启发式 ----------
+
+    #[test]
+    fn suspicious_response_count_boundaries() {
+        // 99/100/101 个真实条目（+ 集合自身 = 100/101/102 个 response）
+        // 不再是截断信号——修复整百假阳性
+        assert!(!WebDavStorage::is_suspicious_response_count(100));
+        assert!(!WebDavStorage::is_suspicious_response_count(101));
+        assert!(!WebDavStorage::is_suspicious_response_count(102));
+        assert!(!WebDavStorage::is_suspicious_response_count(200));
+        assert!(!WebDavStorage::is_suspicious_response_count(500));
+        // 坚果云 750 响应边界仍然 fail-closed
+        assert!(WebDavStorage::is_suspicious_response_count(750));
+        assert!(WebDavStorage::is_suspicious_response_count(751));
+        assert!(!WebDavStorage::is_suspicious_response_count(749));
+        assert!(!WebDavStorage::is_suspicious_response_count(752));
+        // 千级网关边界
+        assert!(WebDavStorage::is_suspicious_response_count(1000));
+        assert!(WebDavStorage::is_suspicious_response_count(1001));
+        assert!(!WebDavStorage::is_suspicious_response_count(1002));
+    }
+
+    #[tokio::test]
+    async fn list_outcome_truncation_matrix_via_fake_server() {
+        // 需求矩阵：750 个条目 → truncated；99/100/101 → 不截断
+        for (entries, expected_truncated) in
+            [(99usize, false), (100, false), (101, false), (750, true)]
+        {
+            let xml = multistatus_xml("/sync/", entries);
+            let responder: Responder = Arc::new(move |method, _path, _idx| {
+                assert_eq!(method, "PROPFIND", "列举只应使用 PROPFIND");
+                (
+                    207,
+                    vec![("Content-Type", "application/xml; charset=utf-8".to_string())],
+                    xml.clone(),
+                )
+            });
+            let (endpoint, _log) = spawn_fake_dav(responder).await;
+            let storage = storage_for(&endpoint, "sync");
+
+            let outcome = storage.list_outcome("").await.expect("list_outcome");
+            assert_eq!(outcome.files.len(), entries, "entries={entries}");
+            assert_eq!(
+                outcome.truncated, expected_truncated,
+                "entries={entries} 的 truncated 判定错误"
+            );
+        }
     }
 
     #[test]
