@@ -3987,7 +3987,10 @@ mod tests {
                 .and_then(|f| f.get("name"))
                 .and_then(Value::as_str)
                 .is_some_and(|name| name.trim().is_empty());
-            assert!(!flat_blank && !nested_blank, "blank tool name leaked: {tool}");
+            assert!(
+                !flat_blank && !nested_blank,
+                "blank tool name leaked: {tool}"
+            );
         }
     }
 
