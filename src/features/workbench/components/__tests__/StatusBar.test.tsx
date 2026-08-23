@@ -598,16 +598,20 @@ describe('StatusBar 聚焦应用菜单', () => {
     fireEvent.click(await screen.findByTestId('wb-menubar-app-new-window'));
     expect(launchSpy).toHaveBeenCalledWith({ typeId: 'todo', reason: 'api' });
 
-    // 关闭窗口 → 只关焦点窗
+    // 关闭窗口 → 只关焦点窗（走 requestCloseAnimated：先标 closing，动画收尾后才落库）
     fireEvent.click(appMenuBtn);
     fireEvent.click(await screen.findByTestId('wb-menubar-app-close-window'));
-    expect(useWindowStore.getState().windows[winB]).toBeUndefined();
+    await waitFor(() => {
+      expect(useWindowStore.getState().windows[winB]).toBeUndefined();
+    });
     expect(useWindowStore.getState().windows[winA]).toBeTruthy();
 
     // 全部关闭 → 同应用全关
     fireEvent.click(appMenuBtn);
     fireEvent.click(await screen.findByTestId('wb-menubar-app-close-all'));
-    expect(Object.keys(useWindowStore.getState().windows)).toHaveLength(0);
+    await waitFor(() => {
+      expect(Object.keys(useWindowStore.getState().windows)).toHaveLength(0);
+    });
     // 焦点窗清空后回落默认名
     await waitFor(() => {
       expect(appMenuBtn.textContent).toBe('学习桌面');
