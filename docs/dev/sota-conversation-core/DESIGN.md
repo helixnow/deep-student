@@ -58,6 +58,10 @@
 - DeepSeek 默认协议路径也要跑模型门控；`is_official_deepseek_config` 校验 base_url。
 - user_profile 停止按当前 query 重排；microcompact 只在 compaction 事件批量推进。
 - `prompt_builder` 跨轮前缀快照测试。
+- 历史重放按 `active_variant_id` 对应 `block_ids` 过滤，禁止把多变体正文 join 在一起。
+- `workspace_injection` 块按 live 形态还原为 user 消息。
+- 分支复制带上 replay 三列；OpenAI `prompt_cache_key` 可沿用源 session。
+- compaction 阈值必须先于 FIFO 头删触发。
 
 ### P2 OpenAI Responses 原生多轮（可选，DeepSeek 不做）
 
