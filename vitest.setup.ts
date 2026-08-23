@@ -68,6 +68,31 @@ class RO {
 // @ts-ignore
 global.ResizeObserver = (global as any).ResizeObserver || RO;
 
+// Minimal IntersectionObserver shim for JSDOM（jsdom 不实现该 API，
+// NotesCrepeEditor / MindMapCanvas / PptxPreview / DocxPreview 等组件
+// 在 mount 时 new IntersectionObserver 会直接 ReferenceError 崩掉整个用例）。
+// 只保证构造与四个实例方法可调用，不派发回调；需要驱动 isIntersecting
+// 的用例应在自身文件里替换为可控 mock。
+class IO implements IntersectionObserver {
+  readonly root: Element | Document | null;
+  readonly rootMargin: string;
+  readonly thresholds: ReadonlyArray<number>;
+  constructor(_callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+    this.root = options?.root ?? null;
+    this.rootMargin = options?.rootMargin ?? '0px';
+    const threshold = options?.threshold ?? 0;
+    this.thresholds = Array.isArray(threshold) ? threshold : [threshold];
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+}
+// @ts-ignore
+globalThis.IntersectionObserver = (globalThis as any).IntersectionObserver || IO;
+
 if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
