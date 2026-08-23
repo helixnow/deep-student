@@ -425,11 +425,7 @@ impl WebDavStorage {
         // 再把 href 路径与 base 路径统一解码成人类可读形式后比较。
         let raw_path = match Url::parse(href) {
             Ok(url) => url.path().to_string(),
-            Err(_) => href
-                .split(['?', '#'])
-                .next()
-                .unwrap_or(href)
-                .to_string(),
+            Err(_) => href.split(['?', '#']).next().unwrap_or(href).to_string(),
         };
         let href_path = Self::decode_path(&raw_path);
 
@@ -1112,10 +1108,8 @@ mod tests {
         )
         .expect("create storage");
 
-        let key = storage.extract_relative_key(
-            "/My%20Dav/sync%20root/objects/a%20b.txt",
-            "objects",
-        );
+        let key =
+            storage.extract_relative_key("/My%20Dav/sync%20root/objects/a%20b.txt", "objects");
         assert_eq!(key, "objects/a b.txt");
         // 解码后的 key 经 build_url 逐段推入时会被重新百分号编码
         assert_eq!(
