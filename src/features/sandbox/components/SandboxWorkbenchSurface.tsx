@@ -336,7 +336,10 @@ export function SandboxWorkbenchSurface({
 
             {inspectorOpen ? (
               <>
-                <PanelResizeHandle className="w-1.5 bg-border transition-colors hover:bg-primary/30 active:bg-primary/50" />
+                <PanelResizeHandle
+                  hitAreaMargins={{ coarse: 19, fine: 5 }}
+                  className="w-1.5 bg-border transition-colors hover:bg-primary/30 active:bg-primary/50"
+                />
                 <Panel defaultSize={26} minSize={20} maxSize={36}>
                   {inspectorShell}
                 </Panel>

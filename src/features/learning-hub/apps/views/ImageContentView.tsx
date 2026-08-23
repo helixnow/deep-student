@@ -134,6 +134,7 @@ const computeFitZoom = (
  */
 const ImageContentView: React.FC<ContentViewProps> = ({
   node,
+  isActive = true,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -672,8 +673,12 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     );
   }, []);
 
-  // ★ 百分比档位菜单：点击外部关闭（轻量 Popover，非模态、无遮罩）
+  // ★ 百分比档位菜单：点击外部关闭（轻量 Popover，非模态、无遮罩）。
+  // isActive 守卫（对照 EpubPreview/NoteContentView）：保活隐藏的 tab 不监听
+  // document pointerdown，避免活跃视图里的点击把隐藏 tab 的菜单关掉；
+  // 失活仅注销监听，不动 zoomMenuOpen。
   useEffect(() => {
+    if (!isActive) return;
     if (!zoomMenuOpen) return;
     const onPointerDown = (e: PointerEvent) => {
       if (!zoomMenuWrapRef.current?.contains(e.target as Node)) {
@@ -682,15 +687,17 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [zoomMenuOpen]);
+  }, [isActive, zoomMenuOpen]);
 
+  // isActive 守卫：隐藏 tab 不注册返回键 handler，避免消费当前活跃视图的返回键
   useEffect(() => {
+    if (!isActive) return;
     if (!zoomMenuOpen) return;
     return registerBackHandler(() => {
       setZoomMenuOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [zoomMenuOpen]);
+  }, [isActive, zoomMenuOpen]);
 
   const selectZoomPreset = useCallback((preset: number | 'fit') => {
     setZoomMenuOpen(false);

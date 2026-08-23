@@ -5,10 +5,8 @@
 // Main components（历史 NotesHome 视图已下线删除，2026-08）
 export { NotesCrepeEditor } from './NotesCrepeEditor';
 export { NotesContextPanel } from './NotesContextPanel';
-export { NotesHeader } from './NotesHeader';
 export { NotesLibraryManager } from './NotesLibraryManager';
 export { NotesSidebarV2 } from './NotesSidebarV2';
-export { default as NotesTabsBar } from './NotesTabsBar';
 export { AIDiffPanel } from './AIDiffPanel';
 export { InvalidReferenceOverlay } from './InvalidReferenceOverlay';
 
@@ -155,7 +153,7 @@ export type { NotesFocusModeEventDetail } from './focusModeOwnership';
 export { getNoteTemplates, renderNoteTemplate, applyNoteTemplate } from './noteTemplates';
 export type { NoteTemplate, NoteTemplateId, NoteTemplateVariables } from './noteTemplates';
 
-// 树 / 内容工具（NotesHeader / 侧栏等消费）
+// 树 / 内容工具（NotesEditorHeader / 侧栏等消费）
 export {
   normalizeContentForEditor,
   sortTreeChildren,

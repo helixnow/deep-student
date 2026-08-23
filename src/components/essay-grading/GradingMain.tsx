@@ -282,6 +282,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     <InlineSettingsPanel
       isOpen={showPromptEditor}
       onClose={() => setShowPromptEditor(false)}
+      // 📱 仅移动壳视口隐藏自绘标题行（宿主顶栏提供 chrome 与设置开关）；
+      // 桌面窄容器（分屏/浮窗）没有移动顶栏，标题行 X 仍是可见退出路径
+      mobileFullscreen={!useSettingsPage && viewportIsSmallScreen}
       modeId={modeId}
       setModeId={setModeId}
       modes={modes}

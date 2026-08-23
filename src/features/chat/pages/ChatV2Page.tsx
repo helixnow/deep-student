@@ -885,7 +885,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         {/* 应用面板（当有 openApp 时显示） */}
         {openApp && (
           <>
-            <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center">
+            <PanelResizeHandle
+              hitAreaMargins={{ coarse: 19, fine: 5 }}
+              className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center"
+            >
               <DotsSixVertical size={12} className="text-muted-foreground/50" />
             </PanelResizeHandle>
             <Panel
@@ -1035,10 +1038,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
               <X size={16} className="text-muted-foreground" />
             </DsButton>
           </div>

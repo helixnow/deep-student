@@ -70,7 +70,7 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
         aria-orientation="vertical"
         onMouseDown={() => setDragging(true)}
         onTouchStart={() => setDragging(true)}
-        className={`w-1.5 cursor-col-resize flex items-center justify-center shrink-0 bg-border ${dragging ? 'bg-primary' : 'hover:bg-primary/30'} transition-colors [@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-y-0 [@media(pointer:coarse)]:after:-inset-x-2.5 [@media(pointer:coarse)]:after:content-['']`}
+        className={`w-1.5 cursor-col-resize flex items-center justify-center shrink-0 bg-border ${dragging ? 'bg-primary' : 'hover:bg-primary/30'} transition-colors [@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-y-0 [@media(pointer:coarse)]:after:-inset-x-[19px] [@media(pointer:coarse)]:after:content-['']`}
         title={t('resizable.dragToResizeWidth')}
       >
         <DotsSixVertical size={12} className="text-muted-foreground/50" />

@@ -54,6 +54,8 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 interface InlineSettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  /** 小屏内联模式：不自绘标题行（宿主顶栏已提供 chrome，关闭走返回键 / 顶栏设置开关） */
+  mobileFullscreen?: boolean;
   // 批阅模式
   modeId: string;
   setModeId: (id: string) => void;
@@ -161,6 +163,7 @@ const CollapsibleSection: React.FC<{
 export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   isOpen,
   onClose,
+  mobileFullscreen = false,
   modeId,
   setModeId,
   modes,
@@ -527,24 +530,27 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* 头部 */}
-      <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-3 sm:px-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
-          <GearSix size={14} />
-          <span>{t('essay_grading:settings.title')}</span>
+      {/* 头部（小屏内联模式不自绘：宿主顶栏已提供 chrome，再画一条会形成双头部；
+          关闭走 Android 返回键 / 宿主顶栏设置开关） */}
+      {!mobileFullscreen && (
+        <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-3 sm:px-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
+            <GearSix size={14} />
+            <span>{t('essay_grading:settings.title')}</span>
+          </div>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={onClose}
+            className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+            aria-label={t('essay_grading:settings_panel.close')}
+            title={t('essay_grading:settings_panel.close')}
+          >
+            <X size={16} />
+          </DsButton>
         </div>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={onClose}
-          className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
-          aria-label={t('essay_grading:settings_panel.close')}
-          title={t('essay_grading:settings_panel.close')}
-        >
-          <X size={16} />
-        </DsButton>
-      </div>
+      )}
 
       {/* 内容区 */}
       <CustomScrollArea className="flex-1" viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]">

@@ -1,7 +1,7 @@
 /**
  * notesUtils 单测
  *
- * 覆盖 NotesHeader / 侧栏依赖的 getPathToNote 健壮性，
+ * 覆盖 NotesEditorHeader / 侧栏依赖的 getPathToNote 健壮性，
  * 以及 normalizeContentForEditor 对畸形 JSON 的容错。
  */
 

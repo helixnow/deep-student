@@ -298,11 +298,12 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
       return (
         <CommonTooltip content={option.reason} delay={150} maxWidth={280}>
+          {/* 不挂 onClick：CommonTooltip 仅对无自身点击行为的子元素启用触屏 tap 切换，
+              否则 reason 在触屏上只能靠 hover 不可达（点击不会冒泡触发选项选择） */}
           <button
             type="button"
             aria-label={t('askUser.optionReasonLabel')}
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)]"
-            onClick={(e) => e.stopPropagation()}
+            className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
             onPointerDown={(e) => e.stopPropagation()}
           >
             <Info size={14} weight="bold" />

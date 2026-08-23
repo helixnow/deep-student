@@ -52,7 +52,7 @@ interface NotesEditorToolbarProps {
 }
 
 /**
- * 按平台格式化快捷键文案（macOS 符号风格对齐 NotesHeader：⌥⌘L / ⌘⇧P）。
+ * 按平台格式化快捷键文案（macOS 符号风格：⌥⌘L / ⌘⇧P）。
  *
  * 快捷键单一来源说明（已对照真实 keymap 校验，替代原 formatKeymap TODO）：
  * - @milkdown/preset-commonmark：Mod-B 粗体、Mod-I 斜体、Mod-E 行内代码、
@@ -69,7 +69,7 @@ function formatShortcut(
 ): string {
   const { mod = true, alt = false, shift = false, key } = parts;
   if (mac) {
-    // 对齐 NotesHeader：⌥⌘L、⌘⇧P
+    // macOS 符号风格：⌥⌘L、⌘⇧P
     if (alt && shift) return `⌥⇧⌘${key}`;
     if (alt) return `⌥⌘${key}`;
     if (shift) return `⌘⇧${key}`;

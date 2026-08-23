@@ -726,23 +726,10 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
   );
 
   if (mobileFullscreen) {
+    // 小屏内联设置区不自绘标题行：宿主功能条仍在上方，再画一条会形成双头部。
+    // 关闭路径：Android 返回键 / 宿主顶栏设置开关（learning-hub 更多菜单）/ 保存按钮。
     return (
       <div className="h-full flex flex-col bg-background">
-        {/* 头部：标题 + 关闭按钮（可见的退出路径，与滑动返回互补） */}
-        <div className="flex items-center justify-between pl-4 pr-2 h-12 border-b border-border/30 shrink-0">
-          <span className="text-sm font-medium text-foreground/80">
-            {t('translation:prompt_editor.title')}
-          </span>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsOpen(false)}
-            className="h-10 w-10 text-muted-foreground/60 hover:text-foreground"
-            aria-label={t('common:close')}
-          >
-            <X size={18} />
-          </DsButton>
-        </div>
         <CustomScrollArea
           className="flex-1"
           viewportClassName="p-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
