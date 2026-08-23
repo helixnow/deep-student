@@ -12,7 +12,7 @@
 | 2 对标补全 | 完成 | Claude/Codex + replay | [ROUND-01-codex-claude.md](./ROUND-01-codex-claude.md) |
 | 3 覆盖度矩阵收敛 | 完成 | — | [ROUND-01-native-coverage.md](./ROUND-01-native-coverage.md) |
 | 4 方案冻结 | 完成 | — | [ROUND-02-synthesis.md](./ROUND-02-synthesis.md) |
-| 5+ 落地与测试 | 进行中 | [#183](https://github.com/helixnow/deep-student/pull/183)：usage + cache key + G6 已提交；P1 重放/门控/技能目录进行中 | `cursor/sota-p0-cache-telemetry-6117` |
+| 5+ 落地与测试 | 进行中 | [#183](https://github.com/helixnow/deep-student/pull/183)：P0 观测/key/门控/G6 + P1 技能目录恒定 + V20260806 接线已提交；剩余技能锚定、turn-volatile、协议断点、web_search_call 回传 | `cursor/sota-p0-cache-telemetry-6117` |
 
 ## 第一轮已派出的子代理（模型约定：`claude-fable-5-thinking-xhigh`）
 
