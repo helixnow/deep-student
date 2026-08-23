@@ -4,6 +4,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
+import { groupEditorSubmitRef } from '../components/groups/GroupEditorDialog';
 import { cn } from '@/lib/utils';
 import type { TFunction } from 'i18next';
 import type { ChatSession } from '../types/session';
@@ -186,6 +187,15 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
       : t('page.createGroup'),
     showBackArrow: true,
     onMenuClick: closeGroupEditor,
+    // ★ 子屏主操作上移全局顶栏：提交句柄由 GroupEditorPanel 挂载期间写入
+    rightActions: (
+      <DsButton
+        variant="primary"
+        onClick={() => groupEditorSubmitRef.current?.()}
+      >
+        {t('common:save')}
+      </DsButton>
+    ),
   } : {
     // 打开会话抽屉后由侧栏自己的顶部区接管整个移动视口，避免全局 Chat
     // header 继续压在抽屉上方，形成两个并列的导航层。

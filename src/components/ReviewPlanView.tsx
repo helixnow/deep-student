@@ -216,7 +216,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
           disabled={suspendDisabled}
           aria-label={t('review:actions.suspend')}
           title={t('review:actions.suspend')}
-          className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:bg-[var(--interactive-hover)] hover:text-foreground hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+          className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:bg-[var(--interactive-hover)] hover:text-foreground hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60"
         >
           <Pause size={14} />
         </DsButton>

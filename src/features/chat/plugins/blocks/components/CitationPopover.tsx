@@ -29,6 +29,7 @@ import {
 } from '@phosphor-icons/react';
 import type { RetrievalSource, RetrievalSourceType } from './types';
 import { openUrl } from '@/utils/urlOpener';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { CitationSourceContext } from '../../../utils/citationSourceContext';
 
 // ============================================================================
@@ -165,6 +166,17 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, [anchorEl, onClose]);
+
+  // 📱 Android 系统返回键：浮层挂载即处于打开态，返回键先关浮层（overlay 级），
+  // 避免穿透到底层导航。onClose 经 ref 读取，保持注册在整个挂载期稳定。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, []);
 
   if (typeof document === 'undefined') {
     return null;

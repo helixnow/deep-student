@@ -10,7 +10,7 @@ import { SettingSection } from './SettingsCommon';
 import { AccentPicker } from './AccentPicker';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { isMacOS } from '@/utils/platform';
+import { isMacOS, isMobilePlatform } from '@/utils/platform';
 import { applySidebarTranslucency } from '@/utils/sidebarTranslucency';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import {
@@ -102,6 +102,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   const [thinkingAutoCollapse, setThinkingAutoCollapse] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (isMobilePlatform()) return;
+
     let cancelled = false;
     const loadSidebarTranslucent = async () => {
       try {
@@ -130,6 +132,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   }, []);
 
   useEffect(() => {
+    if (isMobilePlatform()) return;
+
     let cancelled = false;
     (async () => {
       try {
@@ -415,25 +419,29 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               />
             )}
 
-            <SwitchRow
-              title={t('settings:theme.sidebar_translucent_title')}
-              description={t('settings:theme.sidebar_translucent_description')}
-              checked={sidebarTranslucent ?? false}
-              loading={sidebarTranslucent === null}
-              onCheckedChange={(checked) => {
-                void handleSidebarTranslucentChange(checked);
-              }}
-            />
+            {!isMobilePlatform() && (
+              <SwitchRow
+                title={t('settings:theme.sidebar_translucent_title')}
+                description={t('settings:theme.sidebar_translucent_description')}
+                checked={sidebarTranslucent ?? false}
+                loading={sidebarTranslucent === null}
+                onCheckedChange={(checked) => {
+                  void handleSidebarTranslucentChange(checked);
+                }}
+              />
+            )}
 
-            <SwitchRow
-              title={t('settings:theme.pointer_cursor_title')}
-              description={t('settings:theme.pointer_cursor_description')}
-              checked={pointerCursorEnabled ?? true}
-              loading={pointerCursorEnabled === null}
-              onCheckedChange={(checked) => {
-                void handlePointerCursorChange(checked);
-              }}
-            />
+            {!isMobilePlatform() && (
+              <SwitchRow
+                title={t('settings:theme.pointer_cursor_title')}
+                description={t('settings:theme.pointer_cursor_description')}
+                checked={pointerCursorEnabled ?? true}
+                loading={pointerCursorEnabled === null}
+                onCheckedChange={(checked) => {
+                  void handlePointerCursorChange(checked);
+                }}
+              />
+            )}
 
             <SwitchRow
               title={t('settings:theme.thinking_auto_collapse_title')}

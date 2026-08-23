@@ -81,6 +81,13 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
 import { configureTaskWorkspace } from '../../api/taskWorkspaceApi';
 
+/**
+ * 移动端全局顶栏「保存」桥接：GroupEditorPanel 挂载期间写入受控提交句柄
+ * （保存中防重入、空名称时聚焦名称输入），由 useChatPageLayout 的
+ * 分组编辑器顶栏分支调用。面板卸载时清空，避免陈旧闭包被点击。
+ */
+export const groupEditorSubmitRef: React.MutableRefObject<(() => void) | null> = { current: null };
+
 interface GroupEditorPanelProps {
   mode: 'create' | 'edit';
   initial?: SessionGroup | null;
@@ -446,11 +453,26 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     t,
   ]);
 
+  // 小屏全局顶栏「保存」入口：复用同一提交流程；空名称时聚焦名称输入给出反馈
+  useEffect(() => {
+    groupEditorSubmitRef.current = () => {
+      if (isSaving) return;
+      if (!name.trim()) {
+        nameInputRef.current?.focus();
+        return;
+      }
+      void handleSubmit();
+    };
+    return () => {
+      groupEditorSubmitRef.current = null;
+    };
+  }, [handleSubmit, isSaving, name]);
+
   return (
     <div className="flex flex-col h-full bg-background relative">
-      {/* Action Buttons - Absolute Positioned */}
+      {/* Action Buttons - Absolute Positioned；小屏「取消」由全局顶栏返回箭头承担 */}
       <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10 flex items-center gap-2">
-          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:h-11">
+          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:hidden">
             {t('common:cancel')}
           </DsButton>
           <DsButton 
