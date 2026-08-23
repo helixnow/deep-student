@@ -1635,18 +1635,22 @@ mod tests {
         use tempfile::TempDir;
         let tmp = TempDir::new().unwrap();
         let dir = tmp.path();
+        // find_blob_by_hash 只接受 64 位 hex hash（内容寻址约定）
+        let hash = "ab".repeat(32);
+        let missing = "cd".repeat(32);
         std::fs::create_dir_all(dir.join("ab")).unwrap();
-        std::fs::write(dir.join("ab").join("abhash123.pdf"), b"x").unwrap();
-        let found = find_blob_by_hash(dir, "abhash123");
+        std::fs::write(dir.join("ab").join(format!("{}.pdf", hash)), b"x").unwrap();
+        let found = find_blob_by_hash(dir, &hash);
         assert!(found.is_some());
         assert_eq!(
             found.unwrap().file_name().unwrap().to_string_lossy(),
-            "abhash123.pdf"
+            format!("{}.pdf", hash)
         );
         // 不存在
-        assert!(find_blob_by_hash(dir, "ghostghost").is_none());
-        // 短 hash
+        assert!(find_blob_by_hash(dir, &missing).is_none());
+        // 短 hash（非 64 位 hex 直接拒绝）
         assert!(find_blob_by_hash(dir, "a").is_none());
+        assert!(find_blob_by_hash(dir, "abhash123").is_none());
     }
 
     #[test]
