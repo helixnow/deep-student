@@ -117,7 +117,25 @@ impl ProviderAdapter for OpenAIAdapter {
         let url = openai_endpoint_url(base_url, "chat/completions");
         // 确保 API key 被 trim，移除首尾空白字符
         let trimmed_key = api_key.trim();
-        let sanitized_body = sanitize_openai_request_body(body);
+        let mut sanitized_body = sanitize_openai_request_body(body);
+
+        // 流式请求补 stream_options.include_usage=true：OpenAI Chat Completions
+        // 默认不在流中返回 usage，缓存命中（prompt_tokens_details.cached_tokens）
+        // 因此不可见。仅补 Chat Completions 端点（Responses 走独立 adapter，
+        // 该字段对 Responses/部分官方端点不合法，不在此发送）。
+        // 调用方已显式设置 stream_options 时尊重原值。
+        if let Some(obj) = sanitized_body.as_object_mut() {
+            let is_stream = obj
+                .get("stream")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if is_stream && !obj.contains_key("stream_options") {
+                obj.insert(
+                    "stream_options".to_string(),
+                    json!({ "include_usage": true }),
+                );
+            }
+        }
 
         let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
         if !trimmed_key.is_empty() {
@@ -1726,9 +1744,10 @@ pub struct AnthropicAdapter {
     /// thinking 块的 signature_delta 累积缓冲（按 content block index）
     /// content_block_stop 时以 StreamEvent::ThoughtSignature 上抛
     pending_signatures: Arc<Mutex<HashMap<i32, String>>>,
-    /// message_start 中的 input_tokens（message_delta 的 usage 通常只有 output_tokens，
-    /// 需要合并后再上报，否则输入用量统计缺失）
-    input_tokens_from_start: Arc<Mutex<Option<i64>>>,
+    /// message_start 中的完整 usage 对象（message_delta 的 usage 通常只有 output_tokens，
+    /// 需要字段级合并后再上报，否则 input_tokens 与
+    /// cache_read_input_tokens / cache_creation_input_tokens 会被终态覆盖丢失）
+    usage_from_start: Arc<Mutex<Option<Value>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1750,29 +1769,41 @@ impl AnthropicAdapter {
         Self {
             pending_tool_calls: Arc::new(Mutex::new(HashMap::new())),
             pending_signatures: Arc::new(Mutex::new(HashMap::new())),
-            input_tokens_from_start: Arc::new(Mutex::new(None)),
+            usage_from_start: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// 构建 usage 事件，若本次 usage 缺失 input_tokens 则合并 message_start 缓存值
+    /// 构建 usage 事件，与 message_start 缓存的 usage 做字段级合并。
+    ///
+    /// Anthropic 流式协议中 message_start 携带 input_tokens 与
+    /// cache_read_input_tokens / cache_creation_input_tokens，而 message_delta
+    /// 的终态 usage 通常只有 output_tokens。若直接以终态覆盖，缓存命中信息全部丢失。
+    /// 合并规则：本次 usage 中缺失或为 0 的字段，以 message_start 的非零值回填。
     fn build_merged_usage_event(&self, usage: &Value) -> Option<Value> {
-        let missing_input = usage
-            .get("input_tokens")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0)
-            == 0;
-        if missing_input {
-            if let Some(input_tokens) = self
-                .input_tokens_from_start
-                .lock()
-                .ok()
-                .and_then(|guard| *guard)
-            {
-                if let Value::Object(mut merged) = usage.clone() {
-                    merged.insert("input_tokens".to_string(), json!(input_tokens));
-                    return build_usage_event(&Value::Object(merged));
+        const MERGE_FIELDS: [&str; 3] = [
+            "input_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ];
+
+        let start_usage = self
+            .usage_from_start
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+
+        if let (Value::Object(mut merged), Some(start)) = (usage.clone(), start_usage) {
+            for field in MERGE_FIELDS {
+                let current = merged.get(field).and_then(|v| v.as_i64()).unwrap_or(0);
+                if current == 0 {
+                    if let Some(start_value) = start.get(field).and_then(|v| v.as_i64()) {
+                        if start_value != 0 {
+                            merged.insert(field.to_string(), json!(start_value));
+                        }
+                    }
                 }
             }
+            return build_usage_event(&Value::Object(merged));
         }
         build_usage_event(usage)
     }
@@ -2203,12 +2234,12 @@ impl ProviderAdapter for AnthropicAdapter {
                 }
             }
             "message_start" => {
-                // message_start 含初始 usage（input_tokens）；message_delta 的 usage
-                // 通常只有 output_tokens，缓存 input_tokens 供后续合并（研报 02 §2.2）
+                // message_start 含初始 usage（input_tokens 与 cache_read/cache_creation）；
+                // message_delta 的 usage 通常只有 output_tokens，缓存完整对象供后续
+                // 字段级合并（研报 02 §2.2）
                 if let Some(usage) = json_data.get("message").and_then(|m| m.get("usage")) {
-                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64());
-                    if let Ok(mut guard) = self.input_tokens_from_start.lock() {
-                        *guard = input_tokens;
+                    if let Ok(mut guard) = self.usage_from_start.lock() {
+                        *guard = Some(usage.clone());
                     }
                     if let Some(usage_value) = build_usage_event(usage) {
                         events.push(StreamEvent::Usage(usage_value));
@@ -2279,7 +2310,7 @@ impl ProviderAdapter for AnthropicAdapter {
                 if let Ok(mut guard) = self.pending_signatures.lock() {
                     guard.clear();
                 }
-                if let Ok(mut guard) = self.input_tokens_from_start.lock() {
+                if let Ok(mut guard) = self.usage_from_start.lock() {
                     *guard = None;
                 }
                 events.push(StreamEvent::Done);
@@ -2898,6 +2929,12 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         .and_then(|d| d.get("cached_tokens"))
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i32;
+    // OpenAI/DeepSeek Responses API: input_tokens_details.cached_tokens
+    let responses_cached = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
     let deepseek_cached = usage
         .get("prompt_cache_hit_tokens")
         .and_then(|v| v.as_i64())
@@ -2908,8 +2945,44 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         .unwrap_or(0) as i32;
     let cached_tokens = anthropic_cache_hit
         .max(openai_cached)
+        .max(responses_cached)
         .max(deepseek_cached)
         .max(gemini_cached);
+
+    // 缓存写入 token（计费元数据，不计入命中；观测用）
+    // Anthropic cache_creation_input_tokens / Responses input_tokens_details.cache_write_tokens
+    let cache_write_tokens = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
+        .max(
+            usage
+                .get("input_tokens_details")
+                .and_then(|d| d.get("cache_write_tokens"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+        )
+        .max(
+            usage
+                .get("cache_write_tokens")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0),
+        ) as i32;
+
+    // reasoning token：顶层 / OpenAI CC completion_tokens_details / Responses output_tokens_details
+    let reasoning_tokens = usage
+        .get("reasoning_tokens")
+        .or_else(|| {
+            usage
+                .get("completion_tokens_details")
+                .and_then(|d| d.get("reasoning_tokens"))
+        })
+        .or_else(|| {
+            usage
+                .get("output_tokens_details")
+                .and_then(|d| d.get("reasoning_tokens"))
+        })
+        .and_then(|v| v.as_i64());
 
     Some(json!({
         "input_tokens": input_tokens,
@@ -2918,6 +2991,8 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         "prompt_tokens": input_tokens,
         "completion_tokens": output_tokens,
         "cached_tokens": if cached_tokens > 0 { json!(cached_tokens) } else { Value::Null },
+        "cache_write_tokens": if cache_write_tokens > 0 { json!(cache_write_tokens) } else { Value::Null },
+        "reasoning_tokens": reasoning_tokens.map(|v| json!(v)).unwrap_or(Value::Null),
         "total_tokens_openai": total_tokens,
         "original": usage
     }))
@@ -3010,11 +3085,26 @@ pub fn convert_anthropic_response_to_openai(response: &Value, model: &str) -> Op
             .and_then(|v| v.as_i64())
             .unwrap_or((prompt_tokens + completion_tokens) as i64)
             as i32;
-        json!({
+        let mut usage_obj = json!({
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens
-        })
+        });
+        // 非流式响应透传缓存字段，供 parse_api_usage / extract_usage_tokens 观测
+        // cache_read_input_tokens = 缓存命中；cache_creation_input_tokens = 缓存写入
+        if let Some(cache_read) = usage
+            .get("cache_read_input_tokens")
+            .and_then(|v| v.as_i64())
+        {
+            usage_obj["cache_read_input_tokens"] = json!(cache_read);
+        }
+        if let Some(cache_creation) = usage
+            .get("cache_creation_input_tokens")
+            .and_then(|v| v.as_i64())
+        {
+            usage_obj["cache_creation_input_tokens"] = json!(cache_creation);
+        }
+        usage_obj
     });
 
     let created = SystemTime::now()
@@ -3156,15 +3246,19 @@ impl ProviderAdapter for GeminiAdapter {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_usage_event, is_meaningful_openai_tool_delta, sanitize_openai_request_body,
-        AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter, ProviderAdapter, StreamEvent,
+        build_usage_event, convert_anthropic_response_to_openai, is_meaningful_openai_tool_delta,
+        sanitize_openai_request_body, AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter,
+        ProviderAdapter, StreamEvent,
     };
     use serde_json::{json, Value};
 
     #[test]
-    fn only_responses_adapter_requires_explicit_stream_completion() {
+    fn stream_completion_requirement_matches_adapter_protocols() {
+        // OpenAI Responses 与 Chat Completions 均有协议级终止事件
+        // （response.completed / [DONE]+finish_reason），传输层 EOF 不算成功；
+        // Anthropic 由 message_stop 驱动 Done，不要求显式完成标记
         assert!(OpenAIResponsesAdapter::new().requires_explicit_stream_completion());
-        assert!(!OpenAIAdapter.requires_explicit_stream_completion());
+        assert!(OpenAIAdapter.requires_explicit_stream_completion());
         assert!(!AnthropicAdapter::new().requires_explicit_stream_completion());
     }
 
@@ -4767,6 +4861,151 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
             Some(StreamEvent::Usage(u))
                 if u["input_tokens"] == json!(123) && u["output_tokens"] == json!(42)
         ));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_merges_cache_fields_from_message_start() {
+        // P0 观测修复：message_start 携带 cache_read/cache_creation，message_delta
+        // 终态通常只有 output_tokens，字段级合并后缓存命中不能丢
+        let adapter = AnthropicAdapter::new();
+
+        let start_events = adapter.parse_stream(
+            r#"data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":10,"cache_read_input_tokens":900,"cache_creation_input_tokens":50,"output_tokens":0}}}"#,
+        );
+        assert!(matches!(
+            start_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["cached_tokens"] == json!(900) && u["cache_write_tokens"] == json!(50)
+        ));
+
+        let delta_events = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":42}}"#,
+        );
+        assert!(matches!(
+            delta_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["input_tokens"] == json!(10)
+                    && u["output_tokens"] == json!(42)
+                    && u["cached_tokens"] == json!(900)
+                    && u["cache_write_tokens"] == json!(50)
+        ));
+
+        // message_stop 后缓存清空，不能泄漏到下一条消息
+        let _ = adapter.parse_stream(r#"data: {"type":"message_stop"}"#);
+        let next_events = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}"#,
+        );
+        assert!(matches!(
+            next_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["output_tokens"] == json!(7) && u["cached_tokens"] == Value::Null
+        ));
+    }
+
+    #[test]
+    fn anthropic_merged_usage_prefers_terminal_nonzero_fields() {
+        // 终态 usage 若自带非零 cache 字段，不应被 message_start 的旧值覆盖
+        let adapter = AnthropicAdapter::new();
+
+        let _ = adapter.parse_stream(
+            r#"data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":10,"cache_read_input_tokens":900}}}"#,
+        );
+        let delta_events = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":42,"cache_read_input_tokens":1200}}"#,
+        );
+        assert!(matches!(
+            delta_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["cached_tokens"] == json!(1200) && u["input_tokens"] == json!(10)
+        ));
+    }
+
+    #[test]
+    fn build_usage_event_reads_responses_details() {
+        // OpenAI/DeepSeek Responses usage 夹具：input_tokens_details.cached_tokens /
+        // cache_write_tokens 与 output_tokens_details.reasoning_tokens 必须抬到顶层
+        let usage = json!({
+            "input_tokens": 1200,
+            "output_tokens": 300,
+            "total_tokens": 1500,
+            "input_tokens_details": { "cached_tokens": 1024, "cache_write_tokens": 128 },
+            "output_tokens_details": { "reasoning_tokens": 90 }
+        });
+
+        let event = build_usage_event(&usage).expect("usage event");
+        assert_eq!(event["input_tokens"], json!(1200));
+        assert_eq!(event["output_tokens"], json!(300));
+        assert_eq!(event["cached_tokens"], json!(1024));
+        assert_eq!(event["cache_write_tokens"], json!(128));
+        assert_eq!(event["reasoning_tokens"], json!(90));
+    }
+
+    #[test]
+    fn convert_anthropic_response_passes_cache_fields() {
+        // 非流式 Anthropic 响应转 OpenAI 形态时透传缓存字段
+        let response = json!({
+            "type": "message",
+            "id": "msg_1",
+            "content": [{ "type": "text", "text": "hi" }],
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "cache_read_input_tokens": 900,
+                "cache_creation_input_tokens": 50
+            }
+        });
+
+        let converted =
+            convert_anthropic_response_to_openai(&response, "claude-test").expect("converted");
+        let usage = &converted["usage"];
+        assert_eq!(usage["prompt_tokens"], json!(10));
+        assert_eq!(usage["completion_tokens"], json!(20));
+        assert_eq!(usage["cache_read_input_tokens"], json!(900));
+        assert_eq!(usage["cache_creation_input_tokens"], json!(50));
+    }
+
+    #[test]
+    fn openai_adapter_adds_stream_options_include_usage_for_streaming() {
+        let adapter = OpenAIAdapter;
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+
+        let request = adapter
+            .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
+            .expect("request should build");
+        assert_eq!(
+            request.body["stream_options"]["include_usage"],
+            json!(true)
+        );
+
+        // 非流式请求不加
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+        let request = adapter
+            .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
+            .expect("request should build");
+        assert!(request.body.get("stream_options").is_none());
+
+        // 调用方显式设置时尊重原值
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "stream": true,
+            "stream_options": { "include_usage": false },
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+        let request = adapter
+            .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
+            .expect("request should build");
+        assert_eq!(
+            request.body["stream_options"]["include_usage"],
+            json!(false)
+        );
     }
 
     #[test]

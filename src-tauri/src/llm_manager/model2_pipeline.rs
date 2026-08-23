@@ -832,6 +832,55 @@ mod tests {
     }
 
     #[test]
+    fn prompt_cache_key_is_stable_and_never_random() {
+        assert_eq!(stable_prompt_cache_key(Some("sess_123")), "sess_123");
+        assert_eq!(stable_prompt_cache_key(Some("  sess_123  ")), "sess_123");
+        assert_eq!(stable_prompt_cache_key(Some("translation")), "translation");
+        // 空输入回落到固定常量而非随机 UUID：同一输入必须得到同一 key
+        assert_eq!(stable_prompt_cache_key(None), FALLBACK_PROMPT_CACHE_KEY);
+        assert_eq!(stable_prompt_cache_key(Some("   ")), FALLBACK_PROMPT_CACHE_KEY);
+        assert_eq!(stable_prompt_cache_key(None), stable_prompt_cache_key(None));
+    }
+
+    #[test]
+    fn prompt_cache_key_only_targets_openai_affinity_endpoints() {
+        // OpenAI 官方 Chat Completions：写（路由亲和）
+        let openai_official = ApiConfig {
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            ..Default::default()
+        };
+        assert!(provider_accepts_prompt_cache_key(&openai_official));
+
+        // OpenAI Responses 协议（含兼容网关）：写
+        let responses_gateway = ApiConfig {
+            model_adapter: "general".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            supports_openai_responses: Some(true),
+            ..Default::default()
+        };
+        assert!(provider_accepts_prompt_cache_key(&responses_gateway));
+
+        // DeepSeek 官方：官方不支持 prompt_cache_key，不写
+        let deepseek_official = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            ..Default::default()
+        };
+        assert!(!provider_accepts_prompt_cache_key(&deepseek_official));
+
+        // 第三方 Chat Completions 网关：无路由亲和语义，不写
+        let third_party_cc = ApiConfig {
+            base_url: "https://gateway.example.com/v1".to_string(),
+            model: "some-model".to_string(),
+            ..Default::default()
+        };
+        assert!(!provider_accepts_prompt_cache_key(&third_party_cc));
+    }
+
+    #[test]
     fn modality_detection_covers_all_supported_image_fields() {
         let text = message_with_modal_fields(None, None, None);
         assert!(!chat_messages_require_multimodal(&[text]));
@@ -2181,6 +2230,32 @@ async fn bridge_codex_nonstream_response(response: reqwest::Response) -> Result<
     rebuild_codex_response(status, version, headers, body, true)
 }
 
+/// P0 缓存：后台任务（OCR/翻译/批改/制卡等）没有 session_id 时的稳定
+/// prompt_cache_key 兜底。禁止随机 UUID 回落——随机 key 会让 OpenAI 的
+/// 路由亲和（prompt cache routing）永远 0 命中。
+const FALLBACK_PROMPT_CACHE_KEY: &str = "deep-student-background";
+
+/// 稳定 prompt_cache_key：主聊天传 session_id；非聊天调用传 caller 类型
+/// 稳定串（如 translation / analysis / ocr）。同一输入永远得到同一 key。
+fn stable_prompt_cache_key(session_id: Option<&str>) -> String {
+    session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| FALLBACK_PROMPT_CACHE_KEY.to_string())
+}
+
+/// 是否向该配置写 `prompt_cache_key`（OpenAI 缓存路由亲和参数）。
+/// 仅 OpenAI Responses 协议与 OpenAI 官方 Chat Completions 需要；
+/// DeepSeek 官方（含其 Responses 公测端点）不支持该字段，不写。
+fn provider_accepts_prompt_cache_key(config: &ApiConfig) -> bool {
+    if is_official_deepseek_config(config) {
+        return false;
+    }
+    should_use_openai_responses_for_config(config)
+        || super::resolves_to_official_openai(config.provider_type.as_deref(), &config.base_url)
+}
+
 impl LLMManager {
     fn is_openai_codex_oauth(config: &ApiConfig) -> bool {
         config.auth_mode.as_deref() == Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
@@ -2241,7 +2316,16 @@ impl LLMManager {
         let mut prepared = PreparedProviderRequest::from_provider(provider_request);
         merge_configured_provider_headers(&mut prepared, config.headers.as_ref());
 
+        // P0 缓存：稳定 prompt_cache_key（禁止随机 UUID 回落）。
+        let session_id = stable_prompt_cache_key(session_id);
+
         if !Self::is_openai_codex_oauth(config) {
+            if provider_accepts_prompt_cache_key(config) {
+                if let Some(body) = prepared.body.as_object_mut() {
+                    body.entry("prompt_cache_key".to_string())
+                        .or_insert_with(|| Value::String(session_id.clone()));
+                }
+            }
             return Ok(prepared);
         }
         if !should_use_openai_responses_for_config(config) {
@@ -2255,11 +2339,6 @@ impl LLMManager {
             .request_auth(false)
             .await
             .map_err(|error| Self::codex_error("获取访问凭据", error))?;
-        let session_id = session_id
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
         prepared.url = self.openai_codex_auth.responses_endpoint().to_string();
         prepared.body = prepare_codex_responses_body(&prepared.body)
             .map_err(|error| Self::codex_error("准备 Responses 请求", error))?;
@@ -3442,10 +3521,12 @@ impl LLMManager {
             self.clear_cancel_channel(stream_event).await;
             return Err(AppError::llm("请求已被用户取消"));
         }
+        // P0 缓存：cache key 兜底取稳定串而非随机 request_id，
+        // 否则无 session 作用域的调用每次请求都会打爆 prompt cache。
         let codex_session_id = chat_v2_session_scope_and_generation(stream_event)
             .map(|(session_id, _)| session_id)
             .or(message_id)
-            .unwrap_or(request_id.as_str());
+            .unwrap_or("chat_stream");
 
         // 工具与 thinking 互斥必须在 provider request 构建前处理；发送后再改
         // request_body 不会影响线上请求。
@@ -4965,7 +5046,8 @@ impl LLMManager {
                 &config,
                 &request_body,
                 None,
-                None,
+                // 非会话入口：caller 类型稳定串作为 prompt_cache_key
+                Some("analysis"),
                 "聊天请求构建失败",
             )
             .await?;
@@ -5230,7 +5312,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 Some(&api_key),
-                None,
+                Some("chat_metadata"),
                 "生成聊天元数据请求构建失败",
             )
             .await?;
@@ -6032,13 +6114,16 @@ impl LLMManager {
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
+        // caller 类型稳定串（translation / analysis / other:essay_grading 等）
+        // 作为 prompt_cache_key，同类后台任务共享缓存前缀。
+        let prompt_cache_key = caller_type.to_string();
         let mut preq = self
             .prepare_provider_request(
                 adapter.as_ref(),
                 &config,
                 &request_body,
                 None,
-                None,
+                Some(prompt_cache_key.as_str()),
                 "RAW prompt 请求构建失败",
             )
             .await?;
@@ -6302,7 +6387,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 None,
-                None,
+                Some("ocr"),
                 "OCR RAW prompt 请求构建失败",
             )
             .await?;
@@ -6408,7 +6493,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 Some(&api_key),
-                None,
+                Some("ocr"),
                 "OCR请求构建失败",
             )
             .await?;
@@ -6521,9 +6606,21 @@ impl LLMManager {
             };
 
             // 提取 reasoning_tokens（思维链，可选）
+            // 顶层 / Gemini thoughtsTokenCount / OpenAI CC completion_tokens_details
+            // / OpenAI Responses output_tokens_details
             let reasoning_tokens = usage_value
                 .get("reasoning_tokens")
                 .or_else(|| usage_value.get("thoughtsTokenCount"))
+                .or_else(|| {
+                    usage_value
+                        .get("completion_tokens_details")
+                        .and_then(|d| d.get("reasoning_tokens"))
+                })
+                .or_else(|| {
+                    usage_value
+                        .get("output_tokens_details")
+                        .and_then(|d| d.get("reasoning_tokens"))
+                })
                 .and_then(|v| v.as_u64())
                 .map(|v| v as u32);
 
@@ -6537,6 +6634,12 @@ impl LLMManager {
                 .and_then(|d| d.get("cached_tokens"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
+            // OpenAI/DeepSeek Responses API: input_tokens_details.cached_tokens
+            let responses_cached = usage_value
+                .get("input_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
             let deepseek_cached = usage_value
                 .get("prompt_cache_hit_tokens")
                 .and_then(|v| v.as_u64())
@@ -6545,24 +6648,40 @@ impl LLMManager {
                 .get("cached_tokens")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
-            let cached_tokens = if anthropic_cache_hit > 0
-                || openai_cached > 0
-                || deepseek_cached > 0
-                || gemini_cached > 0
-            {
-                Some(
-                    anthropic_cache_hit
-                        .max(openai_cached)
-                        .max(deepseek_cached)
-                        .max(gemini_cached),
-                )
+            let max_cached = anthropic_cache_hit
+                .max(openai_cached)
+                .max(responses_cached)
+                .max(deepseek_cached)
+                .max(gemini_cached);
+            let cached_tokens = if max_cached > 0 {
+                Some(max_cached)
             } else {
                 None
             };
 
+            // 缓存写入 token（计费元数据，不计入命中；仅观测日志）
+            // Anthropic cache_creation_input_tokens / Responses input_tokens_details.cache_write_tokens
+            let cache_write_tokens = usage_value
+                .get("cache_creation_input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                .max(
+                    usage_value
+                        .get("input_tokens_details")
+                        .and_then(|d| d.get("cache_write_tokens"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                )
+                .max(
+                    usage_value
+                        .get("cache_write_tokens")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                ) as u32;
+
             debug!(
-                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}, cached={:?}",
-                prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens
+                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}, cached={:?}, cache_write={}",
+                prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens
             );
 
             (
@@ -6685,7 +6804,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 None,
-                None,
+                Some("anki"),
                 "Anki 制卡请求构建失败",
             )
             .await?;

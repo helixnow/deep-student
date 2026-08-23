@@ -1121,6 +1121,12 @@ pub fn parse_gemini_stream_line(
         let thoughts_tokens = usage_metadata
             .get("thoughtsTokenCount")
             .and_then(|t| t.as_i64());
+        // 隐式/显式缓存命中：抬到顶层 cached_tokens（与非流式转换保持一致），
+        // 否则下游 usage 解析只见 camelCase 原始字段，缓存命中不可见
+        let cached_tokens = usage_metadata
+            .get("cachedContentTokenCount")
+            .or_else(|| usage_metadata.get("cacheReadInputTokens"))
+            .and_then(|t| t.as_i64());
 
         let prompt_tokens = prompt_tokens as i32;
         let completion_tokens = completion_tokens as i32;
@@ -1141,6 +1147,10 @@ pub fn parse_gemini_stream_line(
         if let Some(thoughts) = thoughts_tokens {
             robust_usage["thoughtsTokenCount"] = json!(thoughts);
             robust_usage["reasoning_tokens"] = json!(thoughts);
+        }
+        if let Some(cached) = cached_tokens {
+            robust_usage["cachedContentTokenCount"] = json!(cached);
+            robust_usage["cached_tokens"] = json!(cached);
         }
 
         events.push(StreamEvent::Usage(robust_usage));
@@ -2197,6 +2207,42 @@ mod tests {
             StreamEvent::Usage(value) => {
                 assert_eq!(value.get("promptTokenCount").unwrap(), 10);
                 assert_eq!(value.get("candidatesTokenCount").unwrap(), 20);
+            }
+            _ => panic!("Expected Usage"),
+        }
+    }
+
+    #[test]
+    fn test_parse_gemini_stream_line_usage_lifts_cached_tokens() {
+        // P0 观测修复：流式 usageMetadata.cachedContentTokenCount 必须抬到顶层
+        // cached_tokens（与非流式转换一致），否则缓存命中不可见
+        let line = r#"data: {"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"totalTokenCount":120,"cachedContentTokenCount":80,"thoughtsTokenCount":15}}"#;
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Usage(value) => {
+                assert_eq!(value.get("cached_tokens").unwrap(), 80);
+                assert_eq!(value.get("cachedContentTokenCount").unwrap(), 80);
+                assert_eq!(value.get("reasoning_tokens").unwrap(), 15);
+                assert_eq!(value.get("prompt_tokens").unwrap(), 100);
+            }
+            _ => panic!("Expected Usage"),
+        }
+    }
+
+    #[test]
+    fn test_parse_gemini_stream_line_usage_without_cache_omits_cached_tokens() {
+        // 无缓存字段时不注入 cached_tokens，避免下游误判为命中 0 覆盖其他格式
+        let line = r#"data: {"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":20,"totalTokenCount":30}}"#;
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Usage(value) => {
+                assert!(value.get("cached_tokens").is_none());
             }
             _ => panic!("Expected Usage"),
         }

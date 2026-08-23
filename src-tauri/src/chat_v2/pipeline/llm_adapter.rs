@@ -63,6 +63,7 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
     // 提取 reasoning_tokens
     // - 顶层 reasoning_tokens（部分中转站/旧格式）
     // - 嵌套 completion_tokens_details.reasoning_tokens（OpenAI o系列/DeepSeek V3+ 标准格式）
+    // - 嵌套 output_tokens_details.reasoning_tokens（OpenAI Responses API 标准格式）
     let reasoning_tokens = usage
         .get("reasoning_tokens")
         .and_then(|v| v.as_u64())
@@ -73,6 +74,13 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
                 .and_then(|d| d.get("reasoning_tokens"))
                 .and_then(|v| v.as_u64())
                 .map(|v| v as u32)
+        })
+        .or_else(|| {
+            usage
+                .get("output_tokens_details")
+                .and_then(|d| d.get("reasoning_tokens"))
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32)
         });
 
     // 提取缓存命中 token（业界最佳实践 LiteLLM 对齐）
@@ -80,8 +88,9 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
     // 归一化规则：
     // - Anthropic: cache_read_input_tokens 才是缓存命中；
     //   cache_creation_input_tokens 是计费元数据（写入缓存），不计入缓存命中
-    // - OpenAI: prompt_tokens_details.cached_tokens
-    // - DeepSeek: prompt_cache_hit_tokens
+    // - OpenAI Chat Completions: prompt_tokens_details.cached_tokens
+    // - OpenAI/DeepSeek Responses: input_tokens_details.cached_tokens
+    // - DeepSeek CC: prompt_cache_hit_tokens
     // - Gemini: cached_tokens（顶层，由 gemini-openai-converter 注入）
     //
     // 防中转站重复：使用 max() 而非 sum()
@@ -95,6 +104,11 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
         .and_then(|d| d.get("cached_tokens"))
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as u32;
+    let responses_cached = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
     let deepseek_cached = usage
         .get("prompt_cache_hit_tokens")
         .and_then(|v| v.as_u64())
@@ -105,6 +119,7 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
         .unwrap_or(0) as u32;
     let total_cached = anthropic_cache_hit
         .max(openai_cached)
+        .max(responses_cached)
         .max(deepseek_cached)
         .max(gemini_cached);
     let cached_tokens = if total_cached > 0 {
@@ -113,12 +128,37 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
         None
     };
 
-    Some(TokenUsage::from_api_with_cache(
-        prompt,
-        completion,
-        reasoning_tokens,
-        cached_tokens,
-    ))
+    // 提取缓存写入 token（计费元数据，不计入命中；观测用）
+    // - Anthropic: cache_creation_input_tokens
+    // - OpenAI/DeepSeek Responses: input_tokens_details.cache_write_tokens
+    // - 部分网关：顶层 cache_write_tokens
+    // 同一份写入量可能以多种格式重复出现，同样用 max() 归一
+    let anthropic_cache_write = usage
+        .get("cache_creation_input_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let responses_cache_write = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cache_write_tokens"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let gateway_cache_write = usage
+        .get("cache_write_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let total_cache_write = anthropic_cache_write
+        .max(responses_cache_write)
+        .max(gateway_cache_write);
+    let cache_write_tokens = if total_cache_write > 0 {
+        Some(total_cache_write)
+    } else {
+        None
+    };
+
+    let mut token_usage =
+        TokenUsage::from_api_with_cache(prompt, completion, reasoning_tokens, cached_tokens);
+    token_usage.cache_write_tokens = cache_write_tokens;
+    Some(token_usage)
 }
 
 /// Chat V2 LLM 流式回调适配器

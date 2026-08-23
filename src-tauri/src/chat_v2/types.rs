@@ -198,6 +198,14 @@ pub struct TokenUsage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_tokens: Option<u32>,
 
+    /// 缓存写入的 token（可选，计费元数据，不计入缓存命中）
+    ///
+    /// 来源：Anthropic `cache_creation_input_tokens`、
+    /// OpenAI/DeepSeek Responses `input_tokens_details.cache_write_tokens`。
+    /// 观测用途：写入量持续大于 0 而命中恒为 0 说明前缀不稳定（缓存只写不读）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u32>,
+
     /// 最后一轮请求的上下文窗口使用量（prompt + completion，即该轮在上下文窗口中的总占用）
     ///
     /// ⚠️ 命名为历史遗留：字段名带 "prompt" 但语义是 **prompt + completion**。
@@ -233,6 +241,7 @@ impl TokenUsage {
             source: TokenSource::Api,
             reasoning_tokens: reasoning,
             cached_tokens: None,
+            cache_write_tokens: None,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
             last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
             last_round_input_tokens: Some(prompt),
@@ -259,6 +268,7 @@ impl TokenUsage {
             source: TokenSource::Api,
             reasoning_tokens: reasoning,
             cached_tokens: cached,
+            cache_write_tokens: None,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
             last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
             last_round_input_tokens: Some(prompt),
@@ -283,6 +293,7 @@ impl TokenUsage {
             },
             reasoning_tokens: None,
             cached_tokens: None,
+            cache_write_tokens: None,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
             last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
             last_round_input_tokens: Some(prompt),
@@ -320,6 +331,13 @@ impl TokenUsage {
         match (&self.cached_tokens, &other.cached_tokens) {
             (Some(a), Some(b)) => self.cached_tokens = Some(a.saturating_add(*b)),
             (None, Some(b)) => self.cached_tokens = Some(*b),
+            _ => {}
+        }
+
+        // 累加 cache_write_tokens
+        match (&self.cache_write_tokens, &other.cache_write_tokens) {
+            (Some(a), Some(b)) => self.cache_write_tokens = Some(a.saturating_add(*b)),
+            (None, Some(b)) => self.cache_write_tokens = Some(*b),
             _ => {}
         }
 
@@ -3789,6 +3807,7 @@ mod tests {
             source: TokenSource::Api,
             reasoning_tokens: Some(200),
             cached_tokens: None,
+            cache_write_tokens: None,
             last_round_prompt_tokens: None,
             last_round_input_tokens: None,
         };
