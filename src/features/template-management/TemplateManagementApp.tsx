@@ -950,17 +950,17 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         {!isSelectingMode && activeTab === 'browse' && (
           <>
             <CommonTooltip content={t('tab_create')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
                 <Plus size={14} />
               </DsButton>
             </CommonTooltip>
             <CommonTooltip content={t('refresh')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
                 <ArrowClockwise size={14} className={cn(isLoading && 'animate-spin')} />
               </DsButton>
             </CommonTooltip>
             <CommonTooltip content={isImporting ? t('importing') : t('import_builtin_templates')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
                 <Download size={14} />
               </DsButton>
             </CommonTooltip>
@@ -973,7 +973,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('import_external_templates')}
                 aria-pressed={activePanel === 'import'}
                 data-active={activePanel === 'import' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               >
                 <Upload size={14} />
               </DsButton>
@@ -987,7 +987,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('export_templates_sidebar')}
                 aria-pressed={activePanel === 'export'}
                 data-active={activePanel === 'export' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               >
                 <Download size={14} weight="bold" />
               </DsButton>
@@ -1000,7 +1000,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                   iconOnly
                   onClick={onOpenJsonPreview}
                   aria-label={t('json_preview.open_button')}
-                  className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                  className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                 >
                   <Code size={14} />
                 </DsButton>

@@ -1015,7 +1015,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
               placeholder={t('exam_sheet:questionBank.edit.tagPlaceholder')}
-              className="flex-1 text-sm h-8 [@media(pointer:coarse)]:text-[16px]"
+              className="flex-1 text-sm h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
 />
             <DsButton
               variant="ghost"
@@ -1023,7 +1023,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onClick={handleAddTag}
               disabled={!tagInput.trim()}
               aria-label={t('common:actions.add')}
-              className="w-8 h-8 ui-press"
+              className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 ui-press"
               iconOnly
             >
               <Plus size={14} />
@@ -1075,7 +1075,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingImage}
-              className="w-full !h-9 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] gap-1.5"
+              className="w-full !h-9 [@media(pointer:coarse)]:!h-11 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] gap-1.5"
             >
               {isUploadingImage ? (
                 <CircleNotch size={14} className="animate-spin text-muted-foreground" />

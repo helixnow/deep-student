@@ -1745,7 +1745,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="!h-7 !px-2 text-xs"
+          className="!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-xs"
           onClick={() => setPendingNavigationIndex(null)}
         >
           {t('common:cancel')}
@@ -1753,7 +1753,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="!h-7 !px-2 text-xs bg-warning/10 text-warning hover:bg-warning/20"
+          className="!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-xs bg-warning/10 text-warning hover:bg-warning/20"
           onClick={() => {
             const targetIndex = pendingNavigationIndex;
             setPendingNavigationIndex(null);
@@ -2990,7 +2990,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-10 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
+                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-11 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
                         {idx + 1}
                       </DsButton>
                     );

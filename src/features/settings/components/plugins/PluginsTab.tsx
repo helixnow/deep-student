@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { ArrowLeft, GearSix, QrCode, Plug, WarningCircle } from '@phosphor-icons/react';
@@ -490,6 +490,9 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
   const selected = plugins.find((p) => p.id === selectedId) || null;
   const detailOpen = Boolean(selected);
 
+  // 详情子页根节点：Android 返回键 handler 的可见性守卫用（保活隐藏实例不吞返回键）
+  const detailRootRef = useRef<HTMLDivElement>(null);
+
   // 📱 Android 返回键：小屏打开插件详情（IlinkBotConfigPanel 子页，小屏不自绘
   // 返回按钮，本 handler 即详情逐级回退的唯一入口）时先返回列表。详情打开时才
   // 注册，同 overlay 档后注册先执行，保证事件不被 Settings 的 overlay handler
@@ -497,6 +500,12 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
   useEffect(() => {
     if (!isSmallScreen || !detailOpen) return;
     return registerBackHandler(() => {
+      // 保活守卫（同 TemplateManagementApp）：隐藏保活层（display:none 等）中
+      // 滞留的详情不吞返回键，交还当前活跃视图。
+      // visibility:hidden 不清布局盒（getClientRects 仍有返回值），需单独查 computed 值。
+      const el = detailRootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setSelectedId(null);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -504,12 +513,14 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
 
   if (selected) {
     return (
-      <IlinkBotConfigPanel
-        plugin={selected}
-        models={models}
-        onBack={() => setSelectedId(null)}
-        onPluginChange={() => void refreshList()}
-      />
+      <div ref={detailRootRef}>
+        <IlinkBotConfigPanel
+          plugin={selected}
+          models={models}
+          onBack={() => setSelectedId(null)}
+          onPluginChange={() => void refreshList()}
+        />
+      </div>
     );
   }
 

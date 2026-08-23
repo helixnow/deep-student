@@ -392,7 +392,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleCancel}
- className="w-8 h-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+ className="w-8 h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <X size={18} />
           </DsButton>

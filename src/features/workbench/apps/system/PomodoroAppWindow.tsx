@@ -559,7 +559,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 onClick={() => openSubView('settings')}
                 title={t('pomodoro.settingsTitle')}
                 aria-label={t('pomodoro.settingsTitle')}
-                className="!h-7 !w-7 transition-colors duration-150 ease-standard"
+                className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <GearSix size={15} />
               </DsButton>
@@ -605,7 +605,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     onClick={handleStop}
                     title={t('pomodoro.controls.stop')}
                     aria-label={t('pomodoro.controls.stop')}
-                    className="!h-7 !w-7 transition-colors duration-150 ease-standard"
+                    className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   >
                     <Square size={14} />
                   </DsButton>
@@ -677,7 +677,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   onClick={() => skipBreak()}
                   title={t('pomodoro.controls.skipBreak')}
                   aria-label={t('pomodoro.controls.skipBreak')}
-                  className="!h-7 !w-7 transition-colors duration-150 ease-standard"
+                  className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 >
                   <SkipForward size={14} />
                 </DsButton>
@@ -711,7 +711,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   onClick={() => setImmersive(true)}
                   title={t('pomodoro.controls.enterImmersive')}
                   aria-label={t('pomodoro.controls.enterImmersive')}
-                  className="!h-7 !w-7 transition-colors duration-150 ease-standard"
+                  className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 >
                   <ArrowsOut size={14} />
                 </DsButton>
@@ -725,7 +725,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 aria-label={noiseEnabled ? t('pomodoro.controls.noiseOff') : t('pomodoro.controls.noiseOn')}
                 aria-pressed={noiseEnabled}
                 className={cn(
-                  '!h-7 !w-7 transition-colors duration-150 ease-standard',
+                  '!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
                   noiseEnabled && 'text-[color:hsl(var(--primary))]',
                 )}
               >

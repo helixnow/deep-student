@@ -1943,7 +1943,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="h-6 px-2 text-xs"
+                      className="h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
                       onClick={() => { void fetchConflictRemote(); }}
                     >
                       {t('notes:editorV2.conflict_diff_retry', 'Retry')}
@@ -1960,14 +1960,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   <DsButton
                     variant="outline"
                     size="sm"
-                    className="h-7"
+                    className="h-7 [@media(pointer:coarse)]:min-h-11"
                     onClick={() => resolveConflict('remote', conflictAction)}
                   >
                     {t('notes:editor.conflict_keep_remote', 'Keep remote')}
                   </DsButton>
                   <DsButton
                     size="sm"
-                    className="h-7"
+                    className="h-7 [@media(pointer:coarse)]:min-h-11"
                     onClick={() => resolveConflict('mine', conflictAction)}
                   >
                     {t('notes:editor.conflict_restore_mine')}
@@ -2138,7 +2138,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             variant="ghost"
             iconOnly
             size="sm"
-            className="notes-focus-exit h-8 w-8"
+            className="notes-focus-exit h-8 w-8 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             onClick={toggleFocusMode}
             aria-label={t('notes:toolbar.exit_focus_mode', 'Exit focus mode')}
           >
@@ -2225,7 +2225,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs"
+                    className="h-7 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
                     onClick={onRetryLoadMore}
                   >
                     {t('notes:editor.windowing.retry')}

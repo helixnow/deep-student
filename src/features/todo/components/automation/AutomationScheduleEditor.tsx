@@ -353,7 +353,7 @@ export function AutomationScheduleEditor({
                     disabled={disabled}
                     onClick={() => patch({ dayOfMonth: day })}
                     className={cn(
-                      'h-8 w-8 rounded-[calc(var(--radius-shell-control)-2px)] tabular-nums',
+                      'h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 rounded-[calc(var(--radius-shell-control)-2px)] tabular-nums',
                       'inline-flex items-center justify-center border text-xs font-medium',
                       'transition-colors duration-150 motion-reduce:transition-none',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',

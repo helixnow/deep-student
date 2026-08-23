@@ -189,7 +189,7 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
           onClick={onClose}
           aria-label={t('messageList.search.close')}
           title={t('messageList.search.close')}
-          className="!size-8 !rounded-full text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!size-10"
+          className="!size-8 !rounded-full text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!size-11"
         >
           <X size={17} weight="regular" aria-hidden="true" />
         </DsButton>

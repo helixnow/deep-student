@@ -255,7 +255,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
           {totalMemories} {t('memory.items')}
         </span>
         <div className="flex-1" />
-        <DsButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8" aria-label={t('memory.aria.refresh')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="relative !h-5 !w-5 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise size={12} className={cn(isLoading && 'animate-spin')} />
         </DsButton>
       </div>

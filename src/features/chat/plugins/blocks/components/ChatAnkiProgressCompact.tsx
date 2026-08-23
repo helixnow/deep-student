@@ -425,7 +425,7 @@ export const ChatAnkiProgressCompact: React.FC<{
             size="icon"
             iconOnly
             onClick={() => setShowDetails(prev => !prev)}
-            className="!h-8 !w-8 rounded-full"
+            className="relative !h-8 !w-8 rounded-full after:absolute after:-inset-1.5 after:content-['']"
             aria-expanded={showDetails}
             aria-label={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}
             title={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}

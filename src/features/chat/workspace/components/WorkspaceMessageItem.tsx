@@ -256,7 +256,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                     e.stopPropagation();
                     setIsSubagentFullHeight(!isSubagentFullHeight);
                   }}
-                  className="!h-8 !w-8 lg:!h-6 lg:!w-6"
+                  className="!h-8 !w-8 lg:!h-6 lg:!w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   aria-label={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                   title={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                 >
@@ -275,7 +275,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                       e.stopPropagation();
                       onViewFullSession(subagentSessionId);
                     }}
-                    className="!h-8 !w-8 lg:!h-6 lg:!w-6"
+                    className="!h-8 !w-8 lg:!h-6 lg:!w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                     aria-label={t('subagent.viewFull')}
                     title={t('subagent.viewFull')}
                   >

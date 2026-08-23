@@ -382,6 +382,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     size="icon" 
                     className={cn(
                       "h-8 w-8 rounded-lg shrink-0",
+                      "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']",
                       "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]",
                       "transition-all duration-150"
                     )}

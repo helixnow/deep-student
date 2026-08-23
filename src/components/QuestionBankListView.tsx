@@ -159,7 +159,7 @@ const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, 
         size="icon"
         iconOnly
         onClick={onRemove}
-        className="relative !h-4 !w-4 !p-0 [@media(pointer:coarse)]:!h-7 [@media(pointer:coarse)]:!w-7 [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-2 text-primary/70 hover:text-primary hover:bg-primary/10"
+        className="relative !h-4 !w-4 !p-0 [@media(pointer:coarse)]:!h-7 [@media(pointer:coarse)]:!w-7 [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-2.5 text-primary/70 hover:text-primary hover:bg-primary/10"
         aria-label={t('exam.library.removeFilter', { label })}
         title={t('exam.library.removeFilter', { label })}
       >
@@ -219,7 +219,7 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
       
       {/* 开始做题按钮 */}
       {onStartPractice && (
-        <DsButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!h-11">
           <Play size={14} />
           {t('questionBank.startPractice')}
         </DsButton>
@@ -1208,7 +1208,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             variant="primary"
             size="sm"
             onClick={() => handleQuestionClick(0)}
-            className="!h-8 !px-2.5 !py-0 text-xs gap-1"
+            className="!h-8 !px-2.5 !py-0 [@media(pointer:coarse)]:!h-11 text-xs gap-1"
           >
             <Play size={12} weight="fill" />
             {t('practice:questionBank.startPractice')}
@@ -1298,7 +1298,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 if (!requestInlineEditorDiscard({ kind: 'callback', run: openBatchMode })) return;
                 openBatchMode();
               }}
-              className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!h-9 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+              className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
               aria-label="batch manage"
             >
               <ListChecks size={14} className="mr-1" />
