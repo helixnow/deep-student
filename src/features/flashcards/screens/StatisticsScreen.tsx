@@ -300,7 +300,6 @@ export const StatisticsScreen: React.FC = () => {
           className="min-h-0 flex-1"
         >
           <div className="wb-fcx-scroll">
-          <SchedulerSettingsSection />
           <section className="wb-fcx-panel" data-testid="fsrs-statistics">
             <div className="wb-fcx-panel-head">
               <h3 className="wb-fcx-panel-title">
@@ -471,6 +470,10 @@ export const StatisticsScreen: React.FC = () => {
               </div>
             </section>
           </div>
+
+          {/* 调度设置排在统计之后：本屏的主语是数据，设置是次级动作，
+              放在顶部会让用户先读到一组输入框而不是自己的复习情况。 */}
+          <SchedulerSettingsSection />
           </div>
         </CustomScrollArea>
       ) : null}
