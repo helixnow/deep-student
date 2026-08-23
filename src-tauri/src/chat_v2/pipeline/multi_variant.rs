@@ -910,7 +910,7 @@ impl ChatV2Pipeline {
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
-                let mcp_tool_values: Vec<Value> = tool_schemas
+                let mut mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .filter(|tool| {
                         is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
@@ -928,11 +928,15 @@ impl ChatV2Pipeline {
                     .collect();
 
                 if !mcp_tool_values.is_empty() {
-                    llm_context.insert("tools".into(), Value::Array(mcp_tool_values.clone()));
+                    // G6：LLM 管线只读 `custom_tools`，写 `tools` 是死键；
+                    // 排序保证 prompt cache 前缀稳定。
+                    super::tool_loop::sort_tool_schemas_for_prompt_cache(&mut mcp_tool_values);
+                    let injected_count = mcp_tool_values.len();
+                    llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
                     log::info!(
                         "[ChatV2::VariantPipeline] execute_single_variant: variant={} injected {} tools",
                         ctx.variant_id(),
-                        mcp_tool_values.len()
+                        injected_count
                     );
                 }
             }
@@ -1213,7 +1217,7 @@ impl ChatV2Pipeline {
 
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
-                let mcp_tool_values: Vec<Value> = tool_schemas
+                let mut mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .filter(|tool| {
                         is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
@@ -1248,11 +1252,15 @@ impl ChatV2Pipeline {
                     .collect();
 
                 if !mcp_tool_values.is_empty() {
-                    llm_context.insert("tools".into(), Value::Array(mcp_tool_values.clone()));
+                    // G6：LLM 管线只读 `custom_tools`，写 `tools` 是死键；
+                    // 排序保证 prompt cache 前缀稳定。
+                    super::tool_loop::sort_tool_schemas_for_prompt_cache(&mut mcp_tool_values);
+                    let injected_count = mcp_tool_values.len();
+                    llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
                     log::info!(
                         "[ChatV2::VariantPipeline] variant={} injected {} tools",
                         ctx.variant_id(),
-                        mcp_tool_values.len()
+                        injected_count
                     );
                 }
             }
@@ -1546,7 +1554,7 @@ impl ChatV2Pipeline {
                                         added_count,
                                         loaded_skill_ids,
                                     );
-                                    let refreshed_tools: Vec<Value> = mcp_schemas
+                                    let mut refreshed_tools: Vec<Value> = mcp_schemas
                                         .iter()
                                         .filter(|tool| {
                                             is_mcp_tool_allowed_by_policy(
@@ -1576,8 +1584,14 @@ impl ChatV2Pipeline {
                                             Some(prepared.schema)
                                         })
                                         .collect();
-                                    llm_context
-                                        .insert("tools".into(), Value::Array(refreshed_tools));
+                                    // G6：LLM 管线只读 `custom_tools`，写 `tools` 是死键。
+                                    super::tool_loop::sort_tool_schemas_for_prompt_cache(
+                                        &mut refreshed_tools,
+                                    );
+                                    llm_context.insert(
+                                        "custom_tools".into(),
+                                        Value::Array(refreshed_tools),
+                                    );
                                 }
                             }
                             variant_skill_state = variant_skill_state

@@ -8,6 +8,25 @@ pub(crate) struct ExternalToolRoute {
     pub preferred_server_id: Option<String>,
 }
 
+/// G6 排序键：工具 schema 为 OpenAI function 格式
+/// `{"type":"function","function":{"name":...}}`，名字在 `function.name`；
+/// 顶层 `name` 仅作非标准 schema 的回退。此前只读顶层 name，
+/// function 格式下恒为 ""，排序退化为 no-op。
+pub(crate) fn tool_schema_sort_key(tool: &Value) -> &str {
+    tool.get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(|name| name.as_str())
+        .or_else(|| tool.get("name").and_then(|name| name.as_str()))
+        .unwrap_or("")
+}
+
+/// Prompt cache（G6）：工具 schema 确定性排序。Anthropic 等 provider 将
+/// tools 纳入缓存前缀，顺序跨轮漂移会整段打爆缓存；对不计前缀的
+/// provider 稳定排序亦无害。
+pub(crate) fn sort_tool_schemas_for_prompt_cache(tools: &mut [Value]) {
+    tools.sort_by(|a, b| tool_schema_sort_key(a).cmp(tool_schema_sort_key(b)));
+}
+
 fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
     sensitivity != Some(ToolSensitivity::Low)
 }
@@ -738,20 +757,14 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 🔧 Prompt cache（G6）：工具 schema 确定性排序。
-            // Anthropic 等 provider 将 tools 纳入缓存前缀，顺序跨轮漂移会
-            // 整段打爆缓存；DeepSeek/OpenAI 虽不把 tools 计入消息前缀，
-            // 稳定排序亦无害。custom_tools 由客户端 schema_tool_ids（注入器）
-            // 与 MCP 追加合并而来，顺序依赖客户端与发现时序，必须收敛。
+            // 🔧 Prompt cache（G6）：工具 schema 确定性排序。custom_tools 由
+            // 客户端 schema_tool_ids（注入器）与 MCP 追加合并而来，顺序依赖
+            // 客户端与发现时序，必须收敛。
             if let Some(custom_tools) = llm_context
                 .get_mut("custom_tools")
                 .and_then(|v| v.as_array_mut())
             {
-                custom_tools.sort_by(|a, b| {
-                    let name_a = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let name_b = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    name_a.cmp(name_b)
-                });
+                sort_tool_schemas_for_prompt_cache(custom_tools);
             }
 
             // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
@@ -4393,6 +4406,40 @@ mod tests {
 
     fn tool_call(id: &str, name: &str) -> ToolCall {
         ToolCall::new(id.to_string(), name.to_string(), json!({}))
+    }
+
+    #[test]
+    fn tool_schema_sort_key_reads_function_name_and_falls_back_to_top_level() {
+        let openai_format = json!({
+            "type": "function",
+            "function": { "name": "builtin-web_search" }
+        });
+        assert_eq!(tool_schema_sort_key(&openai_format), "builtin-web_search");
+
+        let top_level = json!({ "name": "legacy_tool" });
+        assert_eq!(tool_schema_sort_key(&top_level), "legacy_tool");
+
+        let nameless = json!({ "type": "function" });
+        assert_eq!(tool_schema_sort_key(&nameless), "");
+    }
+
+    #[test]
+    fn tool_schema_sort_orders_openai_function_schemas_deterministically() {
+        // G6 回归：此前排序键只读顶层 name，OpenAI function 格式下恒为 ""，
+        // 排序退化为 no-op，跨轮顺序漂移会打爆 provider 的 prompt cache 前缀。
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta" } }),
+            json!({ "name": "mid_legacy" }),
+            json!({ "type": "function", "function": { "name": "alpha" } }),
+        ];
+        sort_tool_schemas_for_prompt_cache(&mut tools);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha", "mid_legacy", "zeta"]);
+
+        // 幂等：再次排序不改变顺序（缓存前缀跨轮稳定）
+        let before = tools.clone();
+        sort_tool_schemas_for_prompt_cache(&mut tools);
+        assert_eq!(tools, before);
     }
 
     #[test]
