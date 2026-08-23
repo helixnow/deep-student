@@ -74,8 +74,9 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 | R01 只读调研 | 已完成 | 10 个 Fable xhigh 并行审阅，产出 [FINDINGS-R01](./FINDINGS-R01.md)：9 P0 |
 | R02 修复落地 | 已合入 | 十路修复全部合入本枝（含中断重试），R01 P0/P1 基本关闭，见 [ROUND-02](./ROUND-02.md) |
 | R03 复审 | 已完成 | xhigh 独立只读复审，产出 [FINDINGS-R03](./FINDINGS-R03.md)：新增 2 P0 / 6 P1 / 2 P2 |
-| R04 修复落地 | 进行中 | 10 个 Fable high 按 FINDINGS-R03 认领独立分支，见 [ROUND-04](./ROUND-04.md) |
-| R05+ 极端测试与继续打磨 | 未开始 | 跨平台、双向、跨版本、供应商差异 |
+| R04 修复落地 | 已合入 | 七路修复分支合入本枝，FINDINGS-R03 十项关九项；P1-ANDROID-FTP-SSOT 未交付转 R05，见 [ROUND-04](./ROUND-04.md) |
+| R05 极端测试与复审 | 进行中 | 复核 R04 + 补做残留 + 跨平台/双向/跨版本/供应商差异极端测试，见 [ROUND-05](./ROUND-05.md) |
+| R06+ 继续打磨 | 未开始 | 按 FINDINGS-R05 输出决定 |
 
 ## 文档索引
 
@@ -84,5 +85,6 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [ROUND-02.md](./ROUND-02.md) — 第二轮修复拆分与合入状态
 - [FINDINGS-R03.md](./FINDINGS-R03.md) — R03 复审结论（R04 输入）
 - [ROUND-04.md](./ROUND-04.md) — 第四轮修复任务拆分
+- [ROUND-05.md](./ROUND-05.md) — 第五轮极端测试、复审与残留补做
 - [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图

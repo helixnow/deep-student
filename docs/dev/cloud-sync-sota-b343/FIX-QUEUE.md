@@ -23,17 +23,37 @@
 
 独立只读复审完成，结论见 [FINDINGS-R03](./FINDINGS-R03.md)：R01 P0/P1 基本关闭，新增 2 P0 / 6 P1 / 2 P2 进入 R04。
 
-## Round 04（认领中）
+## Round 04（已合入）
+
+七路修复分支已合入 `cursor/cloud-sync-sota-b343`。实际合入的分支与计划认领表有出入（部分代理合枝交付），按实际留档：
+
+| 合入分支 | 覆盖项 |
+|---|---|
+| `r04-sync-del` | P0-DEL-PARSE（DELETE fail-closed）、P1-DEL-LOSE（败方 DELETE 落冲突表）、P1-FOLD-POLICY、P2-FOLD-NOOP、P1-QCOUNT（计数器不回弹 `reset_progress`） |
+| `r04-sync-e2ee` | P0-SYNC-E2EE（记录级 sync 尊重 `.encryption-marker`、`decode_payload` 拒明文）+ ACL 注册 |
+| `r04-tombstone` | P1-TOMB-DOS（坏时钟 tombstone 单条隔离） |
+| `r04-e2ee-clear` | P1-E2EE-CLEAR（显式停用 + 诚实占位符） |
+| `r04-zip-ui` | P2-UI-PASS（导出/导入 E2EE ZIP 密码入口接线） |
+| `r04-backup-defaults` | 新增范围：分层导出默认 core+important 带资产、`vfs_blobs` 覆盖警示 |
+| `r04-tests` | WebDAV 1000 边界、错误密码槽位守卫、设备身份测试 + 测试套件修复 |
+
+**未交付**：R04-android-ftp（P1-ANDROID-FTP-SSOT）未见合入分支，`cloud_config_commands.rs` 保存路径仍不拒 Android FTP，转入 Round 05 补做。
+
+**遗留回写**：P2-UI-PASS 合入后，`docs/user-guide/16-数据管理与云同步.md` 的「密码入口后续版本开放」段已过时，转入 Round 05（R05-guide）。
+
+## Round 05（认领中）
+
+任务定义见 [ROUND-05](./ROUND-05.md)。测试代理各写**独立新测试文件**；若必须改既有文件，先在此登记。
 
 | 代理 | 模型 | 范围 | 文件面（独占） |
 |---|---|---|---|
-| R04-delete | claude-fable-5-thinking-high | P0-DEL-PARSE、P1-DEL-LOSE | sync DELETE 应用路径（`sync/mod.rs` DELETE 门 + 冲突表写入）+ 其测试 |
-| R04-sync-e2ee | claude-fable-5-thinking-high | P0-SYNC-E2EE | `sync_manager.rs` 标记检查、`decode_payload` 拒明文 + 其测试 |
-| R04-qcount | claude-fable-5-thinking-high | P1-QCOUNT | `field_merge.rs` 计数器策略 + 其测试 |
-| R04-fold | claude-fable-5-thinking-high | P1-FOLD-POLICY、P2-FOLD-NOOP | `conflict_resolver.rs` fold 归一 + 其测试 |
-| R04-android-ftp | claude-fable-5-thinking-high | P1-ANDROID-FTP-SSOT | `cloud_config_commands.rs` 保存校验 + 其测试 |
-| R04-e2ee-clear | claude-fable-5-thinking-high | P1-E2EE-CLEAR | 加密密码留空停用语义（后端命令 + 设置面板文案）|
-| R04-tomb-dos | claude-fable-5-thinking-high | P1-TOMB-DOS | tombstone 应用路径坏时钟单条隔离 + 其测试 |
-| R04-ui-pass | claude-fable-5-thinking-high | P2-UI-PASS | Dashboard/BackupTab 密码入口、`cloudStorage.json`（zh/en）+ 相关 vitest |
-| R04-tests | claude-fable-5-thinking-high | 回归与极端测试 | 新测优先放 `src-tauri/tests/` 与 `tests/vitest/data-governance/` |
-| R04-docs | claude-fable-5-thinking-high | 本目录进度文档 | `docs/dev/cloud-sync-sota-b343/**`（本枝已推送） |
+| R05-review | claude-fable-5-thinking-xhigh | 只读复审 R04 七路合入，产出 FINDINGS-R05 | 只读（产出文档归父代理/本目录） |
+| R05-android-ftp | claude-fable-5-thinking-high | P1-ANDROID-FTP-SSOT 补做 | `cloud_config_commands.rs` + 其测试 |
+| R05-guide | claude-fable-5-thinking-high | 用户指南回写：密码入口已开放、分层导出默认值、`vfs_blobs` 警示 | `docs/user-guide/16-数据管理与云同步.md` |
+| R05-clock | claude-fable-5-thinking-high | 时钟漂移 / HLC / 慢钟败方极端测试 | `src-tauri/tests/` 新文件 |
+| R05-idempotent | claude-fable-5-thinking-high | 重复包幂等、上传中断恢复、断点续传测试 | `src-tauri/tests/` 新文件 |
+| R05-provider | claude-fable-5-thinking-high | WebDAV 429/限速、S3 分页、FTP 截断供应商差异测试 | `src-tauri/tests/` 新文件 |
+| R05-schema | claude-fable-5-thinking-high | 跨版本 ZIP/清单/schema 兼容测试 | `src-tauri/tests/` 新文件 |
+| R05-mobile | claude-fable-5-thinking-high | Android / `mobile-slim` 能力面测试 | `src-tauri/tests/` 新文件 + 必要 cfg 门测试 |
+| R05-restore | claude-fable-5-thinking-high | A/B 槽位、错误密码、半配置恢复极端测试 | `src-tauri/tests/` 与 `tests/vitest/data-governance/` 新文件 |
+| R05-docs | claude-fable-5-thinking-high | 本目录进度文档 | `docs/dev/cloud-sync-sota-b343/**`（本枝已推送） |
