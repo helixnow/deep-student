@@ -596,7 +596,11 @@ mod tests {
     #[test]
     fn test_k3_forces_reasoning_effort_max() {
         let adapter = MoonshotAdapter;
-        for model in ["kimi-k3", "kimi-k3-0905-preview", "moonshotai/Kimi-K3-Instruct"] {
+        for model in [
+            "kimi-k3",
+            "kimi-k3-0905-preview",
+            "moonshotai/Kimi-K3-Instruct",
+        ] {
             let config = ApiConfig {
                 model: model.to_string(),
                 ..Default::default()
