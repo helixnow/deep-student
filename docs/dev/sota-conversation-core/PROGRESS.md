@@ -24,7 +24,7 @@
 | 5df53cf1 | 技能注入与工具变化对缓存的影响 |
 | 9859559e | 系统提示词稳定性与构建顺序 |
 | d3ab2581 | 工具面 / hosted tools / 回传格式 |
-| 1fbd7859 | OpenCode / Pi Agent 对标 |
+| [1fbd7859](1fbd7859-a620-44eb-a054-439a5834af8a) | OpenCode / Pi Agent 对标（已完成） |
 | b35b36be | Chat V2 流水线：裁剪、变体、usage 入库 |
 | b0ca75ca | 2026 Responses 官方能力覆盖度 |
 | [414d5fd1](414d5fd1-4b9c-440f-ad1b-f70d7f4c4439) | 各协议 cached_tokens 测量是否正确（已完成） |

@@ -34,11 +34,13 @@
 
 ### P1 前缀冻结
 
-- 会话内冻结 tools 快照：中途 load_skills 的新工具延后到「新会话」或放到
-  不破坏已缓存 tools 前缀的策略（行业对标后定）。
-- `learner_profile` / `active_todos` 移出 instructions，改为当前 user 尾部
-  或 session-stable 段（仅在未变更时保持）。
-- 确认 `llm_content` 覆盖 runtime_facts，历史不得用「今天」重写昨天的 user 字节。
+- 技能注入锚定：首次插入后位置冻结，或正文随 `load_skills` 工具结果驻留 transcript，
+  禁止每轮删除再插到新偏移（OpenCode/Pi 已证明瞬态重插会切断历史前缀）。
+- tools 排序改为「首见轮次 + 名字」append-only；字母序会把新工具插进中间。
+- `learner_profile` / `active_todos` / RAG context 移出 instructions，放进当前 user 尾部。
+  会话内稳定的画像可留在 system。
+- Anthropic：4 断点（tools → system → 最后 2 条消息）。
+- 确认 `llm_content` 覆盖 runtime_facts；`prompt_builder` 增加跨轮前缀快照测试。
 
 ### P2 OpenAI Responses 原生多轮（可选，DeepSeek 不做）
 
