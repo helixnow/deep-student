@@ -140,7 +140,7 @@ export function formatFileSize(bytes: number): string {
 
 /**
  * 格式化时间（秒 -> mm:ss 或 hh:mm:ss）
- * 共享工具，供 AudioPreview / VideoPreview 使用
+ * 共享工具，供 AudioPlayer / VideoPlayer 使用
  */
 export const formatMediaTime = (seconds: number): string => {
   if (!isFinite(seconds) || seconds < 0) return '0:00';

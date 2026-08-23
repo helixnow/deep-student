@@ -179,7 +179,8 @@ export interface NotesCrepeEditorProps {
   onTagsChange?: (tags: string[]) => Promise<void> | void;
   /**
    * 移动端底部工具条挂在 body（fixed 全宽），侧栏抽屉打开时会盖住抽屉底部
-   * 且按钮仍指向编辑器；宿主（NotesHome）在抽屉打开期间置 true 暂时隐藏。
+   * 且按钮仍指向编辑器；宿主（learning-hub 的 NoteContentView；历史 NotesHome
+   * 已下线删除）在抽屉/子屏打开期间置 true 暂时隐藏。
    */
   suppressMobileToolbar?: boolean;
 }

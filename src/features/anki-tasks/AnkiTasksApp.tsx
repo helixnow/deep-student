@@ -550,7 +550,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                       size="sm"
                       variant={preventSleep ? 'secondary' : 'ghost'}
                       onClick={togglePreventSleep}
-                      className="ml-1 h-6 text-[12px]"
+                      className="ml-1 h-6 text-[12px] [@media(pointer:coarse)]:!h-11"
                     >
                       <Coffee size={12} className={preventSleep ? 'text-[color:hsl(var(--warning))]' : ''} />
                       {t('taskDashboard.preventSleep')}

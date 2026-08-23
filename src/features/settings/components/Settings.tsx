@@ -1234,7 +1234,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       trackOffsetBottom={16}
       trackOffsetRight={0}
     >
-      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)] sm:px-5">
+      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)] sm:px-5">
         {/* 搜索框 */}
         <div className="relative">
           <MagnifyingGlass
@@ -1467,9 +1467,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <div
             className={cn(
               mobilePageMode
-                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]'
+                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]'
                 : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
-              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]',
+              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))]',
             )}
           >
           {/* key 按 tab：切换时重挂载并播放入场动画（与桌面壳层视图切换同款观感） */}
@@ -1908,7 +1908,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           >
             <CustomScrollArea
               className="flex-1 min-h-0 w-full"
-              viewportClassName="px-4 py-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
+              // 外层容器（--android-safe-area-bottom）已消费底部安全区；
+              // Sheet 根现在重建了 --mobile-safe-area-bottom，这里再叠加会双倍留白。
+              viewportClassName="px-4 py-4"
               trackOffsetTop={12}
               trackOffsetBottom={12}
             >
@@ -2022,7 +2024,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                   className="settings-mobile-sheet-body min-h-0 flex-1 w-full"
                   viewportClassName="settings-mobile-sheet-scroll-viewport h-full"
                 >
-                  <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]">
+                  <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-[calc(var(--settings-mobile-sheet-header-height)+1rem)]">
                     <div className="h-11 w-full animate-pulse rounded-[14px] bg-muted" />
                     {sidebarNavGroups.map((group, groupIdx) => (
                       <div key={groupIdx} className="space-y-2">

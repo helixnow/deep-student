@@ -16,6 +16,13 @@ body .settings-mobile-sheet {
   /* Sheet 顶部本身已停在 10dvh（低于状态栏），header 不再叠加 safe-area-top，避免顶部死区。 */
   --settings-mobile-sheet-header-height: 56px;
 
+  /* Sheet portal 到 body，继承不到 App 壳上的 --mobile-safe-area-*；
+     在 Sheet 根按 mobileShell 同款兜底链重建（Android env() 不可靠，
+     platform.ts 往 :root 注入 --android-safe-area-*，body portal 可继承）。 */
+  --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px));
+  --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px));
+
   background: var(--surface-muted);
   color: var(--mobile-sheet-foreground);
   overflow: hidden;

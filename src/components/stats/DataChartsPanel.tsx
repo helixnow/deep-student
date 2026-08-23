@@ -472,7 +472,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
               void loadLlmData();
               void loadTrends();
             }}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <ArrowsClockwise size={14} className={cn((loading || trendLoading) && 'animate-spin')} />
           </DsButton>

@@ -20,14 +20,15 @@
 | crepe-demo | DEV | 是 | |
 | chat-v2-test | DEV | 是（Round 2） | 自绘 header 仅桌面 |
 | llm-playground | DEV | 是（Round 2） | 自绘 header 仅桌面 |
-| notes（组件 `NotesHome`） | 学习资源内嵌 | 是，但 viewId=`notes` | **不是 CurrentView**，配置隔离可能失效 |
+| notes（组件 `NotesHome`） | 已下线 | — | Round 11 已删组件与非法 viewId |
 
 ## 核实后状态
 
 - `wb-at-header` / `wb-tm-panel-header` / `wb-fc-header`：已销案（小屏守卫或桌面壳独占）。
 - Skills sticky：Round 2 已删死 class。
 - DEV 双顶栏：Round 2 已收进统一顶栏。
-- `NotesHome`：死代码 + 非法 viewId，契约测试 allowlist，待删。
-- Settings 小屏标题、GradingMain 640–767：Round 3 已修。
+- `NotesHome`：Round 11 已删（组件 + notes-home.css + barrel + 契约 allowlist）。
+- Settings 小屏标题、GradingMain 640–767：Round 3 已修；Sheet 底安全区 / overlay 返回：Round 10–11 已修。
 - 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
-- **仍开**：导图子屏双 chrome / 工具条 40px；题库统计热力图触屏（tooltip 仅 hover 可达）与图表 28px 钮；Settings Sheet 安全区死区、view 级返回被 Radix 抢先。
+- 导图工具条 40→44、热力图年份/刷新 coarse 44、`shad/Table` 横滚：Round 11 已修。
+- **仍开**：ModernSidebar hover；Todo 自动化双标题；保活视图 isActive；Plugins/MCP 自绘菜单返回；残留 <44 钮。

@@ -404,8 +404,6 @@ html.is-android .android-safe-top {
   [data-panel-id="notes-sidebar"],
   [data-panel-id="notes-context"],
   [data-panel-group-id] > [data-resize-handle],
-  .notes-home-container [data-radix-popper-content-wrapper],
-  .notes-home-container .notes-header-wrapper,
   .notes-editor-toolbar,
   .milkdown-toolbar,
   .milkdown-block-handle,

@@ -2,15 +2,13 @@
  * Notes feature - public API
  */
 
-// Main components
-export { default as NotesHome } from './NotesHome';
+// Main components（历史 NotesHome 视图已下线删除，2026-08）
 export { NotesCrepeEditor } from './NotesCrepeEditor';
 export { NotesContextPanel } from './NotesContextPanel';
 export { NotesHeader } from './NotesHeader';
 export { NotesLibraryManager } from './NotesLibraryManager';
 export { NotesSidebarV2 } from './NotesSidebarV2';
 export { default as NotesTabsBar } from './NotesTabsBar';
-export { PreviewPanel } from './PreviewPanel';
 export { AIDiffPanel } from './AIDiffPanel';
 export { InvalidReferenceOverlay } from './InvalidReferenceOverlay';
 
@@ -31,8 +29,6 @@ export { MarkdownPreview } from './preview/MarkdownPreview';
 export { PDFPreview } from './preview/PDFPreview';
 export { ImagePreview } from './preview/ImagePreview';
 export { ExamPreview } from './preview/ExamPreview';
-export { AudioPreview } from './preview/AudioPreview';
-export { VideoPreview } from './preview/VideoPreview';
 
 // Types
 export {

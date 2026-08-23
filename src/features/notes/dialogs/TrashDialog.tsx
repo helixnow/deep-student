@@ -20,7 +20,8 @@ type ConfirmState =
     | null;
 
 /**
- * Legacy notes trash (NotesHome host). Rendered as a non-modal inline panel
+ * Legacy notes trash（历史宿主 NotesHome 已下线删除，当前无挂载方）。
+ * Rendered as a non-modal inline panel
  * anchored to the right edge of the positioned host container — no fullscreen
  * scrim, no focus trap. Permanent-delete / empty confirmations are inline
  * strips (the old DsAlertDialog is no longer used); Escape collapses the

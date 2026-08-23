@@ -60,16 +60,6 @@ const VIEW_REGISTRY_FILES: Record<string, string> = {
   'llm-playground': 'src/features/chat/dev/playground/LLMOutputPlayground.tsx',
 };
 
-/**
- * 显式违规 allowlist：死代码，禁止新调用。
- * NotesHome 使用了 CurrentView 之外的非法 viewId 'notes'（notes 视图早已下线，
- * App 不再挂载该组件）。删除该文件时必须同步移除本条目；
- * 任何新文件出现非法 viewId 都会让本测试失败。
- */
-const KNOWN_ILLEGAL_VIEW_ID_FILES = new Set([
-  'src/features/notes/NotesHome.tsx',
-]);
-
 /** MobileHeaderContext 的 JSDoc 里有 useMobileHeader('settings', ...) 等示例注释，排除该文件 */
 const SCAN_EXCLUDED_FILES = new Set([
   'src/components/layout/MobileHeaderContext.tsx',
@@ -114,8 +104,10 @@ describe('mobile header view registry contract', () => {
     // 防空断言：全仓至少要能扫到一批真实注册调用，扫描本身失效时直接红
     expect(found.length).toBeGreaterThanOrEqual(10);
 
+    // 无 allowlist：任何文件出现非法 viewId 都会让本测试失败
+    // （历史唯一豁免 NotesHome 的非法 viewId 'notes' 已随组件删除）
     const violations = found
-      .filter(({ file, viewId }) => !viewSet.has(viewId) && !KNOWN_ILLEGAL_VIEW_ID_FILES.has(file))
+      .filter(({ file, viewId }) => !viewSet.has(viewId))
       .map(({ file, viewId }) => `${file} 使用了非法 viewId '${viewId}'`);
 
     expect(violations).toEqual([]);

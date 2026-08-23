@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–7 已全部落地并提交（含契约测试）；当前仅剩导图子屏、热力图触屏、Settings 安全区三项（Round 8+）。
+- **轮次**：Round 2–11 已落地并提交；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -17,18 +17,21 @@
 | 5 | claude-fable-5-thinking-xhigh | 选择器触控、桌面-only 开关、overlay 返回 | 见 ROUND-05-FIXES.md |
 | 6 | claude-fable-5-thinking-xhigh | 面包屑热区、callout 折叠、coarse caret | 已落地（清单见 ROUND-05 残留节） |
 | 7 | claude-fable-5-thinking-xhigh | Popover 返回、沙箱 chrome、PDF stale 守卫 | 见 ROUND-07-FIXES.md |
+| 8 | claude-fable-5-thinking-xhigh | 导图子屏藏工具条、热力图 tap | 已落地（见 git `6da7a82e`） |
+| 9 | claude-fable-5-thinking-xhigh | 灯箱返回、作文/翻译 isActive、Sheet 去 safe-top | 见 ROUND-09-FIXES.md |
+| 10 | claude-fable-5-thinking-xhigh | skills/anki enabled、改期守卫、Settings overlay 返回 | 见 ROUND-10-FIXES.md |
+| 11 | claude-fable-5-thinking-xhigh ×10 | 导图 44px、删 NotesHome/VideoPreview、Sheet 底安全区、Table 横滚 | 见 ROUND-11-FIXES.md |
 
-## 进行中的修复队列（Round 8+）
+## 进行中的修复队列（Round 12+）
 
-- 导图子屏：双 chrome；工具条按钮 40px 不达标
-- 题库统计热力图：单元格 tooltip 仅 hover 可达（触屏无入口）；图表 28px 小钮
-- Settings Sheet：底部安全区死区；view 级返回键被 Radix 抢先
+- ModernSidebar：named-group hover 在 coarse 平板不可见；行操作钮 <44
+- Todo 自动化工作区：640–767 与统一顶栏双标题
+- 保活视图缺 isActive：练习启动器/计时/模考、题库编辑/导出/历史、导图 MobileNodeToolbar、skills、template-management
+- PluginsTab 二级详情、MCP 自绘菜单未接 overlay 返回
+- 残留触控 <44：Anki 工具条、AppSelect、Tabs、Todo 批量条、MemoryView Select
 
 ## 已落地
 
 - 本目录方案与清单
-- Round 2（原 P0/P1 队列全部销案）：恢复 JSON 预览入口；聊天 @/斜杠补全接返回键；搜索条 portal 到 body；IndexStatus 更多菜单返回；pdf/sandbox 返回箭头；data-management 顶栏键冲突；DEV/ui-lab 统一顶栏；模板右屏按钮；恢复壳；VideoPreview 触屏控制栏；技能市场触控
-- 契约测试：`tests/vitest/mobile-uiux/*` 锁住「每个 CurrentView 必须 useMobileHeader」、废弃 MobileHeader、可达性三桶
-- Round 3：Settings Sheet 标题、GradingMain 断点、stale 返回键守卫、触控放大
-- Round 4：MessageSearchBar placement 测试改查 body + 搜索条接返回键；TodoContentView `enabled: !inWorkbenchWindow`；引擎分区/数据治理触控
-- Round 5–7：见 ROUND-05-FIXES.md / ROUND-07-FIXES.md
+- Round 2–11：顶栏契约、可达契约、废弃 MobileHeader 禁令；聊天/设置/沙箱/PDF/导图/热力图/Anki/Todo 移动 chrome；死代码 NotesHome / VideoPreview / AudioPreview / PreviewPanel
+- 契约测试：`tests/vitest/mobile-uiux/*`（非法 viewId allowlist 已清空）

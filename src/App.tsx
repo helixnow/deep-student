@@ -2842,8 +2842,7 @@ function App() {
 
               {/* ★ 废弃视图已移除（2026-01 清理）：irec, irec-management, irec-service-switcher, math-workflow */}
 
-              {/* 笔记模块已整合到 Learning Hub，通过 DSTU 协议访问，不再需要独立入口 */}
-              {/* {renderViewLayer('notes', <NotesHome />)} */}
+              {/* 笔记模块已整合到 Learning Hub，通过 DSTU 协议访问；历史 NotesHome 视图已下线删除 */}
 
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
               {renderViewLayer('learning-hub', learningHubContent)}

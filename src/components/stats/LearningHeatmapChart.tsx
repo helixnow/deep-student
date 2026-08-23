@@ -327,7 +327,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               onClick={handlePrevYear}
               aria-label={String(selectedYear - 1)}
             >
@@ -339,7 +339,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               onClick={handleNextYear}
               disabled={selectedYear >= new Date().getFullYear()}
               aria-label={String(selectedYear + 1)}
@@ -352,7 +352,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
             onClick={handleRefresh}
             aria-label={t('heatmapChart.title')}
           >
