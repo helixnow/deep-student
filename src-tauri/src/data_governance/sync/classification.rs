@@ -158,7 +158,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "tags use set union; attempt_count/correct_count use max; options_json/images_json/user_note use row-level LWW/conflict handling",
+            merge_notes: "tags use set union; attempt_count/correct_count are a coupled pair updated atomically per answer and may legitimately reset, so they use row-level LWW (not max, see field_merge [R04]); options_json/images_json/user_note use row-level LWW/conflict handling",
         },
         TableClassification {
             database: "vfs",
