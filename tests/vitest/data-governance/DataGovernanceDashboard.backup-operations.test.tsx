@@ -170,7 +170,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     expect(exportBtn).toBeEnabled();
   });
 
-  it('clicking "导出备份" with tiered mode calls backupAndExportZip with default core tier', async () => {
+  it('clicking "导出备份" with tiered mode calls backupAndExportZip with default core+important tiers and assets', async () => {
     mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'tiered-job-001',
       kind: 'export',
@@ -199,9 +199,11 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
 
     const callArgs = mockDataGovernanceApi.backupAndExportZip.mock.calls[0];
     expect(callArgs[3]).toBe(true);
-    expect(callArgs[4]).toEqual(expect.arrayContaining(['core']));
-    // includeAssets 默认 false
-    expect(callArgs[5]).toBe(false);
+    // R04-backup-defaults：默认 core + important，保证默认导出覆盖 vfs_blobs
+    expect(callArgs[4]).toEqual(expect.arrayContaining(['core', 'important']));
+    expect(callArgs[4]).toHaveLength(2);
+    // includeAssets 默认 true（important 层的 vfs_blobs 等资产目录默认纳入）
+    expect(callArgs[5]).toBe(true);
   });
 
   it('toggling tier checkboxes changes selection state', async () => {
@@ -219,16 +221,12 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
       name: /data:governance\.use_tiered_backup/i,
     }));
 
-    // 找到各层级的可点击区域（通过层级标签文本）
-    const importantTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.important_label/i,
-    );
+    // 找到 rebuildable 层级的可点击区域（core + important 已默认选中）
     const rebuildableTier = screen.getByText(
       /settings:data_governance\.backup_tiers\.rebuildable_label/i,
     );
 
-    // 点击 important 和 rebuildable 层级的包裹 div
-    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
+    // 追加勾选 rebuildable 层级
     fireEvent.click(rebuildableTier.closest('[class*="cursor-pointer"]')!);
 
     const exportBtn = screen.getByRole('button', { name: exportBackupButtonName });
@@ -243,7 +241,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
 
     const callArgs = mockDataGovernanceApi.backupAndExportZip.mock.calls[0];
     const tiers = callArgs[4] as string[];
-    // 应包含 core（默认）+ important + rebuildable
+    // 应包含 core + important（默认）+ rebuildable（新勾选）
     expect(tiers).toContain('core');
     expect(tiers).toContain('important');
     expect(tiers).toContain('rebuildable');
@@ -265,17 +263,11 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
       name: /data:governance\.use_tiered_backup/i,
     }));
 
-    // 取消 core 层级选择
+    // 取消 core 层级选择（important 仍保持默认选中）
     const coreTier = screen.getByText(
       /settings:data_governance\.backup_tiers\.core_label/i,
     );
     fireEvent.click(coreTier.closest('[class*="cursor-pointer"]')!);
-
-    // 选择 important 层级
-    const importantTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.important_label/i,
-    );
-    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
 
     const exportBtn = screen.getByRole('button', { name: exportBackupButtonName });
 
@@ -291,6 +283,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     // core 被取消，只包含 important
     expect(tiers).not.toContain('core');
     expect(tiers).toContain('important');
+    expect(tiers).toHaveLength(1);
   });
 
   it('does not export when tiered mode has no tiers selected', async () => {
@@ -301,17 +294,77 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
       name: /data:governance\.use_tiered_backup/i,
     }));
 
-    // 取消 core 层级选择（默认唯一选中项）
+    // 取消默认选中的 core 与 important 层级
     const coreTier = screen.getByText(
       /settings:data_governance\.backup_tiers\.core_label/i,
     );
     fireEvent.click(coreTier.closest('[class*="cursor-pointer"]')!);
+    const importantTier = screen.getByText(
+      /settings:data_governance\.backup_tiers\.important_label/i,
+    );
+    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: exportBackupButtonName }));
     });
 
     expect(mockDataGovernanceApi.backupAndExportZip).not.toHaveBeenCalled();
+  });
+
+  // ==========================================================================
+  // R04-backup-defaults：vfs_blobs 覆盖警告
+  // ==========================================================================
+
+  const vfsBlobsWarningPattern = /data:governance\.tiered_backup_vfs_blobs_missing_warning/i;
+
+  it('hides the vfs_blobs coverage warning with default tiers (core+important) and assets on', async () => {
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    // 默认 core+important + 包含资产 → 覆盖 vfs_blobs，无警告
+    expect(screen.queryByText(vfsBlobsWarningPattern)).not.toBeInTheDocument();
+    // R02 的部分归档诚实提示保持展示
+    expect(screen.getByText(/data:governance\.tiered_backup_honest_note/i)).toBeInTheDocument();
+  });
+
+  it('shows an explicit not-restorable/vfs_blobs warning when only core tier is selected', async () => {
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    // 取消 important 层，只剩 core → 不再覆盖 vfs_blobs
+    const importantTier = screen.getByText(
+      /settings:data_governance\.backup_tiers\.important_label/i,
+    );
+    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
+
+    expect(screen.getByText(vfsBlobsWarningPattern)).toBeInTheDocument();
+
+    // 重新勾选 important → 警告消失
+    fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
+    expect(screen.queryByText(vfsBlobsWarningPattern)).not.toBeInTheDocument();
+  });
+
+  it('shows the vfs_blobs warning when include-assets is switched off', async () => {
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    // 关闭“包含资产文件”开关（分层区域内唯一 switch）
+    const includeAssetsSwitch = screen.getByRole('switch');
+    fireEvent.click(includeAssetsSwitch);
+
+    expect(screen.getByText(vfsBlobsWarningPattern)).toBeInTheDocument();
   });
 });
 
