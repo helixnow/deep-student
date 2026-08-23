@@ -8,8 +8,8 @@
 | 轮次 | 状态 | 子代理数 | 产出 |
 | --- | --- | --- | --- |
 | 0 立项 | 完成 | 0 | 本目录、目标、审阅范围 |
-| 1 预审 + 并行切片 | 进行中 | 10（异步上限） | [ROUND-01-findings.md](./ROUND-01-findings.md) |
-| 2 对标补全 | 排队 | — | Claude Code / Codex / OpenCode / Pi |
+| 1 预审 + 并行切片 | 进行中 | 10 + 补位 | [ROUND-01-findings.md](./ROUND-01-findings.md)、[ROUND-01-telemetry.md](./ROUND-01-telemetry.md) |
+| 2 对标补全 | 进行中 | replay 已派出 | Claude Code / Codex 待空位 |
 | 3 覆盖度矩阵收敛 | 排队 | — | 官方字段 × 实现 |
 | 4 方案冻结 | 排队 | — | 更新 DESIGN.md |
 | 5+ 落地与测试 | 未开始 | 修复子代理 | 独立实现分支 |
@@ -27,7 +27,8 @@
 | 1fbd7859 | OpenCode / Pi Agent 对标 |
 | b35b36be | Chat V2 流水线：裁剪、变体、usage 入库 |
 | b0ca75ca | 2026 Responses 官方能力覆盖度 |
-| 414d5fd1 | 各协议 cached_tokens 测量是否正确 |
+| [414d5fd1](414d5fd1-4b9c-440f-ad1b-f70d7f4c4439) | 各协议 cached_tokens 测量是否正确（已完成） |
+| b9e1515d | V20260806 replay 列是否真正写入/回放（第二轮补位） |
 
 因异步子代理上限为 10，以下课题排入第二轮：
 

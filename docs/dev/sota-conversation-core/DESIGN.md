@@ -26,8 +26,11 @@
 - **OpenAI / Codex**：稳定 `prompt_cache_key` = 会话 id；禁止 `Uuid::new_v4()` 回落。
 - **DeepSeek**：不要写 `prompt_cache_key` / `previous_response_id` / `store:true`
   （官方明确不支持，静默忽略）。唯一杠杆是前缀字节稳定。
-- `cache-hit-report.py` 增加 protocol / provider 维度。
+- `cache-hit-report.py` 增加 protocol / provider / token_source 维度；cached 全 NULL 显示「无测量」而不是 0%。
 - 真正实现 `V20260806`：写入并回放 `llm_content` / `tool_call_id` / `round_text`。
+- Anthropic：`build_merged_usage_event` 字段级合并，保留 `message_start` 的 cache 字段；非流式转换不得丢 cache。
+- Gemini 流式把 `cachedContentTokenCount` 抬到顶层 `cached_tokens`。
+- `record_llm_usage` 真实写入 `token_source` 与 adapter/协议；OpenAI CC 补 `stream_options.include_usage`。
 
 ### P1 前缀冻结
 
@@ -41,7 +44,8 @@
 
 - 仅 OpenAI / Codex：配置项允许 `store` + 保存 `response.id`，后续带 `previous_response_id`。
 - 仅追加本轮 input items；失败回落全量重放。
-- DeepSeek 保持全量重放 + `web_search_call` 原样回传。
+- DeepSeek 保持全量重放，并把完整 `web_search_call` output item 与
+  `function_call` 一样写入历史、下一轮原样放进 `input`。
 
 ### P3 DeepSeek / OpenAI hosted 能力
 
