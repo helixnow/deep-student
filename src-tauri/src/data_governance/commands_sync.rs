@@ -31,6 +31,52 @@ fn id_column_map() -> HashMap<String, String> {
     build_id_column_map()
 }
 
+/// 配置是否启用了端到端加密（非空 `encryption_password`）。
+fn config_encryption_enabled(config: &CloudStorageConfig) -> bool {
+    config
+        .encryption_password
+        .as_deref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+}
+
+/// [R04-sync-e2ee] 记录级上传前的端到端加密一致性策略。
+///
+/// 与 ZIP 备份上传（`cloud_sync_upload`）共用同一个云端 `.encryption-marker`：
+/// - 本机配置了加密密码：先幂等写入云端加密标记（写入失败则本次同步失败），
+///   保证标记先于任何记录级密文对象可见；
+/// - 本机未配置密码：若该云 root 已有加密标记，直接拒绝明文记录级上传，
+///   避免同一 root / 同一恢复链上明文与密文混布。
+///
+/// `CloudSyncManager` 按值持有 storage，因此调用方为策略检查单独创建一份
+/// storage 实例，主同步流程继续使用自己的实例。
+async fn enforce_record_upload_encryption_policy(
+    storage: Box<dyn CloudStorage>,
+    device_id: &str,
+    encryption_enabled: bool,
+) -> Result<(), String> {
+    crate::cloud_storage::CloudSyncManager::new(storage, device_id.to_string())
+        .enforce_encryption_policy_before_upload(encryption_enabled)
+        .await
+        .map_err(|e| format!("同步加密一致性检查未通过: {}", e))
+}
+
+/// [R04-sync-e2ee] 便捷入口：为策略检查单独创建 storage 后执行检查。
+async fn enforce_record_upload_encryption_policy_for_config(
+    config: &CloudStorageConfig,
+    device_id: &str,
+) -> Result<(), String> {
+    let policy_storage = create_storage(config)
+        .await
+        .map_err(|e| format!("创建云存储失败: {}", e))?;
+    enforce_record_upload_encryption_policy(
+        policy_storage,
+        device_id,
+        config_encryption_enabled(config),
+    )
+    .await
+}
+
 fn rollback_marked_sync_versions(
     active_dir: &std::path::Path,
     marked_by_db: &HashMap<String, Vec<i64>>,
@@ -1594,6 +1640,13 @@ pub async fn data_governance_run_sync(
     // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+    // [R04-sync-e2ee] 涉及上传的方向在写入任何对象（含格式描述符）前先过
+    // 加密一致性策略：有密码先落云端 .encryption-marker；无密码但 root 已有
+    // 标记则拒绝明文上传。
+    if sync_direction != SyncDirection::Download {
+        enforce_record_upload_encryption_policy_for_config(&config, &device_id).await?;
+    }
+
     manager
         .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
         .await
@@ -2759,6 +2812,18 @@ pub async fn data_governance_run_sync_with_progress(
     // [P0-2] 透传加密密码
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
+
+    // [R04-sync-e2ee] 涉及上传的方向在写入任何对象（含格式描述符）前先过
+    // 加密一致性策略：有密码先落云端 .encryption-marker；无密码但 root 已有
+    // 标记则拒绝明文上传。
+    if sync_direction != SyncDirection::Download {
+        if let Err(e) = enforce_record_upload_encryption_policy_for_config(&config, &device_id).await
+        {
+            emitter.emit_failed(&e).await;
+            return Err(e);
+        }
+    }
+
     if let Err(e) = manager
         .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
         .await
@@ -3774,6 +3839,10 @@ pub async fn data_governance_mark_blob_deleted(
         .map_err(|e| format!("创建云存储失败: {}", e))?;
 
     let device_id = get_device_id(&app);
+
+    // [R04-sync-e2ee] tombstone 清单同样是记录级上传，写入前先过加密一致性策略
+    enforce_record_upload_encryption_policy_for_config(&cloud_config, &device_id).await?;
+
     // [P0-2] 透传加密密码，确保 tombstone 清单也走 DSBK
     let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
 
@@ -3804,6 +3873,10 @@ pub async fn data_governance_mark_asset_deleted(
         .map_err(|e| format!("创建云存储失败: {}", e))?;
 
     let device_id = get_device_id(&app);
+
+    // [R04-sync-e2ee] tombstone 清单同样是记录级上传，写入前先过加密一致性策略
+    enforce_record_upload_encryption_policy_for_config(&cloud_config, &device_id).await?;
+
     // [P0-2] 透传加密密码
     let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
 
@@ -4687,6 +4760,156 @@ pub async fn data_governance_detect_prune_gap(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ============ [R04-sync-e2ee] 记录级上传加密一致性策略 ============
+
+    const ENCRYPTION_MARKER_KEY: &str = ".encryption-marker";
+
+    /// 测试用内存云存储（仅覆盖策略检查用到的 get/put，其余最小实现）。
+    #[derive(Default)]
+    struct PolicyMemoryStorage {
+        files: std::sync::Mutex<HashMap<String, Vec<u8>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for std::sync::Arc<PolicyMemoryStorage> {
+        fn provider_name(&self) -> &'static str {
+            "memory"
+        }
+
+        async fn check_connection(&self) -> crate::cloud_storage::Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> crate::cloud_storage::Result<()> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), data.to_vec());
+            Ok(())
+        }
+
+        async fn get(&self, key: &str) -> crate::cloud_storage::Result<Option<Vec<u8>>> {
+            Ok(self.files.lock().unwrap().get(key).cloned())
+        }
+
+        async fn list(
+            &self,
+            prefix: &str,
+        ) -> crate::cloud_storage::Result<Vec<crate::cloud_storage::FileInfo>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .map(|(key, data)| crate::cloud_storage::FileInfo {
+                    key: key.clone(),
+                    size: data.len() as u64,
+                    last_modified: chrono::Utc::now(),
+                    etag: None,
+                })
+                .collect())
+        }
+
+        async fn delete(&self, key: &str) -> crate::cloud_storage::Result<()> {
+            self.files.lock().unwrap().remove(key);
+            Ok(())
+        }
+
+        async fn stat(
+            &self,
+            key: &str,
+        ) -> crate::cloud_storage::Result<Option<crate::cloud_storage::FileInfo>> {
+            Ok(self.files.lock().unwrap().get(key).map(|data| {
+                crate::cloud_storage::FileInfo {
+                    key: key.to_string(),
+                    size: data.len() as u64,
+                    last_modified: chrono::Utc::now(),
+                    etag: None,
+                }
+            }))
+        }
+    }
+
+    fn policy_storage() -> std::sync::Arc<PolicyMemoryStorage> {
+        std::sync::Arc::new(PolicyMemoryStorage::default())
+    }
+
+    #[test]
+    fn config_encryption_enabled_ignores_empty_password() {
+        let mut config = CloudStorageConfig::default();
+        assert!(!config_encryption_enabled(&config));
+        config.encryption_password = Some(String::new());
+        assert!(!config_encryption_enabled(&config));
+        config.encryption_password = Some("pw".to_string());
+        assert!(config_encryption_enabled(&config));
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_allows_plaintext_without_marker() {
+        let storage = policy_storage();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", false)
+            .await
+            .expect("无标记且未启用加密时应放行");
+        assert!(
+            !storage
+                .files
+                .lock()
+                .unwrap()
+                .contains_key(ENCRYPTION_MARKER_KEY),
+            "明文上传不应写入加密标记"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_writes_marker_when_encrypted() {
+        let storage = policy_storage();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", true)
+            .await
+            .expect("启用加密时应放行");
+        assert!(
+            storage
+                .files
+                .lock()
+                .unwrap()
+                .contains_key(ENCRYPTION_MARKER_KEY),
+            "加密上传前必须先写入云端加密标记"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_rejects_plaintext_when_marker_exists() {
+        let storage = policy_storage();
+        // 另一台设备曾经加密上传，在同一 root 留下标记
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", true)
+            .await
+            .unwrap();
+
+        let error =
+            enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-b", false)
+                .await
+                .expect_err("云端有加密标记且本机无密码时必须拒绝明文记录级上传");
+        assert!(
+            error.contains("已存在端到端加密备份"),
+            "错误应说明拒绝原因: {error}"
+        );
+        assert!(
+            error.contains("加密密码"),
+            "错误应给出可操作的处理路径: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_upload_policy_allows_encrypted_when_marker_exists() {
+        let storage = policy_storage();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-a", true)
+            .await
+            .unwrap();
+        enforce_record_upload_encryption_policy(Box::new(storage.clone()), "device-b", true)
+            .await
+            .expect("已有标记且本机启用加密时应放行");
+    }
 
     fn conflicts_test_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
