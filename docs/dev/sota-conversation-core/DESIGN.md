@@ -48,7 +48,9 @@
   instructions / AGENTS / user_preferences + **固定**引用规则。
 - `<available_skills>` 改 `excludeLoaded=false`，或整块移出 system；已加载状态用 tool result 表达。
 - 技能正文首次加载后位置冻结（或随 tool result 驻留）；环内新技能插到工具结果之后，不要插到当前 user 之前。
-- tools 会话内冻结；新工具延迟到下一稳定窗口。排序「首见轮次 + 名字」；G6 上移到 schema 合并处（含多变体）。
+- tools 会话内冻结；新工具延迟到下一稳定窗口。排序键必须取 `function.name`（回退顶层 `name`），
+  现状 G6 是空操作。统一写 `custom_tools`（多变体现在写的 `"tools"` 是死键）。
+  稳定后改为「首见轮次 + 名字」append-only。
 - `web_search` engine enum 不要写进 schema。
 - Anthropic：删除无效顶层 `cache_control`；system 用 block 数组，在稳定段末尾与历史尾部打合法断点（≤4）。
 - DeepSeek 默认协议路径也要跑模型门控；`is_official_deepseek_config` 校验 base_url。

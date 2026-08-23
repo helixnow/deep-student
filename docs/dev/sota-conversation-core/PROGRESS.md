@@ -23,7 +23,7 @@
 | ddb6d831 | 多轮缓存前缀断裂路径 |
 | [5df53cf1](5df53cf1-bd09-4c34-a36f-24e053aa04ba) | 技能注入与工具变化对缓存的影响（已完成） |
 | [9859559e](9859559e-9c33-4fde-a58e-16d7910cebe7) | 系统提示词稳定性与构建顺序（已完成） |
-| d3ab2581 | 工具面 / hosted tools / 回传格式 |
+| [d3ab2581](d3ab2581-4092-434f-b965-925e046e6dee) | 工具面 / hosted tools / 回传格式（已完成） |
 | [1fbd7859](1fbd7859-a620-44eb-a054-439a5834af8a) | OpenCode / Pi Agent 对标（已完成） |
 | b35b36be | Chat V2 流水线：裁剪、变体、usage 入库 |
 | [b0ca75ca](b0ca75ca-0edf-4ca5-81ad-efcabefe32d5) | 2026 Responses 官方能力覆盖度（已完成） |
