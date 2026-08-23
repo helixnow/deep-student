@@ -28,11 +28,14 @@ vi.mock('@/components/UnifiedNotification', () => ({
 }));
 
 // Mock i18next
-vi.mock('react-i18next', () => ({
-    useTranslation: () => ({
-        t: (key: string) => key,
-    }),
-}));
+// t 必须跨渲染身份稳定：NoteTagsEditor 的 loadAvailableTags 依赖 [initialTags, t]，
+// 若每次渲染返回新 t 闭包，弹层打开后加载 effect 会无限重跑（挂起 + 堆增长）。
+vi.mock('react-i18next', () => {
+    const t = (key: string) => key;
+    return {
+        useTranslation: () => ({ t }),
+    };
+});
 
 interface MockPopoverProps {
     children?: React.ReactNode;
