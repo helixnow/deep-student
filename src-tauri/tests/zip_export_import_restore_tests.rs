@@ -1,8 +1,9 @@
 //! P0-ZIP 契约测试：导出 ZIP → 导入 → restore 的端到端行为锁定。
 //!
 //! 契约（本文件锁定的不变量）：
-//! 1. 真实 `backup_full` 产物在本地是 disaster_recovery 级快照
-//!    （`validate_for_slot_restore` 通过）。
+//! 1. 真实 `backup_with_assets` 产物的分类必须自洽：
+//!    `snapshot_kind == Full` 当且仅当 `validate_for_slot_restore` 通过
+//!    （disaster_recovery 标签只能来自证据，不允许分叉）。
 //! 2. `export_backup_to_zip` 会把清单改写为便携归档（剥离本地加密材料，
 //!    `mark_partial` + `key_policy=excluded_portable`），`import_backup_from_zip`
 //!    必须能完整导入该 ZIP，且导入的数据库字节与源备份逐位一致。
@@ -22,7 +23,7 @@ use std::path::{Path, PathBuf};
 
 use deep_student_lib::data_governance::backup::{
     export_backup_to_zip, zip_export::import_backup_from_zip, BackupManager, BackupManifest,
-    ZipExportOptions,
+    SnapshotKind, ZipExportOptions,
 };
 use rusqlite::Connection;
 use tempfile::TempDir;
@@ -75,10 +76,20 @@ fn zip_roundtrip_restore_succeeds_or_returns_actionable_error() {
     manager.set_app_data_dir(source_slot.clone());
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
-    let manifest = manager.backup_full().expect("backup_full 应成功");
-    assert!(
+    // backup_with_assets 是 disaster_recovery 自动备份的生产路径
+    // （backup_core 产物恒为 PartialOverlay，只有带资产覆盖证据的备份
+    // 才可能升级为 Full）。
+    let manifest = manager
+        .backup_with_assets(None)
+        .expect("backup_with_assets 应成功");
+    // 源头分类一致性：Full ⇔ validate_for_slot_restore 通过。
+    // 任何一侧分叉都意味着本地备份会被错误标注 disaster_recovery/partial。
+    assert_eq!(
+        manifest.snapshot_kind == SnapshotKind::Full,
         manifest.validate_for_slot_restore().is_ok(),
-        "本地 backup_full 产物必须是 disaster_recovery 级完整快照"
+        "snapshot_kind 与 validate_for_slot_restore 分类出现分叉: kind={:?}, validate={:?}",
+        manifest.snapshot_kind,
+        manifest.validate_for_slot_restore().map_err(|e| e.to_string())
     );
     let backup_subdir = backup_dir.join(&manifest.backup_id);
     assert!(backup_subdir.is_dir(), "备份目录应存在");
@@ -192,7 +203,9 @@ fn imported_manifest_classification_matches_restore_gate() {
     let mut manager = BackupManager::new(backup_dir.clone());
     manager.set_app_data_dir(source_slot);
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
-    let manifest = manager.backup_full().expect("backup_full 应成功");
+    let manifest = manager
+        .backup_with_assets(None)
+        .expect("backup_with_assets 应成功");
 
     let zip_dir = TempDir::new().expect("zip dir");
     let zip_path = zip_dir.path().join("classification.zip");
