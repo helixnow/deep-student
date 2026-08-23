@@ -58,6 +58,8 @@
 - 缓存是磁盘前缀自动命中；V4 的 prefix unit 在「本轮 user 结束」和「assistant 结束」两个边界落盘，
   后续请求必须完整复用某个 unit，中间改一个字节就会整段 miss。
 - 原生工具只吃 `function` + `web_search`；`web_search_call` 必须原样回传，服务端自己恢复搜索结果。
+  我们目前只把搜索结果抽成 UI 来源，**不把 `web_search_call` item 写回下一轮 `input`**。
+  reasoning item 有回放通道，hosted search 没有。
 - Responses usage 的缓存字段是 `input_tokens_details.cached_tokens`（不是 CC 的 `prompt_cache_hit_tokens`）。
 - `include` / `encrypted_content` / hosted file_search 等不支持。
 
