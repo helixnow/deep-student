@@ -34,7 +34,7 @@ fn new_db() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(
         r#"
-        CREATE TABLE test_records (
+        CREATE TABLE items (
             id TEXT PRIMARY KEY,
             content TEXT,
             updated_at TEXT
@@ -55,7 +55,7 @@ fn new_db() -> Connection {
 
 fn insert_record(conn: &Connection, id: &str, content: &str, updated_at: &str) {
     conn.execute(
-        "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+        "INSERT INTO items(id, content, updated_at) VALUES(?1, ?2, ?3)",
         params![id, content, updated_at],
     )
     .unwrap();
@@ -68,7 +68,7 @@ fn delete_change(
     source_seq: u64,
 ) -> SyncChangeWithData {
     SyncChangeWithData {
-        table_name: "test_records".to_string(),
+        table_name: "items".to_string(),
         record_id: record_id.to_string(),
         operation: ChangeOperation::Delete,
         data: None,
@@ -83,7 +83,7 @@ fn delete_change(
 
 fn record_count(conn: &Connection, id: &str) -> i64 {
     conn.query_row(
-        "SELECT COUNT(*) FROM test_records WHERE id=?1",
+        "SELECT COUNT(*) FROM items WHERE id=?1",
         params![id],
         |row| row.get(0),
     )
@@ -123,7 +123,7 @@ fn r05_slow_clock_delete_losing_lww_lands_in_sync_conflicts() {
     assert_eq!(record_count(&conn, "rec-1"), 1, "更新的本地行必须保留");
     let content: String = conn
         .query_row(
-            "SELECT content FROM test_records WHERE id='rec-1'",
+            "SELECT content FROM items WHERE id='rec-1'",
             [],
             |row| row.get(0),
         )
@@ -140,7 +140,7 @@ fn r05_slow_clock_delete_losing_lww_lands_in_sync_conflicts() {
         .query_row(
             "SELECT COUNT(*), side, data_json, losing_device_id, resolved_at
              FROM __sync_conflicts
-             WHERE table_name='test_records' AND record_id='rec-1'",
+             WHERE table_name='items' AND record_id='rec-1'",
             [],
             |row| {
                 Ok((
@@ -169,7 +169,7 @@ fn r05_slow_clock_delete_with_local_pending_change_records_both_sides() {
     // 手工登记一条未同步的本地变更，触发 resolve_one 的冲突检测前提
     conn.execute(
         "INSERT INTO __change_log(table_name, record_id, operation, changed_at, sync_version)
-         VALUES('test_records', 'rec-2', 'UPDATE', '2026-07-10T13:00:00Z', 0)",
+         VALUES('items', 'rec-2', 'UPDATE', '2026-07-10T13:00:00Z', 0)",
         [],
     )
     .unwrap();
@@ -193,7 +193,7 @@ fn r05_slow_clock_delete_with_local_pending_change_records_both_sides() {
     let cloud_null: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM __sync_conflicts
-             WHERE table_name='test_records' AND record_id='rec-2'
+             WHERE table_name='items' AND record_id='rec-2'
                AND side='cloud' AND data_json='null'",
             [],
             |row| row.get(0),
@@ -204,7 +204,7 @@ fn r05_slow_clock_delete_with_local_pending_change_records_both_sides() {
     let local_snapshot: String = conn
         .query_row(
             "SELECT data_json FROM __sync_conflicts
-             WHERE table_name='test_records' AND record_id='rec-2' AND side='local'",
+             WHERE table_name='items' AND record_id='rec-2' AND side='local'",
             [],
             |row| row.get(0),
         )
@@ -260,7 +260,7 @@ fn r05_delete_with_unparseable_changed_at_goes_to_quarantine() {
         .query_row(
             "SELECT COUNT(*), operation, error, payload_json, attempts
              FROM __sync_quarantine
-             WHERE table_name='test_records' AND record_id='rec-3'",
+             WHERE table_name='items' AND record_id='rec-3'",
             [],
             |row| {
                 Ok((
@@ -300,7 +300,7 @@ fn r05_delete_with_unparseable_changed_at_goes_to_quarantine() {
     let (count_after, attempts_after): (i64, i64) = conn
         .query_row(
             "SELECT COUNT(*), attempts FROM __sync_quarantine
-             WHERE table_name='test_records' AND record_id='rec-3'",
+             WHERE table_name='items' AND record_id='rec-3'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
