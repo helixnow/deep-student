@@ -72,7 +72,10 @@ describe('generateCardsFromNote', () => {
   });
 
   it('移动端命令桥的 generateCards 走同一个共享入口', async () => {
-    const commands = buildMobileEditorCommands(makeEditor(), { noteTitle: '化学笔记' });
+    const commands = buildMobileEditorCommands(makeEditor(), {
+      enableGenerateCards: true,
+      noteTitle: '化学笔记',
+    });
 
     expect(commands.generateCards).toBeTypeOf('function');
     commands.generateCards?.();
@@ -80,5 +83,60 @@ describe('generateCardsFromNote', () => {
       expect(generateCardsFromText).toHaveBeenCalledTimes(1);
     });
     expect(vi.mocked(generateCardsFromText).mock.calls[0][0].deckName).toBe('化学笔记');
+  });
+
+  it('宿主未开启 enableGenerateCards 时不注入制卡命令（底栏不渲染按钮）', () => {
+    const commands = buildMobileEditorCommands(makeEditor(), { noteTitle: '化学笔记' });
+    expect(commands.generateCards).toBeUndefined();
+    expect(buildMobileEditorCommands(makeEditor()).generateCards).toBeUndefined();
+  });
+
+  it('制卡任务在途时忽略重复点击（触屏双击只发一个任务）', async () => {
+    let resolveTask: (value: { ok: true }) => void = () => {};
+    vi.mocked(generateCardsFromText).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveTask = resolve; }),
+    );
+
+    const commands = buildMobileEditorCommands(makeEditor(), { enableGenerateCards: true });
+    commands.generateCards?.();
+    commands.generateCards?.();
+
+    await vi.waitFor(() => {
+      expect(generateCardsFromText).toHaveBeenCalledTimes(1);
+    });
+
+    resolveTask({ ok: true });
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    // 任务结束后守卫解除，可以再次制卡
+    commands.generateCards?.();
+    expect(generateCardsFromText).toHaveBeenCalledTimes(2);
+  });
+
+  it('in-flight 守卫按编辑器实例隔离，另一篇笔记不受影响', async () => {
+    vi.mocked(generateCardsFromText).mockImplementationOnce(() => new Promise(() => {}));
+
+    const first = buildMobileEditorCommands(makeEditor(), { enableGenerateCards: true });
+    const second = buildMobileEditorCommands(makeEditor(), { enableGenerateCards: true });
+    first.generateCards?.();
+    first.generateCards?.();
+    second.generateCards?.();
+
+    await vi.waitFor(() => {
+      expect(generateCardsFromText).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('宿主重渲染重建命令对象后守卫仍然生效', async () => {
+    vi.mocked(generateCardsFromText).mockImplementationOnce(() => new Promise(() => {}));
+
+    const editor = makeEditor();
+    buildMobileEditorCommands(editor, { enableGenerateCards: true }).generateCards?.();
+    await vi.waitFor(() => {
+      expect(generateCardsFromText).toHaveBeenCalledTimes(1);
+    });
+
+    buildMobileEditorCommands(editor, { enableGenerateCards: true }).generateCards?.();
+    expect(generateCardsFromText).toHaveBeenCalledTimes(1);
   });
 });

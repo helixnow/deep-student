@@ -1,6 +1,9 @@
 /**
  * MobileEditorToolbar — 按钮回调触发 + visible 受控 + visualViewport bottom
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -239,6 +242,27 @@ describe('MobileEditorToolbar', () => {
     const btn = document.querySelector('.mobile-editor-toolbar__btn');
     expect(btn).toBeTruthy();
     expect(btn?.className).toContain('mobile-editor-toolbar__btn');
+  });
+
+  it('生成卡片按钮同样落在 44px 命中区规则里', () => {
+    const commands: MobileEditorToolbarCommands = {
+      ...mockCommands(),
+      generateCards: vi.fn(),
+    };
+    render(<MobileEditorToolbar commands={commands} visible />);
+
+    // jsdom 不加载 CSS：按钮侧锁 class，尺寸侧锁 class 对应的样式声明
+    expect(byAction('generateCards').className).toContain('mobile-editor-toolbar__btn');
+
+    const css = readFileSync(
+      resolve(process.cwd(), 'src/features/notes/components/MobileEditorToolbar.css'),
+      'utf-8',
+    );
+    const rule = css
+      .split('.mobile-editor-toolbar__btn {')[1]
+      ?.split('}')[0] ?? '';
+    expect(rule).toMatch(/min-width:\s*44px/);
+    expect(rule).toMatch(/min-height:\s*44px/);
   });
 
   it('mousedown 默认 preventDefault，避免抢走编辑器焦点', () => {
