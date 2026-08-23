@@ -77,6 +77,52 @@ describe('apiCapabilityEngine vision inference', () => {
   });
 });
 
+describe('modelCapabilityRegistry 2026-08 supplement lookups', () => {
+  it('resolves claude-haiku-4-5 with the official 200K context window', () => {
+    const record = findModelRecordById('claude-haiku-4-5');
+    expect(record?.model_id).toBe('claude-haiku-4-5');
+    expect(record?.capabilities.max_context_tokens).toBe(200000);
+    expect(record?.capabilities.max_output_tokens).toBe(64000);
+    expect(record?.capabilities.vision).toBe(true);
+    expect(record?.capabilities.reasoning).toBe(true);
+  });
+
+  it('resolves the dated claude-haiku-4-5-20251001 id via provider_model_id', () => {
+    const record = findModelRecordById('claude-haiku-4-5-20251001');
+    expect(record?.model_id).toBe('claude-haiku-4-5');
+    expect(record?.provider_model_id).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('keeps claude-haiku-5 unresolved because Anthropic has not published that model id', () => {
+    expect(findModelRecordById('claude-haiku-5')).toBeUndefined();
+  });
+
+  it('resolves gemini-3.1-flash-lite with official token limits', () => {
+    const record = findModelRecordById('gemini-3.1-flash-lite');
+    expect(record?.model_id).toBe('gemini-3.1-flash-lite');
+    expect(record?.capabilities.max_context_tokens).toBe(1048576);
+    expect(record?.capabilities.max_output_tokens).toBe(65536);
+    expect(record?.capabilities.reasoning).toBe(true);
+    expect(record?.capabilities.function_calling).toBe(true);
+  });
+
+  it('resolves gemini-3.5-flash-lite as the latest stable 3.x Flash-Lite', () => {
+    const record = findModelRecordById('gemini-3.5-flash-lite');
+    expect(record?.model_id).toBe('gemini-3.5-flash-lite');
+    expect(record?.capabilities.max_context_tokens).toBe(1048576);
+    expect(record?.capabilities.max_output_tokens).toBe(65536);
+  });
+
+  it('resolves MiniMax-M2 case-insensitively with the official 204800 context window', () => {
+    for (const input of ['MiniMax-M2', 'minimax-m2']) {
+      const record = findModelRecordById(input);
+      expect(record?.model_id).toBe('MiniMax-M2');
+      expect(record?.capabilities.max_context_tokens).toBe(204800);
+      expect(record?.capabilities.reasoning).toBe(true);
+    }
+  });
+});
+
 describe('apiCapabilityEngine DeepSeek version inference', () => {
   it('treats official DeepSeek V4 as hybrid reasoning with V4 effort and 1M context', () => {
     const caps = inferApiCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
