@@ -132,6 +132,49 @@ impl ChatV2Pipeline {
                 }
             }
 
+            // P1-8 技能锚定重放：按 meta.skill_injection_anchors 在冻结位置
+            // 还原瞬态技能消息。只落库 id，正文取自当轮请求的
+            // replay_skill_contents / skill_contents，与 live 使用同一渲染
+            // 函数，字节相等 —— 使跨轮 [history][skills][userN] live == replay。
+            let skill_anchors = (message.role == MessageRole::Assistant)
+                .then(|| {
+                    message
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.skill_injection_anchors.clone())
+                })
+                .flatten();
+            if let Some(anchors) = skill_anchors
+                .as_ref()
+                .filter(|anchors| !anchors.turn_skill_ids.is_empty())
+            {
+                let restored = rebuild_anchored_skill_messages(
+                    &anchors.turn_skill_ids,
+                    ctx.options
+                        .replay_skill_contents
+                        .as_ref()
+                        .or(ctx.options.skill_contents.as_ref()),
+                );
+                if !restored.is_empty() {
+                    // live 注入点：本轮 user 消息之前（is_continue 轮为历史末尾）
+                    let insert_at = if anchors.before_turn_user {
+                        last_user_message_index
+                            .unwrap_or(chat_history.len())
+                            .min(chat_history.len())
+                    } else {
+                        chat_history.len()
+                    };
+                    let before_len = chat_history.len();
+                    insert_transient_skill_messages(&mut chat_history, insert_at, restored);
+                    let inserted = chat_history.len() - before_len;
+                    if let Some(index) = last_user_message_index.as_mut() {
+                        if insert_at <= *index {
+                            *index += inserted;
+                        }
+                    }
+                }
+            }
+
             // 只提取 content 类型块的内容
             let content: String = blocks
                 .iter()
@@ -231,6 +274,14 @@ impl ChatV2Pipeline {
                 MessageRole::User => "user",
                 MessageRole::Assistant => "assistant",
             };
+
+            // P1-8：环内 load_skills 锚定批次（tool_call_id → skill_ids），
+            // 在对应 tool result 消息之后按 live 顺序还原
+            let mut pending_tool_anchored: Vec<crate::chat_v2::types::ToolAnchoredSkills> =
+                skill_anchors
+                    .as_ref()
+                    .map(|anchors| anchors.tool_anchored.clone())
+                    .unwrap_or_default();
 
             // 如果是 assistant 消息且有工具调用，先添加工具调用消息
             // 🔧 B1+B2+C1 修复：使用 tool_entries（含关联 thinking）替代 tool_blocks
@@ -375,7 +426,31 @@ impl ChatV2Pipeline {
                         persistent_stable_id: None,
                         metadata: None,
                     };
+                    let anchor_call_id = tool_msg
+                        .tool_result
+                        .as_ref()
+                        .map(|tr| tr.call_id.clone())
+                        .unwrap_or_default();
                     chat_history.push(tool_msg);
+
+                    // P1-8：环内加载的技能还原到该 load_skills tool result 之后
+                    // （与 live 的 insert_skill_messages_after_tool_result 同位）
+                    let mut still_pending = Vec::with_capacity(pending_tool_anchored.len());
+                    for anchored in pending_tool_anchored.drain(..) {
+                        if anchored.tool_call_id != anchor_call_id {
+                            still_pending.push(anchored);
+                            continue;
+                        }
+                        let restored = rebuild_anchored_skill_messages(
+                            &anchored.skill_ids,
+                            ctx.options
+                                .replay_skill_contents
+                                .as_ref()
+                                .or(ctx.options.skill_contents.as_ref()),
+                        );
+                        chat_history.extend(restored);
+                    }
+                    pending_tool_anchored = still_pending;
 
                     log::debug!(
                         "[ChatV2::pipeline] Loaded tool call from history: tool={}, block_type={}, block_id={}, index={}, has_thinking={}",
@@ -385,6 +460,24 @@ impl ChatV2Pipeline {
                         idx,
                         entry_thinking.is_some()
                     );
+                }
+
+                // 兜底：tool_call_id 未匹配（老数据 tc_{block_id} 派生等）时，
+                // 技能仍需在该 assistant 消息的工具消息之后出现，追加到末尾
+                for anchored in pending_tool_anchored.drain(..) {
+                    log::warn!(
+                        "[ChatV2::pipeline] P1-8: tool-anchored skills {:?} did not match any tool_call_id (anchor={}); appending after tool messages",
+                        anchored.skill_ids,
+                        anchored.tool_call_id
+                    );
+                    let restored = rebuild_anchored_skill_messages(
+                        &anchored.skill_ids,
+                        ctx.options
+                            .replay_skill_contents
+                            .as_ref()
+                            .or(ctx.options.skill_contents.as_ref()),
+                    );
+                    chat_history.extend(restored);
                 }
             }
 
@@ -723,6 +816,26 @@ impl ChatV2Pipeline {
         let final_content = total_result.to_formatted_text(original_content);
         (final_content, total_result.image_base64_list)
     }
+}
+
+/// P1-8：按锚点记录的技能 id 重建瞬态技能消息（与 live 同一渲染函数，
+/// 相同正文下字节相等）。正文缺失（技能被删除且无 replay 快照）时跳过
+/// 并告警 —— 该技能位置的前缀会漂移，但不阻塞重放。
+pub(super) fn rebuild_anchored_skill_messages(
+    skill_ids: &[String],
+    skill_contents: Option<&std::collections::HashMap<String, String>>,
+) -> Vec<LegacyChatMessage> {
+    let mut restored = Vec::with_capacity(skill_ids.len());
+    for skill_id in skill_ids {
+        match skill_contents.and_then(|contents| contents.get(skill_id)) {
+            Some(content) => restored.push(make_transient_skill_message(skill_id, content)),
+            None => log::warn!(
+                "[ChatV2::pipeline] P1-8: anchored skill '{}' has no content in this request; replay prefix may drift at its position",
+                skill_id
+            ),
+        }
+    }
+    restored
 }
 
 /// 🔧 ROUND-01-pipeline #1：按 active_variant_id 过滤多变体消息的块

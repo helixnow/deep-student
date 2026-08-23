@@ -175,6 +175,16 @@ impl ChatV2Pipeline {
         // （此前每个检查点都 new 一个注入器，节流形同虚设）
         let mut workspace_injection_throttle =
             super::super::workspace::injector::InjectionThrottle::new();
+        // ============================================================
+        // P1-8 技能锚定：本轮注入首轮构建后冻结（位置 = 历史末尾、当前 user
+        // 之前），后续轮次逐字节复用；环内 load_skills 新加载的技能按
+        // tool_call_id 锚定到对应 tool result 之后，绝不重插到当前 user 之前。
+        // ============================================================
+        let mut frozen_turn_skill_injection: Option<TransientSkillMessages> = None;
+        let mut injected_skill_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut in_loop_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
+        let mut cumulative_skill_audit = SkillInjectionAudit::default();
         loop {
             // ============================================================
             // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
@@ -388,31 +398,50 @@ impl ChatV2Pipeline {
             // ============================================================
             let mut messages = ctx.chat_history.clone();
 
-            let skill_state =
-                self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
-            let empty_skill_contents = std::collections::HashMap::new();
-            let skill_contents = ctx
-                .options
-                .replay_skill_contents
+            // P1-8 技能锚定：本轮注入只在首轮构建并冻结。已锚定在可回放历史中
+            // 的技能（history.rs 按 meta.skill_injection_anchors 还原）不再重复
+            // 注入，注入点因此在首次注入后冻结，跨轮 [history][skills][userN]
+            // live == replay；同轮后续轮次逐字节复用冻结结果。
+            if frozen_turn_skill_injection.is_none() {
+                let skill_state =
+                    self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
+                let empty_skill_contents = std::collections::HashMap::new();
+                let skill_contents = ctx
+                    .options
+                    .replay_skill_contents
+                    .as_ref()
+                    .or(ctx.options.skill_contents.as_ref())
+                    .unwrap_or(&empty_skill_contents);
+                injected_skill_ids = anchored_skill_ids_in_history(&ctx.chat_history);
+                let built = build_transient_skill_messages_with_audit_excluding(
+                    &skill_state,
+                    skill_contents,
+                    ctx.options.skill_dependencies.as_ref(),
+                    // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+                    ctx.options.context_limit.map(|v| v as usize),
+                    &injected_skill_ids,
+                );
+                injected_skill_ids.extend(built.audit.injected_skill_ids.iter().cloned());
+                cumulative_skill_audit = built.audit.clone();
+                if !built.audit.injected_skill_ids.is_empty() {
+                    let anchors = ctx
+                        .options
+                        .skill_injection_anchors
+                        .get_or_insert_with(Default::default);
+                    anchors.turn_skill_ids = built.audit.injected_skill_ids.clone();
+                    anchors.before_turn_user = ctx.options.is_continue != Some(true);
+                }
+                frozen_turn_skill_injection = Some(built);
+            }
+            let frozen_skill_messages = frozen_turn_skill_injection
                 .as_ref()
-                .or(ctx.options.skill_contents.as_ref())
-                .unwrap_or(&empty_skill_contents);
-            let transient_skill_messages = build_transient_skill_messages_with_audit(
-                &skill_state,
-                skill_contents,
-                ctx.options.skill_dependencies.as_ref(),
-                // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-                ctx.options.context_limit.map(|v| v as usize),
-            );
-            let skill_audit = transient_skill_messages.audit.clone();
+                .map(|built| built.messages.clone())
+                .unwrap_or_default();
+            let skill_audit = cumulative_skill_audit.clone();
             let injected_skill_count = skill_audit.injected_skill_ids.len();
             let round_id = format!("tool-round-{}", recursion_depth);
             let insertion_index = messages.len();
-            insert_transient_skill_messages(
-                &mut messages,
-                insertion_index,
-                transient_skill_messages.messages,
-            );
+            insert_transient_skill_messages(&mut messages, insertion_index, frozen_skill_messages);
             emitter.emit_skill_injection_audit(
                 &ctx.assistant_message_id,
                 json!({
@@ -455,6 +484,16 @@ impl ChatV2Pipeline {
                 let tool_messages = ctx.all_tool_results_to_messages();
                 let tool_count = tool_messages.len();
                 messages.extend(tool_messages);
+
+                // P1-8：环内 load_skills 新加载的技能按记录顺序回放到对应
+                // tool result 之后，当前 user 之前的内存前缀保持逐字节不变。
+                for (anchor_call_id, batch) in &in_loop_skill_batches {
+                    insert_skill_messages_after_tool_result(
+                        &mut messages,
+                        anchor_call_id,
+                        batch.clone(),
+                    );
+                }
 
                 log::debug!(
                 "[ChatV2::pipeline] Added ALL {} tool result messages to chat history (tool_results count: {})",
@@ -1518,6 +1557,69 @@ impl ChatV2Pipeline {
                                             mcp_schemas.len()
                                         );
                                         }
+                                    }
+                                }
+
+                                // ============================================================
+                                // P1-8 环内技能锚定：新加载技能（差集）锚到本次
+                                // load_skills 的 tool result 之后追加，禁止删光后
+                                // 整包重插到当前 user 之前（那会改写同轮内存前缀）。
+                                // ============================================================
+                                if let Some(anchor_call_id) = tool_result
+                                    .tool_call_id
+                                    .clone()
+                                    .filter(|id| !id.is_empty())
+                                {
+                                    let empty_skill_contents = std::collections::HashMap::new();
+                                    let batch_contents = ctx
+                                        .options
+                                        .replay_skill_contents
+                                        .as_ref()
+                                        .or(ctx.options.skill_contents.as_ref())
+                                        .unwrap_or(&empty_skill_contents);
+                                    let batch = build_in_loop_skill_messages(
+                                        &loaded_skill_ids,
+                                        batch_contents,
+                                        ctx.options.skill_dependencies.as_ref(),
+                                        ctx.options.context_limit.map(|v| v as usize),
+                                        &injected_skill_ids,
+                                        ctx.options.skill_state_version.unwrap_or(0),
+                                    );
+                                    cumulative_skill_audit
+                                        .missing_skill_ids
+                                        .extend(batch.audit.missing_skill_ids.clone());
+                                    cumulative_skill_audit
+                                        .dropped_skill_ids
+                                        .extend(batch.audit.dropped_skill_ids.clone());
+                                    if !batch.audit.injected_skill_ids.is_empty() {
+                                        injected_skill_ids.extend(
+                                            batch.audit.injected_skill_ids.iter().cloned(),
+                                        );
+                                        cumulative_skill_audit.injected_skill_ids.extend(
+                                            batch.audit.injected_skill_ids.iter().cloned(),
+                                        );
+                                        cumulative_skill_audit.estimated_tokens +=
+                                            batch.audit.estimated_tokens;
+                                        let anchors = ctx
+                                            .options
+                                            .skill_injection_anchors
+                                            .get_or_insert_with(Default::default);
+                                        anchors.tool_anchored.push(
+                                            crate::chat_v2::types::ToolAnchoredSkills {
+                                                tool_call_id: anchor_call_id.clone(),
+                                                skill_ids: batch
+                                                    .audit
+                                                    .injected_skill_ids
+                                                    .clone(),
+                                            },
+                                        );
+                                        log::info!(
+                                            "[ChatV2::pipeline] P1-8: anchored {} in-loop skill(s) after load_skills tool_call_id={}",
+                                            batch.audit.injected_skill_ids.len(),
+                                            anchor_call_id
+                                        );
+                                        in_loop_skill_batches
+                                            .push((anchor_call_id, batch.messages));
                                     }
                                 }
                             }

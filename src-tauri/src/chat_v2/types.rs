@@ -1058,6 +1058,45 @@ impl ReplaySkillPayloadSnapshot {
     }
 }
 
+/// P1-8 技能锚定：一轮内瞬态技能注入的可回放锚点记录（只存 id，不存正文）。
+///
+/// 技能正文是瞬态请求数据（隐私约束，见
+/// `ReplaySkillPayloadSnapshot::without_skill_contents`），落库只记录
+/// 「哪些技能、锚在哪个位置」；history 重放时用当轮请求携带的
+/// `skill_contents` / `replay_skill_contents`，以与 live 相同的渲染函数
+/// 确定性重建消息字节，使跨轮 `[history][skills][userN]` live == replay。
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillInjectionAnchors {
+    /// 本轮注入点（user 消息之前 / is_continue 时历史末尾）的技能 id（有序、冻结）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub turn_skill_ids: Vec<String>,
+    /// 注入点之后是否紧跟本轮 user 消息（is_continue 轮为 false：
+    /// 重放时锚到历史末尾而非上一条 user 之前）
+    #[serde(default)]
+    pub before_turn_user: bool,
+    /// 环内 load_skills 之后追加的技能批次（按 provider tool_call_id 锚定，
+    /// 重放时插到对应 tool result 消息之后）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_anchored: Vec<ToolAnchoredSkills>,
+}
+
+impl SkillInjectionAnchors {
+    pub fn is_empty(&self) -> bool {
+        self.turn_skill_ids.is_empty() && self.tool_anchored.is_empty()
+    }
+}
+
+/// 环内 load_skills 追加的一个技能批次（P1-8）
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnchoredSkills {
+    /// 加载这批技能的 load_skills 调用的 provider tool_call_id
+    pub tool_call_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skill_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSkillState {
@@ -1683,6 +1722,11 @@ pub struct MessageMeta {
     /// 助手消息 meta 持久化，history 重放时按 tool_call_id 回填。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_reasoning_items: Option<std::collections::HashMap<String, Value>>,
+
+    /// P1-8 技能锚定：本轮瞬态技能注入的可回放锚点（只存 id，不存正文）。
+    /// history 重放按锚点用当轮 skill_contents 重建 live 字节。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_injection_anchors: Option<SkillInjectionAnchors>,
 }
 
 impl MessageMeta {
@@ -2523,6 +2567,12 @@ pub struct SendOptions {
     /// Rejected skills have no entry in skill_contents/skill_embedded_tools.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_admission_errors: Option<std::collections::HashMap<String, String>>,
+
+    /// P1-8 运行时锚定记录（不来自前端、不参与序列化）：
+    /// tool_loop 冻结本轮注入 / 环内追加技能时写入，
+    /// save_results 持久化到助手消息 meta.skill_injection_anchors。
+    #[serde(skip)]
+    pub skill_injection_anchors: Option<SkillInjectionAnchors>,
 
     /// 技能包根目录映射（skillId -> package root）
     ///

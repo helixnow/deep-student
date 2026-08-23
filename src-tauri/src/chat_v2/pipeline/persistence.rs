@@ -1104,6 +1104,13 @@ impl ChatV2Pipeline {
             // history 重放按 tool_call_id 回填，跨轮不丢 encrypted reasoning
             response_reasoning_items: (!ctx.response_reasoning_by_tool_call_id.is_empty())
                 .then(|| ctx.response_reasoning_by_tool_call_id.clone()),
+            // P1-8 技能锚定：本轮瞬态技能注入的可回放锚点（只存 id，不存正文），
+            // history 重放据此在冻结位置重建 live 字节
+            skill_injection_anchors: ctx
+                .options
+                .skill_injection_anchors
+                .clone()
+                .filter(|anchors| !anchors.is_empty()),
         };
 
         let assistant_message = ChatMessage {

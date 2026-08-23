@@ -672,9 +672,11 @@ fn push_skill_with_dependencies(
 fn ordered_skill_ids_for_injection(
     skill_state: &super::super::types::SessionSkillState,
     dependencies: Option<&HashMap<String, Vec<String>>>,
+    already_injected: &HashSet<String>,
 ) -> Vec<(String, u8)> {
     let mut ordered = Vec::new();
-    let mut seen = HashSet::new();
+    // P1-8：已锚定在历史中的技能 id 预置进 seen —— 不重复注入（含其依赖）。
+    let mut seen: HashSet<String> = already_injected.clone();
     let mut visiting = HashSet::new();
 
     let mut push_group = |ids: &[String], tier: u8| {
@@ -701,7 +703,7 @@ fn ordered_skill_ids_for_injection(
     ordered
 }
 
-fn make_transient_skill_message(skill_id: &str, content: &str) -> LegacyChatMessage {
+pub(crate) fn make_transient_skill_message(skill_id: &str, content: &str) -> LegacyChatMessage {
     let mut msg = make_empty_message(
         "user",
         format!(
@@ -770,6 +772,25 @@ pub(crate) fn build_transient_skill_messages_with_audit(
     skill_dependencies: Option<&HashMap<String, Vec<String>>>,
     token_budget: Option<usize>,
 ) -> TransientSkillMessages {
+    build_transient_skill_messages_with_audit_excluding(
+        skill_state,
+        skill_contents,
+        skill_dependencies,
+        token_budget,
+        &HashSet::new(),
+    )
+}
+
+/// P1-8：与 `build_transient_skill_messages_with_audit` 相同，但跳过
+/// `already_injected` 中的技能（已锚定在可回放历史/本轮先前注入中的技能
+/// 不重复注入，注入点因此在首次注入后冻结）。
+pub(crate) fn build_transient_skill_messages_with_audit_excluding(
+    skill_state: &super::super::types::SessionSkillState,
+    skill_contents: &HashMap<String, String>,
+    skill_dependencies: Option<&HashMap<String, Vec<String>>>,
+    token_budget: Option<usize>,
+    already_injected: &HashSet<String>,
+) -> TransientSkillMessages {
     let mut result = TransientSkillMessages {
         audit: SkillInjectionAudit {
             skill_state_version: skill_state.version,
@@ -778,7 +799,8 @@ pub(crate) fn build_transient_skill_messages_with_audit(
         ..Default::default()
     };
 
-    let ordered_skill_ids = ordered_skill_ids_for_injection(skill_state, skill_dependencies);
+    let ordered_skill_ids =
+        ordered_skill_ids_for_injection(skill_state, skill_dependencies, already_injected);
     if ordered_skill_ids.is_empty() {
         return result;
     }
@@ -808,6 +830,76 @@ pub(crate) fn build_transient_skill_messages_with_audit(
     }
 
     result
+}
+
+/// P1-8：从瞬态技能消息 metadata 中提取 skillId
+pub(crate) fn transient_skill_message_skill_id(msg: &LegacyChatMessage) -> Option<String> {
+    if !is_transient_skill_message(msg) {
+        return None;
+    }
+    msg.metadata
+        .as_ref()?
+        .get("skillId")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// P1-8：收集历史中已锚定（重放还原）的技能 id 集合。
+/// 本轮注入只注入差集，保证首次注入位置冻结、跨轮字节稳定。
+pub(crate) fn anchored_skill_ids_in_history(history: &[LegacyChatMessage]) -> HashSet<String> {
+    history
+        .iter()
+        .filter_map(transient_skill_message_skill_id)
+        .collect()
+}
+
+/// P1-8：环内 load_skills 加载的一批技能消息，构建时排除已注入技能。
+/// 复用与轮首注入相同的依赖排序/预算/渲染逻辑，保证字节形态一致。
+pub(crate) fn build_in_loop_skill_messages(
+    loaded_skill_ids: &[String],
+    skill_contents: &HashMap<String, String>,
+    skill_dependencies: Option<&HashMap<String, Vec<String>>>,
+    token_budget: Option<usize>,
+    already_injected: &HashSet<String>,
+    skill_state_version: u64,
+) -> TransientSkillMessages {
+    let batch_state = super::super::types::SessionSkillState {
+        agentic_session_skill_ids: loaded_skill_ids.to_vec(),
+        version: skill_state_version,
+        ..Default::default()
+    };
+    build_transient_skill_messages_with_audit_excluding(
+        &batch_state,
+        skill_contents,
+        skill_dependencies,
+        token_budget,
+        already_injected,
+    )
+}
+
+/// P1-8：把环内新加载的技能消息插到对应 load_skills tool result 之后。
+///
+/// 禁止把技能整包重插到当前 user 之前 —— 那会改写同轮内存前缀。
+/// 找不到匹配 tool result（异常/老数据）时退化为追加到末尾，
+/// 仍然不触碰当前 user 之前的任何字节。
+pub(crate) fn insert_skill_messages_after_tool_result(
+    messages: &mut Vec<LegacyChatMessage>,
+    tool_call_id: &str,
+    skill_messages: Vec<LegacyChatMessage>,
+) {
+    if skill_messages.is_empty() {
+        return;
+    }
+    let insert_at = messages
+        .iter()
+        .rposition(|msg| {
+            msg.tool_result
+                .as_ref()
+                .is_some_and(|tr| tr.call_id == tool_call_id)
+        })
+        .map(|pos| pos + 1)
+        .unwrap_or(messages.len());
+    messages.splice(insert_at..insert_at, skill_messages);
 }
 
 impl ChatV2Pipeline {
@@ -1523,5 +1615,181 @@ mod tests {
             &[spoofed_builtin.name.clone()],
             &[spoofed_builtin.name.clone()],
         ));
+    }
+
+    // ============================================================
+    // P1-8 技能锚定回归测试
+    // ============================================================
+
+    /// P1-8：跨轮插入点字节一致 —— 轮 1 live 注入的技能消息，轮 2 由
+    /// history.rs 按锚点重建后，[history][skills][userN] 前缀逐字节相等；
+    /// 且已锚定技能进入排除集后本轮差集为空，注入点冻结不再漂移。
+    #[test]
+    fn test_p1_8_cross_turn_injection_point_bytes_live_eq_replay() {
+        let skill_state = crate::chat_v2::types::SessionSkillState {
+            manual_pinned_skill_ids: vec!["skill-a".to_string(), "skill-b".to_string()],
+            version: 3,
+            ..Default::default()
+        };
+        let skill_contents = HashMap::from([
+            ("skill-a".to_string(), "skill body A".to_string()),
+            ("skill-b".to_string(), "skill body B".to_string()),
+        ]);
+
+        // 轮 1 live：[user1, assistant1] + 技能注入（历史末尾、user2 之前）+ user2
+        let history_prefix = || {
+            vec![
+                make_empty_message("user", "user turn 1".to_string()),
+                make_empty_message("assistant", "assistant turn 1".to_string()),
+            ]
+        };
+        let built = build_transient_skill_messages_with_audit_excluding(
+            &skill_state,
+            &skill_contents,
+            None,
+            None,
+            &HashSet::new(),
+        );
+        let anchor_ids = built.audit.injected_skill_ids.clone();
+        assert_eq!(anchor_ids, vec!["skill-a".to_string(), "skill-b".to_string()]);
+
+        let mut live = history_prefix();
+        live.extend(built.messages);
+        live.push(make_empty_message("user", "user turn 2".to_string()));
+
+        // 轮 2 replay：按 meta.skill_injection_anchors 记录的 id 在同一位置重建
+        let mut replay = history_prefix();
+        replay.extend(super::super::history::rebuild_anchored_skill_messages(
+            &anchor_ids,
+            Some(&skill_contents),
+        ));
+        replay.push(make_empty_message("user", "user turn 2".to_string()));
+
+        assert_eq!(live.len(), replay.len());
+        for (l, r) in live.iter().zip(replay.iter()) {
+            assert_eq!(l.role, r.role);
+            assert_eq!(l.content, r.content, "重放技能消息必须与 live 字节相等");
+            assert_eq!(l.metadata, r.metadata);
+        }
+
+        // 轮 2 注入：历史里已锚定的技能进入排除集 → 差集为空，不再重复注入
+        let anchored = anchored_skill_ids_in_history(&replay);
+        assert_eq!(
+            anchored,
+            HashSet::from(["skill-a".to_string(), "skill-b".to_string()])
+        );
+        let second = build_transient_skill_messages_with_audit_excluding(
+            &skill_state,
+            &skill_contents,
+            None,
+            None,
+            &anchored,
+        );
+        assert!(second.messages.is_empty(), "注入点冻结后不得产生新技能消息");
+        assert!(second.audit.injected_skill_ids.is_empty());
+        // 排除集也要覆盖依赖闭包：skill-a 的依赖已注入时同样跳过
+        let deps = HashMap::from([("skill-a".to_string(), vec!["skill-b".to_string()])]);
+        let with_deps = build_transient_skill_messages_with_audit_excluding(
+            &skill_state,
+            &skill_contents,
+            Some(&deps),
+            None,
+            &anchored,
+        );
+        assert!(with_deps.messages.is_empty());
+    }
+
+    /// P1-8：环内 load_skills 新加载的技能追加到该 tool result 之后，
+    /// 当前 user 之前（含当前 user）的内存前缀逐字节不变。
+    #[test]
+    fn test_p1_8_in_loop_skills_do_not_touch_prefix_before_current_user() {
+        let skill_contents = HashMap::from([
+            ("skill-a".to_string(), "skill body A".to_string()),
+            ("skill-new".to_string(), "loaded in loop".to_string()),
+        ]);
+
+        // 同轮内存视图：[user1, skills(轮首), user2(当前), assistant tool_call, tool result]
+        let mut tool_call_message = make_empty_message("assistant", String::new());
+        tool_call_message.tool_call = Some(crate::models::ToolCall {
+            id: "call-load-skills".to_string(),
+            tool_name: "load_skills".to_string(),
+            args_json: json!({ "skill_ids": ["skill-new"] }),
+        });
+        let mut tool_result_message = make_empty_message("tool", "loaded".to_string());
+        tool_result_message.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-load-skills".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "loaded": ["skill-new"] })),
+            usage: None,
+            citations: None,
+        });
+        let mut messages = vec![
+            make_empty_message("user", "user turn 1".to_string()),
+            make_transient_skill_message("skill-a", "skill body A"),
+            make_empty_message("user", "current user turn".to_string()),
+            tool_call_message,
+            tool_result_message,
+        ];
+
+        // 快照：当前 user 及其之前的全部字节
+        let prefix_snapshot: Vec<(String, String)> = messages[..3]
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+
+        let mut injected = anchored_skill_ids_in_history(&messages);
+        assert!(injected.contains("skill-a"));
+        let batch = build_in_loop_skill_messages(
+            &["skill-new".to_string(), "skill-a".to_string()],
+            &skill_contents,
+            None,
+            None,
+            &injected,
+            4,
+        );
+        // 已注入的 skill-a 不重复；只有差集 skill-new
+        assert_eq!(batch.audit.injected_skill_ids, vec!["skill-new".to_string()]);
+        injected.extend(batch.audit.injected_skill_ids.iter().cloned());
+
+        insert_skill_messages_after_tool_result(
+            &mut messages,
+            "call-load-skills",
+            batch.messages,
+        );
+
+        // 新技能恰好插在 tool result 之后
+        assert_eq!(messages.len(), 6);
+        assert!(messages[4].tool_result.is_some());
+        assert!(is_transient_skill_message(&messages[5]));
+        assert_eq!(
+            transient_skill_message_skill_id(&messages[5]).as_deref(),
+            Some("skill-new")
+        );
+        // 当前 user 之前（含当前 user）的前缀逐字节不变
+        let prefix_after: Vec<(String, String)> = messages[..3]
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        assert_eq!(prefix_snapshot, prefix_after);
+
+        // 兜底：tool_call_id 不匹配时追加到末尾，仍不触碰前缀
+        let orphan = build_in_loop_skill_messages(
+            &["skill-a".to_string()],
+            &skill_contents,
+            None,
+            None,
+            &HashSet::new(),
+            4,
+        );
+        insert_skill_messages_after_tool_result(&mut messages, "call-missing", orphan.messages);
+        assert_eq!(messages.len(), 7);
+        assert!(is_transient_skill_message(&messages[6]));
+        let prefix_fallback: Vec<(String, String)> = messages[..3]
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        assert_eq!(prefix_snapshot, prefix_fallback);
     }
 }

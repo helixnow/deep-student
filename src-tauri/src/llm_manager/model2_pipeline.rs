@@ -107,6 +107,55 @@ fn is_pinned_request_message(message: &Value) -> bool {
         || text.contains("<request_context>")
 }
 
+/// P1-8：合并规则恒定 —— 技能/锚点瞬态 user 消息永不与邻接 user 合并，
+/// 其它真实连续 user 消息**始终**合并（此前存在任何瞬态技能就整段跳过
+/// `merge_consecutive_user_messages`，违反 DESIGN「有无瞬态技能不得改变
+/// 连续 user 合并规则」）。
+///
+/// 以瞬态消息的完整正文做精确匹配（正文由后端渲染函数生成、跨轮字节稳定）；
+/// 瞬态消息作为分段屏障，屏障两侧的真实 user 段各自照常合并。
+fn merge_consecutive_user_messages_respecting_transients(
+    messages: &mut Vec<Value>,
+    transient_user_contents: &std::collections::HashSet<&str>,
+) {
+    if transient_user_contents.is_empty() {
+        LLMManager::merge_consecutive_user_messages(messages);
+        return;
+    }
+    let is_guarded = |msg: &Value| {
+        msg.get("role").and_then(Value::as_str) == Some("user")
+            && msg
+                .get("content")
+                .and_then(Value::as_str)
+                .is_some_and(|text| transient_user_contents.contains(text))
+    };
+    let drained: Vec<Value> = messages.drain(..).collect();
+    let mut segment: Vec<Value> = Vec::new();
+    for msg in drained {
+        if is_guarded(&msg) {
+            LLMManager::merge_consecutive_user_messages(&mut segment);
+            messages.append(&mut segment);
+            messages.push(msg);
+        } else {
+            segment.push(msg);
+        }
+    }
+    LLMManager::merge_consecutive_user_messages(&mut segment);
+    messages.append(&mut segment);
+}
+
+/// P1-8：从 LegacyChatMessage 历史中收集瞬态技能/锚点 user 消息正文，
+/// 作为合并屏障的精确匹配集合
+fn transient_user_contents_for_merge(
+    chat_history: &[ChatMessage],
+) -> std::collections::HashSet<&str> {
+    chat_history
+        .iter()
+        .filter(|m| crate::chat_v2::pipeline::is_transient_llm_only_message(m))
+        .map(|m| m.content.as_str())
+        .collect()
+}
+
 fn removable_request_turns(messages: &[Value]) -> Vec<(usize, usize)> {
     let starts: Vec<usize> = messages
         .iter()
@@ -421,6 +470,29 @@ fn apply_server_side_web_search_tool(tools: &mut Vec<Value>) {
         .any(|tool| tool.get("type").and_then(Value::as_str) == Some("web_search"))
     {
         tools.push(json!({ "type": "web_search" }));
+    }
+}
+
+/// P2-13：把消息 metadata 里持久化的服务端 `web_search_call` 完整 item
+/// （键 `openai_responses_web_search_items`）附着到出站 assistant 消息的
+/// `response_web_search_items`。仅 OpenAI Responses 转换层消费该键并原样
+/// 回传 `input`（DeepSeek Responses 无状态，服务端靠该 item 恢复搜索结果）；
+/// 其他协议适配器忽略该键。
+#[inline]
+fn attach_web_search_replay_items(metadata: Option<&Value>, assistant_msg: &mut Value) {
+    let Some(items) = metadata
+        .and_then(|meta| meta.get("openai_responses_web_search_items"))
+        .and_then(Value::as_array)
+    else {
+        return;
+    };
+    let replayable: Vec<Value> = items
+        .iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("web_search_call"))
+        .cloned()
+        .collect();
+    if !replayable.is_empty() {
+        assistant_msg["response_web_search_items"] = Value::Array(replayable);
     }
 }
 
@@ -1512,6 +1584,39 @@ mod tests {
         assert_eq!(numbered[1]["citationTag"], json!("[搜索-2]"));
     }
 
+    /// P2-13：消息 metadata 里的服务端 web_search_call 完整 item 附着到出站
+    /// assistant 消息（仅 web_search_call 类型；无 metadata 时不改消息）。
+    #[test]
+    fn attach_web_search_replay_items_filters_and_attaches() {
+        let metadata = json!({
+            "openai_responses_web_search_items": [
+                {
+                    "type": "web_search_call",
+                    "id": "ws_1",
+                    "status": "completed",
+                    "search_results": [{ "url": "https://a.example.com", "title": "A" }]
+                },
+                { "type": "message", "id": "not_a_search" }
+            ]
+        });
+        let mut assistant_msg = json!({ "role": "assistant", "content": "answer" });
+        attach_web_search_replay_items(Some(&metadata), &mut assistant_msg);
+
+        let items = assistant_msg["response_web_search_items"]
+            .as_array()
+            .expect("items should be attached");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["id"], json!("ws_1"));
+        assert_eq!(items[0]["type"], json!("web_search_call"));
+
+        // 无 metadata / 无键：消息保持原样
+        let mut untouched = json!({ "role": "assistant", "content": "answer" });
+        attach_web_search_replay_items(None, &mut untouched);
+        assert!(untouched.get("response_web_search_items").is_none());
+        attach_web_search_replay_items(Some(&json!({})), &mut untouched);
+        assert!(untouched.get("response_web_search_items").is_none());
+    }
+
     #[test]
     fn test_third_party_declared_responses_support_defaults_to_responses_without_explicit_protocol()
     {
@@ -1776,6 +1881,63 @@ mod tests {
         assert_eq!(body.get("max_completion_tokens"), Some(&json!(32)));
         assert!(!body.as_object().unwrap().contains_key("max_tokens"));
         assert_eq!(body.pointer("/thinking/type"), Some(&json!("disabled")));
+    }
+
+    // ============================================================
+    // P1-8 合并规则恒定回归测试
+    // ============================================================
+
+    /// P1-8：有无瞬态技能时，非技能连续 user 的合并结果必须逐字节一致
+    /// （此前存在任何瞬态技能就整段跳过合并，违反 DESIGN 合并规则恒定）。
+    #[test]
+    fn p1_8_user_merge_behavior_identical_with_and_without_transient_skills() {
+        let base = vec![
+            json!({"role": "user", "content": "u1"}),
+            json!({"role": "user", "content": "u2"}),
+            json!({"role": "assistant", "content": "a1"}),
+            json!({"role": "user", "content": "u3"}),
+            json!({"role": "user", "content": "u4"}),
+        ];
+
+        // 无技能：照常合并
+        let mut without = base.clone();
+        merge_consecutive_user_messages_respecting_transients(
+            &mut without,
+            &std::collections::HashSet::new(),
+        );
+        assert_eq!(without.len(), 3);
+        assert_eq!(without[0]["content"], "u1\n\nu2");
+        assert_eq!(without[2]["content"], "u3\n\nu4");
+
+        // 有技能：技能消息作为屏障，其余真实 user 合并结果与无技能场景一致
+        let skill_content = "<skill_instructions id=\"skill-a\">\nbody\n</skill_instructions>";
+        let mut with = vec![json!({"role": "user", "content": skill_content})];
+        with.extend(base.clone());
+        let guard = std::collections::HashSet::from([skill_content]);
+        merge_consecutive_user_messages_respecting_transients(&mut with, &guard);
+
+        assert_eq!(with[0]["content"], skill_content, "技能消息不得被合并改写");
+        assert_eq!(&with[1..], &without[..], "非技能 user 合并结果必须与无技能时一致");
+    }
+
+    /// P1-8：瞬态技能/锚点消息永不与邻接 user 合并；
+    /// 屏障两侧的真实 user 段各自照常合并、不跨屏障合并。
+    #[test]
+    fn p1_8_transient_skill_message_never_merges_with_adjacent_users() {
+        let skill_content = "<skill_instructions id=\"s\">\nb\n</skill_instructions>";
+        let mut messages = vec![
+            json!({"role": "user", "content": "u1"}),
+            json!({"role": "user", "content": skill_content}),
+            json!({"role": "user", "content": "u2"}),
+            json!({"role": "user", "content": "u3"}),
+        ];
+        let guard = std::collections::HashSet::from([skill_content]);
+        merge_consecutive_user_messages_respecting_transients(&mut messages, &guard);
+
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["content"], "u1", "屏障前的 user 不得跨屏障合并");
+        assert_eq!(messages[1]["content"], skill_content);
+        assert_eq!(messages[2]["content"], "u2\n\nu3", "屏障后的连续 user 照常合并");
     }
 }
 
@@ -3083,6 +3245,10 @@ impl LLMManager {
                                 "content": msg.content
                             }));
                         }
+                        // P2-13：服务端 web_search_call 完整 item 随 assistant 历史回传
+                        if let Some(last) = messages.last_mut() {
+                            attach_web_search_replay_items(msg.metadata.as_ref(), last);
+                        }
                     } else if msg.role == "tool" {
                         // 标准化：工具结果消息必须包含 tool_call_id 以关联到上一条assistant的tool_calls
                         if let Some(tr) = &msg.tool_result {
@@ -3104,14 +3270,14 @@ impl LLMManager {
             }
         }
 
-        // 瞬态技能指令必须保持独立 user message，不能与当前用户输入合并。
-        let has_transient_skill_messages = chat_history
-            .iter()
-            .any(crate::chat_v2::pipeline::is_transient_skill_message);
-        if !has_transient_skill_messages {
-            // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错
-            Self::merge_consecutive_user_messages(&mut messages);
-        }
+        // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错。
+        // P1-8：合并规则恒定 —— 瞬态技能/锚点消息作为屏障永不参与合并，
+        // 其余真实 user 消息无论有无技能都照常合并（不再整段跳过）。
+        let transient_user_contents = transient_user_contents_for_merge(&chat_history);
+        merge_consecutive_user_messages_respecting_transients(
+            &mut messages,
+            &transient_user_contents,
+        );
 
         // 近似输入token统计（用于用量/事件）
         let _approx_tokens_in = {
@@ -5029,13 +5195,14 @@ impl LLMManager {
 
         // 🔧 防御性合并：连续 assistant tool_calls（正常流程中是 no-op）
         Self::merge_consecutive_assistant_tool_calls(&mut messages);
-        if !chat_history
-            .iter()
-            .any(crate::chat_v2::pipeline::is_transient_skill_message)
-        {
-            // 🔧 防御性合并：连续 user 消息合并
-            Self::merge_consecutive_user_messages(&mut messages);
-        }
+        // 🔧 防御性合并：连续 user 消息合并。
+        // P1-8：合并规则恒定 —— 瞬态技能/锚点消息作为屏障永不参与合并，
+        // 其余真实 user 消息无论有无技能都照常合并（不再整段跳过）。
+        let transient_user_contents = transient_user_contents_for_merge(&chat_history);
+        merge_consecutive_user_messages_respecting_transients(
+            &mut messages,
+            &transient_user_contents,
+        );
 
         let mut request_body = json!({
             "model": config.model,

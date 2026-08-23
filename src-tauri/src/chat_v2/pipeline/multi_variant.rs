@@ -470,6 +470,7 @@ impl ChatV2Pipeline {
                     skill_runtime_after: build_replay_skill_payload_snapshot(&options),
                     replay_source: None,
                     response_reasoning_items: None,
+                    skill_injection_anchors: None,
                 }),
                 attachments: None,
                 active_variant_id: first_variant_id,
@@ -777,10 +778,12 @@ impl ChatV2Pipeline {
             return Ok(());
         }
 
-        // 构建系统提示（包含共享的检索结果）
-        let system_prompt = self
+        // 构建系统提示（P1-10 拆分：稳定 system + turn-volatile 块，
+        // 共享检索结果随 turn-volatile 进入当前 user 的 <injected_context>）
+        let prompt_parts = self
             .build_system_prompt_with_shared_context(&options, &shared_context)
             .await;
+        let system_prompt = prompt_parts.stable_system;
 
         // 加载聊天历史
         let mut chat_history = self
@@ -793,9 +796,13 @@ impl ChatV2Pipeline {
         let max_tokens = effective_history_token_budget(options.context_limit);
         trim_history_by_token_budget(&mut chat_history, max_tokens);
 
-        // 构建当前用户消息
-        let current_user_message =
-            self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
+        // 构建当前用户消息（turn-volatile 块编入 <injected_context>）
+        let current_user_message = self.build_variant_user_message(
+            &user_content,
+            &attachments,
+            &user_context_refs,
+            prompt_parts.turn_volatile.as_deref(),
+        );
 
         // 创建 LLM 适配器（使用变体的事件发射）
         let enable_thinking = options.enable_thinking.unwrap_or(true);
@@ -835,7 +842,9 @@ impl ChatV2Pipeline {
             .map(|snapshot| session_skill_state_from_snapshot(&snapshot))
             .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
         let empty_skill_contents = std::collections::HashMap::new();
-        let transient_skill_messages = build_transient_skill_messages(
+        // P1-8 技能锚定：历史中已锚定的技能不重复注入（注入点冻结），本轮只注入差集。
+        let anchored_skill_ids = anchored_skill_ids_in_history(&messages);
+        let turn_skill_injection = build_transient_skill_messages_with_audit_excluding(
             &variant_skill_state,
             options
                 .replay_skill_contents
@@ -845,8 +854,13 @@ impl ChatV2Pipeline {
             options.skill_dependencies.as_ref(),
             // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
             options.context_limit.map(|v| v as usize),
+            &anchored_skill_ids,
         );
-        insert_transient_skill_messages(&mut messages, base_history_len, transient_skill_messages);
+        insert_transient_skill_messages(
+            &mut messages,
+            base_history_len,
+            turn_skill_injection.messages,
+        );
 
         // 构建 LLM 上下文
         let mut llm_context: std::collections::HashMap<String, Value> =
@@ -1096,6 +1110,14 @@ impl ChatV2Pipeline {
         self.freeze_execution_context(&mut compile_ctx).await?;
         options = compile_ctx.options.clone();
 
+        // P1-10：先拆分系统提示——稳定 system 留给 LLM 调用，
+        // turn-volatile 块（共享检索/画像/待办/Canvas）写入 compile_ctx，
+        // 使其随 compile_frozen_context 编入当前 user 的 <injected_context>
+        let prompt_parts = self
+            .build_system_prompt_with_shared_context(&options, &shared_context)
+            .await;
+        compile_ctx.turn_volatile_context = prompt_parts.turn_volatile.clone();
+
         let mut chat_history = self
             .load_variant_chat_history(&session_id, Some(ctx.message_id()), options.context_limit)
             .await?;
@@ -1123,14 +1145,18 @@ impl ChatV2Pipeline {
 
         ctx.start_streaming();
 
-        let system_prompt = self
-            .build_system_prompt_with_shared_context(&options, &shared_context)
-            .await;
+        let system_prompt = prompt_parts.stable_system;
+        let turn_volatile = prompt_parts.turn_volatile;
         let chat_history = compile_ctx.chat_history;
         let current_user_message = compile_ctx
             .compiled_current_user_message
             .unwrap_or_else(|| {
-                self.build_variant_user_message(&user_content, &attachments, &user_context_refs)
+                self.build_variant_user_message(
+                    &user_content,
+                    &attachments,
+                    &user_context_refs,
+                    turn_volatile.as_deref(),
+                )
             });
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
@@ -1277,19 +1303,16 @@ impl ChatV2Pipeline {
             .map(|snapshot| session_skill_state_from_snapshot(&snapshot))
             .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
 
-        let mut tool_round = 0u32;
-        // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
-        // 与单变体路径共用 apply_doom_loop_guard（tool_loop.rs）
-        let mut doom_loop_guard = crate::chat_v2::context::DoomLoopGuard::default();
-        loop {
-            if ctx.is_cancelled() {
-                ctx.cancel();
-                break;
-            }
-
-            messages.retain(|msg| !is_transient_llm_only_message(msg));
+        // ============================================================
+        // P1-8 技能锚定：本轮注入只在进入工具环前构建并插入一次（位置 =
+        // 历史末尾、当前 user 之前），之后冻结 —— 禁止每轮删光后整包重插
+        // 到当前 user 之前（那会改写同轮内存前缀）。环内 load_skills 新
+        // 加载的技能按 tool_call_id 追加到对应 tool result 之后。
+        // ============================================================
+        let mut injected_skill_ids = anchored_skill_ids_in_history(&messages);
+        let turn_skill_injection = {
             let empty_skill_contents = std::collections::HashMap::new();
-            let transient_skill_messages = build_transient_skill_messages_with_audit(
+            build_transient_skill_messages_with_audit_excluding(
                 &variant_skill_state,
                 options
                     .replay_skill_contents
@@ -1300,13 +1323,34 @@ impl ChatV2Pipeline {
                 // 🔧 P1-2 修复（对齐单变体 tool_loop）：context_limit 显式配置时为权威值，
                 // 不再被 32K 常量 min() 钳制，消除多变体/单变体双路径漂移
                 options.context_limit.map(|v| v as usize),
-            );
-            let skill_audit = transient_skill_messages.audit.clone();
-            insert_transient_skill_messages(
-                &mut messages,
-                base_history_len,
-                transient_skill_messages.messages,
-            );
+                &injected_skill_ids,
+            )
+        };
+        injected_skill_ids.extend(
+            turn_skill_injection
+                .audit
+                .injected_skill_ids
+                .iter()
+                .cloned(),
+        );
+        let mut cumulative_skill_audit = turn_skill_injection.audit.clone();
+        insert_transient_skill_messages(
+            &mut messages,
+            base_history_len,
+            turn_skill_injection.messages,
+        );
+
+        let mut tool_round = 0u32;
+        // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
+        // 与单变体路径共用 apply_doom_loop_guard（tool_loop.rs）
+        let mut doom_loop_guard = crate::chat_v2::context::DoomLoopGuard::default();
+        loop {
+            if ctx.is_cancelled() {
+                ctx.cancel();
+                break;
+            }
+
+            let skill_audit = cumulative_skill_audit.clone();
             let audit_round_id = format!("variant-tool-round-{}", tool_round);
             emitter_arc.emit_skill_injection_audit(
                 ctx.message_id(),
@@ -1514,6 +1558,11 @@ impl ChatV2Pipeline {
                 tool_results.len()
             );
 
+            // P1-8：本轮环内新加载的技能批次（tool_call_id → 消息），
+            // 在工具结果消息 push 完成后插到对应 tool result 之后
+            let mut pending_round_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> =
+                Vec::new();
+
             // 🔧 渐进披露：load_skills 执行后动态追加工具
             for tool_result in &tool_results {
                 if super::super::tools::SkillsExecutor::is_load_skills_tool(&tool_result.tool_name)
@@ -1598,6 +1647,48 @@ impl ChatV2Pipeline {
                             variant_skill_state = variant_skill_state
                                 .with_added_branch_local_skills(&loaded_skill_ids);
                             options.skill_state_version = Some(variant_skill_state.version);
+
+                            // P1-8 环内技能锚定：新加载技能（差集）锚到本次
+                            // load_skills 的 tool result 之后，禁止整包重插到
+                            // 当前 user 之前
+                            if let Some(anchor_call_id) = tool_result
+                                .tool_call_id
+                                .clone()
+                                .filter(|id| !id.is_empty())
+                            {
+                                let empty_skill_contents = std::collections::HashMap::new();
+                                let batch = build_in_loop_skill_messages(
+                                    &loaded_skill_ids,
+                                    options
+                                        .replay_skill_contents
+                                        .as_ref()
+                                        .or(options.skill_contents.as_ref())
+                                        .unwrap_or(&empty_skill_contents),
+                                    options.skill_dependencies.as_ref(),
+                                    options.context_limit.map(|v| v as usize),
+                                    &injected_skill_ids,
+                                    variant_skill_state.version,
+                                );
+                                cumulative_skill_audit
+                                    .missing_skill_ids
+                                    .extend(batch.audit.missing_skill_ids.clone());
+                                cumulative_skill_audit
+                                    .dropped_skill_ids
+                                    .extend(batch.audit.dropped_skill_ids.clone());
+                                if !batch.audit.injected_skill_ids.is_empty() {
+                                    injected_skill_ids
+                                        .extend(batch.audit.injected_skill_ids.iter().cloned());
+                                    cumulative_skill_audit
+                                        .injected_skill_ids
+                                        .extend(batch.audit.injected_skill_ids.iter().cloned());
+                                    cumulative_skill_audit.estimated_tokens +=
+                                        batch.audit.estimated_tokens;
+                                    cumulative_skill_audit.skill_state_version =
+                                        variant_skill_state.version;
+                                    pending_round_skill_batches
+                                        .push((anchor_call_id, batch.messages));
+                                }
+                            }
                         }
                     }
                 }
@@ -1674,6 +1765,12 @@ impl ChatV2Pipeline {
                 });
 
                 ctx.add_tool_result(result.clone());
+            }
+
+            // P1-8：环内新加载的技能插到对应 load_skills tool result 之后，
+            // 当前 user 之前的内存前缀保持逐字节不变
+            for (anchor_call_id, batch) in pending_round_skill_batches {
+                insert_skill_messages_after_tool_result(&mut messages, &anchor_call_id, batch);
             }
 
             let task_completed = tool_results.iter().any(|r| {
@@ -1759,16 +1856,20 @@ impl ChatV2Pipeline {
         Ok(SharedContext::default())
     }
 
-    /// 构建带共享上下文的系统提示
+    /// 构建带共享上下文的系统提示（P1-10 拆分形态）
     ///
-    /// 使用 prompt_builder 模块统一格式化，用于多变体并行执行场景，
-    /// 共享检索结果注入到所有变体的 system prompt 中。
-    /// 如果有 Canvas 笔记，也会一并注入。
+    /// 使用 prompt_builder 模块统一格式化，用于多变体并行执行场景。
+    /// 返回 `SystemPromptParts`：
+    /// - `stable_system`：跨轮字节稳定的 system（LaTeX / instructions /
+    ///   preferences / 固定引用规则），作为各变体的 system prompt；
+    /// - `turn_volatile`：共享检索结果、Canvas 笔记、画像、待办等本轮动态块，
+    ///   注入当前 user 消息的 `<injected_context>`（compile 前写入
+    ///   `PipelineContext::turn_volatile_context`），避免打碎历史 prompt cache。
     async fn build_system_prompt_with_shared_context(
         &self,
         options: &SendOptions,
         shared_context: &SharedContext,
-    ) -> String {
+    ) -> prompt_builder::SystemPromptParts {
         let canvas_note = self.build_canvas_note_info_from_options(options).await;
 
         let user_profile = self.load_user_profile_for_variant(options).await;
@@ -1781,7 +1882,7 @@ impl ChatV2Pipeline {
             .with_canvas_note(canvas_note)
             .with_user_profile(user_profile)
             .with_active_todos(active_todos)
-            .build()
+            .build_split()
     }
 
     async fn load_user_profile_for_variant(&self, options: &SendOptions) -> Option<String> {
@@ -2346,11 +2447,14 @@ impl ChatV2Pipeline {
     /// ★ 2026-03 修复：支持 user_context_refs 多模态内容注入
     /// 优先使用 user_context_refs 中的 formattedBlocks（与单变体路径 build_current_user_message 对齐），
     /// 回退到旧版 attachments 路径（兼容 retry 恢复场景）。
+    /// ★ P1-10：`turn_volatile` 为 prompt_builder 拆分出的本轮动态块
+    /// （共享检索/画像/待办/Canvas），编入 `<injected_context>` 而非 system。
     fn build_variant_user_message(
         &self,
         user_content: &str,
         attachments: &[AttachmentInput],
         user_context_refs: &[SendContextRef],
+        turn_volatile: Option<&str>,
     ) -> LegacyChatMessage {
         let runtime_facts = PipelineContext::build_runtime_facts_block(user_content);
 
@@ -2362,8 +2466,11 @@ impl ChatV2Pipeline {
         });
 
         if has_context_images {
-            let ordered_blocks =
-                PipelineContext::build_injected_context_blocks(&runtime_facts, user_context_refs);
+            let ordered_blocks = PipelineContext::build_injected_context_blocks(
+                &runtime_facts,
+                user_context_refs,
+                turn_volatile,
+            );
             let (injected_text, _) =
                 PipelineContext::collect_injected_context_text_and_images(&ordered_blocks);
             let combined =
@@ -2419,8 +2526,11 @@ impl ChatV2Pipeline {
             };
         }
 
-        let injected_blocks =
-            PipelineContext::build_injected_context_blocks(&runtime_facts, user_context_refs);
+        let injected_blocks = PipelineContext::build_injected_context_blocks(
+            &runtime_facts,
+            user_context_refs,
+            turn_volatile,
+        );
         let (injected_text, _) =
             PipelineContext::collect_injected_context_text_and_images(&injected_blocks);
         let combined =
@@ -3279,6 +3389,7 @@ impl ChatV2Pipeline {
                     skill_runtime_after: build_replay_skill_payload_snapshot(options),
                     replay_source: None,
                     response_reasoning_items: None,
+                    skill_injection_anchors: None,
                 }),
                 attachments: None,
                 active_variant_id: active_variant_id.map(|s| s.to_string()),
