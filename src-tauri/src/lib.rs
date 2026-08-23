@@ -1842,6 +1842,7 @@ pub fn run() {
             crate::secure_store::secure_save_cloud_credentials,
             crate::secure_store::secure_get_cloud_credentials,
             crate::secure_store::secure_delete_cloud_credentials,
+            crate::secure_store::secure_clear_cloud_encryption_password,
             crate::secure_store::secure_store_is_available,
             crate::secure_store::secure_store_get_keystore_protection,
             crate::secure_store::secure_store_set_keystore_protection,

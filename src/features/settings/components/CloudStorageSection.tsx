@@ -146,6 +146,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [pendingDeleteVersionId, setPendingDeleteVersionId] = useState<string | null>(null);
   // 清除配置确认对话框状态（danger 操作必须显式确认）
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  // 停用端到端加密确认对话框状态（同为 danger：删除本机加密密码后，
+  // 未另存密码的用户将永久失去已加密云端备份的解密能力）
+  const [disableEncryptionConfirmOpen, setDisableEncryptionConfirmOpen] = useState(false);
   // P2-12 移动端契约：版本删除确认改为按钮两段式行内确认（4 秒未确认自动复位）
   const { isSmallScreen } = useBreakpoint();
   const [confirmingDeleteVersionId, setConfirmingDeleteVersionId] = useState<string | null>(null);
@@ -532,6 +535,28 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     );
     onConfigChanged?.();
   }, [t, onConfigChanged]);
+
+  // 停用端到端加密：走后端显式 API，只删除加密密码、保留传输凭据。
+  // 留空保存不是停用（保存的合并语义把空字段视为「保留现有值」），
+  // 这里是唯一的停用入口，必须经 danger 确认框确认。
+  const disableEncryption = useCallback(async () => {
+    try {
+      const status = await cloudApi.clearEncryptionPassword();
+      setCredentialStatus(status);
+      setEncryptionPassword('');
+      setShowEncryptionPwd(false);
+      setSecureStoreIssue(null);
+      showGlobalNotification('info', t('cloudStorage:encryption.disabledNotice'));
+      onConfigChanged?.();
+    } catch (e: unknown) {
+      console.error('Failed to disable end-to-end encryption:', e);
+      const secureMessage = markSecureStoreIssue(e, 'write');
+      showGlobalNotification(
+        'error',
+        `${secureMessage ?? t('cloudStorage:encryption.disableFailed')}: ${getErrorMessage(e)}`,
+      );
+    }
+  }, [markSecureStoreIssue, t, onConfigChanged]);
 
   const shouldShowFtpOption = FTP_STORAGE_EXPERIMENTAL_ENABLED || hasStoredFtpConfig || provider === 'ftp';
   // Android/移动端后端未提供 FTP 支持：复用 S3 禁用卡片模式（可见但不可选）
@@ -1230,15 +1255,36 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
         {/* 端到端加密配置（可选） */}
         <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <WarningCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <Label htmlFor="cloud-encryption-password" className="font-medium">
               {t('cloudStorage:encryption.title')}
             </Label>
+            {/* 加密状态徽标：来自后端安全存储的 presence 标记，非本地输入框状态 */}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                credentialStatus.encryptionPasswordConfigured
+                  ? 'border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400'
+                  : 'border-border bg-muted/40 text-muted-foreground'
+              }`}
+            >
+              {credentialStatus.encryptionPasswordConfigured ? (
+                <CheckCircle size={12} aria-hidden />
+              ) : (
+                <XCircle size={12} aria-hidden />
+              )}
+              {credentialStatus.encryptionPasswordConfigured
+                ? t('cloudStorage:encryption.statusConfigured')
+                : t('cloudStorage:encryption.statusNotConfigured')}
+            </span>
           </div>
           <ApiKeyField
             id="cloud-encryption-password"
-            placeholder={t('cloudStorage:encryption.placeholder')}
+            placeholder={
+              credentialStatus.encryptionPasswordConfigured
+                ? t('cloudStorage:encryption.placeholderConfigured')
+                : t('cloudStorage:encryption.placeholderUnset')
+            }
             value={encryptionPassword}
             onChange={(e) => setEncryptionPassword(e.target.value)}
             autoComplete="new-password"
@@ -1252,6 +1298,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             {t('cloudStorage:encryption.description')}{' '}
             <span className="text-destructive font-medium">{t('cloudStorage:encryption.warning')}</span>
           </p>
+          {/* 停用是显式操作：留空保存只会保留现有密码，绝不会静默停用加密 */}
+          {credentialStatus.encryptionPasswordConfigured && (
+            <DsButton
+              size="sm"
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              onClick={() => setDisableEncryptionConfirmOpen(true)}
+            >
+              {t('cloudStorage:encryption.disableAction')}
+            </DsButton>
+          )}
         </div>
 
         {/* 操作按钮 */}
@@ -1546,6 +1603,30 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     </DsAlertDialog>
   );
 
+  // 停用端到端加密确认对话框（danger：删除本机加密密码，未另存则已加密备份永久不可解密）
+  const disableEncryptionConfirmDialog = (
+    <DsAlertDialog
+      open={disableEncryptionConfirmOpen}
+      onOpenChange={setDisableEncryptionConfirmOpen}
+      title={t('cloudStorage:encryption.disableConfirm.title')}
+      description={t('cloudStorage:encryption.disableConfirm.description')}
+      confirmText={t('cloudStorage:encryption.disableConfirm.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="danger"
+      onConfirm={() => {
+        setDisableEncryptionConfirmOpen(false);
+        void disableEncryption();
+      }}
+    >
+      <p className="text-sm font-medium text-destructive">
+        {t('cloudStorage:encryption.disableConfirm.existingBackupsWarning')}
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {t('cloudStorage:encryption.disableConfirm.futureUploadsPlaintext')}
+      </p>
+    </DsAlertDialog>
+  );
+
   // 删除确认对话框
   const deleteConfirmDialog = (
     <DsAlertDialog
@@ -1605,6 +1686,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         {restoreConfirmDialog}
         {deleteConfirmDialog}
         {clearConfirmDialog}
+        {disableEncryptionConfirmDialog}
         {insecureFtpWarningDialog}
         {insecureWebdavWarningDialog}
       </>
@@ -1629,6 +1711,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       {restoreConfirmDialog}
       {deleteConfirmDialog}
       {clearConfirmDialog}
+      {disableEncryptionConfirmDialog}
       {insecureFtpWarningDialog}
       {insecureWebdavWarningDialog}
     </>

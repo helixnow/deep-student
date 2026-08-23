@@ -2037,6 +2037,26 @@ impl SecureStore {
             .unwrap_or_default())
     }
 
+    /// 显式停用端到端加密：仅删除加密密码，WebDAV/S3/FTP 传输凭据保持不变。
+    ///
+    /// `update_cloud_credentials` 的合并语义把空字段视为「保留现有值」（防止
+    /// 空白表单误删凭据），因此停用加密必须走这个显式 API，而不是提交空密码。
+    /// fail-closed：读取或写回失败时直接返回错误，绝不顺带清空其他凭据。
+    pub fn clear_cloud_encryption_password(
+        &self,
+    ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
+        let Some(mut credentials) = self.get_cloud_credentials()? else {
+            return Ok(CloudStorageCredentialStatus::default());
+        };
+        credentials.encryption_password = None;
+        if credentials.has_any_secret() {
+            self.save_cloud_credentials(&credentials)?;
+        } else {
+            self.delete_cloud_credentials()?;
+        }
+        Ok(credentials.status())
+    }
+
     /// 删除云存储凭据
     pub fn delete_cloud_credentials(&self) -> Result<(), SecureStoreError> {
         self.delete_secret(CLOUD_STORAGE_KEY)
@@ -2092,6 +2112,17 @@ pub(crate) fn delete_cloud_credentials_for_app(
 pub fn secure_delete_cloud_credentials(app: tauri::AppHandle) -> Result<(), CommandError> {
     delete_cloud_credentials_for_app(&app)
         .map_err(|e| e.to_command_error("delete_cloud_credentials"))
+}
+
+/// 显式停用端到端加密：仅从安全存储删除加密密码，传输凭据不受影响。
+#[tauri::command]
+pub fn secure_clear_cloud_encryption_password(
+    app: tauri::AppHandle,
+) -> Result<CloudStorageCredentialStatus, CommandError> {
+    let store = get_secure_store(Some(&app));
+    store
+        .clear_cloud_encryption_password()
+        .map_err(|e| e.to_command_error("clear_cloud_encryption_password"))
 }
 
 /// 检查安全存储是否可用
@@ -2418,6 +2449,69 @@ mod cloud_hydration_tests {
             Some("stored-encryption")
         );
         assert_eq!(credentials.s3_secret_access_key.as_deref(), Some("new-s3"));
+    }
+
+    #[test]
+    fn clearing_encryption_password_keeps_transport_credentials() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                webdav_password: Some("webdav-secret".to_string()),
+                encryption_password: Some("encryption-secret".to_string()),
+                ..Default::default()
+            })
+            .expect("save cloud credentials");
+
+        let status = store
+            .clear_cloud_encryption_password()
+            .expect("clear encryption password");
+
+        assert!(!status.encryption_password_configured);
+        assert!(status.webdav_password_configured);
+        let remaining = store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .expect("transport credentials must survive");
+        assert_eq!(remaining.webdav_password.as_deref(), Some("webdav-secret"));
+        assert!(remaining.encryption_password.is_none());
+    }
+
+    #[test]
+    fn clearing_the_only_secret_removes_the_record_entirely() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        store
+            .save_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("encryption-secret".to_string()),
+                ..Default::default()
+            })
+            .expect("save cloud credentials");
+
+        let status = store
+            .clear_cloud_encryption_password()
+            .expect("clear encryption password");
+
+        assert_eq!(status, CloudStorageCredentialStatus::default());
+        assert!(store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .is_none());
+    }
+
+    #[test]
+    fn clearing_encryption_password_without_stored_credentials_is_a_noop() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let status = store
+            .clear_cloud_encryption_password()
+            .expect("noop clear must succeed");
+
+        assert_eq!(status, CloudStorageCredentialStatus::default());
     }
 
     #[test]

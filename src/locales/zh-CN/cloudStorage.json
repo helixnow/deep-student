@@ -77,9 +77,22 @@
 
   "encryption": {
     "title": "端到端加密密码（可选，强烈推荐）",
-    "placeholder": "留空则不加密；设置后仅你的设备可解密加密备份",
+    "statusConfigured": "已配置端到端加密",
+    "statusNotConfigured": "未加密",
+    "placeholderConfigured": "已配置加密密码：留空保持现有密码不变，输入新密码则替换",
+    "placeholderUnset": "当前未加密：输入密码以启用端到端加密",
     "description": "开启后，上传的 ZIP 备份将使用 AES-256-GCM 加密，云服务商无法读取内容。",
-    "warning": "密码仅以加密形式（AES-256-GCM）保存在本机，不会上传。若遗忘则无法恢复任何已加密的云端备份。所有连接此云端的设备必须使用同一密码。"
+    "warning": "密码仅以加密形式（AES-256-GCM）保存在本机，不会上传。若遗忘则无法恢复任何已加密的云端备份。所有连接此云端的设备必须使用同一密码。",
+    "disableAction": "停用端到端加密",
+    "disabledNotice": "端到端加密已停用，之后上传的新备份将不再加密",
+    "disableFailed": "停用端到端加密失败，加密密码未被删除",
+    "disableConfirm": {
+      "title": "停用端到端加密？",
+      "description": "此操作将从本设备删除端到端加密密码。WebDAV/S3/FTP 登录凭据不受影响。",
+      "existingBackupsWarning": "如果你没有在其他地方另存该密码，云端已加密的备份将永久无法解密。",
+      "futureUploadsPlaintext": "之后上传的新备份将以未加密形式存储在云端。",
+      "confirm": "确认停用"
+    }
   },
 
   "progress": {
