@@ -250,7 +250,11 @@ export function DsDialog({
               className={cn(
                 'absolute z-10 text-muted-foreground/50 hover:text-foreground',
                 // 移动 sheet 形态：触控目标放大到 44px（右上角命中区）
-                isMobileSheet ? 'right-2 top-2 h-11 w-11' : 'w-6 h-6 top-2.5 right-2.5',
+                // 非 sheet 形态：≥768 触屏平板（coarse）同样放大到 44px，
+                // 锚定 top-0/right-0 使图标视觉中心与 fine 指针位置一致（22px）
+                isMobileSheet
+                  ? 'right-2 top-2 h-11 w-11'
+                  : 'w-6 h-6 top-2.5 right-2.5 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:top-0 [@media(pointer:coarse)]:right-0',
               )}
               onClick={() => onOpenChange(false)}
             >

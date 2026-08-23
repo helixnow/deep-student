@@ -72,7 +72,7 @@ export const RowPriorityMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
             iconOnly
             title={t('todo:actions.setPriority', '设置优先级')}
             aria-label={t('todo:actions.setPriority', '设置优先级')}
-            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden"
+            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2"
           >
             <Flag
               size={16}

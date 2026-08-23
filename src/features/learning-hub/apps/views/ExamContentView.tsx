@@ -2500,6 +2500,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           examName={sessionDetail?.summary?.exam_name || node.name}
           examId={sessionId}
           inline
+          isActive={isActive}
         />
         {/* onJumpToQuestion 直连宿主导航而不走 QBANK_FOCUS_EVENT 回退：
             该事件不带 targetResourceId，同一题目集多窗（标签页保活）时会让
@@ -2510,6 +2511,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           onOpenChange={handleHistoryOpenChange}
           inline
           onJumpToQuestion={handleOpenQuestion}
+          isActive={isActive}
         />
       </Suspense>
     </div>

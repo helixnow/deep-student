@@ -412,7 +412,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 
         {!settingsAsPage && <div className="hidden lg:block w-px h-4 bg-border" />}
 
-        {!settingsAsPage && (
+        {/* 📱 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏
+            （learning-hub rightActions 更多菜单 → 设置，经 translation:openSettings
+            事件开合），页内保留会形成重复次级入口 */}
+        {!settingsAsPage && !isSmallScreen && (
           <CommonTooltip content={t('translation:prompt_editor.title')}>
             <DsButton
               variant="ghost"
@@ -564,7 +567,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
         <div className="flex-1 min-h-0 flex">
           <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
             {effectiveStacked ? (
+              /* 小屏固定 40/60 上下堆叠不可拖（fixed 模式无手柄）；桌面窄容器/上下布局仍可拖 */
               <VerticalResizable
+                fixed={isSmallScreen}
                 initial={0.4}
                 minTop={0.2}
                 minBottom={0.3}

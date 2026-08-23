@@ -91,6 +91,8 @@ interface VerticalResizableProps {
   minTop?: number; // 0..1
   minBottom?: number; // 0..1
   className?: string;
+  /** 固定比例模式：高度锁定为 initial，不渲染拖拽手柄、不挂任何拖动事件（小屏用） */
+  fixed?: boolean;
 }
 
 export const VerticalResizable: React.FC<VerticalResizableProps> = ({
@@ -100,6 +102,7 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
   minTop = 0.2,
   minBottom = 0.2,
   className,
+  fixed = false,
 }) => {
   const { t } = useTranslation('common');
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -139,6 +142,22 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
       window.removeEventListener('touchend', onUp);
     };
   }, [dragging, minTop, minBottom]);
+
+  if (fixed) {
+    // 比例取 initial 的钳制值而非 ratio 状态：断点切换（可拖 → 固定）时不继承拖拽残留比例
+    const fixedRatio = Math.min(1 - minBottom, Math.max(minTop, initial));
+    return (
+      <div className={`w-full h-full min-h-0 flex flex-col ${className || ''}`}>
+        <div style={{ height: `${fixedRatio * 100}%` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
+          {top}
+        </div>
+        <div aria-hidden className="h-px shrink-0 bg-border" />
+        <div className="flex-1 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
+          {bottom}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className={`w-full h-full min-h-0 flex flex-col select-none ${className || ''}`}>

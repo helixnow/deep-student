@@ -31,6 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { fileManager } from '@/utils/fileManager';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useMobileSubviewChrome } from '@/components/layout';
 import { showGlobalNotification } from './UnifiedNotification';
 import { CustomScrollArea } from './custom-scroll-area';
 import type { Question } from '@/api/questionBankApi';
@@ -51,6 +52,8 @@ interface QuestionBankExportDialogProps {
    * 两种形态都渲染宿主容器内的内联区块（absolute inset-0），不使用模态浮层。
    */
   inline?: boolean;
+  /** ★ 标签页：宿主标签页是否活跃（保活 display:none 实例不得接管统一顶栏） */
+  isActive?: boolean;
 }
 
 interface ExportOptions {
@@ -182,6 +185,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   examName,
   examId,
   inline = false,
+  isActive,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common']);
 
@@ -251,6 +255,18 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       return true;
     }, BACK_PRIORITY.overlay);
   }, [inline, open, handleInlineBack]);
+
+  // 📱 小屏 learning-hub 承载：标题/返回上移 App 级统一顶栏，页内不再自绘
+  // 第二条顶栏；顶栏返回箭头与 Android 返回键同路径（handleInlineBack：
+  // 先逐级回退步骤，再关闭面板）。无宿主（桌面分栏等）时保持自绘顶栏。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: t('exam_sheet:questionBank.export.title'),
+      onBack: handleInlineBack,
+    },
+    [t, handleInlineBack],
+    inline && open && isActive !== false,
+  );
 
   // 当选择包含答题记录时，自动添加相关字段
   const handleIncludeAnswerRecordsChange = useCallback((checked: boolean) => {
@@ -766,30 +782,33 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         role="region"
         aria-label={t('exam_sheet:questionBank.export.title')}
       >
-        {/* 顶栏：返回 + 标题 + 步骤位置 */}
-        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={handleInlineBack}
-            aria-label={t('common:back')}
-            className="!h-11 !w-11 text-muted-foreground"
-          >
-            <ArrowLeft size={20} />
-          </DsButton>
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Download size={16} className="flex-shrink-0 text-muted-foreground" />
-            <span className="truncate text-sm font-medium text-foreground">
-              {t('exam_sheet:questionBank.export.title')}
-            </span>
+        {/* 顶栏：返回 + 标题 + 步骤位置（小屏由 App 级统一顶栏接管，此处不再自绘；
+            步骤位置由下方步骤条表达） */}
+        {!subviewChromeHosted && (
+          <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={handleInlineBack}
+              aria-label={t('common:back')}
+              className="!h-11 !w-11 text-muted-foreground"
+            >
+              <ArrowLeft size={20} />
+            </DsButton>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Download size={16} className="flex-shrink-0 text-muted-foreground" />
+              <span className="truncate text-sm font-medium text-foreground">
+                {t('exam_sheet:questionBank.export.title')}
+              </span>
+            </div>
+            {!exportOutcome && (
+              <span className="flex-shrink-0 pr-2 text-xs tabular-nums text-muted-foreground">
+                {inlineStep + 1}/{stepLabels.length}
+              </span>
+            )}
           </div>
-          {!exportOutcome && (
-            <span className="flex-shrink-0 pr-2 text-xs tabular-nums text-muted-foreground">
-              {inlineStep + 1}/{stepLabels.length}
-            </span>
-          )}
-        </div>
+        )}
 
         {/* 步骤条（成功态隐藏） */}
         {!exportOutcome && (

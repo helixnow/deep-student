@@ -244,7 +244,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       textStats={inputTextStats}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
-      onOpenSettings={settingsAsPage ? undefined : () => setShowPromptEditor(!showPromptEditor)}
+      // 📱 移动壳视口（<768）不给页内设置入口：宿主移动顶栏（learning-hub
+      // rightActions 更多菜单 → 设置，经 essay:openSettings 事件）已提供，页内
+      // 保留会形成重复次级入口。仅看视口不看容器 compact——桌面窄容器
+      // （分屏/浮窗）没有移动顶栏，页内按钮仍是唯一入口
+      onOpenSettings={settingsAsPage || viewportIsSmallScreen ? undefined : () => setShowPromptEditor(!showPromptEditor)}
       uploadedImages={uploadedImages}
       onRemoveImage={onRemoveImage}
       onRetryImageOcr={onRetryImageOcr}
@@ -362,7 +366,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
               </div>
             </div>
           ) : (
+            /* 小屏固定 40/60 上下堆叠不可拖（fixed 模式无手柄）；桌面窄容器仍可拖 */
             <VerticalResizable
+              fixed={isSmallScreen}
               initial={isSmallScreen ? 0.4 : 0.45}
               minTop={isSmallScreen ? 0.2 : 0.25}
               minBottom={isSmallScreen ? 0.3 : 0.35}

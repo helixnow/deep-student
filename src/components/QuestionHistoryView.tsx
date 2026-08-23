@@ -35,6 +35,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useMobileSubviewChrome } from '@/components/layout';
 import {
   QBANK_FOCUS_EVENT,
   type QbankFocusEventDetail,
@@ -74,6 +75,8 @@ interface QuestionHistoryViewProps {
    * 宿主 ExamContentView 已监听该事件并导航到对应题目。
    */
   onJumpToQuestion?: (questionId: string) => void;
+  /** ★ 标签页：宿主标签页是否活跃（保活 display:none 实例不得接管统一顶栏） */
+  isActive?: boolean;
 }
 
 const PAGE_SIZE = 50;
@@ -154,6 +157,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
   onOpenChange,
   inline = false,
   onJumpToQuestion,
+  isActive,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'practice', 'stats', 'learningHub']);
   const [history, setHistory] = useState<QuestionHistory[]>([]);
@@ -279,6 +283,30 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
       onOpenChange(false);
     }
   }, [questionId, onJumpToQuestion, onOpenChange]);
+
+  // 📱 小屏 learning-hub 承载：标题/返回/「查看题目」上移 App 级统一顶栏，
+  // 页内不再自绘第二条顶栏；返回箭头与系统返回键同语义（关闭子屏）。
+  // 无宿主（桌面分栏等）时返回 false，保持下方自绘顶栏。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: t('exam_sheet:questionBank.history.title'),
+      onBack: () => onOpenChange(false),
+      rightActions: questionId ? (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          onClick={handleJumpToQuestion}
+          className="h-11 w-11 text-primary"
+          aria-label={t('learningHub:exam.library.viewQuestion')}
+          title={t('learningHub:exam.library.viewQuestion')}
+        >
+          <ArrowSquareOut size={20} />
+        </DsButton>
+      ) : undefined,
+    },
+    [t, onOpenChange, questionId, handleJumpToQuestion],
+    inline && open && isActive !== false,
+  );
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -619,37 +647,39 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
       role="region"
       aria-label={t('exam_sheet:questionBank.history.title')}
     >
-      {/* 顶栏：返回 + 标题 */}
-      <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={() => onOpenChange(false)}
-          aria-label={t('common:back')}
-          className={cn('text-muted-foreground', inline ? '!h-11 !w-11' : '!h-9 !w-9')}
-        >
-          <ArrowLeft size={20} />
-        </DsButton>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <ClockCounterClockwise size={16} className="flex-shrink-0 text-muted-foreground" />
-          <span className="truncate text-sm font-medium text-foreground">
-            {t('exam_sheet:questionBank.history.title')}
-          </span>
-        </div>
-        {/* 从历史直接跳回题目 */}
-        {questionId && (
+      {/* 顶栏：返回 + 标题（小屏由 App 级统一顶栏接管，此处不再自绘） */}
+      {!subviewChromeHosted && (
+        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
           <DsButton
             variant="ghost"
-            size="sm"
-            onClick={handleJumpToQuestion}
-            className={cn('flex-shrink-0 gap-1.5 text-xs text-primary hover:bg-primary/10', inline ? '!h-11 px-3' : '!h-8 px-2.5')}
+            size="icon"
+            iconOnly
+            onClick={() => onOpenChange(false)}
+            aria-label={t('common:back')}
+            className={cn('text-muted-foreground', inline ? '!h-11 !w-11' : '!h-9 !w-9')}
           >
-            <ArrowSquareOut size={14} />
-            {t('learningHub:exam.library.viewQuestion')}
+            <ArrowLeft size={20} />
           </DsButton>
-        )}
-      </div>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ClockCounterClockwise size={16} className="flex-shrink-0 text-muted-foreground" />
+            <span className="truncate text-sm font-medium text-foreground">
+              {t('exam_sheet:questionBank.history.title')}
+            </span>
+          </div>
+          {/* 从历史直接跳回题目 */}
+          {questionId && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={handleJumpToQuestion}
+              className={cn('flex-shrink-0 gap-1.5 text-xs text-primary hover:bg-primary/10', inline ? '!h-11 px-3' : '!h-8 px-2.5')}
+            >
+              <ArrowSquareOut size={14} />
+              {t('learningHub:exam.library.viewQuestion')}
+            </DsButton>
+          )}
+        </div>
+      )}
 
       {/* 描述 + 筛选 chip */}
       <div className="flex-shrink-0 border-b border-border/40 px-4 py-2 space-y-2">

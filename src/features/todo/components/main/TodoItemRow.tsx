@@ -950,8 +950,9 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         )}
       </div>
 
-      {/* 行尾操作按钮：触屏隐藏（改期/删除走滑动手势，开始专注走详情），
-          桌面 hover 渐显保持不变，避免挤占标题与误触 */}
+      {/* 行尾操作按钮：桌面 hover 渐显；触屏 opacity-60 常显且 ≥44px 命中区
+          （详情页有等价编辑，右滑另有改期/删除兜底）。改期入口触屏仍走
+          滑动手势 + InlineRescheduleBar，行内 RescheduleMenu 保持 coarse 隐藏 */}
       {!isCompleted && <RowPriorityMenu item={item} />}
 
       {!isCompleted && (
@@ -971,7 +972,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           }}
           title={t('todo:actions.startFocusSession')}
           aria-label={t('todo:actions.startFocusSession')}
-          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden"
+          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2"
         >
           <Play size={16} />
         </DsButton>
@@ -987,7 +988,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         }}
         title={t('todo:actions.deleteItem')}
         aria-label={t('todo:actions.deleteItem')}
-        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
         <Trash size={16} />
       </DsButton>

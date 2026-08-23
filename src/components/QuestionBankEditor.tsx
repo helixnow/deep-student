@@ -2524,6 +2524,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             examId={sessionId}
             questionId={currentQuestion.id}
             inline
+            isActive={isActive}
             onImageAdded={() => {
               if (!currentQuestion?.id) return;
 
@@ -3032,6 +3033,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           examId={sessionId}
           questionId={currentQuestion.id}
           inline
+          isActive={isActive}
           onImageAdded={() => {
             if (!currentQuestion?.id) return;
 
