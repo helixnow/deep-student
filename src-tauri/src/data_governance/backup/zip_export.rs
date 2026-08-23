@@ -1360,6 +1360,29 @@ fn validate_secrets_archive(
     Ok(())
 }
 
+/// 把解密后的内层 ZIP 条目（原始 manifest + 敏感明文）落盘到目标目录。
+///
+/// 无论成功与否，`written` 都记录了已完整写入的明文文件，供调用方在
+/// 中途失败时清理半成品，避免敏感明文残留在半解封的目录里。
+fn extract_sealed_entries(
+    inner: &mut zip::ZipArchive<File>,
+    target_dir: &Path,
+    written: &mut Vec<PathBuf>,
+) -> Result<(), ZipExportError> {
+    let mut total_written = 0u64;
+    for i in 0..inner.len() {
+        let mut file = inner.by_index(i)?;
+        let relative_path = file.enclosed_name().ok_or_else(|| {
+            ZipExportError::ExportFailed(format!("密封载荷包含越界路径: {}", file.name()))
+        })?;
+        let outpath = prepare_import_destination(target_dir, relative_path, false)?;
+        let expected_size = file.size();
+        extract_zip_file_atomically(&mut file, &outpath, &mut total_written, expected_size)?;
+        written.push(outpath);
+    }
+    Ok(())
+}
+
 /// 解封加密全保真 ZIP 的敏感数据载荷。
 ///
 /// 在外层条目解压完成后调用：
@@ -1434,23 +1457,34 @@ fn unseal_encrypted_secrets(
             })?;
             validate_secrets_archive(&mut inner)?;
 
-            let mut total_written = 0u64;
-            for i in 0..inner.len() {
-                let mut file = inner.by_index(i)?;
-                let relative_path = file.enclosed_name().ok_or_else(|| {
-                    ZipExportError::ExportFailed(format!(
-                        "密封载荷包含越界路径: {}",
-                        file.name()
-                    ))
-                })?;
-                let outpath = prepare_import_destination(target_dir, relative_path, false)?;
-                let expected_size = file.size();
-                extract_zip_file_atomically(
-                    &mut file,
-                    &outpath,
-                    &mut total_written,
-                    expected_size,
-                )?;
+            let mut unsealed_paths: Vec<PathBuf> = Vec::new();
+            if let Err(error) = extract_sealed_entries(&mut inner, target_dir, &mut unsealed_paths)
+            {
+                // 解封中断会留下部分敏感明文（含可能已覆盖外层清单的
+                // manifest.json）：立即清理这些半成品。外层归档条目保持
+                // 原样，携带密码即可再次续传/导入。
+                let mut removed = 0usize;
+                for path in &unsealed_paths {
+                    match std::fs::remove_file(path) {
+                        Ok(()) => removed += 1,
+                        Err(cleanup_error)
+                            if cleanup_error.kind() == std::io::ErrorKind::NotFound =>
+                        {
+                            removed += 1;
+                        }
+                        Err(cleanup_error) => warn!(
+                            "清理半成品解封文件失败 {}: {}",
+                            path.display(),
+                            cleanup_error
+                        ),
+                    }
+                }
+                return Err(ZipExportError::ExportFailed(format!(
+                    "解封敏感数据中断（已清理 {}/{} 个半成品明文文件）: {}",
+                    removed,
+                    unsealed_paths.len(),
+                    error
+                )));
             }
 
             // 载荷与外层校验和均已过期：敏感文件此后由原始清单
@@ -1609,8 +1643,7 @@ where
 
 /// 从 ZIP 文件导入备份（断点续传模式）
 ///
-/// 当 `skip_existing` 为 true 时，跳过目标目录中已存在且大小匹配的文件，
-/// 实现中断后的断点续传。
+/// 跳过目标目录中已存在且大小匹配的文件，实现中断后的断点续传。
 ///
 /// ## 参数
 ///
@@ -1618,7 +1651,9 @@ where
 /// * `target_dir` - 解压目标目录
 /// * `progress_callback` - 进度回调函数
 /// * `cancel_check` - 取消检查函数，返回 true 时中止导入
-/// * `skip_existing` - 是否跳过已存在且大小匹配的文件（断点续传）
+/// * `password` - 备份密码：加密全保真 ZIP 的续传必须携带导出时设置的
+///   备份密码。缺失时会在改动目标目录之前明确失败（目标保持原样，
+///   携带密码即可再次续传）；未加密 ZIP 传 `None`。
 ///
 /// ## 返回
 ///
@@ -1628,20 +1663,19 @@ pub fn import_backup_from_zip_resumable<F, C>(
     target_dir: &Path,
     progress_callback: F,
     cancel_check: C,
+    password: Option<&str>,
 ) -> Result<usize, ZipExportError>
 where
     F: FnMut(ZipImportProgress),
     C: Fn() -> bool,
 {
-    // 断点续传入口暂不携带备份密码：加密全保真 ZIP 的续传会在解封阶段
-    // 返回可操作错误，提示用户重新发起带密码的导入。
     import_backup_from_zip_impl(
         zip_path,
         target_dir,
         progress_callback,
         cancel_check,
         true,
-        None,
+        password,
     )
 }
 
@@ -1683,6 +1717,22 @@ where
     let zip_file = File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(zip_file)?;
     validate_import_archive(&mut archive)?;
+
+    // 断点续传的加密全保真 ZIP 前置检查：备份密码必须随续传一起提供。
+    // 在改动目标目录之前就明确失败：半解压的目标保持原样，携带密码
+    // 重新恢复任务即可继续续传，不会留下新的半成品。
+    if skip_existing
+        && password.is_none()
+        && archive
+            .file_names()
+            .any(|name| name == ENCRYPTED_SECRETS_ENTRY)
+    {
+        return Err(ZipExportError::ExportFailed(
+            "这是加密全保真备份 ZIP：断点续传必须携带导出时设置的备份密码。请提供备份密码后重新恢复导入任务"
+                .to_string(),
+        ));
+    }
+
     let total_files = archive.len();
 
     progress_callback(ZipImportProgress {
@@ -2259,5 +2309,221 @@ mod tests {
 
         // 清理
         std::fs::remove_file(&export_result.zip_path).ok();
+    }
+
+    // ================= 断点续传（resume）路径 =================
+
+    const TEST_BACKUP_PASSWORD: &str = "portable-secret-1";
+
+    /// 导出加密全保真测试 ZIP，返回 (输出目录守卫, ZIP 路径)。
+    fn export_encrypted_test_zip(backup_dir: &Path) -> (TempDir, PathBuf) {
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("encrypted.zip");
+        export_backup_to_zip(
+            backup_dir,
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                encryption_password: Some(TEST_BACKUP_PASSWORD.to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        (output_dir, output_path)
+    }
+
+    #[test]
+    fn test_resumable_import_unencrypted_zip_succeeds_without_password() {
+        let backup_dir = create_test_backup_dir();
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("plain.zip");
+        export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let file_count =
+            import_backup_from_zip_resumable(&output_path, &target, |_| {}, || false, None)
+                .unwrap();
+
+        assert!(file_count > 0);
+        assert!(target.join("manifest.json").is_file());
+    }
+
+    #[test]
+    fn test_resumable_import_unencrypted_zip_rejects_password() {
+        let backup_dir = create_test_backup_dir();
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("plain.zip");
+        export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let error = import_backup_from_zip_resumable(
+            &output_path,
+            &target,
+            |_| {},
+            || false,
+            Some(TEST_BACKUP_PASSWORD),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("不是加密全保真备份"),
+            "unexpected error: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn test_resumable_import_encrypted_zip_requires_password_before_touching_target() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let error =
+            import_backup_from_zip_resumable(&zip_path, &target, |_| {}, || false, None)
+                .unwrap_err();
+
+        assert!(
+            error.to_string().contains("备份密码"),
+            "unexpected error: {}",
+            error
+        );
+        // 前置检查必须发生在改动目标目录之前：不能留下半成品目录。
+        assert!(
+            !target.exists(),
+            "missing-password resume must not create the target dir"
+        );
+    }
+
+    #[test]
+    fn test_resumable_import_encrypted_zip_with_password_restores_full_snapshot() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+        let stats = validate_archive_path(&zip_path).unwrap();
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let file_count = import_backup_from_zip_resumable(
+            &zip_path,
+            &target,
+            |_| {},
+            || false,
+            Some(TEST_BACKUP_PASSWORD),
+        )
+        .unwrap();
+
+        assert_eq!(file_count, stats.entries);
+        // 解封后：原始清单还原，载荷与过期外层校验和被移除。
+        assert!(!target.join(ENCRYPTED_SECRETS_ENTRY).exists());
+        assert!(!target.join("checksums.sha256").exists());
+        let manifest = BackupManifest::load_from_file(&target.join("manifest.json")).unwrap();
+        assert_eq!(manifest.snapshot_kind, SnapshotKind::Full);
+        assert_eq!(manifest.key_policy, BackupKeyPolicy::NotPresent);
+        manifest.validate_for_slot_restore().unwrap();
+    }
+
+    #[test]
+    fn test_resumable_import_encrypted_zip_wrong_password_then_retry_with_correct() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let error = import_backup_from_zip_resumable(
+            &zip_path,
+            &target,
+            |_| {},
+            || false,
+            Some("definitely-wrong-password"),
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("解封加密备份失败"),
+            "unexpected error: {}",
+            error
+        );
+        // 解密失败不会落任何敏感明文；外层条目保持原样，目标仍可续传。
+        assert!(target.join(ENCRYPTED_SECRETS_ENTRY).is_file());
+
+        // 携带正确密码再次续传：跳过已存在的外层文件并完成解封。
+        let mut saw_skip = false;
+        let file_count = import_backup_from_zip_resumable(
+            &zip_path,
+            &target,
+            |progress| {
+                if progress.message.contains("跳过已存在") {
+                    saw_skip = true;
+                }
+            },
+            || false,
+            Some(TEST_BACKUP_PASSWORD),
+        )
+        .unwrap();
+
+        assert!(file_count > 0);
+        assert!(saw_skip, "retry must resume by skipping existing files");
+        assert!(!target.join(ENCRYPTED_SECRETS_ENTRY).exists());
+        let manifest = BackupManifest::load_from_file(&target.join("manifest.json")).unwrap();
+        manifest.validate_for_slot_restore().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_resumable_import_unseal_failure_cleans_partial_plaintext() {
+        let backup_dir = create_test_backup_dir();
+        // 让密封载荷携带真实敏感文件（crypto/.master_key）。
+        std::fs::create_dir_all(backup_dir.path().join("crypto")).unwrap();
+        std::fs::write(backup_dir.path().join("crypto/.master_key"), b"master").unwrap();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        // 在目标目录预埋 crypto -> 外部目录 的符号链接：外层解压不受影响
+        // （外层不含 crypto 路径），但解封敏感文件时会被安全检查拒绝，
+        // 此时原始 manifest.json 已经解封落盘——必须被当作半成品清理掉。
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        std::fs::create_dir_all(&target).unwrap();
+        let external = TempDir::new().unwrap();
+        std::os::unix::fs::symlink(external.path(), target.join("crypto")).unwrap();
+
+        let error = import_backup_from_zip_resumable(
+            &zip_path,
+            &target,
+            |_| {},
+            || false,
+            Some(TEST_BACKUP_PASSWORD),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("解封敏感数据中断"),
+            "unexpected error: {}",
+            error
+        );
+        assert!(
+            error.to_string().contains("已清理"),
+            "error must report partial-plaintext cleanup: {}",
+            error
+        );
+        // 敏感明文不得写入符号链接指向的外部目录。
+        assert!(!external.path().join(".master_key").exists());
+        // 已解封的原始 manifest.json 属于半成品，必须被清理。
+        assert!(!target.join("manifest.json").exists());
+        // 外层加密载荷保持原样：修复目标目录后仍可携带密码继续续传。
+        assert!(target.join(ENCRYPTED_SECRETS_ENTRY).is_file());
     }
 }
