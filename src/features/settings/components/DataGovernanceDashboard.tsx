@@ -598,6 +598,16 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   tabTarget = null,
 }) => {
   const { t } = useTranslation(['data', 'common']);
+  /**
+   * `t` 的身份不保证跨渲染稳定。
+   *
+   * 「按 activeTab 拉数据」的 effect 依赖各个 loader，只要有一个 loader 把 `t` 放进
+   * useCallback 依赖，它就每渲染换一次身份 → effect 每渲染重跑 → loader 里的
+   * setState 又触发下一次渲染，构成自激循环（jsdom 下会一路吃到堆溢出）。
+   * 这些地方只在报错分支用文案，从 ref 读即可，不需要参与依赖。
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -782,10 +792,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('加载可恢复任务失败:', error);
       showGlobalNotification(
         'warning',
-        t('data:governance.resumable_jobs_load_failed')
+        tRef.current('data:governance.resumable_jobs_load_failed')
       );
     }
-  }, [t]);
+  }, []);
 
   /**
    * 以后端聚合状态为真相收敛前端维护横幅。
@@ -1653,7 +1663,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           if (event.payload.length > 0) {
             showGlobalNotification(
               'info',
-              t('data:governance.resumable_jobs_found', {
+              tRef.current('data:governance.resumable_jobs_found', {
                 count: event.payload.length,
               })
             );
@@ -1680,7 +1690,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       mounted = false;
       unlisten?.();
     };
-  }, [t]);
+  }, []);
 
   // 组件挂载时自动重连到正在运行的备份任务
   useEffect(() => {
