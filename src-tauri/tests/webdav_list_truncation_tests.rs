@@ -215,3 +215,29 @@ async fn list_with_small_directory_is_not_truncated() {
     assert_eq!(outcome.files.len(), 7);
     assert!(!outcome.truncated, "7 个文件的目录不得标记 truncated");
 }
+
+/// 千级网关形态：单目录 1000 个文件（1001 个 DAV:response，命中千级
+/// 响应边界 1000/1001）必须 fail-closed 标记 truncated——与 750 边界同理，
+/// 防止在被网关静默截断的千级列表上推进同步。
+#[tokio::test]
+async fn list_with_1000_files_is_marked_truncated() {
+    let outcome = list_outcome_for_file_count(1000).await;
+    assert_eq!(outcome.files.len(), 1000, "应解析出全部 1000 个文件条目");
+    assert!(
+        outcome.truncated,
+        "1000 个文件（1001 个 response）命中千级网关边界，必须标记 truncated"
+    );
+}
+
+/// 千级边界的上侧对照：1001 个文件（1002 个 DAV:response）已越过
+/// 1000/1001 边界，说明服务端并未在千级截断，不得误报 truncated，
+/// 否则略超一千个文件的健康目录会被永久拒绝同步。
+#[tokio::test]
+async fn list_with_1001_files_is_not_truncated() {
+    let outcome = list_outcome_for_file_count(1001).await;
+    assert_eq!(outcome.files.len(), 1001, "应解析出全部 1001 个文件条目");
+    assert!(
+        !outcome.truncated,
+        "1001 个文件（1002 个 response）不在千级边界上，不得误报 truncated"
+    );
+}
