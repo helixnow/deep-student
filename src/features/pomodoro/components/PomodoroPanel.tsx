@@ -804,7 +804,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 onClick={() => setInlinePanel(null)}
                 title={t('close', { ns: 'common' })}
                 aria-label={t('close', { ns: 'common' })}
-                className="ml-auto !h-6 !w-6 transition-colors duration-150 ease-standard"
+                // 视觉保持 24px；coarse 触屏用伪元素 -inset-2.5 扩成 44px 触控目标（24 + 2×10）
+                className="relative ml-auto !h-6 !w-6 transition-colors duration-150 ease-standard after:absolute after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
               >
                 <X size={14} />
               </DsButton>

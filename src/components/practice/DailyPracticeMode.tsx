@@ -375,7 +375,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full h-9 text-sm"
+            className="w-full h-9 text-sm [@media(pointer:coarse)]:min-h-11"
           >
             {isLoadingPractice ? (
               <>

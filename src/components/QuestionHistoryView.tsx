@@ -656,7 +656,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
             iconOnly
             onClick={() => onOpenChange(false)}
             aria-label={t('common:back')}
-            className={cn('text-muted-foreground', inline ? '!h-11 !w-11' : '!h-9 !w-9')}
+            className={cn('text-muted-foreground', inline ? '!h-11 !w-11' : '!h-9 !w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
           >
             <ArrowLeft size={20} />
           </DsButton>
@@ -672,7 +672,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={handleJumpToQuestion}
-              className={cn('flex-shrink-0 gap-1.5 text-xs text-primary hover:bg-primary/10', inline ? '!h-11 px-3' : '!h-8 px-2.5')}
+              className={cn('flex-shrink-0 gap-1.5 text-xs text-primary hover:bg-primary/10', inline ? '!h-11 px-3' : '!h-8 px-2.5 [@media(pointer:coarse)]:!h-11')}
             >
               <ArrowSquareOut size={14} />
               {t('learningHub:exam.library.viewQuestion')}

@@ -646,7 +646,8 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
    * 来源项操作按钮（卡片底部 / 移动端列表 / 内联详情共用）
    */
   const renderItemAction = useCallback((item: UnifiedSourceItem, compact: boolean) => {
-    const btnClass = compact ? 'text-primary !h-6 text-xs' : 'text-primary';
+    // compact 视觉高度 24px；触屏（pointer:coarse）下用 min-h 撑回 44px 触控热区
+    const btnClass = compact ? 'text-primary !h-6 [@media(pointer:coarse)]:!min-h-11 text-xs' : 'text-primary';
     const iconSize = compact ? 12 : 14;
     if (item.origin === 'graph') {
       return (

@@ -853,7 +853,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       className={cn(
                         // 触屏放大命中区（桌面保持紧凑视觉）
                         'flex-shrink-0 !w-5 !h-5 !p-0 rounded text-[11px] font-semibold',
-                        '[@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10',
+                        '[@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-0.5',
                         isAnswerKey
                           ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                           : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
@@ -867,7 +867,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:text-[16px]"
                       placeholder={`${opt.key} ...`}
 />
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 text-muted-foreground hover:text-destructive" aria-label="remove">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-0.5 text-muted-foreground hover:text-destructive" aria-label="remove">
                       <X size={10} />
                     </DsButton>
                   </div>

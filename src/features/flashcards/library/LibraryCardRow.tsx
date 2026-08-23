@@ -573,7 +573,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                         {sourceSessionId ? (
                           <button
                             type="button"
-                            className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                            className="inline-flex items-center gap-0.5 text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
                             onClick={() => jumpToChatSession(sourceSessionId)}
                           >
                             <ArrowSquareOut size={11} aria-hidden="true" />

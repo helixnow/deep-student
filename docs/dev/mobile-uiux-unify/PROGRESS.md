@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–21 已落地；当前队列见下。
+- **轮次**：Round 2–22 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -31,13 +31,15 @@
 | 19 | claude-fable-5-thinking-xhigh ×10 | 翻译 Popover、Crepe 工具栏、FolderPicker、作文轮次、chip X | 见 ROUND-19-FIXES.md |
 | 20 | claude-fable-5-thinking-xhigh ×10 | 删 reference-selector、试卷/番茄钟/复习勾选 44、PluginsTab 去自绘返回 | 见 ROUND-20-FIXES.md |
 | 21 | claude-fable-5-thinking-xhigh ×10 | 批量条/会话更多/Agent 抽屉/题库草稿、迁类型删 DndFileTree | 见 ROUND-21-FIXES.md |
+| 22 | claude-fable-5-thinking-xhigh ×10 | 番茄钟关闭、沙箱轨、AccentPicker、侧栏搜索、来源 compact、内联编辑 | 见 ROUND-22-FIXES.md |
 
-## 进行中的修复队列（Round 22+）
+## 进行中的修复队列（Round 23+）
 
-- PomodoroPanel 内联关闭 24；SandboxStatusRail 32
-- AccentPicker sm 收缩；ModernSidebar 搜索/更新角标
-- UnifiedSourcePanel compact 动作 24；QuestionInlineEditor 40
-- QuestionHistoryView 无宿主顶栏 32–36
+- SessionBrowser 重命名/导出/删除触屏 36
+- QuestionBankEditor 判对/判错 32；QuestionBankManageView 更多 32
+- InputPanel 清空确认态漏 COARSE_HIT_SM
+- TemplateManagement 选择模式返回 28；paperSave caret 40
+- AnkiTasksApp 打开模板库宽屏 coarse 24
 
 ## 已落地
 

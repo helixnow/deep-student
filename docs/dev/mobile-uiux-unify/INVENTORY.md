@@ -31,4 +31,4 @@
 - Settings 小屏标题、GradingMain 640–767：Round 3 已修；Sheet 底安全区 / overlay 返回：Round 10–11 已修。
 - 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
 - 导图工具条 40→44、热力图年份/刷新 coarse 44、`shad/Table` 横滚：Round 11 已修。
-- **仍开**：番茄钟内联关闭、沙箱状态轨、AccentPicker、侧栏搜索/角标、来源 compact 动作、题库内联编辑 40、历史无宿主顶栏。
+- **仍开**：会话卡 36、判对/判错 32、题库管理更多 32、清空确认态、模板选择返回、paperSave caret、Anki 打开模板库。

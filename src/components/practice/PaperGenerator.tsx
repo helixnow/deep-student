@@ -479,7 +479,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         <DsButton
           onClick={handleGenerate}
           disabled={isLoadingPractice || totalQuestions === 0}
-          className="h-9 w-full text-sm"
+          className="h-9 w-full text-sm [@media(pointer:coarse)]:min-h-11"
         >
           {isLoadingPractice ? (
             <>

@@ -1578,7 +1578,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               size="icon"
               iconOnly
               aria-label={t('command_palette:session_search_placeholder', '搜索会话...')}
-              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]"
+              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
               onClick={openSessionSearch}
             >
               <MagnifyingGlass size={16} weight="bold" />
@@ -1762,7 +1762,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             <button
               type="button"
               data-slot="sidebar-update-badge"
-              className="desktop-shell-update-badge absolute right-2 top-1 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              className="desktop-shell-update-badge absolute right-2 top-1 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
               onClick={(event) => {
                 event.stopPropagation();
                 void updater.performUpdateAction();
