@@ -8,13 +8,15 @@
 
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 
 const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
   runHealthCheck: vi.fn(),
   getBackupList: vi.fn(),
   listResumableJobs: vi.fn(),
+  listBackupJobs: vi.fn(),
+  getMaintenanceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   getAuditLogs: vi.fn(),
 }));
@@ -43,17 +45,14 @@ vi.mock('@/utils/tauriApi', () => ({
 
 import { DataGovernanceDashboard } from '@/features/settings';
 
-const TAB_NAMES = [
-  /概览|data:governance\.tab_overview/i,
-  /恢复|data:governance\.tab_recovery/i,
-  /归档|data:governance\.tab_archive/i,
-  /备份|data:governance\.tab_backup/i,
-  /同步|data:governance\.tab_sync/i,
-  /审计|data:governance\.tab_audit/i,
-  /缓存|data:governance\.tab_cache/i,
-];
+const TABS_NAV_LABEL = '数据治理页签';
+const TAB_NAMES = ['概览', '恢复', '归档', '备份', '同步', '审计', '缓存'];
+const DEBUG_TAB_NAME = '调试';
 
-const DEBUG_TAB_NAME = /^调试$|data:governance\.debug_tab_title/i;
+/** 页签只在页签容器里找：面板正文同样有「恢复」「备份」等字样的按钮。 */
+function getTabsNav(): HTMLElement {
+  return screen.getByLabelText(TABS_NAV_LABEL);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -84,6 +83,10 @@ beforeEach(() => {
   mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
   mockDataGovernanceApi.getBackupList.mockResolvedValue([]);
   mockDataGovernanceApi.listResumableJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.listBackupJobs.mockResolvedValue([]);
+  mockDataGovernanceApi.getMaintenanceStatus.mockResolvedValue({
+    is_in_maintenance_mode: false,
+  });
 });
 
 afterEach(() => {
@@ -94,21 +97,17 @@ describe('数据治理页签可访问名', () => {
   it('每个页签都有可访问名（文字在窄屏被隐藏时靠 aria-label 兜底）', () => {
     render(<DataGovernanceDashboard embedded />);
 
+    const nav = getTabsNav();
     for (const name of TAB_NAMES) {
-      expect(screen.getByRole('button', { name })).toBeInTheDocument();
-    }
-
-    // 可访问名必须来自 aria-label，而不是只存在于 `hidden sm:inline` 的文字里
-    for (const name of TAB_NAMES) {
-      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-label');
+      // 可访问名必须来自 aria-label，而不是只存在于 `hidden sm:inline` 的文字里
+      expect(within(nav).getByRole('button', { name })).toHaveAttribute('aria-label', name);
     }
   });
 
   it('页签容器带导航可访问名', () => {
     render(<DataGovernanceDashboard embedded />);
 
-    const overviewTab = screen.getByRole('button', { name: TAB_NAMES[0] });
-    expect(overviewTab.parentElement).toHaveAttribute('aria-label');
+    expect(getTabsNav()).toHaveAttribute('aria-label', TABS_NAV_LABEL);
   });
 });
 
@@ -118,7 +117,8 @@ describe('Debug 页签的 DEV 门槛', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    expect(screen.getByRole('button', { name: DEBUG_TAB_NAME })).toBeInTheDocument();
+    expect(within(getTabsNav()).getByRole('button', { name: DEBUG_TAB_NAME }))
+      .toBeInTheDocument();
   });
 
   it('非 DEV（生产构建）不渲染 Debug 页签', () => {
@@ -126,9 +126,10 @@ describe('Debug 页签的 DEV 门槛', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
+    const nav = getTabsNav();
     // 其他页签照常在，只有 Debug 消失
-    expect(screen.getByRole('button', { name: TAB_NAMES[0] })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: DEBUG_TAB_NAME })).not.toBeInTheDocument();
+    expect(within(nav).getByRole('button', { name: '概览' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('button', { name: DEBUG_TAB_NAME })).not.toBeInTheDocument();
   });
 
   it('非 DEV 时外部深链也切不到 debug 页签', async () => {
@@ -137,9 +138,10 @@ describe('Debug 页签的 DEV 门槛', () => {
     render(<DataGovernanceDashboard embedded tabTarget={{ tab: 'debug', requestId: 1 }} />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: TAB_NAMES[0] })).toBeInTheDocument();
+      expect(within(getTabsNav()).getByRole('button', { name: '概览' })).toBeInTheDocument();
     });
-    expect(screen.queryByRole('button', { name: DEBUG_TAB_NAME })).not.toBeInTheDocument();
+    expect(within(getTabsNav()).queryByRole('button', { name: DEBUG_TAB_NAME }))
+      .not.toBeInTheDocument();
     expect(screen.queryByTestId('slot-c-empty-db-test-button')).not.toBeInTheDocument();
   });
 });
