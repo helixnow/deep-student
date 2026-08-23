@@ -26,7 +26,7 @@ import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 
 import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from '@/components/ui/unified-sidebar/UnifiedSidebar';
 import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
@@ -566,15 +566,24 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   ]);
 
   // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
-  // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（DsDialog、MobileSlidingLayout）
-  // 先行消费；此处只在中屏「分区内容态」接管，与顶栏返回箭头同一条回退链。
-  // 分区列表态返回 false，交给应用级视图历史 fallback。
+  //
+  // 必须注册在 overlay 档而非 view 档：移动端 Settings 整页是 Radix Sheet
+  // （role="dialog" data-state="open"），协调器的 Radix Escape 兜底探测跑在
+  // view 档之前且常驻命中本 Sheet——view 档 handler 永远轮不到，逐级回退失效。
+  // overlay 档显式 handler 先于兜底探测执行（见 androidBackCoordinator 文件头），
+  // 且同优先级后注册先执行：打开更晚的 DsDialog / 浮动编辑器等仍最先消费；
+  // MobileSlidingLayout 的抽屉/右滑面板 handler 靠本 handler 在非中屏时返回
+  // false 让行。上方叠着未显式注册的 Radix 浮层（shad/Select 下拉等）时同样
+  // 让行，交给兜底探测先关浮层。分区列表态返回 false → 兜底探测派发 Escape
+  // → Sheet onOpenChange → handleSheetBack 关闭整个 Sheet（回退链的最后一级）。
   // Settings 是 LRU 保活视图：必须 gate isActive，非活跃时注销 handler，否则会吞掉其他页面的返回键。
+  const sheetContentRef = useRef<HTMLDivElement | null>(null);
   const settingsBackStateRef = useRef({ screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen });
   settingsBackStateRef.current = { screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen };
   useEffect(() => {
     if (!isSmallScreen || !isActive) return;
     return registerBackHandler(() => {
+      if (hasOpenRadixOverlayBesides(sheetContentRef.current)) return false;
       const s = settingsBackStateRef.current;
       if (s.screenPosition !== 'center' || s.mobileNavView !== 'content') return false;
       if (s.activeTab === 'apis' && s.mobileVendorDetailOpen) {
@@ -583,7 +592,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         setMobileNavView('sections');
       }
       return true;
-    }, BACK_PRIORITY.view);
+    }, BACK_PRIORITY.overlay);
   }, [isSmallScreen, isActive]);
 
   // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 DsDialog）
@@ -1947,6 +1956,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           onOpenChange={(nextOpen) => { if (!nextOpen) handleSheetBack(); }}
         >
           <SheetContent
+            ref={sheetContentRef}
             side="bottom"
             hideCloseButton
             overlayClassName="settings-mobile-sheet-overlay"

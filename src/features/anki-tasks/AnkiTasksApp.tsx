@@ -448,7 +448,9 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     onMenuClick: sidebarOpen
       ? () => setSidebarOpen(false)
       : () => setSidebarOpen(true),
-  }, [t, isSmallScreen, sidebarOpen]);
+  }, [t, isSmallScreen, sidebarOpen, workbenchWindowId],
+  // Workbench 窗口内嵌入时不接管全局移动端顶栏（对照 TodoContentView）
+  !workbenchWindowId);
 
   const renderMobileShell = (body: React.ReactNode) => {
     if (!isSmallScreen) {

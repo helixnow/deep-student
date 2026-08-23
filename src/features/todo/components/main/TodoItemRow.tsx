@@ -163,6 +163,11 @@ const InlineRescheduleBar: React.FC<{
   // Android 返回键：展开条打开时先收起，不触发页面级返回
   useEffect(() => {
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的保活层里仍保持挂载（visibility:hidden），
+      // 展开条也随之滞留——此时不消费返回键（对照 TagsEditor / TodoItemDetail 的同款守卫）
+      const el = barRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.overlay);

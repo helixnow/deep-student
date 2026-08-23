@@ -1126,7 +1126,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         <Plus size={20} />
       </DsButton>
     ) : undefined,
-  }, [headerTitle, headerSubtitle, isEditorView, screenPosition, handleCreate, t]);
+  }, [headerTitle, headerSubtitle, isEditorView, screenPosition, handleCreate, t, workbenchWindowId],
+  // Workbench 窗口内嵌入时不接管全局移动端顶栏（对照 TodoContentView）
+  !workbenchWindowId);
 
   // ========== 位置筛选标签 ==========
   const locationTabs = useMemo(() => [
