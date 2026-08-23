@@ -37,6 +37,49 @@ describe('font size scale closure contract', () => {
     expect(readSource('tailwind.config.js')).toMatch(/'ui':\s*'var\(--font-size-ui\)'/);
   });
 
+  it('routes the menu shell font size through the ui token', () => {
+    // AppMenu / ModelPicker 桌面档经 --menu-shell-font-size 消费字号，
+    // 写死 13px 会让所有弹出菜单脱离界面字号缩放。
+    expect(readSource('src/styles/theme-colors.css')).toContain(
+      '--menu-shell-font-size: var(--font-size-ui);',
+    );
+  });
+
+  it('keeps src/styles free of bare hardcoded px font sizes', () => {
+    const collectCss = (dir: string, acc: string[] = []): string[] => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) collectCss(full, acc);
+        else if (entry.name.endsWith('.css')) acc.push(full);
+      }
+      return acc;
+    };
+
+    // notes-typography.css 属于 notes 功能域（由 notes 线维护），不在本契约范围。
+    const EXEMPT = new Set(['notes-typography.css']);
+
+    const offenders: string[] = [];
+    for (const file of collectCss(resolve(process.cwd(), 'src/styles'))) {
+      if (EXEMPT.has(file.split('/').pop() ?? '')) continue;
+      const source = readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
+      // 裸 px 字号不参与 --font-size-scale；max(Npx, var(--font-size-*)) 地板
+      // 写法（floor 只兜下限、放大照常跟随）不在此列。
+      for (const match of source.matchAll(/font-size:\s*[0-9.]+(?:px|pt)\s*(?:!important)?\s*;/g)) {
+        offenders.push(`${file.replace(`${process.cwd()}/`, '')}: ${match[0]}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('keeps the mobile drawer readability floors while following the scale', () => {
+    const responsive = readSource('src/styles/responsive-utilities.css');
+    // 列表行地板 14px、输入框/触控行地板 16px（iOS WKWebView 聚焦 <16px
+    // 输入框会自动放大页面），放大档跟随 --font-size-scale。
+    expect(responsive).toContain('font-size: max(14px, var(--font-size-base)) !important;');
+    expect(responsive).toContain('font-size: max(16px, var(--font-size-lg)) !important;');
+    expect(responsive).toContain('font-size: max(16px, var(--font-size-lg));');
+  });
+
   it('keeps the hand-written .text-ui rule from shadowing the Tailwind utility', () => {
     const typography = readSource('src/styles/typography.css');
     // typography.css 晚于 tailwind.css 引入：不加 :where() 归零特异性的话，

@@ -232,7 +232,10 @@
   --menu-shell-row-padding-y: 7px;
   --menu-shell-row-padding-x: 10px;
   --menu-shell-row-gap: 8px;
-  --menu-shell-font-size: 13px;
+  /* 走 --font-size-ui（13px × --font-size-scale）而不是写死 13px：
+     AppMenu / ModelPicker 桌面档经此 token 消费字号，硬编码会让菜单
+     成为界面字号缩放里唯一不跟随的一层。 */
+  --menu-shell-font-size: var(--font-size-ui);
 
   /* Borders */
   --border-default: hsl(var(--border));
