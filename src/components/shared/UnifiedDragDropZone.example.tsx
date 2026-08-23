@@ -7,6 +7,7 @@
 
 import React, { useState } from 'react';
 import { UnifiedDragDropZone, FILE_TYPES } from './UnifiedDragDropZone';
+import { ATTACHMENT_MAX_SIZE } from '../../features/chat/core/constants';
 
 /**
  * 示例 1: 简单图片上传
@@ -101,7 +102,7 @@ export function ChatAttachmentUploader() {
         onFilesDropped={handleFilesDropped}
         acceptedFileTypes={[FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT]}
         maxFiles={20}
-        maxFileSize={50 * 1024 * 1024} // 50MB
+        maxFileSize={ATTACHMENT_MAX_SIZE} // 200MB，与会话附件上限一致（#62）
         showOverlay={true}
         onError={handleError}
         onValidationError={handleValidationError}

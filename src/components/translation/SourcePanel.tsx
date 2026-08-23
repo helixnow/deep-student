@@ -6,6 +6,7 @@ import { CommonTooltip } from '../shared/CommonTooltip';
 import { FileArrowUp, Lightning, TextAa, Trash, X } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
+import { ATTACHMENT_MAX_SIZE } from '@/features/chat/core/constants';
 
 interface SourcePanelProps {
     sourceText: string;
@@ -257,7 +258,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                     onFilesDropped={onFilesDropped}
                     acceptedFileTypes={[FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT]}
                     maxFiles={1}
-                    maxFileSize={50 * 1024 * 1024}
+                    maxFileSize={ATTACHMENT_MAX_SIZE}
                     className="flex-1 min-h-0 flex flex-col"
                 >
                     <Textarea

@@ -6,6 +6,7 @@ import { guardedListen } from '../../utils/guardedListen';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { ensureGlobalDragHandlers, markNativeDrop, isNativeDropRecent } from '../../hooks/useTauriDragAndDrop';
+import { ATTACHMENT_MAX_SIZE } from '../../features/chat/core/constants';
 
 /**
  * 扩展名到 MIME 类型的统一映射表
@@ -232,7 +233,8 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
   enabled = true,
   acceptedFileTypes = [FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT],
   maxFiles = 10,
-  maxFileSize = 50 * 1024 * 1024,
+  // #62: 默认上限与会话附件 ATTACHMENT_MAX_SIZE (200MB) 对齐，不再硬编码 50MB
+  maxFileSize = ATTACHMENT_MAX_SIZE,
   showOverlay = true,
   customOverlayText,
   className = '',

@@ -42,6 +42,7 @@ import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared
 import { UnifiedDragDropZone, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
 import type { ApiConfig } from '@/types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { ATTACHMENT_MAX_SIZE } from '@/features/chat/core/constants';
 
 // ★ 试卷上传专用文件类型（支持 HEIC，与统一组件的 IMAGE 略有不同）
 // 导出给题目集启动台的拖放区域复用，保证两处接受的文件类型一致
@@ -95,10 +96,11 @@ interface FileInfo {
 const IMAGE_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic'];
 const DOCUMENT_EXTENSIONS = ['.docx', '.xlsx', '.xls', '.txt', '.md', '.pdf'];
 
-// ★ 上传文件大小上限：与 UnifiedDragDropZone 的 Tauri 原生拖拽路径保持一致（50MB）。
+// ★ 上传文件大小上限：与会话附件 ATTACHMENT_MAX_SIZE (200MB) 及
+// UnifiedDragDropZone 的 Tauri 原生拖拽路径保持一致（#62）。
 // 点击选择 / 浏览器 dataTransfer 拖拽路径不经过原生路径校验，必须在此兜底，
 // 否则超大文件会被整体 FileReader→base64 读入内存。
-const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_UPLOAD_FILE_SIZE = ATTACHMENT_MAX_SIZE;
 
 // 处理步骤
 type ProcessStep = 'select' | 'preview' | 'processing' | 'summary';
@@ -1285,7 +1287,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 onDragStateChange={setIsDragActive}
                 acceptedFileTypes={[EXAM_IMAGE_TYPE, EXAM_DOCUMENT_TYPE]}
                 maxFiles={currentCategory === 'document' ? 1 : 20}
-                maxFileSize={50 * 1024 * 1024}
+                maxFileSize={MAX_UPLOAD_FILE_SIZE}
                 showOverlay={true}
                 enabled={!isProcessing}
                 className={cn(

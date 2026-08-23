@@ -21,6 +21,7 @@ import {
   Sparkle,
 } from '@phosphor-icons/react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
+import { ATTACHMENT_MAX_SIZE } from '@/features/chat/core/constants';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import type { EssayTextStats } from '@/essay-grading/textStats';
@@ -705,7 +706,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           onFilesDropped={onFilesDropped}
           acceptedFileTypes={[FILE_TYPES.IMAGE]}
           maxFiles={ocrMaxFiles}
-          maxFileSize={50 * 1024 * 1024}
+          maxFileSize={ATTACHMENT_MAX_SIZE}
           className="flex-1 min-h-0 flex flex-col relative"
         >
           {showEmptyState && (

@@ -9,7 +9,7 @@
  * 约束：
  * 1. 使用 invoke 调用后端命令
  * 2. 所有命令前缀 resources_（指向 resources.db）
- * 3. 大文件限制：图片 < 10MB，文件 < 50MB
+ * 3. 大文件限制：图片 < 10MB (IMAGE_SIZE_LIMIT)，文件 < 200MB (FILE_SIZE_LIMIT，#62)
  * 4. 错误处理使用 getErrorMessage
  */
 

@@ -127,8 +127,7 @@ export const GRAPH_TOPK_MAX = 50;
 
 // ==================== 文件配置 ====================
 
-/** 文件大小限制（50MB） */
-export const FILE_SIZE_LIMIT = 50 * 1024 * 1024;
+// 注：FILE_SIZE_LIMIT 已移至下方「附件上传配置」段，与 ATTACHMENT_MAX_SIZE 对齐（#62）
 
 /** 文本文件最大长度（100KB） */
 export const TEXT_FILE_MAX_LENGTH = 100 * 1024;
@@ -177,6 +176,13 @@ export const MAX_SCAN_LENGTH = 1000;
  *   document_parser::MAX_DOCUMENT_SIZE (200MB)、attachment_repo::MAX_FILE_BYTES 对齐
  */
 export const ATTACHMENT_MAX_SIZE = 200 * 1024 * 1024;
+
+/**
+ * 文件大小限制（200MB）
+ * ★ #62: 旧值 50MB；现与 ATTACHMENT_MAX_SIZE 及
+ *   resources/types.ts 的 FILE_SIZE_LIMIT (200MB) 对齐
+ */
+export const FILE_SIZE_LIMIT = ATTACHMENT_MAX_SIZE;
 
 /** 单次会话最大附件数量 */
 export const ATTACHMENT_MAX_COUNT = 20;

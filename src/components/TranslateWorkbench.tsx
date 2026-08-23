@@ -24,6 +24,7 @@ import { debugLog } from '../debug-panel/debugMasterSwitch';
 // 子组件
 import { TranslationMain } from './translation/TranslationMain';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { ATTACHMENT_MAX_SIZE } from '@/features/chat/core/constants';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -450,7 +451,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
 
     // ★ 大小校验兜底：浏览器拖拽/点击选择路径不经过原生路径校验，
     // 避免超大文件被 FileReader 整体读入内存
-    const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+    // #62: 与会话附件 ATTACHMENT_MAX_SIZE (200MB) 对齐
+    const MAX_UPLOAD_FILE_SIZE = ATTACHMENT_MAX_SIZE;
     if (file.size > MAX_UPLOAD_FILE_SIZE) {
       const sizeMB = (MAX_UPLOAD_FILE_SIZE / (1024 * 1024)).toFixed(0);
       showGlobalNotification('error', t('translation:errors.file_too_large_dynamic', { size: sizeMB }));

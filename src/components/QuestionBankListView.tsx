@@ -42,6 +42,7 @@ import type { Question, QuestionBankStats, QuestionStatus, Difficulty, QuestionT
 import { ratioToPercent } from '@/components/stats';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
 import { UnifiedDragDropZone } from '@/components/shared/UnifiedDragDropZone';
+import { ATTACHMENT_MAX_SIZE } from '@/features/chat/core/constants';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { EXAM_DOCUMENT_TYPE, EXAM_IMAGE_TYPE } from './ExamSheetUploader';
 import { getQuestionTypeMeta, QUESTION_TYPE_ORDER, type ExtendedQuestionType } from './questionTypeMeta';
@@ -1171,7 +1172,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           onFilesDropped={onUploadFiles}
           acceptedFileTypes={[EXAM_IMAGE_TYPE, EXAM_DOCUMENT_TYPE]}
           maxFiles={20}
-          maxFileSize={50 * 1024 * 1024}
+          maxFileSize={ATTACHMENT_MAX_SIZE}
           showOverlay
           className="h-full"
         >

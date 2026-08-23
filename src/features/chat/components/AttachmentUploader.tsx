@@ -81,7 +81,7 @@ const DEFAULT_ACCEPT_TYPES = Array.from(new Set([
 
 // P1-08: 使用统一常量，不再硬编码
 // 旧值: DEFAULT_MAX_SIZE = 10MB, DEFAULT_MAX_COUNT = 10
-// 新值: ATTACHMENT_MAX_SIZE = 50MB, ATTACHMENT_MAX_COUNT = 20
+// 新值: ATTACHMENT_MAX_SIZE = 200MB (#62), ATTACHMENT_MAX_COUNT = 20
 
 // ============================================================================
 // 辅助函数
