@@ -175,7 +175,7 @@ export const AboutTab: React.FC = () => {
                   size="sm"
                   onClick={() => updater.checkForUpdate(false)}
                   disabled={updater.checking}
-                  className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs flex-shrink-0 whitespace-nowrap"
+                  className="h-6 [@media(pointer:coarse)]:h-11 px-2 text-xs flex-shrink-0 whitespace-nowrap"
                 >
                   <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
                   {updater.checking
@@ -192,8 +192,8 @@ export const AboutTab: React.FC = () => {
                 : t('about.update.channelStableDesc')}
             >
               <Select value={channel} onValueChange={(val) => handleChannelChange(val as UpdateChannel)}>
-                {/* 触屏下放大到 40px 触控高度（桌面保持紧凑 24px） */}
-                <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-10 px-1.5 text-xs w-auto min-h-0">
+                {/* 触屏下放大到 44px 触控高度（桌面保持紧凑 24px） */}
+                <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-11 px-1.5 text-xs w-auto min-h-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -219,14 +219,14 @@ export const AboutTab: React.FC = () => {
                     variant="ghost"
                     size="sm"
                     onClick={handleResetNoRemind}
-                    className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-primary"
+                    className="h-6 [@media(pointer:coarse)]:h-11 px-2 text-xs text-primary"
                   >
                     {t('about.update.frequencyReEnable')}
                   </DsButton>
                 ) : (
                   <>
                     <Select value={frequency} onValueChange={(val) => handleFrequencyChange(val as UpdateFrequency)}>
-                      <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-10 px-1.5 text-xs w-auto min-h-0">
+                      <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-11 px-1.5 text-xs w-auto min-h-0">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -242,7 +242,7 @@ export const AboutTab: React.FC = () => {
                         max={365}
                         value={frequencyDays}
                         onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
-                        className="h-6 [@media(pointer:coarse)]:h-10 w-14 px-1.5 text-xs text-center min-h-0"
+                        className="h-6 [@media(pointer:coarse)]:h-11 w-14 px-1.5 text-xs text-center min-h-0"
                       />
                     )}
                   </>
@@ -337,7 +337,7 @@ export const AboutTab: React.FC = () => {
                       variant="ghost"
                       size="sm"
                       onClick={() => updater.skipVersion(updater.info!.version)}
-                      className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-muted-foreground"
+                      className="h-6 [@media(pointer:coarse)]:h-11 px-2 text-xs text-muted-foreground"
                     >
                       {t('about.update.dialog.skipVersion')}
                     </DsButton>

@@ -87,7 +87,7 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
     <AppMenu open={open} onOpenChange={handleOpenChange}>
       <AppMenuTrigger asChild>
         <span
-          className="inline-flex cursor-pointer rounded-md"
+          className="relative inline-flex cursor-pointer rounded-md [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
           data-testid="context-usage-popover-trigger"
         >
           {children}

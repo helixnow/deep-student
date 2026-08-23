@@ -75,7 +75,6 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
-import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
@@ -138,7 +137,6 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   onMobileBrowse,
 }) => {
   const { t } = useTranslation(['chatV2', 'common', 'skills']);
-  const { isSmallScreen } = useBreakpoint();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('');
@@ -706,9 +704,10 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         type="button"
                         onClick={() => removePinnedResource(ref.sourceId)}
                         className={cn(
-                          // 视觉紧凑，透明伪元素扩大触控命中区
-                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
-                          isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                          // 视觉紧凑，透明伪元素扩大触控命中区（18px 视觉 + 14px×2 外扩 = 46px ≥ 44px）
+                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors relative after:absolute after:-inset-3.5 after:content-[\'\']',
+                          // 触屏（pointer:coarse）无 hover，常显移除按钮；指针设备保持 hover/focus 显隐
+                          'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100'
                         )}
                         aria-label={t('common:remove')}
                       >

@@ -1554,8 +1554,8 @@
   }
 
   .ds-btn-sm {
-    min-width: 40px;
-    height: 40px;
+    min-width: 44px;
+    height: 44px;
   }
 
   /* 底栏高度变量提升到根：工具栏自身与浮层避让共用同一来源 */
@@ -1604,20 +1604,23 @@
     height: 32px;
   }
 
-  /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥40px） */
+  /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥44px） */
   .ds-highlight-delete {
     opacity: 1;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .ds-bookmark-actions {
     opacity: 1;
+    /* 两个 44px 按钮并排：负 margin 抵消放大量
+       （上下 -10px 对齐行内边距使行高不膨胀，右 -8px 借用行内边距的宽度） */
+    margin: -10px -8px -10px 0;
   }
 
   .ds-bookmark-action-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   /* 「选择此页」按钮依赖 hover 显现，触屏常显 */

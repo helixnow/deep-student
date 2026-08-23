@@ -144,6 +144,15 @@
   height: 25px;
 }
 
+/* 触屏：25px 目标过小，扩到 44px，负 margin 抵消占位（每边 -9.5px，横向仍占 25px） */
+@media (pointer: coarse) {
+  .notes-explorer header .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -9.5px;
+  }
+}
+
 .notes-search {
   height: 30px;
   margin: 0 8px 6px;
@@ -177,6 +186,15 @@
 .notes-search .notes-icon-button {
   width: 20px;
   height: 20px;
+}
+
+/* 触屏：20px 目标过小，扩到 44px，负 margin 抵消占位（30px 搜索栏不被撑高） */
+@media (pointer: coarse) {
+  .notes-search .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -12px;
+  }
 }
 
 .notes-explorer-tag-filter {
@@ -426,19 +444,11 @@
   transition: background-color var(--notes-hover-transition);
 }
 
-.notes-pane-resize::after {
-  position: absolute;
-  inset: 0;
-  content: '';
-}
-
-/* 触屏：6px 视觉拖拽条命中区过窄，伪元素横向外扩到 ~22px（compact 竖排改纵向外扩），
-   并常显加深底色作视觉指示（hover 不可达） */
+/* 触屏：常显加深底色作视觉指示（hover 不可达）。
+   命中区不走 ::after 外扩——react-resizable-panels 在 document 层用
+   getBoundingClientRect + hitAreaMargins 做命中检测，伪元素不参与；
+   触控热区由 TSX 侧 hitAreaMargins={{ coarse: 19 }} 扩到 44px */
 @media (pointer: coarse) {
-  .notes-pane-resize::after {
-    inset: 0 -8px;
-  }
-
   .notes-pane-resize {
     background: hsl(var(--border) / 88%);
   }
@@ -687,6 +697,17 @@
 
 .notes-tab:focus-within .notes-icon-button {
   opacity: 1;
+}
+
+/* 触屏（仿 NotesWorkspaceTree .nwt-row-more）：hover 不可达，关闭按钮常显；
+   扩到 44px 触控目标，负 margin 抵消占位（视觉图标不变，横向仍占 24px + 4px 右距） */
+@media (pointer: coarse) {
+  .notes-tab .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -10px -6px -10px -10px;
+    opacity: 1;
+  }
 }
 
 .notes-pane-content, .notes-document-host {

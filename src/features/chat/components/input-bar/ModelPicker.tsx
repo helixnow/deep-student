@@ -626,6 +626,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       onClick={() => toggleVendorCollapse(group.vendorId)}
                       className={cn(
                         'flex w-full select-none items-center gap-2 rounded-[var(--menu-shell-row-radius)] px-[var(--menu-shell-row-padding-x)] py-1 text-left transition-colors',
+                        '[@media(pointer:coarse)]:min-h-11',
                         'hover:bg-[color:var(--menu-shell-row-hover)]'
                       )}
                     >
@@ -674,7 +675,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       onClose();
                       triggerOpenSettingsModels();
                     }}
-                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-11"
                   >
                     {t('chatV2:modelPicker.goToSettings')}
                   </DsButton>
@@ -700,7 +701,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             }}
             disabled={disabled || compareSelected.length === 0}
             title={t('chatV2:modelMention.retry')}
-            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-11"
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelMention.retry')}

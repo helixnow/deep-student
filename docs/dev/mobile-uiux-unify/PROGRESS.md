@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–17 已落地；当前队列见下。
+- **轮次**：Round 2–18 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -27,14 +27,14 @@
 | 15 | claude-fable-5-thinking-xhigh ×10 | 搜索/图片保活、compact 分屏冻结、手柄 44、删 Header 孤儿 | 见 ROUND-15-FIXES.md |
 | 16 | claude-fable-5-thinking-xhigh ×10 | 搜索条保活、闪卡 hover、引用选择器/标签 X 44、删 Sidebar 孤儿 | 见 ROUND-16-FIXES.md |
 | 17 | claude-fable-5-thinking-xhigh ×10 | 大纲/访达/Anki 行/查看器 44、ContextRefs hover、删搜索孤儿 | 见 ROUND-17-FIXES.md |
+| 18 | claude-fable-5-thinking-xhigh ×10 | 笔记 tab/手柄、收藏、题库头、PDF 侧栏、输入栏 chip、设置 44 | 见 ROUND-18-FIXES.md |
 
-## 进行中的修复队列（Round 18+）
+## 进行中的修复队列（Round 19+）
 
-- 笔记工作台分屏手柄无 hitAreaMargins；tab 关闭 hover-only 24
-- 收藏取消 24；MemoryView 20；SkillSelector 星标 36
-- ankiCardsBlock 布局切换 40；题库头部 36；PDF 侧栏 40
-- GroupEditorDialog X hover；LearningHubSidebar 新建菜单缺可见性守卫
-- McpToolsSection 其余行操作仍 40
+- TranslationPopover 交换/重试 24；generic 块复制钮
+- NotesCrepeEditor pane 工具栏 28；FolderPickerDialog 展开 20
+- 作文 InputPanel 轮次导航 24
+- notes 可能孤儿：reference-selector、DndFileTree、InvalidReferenceOverlay
 
 ## 已落地
 

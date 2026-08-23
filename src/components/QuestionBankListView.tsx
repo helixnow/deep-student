@@ -1258,7 +1258,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('grid')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9', viewType === 'grid' && 'bg-background shadow-sm')}
+              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', viewType === 'grid' && 'bg-background shadow-sm')}
               aria-label={t('learningHub:exam.library.gridView')}
               title={t('learningHub:exam.library.gridView')}
             >
@@ -1268,7 +1268,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('list')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9', viewType === 'list' && 'bg-background shadow-sm')}
+              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', viewType === 'list' && 'bg-background shadow-sm')}
               aria-label={t('learningHub:exam.library.listView')}
               title={t('learningHub:exam.library.listView')}
             >
@@ -1277,13 +1277,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
           
           {/* 收藏和书签按钮 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </DsButton>
 
           {/* 手动添加题目按钮 */}
           {examId && onCreateQuestion && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
               <Plus size={16} />
             </DsButton>
           )}

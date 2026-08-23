@@ -2604,7 +2604,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="icon"
                 iconOnly
                 onClick={() => setLayout('list')}
-                className="relative !h-8 !w-8 after:absolute after:-inset-1 after:content-['']"
+                className="relative !h-8 !w-8 after:absolute after:-inset-1.5 after:content-['']"
                 aria-pressed={layout === 'list'}
                 aria-label={tAnki('chatBlock.layoutList')}
                 title={tAnki('chatBlock.layoutList')}
@@ -2617,7 +2617,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="icon"
                 iconOnly
                 onClick={() => setLayout('grid')}
-                className="relative !h-8 !w-8 after:absolute after:-inset-1 after:content-['']"
+                className="relative !h-8 !w-8 after:absolute after:-inset-1.5 after:content-['']"
                 aria-pressed={layout === 'grid'}
                 aria-label={tAnki('chatBlock.layoutGrid')}
                 title={tAnki('chatBlock.layoutGrid')}

@@ -448,7 +448,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }
                 }}
                 placeholder={isAndroid() ? '30' : '0'}
-                className="!w-20 h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!w-24 [@media(pointer:coarse)]:text-base text-xs bg-transparent"
+                className="!w-20 h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:!w-24 [@media(pointer:coarse)]:text-base text-xs bg-transparent"
                 min="0"
               />
               <span className="text-xs text-muted-foreground/70">{t('settings:developer.units.px')}</span>
@@ -509,7 +509,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 ]}
                 size="sm"
                 variant="ghost"
-                className="h-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:!min-w-[6rem] text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+                className="h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:!min-w-[6rem] text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={80}
               />
               <DsButton
@@ -582,7 +582,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -599,7 +599,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -615,7 +615,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -633,7 +633,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                             const v = parseInt(e.target.value, 10);
                             if (!isNaN(v) && v >= 100) saveConfig({ ...filterConfig, messageTruncateLength: v });
                           }}
-                          className="h-7 [@media(pointer:coarse)]:h-10 w-20 text-xs"
+                          className="h-7 [@media(pointer:coarse)]:h-11 w-20 text-xs"
                         />
                         <span className="text-2xs text-muted-foreground/60">{t('common:unit.chars')}</span>
                       </div>
@@ -650,7 +650,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>

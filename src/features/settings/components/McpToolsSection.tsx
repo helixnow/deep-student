@@ -2496,8 +2496,8 @@ function ShellCommandRulesSection() {
                   </div>
                   <div className="flex items-center justify-end gap-1">
                     <Switch checked={rule.enabled} disabled={saving} onCheckedChange={enabled => void setRuleEnabled(rule, enabled)} aria-label={t('settings:tool_permissions.shell_rules.toggle_rule', { pattern: rule.pattern })} />
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></DsButton>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></DsButton>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></DsButton>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></DsButton>
                   </div>
                 </div>;
               })}
@@ -3364,7 +3364,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                             size="icon"
                             iconOnly
                             onClick={() => handleRevokeRuntimeRoot(root.id)}
-                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive flex-shrink-0"
+                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-destructive flex-shrink-0"
                             title={t('settings:tool_permissions.runtime_root_remove')}
                             aria-label={t('settings:tool_permissions.runtime_root_remove')}
                           >
@@ -3377,7 +3377,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                             size="icon"
                             iconOnly
                             onClick={handleResetWorkspaceRoot}
-                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground flex-shrink-0"
+                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground flex-shrink-0"
                             title={t('settings:tool_permissions.runtime_root_workspace_reset')}
                             aria-label={t('settings:tool_permissions.runtime_root_workspace_reset')}
                           >

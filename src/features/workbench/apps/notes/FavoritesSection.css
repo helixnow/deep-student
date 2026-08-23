@@ -208,7 +208,11 @@
 }
 
 @media (pointer: coarse) {
+  /* 触屏：常显并把命中区扩到 44px，负 margin 保持 24px 布局占位不变 */
   .nfs-unfavorite {
+    width: 44px;
+    height: 44px;
+    margin: -10px;
     opacity: 1;
   }
 }

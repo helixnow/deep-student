@@ -502,8 +502,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                               : t('skills:favorite.add')
                           }
                           className={cn(
-                            // 视觉 20px，透明伪元素扩大触控命中区（移动端契约 ≥44px 方向靠拢）
-                            '!h-5 !w-5 relative after:absolute after:-inset-2 after:content-[\'\']',
+                            // 视觉 20px，透明伪元素扩大触控命中区至 44px（移动端契约 ≥44px）
+                            '!h-5 !w-5 relative after:absolute after:-inset-3 after:content-[\'\']',
                             isFavorite(skill.id)
                               ? 'text-warning hover:text-warning'
                               : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-warning hover:opacity-100'

@@ -2623,6 +2623,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                 {sizeClass !== 'compact' && (
                   <PanelResizeHandle
                     className="notes-pane-resize"
+                    /* 触屏热区：库在 document 层用 getBoundingClientRect + hitAreaMargins 做命中检测，
+                       CSS ::after 外扩不参与；coarse 19 → 6px 可视宽 + 2×19 = 44px */
+                    hitAreaMargins={{ coarse: 19, fine: 5 }}
                     aria-label={t('notesWorkspace.panes.resize', 'Resize split panes')}
                   />
                 )}

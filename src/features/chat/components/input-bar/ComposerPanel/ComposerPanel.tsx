@@ -276,7 +276,7 @@ const Section: React.FC<ComposerPanelSectionProps> = ({
         <div
           className={cn(
             'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
-            collapsible && 'cursor-pointer hover:bg-[color:var(--menu-shell-row-hover)]'
+            collapsible && 'cursor-pointer hover:bg-[color:var(--menu-shell-row-hover)] [@media(pointer:coarse)]:min-h-11'
           )}
           {...(collapsible
             ? {

@@ -1350,7 +1350,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       className="w-full h-6 px-2 text-[11px] bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background"
                     />
                   </div>
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className="!h-5 !w-5 !p-0" aria-label={t('common:cancel')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className="relative !h-5 !w-5 !p-0 [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('common:cancel')}>
                     <X size={12} />
                   </DsButton>
                 </div>
@@ -1480,7 +1480,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           <SelectItem value="false">{t('memory.audit_failed')}</SelectItem>
                         </SelectContent>
                       </Select>
-                      <DsButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(0)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label={t('memory.aria.refresh_logs')}>
+                      <DsButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(0)} disabled={isLoadingAuditLog} className="relative !h-5 !w-5 !p-0 [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('memory.aria.refresh_logs')}>
                         <ArrowClockwise className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
                       </DsButton>
                     </div>
