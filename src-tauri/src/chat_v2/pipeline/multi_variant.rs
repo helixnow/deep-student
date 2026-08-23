@@ -469,6 +469,7 @@ impl ChatV2Pipeline {
                     skill_runtime_before: build_replay_skill_payload_snapshot(&options),
                     skill_runtime_after: build_replay_skill_payload_snapshot(&options),
                     replay_source: None,
+                    response_reasoning_items: None,
                 }),
                 attachments: None,
                 active_variant_id: first_variant_id,
@@ -2017,6 +2018,10 @@ impl ChatV2Pipeline {
         let mut chat_history = Vec::new();
         for message in messages_to_load {
             let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id)?;
+            // V20260806 B 层：重放旁路三列（无列/NULL 时空表，回退旧重建）
+            let replay_map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id)?;
+            // 🔧 ROUND-01-pipeline #1：只重放 active variant 的块
+            let blocks = super::history::filter_blocks_for_active_variant(&message, blocks);
 
             // 🔧 提取所有 content 类型块的内容并拼接（不只是第一个）
             let content: String = blocks
@@ -2050,14 +2055,33 @@ impl ChatV2Pipeline {
                 .collect();
             tool_blocks.sort_by_key(|b| b.block_index);
 
+            // V20260806 B 层：用户消息优先取 live 发送的完整包装（llm_content 列）
+            let llm_content_override = (message.role == MessageRole::User)
+                .then(|| {
+                    blocks
+                        .iter()
+                        .filter(|b| b.block_type == block_types::CONTENT)
+                        .find_map(|b| {
+                            replay_map
+                                .get(b.id.as_str())
+                                .and_then(|r| r.llm_content.clone())
+                        })
+                })
+                .flatten()
+                .filter(|text| !text.is_empty());
+
             // 🆕 对于用户消息，解析 context_snapshot.user_refs 并将内容追加到 content
             let (content, vfs_image_base64) = if message.role == MessageRole::User {
                 if let (Some(ref vfs_conn), Some(ref blobs_dir)) = (&vfs_conn_opt, &vfs_blobs_dir) {
-                    self.resolve_history_context_snapshot_v2(
+                    let (resolved_content, images) = self.resolve_history_context_snapshot_v2(
                         &content, &message, vfs_conn, blobs_dir,
-                    )
+                    );
+                    match llm_content_override {
+                        Some(llm_content) => (llm_content, images),
+                        None => (resolved_content, images),
+                    }
                 } else {
-                    (content, Vec::new())
+                    (llm_content_override.unwrap_or(content), Vec::new())
                 }
             } else {
                 (content, Vec::new())
@@ -2071,8 +2095,15 @@ impl ChatV2Pipeline {
             // 🆕 如果是 assistant 消息且有工具调用，先添加工具调用消息
             if role == "assistant" && !tool_blocks.is_empty() {
                 for (idx, tool_block) in tool_blocks.iter().enumerate() {
-                    // 生成 tool_call_id（使用块 ID 或生成新的）
-                    let tool_call_id = format!("tc_{}", tool_block.id.replace("blk_", ""));
+                    let replay = replay_map.get(tool_block.id.as_str());
+                    // V20260806 B 层：优先 provider 原始 id，NULL 回退 tc_ 派生
+                    let tool_call_id = replay
+                        .and_then(|r| r.tool_call_id.clone())
+                        .filter(|id| !id.is_empty())
+                        .unwrap_or_else(|| format!("tc_{}", tool_block.id.replace("blk_", "")));
+                    let round_text = replay
+                        .and_then(|r| r.round_text.clone())
+                        .unwrap_or_default();
 
                     // 提取工具名称和输入
                     let tool_name = tool_block.tool_name.clone().unwrap_or_default();
@@ -2095,7 +2126,8 @@ impl ChatV2Pipeline {
                     };
                     let assistant_tool_msg = LegacyChatMessage {
                         role: "assistant".to_string(),
-                        content: String::new(),
+                        // V20260806 B 层：回填该轮伴随文本（text-before-tool-use）
+                        content: round_text,
                         timestamp: chrono::Utc::now(),
                         thinking_content: None,
                         thought_signature: None,
@@ -3246,6 +3278,7 @@ impl ChatV2Pipeline {
                     skill_runtime_before: build_replay_skill_payload_snapshot(options),
                     skill_runtime_after: build_replay_skill_payload_snapshot(options),
                     replay_source: None,
+                    response_reasoning_items: None,
                 }),
                 attachments: None,
                 active_variant_id: active_variant_id.map(|s| s.to_string()),

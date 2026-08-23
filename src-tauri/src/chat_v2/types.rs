@@ -1674,6 +1674,15 @@ pub struct MessageMeta {
     /// 实际采用的 replay 来源
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_source: Option<String>,
+
+    /// OpenAI Responses reasoning item（按 tool_call_id 键控）
+    ///
+    /// V20260806 B 层：无状态 Responses 请求要求跨轮原样回传 encrypted
+    /// reasoning item，否则跨轮重放丢失推理链且打断前缀缓存。live 时该数据
+    /// 活在 `PipelineContext.response_reasoning_by_tool_call_id`，这里随
+    /// 助手消息 meta 持久化，history 重放时按 tool_call_id 回填。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_reasoning_items: Option<std::collections::HashMap<String, Value>>,
 }
 
 impl MessageMeta {

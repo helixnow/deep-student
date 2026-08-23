@@ -1248,6 +1248,20 @@ impl PipelineContext {
         (combined_text, context_images)
     }
 
+    /// V20260806 B 层：当前用户消息 live 实际发送的完整包装文本
+    ///
+    /// 优先取 `compiled_current_user_message`（context_compiler 冻结后的
+    /// 最终请求内容，含 `<user_query>` 包装 + `<injected_context>`/
+    /// `<runtime_facts>` 及可能的派生 artifact 文本）；尚未编译时返回 None，
+    /// 由后续保存点（编译发生在首次 LLM 调用前）补写，避免把与 live 不一致
+    /// 的中间形态落进 `llm_content` 列。
+    pub(crate) fn live_user_llm_content(&self) -> Option<String> {
+        self.compiled_current_user_message
+            .as_ref()
+            .map(|message| message.content.clone())
+            .filter(|content| !content.is_empty())
+    }
+
     /// 将用户上下文引用转换为 ContextRef（丢弃 formattedBlocks）
     ///
     /// 消息保存时只存 ContextRef，不存实际内容。

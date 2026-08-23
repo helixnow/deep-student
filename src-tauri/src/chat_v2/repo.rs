@@ -46,6 +46,29 @@ fn note_message_json_parse_failure(field: &str, message_id: &str, err: &serde_js
     );
 }
 
+/// V20260806 prompt_cache_replay_consistency 旁路数据（三列）
+///
+/// 跨轮重放要与 live 请求字节一致，必须持久化 live 发送时的原始数据：
+/// - `llm_content`：用户 CONTENT 块实际发给 LLM 的完整包装文本
+///   （`<user_query>` + `<injected_context>`/`<runtime_facts>`）
+/// - `tool_call_id`：工具块的 provider 原始 tool-call id（如 `call_...`），
+///   替代重放时派生的 `tc_{block_id}`
+/// - `round_text`：该轮工具调用前助手输出的伴随文本（text-before-tool-use）
+///
+/// `MessageBlock` 结构体故意不加这些字段，读写走独立的旁路 API。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BlockReplayData {
+    pub llm_content: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub round_text: Option<String>,
+}
+
+impl BlockReplayData {
+    pub fn is_empty(&self) -> bool {
+        self.llm_content.is_none() && self.tool_call_id.is_none() && self.round_text.is_none()
+    }
+}
+
 /// Chat V2 数据存取层
 ///
 /// 所有方法均为静态方法，支持事务操作。
@@ -1768,6 +1791,125 @@ impl ChatV2Repo {
             })
             .collect();
         Ok(blocks)
+    }
+
+    // ========================================================================
+    // V20260806 prompt_cache_replay_consistency 旁路三列（llm_content /
+    // tool_call_id / round_text）
+    //
+    // MessageBlock 结构体故意不加字段（避免全量 INSERT/SELECT 迁移面），
+    // 通过 targeted UPDATE / 独立 SELECT 读写。列不存在（迁移未跑的旧库）
+    // 时写入静默跳过、读取返回空——读侧回退旧的 `tc_{block_id}` 重建路径。
+    // ========================================================================
+
+    /// 判断错误是否为「重放三列不存在」（V20260806 迁移未应用的旧库）
+    fn is_missing_replay_column_error(err: &rusqlite::Error) -> bool {
+        err.to_string().contains("no such column")
+    }
+
+    /// 写入块的重放旁路数据（targeted UPDATE，只动三列）
+    ///
+    /// 列不存在时返回 Ok（跨轮重放退化为旧重建，不影响主保存事务）。
+    pub fn update_block_replay_with_conn(
+        conn: &Connection,
+        block_id: &str,
+        replay: &BlockReplayData,
+    ) -> ChatV2Result<()> {
+        if replay.is_empty() {
+            return Ok(());
+        }
+        let result = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET llm_content = ?2, tool_call_id = ?3, round_text = ?4
+            WHERE id = ?1
+            "#,
+            params![
+                block_id,
+                replay.llm_content,
+                replay.tool_call_id,
+                replay.round_text,
+            ],
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) if Self::is_missing_replay_column_error(&e) => {
+                debug!(
+                    "[ChatV2::Repo] Replay columns missing (V20260806 not applied), skipping sidecar write for block {}",
+                    block_id
+                );
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// 读取一条消息全部块的重放旁路数据（block_id -> BlockReplayData）
+    ///
+    /// 列不存在时返回空表（调用方回退旧重建）；三列全 NULL 的块不进表。
+    pub fn get_block_replay_map_with_conn(
+        conn: &Connection,
+        message_id: &str,
+    ) -> ChatV2Result<std::collections::HashMap<String, BlockReplayData>> {
+        let mut stmt = match conn.prepare(
+            r#"
+            SELECT id, llm_content, tool_call_id, round_text
+            FROM chat_v2_blocks
+            WHERE message_id = ?1
+            "#,
+        ) {
+            Ok(stmt) => stmt,
+            Err(e) if Self::is_missing_replay_column_error(&e) => {
+                return Ok(std::collections::HashMap::new());
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        let rows = stmt.query_map(params![message_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                BlockReplayData {
+                    llm_content: row.get(1)?,
+                    tool_call_id: row.get(2)?,
+                    round_text: row.get(3)?,
+                },
+            ))
+        })?;
+
+        let mut map = std::collections::HashMap::new();
+        for row in rows.flatten() {
+            let (block_id, replay) = row;
+            if !replay.is_empty() {
+                map.insert(block_id, replay);
+            }
+        }
+        Ok(map)
+    }
+
+    /// 将源块的重放三列复制到目标块（分支/深拷贝路径专用）
+    ///
+    /// 深拷贝走 `MessageBlock` 结构体重建会静默丢掉三列（结构体没有这些
+    /// 字段），必须在 create 之后调用本方法补齐。列不存在时为 no-op。
+    pub fn copy_block_replay_with_conn(
+        conn: &Connection,
+        source_block_id: &str,
+        target_block_id: &str,
+    ) -> ChatV2Result<()> {
+        let result = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET llm_content = (SELECT s.llm_content FROM chat_v2_blocks s WHERE s.id = ?1),
+                tool_call_id = (SELECT s.tool_call_id FROM chat_v2_blocks s WHERE s.id = ?1),
+                round_text = (SELECT s.round_text FROM chat_v2_blocks s WHERE s.id = ?1)
+            WHERE id = ?2
+            "#,
+            params![source_block_id, target_block_id],
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) if Self::is_missing_replay_column_error(&e) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// 更新块
@@ -4463,6 +4605,133 @@ mod tests {
 
         // 空批量为 no-op
         ChatV2Repo::create_blocks_batch_with_conn(&conn, &[]).unwrap();
+    }
+
+    /// setup_test_db 的迁移列表不含 V20260806（保持「无列回退」测试路径），
+    /// 需要三列时由本 helper 显式补充
+    fn apply_replay_columns(conn: &Connection) {
+        conn.execute_batch(include_str!(
+            "../../migrations/chat_v2/V20260806__prompt_cache_replay_consistency.sql"
+        ))
+        .unwrap();
+    }
+
+    /// V20260806：三列旁路写入/读取/深拷贝补拷 全链路
+    #[test]
+    fn test_block_replay_sidecar_roundtrip_and_copy() {
+        let conn = setup_test_db();
+        apply_replay_columns(&conn);
+
+        let session_id = "sess_replay_sidecar";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_replay_sidecar".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut user_block = MessageBlock::new_content(message.id.clone(), 0);
+        user_block.id = "blk_replay_user".to_string();
+        user_block.content = Some("原始用户输入".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &user_block).unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            message.id.clone(),
+            "builtin-note_read",
+            serde_json::json!({"id": "n1"}),
+            1,
+        );
+        tool_block.id = "blk_replay_tool".to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+
+        // targeted UPDATE 写入
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_replay_user",
+            &BlockReplayData {
+                llm_content: Some("<user_query>\n原始用户输入\n</user_query>".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_replay_tool",
+            &BlockReplayData {
+                llm_content: None,
+                tool_call_id: Some("call_live_abc".to_string()),
+                round_text: Some("我先读一下笔记。".to_string()),
+            },
+        )
+        .unwrap();
+
+        // 读回
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(
+            map.get("blk_replay_user").unwrap().llm_content.as_deref(),
+            Some("<user_query>\n原始用户输入\n</user_query>")
+        );
+        let tool_replay = map.get("blk_replay_tool").unwrap();
+        assert_eq!(tool_replay.tool_call_id.as_deref(), Some("call_live_abc"));
+        assert_eq!(tool_replay.round_text.as_deref(), Some("我先读一下笔记。"));
+
+        // MessageBlock 结构体不携带三列：结构体深拷贝后必须 SQL 级补拷
+        let source = ChatV2Repo::get_block_with_conn(&conn, "blk_replay_tool")
+            .unwrap()
+            .unwrap();
+        let mut copied = source.clone();
+        copied.id = "blk_replay_tool_copy".to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &copied).unwrap();
+        // 补拷前：新块三列为 NULL
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(map.get("blk_replay_tool_copy").is_none());
+        // 补拷后：与源块一致
+        ChatV2Repo::copy_block_replay_with_conn(&conn, "blk_replay_tool", "blk_replay_tool_copy")
+            .unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(
+            map.get("blk_replay_tool_copy").unwrap(),
+            map.get("blk_replay_tool").unwrap()
+        );
+    }
+
+    /// V20260806：迁移未应用（无三列）时写入静默跳过、读取返回空表
+    #[test]
+    fn test_block_replay_sidecar_fallback_without_columns() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_replay_nocol";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_replay_nocol".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_replay_nocol".to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // 写入不报错（静默跳过）
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_replay_nocol",
+            &BlockReplayData {
+                llm_content: Some("wrapped".to_string()),
+                tool_call_id: Some("call_x".to_string()),
+                round_text: None,
+            },
+        )
+        .unwrap();
+        // 读取返回空表（调用方回退旧重建）
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(map.is_empty());
+        // 深拷贝补拷同样 no-op
+        ChatV2Repo::copy_block_replay_with_conn(&conn, "blk_replay_nocol", "blk_replay_nocol")
+            .unwrap();
     }
 
     #[test]

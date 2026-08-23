@@ -1605,6 +1605,10 @@ fn branch_session_in_db(
                 block_index: source_block.block_index,
             };
             ChatV2Repo::create_block_with_conn(&tx, &new_block)?;
+            // V20260806 B 层：MessageBlock 结构体不携带重放三列
+            // （llm_content / tool_call_id / round_text），结构体深拷贝会
+            // 静默丢列——必须 SQL 级补拷，分支会话才能保持跨轮重放字节一致
+            ChatV2Repo::copy_block_replay_with_conn(&tx, old_block_id, new_block_id)?;
         }
     }
 
@@ -1627,11 +1631,12 @@ fn branch_session_in_db(
                 let new_summary_message_id = format!("msg_{}", uuid::Uuid::new_v4());
                 for source_block in source_summary_blocks {
                     let new_block_id = format!("blk_{}", uuid::Uuid::new_v4());
+                    let source_block_id = source_block.id.clone();
                     let mut new_block = source_block;
                     new_block.id = new_block_id.clone();
                     new_block.message_id = new_summary_message_id.clone();
                     new_block_ids.push(new_block_id);
-                    new_blocks.push(new_block);
+                    new_blocks.push((source_block_id, new_block));
                 }
                 let mut new_summary = source_summary;
                 new_summary.id = new_summary_message_id.clone();
@@ -1640,8 +1645,10 @@ fn branch_session_in_db(
                 new_summary.parent_id = None;
                 new_summary.supersedes = None;
                 ChatV2Repo::create_message_with_conn(&tx, &new_summary)?;
-                for new_block in new_blocks {
+                for (source_block_id, new_block) in new_blocks {
                     ChatV2Repo::create_block_with_conn(&tx, &new_block)?;
+                    // V20260806 B 层：深拷贝补拷重放三列（结构体不携带）
+                    ChatV2Repo::copy_block_replay_with_conn(&tx, &source_block_id, &new_block.id)?;
                 }
                 summary_message_id = Some(new_summary_message_id);
             }

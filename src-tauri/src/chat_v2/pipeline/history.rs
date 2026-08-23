@@ -96,9 +96,41 @@ impl ChatV2Pipeline {
 
         // 转换为 LegacyChatMessage 格式
         let mut chat_history = Vec::new();
+        // V20260806：最近一条 user 消息在 chat_history 中的下标。
+        // workspace_injection 还原的 user 消息要插到这条消息**之前**
+        // （live 时注入消息 push 在 chat_history 末尾，位于本轮 user 消息前）
+        let mut last_user_message_index: Option<usize> = None;
         for message in messages_to_load {
             // 加载该消息的所有块
             let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id)?;
+            // V20260806 B 层：读取重放旁路三列（列不存在/全 NULL 时为空表，
+            // 下方各消费点回退旧重建路径）
+            let replay_map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id)?;
+            // 🔧 ROUND-01-pipeline #1：多变体消息只重放 active variant 的块，
+            // 禁止把所有变体的 CONTENT join 在一起
+            let blocks = filter_blocks_for_active_variant(&message, blocks);
+
+            // 🔧 ROUND-01-pipeline #2：workspace_injection 块按 live 还原为
+            // user 消息（live 注入位置 = 上轮历史之后、本轮 user 消息之前）
+            if message.role == MessageRole::Assistant {
+                for block in blocks
+                    .iter()
+                    .filter(|b| b.block_type == block_types::WORKSPACE_INJECTION)
+                {
+                    let Some(text) = block.content.clone().filter(|t| !t.is_empty()) else {
+                        continue;
+                    };
+                    let injected =
+                        build_workspace_injection_user_message(text, block.tool_output.as_ref());
+                    let insert_at = last_user_message_index
+                        .unwrap_or(chat_history.len())
+                        .min(chat_history.len());
+                    chat_history.insert(insert_at, injected);
+                    if let Some(index) = last_user_message_index.as_mut() {
+                        *index += 1;
+                    }
+                }
+            }
 
             // 只提取 content 类型块的内容
             let content: String = blocks
@@ -156,17 +188,39 @@ impl ChatV2Pipeline {
                 pending_thinking
             };
 
+            // V20260806 B 层：用户消息优先取 live 发送的完整包装（llm_content 列，
+            // 含 <user_query> 包装 + <injected_context>/<runtime_facts>）。
+            // 列为 NULL（老数据/迁移未跑）时回退现有重建。
+            let llm_content_override = (message.role == MessageRole::User)
+                .then(|| {
+                    blocks
+                        .iter()
+                        .filter(|b| b.block_type == block_types::CONTENT)
+                        .find_map(|b| {
+                            replay_map
+                                .get(b.id.as_str())
+                                .and_then(|r| r.llm_content.clone())
+                        })
+                })
+                .flatten()
+                .filter(|text| !text.is_empty());
+
             // 🆕 对于用户消息，解析 context_snapshot.user_refs 并将内容追加到 content
             // ★ 2025-12-10 修复：同时提取图片 base64，注入到 image_base64 字段
             let (content, vfs_image_base64) = if message.role == MessageRole::User {
                 if let (Some(ref vfs_conn), Some(ref blobs_dir)) = (&vfs_conn_opt, &vfs_blobs_dir) {
-                    self.resolve_history_context_snapshot_v2(
+                    let (resolved_content, images) = self.resolve_history_context_snapshot_v2(
                         &content, &message,
                         vfs_conn, // 解引用 PooledConnection 获取 &Connection
                         blobs_dir,
-                    )
+                    );
+                    match llm_content_override {
+                        // 字节权威：包装文本已含注入上下文文本，只保留快照解析出的图片
+                        Some(llm_content) => (llm_content, images),
+                        None => (resolved_content, images),
+                    }
                 } else {
-                    (content, Vec::new())
+                    (llm_content_override.unwrap_or(content), Vec::new())
                 }
             } else {
                 (content, Vec::new())
@@ -181,9 +235,49 @@ impl ChatV2Pipeline {
             // 如果是 assistant 消息且有工具调用，先添加工具调用消息
             // 🔧 B1+B2+C1 修复：使用 tool_entries（含关联 thinking）替代 tool_blocks
             if role == "assistant" && !tool_entries.is_empty() {
+                // V20260806：meta 中随消息持久化的 live 工具轮数据
+                // （reasoning_content / thought_signature / Responses reasoning item）
+                let meta_tool_results: &[ToolResultInfo] = message
+                    .meta
+                    .as_ref()
+                    .and_then(|m| m.tool_results.as_deref())
+                    .unwrap_or(&[]);
+                let response_reasoning_items = message
+                    .meta
+                    .as_ref()
+                    .and_then(|m| m.response_reasoning_items.as_ref());
+
                 for (idx, (entry_thinking, tool_block)) in tool_entries.iter().enumerate() {
-                    // 生成 tool_call_id（使用块 ID 或生成新的）
-                    let tool_call_id = format!("tc_{}", tool_block.id.replace("blk_", ""));
+                    let replay = replay_map.get(tool_block.id.as_str());
+                    // V20260806 B 层：优先使用 live 持久化的 provider 原始
+                    // tool-call id；列为 NULL（老数据）时回退 tc_{block_id} 派生
+                    let tool_call_id = replay
+                        .and_then(|r| r.tool_call_id.clone())
+                        .filter(|id| !id.is_empty())
+                        .unwrap_or_else(|| format!("tc_{}", tool_block.id.replace("blk_", "")));
+                    // V20260806 B 层：该轮工具调用前的伴随文本（live 时经
+                    // round_text_by_tool_call_id 回填到 assistant 消息 content）
+                    let round_text = replay
+                        .and_then(|r| r.round_text.clone())
+                        .unwrap_or_default();
+                    // meta 回填：按 block_id 或 tool_call_id 匹配 live 工具结果
+                    let meta_result = meta_tool_results.iter().find(|r| {
+                        r.block_id.as_deref() == Some(tool_block.id.as_str())
+                            || r.tool_call_id.as_deref() == Some(tool_call_id.as_str())
+                    });
+                    let thought_signature = meta_result.and_then(|r| r.thought_signature.clone());
+                    // live 的 assistant(tool_call) 消息 thinking = 该轮 reasoning_content；
+                    // meta 缺失时回退块重建的 entry_thinking
+                    let thinking_for_replay = meta_result
+                        .and_then(|r| r.reasoning_content.clone())
+                        .or_else(|| entry_thinking.clone());
+                    // Responses reasoning item 原样回传（与 tool_results_to_messages_impl
+                    // 的 live 形态一致），跨轮不丢 encrypted reasoning
+                    let reasoning_item_metadata = response_reasoning_items
+                        .and_then(|items| items.get(tool_call_id.as_str()))
+                        .map(|item| {
+                            serde_json::json!({ "openai_responses_reasoning_item": item.clone() })
+                        });
 
                     // 提取工具名称和输入
                     let tool_name = tool_block.tool_name.clone().unwrap_or_default();
@@ -207,10 +301,10 @@ impl ChatV2Pipeline {
                     };
                     let assistant_tool_msg = LegacyChatMessage {
                         role: "assistant".to_string(),
-                        content: String::new(),
+                        content: round_text,
                         timestamp: chrono::Utc::now(),
-                        thinking_content: entry_thinking.clone(),
-                        thought_signature: None,
+                        thinking_content: thinking_for_replay,
+                        thought_signature,
                         rag_sources: None,
                         memory_sources: None,
                         graph_sources: None,
@@ -224,15 +318,24 @@ impl ChatV2Pipeline {
                         overrides: None,
                         relations: None,
                         persistent_stable_id: None,
-                        metadata: None,
+                        metadata: reasoning_item_metadata,
                     };
                     chat_history.push(assistant_tool_msg);
 
                     // 2. 添加 tool 消息（包含 tool_result）
                     // 🔧 与 context.rs tool_results_to_messages_impl 保持一致：
-                    // 失败时优先使用 error 信息，让 LLM 知道失败原因
+                    // 失败时优先使用 error 信息，让 LLM 知道失败原因；
+                    // 成功的检索工具输出走同一份 LLM 视图脱敏（live/重放字节一致）
                     let tool_content = if tool_success {
-                        serde_json::to_string(&tool_output).unwrap_or_default()
+                        match crate::chat_v2::context::sanitize_retrieval_output_for_llm(
+                            &tool_name,
+                            &tool_output,
+                        ) {
+                            Some(sanitized) => {
+                                serde_json::to_string(&sanitized).unwrap_or_default()
+                            }
+                            None => serde_json::to_string(&tool_output).unwrap_or_default(),
+                        }
                     } else if let Some(ref err) = tool_error {
                         if !err.is_empty() {
                             format!("Error: {}", err)
@@ -425,6 +528,9 @@ impl ChatV2Pipeline {
                 .map(|parts| serde_json::json!({ "canonicalContent": parts })),
             };
 
+            if role == "user" {
+                last_user_message_index = Some(chat_history.len());
+            }
             chat_history.push(legacy_message);
         }
 
@@ -619,6 +725,73 @@ impl ChatV2Pipeline {
     }
 }
 
+/// 🔧 ROUND-01-pipeline #1：按 active_variant_id 过滤多变体消息的块
+///
+/// 只丢弃「属于某个非活跃变体」的块；不归任何变体所有的共享块
+/// （检索 / workspace_injection 等）保留。无变体消息原样返回。
+/// active_variant_id 缺失或悬空时 `get_active_block_ids` 回退到
+/// message.block_ids（含全部块），等价于旧行为。
+pub(super) fn filter_blocks_for_active_variant(
+    message: &ChatMessage,
+    blocks: Vec<MessageBlock>,
+) -> Vec<MessageBlock> {
+    let Some(variants) = message.variants.as_ref().filter(|v| !v.is_empty()) else {
+        return blocks;
+    };
+    let variant_owned: std::collections::HashSet<&str> = variants
+        .iter()
+        .flat_map(|v| v.block_ids.iter().map(|s| s.as_str()))
+        .collect();
+    let active: std::collections::HashSet<&str> = message
+        .get_active_block_ids()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    blocks
+        .into_iter()
+        .filter(|b| !variant_owned.contains(b.id.as_str()) || active.contains(b.id.as_str()))
+        .collect()
+}
+
+/// 🔧 ROUND-01-pipeline #2：workspace_injection 块还原为 live 形态的 user 消息
+///
+/// 与 `PipelineContext::inject_workspace_messages` 的构造保持一致
+/// （role=user、metadata 携带 workspace_injection/workspace_id），
+/// 保证下一轮 LLM 视角里注入不消失且字节形态与 live 相同。
+pub(super) fn build_workspace_injection_user_message(
+    formatted: String,
+    injection_meta: Option<&serde_json::Value>,
+) -> LegacyChatMessage {
+    let workspace_id = injection_meta
+        .and_then(|meta| meta.get("workspace_id"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    LegacyChatMessage {
+        role: "user".to_string(),
+        content: formatted,
+        timestamp: chrono::Utc::now(),
+        thinking_content: None,
+        thought_signature: None,
+        rag_sources: None,
+        memory_sources: None,
+        graph_sources: None,
+        web_search_sources: None,
+        image_paths: None,
+        image_base64: None,
+        doc_attachments: None,
+        multimodal_content: None,
+        tool_call: None,
+        tool_result: None,
+        overrides: None,
+        relations: None,
+        persistent_stable_id: None,
+        metadata: Some(serde_json::json!({
+            "workspace_injection": true,
+            "workspace_id": workspace_id,
+        })),
+    }
+}
+
 pub(super) fn active_variant_artifacts_by_user(
     messages: &[ChatMessage],
 ) -> std::collections::HashMap<String, Vec<CanonicalContentPart>> {
@@ -668,7 +841,7 @@ pub(super) fn canonical_content_for_history(
 /// 2. tool_name 已设置（区分 LLM 工具调用 vs 预检索结果块）
 ///    预检索块（如 RAG 检索）也使用 RAG/MEMORY/WEB_SEARCH 类型，
 ///    但没有 tool_name，因此被正确排除。
-fn is_tool_call_block(block: &MessageBlock) -> bool {
+pub(super) fn is_tool_call_block(block: &MessageBlock) -> bool {
     let is_tool_type = matches!(
         block.block_type.as_str(),
         block_types::MCP_TOOL
@@ -684,4 +857,451 @@ fn is_tool_call_block(block: &MessageBlock) -> bool {
             | block_types::WORKBENCH_OPS
     );
     is_tool_type && block.tool_name.is_some()
+}
+
+// ============================================================
+// V20260806 prompt_cache_replay_consistency 单元测试
+// ============================================================
+
+#[cfg(test)]
+mod replay_consistency_tests {
+    use super::*;
+    use crate::chat_v2::repo::BlockReplayData;
+    use crate::chat_v2::types::{ChatSession, MessageMeta, SendMessageRequest, Variant};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    /// 构建带完整迁移（含 V20260806 三列）的真实 ChatV2Pipeline
+    fn replay_test_pipeline() -> (tempfile::TempDir, ChatV2Pipeline) {
+        use crate::chat_v2::database::ChatV2Database;
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::database::Database;
+        use crate::file_manager::FileManager;
+        use crate::llm_manager::LLMManager;
+        use crate::tools::ToolRegistry;
+
+        let chat_dir = tempfile::TempDir::new().expect("chat temp");
+        let mut coordinator =
+            MigrationCoordinator::new(chat_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrate");
+        let chat_db = Arc::new(ChatV2Database::new(chat_dir.path()).expect("chat db"));
+
+        let main_dir = tempfile::TempDir::new().expect("main temp");
+        let mut main_coordinator =
+            MigrationCoordinator::new(main_dir.path().to_path_buf()).with_audit_db(None);
+        main_coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("main migrate");
+        let main_db =
+            Arc::new(Database::new(&main_dir.path().join("mistakes.db")).expect("main db"));
+        let file_manager =
+            Arc::new(FileManager::new(main_dir.path().join("app-data")).expect("file manager"));
+        let llm_manager =
+            Arc::new(LLMManager::new(main_db.clone(), file_manager).expect("llm manager"));
+
+        let pipeline = ChatV2Pipeline::new(
+            chat_db,
+            Some(main_db),
+            None,
+            None,
+            llm_manager,
+            Arc::new(ToolRegistry::new()),
+            None,
+        );
+        // Keep main temp dir alive for the duration of the test.
+        std::mem::forget(main_dir);
+        (chat_dir, pipeline)
+    }
+
+    /// 新一轮请求的 PipelineContext（当前消息 id 与历史消息不同，
+    /// 避免被 load_chat_history 的当前消息排除逻辑吃掉）
+    fn next_turn_ctx(session_id: &str) -> PipelineContext {
+        PipelineContext::new(SendMessageRequest {
+            session_id: session_id.to_string(),
+            content: "下一轮问题".to_string(),
+            options: None,
+            user_message_id: Some("msg_current_user".to_string()),
+            assistant_message_id: Some("msg_current_assistant".to_string()),
+            user_context_refs: None,
+            path_map: None,
+            workspace_id: None,
+        })
+    }
+
+    fn insert_user_turn(
+        conn: &rusqlite::Connection,
+        session_id: &str,
+        message_id: &str,
+        block_id: &str,
+        raw_content: &str,
+        timestamp: i64,
+    ) {
+        let mut user_msg =
+            ChatMessage::new_user(session_id.to_string(), vec![block_id.to_string()]);
+        user_msg.id = message_id.to_string();
+        user_msg.timestamp = timestamp;
+        ChatV2Repo::create_message_with_conn(conn, &user_msg).unwrap();
+        let mut user_block = MessageBlock::new_content(message_id.to_string(), 0);
+        user_block.id = block_id.to_string();
+        user_block.content = Some(raw_content.to_string());
+        user_block.status = block_status::SUCCESS.to_string();
+        ChatV2Repo::create_block_with_conn(conn, &user_block).unwrap();
+    }
+
+    fn content_block(
+        message_id: &str,
+        block_id: &str,
+        text: &str,
+        block_index: u32,
+    ) -> MessageBlock {
+        let mut block = MessageBlock::new_content(message_id.to_string(), block_index);
+        block.id = block_id.to_string();
+        block.content = Some(text.to_string());
+        block.status = block_status::SUCCESS.to_string();
+        block
+    }
+
+    /// 要求 9 主测试：live 写入三列后，history 读回与 live 请求字节相等
+    /// （用户包装 / provider tool_call_id / round_text / thought_signature /
+    /// Responses reasoning item 全部对齐 `tool_results_to_messages_impl` 的 live 形态）
+    #[tokio::test]
+    async fn replay_uses_sidecar_columns_and_matches_live_bytes() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_replay_hist";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        // ---- 上一轮用户消息：DB 存裸文本，llm_content 列存 live 完整包装 ----
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_hist_u1",
+            "blk_hist_u1",
+            "帮我读一下笔记",
+            1_000,
+        );
+        let live_user_content = "<user_query>\n帮我读一下笔记\n</user_query>\n\n<injected_context>\n<runtime_facts>\n当前日期: 2026-08-23\n</runtime_facts>\n</injected_context>";
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_hist_u1",
+            &BlockReplayData {
+                llm_content: Some(live_user_content.to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // ---- 上一轮助手消息：thinking + tool + content，meta 带 live 工具轮数据 ----
+        let reasoning_item = serde_json::json!({"type": "reasoning", "id": "rs_live_1"});
+        let live_tool_result = ToolResultInfo {
+            tool_call_id: Some("call_live_123".to_string()),
+            block_id: Some("blk_hist_tool".to_string()),
+            tool_name: "builtin-note_read".to_string(),
+            input: serde_json::json!({"id": "n1"}),
+            output: serde_json::json!({"ok": true, "text": "笔记内容"}),
+            success: true,
+            error: None,
+            duration_ms: Some(5),
+            reasoning_content: Some("先读笔记再回答".to_string()),
+            thought_signature: Some("sig-live-1".to_string()),
+        };
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_hist_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec![
+            "blk_hist_think".to_string(),
+            "blk_hist_tool".to_string(),
+            "blk_hist_c1".to_string(),
+        ];
+        assistant_msg.meta = Some(MessageMeta {
+            tool_results: Some(vec![live_tool_result.clone()]),
+            response_reasoning_items: Some(HashMap::from([(
+                "call_live_123".to_string(),
+                reasoning_item.clone(),
+            )])),
+            ..Default::default()
+        });
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+
+        let mut thinking_block = MessageBlock::new_thinking("msg_hist_a1".to_string(), 0);
+        thinking_block.id = "blk_hist_think".to_string();
+        thinking_block.content = Some("先读笔记再回答".to_string());
+        thinking_block.status = block_status::SUCCESS.to_string();
+        ChatV2Repo::create_block_with_conn(&conn, &thinking_block).unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            "msg_hist_a1".to_string(),
+            "builtin-note_read",
+            live_tool_result.input.clone(),
+            1,
+        );
+        tool_block.id = "blk_hist_tool".to_string();
+        tool_block.status = block_status::SUCCESS.to_string();
+        tool_block.tool_output = Some(live_tool_result.output.clone());
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_hist_tool",
+            &BlockReplayData {
+                llm_content: None,
+                tool_call_id: Some("call_live_123".to_string()),
+                round_text: Some("我先读一下笔记。".to_string()),
+            },
+        )
+        .unwrap();
+
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_hist_a1", "blk_hist_c1", "笔记里说……", 2),
+        )
+        .unwrap();
+        drop(conn);
+
+        // ---- 跨轮重放 ----
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 4, "user + tool_call + tool + final");
+
+        // 1) 用户消息 = live 发送的完整包装（字节相等）
+        assert_eq!(ctx.chat_history[0].role, "user");
+        assert_eq!(ctx.chat_history[0].content, live_user_content);
+
+        // 2) 工具轮与 live 形态字节对齐（同一数据走 live 的
+        //    all_tool_results_to_messages 构建作为基准）
+        let mut live_ctx = next_turn_ctx(session_id);
+        live_ctx.tool_results = vec![live_tool_result];
+        live_ctx
+            .round_text_by_tool_call_id
+            .insert("call_live_123".to_string(), "我先读一下笔记。".to_string());
+        live_ctx
+            .response_reasoning_by_tool_call_id
+            .insert("call_live_123".to_string(), reasoning_item);
+        let live_msgs = live_ctx.all_tool_results_to_messages();
+        assert_eq!(live_msgs.len(), 2);
+
+        let replayed_call = &ctx.chat_history[1];
+        let live_call = &live_msgs[0];
+        assert_eq!(replayed_call.role, live_call.role);
+        assert_eq!(replayed_call.content, live_call.content);
+        assert_eq!(replayed_call.thinking_content, live_call.thinking_content);
+        assert_eq!(replayed_call.thought_signature, live_call.thought_signature);
+        assert_eq!(replayed_call.metadata, live_call.metadata);
+        let replayed_tc = replayed_call.tool_call.as_ref().unwrap();
+        let live_tc = live_call.tool_call.as_ref().unwrap();
+        assert_eq!(replayed_tc.id, live_tc.id);
+        assert_eq!(replayed_tc.id, "call_live_123", "禁止 tc_{{block_id}} 派生");
+        assert_eq!(replayed_tc.tool_name, live_tc.tool_name);
+        assert_eq!(replayed_tc.args_json, live_tc.args_json);
+
+        let replayed_tool = &ctx.chat_history[2];
+        let live_tool = &live_msgs[1];
+        assert_eq!(replayed_tool.role, live_tool.role);
+        assert_eq!(replayed_tool.content, live_tool.content);
+        assert_eq!(
+            replayed_tool.tool_result.as_ref().unwrap().call_id,
+            live_tool.tool_result.as_ref().unwrap().call_id
+        );
+
+        // 3) 末尾正文
+        assert_eq!(ctx.chat_history[3].role, "assistant");
+        assert_eq!(ctx.chat_history[3].content, "笔记里说……");
+    }
+
+    /// 要求 9 回退测试：三列为 NULL（老数据）时保持旧重建
+    /// （裸文本 + tc_{block_id} 派生 + 空 round_text），不 panic 不丢消息
+    #[tokio::test]
+    async fn replay_falls_back_to_legacy_rebuild_without_sidecar_data() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_replay_fallback";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_fb_u1",
+            "blk_fb_u1",
+            "原始问题",
+            1_000,
+        );
+
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_fb_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec!["blk_fb_tool".to_string(), "blk_fb_c1".to_string()];
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            "msg_fb_a1".to_string(),
+            "builtin-note_read",
+            serde_json::json!({"id": "n2"}),
+            0,
+        );
+        tool_block.id = "blk_fb_tool".to_string();
+        tool_block.status = block_status::SUCCESS.to_string();
+        tool_block.tool_output = Some(serde_json::json!({"ok": true}));
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_fb_a1", "blk_fb_c1", "回答", 1),
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 4);
+        // 用户消息回退为裸文本（无 llm_content 列数据）
+        assert_eq!(ctx.chat_history[0].content, "原始问题");
+        // tool_call_id 回退为 tc_{block_id} 派生，round_text 回退为空
+        let tool_call = ctx.chat_history[1].tool_call.as_ref().unwrap();
+        assert_eq!(tool_call.id, "tc_fb_tool");
+        assert_eq!(ctx.chat_history[1].content, "");
+        assert_eq!(
+            ctx.chat_history[2].tool_result.as_ref().unwrap().call_id,
+            "tc_fb_tool"
+        );
+    }
+
+    /// ROUND-01-pipeline #1：多变体消息只重放 active variant 的块，
+    /// 不再把所有变体 CONTENT join 在一起；切换活跃变体即改变重放字节
+    #[tokio::test]
+    async fn replay_filters_blocks_to_active_variant() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_replay_variant";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_var_u1",
+            "blk_var_u1",
+            "多模型对比",
+            1_000,
+        );
+
+        let make_variant = |id: &str, block_id: &str| {
+            let mut variant = Variant::new(format!("model-{}", id));
+            variant.id = id.to_string();
+            variant.block_ids = vec![block_id.to_string()];
+            variant.status = crate::chat_v2::types::variant_status::SUCCESS.to_string();
+            variant
+        };
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_var_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec!["blk_var_a".to_string(), "blk_var_b".to_string()];
+        assistant_msg.variants = Some(vec![
+            make_variant("var_1", "blk_var_a"),
+            make_variant("var_2", "blk_var_b"),
+        ]);
+        assistant_msg.active_variant_id = Some("var_2".to_string());
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_var_a1", "blk_var_a", "A 变体回答", 0),
+        )
+        .unwrap();
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_var_a1", "blk_var_b", "B 变体回答", 1),
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 2);
+        assert_eq!(
+            ctx.chat_history[1].content, "B 变体回答",
+            "只应包含 active variant 的 CONTENT，禁止 join 全部变体"
+        );
+    }
+
+    /// ROUND-01-pipeline #2：workspace_injection 块按 live 还原为 user 消息，
+    /// 且插在本轮 user 消息之前（live 注入 push 在 chat_history 末尾的位置）
+    #[tokio::test]
+    async fn replay_restores_workspace_injection_before_turn_user() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_replay_wsi";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_wsi_u1",
+            "blk_wsi_u1",
+            "开始任务",
+            1_000,
+        );
+
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_wsi_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec!["blk_wsi_inject".to_string(), "blk_wsi_c1".to_string()];
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+
+        let mut injection_block =
+            MessageBlock::new("msg_wsi_a1".to_string(), block_types::WORKSPACE_INJECTION, 0);
+        injection_block.id = "blk_wsi_inject".to_string();
+        injection_block.status = block_status::SUCCESS.to_string();
+        injection_block.content = Some("[来自工作区] 主代理插话：优先处理 A".to_string());
+        injection_block.tool_output = Some(serde_json::json!({
+            "workspace_id": "ws_1",
+            "message_count": 1,
+        }));
+        ChatV2Repo::create_block_with_conn(&conn, &injection_block).unwrap();
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_wsi_a1", "blk_wsi_c1", "收到，先处理 A", 1),
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 3);
+
+        // live 顺序：注入消息在本轮 user 消息之前
+        assert_eq!(ctx.chat_history[0].role, "user");
+        assert_eq!(
+            ctx.chat_history[0].content,
+            "[来自工作区] 主代理插话：优先处理 A"
+        );
+        let metadata = ctx.chat_history[0].metadata.as_ref().unwrap();
+        assert_eq!(
+            metadata.get("workspace_injection"),
+            Some(&serde_json::Value::Bool(true))
+        );
+        assert_eq!(
+            metadata.get("workspace_id"),
+            Some(&serde_json::json!("ws_1"))
+        );
+        assert_eq!(ctx.chat_history[1].role, "user");
+        assert_eq!(ctx.chat_history[1].content, "开始任务");
+        assert_eq!(ctx.chat_history[2].role, "assistant");
+        assert_eq!(ctx.chat_history[2].content, "收到，先处理 A");
+    }
 }
