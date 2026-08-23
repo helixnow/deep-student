@@ -1359,10 +1359,29 @@ export async function listRecordConflicts(
 }
 
 /**
- * 按数据库统计未解决冲突数（用于 UI 徽章）
+ * 单个数据库的未解决冲突计数
+ * - groups: 按 (table_name, record_id) 去重的记录组数（与冲突面板分组口径一致）
+ * - rows: __sync_conflicts 中未解决的原始行数（一次冲突通常 local + cloud 两行）
  */
-export async function countRecordConflicts(): Promise<Record<string, number>> {
-  return invoke<Record<string, number>>(
+export interface RecordConflictCountEntry {
+  groups: number;
+  rows: number;
+}
+
+/**
+ * 未解决冲突计数汇总（跨所有数据库）
+ */
+export interface RecordConflictCounts {
+  per_database: Record<string, RecordConflictCountEntry>;
+  total_groups: number;
+  total_rows: number;
+}
+
+/**
+ * 按数据库统计未解决冲突数（用于 UI 徽章；同时提供 groups 与 rows 两种口径）
+ */
+export async function countRecordConflicts(): Promise<RecordConflictCounts> {
+  return invoke<RecordConflictCounts>(
     "data_governance_count_record_conflicts",
   );
 }

@@ -4181,13 +4181,60 @@ pub async fn data_governance_list_record_conflicts(
         .collect())
 }
 
-/// 统计每个数据库的待解决冲突数
+/// 单个数据库的未解决冲突计数
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct RecordConflictCountEntry {
+    /// 记录组数：按 (table_name, record_id) 去重。一次冲突写入 local + cloud
+    /// 两行，UI 上"待解决的冲突"数量与 list API 的分组口径都以组为单位。
+    pub groups: u64,
+    /// 原始行数：`__sync_conflicts` 中 `resolved_at IS NULL` 的行。
+    pub rows: u64,
+}
+
+/// 未解决冲突计数汇总（跨所有数据库）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RecordConflictCounts {
+    /// 各数据库的计数；没有未解决冲突的数据库不会出现在这里。
+    pub per_database: HashMap<String, RecordConflictCountEntry>,
+    /// 所有数据库的未解决记录组总数（与 UI 徽章、冲突面板分页口径一致）。
+    pub total_groups: u64,
+    /// 所有数据库的未解决冲突行总数。
+    pub total_rows: u64,
+}
+
+/// 统计单库 `__sync_conflicts` 的未解决冲突：返回 (groups, rows)。
+///
+/// groups 按 (table_name, record_id) 去重，与
+/// `data_governance_list_record_conflicts` 的分组/分页口径一致；rows 是
+/// 底层未解决行数（一次冲突通常是 local + cloud 两行）。
+fn count_unresolved_conflicts(conn: &rusqlite::Connection) -> rusqlite::Result<(u64, u64)> {
+    let table_exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__sync_conflicts')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !table_exists {
+        return Ok((0, 0));
+    }
+    let (groups, rows): (i64, i64) = conn.query_row(
+        "SELECT COUNT(DISTINCT table_name || '\u{1f}' || record_id), COUNT(*)
+         FROM __sync_conflicts
+         WHERE resolved_at IS NULL",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok((groups.max(0) as u64, rows.max(0) as u64))
+}
+
+/// 统计每个数据库的待解决冲突数（同时给出 groups 与 rows 两种口径）
 #[tauri::command]
 pub async fn data_governance_count_record_conflicts(
     app: tauri::AppHandle,
-) -> Result<HashMap<String, u64>, String> {
+) -> Result<RecordConflictCounts, String> {
     let active_dir = get_active_data_dir(&app)?;
-    let mut out: HashMap<String, u64> = HashMap::new();
+    let mut per_database: HashMap<String, RecordConflictCountEntry> = HashMap::new();
+    let mut total_groups: u64 = 0;
+    let mut total_rows: u64 = 0;
 
     for db_id in _DatabaseId::all_ordered() {
         let db_path =
@@ -4199,34 +4246,21 @@ pub async fn data_governance_count_record_conflicts(
             Ok(c) => c,
             Err(_) => continue,
         };
-        let table_exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__sync_conflicts')",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
-        if !table_exists {
-            continue;
-        }
-        // 按 record_id 去重：一次冲突保存 2 条（local + cloud），用户关心的是"有多少条记录有冲突"
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM (
-                    SELECT table_name, record_id
-                    FROM __sync_conflicts
-                    WHERE resolved_at IS NULL
-                    GROUP BY table_name, record_id
-                 )",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
-        if count > 0 {
-            out.insert(db_id.as_str().to_string(), count as u64);
+        let (groups, rows) = count_unresolved_conflicts(&conn).unwrap_or((0, 0));
+        if groups > 0 {
+            per_database.insert(
+                db_id.as_str().to_string(),
+                RecordConflictCountEntry { groups, rows },
+            );
+            total_groups = total_groups.saturating_add(groups);
+            total_rows = total_rows.saturating_add(rows);
         }
     }
-    Ok(out)
+    Ok(RecordConflictCounts {
+        per_database,
+        total_groups,
+        total_rows,
+    })
 }
 
 fn table_has_column(conn: &rusqlite::Connection, table_name: &str, column_name: &str) -> bool {
@@ -4653,6 +4687,102 @@ pub async fn data_governance_detect_prune_gap(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn conflicts_test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __sync_conflicts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                side TEXT NOT NULL CHECK(side IN ('local','cloud')),
+                data_json TEXT NOT NULL,
+                data_hash TEXT NOT NULL DEFAULT '',
+                winning_device_id TEXT,
+                losing_device_id TEXT,
+                detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+                resolved_at TEXT,
+                resolution TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert_conflict(
+        conn: &rusqlite::Connection,
+        table_name: &str,
+        record_id: &str,
+        side: &str,
+        resolved_at: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO __sync_conflicts (table_name, record_id, side, data_json, resolved_at)
+             VALUES (?1, ?2, ?3, '{}', ?4)",
+            rusqlite::params![table_name, record_id, side, resolved_at],
+        )
+        .unwrap();
+    }
+
+    /// 锁定计数口径：groups 按 (table_name, record_id) 去重，rows 是未解决的
+    /// 原始行数；一次冲突（local + cloud 两行）算 1 组 2 行。
+    #[test]
+    fn count_unresolved_conflicts_reports_groups_and_rows() {
+        let conn = conflicts_test_db();
+        // 记录 A：完整的 local + cloud 一对 → 1 组 2 行
+        insert_conflict(&conn, "notes", "a", "local", None);
+        insert_conflict(&conn, "notes", "a", "cloud", None);
+        // 记录 B：只剩单边行 → 仍算 1 组 1 行
+        insert_conflict(&conn, "notes", "b", "cloud", None);
+        // 已解决的行不参与计数
+        insert_conflict(&conn, "notes", "c", "local", Some("2026-01-01T00:00:00Z"));
+        insert_conflict(&conn, "notes", "c", "cloud", Some("2026-01-01T00:00:00Z"));
+        // 不同表的同名 record_id 是不同的组
+        insert_conflict(&conn, "tags", "a", "local", None);
+
+        let (groups, rows) = count_unresolved_conflicts(&conn).unwrap();
+        assert_eq!(groups, 3, "notes/a + notes/b + tags/a 共 3 组");
+        assert_eq!(rows, 4, "未解决的原始行共 4 行");
+    }
+
+    #[test]
+    fn count_unresolved_conflicts_is_zero_without_table_or_rows() {
+        let empty = rusqlite::Connection::open_in_memory().unwrap();
+        assert_eq!(count_unresolved_conflicts(&empty).unwrap(), (0, 0));
+
+        let conn = conflicts_test_db();
+        assert_eq!(count_unresolved_conflicts(&conn).unwrap(), (0, 0));
+
+        insert_conflict(&conn, "notes", "a", "local", Some("2026-01-01T00:00:00Z"));
+        assert_eq!(
+            count_unresolved_conflicts(&conn).unwrap(),
+            (0, 0),
+            "全部已解决时必须为 0"
+        );
+    }
+
+    /// 锁定 count 与 list 的分组口径一致：两者都必须按 (table_name, record_id)
+    /// 分组，count API 的 total_groups 才能与冲突面板的分页总数对齐。
+    #[test]
+    fn count_and_list_share_group_semantics() {
+        let source = include_str!("commands_sync.rs");
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+        assert!(
+            production_source
+                .contains("COUNT(DISTINCT table_name || '\\u{1f}' || record_id), COUNT(*)"),
+            "count API 必须同时给出 groups（按 table_name+record_id 去重）与 rows 两种口径"
+        );
+        assert!(
+            production_source.contains("row.table_name.clone(),")
+                && production_source.contains("row.record_id.clone(),"),
+            "list API 的分页分组键必须保持 (database, table_name, record_id)"
+        );
+    }
 
     #[test]
     fn progress_v2_download_paths_enforce_prune_gap_check() {
