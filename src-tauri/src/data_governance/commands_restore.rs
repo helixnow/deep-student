@@ -1,6 +1,6 @@
 // ==================== 恢复相关命令 ====================
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::{Manager, State};
 use tracing::{debug, error, info, warn};
 
