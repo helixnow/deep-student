@@ -106,6 +106,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     encryptionPasswordConfigured: false,
   });
 
+  // Android 后端对 FTP provider 返回硬编码英文文案（见 src-tauri cloud_storage
+  // create_storage / config validate），且 AppError 无稳定错误码可依赖。
+  // 在展示层按已知文案映射为 i18n；后端引入稳定错误码后应改为按 code 匹配。
+  const localizeCloudError = useCallback(
+    (error: unknown): string => {
+      const raw = getErrorMessage(error);
+      if (/FTP\/FTPS storage is not available on Android/i.test(raw)) {
+        return t('cloudStorage:errors.ftpDisabledAndroid');
+      }
+      return raw;
+    },
+    [t],
+  );
+
   const markSecureStoreIssue = useCallback(
     (error: unknown, operation: 'read' | 'write'): string | null => {
       const envelope = parseCommandErrorEnvelope(error);
@@ -242,7 +256,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const secureMessage = markSecureStoreIssue(e, 'write');
         showGlobalNotification(
           'error',
-          secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${getErrorMessage(e)}`,
+          secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
         );
       }
 
@@ -277,7 +291,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     return () => {
       active = false;
     };
-  }, [markSecureStoreIssue, t]);
+  }, [localizeCloudError, markSecureStoreIssue, t]);
 
   // 构建配置对象
   const buildConfig = useCallback((
@@ -456,7 +470,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setVersions(versionList);
     } catch (e: unknown) {
       setConnectionStatus('failed');
-      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${getErrorMessage(e)}`);
+      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`);
     } finally {
       setTesting(false);
     }
@@ -465,6 +479,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     buildConfig,
     encryptionPassword,
     ftpConfig.password,
+    localizeCloudError,
     provider,
     s3Config.secretAccessKey,
     t,
@@ -806,7 +821,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const appVersion = await TauriAPI.getAppVersion();
         result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 4/4：刷新状态
@@ -828,6 +843,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [
     buildConfig,
     connectionStatus,
+    localizeCloudError,
     refreshStatus,
     resolveBackupId,
     resolveExportZipPath,
@@ -864,7 +880,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       try {
         downloadResult = await cloudApi.downloadBackup(buildConfig(), versionId, downloadDir);
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.downloadBackupFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.downloadBackupFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 2/3：导入 ZIP
@@ -908,6 +924,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [
     buildConfig,
+    localizeCloudError,
     resolveBackupId,
     setStage,
     t,
@@ -956,11 +973,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('success', t('cloudStorage:messages.versionDeleted'));
       refreshStatus();
     } catch (e: unknown) {
-      showGlobalNotification('error', `${t('cloudStorage:errors.deleteFailed')}: ${getErrorMessage(e)}`);
+      showGlobalNotification('error', `${t('cloudStorage:errors.deleteFailed')}: ${localizeCloudError(e)}`);
     } finally {
       setPendingDeleteVersionId(null);
     }
-  }, [buildConfig, pendingDeleteVersionId, refreshStatus, t]);
+  }, [buildConfig, localizeCloudError, pendingDeleteVersionId, refreshStatus, t]);
 
   const persistedInsecureRisk =
     allowInsecure && cloudApi.requiresInsecureTransportOptIn(buildConfig());
