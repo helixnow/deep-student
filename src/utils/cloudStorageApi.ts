@@ -788,6 +788,16 @@ export async function getCredentialStatus(): Promise<CloudStorageCredentialStatu
 }
 
 /**
+ * 显式停用端到端加密：仅从系统安全存储删除加密密码，
+ * WebDAV/S3/FTP 传输凭据保持不变。
+ *
+ * 保留后端 CommandError envelope，调用方按 SECURE_STORE_* code 展示可行动提示。
+ */
+export async function clearEncryptionPassword(): Promise<CloudStorageCredentialStatus> {
+  return await invoke<CloudStorageCredentialStatus>('secure_clear_cloud_encryption_password');
+}
+
+/**
  * 删除云存储凭据
  */
 export async function deleteCredentials(): Promise<void> {

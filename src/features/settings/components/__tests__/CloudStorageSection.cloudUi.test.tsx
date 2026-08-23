@@ -75,6 +75,12 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   })),
   getDeviceId: vi.fn(async () => 'device-test'),
   clearCloudConfigSsot: vi.fn(async () => undefined),
+  clearEncryptionPassword: vi.fn(async () => ({
+    webdavPasswordConfigured: false,
+    s3SecretAccessKeyConfigured: false,
+    ftpPasswordConfigured: false,
+    encryptionPasswordConfigured: false,
+  })),
   saveCredentials: vi.fn(),
   saveCloudConfigSsot: vi.fn(),
   checkConnection: vi.fn(),
@@ -147,6 +153,98 @@ describe('CloudStorageSection cloud UI guarantees', () => {
     await waitFor(() => {
       expect(cloudApi.clearCloudConfigSsot).toHaveBeenCalledTimes(1);
     });
+  });
+
+  test('encryption status is surfaced and the disable action is hidden when not configured', async () => {
+    render(<CloudStorageSection />);
+
+    // 默认（未加密）：展示未加密徽标，不提供停用入口
+    expect(
+      await screen.findByText('cloudStorage:encryption.statusNotConfigured'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('cloudStorage:encryption.statusConfigured'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'cloudStorage:encryption.disableAction' }),
+    ).not.toBeInTheDocument();
+    // placeholder 与真实语义一致：未配置时提示输入以启用
+    expect(
+      screen.getByPlaceholderText('cloudStorage:encryption.placeholderUnset'),
+    ).toBeInTheDocument();
+  });
+
+  test('disabling e2ee requires explicit confirmation and only clears the encryption password', async () => {
+    vi.mocked(cloudApi.getCredentialStatus).mockResolvedValue({
+      webdavPasswordConfigured: true,
+      s3SecretAccessKeyConfigured: false,
+      ftpPasswordConfigured: false,
+      encryptionPasswordConfigured: true,
+    });
+    render(<CloudStorageSection />);
+
+    // 已配置：展示已配置徽标 + 「留空保持不变」的 placeholder
+    expect(
+      await screen.findByText('cloudStorage:encryption.statusConfigured'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('cloudStorage:encryption.placeholderConfigured'),
+    ).toBeInTheDocument();
+
+    const disableButton = screen.getByRole('button', {
+      name: 'cloudStorage:encryption.disableAction',
+    });
+    fireEvent.click(disableButton);
+
+    // 第一次点击只打开确认框，绝不直接删除加密密码
+    expect(cloudApi.clearEncryptionPassword).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('cloudStorage:encryption.disableConfirm.title');
+    expect(dialog).toHaveTextContent(
+      'cloudStorage:encryption.disableConfirm.existingBackupsWarning',
+    );
+    expect(dialog).toHaveTextContent(
+      'cloudStorage:encryption.disableConfirm.futureUploadsPlaintext',
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'cloudStorage:encryption.disableConfirm.confirm' }),
+    );
+
+    await waitFor(() => {
+      expect(cloudApi.clearEncryptionPassword).toHaveBeenCalledTimes(1);
+    });
+    // 停用走专用 API，绝不通过「清除全部配置」误伤传输凭据
+    expect(cloudApi.clearCloudConfigSsot).not.toHaveBeenCalled();
+
+    // 状态回落为未加密，停用按钮消失
+    await waitFor(() => {
+      expect(
+        screen.getByText('cloudStorage:encryption.statusNotConfigured'),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole('button', { name: 'cloudStorage:encryption.disableAction' }),
+    ).not.toBeInTheDocument();
+  });
+
+  test('encryption placeholder copy matches the merge-save semantics', () => {
+    // 已配置态必须说明「留空 = 保留现有密码」，未配置态说明「输入以启用」；
+    // 旧的单一 placeholder（"留空则不加密"）在已配置态下是错误语义，禁止回归。
+    expect(componentSource).not.toContain("t('cloudStorage:encryption.placeholder')");
+    expect(componentSource).toContain('encryptionPasswordConfigured');
+    for (const locale of [zhLocale, enLocale]) {
+      expect(String(locale.encryption.placeholderConfigured).length).toBeGreaterThan(0);
+      expect(String(locale.encryption.placeholderUnset).length).toBeGreaterThan(0);
+      expect(locale.encryption.placeholder).toBeUndefined();
+    }
+    expect(zhLocale.encryption.placeholderConfigured).toContain('留空保持');
+    expect(zhLocale.encryption.placeholderUnset).toContain('启用');
+    expect(zhLocale.encryption.disableConfirm.existingBackupsWarning).toContain('无法解密');
+    expect(zhLocale.encryption.disableConfirm.description).toContain('不受影响');
+    expect(enLocale.encryption.placeholderConfigured).toMatch(/keep/i);
+    expect(enLocale.encryption.disableConfirm.existingBackupsWarning).toMatch(/undecryptable|cannot/i);
   });
 
   test('mobile platforms do not expose a usable FTP provider option', async () => {

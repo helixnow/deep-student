@@ -638,6 +638,7 @@ commands.allow = [
   "save_text_to_file",
   "save_vendor_configs",
   "save_webview_settings",
+  "secure_clear_cloud_encryption_password",
   "secure_delete_cloud_credentials",
   "secure_get_cloud_credentials",
   "secure_save_cloud_credentials",

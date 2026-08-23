@@ -77,9 +77,22 @@
 
   "encryption": {
     "title": "End-to-end encryption password (optional, recommended)",
-    "placeholder": "Leave blank for no encryption; only your devices can decrypt encrypted backups",
+    "statusConfigured": "End-to-end encryption configured",
+    "statusNotConfigured": "Not encrypted",
+    "placeholderConfigured": "Password configured: leave blank to keep it, enter a new password to replace it",
+    "placeholderUnset": "Not encrypted: enter a password to enable end-to-end encryption",
     "description": "When enabled, uploaded ZIP backups use AES-256-GCM encryption and cannot be read by the cloud provider.",
-    "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password."
+    "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password.",
+    "disableAction": "Disable end-to-end encryption",
+    "disabledNotice": "End-to-end encryption disabled; new backups will no longer be encrypted",
+    "disableFailed": "Failed to disable end-to-end encryption; the encryption password was not removed",
+    "disableConfirm": {
+      "title": "Disable end-to-end encryption?",
+      "description": "This removes the end-to-end encryption password from this device. WebDAV/S3/FTP login credentials are not affected.",
+      "existingBackupsWarning": "If you have not saved this password elsewhere, encrypted cloud backups will be permanently undecryptable.",
+      "futureUploadsPlaintext": "New backups uploaded after this will be stored unencrypted in the cloud.",
+      "confirm": "Disable Encryption"
+    }
   },
 
   "progress": {
