@@ -250,7 +250,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             onClick={() => handleOpenChange(!open)}
             aria-label={t('acknowledgements.openSource.openDialog')}
             aria-expanded={isSmallScreen ? open : undefined}
-            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85"
+            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85 [@media(pointer:coarse)]:min-h-11"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
             {isSmallScreen ? (

@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–16 已落地；当前队列见下。
+- **轮次**：Round 2–17 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -26,13 +26,15 @@
 | 14 | claude-fable-5-thinking-xhigh ×10 | 笔记窄窗返回、侧栏/备份 hover、题库/制卡/分屏手柄 44 | 见 ROUND-14-FIXES.md |
 | 15 | claude-fable-5-thinking-xhigh ×10 | 搜索/图片保活、compact 分屏冻结、手柄 44、删 Header 孤儿 | 见 ROUND-15-FIXES.md |
 | 16 | claude-fable-5-thinking-xhigh ×10 | 搜索条保活、闪卡 hover、引用选择器/标签 X 44、删 Sidebar 孤儿 | 见 ROUND-16-FIXES.md |
+| 17 | claude-fable-5-thinking-xhigh ×10 | 大纲/访达/Anki 行/查看器 44、ContextRefs hover、删搜索孤儿 | 见 ROUND-17-FIXES.md |
 
-## 进行中的修复队列（Round 17+）
+## 进行中的修复队列（Round 18+）
 
-- 导图大纲格式/色板、访达搜索清除、Anki SessionRow 大屏 coarse
-- ImageViewer / modern-viewer-icon-button 36；ContextRefsDisplay hover-only
-- CloudStorage / 开源致谢 / EmbeddedToolsEditor <44
-- 新孤儿 NotesSidebarSearch / AddReferenceDropdown
+- 笔记工作台分屏手柄无 hitAreaMargins；tab 关闭 hover-only 24
+- 收藏取消 24；MemoryView 20；SkillSelector 星标 36
+- ankiCardsBlock 布局切换 40；题库头部 36；PDF 侧栏 40
+- GroupEditorDialog X hover；LearningHubSidebar 新建菜单缺可见性守卫
+- McpToolsSection 其余行操作仍 40
 
 ## 已落地
 

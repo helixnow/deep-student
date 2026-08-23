@@ -31,4 +31,4 @@
 - Settings 小屏标题、GradingMain 640–767：Round 3 已修；Sheet 底安全区 / overlay 返回：Round 10–11 已修。
 - 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
 - 导图工具条 40→44、热力图年份/刷新 coarse 44、`shad/Table` 横滚：Round 11 已修。
-- **仍开**：大纲格式钮、访达清除、Anki 行操作、ImageViewer 36、ContextRefs 遮罩 hover、若干设置/技能编辑 <44；NotesSidebarSearch 孤儿。
+- **仍开**：笔记 tab 关闭/分屏手柄、收藏 24、MemoryView 20、星标 36、题库头部/PDF 侧栏 36–40、分组编辑 X hover、侧栏新建菜单保活。

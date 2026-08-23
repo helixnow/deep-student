@@ -560,7 +560,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
+                      className="!h-6 !px-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 text-white hover:bg-[var(--overlay-control-hover)]"
                       onClick={(e) => { e.stopPropagation(); executeCrop(); }}
                     >
                       <Check size={14} className="mr-1" />
@@ -570,7 +570,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
+                    className="!h-6 !px-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 text-white hover:bg-[var(--overlay-control-hover)]"
                     onClick={(e) => { e.stopPropagation(); setIsCropMode(false); setCropRect(null); }}
                   >
                     <X size={14} className="mr-1" />
@@ -623,7 +623,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   variant="ghost"
                   size="icon"
                   iconOnly
-                  className="!w-6 !h-6"
+                  className="!w-6 !h-6 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                   onClick={() => setShowOcrPanel(false)}
                   aria-label="close panel"
                 >

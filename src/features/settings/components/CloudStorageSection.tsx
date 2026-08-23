@@ -1330,10 +1330,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   <DsButton
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-xs text-muted-foreground"
+                    className="h-6 px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:min-h-11"
                     onClick={() => setOpProgress(null)}
                   >
-                    关闭
+                    {t('common:close')}
                   </DsButton>
                 )}
               </div>

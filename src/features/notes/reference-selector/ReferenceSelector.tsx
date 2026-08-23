@@ -466,7 +466,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               size="icon"
               iconOnly
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 !h-5 !w-5 -translate-y-1/2 !rounded-full !p-0.5 hover:bg-[var(--interactive-hover)]"
+              className="absolute right-2 top-1/2 !h-5 !w-5 -translate-y-1/2 !rounded-full !p-0.5 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               aria-label={t('notes:a11y.clear')}
             >
               <X className="h-3 w-3 text-muted-foreground" aria-hidden="true" />

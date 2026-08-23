@@ -34,6 +34,7 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { QuickAccessType } from '../../learningHubContracts';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { IndexStatusMiniBar } from './IndexStatusMiniBar';
@@ -104,6 +105,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 }: FinderQuickAccessProps) {
   const { t } = useTranslation(['learningHub', 'common']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  // 触屏设备清除钮需要 44px 命中区（同 FinderFileItem N-4）
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   // 禁用时给出原因（此前直接 disabled 无解释，用户不知为何不可用）
   const resolvedSearchPlaceholder = searchDisabled
     ? t('finder.search.placeholderDisabled')
@@ -356,8 +359,19 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   />
                 )}
                 {searchQuery && (
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label={t('common:clear')}>
-                    <X size={14} className="text-muted-foreground/60" />
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={() => onSearchChange?.('')}
+                    className={cn(
+                      'absolute right-2 top-1/2 -translate-y-1/2 hover:bg-[var(--interactive-hover)]',
+                      // 触屏 44px 命中区，负 margin 抵消宽度差、图标视觉位置与桌面一致
+                      isTouchPrimary ? '!h-11 !w-11 !p-2.5 !-mr-3' : '!h-5 !w-5 !p-0.5'
+                    )}
+                    aria-label={t('common:clear')}
+                  >
+                    <X size={isTouchPrimary ? 16 : 14} className="text-muted-foreground/60" />
                   </DsButton>
                 )}
               </div>

@@ -297,54 +297,57 @@ export const SessionRow: React.FC<{
           {timeAgo(session.lastUpdated, t)}
         </span>
 
-        {/* 操作按钮（触屏常驻低透明度，桌面 hover 加强）
-            移动端隐藏：24px 目标不满足 44px 触控标准且多按钮会溢出 48px 容器，
-            操作统一收入展开区的 44px 按钮（见下方） */}
+        {/* 操作按钮 — 桌面 fine 指针保持紧凑 24px + hover 提亮；
+            ≥768 coarse 平板无 hover，容器常显且按钮放大到 44px 触控目标
+            （宽度放开为 auto，避免多个 44px 按钮溢出固定 120px 列）。
+            移动端（<768）隐藏：操作统一收入展开区的 44px 按钮（见下方） */}
         {!isSmallScreen && (
         <div
           className="flex items-center justify-end gap-0 flex-shrink-0 w-[120px]
             opacity-40 group-hover/row:opacity-100
-            transition-opacity duration-150"
+            transition-opacity duration-150
+            [@media(pointer:coarse)]:opacity-100
+            [@media(pointer:coarse)]:w-auto [@media(pointer:coarse)]:min-w-[120px]"
           onClick={e => e.stopPropagation()}
         >
           {group === 'active' && session.activeTasks > 0 && (
             <CommonTooltip content={t('pause')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <Pause size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.pausedTasks > 0 && (
             <CommonTooltip content={t('resume')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <Play size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {group === 'active' && (
             <CommonTooltip content={t('tasks.cancelTask')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <XCircle size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {group === 'attention' && session.pausedTasks === 0 && (
             <CommonTooltip content={t('taskDashboard.retryFailed')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <ArrowCounterClockwise size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.totalCards > 0 && (
             <CommonTooltip content={t('taskDashboard.quickExport')}>
-              <DsButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <DownloadSimple size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.sourceSessionId && (
             <CommonTooltip content={t('taskDashboard.jumpToChat')}>
-              <DsButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <ArrowSquareOut size={12} />
               </DsButton>
             </CommonTooltip>
@@ -356,7 +359,7 @@ export const SessionRow: React.FC<{
               variant={deleteConfirm ? 'danger' : 'ghost'}
               onClick={handleDelete}
               disabled={!!busy}
-              className={`h-6 p-0 ${deleteConfirm ? 'px-2 gap-1' : 'w-6'}`}
+              className={`h-6 p-0 [@media(pointer:coarse)]:!h-11 ${deleteConfirm ? 'px-2 gap-1' : 'w-6 [@media(pointer:coarse)]:!w-11'}`}
             >
               <Trash size={12} />
               {deleteConfirm && (
