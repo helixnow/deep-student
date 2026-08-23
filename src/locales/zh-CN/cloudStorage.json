@@ -8,10 +8,11 @@
     "webdavDesc": "坚果云、Nextcloud、自建 WebDAV 等",
     "s3": "S3 兼容存储",
     "s3Desc": "AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等",
-    "s3Disabled": "未启用（需编译时启用 S3 feature）",
+    "s3Disabled": "此版本暂不支持 S3。请改用 WebDAV；或在桌面端将数据导出为 ZIP 备份后，再导入到本设备。",
     "ftp": "FTP/FTPS",
     "ftpDesc": "传统 FTP 服务器、支持显式 FTPS 加密",
-    "ftpDescExperimental": "实验性后端，当前存在已知数据风险"
+    "ftpDescExperimental": "实验性后端，当前存在已知数据风险",
+    "ftpDisabledMobile": "移动端暂不支持 FTP。请改用 WebDAV，或在桌面端使用 FTP 同步。"
   },
   
   "webdav": {
@@ -103,6 +104,14 @@
     "viewHistory": "查看历史版本",
     "clearConfig": "清除配置"
   },
+
+  "clearConfirm": {
+    "title": "清除云存储配置？",
+    "description": "此操作将从本设备删除已保存的服务器地址、账号密码以及端到端加密密码。",
+    "encryptionWarning": "如果你没有在其他地方另存端到端加密密码，已加密的云端备份将永久无法解密。",
+    "cloudFilesKept": "云端已上传的备份文件不会被删除。",
+    "confirm": "确认清除"
+  },
   
   "status": {
     "title": "同步状态",
@@ -154,7 +163,8 @@
     "cancel": "取消",
     "success": "恢复成功",
     "successDetail": "版本 {{version}} 已下载到本地",
-    "successRestart": "数据恢复成功！",
+    "successRestart": "数据恢复成功！应用将立即重启。",
+    "restartNotice": "恢复完成后应用将立即重启。",
     "restartWhenReady": "请手动重启应用以加载恢复的数据。",
     "checksumFailed": "校验和不匹配，文件可能已损坏"
   },

@@ -8,10 +8,11 @@
     "webdavDesc": "Jianguoyun, Nextcloud, self-hosted WebDAV, etc.",
     "s3": "S3 Compatible",
     "s3Desc": "AWS S3, Cloudflare R2, Aliyun OSS, MinIO, etc.",
-    "s3Disabled": "Not enabled (requires S3 feature at compile time)",
+    "s3Disabled": "S3 is not available in this version. Use WebDAV instead, or export a ZIP backup on a desktop device and import it here.",
     "ftp": "FTP/FTPS",
     "ftpDesc": "Traditional FTP servers with explicit FTPS encryption support",
-    "ftpDescExperimental": "Experimental backend with known data-risk issues"
+    "ftpDescExperimental": "Experimental backend with known data-risk issues",
+    "ftpDisabledMobile": "FTP is not available on mobile. Use WebDAV instead, or sync via FTP on a desktop device."
   },
   
   "webdav": {
@@ -103,6 +104,14 @@
     "viewHistory": "View History",
     "clearConfig": "Clear Configuration"
   },
+
+  "clearConfirm": {
+    "title": "Clear cloud storage configuration?",
+    "description": "This removes the saved server address, account credentials, and the end-to-end encryption password from this device.",
+    "encryptionWarning": "If you have not saved the end-to-end encryption password elsewhere, encrypted cloud backups will be permanently undecryptable.",
+    "cloudFilesKept": "Backup files already uploaded to the cloud will not be deleted.",
+    "confirm": "Clear Configuration"
+  },
   
   "status": {
     "title": "Sync Status",
@@ -154,7 +163,8 @@
     "cancel": "Cancel",
     "success": "Restore Successful",
     "successDetail": "Version {{version}} has been downloaded",
-    "successRestart": "Data restored successfully!",
+    "successRestart": "Data restored successfully! The app will restart now.",
+    "restartNotice": "The app will restart immediately after the restore completes.",
     "restartWhenReady": "Please restart the app to apply the restored data.",
     "checksumFailed": "Checksum mismatch, file may be corrupted"
   },
