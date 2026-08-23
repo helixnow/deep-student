@@ -1325,8 +1325,15 @@ mod tests {
     }
 
     #[test]
-    fn test_official_deepseek_v4_flash_defaults_to_responses() {
-        for model in ["deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"] {
+    fn test_official_deepseek_documented_models_default_to_responses() {
+        // 2026-08-23 官方文档列名：flash / pro / flash-vision-exp（legacy 别名映射到 flash）
+        for model in [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash-vision-exp",
+            "deepseek-chat",
+            "deepseek-reasoner",
+        ] {
             let config = ApiConfig {
                 model_adapter: "deepseek".to_string(),
                 provider_type: Some("deepseek".to_string()),
@@ -1346,9 +1353,9 @@ mod tests {
     }
 
     #[test]
-    fn test_official_deepseek_v4_pro_and_v3_stay_on_chat_completions_even_with_explicit_responses()
-    {
-        for model in ["deepseek-v4-pro", "deepseek-v3.2", "deepseek-v3.1"] {
+    fn test_official_deepseek_v3_stays_on_chat_completions_even_with_explicit_responses() {
+        // V3.x 未被官方 Responses 文档列名，显式选中也回落 chat_completions
+        for model in ["deepseek-v3.2", "deepseek-v3.1"] {
             let config = ApiConfig {
                 model_adapter: "deepseek".to_string(),
                 provider_type: Some("deepseek".to_string()),
@@ -1383,8 +1390,9 @@ mod tests {
 
     #[test]
     fn test_third_party_deepseek_v4_flash_hosting_keeps_registry_default() {
-        // SiliconFlow 等第三方托管的 deepseek-v4-flash 无 Responses 端点，
-        // 即使模型名可支持也不应切到 Responses。
+        // SiliconFlow 等第三方托管的 deepseek-v4-flash 无 Responses 端点
+        // （注册表 supports_openai_responses=false），即使模型名可支持、
+        // 甚至显式选中 Responses 也不应切到 Responses。
         let config = ApiConfig {
             model_adapter: "deepseek".to_string(),
             provider_type: Some("siliconflow".to_string()),
@@ -1397,6 +1405,12 @@ mod tests {
         };
 
         assert!(!should_use_openai_responses_for_config(&config));
+
+        let explicit = ApiConfig {
+            api_protocol: Some("openai_responses".to_string()),
+            ..config
+        };
+        assert!(!should_use_openai_responses_for_config(&explicit));
     }
 
     #[test]
@@ -1437,6 +1451,12 @@ mod tests {
             &third_party,
             &enabled_context
         ));
+
+        // provider_type=deepseek 的反代端点（即使显式走 Responses）→ 不注入
+        let mut proxy = base.clone();
+        proxy.base_url = "https://myproxy.example.com/v1".to_string();
+        proxy.api_protocol = Some("openai_responses".to_string());
+        assert!(!server_side_web_search_enabled(&proxy, &enabled_context));
 
         // 模型不支持工具 → 不注入
         let mut no_tools = base.clone();
