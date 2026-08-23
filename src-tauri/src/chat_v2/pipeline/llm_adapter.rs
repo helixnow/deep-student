@@ -1124,13 +1124,18 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
-        // 生成 block_id 并存储映射，供后续 args delta chunk 使用
+        // 生成 block_id 并存储映射，供后续 args delta chunk 使用。
+        // 幂等：Responses 流式路径（output_item.added 分块 + arguments.done 终态）
+        // 会对同一 tool_call_id 触发两次 start，复用已有 preparing 块避免 UI 重复
         let block_id = Self::generate_block_id();
         {
             let mut guard = self
                 .preparing_block_ids
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
+            if guard.contains_key(tool_call_id) {
+                return;
+            }
             guard.insert(tool_call_id.to_string(), block_id.clone());
         }
 
