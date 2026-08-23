@@ -28,6 +28,8 @@
   （官方明确不支持，静默忽略）。唯一杠杆是前缀字节稳定。
 - `cache-hit-report.py` 增加 protocol / provider / token_source 维度；cached 全 NULL 显示「无测量」而不是 0%。
 - 真正实现 `V20260806`：写入并回放 `llm_content` / `tool_call_id` / `round_text`。
+- reasoning item 按响应顺序收集 `Vec`，与相邻 `function_call` 配对回放；禁止单值覆盖 + 绑死第一个 tool id。
+- 非工具轮也回放上一 assistant 的 encrypted reasoning item。
 - Anthropic：`build_merged_usage_event` 字段级合并，保留 `message_start` 的 cache 字段；非流式转换不得丢 cache。
 - Gemini 流式把 `cachedContentTokenCount` 抬到顶层 `cached_tokens`。
 - `record_llm_usage` 真实写入 `token_source` 与 adapter/协议；OpenAI CC 补 `stream_options.include_usage`。
@@ -53,6 +55,8 @@
 
 - 保持 DeepSeek `web_search` 门控（仅官方 + flash 系列）。
 - 评估 OpenAI hosted web_search / file_search 是否应对齐，而不是永远走本地 function。
+- 主适配器补 `output_item.added` 与 `function_call_arguments.delta`（对齐 Codex SSE 桥）。
+- 修 `web_search_call.in_progress` 阶段误标；透传 `top_p`。
 - 不把 SiliconFlow 等无 Responses 端点的托管模型切过去。
 
 ## 测试要求

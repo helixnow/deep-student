@@ -25,6 +25,7 @@ OpenCode、Pi Agent、Claude Code、Codex 的行业前沿。
 | [ROUND-01-findings.md](./ROUND-01-findings.md) | 第一轮：父代理预审 + 子代理任务矩阵 |
 | [ROUND-01-telemetry.md](./ROUND-01-telemetry.md) | 第一轮补充：各协议 cached_tokens 测量缺口 |
 | [ROUND-01-opencode-pi.md](./ROUND-01-opencode-pi.md) | 第一轮补充：OpenCode / Pi 对标 |
+| [ROUND-01-responses-adapter.md](./ROUND-01-responses-adapter.md) | 第一轮补充：Responses 适配器审阅 |
 | [DESIGN.md](./DESIGN.md) | 随调研收敛的优化方案（草案 → 可落地） |
 
 ## 当前判断（会随轮次更新）

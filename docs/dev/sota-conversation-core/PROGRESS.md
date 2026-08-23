@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | 0 立项 | 完成 | 0 | 本目录、目标、审阅范围 |
 | 1 预审 + 并行切片 | 进行中 | 10 + 补位 | [ROUND-01-findings.md](./ROUND-01-findings.md)、[ROUND-01-telemetry.md](./ROUND-01-telemetry.md) |
-| 2 对标补全 | 进行中 | replay 已派出 | Claude Code / Codex 待空位 |
+| 2 对标补全 | 进行中 | replay + Claude/Codex | [ROUND-01-opencode-pi.md](./ROUND-01-opencode-pi.md) |
 | 3 覆盖度矩阵收敛 | 排队 | — | 官方字段 × 实现 |
 | 4 方案冻结 | 排队 | — | 更新 DESIGN.md |
 | 5+ 落地与测试 | 未开始 | 修复子代理 | 独立实现分支 |
@@ -18,7 +18,7 @@
 
 | ID 前缀 | 课题 |
 | --- | --- |
-| 6de9f30f | OpenAI Responses 适配器原生能力 vs 兼容层 |
+| [6de9f30f](6de9f30f-2bd1-4bea-9033-65139f5adb0c) | OpenAI Responses 适配器原生能力 vs 兼容层（已完成） |
 | 17351f7e | DeepSeek Responses 门控、web_search、缓存字段 |
 | ddb6d831 | 多轮缓存前缀断裂路径 |
 | 5df53cf1 | 技能注入与工具变化对缓存的影响 |
@@ -29,6 +29,7 @@
 | b0ca75ca | 2026 Responses 官方能力覆盖度 |
 | [414d5fd1](414d5fd1-4b9c-440f-ad1b-f70d7f4c4439) | 各协议 cached_tokens 测量是否正确（已完成） |
 | b9e1515d | V20260806 replay 列是否真正写入/回放（第二轮补位） |
+| 4d4caf7e | Claude Code × Codex 对标（第二轮补位） |
 
 因异步子代理上限为 10，以下课题排入第二轮：
 
