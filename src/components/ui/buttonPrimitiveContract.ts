@@ -21,8 +21,8 @@ export type ButtonPrimitiveSize = 'sm' | 'md' | 'lg' | 'icon' | 'default';
 // 不影响桌面鼠标 active 手感；定义见 src/styles/ui-motion.css 移动追加区）
 //
 // 字号一律走 token 类（text-ui / text-xs / text-sm → --font-size-* ，内含
-// --font-size-scale），不再写 text-[13px]：设置里的"界面字号"缩放对硬编码
-// px 无效，按钮标签会成为唯一不跟随缩放的一层。高度仍是
+// --font-size-scale），不写 Tailwind 任意值字号：设置里的「界面字号」缩放
+// 对硬编码 px 无效，按钮标签会成为唯一不跟随缩放的一层。高度仍是
 // --touch-target-size（移动 44px）/ --button-height（桌面 32px）等固定
 // 几何 token，字号放大不会把触控目标压小。
 // 新增违规由 eslint 规则 ds-components/no-arbitrary-font-size 拦截。
