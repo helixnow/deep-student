@@ -6,11 +6,13 @@ import {
   intentHasResearchBlocks,
   normalizeHpiasEventPayload,
   omitResearchBlocksFromIntent,
+  resetSharedHpiasEventBridgeForTests,
 } from '@/features/generative-ui/bridge/hpiasEventBridge';
 
 describe('hpiasEventBridge', () => {
   beforeEach(() => {
     useHpiasStore.getState().actions.clear();
+    resetSharedHpiasEventBridgeForTests();
   });
 
   it('exports canonical event channel name', () => {

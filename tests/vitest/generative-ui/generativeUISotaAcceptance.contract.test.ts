@@ -413,6 +413,7 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'MD_AUTOLINK_RE',
         'SRCSET_ATTR_RE',
         'isMarkdownAutolinkTag',
+        'PRESENTATION_ATTR_RE',
       ]),
   },
   {
@@ -443,6 +444,17 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     check: () =>
       fileContains('src/features/generative-ui/components/ActionBarBlock.tsx', [
         "t('action.unregistered_label')",
+      ]),
+  },
+  {
+    id: 'round64-shared-hpias-bridge',
+    check: () =>
+      fileContains('src/features/generative-ui/bridge/hpiasEventBridge.ts', [
+        'retainSharedHpiasEventBridge',
+        'sharedRefs',
+      ]) &&
+      fileContains('src/features/generative-ui/hooks/useHpiasEventBridge.ts', [
+        'retainSharedHpiasEventBridge',
       ]),
   },
 ];
