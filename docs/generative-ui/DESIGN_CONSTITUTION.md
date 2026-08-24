@@ -20,7 +20,7 @@
 | 16 (`gap-4`, `p-4`) | Card 内边距（与 shad Card 一致） |
 | 24 (`gap-6`) | 区块分隔 |
 
-不暴露任意 spacing token 给模型。窄屏（< `sm` / 640px）强制 stack 单列（根节点 `data-compact`），块间距降为 8（`gap-2` / `space-y-2`）；桌面端 v1.1 grid token（`sm:grid-cols-*`）不受影响。
+不暴露任意 spacing token 给模型。窄屏（< `sm` / 640px）强制 stack 单列（根节点 `data-compact` + `.generative-ui-compact`），间距仅用 4/8/12 档（`--generative-ui-space-1/2/3`，见 `src/features/generative-ui/generative-ui.css`）；桌面端 v1.1 grid token（`sm:grid-cols-*`）不受影响。
 
 ## 3. 字号（三级）
 
@@ -68,6 +68,7 @@ props 中颜色/状态仅允许：
 ## 8. Accessibility
 
 - 根节点 `role="region"` + `aria-label`（i18n `a11y.region_label`）；流式时 `aria-busy`，状态用 `aria-live="polite"`
+- 尊重 `prefers-reduced-motion`：根节点标记 `data-reduced-motion`，流式指示与进度过渡改为静态，禁止持续动画
 - 进度用 `role="progressbar"` 与 `aria-valuenow` / `min` / `max`；状态、趋势、严重级别禁止只靠颜色传达
 - 块标题用 heading 或 `aria-labelledby`；装饰图标 `aria-hidden`；列表用 `ul` / `ol` / `li` 或 grid
 - 操作栏为 `toolbar` 或 `group`，执行中按钮 `disabled`；确认对话框须可键盘到达并接收焦点

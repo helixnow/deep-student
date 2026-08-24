@@ -2,15 +2,19 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import type { ProgressBlockProps } from '../schema';
 
 export function ProgressBlock({ title, current, total, label }: ProgressBlockProps) {
   const { t } = useTranslation('generativeUi');
   const titleId = React.useId();
+  const reducedMotion = usePrefersReducedMotion();
   const pct = Math.min(100, Math.round((current / total) * 100));
   return (
     <Card
       className="min-w-0"
+      data-generative-progress
+      data-reduced-motion={reducedMotion ? 'true' : undefined}
       role="region"
       aria-labelledby={title ? titleId : undefined}
       aria-label={title ? undefined : t('a11y.progress_label')}

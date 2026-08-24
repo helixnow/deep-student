@@ -1,0 +1,121 @@
+/**
+ * Generative UI 样式：compact 间距 token + chrome 流式指示。
+ * compact：`.generative-ui-compact` 仅 4/8/12 档。
+ * 动效降级：@media (prefers-reduced-motion: reduce) 与根节点 [data-reduced-motion]。
+ */
+
+.generative-ui-stream-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.generative-ui-stream-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground));
+  opacity: 0.4;
+  animation: generative-ui-stream-pulse 1s ease-in-out infinite;
+}
+
+.generative-ui-stream-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.generative-ui-stream-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes generative-ui-stream-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generative-ui-stream-dot {
+    animation: none;
+    transform: none;
+    opacity: 0.7;
+  }
+
+  [data-generative-ui] [role='progressbar'] .bar,
+  [data-generative-progress] [role='progressbar'] .bar,
+  [data-generative-ui] .progress-indeterminate > div {
+    animation: none;
+    transition: none;
+  }
+
+  [data-generative-ui] .animate-spin {
+    animation: none;
+  }
+}
+
+[data-generative-ui][data-reduced-motion] .generative-ui-stream-dot,
+[data-generative-ui-chrome][data-reduced-motion] .generative-ui-stream-dot,
+.generative-ui-stream-indicator[data-reduced-motion] .generative-ui-stream-dot {
+  animation: none;
+  transform: none;
+  opacity: 0.7;
+}
+
+[data-generative-ui][data-reduced-motion] [role='progressbar'] .bar,
+[data-generative-progress][data-reduced-motion] [role='progressbar'] .bar,
+[data-generative-ui][data-reduced-motion] .progress-indeterminate > div {
+  animation: none;
+  transition: none;
+}
+
+[data-generative-ui][data-reduced-motion] .animate-spin {
+  animation: none;
+}
+
+/**
+ * Compact 间距 token：仅 4 / 8 / 12（宪法 §2 前三档）。16 / 24 不进入 compact。
+ * 根节点 class 由 Renderer 映射：`.generative-ui-compact` + `data-compact`。
+ */
+.generative-ui-compact {
+  --generative-ui-space-1: 4px;
+  --generative-ui-space-2: 8px;
+  --generative-ui-space-3: 12px;
+}
+
+/* 根级块间距：8（原临时 class space-y-2） */
+.generative-ui-compact > * + * {
+  margin-block-start: var(--generative-ui-space-2);
+}
+
+/* 标题与描述微间距：4 */
+.generative-ui-compact > :where(div:has(> h3)) > * + * {
+  margin-block-start: var(--generative-ui-space-1);
+}
+
+/* chrome：12 水平 / 8 垂直，簇内 4（收掉 gap-1.5 等非档位） */
+.generative-ui-compact [data-generative-ui-chrome] {
+  gap: var(--generative-ui-space-2);
+  padding-block: var(--generative-ui-space-2);
+  padding-inline: var(--generative-ui-space-3);
+}
+
+.generative-ui-compact [data-generative-ui-chrome] > div {
+  gap: var(--generative-ui-space-1);
+}
+
+/* 布局网格 gap：8（与 JS `gap-2` 同档，不改 layout 算法） */
+.generative-ui-compact [data-layout-mode] {
+  gap: var(--generative-ui-space-2);
+}
+
+/* 块槽根节点内边距：8（原临时 class [&_[data-block-type]>div]:p-2） */
+.generative-ui-compact [data-block-type] > div {
+  padding: var(--generative-ui-space-2);
+}

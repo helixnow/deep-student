@@ -4,6 +4,7 @@ import { ArrowClockwise, Check, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { cn } from '@/utils/cn';
+import { usePrefersReducedMotion } from './hooks/usePrefersReducedMotion';
 import type { GenerativeUIAction } from './types';
 
 export interface GenerativeUIChromeProps {
@@ -14,6 +15,7 @@ export interface GenerativeUIChromeProps {
 
 export function GenerativeUIChrome({ isStreaming, onAction, className }: GenerativeUIChromeProps) {
   const { t } = useTranslation('generativeUi');
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   return (
     <div
@@ -22,10 +24,23 @@ export function GenerativeUIChrome({ isStreaming, onAction, className }: Generat
         className,
       )}
       data-generative-ui-chrome
+      data-reduced-motion={prefersReducedMotion ? 'true' : undefined}
       aria-busy={isStreaming || undefined}
     >
       <div className="flex items-center gap-1.5">
         <AiContentLabel variant="badge" showIcon />
+        {isStreaming ? (
+          <span
+            className="generative-ui-stream-indicator"
+            data-stream-indicator
+            data-reduced-motion={prefersReducedMotion ? 'true' : undefined}
+            aria-hidden
+          >
+            <span className="generative-ui-stream-dot" />
+            <span className="generative-ui-stream-dot" />
+            <span className="generative-ui-stream-dot" />
+          </span>
+        ) : null}
         <span
           aria-live="polite"
           aria-atomic="true"

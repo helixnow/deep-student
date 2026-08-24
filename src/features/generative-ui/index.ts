@@ -44,6 +44,10 @@ export {
   GENERATIVE_UI_COMPACT_MEDIA_QUERY,
   GENERATIVE_UI_COMPACT_MAX_WIDTH,
 } from './hooks/useGenerativeUICompact';
+export {
+  usePrefersReducedMotion,
+  PREFERS_REDUCED_MOTION_QUERY,
+} from './hooks/usePrefersReducedMotion';
 export { resolveEffectiveRiskLevel, withGenerativeActionInstrumentation } from './actions';
 export type { GenerativeActionInstrumentationOptions } from './actions';
 export {
@@ -188,6 +192,12 @@ export type {
   MigrateIntentToV11Options,
   MigrateIntentToV11Layout,
 } from './utils/migrateIntentToV11';
+export { normalizeGenerativeUIIntent } from './utils/normalizeGenerativeUIIntent';
+export type {
+  NormalizeGenerativeUIIntentOptions,
+  NormalizeGenerativeUIIntentResult,
+} from './utils/normalizeGenerativeUIIntent';
+export { buildIntentExportMarkdown } from './utils/buildIntentExportMarkdown';
 
 // 注册内置块
 import './blocks';
