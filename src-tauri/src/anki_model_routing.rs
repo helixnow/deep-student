@@ -731,6 +731,108 @@ mod tests {
         assert_eq!(plan.distinct_config_count(), 2);
     }
 
+    // ---------- Planner / Vlm 生产消费的降级矩阵 ----------
+
+    #[test]
+    fn only_main_keeps_planner_primary_and_degrades_generator_and_vlm() {
+        let slots = AnkiRoutingSlots {
+            anki_card: None,
+            main: Some(probe("cfg-main", "main", false, true)),
+            vision: None,
+        };
+        let plan = plan_routing(RoutingMode::Auto, &slots).expect("plan");
+
+        assert_eq!(plan.planner.slot, SlotKind::MainModel);
+        assert!(!plan.planner.degraded);
+        assert_eq!(plan.generator.config_id, "cfg-main");
+        assert!(plan.generator.degraded);
+        assert_eq!(plan.vlm.config_id, "cfg-main");
+        assert!(plan.vlm.degraded);
+    }
+
+    #[test]
+    fn multimodal_main_can_serve_planner_and_vlm_as_one_config() {
+        let main = probe("cfg-main-vl", "main-vl", true, true);
+        let slots = AnkiRoutingSlots {
+            anki_card: None,
+            main: Some(main.clone()),
+            vision: Some(main),
+        };
+        let plan = plan_routing(RoutingMode::Auto, &slots).expect("plan");
+
+        assert_eq!(plan.planner.slot, SlotKind::MainModel);
+        assert_eq!(plan.vlm.slot, SlotKind::Vision);
+        assert!(!plan.planner.degraded);
+        assert!(!plan.vlm.degraded);
+        assert_eq!(plan.distinct_config_count(), 1);
+    }
+
+    #[test]
+    fn missing_anki_with_distinct_vision_preserves_role_specific_slots() {
+        let slots = AnkiRoutingSlots {
+            anki_card: None,
+            main: Some(probe("cfg-main", "main", false, true)),
+            vision: Some(probe("cfg-vlm", "vlm", true, false)),
+        };
+        let plan = plan_routing(RoutingMode::Auto, &slots).expect("plan");
+
+        assert_eq!(plan.generator.slot, SlotKind::MainModel);
+        assert!(plan.generator.degraded);
+        assert_eq!(plan.planner.slot, SlotKind::MainModel);
+        assert!(!plan.planner.degraded);
+        assert_eq!(plan.vlm.slot, SlotKind::Vision);
+        assert!(!plan.vlm.degraded);
+    }
+
+    #[test]
+    fn missing_main_keeps_generator_and_vlm_on_their_own_slots() {
+        let slots = AnkiRoutingSlots {
+            anki_card: Some(probe("cfg-anki", "anki", false, false)),
+            main: None,
+            vision: Some(probe("cfg-vlm", "vlm", true, false)),
+        };
+        let plan = plan_routing(RoutingMode::Auto, &slots).expect("plan");
+
+        assert_eq!(plan.planner.config_id, plan.generator.config_id);
+        assert!(plan.planner.degraded);
+        assert!(!plan.generator.degraded);
+        assert_eq!(plan.vlm.slot, SlotKind::Vision);
+        assert!(!plan.vlm.degraded);
+    }
+
+    #[test]
+    fn duplicate_config_ids_are_deduplicated_without_losing_slot_identity() {
+        let shared = probe("cfg-shared", "shared-vl", true, true);
+        let slots = AnkiRoutingSlots {
+            anki_card: Some(shared.clone()),
+            main: Some(shared.clone()),
+            vision: Some(shared),
+        };
+        let plan = plan_routing(RoutingMode::Auto, &slots).expect("plan");
+
+        assert_eq!(plan.planner.slot, SlotKind::MainModel);
+        assert_eq!(plan.generator.slot, SlotKind::AnkiCard);
+        assert_eq!(plan.vlm.slot, SlotKind::Vision);
+        assert_eq!(plan.distinct_config_count(), 1);
+    }
+
+    #[test]
+    fn single_mode_with_only_vision_marks_every_role_as_base_degraded() {
+        let slots = AnkiRoutingSlots {
+            anki_card: None,
+            main: None,
+            vision: Some(probe("cfg-vlm", "vlm", true, false)),
+        };
+        let plan = plan_routing(RoutingMode::Single, &slots).expect("plan");
+
+        for role in AnkiModelRole::ALL {
+            let decision = plan.decision(role);
+            assert_eq!(decision.config_id, "cfg-vlm");
+            assert_eq!(decision.slot, SlotKind::Vision);
+            assert!(decision.degraded);
+        }
+    }
+
     // ---------- 生产消费者接线契约（收尾续作 #3） ----------
 
     #[test]

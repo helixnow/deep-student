@@ -25,10 +25,12 @@ Planner 与 Vlm 都通过 `resolve_anki_role_decision` 读取当前槽位，再�
 
 ## 测试
 
-`anki_model_routing` 共 19 个单元测试（不少于要求的 8 个）：
+`anki_model_routing` 共 25 个单元测试；本续作新增 8 个：
 
 - 原有 17 个覆盖模式解析、四角色选槽、缺槽位降级、单模型模式、序列化、
   槽位探测和探测到计划的端到端纯逻辑。
+- 新增 6 个 Planner/Vlm 降级矩阵测试，覆盖仅主模型、主模型兼任视觉、
+  缺制卡槽、缺主槽、同配置多槽去重，以及 single + 仅视觉槽。
 - 新增 2 个生产接线契约测试，锁定 Planner/Vlm 角色、可回退调用适配器、
   Planner 启发式降级，以及三条 VLM extract 调用路径。
 
