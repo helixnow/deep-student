@@ -485,12 +485,13 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                   }}
                   disabled={disabled || selectedModels.length === 0}
                   title={t('chatV2:modelMention.retry')}
+                  className="[@media(pointer:coarse)]:min-h-11"
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('chatV2:modelRetry.retry')}
                 </DsButton>
               )}
-              <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
                 <X size={16} />
               </DsButton>
             </div>
@@ -516,6 +517,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             }}
             disabled={disabled || selectedModels.length === 0}
             title={t('chatV2:modelMention.retry')}
+            className="[@media(pointer:coarse)]:min-h-11"
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelRetry.retry')}
