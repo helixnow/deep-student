@@ -1058,6 +1058,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           variant="primary"
           size="md"
           onClick={loadConfig}
+          className="[@media(pointer:coarse)]:min-h-11"
         >
           <ArrowClockwise className="w-4 h-4" />
           {t('common:retry')}
