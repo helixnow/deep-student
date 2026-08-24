@@ -4954,7 +4954,7 @@ mod tests {
             .expect("加密上传前必须先写入云端加密标记");
         let marker: serde_json::Value = serde_json::from_slice(&marker_bytes).unwrap();
         assert!(
-            marker.get("key_verifier").map(|v| !v.is_null()) == Some(true),
+            marker.get("keyVerifier").map(|v| !v.is_null()) == Some(true),
             "记录级上传登记的标记必须携带密码校验子: {marker}"
         );
     }
