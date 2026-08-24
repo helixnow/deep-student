@@ -17,42 +17,23 @@ describe('modern sidebar scroll contract', () => {
     expect(primitiveSource).toContain('<CustomScrollArea');
   });
 
-  it('uses a viewport mask fade instead of overlay pseudo-elements that could block interactions', () => {
-    const fadeCss = appCss.slice(
-      appCss.indexOf('.desktop-shell-sidebar-session-scroll'),
-      appCss.indexOf('.desktop-shell-header-title')
-    );
-
+  it('does not paint overlay pseudo-elements or mask fades over the session scroll region', () => {
+    // 会话列表边缘渐隐（mask-image 方案）已随 os 重构移除：滚动壳只负责滚动，
+    // 不再叠加可能拦截交互或遮挡内容的伪元素/遮罩。
     expect(primitiveSource).toContain('desktop-shell-sidebar-session-scroll');
-    expect(fadeCss).not.toContain('.desktop-shell-sidebar-session-scroll::before');
-    expect(fadeCss).not.toContain('.desktop-shell-sidebar-session-scroll::after');
-    expect(fadeCss).toContain('.desktop-shell-sidebar-session-scroll-viewport');
-    expect(fadeCss).toContain('mask-image');
+    expect(appCss).not.toContain('.desktop-shell-sidebar-session-scroll::before');
+    expect(appCss).not.toContain('.desktop-shell-sidebar-session-scroll::after');
+    expect(appCss).not.toContain('.desktop-shell-sidebar-session-scroll-viewport');
+    expect(appCss).not.toContain('--desktop-shell-sidebar-session-fade-size');
   });
 
-  it('keeps the session edge fade compatible with desktop WebViews', () => {
-    const fadeCss = appCss.slice(
-      appCss.indexOf('.desktop-shell-sidebar-session-scroll'),
-      appCss.indexOf('.desktop-shell-header-title')
-    );
-
-    expect(fadeCss).not.toContain('color-mix');
-    expect(fadeCss).toContain('--desktop-shell-sidebar-session-fade-size: 28px');
-    expect(fadeCss).toContain('-webkit-mask-image');
+  it('keeps the session viewport free of the legacy fade mask class', () => {
+    expect(primitiveSource).not.toContain('desktop-shell-sidebar-session-scroll-viewport');
+    expect(primitiveSource).toContain('viewportClassName="h-full w-full"');
   });
 
-  it('applies the bottom edge fade directly to the session scroll viewport content', () => {
-    const fadeCss = appCss.slice(
-      appCss.indexOf('.desktop-shell-sidebar-session-scroll'),
-      appCss.indexOf('.desktop-shell-header-title')
-    );
-
-    expect(primitiveSource).toContain('desktop-shell-sidebar-session-scroll-viewport');
-    expect(fadeCss).toContain('.desktop-shell-sidebar-session-scroll-viewport');
-    expect(fadeCss).toContain('-webkit-mask-image');
-    expect(fadeCss).toContain('mask-image');
-    expect(fadeCss).toContain('transparent 0%');
-    expect(fadeCss).toContain('black var(--desktop-shell-sidebar-session-fade-size)');
-    expect(fadeCss).toContain('black calc(100% - var(--desktop-shell-sidebar-session-fade-size))');
+  it('shows the session scrollbar only while the user is scrolling', () => {
+    expect(primitiveSource).toContain('scrollAutoHide="scroll"');
+    expect(primitiveSource).toContain('scrollAutoHideSuspend={false}');
   });
 });

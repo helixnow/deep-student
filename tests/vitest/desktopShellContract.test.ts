@@ -6,6 +6,10 @@ describe('desktop shell migration contract', () => {
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
   const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
   const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+  const workbenchSidebarSource = readFileSync(
+    resolve(process.cwd(), 'src/features/workbench/components/sidebar/WorkbenchSidebar.tsx'),
+    'utf-8'
+  );
   const windowControlsSource = readFileSync(resolve(process.cwd(), 'src/components/WindowControls.tsx'), 'utf-8');
   const rendererSource = readFileSync(resolve(process.cwd(), 'src/app/components/ViewLayerRenderer.tsx'), 'utf-8');
   const themeSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');
@@ -14,7 +18,10 @@ describe('desktop shell migration contract', () => {
     expect(appSource).toContain('data-shell-role="app-shell"');
     expect(appSource).toContain('data-shell-layer="window-chrome"');
     expect(appSource).toContain('data-shell-layer="workspace"');
-    expect(sidebarSource).toContain('data-shell-layer="navigation"');
+    // navigation 层由 WorkbenchSidebarSurface primitive 统一盖章（os 重构），
+    // ModernSidebar 通过渲染该 primitive 获得 data-shell-layer="navigation"。
+    expect(sidebarSource).toContain('<WorkbenchSidebarSurface');
+    expect(workbenchSidebarSource).toContain('data-shell-layer="navigation"');
   });
 
   it('routes desktop shell surfaces through semantic tokens (flat-white architecture)', () => {
