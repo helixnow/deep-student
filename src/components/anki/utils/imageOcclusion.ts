@@ -87,7 +87,7 @@ function readExplicitClozeIndex(value: unknown): number | null {
  * 从弱类型对象归一化遮挡 spec。Overlay 也会调用此函数，避免调用方绕过
  * extra_fields JSON 解析后把越界/超量数据直接交给 DOM。
  */
-export function normalizeOcclusionSpec(raw: unknown): OcclusionSpec | null {
+function normalizeOcclusionSpecValue(raw: unknown): OcclusionSpec | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   const candidate = raw as { imageRef?: unknown; boxes?: unknown };
   if (typeof candidate.imageRef !== 'string' || candidate.imageRef.trim() === '') return null;
@@ -122,10 +122,14 @@ export function normalizeOcclusionSpec(raw: unknown): OcclusionSpec | null {
   let nextGeneratedIndex =
     maxExplicitIndex < Number.MAX_SAFE_INTEGER ? maxExplicitIndex + 1 : 1;
   const allocateIndex = (): number => {
-    while (usedIndices.has(nextGeneratedIndex)) nextGeneratedIndex += 1;
+    while (usedIndices.has(nextGeneratedIndex)) {
+      nextGeneratedIndex =
+        nextGeneratedIndex >= Number.MAX_SAFE_INTEGER ? 1 : nextGeneratedIndex + 1;
+    }
     const allocated = nextGeneratedIndex;
     usedIndices.add(allocated);
-    nextGeneratedIndex += 1;
+    nextGeneratedIndex =
+      allocated >= Number.MAX_SAFE_INTEGER ? 1 : allocated + 1;
     return allocated;
   };
 
@@ -139,6 +143,15 @@ export function normalizeOcclusionSpec(raw: unknown): OcclusionSpec | null {
   });
 
   return { imageRef: candidate.imageRef.trim(), boxes };
+}
+
+export function normalizeOcclusionSpec(raw: unknown): OcclusionSpec | null {
+  try {
+    return normalizeOcclusionSpecValue(raw);
+  } catch {
+    // Overlay 是运行时边界；异常 getter / Proxy 等非 JSON 调用也必须安全降级。
+    return null;
+  }
 }
 
 /**

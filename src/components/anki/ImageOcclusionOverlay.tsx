@@ -83,6 +83,18 @@ export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
     [onReveal, revealedIndices, specKey],
   );
 
+  const handleRevealKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, clozeIndex: number) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      // 显式处理键盘激活，保证嵌在可翻面/可编辑卡片里时不会触发外层动作。
+      // preventDefault 同时抑制原生 button 随后的合成 click，避免 onReveal 调用两次。
+      event.preventDefault();
+      event.stopPropagation();
+      handleReveal(clozeIndex);
+    },
+    [handleReveal],
+  );
+
   return (
     <div
       data-testid="image-occlusion-overlay"
@@ -114,7 +126,7 @@ export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
               event.stopPropagation();
               handleReveal(box.clozeIndex);
             }}
-            onKeyDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => handleRevealKeyDown(event, box.clozeIndex)}
           />
         );
       })}

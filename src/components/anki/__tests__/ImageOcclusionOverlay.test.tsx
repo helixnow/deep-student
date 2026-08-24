@@ -4,6 +4,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ImageOcclusionOverlay } from '../ImageOcclusionOverlay';
 import type { OcclusionSpec } from '../utils/imageOcclusion';
 
@@ -40,6 +41,75 @@ describe('ImageOcclusionOverlay', () => {
     expect(screen.getByText('左心房备注')).toBeTruthy();
     expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(1);
     expect(onReveal).toHaveBeenCalledWith(1);
+  });
+
+  it('Enter 键揭开整个 cloze 组且只回调一次', async () => {
+    const user = userEvent.setup();
+    const onReveal = vi.fn();
+    render(<ImageOcclusionOverlay spec={spec} onReveal={onReveal} />);
+
+    const mask = screen.getAllByLabelText('揭开遮挡区域 1')[0];
+    mask.focus();
+    await user.keyboard('{Enter}');
+
+    expect(screen.getAllByTestId('occlusion-box-revealed')).toHaveLength(2);
+    expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(1);
+    expect(onReveal).toHaveBeenCalledTimes(1);
+    expect(onReveal).toHaveBeenCalledWith(1);
+  });
+
+  it('空格键可揭开遮挡并阻止外层卡片键盘动作', async () => {
+    const user = userEvent.setup();
+    const onOuterKeyDown = vi.fn();
+    const onReveal = vi.fn();
+    render(
+      <div onKeyDown={onOuterKeyDown}>
+        <ImageOcclusionOverlay spec={spec} onReveal={onReveal} />
+      </div>,
+    );
+
+    const mask = screen.getByLabelText('揭开遮挡区域 2');
+    mask.focus();
+    await user.keyboard(' ');
+
+    expect(screen.getByText('右心室')).toBeInTheDocument();
+    expect(onReveal).toHaveBeenCalledTimes(1);
+    expect(onReveal).toHaveBeenCalledWith(2);
+    expect(onOuterKeyDown).not.toHaveBeenCalled();
+  });
+
+  it('非激活键不会揭开遮挡', () => {
+    const onReveal = vi.fn();
+    render(<ImageOcclusionOverlay spec={spec} onReveal={onReveal} />);
+
+    fireEvent.keyDown(screen.getByLabelText('揭开遮挡区域 2'), { key: 'ArrowRight' });
+
+    expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(3);
+    expect(onReveal).not.toHaveBeenCalled();
+  });
+
+  it('受控模式只发出组序号，等待 revealedIndices 更新后再揭开', () => {
+    const onReveal = vi.fn();
+    const { rerender } = render(
+      <ImageOcclusionOverlay
+        spec={spec}
+        revealedIndices={new Set<number>()}
+        onReveal={onReveal}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByLabelText('揭开遮挡区域 1')[1]);
+    expect(onReveal).toHaveBeenCalledWith(1);
+    expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(3);
+
+    rerender(
+      <ImageOcclusionOverlay
+        spec={spec}
+        revealedIndices={new Set([1])}
+        onReveal={onReveal}
+      />,
+    );
+    expect(screen.getAllByTestId('occlusion-box-revealed')).toHaveLength(2);
   });
 
   it('revealAll 全部揭开；受控 revealedIndices 优先于内部状态', () => {
@@ -81,6 +151,24 @@ describe('ImageOcclusionOverlay', () => {
 
     expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(1);
     expect(screen.getByLabelText('揭开遮挡区域 2')).toBeInTheDocument();
+  });
+
+  it('根结构非法或属性读取抛错时安全渲染空 overlay', () => {
+    const throwingSpec = Object.defineProperty({}, 'imageRef', {
+      get: () => {
+        throw new Error('broken getter');
+      },
+    });
+
+    const { rerender } = render(
+      <ImageOcclusionOverlay spec={null as unknown as OcclusionSpec} />,
+    );
+    expect(screen.getByTestId('image-occlusion-overlay')).toBeEmptyDOMElement();
+
+    expect(() => {
+      rerender(<ImageOcclusionOverlay spec={throwingSpec as OcclusionSpec} />);
+    }).not.toThrow();
+    expect(screen.queryByTestId('occlusion-box-masked')).not.toBeInTheDocument();
   });
 
   it('揭开交互不会冒泡触发外层卡片翻面', () => {

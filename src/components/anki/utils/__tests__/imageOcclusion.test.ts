@@ -102,6 +102,42 @@ describe('parseOcclusionSpec', () => {
     expect(Array.from(spec.boxes[0].label)).toHaveLength(MAX_OCCLUSION_LABEL_CHARS);
     expect(spec.imageRef).toBe('image.png');
   });
+
+  it('补号到 MAX_SAFE_INTEGER 后回绕到可用安全正整数', () => {
+    const spec = normalizeOcclusionSpec({
+      imageRef: 'image.png',
+      boxes: [
+        {
+          x: 0,
+          y: 0,
+          w: 0.2,
+          h: 0.2,
+          label: 'explicit',
+          clozeIndex: Number.MAX_SAFE_INTEGER - 1,
+        },
+        { x: 0.25, y: 0, w: 0.2, h: 0.2, label: 'max-safe' },
+        { x: 0.5, y: 0, w: 0.2, h: 0.2, label: 'wrapped' },
+      ],
+    })!;
+
+    expect(spec.boxes.map((box) => box.clozeIndex)).toEqual([
+      Number.MAX_SAFE_INTEGER - 1,
+      Number.MAX_SAFE_INTEGER,
+      1,
+    ]);
+    expect(spec.boxes.every((box) => Number.isSafeInteger(box.clozeIndex))).toBe(true);
+  });
+
+  it('异常属性访问安全降级为 null', () => {
+    const broken = Object.defineProperty({}, 'imageRef', {
+      get: () => {
+        throw new Error('broken getter');
+      },
+    });
+
+    expect(() => normalizeOcclusionSpec(broken)).not.toThrow();
+    expect(normalizeOcclusionSpec(broken)).toBeNull();
+  });
 });
 
 describe('toPixelRects', () => {
