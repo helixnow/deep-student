@@ -322,7 +322,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
               </div>
             ))}
           </div>
-          <DsButton variant="secondary" onClick={() => void refresh()}>
+          <DsButton className="[@media(pointer:coarse)]:min-h-11" variant="secondary" onClick={() => void refresh()}>
             <ArrowClockwise size={15} className="mr-1.5" />
             {t('common:actions.refresh')}
           </DsButton>
@@ -443,7 +443,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                   {incident.recovery_error}
                 </p>
                 <DsButton
-                  className="mt-4"
+                  className="mt-4 [@media(pointer:coarse)]:min-h-11"
                   variant="secondary"
                   disabled={retryingPreflight}
                   onClick={() => void handleRetryPreflight()}
@@ -458,7 +458,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                 </DsButton>
                 {!debugPreview && (
                   <DsButton
-                    className="mt-4 ml-2"
+                    className="mt-4 ml-2 [@media(pointer:coarse)]:min-h-11"
                     variant="ghost"
                     disabled={Boolean(recoveryAction)}
                     onClick={() => void runRecoveryAction('report', exportStartupRecoveryReport)}
@@ -540,7 +540,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                   </p>
                 </div>
                 {!confirming && (
-                  <DsButton onClick={() => setConfirming(true)}>
+                  <DsButton className="[@media(pointer:coarse)]:min-h-11" onClick={() => setConfirming(true)}>
                     {t('data:recovery.continue')}
                   </DsButton>
                 )}
@@ -557,12 +557,13 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     </span>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <DsButton disabled={resolving} onClick={() => void handleResolve()}>
+                    <DsButton className="[@media(pointer:coarse)]:min-h-11" disabled={resolving} onClick={() => void handleResolve()}>
                       {resolving && <CircleNotch size={16} className="mr-1.5 animate-spin" />}
                       {t('data:recovery.confirm_activate')}
                     </DsButton>
                     <DsButton
                       variant="ghost"
+                      className="[@media(pointer:coarse)]:min-h-11"
                       disabled={resolving}
                       onClick={() => setConfirming(false)}
                     >
@@ -590,7 +591,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     {t('data:recovery.resolved_description')}
                   </p>
                   <DsButton
-                    className="mt-4"
+                    className="mt-4 [@media(pointer:coarse)]:min-h-11"
                     onClick={() => {
                       if (debugPreview) {
                         onDebugExit?.();
