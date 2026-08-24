@@ -188,6 +188,12 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
       testBlock.indexOf('await cloudApi.saveCredentials'),
     );
+    expect(testBlock).toContain('cloudStorage:messages.configSavedButCredentialsFailed');
+    expect(testBlock).toContain('cloudStorage:messages.configSsotFailed');
+    expect(testBlock).toContain('cloudStorage:errors.connectionFailed');
+    expect(testBlock.indexOf('configSavedButCredentialsFailed')).toBeLessThan(
+      testBlock.indexOf('errors.connectionFailed'),
+    );
 
     const uploadStart = componentSource.indexOf('const handleBackupAndUpload = useCallback');
     const uploadEnd = componentSource.indexOf('const openRestoreConfirm = useCallback', uploadStart);

@@ -30,7 +30,7 @@
 - **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。资产 tombstone 现从**未过滤**清单解析 `object_key`，对 `data_governance/asset_objects/` 显式 skip delete（共享对象交给 GC），不再靠 miss 碰巧不删。未带原 `fix-sync-tombstone-db14` 的 `ftp.rs`。未放松 fail-closed。
 - **licenses:check**：`THIRD_PARTY_NOTICES.txt` 已按现有 `Cargo.lock`（R09-names 的 `unicode-normalization@0.1.25`）重生成 SHA；**未改 lockfile**。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
-- **CI / Rust 门禁**：`c06a7959` 的 Frontend（licenses + tsc）、Backend、Migration Gate、Cloud Provider Contract Gate 已过。Vitest 分片曾把单个 worker 顶死在 `max-old-space-size=4096`（日志约 4001MB，无断言失败）。CI 现为 6144MB + `maxForks: 2`，不放宽 autosync/StatusBar 用例。CLAAssistant 忽略。完整 CI 未宣称全绿。
+- **CI / Rust 门禁**：`c06a7959` 的 Frontend（licenses + tsc）、Backend、Migration Gate、Cloud Provider Contract Gate 已过。Vitest 分片曾把单个 worker 顶死在 `max-old-space-size=4096`（日志约 4001MB，无断言失败）。CI 现为 6144MB + `maxForks: 2`，不放宽 autosync/StatusBar 用例。Dashboard 本地 ZIP 导入测已对齐「先确认可选密码对话框」；导出断言含第 5 个 `encryptionPassword` 参数。CLAAssistant 忽略。完整 CI 未宣称全绿。
 - **供应商兼容**：已移植 #174——WebDAV href/base 统一解码（坚果云中文/空格路径不再静默列空）；S3 `normalize_endpoint` 剥离控制台 bucket 前缀域名/路径后缀。未带更松的 `ftp.rs` 550 白名单。
 - **未合枝**：`fix-sync-tombstone-db14` 仅剩更松的 `ftp.rs` 550 白名单与 Docker 契约测，不合；`r07-docs` 不合；`redlights` / `delta-b343` 相对专属枝无增量。不合并 0824 主题排练整枝。
 

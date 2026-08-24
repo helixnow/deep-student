@@ -542,44 +542,68 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       const config = buildConfig(allowInsecureOverride);
       // Testing newly-entered credentials commits them once to secure storage;
       // routine connection/status IPC below carries only empty placeholders.
-      const status = await cloudApi.saveCredentials({
-        webdavPassword:
-          provider === 'webdav' && webdavConfig.password.trim()
-            ? webdavConfig.password
-            : undefined,
-        s3SecretAccessKey:
-          provider === 's3' && s3Config.secretAccessKey.trim()
-            ? s3Config.secretAccessKey
-            : undefined,
-        ftpPassword:
-          provider === 'ftp' && ftpConfig.password.trim()
-            ? ftpConfig.password
-            : undefined,
-        encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
-      });
-      setCredentialStatus(status);
+      try {
+        const status = await cloudApi.saveCredentials({
+          webdavPassword:
+            provider === 'webdav' && webdavConfig.password.trim()
+              ? webdavConfig.password
+              : undefined,
+          s3SecretAccessKey:
+            provider === 's3' && s3Config.secretAccessKey.trim()
+              ? s3Config.secretAccessKey
+              : undefined,
+          ftpPassword:
+            provider === 'ftp' && ftpConfig.password.trim()
+              ? ftpConfig.password
+              : undefined,
+          encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
+        });
+        setCredentialStatus(status);
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        const secureMessage = markSecureStoreIssue(e, 'write');
+        showGlobalNotification(
+          'error',
+          `${secureMessage ?? t('cloudStorage:messages.configSavedButCredentialsFailed')}: ${getErrorMessage(e)}`,
+        );
+        return;
+      }
+
       // Persist every tested non-secret config first. Backend operations ignore
       // IPC metadata and rebuild exclusively from this SSOT record.
-      const saved = await cloudApi.saveCloudConfigSsot(config);
-      if (saved.config) {
-        setAllowInsecure(saved.config.allowInsecure ?? false);
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
-        localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+      try {
+        const saved = await cloudApi.saveCloudConfigSsot(config);
+        if (saved.config) {
+          setAllowInsecure(saved.config.allowInsecure ?? false);
+          localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
+          localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+        }
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        showGlobalNotification(
+          'error',
+          `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
+        );
+        return;
       }
-      await cloudApi.checkConnection(config);
-      setConnectionStatus('connected');
-      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
-      
-      // 获取同步状态
-      const latestSyncStatus = await cloudApi.getSyncStatus(config);
-      setSyncStatus(latestSyncStatus);
-      
-      // 获取版本列表
-      const versionList = await cloudApi.listVersions(config);
-      setVersions(versionList);
-    } catch (e: unknown) {
-      setConnectionStatus('failed');
-      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`);
+
+      try {
+        await cloudApi.checkConnection(config);
+        setConnectionStatus('connected');
+        showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
+
+        const latestSyncStatus = await cloudApi.getSyncStatus(config);
+        setSyncStatus(latestSyncStatus);
+
+        const versionList = await cloudApi.listVersions(config);
+        setVersions(versionList);
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        showGlobalNotification(
+          'error',
+          `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`,
+        );
+      }
     } finally {
       setTesting(false);
     }
@@ -589,6 +613,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     encryptionPassword,
     ftpConfig.password,
     localizeCloudError,
+    markSecureStoreIssue,
     provider,
     s3Config.secretAccessKey,
     t,
