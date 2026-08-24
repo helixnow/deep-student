@@ -38,6 +38,8 @@
     "libSummary": "{{count}} cards in library",
     "allDone": "All reviews done for today",
     "emptyHint": "Enqueue new cards from the library, or generate a batch in chat, to keep your daily rhythm.",
+    "libraryEmpty": "Your card library is empty",
+    "libraryEmptyHint": "Generate cards from learning material in chat first — the review queue builds up from there.",
     "goStats": "View statistics",
     "upNext": "Up next",
     "upNextCount": "{{count}} cards"

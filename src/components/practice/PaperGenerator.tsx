@@ -64,11 +64,13 @@ const DIFFICULTY_KEYS = [
   { key: 'very_hard', color: 'bg-destructive/10 text-destructive' },
 ];
 
-const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode }> = [
-  { key: 'preview', icon: <Eye size={16} /> },
-  { key: 'pdf', icon: <DownloadSimple size={16} /> },
-  { key: 'word', icon: <FileText size={16} /> },
-  { key: 'markdown', icon: <FileText size={16} /> },
+// PDF / Word 导出尚未实现：入口保留但置灰 + 徽标，避免用户选中后
+// 到导出一步才发现"即将推出"（此前四格平权展示形成误导）。
+const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode; available: boolean }> = [
+  { key: 'preview', icon: <Eye size={16} />, available: true },
+  { key: 'pdf', icon: <DownloadSimple size={16} />, available: false },
+  { key: 'word', icon: <FileText size={16} />, available: false },
+  { key: 'markdown', icon: <FileText size={16} />, available: true },
 ];
 
 export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
@@ -262,8 +264,8 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           </CardHeader>
         </Card>
         
-        {/* 试卷内容 */}
-        <CustomScrollArea className="max-h-[min(60vh,520px)]" fullHeight={false}>
+        {/* 试卷内容：上限随视口走，大窗口不再浪费一半空间（原 min(60vh,520px)） */}
+        <CustomScrollArea className="max-h-[min(74vh,960px)]" fullHeight={false}>
           <div className="space-y-4 pr-0 sm:pr-4">
             {generatedPaper.questions.map((question, idx) => (
               <Card key={question.id} className="overflow-hidden [content-visibility:auto] [contain-intrinsic-size:auto_72px]">
@@ -443,20 +445,28 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         <div className="space-y-2">
           <Label>{t('paper.exportFormat')}</Label>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {EXPORT_FORMAT_KEYS.map(({ key, icon }) => (
+            {EXPORT_FORMAT_KEYS.map(({ key, icon, available }) => (
               <DsButton
                 key={key}
                 variant="ghost" size="sm"
+                disabled={!available}
+                title={available ? undefined : t('paper.exportComingSoon')}
                 onClick={() => setExportFormat(key)}
                 className={cn(
                   '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg border',
                   exportFormat === key
                     ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border hover:bg-[var(--interactive-hover)]'
+                    : 'border-border hover:bg-[var(--interactive-hover)]',
+                  !available && 'opacity-55',
                 )}
               >
                 {icon}
                 <span className="text-xs">{t(`paper.format.${key}`)}</span>
+                {!available && (
+                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] leading-4">
+                    {t('paper.comingSoonBadge')}
+                  </Badge>
+                )}
               </DsButton>
             ))}
           </div>

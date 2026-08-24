@@ -15,6 +15,7 @@
  * - 拖拽位移：pointermove 只记坐标，rAF 合帧写 transform
  */
 import React, { useSyncExternalStore } from 'react';
+import { dockDragThresholdPx } from './dockGestures';
 
 let dockPinned: string[] = [];
 const listeners = new Set<() => void>();
@@ -86,7 +87,6 @@ export function useDockPinned(): string[] {
 // 拖拽排序 + 固定加入动画
 // ---------------------------------------------------------------------------
 
-const DRAG_THRESHOLD_PX = 5;
 const REORDER_ATTR = 'data-wb-dock-pinned-id';
 const DRAGGING_ATTR = 'data-wb-dock-pinned-dragging';
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
@@ -172,6 +172,8 @@ export function useDockPinnedDragReorder(typeId: string): DockPinnedDragBind | R
     /** pointermove 最新 clientX；rAF 合帧消费 */
     latestClientX: number;
     rafId: number | null;
+    /** 拖拽启动阈值：pointerdown 时按指针类型取档（触屏 14px / 鼠标笔 5px） */
+    thresholdPx: number;
   } | null>(null);
 
   // 固定加入 / 取消固定移除动画（仅 transform/opacity；reduced-motion / minimal 跳过）
@@ -280,6 +282,7 @@ export function useDockPinnedDragReorder(typeId: string): DockPinnedDragBind | R
         suppressClick: false,
         latestClientX: event.clientX,
         rafId: null,
+        thresholdPx: dockDragThresholdPx(event.pointerType),
       };
 
       const applySiblingShift = (nextIndex: number) => {
@@ -323,7 +326,9 @@ export function useDockPinnedDragReorder(typeId: string): DockPinnedDragBind | R
         const dx = drag.latestClientX - drag.startX;
 
         if (!drag.active) {
-          if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+          // 触屏阈值 14px（> 长按容差 10px，见 dockGestures）：想长按开窗口
+          // 列表的手指抖动不会误启动重排；鼠标 / 笔维持 5px 灵敏手感。
+          if (Math.abs(dx) < drag.thresholdPx) return;
           drag.active = true;
           drag.suppressClick = true;
           wrap.setAttribute(DRAGGING_ATTR, '');

@@ -26,6 +26,10 @@ import { useWindowStore } from '../core/windowStore';
 import { getSortedWindows } from '../core/windowListCache';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWorkbenchOverlay } from '../core/shortcuts';
+import {
+  requestCloseAnimated,
+  requestCloseAppWindowsAnimated,
+} from '../hooks/useWindowLifecycleAnim';
 import { openAppsPanel } from './appsPanelStore';
 import { ActionItem } from './DesktopContextMenu';
 import { StatusBarMenu } from './StatusBarMenu';
@@ -155,11 +159,8 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
     : t('menubar.appName');
 
   const closeAllOfApp = () => {
-    if (!focusedTypeId) return;
-    const store = useWindowStore.getState();
-    for (const win of Object.values(store.windows)) {
-      if (win.typeId === focusedTypeId) store.closeWindow(win.id);
-    }
+    if (!focusedWindowId) return;
+    void requestCloseAppWindowsAnimated(focusedWindowId);
   };
 
   return (
@@ -213,7 +214,7 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
               label={t('dock.closeWindow')}
               testId="wb-menubar-app-close-window"
               onClick={runAndClose(() => {
-                if (focusedWindowId) useWindowStore.getState().closeWindow(focusedWindowId);
+                if (focusedWindowId) void requestCloseAnimated(focusedWindowId);
               })}
             />
             <ActionItem

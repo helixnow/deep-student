@@ -38,6 +38,8 @@
     "libSummary": "卡片库共 {{count}} 张",
     "allDone": "今日复习全部完成",
     "emptyHint": "去卡片库入队新卡，或在聊天里生成一批闪卡，保持每天的复习节奏。",
+    "libraryEmpty": "卡片库还是空的",
+    "libraryEmptyHint": "先在聊天中根据学习材料生成卡片，复习队列才会开始积累。",
     "goStats": "查看统计",
     "upNext": "接下来",
     "upNextCount": "{{count}} 张"

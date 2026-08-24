@@ -150,6 +150,15 @@
   background: transparent;
 }
 
+/* 图谱页：撑满剩余高度，画布自身处理滚动/缩放 */
+.notes-backlinks-panel-graph {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .notes-backlinks-panel-actions {
   display: flex;
   flex: 0 0 auto;

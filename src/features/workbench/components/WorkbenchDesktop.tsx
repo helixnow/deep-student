@@ -55,6 +55,7 @@ import { useWallpaperCoveragePause } from '../hooks/useWallpaperCoveragePause';
 import { EmptyDesktop } from './EmptyDesktop';
 import { DesktopAgendaWidget } from './DesktopAgendaWidget';
 import { DesktopAiBriefingWidget } from './DesktopAiBriefingWidget';
+import { ImmersiveHint } from './ImmersiveHint';
 import { DesktopShortcutsLayer } from './DesktopShortcuts';
 import { WindowShell } from './WindowShell';
 import { SnapPreview } from './SnapPreview';
@@ -79,6 +80,7 @@ import {
 } from './window-shell/workbenchPointerAdapter';
 import { installImeScrollContainment } from '../core/imeScrollContainment';
 import { ContentCloseConfirmationHost } from '../apps/content/ContentCloseConfirmation';
+import { QuickLookHost } from '../apps/preview/quickLook';
 
 // 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
 if (isWorkbenchDiagnosticsRequested()) {
@@ -607,11 +609,16 @@ export const WorkbenchDesktop: React.FC = () => {
         <WorkbenchEventBridge />
       </div>
 
+      {/* 菜单栏与 Dock 收起后仍可见、可触控的沉浸退出路径。 */}
+      <ImmersiveHint />
+
       {/* SnapPreview 使用工作区测得的物理偏移，固定层也不会碰到顶栏。 */}
       <SnapPreview margin={tileMargin} desktopOffset={desktopOffset} />
 
       {devPanel && <WorkbenchDevPanel />}
       <ContentCloseConfirmationHost />
+      {/* Quick Look 浮层宿主：requestQuickLook(resourceId) 即开即用（O 系空格速览的复用基座） */}
+      <QuickLookHost />
     </div>
   );
 };

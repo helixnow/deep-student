@@ -242,8 +242,35 @@ describe('StatusBar 信号项可见性', () => {
     const btn = screen.getByTestId('wb-menubar-pomodoro');
     expect(btn.textContent).toContain('12:34');
     expect(btn.getAttribute('aria-label')).toMatch(/12:34/);
+    expect(btn.getAttribute('aria-label')).toContain('专注剩余');
     fireEvent.click(btn);
     expect(launchSpy).toHaveBeenCalledWith({ typeId: 'pomodoro', reason: 'api' });
+  });
+
+  it('番茄休息阶段状态项文案为「休息剩余」而非「专注剩余」', () => {
+    usePomodoroStore.setState({
+      mode: 'short_break',
+      status: 'running',
+      timeLeft: 240, // 4:00
+    });
+    render(<StatusBar />);
+    const btn = screen.getByTestId('wb-menubar-pomodoro');
+    expect(btn.getAttribute('aria-label')).toContain('休息剩余');
+    expect(btn.getAttribute('aria-label')).toMatch(/4:00/);
+    expect(btn.getAttribute('data-status')).toBe('break');
+  });
+
+  it('番茄暂停态文案为「已暂停」（data-status=paused 供 CSS 压暗）', () => {
+    usePomodoroStore.setState({
+      mode: 'work',
+      status: 'paused',
+      timeLeft: 600, // 10:00
+    });
+    render(<StatusBar />);
+    const btn = screen.getByTestId('wb-menubar-pomodoro');
+    expect(btn.getAttribute('aria-label')).toContain('已暂停');
+    expect(btn.getAttribute('aria-label')).toMatch(/10:00/);
+    expect(btn.getAttribute('data-status')).toBe('paused');
   });
 
   it('due>0 显示闪卡数字，点击 activate flashcards due session', async () => {
@@ -450,10 +477,23 @@ describe('StatusBar 学习中心 SB3', () => {
   });
 
   it('Windows 下 menubar 标记 chrome inset', () => {
-    render(<StatusBar />);
-    const bar = screen.getByTestId('wb-menubar');
-    // jsdom UA 多为 Windows / 默认 platform 为 windows
-    expect(bar.getAttribute('data-chrome-inset')).toBe('windows');
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      configurable: true,
+    });
+
+    try {
+      render(<StatusBar />);
+      const bar = screen.getByTestId('wb-menubar');
+      expect(bar.getAttribute('data-chrome-inset')).toBe('windows');
+      expect(bar.hasAttribute('data-macos-chrome')).toBe(false);
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', {
+        value: originalUserAgent,
+        configurable: true,
+      });
+    }
   });
 
   it('macOS 下状态栏与原生交通灯共面，并由空白区接管拖拽和双击缩放', () => {

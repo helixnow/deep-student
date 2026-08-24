@@ -6,8 +6,13 @@
  */
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GearSix, SignOut, SquaresFour } from '@phosphor-icons/react';
+import { GearSix, Keyboard, SignOut, SquaresFour } from '@phosphor-icons/react';
 import { workbenchBus } from '../core/workbenchBus';
+import {
+  WORKBENCH_SHORTCUT_DEFINITIONS,
+  formatShortcutBinding,
+  useWorkbenchOverlay,
+} from '../core/shortcuts';
 import { openAppsPanel } from './appsPanelStore';
 import { ActionItem } from './DesktopContextMenu';
 import { StatusBarMenu } from './StatusBarMenu';
@@ -18,6 +23,11 @@ export interface StatusBarBrandMenuProps {
   /** 品牌钮（定位锚 + 焦点归还目标） */
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
+}
+
+function cheatsheetShortcutHint(): string | undefined {
+  const definition = WORKBENCH_SHORTCUT_DEFINITIONS.find((item) => item.id === 'cheatsheet');
+  return definition ? formatShortcutBinding(definition.binding) : undefined;
 }
 
 export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
@@ -47,6 +57,15 @@ export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
         label={t('workbench:appsPanel.title')}
         testId="wb-menubar-brand-apps"
         onClick={runAndClose(() => openAppsPanel())}
+      />
+      <ActionItem
+        icon={<Keyboard size={15} weight="duotone" />}
+        label={t('desktopMenu.shortcuts')}
+        shortcut={cheatsheetShortcutHint()}
+        testId="wb-menubar-brand-shortcuts"
+        onClick={runAndClose(() =>
+          useWorkbenchOverlay.getState().openCheatsheet({ sticky: true }),
+        )}
       />
       <ActionItem
         icon={<GearSix size={15} weight="duotone" />}

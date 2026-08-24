@@ -355,6 +355,36 @@
   border: 1px solid color-mix(in hsl, hsl(var(--border)) 80%, transparent 20%);
 }
 
+/* ==== 休息期闪卡复习入口 ================================================ */
+
+.wb-sys-pomo-break-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--wb-sys-pomo-accent);
+  background: color-mix(in hsl, var(--wb-sys-pomo-accent) 12%, transparent 88%);
+  border: 1px solid color-mix(in hsl, var(--wb-sys-pomo-accent) 22%, transparent 78%);
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.wb-sys-pomo-break-review:hover {
+  background: color-mix(in hsl, var(--wb-sys-pomo-accent) 20%, transparent 80%);
+  border-color: color-mix(in hsl, var(--wb-sys-pomo-accent) 34%, transparent 66%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-sys-pomo-break-review {
+    transition: none;
+  }
+}
+
 /* ==== 长休息周期圆点 =================================================== */
 
 .wb-sys-pomo-cycles {

@@ -3271,6 +3271,32 @@ pub async fn dstu_set_metadata(
                 updated_note.is_favorite = favorite;
             }
 
+            // 自定义键值属性（V20260824）：metadata.props 为对象时整对象替换。
+            // 校验（数量/长度/保留键/标量值）在 repo 层，失败原样抛给前端展示。
+            if let Some(props) = metadata.get("props") {
+                if props.is_object() {
+                    match VfsNoteRepo::set_note_props(&vfs_db, &id, props.clone()) {
+                        Ok(n) => {
+                            log::info!(
+                                "[DSTU::handlers] dstu_set_metadata: set note props, id={}",
+                                id
+                            );
+                            updated_note = n;
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "[DSTU::handlers] dstu_set_metadata: FAILED - set note props id={}, error={}",
+                                id,
+                                e
+                            );
+                            return Err(e.to_string());
+                        }
+                    }
+                } else if !props.is_null() {
+                    return Err("props 必须是键值对象".to_string());
+                }
+            }
+
             note_to_dstu_node(&updated_note)
         }
         "translations" => {

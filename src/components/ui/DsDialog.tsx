@@ -10,6 +10,7 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useKeyboardHeight';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 /**
  * Android 系统返回键接入：DsDialog 是 framer-motion 自绘弹窗（非 Radix），
@@ -147,6 +148,10 @@ export function DsDialog({
   // Android 返回键 = 关闭弹窗（与 ESC 同语义）
   useAndroidBackClose(open, () => onOpenChange(false));
 
+  // 焦点陷阱（aria-modal 契约）：Tab 在弹窗内循环，关闭后焦点归还触发元素。
+  // 内容含 autoFocus 输入框时不抢初始焦点（hook 内已判定焦点是否已入容器）。
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(open);
+
   // 移动端（<768，与 App shell 同源）切换为 bottom sheet 形态，
   // 视觉规格对齐全局移动设置 Sheet（rounded-t-[24px] + 顶部把手 + 贴底全宽）
   const isMobileSheet = useIsMobile();
@@ -194,8 +199,10 @@ export function DsDialog({
 />
         {/* 内容 */}
         <motion.div
+          ref={focusTrapRef}
           role="dialog"
           aria-modal="true"
+          tabIndex={-1}
           variants={isMobileSheet ? sheetContentVariants : contentVariants}
           drag={isMobileSheet ? 'y' : false}
           dragControls={dragControls}
@@ -369,6 +376,12 @@ export interface DsAlertDialogProps {
   onConfirm?: () => void;
   /** 取消回调（不传则关闭弹窗） */
   onCancel?: () => void;
+  /** 次要动作按钮文字（如「保存并关闭」）；不传则不渲染第三个按钮 */
+  secondaryText?: string;
+  /** 次要动作回调 */
+  onSecondary?: () => void;
+  /** 次要动作按钮变体，默认 primary */
+  secondaryVariant?: DsButtonVariant;
   /** 确认按钮 loading */
   loading?: boolean;
   /** 确认按钮 disabled */
@@ -390,6 +403,9 @@ export function DsAlertDialog({
   confirmSize = 'sm',
   onConfirm,
   onCancel,
+  secondaryText,
+  onSecondary,
+  secondaryVariant = 'primary',
   loading = false,
   disabled = false,
   children,
@@ -409,6 +425,9 @@ export function DsAlertDialog({
 
   // Android 返回键 = 取消（确认框不可遮罩关闭，但返回键应等同"取消"，与 ESC 一致）
   useAndroidBackClose(open, handleCancel);
+
+  // 焦点陷阱：初始焦点落到第一个按钮（取消 = 最不具破坏性），关闭后归还
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(open);
 
   // Android 键盘避让：与 DsDialog 同一套 useKeyboardHeight 机制（children 内含输入框时生效）
   const keyboardHeight = useKeyboardHeight();
@@ -440,8 +459,10 @@ export function DsAlertDialog({
         <motion.div className="fixed inset-0 bg-black/35 backdrop-blur-[2px]" variants={overlayVariants} />
         {/* 内容 */}
         <motion.div
+          ref={focusTrapRef}
           role="alertdialog"
           aria-modal="true"
+          tabIndex={-1}
           variants={alertContentVariants}
           className={cn(
             // 宽度对齐移动端契约上限 calc(100vw-32px)；内容可变长（如 zip 装前确认）时
@@ -472,10 +493,20 @@ export function DsAlertDialog({
           {children && <div className="mt-3 min-h-0 overflow-y-auto overscroll-contain">{children}</div>}
 
           {/* 按钮行 */}
-          <div className="mt-5 flex shrink-0 items-center justify-end gap-2">
+          <div className="mt-5 flex shrink-0 flex-wrap items-center justify-end gap-2">
             <DsButton variant="ghost" size={confirmSize} onClick={handleCancel} disabled={loading}>
               {resolvedCancelText}
             </DsButton>
+            {secondaryText && (
+              <DsButton
+                variant={secondaryVariant}
+                size={confirmSize}
+                onClick={onSecondary}
+                disabled={disabled || loading}
+              >
+                {secondaryText}
+              </DsButton>
+            )}
             <DsButton
               variant={confirmVariant}
               size={confirmSize}

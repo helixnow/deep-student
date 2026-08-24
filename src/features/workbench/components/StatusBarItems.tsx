@@ -3,6 +3,10 @@
  *
  * 无信号不占位：番茄 / 闪卡 due / 制卡任务。
  * due / tasks / automation 由父 StatusBar 单侧订阅后 props 下传，避免双订阅。
+ * 样式统一在 StatusBar.css（automation 呼吸脉冲/失败红点等此前的内联
+ * <style> 已于 2026-08 迁入；本文件不再持有样式）。
+ * 番茄状态项文案区分状态：专注剩余 / 已专注（正计时）/ 休息剩余 / 已暂停
+ *（data-status = focus|break|paused 供 CSS 暂停态压暗）。
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +14,7 @@ import { ChartBar, Robot, Stack, Timer } from '@phosphor-icons/react';
 import { workbenchBus } from '../core/workbenchBus';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import type { AutomationSummary } from '@/features/settings/components/automationSettingsApi';
+import './StatusBar.css';
 
 /** 规格 m:ss（分不强制两位，秒两位） */
 export function formatStatusBarTime(totalSeconds: number): string {
@@ -18,41 +23,6 @@ export function formatStatusBarTime(totalSeconds: number): string {
   const s = sec % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
-
-/**
- * automation 状态项私有样式：running 呼吸脉冲 + failed 红点角标。
- * 内联 <style> 保持本文件自包含（StatusBar.css 由其他并行改造持有）；
- * prefers-reduced-motion 下取消动画。
- */
-const AUTOMATION_ITEM_CSS = `
-@keyframes wb-menubar-automation-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-.wb-menubar-automation-iconwrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-.wb-menubar-automation-iconwrap[data-pulse='true'] .wb-menubar-item-icon {
-  animation: wb-menubar-automation-pulse 1.6s ease-in-out infinite;
-}
-.wb-menubar-automation-dot {
-  position: absolute;
-  top: -2px;
-  right: -3px;
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: hsl(var(--destructive));
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .wb-menubar-automation-iconwrap[data-pulse='true'] .wb-menubar-item-icon {
-    animation: none;
-  }
-}
-`;
 
 /**
  * 就地实现的相对时间（"2 小时后"式），仅供 automation tooltip 使用。
@@ -110,14 +80,29 @@ function launchAutomations(): void {
 const PomodoroStatusItem: React.FC = () => {
   const { t } = useTranslation('workbench');
   const timeLeft = usePomodoroStore((s) => s.timeLeft);
+  const mode = usePomodoroStore((s) => s.mode);
+  const status = usePomodoroStore((s) => s.status);
+  const sessionCountUp = usePomodoroStore((s) => s.sessionCountUp);
+  const countUpSetting = usePomodoroStore((s) => s.settings.countUp);
   const pomodoroTime = formatStatusBarTime(timeLeft);
-  const pomodoroLabel = t('menubar.pomodoroFocus', { time: pomodoroTime });
+  // 文案与实际阶段/状态一致：已暂停 > 休息剩余 > 已专注（正计时）> 专注剩余
+  const isBreak = mode === 'short_break' || mode === 'long_break';
+  const paused = status === 'paused';
+  const isCountUpWork = mode === 'work' && (sessionCountUp ?? countUpSetting);
+  const pomodoroLabel = paused
+    ? t('menubar.pomodoroPaused', { time: pomodoroTime })
+    : isBreak
+      ? t('menubar.pomodoroBreakRemaining', { time: pomodoroTime })
+      : isCountUpWork
+        ? t('menubar.pomodoroFocusElapsed', { time: pomodoroTime })
+        : t('menubar.pomodoroFocus', { time: pomodoroTime });
   return (
     <button
       type="button"
       className="wb-menubar-item"
       data-testid="wb-menubar-pomodoro"
       data-wb-status-item="pomodoro"
+      data-status={paused ? 'paused' : isBreak ? 'break' : 'focus'}
       aria-label={pomodoroLabel}
       title={pomodoroLabel}
       onClick={() => launchApp('pomodoro')}
@@ -175,7 +160,6 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
 
   return (
     <>
-      <style>{AUTOMATION_ITEM_CSS}</style>
       {showPomodoro ? <PomodoroStatusItem /> : null}
 
       {dueCount > 0 ? (

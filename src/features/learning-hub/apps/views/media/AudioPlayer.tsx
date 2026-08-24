@@ -28,7 +28,7 @@ import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
 import { MediaScrubber } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
-import { isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
+import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
 
 export interface AudioPlayerProps {
   src: string;
@@ -74,6 +74,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // 组合键留给壳层/系统（⌘F 搜索、⌘M 最小化等）
+      if (hasShortcutModifier(event)) return;
       const onControl = isInteractiveShortcutTarget(event.target);
       switch (event.key) {
         case ' ':

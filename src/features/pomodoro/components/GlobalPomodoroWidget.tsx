@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion, useMotionValue, animate } from 'framer-motion';
 import { Pause, Play, Square, Coffee, Brain, ArrowsOut, PictureInPicture, CaretLeft, CaretRight, SkipForward } from '@phosphor-icons/react';
@@ -13,6 +13,8 @@ import {
   openPomodoroMiniWindow,
   closePomodoroMiniWindow,
   broadcastPomodoroState,
+  isPomodoroMiniWindowOpen,
+  subscribePomodoroMiniWindowOpen,
   EVT_MINI_COMMAND,
   EVT_MINI_READY,
   type PomodoroMiniCommand,
@@ -27,6 +29,8 @@ import {
  * 3. 离开 Todo 页面时的悬浮药丸（仅在有活跃会话时显示）
  *
  * 空闲态不显示任何浮动 UI——番茄钟主入口在 Todo 页面内的 PomodoroPanel。
+ * 药丸让位规则：workbench 激活（菜单栏 + 番茄窗已投射）或置顶小窗打开时
+ * 一律隐藏，任何时刻最多一重悬浮投影。
  *
  * 药丸交互（桌面）：
  * - 默认紧凑（环形微进度 + 倒计时），hover / 键盘聚焦时横向展开任务名与快捷控制
@@ -119,7 +123,18 @@ const InlineRevealX: React.FC<{ open: boolean; children: React.ReactNode; classN
   </span>
 );
 
-export const GlobalPomodoroWidget: React.FC = () => {
+export interface GlobalPomodoroWidgetProps {
+  /**
+   * Workbench（OS 桌面）激活时不显示悬浮药丸：番茄状态已由菜单栏
+   * StatusBarItems 与 PomodoroAppWindow 投射，药丸只会形成第三重投影。
+   * tick 驱动 / 沉浸模式 / 置顶小窗桥接不受影响，仍全局常驻。
+   */
+  workbenchActive?: boolean;
+}
+
+export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
+  workbenchActive = false,
+}) => {
   const { t } = useTranslation('todo');
   const { mode, status, timeLeft, currentTaskTitle, settings, sessionCountUp, phaseExtraSeconds, pause, resume, stop, skipBreak, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
@@ -379,7 +394,20 @@ export const GlobalPomodoroWidget: React.FC = () => {
     if (!expanded) resetConfirmAbandon();
   }, [expanded, resetConfirmAbandon]);
 
-  const showPill = !isImmersive && mode !== 'idle' && currentView !== 'todo';
+  // 置顶小窗本身就是常驻投影，药丸再叠加只剩噪音（小窗被直接关闭时经
+  // destroyed 镜像回落，药丸自动恢复）
+  const miniWindowOpen = useSyncExternalStore(
+    subscribePomodoroMiniWindowOpen,
+    isPomodoroMiniWindowOpen,
+    () => false,
+  );
+
+  const showPill =
+    !isImmersive &&
+    mode !== 'idle' &&
+    currentView !== 'todo' &&
+    !workbenchActive &&
+    !miniWindowOpen;
   const isBreak = mode === 'short_break' || mode === 'long_break';
 
   return (

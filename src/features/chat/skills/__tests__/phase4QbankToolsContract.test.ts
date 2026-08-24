@@ -162,9 +162,10 @@ describe('phase 4 qbank tool contracts', () => {
       maximum: 100,
       default: 20,
     });
+    // 上限与练习面板的每日目标范围（5..=50）对齐，Agent 可续练任意用户目标
     expect(daily.inputSchema.properties.count).toMatchObject({
       minimum: 1,
-      maximum: 20,
+      maximum: 50,
       default: 10,
     });
 

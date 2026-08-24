@@ -1,4 +1,9 @@
 {
+  "commands": {
+    "copyLastEmpty": "No AI response to copy",
+    "continueBusy": "A response is in progress, please wait",
+    "continueEmpty": "No AI response to continue"
+  },
   "error": {
     "loadFailed": "Load failed",
     "retry": "Retry",
@@ -150,6 +155,7 @@
       "branchSuccess": "Branch session created",
       "branchFailed": "Branch failed"
     },
+    "branchedFromHere": "Branched from here",
     "touchBar": {
       "ariaLabel": "Message quick actions"
     },
@@ -217,6 +223,8 @@
     "attachmentsUploading": "Uploading attachments, please wait",
     "attachmentNotReady": "Attachment not ready: {{name}} ({{modes}})",
     "attachmentProcessing": "Attachment processing: {{name}}",
+    "sendBlockedEmpty": "Type a message or add an attachment to send",
+    "sendBlockedBusy": "Replying now — you can send when it finishes",
     "processingIndicator": "Processing attachments...",
     "processingIndicatorPartial": "Some modes not ready",
     "completedMissingModes": "Completed ({{modes}} not ready)",
@@ -1173,6 +1181,7 @@
     "renameSession": "Rename Thread",
     "pinSession": "Pin Thread",
     "unpinSession": "Unpin Thread",
+    "openInNewWindow": "Open in New Window",
     "pinGroup": "Pin group",
     "unpinGroup": "Unpin group",
     "archiveSession": "Archive Thread",
@@ -1235,6 +1244,10 @@
   "pdfRef": {
     "openFailedTitle": "Cannot Open PDF Reference",
     "openFailedDesc": "Could not find a previewable PDF file. It may have been removed or the reference information is incomplete."
+  },
+  "contextRef": {
+    "previewFailedTitle": "Cannot Open Reference Preview",
+    "previewFailedDesc": "The referenced resource does not exist or has been removed."
   },
   "modelMention": {
     "suggestions": "Model Suggestions",
@@ -1611,7 +1624,11 @@
     "makeCardsFailed": "Failed to start card generation",
     "makeCardsDeckName": "Selection cards",
     "makeCardsRequirements": "Generate high-quality memory cards from the selected excerpt, prioritizing key concepts and facts in the selection.",
-    "openTaskDashboard": "Open task dashboard"
+    "openTaskDashboard": "Open task dashboard",
+    "saveAsNote": "Save as note",
+    "saveAsNotePickFolder": "Choose a folder",
+    "saveAsNoteDefaultTitle": "Untitled note",
+    "openNote": "Open note"
   },
   "explainPopover": {
     "thinking": "Thinking...",
