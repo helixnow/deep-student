@@ -27,6 +27,50 @@ pub(crate) fn sort_tool_schemas_for_prompt_cache(tools: &mut [Value]) {
     tools.sort_by(|a, b| tool_schema_sort_key(a).cmp(tool_schema_sort_key(b)));
 }
 
+/// Prompt cache（P0，DESIGN「tools 会话内冻结 + append-only」）：工具环
+/// 生命周期内 tools 顺序冻结。首轮按名字排序建立基线（G6 确定性）；
+/// 后续轮次已发出的工具严格保持基线相对顺序（前缀字节不变），环内
+/// load_skills 渐进披露的新工具按首见轮次追加到末尾（同轮新增按名字
+/// 排序保证确定性），并记入基线供之后轮次复用。禁止按字母序插入中段
+/// —— 对 Anthropic 那是 tools 第 0 字节起变化，整段缓存前缀失效。
+///
+/// `frozen_names` 由调用方在环外持有（append-only 首见序基线），
+/// 空表示首轮尚未建立基线。
+pub(crate) fn freeze_tool_schema_order_for_prompt_cache(
+    tools: &mut [Value],
+    frozen_names: &mut Vec<String>,
+) {
+    if frozen_names.is_empty() {
+        sort_tool_schemas_for_prompt_cache(tools);
+    } else {
+        let frozen_index: std::collections::HashMap<&str, usize> = frozen_names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| (name.as_str(), index))
+            .collect();
+        // stable sort：基线内按冻结序，新工具排在全部基线之后、彼此按名字
+        tools.sort_by(|a, b| {
+            let key_a = tool_schema_sort_key(a);
+            let key_b = tool_schema_sort_key(b);
+            match (frozen_index.get(key_a), frozen_index.get(key_b)) {
+                (Some(index_a), Some(index_b)) => index_a.cmp(index_b),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => key_a.cmp(key_b),
+            }
+        });
+    }
+    for tool in tools.iter() {
+        let key = tool_schema_sort_key(tool);
+        if key.is_empty() {
+            continue;
+        }
+        if !frozen_names.iter().any(|name| name == key) {
+            frozen_names.push(key.to_string());
+        }
+    }
+}
+
 fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
     sensitivity != Some(ToolSensitivity::Low)
 }
@@ -181,6 +225,10 @@ impl ChatV2Pipeline {
         // tool_call_id 锚定到对应 tool result 之后，绝不重插到当前 user 之前。
         // ============================================================
         let mut frozen_turn_skill_injection: Option<TransientSkillMessages> = None;
+        // P0（DESIGN「tools 会话内冻结」）：工具环生命周期内 tools 顺序基线
+        // （append-only 首见序）。首轮排序后冻结，环内 load_skills 新工具
+        // 只追加末尾，已发出的 tools 前缀字节跨轮不变。
+        let mut frozen_tool_schema_order: Vec<String> = Vec::new();
         let mut injected_skill_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
         let mut in_loop_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
@@ -796,14 +844,19 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 🔧 Prompt cache（G6）：工具 schema 确定性排序。custom_tools 由
-            // 客户端 schema_tool_ids（注入器）与 MCP 追加合并而来，顺序依赖
-            // 客户端与发现时序，必须收敛。
+            // 🔧 Prompt cache（G6 + P0 冻结）：custom_tools 由客户端
+            // schema_tool_ids（注入器）与 MCP 追加合并而来，顺序依赖客户端与
+            // 发现时序。首轮按名字排序建立基线；后续轮次冻结基线相对顺序
+            // （已发出的 tools 前缀字节不变），环内 load_skills 新工具只
+            // 追加末尾，禁止字母序插入中段打爆 Anthropic 缓存前缀。
             if let Some(custom_tools) = llm_context
                 .get_mut("custom_tools")
                 .and_then(|v| v.as_array_mut())
             {
-                sort_tool_schemas_for_prompt_cache(custom_tools);
+                freeze_tool_schema_order_for_prompt_cache(
+                    custom_tools,
+                    &mut frozen_tool_schema_order,
+                );
             }
 
             // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
@@ -4573,6 +4626,84 @@ mod tests {
         let before = tools.clone();
         sort_tool_schemas_for_prompt_cache(&mut tools);
         assert_eq!(tools, before);
+    }
+
+    #[test]
+    fn frozen_tool_order_appends_new_tools_without_touching_sent_prefix() {
+        // P0 回归（DESIGN「tools 会话内冻结」）：先发 tools A,B；环内
+        // load_skills 追加 C（字母序落在 A、B 之间）后，A,B 前缀字节
+        // 必须逐字节不变，C 只能追加到末尾 —— 字母序插入中段不得发生。
+        let mut frozen: Vec<String> = Vec::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "zeta_tool"]);
+        let sent_prefix_bytes: Vec<Vec<u8>> = tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+
+        // 环内渐进披露追加 beta_tool（字母序在 alpha 与 zeta 之间）
+        tools.push(json!({ "type": "function", "function": { "name": "beta_tool" } }));
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "新技能工具必须追加末尾，禁止字母序插入中段"
+        );
+        for (index, expected) in sent_prefix_bytes.iter().enumerate() {
+            let actual = serde_json::to_vec(&tools[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "已发出的 tools 前缀第 {} 项字节漂移",
+                index
+            );
+        }
+    }
+
+    #[test]
+    fn frozen_tool_order_survives_full_rebuild_and_stays_idempotent() {
+        // 多变体 refreshed_tools 场景：环内从 mcp_tool_schemas 全量重建
+        // （源顺序可能与已发出顺序不同），冻结基线必须还原已发出顺序，
+        // 同轮多个新工具按名字排序后一并追加到末尾。
+        let mut frozen: Vec<String> = Vec::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool" } }),
+            json!({ "type": "function", "function": { "name": "mid_tool" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        assert_eq!(frozen, vec!["mid_tool", "zeta_tool"]);
+
+        let mut rebuilt = vec![
+            json!({ "type": "function", "function": { "name": "delta_tool" } }),
+            json!({ "type": "function", "function": { "name": "zeta_tool" } }),
+            json!({ "type": "function", "function": { "name": "aardvark_tool" } }),
+            json!({ "type": "function", "function": { "name": "mid_tool" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut rebuilt, &mut frozen);
+        let names: Vec<&str> = rebuilt.iter().map(tool_schema_sort_key).collect();
+        // aardvark 字母序在最前，但只能追加末尾（同轮新增按名字排序）
+        assert_eq!(
+            names,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+        assert_eq!(
+            frozen,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+
+        // 幂等：再次冻结不改变顺序（后续轮次前缀字节稳定）
+        let before = rebuilt.clone();
+        freeze_tool_schema_order_for_prompt_cache(&mut rebuilt, &mut frozen);
+        assert_eq!(rebuilt, before);
+        assert_eq!(
+            frozen,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
     }
 
     #[test]

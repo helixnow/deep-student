@@ -82,9 +82,10 @@ function applyWebSearchEngines(
   const properties = {
     ...((inputSchema.properties as Record<string, unknown>) ?? {}),
   };
+  // P0 prompt cache：不把可用引擎写进 schema 的 enum —— 引擎可用性变化
+  // 会改写 tools 字节、打爆 provider 缓存前缀；引擎列表只进 description。
   properties.engine = {
     type: 'string',
-    enum: validEngines,
     description: `可用的搜索引擎：${validEngines.join(', ')}。如果不指定，使用默认配置的引擎。`,
   };
   inputSchema.properties = properties;

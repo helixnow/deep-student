@@ -1243,6 +1243,11 @@ impl ChatV2Pipeline {
             HashMap::new();
         let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
 
+        // P0（DESIGN「tools 会话内冻结」）：变体工具环生命周期内 tools 顺序
+        // 基线（append-only 首见序）。首轮排序后冻结，环内 load_skills 刷新
+        // 全量重建时按基线还原顺序，新工具只追加末尾。
+        let mut frozen_tool_schema_order: Vec<String> = Vec::new();
+
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let mut mcp_tool_values: Vec<Value> = tool_schemas
@@ -1280,9 +1285,12 @@ impl ChatV2Pipeline {
                     .collect();
 
                 if !mcp_tool_values.is_empty() {
-                    // G6：LLM 管线只读 `custom_tools`，写 `tools` 是死键；
-                    // 排序保证 prompt cache 前缀稳定。
-                    super::tool_loop::sort_tool_schemas_for_prompt_cache(&mut mcp_tool_values);
+                    // G6 + P0 冻结：LLM 管线只读 `custom_tools`，写 `tools` 是
+                    // 死键；首轮按名字排序建立基线并冻结，供环内刷新复用。
+                    super::tool_loop::freeze_tool_schema_order_for_prompt_cache(
+                        &mut mcp_tool_values,
+                        &mut frozen_tool_schema_order,
+                    );
                     let injected_count = mcp_tool_values.len();
                     llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
                     log::info!(
@@ -1635,9 +1643,13 @@ impl ChatV2Pipeline {
                                             Some(prepared.schema)
                                         })
                                         .collect();
-                                    // G6：LLM 管线只读 `custom_tools`，写 `tools` 是死键。
-                                    super::tool_loop::sort_tool_schemas_for_prompt_cache(
+                                    // G6 + P0 冻结：LLM 管线只读 `custom_tools`，
+                                    // 写 `tools` 是死键。全量重建后按冻结基线还原
+                                    // 已发出顺序（前缀字节不变），新技能工具只
+                                    // 追加末尾，禁止字母序插入中段。
+                                    super::tool_loop::freeze_tool_schema_order_for_prompt_cache(
                                         &mut refreshed_tools,
+                                        &mut frozen_tool_schema_order,
                                     );
                                     llm_context.insert(
                                         "custom_tools".into(),
