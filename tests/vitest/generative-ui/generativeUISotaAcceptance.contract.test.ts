@@ -414,6 +414,7 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'SRCSET_ATTR_RE',
         'isMarkdownAutolinkTag',
         'PRESENTATION_ATTR_RE',
+        'ping|background',
       ]),
   },
   {

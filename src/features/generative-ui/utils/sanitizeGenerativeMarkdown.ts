@@ -44,7 +44,7 @@ const PRESENTATION_ATTR_RE =
   /\s+(?:style|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 
 const URL_ATTR_RE =
-  /(\s+(?:href|src|xlink:href|action|formaction|cite|longdesc|poster)\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  /(\s+(?:href|src|xlink:href|action|formaction|cite|longdesc|poster|ping|background)\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
 const SRCSET_ATTR_RE =
   /(\s+srcset\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
