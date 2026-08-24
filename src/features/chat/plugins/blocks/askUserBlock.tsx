@@ -484,7 +484,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             size="sm"
             onClick={handleMultiConfirm}
             disabled={isResponding || (checkedIndices.size === 0 && !customInput.trim())}
-            className="w-full"
+            className="w-full [@media(pointer:coarse)]:min-h-11"
           >
             <Check size={14} className="mr-1.5" />
             {t('askUser.confirmSelection')}
@@ -526,6 +526,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               disabled={isResponding || !customInput.trim()}
               iconOnly
               aria-label={t('askUser.send')}
+              className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             >
               <PaperPlaneRight size={14} />
             </DsButton>
