@@ -136,6 +136,11 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
   建议后续代理：为 S3 拒绝补 `cloudStorage.json`（zh/en）键与前端映射，并统一两条常量的
   映射机制（错误码优于字符串正则）。本轮（R09-android）只保证后端文案面向用户且四路径
   字节一致，不动前端与 locale。
+  **状态更新（R10 回写）**：前端半边已由 R10-ux 关闭——`localizeCloudError` 新增
+  `当前安装包不支持 S3 兼容存储` → `errors.s3DisabledInBuild` 映射，zh/en 键已落
+  `cloudStorage.json`，en 用户不再看到裸中文。**机制统一半边仍开**：FTP（英文常量）
+  与 S3（中文常量）两条拒绝仍靠字符串正则映射，后端引入稳定错误码后应改为按 code
+  匹配（连同 `syncE2eeErrorMapping.ts` 一并迁移），已列入 R11-android2 交付物 ④。
 
 ### R09-ux（分支 `cursor/cloud-sync-sota-r09-ux-b343`，设置/数据治理同步面 only）
 
@@ -235,3 +240,32 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **测试**：改写 `tests/vitest/data-governance/r07-cloud-only-delete-conflict.test.tsx` 锁定新行为——cloud-only「保留本地」可点、确认拒绝不执行、resolve 的 expectedConflictIds 仅含 cloud 行 id、批量 keep_local 包含 cloud-only 组且仍走确认。
 
 **文件面认领（独占）**：`RecordConflictsPanel.tsx`、`data.json`（zh/en，仅 governance 新增两键）、`r07-cloud-only-delete-conflict.test.tsx`、`FINDINGS-R07.md` P1-1 回写、本节。
+
+### R10-android（重派，分支 `cursor/cloud-sync-sota-r10-android-b343`，仅新增测试 + 文档，不改生产代码）
+
+模型 claude-fable-5-thinking（重派轮）。前置：R09-android（S3 用户级拒绝 + 能力矩阵测试钩子）与 R10-ux（`errors.s3DisabledInBuild` 前端映射）已合入，本路只做增量。交付：
+
+- **新集成测试 `src-tauri/tests/sync_r10_android.rs`**（R07/R09 两个 android 测试文件未覆盖的面）：
+  1. content URI（SAF）宿主可测半边：`unified_file_manager` 的
+     `is_virtual_uri` / `extract_file_name` / `extract_extension` /
+     `is_opaque_document_id` / `sanitize_file_name_for_fs` / `sanitize_for_legacy`
+     此前零测试——钉死虚拟/本地分类（含大小写、SAF 三前缀、双重编码诚实锚定）、
+     SAF document ID 解码取名、不透明 ID 判定、content:// 编码逐字节保留
+     （SecurityException 防护）。
+  2. 物化路径与重启命令壳源码锚定：`commands_zip.rs` 的 temp_zip_import/export
+     物化编排与清理承诺（含失败路径错误文案）、`restart_app` 注册 +
+     直达 `app.restart()` + 「清空所有数据」先落盘标记后重启的顺序。
+  3. 租约提交阶段身份对账增量：`mark_restore_activation_committed` 错 backup_id /
+     错活动槽路径 fail-closed、提交后错路径解除被拒、无租约重复解除幂等 false、
+     rollback trash 跨切槽重启生命周期（激活槽自身 trash 回收、旧槽回滚点幸存）。
+- **真机缺口声明**（测试文件模块文档如实记录）：content:// 实际读写需
+  `Window<Wry>` + ContentResolver，mock runtime 类型不兼容无法宿主驱动；
+  `app.restart()` 结束进程不可宿主测；双重编码 content URI 在 `is_virtual_uri`
+  层按本地路径 fail-closed。三者均转 R11-android2 真机核对单。
+- **用户指南 16 移动端增量**：Android 导入/导出 ZIP 的 content:// 临时中转
+  （空间约两倍、完成后自动清理）、不透明文件名自动类型识别、自动重启失败的
+  手动重开指引（切槽固定下次启动生效）。
+- **P2-LOCALE-PLATFORM-MSG 回写**：见上文 Round 09 待修登记的状态更新
+  （前端半边已关，机制统一半边仍开、归 R11-android2）。
+
+**文件面认领（独占）**：`src-tauri/tests/sync_r10_android.rs` 新文件、用户指南 16 移动端段增量、本文件两处回写。不改 RecordConflictsPanel / file-e2ee / notes / chat / workbench，不动任何生产代码。
