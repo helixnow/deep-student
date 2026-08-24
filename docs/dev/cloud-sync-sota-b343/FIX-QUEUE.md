@@ -494,3 +494,19 @@ workbench。
 租约窗口接线、`sync.json`（zh/en）`errors.leaseHeld`、`sync_r11_lease.rs`
 新文件、ARCHITECTURE 本节、本文件本节。不改 `sync_manager.rs` / notes / chat /
 `ftp.rs`。
+
+### 基线遗留红灯收口（tombstone / R07 文件级 E2EE）
+
+- **blob tombstone 场景夹具**：生产 `apply_blob_tombstones` 对 hash 保持
+  `len == 64 && ASCII hex` 的整批前置校验，未放宽。复核当前基线后，
+  scenario 37/57/58/59 已经通过 `write_content_addressed_blob` 生成真实 SHA-256；
+  scenario 35 是最后一处 `"ab123"` 短 hash。现将 scenario 35 也改用同一 helper，
+  并在 helper 内显式断言 64-hex，使五个场景继续验证 tombstone 同时删除本地文件与
+  云端 blob，而不会用生产已拒绝的非法夹具提前退出。
+- **R07 历史明文对象**：生产语义已明确选择防降级拒收，而非兼容下载：
+  `sync_vfs_blobs` 在网络下载前拒绝 `encryption_enabled &&
+  cipher_sha256.is_none()`，`download_file_object` 对其他文件级调用方保留同一
+  fail-closed 门禁。因此把过时的“`downloaded=1`”测试改为真实旧格式夹具
+  （AEAD 加密清单 + `cipher_sha256=None` + 明文对象），锁定内容正确的历史明文与
+  hash 不符的替换明文均为 `downloaded=0`、进入 `download_failures` 且不落盘。
+  未改生产下载路径，也没有恢复任何明文旁路。

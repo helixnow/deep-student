@@ -12,8 +12,8 @@
 //! 2. **透明解包**：同密码设备下载后得到原始明文，且按明文哈希回验；
 //! 3. **fail-closed 下载**：云端对象是 DSBK 而本机无密码 → 明确失败，
 //!    绝不把密文当明文落盘；密文损坏 / 密码不符 → 同样失败且不触碰目标路径；
-//! 4. **历史明文兼容**：启用加密前上传的明文对象仍可下载，但其内容必须
-//!    与（经 AEAD 认证的加密清单里钉住的）明文哈希一致，替换攻击不可行；
+//! 4. **历史明文防降级**：本机启用加密后，即使清单经 AEAD 认证且钉住明文
+//!    哈希，缺少 `cipher_sha256` 的历史明文对象仍拒收；原文与替换内容都不落盘；
 //! 5. **明文上传拒绝**：本机无密码但云端 root 已有 `.encryption-marker` →
 //!    拒绝文件级明文上传（与 R04/R06 记录级政策一致）。
 
@@ -26,7 +26,9 @@ use chrono::Utc;
 use deep_student_lib::backup_common::calculate_file_hash;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
 use deep_student_lib::crypto::backup_crypto::{encrypt_backup, is_encrypted_backup};
-use deep_student_lib::data_governance::sync::{SyncDirection, SyncManager};
+use deep_student_lib::data_governance::sync::{
+    BlobEntry, BlobsManifest, SyncDirection, SyncManager,
+};
 use deep_student_lib::models::AppError;
 use tempfile::TempDir;
 
@@ -283,35 +285,53 @@ async fn r07_blob_download_with_undecryptable_object_fails() {
 }
 
 // ============================================================================
-// 4. 历史明文对象：启用加密的设备仍可下载，但内容必须命中钉住的明文哈希
+// 4. 历史明文对象：启用加密的设备拒收，原文与替换内容都不得落盘
 // ============================================================================
 
 #[tokio::test]
-async fn r07_legacy_plaintext_blob_downloads_but_substitution_is_rejected() {
+async fn r07_legacy_plaintext_blob_and_substitution_are_rejected() {
     let storage = MemoryCloudStorage::default();
     let dir_a = TempDir::new().unwrap();
     let content = b"legacy object uploaded by a pre-R07 client".to_vec();
     let hash = write_blob(dir_a.path(), &content);
+    let relative_path = format!("{}/{}.pdf", &hash[..2], hash);
+    let object_key = format!("data_governance/blobs/{relative_path}");
 
-    manager_with_password("device-a")
-        .sync_vfs_blobs(&storage, dir_a.path(), SyncDirection::Upload)
+    // 模拟 R07 之前旧客户端留下的明文对象，并用当前密码封装清单，确保拒收发生
+    // 在文件级防降级门禁，而不是清单解码层。缺 cipher_sha256 是关键旧格式信号。
+    storage.put(&object_key, &content).await.unwrap();
+    let mut manifest = BlobsManifest::default();
+    manifest.updated_at = Utc::now().to_rfc3339();
+    manifest.entries.insert(
+        hash.clone(),
+        BlobEntry {
+            relative_path: relative_path.clone(),
+            size: content.len() as u64,
+            updated_at: Utc::now().to_rfc3339(),
+            cipher_sha256: None,
+            cipher_size: None,
+        },
+    );
+    let manifest = encrypt_backup(&serde_json::to_vec(&manifest).unwrap(), PASSWORD).unwrap();
+    storage
+        .put("data_governance/blobs_manifest.json", &manifest)
         .await
-        .expect("加密上传应成功");
-
-    // 模拟 R07 之前旧客户端留下的明文对象（清单已加密，hash 被 AEAD 钉住）
-    let object_key = format!("data_governance/blobs/{hash}");
-    storage.overwrite(&object_key, content.clone());
+        .unwrap();
 
     let dir_b = TempDir::new().unwrap();
     let outcome = manager_with_password("device-b")
         .sync_vfs_blobs(&storage, dir_b.path(), SyncDirection::Download)
         .await
-        .expect("历史明文对象应保持可下载");
-    assert_eq!(outcome.downloaded, 1);
-    assert!(!outcome.has_failures(), "{outcome:?}");
-    assert_eq!(std::fs::read(dir_b.path().join(&hash)).unwrap(), content);
+        .expect("blob 同步整体返回 Ok，明文遗留拒收逐条记录");
+    assert_eq!(outcome.downloaded, 0);
+    assert_eq!(outcome.download_failures, vec![hash.clone()]);
+    assert!(
+        !dir_b.path().join(&relative_path).exists(),
+        "启用加密后，内容正确的历史明文也不得落盘"
+    );
+    assert_no_temp_residue(dir_b.path());
 
-    // 替换攻击：明文对象内容与清单钉住的哈希不符 → 必须拒绝
+    // 替换攻击同样必须拒绝，且不得因对象仍为明文而绕过门禁。
     storage.overwrite(&object_key, b"tampered plaintext substitution".to_vec());
     let dir_c = TempDir::new().unwrap();
     let outcome = manager_with_password("device-c")
@@ -321,9 +341,14 @@ async fn r07_legacy_plaintext_blob_downloads_but_substitution_is_rejected() {
     assert_eq!(
         outcome.download_failures,
         vec![hash.clone()],
-        "明文替换必须被明文哈希回验拦截"
+        "明文替换必须被文件级防降级门禁拦截"
     );
-    assert!(!dir_c.path().join(&hash).exists());
+    assert_eq!(outcome.downloaded, 0);
+    assert!(
+        !dir_c.path().join(&relative_path).exists(),
+        "替换后的明文对象不得落盘"
+    );
+    assert_no_temp_residue(dir_c.path());
 }
 
 // ============================================================================
