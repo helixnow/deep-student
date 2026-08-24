@@ -41,4 +41,4 @@ on field defaults, so no literal update is required.
 
 - Full-repository literal search: no incomplete `AnkiGenerationOptions`
   literal remains.
-- `cargo check --lib`: pending final post-commit verification.
+- `cargo check --lib`: passed.
