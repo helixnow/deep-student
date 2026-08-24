@@ -7,6 +7,11 @@
 import { z } from 'zod';
 import type { GenerativeLayoutMode, GenerativeLayoutUnit, GenerativeUIIntent } from './types';
 import { sanitizeGenerativeTextLeaves } from './utils/sanitizeGenerativeText';
+import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
+  STREAM_BUFFER_CAPPED_WARNING,
+  isStreamBufferOverCap,
+} from './utils/streamBufferGuard';
 
 export const GENERATIVE_UI_INTENT_VERSIONS = ['1', '1.1'] as const;
 export const GENERATIVE_LAYOUT_UNITS = [1, 2, 3] as const;
@@ -196,6 +201,9 @@ export function parseGenerativeUIIntent(raw: string): {
   ok: false;
   errors: string[];
 } {
+  if (isStreamBufferOverCap(raw.length)) {
+    return { ok: false, errors: [STREAM_BUFFER_CAPPED_WARNING] };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -338,6 +346,9 @@ export function parseGenerativeUIIntentRecovered(input: string | unknown):
     } {
   let value: unknown = input;
   if (typeof input === 'string') {
+    if (isStreamBufferOverCap(input.length)) {
+      return { ok: false, errors: [STREAM_BUFFER_CAPPED_WARNING] };
+    }
     try {
       value = JSON.parse(input);
     } catch (e) {

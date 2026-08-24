@@ -16,6 +16,7 @@ import {
   isSerializedStreamValueOverCap,
   isStreamBufferOverCap,
 } from '@/features/generative-ui/utils/streamBufferGuard';
+import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
 const LAST_GOOD_PREFIX =
   '{"version":"1","blocks":[{"type":"text","props":{"body":"keep"}}';
@@ -173,5 +174,16 @@ describe('generativeUIStreamRegistry stream-buffer-capped', () => {
     expect(snap.bufferLength).toBe(LAST_GOOD_PREFIX.length);
     expect(snap.warnings).toContain(STREAM_BUFFER_CAPPED_WARNING);
     expect(snap.intent?.blocks[0]?.props?.body).toBe('keep');
+  });
+});
+
+describe('parseGenerativeUIIntent size cap', () => {
+  it('rejects a complete JSON string over the stream character cap', () => {
+    const raw = `{"version":"1","blocks":[{"type":"text","props":{"body":"${'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS)}"}}]}`;
+    const parsed = parseGenerativeUIIntent(raw);
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) {
+      expect(parsed.errors).toContain(STREAM_BUFFER_CAPPED_WARNING);
+    }
   });
 });

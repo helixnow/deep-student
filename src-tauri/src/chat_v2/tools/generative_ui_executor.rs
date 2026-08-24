@@ -18,6 +18,7 @@ use crate::hpias::{
 
 const TOOL_NAME: &str = "render_generative_ui";
 const MAX_GENERATIVE_UI_BLOCKS: usize = 32;
+const MAX_GENERATIVE_UI_INTENT_CHARS: usize = 256_000;
 
 pub struct GenerativeUiExecutor;
 
@@ -39,6 +40,17 @@ impl GenerativeUiExecutor {
 
         if !intent.is_object() {
             return Err("intent 必须是 JSON 对象".to_string());
+        }
+
+        if raw.as_str().is_some_and(|text| text.len() > MAX_GENERATIVE_UI_INTENT_CHARS)
+            || serde_json::to_string(&intent)
+                .ok()
+                .is_some_and(|encoded| encoded.len() > MAX_GENERATIVE_UI_INTENT_CHARS)
+        {
+            return Err(format!(
+                "intent 超过 {} 字符上限",
+                MAX_GENERATIVE_UI_INTENT_CHARS
+            ));
         }
 
         Self::validate_intent_version(&intent)?;
@@ -503,6 +515,19 @@ mod tests {
     fn parse_intent_rejects_empty_blocks() {
         let args = json!({ "intent": { "version": "1", "blocks": [] } });
         assert!(GenerativeUiExecutor::parse_intent(&args).is_err());
+    }
+
+    #[test]
+    fn parse_intent_rejects_oversized_payload() {
+        let huge = "x".repeat(256_001);
+        let args = json!({
+            "intent": {
+                "version": "1",
+                "blocks": [{ "type": "text", "props": { "body": huge } }]
+            }
+        });
+        let err = GenerativeUiExecutor::parse_intent(&args).expect_err("oversized");
+        assert!(err.contains("256000") || err.contains("上限"));
     }
 
     #[test]

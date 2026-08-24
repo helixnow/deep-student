@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 56（2026-08-24）— 完整 intent 256k 上限
+
+CI `32711020815` 仍 queued，**本轮不 push**。
+
+1. [x] `parseGenerativeUIIntent` / recovered 拒绝超长 JSON 字符串
+2. [x] Rust `parse_intent` 拒绝序列化后超过 256_000 的 intent
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 55（2026-08-24）— researchSessionId 消毒
 
 CI `32711020815` 仍 queued，**本轮不 push**。

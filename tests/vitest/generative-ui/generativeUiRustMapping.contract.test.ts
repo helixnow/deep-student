@@ -155,6 +155,8 @@ describe('generativeUI Rust dual-mapping contract', () => {
   it('Rust executor requires MAX_GENERATIVE_UI_BLOCKS of 32', () => {
     expect(executorSrc).toContain('MAX_GENERATIVE_UI_BLOCKS');
     expect(executorSrc).toContain('32');
+    expect(executorSrc).toContain('MAX_GENERATIVE_UI_INTENT_CHARS');
+    expect(executorSrc).toContain('parse_intent_rejects_oversized_payload');
   });
 
   it('documents that TS allows empty blocks while Rust ingress rejects them', () => {
