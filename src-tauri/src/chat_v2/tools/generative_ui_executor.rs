@@ -545,12 +545,11 @@ mod tests {
         let args = json!({
             "noteEdit": { "operation": "append", "content": "## Summary" }
         });
-        let note_edit = GenerativeUiExecutor::parse_note_edit(&args).expect("parse");
-        assert!(note_edit.is_some());
+        let note_edit = GenerativeUiExecutor::parse_note_edit(&args)
+            .expect("parse")
+            .expect("noteEdit payload present");
         assert_eq!(
-            note_edit
-                .and_then(|v| v.get("operation"))
-                .and_then(Value::as_str),
+            note_edit.get("operation").and_then(Value::as_str),
             Some("append")
         );
     }
