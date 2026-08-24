@@ -16,7 +16,11 @@
 //!   超限在派生前 fail-closed）；本文件 3 号用例已按台账要求改写为断言
 //!   钳制边界（详见 `sync_r10_verifier.rs` 的完整验收测试）；
 //! - **P2-3（FINDINGS-R07）**：resolve 快速路径的业务行快照读在事务外，
-//!   窗口内纯本地编辑可被按旧快照误标 resolved；
+//!   窗口内纯本地编辑可被按旧快照误标 resolved——**已由 R12-conflict-fast
+//!   关闭**（`BEGIN IMMEDIATE` 后、标记 resolved 前用 `get_record_data`
+//!   事务内重读业务行并重算 already-desired，不匹配即拒绝）；本文件 4 号
+//!   用例已按台账要求改写为断言该重读存在（行为级验收见
+//!   `sync_r12_conflict_fast_path.rs`）；
 //! - **P2-1（FINDINGS-R07，部分）**：v1 旧标记升级无条件信任第一台带密码
 //!   上传的设备——代码信任边界未变，缓解手段是 R09-restore-ops 的运维解锁
 //!   指南，本文件锁定该指南不被删除；
@@ -133,20 +137,19 @@ fn p2_2_kdf_cost_upper_bound_now_enforced() {
 }
 
 // ============================================================================
-// P2-3：resolve 快速路径业务行快照读在事务外
+// P2-3：resolve 快速路径业务行重读（R12-conflict-fast 已搬进事务）
 // ============================================================================
 
-/// 源码锁定（诚实仍开）：`data_governance_resolve_record_conflict` 的
-/// `already_in_desired_state` 快速路径在 `BEGIN IMMEDIATE` 事务内只重验
-/// 冲突 generation，**没有**把业务行重读搬进事务——纯本地编辑不触碰
-/// `__sync_conflicts`，窗口内可按旧快照误标 resolved（决策未广播、业务行
-/// 无损，仅冲突留痕口径失真）。慢速路径已有事务内 preflight
-/// （`apply_downloaded_changes_force_exact_with_hooks` 的第一个 hook）可对照。
-///
-/// 若本用例失败，说明快速路径新增了事务内业务行重读——请更新本用例为
-/// 断言该重读存在，并回写 PROTOCOL-R10 / FIX-QUEUE 的 P2-3 登记。
+/// [R12-conflict-fast 回写] P2-3 已关：`data_governance_resolve_record_conflict`
+/// 的 `already_in_desired_state` 快速路径在 `BEGIN IMMEDIATE` 事务内、标记
+/// resolved 之前用 `get_record_data` 重读业务行，按同一套 `(operation, data)`
+/// 重算是否仍处于决策目标状态；不再匹配即 fail-closed 拒绝（「本地记录在
+/// 冲突确认期间已变化」），绝不用旧快照标 resolved。本用例按原用例的文档
+/// 要求改写为**断言该重读存在**，并继续钉住既有防线（`BEGIN IMMEDIATE` +
+/// 事务内 generation 重验）不被删。行为级验收（匹配可标 resolved /
+/// 竞争窗口不匹配必须拒绝）见 `sync_r12_conflict_fast_path.rs`。
 #[test]
-fn p2_3_resolve_fast_path_business_row_recheck_still_missing_source_lock() {
+fn p2_3_resolve_fast_path_business_row_recheck_now_in_transaction_source_lock() {
     let source = read_repo_file("src/data_governance/commands_sync.rs");
 
     let snapshot_read = source
@@ -163,7 +166,7 @@ fn p2_3_resolve_fast_path_business_row_recheck_still_missing_source_lock() {
 
     assert!(
         snapshot_read < fast_path_start,
-        "业务行快照读应仍在快速路径（事务）之前——事务外读是 P2-3 的前提"
+        "事务外快照读仍在快速路径之前（用于计算决策输入），允许保留"
     );
     assert!(
         fast_path.contains("BEGIN IMMEDIATE"),
@@ -173,10 +176,22 @@ fn p2_3_resolve_fast_path_business_row_recheck_still_missing_source_lock() {
         fast_path.contains("__sync_conflicts"),
         "快速路径应仍在事务内重验冲突 generation（该防线不得删除）"
     );
+
+    // P2-3 修复防线：事务内业务行重读必须存在，且发生在标记 resolved 之前。
+    let reread = fast_path.find("get_record_data").expect(
+        "快速路径事务内的业务行重读（get_record_data）被移除：\
+         P2-3 回归，请恢复并回写 PROTOCOL-R10 / FIX-QUEUE",
+    );
+    let mark = fast_path
+        .find("SET resolved_at")
+        .expect("快速路径应仍以 UPDATE __sync_conflicts 标记 resolved");
     assert!(
-        !fast_path.contains("get_record_data"),
-        "检测到快速路径事务内出现业务行重读：P2-3 可能已被修复，\
-         请更新本用例并回写 PROTOCOL-R10 / FIX-QUEUE"
+        reread < mark,
+        "事务内业务行重读必须发生在标记 resolved 之前——先标记后重读无法拦截竞争窗口"
+    );
+    assert!(
+        fast_path.contains("本地记录在冲突确认期间已变化"),
+        "重读不匹配时必须以「本地记录在冲突确认期间已变化」拒绝（fail-closed 文案不得删除）"
     );
 }
 

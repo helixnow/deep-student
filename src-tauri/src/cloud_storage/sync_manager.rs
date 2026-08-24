@@ -535,7 +535,8 @@ impl CloudSyncManager {
     /// - 无标记：用本机密码生成不可逆校验子，登记 v2 标记后放行；
     /// - 有校验子：复算比对——不一致立即失败（错密码设备不得向同一 root
     ///   写入另一套无法互解的密文）；无法校验（未知 KDF / 字段损坏）fail-closed；
-    /// - 旧标记（`version <= 1`，无校验子）：以本机密码做**一次性升级**，
+    /// - 旧标记（`version <= 1`，无校验子）：[R12-v1-trust] 先用本机密码
+    ///   试解该 root 的既有备份（空仓则跳过），通过后才做**一次性升级**，
     ///   保留首次写入者与时间；升级后错密码设备即可被拦截；
     /// - `version >= 2` 却缺校验子、或标记内容损坏：按损坏处理，fail-closed。
     pub async fn verify_encryption_password_before_upload(
@@ -581,9 +582,14 @@ impl CloudSyncManager {
                 }
             }
             // 旧版标记（R06 之前）没有校验子：以当前密码一次性升级。
-            // 升级信任「第一个带密码上传的设备」，与旧行为的信任边界一致；
+            // [R12-v1-trust] 升级前先用本机密码试解该 root 的既有备份：只有
+            // 确实能解开既有密文的密码才有资格被固化进 v2 标记，成为此后所有
+            // 设备的校验基准；试解不通过则保持 v1 标记原样。空仓（只有标记、
+            // 没有任何备份）保持旧行为——第一台带密码上传的设备认领该 root。
             // 升级后配错密码的设备即可在上传前被拦截。
             None if marker.version <= 1 => {
+                self.prove_password_against_existing_backups(password)
+                    .await?;
                 let verifier = crate::crypto::backup_crypto::create_password_verifier(password)
                     .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
                 let upgraded = EncryptionMarker {
@@ -606,6 +612,75 @@ impl CloudSyncManager {
                 marker.version
             ))),
         }
+    }
+
+    /// [R12-v1-trust] 升级旧版（v1）加密标记前，用本机密码对该 root 的既有
+    /// 备份做一次试解密。
+    ///
+    /// v1 标记没有校验子，无法直接比对密码；但只要该 root 已有备份，「密码
+    /// 与既有密文一致」就是可以当场验证的事实——先下载一份（取 manifest 的
+    /// 最新版本）并用现有 DSBK 解密管线完整试解，通过后才允许把本机密码固化
+    /// 进 v2 标记。任何一步失败（备份列表读不到、下载失败/半包、对象不是
+    /// DSBK 密文、解密失败）都返回错误、保持 v1 标记原样（fail-closed），
+    /// 持有正确密码的设备之后仍可完成升级。
+    ///
+    /// 空仓（只有 v1 标记、没有任何备份）没有可试解的对象：保持旧行为，
+    /// 允许第一台带密码上传的设备认领该 root。
+    async fn prove_password_against_existing_backups(&self, password: &str) -> Result<()> {
+        let manifest = self.get_manifest().await.map_err(|error| {
+            AppError::configuration(format!(
+                "升级云端加密标记前需确认本机密码能解开既有备份，但读取云端备份列表失败：\
+                 {error}。本次未改动加密标记，请稍后重试。"
+            ))
+        })?;
+
+        let Some(version) = manifest
+            .latest
+            .as_ref()
+            .and_then(|id| manifest.versions.iter().find(|v| &v.id == id))
+            .or_else(|| manifest.versions.first())
+        else {
+            return Ok(());
+        };
+
+        let temp = tempfile::tempdir()
+            .map_err(|e| AppError::file_system(format!("创建试解密临时目录失败: {e}")))?;
+        let downloaded = self
+            .download_with_progress(Some(&version.id), temp.path(), None)
+            .await
+            .map_err(|error| {
+                AppError::configuration(format!(
+                    "升级云端加密标记前需确认本机密码能解开既有备份，但下载最新备份 {} 失败：\
+                     {error}。本次未改动加密标记，请稍后重试。",
+                    version.id
+                ))
+            })?;
+
+        // 完整试解到临时文件（spawn_blocking：Argon2 派生 + 全量解密是 CPU/IO
+        // 密集操作）；输出只用于验证，随 TempDir 一并清理。
+        let encrypted_path = std::path::PathBuf::from(&downloaded.local_path);
+        let plaintext_path = temp.path().join(".trial-decrypt.tmp");
+        let password_owned = password.to_string();
+        let trial = tokio::task::spawn_blocking(move || {
+            crate::crypto::backup_crypto::decrypt_backup_file(
+                &encrypted_path,
+                &plaintext_path,
+                &password_owned,
+            )
+        })
+        .await
+        .map_err(|e| AppError::internal(format!("试解密任务执行失败: {e}")))?;
+
+        trial.map_err(|error| {
+            AppError::configuration(format!(
+                "云端加密标记为旧版（无密码校验子），升级前用本机密码试解最新备份 {} 未通过：\
+                 {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
+                 若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
+                version.id
+            ))
+        })?;
+
+        Ok(())
     }
 
     /// 明文上传前置检查：该云 root 出现过加密备份（存在标记）时拒绝。

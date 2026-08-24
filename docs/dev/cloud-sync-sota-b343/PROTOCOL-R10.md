@@ -19,6 +19,8 @@
 
 > **R10-verifier 回写（本文档定稿后）**：P2-2 已关——`derive_key` 应用级上限（1 GiB / t≤16 / p≤8），校验子与 DSBK 头共用同一入口，超限派生前 fail-closed；锁定测 3 号已改写为断言边界，验收测见 `sync_r10_verifier.rs`。下文 P2-2 相关行保持历史留档不改。仍开收敛为 3 件（P2-3、P2-1 残余、文件名长度）。
 
+> **wrap-conflict 回写（Round 13）**：P2-3 已关——resolve 快速路径在 `BEGIN IMMEDIATE` 后、标记 resolved 前用 `get_record_data` 事务内重读业务行，按同一套 `(operation, data)` 重算 already-desired，不匹配即 fail-closed 拒绝（「本地记录在冲突确认期间已变化」）；锁定测 4 号已改写为断言该重读存在，行为级验收见 `sync_r12_conflict_fast_path.rs`。下文 P2-3 相关行保持历史留档不改。
+
 ---
 
 ## FINDINGS-R01 核销（R01 → R02 修复 → R03 复审链）
@@ -87,7 +89,7 @@ R03 已判「R01 P1 已关」，本轮抽核关键三项仍成立：
 | 加密标记无密钥校验子 | **已关** | v2 校验子标记 + 错密码写前拦截，见 R07 节 P1-2 |
 | 无自动同步；Android 换机/重启未实测 | **已关** | 最小自动同步默认关：`src/stores/syncStatusStore.ts:223-258`（`useAutoSyncStore` 默认 `enabled:false`，调度器读该开关，r07-autosync）；Android：`src-tauri/tests/sync_android_device_switch.rs` / `sync_android_restart.rs`（R09-android） |
 | 资产文件名跨平台 | **部分** | 主体已关（R09-names），长度残余仍开——同 R01-P2 末项，锁定测 6 号 |
-| `fix-sync-tombstone-db14` 合 main 时 `ftp.rs` 必冲突 | **仍开（留档）** | 非本枝可修项，持续留档待合 main 时人工消解 |
+| `fix-sync-tombstone-db14` 合 main 时 `ftp.rs` 必冲突 | **产品语义已关；ftp.rs 整枝仍勿直接合** | 资产 tombstone 的未过滤清单解析 + 内容寻址对象显式 skip 已由 `cursor/cloud-sync-sota-tombstone-port-b343` 合入本枝（`06e82848`）。**未**带原枝 `ftp.rs`（专属枝 550 白名单更严）。原枝整包合 main 仍会撞 `ftp.rs`，继续留档人工消解 |
 
 ---
 

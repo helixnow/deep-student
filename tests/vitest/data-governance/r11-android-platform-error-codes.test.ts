@@ -88,3 +88,61 @@ describe('云存储 API 兼容错误形态时保留 code', () => {
     expect(parseCommandErrorEnvelope(normalized)?.code).toBe(S3_UNSUPPORTED_IN_BUILD_CODE);
   });
 });
+
+describe('移动端指南对 Android 云存储诚实', () => {
+  const guide = readFileSync(
+    resolve(process.cwd(), 'docs/user-guide/17-移动端指南.md'),
+    'utf-8',
+  );
+
+  it('对照表与 FAQ 写明 Android 仅 WebDAV，不把 S3 写成手机可用', () => {
+    expect(guide).toContain('Android 仅 WebDAV');
+    expect(guide).toContain('S3 与 FTP 均不可用');
+    expect(guide).toContain('Android 目前只能配置 **WebDAV**');
+    expect(guide).toContain('桌面写入的 S3 / FTP 配置在 Android 上不会被加载');
+    expect(guide).not.toMatch(/云同步（WebDAV\/S3，实验性）/);
+    expect(guide).not.toMatch(/两端配置同一个 WebDAV\/S3/);
+    expect(guide).not.toMatch(/一端「立即备份到云端」，另一端「从云端恢复」/);
+    expect(guide).toContain('便携归档');
+    expect(guide).toContain('未配置云端端到端加密密码时');
+    expect(guide).toContain('校验会拒绝');
+    expect(guide).not.toMatch(/不要指望默认「立即备份到云端」再「从云端恢复」能整槽换机/);
+  });
+
+  it('隐私数据流向不把云同步写成笼统的 WebDAV/S3', () => {
+    const zh = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'src/locales/zh-CN/common.json'), 'utf-8'),
+    );
+    const en = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'src/locales/en-US/common.json'), 'utf-8'),
+    );
+    expect(zh.legal.settingsSection.dataFlow.syncDataDesc).toContain('Android 仅 WebDAV');
+    expect(zh.legal.settingsSection.dataFlow.syncDataDesc).not.toMatch(/WebDAV\/S3 服务/);
+    expect(en.legal.settingsSection.dataFlow.syncDataDesc).toMatch(/WebDAV on Android/i);
+    expect(en.legal.settingsSection.dataFlow.syncDataDesc).not.toMatch(/configured WebDAV\/S3 service/);
+    expect(zh.legal.privacyPolicy.sections.cloudSync.content).toContain('Android 仅支持 WebDAV');
+    expect(en.legal.privacyPolicy.sections.cloudSync.content).toMatch(/Android supports WebDAV only/i);
+  });
+
+  it('根 README 不再把云同步写成笼统的 S3 & WebDAV，并写明默认云端包不能整槽恢复', () => {
+    const enReadme = readFileSync(resolve(process.cwd(), 'README.md'), 'utf-8');
+    const zhReadme = readFileSync(resolve(process.cwd(), 'README_CN.md'), 'utf-8');
+    expect(enReadme).toContain('Android is WebDAV only');
+    expect(enReadme).toContain('portable archive and cannot slot-restore');
+    expect(enReadme).not.toMatch(/backup-style sync via S3-compatible storage & WebDAV/);
+    expect(zhReadme).toContain('Android 仅 WebDAV');
+    expect(zhReadme).toContain('不能整槽恢复');
+    expect(zhReadme).toContain('没有增量传输');
+  });
+});
+
+describe('CI Vitest 堆上限不把 4GB worker 顶死当产品红', () => {
+  it('CI forks 使用 6144MB 堆且最多 2 个 worker，不放宽用例', () => {
+    const vitestConfig = readFileSync(resolve(process.cwd(), 'vitest.config.ts'), 'utf-8');
+    const ciYml = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf-8');
+    expect(vitestConfig).toContain("process.env.CI ? '--max-old-space-size=6144'");
+    expect(vitestConfig).toContain('maxForks: 2');
+    expect(ciYml).toContain("NODE_OPTIONS: '--max-old-space-size=6144'");
+    expect(vitestConfig).not.toContain('testTimeout: 0');
+  });
+});

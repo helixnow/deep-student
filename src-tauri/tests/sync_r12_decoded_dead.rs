@@ -28,8 +28,8 @@ fn read_repo_file(rel: &str) -> String {
 
 /// 递归收集目录下所有 `.rs` 文件路径。
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("读取目录 {} 失败: {}", dir.display(), e));
+    let entries =
+        std::fs::read_dir(dir).unwrap_or_else(|e| panic!("读取目录 {} 失败: {}", dir.display(), e));
     for entry in entries {
         let path = entry.expect("读取目录项失败").path();
         if path.is_dir() {

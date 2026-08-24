@@ -152,11 +152,9 @@ async fn spawn_fake_server(
 
                     let (status_line, extra_headers, served_body): (String, String, Vec<u8>) =
                         match (mode, requested_start) {
-                            (RangeMode::Ignore, _) | (_, None) => (
-                                "HTTP/1.1 200 OK".to_string(),
-                                String::new(),
-                                body.clone(),
-                            ),
+                            (RangeMode::Ignore, _) | (_, None) => {
+                                ("HTTP/1.1 200 OK".to_string(), String::new(), body.clone())
+                            }
                             (RangeMode::Honor, Some(start)) => {
                                 let start = start as usize;
                                 (
@@ -202,14 +200,13 @@ async fn spawn_fake_server(
                             }
                         };
 
-                    let declared_length = if mode == RangeMode::TruncateBody
-                        && requested_start.is_some()
-                    {
-                        // 声明比实际发送更多的字节：模拟中途断开的传输。
-                        served_body.len() * 2
-                    } else {
-                        served_body.len()
-                    };
+                    let declared_length =
+                        if mode == RangeMode::TruncateBody && requested_start.is_some() {
+                            // 声明比实际发送更多的字节：模拟中途断开的传输。
+                            served_body.len() * 2
+                        } else {
+                            served_body.len()
+                        };
                     let response_head = format!(
                         "{status_line}\r\n{extra_headers}Content-Type: application/octet-stream\r\nContent-Length: {declared_length}\r\nConnection: close\r\n\r\n"
                     );
@@ -286,7 +283,11 @@ async fn range_206_resumes_exactly_from_offset() {
         &[Some("bytes=7000-".to_string())],
         "断点 > 0 时必须携带 Range 头"
     );
-    assert_eq!(std::fs::read(&dest).unwrap(), data, "拼装结果必须逐字节正确");
+    assert_eq!(
+        std::fs::read(&dest).unwrap(),
+        data,
+        "拼装结果必须逐字节正确"
+    );
 }
 
 #[tokio::test]

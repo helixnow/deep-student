@@ -2456,10 +2456,7 @@ mod cloud_hydration_tests {
             encryption_password: Some("encryption-secret".to_string()),
         };
 
-        for rendered in [
-            format!("{:?}", credentials),
-            format!("{:#?}", credentials),
-        ] {
+        for rendered in [format!("{:?}", credentials), format!("{:#?}", credentials)] {
             for plaintext in [
                 "webdav-secret",
                 "s3-secret",

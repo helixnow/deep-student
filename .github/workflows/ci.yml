@@ -146,10 +146,12 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
-      # --logHeapUsage：非 TTY 下默认 reporter 不打印在跑的文件，分片 OOM 时
-      # 日志里没有任何归因线索。带上每个文件的堆占用，下一轮才知道该改谁。
       - name: Run vitest shard
-        run: npx vitest run --shard=${{ matrix.shard }}/4 --logHeapUsage
+        env:
+          # 与 vitest.config.ts 的 CI forks 堆上限一致；父进程也抬高，
+          # 避免编排进程先于 worker 顶到默认 4GB。
+          NODE_OPTIONS: '--max-old-space-size=6144'
+        run: npx vitest run --shard=${{ matrix.shard }}/4
 
   # ============================================
   # 后端静态检查（fmt + clippy）

@@ -76,8 +76,7 @@ fn r11_autosync_manual_mutex_try_acquire_fails_closed_and_recovers() {
     assert_eq!(snapshot.kind, DataGovernanceOperationKind::Sync);
 
     // 场景 C：自动同步持锁期间，手动同步同样立即失败并能看到 holder 信息
-    let second =
-        DataGovernanceOperationGuard::try_acquire(DataGovernanceOperationKind::Sync, None);
+    let second = DataGovernanceOperationGuard::try_acquire(DataGovernanceOperationKind::Sync, None);
     let second_message = match second {
         Ok(_) => panic!("自动同步持锁期间手动同步不得取得全局操作租约"),
         Err(e) => e.to_string(),
@@ -181,10 +180,7 @@ fn r11_autosync_interval_tiers_and_default_off_are_pinned() {
     let store = frontend_store_source();
 
     // 三档常量（15min / 1h / 6h）
-    assert!(
-        store.contains("'15m': 15 * 60_000"),
-        "15 分钟档常量被改动"
-    );
+    assert!(store.contains("'15m': 15 * 60_000"), "15 分钟档常量被改动");
     assert!(store.contains("'1h': 60 * 60_000"), "1 小时档常量被改动");
     assert!(
         store.contains("'6h': 6 * 60 * 60_000"),
@@ -207,10 +203,7 @@ fn r11_autosync_interval_tiers_and_default_off_are_pinned() {
         "lastOutcome: state.lastOutcome",
         "lastRunAtMs: state.lastRunAtMs",
     ] {
-        assert!(
-            store.contains(field),
-            "持久化 partialize 缺少字段: {field}"
-        );
+        assert!(store.contains(field), "持久化 partialize 缺少字段: {field}");
     }
 
     // 长档位下失败退避封顶必须取 max(maxBackoffMs, intervalMs)，

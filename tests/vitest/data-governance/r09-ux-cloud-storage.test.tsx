@@ -234,19 +234,84 @@ describe('CloudStorageSection 清除配置部分失败', () => {
 });
 
 // ============================================================================
+// 整包 ZIP 无增量传输（对外诚实）
+// ============================================================================
+
+describe('CloudStorageSection 整包备份诚实文案', () => {
+  it('zh/en 在上传入口写明每次都是完整 ZIP 单对象，没有增量/去重/CDC', () => {
+    expect(zhLocale.actions.fullZipHint).toContain('完整 ZIP');
+    expect(zhLocale.actions.fullZipHint).toContain('单个对象');
+    expect(zhLocale.actions.fullZipHint).toContain('没有增量传输');
+    expect(zhLocale.actions.fullZipHint).toContain('去重');
+    expect(zhLocale.actions.fullZipHint).toContain('CDC');
+    expect(enLocale.actions.fullZipHint).toMatch(/full ZIP/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/single object/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/no incremental transfer/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/deduplication/i);
+    expect(enLocale.actions.fullZipHint).toContain('CDC');
+    expect(Object.keys(zhLocale.actions).sort()).toEqual(Object.keys(enLocale.actions).sort());
+  });
+
+  it('上传按钮旁挂载 fullZipHint，且不接线 backup-v2 / delta 积木', () => {
+    expect(componentSource).toContain("t('cloudStorage:actions.fullZipHint')");
+    expect(componentSource).not.toMatch(/delta_upload|publish_verified_staging|backup-v2/);
+  });
+});
+
+describe('用户指南 16 不把默认云端整包写成可换机', () => {
+  const guide = readFileSync(
+    resolve(process.cwd(), 'docs/user-guide/16-数据管理与云同步.md'),
+    'utf-8',
+  );
+
+  it('按是否配置 E2EE 密码分述云端整包，并不再说适合迁移学习数据', () => {
+    expect(guide).toContain('未配置云端端到端加密密码');
+    expect(guide).toContain('**不会**带备份密码');
+    expect(guide).toContain('加密全保真 ZIP');
+    expect(guide).toContain('校验会明确拒绝，不会覆盖当前数据');
+    expect(guide).not.toContain('产物永远是便携归档');
+    expect(guide).not.toContain('适合迁移学习数据本身');
+    expect(guide).not.toContain('也可以走云端：老设备「立即备份到云端」');
+  });
+});
+
+// ============================================================================
 // 危险操作确认源码契约
 // ============================================================================
 
 describe('CloudStorageSection 危险操作确认接线（源码契约）', () => {
-  it('恢复版本必须经 warning 确认框（含覆盖警告与重启预告）', () => {
+  it('恢复版本必须经 warning 确认框（含覆盖警告、便携归档限制与校验后重启）', () => {
     expect(componentSource).toContain("title={t('cloudStorage:download.confirmTitle')}");
     expect(componentSource).toContain("t('cloudStorage:download.warning')");
+    expect(componentSource).toContain("t('cloudStorage:download.partialArchiveNotice')");
     expect(componentSource).toContain("t('cloudStorage:download.restartNotice')");
+    expect(componentSource).toContain('useStoredCloudEncryptionPassword');
+    expect(componentSource).toContain('resolveCloudZipEncryptionArgs');
+    expect(componentSource).toContain('DataGovernanceApi.exportZip(');
+    expect(componentSource).toContain('DataGovernanceApi.importZip(');
+    expect(componentSource).not.toMatch(/exportZip\(\s*backupId\s*\)/);
+    expect(componentSource).not.toMatch(/importZip\(\s*downloadResult\.localPath\s*\)/);
+    expect(componentSource).not.toMatch(/getCloudCredentials\(|secure_get_cloud_credentials/);
     expect(componentSource).toContain('onConfirm={handleRestore}');
     // 恢复确认框用 warning 变体
     expect(componentSource).toMatch(
       /download\.confirmTitle'\)\}[\s\S]{0,400}confirmVariant="warning"/,
     );
+    expect(zhLocale.download.partialArchiveNotice).toContain('便携归档');
+    expect(zhLocale.download.partialArchiveNotice).toContain('整槽恢复');
+    expect(zhLocale.download.partialArchiveNotice).toContain('未配置');
+    expect(zhLocale.download.partialArchiveNotice).toContain('加密全保真');
+    expect(zhLocale.download.partialArchiveNotice).not.toContain('永远是便携归档');
+    expect(zhLocale.download.description).toContain('未配置云端端到端加密密码');
+    expect(zhLocale.download.warning).toContain('通过整槽恢复校验');
+    expect(zhLocale.download.restartNotice).toContain('通过整槽恢复校验');
+    expect(enLocale.download.partialArchiveNotice).toMatch(/portable archive/i);
+    expect(enLocale.download.partialArchiveNotice).toMatch(/full-fidelity/i);
+    expect(enLocale.download.partialArchiveNotice).not.toMatch(/always exports/i);
+    expect(enLocale.download.description).toMatch(/without a cloud end-to-end encryption password/i);
+    expect(enLocale.download.warning).toMatch(/only after slot-restore validation/i);
+    expect(enLocale.download.restartNotice).toMatch(/slot-restore validation/i);
+    expect(Object.keys(zhLocale.download).sort()).toEqual(Object.keys(enLocale.download).sort());
   });
 
   it('删除版本 / 清除配置 / 停用加密均为 danger 确认框', () => {

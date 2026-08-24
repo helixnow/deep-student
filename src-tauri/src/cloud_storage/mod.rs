@@ -20,7 +20,13 @@
 //! storage.put("backups/data.zip", &data).await?;
 //! ```
 
+/// [R12-delta-lease] backup-v2 / GC 独立仓库租约（`backup-v2/locks/`，零生产接线）。
+pub mod backup_lease;
 mod config;
+pub mod delta_format;
+pub mod delta_gc;
+pub mod delta_restore;
+pub mod delta_upload;
 #[cfg(not(target_os = "android"))]
 mod ftp;
 /// [R11-check] 云端仓库巡检（restic `check` 档，只读不修）

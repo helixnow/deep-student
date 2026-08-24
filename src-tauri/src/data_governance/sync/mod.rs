@@ -9558,7 +9558,8 @@ impl SyncManager {
     /// 对象是否落在内容寻址前缀（`data_governance/asset_objects/<sha256>`）。
     ///
     /// 只有 legacy 前缀 `data_governance/assets/` 下的对象与逻辑 key 一一对应，可以
-    /// 随 tombstone 物理删除。
+    /// 随 tombstone 物理删除。内容寻址对象在仍有活跃引用时保留，最后一个引用
+    /// 消失后再删除。
     fn is_content_addressed_asset_object(key: &str) -> bool {
         Self::validate_remote_object_key(key, Self::ASSET_OBJECTS_PREFIX).is_ok()
     }
@@ -11127,8 +11128,9 @@ impl SyncManager {
     ///
     /// 过滤版清单会先把 tombstoned 逻辑 key 摘掉，删除传播再去查 `object_key` 必然
     /// miss，从而回退到 legacy 逻辑路径 `data_governance/assets/{key}`；新布局的对象
-    /// 实际在 `data_governance/asset_objects/{sha256}`，回退路径在 FTP 上会因父目录
-    /// cwd 550 直接硬失败。
+    /// 实际在 `data_governance/asset_objects/{sha256}`。tombstone 应用必须在过滤前
+    /// 解析物理 key，才能正确判断共享引用，并避免 FTP 回退路径因父目录 CWD 550
+    /// 硬失败。
     async fn download_assets_manifest_before_tombstones(
         &self,
         storage: &dyn CloudStorage,

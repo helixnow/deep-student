@@ -33,6 +33,7 @@ use deep_student_lib::data_governance::backup::{
     zip_export::{import_backup_from_zip, import_backup_from_zip_with_password},
     BackupKeyPolicy, BackupManager, BackupManifest, SnapshotKind, ZipExportOptions,
 };
+use deep_student_lib::data_governance::commands_zip::resolve_zip_encryption_password;
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -65,11 +66,9 @@ fn create_slot_with_databases(base: &Path) -> PathBuf {
 
 fn read_marker(db_path: &Path) -> Option<String> {
     let conn = Connection::open(db_path).ok()?;
-    conn.query_row(
-        "SELECT value FROM roundtrip_marker LIMIT 1",
-        [],
-        |row| row.get::<_, String>(0),
-    )
+    conn.query_row("SELECT value FROM roundtrip_marker LIMIT 1", [], |row| {
+        row.get::<_, String>(0)
+    })
     .ok()
 }
 
@@ -98,7 +97,9 @@ fn zip_roundtrip_restore_succeeds_or_returns_actionable_error() {
         manifest.validate_for_slot_restore().is_ok(),
         "snapshot_kind 与 validate_for_slot_restore 分类出现分叉: kind={:?}, validate={:?}",
         manifest.snapshot_kind,
-        manifest.validate_for_slot_restore().map_err(|e| e.to_string())
+        manifest
+            .validate_for_slot_restore()
+            .map_err(|e| e.to_string())
     );
     let backup_subdir = backup_dir.join(&manifest.backup_id);
     assert!(backup_subdir.is_dir(), "备份目录应存在");
@@ -131,26 +132,21 @@ fn zip_roundtrip_restore_succeeds_or_returns_actionable_error() {
     let restore_backup_dir = restore_root.path().join("recovery").join("backups");
     let imported_dir = restore_backup_dir.join(&manifest.backup_id);
     std::fs::create_dir_all(&restore_backup_dir).expect("create restore backup dir");
-    let imported_files =
-        import_backup_from_zip(&zip_path, &imported_dir).expect("导入 ZIP 应成功");
+    let imported_files = import_backup_from_zip(&zip_path, &imported_dir).expect("导入 ZIP 应成功");
     assert!(imported_files > 0, "导入应至少解出一个文件");
 
     // 导入的数据库字节必须与源备份逐位一致（ZIP 往返不丢数据）。
     for db in ["vfs.db", "chat_v2.db", "mistakes.db", "llm_usage.db"] {
-        let original = deep_student_lib::backup_common::calculate_file_hash(
-            &backup_subdir.join(db),
-        )
-        .expect("hash original");
-        let imported = deep_student_lib::backup_common::calculate_file_hash(
-            &imported_dir.join(db),
-        )
-        .expect("hash imported");
+        let original =
+            deep_student_lib::backup_common::calculate_file_hash(&backup_subdir.join(db))
+                .expect("hash original");
+        let imported = deep_student_lib::backup_common::calculate_file_hash(&imported_dir.join(db))
+            .expect("hash imported");
         assert_eq!(original, imported, "{db} 在 ZIP 往返后字节不一致");
     }
 
-    let imported_manifest =
-        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
-            .expect("导入产物必须携带可解析的 manifest");
+    let imported_manifest = BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+        .expect("导入产物必须携带可解析的 manifest");
 
     // ---------- 4. 恢复契约：成功，或可操作错误；分类与结果必须一致 ----------
     let mut restore_manager = BackupManager::new(restore_backup_dir.clone());
@@ -180,10 +176,7 @@ fn zip_roundtrip_restore_succeeds_or_returns_actionable_error() {
                  （否则 partial_archive 会被当成 disaster_recovery 成功）",
             );
             let message = restore_error.to_string();
-            assert!(
-                !message.trim().is_empty(),
-                "恢复拒绝必须携带可操作错误信息"
-            );
+            assert!(!message.trim().is_empty(), "恢复拒绝必须携带可操作错误信息");
             assert!(
                 !classification_error.to_string().trim().is_empty(),
                 "分类拒绝必须携带可操作错误信息"
@@ -232,13 +225,11 @@ fn imported_manifest_classification_matches_restore_gate() {
     std::fs::create_dir_all(imported_dir.parent().unwrap()).expect("create import parent");
     import_backup_from_zip(&zip_path, &imported_dir).expect("导入 ZIP 应成功");
 
-    let imported_manifest =
-        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
-            .expect("导入 manifest 可解析");
+    let imported_manifest = BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+        .expect("导入 manifest 可解析");
 
     let import_slot = create_slot_with_databases(import_root.path());
-    let mut restore_manager =
-        BackupManager::new(import_root.path().join("backups"));
+    let mut restore_manager = BackupManager::new(import_root.path().join("backups"));
     restore_manager.set_app_data_dir(import_slot);
     restore_manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
@@ -254,8 +245,7 @@ fn imported_manifest_classification_matches_restore_gate() {
 }
 
 /// 构造一份来自合成数据槽的完整备份，返回（备份根目录守卫、备份根、清单）。
-fn create_full_backup(
-) -> (TempDir, PathBuf, BackupManifest) {
+fn create_full_backup() -> (TempDir, PathBuf, BackupManifest) {
     let source_root = TempDir::new().expect("source root");
     let source_slot = create_slot_with_databases(source_root.path());
 
@@ -279,7 +269,9 @@ fn encrypted_zip_roundtrip_restores_full_slot() {
     assert!(
         manifest.validate_for_slot_restore().is_ok(),
         "闭环前提：本地完整备份必须可整槽恢复，实际: {:?}",
-        manifest.validate_for_slot_restore().map_err(|e| e.to_string())
+        manifest
+            .validate_for_slot_restore()
+            .map_err(|e| e.to_string())
     );
     let backup_subdir = backup_dir.join(&manifest.backup_id);
 
@@ -351,14 +343,12 @@ fn encrypted_zip_roundtrip_restores_full_slot() {
         let original =
             deep_student_lib::backup_common::calculate_file_hash(&backup_subdir.join(db))
                 .expect("hash original");
-        let imported =
-            deep_student_lib::backup_common::calculate_file_hash(&imported_dir.join(db))
-                .expect("hash imported");
+        let imported = deep_student_lib::backup_common::calculate_file_hash(&imported_dir.join(db))
+            .expect("hash imported");
         assert_eq!(original, imported, "{db} 在加密 ZIP 往返后字节不一致");
     }
-    let imported_manifest =
-        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
-            .expect("解封后的原始清单可解析");
+    let imported_manifest = BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+        .expect("解封后的原始清单可解析");
     assert_eq!(imported_manifest.snapshot_kind, SnapshotKind::Full);
     assert_ne!(
         imported_manifest.key_policy,
@@ -570,9 +560,8 @@ fn unencrypted_portable_zip_is_honestly_partial() {
     std::fs::create_dir_all(imported_dir.parent().unwrap()).expect("create import parent");
     import_backup_from_zip(&zip_path, &imported_dir).expect("导入未加密便携 ZIP 应成功");
 
-    let imported_manifest =
-        BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
-            .expect("导入清单可解析");
+    let imported_manifest = BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+        .expect("导入清单可解析");
     assert_eq!(
         imported_manifest.key_policy,
         BackupKeyPolicy::ExcludedPortable
@@ -597,4 +586,96 @@ fn unencrypted_portable_zip_is_honestly_partial() {
     restore_manager
         .restore_with_assets(&imported_manifest, false)
         .expect_err("未加密便携 ZIP 的整槽恢复必须显式拒绝");
+}
+
+fn zip_contains_sealed_secrets(zip_path: &Path) -> bool {
+    let file = std::fs::File::open(zip_path).expect("open zip");
+    let mut archive = zip::ZipArchive::new(file).expect("parse zip");
+    (0..archive.len()).any(|index| {
+        archive
+            .by_index(index)
+            .map(|entry| entry.name() == "portable_secrets.dsbk")
+            .unwrap_or(false)
+    })
+}
+
+/// stored-password 解析接到现有 ZIP 导出模式：未配置→便携；开关+stored→加密全保真；显式覆盖 stored。
+#[test]
+fn stored_password_resolution_selects_portable_or_encrypted_export() {
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    let backup_subdir = backup_dir.join(&manifest.backup_id);
+    let export_root = TempDir::new().expect("export root");
+
+    let portable_password = resolve_zip_encryption_password(None, Some(true), None);
+    assert_eq!(portable_password, None, "未配置不得发明密码");
+    let portable_zip = export_root.path().join("resolved-portable.zip");
+    export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(portable_zip.clone()),
+            encryption_password: portable_password,
+            ..Default::default()
+        },
+    )
+    .expect("未配置应走便携导出");
+    assert!(
+        !zip_contains_sealed_secrets(&portable_zip),
+        "未配置不得写出 portable_secrets.dsbk"
+    );
+
+    let stored_password =
+        resolve_zip_encryption_password(None, Some(true), Some(ENCRYPTION_PASSWORD.to_string()));
+    assert_eq!(stored_password.as_deref(), Some(ENCRYPTION_PASSWORD));
+    let stored_zip = export_root.path().join("resolved-stored.zip");
+    export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(stored_zip.clone()),
+            encryption_password: stored_password,
+            ..Default::default()
+        },
+    )
+    .expect("stored 密码且开关打开应走加密全保真");
+    assert!(
+        zip_contains_sealed_secrets(&stored_zip),
+        "stored 密码导出必须包含 portable_secrets.dsbk"
+    );
+
+    const OVERRIDE_PASSWORD: &str = "explicit-override-pass";
+    let explicit_password = resolve_zip_encryption_password(
+        Some(OVERRIDE_PASSWORD.to_string()),
+        Some(true),
+        Some(ENCRYPTION_PASSWORD.to_string()),
+    );
+    assert_eq!(explicit_password.as_deref(), Some(OVERRIDE_PASSWORD));
+    let explicit_zip = export_root.path().join("resolved-explicit.zip");
+    export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(explicit_zip.clone()),
+            encryption_password: explicit_password,
+            ..Default::default()
+        },
+    )
+    .expect("显式密码覆盖 stored 后仍应走加密全保真");
+    assert!(
+        zip_contains_sealed_secrets(&explicit_zip),
+        "显式密码导出必须包含 portable_secrets.dsbk"
+    );
+
+    let import_root = TempDir::new().expect("import override");
+    let explicit_import_dir = import_root.path().join("explicit");
+    import_backup_from_zip_with_password(
+        &explicit_zip,
+        &explicit_import_dir,
+        Some(OVERRIDE_PASSWORD),
+    )
+    .expect("显式覆盖密码必须能解封");
+    let stored_import_dir = import_root.path().join("stored-should-fail");
+    import_backup_from_zip_with_password(
+        &explicit_zip,
+        &stored_import_dir,
+        Some(ENCRYPTION_PASSWORD),
+    )
+    .expect_err("stored 密码不得解封被显式密码覆盖的 ZIP");
 }

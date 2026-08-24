@@ -211,7 +211,9 @@ async fn swapped_smaller_object_between_stat_and_get_fails_closed() {
 
     let message = error.to_string();
     assert!(
-        message.contains("下载不完整或对象已变更") && message.contains("20000") && message.contains("8000"),
+        message.contains("下载不完整或对象已变更")
+            && message.contains("20000")
+            && message.contains("8000"),
         "错误必须指明声明与实收字节数，unexpected: {message}"
     );
     assert_nothing_persisted(&dir, &dest);
@@ -296,7 +298,11 @@ async fn consistent_download_succeeds_with_correct_bytes_and_checksum() {
         .await
         .expect("声明与实收一致的下载应成功");
 
-    assert_eq!(std::fs::read(&dest).unwrap(), data, "落盘内容必须逐字节正确");
+    assert_eq!(
+        std::fs::read(&dest).unwrap(),
+        data,
+        "落盘内容必须逐字节正确"
+    );
     let expected = format!("{:x}", Sha256::digest(&data));
     assert_eq!(checksum, expected, "返回的 SHA256 必须与内容一致");
 }

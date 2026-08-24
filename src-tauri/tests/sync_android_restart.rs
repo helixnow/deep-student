@@ -203,15 +203,14 @@ async fn webdav_transfer_path_constructible_without_network() {
 mod android_only {
     use super::*;
     use deep_student_lib::cloud_config_commands::{
-        load_cloud_config_ssot, save_cloud_config_ssot, CloudConfigSsotError, SafeCloudStorageConfig,
-        SafeFtpConfig, SafeWebDavConfig, CLOUD_CONFIG_SSOT_SETTING_KEY,
+        load_cloud_config_ssot, save_cloud_config_ssot, CloudConfigSsotError,
+        SafeCloudStorageConfig, SafeFtpConfig, SafeWebDavConfig, CLOUD_CONFIG_SSOT_SETTING_KEY,
     };
     use deep_student_lib::database::Database;
 
     fn settings_database() -> (tempfile::TempDir, Database) {
         let dir = tempfile::TempDir::new().expect("tempdir");
-        let database =
-            Database::new(&dir.path().join("settings.db")).expect("open test database");
+        let database = Database::new(&dir.path().join("settings.db")).expect("open test database");
         database
             .get_conn_safe()
             .expect("connection")
@@ -277,7 +276,9 @@ mod android_only {
         )
         .expect_err("Android 上 FTP 记录不得持久化");
         assert_eq!(denied.stable_code(), FTP_UNSUPPORTED_ON_ANDROID_CODE);
-        assert!(denied.to_string().contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
+        assert!(denied
+            .to_string()
+            .contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
         assert!(
             matches!(
                 load_cloud_config_ssot(&database),
@@ -296,7 +297,9 @@ mod android_only {
         let load_denied = load_cloud_config_ssot(&database)
             .expect_err("桌面写入的 FTP 记录在 Android 上必须拒绝加载");
         assert_eq!(load_denied.stable_code(), FTP_UNSUPPORTED_ON_ANDROID_CODE);
-        assert!(load_denied.to_string().contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
+        assert!(load_denied
+            .to_string()
+            .contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
     }
 
     /// Android 上 WebDAV 仍是可保存、可加载、可进入运行时校验的换机路径。
@@ -438,11 +441,9 @@ async fn handle_dav_connection(
         loop {
             let mut size_line = String::new();
             reader.read_line(&mut size_line).await.ok()?;
-            let size = usize::from_str_radix(
-                size_line.trim().split(';').next().unwrap_or("").trim(),
-                16,
-            )
-            .ok()?;
+            let size =
+                usize::from_str_radix(size_line.trim().split(';').next().unwrap_or("").trim(), 16)
+                    .ok()?;
             if size == 0 {
                 // 终止块后的空行（无 trailer）
                 let mut terminator = String::new();
@@ -567,9 +568,7 @@ fn webdav_config(addr: SocketAddr, root: &str) -> CloudStorageConfig {
 async fn webdav_only_device_switch_upload_download_roundtrip() {
     let (addr, _store) = spawn_fake_webdav_server().await;
     let root = "phone-move";
-    let payload: Vec<u8> = (0u32..4096)
-        .flat_map(|value| value.to_le_bytes())
-        .collect();
+    let payload: Vec<u8> = (0u32..4096).flat_map(|value| value.to_le_bytes()).collect();
 
     // 旧手机：上传备份 ZIP（内容真实性不影响传输语义）。
     let zip = tempfile::NamedTempFile::new().expect("temp zip");
@@ -610,8 +609,7 @@ async fn webdav_only_device_switch_upload_download_roundtrip() {
         .await
         .expect("新手机下载最新版本必须成功");
     assert_eq!(downloaded.version.id, uploaded.version.id);
-    let downloaded_bytes =
-        std::fs::read(&downloaded.local_path).expect("读取下载的备份文件");
+    let downloaded_bytes = std::fs::read(&downloaded.local_path).expect("读取下载的备份文件");
     assert_eq!(
         downloaded_bytes, payload,
         "换机下载内容必须与旧手机上传字节一致（SHA256 校验链路生效）"
@@ -670,7 +668,8 @@ fn restore_writes_inactive_slot_and_switch_happens_only_after_restart() {
 
     // 重启前解除租约必须 fail-closed（目标槽尚未激活）。
     assert!(
-        mgr.complete_restore_cutover(&mgr.slot_dir(Slot::B)).is_err(),
+        mgr.complete_restore_cutover(&mgr.slot_dir(Slot::B))
+            .is_err(),
         "恢复槽未激活时解除租约必须被拒绝"
     );
 
@@ -752,7 +751,8 @@ fn restore_cutover_registration_guards_reject_invalid_input() {
 
     // 非活动槽为空：拒绝登记（数据未写入就切换会让用户"开机丢数据"）。
     assert!(
-        mgr.mark_restore_cutover_pending(Slot::B, "backup-x").is_err(),
+        mgr.mark_restore_cutover_pending(Slot::B, "backup-x")
+            .is_err(),
         "空目标槽必须拒绝登记切槽"
     );
 
@@ -860,7 +860,10 @@ fn device_id_persists_in_app_data_dir_and_rotates_after_restore() {
     let device_id_file = data.path().join(".device_id");
 
     // 启动 1：生成并持久化身份。
-    let first = probe_value(&run_probe(data.path(), home.path(), "get"), "PROBE_DEVICE_ID=");
+    let first = probe_value(
+        &run_probe(data.path(), home.path(), "get"),
+        "PROBE_DEVICE_ID=",
+    );
     assert!(!first.trim().is_empty(), "device_id 不得为空");
     assert!(
         device_id_file.is_file(),
@@ -875,7 +878,10 @@ fn device_id_persists_in_app_data_dir_and_rotates_after_restore() {
     );
 
     // 启动 2（重启）：身份稳定不漂移。
-    let second = probe_value(&run_probe(data.path(), home.path(), "get"), "PROBE_DEVICE_ID=");
+    let second = probe_value(
+        &run_probe(data.path(), home.path(), "get"),
+        "PROBE_DEVICE_ID=",
+    );
     assert_eq!(first, second, "重启后必须读回同一 device_id");
 
     // 启动 3（恢复激活会话）：rotate 必须换新身份并立即生效。
@@ -898,7 +904,9 @@ fn device_id_persists_in_app_data_dir_and_rotates_after_restore() {
     );
 
     // 启动 4（rotate 后重启）：新身份持久，旧身份不复活。
-    let post_restart =
-        probe_value(&run_probe(data.path(), home.path(), "get"), "PROBE_DEVICE_ID=");
+    let post_restart = probe_value(
+        &run_probe(data.path(), home.path(), "get"),
+        "PROBE_DEVICE_ID=",
+    );
     assert_eq!(post_restart, new_id, "轮换后的重启必须读回新身份");
 }

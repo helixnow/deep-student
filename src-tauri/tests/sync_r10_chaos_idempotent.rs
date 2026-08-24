@@ -17,9 +17,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::Utc;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
-use deep_student_lib::data_governance::sync::{
-    ChangeOperation, SyncChangeWithData, SyncManager,
-};
+use deep_student_lib::data_governance::sync::{ChangeOperation, SyncChangeWithData, SyncManager};
 use deep_student_lib::models::AppError;
 use rusqlite::{params, Connection};
 use serde_json::json;
@@ -368,11 +366,7 @@ async fn r10_chaos_committed_cursor_prevents_reconsumption() {
         .download_changes(&storage, 0, None)
         .await
         .expect("增量下载应成功");
-    assert_eq!(
-        incremental.changes.len(),
-        1,
-        "提交游标后只应消费新增分片"
-    );
+    assert_eq!(incremental.changes.len(), 1, "提交游标后只应消费新增分片");
     assert_eq!(incremental.changes[0].record_id, "cursor-b");
     let applied = SyncManager::apply_downloaded_changes(&conn, &incremental.changes, None).unwrap();
     assert_eq!(applied.failure_count, 0);

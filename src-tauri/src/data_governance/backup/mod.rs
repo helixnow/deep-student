@@ -33,6 +33,8 @@
 
 pub mod assets;
 
+pub mod delta_inventory;
+
 pub mod zip_export;
 
 use rusqlite::backup::Backup;

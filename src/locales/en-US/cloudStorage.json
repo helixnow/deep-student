@@ -112,6 +112,7 @@
     "saving": "Saving...",
     "uploadNow": "Backup to Cloud Now",
     "uploading": "Uploading...",
+    "fullZipHint": "Each backup packs the current data into a full ZIP and uploads it as a single object. Unchanged files are not skipped. There is no incremental transfer, content deduplication, or CDC. Without a cloud end-to-end encryption password the cloud package remains a portable archive; when one is configured, Backup to Cloud Now exports an encrypted full-fidelity ZIP that should restore the full slot after unwrap.",
     "downloadLatest": "Restore Latest from Cloud",
     "downloading": "Downloading...",
     "viewHistory": "View History",
@@ -166,9 +167,10 @@
   
   "download": {
     "title": "Restore from Cloud",
-    "description": "Download cloud backup and restore data",
-    "warning": "Warning: Restore will overwrite local data!",
-    "warningDetail": "Recommend exporting current data as backup first",
+    "description": "Download a cloud backup and attempt a slot restore. Without a cloud end-to-end encryption password, the default cloud package remains a portable archive and slot validation refuses. When a password is configured, unwrap should allow a full slot restore.",
+    "warning": "Warning: Local data is overwritten only after slot-restore validation succeeds.",
+    "warningDetail": "Make a local full backup first. Do not treat this cloud package as your only copy.",
+    "partialArchiveNotice": "If no cloud end-to-end encryption password is configured, Backup to Cloud Now still exports a portable archive that strips local keys and audit data; slot-restore validation refuses and current data is left unchanged. When a cloud end-to-end encryption password is configured, Backup to Cloud Now exports an encrypted full-fidelity ZIP (the outer DSBK wrap and the inner backup password use the same stored password) that should restore the full A/B slot after unwrap. Use the same password on both devices, or Export Backup with its own backup password and import that ZIP on the new device.",
     "selectVersion": "Select version to restore",
     "latest": "Latest version",
     "confirm": "Start Restore",
@@ -177,7 +179,7 @@
     "success": "Restore Successful",
     "successDetail": "Version {{version}} has been downloaded",
     "successRestart": "Data restored successfully! The app will restart now.",
-    "restartNotice": "The app will restart immediately after the restore completes.",
+    "restartNotice": "The app restarts only after slot-restore validation succeeds. A rejected portable/partial archive does not overwrite current data.",
     "restartWhenReady": "Please restart the app to apply the restored data.",
     "checksumFailed": "Checksum mismatch, file may be corrupted"
   },
