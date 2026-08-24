@@ -269,7 +269,7 @@ export function ImageCropDialog({
                   disabled={currentPage === 0}
                   onClick={() => { setCurrentPage(p => p - 1); setCropRect(null); }}
                   aria-label={t('prev')}
-                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <CaretLeft size={16} />
                 </DsButton>
@@ -283,7 +283,7 @@ export function ImageCropDialog({
                   disabled={currentPage === sourceImages.length - 1}
                   onClick={() => { setCurrentPage(p => p + 1); setCropRect(null); }}
                   aria-label={t('next')}
-                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <CaretRight size={16} />
                 </DsButton>
