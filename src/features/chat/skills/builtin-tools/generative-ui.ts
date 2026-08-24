@@ -50,6 +50,11 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
 
 只能使用上述 registry type。禁止发明未注册 type。禁止 className、style、hex 色值。
 
+- markdown：长文说明、带标题的摘要（Markdown 语法，不要 HTML）
+- chart：趋势/对比（bar/line/pie）；categories 与每条 series.values 长度必须一致
+- steps：今日学习计划或通用流程（pending/active/done/error/skipped）
+- table：对比表、错题表；必须提供 columns，rows 按 column key 填值
+
 ## 规则
 
 1. 只能使用上述 type；props 必须符合各组件 schema，禁止发明字段。
@@ -66,6 +71,9 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
 2. 错题诊断：mistake-analysis + list
 3. 研究：research-plan + research-report + paper-digest（可附 researchSessionId）
 4. Notes HITL：text + action-bar（edit-apply / edit-reject → apply-note-edit / dismiss-note-suggestion）
+5. 学习数据：chart + table + action-bar
+6. 今日计划：steps + markdown
+7. 研究对照：paper-digest + table（可附 research-report / researchSessionId）
 `,
   embeddedTools: [
     {

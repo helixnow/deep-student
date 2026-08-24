@@ -1,7 +1,7 @@
 /**
  * Generative UI — few-shot 正例 + 负例关键字
  *
- * 仅使用当前 registry 的 14 个 type；不假设 markdown/chart/steps/table 已注册。
+ * 覆盖当前 registry 的 18 个 type（含 markdown / chart / steps / table）。
  * 每套正例必须能通过 parseGenerativeUIIntent + validateBlockProps。
  */
 
@@ -185,11 +185,142 @@ export const NOTES_HITL_EXAMPLE: GenerativeUIIntent = {
   ],
 };
 
+/** 学习数据：chart + table + action-bar */
+export const LEARNING_ANALYTICS_EXAMPLE: GenerativeUIIntent = {
+  version: '1',
+  meta: {
+    title: '复习数据对照',
+    description: '本周复习量趋势与知识点错误率',
+  },
+  blocks: [
+    {
+      type: 'chart',
+      props: {
+        title: '本周复习量',
+        kind: 'bar',
+        categories: ['周一', '周二', '周三', '周四', '周五'],
+        series: [
+          { name: '已复习', values: [8, 12, 9, 15, 11] },
+          { name: '到期', values: [10, 10, 12, 14, 13] },
+        ],
+        unit: '张',
+      },
+    },
+    {
+      type: 'table',
+      props: {
+        title: '知识点错误率',
+        columns: [
+          { key: 'topic', label: '主题' },
+          { key: 'rate', label: '错误率', align: 'right' },
+          { key: 'count', label: '错题数', align: 'right' },
+        ],
+        rows: [
+          { topic: '特征值', rate: '42%', count: 7 },
+          { topic: '贝叶斯', rate: '28%', count: 4 },
+        ],
+        caption: '仅展示近一周题库',
+      },
+    },
+    {
+      type: 'action-bar',
+      props: {
+        actions: [
+          { id: 'start-review', label: '开始复习', variant: 'primary', riskLevel: 'low' },
+          { id: 'open-qbank', label: '打开题库', variant: 'default', riskLevel: 'low' },
+        ],
+      },
+    },
+  ],
+};
+
+/** 今日计划：steps + markdown */
+export const STUDY_PLAN_EXAMPLE: GenerativeUIIntent = {
+  version: '1',
+  meta: {
+    title: '今日学习计划',
+    description: '步骤清单 + Markdown 说明',
+  },
+  blocks: [
+    {
+      type: 'steps',
+      props: {
+        title: '今晚复习路径',
+        steps: [
+          { label: '复习到期闪卡', status: 'done', durationLabel: '20 分钟' },
+          {
+            label: '错题重做',
+            status: 'active',
+            description: '特征值 7 道',
+            durationLabel: '25 分钟',
+          },
+          { label: '总结笔记', status: 'pending', durationLabel: '15 分钟' },
+        ],
+      },
+    },
+    {
+      type: 'markdown',
+      props: {
+        title: '计划说明',
+        body: '先完成**到期闪卡**，再针对错题做 10 道相似计算。笔记只记对角化前提，不要抄公式。',
+        variant: 'compact',
+      },
+    },
+  ],
+};
+
+/** 研究对照：paper-digest + table + research-report */
+export const RESEARCH_COMPARISON_EXAMPLE: GenerativeUIIntent = {
+  version: '1',
+  meta: {
+    title: '注意力文献对照',
+    description: '可附带 researchSessionId 绑定 HPIAS 会话',
+  },
+  blocks: [
+    {
+      type: 'paper-digest',
+      props: {
+        title: 'Attention Is All You Need',
+        authors: 'Vaswani et al.',
+        venue: 'NeurIPS',
+        year: 2017,
+        citationLabel: '高引',
+        keyFindings: ['自注意力可替代循环结构'],
+      },
+    },
+    {
+      type: 'table',
+      props: {
+        title: '模型对照',
+        columns: [
+          { key: 'model', label: '模型' },
+          { key: 'year', label: '年份', align: 'right' },
+          { key: 'note', label: '要点' },
+        ],
+        rows: [
+          { model: 'Transformer', year: 2017, note: '纯注意力' },
+          { model: 'BERT', year: 2018, note: '双向预训练' },
+        ],
+      },
+    },
+    {
+      type: 'research-report',
+      props: {
+        title: '对照摘要',
+        body: 'Transformer 奠定自注意力范式 [paper-1]；BERT 将其用于双向预训练 [paper-2]。',
+      },
+    },
+  ],
+};
+
 export const GENERATIVE_UI_FEW_SHOT_EXAMPLES: readonly GenerativeUIIntent[] = [
   LEARNING_DASHBOARD_EXAMPLE,
   MISTAKE_DIAGNOSIS_EXAMPLE,
   RESEARCH_BRIEFING_EXAMPLE,
   NOTES_HITL_EXAMPLE,
+  LEARNING_ANALYTICS_EXAMPLE,
+  STUDY_PLAN_EXAMPLE,
+  RESEARCH_COMPARISON_EXAMPLE,
 ];
 
 export const GENERATIVE_UI_FEW_SHOT_LABELS = [
@@ -197,6 +328,9 @@ export const GENERATIVE_UI_FEW_SHOT_LABELS = [
   '错题诊断：mistake-analysis + list',
   '研究：research-plan + research-report + paper-digest',
   'Notes HITL：text + action-bar（edit-apply / edit-reject）',
+  '学习数据：chart + table + action-bar',
+  '今日计划：steps + markdown',
+  '研究对照：paper-digest + table + research-report',
 ] as const;
 
 /**
@@ -210,6 +344,8 @@ export const GENERATIVE_UI_NEGATIVE_EXAMPLE_KEYWORDS = [
   'className',
   'hex',
   'max blocks',
+  '长度不齐',
+  '无 columns',
 ] as const;
 
 export const GENERATIVE_UI_NEGATIVE_EXAMPLES = [
@@ -222,7 +358,7 @@ export const GENERATIVE_UI_NEGATIVE_EXAMPLES = [
   {
     id: 'invented-type',
     title: '发明 type',
-    bad: '{ "type": "markdown" } / chart / steps / table',
+    bad: '{ "type": "hero-banner" } / kanban / custom-widget',
     reason: '只能使用下方 catalog 动态注入的 type；未注册 type 一律拒绝。',
   },
   {
@@ -242,5 +378,17 @@ export const GENERATIVE_UI_NEGATIVE_EXAMPLES = [
     title: '超过 max blocks',
     bad: 'blocks 数组长度大于当前上限',
     reason: '超过 max blocks 会被截断或拒绝；合并信息密度，不要堆砌。',
+  },
+  {
+    id: 'chart-series-mismatch',
+    title: 'chart series 长度不齐',
+    bad: '{ "type": "chart", "props": { "kind": "bar", "categories": ["周一", "周二"], "series": [{ "name": "张数", "values": [3] }] } }',
+    reason: '每条 series.values 长度必须等于 categories 长度，禁止缺值或错位。',
+  },
+  {
+    id: 'table-no-columns',
+    title: 'table 无 columns',
+    bad: '{ "type": "table", "props": { "rows": [{ "topic": "代数" }] } }',
+    reason: 'table 必须提供 columns（key + label）；仅有 rows 会被拒绝。',
   },
 ] as const;

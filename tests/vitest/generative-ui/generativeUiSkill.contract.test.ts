@@ -44,10 +44,22 @@ describe('generativeUiSkill contract', () => {
     expect(tool?.name).toBe('builtin-render_generative_ui');
     const intentSchema = tool?.inputSchema?.properties?.intent as {
       required?: string[];
-      properties?: { version?: { enum?: string[] } };
+      properties?: {
+        version?: { enum?: string[] };
+        layout?: {
+          properties?: {
+            mode?: { enum?: string[] };
+            columns?: { enum?: number[] };
+          };
+        };
+        blocks?: { items?: { properties?: { span?: { enum?: number[] } } } };
+      };
     };
     expect(intentSchema?.required).toContain('blocks');
     expect(intentSchema?.properties?.version?.enum).toEqual(['1', '1.1']);
+    expect(intentSchema?.properties?.layout?.properties?.mode?.enum).toEqual(['stack', 'grid']);
+    expect(intentSchema?.properties?.layout?.properties?.columns?.enum).toEqual([1, 2, 3]);
+    expect(intentSchema?.properties?.blocks?.items?.properties?.span?.enum).toEqual([1, 2, 3]);
     const noteEditSchema = tool?.inputSchema?.properties?.noteEdit as { properties?: Record<string, unknown> };
     expect(noteEditSchema?.properties?.operation).toBeDefined();
     const researchSessionSchema = tool?.inputSchema?.properties?.researchSessionId as { type?: string };
@@ -57,6 +69,13 @@ describe('generativeUiSkill contract', () => {
   it('skill content documents researchSessionId HPIAS bridge', () => {
     expect(generativeUiSkill.content).toContain('researchSessionId');
     expect(generativeUiSkill.content).toContain('hpias_event');
+  });
+
+  it('skill content lists markdown/chart/steps/table usage in one line each', () => {
+    expect(generativeUiSkill.content).toMatch(/markdown[^\n]*长文|摘要/);
+    expect(generativeUiSkill.content).toMatch(/chart[^\n]*categories/);
+    expect(generativeUiSkill.content).toMatch(/steps[^\n]*学习计划|流程/);
+    expect(generativeUiSkill.content).toMatch(/table[^\n]*columns/);
   });
 
   it('skill example action ids are documented in content', () => {
@@ -72,6 +91,9 @@ describe('generativeUiSkill contract', () => {
     );
     expect(rustSrc).toContain('render_generative_ui');
     expect(rustSrc).toContain('researchSessionId');
+    expect(rustSrc).toContain('fn validate_intent_version');
+    expect(rustSrc).toContain('"1.1"');
+    expect(rustSrc).toContain('layout');
     expect(generativeUiSkill.allowedTools).toContain('builtin-render_generative_ui');
   });
 

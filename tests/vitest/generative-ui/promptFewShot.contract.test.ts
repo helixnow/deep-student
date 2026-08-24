@@ -5,10 +5,13 @@ import {
   GENERATIVE_UI_FEW_SHOT_EXAMPLES,
   GENERATIVE_UI_NEGATIVE_EXAMPLE_KEYWORDS,
   GENERATIVE_UI_NEGATIVE_EXAMPLES,
+  LEARNING_ANALYTICS_EXAMPLE,
   LEARNING_DASHBOARD_EXAMPLE,
   MISTAKE_DIAGNOSIS_EXAMPLE,
   NOTES_HITL_EXAMPLE,
   RESEARCH_BRIEFING_EXAMPLE,
+  RESEARCH_COMPARISON_EXAMPLE,
+  STUDY_PLAN_EXAMPLE,
 } from '@/features/generative-ui/prompts';
 import { parseGenerativeUIIntent, validateBlockProps } from '@/features/generative-ui/schema';
 import { generativeUiSkill } from '@/features/chat/skills/builtin-tools/generative-ui';
@@ -30,12 +33,15 @@ function expectValidFewShot(example: (typeof GENERATIVE_UI_FEW_SHOT_EXAMPLES)[nu
 }
 
 describe('generativeUI promptFewShot contract', () => {
-  it('exports at least 4 few-shot intents covering required scenarios', () => {
-    expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES.length).toBeGreaterThanOrEqual(4);
+  it('exports at least 7 few-shot intents covering required scenarios', () => {
+    expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES.length).toBeGreaterThanOrEqual(7);
     expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES).toContain(LEARNING_DASHBOARD_EXAMPLE);
     expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES).toContain(MISTAKE_DIAGNOSIS_EXAMPLE);
     expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES).toContain(RESEARCH_BRIEFING_EXAMPLE);
     expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES).toContain(NOTES_HITL_EXAMPLE);
+    expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES).toContain(LEARNING_ANALYTICS_EXAMPLE);
+    expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES).toContain(STUDY_PLAN_EXAMPLE);
+    expect(GENERATIVE_UI_FEW_SHOT_EXAMPLES).toContain(RESEARCH_COMPARISON_EXAMPLE);
 
     const learningTypes = LEARNING_DASHBOARD_EXAMPLE.blocks.map((b) => b.type);
     expect(learningTypes).toEqual(expect.arrayContaining(['stat-card', 'progress', 'action-bar']));
@@ -58,6 +64,16 @@ describe('generativeUI promptFewShot contract', () => {
       expect.arrayContaining(['apply-note-edit', 'dismiss-note-suggestion']),
     );
     expect(notesActions.some((a) => a.id === 'apply-note-edit' && a.riskLevel === 'high')).toBe(true);
+
+    const analyticsTypes = LEARNING_ANALYTICS_EXAMPLE.blocks.map((b) => b.type);
+    expect(analyticsTypes).toEqual(expect.arrayContaining(['chart', 'table', 'action-bar']));
+
+    const planTypes = STUDY_PLAN_EXAMPLE.blocks.map((b) => b.type);
+    expect(planTypes).toEqual(expect.arrayContaining(['steps', 'markdown']));
+
+    const comparisonTypes = RESEARCH_COMPARISON_EXAMPLE.blocks.map((b) => b.type);
+    expect(comparisonTypes).toEqual(expect.arrayContaining(['paper-digest', 'table']));
+    expect(comparisonTypes.some((type) => type === 'table' || type === 'chart')).toBe(true);
   });
 
   it('every few-shot passes parseGenerativeUIIntent + registry validateBlockProps', () => {
@@ -94,7 +110,10 @@ describe('generativeUI promptFewShot contract', () => {
     expect(prompt).toContain('edit-apply');
     expect(prompt).toContain('edit-reject');
 
-    expect(GENERATIVE_UI_NEGATIVE_EXAMPLES.length).toBeGreaterThanOrEqual(5);
+    expect(GENERATIVE_UI_NEGATIVE_EXAMPLES.length).toBeGreaterThanOrEqual(7);
+    expect(GENERATIVE_UI_NEGATIVE_EXAMPLES.map((ex) => ex.id)).toEqual(
+      expect.arrayContaining(['chart-series-mismatch', 'table-no-columns']),
+    );
     for (const keyword of GENERATIVE_UI_NEGATIVE_EXAMPLE_KEYWORDS) {
       expect(prompt, `missing negative keyword: ${keyword}`).toContain(keyword);
     }
@@ -120,5 +139,11 @@ describe('generativeUI promptFewShot contract', () => {
     expect(generativeUiSkill.content).toContain('apply-note-edit');
     expect(generativeUiSkill.content).toContain('canvas:ai-edit-request');
     expect(generativeUiSkill.content).toContain('riskLevel');
+    expect(generativeUiSkill.content).toMatch(/markdown[^\n]*长文|摘要/);
+    expect(generativeUiSkill.content).toMatch(/chart[^\n]*categories/);
+    expect(generativeUiSkill.content).toMatch(/steps[^\n]*学习计划|流程/);
+    expect(generativeUiSkill.content).toMatch(/table[^\n]*columns/);
+    expect(generativeUiSkill.content).toContain('chart + table + action-bar');
+    expect(generativeUiSkill.content).toContain('steps + markdown');
   });
 });
