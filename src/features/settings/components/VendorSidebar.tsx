@@ -217,7 +217,8 @@ export const VendorSidebar: React.FC = () => {
             <CaretRight size={14} />
           </span>
         ) : (
-          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          // 触屏（如 iPad 横屏）无 hover 但拖拽可用，指示器需 coarse 常显
+          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
             <DotsSixVertical size={12} />
           </span>
         )}

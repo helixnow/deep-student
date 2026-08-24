@@ -500,7 +500,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               onCheckedChange={(checked) => setAddToBackupList(Boolean(checked))}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="add-to-backup-list" className="text-sm">
+            <Label htmlFor="add-to-backup-list" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.add_to_backup_list')}
             </Label>
           </div>
@@ -513,7 +513,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               onCheckedChange={(checked) => setUseTieredBackup(Boolean(checked))}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="use-tiered-backup" className="text-sm">
+            <Label htmlFor="use-tiered-backup" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.use_tiered_backup')}
             </Label>
           </div>

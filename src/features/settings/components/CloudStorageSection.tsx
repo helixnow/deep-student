@@ -1119,7 +1119,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   checked={s3Config.pathStyle}
                   onCheckedChange={(checked) => setS3Config({ ...s3Config, pathStyle: checked })}
                 />
-                <Label htmlFor="s3-path-style" className="ml-2">
+                {/* flex-col 保持标题/提示纵排；coarse min-h-11 扩大开关联动标签的触达高度 */}
+                <Label htmlFor="s3-path-style" className="ml-2 flex flex-col justify-center [@media(pointer:coarse)]:min-h-11">
                   {t('cloudStorage:s3.pathStyle')}
                   <span className="block text-xs text-muted-foreground font-normal">
                     {t('cloudStorage:s3.pathStyleHint')}
