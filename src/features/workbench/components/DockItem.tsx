@@ -39,6 +39,7 @@ import { prefetchFrozenWindows } from '../core/wakePrefetchIntent';
 import { requestMinimizeAnimated } from '../hooks/useWindowLifecycleAnim';
 import { DockWindowList } from './DockWindowList';
 import { useDockPinnedDragReorder } from './DockPinnedStore';
+import { dockLongPressTolerancePx } from './dockGestures';
 // ACR 4.0（A5 跨界最小接线）：agent 后台完成角标（样式在 agent-visuals.css）
 import { useDockAgentBadge } from '../agent/visuals/dockBadgeStore';
 import '../agent/visuals/agent-visuals.css';
@@ -54,11 +55,6 @@ const BOUNCE_FALLBACK_MS = 920;
 export const DOCK_LONGPRESS_DELAY = 400;
 /** 长按钉住的 tooltip 在松手后的驻留时长（触屏用户读完应用名再消失） */
 export const DOCK_TIP_LINGER_MS = 1600;
-/**
- * 长按期间的移动容差：与固定区拖拽阈值（DockPinnedStore DRAG_THRESHOLD_PX = 5）
- * 一致——移动超过该距离即判定为拖拽重排/滑动，取消长按，两条手势互不打架。
- */
-const DOCK_LONGPRESS_MOVE_TOLERANCE_PX = 5;
 
 function badgeEquals(a: AppBadge | null, b: AppBadge | null): boolean {
   if (a === b) return true;
@@ -185,7 +181,10 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
     // click，短按点击（launch / focus / minimize / 多实例 toggle）完全不变。
     const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressFiredRef = React.useRef(false);
-    const longPressStartRef = React.useRef<{ x: number; y: number } | null>(null);
+    /** tolerance 按下时按 pointerType 取档（触屏放宽，见 dockGestures） */
+    const longPressStartRef = React.useRef<{ x: number; y: number; tolerance: number } | null>(
+      null,
+    );
 
     // ---- 触屏 tooltip 等价（a11y 清单 §4）----
     // 无 hover 环境下，未运行应用的长按把 tooltip 钉住显示应用名
@@ -407,7 +406,11 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
             (event.target as HTMLElement | null)?.closest?.('button.wb-dock-item')
           ) {
             clearLongPress();
-            longPressStartRef.current = { x: event.clientX, y: event.clientY };
+            longPressStartRef.current = {
+              x: event.clientX,
+              y: event.clientY,
+              tolerance: dockLongPressTolerancePx(event.pointerType),
+            };
             longPressTimerRef.current = setTimeout(() => {
               longPressTimerRef.current = null;
               longPressStartRef.current = null;
@@ -426,12 +429,14 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         }}
         onPointerMove={(event) => {
           onPointerMove?.(event);
-          // 移动超过容差 = 拖拽（固定区重排）或滑动，取消长按
+          // 移动超过容差 = 拖拽（固定区重排）或滑动，取消长按。
+          // 容差按指针类型差异化（触屏 10px / 鼠标笔 5px），且触屏拖拽
+          // 重排阈值恒大于长按容差 —— 抖动不误取消，重排不误启动。
           const start = longPressStartRef.current;
           if (start && longPressTimerRef.current !== null) {
             const dx = event.clientX - start.x;
             const dy = event.clientY - start.y;
-            if (Math.hypot(dx, dy) > DOCK_LONGPRESS_MOVE_TOLERANCE_PX) clearLongPress();
+            if (Math.hypot(dx, dy) > start.tolerance) clearLongPress();
           }
         }}
         onPointerUp={(event) => {

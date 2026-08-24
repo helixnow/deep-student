@@ -175,6 +175,14 @@ function focusedAppHandlesCloseShortcut(): boolean {
   return Boolean(focused && appRegistry.get(focused.typeId)?.handlesCloseShortcut);
 }
 
+/** Tabbed apps may claim Ctrl+Tab / Ctrl+Shift+Tab for internal tab cycling. */
+function focusedAppHandlesTabCycleShortcut(): boolean {
+  const focusedId = getFocusedWindowId();
+  if (!focusedId) return false;
+  const focused = useWindowStore.getState().windows[focusedId];
+  return Boolean(focused && appRegistry.get(focused.typeId)?.handlesTabCycleShortcut);
+}
+
 /** 按 lastFocusedAt 降序（最近使用在前）的全部窗口 id，含最小化窗口 */
 function getSwitcherOrder(): string[] {
   return Object.values(useWindowStore.getState().windows)
@@ -510,6 +518,17 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
       // Let tabbed apps handle Ctrl+W consistently regardless of whether focus
       // is in their editor, tree, or tab strip. Do not reserve close-all.
       if (def.id === 'close-window' && focusedAppHandlesCloseShortcut()) return;
+      // Ctrl+Tab 让位协议（AppDefinition.handlesTabCycleShortcut）：切换器
+      // 会话未开启且焦点应用声明内部标签循环 → 壳层让位（不 preventDefault，
+      // 应用自持监听器消费）。会话已开启则壳层保持所有权直至松开 Ctrl —— 此时
+      // 继续走 preventDefault 分支，应用侧凭 defaultPrevented 跳过。
+      if (
+        (def.id === 'cycle-next' || def.id === 'cycle-prev') &&
+        !useWorkbenchOverlay.getState().switcherOpen &&
+        focusedAppHandlesTabCycleShortcut()
+      ) {
+        return;
+      }
       cancelHold();
       if (e.repeat && def.id !== 'cycle-next' && def.id !== 'cycle-prev') {
         e.preventDefault();

@@ -334,7 +334,11 @@
     "unknownApp": "未知应用类型：{{typeId}}",
     "crashTitle": "此窗口的应用出错了",
     "crashUnknown": "未知错误",
-    "reload": "重新加载"
+    "reload": "重新加载",
+    "reloadCooldown": "{{seconds}} 秒后可重试",
+    "crashLoopHint": "应用连续崩溃，已暂缓重载以避免循环",
+    "dozeTitle": "后台窗口",
+    "dozeHint": "内容已停止绘制，选中即恢复"
   },
   "tile": {
     "left": "平铺到左半屏",
@@ -368,6 +372,9 @@
     "closeWindow": "关闭窗口",
     "emptyHint": "按 Esc 或点击任意处返回桌面",
     "emptyApp": "该应用没有可俯瞰的窗口"
+  },
+  "snap": {
+    "altBadge": "热区已扩大"
   },
   "switcher": {
     "title": "窗口切换器",

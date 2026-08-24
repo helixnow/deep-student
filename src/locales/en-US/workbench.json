@@ -334,7 +334,11 @@
     "unknownApp": "Unknown app type: {{typeId}}",
     "crashTitle": "Something went wrong in this window",
     "crashUnknown": "Unknown error",
-    "reload": "Reload"
+    "reload": "Reload",
+    "reloadCooldown": "Retry in {{seconds}}s",
+    "crashLoopHint": "The app keeps crashing. Reload is paused briefly to break the loop.",
+    "dozeTitle": "Background Window",
+    "dozeHint": "Rendering is paused. Pick it to resume."
   },
   "tile": {
     "left": "Tile to Left Half",
@@ -368,6 +372,9 @@
     "closeWindow": "Close window",
     "emptyHint": "Press Esc or click anywhere to return to the desktop",
     "emptyApp": "This app has no windows to overview"
+  },
+  "snap": {
+    "altBadge": "Wider snap zones"
   },
   "switcher": {
     "title": "Window Switcher",
