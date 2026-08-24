@@ -978,6 +978,18 @@ impl CloudStorage for WebDavStorage {
                 .map_err(|e| AppError::file_system(format!("同步文件失败: {e}")))?;
         }
 
+        // [R10-providers][FINDINGS-R11 P2-2] 半包 fail-closed：响应流读到 EOF
+        // 不等于下载完成。流提前结束（半包），或对象在 stat（PROPFIND）与 GET
+        // 之间被并发替换成不同大小的错版本，都在此拒绝——无 expected_checksum
+        // 的调用方（如 repo_check）没有第二道防线。与 S3/FTP/默认实现的 R10
+        // 校验对齐；续传路径 get_file_resumable 已有同等的 written != total_size
+        // 拒绝。temp_path 随错误返回自动删除，绝不把半包/错版本落盘冒充成功。
+        if downloaded != total_size {
+            return Err(AppError::network(format!(
+                "WebDAV 下载不完整或对象已变更：声明 {total_size} 字节，实际收到 {downloaded} 字节，已拒绝保存（请重试）"
+            )));
+        }
+
         let checksum = format!("{:x}", hasher.finalize());
         if let Some(expected) = expected_checksum {
             if expected != checksum {
