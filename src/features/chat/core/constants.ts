@@ -179,6 +179,17 @@ export const MAX_SCAN_LENGTH = 1000;
  */
 export const ATTACHMENT_MAX_SIZE = 200 * 1024 * 1024;
 
+/**
+ * 单个图片附件最大大小 (50MB)
+ * 必须与 resources/types.ts IMAGE_SIZE_LIMIT、VFS Image、
+ * attachment_repo::MAX_IMAGE_BYTES 保持一致；通用文件仍走 200MB。
+ */
+export const ATTACHMENT_IMAGE_MAX_SIZE = 50 * 1024 * 1024;
+
+export function getAttachmentSizeLimit(isImage: boolean): number {
+  return isImage ? ATTACHMENT_IMAGE_MAX_SIZE : ATTACHMENT_MAX_SIZE;
+}
+
 /** 单次会话最大附件数量 */
 export const ATTACHMENT_MAX_COUNT = 20;
 

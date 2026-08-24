@@ -122,6 +122,15 @@ describe('modelCapabilityRegistry 2026-08 supplement lookups', () => {
     expect(findModelRecordById('claude-haiku-5')).toBeUndefined();
   });
 
+  it('resolves official claude-opus-5 with the 1M context window', () => {
+    const record = findModelRecordById('claude-opus-5');
+    expect(record?.model_id).toBe('claude-opus-5');
+    expect(record?.capabilities.max_context_tokens).toBe(1_000_000);
+    expect(record?.capabilities.max_output_tokens).toBe(128000);
+    expect(record?.capabilities.vision).toBe(true);
+    expect(record?.capabilities.reasoning).toBe(true);
+  });
+
   it('resolves gemini-3.1-flash-lite with official token limits', () => {
     const record = findModelRecordById('gemini-3.1-flash-lite');
     expect(record?.model_id).toBe('gemini-3.1-flash-lite');
@@ -244,7 +253,7 @@ describe('apiCapabilityEngine 2026-07 model refresh', () => {
   it('uses the official 1M context window for Claude Opus 5', () => {
     const caps = inferApiCapabilities({ id: 'claude-opus-5' });
     expect(caps.contextWindow).toBe(1_000_000);
-    expect(caps.contextWindowSource).toBe('rule');
+    expect(caps.contextWindowSource).toBe('registry');
   });
 
   it('treats Grok 4.3 as reasoning-effort capable with 1M context', () => {

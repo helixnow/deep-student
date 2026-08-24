@@ -100,6 +100,7 @@ import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import {
   ATTACHMENT_MAX_SIZE,
+  getAttachmentSizeLimit,
   ATTACHMENT_MAX_COUNT,
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_ALLOWED_EXTENSIONS,
@@ -823,8 +824,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       const attachmentType: AttachmentMeta['type'] = isImage ? 'image' : isAudio ? 'audio' : isVideo ? 'video' : (isArchive || isBinaryMindmap) ? 'other' : 'document';
       const attachmentId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      // 🔧 P2优化：文件大小验证 (P1-08: 使用统一常量)
-      if (file.size > ATTACHMENT_MAX_SIZE) {
+      // 图片走 50MB（VFS Image / 后端 MAX_IMAGE_BYTES）；其他附件走 200MB。
+      const maxSize = getAttachmentSizeLimit(isImage);
+      if (file.size > maxSize) {
         console.warn(`[InputBarUI] File too large: ${file.name} (${formatFileSize(file.size)})`);
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
@@ -834,7 +836,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           mimeType: file.type,
           size: file.size,
           status: 'error',
-          error: t('analysis:input_bar.attachments.file_too_large', { size: formatFileSize(ATTACHMENT_MAX_SIZE) }),
+          error: t('analysis:input_bar.attachments.file_too_large', { size: formatFileSize(maxSize) }),
         };
         onAddAttachment(errorAttachment);
         liveAttachmentCountRef.current += 1;

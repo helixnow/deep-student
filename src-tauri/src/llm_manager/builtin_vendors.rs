@@ -1716,6 +1716,7 @@ mod tests {
         let vendor = &GEMINI_BUILTIN_REGISTRY.vendor;
 
         assert!(vendor.notes.contains("gemini-3.5-flash"));
+        assert!(vendor.notes.contains("gemini-3.5-flash-lite"));
         assert!(vendor.notes.contains("gemini-3.1-pro-preview"));
         assert!(vendor.notes.contains("gemini-3.1-flash-lite"));
         assert!(vendor.notes.contains("v1beta"));
@@ -1774,15 +1775,24 @@ mod tests {
         let flash_lite = GEMINI_BUILTIN_REGISTRY
             .models
             .iter()
+            .find(|model| model.id == "builtin-gemini-3.5-flash-lite")
+            .expect("gemini 3.5 flash-lite model should exist")
+            .to_model_profile(vendor);
+        let flash_lite_31 = GEMINI_BUILTIN_REGISTRY
+            .models
+            .iter()
             .find(|model| model.id == "builtin-gemini-3.1-flash-lite")
-            .expect("gemini flash-lite model should exist")
+            .expect("gemini 3.1 flash-lite model should exist")
             .to_model_profile(vendor);
 
         assert_eq!(flash.model, "gemini-3.5-flash");
         assert_eq!(pro.model, "gemini-3.1-pro-preview");
-        assert_eq!(flash_lite.model, "gemini-3.1-flash-lite");
+        assert_eq!(flash_lite.model, "gemini-3.5-flash-lite");
+        assert_eq!(flash_lite.reasoning_effort.as_deref(), Some("minimal"));
+        assert_eq!(flash_lite_31.model, "gemini-3.1-flash-lite");
+        assert_eq!(flash_lite_31.reasoning_effort.as_deref(), Some("minimal"));
 
-        for profile in [&flash, &pro, &flash_lite] {
+        for profile in [&flash, &pro, &flash_lite, &flash_lite_31] {
             assert_eq!(profile.provider_scope.as_deref(), Some("gemini"));
             assert_eq!(profile.model_adapter, "google");
             assert!(profile.is_reasoning);

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "updated_at": "2026-08-23",
-  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；claude-haiku-5 因官方未发布对应模型 ID 暂不收录。",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。",
   "records": [
     {
       "vendor": "OpenAI",
@@ -592,8 +592,34 @@
     },
     {
       "vendor": "Anthropic",
-      "series": "Claude 2026 (Opus 4.7/4.8, Sonnet 5, Fable 5)",
+      "series": "Claude 2026 (Opus 5, Sonnet 5, Fable 5, Opus 4.7/4.8)",
       "models": [
+        {
+          "model_id": "claude-opus-5",
+          "release_date": "2026-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "stream", "stop_sequences"],
+            "notes": "官方 2026.8 旗舰；思考仅支持 thinking:{type:\"adaptive\"} + output_config.effort（low/medium/high/xhigh/max），thinking:{type:\"enabled\", budget_tokens} 直接 400。"
+          },
+          "quirks": [
+            "非默认 temperature/top_p/top_k 一律 400，适配层不应下发采样参数。",
+            "stop_reason 可能为 refusal（HTTP 200 正常响应），需识别 stop_details.category。"
+          ]
+        },
         {
           "model_id": "claude-fable-5",
           "release_date": "2026-06",

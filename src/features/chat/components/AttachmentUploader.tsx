@@ -39,6 +39,7 @@ import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 // P1-08: 统一使用核心常量
 import {
   ATTACHMENT_MAX_SIZE,
+  ATTACHMENT_IMAGE_MAX_SIZE,
   ATTACHMENT_MAX_COUNT,
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_ALLOWED_EXTENSIONS,
@@ -81,8 +82,7 @@ const DEFAULT_ACCEPT_TYPES = Array.from(new Set([
 
 // P1-08: 使用统一常量，不再硬编码
 // 旧值: DEFAULT_MAX_SIZE = 10MB, DEFAULT_MAX_COUNT = 10
-// 通用文件以 core/constants 的 ATTACHMENT_MAX_SIZE 为准；图片需匹配后端 50MB 上限。
-const ATTACHMENT_IMAGE_MAX_SIZE = 50 * 1024 * 1024;
+// 通用文件以 core/constants 的 ATTACHMENT_MAX_SIZE 为准；图片走 ATTACHMENT_IMAGE_MAX_SIZE。
 
 // ============================================================================
 // 辅助函数
