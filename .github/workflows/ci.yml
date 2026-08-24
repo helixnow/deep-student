@@ -578,11 +578,27 @@ jobs:
       CARGO_INCREMENTAL: 0
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
+      # OOM 缓解（R07-archive）：4 路并行链接巨型测试二进制会耗尽 16GB 内存，
+      # 把 runner agent 一起 OOM 杀掉（exit 143 + "runner has received a shutdown signal"）。
+      # 降到 3 路压峰值；不改 RUSTFLAGS/profile，避免打碎与 migration-gate 共享的 tests 缓存。
+      CARGO_BUILD_JOBS: '3'
     steps:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
+
+      # OOM 缓解（R07-archive）：把默认 4GB swap 扩到 12GB，
+      # 链接高峰溢出到 swap 而不是触发 OOM killer 打死 runner。
+      - name: Expand swap to survive linker memory peaks
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h && df -h /mnt
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
