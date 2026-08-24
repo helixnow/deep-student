@@ -150,34 +150,33 @@ export function AIDiffPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  if (!request) return null;
-
   const hasChanges = diffLines.some(line => line.type !== 'unchanged');
   const addedCount = diffLines.filter(line => line.type === 'added').length;
   const removedCount = diffLines.filter(line => line.type === 'removed').length;
 
-  const summaryIntent = useMemo(
-    () =>
-      buildAIDiffSummaryIntent({
-        operation: request.operation,
-        operationLabel: operationLabels[request.operation],
-        addedCount,
-        removedCount,
-        hasChanges,
-        labels: {
-          metaTitle: t('aiDiff.summary.meta_title'),
-          metaDescription: t('aiDiff.summary.meta_description'),
-          statTitle: t('aiDiff.summary.stat_title'),
-          noChangeTrend: t('aiDiff.summary.no_change_trend'),
-          addedKey: t('aiDiff.summary.added'),
-          removedKey: t('aiDiff.summary.removed'),
-          operationKey: t('aiDiff.summary.operation'),
-          alertTitle: t('aiDiff.summary.no_diff_title'),
-          alertDescription: t('aiDiff.summary.no_diff_description'),
-        },
-      }),
-    [addedCount, hasChanges, operationLabels, removedCount, request.operation, t],
-  );
+  const summaryIntent = useMemo(() => {
+    if (!request) return null;
+    return buildAIDiffSummaryIntent({
+      operation: request.operation,
+      operationLabel: operationLabels[request.operation],
+      addedCount,
+      removedCount,
+      hasChanges,
+      labels: {
+        metaTitle: t('aiDiff.summary.meta_title'),
+        metaDescription: t('aiDiff.summary.meta_description'),
+        statTitle: t('aiDiff.summary.stat_title'),
+        noChangeTrend: t('aiDiff.summary.no_change_trend'),
+        addedKey: t('aiDiff.summary.added'),
+        removedKey: t('aiDiff.summary.removed'),
+        operationKey: t('aiDiff.summary.operation'),
+        alertTitle: t('aiDiff.summary.no_diff_title'),
+        alertDescription: t('aiDiff.summary.no_diff_description'),
+      },
+    });
+  }, [addedCount, hasChanges, operationLabels, removedCount, request, t]);
+
+  if (!request || !summaryIntent) return null;
 
   return (
     <section

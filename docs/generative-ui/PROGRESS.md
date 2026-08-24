@@ -22,6 +22,12 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 29（2026-08-24）— CI 就绪复验
+
+- [x] 本地 gate：`tsc --noEmit` / `vite build` / 210 generative-ui vitest 全绿
+- [x] ESLint：`parseResearchReportCitations` 正则无用转义 + `AIDiffPanel` hooks 顺序修复
+- [ ] PR #214 CI 结果（Round 28 push 后仍 queued）
+
 ## Round 28（2026-08-24）— CI tsc 修复
 
 - [x] `ai-dashboard/register.ts` → `register.tsx`（JSX 扩展名）

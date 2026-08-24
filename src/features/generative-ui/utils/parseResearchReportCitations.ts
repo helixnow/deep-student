@@ -10,7 +10,7 @@ export interface ResearchReportCitation {
   end: number;
 }
 
-export const RESEARCH_REPORT_CITATION_PATTERN = /\[([^\[\]\-]+)-(\d+)\]/g;
+export const RESEARCH_REPORT_CITATION_PATTERN = /\[([^[\]-]+)-(\d+)\]/g;
 
 export function parseResearchReportCitations(text: string): ResearchReportCitation[] {
   const citations: ResearchReportCitation[] = [];
