@@ -466,6 +466,17 @@ pub const FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY: &str = "frozenToolSchemaOrder";
 /// metadata 对象，读写只 merge 该键、绝不覆盖其他键。
 pub const AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY: &str = "availableSkillsSnapshot";
 
+/// 🆕 P0 microcompact 锚点：session.metadata 中持久化锚点的键名。
+///
+/// 值为 JSON 对象 `{"lineage": string|null, "eligibleUserTurns": number}`
+/// （与 pipeline::helpers::MicrocompactAnchor 对应）。锚点只随 compaction
+/// 事件批量推进；桌面 App 重启后进程内存锚点丢失，若按当前历史重新基线
+/// 会跳到当前 `U - K`，中间轮次的工具输出突然变占位符——历史头部字节变、
+/// provider prompt cache 前缀失效。内存 miss 时必须从该键恢复同一
+/// `eligible_user_turns`。与 authority/plan 等键共存于同一 metadata 对象，
+/// 读写只 upsert 该键、绝不覆盖其他键。
+pub const MICROCOMPACT_ANCHOR_METADATA_KEY: &str = "microcompactAnchor";
+
 /// Session-level Ask / Plan / Craft authority mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]

@@ -170,7 +170,11 @@ pub struct ChatV2Pipeline {
     /// 🆕 microcompact 锚点（会话级状态）：session_id → 锚点。
     /// 锚点只随 compaction 事件（活跃 compaction id 变化）批量推进，两次
     /// compaction 之间冻结，保证历史头部字节逐轮稳定（prompt cache 友好）。
-    /// 所有 Pipeline clone 共享；进程重启后按当前历史重新基线（冷缓存场景）。
+    /// 所有 Pipeline clone 共享；这里是热路径读缓存，真身持久化在
+    /// session.metadata（`microcompactAnchor`）：桌面 App 重启后 provider
+    /// 侧 prompt cache 仍可能存活，内存 miss 时从 metadata 恢复同一
+    /// `eligible_user_turns`（load/store 见 helpers.rs），不再按当前历史
+    /// 跳变到 `U - K`。
     microcompact_anchors: Arc<Mutex<HashMap<String, MicrocompactAnchor>>>,
     /// 🆕 P0 tools 会话冻结（会话级状态）：session_id → append-only 首见序
     /// 工具名基线。同一 session 内已发出的 tools 相对顺序跨轮（跨

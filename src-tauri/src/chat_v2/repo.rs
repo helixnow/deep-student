@@ -21,7 +21,9 @@ use super::types::{
     MessageRole, PanelStates, PersistStatus, PlanAuthorityState, SessionAuthorityState,
     SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
     AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY, FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
+    MICROCOMPACT_ANCHOR_METADATA_KEY,
 };
+use super::pipeline::helpers::MicrocompactAnchor;
 
 /// 从 session.metadata 解析持久化的 tools 会话冻结基线。
 ///
@@ -50,6 +52,31 @@ fn available_skills_snapshot_from_metadata(metadata: Option<&Value>) -> Option<S
         .get(AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY)?
         .as_str()
         .map(str::to_string)
+}
+
+/// 从 session.metadata 解析持久化的 microcompact 锚点。
+///
+/// 缺键 / 字段缺失 / 类型不符一律返回 None（等同进程内首次观察，按当前
+/// 历史批量建锚——旧会话升级路径的冷缓存语义）。
+fn microcompact_anchor_from_metadata(metadata: Option<&Value>) -> Option<MicrocompactAnchor> {
+    let anchor = metadata?.get(MICROCOMPACT_ANCHOR_METADATA_KEY)?.as_object()?;
+    let eligible_user_turns = anchor.get("eligibleUserTurns")?.as_u64()? as usize;
+    let lineage = anchor
+        .get("lineage")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Some(MicrocompactAnchor {
+        lineage,
+        eligible_user_turns,
+    })
+}
+
+/// microcompact 锚点的持久化 JSON 形态（camelCase，与前端 metadata 键风格一致）。
+fn microcompact_anchor_to_value(anchor: &MicrocompactAnchor) -> Value {
+    serde_json::json!({
+        "lineage": anchor.lineage,
+        "eligibleUserTurns": anchor.eligible_user_turns,
+    })
 }
 
 /// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
@@ -2785,6 +2812,78 @@ impl ChatV2Repo {
         Ok(snapshot.to_string())
     }
 
+    /// 🆕 P0 microcompact 锚点：读取 session.metadata 中持久化的锚点
+    /// （`microcompactAnchor`）。
+    ///
+    /// 桌面 App 重启后进程内存锚点丢失，pipeline 内存 miss 时从这里恢复，
+    /// 保证同一 session 的 `eligible_user_turns` 跨进程不跳变（否则中间轮
+    /// 工具输出突然占位符化，历史头部字节变、prompt cache 前缀失效）。
+    /// 缺键返回 None（进程内首次观察语义，按当前历史批量建锚）。
+    pub(crate) fn get_session_microcompact_anchor(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<MicrocompactAnchor>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_microcompact_anchor_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_microcompact_anchor` 的 `_with_conn` 版本。
+    pub(crate) fn get_session_microcompact_anchor_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<MicrocompactAnchor>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(microcompact_anchor_from_metadata(session.metadata.as_ref()))
+    }
+
+    /// 🆕 P0 microcompact 锚点：把推进后的锚点写进 session.metadata
+    /// （IMMEDIATE 事务内读-比-写）。
+    ///
+    /// 锚点只随 compaction 事件推进，写库频率天然很低；持久化值与入参
+    /// 一致时跳过写库。对 metadata 对象只 upsert `microcompactAnchor`
+    /// 一个键，其他键原样保留；故意不推进 updated_at。
+    pub(crate) fn set_session_microcompact_anchor(
+        db: &ChatV2Database,
+        session_id: &str,
+        anchor: &MicrocompactAnchor,
+    ) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::set_session_microcompact_anchor_with_conn(&tx, session_id, anchor)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `set_session_microcompact_anchor` 的 `_with_conn` 版本。
+    pub(crate) fn set_session_microcompact_anchor_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        anchor: &MicrocompactAnchor,
+    ) -> ChatV2Result<()> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        if microcompact_anchor_from_metadata(session.metadata.as_ref()).as_ref() == Some(anchor) {
+            return Ok(());
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                MICROCOMPACT_ANCHOR_METADATA_KEY.to_string(),
+                microcompact_anchor_to_value(anchor),
+            );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
+        Self::update_session_with_conn(conn, &session)
+    }
+
     /// 删除会话（使用 ChatV2Database）
     pub fn delete_session_v2(db: &ChatV2Database, session_id: &str) -> ChatV2Result<()> {
         let mut conn = db.get_conn_safe()?;
@@ -4490,6 +4589,104 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("catalog")
+        );
+    }
+
+    #[test]
+    fn microcompact_anchor_survives_process_restart_via_session_metadata() {
+        // 回归（P0 microcompact 锚点跨进程）：写锚点 → 模拟桌面 App 重启
+        // （进程内存 HashMap 清空，只剩 DB）→ 从 session.metadata 恢复后
+        // advance 得到同一 eligible_user_turns，不跳变到当前 U - K。
+        use crate::chat_v2::pipeline::helpers::{
+            advance_microcompact_anchor, MicrocompactAnchor,
+        };
+
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_mc_anchor".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 缺键 = 进程内首次观察语义
+        assert_eq!(
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor")
+                .unwrap(),
+            None
+        );
+
+        let anchor = MicrocompactAnchor {
+            lineage: Some("cmp_1".to_string()),
+            eligible_user_turns: 3,
+        };
+        ChatV2Repo::set_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor", &anchor)
+            .unwrap();
+
+        // 「重启后」内存 miss 时 pipeline 走这条恢复路径
+        let restored =
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor")
+                .unwrap()
+                .expect("anchor should be persisted");
+        assert_eq!(restored, anchor, "重启恢复的锚点必须与上一进程写入一致");
+
+        // 恢复后决策：同一 lineage 下即使当前批量值涨到 9（会话又聊了很多轮），
+        // eligible_user_turns 仍冻结在 3 —— 中间轮工具输出不会突然占位符化。
+        let (after_restart, eligible) =
+            advance_microcompact_anchor(Some(&restored), Some("cmp_1"), 9);
+        assert_eq!(eligible, 3, "重启后必须得到同一 eligible_user_turns，不跳到当前 U-K");
+        assert_eq!(after_restart, anchor, "无 compaction 事件时锚点本身不变");
+
+        // 仍只随 compaction 事件推进：lineage 变化才批量推进并允许覆写持久化
+        let (advanced, eligible) =
+            advance_microcompact_anchor(Some(&restored), Some("cmp_2"), 9);
+        assert_eq!(eligible, 9);
+        ChatV2Repo::set_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor", &advanced)
+            .unwrap();
+        assert_eq!(
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor")
+                .unwrap(),
+            Some(advanced)
+        );
+    }
+
+    #[test]
+    fn microcompact_anchor_lineage_none_roundtrips_and_preserves_metadata() {
+        // lineage=None（无压缩历史）的锚点也要完整往返；只 upsert
+        // microcompactAnchor 一个键，其他 metadata 键原样保留。
+        use crate::chat_v2::pipeline::helpers::MicrocompactAnchor;
+
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_mc_meta".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "ask",
+            "plan": { "batchId": "batch_1" },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let anchor = MicrocompactAnchor {
+            lineage: None,
+            eligible_user_turns: 2,
+        };
+        ChatV2Repo::set_session_microcompact_anchor_with_conn(&conn, "sess_mc_meta", &anchor)
+            .unwrap();
+
+        assert_eq!(
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_meta").unwrap(),
+            Some(anchor),
+            "lineage=None 必须往返为 None，不得与空字符串混同"
+        );
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_mc_meta")
+            .unwrap()
+            .expect("Session should exist");
+        let metadata = reloaded.metadata.as_ref().expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("ask")
+        );
+        assert_eq!(
+            metadata
+                .get("plan")
+                .and_then(|plan| plan.get("batchId"))
+                .and_then(Value::as_str),
+            Some("batch_1")
         );
     }
 

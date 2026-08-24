@@ -930,7 +930,19 @@ impl ChatV2Pipeline {
     /// 锚点存于 Pipeline 共享的会话级状态（所有 clone 共享），以活跃
     /// compaction 记录 id 为世代（lineage）标识：lineage 未变 → 沿用冻结的
     /// 锚点（连续多轮不 compaction 时历史头部字节逐字稳定）；lineage 变化
-    /// （compaction 事件）或进程内首次观察到该会话 → 批量推进到当前 `U - K`。
+    /// （compaction 事件）或首次观察到该会话 → 批量推进到当前 `U - K`。
+    ///
+    /// 内存 miss（典型场景：桌面 App 重启后该会话首轮）时先从
+    /// session.metadata（`microcompactAnchor`）恢复持久化锚点再决策 ——
+    /// provider 侧 prompt cache 跨进程存活，重启后若按当前历史重新基线，
+    /// `eligible_user_turns` 会跳到当前 `U - K`，中间轮次的工具输出突然
+    /// 占位符化，历史头部字节变、缓存前缀失效。读取失败降级为首次观察
+    /// 语义（只打日志、不阻断发送）。
+    ///
+    /// 锚点变化（首次建锚 / compaction 事件批量推进）时同步持久化回
+    /// metadata；持久化失败只降级打日志（下一进程退回冷基线），绝不让
+    /// 本次发送失败。锚点仍只随 compaction 事件推进 —— 持久化不改变
+    /// 推进语义，写库频率天然很低。
     pub(crate) fn resolve_microcompact_eligible_turns(
         &self,
         session_id: &str,
@@ -938,16 +950,59 @@ impl ChatV2Pipeline {
         history: &[LegacyChatMessage],
     ) -> usize {
         let batch_eligible = microcompact_batch_eligible_turns(history);
-        let mut anchors = self
-            .microcompact_anchors
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let (anchor, eligible) = advance_microcompact_anchor(
-            anchors.get(session_id),
-            active_compaction_id,
-            batch_eligible,
-        );
-        anchors.insert(session_id.to_string(), anchor);
+        let memory_miss = {
+            let anchors = self
+                .microcompact_anchors
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            !anchors.contains_key(session_id)
+        };
+        // 不持锁读库：恢复期间并行变体可能已建锚，entry 只填空位、不覆盖。
+        if memory_miss {
+            match ChatV2Repo::get_session_microcompact_anchor(&self.db, session_id) {
+                Ok(Some(persisted)) => {
+                    let mut anchors = self
+                        .microcompact_anchors
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    anchors.entry(session_id.to_string()).or_insert(persisted);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to load persisted microcompact anchor (fallback to fresh anchor): session_id={}, error={}",
+                        session_id,
+                        err
+                    );
+                }
+            }
+        }
+        let (anchor, eligible, anchor_changed) = {
+            let mut anchors = self
+                .microcompact_anchors
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let previous = anchors.get(session_id).cloned();
+            let (anchor, eligible) = advance_microcompact_anchor(
+                previous.as_ref(),
+                active_compaction_id,
+                batch_eligible,
+            );
+            let anchor_changed = previous.as_ref() != Some(&anchor);
+            anchors.insert(session_id.to_string(), anchor.clone());
+            (anchor, eligible, anchor_changed)
+        };
+        if anchor_changed {
+            if let Err(err) =
+                ChatV2Repo::set_session_microcompact_anchor(&self.db, session_id, &anchor)
+            {
+                log::warn!(
+                    "[ChatV2::pipeline] Failed to persist microcompact anchor (in-memory anchor still active): session_id={}, error={}",
+                    session_id,
+                    err
+                );
+            }
+        }
         eligible
     }
 
