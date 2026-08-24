@@ -40,10 +40,10 @@ const CONFIG_DEFAULT_TEMPERATURE: f32 = 0.7;
 
 /// 多模态图片上限：每类（作文原图/题目参考图）最多张数
 const MAX_IMAGES_PER_KIND: usize = 6;
-/// 单张图片 base64 解码后最大字节数（10MB）
-const MAX_IMAGE_DECODED_BYTES: usize = 10 * 1024 * 1024;
-/// 两类图片解码后合计最大字节数（40MB）
-const MAX_TOTAL_IMAGE_DECODED_BYTES: usize = 40 * 1024 * 1024;
+/// 单张图片 base64 解码后最大字节数（50MB，与前端图片上限一致）
+const MAX_IMAGE_DECODED_BYTES: usize = 50 * 1024 * 1024;
+/// 两类图片解码后合计最大字节数（100MB）
+const MAX_TOTAL_IMAGE_DECODED_BYTES: usize = 100 * 1024 * 1024;
 
 /// 流式响应空闲超时（秒）：距上一个数据块超过该时长判定为服务端/网络挂起。
 /// 略小于前端 useEssayGradingStream 的 120s 滑动超时，保证后端先给出明确错误。
@@ -1694,7 +1694,7 @@ mod tests {
             Some("count")
         );
 
-        // 单张体积超限（构造超过 10MB 解码体积的 base64 长度，不实际解码）
+        // 单张体积超限（构造超过单张上限解码体积的 base64 长度，不实际解码）
         let oversized = "A".repeat((MAX_IMAGE_DECODED_BYTES / 3 + 1) * 4);
         let err =
             validate_image_payloads(&[oversized.as_str()], &[]).expect_err("单张体积超限应报错");
