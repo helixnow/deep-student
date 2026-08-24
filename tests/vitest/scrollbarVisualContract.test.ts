@@ -114,6 +114,16 @@ function findPrivateVisibleScrollbarRecipes(): string[] {
       continue;
     }
 
+    // Most source files cannot define a scrollbar recipe. Avoid running the
+    // block-level CSS scan over every TS/TSX file in the repository.
+    if (
+      !source.includes('::-webkit-scrollbar') &&
+      !/\bscrollbar-width\s*:\s*thin\b/.test(source) &&
+      !/\bscrollbar-color\s*:/.test(source)
+    ) {
+      continue;
+    }
+
     for (const match of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       const selector = match[1].replace(/\s+/g, ' ').trim();
       const body = match[2];
