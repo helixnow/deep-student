@@ -226,7 +226,7 @@ const SettingsToggleRow: React.FC<{
 }> = ({ label, checked, onChange, size = 'sm' }) => (
   <label
     className={cn(
-      'flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-shell-control)]',
+      'flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-shell-control)] [@media(pointer:coarse)]:min-h-11',
       size === 'md' ? 'min-h-[2.75rem] py-1.5' : 'py-1',
     )}
   >

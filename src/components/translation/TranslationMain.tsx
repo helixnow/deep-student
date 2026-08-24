@@ -393,7 +393,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           />
           <Label
             htmlFor="toolbar-auto-translate"
-            className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
+            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
           >
             {t('translation:workbench.toolbar.auto_translate')}
           </Label>
@@ -407,7 +407,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           />
           <Label
             htmlFor="toolbar-sync-scroll"
-            className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
+            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
           >
             {t('translation:sync_scroll')}
           </Label>
