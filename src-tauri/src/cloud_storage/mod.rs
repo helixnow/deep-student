@@ -24,6 +24,7 @@
 pub mod backup_lease;
 mod config;
 pub mod delta_format;
+pub mod delta_gc;
 pub mod delta_restore;
 pub mod delta_upload;
 #[cfg(not(target_os = "android"))]
