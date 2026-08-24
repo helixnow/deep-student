@@ -342,13 +342,14 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   const [showImportPasswordDialog, setShowImportPasswordDialog] = useState(false);
   const [importPassword, setImportPassword] = useState('');
 
-  /** 与后端 MIN_ENCRYPTION_PASSWORD_CHARS 保持一致 */
+  /** 与后端 MIN_ENCRYPTION_PASSWORD_CHARS / `chars().count()` 对齐（按 Unicode 标量，不是 UTF-16）。 */
   const MIN_E2EE_PASSWORD_CHARS = 8;
 
   /** 校验可选 E2EE 密码：为空视为不加密；非空则必须满足最小长度 */
   const validateOptionalPassword = (password: string): boolean => {
     if (password === '') return true;
-    if (password.trim() === '' || password.length < MIN_E2EE_PASSWORD_CHARS) {
+    const trimmed = password.trim();
+    if (trimmed.length === 0 || [...trimmed].length < MIN_E2EE_PASSWORD_CHARS) {
       showGlobalNotification(
         'warning',
         t('data:governance.e2ee_password_too_short', { min: MIN_E2EE_PASSWORD_CHARS })
@@ -360,6 +361,9 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
   const handleAction = async () => {
     if (!selectedBackup || !actionType || isActionRunning) return;
+    if (actionType === 'export' && !validateOptionalPassword(encryptionPassword)) {
+      return;
+    }
     setIsActionRunning(true);
     try {
       if (actionType === 'delete') {
