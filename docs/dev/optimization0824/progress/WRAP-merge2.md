@@ -38,12 +38,20 @@ WI-11 远端 tip 的完整 SHA 为
 
 ## 验证
 
-合并后执行以下针对性门禁：
+使用 Rust 1.98 执行合入功能的精确门禁：
 
 ```text
-cargo test --lib provider_quirks
-cargo test --lib reasoning_policy
-cargo test --lib llm_manager::model2_pipeline
+cargo +stable test --lib 'llm_manager::provider_quirks::tests'
+  4 passed, 0 failed
+cargo +stable test --lib 'reasoning_policy::tests'
+  33 passed, 0 failed
+cargo +stable test --lib \
+  'llm_manager::model2_pipeline::tests::prepared_provider_request_phase1_snapshot' -- --exact
+  1 passed, 0 failed
 ```
 
-验证结果将在命令完成后回填。
+扩大执行 `cargo +stable test --lib 'llm_manager::model2_pipeline'` 时为
+38 passed、2 failed。失败项是
+`openai_responses_api_key_stream_requires_an_explicit_terminal_success` 与
+`audit_sanitizer_redacts_responses_images_and_encrypted_reasoning`；两项测试及其
+被测函数均不在 `72fed933` 的 diff 中，和本次 quirks 合并无关。
