@@ -122,7 +122,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             variant="danger"
             size="sm"
             onClick={onConfirmPurge}
-            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:!min-h-11"
           >
             {purgeLabel}
           </DsButton>
@@ -130,7 +130,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             variant="ghost"
             size="sm"
             onClick={onCancelPurge}
-            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -143,7 +143,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             onClick={onRestore}
             title={restoreLabel}
             aria-label={restoreLabel}
-            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:!px-3"
+            className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3"
           >
             <ArrowCounterClockwise size={13} />
             <span>{restoreLabel}</span>
@@ -303,7 +303,7 @@ const TrashSections: React.FC = () => {
             disabled={isLoadingTrash}
             onClick={() => void loadMoreTrash()}
             aria-busy={isLoadingTrash || undefined}
-            className="text-sm text-muted-foreground [@media(pointer:coarse)]:min-h-[2.5rem]"
+            className="text-sm text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
           >
             {isLoadingTrash ? (
               <>
@@ -348,7 +348,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
             setConfirming(false);
             void emptyTrash();
           }}
-          className="[@media(pointer:coarse)]:min-h-[2.5rem]"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           {t('todo:trash.confirmEmptyAll')}
         </DsButton>
@@ -356,7 +356,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
           variant="ghost"
           size="sm"
           onClick={() => setConfirming(false)}
-          className="[@media(pointer:coarse)]:min-h-[2.5rem]"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           {t('common:actions.cancel')}
         </DsButton>
@@ -371,7 +371,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
       disabled={isEmpty}
       onClick={() => setConfirming(true)}
       className={cn(
-        'text-[color:hsl(var(--destructive))] disabled:opacity-40 [@media(pointer:coarse)]:min-h-[2.5rem]',
+        'text-[color:hsl(var(--destructive))] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11',
         className,
       )}
     >

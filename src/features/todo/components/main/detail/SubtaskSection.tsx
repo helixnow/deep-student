@@ -114,7 +114,8 @@ const SubtaskRow: React.FC<{
             e.stopPropagation();
             onToggle(sub);
           }}
-          className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
+          // 触屏：内容仅 16px，p-3.5（14×2）才够 44px 命中；负 margin 保持布局不变
+          className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:p-3.5 [@media(pointer:coarse)]:-m-3.5"
           aria-label={
             sub.status === 'completed'
               ? t('todo:actions.markPending')

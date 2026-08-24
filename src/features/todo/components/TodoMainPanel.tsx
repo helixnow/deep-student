@@ -1139,7 +1139,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           type="button"
                           onClick={() => toggleBucketCollapsed(group.bucket)}
                           aria-expanded={!collapsed}
-                          className="group/header relative -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-2.5 [@media(pointer:coarse)]:after:content-['']"
+                          className="group/header relative -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3 [@media(pointer:coarse)]:after:content-['']"
                         >
                           <CaretDown
                             size={11}
