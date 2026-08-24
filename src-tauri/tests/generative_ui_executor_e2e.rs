@@ -296,6 +296,139 @@ async fn execute_emits_generative_ui_start_chunk_end_events() {
 }
 
 #[tokio::test]
+async fn execute_v1_1_grid_layout_emits_generative_ui() {
+    let harness = create_harness();
+    let events = capture_block_events(&harness.window, &harness.session_id);
+    let executor = GenerativeUiExecutor::new();
+    let block_id = "block-generative-ui-v11-e2e";
+    let intent = json!({
+        "version": "1.1",
+        "layout": { "mode": "grid", "columns": 2 },
+        "meta": { "title": "Grid briefing" },
+        "blocks": [
+            { "type": "stat-card", "props": { "title": "Due flashcards", "value": 4 }, "span": 2 }
+        ]
+    });
+
+    let result = executor
+        .execute(
+            &ToolCall::new(
+                "call-generative-ui-v11-e2e".to_string(),
+                "builtin-render_generative_ui".to_string(),
+                json!({ "intent": intent.clone() }),
+            ),
+            &execution_context(&harness, block_id),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(result.success);
+    assert_eq!(
+        result.output.get("status").and_then(Value::as_str),
+        Some("rendered")
+    );
+
+    for _ in 0..50 {
+        let captured = events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        if captured.len() >= 3 {
+            let generative_events: Vec<&Value> = captured
+                .iter()
+                .filter(|payload| payload["type"] == event_types::GENERATIVE_UI)
+                .collect();
+            assert!(
+                generative_events.iter().any(|e| e["phase"] == "start"),
+                "missing start event: {captured:?}"
+            );
+            assert!(
+                generative_events.iter().any(|e| e["phase"] == "chunk"),
+                "missing chunk event: {captured:?}"
+            );
+            let end = generative_events
+                .iter()
+                .find(|e| e["phase"] == "end")
+                .expect("missing end event");
+            assert_eq!(end["blockId"], block_id);
+            let end_result = &end["result"];
+            assert_eq!(
+                end_result
+                    .pointer("/intent/version")
+                    .and_then(Value::as_str),
+                Some("1.1")
+            );
+            assert_eq!(
+                end_result
+                    .pointer("/intent/layout/mode")
+                    .and_then(Value::as_str),
+                Some("grid")
+            );
+            assert_eq!(
+                end_result
+                    .pointer("/intent/blocks/0/span")
+                    .and_then(Value::as_u64),
+                Some(2)
+            );
+            assert_eq!(
+                end_result.get("isStreaming").and_then(Value::as_bool),
+                Some(false)
+            );
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    panic!("timed out waiting for generative_ui v1.1 grid events");
+}
+
+#[tokio::test]
+async fn execute_rejects_version_2() {
+    let harness = create_harness();
+    let events = capture_block_events(&harness.window, &harness.session_id);
+    let executor = GenerativeUiExecutor::new();
+    let block_id = "block-generative-ui-v2-e2e";
+
+    let result = executor
+        .execute(
+            &ToolCall::new(
+                "call-generative-ui-v2-e2e".to_string(),
+                "builtin-render_generative_ui".to_string(),
+                json!({
+                    "intent": {
+                        "version": "2",
+                        "layout": { "mode": "grid", "columns": 2 },
+                        "blocks": [{ "type": "text", "props": { "text": "hi" } }]
+                    }
+                }),
+            ),
+            &execution_context(&harness, block_id),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(!result.success);
+    assert!(result.error.as_deref().unwrap_or("").contains("version"));
+
+    for _ in 0..50 {
+        let captured = events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let generative_events: Vec<&Value> = captured
+            .iter()
+            .filter(|payload| payload["type"] == event_types::GENERATIVE_UI)
+            .collect();
+        if generative_events.iter().any(|e| e["phase"] == "error") {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    panic!("timed out waiting for generative_ui version-2 error event");
+}
+
+#[tokio::test]
 async fn execute_with_note_edit_preserves_input_payload() {
     let harness = create_harness();
     let executor = GenerativeUiExecutor::new();

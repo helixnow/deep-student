@@ -28,9 +28,29 @@ describe('generativeUI Rust dual-mapping contract', () => {
   it('Rust executor accepts intent version 1 and 1.1, rejects unknown', () => {
     expect(executorSrc).toContain('fn validate_intent_version');
     expect(executorSrc).toContain('"1.1"');
+    expect(executorSrc).toContain('layout');
+    expect(executorSrc).toContain('fn known_layout_mode');
     expect(executorSrc).toContain('parse_intent_accepts_version_1_1');
+    expect(executorSrc).toContain('parse_intent_defaults_missing_version_as_v1');
+    expect(executorSrc).toContain('parse_intent_ignores_unknown_layout');
     expect(executorSrc).toContain('parse_intent_rejects_unknown_version');
+    expect(executorSrc).toContain('validate_intent_version_rejects_version_2');
+    expect(executorSrc).toContain('execute_v1_1_grid_layout_returns_rendered');
     expect(executorSrc).toContain('"version": "1"');
+    expect(executorSrc).toContain('"mode": "grid"');
+    expect(executorSrc).toContain('"span": 2');
+  });
+
+  it('Rust e2e covers v1.1 grid emit and version 2 reject', () => {
+    const e2eSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src-tauri/tests/generative_ui_executor_e2e.rs'),
+      'utf8',
+    );
+    expect(e2eSrc).toContain('execute_v1_1_grid_layout_emits_generative_ui');
+    expect(e2eSrc).toContain('"version": "1.1"');
+    expect(e2eSrc).toContain('"mode": "grid"');
+    expect(e2eSrc).toContain('execute_rejects_version_2');
+    expect(e2eSrc).toContain('event_types::GENERATIVE_UI');
   });
 
   it('event type constant matches frontend GENERATIVE_UI_BLOCK_TYPE', () => {

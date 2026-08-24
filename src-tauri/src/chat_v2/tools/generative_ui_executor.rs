@@ -41,6 +41,8 @@ impl GenerativeUiExecutor {
         }
 
         Self::validate_intent_version(&intent)?;
+        // layout / span 为 v1.1 可选透传：未知 mode 不拒绝整份 intent
+        let _ = Self::known_layout_mode(&intent);
 
         let blocks = intent
             .get("blocks")
@@ -54,7 +56,7 @@ impl GenerativeUiExecutor {
         Ok(intent)
     }
 
-    /// Intent version 字面量：缺省视为 v1；仅允许 "1" / "1.1"
+    /// Intent version 字面量：缺省视为 `"1"`；仅允许 `"1"` / `"1.1"`；拒绝 `"2"` 等未知值。
     fn validate_intent_version(intent: &Value) -> Result<(), String> {
         match intent.get("version") {
             None => Ok(()),
@@ -64,6 +66,15 @@ impl GenerativeUiExecutor {
                 v
             )),
             Some(_) => Err("intent.version 必须是字符串 \"1\" 或 \"1.1\"".to_string()),
+        }
+    }
+
+    /// 识别 `layout.mode` = stack | grid。未知 / 缺失 / 非对象返回 `None`，不报错。
+    fn known_layout_mode(intent: &Value) -> Option<&'static str> {
+        match intent.pointer("/layout/mode").and_then(Value::as_str) {
+            Some("stack") => Some("stack"),
+            Some("grid") => Some("grid"),
+            _ => None,
         }
     }
 
@@ -373,6 +384,45 @@ mod tests {
         });
         let intent = GenerativeUiExecutor::parse_intent(&args).expect("parse v1.1");
         assert_eq!(intent.get("version").and_then(Value::as_str), Some("1.1"));
+        assert_eq!(
+            intent.pointer("/layout/mode").and_then(Value::as_str),
+            Some("grid")
+        );
+        assert_eq!(
+            intent.pointer("/blocks/0/span").and_then(Value::as_u64),
+            Some(2)
+        );
+        assert_eq!(
+            GenerativeUiExecutor::known_layout_mode(&intent),
+            Some("grid")
+        );
+    }
+
+    #[test]
+    fn parse_intent_defaults_missing_version_as_v1() {
+        let args = json!({
+            "intent": {
+                "blocks": [{ "type": "text", "props": { "text": "hi" } }]
+            }
+        });
+        let intent = GenerativeUiExecutor::parse_intent(&args).expect("missing version is v1");
+        assert!(intent.get("version").is_none());
+        assert!(GenerativeUiExecutor::validate_intent_version(&intent).is_ok());
+    }
+
+    #[test]
+    fn parse_intent_ignores_unknown_layout() {
+        let args = json!({
+            "intent": {
+                "version": "1.1",
+                "layout": { "mode": "masonry", "columns": 4 },
+                "blocks": [{ "type": "text", "props": { "text": "hi" } }]
+            }
+        });
+        let intent =
+            GenerativeUiExecutor::parse_intent(&args).expect("unknown layout must not fail");
+        assert_eq!(intent.get("version").and_then(Value::as_str), Some("1.1"));
+        assert!(GenerativeUiExecutor::known_layout_mode(&intent).is_none());
     }
 
     #[test]
@@ -384,6 +434,17 @@ mod tests {
             }
         });
         let err = GenerativeUiExecutor::parse_intent(&args).expect_err("unknown version");
+        assert!(err.contains("version"));
+        assert!(err.contains("2"));
+    }
+
+    #[test]
+    fn validate_intent_version_rejects_version_2() {
+        let intent = json!({
+            "version": "2",
+            "blocks": [{ "type": "text", "props": { "text": "hi" } }]
+        });
+        let err = GenerativeUiExecutor::validate_intent_version(&intent).expect_err("version 2");
         assert!(err.contains("version"));
     }
 
@@ -611,5 +672,68 @@ mod tests {
 
         assert!(!result.success);
         assert!(result.error.as_deref().unwrap_or("").contains("blocks"));
+    }
+
+    #[tokio::test]
+    async fn execute_v1_1_grid_layout_returns_rendered() {
+        let executor = GenerativeUiExecutor::new();
+        let call = ToolCall::new(
+            "call-generative-ui-v11".to_string(),
+            "builtin-render_generative_ui".to_string(),
+            json!({
+                "intent": {
+                    "version": "1.1",
+                    "layout": { "mode": "grid", "columns": 2 },
+                    "blocks": [
+                        { "type": "stat-card", "props": { "title": "Due", "value": 3 }, "span": 2 }
+                    ]
+                }
+            }),
+        );
+
+        let result = executor
+            .execute(&call, &test_ctx("block-generative-ui-v11"))
+            .await
+            .expect("execute returns ToolResultInfo");
+
+        assert!(result.success, "expected success, got {:?}", result.error);
+        assert_eq!(
+            result.output.get("status").and_then(Value::as_str),
+            Some("rendered")
+        );
+        assert_eq!(
+            result.output.get("blockCount").and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            result
+                .input
+                .pointer("/intent/layout/mode")
+                .and_then(Value::as_str),
+            Some("grid")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_rejects_version_2() {
+        let executor = GenerativeUiExecutor::new();
+        let call = ToolCall::new(
+            "call-generative-ui-v2".to_string(),
+            "render_generative_ui".to_string(),
+            json!({
+                "intent": {
+                    "version": "2",
+                    "blocks": [{ "type": "text", "props": { "text": "hi" } }]
+                }
+            }),
+        );
+
+        let result = executor
+            .execute(&call, &test_ctx("block-generative-ui-v2"))
+            .await
+            .expect("execute returns ToolResultInfo");
+
+        assert!(!result.success);
+        assert!(result.error.as_deref().unwrap_or("").contains("version"));
     }
 }
