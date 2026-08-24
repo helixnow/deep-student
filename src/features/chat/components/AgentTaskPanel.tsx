@@ -482,7 +482,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   <div className="px-4 pb-2">
                     <div className="flex min-w-0 items-center gap-1 px-2 pb-1 text-2xs text-[color:var(--text-muted)]">
                       {workspacePage.relativePath && (
-                        <button type="button" onClick={openWorkspaceParent} className="shrink-0 hover:text-[color:var(--text-primary)]">
+                        <button type="button" onClick={openWorkspaceParent} className="inline-flex shrink-0 items-center hover:text-[color:var(--text-primary)] [@media(pointer:coarse)]:min-h-11">
                           .. /
                         </button>
                       )}
