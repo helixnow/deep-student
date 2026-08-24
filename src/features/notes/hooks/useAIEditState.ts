@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import * as Diff from 'diff';
+import i18n from '@/i18n';
 
 export type CanvasEditOperation = 'append' | 'replace' | 'set';
 
@@ -78,7 +79,10 @@ export function computeProposedContent(
     case 'append': {
       const contentToAppend = request.content || '';
       if (!contentToAppend) {
-        return { content: originalContent, error: '追加内容为空' };
+        return {
+          content: originalContent,
+          error: i18n.t('learningHub:ai_edit.append_content_empty', { defaultValue: '追加内容为空' }),
+        };
       }
       
       if (request.section) {
@@ -101,7 +105,10 @@ export function computeProposedContent(
       const replaceWith = request.replace || '';
       
       if (!searchPattern) {
-        return { content: originalContent, error: '搜索模式为空' };
+        return {
+          content: originalContent,
+          error: i18n.t('learningHub:ai_edit.search_pattern_empty', { defaultValue: '搜索模式为空' }),
+        };
       }
       
       let newContent: string;
@@ -117,7 +124,12 @@ export function computeProposedContent(
         } catch (regexErr) {
           return {
             content: originalContent,
-            error: `无效的正则表达式: ${regexErr instanceof Error ? regexErr.message : '语法错误'}`,
+            error: i18n.t('learningHub:ai_edit.invalid_regex', {
+              defaultValue: '无效的正则表达式: {{message}}',
+              message: regexErr instanceof Error
+                ? regexErr.message
+                : i18n.t('learningHub:ai_edit.regex_syntax_error', { defaultValue: '语法错误' }),
+            }),
           };
         }
       } else {
@@ -127,14 +139,23 @@ export function computeProposedContent(
       }
 
       if (replaceCount === 0) {
-        return { content: originalContent, error: '未找到要替换的内容' };
+        return {
+          content: originalContent,
+          error: i18n.t('learningHub:ai_edit.replace_target_not_found', { defaultValue: '未找到要替换的内容' }),
+        };
       }
       
       return { content: newContent, replaceCount };
     }
     
     default:
-      return { content: originalContent, error: `未知的操作类型: ${request.operation}` };
+      return {
+        content: originalContent,
+        error: i18n.t('learningHub:ai_edit.unknown_operation', {
+          defaultValue: '未知的操作类型: {{operation}}',
+          operation: request.operation,
+        }),
+      };
   }
 }
 
@@ -150,7 +171,14 @@ function appendToSection(
   const match = content.match(sectionRegex);
 
   if (!match || match.index === undefined) {
-    return { success: false, content, error: `未找到章节: ${sectionTitle}` };
+    return {
+      success: false,
+      content,
+      error: i18n.t('learningHub:ai_edit.section_not_found', {
+        defaultValue: '未找到章节: {{section}}',
+        section: sectionTitle,
+      }),
+    };
   }
 
   const sectionLevel = match[1].length;
@@ -322,7 +350,7 @@ export function useAIEditState(): UseAIEditStateReturn {
     const result: CanvasAIEditResult = {
       requestId: current.request.requestId,
       success: false,
-      error: '用户拒绝修改',
+      error: i18n.t('learningHub:ai_edit.user_rejected', { defaultValue: '用户拒绝修改' }),
     };
     
     setState(initialState);
