@@ -326,7 +326,7 @@ function ContextWindowUsageRing({
         tabIndex={0}
         aria-label={ariaLabel}
         title={ariaLabel}
-        className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+        className="relative inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
       >
         <svg
           data-testid="context-window-usage-ring"
