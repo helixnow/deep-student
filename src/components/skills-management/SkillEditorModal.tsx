@@ -578,7 +578,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       type="button"
                       variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'standalone')}
-                      className="w-full"
+                      className="w-full [@media(pointer:coarse)]:min-h-11"
                     >
                       {t('skills:editor.skill_type_standalone')}
                     </DsButton>
@@ -586,7 +586,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       type="button"
                       variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'composite')}
-                      className="w-full"
+                      className="w-full [@media(pointer:coarse)]:min-h-11"
                     >
                       {t('skills:editor.skill_type_composite')}
                     </DsButton>
@@ -692,14 +692,14 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           variant="ghost"
           onClick={handleCancel}
           disabled={isSaving}
-          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
+          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
         >
           {t('common:actions.cancel')}
         </DsButton>
         <DsButton
           type="submit"
           disabled={isSaving}
-          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors"
+          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:min-h-11"
         >
           {isSaving
             ? t('common:actions.saving')
