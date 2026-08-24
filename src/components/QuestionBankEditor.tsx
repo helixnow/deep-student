@@ -2454,7 +2454,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             size="lg"
                             onClick={handleSubmit}
                             disabled={!canSubmit || isSubmitting}
-                            className="w-full"
+                            className="w-full [@media(pointer:coarse)]:min-h-11"
                           >
                             {isSubmitting ? (
                               <><CircleNotch size={16} className="animate-spin" />{t('editor.submitting')}</>
@@ -2826,7 +2826,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="lg"
                       onClick={handleSubmit}
                       disabled={!canSubmit || isSubmitting}
-                      className="w-full"
+                      className="w-full [@media(pointer:coarse)]:min-h-11"
                     >
                       {isSubmitting ? (
                         <>
