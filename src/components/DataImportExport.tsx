@@ -1602,7 +1602,7 @@ ${resolvedPath}`);
                       <HardDrive className={DATA_CENTER_ICON_SM_CLASS} />
                       <span>{t('data:backup_list.total_count', { count: backupList.length })}</span>
                     </div>
-                    <DsButton onClick={handleAutoBackup} disabled={isExporting}>
+                    <DsButton onClick={handleAutoBackup} disabled={isExporting} className="[@media(pointer:coarse)]:min-h-11">
                       {isExporting ? t('data:backup_list.backup_in_progress') : t('data:auto_backup')}
                     </DsButton>
                   </div>
@@ -1691,12 +1691,12 @@ ${resolvedPath}`);
                       <div className="mt-4 text-sm text-muted-foreground">{t('data:data_space.loading')}</div>
                     )}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <DsButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto">
+                      <DsButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto [@media(pointer:coarse)]:min-h-11">
                         <ArrowsClockwise className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:data_space.refresh_button')}
                       </DsButton>
                       <DsButton
-                        className="sm:w-auto"
+                        className="sm:w-auto [@media(pointer:coarse)]:min-h-11"
                         onClick={async () => {
                           try {
                             const msg = await TauriAPI.markDataSpacePendingSwitchToInactive();
@@ -1719,7 +1719,7 @@ ${resolvedPath}`);
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t('data:integrity.description')}
                       </p>
-                      <DsButton variant="default" onClick={handleRunIntegrityCheck} className="mt-4">
+                      <DsButton variant="default" onClick={handleRunIntegrityCheck} className="mt-4 [@media(pointer:coarse)]:min-h-11">
                         <FileText className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:integrity.run_button')}
                       </DsButton>
@@ -1728,7 +1728,7 @@ ${resolvedPath}`);
                     <div className="rounded-xl border border-transparent ring-1 ring-border/40 bg-muted/30 p-6">
                       <h3 className="text-base font-medium text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
-                      <DsButton variant="danger" onClick={handleClearAllData} className="mt-4">
+                      <DsButton variant="danger" onClick={handleClearAllData} className="mt-4 [@media(pointer:coarse)]:min-h-11">
                         <Trash className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:clear_section.button')}
                       </DsButton>
