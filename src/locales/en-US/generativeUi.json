@@ -67,6 +67,22 @@
       "open_practice": "Start practice"
     }
   },
+  "translation": {
+    "briefing_label": "AI translation briefing",
+    "briefing": {
+      "source_stat_title": "Source characters",
+      "translated_stat_title": "Translated characters",
+      "empty_trend": "No source text",
+      "progress_title": "Translation progress",
+      "translated_row": "{{count}} translated",
+      "language_pair_row": "Language pair",
+      "formality_row": "Tone",
+      "domain_row": "Domain",
+      "glossary_row": "Glossary terms",
+      "open_settings": "Translation settings",
+      "copy_translation": "Copy translation"
+    }
+  },
   "indexStatus": {
     "briefing_label": "AI index briefing",
     "briefing": {

@@ -75,6 +75,7 @@ Rust render_generative_ui
 | 闪卡 save-to-library | ✅ Round 10 |
 | Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
 | HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14 |
+| Translation 会话简报 | `TranslationGenerativeBriefing` ✅ Round 15 |
 
 ## 7. 测试
 

@@ -22,6 +22,13 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 15（2026-08-24）
+
+- [x] **Translation 模块 Generative UI 集成** — `buildTranslationBriefingIntent` + `TranslationGenerativeBriefing`
+- [x] `TranslationContentView` 挂载 AI 翻译简报（语向/进度/术语表 + 设置/复制译文 actions）
+- [x] `createTranslationBriefingActionHandlers` — `translation:openSettings` + clipboard
+- [x] i18n `translation.briefing.*` + actionHandlerSync contract
+
 ## Round 14（2026-08-24）
 
 - [x] **HpiasStore → Generative UI 实时接线** — `mapHpiasStoreToResearchPlanSteps` + `buildHpiasResearchDashboardIntent`

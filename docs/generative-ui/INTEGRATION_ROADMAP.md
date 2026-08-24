@@ -22,6 +22,10 @@
 
 **原则**：rAF 批处理 + 终态 `toolOutput` 双通道；引用走 `BackendSourceInfo` / `Block.citations`。
 
+| 场景 | 落点 | 状态 |
+|------|------|------|
+| 翻译会话简报 | `TranslationContentView` | ✅ Round 15 |
+
 ## 安全 / HITL（#8）
 
 | riskLevel | UX | 状态 |

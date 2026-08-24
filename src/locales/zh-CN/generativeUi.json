@@ -67,6 +67,22 @@
       "open_practice": "开始练习"
     }
   },
+  "translation": {
+    "briefing_label": "AI 翻译简报",
+    "briefing": {
+      "source_stat_title": "原文字数",
+      "translated_stat_title": "译文字数",
+      "empty_trend": "暂无原文",
+      "progress_title": "翻译进度",
+      "translated_row": "已译 {{count}} 字",
+      "language_pair_row": "语向",
+      "formality_row": "语气",
+      "domain_row": "领域",
+      "glossary_row": "术语表",
+      "open_settings": "翻译设置",
+      "copy_translation": "复制译文"
+    }
+  },
   "indexStatus": {
     "briefing_label": "AI 索引简报",
     "briefing": {

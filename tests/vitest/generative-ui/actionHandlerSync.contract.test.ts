@@ -13,7 +13,9 @@ import { buildMemoryBriefingIntent } from '@/features/generative-ui/utils/buildM
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
 import { buildFlashcardPreviewIntent } from '@/features/generative-ui/utils/buildFlashcardPreviewIntent';
+import { buildTranslationBriefingIntent } from '@/features/generative-ui/utils/buildTranslationBriefingIntent';
 import { createFlashcardSaveActionHandlers } from '@/features/generative-ui/handlers/flashcardActionHandlers';
+import { createTranslationBriefingActionHandlers } from '@/features/generative-ui/handlers/translationBriefingActionHandlers';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
@@ -189,6 +191,33 @@ describe('generativeUI actionHandlerSync contract', () => {
       { applyEdit: 'Apply', dismissSuggestion: 'Dismiss' },
     );
     expectActionIdsRegistered(intent, handlers, 'buildNoteEditSuggestionIntent');
+  });
+
+  it('translation briefing action ids exist in createTranslationBriefingActionHandlers', () => {
+    const intent = buildTranslationBriefingIntent({
+      sourceChars: 10,
+      translatedChars: 5,
+      srcLangLabel: 'EN',
+      tgtLangLabel: 'ZH',
+      labels: {
+        sourceStatTitle: 'Source',
+        translatedStatTitle: 'Translated',
+        emptyTrend: 'Empty',
+        progressTitle: 'Progress',
+        translatedRow: '{{count}}',
+        languagePairRow: 'Pair',
+        formalityRow: 'Tone',
+        domainRow: 'Domain',
+        glossaryRow: 'Glossary',
+        openSettings: 'Settings',
+        copyTranslation: 'Copy',
+      },
+    });
+    const handlers = createTranslationBriefingActionHandlers(
+      { onOpenSettings: () => {}, getTranslatedText: () => 'text' },
+      { openSettings: 'Settings', copyTranslation: 'Copy' },
+    );
+    expectActionIdsRegistered(intent, handlers, 'buildTranslationBriefingIntent');
   });
 
   it('flashcard preview intent action ids exist in createFlashcardSaveActionHandlers', () => {
