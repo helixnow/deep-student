@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use deep_student_lib::chat_v2::context::PipelineContext;
-use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::event_types;
+use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::tools::{ExecutionContext, GenerativeUiExecutor, ToolExecutor};
 use deep_student_lib::chat_v2::types::{block_types, ToolCall};
 use deep_student_lib::hpias::HPIAS_EVENT_CHANNEL;
@@ -69,10 +69,7 @@ fn capture_block_events(window: &tauri::Window, session_id: &str) -> Arc<Mutex<V
 
 #[test]
 fn block_type_mapping_for_render_generative_ui_is_generative_ui() {
-    for tool_name in [
-        "render_generative_ui",
-        "builtin-render_generative_ui",
-    ] {
+    for tool_name in ["render_generative_ui", "builtin-render_generative_ui"] {
         assert_eq!(
             PipelineContext::get_block_type_for_tool_static(tool_name),
             block_types::GENERATIVE_UI,
@@ -154,7 +151,10 @@ async fn execute_with_research_session_emits_hpias_session_started() {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone();
-        if captured.iter().any(|e| e.get("type") == Some(&json!("session_started"))) {
+        if captured
+            .iter()
+            .any(|e| e.get("type") == Some(&json!("session_started")))
+        {
             let started = captured
                 .iter()
                 .find(|e| e.get("type") == Some(&json!("session_started")))

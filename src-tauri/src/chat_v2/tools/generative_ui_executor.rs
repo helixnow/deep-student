@@ -26,13 +26,12 @@ impl GenerativeUiExecutor {
     }
 
     fn parse_intent(arguments: &Value) -> Result<Value, String> {
-        let raw = arguments
-            .get("intent")
-            .ok_or_else(|| "render_generative_ui 需要 intent 参数（JSON 对象或字符串）".to_string())?;
+        let raw = arguments.get("intent").ok_or_else(|| {
+            "render_generative_ui 需要 intent 参数（JSON 对象或字符串）".to_string()
+        })?;
 
         let intent = if let Some(text) = raw.as_str() {
-            serde_json::from_str(text.trim())
-                .map_err(|e| format!("intent 不是合法 JSON: {}", e))?
+            serde_json::from_str(text.trim()).map_err(|e| format!("intent 不是合法 JSON: {}", e))?
         } else {
             raw.clone()
         };
@@ -92,10 +91,7 @@ impl GenerativeUiExecutor {
             if block.get("type").and_then(Value::as_str) != Some("action-bar") {
                 continue;
             }
-            let Some(actions) = block
-                .pointer("/props/actions")
-                .and_then(Value::as_array)
-            else {
+            let Some(actions) = block.pointer("/props/actions").and_then(Value::as_array) else {
                 continue;
             };
             for action in actions {
@@ -272,11 +268,10 @@ impl ToolExecutor for GenerativeUiExecutor {
             .get("meta")
             .and_then(|m| m.get("title"))
             .and_then(Value::as_str);
-        let hpias_question = title
-            .or(extract_question_from_intent(&intent).as_deref());
+        let hpias_question = title.or(extract_question_from_intent(&intent).as_deref());
 
-        let content_str = serde_json::to_string(&intent)
-            .map_err(|e| format!("intent 序列化失败: {}", e))?;
+        let content_str =
+            serde_json::to_string(&intent).map_err(|e| format!("intent 序列化失败: {}", e))?;
 
         Self::emit_start(ctx, title);
         Self::emit_chunk(ctx, &content_str);
@@ -320,10 +315,10 @@ impl ToolExecutor for GenerativeUiExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::chat_v2::events::ChatV2EventEmitter;
     use crate::chat_v2::types::ToolCall;
     use crate::tools::ToolRegistry;
+    use std::sync::Arc;
 
     fn test_ctx(block_id: &str) -> ExecutionContext {
         let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
@@ -411,7 +406,10 @@ mod tests {
 
         assert!(result.success);
         assert_eq!(
-            result.output.get("researchSessionId").and_then(Value::as_str),
+            result
+                .output
+                .get("researchSessionId")
+                .and_then(Value::as_str),
             Some("research-chat-1")
         );
     }
@@ -511,13 +509,7 @@ mod tests {
             .expect("execute returns ToolResultInfo");
 
         assert!(!result.success);
-        assert!(
-            result
-                .error
-                .as_deref()
-                .unwrap_or("")
-                .contains("noteEdit")
-        );
+        assert!(result.error.as_deref().unwrap_or("").contains("noteEdit"));
     }
 
     #[test]
@@ -578,12 +570,6 @@ mod tests {
             .expect("execute returns ToolResultInfo");
 
         assert!(!result.success);
-        assert!(
-            result
-                .error
-                .as_deref()
-                .unwrap_or("")
-                .contains("blocks")
-        );
+        assert!(result.error.as_deref().unwrap_or("").contains("blocks"));
     }
 }

@@ -29,24 +29,10 @@ pub fn build_synthesis_llm_prompt(
             continue;
         }
         for (i, hit) in hits.iter().take(5).enumerate() {
-            let title = hit
-                .hit
-                .title
-                .as_deref()
-                .unwrap_or("来源");
-            let source = hit
-                .hit
-                .source_id
-                .as_deref()
-                .unwrap_or("unknown");
+            let title = hit.hit.title.as_deref().unwrap_or("来源");
+            let source = hit.hit.source_id.as_deref().unwrap_or("unknown");
             let snippet: String = hit.hit.text.chars().take(MAX_SNIPPET_CHARS).collect();
-            context.push_str(&format!(
-                "[{}-{}] {} — {}\n",
-                source,
-                i + 1,
-                title,
-                snippet
-            ));
+            context.push_str(&format!("[{}-{}] {} — {}\n", source, i + 1, title, snippet));
         }
         context.push('\n');
     }
@@ -93,7 +79,9 @@ pub async fn generate_synthesis_with_llm(
         Ok(Ok(response)) => {
             let text = response.assistant_message.trim();
             if text.is_empty() {
-                log::warn!("[HpiasSynthesis] LLM returned empty output; using deterministic fallback");
+                log::warn!(
+                    "[HpiasSynthesis] LLM returned empty output; using deterministic fallback"
+                );
                 fallback
             } else {
                 text.to_string()

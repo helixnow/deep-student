@@ -53,10 +53,8 @@ mod tests {
 
     #[test]
     fn build_session_started_payload_includes_question_when_present() {
-        let payload = HpiasEventEmitter::build_session_started_payload(
-            "research-chat-1",
-            Some("What is X?"),
-        );
+        let payload =
+            HpiasEventEmitter::build_session_started_payload("research-chat-1", Some("What is X?"));
         assert_eq!(payload["type"], "session_started");
         assert_eq!(payload["session_id"], "research-chat-1");
         assert_eq!(payload["question"], "What is X?");

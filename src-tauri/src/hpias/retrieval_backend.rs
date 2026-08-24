@@ -16,15 +16,13 @@ use crate::vfs::retrieval_planner::{FusedRetrievalHit, QueryModality};
 use crate::vfs::{UnifiedRetrievalRequest, VfsUnifiedRetriever};
 
 use super::events::HpiasEventEmitter;
-use super::payloads::{
-    build_plan_generated_payload, build_retrieval_completed_payload,
-    build_round_started_payload, build_selection_completed_payload,
-    build_session_completed_payload, build_subagent_completed_payload,
-    build_subagent_started_payload, build_subagents_done_payload,
-    build_synthesis_updated_payload, extract_plan_queries_from_intent,
-    intent_has_research_blocks,
-};
 use super::orchestrator::HpiasPipelineOrchestrator;
+use super::payloads::{
+    build_plan_generated_payload, build_retrieval_completed_payload, build_round_started_payload,
+    build_selection_completed_payload, build_session_completed_payload,
+    build_subagent_completed_payload, build_subagent_started_payload, build_subagents_done_payload,
+    build_synthesis_updated_payload, extract_plan_queries_from_intent, intent_has_research_blocks,
+};
 use super::service::{HpiasResearchBackend, HpiasResearchSessionRequest};
 use super::synthesis::generate_synthesis_with_llm;
 
@@ -110,7 +108,10 @@ impl RetrievalHpiasResearchService {
         for (index, query) in queries.iter().enumerate() {
             let sub_id = (index + 1) as i64;
             let _ = emitter.emit_raw(build_subagent_started_payload(
-                &session_id, round, sub_id, query,
+                &session_id,
+                round,
+                sub_id,
+                query,
             ));
 
             let mut query_hits = Vec::new();
@@ -170,7 +171,9 @@ impl RetrievalHpiasResearchService {
         let fetched = all_hits.len() as i64;
         let selected = all_hits.len().min(queries.len() * 3) as i64;
         let _ = emitter.emit_raw(build_retrieval_completed_payload(
-            &session_id, round, fetched,
+            &session_id,
+            round,
+            fetched,
         ));
         let _ = emitter.emit_raw(build_selection_completed_payload(
             &session_id,
@@ -182,7 +185,9 @@ impl RetrievalHpiasResearchService {
         let synthesis =
             generate_synthesis_with_llm(&llm_for_synthesis, question.as_deref(), &per_query).await;
         let _ = emitter.emit_raw(build_synthesis_updated_payload(
-            &session_id, round, &synthesis,
+            &session_id,
+            round,
+            &synthesis,
         ));
         let _ = emitter.emit_raw(build_subagents_done_payload(
             &session_id,
@@ -249,9 +254,7 @@ pub fn build_synthesis_markdown(
     question: Option<&str>,
     per_query: &[(String, Vec<FusedRetrievalHit>)],
 ) -> String {
-    let heading = question
-        .filter(|q| !q.is_empty())
-        .unwrap_or("研究主题");
+    let heading = question.filter(|q| !q.is_empty()).unwrap_or("研究主题");
     let mut md = format!("## 综合结论\n\n关于 **{}** 的检索摘要：\n\n", heading);
 
     for (query, hits) in per_query {
@@ -261,11 +264,7 @@ pub fn build_synthesis_markdown(
             continue;
         }
         for (i, hit) in hits.iter().take(3).enumerate() {
-            let title = hit
-                .hit
-                .title
-                .as_deref()
-                .unwrap_or("来源");
+            let title = hit.hit.title.as_deref().unwrap_or("来源");
             let snippet: String = hit.hit.text.chars().take(320).collect();
             md.push_str(&format!("{}. **{}** — {}…\n\n", i + 1, title, snippet));
         }
@@ -289,10 +288,7 @@ mod tests {
 
     #[test]
     fn summarize_hits_empty_returns_placeholder() {
-        assert_eq!(
-            summarize_hits_for_subagent(&[]),
-            "未检索到相关内容。"
-        );
+        assert_eq!(summarize_hits_for_subagent(&[]), "未检索到相关内容。");
     }
 
     #[test]

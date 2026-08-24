@@ -28,12 +28,7 @@ impl HpiasPipelineOrchestrator {
     }
 
     /// 按序 emit 时间线；`skip_first` 为 true 时跳过首条（已由 executor 发过的 session_started）
-    pub async fn run_timeline(
-        &self,
-        timeline: &[Value],
-        interval: Duration,
-        skip_first: bool,
-    ) {
+    pub async fn run_timeline(&self, timeline: &[Value], interval: Duration, skip_first: bool) {
         for (index, payload) in timeline.iter().enumerate() {
             if skip_first && index == 0 {
                 continue;
@@ -68,11 +63,7 @@ impl HpiasPipelineOrchestrator {
         let intent = intent.clone();
 
         tauri::async_runtime::spawn(async move {
-            let timeline = build_pipeline_timeline(
-                &session_id,
-                question.as_deref(),
-                Some(&intent),
-            );
+            let timeline = build_pipeline_timeline(&session_id, question.as_deref(), Some(&intent));
             let orchestrator = HpiasPipelineOrchestrator::new(window);
             orchestrator
                 .run_timeline(

@@ -22,6 +22,12 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 30（2026-08-24）— Backend fmt 修复
+
+- [x] `cargo fmt --check` 预检发现 generative_ui / hpias Rust 格式未对齐
+- [x] `cargo fmt` 修复 9 个文件（Backend CI 阻塞项）
+- [x] 本地 migration 静态 gate + build config contracts 51/51 通过
+
 ## Round 29（2026-08-24）— CI 就绪复验
 
 - [x] 本地 gate：`tsc --noEmit` / `vite build` / 210 generative-ui vitest 全绿

@@ -56,6 +56,7 @@ pub mod figure_extractor;
 pub mod file_manager;
 pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
+pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub mod injection_budget;
 pub mod json_validator;
 #[allow(dead_code)]
@@ -111,7 +112,6 @@ pub mod textbooks_db;
 #[allow(dead_code)]
 pub mod tools;
 pub mod translation;
-pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 #[allow(dead_code)]
 pub mod unified_file_manager;
