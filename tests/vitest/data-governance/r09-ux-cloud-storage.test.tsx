@@ -96,6 +96,7 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   isPublicHttpEndpoint: vi.fn(() => false),
   formatFileSize: (n: number) => `${n}B`,
   formatTimestamp: (n: number) => String(n),
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/components/ui/DsDialog', () => ({
@@ -116,6 +117,20 @@ import * as cloudApi from '@/utils/cloudStorageApi';
 
 const componentSource = readFileSync(
   resolve(process.cwd(), 'src/features/settings/components/CloudStorageSection.tsx'),
+  'utf-8',
+);
+const localizeSource = readFileSync(
+  resolve(
+    process.cwd(),
+    'src/features/settings/components/data-governance/localizeCloudError.ts',
+  ),
+  'utf-8',
+);
+const dashboardSource = readFileSync(
+  resolve(
+    process.cwd(),
+    'src/features/settings/components/DataGovernanceDashboard.tsx',
+  ),
   'utf-8',
 );
 const zhLocale = JSON.parse(
@@ -211,8 +226,9 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
       restoreBlock.indexOf('setDownloading(true)'),
     );
 
-    expect(componentSource).toContain('云端端到端加密密码至少需要');
-    expect(componentSource).toContain('备份密码至少需要');
+    expect(componentSource).toContain('localizeCloudStorageError');
+    expect(localizeSource).toContain('云端端到端加密密码至少需要');
+    expect(localizeSource).toContain('备份密码至少需要');
     expect(componentSource).toContain("packageZipFailed', { error: localizeCloudError(e) }");
     expect(componentSource).toContain("importZipFailed', { error: localizeCloudError(e) }");
 
@@ -220,20 +236,23 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(zhLocale.encryption.tooShort).toContain('不会保存');
     expect(enLocale.encryption.tooShort).toMatch(/at least \{\{min\}\} characters/i);
     expect(enLocale.encryption.tooShort).toMatch(/will not be saved/i);
-    expect(componentSource).toContain('无法整槽恢复的便携归档当成加密全保真');
-    expect(componentSource).toContain('cloudStorage:encryption.storedPasswordRequired');
+    expect(localizeSource).toContain('无法整槽恢复的便携归档当成加密全保真');
+    expect(localizeSource).toContain('cloudStorage:encryption.storedPasswordRequired');
     expect(zhLocale.encryption.storedPasswordRequired).toContain('便携归档');
     expect(enLocale.encryption.storedPasswordRequired).toMatch(/portable archive/i);
-    expect(componentSource).toContain('Missing WebDAV configuration');
-    expect(componentSource).toContain('cloudStorage:errors.missingWebdavConfig');
-    expect(componentSource).toContain('cloudStorage:errors.missingS3Config');
-    expect(componentSource).toContain('cloudStorage:errors.missingFtpConfig');
+    expect(localizeSource).toContain('Missing WebDAV configuration');
+    expect(localizeSource).toContain('cloudStorage:errors.missingWebdavConfig');
+    expect(localizeSource).toContain('cloudStorage:errors.missingS3Config');
+    expect(localizeSource).toContain('cloudStorage:errors.missingFtpConfig');
     expect(Object.keys(zhLocale.encryption).sort()).toEqual(
       Object.keys(enLocale.encryption).sort(),
     );
     expect(Object.keys(zhLocale.errors).sort()).toEqual(
       Object.keys(enLocale.errors).sort(),
     );
+    expect(
+      (dashboardSource.match(/localizeCloudStorageError\(error, t\)/g) ?? []).length,
+    ).toBeGreaterThanOrEqual(3);
   });
 });
 

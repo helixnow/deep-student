@@ -162,7 +162,15 @@ describe('display-layer wiring (source contract)', () => {
   });
 
   it('CloudStorageSection routes cloud errors through the classifier', () => {
-    expect(cloudSection).toContain('classifySyncE2eeError');
-    expect(cloudSection).toContain('SYNC_E2EE_ERROR_I18N_KEYS');
+    expect(cloudSection).toContain('localizeCloudStorageError');
+    const shared = readFileSync(
+      resolve(
+        process.cwd(),
+        'src/features/settings/components/data-governance/localizeCloudError.ts',
+      ),
+      'utf8',
+    );
+    expect(shared).toContain('classifySyncE2eeError');
+    expect(shared).toContain('SYNC_E2EE_ERROR_I18N_KEYS');
   });
 });

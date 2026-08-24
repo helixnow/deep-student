@@ -69,6 +69,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
 vi.mock('@/utils/cloudStorageApi', () => ({
   loadStoredCloudStorageConfigSafe: () => null,
   loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({

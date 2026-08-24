@@ -39,6 +39,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
+import { localizeCloudStorageError } from './data-governance/localizeCloudError';
 
 import {
   DataGovernanceApi,
@@ -1094,7 +1095,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('备份并导出 ZIP 失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1163,7 +1164,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导出失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1224,7 +1225,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导入失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);

@@ -28,14 +28,11 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { isMobilePlatform } from '@/utils/platform';
 import {
-  classifySyncE2eeError,
-  SYNC_E2EE_ERROR_I18N_KEYS,
-} from './data-governance/syncE2eeErrorMapping';
+  CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
+  localizeCloudStorageError,
+} from './data-governance/localizeCloudError';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
-
-/** 与后端 `MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS` / ZIP `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。 */
-const CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS = 8;
 
 function isExplicitCloudEncryptionPasswordTooShort(password: string): boolean {
   const trimmed = password.trim();
@@ -182,37 +179,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // [R11-android2 / P2-LOCALE] 平台能力错误只按后端稳定 code 映射。
   // message 是诊断文本，允许改语言/措辞，禁止再以正则参与程序分派。
   const localizeCloudError = useCallback(
-    (error: unknown): string => {
-      const raw = getErrorMessage(error);
-      // [R09-e2ee] 端到端加密三类失败（明文遗留拒收 / 错密码 / 标记损坏）
-      // 映射为可操作人话；原文附在后面供排查与关键字搜索。
-      const e2eeKind = classifySyncE2eeError(raw);
-      if (e2eeKind) {
-        return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
-      }
-      // 安全存储 / ZIP 解析拒绝短密码：中文诊断原文，映射为同一条 i18n。
-      if (/云端端到端加密密码至少需要|备份密码至少需要/.test(raw)) {
-        return t('cloudStorage:encryption.tooShort', {
-          min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
-        });
-      }
-      // 开关打开却读不到已存密码：后端 fail-closed 中文长文案。
-      if (/无法整槽恢复的便携归档当成加密全保真/.test(raw)) {
-        return t('cloudStorage:encryption.storedPasswordRequired');
-      }
-      if (/Missing WebDAV configuration/.test(raw)) {
-        return t('cloudStorage:errors.missingWebdavConfig');
-      }
-      if (/Missing S3 configuration/.test(raw)) {
-        return t('cloudStorage:errors.missingS3Config');
-      }
-      if (/Missing FTP configuration/.test(raw)) {
-        return t('cloudStorage:errors.missingFtpConfig');
-      }
-      const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
-      if (platformErrorKey) return t(platformErrorKey);
-      return raw;
-    },
+    (error: unknown): string => localizeCloudStorageError(error, t),
     [t],
   );
 

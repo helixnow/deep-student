@@ -93,6 +93,7 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   isPublicHttpEndpoint: vi.fn(() => false),
   formatFileSize: (n: number) => `${n}B`,
   formatTimestamp: (n: number) => String(n),
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 // 轻量 DsAlertDialog 桩：只验证「打开才渲染 + 确认才回调」的行为契约
