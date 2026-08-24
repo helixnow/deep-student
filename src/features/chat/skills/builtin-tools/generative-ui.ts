@@ -52,6 +52,7 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
 4. 最多 12 个 blocks；优先信息密度与可扫描性。
 5. action-bar 的 action id 应使用已注册 id（如 start-review、open-qbank、export-plan、apply-note-edit、save-to-library），label 仅作展示。
 6. **笔记写入**：若 intent 含 apply-note-edit，必须同时提供 noteEdit 参数（operation/content/search/replace）；前端经 canvas:ai-edit-request HITL 链落盘，禁止假设已写入。
+7. **深度研究**：若 intent 含 research-plan / research-report / paper-digest，可传 researchSessionId 绑定 HPIAS 会话；前端经 hpias_event 实时更新研究面板，静态 Research 块在会话激活后由实时面板取代。
 `,
   embeddedTools: [
     {
@@ -107,6 +108,11 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
             },
             required: ['operation'],
             additionalProperties: false,
+          },
+          researchSessionId: {
+            type: 'string',
+            description:
+              '【可选】HPIAS 研究会话 ID；与 research-plan/research-report 块联用时，前端订阅 hpias_event 实时渲染研究进度。',
           },
         },
         required: ['intent'],

@@ -22,6 +22,15 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 16（2026-08-24）
+
+- [x] **Hpias Tauri 事件桥** — `hpiasEventBridge.ts` + `useHpiasEventBridge`（`hpias_event` → HpiasStore）
+- [x] Chat `generative_ui` 块挂载 `HpiasGenerativeResearchPanel`（`researchSessionId` / Research 块触发）
+- [x] `extractResearchSessionId` + 静态 Research 块去重（live 会话激活后 omit）
+- [x] `render_generative_ui` skill / Rust executor 可选 `researchSessionId` 参数
+- [x] `guardedListen` 白名单 `hpias_event`
+- [x] vitest + ARCHITECTURE / INTEGRATION_ROADMAP 更新
+
 ## Round 15（2026-08-24）
 
 - [x] **Translation 模块 Generative UI 集成** — `buildTranslationBriefingIntent` + `TranslationGenerativeBriefing`

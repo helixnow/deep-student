@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { createStore } from 'zustand';
@@ -40,6 +40,15 @@ vi.mock('@/features/mindmap/components/mindmap/MindMapEmbed', () => ({
 }));
 
 import '@/features/generative-ui/blocks';
+import { useHpiasStore } from '@/stores/researchStore';
+import { buildResearchPlanIntent } from '@/features/generative-ui/utils/buildResearchPlanIntent';
+import { useHpiasEventBridge } from '@/features/generative-ui/hooks/useHpiasEventBridge';
+
+vi.mock('@/features/generative-ui/hooks/useHpiasEventBridge', () => ({
+  useHpiasEventBridge: vi.fn(),
+}));
+
+const mockedUseHpiasEventBridge = vi.mocked(useHpiasEventBridge);
 
 function makeBlock(overrides: Partial<Block> = {}): Block {
   return {
@@ -64,6 +73,8 @@ function makeStore(canvasNoteId?: string) {
 describe('GenerativeUIBlockComponent chat action handlers', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockedUseHpiasEventBridge.mockClear();
+    useHpiasStore.getState().actions.clear();
   });
 
   it('wires workbench handlers for LEARNING_DASHBOARD_EXAMPLE actions', async () => {
@@ -167,5 +178,74 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
     );
 
     expect(screen.getByRole('button', { name: '应用到笔记' })).toBeDisabled();
+  });
+
+  it('enables hpias event bridge when researchSessionId is present', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research' },
+    });
+
+    render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: false },
+          toolInput: { intent, researchSessionId: 'chat-hpias-1' },
+        })}
+        store={makeStore()}
+      />,
+    );
+
+    expect(mockedUseHpiasEventBridge).toHaveBeenCalledWith({
+      enabled: true,
+      sessionId: 'chat-hpias-1',
+    });
+  });
+
+  it('shows live hpias panel after session events and keeps non-research blocks', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research question?' },
+    });
+    intent.blocks.unshift({ type: 'text', props: { body: 'Research starting…' } });
+
+    const view = render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: false },
+          toolInput: { intent, researchSessionId: 'live-1' },
+        })}
+        store={makeStore()}
+      />,
+    );
+
+    act(() => {
+      useHpiasStore.getState().actions.handleEvent({
+        type: 'session_started',
+        session_id: 'live-1',
+        question: 'Research question?',
+      });
+      useHpiasStore.getState().actions.handleEvent({
+        type: 'plan_generated',
+        session_id: 'live-1',
+        round: 1,
+        plan: { core: { queries: ['Topic A'] } },
+      });
+    });
+
+    view.rerender(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: false },
+          toolInput: { intent, researchSessionId: 'live-1' },
+        })}
+        store={makeStore()}
+      />,
+    );
+
+    expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getByText('Research starting…')).toBeInTheDocument();
   });
 });

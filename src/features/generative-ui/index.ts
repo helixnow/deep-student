@@ -69,6 +69,16 @@ export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
 export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
+export {
+  HPIAS_EVENT_CHANNEL,
+  createHpiasEventBridgeHandler,
+  intentHasResearchBlocks,
+  normalizeHpiasEventPayload,
+  omitResearchBlocksFromIntent,
+  startHpiasEventBridge,
+} from './bridge/hpiasEventBridge';
+export { useHpiasEventBridge } from './hooks/useHpiasEventBridge';
+export { extractResearchSessionId } from './utils/extractResearchSessionId';
 export { buildFlashcardPreviewIntent } from './utils/buildFlashcardPreviewIntent';
 export { buildPaperDigestIntent } from './utils/buildPaperDigestIntent';
 export { buildResearchPlanIntent } from './utils/buildResearchPlanIntent';

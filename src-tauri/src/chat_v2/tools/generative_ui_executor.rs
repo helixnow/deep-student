@@ -49,6 +49,15 @@ impl GenerativeUiExecutor {
         Ok(intent)
     }
 
+    fn parse_research_session_id(arguments: &Value) -> Option<String> {
+        arguments
+            .get("researchSessionId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    }
+
     fn parse_note_edit(arguments: &Value) -> Result<Option<Value>, String> {
         let Some(raw) = arguments.get("noteEdit") else {
             return Ok(None);
@@ -118,14 +127,18 @@ impl GenerativeUiExecutor {
         );
     }
 
-    fn emit_end(ctx: &ExecutionContext, intent: &Value) {
+    fn emit_end(ctx: &ExecutionContext, intent: &Value, research_session_id: Option<&str>) {
+        let mut payload = json!({
+            "intent": intent,
+            "isStreaming": false,
+        });
+        if let Some(session_id) = research_session_id {
+            payload["researchSessionId"] = json!(session_id);
+        }
         ctx.emitter.emit_end_with_meta(
             event_types::GENERATIVE_UI,
             &ctx.block_id,
-            Some(json!({
-                "intent": intent,
-                "isStreaming": false,
-            })),
+            Some(payload),
             ctx.variant_id.as_deref(),
             ctx.skill_state_version,
             ctx.round_id.as_deref(),
@@ -199,6 +212,8 @@ impl ToolExecutor for GenerativeUiExecutor {
             }
         };
 
+        let research_session_id = Self::parse_research_session_id(&call.arguments);
+
         if Self::intent_has_apply_note_edit(&intent) && note_edit.is_none() {
             let error = "intent 含 apply-note-edit 时必须提供 noteEdit 参数".to_string();
             Self::emit_start(ctx, None);
@@ -225,13 +240,16 @@ impl ToolExecutor for GenerativeUiExecutor {
 
         Self::emit_start(ctx, title);
         Self::emit_chunk(ctx, &content_str);
-        Self::emit_end(ctx, &intent);
+        Self::emit_end(ctx, &intent, research_session_id.as_deref());
 
         let duration_ms = start.elapsed().as_millis() as u64;
-        let output = json!({
+        let mut output = json!({
             "status": "rendered",
             "blockCount": intent.get("blocks").and_then(Value::as_array).map(|a| a.len()).unwrap_or(0),
         });
+        if let Some(ref session_id) = research_session_id {
+            output["researchSessionId"] = json!(session_id);
+        }
 
         let result = ToolResultInfo::success(
             Some(call.id.clone()),
@@ -311,6 +329,48 @@ mod tests {
         let args = json!({ "other": true });
         let err = GenerativeUiExecutor::parse_intent(&args).expect_err("missing intent");
         assert!(err.contains("intent"));
+    }
+
+    #[test]
+    fn parse_research_session_id_accepts_non_empty_string() {
+        let args = json!({ "researchSessionId": " hpias-s1 " });
+        assert_eq!(
+            GenerativeUiExecutor::parse_research_session_id(&args).as_deref(),
+            Some("hpias-s1")
+        );
+    }
+
+    #[test]
+    fn parse_research_session_id_rejects_blank() {
+        let args = json!({ "researchSessionId": "   " });
+        assert!(GenerativeUiExecutor::parse_research_session_id(&args).is_none());
+    }
+
+    #[tokio::test]
+    async fn execute_preserves_research_session_id_in_output() {
+        let executor = GenerativeUiExecutor::new();
+        let call = ToolCall::new(
+            "call-generative-ui-research".to_string(),
+            "render_generative_ui".to_string(),
+            json!({
+                "researchSessionId": "research-chat-1",
+                "intent": {
+                    "version": "1",
+                    "blocks": [{ "type": "research-plan", "props": { "title": "Plan", "steps": [] } }]
+                }
+            }),
+        );
+
+        let result = executor
+            .execute(&call, &test_ctx("block-generative-ui-research"))
+            .await
+            .expect("execute returns ToolResultInfo");
+
+        assert!(result.success);
+        assert_eq!(
+            result.output.get("researchSessionId").and_then(Value::as_str),
+            Some("research-chat-1")
+        );
     }
 
     #[test]

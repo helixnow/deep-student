@@ -25,6 +25,7 @@
 | 场景 | 落点 | 状态 |
 |------|------|------|
 | 翻译会话简报 | `TranslationContentView` | ✅ Round 15 |
+| HPIAS Chat 实时研究 | `generative_ui` 块 + `hpias_event` | ✅ Round 16 |
 
 ## 安全 / HITL（#8）
 

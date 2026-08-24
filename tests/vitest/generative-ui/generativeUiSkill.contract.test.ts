@@ -42,6 +42,13 @@ describe('generativeUiSkill contract', () => {
     expect(intentSchema?.required).toContain('blocks');
     const noteEditSchema = tool?.inputSchema?.properties?.noteEdit as { properties?: Record<string, unknown> };
     expect(noteEditSchema?.properties?.operation).toBeDefined();
+    const researchSessionSchema = tool?.inputSchema?.properties?.researchSessionId as { type?: string };
+    expect(researchSessionSchema?.type).toBe('string');
+  });
+
+  it('skill content documents researchSessionId HPIAS bridge', () => {
+    expect(generativeUiSkill.content).toContain('researchSessionId');
+    expect(generativeUiSkill.content).toContain('hpias_event');
   });
 
   it('skill example action ids are documented in content', () => {
@@ -56,6 +63,7 @@ describe('generativeUiSkill contract', () => {
       'utf8',
     );
     expect(rustSrc).toContain('render_generative_ui');
+    expect(rustSrc).toContain('researchSessionId');
     expect(generativeUiSkill.allowedTools).toContain('builtin-render_generative_ui');
   });
 

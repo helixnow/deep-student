@@ -22,6 +22,7 @@ describe('generativeUIArchitectureContract', () => {
     expect(fs.existsSync(path.join(root, 'bridge/chatBlockBridge.ts'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'bridge/generativeUIStreamRegistry.ts'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'bridge/resolveGenerativeUIChatActionHandlers.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'bridge/hpiasEventBridge.ts'))).toBe(true);
   });
 
   it('uses zod in schema.ts', () => {

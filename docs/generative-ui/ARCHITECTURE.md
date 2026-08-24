@@ -24,6 +24,7 @@ src/features/generative-ui/
 ├── bridge/
 │   ├── chatBlockBridge.ts
 │   ├── generativeUIStreamRegistry.ts
+│   ├── hpiasEventBridge.ts      # hpias_event → HpiasStore
 │   └── resolveGenerativeUIChatActionHandlers.ts
 ├── handlers/              # workbench / notes / flashcard action handlers
 ├── utils/                 # build*Intent + dispatchCanvasAIEditRequest
@@ -53,7 +54,13 @@ Rust render_generative_ui
   → block.content + toolOutput.intent
   → extractGenerativeUIIntent(blockId)
   → GenerativeUIRenderer + resolveGenerativeUIChatActionHandlers
+  → （可选）researchSessionId / Research 块 → hpias_event → HpiasGenerativeResearchPanel
 ```
+
+Hpias 实时研究（Round 16）：
+- Tauri `hpias_event` → `startHpiasEventBridge` → `HpiasStore.handleEvent`
+- Chat `generative_ui` 块在 `researchSessionId` 或 intent 含 research 块时挂载 `HpiasGenerativeResearchPanel`
+- 会话激活后静态 research 块由实时面板取代，避免重复渲染
 
 关键文件：
 - `src/features/chat/plugins/blocks/generativeUI.tsx`
@@ -75,6 +82,7 @@ Rust render_generative_ui
 | 闪卡 save-to-library | ✅ Round 10 |
 | Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
 | HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14 |
+| Hpias Chat 事件桥 | `hpiasEventBridge` + Chat 块挂载 ✅ Round 16 |
 | Translation 会话简报 | `TranslationGenerativeBriefing` ✅ Round 15 |
 
 ## 7. 测试
