@@ -411,6 +411,9 @@ struct ChatAnkiRunArgs {
         deserialize_with = "deserialize_optional_i32_flexible"
     )]
     max_cards: Option<i32>,
+    /// 可选：附加生成要求（卡片风格/语言/格式类约束，作为高优先级规则注入生成提示）
+    #[serde(alias = "extra_requirements")]
+    extra_requirements: Option<String>,
     debug: Option<bool>,
 }
 
@@ -483,6 +486,9 @@ struct ChatAnkiStartArgs {
         deserialize_with = "deserialize_optional_i32_flexible"
     )]
     max_cards: Option<i32>,
+    /// 可选：附加生成要求（卡片风格/语言/格式类约束，作为高优先级规则注入生成提示）
+    #[serde(alias = "extra_requirements")]
+    extra_requirements: Option<String>,
     debug: Option<bool>,
 }
 
@@ -5645,6 +5651,7 @@ impl ChatAnkiToolExecutor {
             None,
             None,
             args.max_cards,
+            args.extra_requirements,
         )
         .await
     }
@@ -5713,6 +5720,7 @@ impl ChatAnkiToolExecutor {
             forced_route,
             preferred_resource_ids,
             args.max_cards,
+            args.extra_requirements,
         )
         .await
     }
@@ -5733,7 +5741,13 @@ impl ChatAnkiToolExecutor {
         forced_route: Option<ChatAnkiRoute>,
         preferred_resource_ids: Option<Vec<String>>,
         max_cards: Option<i32>,
+        extra_requirements: Option<String>,
     ) -> Result<ToolResultInfo, String> {
+        // 归一化附加要求：空白输入等价于未提供，避免注入空的“补充要求”段。
+        let extra_requirements = extra_requirements
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
         // E3 修复：maxCards 超过单次硬上限时 clamp 到 100（与 EnhancedAnkiService 校验一致），
         // 避免底层服务直接拒绝整个请求。
         const MAX_CARDS_HARD_LIMIT: i32 = 100;
@@ -5973,6 +5987,7 @@ impl ChatAnkiToolExecutor {
                 preferred_resource_ids,
                 pre_allocated_document_id: pre_doc_id_for_spawn.clone(),
                 max_cards,
+                extra_requirements,
                 cancel_token: pipeline_cancel_token,
             })
             .await
@@ -6038,6 +6053,8 @@ struct BackgroundParams {
     pre_allocated_document_id: String,
     /// 用户指定的最大卡片数量（可选）
     max_cards: Option<i32>,
+    /// 可选：附加生成要求（追加到高优先级 requirements）
+    extra_requirements: Option<String>,
     /// 取消令牌：kill switch / 聊天取消触发时走非破坏性取消（保留已生成卡片）
     cancel_token: CancellationToken,
 }
@@ -6870,6 +6887,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         &content_text,
         template.as_ref(),
         params.max_cards,
+        params.extra_requirements.as_deref(),
     );
 
     // 多模板模式：使用启动阶段已校验过的 template_ids，避免隐式“全模板”导致体验偏差。
@@ -8779,6 +8797,7 @@ fn build_generation_options(
     content_text: &str,
     template: Option<&crate::models::CustomAnkiTemplate>,
     max_cards_override: Option<i32>,
+    extra_requirements: Option<&str>,
 ) -> AnkiGenerationOptions {
     // Heuristic: glossary-like inputs (e.g. 120 term definitions) are prone to large single-shot outputs.
     // We bias toward smaller segments (less overlap) to reduce timeouts and missing items.
@@ -8839,7 +8858,7 @@ fn build_generation_options(
         template_fields_by_id: None,
         field_extraction_rules_by_id: None,
         // High-priority requirements (in system prompt).
-        custom_requirements: Some(build_chatanki_requirements(goal)),
+        custom_requirements: Some(build_chatanki_requirements(goal, extra_requirements)),
         segment_overlap_size: if glossary_mode { 0 } else { 200 },
         system_prompt: None,
         template_ids: None,
@@ -8848,9 +8867,9 @@ fn build_generation_options(
     }
 }
 
-fn build_chatanki_requirements(goal: &str) -> String {
+fn build_chatanki_requirements(goal: &str, extra_requirements: Option<&str>) -> String {
     // Keep it short; StreamingAnkiService will add delimiter/JSON formatting requirements.
-    format!(
+    let mut requirements = format!(
         "学习目标：{goal}\n\
 规则：\n\
 - 每张卡只测试一个知识点（最小信息原则），避免“一卡多问”。\n\
@@ -8858,7 +8877,11 @@ fn build_chatanki_requirements(goal: &str) -> String {
 - 优先覆盖内容中的所有条目/小点（尤其是名词解释/术语列表），不要遗漏。\n\
 - 正面问题要清晰可回忆；背面答案要简洁但不丢关键限定条件。\n\
 - tags 给 0~3 个关键词（可为空数组）。"
-    )
+    );
+    if let Some(extra) = extra_requirements.map(str::trim).filter(|s| !s.is_empty()) {
+        requirements.push_str(&format!("\n补充要求（调用方指定，优先遵守）：\n{extra}"));
+    }
+    requirements
 }
 
 fn default_template_fields() -> Vec<String> {
@@ -14840,6 +14863,216 @@ mod tests {
     }
 
     #[test]
+    fn test_decide_route_boundary_table() {
+        use VfsResourceType as T;
+
+        fn refs_of(types: &[VfsResourceType]) -> VfsContextRefData {
+            VfsContextRefData {
+                refs: types.iter().cloned().map(make_ref).collect(),
+                truncated: false,
+                total_count: types.len(),
+            }
+        }
+
+        let cases: Vec<(&str, Vec<VfsResourceType>, ChatAnkiRoute)> = vec![
+            // 空 refs：无图 → simple_text
+            ("empty refs", vec![], ChatAnkiRoute::SimpleText),
+            // 纯图 1-3 张：无 file 文本可依托 → vlm_full（不受 <=3 阈值影响）
+            ("1 image only", vec![T::Image], ChatAnkiRoute::VlmFull),
+            (
+                "2 images only",
+                vec![T::Image, T::Image],
+                ChatAnkiRoute::VlmFull,
+            ),
+            (
+                "3 images only",
+                vec![T::Image, T::Image, T::Image],
+                ChatAnkiRoute::VlmFull,
+            ),
+            // 3/4 图临界：有 file 时 3 图走 vlm_light，4 图翻转为 vlm_full
+            (
+                "file + 3 images (boundary: light)",
+                vec![T::File, T::Image, T::Image, T::Image],
+                ChatAnkiRoute::VlmLight,
+            ),
+            (
+                "file + 4 images (boundary: full)",
+                vec![T::File, T::Image, T::Image, T::Image, T::Image],
+                ChatAnkiRoute::VlmFull,
+            ),
+            // 非 file/image 资源被忽略：只有 note/textbook/retrieval → simple_text
+            (
+                "non-file/image resources only",
+                vec![T::Note, T::Textbook, T::Retrieval],
+                ChatAnkiRoute::SimpleText,
+            ),
+            // note 不计入 file_count：note + 图仍是 image-only 语义 → vlm_full
+            (
+                "note + 1 image (note is not a file)",
+                vec![T::Note, T::Image],
+                ChatAnkiRoute::VlmFull,
+            ),
+            // 混入无关资源不影响 file+少图判定
+            (
+                "file + image + note ignored extras",
+                vec![T::File, T::Image, T::Note, T::MindMap],
+                ChatAnkiRoute::VlmLight,
+            ),
+        ];
+
+        for (name, types, expected) in cases {
+            assert_eq!(
+                decide_route(&refs_of(&types)),
+                expected,
+                "case failed: {}",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_looks_like_glossary_content_boundaries() {
+        let entry_line = "术语：这是一个定义";
+        let plain_line = "普通叙述文本没有分隔符也不以数字开头";
+
+        fn content_of(lines: &[&str]) -> String {
+            lines.join("\n")
+        }
+
+        // 空文本 / 少量文本：直接 false
+        assert!(!looks_like_glossary_content(""));
+        assert!(!looks_like_glossary_content("术语：定义"));
+
+        // 行数临界：39 行全 entry-like 仍 false（< 40 行下限）
+        let lines_39 = vec![entry_line; 39];
+        assert!(!looks_like_glossary_content(&content_of(&lines_39)));
+
+        // 40 行全 entry-like → true
+        let lines_40 = vec![entry_line; 40];
+        assert!(looks_like_glossary_content(&content_of(&lines_40)));
+
+        // 比例临界：40 行中 18 条 entry-like = 0.45 → true（>= 阈值）
+        let mut ratio_at_threshold: Vec<&str> = Vec::new();
+        ratio_at_threshold.extend(std::iter::repeat(entry_line).take(18));
+        ratio_at_threshold.extend(std::iter::repeat(plain_line).take(22));
+        assert!(looks_like_glossary_content(&content_of(&ratio_at_threshold)));
+
+        // 比例临界：40 行中 17 条 entry-like = 0.425 → false（< 0.45）
+        let mut ratio_below_threshold: Vec<&str> = Vec::new();
+        ratio_below_threshold.extend(std::iter::repeat(entry_line).take(17));
+        ratio_below_threshold.extend(std::iter::repeat(plain_line).take(23));
+        assert!(!looks_like_glossary_content(&content_of(
+            &ratio_below_threshold
+        )));
+
+        // 空行被过滤：40 条 entry 行间穿插空行不影响判定
+        let interleaved: Vec<&str> = std::iter::repeat([entry_line, "", "   "])
+            .take(40)
+            .flatten()
+            .collect();
+        assert!(looks_like_glossary_content(&content_of(&interleaved)));
+
+        // entry 判定的多种形态：列表项与数字开头（字节长度 >= 3）
+        let mixed_entries: Vec<&str> = std::iter::repeat(["- 条目", "* 条目", "1、条目", "2) 条目"])
+            .take(10)
+            .flatten()
+            .collect();
+        assert!(looks_like_glossary_content(&content_of(&mixed_entries)));
+
+        // 数字开头但字节长度 < 3（如 "12"）不算 entry-like
+        let short_digit_lines = vec!["12"; 40];
+        assert!(!looks_like_glossary_content(&content_of(&short_digit_lines)));
+    }
+
+    fn make_windowless_ctx(session_id: &str) -> ExecutionContext {
+        let emitter = Arc::new(
+            crate::chat_v2::events::ChatV2EventEmitter::new_windowless_for_test(
+                session_id.to_string(),
+            ),
+        );
+        let registry = Arc::new(crate::tools::ToolRegistry::new_with(Vec::new()));
+        ExecutionContext::new(
+            session_id.to_string(),
+            "msg-analyze".to_string(),
+            "block-analyze".to_string(),
+            emitter,
+            registry,
+            None,
+        )
+    }
+
+    async fn run_analyze(content: &str, goal: Option<&str>) -> ToolResultInfo {
+        let executor = ChatAnkiToolExecutor::new();
+        let ctx = make_windowless_ctx("session-analyze");
+        let mut args = json!({ "content": content });
+        if let Some(g) = goal {
+            args["goal"] = json!(g);
+        }
+        let call = ToolCall::new(
+            "call-analyze".to_string(),
+            "chatanki_analyze".to_string(),
+            args,
+        );
+        executor
+            .execute_analyze(&call, &ctx, Instant::now())
+            .await
+            .expect("execute_analyze should not hard-fail")
+    }
+
+    /// Pin 已知行为：chatanki_analyze 永远推荐 route = "simple_text"。
+    /// 该工具只接收纯文本，无法感知图片资源，所以不会推荐 VLM 路由；
+    /// 若未来 analyze 开始输出其他 route，此测试应提醒同步更新调用方约定。
+    #[tokio::test]
+    async fn test_execute_analyze_always_recommends_simple_text() {
+        // 普通叙述文本：非 glossary 模式
+        let plain = run_analyze("这是一段普通的学习材料。\n它没有词典式结构。", Some("复习")).await;
+        assert!(plain.success);
+        assert_eq!(plain.output["status"], json!("ok"));
+        assert_eq!(plain.output["goal"], json!("复习"));
+        assert_eq!(plain.output["recommended"]["route"], json!("simple_text"));
+        assert_eq!(plain.output["recommended"]["glossaryMode"], json!(false));
+        assert_eq!(
+            plain.output["recommended"]["segmentOverlapSize"],
+            json!(200)
+        );
+        assert_eq!(
+            plain.output["recommended"]["maxOutputTokensOverride"],
+            Value::Null
+        );
+        assert_eq!(plain.output["recommended"]["temperature"], json!(0.3));
+        assert_eq!(plain.output["metrics"]["nonEmptyLines"], json!(2));
+
+        // glossary 式文本：glossaryMode 参数翻转，但 route 仍固定为 simple_text
+        let glossary_content = vec!["术语：定义"; 40].join("\n");
+        let glossary = run_analyze(&glossary_content, None).await;
+        assert!(glossary.success);
+        assert_eq!(
+            glossary.output["recommended"]["route"],
+            json!("simple_text")
+        );
+        assert_eq!(glossary.output["recommended"]["glossaryMode"], json!(true));
+        assert_eq!(
+            glossary.output["recommended"]["segmentOverlapSize"],
+            json!(0)
+        );
+        assert_eq!(
+            glossary.output["recommended"]["maxOutputTokensOverride"],
+            json!(2400)
+        );
+        assert_eq!(glossary.output["recommended"]["temperature"], json!(0.2));
+        assert_eq!(glossary.output["metrics"]["nonEmptyLines"], json!(40));
+        assert_eq!(glossary.output["metrics"]["entryLikeLines"], json!(40));
+        assert_eq!(glossary.output["goal"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn test_execute_analyze_rejects_blank_content() {
+        let result = run_analyze("   \n\t  ", None).await;
+        assert!(!result.success);
+        assert_eq!(result.error.as_deref(), Some("content is required"));
+    }
+
+    #[test]
     fn test_distribute_global_max_cards() {
         assert_eq!(distribute_global_max_cards(10, 2), vec![5, 5]);
         assert_eq!(distribute_global_max_cards(10, 3), vec![4, 3, 3]);
@@ -14890,6 +15123,50 @@ mod tests {
         assert_eq!(args.max_cards, Some(10));
         assert_eq!(args.resource_id.as_deref(), Some("file_a"));
         assert_eq!(args.resource_ids.unwrap_or_default().len(), 2);
+        assert_eq!(args.extra_requirements, None);
+    }
+
+    #[test]
+    fn test_chatanki_args_accept_extra_requirements() {
+        let run_args: ChatAnkiRunArgs = serde_json::from_value(serde_json::json!({
+            "goal": "test",
+            "templateMode": "all",
+            "extraRequirements": "答案统一使用英文"
+        }))
+        .expect("should parse run args");
+        assert_eq!(
+            run_args.extra_requirements.as_deref(),
+            Some("答案统一使用英文")
+        );
+
+        // snake_case alias 也应被接受
+        let start_args: ChatAnkiStartArgs = serde_json::from_value(serde_json::json!({
+            "goal": "test",
+            "content": "some content",
+            "templateMode": "all",
+            "extra_requirements": "每张卡背面附一个例句"
+        }))
+        .expect("should parse start args");
+        assert_eq!(
+            start_args.extra_requirements.as_deref(),
+            Some("每张卡背面附一个例句")
+        );
+    }
+
+    #[test]
+    fn test_build_chatanki_requirements_appends_extra_requirements() {
+        let base = build_chatanki_requirements("记忆名词解释", None);
+        assert!(base.contains("学习目标：记忆名词解释"));
+        assert!(!base.contains("补充要求"));
+
+        // 空白输入等价于未提供
+        let blank = build_chatanki_requirements("记忆名词解释", Some("   "));
+        assert_eq!(blank, base);
+
+        let with_extra = build_chatanki_requirements("记忆名词解释", Some(" 答案统一使用英文 "));
+        assert!(with_extra.starts_with(&base));
+        assert!(with_extra.contains("补充要求（调用方指定，优先遵守）"));
+        assert!(with_extra.contains("答案统一使用英文"));
     }
 
     #[test]
