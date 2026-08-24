@@ -45,7 +45,8 @@ describe('generativeUIRegistry', () => {
     expect(generativeUIRegistry.has('stat-card')).toBe(true);
     expect(generativeUIRegistry.has('list')).toBe(true);
     expect(generativeUIRegistry.has('action-bar')).toBe(true);
-    expect(generativeUIRegistry.keys().length).toBeGreaterThanOrEqual(7);
+    expect(generativeUIRegistry.has('flashcard-preview')).toBe(true);
+    expect(generativeUIRegistry.keys().length).toBeGreaterThanOrEqual(10);
   });
 });
 

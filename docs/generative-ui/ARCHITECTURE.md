@@ -44,12 +44,25 @@ src/features/generative-ui/
 | 阶段 | 场景 | 状态 |
 |------|------|------|
 | P0 | 核心 registry + renderer + 测试 | ✅ Round 1 |
-| P1 | Chat 侧边 Copilot 面板 | 待 Round 2+ |
-| P2 | 学习 Hub / 复习计划动态仪表盘 | 待 Round 3+ |
-| P3 | Notes 摘要卡片 / 调研报告 UI | 待 Round 4+ |
-| P4 | 与 blockRegistry 桥接 | 待 Round 5+ |
+| P1 | Chat generative_ui 块桥接 + Copilot Panel | ✅ Round 2 |
+| P2 | 学习专用 blocks（flashcard/review/mistake） | ✅ Round 2 |
+| P3 | Notes 摘要卡片 / 调研报告 UI | 待 Round 3+ |
+| P4 | 流式 hook 接入真实 LLM pipeline | 待 Round 4+ |
 
-## 6. 示例意图
+## 6. Chat 桥接
+
+`src/features/chat/plugins/blocks/generativeUI.tsx` 注册 `generative_ui` 块类型：
+
+```json
+{
+  "intent": { "version": "1", "blocks": [...] },
+  "isStreaming": false
+}
+```
+
+桥接工具：`extractGenerativeUIIntent()` in `bridge/chatBlockBridge.ts`
+
+## 7. 示例意图
 
 ```json
 {

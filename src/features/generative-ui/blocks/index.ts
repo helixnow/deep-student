@@ -12,6 +12,9 @@ import {
   textBlockPropsSchema,
   keyValueGridPropsSchema,
 } from '../schema';
+import { flashcardPreviewPropsSchema } from '../components/FlashcardPreviewBlock';
+import { reviewCalendarPropsSchema } from '../components/ReviewCalendarBlock';
+import { mistakeAnalysisPropsSchema } from '../components/MistakeAnalysisBlock';
 import { StatCardBlock } from '../components/StatCardBlock';
 import { AlertBlock } from '../components/AlertBlock';
 import { ListBlock } from '../components/ListBlock';
@@ -19,6 +22,9 @@ import { ProgressBlock } from '../components/ProgressBlock';
 import { ActionBarBlock } from '../components/ActionBarBlock';
 import { TextBlock } from '../components/TextBlock';
 import { KeyValueGridBlock } from '../components/KeyValueGridBlock';
+import { FlashcardPreviewBlock } from '../components/FlashcardPreviewBlock';
+import { ReviewCalendarBlock } from '../components/ReviewCalendarBlock';
+import { MistakeAnalysisBlock } from '../components/MistakeAnalysisBlock';
 
 generativeUIRegistry.register({
   type: 'stat-card',
@@ -72,6 +78,27 @@ generativeUIRegistry.register({
   description: '键值对网格：摘要/metadata',
 });
 
+generativeUIRegistry.register({
+  type: 'flashcard-preview',
+  component: FlashcardPreviewBlock,
+  propsSchema: flashcardPreviewPropsSchema,
+  description: '闪卡预览：front/back/tags',
+});
+
+generativeUIRegistry.register({
+  type: 'review-calendar',
+  component: ReviewCalendarBlock,
+  propsSchema: reviewCalendarPropsSchema,
+  description: '复习日历：日期 + 待复习数量',
+});
+
+generativeUIRegistry.register({
+  type: 'mistake-analysis',
+  component: MistakeAnalysisBlock,
+  propsSchema: mistakeAnalysisPropsSchema,
+  description: '错题分析：主题 + 错误率 + 建议',
+});
+
 export {
   StatCardBlock,
   AlertBlock,
@@ -80,4 +107,7 @@ export {
   ActionBarBlock,
   TextBlock,
   KeyValueGridBlock,
+  FlashcardPreviewBlock,
+  ReviewCalendarBlock,
+  MistakeAnalysisBlock,
 };

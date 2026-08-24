@@ -1,5 +1,27 @@
 # Generative UI 进度日志
 
+## Round 2（2026-08-24）
+
+### 父代理
+- [x] `useGenerativeUIStream` hook
+- [x] `GenerativeUIPanel` Copilot 面板壳
+- [x] 学习专用 blocks：flashcard-preview, review-calendar, mistake-analysis
+- [x] Chat `generative_ui` 块桥接
+- [x] 新增测试 useGenerativeUIStream + chatBlockBridge
+
+### 子代理（Round 1 调研，10 × xhigh）
+| # | 任务 | 状态 |
+|---|------|------|
+| 1-10 | Round 1 调研 | 进行中/待合并 |
+
+### 下一轮计划（Round 3）
+- 合并 Round 1 子代理调研结论
+- Notes / Learning Hub 集成 POC
+- Style Lab 演示页挂载 GenerativeUIDemo
+- 流式 parser 增强 + a11y post-processing
+
+---
+
 ## Round 1（2026-08-24）
 
 ### 父代理

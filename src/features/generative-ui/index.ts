@@ -26,7 +26,10 @@ export {
 export { GenerativeUIStreamParser, tryParsePartialIntent } from './parser';
 export { GenerativeUIRenderer } from './GenerativeUIRenderer';
 export { GenerativeUIChrome } from './GenerativeUIChrome';
+export { GenerativeUIPanel } from './components/GenerativeUIPanel';
+export { useGenerativeUIStream } from './hooks/useGenerativeUIStream';
 export { buildGenerativeUISystemPrompt, LEARNING_DASHBOARD_EXAMPLE } from './prompts';
+export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
 
 // 注册内置块
 import './blocks';
