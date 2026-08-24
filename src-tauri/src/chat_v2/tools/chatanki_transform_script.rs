@@ -17,6 +17,7 @@
 //! `chatanki_executor.rs` 的 `execute_transform` 中复用 ops 模式同一条路径完成。
 
 use std::collections::HashSet;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -26,8 +27,8 @@ use serde_json::{json, Value};
 
 use super::chatanki_transform::TransformFields;
 use super::shell_sandbox::{
-    platform_sandbox_contract, terminate_process_group, PlatformSandboxBackend, SandboxBackend,
-    SandboxCapability, SandboxPolicy,
+    cleanup_finished_process_group, platform_sandbox_contract, terminate_process_group,
+    PlatformSandboxBackend, SandboxBackend, SandboxCapability, SandboxEffectReport, SandboxPolicy,
 };
 
 // ============================================================================
@@ -44,6 +45,15 @@ pub const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_MAX_MS: u64 = 120_000;
 pub const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_DEFAULT_MS: u64 = 30_000;
 /// `CHATANKI_OUTPUT.json` 文件大小上限。
 pub const CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES: u64 = 32 * 1024 * 1024;
+/// stdout / stderr 各自最多从管道消费的字节数。达到上限后关闭对应管道，
+/// 避免失控日志在整个 timeout 窗口内持续占用宿主 CPU / I/O。
+pub const CHATANKI_TRANSFORM_SCRIPT_STREAM_MAX_BYTES: u64 = 1024 * 1024;
+/// stdout / stderr 各自进入工具返回值的日志尾部字节数。
+pub const CHATANKI_TRANSFORM_SCRIPT_STREAM_TAIL_BYTES: usize = 16 * 1024;
+/// transform script 接受的平台后端进程数上限。当前 Unix RLIMIT_NPROC 为
+/// 2048，Windows Job Object 更严格（128）；未来后端若放宽超过此值则
+/// transform script fail-closed，而不是静默失去进程洪泛边界。
+pub const CHATANKI_TRANSFORM_SCRIPT_PROCESS_MAX: u32 = 2_048;
 /// 脚本回传的单卡 tags 数上限（宽于 ops 单 op 的 50：允许全量重写标签集）。
 pub const CHATANKI_TRANSFORM_SCRIPT_TAGS_LIMIT: usize = 100;
 /// 脚本**新写入**的单字段（front/back/text）字符数上限（Round 4 安全复审）：
@@ -64,8 +74,6 @@ pub const CHATANKI_TRANSFORM_SCRIPT_ID_MAX_CHARS: usize = 128;
 /// 逐卡拒绝 detail 中回显脚本自报内容（如未知键名）的截断长度，
 /// 防止敌意超长键名借 detail 放大工具返回值。
 const SCRIPT_ISSUE_ECHO_MAX_CHARS: usize = 64;
-/// stdout / stderr 各自保留的日志尾部字节数（数据面走文件，stdout 只承载日志）。
-const SCRIPT_STREAM_TAIL_BYTES: usize = 16 * 1024;
 /// 超时杀进程组后等待收尸 / 排空管道的宽限期。
 const SCRIPT_CLEANUP_GRACE: Duration = Duration::from_secs(5);
 
@@ -206,9 +214,9 @@ pub enum ScriptOutputError {
 impl ScriptOutputError {
     pub fn detail(&self) -> String {
         match self {
-            Self::TooLarge { bytes, limit } => format!(
-                "CHATANKI_OUTPUT.json is {bytes} bytes, exceeding the {limit} byte limit"
-            ),
+            Self::TooLarge { bytes, limit } => {
+                format!("CHATANKI_OUTPUT.json is {bytes} bytes, exceeding the {limit} byte limit")
+            }
             Self::Parse(detail) | Self::Schema(detail) => detail.clone(),
         }
     }
@@ -338,9 +346,7 @@ fn evaluate_card_entry(
                     "back" => value == &before.back,
                     _ => Some(value.as_str()) == before.text.as_deref(),
                 };
-                if !unchanged
-                    && value.chars().count() > CHATANKI_TRANSFORM_SCRIPT_FIELD_MAX_CHARS
-                {
+                if !unchanged && value.chars().count() > CHATANKI_TRANSFORM_SCRIPT_FIELD_MAX_CHARS {
                     return Err(issue(
                         "field_too_large",
                         format!(
@@ -618,10 +624,7 @@ fn interpreter_search_dirs() -> Vec<PathBuf> {
 }
 
 /// 在目录集中按候选名顺序解析第一个可执行文件的绝对路径（纯函数，可单测）。
-pub fn resolve_interpreter_in_dirs(
-    candidates: &[&str],
-    dirs: &[PathBuf],
-) -> Option<PathBuf> {
+pub fn resolve_interpreter_in_dirs(candidates: &[&str], dirs: &[PathBuf]) -> Option<PathBuf> {
     for candidate in candidates {
         for dir in dirs {
             let path = dir.join(candidate);
@@ -837,6 +840,71 @@ pub fn prepare_transform_job(
 // 沙箱执行
 // ============================================================================
 
+/// transform script 在所有受支持桌面后端上必须具备的资源合同。
+///
+/// wall-clock timeout 由每次请求携带，故在 `ScriptExecutionReport::to_json`
+/// 中与这些固定/后端上限一起序列化。`sandbox_file_size_max_bytes` 是平台
+/// 额外纵深防御（Unix RLIMIT_FSIZE；Windows 为 `None`）；可移植的输出读入
+/// 上限始终由 `output_file_max_bytes` 独立强制。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScriptResourceLimits {
+    pub stream_max_bytes: u64,
+    pub stream_tail_bytes: usize,
+    pub output_file_max_bytes: u64,
+    pub sandbox_file_size_max_bytes: Option<u64>,
+    pub active_process_max: u32,
+}
+
+impl ScriptResourceLimits {
+    fn to_json(&self, timeout: Duration) -> Value {
+        json!({
+            "wallClockTimeoutMs": timeout.as_millis() as u64,
+            "stdoutMaxBytes": self.stream_max_bytes,
+            "stderrMaxBytes": self.stream_max_bytes,
+            "stdoutTailBytes": self.stream_tail_bytes,
+            "stderrTailBytes": self.stream_tail_bytes,
+            "outputFileMaxBytes": self.output_file_max_bytes,
+            "sandboxFileMaxBytes": self.sandbox_file_size_max_bytes,
+            "activeProcessesMax": self.active_process_max,
+        })
+    }
+}
+
+/// 把平台后端能力收敛为 transform 的可移植资源合同。
+///
+/// script 模式本来就要求硬沙箱；这里进一步要求网络隔离、进程组隔离和有限
+/// 进程数均被后端声明为已执行。任一项缺失或未来被放宽到 transform 上限之外
+/// 都 fail-closed，不会降级成无界执行。
+pub fn transform_resource_limits(
+    effects: &SandboxEffectReport,
+) -> Result<ScriptResourceLimits, String> {
+    if !effects.enforced {
+        return Err("transform script requires an enforced hard sandbox".to_string());
+    }
+    if !effects.network_enforced {
+        return Err("transform script requires enforced network isolation".to_string());
+    }
+    if !effects.process_group_isolated {
+        return Err("transform script requires isolated process-group cleanup".to_string());
+    }
+    let Some(active_process_max) = effects.active_process_limit else {
+        return Err("transform script requires an active-process limit".to_string());
+    };
+    if active_process_max == 0 || active_process_max > CHATANKI_TRANSFORM_SCRIPT_PROCESS_MAX {
+        return Err(format!(
+            "sandbox active-process limit {active_process_max} is outside the transform script range 1..={CHATANKI_TRANSFORM_SCRIPT_PROCESS_MAX}"
+        ));
+    }
+
+    Ok(ScriptResourceLimits {
+        stream_max_bytes: CHATANKI_TRANSFORM_SCRIPT_STREAM_MAX_BYTES,
+        stream_tail_bytes: CHATANKI_TRANSFORM_SCRIPT_STREAM_TAIL_BYTES,
+        output_file_max_bytes: CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES,
+        sandbox_file_size_max_bytes: effects.file_size_limit_bytes,
+        active_process_max,
+    })
+}
+
 /// 一次脚本执行的观测报告（成功与否都会尽力填充，进入工具返回值与审计）。
 #[derive(Debug, Clone)]
 pub struct ScriptExecutionReport {
@@ -846,8 +914,13 @@ pub struct ScriptExecutionReport {
     pub duration_ms: u64,
     pub stdout_tail: String,
     pub stderr_tail: String,
+    pub stdout_bytes_read: u64,
+    pub stderr_bytes_read: u64,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
     pub sandbox_backend: &'static str,
     pub interpreter: String,
+    pub resource_limits: ScriptResourceLimits,
 }
 
 impl ScriptExecutionReport {
@@ -860,8 +933,13 @@ impl ScriptExecutionReport {
             "durationMs": self.duration_ms,
             "stdoutTail": self.stdout_tail,
             "stderrTail": self.stderr_tail,
+            "stdoutBytesRead": self.stdout_bytes_read,
+            "stderrBytesRead": self.stderr_bytes_read,
+            "stdoutTruncated": self.stdout_truncated,
+            "stderrTruncated": self.stderr_truncated,
             "sandbox": self.sandbox_backend,
             "interpreter": self.interpreter,
+            "resourceLimits": self.resource_limits.to_json(timeout),
         })
     }
 }
@@ -892,31 +970,101 @@ pub enum ScriptRunError {
     },
 }
 
-/// 有界尾部捕获：保留流的最后 `cap` 字节（数据面走文件，stdout/stderr 只承载日志）。
-async fn drain_stream_tail<R>(mut reader: R, cap: usize) -> Vec<u8>
+#[derive(Debug, PartialEq, Eq)]
+struct StreamCapture {
+    tail: Vec<u8>,
+    bytes_read: u64,
+    truncated: bool,
+}
+
+/// 有界日志捕获：每条流最多消费 `max_bytes + 1` 字节用于识别超限，报告仅保留
+/// 已接受前缀的最后 `tail_cap` 字节。超限后 reader 随 task 结束而关闭；持续写日志
+/// 的脚本会收到 broken pipe，而宿主不会在整个 timeout 窗口内无限排空日志。
+async fn drain_stream_tail<R>(mut reader: R, tail_cap: usize, max_bytes: u64) -> StreamCapture
 where
     R: tokio::io::AsyncRead + Unpin,
 {
     use tokio::io::AsyncReadExt;
     let mut tail: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 8192];
+    let mut bytes_read = 0u64;
+    let probe_limit = max_bytes.saturating_add(1);
     loop {
-        match reader.read(&mut chunk).await {
+        let remaining = probe_limit.saturating_sub(bytes_read);
+        if remaining == 0 {
+            break;
+        }
+        let read_len = usize::try_from(remaining.min(chunk.len() as u64)).unwrap_or(chunk.len());
+        match reader.read(&mut chunk[..read_len]).await {
             Ok(0) | Err(_) => break,
             Ok(read) => {
-                tail.extend_from_slice(&chunk[..read]);
-                if tail.len() > cap {
-                    let excess = tail.len() - cap;
+                let accepted = usize::try_from(max_bytes.saturating_sub(bytes_read))
+                    .unwrap_or(usize::MAX)
+                    .min(read);
+                tail.extend_from_slice(&chunk[..accepted]);
+                if tail.len() > tail_cap {
+                    let excess = tail.len() - tail_cap;
                     tail.drain(..excess);
+                }
+                bytes_read = bytes_read.saturating_add(read as u64);
+                if bytes_read > max_bytes {
+                    break;
                 }
             }
         }
     }
-    tail
+    StreamCapture {
+        tail,
+        bytes_read,
+        truncated: bytes_read > max_bytes,
+    }
 }
 
 fn tail_to_string(tail: Vec<u8>) -> String {
     String::from_utf8_lossy(&tail).into_owned()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum BoundedOutputReadError {
+    Missing,
+    NotRegular,
+    TooLarge { bytes: u64, limit: u64 },
+    Io(String),
+}
+
+/// 输出文件的双重有界读取：先用 metadata 快速拒绝，再只读取 `limit + 1`
+/// 字节。即使文件在 metadata 检查后发生变化，也不会进入无界 `std::fs::read`
+/// 分配路径。
+fn read_output_file_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, BoundedOutputReadError> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => metadata,
+        Ok(_) => return Err(BoundedOutputReadError::NotRegular),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(BoundedOutputReadError::Missing);
+        }
+        Err(error) => return Err(BoundedOutputReadError::Io(error.to_string())),
+    };
+    if metadata.len() > limit {
+        return Err(BoundedOutputReadError::TooLarge {
+            bytes: metadata.len(),
+            limit,
+        });
+    }
+
+    let file =
+        std::fs::File::open(path).map_err(|error| BoundedOutputReadError::Io(error.to_string()))?;
+    let mut output =
+        Vec::with_capacity(usize::try_from(metadata.len().min(limit)).unwrap_or_default());
+    file.take(limit.saturating_add(1))
+        .read_to_end(&mut output)
+        .map_err(|error| BoundedOutputReadError::Io(error.to_string()))?;
+    if output.len() as u64 > limit {
+        return Err(BoundedOutputReadError::TooLarge {
+            bytes: output.len() as u64,
+            limit,
+        });
+    }
+    Ok(output)
 }
 
 /// 环境变量白名单：不继承父进程任何变量；只注入合同变量、job 目录 temp 指向、
@@ -990,6 +1138,8 @@ pub async fn run_transform_script(
     )
     .map_err(ScriptRunError::Setup)?;
     let policy = transform_sandbox_policy(&job.job_dir, &interpreter);
+    let resource_limits = transform_resource_limits(&backend.effect_report(&policy))
+        .map_err(ScriptRunError::SandboxUnavailable)?;
 
     let mut command = backend
         .command(&shell_command, &job.job_dir, &policy)
@@ -1007,15 +1157,25 @@ pub async fn run_transform_script(
             )));
         }
     };
+    let process_id = child.id().ok_or_else(|| {
+        backend.cleanup_command_resources(&command);
+        ScriptRunError::Setup("Sandboxed transform script did not expose a process id".to_string())
+    })?;
 
-    let stdout_task = child
-        .stdout
-        .take()
-        .map(|stream| tokio::spawn(drain_stream_tail(stream, SCRIPT_STREAM_TAIL_BYTES)));
-    let stderr_task = child
-        .stderr
-        .take()
-        .map(|stream| tokio::spawn(drain_stream_tail(stream, SCRIPT_STREAM_TAIL_BYTES)));
+    let stdout_task = child.stdout.take().map(|stream| {
+        tokio::spawn(drain_stream_tail(
+            stream,
+            CHATANKI_TRANSFORM_SCRIPT_STREAM_TAIL_BYTES,
+            CHATANKI_TRANSFORM_SCRIPT_STREAM_MAX_BYTES,
+        ))
+    });
+    let stderr_task = child.stderr.take().map(|stream| {
+        tokio::spawn(drain_stream_tail(
+            stream,
+            CHATANKI_TRANSFORM_SCRIPT_STREAM_TAIL_BYTES,
+            CHATANKI_TRANSFORM_SCRIPT_STREAM_MAX_BYTES,
+        ))
+    });
 
     let wait_result = tokio::time::timeout(script.timeout, child.wait()).await;
     let timed_out = wait_result.is_err();
@@ -1030,42 +1190,68 @@ pub async fn run_transform_script(
         Err(_elapsed) => {
             // 超时：终止整个进程组（含脚本 fork 的后代），限期收尸。
             if let Err(error) = terminate_process_group(&mut child) {
-                log::warn!("[chatanki_transform] failed to terminate timed-out script group: {error}");
+                log::warn!(
+                    "[chatanki_transform] failed to terminate timed-out script group: {error}"
+                );
             }
             let _ = tokio::time::timeout(SCRIPT_CLEANUP_GRACE, child.wait()).await;
             None
         }
     };
+    if !timed_out {
+        // 前台解释器可能 0 退出但留下继承同一进程组的后台后代。读取输出前先
+        // 清理它们，关闭继续改写输出文件/占用日志管道的竞态窗口。
+        if let Err(error) = cleanup_finished_process_group(process_id) {
+            log::warn!(
+                "[chatanki_transform] failed to clean up finished script descendants: {error}"
+            );
+        }
+    }
     backend.cleanup_command_resources(&command);
 
     // 进程（组）已退出/被杀，管道随之关闭；限期回收日志尾部。
-    let collect_tail = |task: Option<tokio::task::JoinHandle<Vec<u8>>>| async {
+    let collect_stream = |task: Option<tokio::task::JoinHandle<StreamCapture>>| async {
         match task {
-            None => String::new(),
-            Some(mut task) => {
-                match tokio::time::timeout(SCRIPT_CLEANUP_GRACE, &mut task).await {
-                    Ok(Ok(tail)) => tail_to_string(tail),
-                    Ok(Err(_)) => String::new(),
-                    Err(_) => {
-                        task.abort();
-                        String::new()
+            None => StreamCapture {
+                tail: Vec::new(),
+                bytes_read: 0,
+                truncated: false,
+            },
+            Some(mut task) => match tokio::time::timeout(SCRIPT_CLEANUP_GRACE, &mut task).await {
+                Ok(Ok(capture)) => capture,
+                Ok(Err(_)) => StreamCapture {
+                    tail: Vec::new(),
+                    bytes_read: 0,
+                    truncated: false,
+                },
+                Err(_) => {
+                    task.abort();
+                    StreamCapture {
+                        tail: Vec::new(),
+                        bytes_read: 0,
+                        truncated: false,
                     }
                 }
-            }
+            },
         }
     };
-    let stdout_tail = collect_tail(stdout_task).await;
-    let stderr_tail = collect_tail(stderr_task).await;
+    let stdout = collect_stream(stdout_task).await;
+    let stderr = collect_stream(stderr_task).await;
 
     let report = ScriptExecutionReport {
         language: script.language.as_str(),
         exit_code: exit_status.and_then(|status| status.code()),
         timed_out,
         duration_ms: started.elapsed().as_millis() as u64,
-        stdout_tail,
-        stderr_tail,
+        stdout_tail: tail_to_string(stdout.tail),
+        stderr_tail: tail_to_string(stderr.tail),
+        stdout_bytes_read: stdout.bytes_read,
+        stderr_bytes_read: stderr.bytes_read,
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
         sandbox_backend: contract.backend,
         interpreter: interpreter.to_string_lossy().into_owned(),
+        resource_limits,
     };
 
     if timed_out {
@@ -1075,25 +1261,32 @@ pub async fn run_transform_script(
         return Err(ScriptRunError::NonZeroExit(report));
     }
 
-    let metadata = match std::fs::symlink_metadata(&job.output_path) {
-        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => metadata,
-        Ok(_) => {
+    let output_bytes = match read_output_file_bounded(
+        &job.output_path,
+        CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES,
+    ) {
+        Ok(output) => output,
+        Err(BoundedOutputReadError::Missing) => {
+            return Err(ScriptRunError::OutputMissing(report));
+        }
+        Err(BoundedOutputReadError::NotRegular) => {
             return Err(ScriptRunError::Setup(format!(
                 "{CHATANKI_OUTPUT_FILE} must be a regular file"
             )));
         }
-        Err(_) => return Err(ScriptRunError::OutputMissing(report)),
+        Err(BoundedOutputReadError::TooLarge { bytes, limit }) => {
+            return Err(ScriptRunError::OutputTooLarge {
+                report,
+                bytes,
+                limit,
+            });
+        }
+        Err(BoundedOutputReadError::Io(error)) => {
+            return Err(ScriptRunError::Setup(format!(
+                "Failed to read {CHATANKI_OUTPUT_FILE}: {error}"
+            )));
+        }
     };
-    if metadata.len() > CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES {
-        return Err(ScriptRunError::OutputTooLarge {
-            report,
-            bytes: metadata.len(),
-            limit: CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES,
-        });
-    }
-    let output_bytes = std::fs::read(&job.output_path).map_err(|error| {
-        ScriptRunError::Setup(format!("Failed to read {CHATANKI_OUTPUT_FILE}: {error}"))
-    })?;
 
     Ok((report, output_bytes, job.job_ref))
 }
@@ -1113,7 +1306,13 @@ mod tests {
             .and_then(TransformScriptSpec::normalize)
     }
 
-    fn make_card(id: &str, front: &str, back: &str, text: Option<&str>, tags: &[&str]) -> crate::models::AnkiCard {
+    fn make_card(
+        id: &str,
+        front: &str,
+        back: &str,
+        text: Option<&str>,
+        tags: &[&str],
+    ) -> crate::models::AnkiCard {
         crate::models::AnkiCard {
             front: front.to_string(),
             back: back.to_string(),
@@ -1245,6 +1444,48 @@ mod tests {
         assert!(matches!(error, ScriptOutputError::TooLarge { .. }));
     }
 
+    #[test]
+    fn bounded_output_reader_accepts_exact_limit_and_rejects_limit_plus_one() {
+        let temp = tempfile::tempdir().unwrap();
+        let output = temp.path().join(CHATANKI_OUTPUT_FILE);
+        std::fs::write(&output, b"12345678").unwrap();
+        assert_eq!(read_output_file_bounded(&output, 8).unwrap(), b"12345678");
+
+        std::fs::write(&output, b"123456789").unwrap();
+        assert_eq!(
+            read_output_file_bounded(&output, 8).unwrap_err(),
+            BoundedOutputReadError::TooLarge { bytes: 9, limit: 8 }
+        );
+    }
+
+    #[test]
+    fn bounded_output_reader_rejects_missing_and_non_regular_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("missing.json");
+        assert_eq!(
+            read_output_file_bounded(&missing, 8).unwrap_err(),
+            BoundedOutputReadError::Missing
+        );
+        assert_eq!(
+            read_output_file_bounded(temp.path(), 8).unwrap_err(),
+            BoundedOutputReadError::NotRegular
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_capture_stops_after_budget_and_keeps_bounded_tail() {
+        let payload: Vec<u8> = (0u8..64).collect();
+        let capture = drain_stream_tail(&payload[..], 8, 32).await;
+        assert_eq!(capture.bytes_read, 33, "one probe byte detects overflow");
+        assert!(capture.truncated);
+        assert_eq!(capture.tail, payload[24..32]);
+
+        let capture = drain_stream_tail(&payload[..16], 8, 32).await;
+        assert_eq!(capture.bytes_read, 16);
+        assert!(!capture.truncated);
+        assert_eq!(capture.tail, payload[8..16]);
+    }
+
     // ------------------------------------------------------------------
     // 输出校验：逐卡合同
     // ------------------------------------------------------------------
@@ -1322,13 +1563,16 @@ mod tests {
     fn output_rejects_empty_fields_and_wrong_types() {
         let cards = [make_card("card-1", "Q", "A", None, &[])];
 
-        let raw = serde_json::to_vec(&json!({ "cards": [{ "id": "card-1", "front": "  " }] }))
-            .unwrap();
+        let raw =
+            serde_json::to_vec(&json!({ "cards": [{ "id": "card-1", "front": "  " }] })).unwrap();
         let evaluation = evaluate_script_output(&raw, &cards).unwrap();
-        assert_eq!(evaluation.card_plans[0].as_ref().unwrap_err().code, "empty_field");
+        assert_eq!(
+            evaluation.card_plans[0].as_ref().unwrap_err().code,
+            "empty_field"
+        );
 
-        let raw = serde_json::to_vec(&json!({ "cards": [{ "id": "card-1", "back": 42 }] }))
-            .unwrap();
+        let raw =
+            serde_json::to_vec(&json!({ "cards": [{ "id": "card-1", "back": 42 }] })).unwrap();
         let evaluation = evaluate_script_output(&raw, &cards).unwrap();
         assert_eq!(
             evaluation.card_plans[0].as_ref().unwrap_err().code,
@@ -1338,7 +1582,10 @@ mod tests {
         let raw = serde_json::to_vec(&json!({ "cards": [{ "id": "card-1", "tags": ["ok", ""] }] }))
             .unwrap();
         let evaluation = evaluate_script_output(&raw, &cards).unwrap();
-        assert_eq!(evaluation.card_plans[0].as_ref().unwrap_err().code, "empty_field");
+        assert_eq!(
+            evaluation.card_plans[0].as_ref().unwrap_err().code,
+            "empty_field"
+        );
     }
 
     #[test]
@@ -1397,8 +1644,8 @@ mod tests {
         let tags: Vec<String> = (0..(CHATANKI_TRANSFORM_SCRIPT_TAGS_LIMIT + 1))
             .map(|index| format!("tag-{index}"))
             .collect();
-        let raw = serde_json::to_vec(&json!({ "cards": [{ "id": "card-1", "tags": tags }] }))
-            .unwrap();
+        let raw =
+            serde_json::to_vec(&json!({ "cards": [{ "id": "card-1", "tags": tags }] })).unwrap();
         let evaluation = evaluate_script_output(&raw, &cards).unwrap();
         assert_eq!(
             evaluation.card_plans[0].as_ref().unwrap_err().code,
@@ -1430,7 +1677,10 @@ mod tests {
         }))
         .unwrap();
         let evaluation = evaluate_script_output(&raw, &cards).unwrap();
-        assert!(evaluation.card_plans[0].is_ok(), "echo of existing oversized field must pass");
+        assert!(
+            evaluation.card_plans[0].is_ok(),
+            "echo of existing oversized field must pass"
+        );
         let issue = evaluation.card_plans[1].as_ref().unwrap_err();
         assert_eq!(issue.code, "field_too_large");
         assert!(issue.detail.contains("character limit"), "{}", issue.detail);
@@ -1453,7 +1703,10 @@ mod tests {
         }))
         .unwrap();
         let evaluation = evaluate_script_output(&raw, &cards).unwrap();
-        assert!(evaluation.card_plans[0].is_ok(), "existing tag echo must pass");
+        assert!(
+            evaluation.card_plans[0].is_ok(),
+            "existing tag echo must pass"
+        );
         assert_eq!(
             evaluation.card_plans[1].as_ref().unwrap_err().code,
             "tag_too_large"
@@ -1496,7 +1749,11 @@ mod tests {
         .unwrap();
         let error = evaluate_script_output(&raw, &cards).unwrap_err();
         assert!(matches!(error, ScriptOutputError::Schema(_)), "{error:?}");
-        assert!(error.detail().contains("character limit"), "{}", error.detail());
+        assert!(
+            error.detail().contains("character limit"),
+            "{}",
+            error.detail()
+        );
         assert!(
             !error.detail().contains(&forged_id),
             "detail must not echo the forged id body"
@@ -1545,11 +1802,10 @@ mod tests {
 
         // 无执行位 → 视为不可用
         std::fs::set_permissions(&python, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(resolve_interpreter_in_dirs(
-            &["python3", "python"],
-            &[temp.path().to_path_buf()]
-        )
-        .is_none());
+        assert!(
+            resolve_interpreter_in_dirs(&["python3", "python"], &[temp.path().to_path_buf()])
+                .is_none()
+        );
     }
 
     #[test]
@@ -1570,12 +1826,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(node, "'/usr/bin/node' '/tmp/job/transform_script.js'");
-        let powershell =
-            build_shell_command("windows_powershell", ScriptLanguage::Python, interpreter, script)
-                .unwrap();
+        let powershell = build_shell_command(
+            "windows_powershell",
+            ScriptLanguage::Python,
+            interpreter,
+            script,
+        )
+        .unwrap();
         assert!(powershell.starts_with("& '"));
-        assert!(build_shell_command("unavailable", ScriptLanguage::Python, interpreter, script)
-            .is_err());
+        assert!(
+            build_shell_command("unavailable", ScriptLanguage::Python, interpreter, script)
+                .is_err()
+        );
     }
 
     #[test]
@@ -1592,10 +1854,75 @@ mod tests {
         assert!(policy.restrict_read_to_roots);
     }
 
+    fn sandbox_effects(active_process_limit: Option<u32>) -> SandboxEffectReport {
+        SandboxEffectReport {
+            backend: "test_hard_sandbox",
+            shell_kind: "posix_sh",
+            output_encoding: "utf-8",
+            enforced: true,
+            network_enforced: true,
+            process_group_isolated: true,
+            cpu_time_limit_seconds: Some(130),
+            file_size_limit_bytes: Some(4 * 1024 * 1024 * 1024),
+            active_process_limit,
+            readable_roots: 1,
+            writable_roots: 1,
+            protected_read_roots: 0,
+            protected_write_roots: 0,
+        }
+    }
+
+    #[test]
+    fn resource_contract_exposes_portable_stream_file_and_process_limits() {
+        let limits = transform_resource_limits(&sandbox_effects(Some(128))).unwrap();
+        assert_eq!(
+            limits.stream_max_bytes,
+            CHATANKI_TRANSFORM_SCRIPT_STREAM_MAX_BYTES
+        );
+        assert_eq!(
+            limits.stream_tail_bytes,
+            CHATANKI_TRANSFORM_SCRIPT_STREAM_TAIL_BYTES
+        );
+        assert_eq!(
+            limits.output_file_max_bytes,
+            CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES
+        );
+        assert_eq!(limits.active_process_max, 128);
+
+        let json = limits.to_json(Duration::from_secs(30));
+        assert_eq!(json["wallClockTimeoutMs"], 30_000);
+        assert_eq!(json["stdoutMaxBytes"], 1024 * 1024);
+        assert_eq!(json["stderrMaxBytes"], 1024 * 1024);
+        assert_eq!(json["outputFileMaxBytes"], 32 * 1024 * 1024);
+        assert_eq!(json["activeProcessesMax"], 128);
+    }
+
+    #[test]
+    fn resource_contract_fails_closed_without_bounded_process_tree() {
+        let missing = transform_resource_limits(&sandbox_effects(None)).unwrap_err();
+        assert!(missing.contains("active-process limit"), "{missing}");
+
+        let mut relaxed = sandbox_effects(Some(CHATANKI_TRANSFORM_SCRIPT_PROCESS_MAX + 1));
+        let error = transform_resource_limits(&relaxed).unwrap_err();
+        assert!(
+            error.contains("outside the transform script range"),
+            "{error}"
+        );
+
+        relaxed.active_process_limit = Some(128);
+        relaxed.process_group_isolated = false;
+        let error = transform_resource_limits(&relaxed).unwrap_err();
+        assert!(error.contains("process-group"), "{error}");
+
+        relaxed.process_group_isolated = true;
+        relaxed.network_enforced = false;
+        let error = transform_resource_limits(&relaxed).unwrap_err();
+        assert!(error.contains("network isolation"), "{error}");
+    }
+
     #[test]
     fn interpreter_under_opt_gains_top_level_readable_root() {
-        let roots =
-            extra_readable_roots_for_interpreter(Path::new("/opt/homebrew/bin/python3.12"));
+        let roots = extra_readable_roots_for_interpreter(Path::new("/opt/homebrew/bin/python3.12"));
         assert!(roots.contains(&PathBuf::from("/opt/homebrew")));
     }
 
@@ -1610,7 +1937,9 @@ mod tests {
         let input = json!({ "documentId": "doc-1", "cards": [] });
         let job = prepare_transform_job(temp.path(), &script, &input).unwrap();
         assert!(job.job_dir.starts_with(temp.path()));
-        assert!(job.job_ref.starts_with("runtime-root://temp/chatanki_transform/job-"));
+        assert!(job
+            .job_ref
+            .starts_with("runtime-root://temp/chatanki_transform/job-"));
         let written: Value =
             serde_json::from_slice(&std::fs::read(&job.input_path).unwrap()).unwrap();
         assert_eq!(written, input);
@@ -1729,10 +2058,9 @@ print("transformed", len(out))
             .to_string(),
             timeout: Duration::from_secs(30),
         };
-        let (report, output, job_ref) =
-            run_transform_script(temp.path(), "doc-1", &cards, &script)
-                .await
-                .expect("sandboxed python run should succeed");
+        let (report, output, job_ref) = run_transform_script(temp.path(), "doc-1", &cards, &script)
+            .await
+            .expect("sandboxed python run should succeed");
         assert_eq!(report.exit_code, Some(0));
         assert!(!report.timed_out);
         assert!(report.stdout_tail.contains("transformed 1"));

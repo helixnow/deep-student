@@ -12,8 +12,9 @@
 //! 2. 决策可观测：`AnkiRoutingPlan` 全字段可序列化 + debug 日志逐角色输出。
 //! 3. 零新增网络调用与配置 UI：本模块为纯函数；能力探测只读现有
 //!    模型分配与 API 配置（见 `LLMManager::probe_anki_routing_slots`）。
-//! 4. 失败不影响制卡：接线侧（streaming_anki_service::get_configurations）
-//!    对本模块的任何 None/异常都回退旧的单模型路径。
+//! 4. 失败不影响制卡：Generator、Critic、Planner（`plan_route`）和 Vlm
+//!    （ChatAnki 图片提取）生产消费者都保留旧单模型路径；槽位探测失败或
+//!    配置在探测后消失时静默回退。
 //!
 //! wire 格式说明：路由模式经 options JSON 的扩展字段
 //! `sidekick_model_routing`（"auto" | "single"）传入，缺省 auto。
@@ -605,7 +606,14 @@ mod tests {
     fn plan_serializes_with_all_roles_and_reasons() {
         let plan = plan_routing(RoutingMode::Auto, &full_slots()).expect("plan");
         let raw = serde_json::to_string(&plan).expect("serialize");
-        for key in ["planner", "generator", "critic", "vlm", "reason", "degraded"] {
+        for key in [
+            "planner",
+            "generator",
+            "critic",
+            "vlm",
+            "reason",
+            "degraded",
+        ] {
             assert!(raw.contains(key), "序列化结果缺少字段: {}", key);
         }
         let back: AnkiRoutingPlan = serde_json::from_str(&raw).expect("roundtrip");
@@ -721,5 +729,91 @@ mod tests {
         // 主模型多模态 → 视觉槽复用主模型
         assert_eq!(plan.vlm.config_id, "cfg-strong");
         assert_eq!(plan.distinct_config_count(), 2);
+    }
+
+    // ---------- 生产消费者接线契约（收尾续作 #3） ----------
+
+    #[test]
+    fn chatanki_plan_route_consumes_planner_role_through_fallback_adapter() {
+        let source = include_str!("chat_v2/tools/chatanki_executor.rs");
+        let start = source
+            .find("async fn plan_route(")
+            .expect("plan_route production function must exist");
+        let end = source[start..]
+            .find("/// 在 VLM 路径消费")
+            .map(|offset| start + offset)
+            .expect("VLM helper must follow plan_route");
+        let function = &source[start..end];
+
+        assert!(
+            function.contains("AnkiModelRole::Planner"),
+            "plan_route 必须显式消费 Planner 角色"
+        );
+        assert!(
+            function.contains(".call_anki_routed_raw_prompt("),
+            "Planner 调用必须经过可回退的 Sidekick 适配器"
+        );
+        let routed_call = function
+            .find(".call_anki_routed_raw_prompt(")
+            .expect("routed Planner call");
+        let legacy_fallback = function
+            .find(".call_model2_raw_prompt(")
+            .expect("legacy model2 fallback");
+        assert!(
+            routed_call < legacy_fallback && function.contains("planner_decision.is_some()"),
+            "model2 只能在 Planner 槽调用失败后作为旧路径兜底"
+        );
+        assert!(
+            function.contains("return None;"),
+            "Planner 调用失败必须保留启发式路由降级"
+        );
+    }
+
+    #[test]
+    fn chatanki_vlm_extract_branches_consume_vlm_role_through_fallback_adapter() {
+        let source = include_str!("chat_v2/tools/chatanki_executor.rs");
+        let start = source
+            .find("async fn call_vlm_extract(")
+            .expect("VLM production helper must exist");
+        let end = source[start..]
+            .find("/// 防注入护栏")
+            .map(|offset| start + offset)
+            .expect("prompt guard must follow VLM helper");
+        let helper = &source[start..end];
+
+        assert!(
+            helper.contains("AnkiModelRole::Vlm"),
+            "VLM extract 必须显式消费 Vlm 角色"
+        );
+        assert!(
+            helper.contains(".call_anki_routed_raw_prompt("),
+            "VLM 调用必须经过可回退的 Sidekick 适配器"
+        );
+        let routed_call = helper
+            .find(".call_anki_routed_raw_prompt(")
+            .expect("routed VLM call");
+        let legacy_fallback = helper
+            .find(".call_model2_raw_prompt(")
+            .expect("legacy model2 fallback");
+        assert!(
+            routed_call < legacy_fallback && helper.contains("vlm_decision.is_some()"),
+            "model2 只能在 Vlm 槽调用失败后作为旧图片提取路径兜底"
+        );
+        assert_eq!(
+            source.matches("call_vlm_extract(").count(),
+            4,
+            "应有一个 helper 定义和三条真实 VLM extract 调用路径"
+        );
+        for task in [
+            "chatanki.vlm_full_image_fallback",
+            "chatanki.vlm_light_extract",
+            "chatanki.vlm_full_extract",
+        ] {
+            assert!(
+                source.contains(task),
+                "VLM 生产调用缺少可观测任务标签: {}",
+                task
+            );
+        }
     }
 }
