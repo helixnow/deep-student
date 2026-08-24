@@ -366,6 +366,13 @@
   to { transform: rotate(360deg); }
 }
 
+/* 触屏放大反链行命中区；桌面维持 32px 密度 */
+@media (pointer: coarse) {
+  .notes-backlinks-panel-link {
+    min-height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notes-backlinks-panel-icon-button,
   .notes-backlinks-panel-link,
