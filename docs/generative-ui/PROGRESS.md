@@ -1,10 +1,22 @@
 # Generative UI 进度日志
 
-## Round 41（2026-08-24）— SOTA 验收合同升级（占位）
+## Round 41（2026-08-24）— 10 子代理：宿主接入 + 隔离 + 契约
 
-- [x] SOTA 验收合同对齐 Round 40/41 真实态（18 块 + v1.1 + telemetry + fallback）
-- [x] `SOTA_CHECKLIST` Goal 完成度 14→18 blocks；合入 main 仍标 ⏳
-- [ ] 父代理合并本小节与其它子代理进度
+并行 10 个足量任务，把 Round 40 的 18 块接到真实宿主并加固：
+
+1. Hub 简报（Exam/Memory/Index/LearningHub）接入 table/chart/steps/markdown + v1.1 grid
+2. Notes / Translation / HPIAS / AiDashboard 接入新块
+3. Style Lab：6 套 intent recipes + 18 块 Showcase
+4. Markdown XSS 消毒 + ErrorBoundary
+5. few-shot / skill 扩到 18 type（+3 正例 +2 负例）
+6. Renderer 块级 memo + 错误隔离（`GenerativeBlockSlot`）
+7. Rust v1.1 version/layout 契约 + e2e 用例
+8. CT / TAURI_E2E 14→18 块
+9. 新块 a11y（region / img / caption / scope=col）
+10. SOTA 验收合同对齐真实态
+
+- [x] **390** generative-ui vitest 全绿（Round 40 为 344）
+- [ ] 合入 main — 待 CI + 批准
 
 ## Round 6（2026-08-24）
 
