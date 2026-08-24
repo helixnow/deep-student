@@ -879,7 +879,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               onChange={e => handleUpdateDimension(index, 'name', e.target.value)}
                               placeholder={t('settings:gradingMode.placeholderDimensionName')}
                               className={cn(
-                                "h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium focus-visible:ring-0",
+                                "h-7 [@media(pointer:coarse)]:min-h-11 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium focus-visible:ring-0",
                                 showValidation && issue.name && "rounded-sm ring-1 ring-destructive/50"
                               )}
                             />
@@ -890,7 +890,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 value={dim.max_score}
                                 onChange={e => handleUpdateDimension(index, 'max_score', Number(e.target.value))}
                                 className={cn(
-                                  "h-7 w-[3.5rem] rounded-sm border-0 bg-muted/30 px-1.5 text-right text-sm text-foreground focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                                  "h-7 [@media(pointer:coarse)]:min-h-11 w-[3.5rem] rounded-sm border-0 bg-muted/30 px-1.5 text-right text-sm text-foreground focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
                                   showValidation && issue.score && "ring-1 ring-destructive/50"
                                 )}
                                 min={0}
@@ -971,7 +971,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                             total_max_score: Number(e.target.value)
                           }))}
                           className={cn(
-                            "h-7 w-[4rem] flex-shrink-0 rounded-md border border-[hsl(var(--border))] bg-background text-center text-sm text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                            "h-7 [@media(pointer:coarse)]:min-h-11 w-[4rem] flex-shrink-0 rounded-md border border-[hsl(var(--border))] bg-background text-center text-sm text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
                             showValidation && totalInvalid && "border-destructive/50"
                           )}
                           min={1}
