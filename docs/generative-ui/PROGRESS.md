@@ -22,6 +22,13 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 27（2026-08-24）— Goal 收尾
+
+- [x] 最终验收：210 项 generative-ui vitest 全绿
+- [x] PR [#214](https://github.com/helixnow/deep-student/pull/214) 转 **Ready for Review**
+- [x] SOTA_CHECKLIST 增加 Goal 完成度审计表
+- [ ] 合并 main（待 CI + 人工 approve）
+
 ## Round 26（2026-08-24）
 
 - [x] **Rust Tauri E2E** — `generative_ui_executor_e2e.rs` hpias_event `session_started` + stub `plan_generated`

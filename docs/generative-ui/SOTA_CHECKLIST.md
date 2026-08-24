@@ -59,7 +59,17 @@
 
 ## 距 SOTA 完整态剩余项
 
-1. **PR Ready for Review** — 人工 review 后合并 main
-2. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+1. ~~**PR Ready for Review**~~ — ✅ Round 27 已转 Ready（[#214](https://github.com/helixnow/deep-student/pull/214)）
+2. **合并 main** — 待 CI 绿 + 人工 approve
+3. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+
+## Goal 完成度（2026-08-24）
+
+| 目标项 | 证据 | 状态 |
+|--------|------|------|
+| 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 14 blocks | ✅ |
+| 多轮迭代至 SOTA | Round 6–26 + 本清单全绿 | ✅ |
+| 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E | ✅ |
+| 合入 main | PR #214 | ⏳ 待 merge |
 
 进度详见 [PROGRESS.md](./PROGRESS.md)
