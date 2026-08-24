@@ -370,7 +370,7 @@ function mapBlockStatusToPreviewStatus(
   finalStatus?: string
 ): AnkiCardStackPreviewStatus {
   const normalizedFinalStatus =
-    typeof finalStatus === 'string' ? finalStatus.toLowerCase() : undefined;
+    typeof finalStatus === 'string' ? finalStatus.trim().toLowerCase() : undefined;
   const isCancelled =
     normalizedFinalStatus === 'cancelled' ||
     normalizedFinalStatus === 'canceled';

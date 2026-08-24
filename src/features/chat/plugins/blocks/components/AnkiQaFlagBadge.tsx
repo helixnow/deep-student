@@ -9,7 +9,7 @@
  * `_qa_flags` 只在这里以结构化方式展示，绝不拼进 front/back 文本。
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, Info, Warning, WarningOctagon } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -63,11 +63,12 @@ export const AnkiQaFlagBadge: React.FC<{
 }> = ({ flags, cardIndex, className }) => {
   const { t } = useTranslation('anki');
   const [expanded, setExpanded] = useState(false);
+  // cardIndex 只在单个块内唯一；useId 避免同屏多个 anki_cards 块产生重复 aria-controls。
+  const detailsId = `chatanki-qa-flags-details-${useId().replace(/:/g, '')}`;
   const severity = useMemo(() => maxFlagSeverity(flags), [flags]);
 
   if (flags.length === 0) return null;
 
-  const detailsId = `chatanki-qa-flags-details-${cardIndex}`;
   const severityLabel = severity ? t(SEVERITY_LABEL_KEYS[severity]) : '';
 
   const resolveFlagMessage = (flag: QaFlagEntry): string => {

@@ -50,4 +50,55 @@ describe('ImageOcclusionOverlay', () => {
     expect(screen.getAllByTestId('occlusion-box-revealed')).toHaveLength(1);
     expect(screen.getByText('右心室')).toBeTruthy();
   });
+
+  it('切换 spec 时不会沿用上一张卡的已揭答案', () => {
+    const { rerender } = render(<ImageOcclusionOverlay spec={spec} />);
+    fireEvent.click(screen.getAllByLabelText('揭开遮挡区域 1')[0]);
+    expect(screen.getAllByTestId('occlusion-box-revealed')).toHaveLength(2);
+
+    const nextSpec: OcclusionSpec = {
+      imageRef: 'vfs://images/next.png',
+      boxes: [
+        { x: 0.2, y: 0.2, w: 0.3, h: 0.3, label: '新卡答案', clozeIndex: 1 },
+      ],
+    };
+    rerender(<ImageOcclusionOverlay spec={nextSpec} />);
+
+    expect(screen.queryByText('新卡答案')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(1);
+  });
+
+  it('在渲染边界过滤绕过 parser 的非法 spec', () => {
+    const unsafeSpec = {
+      imageRef: 'image.png',
+      boxes: [
+        { x: -5, y: 0, w: 10, h: 1, label: '越界', clozeIndex: 1 },
+        { x: 0, y: 0, w: 0.25, h: 0.25, label: '合法', clozeIndex: 2 },
+      ],
+    } as OcclusionSpec;
+
+    render(<ImageOcclusionOverlay spec={unsafeSpec} />);
+
+    expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(1);
+    expect(screen.getByLabelText('揭开遮挡区域 2')).toBeInTheDocument();
+  });
+
+  it('揭开交互不会冒泡触发外层卡片翻面', () => {
+    const onOuterClick = vi.fn();
+    const onOuterKeyDown = vi.fn();
+    render(
+      <div onClick={onOuterClick} onKeyDown={onOuterKeyDown}>
+        <ImageOcclusionOverlay spec={spec} />
+      </div>,
+    );
+
+    const mask = screen.getAllByLabelText('揭开遮挡区域 1')[0];
+    fireEvent.keyDown(mask, { key: 'Enter' });
+    fireEvent.click(mask);
+    expect(onOuterKeyDown).not.toHaveBeenCalled();
+    expect(onOuterClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByTestId('occlusion-box-revealed')[0]);
+    expect(onOuterClick).not.toHaveBeenCalled();
+  });
 });

@@ -41,14 +41,104 @@ export interface PixelRect {
 
 const EPS = 1e-6;
 
-/** 单盒几何合法性：归一化 0-1 且不越界、非退化。 */
-function isBoxGeometryValid(b: unknown): b is Omit<OcclusionBox, 'label' | 'clozeIndex'> {
-  if (typeof b !== 'object' || b === null) return false;
+/** 与后端默认 OcclusionConfig 一致，避免损坏数据一次挂载过多 DOM 节点。 */
+export const MAX_OCCLUSION_BOXES = 12;
+export const MAX_OCCLUSION_LABEL_CHARS = 48;
+
+interface NormalizedBoxGeometry {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * 单盒几何归一化：拒绝真正越界/非有限/退化值，并把浮点误差范围内的
+ * -EPS / 1+EPS 收敛到严格 [0,1]，保证 CSS 层不会画出容器。
+ */
+function normalizeBoxGeometry(b: unknown): NormalizedBoxGeometry | null {
+  if (typeof b !== 'object' || b === null) return null;
   const box = b as Record<string, unknown>;
   const nums = [box.x, box.y, box.w, box.h];
-  if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v))) return false;
+  if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
   const { x, y, w, h } = box as { x: number; y: number; w: number; h: number };
-  return x >= -EPS && y >= -EPS && w > 0 && h > 0 && x + w <= 1 + EPS && y + h <= 1 + EPS;
+  if (x < -EPS || y < -EPS || w <= 0 || h <= 0 || x + w > 1 + EPS || y + h > 1 + EPS) {
+    return null;
+  }
+  const left = Math.max(0, Math.min(1, x));
+  const top = Math.max(0, Math.min(1, y));
+  const right = Math.max(0, Math.min(1, x + w));
+  const bottom = Math.max(0, Math.min(1, y + h));
+  if (right <= left || bottom <= top) return null;
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
+function truncateLabel(value: string): string {
+  return Array.from(value).slice(0, MAX_OCCLUSION_LABEL_CHARS).join('');
+}
+
+function readExplicitClozeIndex(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
+    ? value
+    : null;
+}
+
+/**
+ * 从弱类型对象归一化遮挡 spec。Overlay 也会调用此函数，避免调用方绕过
+ * extra_fields JSON 解析后把越界/超量数据直接交给 DOM。
+ */
+export function normalizeOcclusionSpec(raw: unknown): OcclusionSpec | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const candidate = raw as { imageRef?: unknown; boxes?: unknown };
+  if (typeof candidate.imageRef !== 'string' || candidate.imageRef.trim() === '') return null;
+  if (!Array.isArray(candidate.boxes)) return null;
+
+  const accepted: Array<{
+    geometry: NormalizedBoxGeometry;
+    label: string;
+    explicitIndex: number | null;
+  }> = [];
+  for (const item of candidate.boxes) {
+    if (accepted.length >= MAX_OCCLUSION_BOXES) break;
+    const geometry = normalizeBoxGeometry(item);
+    if (!geometry) continue;
+    const record = item as Record<string, unknown>;
+    const hasExplicitIndex = record.clozeIndex !== undefined && record.clozeIndex !== null;
+    const explicitIndex = readExplicitClozeIndex(record.clozeIndex);
+    // 显式 0、非整数或超出安全整数范围与后端校验一样视为坏盒；仅缺失值才补号。
+    if (hasExplicitIndex && explicitIndex === null) continue;
+    accepted.push({
+      geometry,
+      label: typeof record.label === 'string' ? record.label.trim() : '',
+      explicitIndex,
+    });
+  }
+  if (accepted.length === 0) return null;
+
+  const usedIndices = new Set(
+    accepted.flatMap((box) => box.explicitIndex === null ? [] : [box.explicitIndex]),
+  );
+  const maxExplicitIndex = Math.max(0, ...usedIndices);
+  let nextGeneratedIndex =
+    maxExplicitIndex < Number.MAX_SAFE_INTEGER ? maxExplicitIndex + 1 : 1;
+  const allocateIndex = (): number => {
+    while (usedIndices.has(nextGeneratedIndex)) nextGeneratedIndex += 1;
+    const allocated = nextGeneratedIndex;
+    usedIndices.add(allocated);
+    nextGeneratedIndex += 1;
+    return allocated;
+  };
+
+  const boxes = accepted.map(({ geometry, label, explicitIndex }) => {
+    const clozeIndex = explicitIndex ?? allocateIndex();
+    return {
+      ...geometry,
+      label: label ? truncateLabel(label) : `区域 ${clozeIndex}`,
+      clozeIndex,
+    };
+  });
+
+  return { imageRef: candidate.imageRef.trim(), boxes };
 }
 
 /**
@@ -69,34 +159,7 @@ export function parseOcclusionSpec(
   } catch {
     return null;
   }
-  if (typeof parsed !== 'object' || parsed === null) return null;
-  const candidate = parsed as { imageRef?: unknown; boxes?: unknown };
-  if (typeof candidate.imageRef !== 'string' || candidate.imageRef.trim() === '') return null;
-  if (!Array.isArray(candidate.boxes)) return null;
-
-  let maxIndex = 0;
-  for (const b of candidate.boxes) {
-    const idx = (b as Record<string, unknown> | null)?.clozeIndex;
-    if (typeof idx === 'number' && Number.isInteger(idx) && idx > maxIndex) maxIndex = idx;
-  }
-
-  const boxes: OcclusionBox[] = [];
-  for (const b of candidate.boxes) {
-    if (!isBoxGeometryValid(b)) continue;
-    const rec = b as Record<string, unknown>;
-    const explicit = rec.clozeIndex;
-    const clozeIndex =
-      typeof explicit === 'number' && Number.isInteger(explicit) && explicit >= 1
-        ? explicit
-        : ++maxIndex;
-    const label =
-      typeof rec.label === 'string' && rec.label.trim() !== ''
-        ? rec.label.trim()
-        : `区域 ${clozeIndex}`;
-    boxes.push({ x: rec.x as number, y: rec.y as number, w: rec.w as number, h: rec.h as number, label, clozeIndex });
-  }
-  if (boxes.length === 0) return null;
-  return { imageRef: candidate.imageRef, boxes };
+  return normalizeOcclusionSpec(parsed);
 }
 
 /**
@@ -128,12 +191,13 @@ export function occlusionBoxPercentStyle(box: OcclusionBox): {
   width: string;
   height: string;
 } {
+  const geometry = normalizeBoxGeometry(box) ?? { x: 0, y: 0, w: 0, h: 0 };
   const pct = (v: number) => `${(v * 100).toFixed(4)}%`;
   return {
-    left: pct(box.x),
-    top: pct(box.y),
-    width: pct(box.w),
-    height: pct(box.h),
+    left: pct(geometry.x),
+    top: pct(geometry.y),
+    width: pct(geometry.w),
+    height: pct(geometry.h),
   };
 }
 

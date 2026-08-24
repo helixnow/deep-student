@@ -7,9 +7,12 @@
  *
  * 刻意不做的事（首版边界）：不加载图片、不做拖拽编辑、不接管复习调度。
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import type { OcclusionSpec } from './utils/imageOcclusion';
-import { occlusionBoxPercentStyle } from './utils/imageOcclusion';
+import {
+  normalizeOcclusionSpec,
+  occlusionBoxPercentStyle,
+} from './utils/imageOcclusion';
 
 export interface ImageOcclusionOverlayProps {
   spec: OcclusionSpec;
@@ -44,28 +47,40 @@ const revealedStyle: React.CSSProperties = {
   lineHeight: 1.3,
 };
 
+const EMPTY_REVEALED = new Set<number>();
+
 export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
   spec,
   revealedIndices,
   onReveal,
   revealAll = false,
 }) => {
-  const [internalRevealed, setInternalRevealed] = useState<Set<number>>(new Set());
+  // Props 仍是运行时边界：调用方可能绕过 parseOcclusionSpec，渲染前再次收紧。
+  const safeSpec = useMemo(() => normalizeOcclusionSpec(spec), [spec]);
+  const specKey = useMemo(() => JSON.stringify(safeSpec), [safeSpec]);
+  const [internalState, setInternalState] = useState<{
+    specKey: string;
+    revealed: Set<number>;
+  }>(() => ({ specKey, revealed: new Set() }));
+  // 切卡时首帧就使用空集合，避免 effect 延迟造成上一张卡的答案短暂泄漏。
+  const internalRevealed =
+    internalState.specKey === specKey ? internalState.revealed : EMPTY_REVEALED;
   const revealed = revealedIndices ?? internalRevealed;
 
   const handleReveal = useCallback(
     (clozeIndex: number) => {
       if (revealedIndices === undefined) {
-        setInternalRevealed((prev) => {
-          if (prev.has(clozeIndex)) return prev;
-          const next = new Set(prev);
+        setInternalState((prev) => {
+          const current = prev.specKey === specKey ? prev.revealed : EMPTY_REVEALED;
+          if (current.has(clozeIndex)) return prev;
+          const next = new Set(current);
           next.add(clozeIndex);
-          return next;
+          return { specKey, revealed: next };
         });
       }
       onReveal?.(clozeIndex);
     },
-    [onReveal, revealedIndices],
+    [onReveal, revealedIndices, specKey],
   );
 
   return (
@@ -73,7 +88,7 @@ export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
       data-testid="image-occlusion-overlay"
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
     >
-      {spec.boxes.map((box, i) => {
+      {(safeSpec?.boxes ?? []).map((box, i) => {
         const isRevealed = revealAll || revealed.has(box.clozeIndex);
         const positionStyle = occlusionBoxPercentStyle(box);
         if (isRevealed) {
@@ -82,6 +97,7 @@ export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
               key={`${box.clozeIndex}-${i}`}
               data-testid="occlusion-box-revealed"
               style={{ ...revealedStyle, ...positionStyle, pointerEvents: 'auto' }}
+              onClick={(event) => event.stopPropagation()}
             >
               <span>{box.label}</span>
             </div>
@@ -94,7 +110,11 @@ export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
             data-testid="occlusion-box-masked"
             aria-label={`揭开遮挡区域 ${box.clozeIndex}`}
             style={{ ...maskStyle, ...positionStyle, pointerEvents: 'auto' }}
-            onClick={() => handleReveal(box.clozeIndex)}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleReveal(box.clozeIndex);
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
           />
         );
       })}

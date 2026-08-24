@@ -5,9 +5,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_OCCLUSION_BOXES,
+  MAX_OCCLUSION_LABEL_CHARS,
   OCCLUSION_FIELD,
   OCCLUSION_TAG,
   isOcclusionCard,
+  normalizeOcclusionSpec,
   occlusionBoxPercentStyle,
   parseOcclusionSpec,
   toPixelRects,
@@ -80,6 +83,25 @@ describe('parseOcclusionSpec', () => {
     expect(spec.boxes[0].label).toBe('区域 3');
     expect(spec.boxes[1].clozeIndex).toBe(4); // 已用最大序号 +1
   });
+
+  it('收敛浮点边界、拒绝非法显式 clozeIndex，并限制盒数与标签长度', () => {
+    const boxes = Array.from({ length: MAX_OCCLUSION_BOXES + 3 }, (_, index) => ({
+      x: index === 1 ? -5e-7 : 0.1,
+      y: 0.1,
+      w: 0.2,
+      h: 0.2,
+      label: '心'.repeat(MAX_OCCLUSION_LABEL_CHARS + 10),
+      clozeIndex: index === 0 ? 0 : index,
+    }));
+    const spec = normalizeOcclusionSpec({ imageRef: ' image.png ', boxes })!;
+
+    // 显式 0 被拒绝；其余有效盒只接收后端上限，避免 DOM 放大。
+    expect(spec.boxes).toHaveLength(MAX_OCCLUSION_BOXES);
+    expect(spec.boxes.some((box) => box.clozeIndex === 0)).toBe(false);
+    expect(spec.boxes[0].x).toBe(0);
+    expect(Array.from(spec.boxes[0].label)).toHaveLength(MAX_OCCLUSION_LABEL_CHARS);
+    expect(spec.imageRef).toBe('image.png');
+  });
 });
 
 describe('toPixelRects', () => {
@@ -128,6 +150,23 @@ describe('occlusionBoxPercentStyle / isOcclusionCard', () => {
       top: '50.0000%',
       width: '12.5000%',
       height: '10.0000%',
+    });
+  });
+
+  it('对绕过 parser 的非法几何返回零面积安全样式', () => {
+    const style = occlusionBoxPercentStyle({
+      x: -10,
+      y: Number.POSITIVE_INFINITY,
+      w: 50,
+      h: 50,
+      label: 'bad',
+      clozeIndex: 1,
+    });
+    expect(style).toEqual({
+      left: '0.0000%',
+      top: '0.0000%',
+      width: '0.0000%',
+      height: '0.0000%',
     });
   });
 

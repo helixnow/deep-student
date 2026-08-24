@@ -188,6 +188,33 @@ describe('AnkiCardsBlock QA flags', () => {
     expect(screen.queryByTestId('chatanki-qa-flag-details')).not.toBeInTheDocument();
   });
 
+  it('keeps QA detail aria-controls ids unique across multiple Anki blocks', () => {
+    render(
+      <>
+        <AnkiCardsBlock
+          block={{
+            ...createBlock({ id: 'anki-block-qa-a' }),
+            toolOutput: createData({ cards: [FLAGGED_CARD] }),
+          }}
+        />
+        <AnkiCardsBlock
+          block={{
+            ...createBlock({ id: 'anki-block-qa-b' }),
+            toolOutput: createData({ cards: [FLAGGED_CARD] }),
+          }}
+        />
+      </>,
+    );
+
+    screen.getAllByTestId('anki-preview').forEach((preview) => fireEvent.click(preview));
+    screen.getAllByTestId('chatanki-qa-flag-badge').forEach((badge) => fireEvent.click(badge));
+
+    const detailIds = screen
+      .getAllByTestId('chatanki-qa-flag-details')
+      .map((details) => details.getAttribute('id'));
+    expect(new Set(detailIds).size).toBe(2);
+  });
+
   it('never renders raw _qa_flags JSON into the card back or the edit fields', () => {
     const block = createBlock();
     const data = createData({ cards: [FLAGGED_CARD] });
@@ -307,6 +334,8 @@ describe('AnkiCardsBlock media report', () => {
     expect(screen.getByTestId('chatanki-media-report-skips')).toBeInTheDocument();
     // 未知原因回退展示原文（协议演进容错）
     expect(screen.getByTestId('chatanki-media-skip-entry_missing')).toBeInTheDocument();
+    // 只有媒体报告时没有连接检测上下文，不误报 AnkiConnect“检查中”
+    expect(screen.queryByTestId('chatanki-progress-anki-connect')).not.toBeInTheDocument();
   });
 
   it('renders a clean summary without a skip list when everything imported', () => {
@@ -382,6 +411,8 @@ describe('AnkiCardsBlock QA/media regressions for empty, error, cancelled states
     const data = createData({
       cards: [CLEAN_CARD],
       finalStatus: 'cancelled',
+      finalError: 'Stopped by user',
+      progress: { stage: 'completed_with_errors' },
       mediaReport: {
         declared: 1,
         imported: 0,
@@ -396,5 +427,11 @@ describe('AnkiCardsBlock QA/media regressions for empty, error, cancelled states
     expect(screen.getByTestId('chatanki-media-report-summary')).toHaveTextContent(
       'Media: 0/1 imported, 1 skipped',
     );
+    const cancellationNotice = screen.getByTestId('chatanki-progress-error');
+    expect(cancellationNotice).toHaveAttribute('role', 'status');
+    expect(cancellationNotice).toHaveClass('text-warning');
+    expect(cancellationNotice).not.toHaveClass('text-destructive');
+    // 明确 cancelled 必须压过迟到的 completed_with_errors progress 快照。
+    expect(screen.queryByTestId('chatanki-progress-completed-with-errors')).not.toBeInTheDocument();
   });
 });

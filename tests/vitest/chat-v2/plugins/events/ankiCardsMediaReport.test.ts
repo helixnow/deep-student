@@ -140,4 +140,43 @@ describe('ankiCards event handler: mediaReport & _qa_flags flow', () => {
     expect(output.cards[0].back).toBe('A');
     expect(output.cards[0].front).toBe('Q');
   });
+
+  it('accepts a late mediaReport after cancellation without reopening the block', () => {
+    const blockId = handler().onStart!(store, 'msg-1', { blockType: 'anki_cards' });
+    handler().onEnd!(store, blockId, {
+      status: 'cancelled',
+      cards: [{ id: 'c1', front: 'Q', back: 'A' }],
+    });
+
+    expect(store.blocks.get(blockId)?.status).toBe('success');
+    handler().onChunk!(
+      store,
+      blockId,
+      JSON.stringify({ mediaReport: MEDIA_REPORT, finalStatus: 'completed' }),
+    );
+
+    const block = store.blocks.get(blockId);
+    const output = block?.toolOutput as Record<string, unknown>;
+    expect(block?.status).toBe('success');
+    expect(output.finalStatus).toBe('cancelled');
+    expect(output.mediaReport).toEqual(MEDIA_REPORT);
+  });
+
+  it('keeps an error terminal while merging mediaReport from a late end event', () => {
+    const blockId = handler().onStart!(store, 'msg-1', { blockType: 'anki_cards' });
+    handler().onError!(store, blockId, 'import failed');
+    handler().onEnd!(store, blockId, {
+      status: 'completed',
+      cards: [{ id: 'stale', front: 'stale', back: 'stale' }],
+      mediaReport: MEDIA_REPORT,
+    });
+
+    const block = store.blocks.get(blockId);
+    const output = block?.toolOutput as Record<string, unknown>;
+    expect(block?.status).toBe('error');
+    expect(block?.error).toBe('import failed');
+    expect(output.finalStatus).toBe('error');
+    expect(output.cards).toEqual([]);
+    expect(output.mediaReport).toEqual(MEDIA_REPORT);
+  });
 });

@@ -514,12 +514,29 @@ const ankiCardsEventHandler: EventHandler = {
     const terminal = isTerminalBlockStatus(block.status);
     const isCardMutation = parsed.kind === 'patch' && parsed.patch.cardMutation !== undefined;
     if (terminal && !isCardMutation) {
+      // mediaReport 可能由 APKG 导入清理阶段晚于终态到达。它是只读诊断数据，
+      // 可安全补入既有 toolOutput，但绝不重开块或接受迟到的卡片/状态覆盖。
+      const terminalMediaReport =
+        parsed.kind === 'patch' && parsed.patch.mediaReport !== undefined
+          ? parsed.patch.mediaReport
+          : undefined;
+      if (terminalMediaReport !== undefined) {
+        store.updateBlock(blockId, {
+          toolOutput: {
+            ...currentData,
+            cards: currentCards,
+            mediaReport: terminalMediaReport,
+          } as AnkiCardsBlockData,
+        });
+      }
       try {
         window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
           detail: {
-            level: 'warn',
+            level: terminalMediaReport !== undefined ? 'debug' : 'warn',
             phase: 'bridge:event',
-            summary: `anki_cards chunk ignored on terminal block=${blockId.slice(0, 8)} status=${block.status}`,
+            summary: terminalMediaReport !== undefined
+              ? `anki_cards terminal media report merged block=${blockId.slice(0, 8)} status=${block.status}`
+              : `anki_cards chunk ignored on terminal block=${blockId.slice(0, 8)} status=${block.status}`,
             detail: { blockId, blockStatus: block.status, cardsBefore: currentCards.length },
           },
         }));
@@ -624,6 +641,20 @@ const ankiCardsEventHandler: EventHandler = {
     const hasPartialCompletion =
       signalsCompletedWithErrors(currentData) || signalsCompletedWithErrors(result);
     if (block.status === 'error' && !hasPartialCompletion) {
+      // 错误终态不可被迟到 end 降级，但最终媒体诊断仍应保留，便于解释导入失败。
+      const resultRecord =
+        result && typeof result === 'object' && !Array.isArray(result)
+          ? (result as Record<string, unknown>)
+          : undefined;
+      if (resultRecord?.mediaReport !== undefined) {
+        store.updateBlock(blockId, {
+          toolOutput: {
+            ...currentData,
+            cards: currentCards,
+            mediaReport: resultRecord.mediaReport,
+          } as AnkiCardsBlockData,
+        });
+      }
       recordCardsSourceSnapshot(
         blockId,
         'end-ignored-error-terminal',
