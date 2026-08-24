@@ -967,7 +967,9 @@
   background: hsl(var(--border));
 }
 
-/* 触屏：slash 菜单项 / 块菜单项放大到 ≥44px 触控目标 */
+/* 触屏：slash 菜单项 / 块菜单项放大到 ≥44px 触控目标。
+   块菜单同样加 !important：与基线（min-height: 30px）同权重时靠源序取胜，
+   一旦后续出现更高权重基线（或打包顺序变化）就会回落，显式压死。 */
 @media (pointer: coarse) {
   .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
     min-height: 44px !important;
@@ -975,7 +977,7 @@
   }
 
   .crepe-block-menu button {
-    min-height: 44px;
+    min-height: 44px !important;
   }
 }
 
@@ -1560,16 +1562,23 @@
   }
 }
 
-/* NT-2: 触屏设备按钮放大到 ≥40px 触控目标 */
+/* NT-2: 触屏设备按钮放大到 ≥44px 触控目标 */
 @media (pointer: coarse) {
   .notes-editor-toolbar button {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2.75rem;
+    height: 2.75rem;
   }
 
   .notes-editor-toolbar button svg {
     width: 1.125rem;
     height: 1.125rem;
+  }
+
+  /* 顶栏「Aa」溢出菜单项基线 height 30px；触屏放大到 ≥44px
+     （笔记壳触屏下顶栏整体隐藏，此处覆盖白板等保留顶栏的宿主） */
+  .notes-toolbar-overflow-item {
+    height: auto;
+    min-height: 44px;
   }
 
   /* 触屏主输入设备：编辑走 MobileEditorToolbar，顶栏不重复铺格式按钮 */
@@ -1596,12 +1605,54 @@
   }
 }
 
-/* 📱 触屏：非笔记宿主（白板等）保留的划词气泡按钮 ~30px 难以点准，放大到 ≥40px */
+/* 📱 触屏：非笔记宿主（白板等）保留的划词气泡按钮 ~30px 难以点准，放大到 ≥44px */
 @media (pointer: coarse) {
   .crepe-editor-wrapper .milkdown .milkdown-toolbar button.toolbar-item,
   .crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item {
-    min-width: 40px !important;
-    min-height: 40px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+}
+
+/* 📱 触屏：代码块工具（语言选择钮 ~22px / 复制钮组 ~24px / 语言列表项 ~32px /
+   搜索清除图标 20px，基线均来自 Crepe 包默认主题）放大到 ≥44px 触控目标 */
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown .milkdown-code-block .tools .language-button {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-code-block .tools .tools-button-group button {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-code-block .language-list-item {
+    min-height: 44px !important;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-code-block .search-box .clear-icon {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* 📱 触屏：链接浮层按钮（预览态复制/编辑/移除、编辑态确认，基线 ~24-30px）
+   放大到 ≥44px 触控目标；触屏点击链接仍会弹出此浮层（不随气泡工具栏隐藏） */
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown .milkdown-link-preview .link-preview > .link-icon,
+  .crepe-editor-wrapper .milkdown .milkdown-link-preview .link-preview > .button,
+  .crepe-editor-wrapper .milkdown .milkdown-link-edit .link-edit > .button {
+    box-sizing: border-box;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
