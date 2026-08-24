@@ -365,7 +365,21 @@ export const useAutoSyncStore = create<AutoSyncState>()(
         lastRunAtMs: state.lastRunAtMs,
       }),
       // v1 只持久化 enabled；新字段由 create 的默认值兜底，无需改写
-      migrate: (persisted) => persisted as Partial<AutoSyncState>,
+      migrate: (persisted) => {
+        const state = persisted as Partial<
+          Pick<
+            AutoSyncState,
+            'enabled' | 'intervalPreset' | 'lastOutcome' | 'lastRunAtMs'
+          >
+        >;
+        return {
+          enabled: state.enabled ?? false,
+          intervalPreset:
+            state.intervalPreset ?? AUTO_SYNC_DEFAULT_INTERVAL_PRESET,
+          lastOutcome: state.lastOutcome ?? null,
+          lastRunAtMs: state.lastRunAtMs ?? null,
+        };
+      },
     },
   ),
 );
