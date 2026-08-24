@@ -6,7 +6,8 @@
 # - macOS: libpdfium.dylib
 # - Windows: pdfium.dll  
 # - Linux: libpdfium.so
+# - Android: libpdfium_android_<abi>.so
 #
 # 下载源: https://github.com/bblanchon/pdfium-binaries/releases
 # 
-# 注意: 移动端（iOS/Android）不使用此功能，使用前端 pdfjs 渲染。
+# 注意: Android release 会把对应 ABI 的库复制到 jniLibs；iOS 使用前端 pdfjs。
