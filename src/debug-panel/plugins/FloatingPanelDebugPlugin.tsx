@@ -513,7 +513,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
     return (
       <div key={idx} className="border border-border rounded mb-2 overflow-hidden">
         <div
-          className="flex items-center justify-between p-2 bg-muted/30 cursor-pointer hover:bg-muted/50"
+          className="flex items-center justify-between p-2 bg-muted/30 cursor-pointer hover:bg-muted/50 [@media(pointer:coarse)]:min-h-11"
           onClick={() => {
             const newSet = new Set(expandedSnapshots);
             if (isExpanded) {
@@ -538,7 +538,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="h-6 w-6 p-0 [@media(pointer:coarse)]:min-h-11"
               onClick={(e) => {
                 e.stopPropagation();
                 copyToClipboard(snapshot, '快照');
@@ -600,6 +600,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
           <Button
             variant={enabled ? 'default' : 'outline'}
             size="sm"
+            className="[@media(pointer:coarse)]:min-h-11"
             onClick={() => setEnabled(!enabled)}
           >
             {enabled ? '已启用' : '已禁用'}
@@ -607,6 +608,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
+            className="[@media(pointer:coarse)]:min-h-11"
             onClick={() => captureSnapshot('手动捕获')}
             disabled={!enabled}
           >
@@ -615,13 +617,14 @@ const FloatingPanelDebugPlugin: React.FC = () => {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-xs">
+          <label className="flex items-center gap-1 text-xs [@media(pointer:coarse)]:min-h-11">
             <Switch size="sm" checked={autoCapture} onCheckedChange={setAutoCapture} />
             自动捕获
           </label>
           <Button
             variant="ghost"
             size="sm"
+            className="[@media(pointer:coarse)]:min-h-11"
             onClick={() => {
               setSnapshots([]);
               setLogs([]);
@@ -632,6 +635,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
           <Button
             variant="ghost"
             size="sm"
+            className="[@media(pointer:coarse)]:min-h-11"
             onClick={() => copyToClipboard({ snapshots, logs }, '全部数据')}
           >
             <Copy size={14} className="mr-1" />

@@ -133,6 +133,14 @@
   transform: scale(0.92);
 }
 
+/* 触屏：关闭钮升到 44×44 最小命中区；桌面细指针保持 24px 密度 */
+@media (pointer: coarse) {
+  .wb-cheat-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .wb-cheat-footer {
   flex: none;
   padding: 10px 20px 14px;

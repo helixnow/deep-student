@@ -609,12 +609,12 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
+                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-7"
                             >
                                 {canEditTags && editingTag === tag ? (
                                     <span className="flex items-center gap-1">
                                         <Input
-                                            className="h-4 w-20 px-1 py-0 text-[11px]"
+                                            className="h-4 w-20 px-1 py-0 text-[11px] [@media(pointer:coarse)]:min-h-11"
                                             value={renameValue}
                                             onChange={e => setRenameValue(e.target.value)}
                                             onKeyDown={e => {
@@ -626,7 +626,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         />
                                         <DsButton
                                             variant="ghost" iconOnly size="sm"
-                                            className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
+                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                             onClick={handleRenameTag}
                                             disabled={isRenamingTag}
                                             aria-label={t('notes:header.confirm_rename')}
@@ -635,7 +635,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         </DsButton>
                                         <DsButton
                                             variant="ghost" iconOnly size="sm"
-                                            className="!h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40"
+                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                                             onClick={handleCancelRenameTag}
                                             disabled={isRenamingTag}
                                             aria-label={t('notes:header.cancel_rename')}
@@ -650,7 +650,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             <>
                                                 <DsButton
                                                     variant="ghost" iconOnly size="sm"
-                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity"
+                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleStartRenameTag(tag);
@@ -662,7 +662,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                 </DsButton>
                                                 <DsButton
                                                     variant="ghost" iconOnly size="sm"
-                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity"
+                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleRemoveTag(tag);
@@ -681,7 +681,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                         {!canEditTags ? null : isAddingTag ? (
                             <Input
                                 ref={tagInputRef}
-                                className="h-6 w-28 text-[11px] px-2 py-0"
+                                className="h-6 w-28 text-[11px] px-2 py-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40"
                                 value={tagInput}
                                 placeholder={t('notes:context.add_tag')}
                                 onChange={e => setTagInput(e.target.value)}
@@ -701,9 +701,9 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <DsButton
                                 variant="ghost" size="sm"
                                 className={cn(
-                                    "inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
+                                    "relative inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
                                     "px-1.5 h-6 transition-colors",
-                                    "[@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:px-2.5"
+                                    "[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-2.5"
                                 )}
                                 onClick={() => setIsAddingTag(true)}
                             >
@@ -774,7 +774,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         {hasChildren ? (
                                             <DsButton
                                                 variant="ghost" iconOnly size="sm"
-                                                className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent"
+                                                className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!min-h-11"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     toggleCollapsed(heading.collapseKey);
@@ -790,13 +790,13 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                 />
                                             </DsButton>
                                         ) : (
-                                            <span className="w-4 shrink-0" aria-hidden="true" />
+                                            <span className="w-4 shrink-0 [@media(pointer:coarse)]:w-11" aria-hidden="true" />
                                         )}
                                         <DsButton
                                             variant="ghost" size="sm"
                                             className={cn(
                                                 "!h-auto !w-auto min-w-0 flex-1 !flex-col !items-start !justify-start gap-0 !rounded-sm !px-1 !py-1 !text-left text-xs hover:!bg-transparent",
-                                                "[@media(pointer:coarse)]:!py-2.5",
+                                                "[@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!min-h-11",
                                                 heading.level === 1 && "font-medium",
                                                 isActive
                                                     ? "text-foreground font-medium"

@@ -143,6 +143,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
               onClick={onClose}
               aria-label={resolvedCloseAriaLabel}
               title={resolvedCloseAriaLabel}
+              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <X size={16} />
             </DsButton>
@@ -198,8 +199,8 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
         disabled={disabled}
         aria-label={ariaLabel ?? placeholder}
         className={cn(
-          // coarse 指针下 16px 字号避免 iOS WebView 聚焦自动放大，同时抬高到 40px 触控高度
-          'h-8 w-full pl-7 text-xs [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:text-[16px]',
+          // coarse 指针下 16px 字号避免 iOS WebView 聚焦自动放大，同时抬高到 44px 触控高度
+          'h-8 w-full pl-7 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]',
           'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]',
           'placeholder:text-[color:var(--composer-panel-placeholder)]',
           'focus-visible:border-[color:var(--composer-panel-focus-border)]',
@@ -276,7 +277,7 @@ const Section: React.FC<ComposerPanelSectionProps> = ({
         <div
           className={cn(
             'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
-            collapsible && 'cursor-pointer hover:bg-[color:var(--menu-shell-row-hover)]'
+            collapsible && 'cursor-pointer hover:bg-[color:var(--menu-shell-row-hover)] [@media(pointer:coarse)]:min-h-11'
           )}
           {...(collapsible
             ? {

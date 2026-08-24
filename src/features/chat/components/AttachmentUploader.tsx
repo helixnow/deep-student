@@ -503,7 +503,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         <div className="mt-2 flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
           <WarningCircle size={16} className="flex-shrink-0" />
           <span className="flex-1">{uploadError}</span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 hover:bg-destructive/20" aria-label={t('common:close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:bg-destructive/20" aria-label={t('common:close')}>
             <X size={16} />
           </DsButton>
         </div>

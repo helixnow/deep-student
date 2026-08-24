@@ -53,6 +53,8 @@ interface TranslationMainProps {
   setIsSyncScroll: (val: boolean) => void;
   /** OS 宿主提供外部设置标签时，设置替换完整主区且隐藏内部齿轮入口 */
   settingsAsPage?: boolean;
+  /** ★ 标签页保活：当前是否为活跃标签页；非活跃（display:none 驻留）实例不注册返回键。未传视为活跃 */
+  isActive?: boolean;
 
   // Actions
   onSwapLanguages: () => void;
@@ -153,6 +155,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   isSyncScroll,
   setIsSyncScroll,
   settingsAsPage = false,
+  isActive,
   onSwapLanguages,
   onFilesDropped,
   onSavePrompt,
@@ -209,13 +212,15 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   const layoutControlValue: LayoutMode = isDesktopNarrow ? 'stacked' : layoutMode;
 
   // ========== 移动端：设置区展开时注册 Android 返回键（返回 = 收起设置） ==========
+  // ★ 标签页保活：TabPanelContainer 用 display:none 驻留非活跃实例，
+  //   其设置区若曾展开会持续注册返回键并吞掉活跃标签页的返回操作，故 isActive gate。
   useEffect(() => {
-    if (useSettingsPage || !showPromptEditor) return;
+    if (isActive === false || useSettingsPage || !showPromptEditor) return;
     return registerBackHandler(() => {
       setShowPromptEditor(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [useSettingsPage, showPromptEditor, setShowPromptEditor]);
+  }, [isActive, useSettingsPage, showPromptEditor, setShowPromptEditor]);
 
   // ========== 同步滚动 ==========
   // 通过根容器捕获阶段监听 scroll，按 [data-translation-scroll="source"|"target"]
@@ -300,14 +305,19 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
     // 工具栏挤出容器（此前源语言按钮 x=-14 左侧被裁剪）
     <div data-wb-blur-surface className="h-12 shrink-0 grid grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-1 sm:gap-2 px-3 sm:px-4 border-b bg-background/50 backdrop-blur z-20">
       {/* 左：布局切换（仅桌面；窄容器时强制上下布局并禁用）。
+          断点用 md 与 isSmallScreen(md=768) 对齐：sm(640-767) 属移动壳、
+          effectiveStacked 已强制上下分栏，若在此区间显示切换器则控件失真。
           ⚠️ display:none 的子项会从 grid 流中移除，后续列会左移错位，
           三列都用 col-start 显式定位（P1：移动端语言组曾因此掉进 1fr 列溢出） */}
-      <div className="col-start-1 hidden sm:flex items-center justify-start">
+      <div className="col-start-1 hidden md:flex items-center justify-start">
         <SegmentedControl<LayoutMode>
           ariaLabel={t('translation:workbench.layout.label')}
           value={layoutControlValue}
           onValueChange={setLayoutMode}
           size="compact"
+          // ! 必须：app.css .study-shell-segmented-button 的 min-height:0
+          // 会压掉基元 coarse min-h-11，触屏命中区需 important 才能 ≥44px
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'split',
@@ -383,7 +393,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           />
           <Label
             htmlFor="toolbar-auto-translate"
-            className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
+            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
           >
             {t('translation:workbench.toolbar.auto_translate')}
           </Label>
@@ -397,7 +407,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           />
           <Label
             htmlFor="toolbar-sync-scroll"
-            className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
+            className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
           >
             {t('translation:sync_scroll')}
           </Label>
@@ -405,7 +415,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
 
         {!settingsAsPage && <div className="hidden lg:block w-px h-4 bg-border" />}
 
-        {!settingsAsPage && (
+        {/* 📱 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏
+            （learning-hub rightActions 更多菜单 → 设置，经 translation:openSettings
+            事件开合），页内保留会形成重复次级入口 */}
+        {!settingsAsPage && !isSmallScreen && (
           <CommonTooltip content={t('translation:prompt_editor.title')}>
             <DsButton
               variant="ghost"
@@ -557,7 +570,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
         <div className="flex-1 min-h-0 flex">
           <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
             {effectiveStacked ? (
+              /* 小屏固定 40/60 上下堆叠不可拖（fixed 模式无手柄）；桌面窄容器/上下布局仍可拖 */
               <VerticalResizable
+                fixed={isSmallScreen}
                 initial={0.4}
                 minTop={0.2}
                 minBottom={0.3}

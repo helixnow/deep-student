@@ -45,6 +45,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { findNodeById, findParentNode } from '../../utils/node/find';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
 import { ColorPalette } from './CanvasContextMenu';
@@ -97,6 +98,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
   onFocusBranch,
 }) => {
   const { t } = useTranslation('mindmap');
+  const isMindMapActive = useMindMapIsActive();
   const document = useMindMapStore(s => s.document);
   const addNode = useMindMapStore(s => s.addNode);
   const deleteNode = useMindMapStore(s => s.deleteNode);
@@ -115,8 +117,10 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
   const hasChildren = !!node && node.children.length > 0;
   const isCollapsed = node?.collapsed ?? false;
 
-  // Android back：面板打开时先收面板，否则取消选中关闭工具条
+  // Android back：面板打开时先收面板，否则取消选中关闭工具条。
+  // 标签页保活时仅允许当前可见导图注册，避免隐藏实例拦截返回/误触 onClose（对齐 CanvasContextMenu）。
   useEffect(() => {
+    if (!isMindMapActive) return;
     return registerBackHandler(() => {
       if (panel) {
         onPanelChange(null);
@@ -125,7 +129,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
       }
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [panel, onPanelChange, onClose]);
+  }, [isMindMapActive, panel, onPanelChange, onClose]);
 
   const focusAndEdit = useCallback(
     (id: string | null) => {

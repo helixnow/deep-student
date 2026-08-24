@@ -215,7 +215,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
         <select
           value={filter}
           onChange={e => setFilter(e.target.value as any)}
-          className="px-2 py-1 text-xs bg-background border border-border rounded"
+          className="px-2 py-1 text-xs bg-background border border-border rounded [@media(pointer:coarse)]:min-h-11"
         >
           <option value="all">全部</option>
           <option value="call">调用</option>
@@ -229,7 +229,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
           placeholder="过滤方法..."
           value={methodFilter}
           onChange={e => setMethodFilter(e.target.value)}
-          className="px-2 py-1 text-xs bg-background border border-border rounded w-32"
+          className="px-2 py-1 text-xs bg-background border border-border rounded w-32 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
         />
 
         <div className="flex-1" />
@@ -238,13 +238,13 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
           {filteredLogs.length}/{logs.length}
         </span>
 
-        <Button variant="ghost" size="sm" onClick={copyAllLogs} title="复制全部">
+        <Button variant="ghost" size="sm" onClick={copyAllLogs} title="复制全部" className="[@media(pointer:coarse)]:min-h-11">
           <Copy size={14} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={exportLogs} title="导出">
+        <Button variant="ghost" size="sm" onClick={exportLogs} title="导出" className="[@media(pointer:coarse)]:min-h-11">
           <Download size={14} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={clearLogs} title="清空">
+        <Button variant="ghost" size="sm" onClick={clearLogs} title="清空" className="[@media(pointer:coarse)]:min-h-11">
           <Trash size={14} />
         </Button>
       </div>
@@ -286,7 +286,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
                 
                 <button
                   onClick={() => copyLog(log)}
-                  className="p-0.5 hover:bg-muted rounded"
+                  className="p-0.5 hover:bg-muted rounded [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                   title="复制"
                 >
                   {copiedId === log.id ? (

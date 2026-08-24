@@ -87,7 +87,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
         </span>
         {onClose && (
           <button
-            className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+            className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
             onClick={onClose}
           >
             {t('common:actions.close')}
@@ -117,7 +117,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
         </span>
         <div className="flex gap-2">
           <button
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 [@media(pointer:coarse)]:min-h-11"
             onClick={() => void loadNode()}
           >
             <ArrowClockwise size={16} />
@@ -125,7 +125,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
               onClick={onClose}
             >
               {t('common:actions.close')}

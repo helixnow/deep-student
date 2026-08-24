@@ -399,6 +399,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', padding: '4px 6px', borderBottom: '1px solid #1e293b' }}>
         <button
           onClick={() => setViewMode('raw')}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 10,
             color: viewMode === 'raw' ? '#e2e8f0' : '#94a3b8',
@@ -413,6 +414,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
         </button>
         <button
           onClick={() => setViewMode('event')}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 10,
             color: viewMode === 'event' ? '#e2e8f0' : '#94a3b8',
@@ -429,24 +431,28 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
         <div style={{ flexGrow: 1 }} />
         <button
           onClick={() => setEvents([])}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{ fontSize: 10, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}
         >
           清空
         </button>
         <button
           onClick={() => copyAll(false)}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{ fontSize: 10, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}
         >
           复制筛选
         </button>
         <button
           onClick={() => copyAll(true)}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{ fontSize: 10, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}
         >
           复制全部
         </button>
         <button
           onClick={() => exportJson(viewMode === 'raw' ? filteredRaw : timeline, `dstu_debug_${currentStreamId || 'all'}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`)}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{ fontSize: 10, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}
         >
           导出JSON
@@ -454,6 +460,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
         <select
           value={String(maxBuf)}
           onChange={e => setMaxBuf(Math.min(10000, Math.max(200, parseInt(e.target.value || '500', 10))))}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{ fontSize: 10, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}
         >
           <option value="500">缓冲 500</option>
@@ -466,7 +473,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
 
       <div className="dbg-toolbar" style={{ padding: '4px 6px', borderBottom: '1px solid #1e293b', display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
         {Object.keys(channelFilter).map(ch => (
-          <label key={ch} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
+          <label key={ch} className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
             <Checkbox checked={!!channelFilter[ch]} onCheckedChange={() => setChannelFilter(state => ({ ...state, [ch]: !state[ch] }))} /> {ch}
           </label>
         ))}
@@ -475,6 +482,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
           <select
             value={toolFilter}
             onChange={e => setToolFilter(e.target.value as any)}
+            className="[@media(pointer:coarse)]:min-h-11"
             style={{ fontSize: 9, background: '#334155', color: '#e2e8f0', border: '1px solid #475569', borderRadius: 3, padding: '1px 4px' }}
           >
             <option value="all">全部</option>
@@ -482,15 +490,15 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
             <option value="failed">失败</option>
           </select>
         </div>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
           <Switch size="sm" checked={onlyCurrent} onCheckedChange={setOnlyCurrent} /> 只看当前流
         </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
           <Switch size="sm" checked={errorsOnly} onCheckedChange={setErrorsOnly} /> 仅错误
         </label>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
           <span>采样</span>
-          <select value={samplingRate} onChange={e => setSamplingRate(parseInt(e.target.value || '1', 10))} style={{ fontSize: 10, background: '#334155', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}>
+          <select value={samplingRate} onChange={e => setSamplingRate(parseInt(e.target.value || '1', 10))} className="[@media(pointer:coarse)]:min-h-11" style={{ fontSize: 10, background: '#334155', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}>
             <option value="1">全部</option>
             <option value="2">1/2</option>
             <option value="5">1/5</option>
@@ -503,6 +511,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
           onChange={e => setText(e.target.value)}
           onFocus={() => setSearchFocus(true)}
           onBlur={() => setSearchFocus(false)}
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
           style={{
             flex: '1 1 180px',
             minWidth: 140,
@@ -517,7 +526,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
         />
         {currentStreamId && <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>当前流: {currentStreamId}</span>}
         {viewMode === 'event' && (
-          <select value={kindFilter} onChange={e => setKindFilter((e.target.value as any) || 'all')} style={{ fontSize: 10, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
+          <select value={kindFilter} onChange={e => setKindFilter((e.target.value as any) || 'all')} className="[@media(pointer:coarse)]:min-h-11" style={{ fontSize: 10, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
             <option value="all">显示：全部</option>
             <option value="state">只看状态点</option>
             <option value="event">只看事件</option>
@@ -531,6 +540,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
             min={50}
             max={2000}
             onChange={e => setDisplayLimit(Math.min(2000, Math.max(50, parseInt(e.target.value || '200', 10))))}
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
             style={{ width: 60, fontSize: 10, background: '#0b1220', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}
           />
         </label>
@@ -543,6 +553,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
               : base;
             exportJson(sanitizeForExport(data), `dstu_debug_filtered_${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
           }}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{ fontSize: 10, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}
         >
           导出筛选
@@ -596,13 +607,14 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
                     <span style={{ color: '#38bdf8' }}>[{new Date(entry.ts).toLocaleTimeString()}]</span>
                     <span className="dbg-tag dbg-tag--state" style={{ color: '#10b981' }}>[状态点]</span>
                     <span style={{ color: '#94a3b8' }}>变更: {entry.diff.length}</span>
-                    <button onClick={toggle} style={{ marginLeft: 'auto', fontSize: 12, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}>{isOpen ? '收起' : '展开'}</button>
+                    <button onClick={toggle} className="[@media(pointer:coarse)]:min-h-11" style={{ marginLeft: 'auto', fontSize: 12, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}>{isOpen ? '收起' : '展开'}</button>
                     <button
                       onClick={() => {
                         try {
                           copyTextToClipboard(JSON.stringify(entry.data, null, 2));
                         } catch {}
                       }}
+                      className="[@media(pointer:coarse)]:min-h-11"
                       style={{ fontSize: 12, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}
                     >
                       复制快照
@@ -638,13 +650,14 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
                   {(ev.channel === 'content' || ev.channel === 'reasoning') && <span className="dbg-tag dbg-tag--final" style={{ color: '#10b981' }}>[最终]</span>}
                   {ev.phase && <span style={{ color: '#94a3b8' }}>phase={ev.phase}</span>}
                   {ev.targetMessageId && <span style={{ color: '#94a3b8' }}>target={ev.targetMessageId}</span>}
-                  <button onClick={toggle} style={{ marginLeft: 'auto', fontSize: 12, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}>{isOpen ? '收起' : '展开'}</button>
+                  <button onClick={toggle} className="[@media(pointer:coarse)]:min-h-11" style={{ marginLeft: 'auto', fontSize: 12, color: '#e2e8f0', background: '#334155', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}>{isOpen ? '收起' : '展开'}</button>
                   <button
                     onClick={() => {
                       try {
                         copyTextToClipboard(JSON.stringify(ev, null, 2));
                       } catch {}
                     }}
+                    className="[@media(pointer:coarse)]:min-h-11"
                     style={{ fontSize: 12, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '2px 6px' }}
                   >
                     复制事件

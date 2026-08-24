@@ -6,7 +6,8 @@
  * 中性色、背景、边框或输入框底色。
  *
  * 设计要点：
- * - 桌面 28px（h-7），移动端 44px（h-11），满足触控目标。
+ * - 精确指针（pointer:fine，鼠标/触控板）28px（h-7），触屏设备
+ *   （含 coarse 平板）44px（h-11），满足触控目标。
  * - 选中态：外环 `ring-foreground/50`，保证任何底色下有可见对比。
  * - 自选：原生 `<input type="color">`，通过 "+" 按钮显式触发 click，
  *   隐藏使用 sr-only 样式，避免 opacity:0 叠层导致 Tab 焦点错乱。
@@ -34,11 +35,12 @@ interface AccentPickerProps {
 }
 
 /**
- * 单个圆点按钮的基础 class。触控目标在移动端保持 44px，桌面压缩到 28px。
+ * 单个圆点按钮的基础 class。触控目标在触屏设备保持 44px，
+ * 仅精确指针（pointer:fine）压缩到 28px。
  * 关闭 DsButton 默认的 size/variant 样式污染，只保留 focus-visible 行为。
  */
 const DOT_BASE_CLASS =
-  '!p-0 !h-11 !w-11 sm:!h-7 sm:!w-7 !min-w-0 ' +
+  '!p-0 !h-11 !w-11 [@media(pointer:fine)]:!h-7 [@media(pointer:fine)]:!w-7 !min-w-0 ' +
   '!rounded-full relative inline-flex items-center justify-center ' +
   'transition-[box-shadow,transform,background-color] duration-150 ease-out ' +
   'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';

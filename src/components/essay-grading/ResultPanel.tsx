@@ -141,22 +141,22 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {currentRound > 0 && (
             <div className="flex items-center gap-0.5 shrink-0">
               {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                   <CaretLeft size={12} />
                 </DsButton>
               )}
               <span className="text-xs text-muted-foreground/60 tabular-nums">
                 {roundNavigation && roundNavigation.total > 1 ? (
                   <>
-                    <span className="sm:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
-                    <span className="hidden sm:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
+                    <span className="md:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
+                    <span className="hidden md:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
                   </>
                 ) : (
                   t('essay_grading:round.label', { number: currentRound })
                 )}
               </span>
               {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                   <CaretRight size={12} />
                 </DsButton>
               )}
@@ -187,7 +187,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                   size="icon"
                   iconOnly
                   onClick={handleCopy}
-                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   aria-label={t('essay_grading:result_section.copy')}
                 >
                   {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
@@ -199,7 +199,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                   size="icon"
                   iconOnly
                   onClick={onExportResult}
-                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   aria-label={t('essay_grading:result_section.export')}
                 >
                   <Download size={14} />
@@ -227,7 +227,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             description={error}
           >
             {canRetry && onRetry && (
-              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)]">
+              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11">
                 <ArrowClockwise size={12} />
                 {t('essay_grading:actions.retry')}
               </DsButton>

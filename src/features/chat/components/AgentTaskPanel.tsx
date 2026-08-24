@@ -336,7 +336,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               size="sm"
               onClick={() => setExpanded(true)}
               aria-expanded={false}
-              className="!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none"
+              className="!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-x-2 [@media(pointer:coarse)]:after:-inset-y-3.5 [@media(pointer:coarse)]:after:content-['']"
             >
               {has ? (
                 <ListChecks size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
@@ -419,8 +419,9 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 <DsButton
                   variant="ghost"
                   onClick={() => setExpanded(false)}
-                  // ★ 触控目标：18px 视觉不变，触屏伪元素扩命中区到 ≥44px
-                  className="!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
+                  // ★ 触控目标：18px 视觉不变（caret 10 + p-1 8，leading-none 无 strut），
+                  // 触屏 -inset-3.5 → 46px 命中（原 -inset-3 只有 42px）
+                  className="!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']"
                   aria-label={t('agentPanel.collapsePanel')}
                   aria-expanded={true}
                 >
@@ -482,7 +483,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   <div className="px-4 pb-2">
                     <div className="flex min-w-0 items-center gap-1 px-2 pb-1 text-2xs text-[color:var(--text-muted)]">
                       {workspacePage.relativePath && (
-                        <button type="button" onClick={openWorkspaceParent} className="shrink-0 hover:text-[color:var(--text-primary)]">
+                        <button type="button" onClick={openWorkspaceParent} className="inline-flex shrink-0 items-center hover:text-[color:var(--text-primary)] [@media(pointer:coarse)]:min-h-11">
                           .. /
                         </button>
                       )}
@@ -520,7 +521,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                           workspacePage.nextCursor ?? undefined,
                           true,
                         )}
-                        className="mt-1 px-2 text-2xs text-[color:hsl(var(--primary))] disabled:opacity-50"
+                        className="mt-1 inline-flex items-center px-2 text-2xs text-[color:hsl(var(--primary))] disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                       >
                         {workspaceLoading
                           ? t('agentPanel.loadingFiles')
@@ -551,7 +552,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                         type="button"
                         disabled={download.state !== 'completed'}
                         onClick={() => void revealResultFile(download.rootId, download.relativePath)}
-                        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] disabled:cursor-default disabled:opacity-60"
+                        // ★ 触控目标：触屏行高提到 44px（列表内加高只增加滚动量）
+                        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] disabled:cursor-default disabled:opacity-60 [@media(pointer:coarse)]:h-11"
                         title={download.locator}
                       >
                         <DownloadSimple size={12} className="shrink-0" />
@@ -584,6 +586,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                             'rounded-full border border-[color:var(--border-soft)]',
                             'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
                             'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer',
+                            // ★ 触控目标：触屏 chip 高度提到 44px
+                            '[@media(pointer:coarse)]:!min-h-11',
                           )}
                           title={item.label}
                         >

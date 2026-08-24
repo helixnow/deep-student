@@ -308,9 +308,15 @@ export function LearningHubSidebar({
   // 📱 移动端顶部工具栏「新建」菜单：受控 + Android 返回键关闭（契约第 4 条）。
   // AppMenu 是自绘浮层（无 data-state="open"），androidBackCoordinator 的 Radix 兜底匹配不到。
   const [mobileCreateMenuOpen, setMobileCreateMenuOpen] = useState(false);
+  // 可见性锚点用触发按钮：菜单内容 portal 到 body，判定不了保活视图的隐藏态
+  const mobileCreateMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!mobileCreateMenuOpen) return;
     return registerBackHandler(() => {
+      // 视图离屏时（MobileSlidingLayout 给非可见屏加 inert / display:none 隐藏保活视图）
+      // 让行给当前活跃层：不吞返回键、也不关用户看不见的菜单（对照 IndexStatusView 守卫）
+      const el = mobileCreateMenuTriggerRef.current;
+      if (!el || el.closest('[inert]') || el.offsetParent === null) return false;
       setMobileCreateMenuOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -2958,6 +2964,7 @@ export function LearningHubSidebar({
                 <AppMenu open={mobileCreateMenuOpen} onOpenChange={setMobileCreateMenuOpen}>
                   <AppMenuTrigger asChild>
                     <DsButton
+                      ref={mobileCreateMenuTriggerRef}
                       variant="ghost"
                       size="sm"
                       className="h-11 w-11 p-0"
@@ -3051,7 +3058,7 @@ export function LearningHubSidebar({
             <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
               onClick={goBack}
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back')}
@@ -3061,7 +3068,7 @@ export function LearningHubSidebar({
             <DsButton
               variant="ghost"
               size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6')}
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward')}
@@ -3070,7 +3077,7 @@ export function LearningHubSidebar({
             </DsButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </DsButton>
               {effectivePath.breadcrumbs.map((crumb, index) => (
@@ -3079,7 +3086,17 @@ export function LearningHubSidebar({
                   {index === effectivePath.breadcrumbs.length - 1 ? (
                     <span className="truncate text-foreground font-medium">{crumb.name}</span>
                   ) : (
-                    <DsButton variant="ghost" size="sm" onClick={() => jumpToBreadcrumb(index)} className="!h-auto !p-0 truncate text-muted-foreground hover:text-foreground">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => jumpToBreadcrumb(index)}
+                      className={cn(
+                        '!h-auto !p-0 truncate text-muted-foreground hover:text-foreground',
+                        isSmallScreen
+                          ? '!min-h-11 !px-2'
+                          : '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2',
+                      )}
+                    >
                       {crumb.name}
                     </DsButton>
                   )}
@@ -3108,7 +3125,7 @@ export function LearningHubSidebar({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-6 text-xs px-1.5"
+                        className="h-6 text-xs px-1.5 [@media(pointer:coarse)]:!h-11"
                         onClick={selectedIds.size === items.length ? handleClearSelection : handleSelectAll}
                         title={selectedIds.size === items.length ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}
                       >
@@ -3120,7 +3137,7 @@ export function LearningHubSidebar({
                       <DsButton
                         variant="primary"
                         size="sm"
-                        className="h-6 text-xs px-2"
+                        className="h-6 text-xs px-2 [@media(pointer:coarse)]:!h-11"
                         onClick={handleBatchAddToChat}
                         disabled={isBatchProcessing || isInjecting}
                       >
@@ -3146,7 +3163,7 @@ export function LearningHubSidebar({
                 size="sm"
                 className={cn(
                   'p-0',
-                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7',
+                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={toggleMultiSelect}
@@ -3159,7 +3176,7 @@ export function LearningHubSidebar({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7')}
+                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
                   onClick={onClose}
                   title={t('common:close')}
                 >

@@ -46,6 +46,11 @@ vi.mock('@/features/learning-hub/LearningHubSidebar', () => ({ LearningHubSideba
 vi.mock('@/stores/uiStore', () => ({ useUIStore: (selector: (state: { leftPanelCollapsed: boolean; setLeftPanelCollapsed: () => void }) => unknown) => selector({ leftPanelCollapsed: false, setLeftPanelCollapsed: vi.fn() }) }));
 vi.mock('@/components/layout', () => ({
   useMobileHeader: vi.fn(),
+  useMobileSubviewChromeHost: () => ({
+    activeSubviewChrome: null,
+    subviewChromeHost: { setSubviewChrome: vi.fn() },
+  }),
+  MobileSubviewChromeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DEFAULT_GESTURE_IGNORE_SELECTOR: '[data-no-gesture]',
 }));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));

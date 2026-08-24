@@ -87,7 +87,7 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
     <AppMenu open={open} onOpenChange={handleOpenChange}>
       <AppMenuTrigger asChild>
         <span
-          className="inline-flex cursor-pointer rounded-md"
+          className="relative inline-flex cursor-pointer rounded-md [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
           data-testid="context-usage-popover-trigger"
         >
           {children}
@@ -175,7 +175,7 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
               <DsButton
                 variant="secondary"
                 size="sm"
-                className="w-full justify-center gap-1.5"
+                className="w-full justify-center gap-1.5 [@media(pointer:coarse)]:!min-h-11"
                 onClick={handleCompact}
                 disabled={compactDisabled || isCompactingContext}
                 title={

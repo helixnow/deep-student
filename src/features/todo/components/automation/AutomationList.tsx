@@ -298,12 +298,13 @@ function AutomationCard({
             {t('todo:automation.card.deleteConfirm', { name: automation.name })}
           </span>
           <div className="flex items-center gap-2">
-            <DsButton size="sm" variant="ghost" onClick={() => onRequestDelete(null)}>
+            <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onRequestDelete(null)}>
               {t('common:actions.cancel')}
             </DsButton>
             <DsButton
               size="sm"
               variant="danger"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={deleteBusy}
               onClick={() => onConfirmDelete(automation)}
             >
@@ -394,7 +395,7 @@ function AutomationCard({
             variant="ghost"
             size="icon"
             iconOnly
-            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             aria-label={t('todo:automation.card.runNowAria', { name: automation.name })}
             title={t('todo:automation.card.runNow')}
             disabled={rowBusy}
@@ -410,7 +411,7 @@ function AutomationCard({
             size="icon"
             iconOnly
             className={cn(
-              '!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
+              '!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
               expanded && 'bg-primary/10 text-primary',
             )}
             aria-label={t('todo:automation.card.editAria', { name: automation.name })}
@@ -424,7 +425,7 @@ function AutomationCard({
           {automation.heartbeat ? (
             // 心跳探活任务不可删除（与设置侧一致）
             <span title={t('settings:automation.delete.heartbeat_blocked')}>
-              <DsButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" disabled aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}>
+              <DsButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" disabled aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}>
                 <Trash size={15} aria-hidden />
               </DsButton>
             </span>
@@ -433,7 +434,7 @@ function AutomationCard({
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-7 !w-7 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+              className="!h-7 !w-7 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}
               title={t('todo:automation.card.delete')}
               disabled={rowBusy}
@@ -571,6 +572,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
           <SegmentedControl
             ariaLabel={t('todo:automation.action')}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             value={draft.actionType}
             onValueChange={(value) => patch({ actionType: value })}
             options={[
@@ -626,6 +628,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
             <SegmentedControl
               ariaLabel={t('todo:automation.sessionMode')}
               size="compact"
+              itemClassName="[@media(pointer:coarse)]:!min-h-11"
               value={draft.sessionMode}
               onValueChange={(value) => patch({ sessionMode: value })}
               options={[
@@ -671,7 +674,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
           aria-expanded={advancedOpen}
           aria-controls={`${idPrefix}-advanced`}
           onClick={() => setAdvancedOpen((value) => !value)}
-          className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+          className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
         >
           {t('todo:automation.advanced')}
           <CaretDown
@@ -737,10 +740,10 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
       ) : null}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft,hsl(var(--border)))] pt-3">
-        <DsButton variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" disabled={busy} onClick={onCancel}>
           {t('common:actions.cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" disabled={busy} onClick={() => void handleSubmit()}>
+        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" disabled={busy} onClick={() => void handleSubmit()}>
           {busy ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden /> : null}
           {t('todo:automation.card.save')}
         </DsButton>

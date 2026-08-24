@@ -1753,35 +1753,35 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
       <TabsList className="scrollbar-none mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto">
-        <TabsTrigger value="overview" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="overview" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Gauge className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
         </TabsTrigger>
-        <TabsTrigger value="recovery" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="recovery" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <ShieldCheck className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_recovery')}</span>
         </TabsTrigger>
-        <TabsTrigger value="archive" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="archive" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Archive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_archive')}</span>
         </TabsTrigger>
-        <TabsTrigger value="backup" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="backup" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <HardDrive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_backup')}</span>
         </TabsTrigger>
-        <TabsTrigger value="sync" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="sync" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Cloud className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_sync')}</span>
         </TabsTrigger>
-        <TabsTrigger value="audit" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="audit" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <FileText className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_audit')}</span>
         </TabsTrigger>
-        <TabsTrigger value="cache" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="cache" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Image className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_cache')}</span>
         </TabsTrigger>
-        <TabsTrigger value="debug" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 text-muted-foreground sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="debug" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 text-muted-foreground sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Bug className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
         </TabsTrigger>

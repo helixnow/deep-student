@@ -768,7 +768,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isEpub && base64Content) {
       return (
         <div className="h-full ui-rise-in">
-          <EpubPreview base64Content={base64Content} fileName={node.name} resourceId={node.id} />
+          <EpubPreview base64Content={base64Content} fileName={node.name} resourceId={node.id} isActive={isActive} />
         </div>
       );
     }

@@ -98,6 +98,22 @@ export const TOGGLE_STYLE = `
 .milkdown-toggle[data-open="true"][data-empty="true"] .milkdown-toggle__body-inner:has(.crepe-placeholder)::before {
   content: none;
 }
+/* 触屏：折叠箭头 ~20px 难以点准；::after 扩命中到 ≥44px。
+   右缘锚定（只向左/上下外溢），避免向右盖住可编辑标题的点击。 */
+@media (pointer: coarse) {
+  .milkdown-toggle__arrow {
+    position: relative;
+  }
+  .milkdown-toggle__arrow::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .milkdown-toggle__arrow,
   .milkdown-toggle__body {

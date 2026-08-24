@@ -134,6 +134,7 @@ const computeFitZoom = (
  */
 const ImageContentView: React.FC<ContentViewProps> = ({
   node,
+  isActive = true,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -672,8 +673,12 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     );
   }, []);
 
-  // ★ 百分比档位菜单：点击外部关闭（轻量 Popover，非模态、无遮罩）
+  // ★ 百分比档位菜单：点击外部关闭（轻量 Popover，非模态、无遮罩）。
+  // isActive 守卫（对照 EpubPreview/NoteContentView）：保活隐藏的 tab 不监听
+  // document pointerdown，避免活跃视图里的点击把隐藏 tab 的菜单关掉；
+  // 失活仅注销监听，不动 zoomMenuOpen。
   useEffect(() => {
+    if (!isActive) return;
     if (!zoomMenuOpen) return;
     const onPointerDown = (e: PointerEvent) => {
       if (!zoomMenuWrapRef.current?.contains(e.target as Node)) {
@@ -682,15 +687,17 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [zoomMenuOpen]);
+  }, [isActive, zoomMenuOpen]);
 
+  // isActive 守卫：隐藏 tab 不注册返回键 handler，避免消费当前活跃视图的返回键
   useEffect(() => {
+    if (!isActive) return;
     if (!zoomMenuOpen) return;
     return registerBackHandler(() => {
       setZoomMenuOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [zoomMenuOpen]);
+  }, [isActive, zoomMenuOpen]);
 
   const selectZoomPreset = useCallback((preset: number | 'fit') => {
     setZoomMenuOpen(false);
@@ -922,7 +929,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {/* 工具栏（移动端触控目标 ≥44px：max-md:min-h/min-w-11，桌面端不变） */}
+      {/* 工具栏（触控目标 ≥44px：max-md + pointer:coarse 双保险，覆盖 iPad 横屏；桌面鼠标端不变） */}
       <div
         className="flex items-center justify-between px-4 py-2 border-b bg-muted/30"
         role="toolbar"
@@ -936,7 +943,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             disabled={effectiveZoom <= minZoom + 0.5}
             title={t('learningHub:image.zoomOut')}
             aria-label={t('learningHub:image.zoomOut')}
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <MagnifyingGlassMinus size={16} />
           </DsButton>
@@ -959,7 +966,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               aria-label={t('learningHub:image.zoomLevel')}
               aria-haspopup="menu"
               aria-expanded={zoomMenuOpen}
-              className="min-w-[4.5rem] gap-1 tabular-nums text-muted-foreground max-md:min-h-11"
+              className="min-w-[4.5rem] gap-1 tabular-nums text-muted-foreground max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
               {displayZoom}%
               <CaretDown size={10} aria-hidden="true" />
@@ -1022,7 +1029,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             disabled={effectiveZoom >= ZOOM_MAX - 0.5}
             title={t('learningHub:image.zoomIn')}
             aria-label={t('learningHub:image.zoomIn')}
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <MagnifyingGlassPlus size={16} />
           </DsButton>
@@ -1034,7 +1041,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             title={t('learningHub:image.fitToWindow')}
             aria-label={t('learningHub:image.fitToWindow')}
             aria-pressed={fitMode}
-            className={`max-md:min-h-11 max-md:min-w-11 ${fitMode ? 'bg-muted text-foreground' : ''}`}
+            className={`max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${fitMode ? 'bg-muted text-foreground' : ''}`}
           >
             <ArrowsIn size={16} />
           </DsButton>
@@ -1045,7 +1052,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             title={t('learningHub:image.actualSize')}
             aria-label={t('learningHub:image.actualSize')}
             aria-pressed={isActualSize}
-            className={`hidden md:inline-flex ${isActualSize ? 'bg-muted text-foreground' : ''}`}
+            className={`hidden md:inline-flex [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${isActualSize ? 'bg-muted text-foreground' : ''}`}
           >
             <FrameCorners size={16} />
           </DsButton>
@@ -1055,7 +1062,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             onClick={handleRotate}
             title={t('learningHub:image.rotate')}
             aria-label={t('learningHub:image.rotate')}
-            className="max-md:min-h-11 max-md:min-w-11"
+            className="max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <ArrowClockwise size={16} />
           </DsButton>
@@ -1065,7 +1072,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             onClick={handleReset}
             title={t('learningHub:image.reset')}
             aria-label={t('learningHub:image.reset')}
-            className="hidden md:inline-flex"
+            className="hidden md:inline-flex [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <ArrowCounterClockwise size={16} />
           </DsButton>

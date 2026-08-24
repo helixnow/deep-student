@@ -155,6 +155,14 @@
   outline-offset: 2px;
 }
 
+/* 触屏：原尺寸/关闭按钮（基线 ~34px 高）放大到 ≥44px 触控目标 */
+@media (pointer: coarse) {
+  .crepe-image-lightbox__btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .crepe-image-lightbox__stage {
   position: relative;
   z-index: 1;

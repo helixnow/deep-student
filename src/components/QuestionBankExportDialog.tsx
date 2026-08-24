@@ -31,6 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { fileManager } from '@/utils/fileManager';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useMobileSubviewChrome } from '@/components/layout';
 import { showGlobalNotification } from './UnifiedNotification';
 import { CustomScrollArea } from './custom-scroll-area';
 import type { Question } from '@/api/questionBankApi';
@@ -51,6 +52,8 @@ interface QuestionBankExportDialogProps {
    * 两种形态都渲染宿主容器内的内联区块（absolute inset-0），不使用模态浮层。
    */
   inline?: boolean;
+  /** ★ 标签页：宿主标签页是否活跃（保活 display:none 实例不得接管统一顶栏） */
+  isActive?: boolean;
 }
 
 interface ExportOptions {
@@ -127,7 +130,7 @@ const FieldChip: React.FC<{
     onClick={onClick}
     aria-pressed={selected}
     className={cn(
-      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ui-state-colors',
+      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ui-state-colors [@media(pointer:coarse)]:min-h-11',
       selected
         ? 'border-primary/50 bg-primary/10 font-medium text-primary'
         : 'border-border/60 bg-transparent text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
@@ -163,7 +166,7 @@ const SegmentedControl = <T extends string>({
         onClick={() => onChange(opt.value)}
         aria-pressed={value === opt.value}
         className={cn(
-          'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs ui-state-colors [@media(pointer:coarse)]:min-h-10',
+          'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs ui-state-colors [@media(pointer:coarse)]:!min-h-11',
           value === opt.value
             ? 'bg-background font-medium text-foreground shadow-sm'
             : 'text-muted-foreground hover:text-foreground'
@@ -182,6 +185,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   examName,
   examId,
   inline = false,
+  isActive,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common']);
 
@@ -213,6 +217,8 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   inlineStepRef.current = inlineStep;
   const exportOutcomeRef = useRef<ExportOutcome | null>(null);
   exportOutcomeRef.current = exportOutcome;
+  // 内联面板根节点：Android 返回键 handler 的可见性守卫用（保活隐藏实例不吞返回键）
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -238,10 +244,29 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   useEffect(() => {
     if (!inline || !open) return;
     return registerBackHandler(() => {
+      // 可见性守卫（同 EnhancedPdfViewer）：保活但不可见的实例（display:none
+      // 标签页）不得吞掉活跃视图的返回键、不得触发回退/关闭回调。
+      // visibility:hidden 不清布局盒（getClientRects 仍有返回值），需单独查 computed 值。
+      const el = rootRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       handleInlineBack();
       return true;
     }, BACK_PRIORITY.overlay);
   }, [inline, open, handleInlineBack]);
+
+  // 📱 小屏 learning-hub 承载：标题/返回上移 App 级统一顶栏，页内不再自绘
+  // 第二条顶栏；顶栏返回箭头与 Android 返回键同路径（handleInlineBack：
+  // 先逐级回退步骤，再关闭面板）。无宿主（桌面分栏等）时保持自绘顶栏。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: t('exam_sheet:questionBank.export.title'),
+      onBack: handleInlineBack,
+    },
+    [t, handleInlineBack],
+    inline && open && isActive !== false,
+  );
 
   // 当选择包含答题记录时，自动添加相关字段
   const handleIncludeAnswerRecordsChange = useCallback((checked: boolean) => {
@@ -657,10 +682,10 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 <span className="text-muted-foreground">
                   {t('exam_sheet:questionBank.export.selectedFields', { count: csvFields.size })}
                 </span>
-                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 text-primary hover:underline">
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(true)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-primary hover:underline">
                   {t('common:contextMenu.selectAll')}
                 </DsButton>
-                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
+                <DsButton variant="ghost" size="sm" onClick={() => handleSelectAllCsvFields(false)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-muted-foreground hover:text-foreground">
                   {t('common:deselect_all')}
                 </DsButton>
               </div>
@@ -720,7 +745,12 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         <div className="break-all font-mono text-xs text-foreground">{exportOutcome.path}</div>
       </div>
       <div className="flex justify-center">
-        <DsButton variant="outline" size="sm" onClick={() => void handleRevealInFolder()}>
+        <DsButton
+          variant="outline"
+          size="sm"
+          onClick={() => void handleRevealInFolder()}
+          className="[@media(pointer:coarse)]:!min-h-11"
+        >
           <FolderOpen size={16} className="mr-1.5" />
           {t('exam_sheet:questionBank.export.openFolder')}
         </DsButton>
@@ -730,7 +760,11 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
 
   // 导出主按钮（两种形态共用）
   const exportButton = (
-    <DsButton onClick={() => void handleExport()} disabled={isExporting || questions.length === 0}>
+    <DsButton
+      onClick={() => void handleExport()}
+      disabled={isExporting || questions.length === 0}
+      className="[@media(pointer:coarse)]:!min-h-11"
+    >
       {isExporting ? (
         <CircleNotch size={16} className="mr-2 animate-spin" />
       ) : (
@@ -752,34 +786,38 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
 
     return (
       <div
+        ref={rootRef}
         className="absolute inset-0 z-30 flex flex-col bg-background ui-rise-in"
         role="region"
         aria-label={t('exam_sheet:questionBank.export.title')}
       >
-        {/* 顶栏：返回 + 标题 + 步骤位置 */}
-        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={handleInlineBack}
-            aria-label={t('common:back')}
-            className="!h-11 !w-11 text-muted-foreground"
-          >
-            <ArrowLeft size={20} />
-          </DsButton>
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Download size={16} className="flex-shrink-0 text-muted-foreground" />
-            <span className="truncate text-sm font-medium text-foreground">
-              {t('exam_sheet:questionBank.export.title')}
-            </span>
+        {/* 顶栏：返回 + 标题 + 步骤位置（小屏由 App 级统一顶栏接管，此处不再自绘；
+            步骤位置由下方步骤条表达） */}
+        {!subviewChromeHosted && (
+          <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={handleInlineBack}
+              aria-label={t('common:back')}
+              className="!h-11 !w-11 text-muted-foreground"
+            >
+              <ArrowLeft size={20} />
+            </DsButton>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Download size={16} className="flex-shrink-0 text-muted-foreground" />
+              <span className="truncate text-sm font-medium text-foreground">
+                {t('exam_sheet:questionBank.export.title')}
+              </span>
+            </div>
+            {!exportOutcome && (
+              <span className="flex-shrink-0 pr-2 text-xs tabular-nums text-muted-foreground">
+                {inlineStep + 1}/{stepLabels.length}
+              </span>
+            )}
           </div>
-          {!exportOutcome && (
-            <span className="flex-shrink-0 pr-2 text-xs tabular-nums text-muted-foreground">
-              {inlineStep + 1}/{stepLabels.length}
-            </span>
-          )}
-        </div>
+        )}
 
         {/* 步骤条（成功态隐藏） */}
         {!exportOutcome && (
@@ -794,7 +832,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     if (index < inlineStep) setInlineStep(index);
                   }}
                   className={cn(
-                    'flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors motion-reduce:transition-none',
+                    'flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11',
                     index === inlineStep
                       ? 'bg-primary/10 font-medium text-primary'
                       : index < inlineStep
@@ -862,7 +900,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           }}
         >
           {exportOutcome ? (
-            <DsButton onClick={() => onOpenChange(false)}>
+            <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:!min-h-11">
               {t('exam_sheet:questionBank.export.done')}
             </DsButton>
           ) : (
@@ -871,11 +909,12 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 variant="ghost"
                 onClick={handleInlineBack}
                 disabled={isExporting}
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 {inlineStep === 0 ? t('common:cancel') : t('common:actions.previous')}
               </DsButton>
               {inlineStep < 2 ? (
-                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))}>
+                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))} className="[@media(pointer:coarse)]:!min-h-11">
                   {t('common:actions.next')}
                 </DsButton>
               ) : (
@@ -908,7 +947,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           onClick={() => onOpenChange(false)}
           disabled={isExporting}
           aria-label={t('common:close')}
-          className="text-muted-foreground"
+          className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <X size={16} />
         </DsButton>
@@ -935,12 +974,17 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       {/* 底部操作栏 */}
       <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
         {exportOutcome ? (
-          <DsButton onClick={() => onOpenChange(false)}>
+          <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:!min-h-11">
             {t('exam_sheet:questionBank.export.done')}
           </DsButton>
         ) : (
           <>
-            <DsButton variant="ghost" onClick={() => onOpenChange(false)} disabled={isExporting}>
+            <DsButton
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={isExporting}
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
               {t('common:cancel')}
             </DsButton>
             {exportButton}

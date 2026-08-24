@@ -326,7 +326,7 @@ function ContextWindowUsageRing({
         tabIndex={0}
         aria-label={ariaLabel}
         title={ariaLabel}
-        className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+        className="relative inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
       >
         <svg
           data-testid="context-window-usage-ring"
@@ -1354,7 +1354,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const studyUiButtonSizeIconClassName =
     'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
   const studyUiSendButtonSizeClass =
-    'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]';
+    'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
   const studyUiBlackActionButtonClass =
     '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
   const studyUiSendButtonEmptyStateClass =
@@ -2592,7 +2592,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             <DsButton
               variant="outline"
               size="sm"
-              className="!h-11 min-w-11"
+              className="!h-11 !min-w-11"
               onClick={() => fileInputRef.current?.click()}
             >
               + {t('analysis:input_bar.attachments.add')}
@@ -2658,30 +2658,31 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             <span>{t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}</span>
           </div>
           <div className="flex items-center gap-2">
-            <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => fileInputRef.current?.click()}>
               + {t('analysis:input_bar.attachments.add')}
             </DsButton>
             {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
             <DsButton
               variant="outline"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={handleOpenResourceLibrary}
             >
               <FolderOpen size={12} weight="bold" />
               {t('chatV2:inputBar.resourceLibrary')}
             </DsButton>
             {isMobileEnv && (
-              <DsButton variant="outline" size="sm" onClick={handleCameraClick}>
+              <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleCameraClick}>
                 <Camera size={12} weight="bold" />
                 {t('chatV2:inputBar.camera')}
               </DsButton>
             )}
             {attachments.length > 0 && (
-              <DsButton variant="danger" size="sm" onClick={handleClearAllAttachments}>
+              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleClearAllAttachments}>
                 {t('analysis:input_bar.attachments.clear_all')}
               </DsButton>
             )}
-            <DsButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={toggleAttachmentPanel}>
               {t('common:actions.close')}
             </DsButton>
           </div>
@@ -2815,12 +2816,12 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                       variant="outline"
                       size="sm"
                       onClick={() => { void handleRetryAttachment(attachment); }}
-                      className="text-info"
+                      className="text-info [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('common:retry')}
                     </DsButton>
                   )}
-                  <DsButton variant="danger" size="sm" onClick={() => {
+                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => {
                     logAttachment('ui', 'attachment_remove', {
                       attachmentId: attachment.id,
                       sourceId: attachment.sourceId,
@@ -3061,7 +3062,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs text-primary"
+                className="!h-6 shrink-0 !px-2 !text-xs text-primary [@media(pointer:coarse)]:!h-11"
                 onClick={convertLongPasteToAttachment}
               >
                 {t('chatV2:inputBar.longPaste.convert')}
@@ -3069,7 +3070,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setLongPasteCandidate(null)}
               >
                 {t('chatV2:inputBar.longPaste.dismiss')}
@@ -3091,7 +3092,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setFlashcardHintDismissed(true)}
               >
                 {t('chatV2:inputBar.flashcardHint.dismiss')}
@@ -3113,7 +3114,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setMediaHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mediaHint.dismiss')}
@@ -3133,7 +3134,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setMindmapHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mindmapHint.dismiss')}
@@ -3603,7 +3604,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                                   <MagnifyingGlass className="app-menu-search-icon" />
                                   <input
                                     type="search"
-                                    className="app-menu-search-input ds-search-input"
+                                    // 📱 触控目标 + 16px 输入契约：.ds-search-input 的 coarse 规则挂在
+                                    // enhanced-pdf.css（仅 PDF 视图加载），此处内联补齐防 iOS 聚焦缩放
+                                    className="app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
                                     placeholder={runtimeModelSearchPlaceholder}
                                     value={runtimeModelSearch}
                                     onChange={(event) => setRuntimeModelSearch(event.target.value)}
@@ -3748,7 +3751,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                 onClick={handleStop}
                 disabled={!canAbort}
                 // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
-                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 !rounded-full shadow-sm')}
+                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full shadow-sm')}
                 aria-label={canAbort
                   ? t('analysis:input_bar.actions.stop')
                   : t('chatV2:inputBar.stopping')}

@@ -646,7 +646,10 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
    * 来源项操作按钮（卡片底部 / 移动端列表 / 内联详情共用）
    */
   const renderItemAction = useCallback((item: UnifiedSourceItem, compact: boolean) => {
-    const btnClass = compact ? 'text-primary !h-6 text-xs' : 'text-primary';
+    // compact 视觉高度 24px；触屏（pointer:coarse）下两种形态都用 min-h 撑回 44px 触控热区
+    const btnClass = compact
+      ? 'text-primary !h-6 [@media(pointer:coarse)]:!min-h-11 text-xs'
+      : 'text-primary [@media(pointer:coarse)]:!min-h-11';
     const iconSize = compact ? 12 : 14;
     if (item.origin === 'graph') {
       return (
@@ -1370,7 +1373,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 rounded-full bg-background/90 border shadow-md"
+                    className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 rounded-full bg-background/90 border shadow-md"
                     onClick={() => scrollByAmount('left')}
                     aria-label={t('common:actions.scrollLeft')}
                   >
@@ -1384,7 +1387,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 rounded-full bg-background/90 border shadow-md"
+                    className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-8 !h-8 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 rounded-full bg-background/90 border shadow-md"
                     onClick={() => scrollByAmount('right')}
                     aria-label={t('common:actions.scrollRight')}
                   >

@@ -1187,7 +1187,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={handleRetryFromFailureBar}
                   disabled={isReadOnlySession || isLocked || isRetryingFailure}
-                  className="text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  className="text-muted-foreground hover:bg-muted/50 hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
                   {t('messageItem.failure.retry')}
@@ -1210,7 +1210,12 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {t('messageItem.actions.retryDeleteConfirm', { count: retryConfirmCount })}
               </span>
               <div className="ml-auto flex items-center gap-1">
-                <DsButton variant="ghost" size="sm" onClick={handleRetryConfirmCancel}>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRetryConfirmCancel}
+                  className="[@media(pointer:coarse)]:!min-h-11"
+                >
                   {t('common:actions.cancel')}
                 </DsButton>
                 <DsButton
@@ -1218,7 +1223,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={performRetry}
                   disabled={isReadOnlySession || isLocked}
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise className="w-3.5 h-3.5" />
                   {t('messageItem.actions.retryConfirmAction')}
@@ -1269,6 +1274,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         disabled={isReadOnlySession || isLocked}
                         className={cn(
                           '!h-auto !px-1.5 !py-0.5 mr-1',
+                          '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3',
                           'text-[11px] text-muted-foreground/70',
                           'hover:text-foreground'
                         )}
@@ -1303,6 +1309,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           size="icon"
                           iconOnly
                           onClick={handleMultiVariantCopy}
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                           aria-label={t('messageItem.actions.copy')}
                           title={t('messageItem.actions.copy')}
                         >
@@ -1314,6 +1321,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleBranch}
                           disabled={isReadOnlySession || isLocked}
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                           aria-label={t('messageItem.actions.branch')}
                           title={t('messageItem.actions.branch')}
                         >
@@ -1325,6 +1333,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleRetryAllVariantsInline}
                           disabled={isReadOnlySession || isLocked || isRetryingAllVariants}
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                           aria-label={t('variant.retryAll')}
                           title={t('variant.retryAll')}
                         >
@@ -1336,7 +1345,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleDeleteMultiMessageInline}
                           disabled={!canDelete || isDeletingMultiMessage}
-                          className={cn(!canDelete || isDeletingMultiMessage ? '' : 'hover:text-destructive')}
+                          className={cn(
+                            '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+                            !canDelete || isDeletingMultiMessage ? '' : 'hover:text-destructive'
+                          )}
                           aria-label={t('messageItem.actions.delete')}
                           title={t('messageItem.actions.delete')}
                         >
