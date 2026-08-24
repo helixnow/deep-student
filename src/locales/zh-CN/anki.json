@@ -980,5 +980,71 @@
       "missing_back": "缺少背面内容",
       "missing_field": "模板字段 {{field}} 为空"
     }
+  },
+  "agent": {
+    "transform": {
+      "title": "批量变换",
+      "modeDryRun": "试运行（不写库）",
+      "modeApply": "应用变更",
+      "dryRunSummary": "试运行：{{changed}}/{{total}} 张卡将被修改",
+      "applySummary": "已应用 {{applied}} 张修改，跳过 {{skipped}} 张",
+      "diffBefore": "变换前",
+      "diffAfter": "变换后",
+      "opRegexReplace": "正则替换",
+      "opTagAdd": "添加标签",
+      "opTagRemove": "移除标签",
+      "wouldBeInvalid": "变换后内容不合法（正反面与填空文本均为空），应用时将逐卡拒绝",
+      "conflict": "版本冲突：该卡已被其他操作修改，请刷新卡片后重试",
+      "expectedVersionsMismatch": "版本映射与选择集不一致，请重新读取卡片后重试",
+      "invalidPattern": "正则表达式无法编译，整批未执行、未写库",
+      "scriptModeUnimplemented": "沙箱脚本模式尚未实现，请使用声明式操作（正则替换 / 标签增删）"
+    },
+    "retemplate": {
+      "fillStatusLabel": "字段补齐状态",
+      "fillStatus": {
+        "filled": "已补齐",
+        "partial": "部分补齐",
+        "skipped": "已跳过",
+        "conflict": "版本冲突",
+        "failed": "补齐失败",
+        "notNeeded": "无需补齐"
+      },
+      "filledFields": "AI 已补齐字段：{{fields}}",
+      "fillSummary": "AI 补齐：{{filled}} 张成功、{{partial}} 张部分、{{failed}} 张失败",
+      "fillNotRolledBack": "换模板已生效；个别字段补齐失败不会回滚，可在卡片上手动补齐"
+    },
+    "qaFlags": {
+      "label": "质检标记",
+      "flaggedCards": "{{count}} 张卡片带质检标记",
+      "hint": "字段校验发现越界项。卡片已保留入库，建议人工复查后再导出",
+      "fieldLabel": "字段",
+      "rules": {
+        "minLength": "长度低于最小要求",
+        "maxLength": "长度超过最大限制",
+        "allowedValues": "取值不在允许列表中",
+        "validationPattern": "内容不匹配校验规则"
+      }
+    },
+    "analyze": {
+      "routeLabel": "处理路线",
+      "routes": {
+        "simpleText": "纯文本",
+        "vlmLight": "图文轻量",
+        "vlmFull": "图文增强"
+      },
+      "routeSourceLabel": "路由依据",
+      "routeSource": {
+        "llmPlan": "AI 规划（置信度 {{confidence}}）",
+        "heuristic": "启发式规则",
+        "forced": "手动指定"
+      },
+      "glossaryMode": "词汇表模式",
+      "recommendedParams": "推荐参数"
+    },
+    "preferenceMemory": {
+      "label": "制卡偏好记忆",
+      "appliedHint": "已根据你过往的制卡习惯注入 {{count}} 条偏好",
+      "conflictHint": "本次要求与历史偏好冲突时，以本次要求为准"
+    }
   }
 }

@@ -6,6 +6,7 @@
 pub mod adapters;
 pub mod anki;
 pub mod anki_connect_service;
+pub mod anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
 pub mod anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
 #[allow(dead_code)]
 pub mod apkg_exporter_service;
