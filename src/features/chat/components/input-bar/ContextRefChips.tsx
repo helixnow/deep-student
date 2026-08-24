@@ -196,7 +196,7 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
 
         {/* 清空所有按钮 */}
         {displayRefs.length > 1 && !disabled && (
-          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title={t('chatV2:contextRef.clearAll')}>
+          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 [@media(pointer:coarse)]:min-h-11" title={t('chatV2:contextRef.clearAll')}>
             {t('common:actions.clear_all')}
           </DsButton>
         )}
