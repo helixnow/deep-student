@@ -8,7 +8,7 @@
  * 3. factory.ts 不做任何改动：本地化通过 types.ts 的 getter 对 factory 透明生效。
  */
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_RESOURCE_TEMPLATES } from '../types';
@@ -76,10 +76,8 @@ describe('EMPTY_RESOURCE_TEMPLATES.mindmap.content i18n', () => {
 });
 
 describe('factory.ts 未被改动（本地化对 factory 透明）', () => {
-  const factorySource = readFileSync(
-    fileURLToPath(new URL('../factory.ts', import.meta.url)),
-    'utf-8',
-  );
+  // vitest 以项目根为 cwd 运行
+  const factorySource = readFileSync(resolve(process.cwd(), 'src/dstu/factory.ts'), 'utf-8');
 
   it('factory.ts 不引入 i18n，仍直接读 template.defaultName', () => {
     expect(factorySource).not.toMatch(/i18n/);
