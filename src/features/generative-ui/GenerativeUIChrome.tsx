@@ -1,6 +1,7 @@
 import React from 'react';
-import { Sparkle, ArrowClockwise, Check, X } from '@phosphor-icons/react';
+import { ArrowClockwise, Check, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { cn } from '@/utils/cn';
 import type { GenerativeUIAction } from './types';
 
@@ -20,9 +21,11 @@ export function GenerativeUIChrome({ isStreaming, onAction, className }: Generat
       )}
       data-generative-ui-chrome
     >
-      <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
-        <Sparkle className="h-3.5 w-3.5" weight="fill" aria-hidden />
-        <span>{isStreaming ? 'AI 生成中…' : 'AI 生成'}</span>
+      <div className="flex items-center gap-1.5">
+        <AiContentLabel variant="badge" showIcon />
+        {isStreaming ? (
+          <span className="text-xs text-muted-foreground">生成中…</span>
+        ) : null}
       </div>
       {!isStreaming && onAction ? (
         <div className="flex items-center gap-1">

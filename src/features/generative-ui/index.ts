@@ -28,6 +28,7 @@ export { GenerativeUIRenderer } from './GenerativeUIRenderer';
 export { GenerativeUIChrome } from './GenerativeUIChrome';
 export { GenerativeUIPanel } from './components/GenerativeUIPanel';
 export { useGenerativeUIStream } from './hooks/useGenerativeUIStream';
+export { resolveEffectiveRiskLevel } from './actions';
 export { buildGenerativeUISystemPrompt, LEARNING_DASHBOARD_EXAMPLE } from './prompts';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
 
