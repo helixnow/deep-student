@@ -11,11 +11,12 @@ const trendIcon = {
 } as const;
 
 export function StatCardBlock({ title, value, subtitle, trend, trendLabel }: StatCardProps) {
+  const titleId = React.useId();
   const TrendIcon = trend ? trendIcon[trend] : null;
   return (
-    <Card className="min-w-0">
+    <Card className="min-w-0" role="region" aria-labelledby={titleId}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <CardTitle id={titleId} className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1">
         <div className="text-2xl font-semibold tabular-nums">{value}</div>

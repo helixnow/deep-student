@@ -65,3 +65,11 @@ props 中颜色/状态仅允许：
 - 断点/z-index：`src/config/breakpoints.ts`、`src/config/zIndex.ts`
 
 生成式 UI 不得引入独立色板或字号体系。
+
+## 8. Accessibility
+
+- 根节点 `role="region"` + `aria-label`（i18n `a11y.region_label`）；流式时 `aria-busy`，状态用 `aria-live="polite"`
+- 进度用 `role="progressbar"` 与 `aria-valuenow` / `min` / `max`；状态、趋势、严重级别禁止只靠颜色传达
+- 块标题用 heading 或 `aria-labelledby`；装饰图标 `aria-hidden`；列表用 `ul` / `ol` / `li` 或 grid
+- 操作栏为 `toolbar` 或 `group`，执行中按钮 `disabled`；确认对话框须可键盘到达并接收焦点
+- 闪卡：`region` + 正反面 aria；复习日历：table 或 list，日期可读；研究报告：`article`，引用可键盘到达

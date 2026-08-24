@@ -36,6 +36,22 @@
   "panel": {
     "empty": "No AI UI content"
   },
+  "a11y": {
+    "region_label": "AI generated interface",
+    "action_bar_label": "Actions",
+    "list_label": "List",
+    "text_label": "Text",
+    "progress_label": "Progress",
+    "key_value_label": "Key-value details",
+    "flashcard_front": "Flashcard front",
+    "flashcard_back": "Flashcard back",
+    "mindmap_label": "Mind map",
+    "research_report_label": "Research report",
+    "review_day": "{{date}}, {{due}} due",
+    "step_pending": "Not started",
+    "step_active": "In progress",
+    "step_done": "Done"
+  },
   "blocks": {
     "table": {
       "empty": "No data"

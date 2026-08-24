@@ -37,6 +37,8 @@ function renderBodyWithCitations(body: string, citationAriaLabel: (label: string
         key={`cite-${start}`}
         variant="secondary"
         className="mx-0.5 align-baseline text-[10px] font-normal"
+        role="link"
+        tabIndex={0}
         aria-label={citationAriaLabel(fullMatch)}
       >
         {fullMatch}
@@ -58,6 +60,7 @@ function renderBodyWithCitations(body: string, citationAriaLabel: (label: string
 
 export function ResearchReportBlock({ title, body, density }: ResearchReportBlockProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
   const citationCount = useMemo(() => parseResearchReportCitations(body).length, [body]);
 
   return (
@@ -65,9 +68,11 @@ export function ResearchReportBlock({ title, body, density }: ResearchReportBloc
       className={cn('min-w-0 space-y-2 rounded-lg border border-border bg-card p-3', density === 'compact' && 'p-2')}
       data-generative-research-report
       data-citation-count={citationCount || undefined}
+      aria-labelledby={title ? titleId : undefined}
+      aria-label={title ? undefined : t('a11y.research_report_label')}
     >
       {title ? (
-        <h4 className={cn('font-semibold', density === 'compact' ? 'text-sm' : 'text-base')}>{title}</h4>
+        <h4 id={titleId} className={cn('font-semibold', density === 'compact' ? 'text-sm' : 'text-base')}>{title}</h4>
       ) : null}
       <div
         className={cn(

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
@@ -75,10 +75,38 @@ export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarB
   const dialogTrustedLabel = dialogActionId
     ? trustedLabel(dialogActionId, dialogAction?.label ?? '', actionHandlers)
     : '';
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (dialogActionId == null) return;
+    lastTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      const dialog = document.querySelector('[role="alertdialog"]');
+      if (!(dialog instanceof HTMLElement)) return;
+      const buttons = dialog.querySelectorAll('button');
+      const confirm = buttons[buttons.length - 1];
+      if (confirm instanceof HTMLElement) {
+        confirm.focus();
+        return;
+      }
+      dialog.setAttribute('tabindex', '-1');
+      dialog.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      lastTriggerRef.current?.focus?.();
+    };
+  }, [dialogActionId]);
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        role="toolbar"
+        aria-label={t('a11y.action_bar_label')}
+        aria-busy={executing || undefined}
+      >
         {actions.map((action) => {
           const handlerDef = actionHandlers?.[action.id];
           const isRegistered = !enforceHandlerRegistry || handlerDef != null;

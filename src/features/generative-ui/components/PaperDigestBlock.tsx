@@ -29,13 +29,15 @@ export function PaperDigestBlock({
   abstractExcerpt,
 }: PaperDigestBlockProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
+  const findingsId = React.useId();
   const meta = [authors, venue, year ? String(year) : undefined].filter(Boolean).join(' · ');
 
   return (
-    <Card className="min-w-0" data-generative-paper-digest>
+    <Card className="min-w-0" data-generative-paper-digest role="region" aria-labelledby={titleId}>
       <CardHeader className="pb-2 space-y-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <CardTitle className="text-sm font-semibold leading-snug">{title}</CardTitle>
+          <CardTitle id={titleId} className="text-sm font-semibold leading-snug">{title}</CardTitle>
           {citationLabel ? (
             <Badge variant="secondary" className="text-xs shrink-0">
               {citationLabel}
@@ -55,10 +57,10 @@ export function PaperDigestBlock({
         ) : null}
         {keyFindings?.length ? (
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">
+            <h4 id={findingsId} className="text-xs font-medium text-muted-foreground">
               {t('research.paper_digest.key_findings')}
-            </div>
-            <ul className="list-disc pl-4 space-y-1 text-sm">
+            </h4>
+            <ul className="list-disc pl-4 space-y-1 text-sm" aria-labelledby={findingsId}>
               {keyFindings.map((finding) => (
                 <li key={finding}>{finding}</li>
               ))}

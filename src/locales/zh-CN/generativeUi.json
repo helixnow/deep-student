@@ -36,6 +36,22 @@
   "panel": {
     "empty": "暂无 AI 界面内容"
   },
+  "a11y": {
+    "region_label": "AI 生成界面",
+    "action_bar_label": "操作栏",
+    "list_label": "列表",
+    "text_label": "文本",
+    "progress_label": "进度",
+    "key_value_label": "键值信息",
+    "flashcard_front": "闪卡正面",
+    "flashcard_back": "闪卡背面",
+    "mindmap_label": "思维导图",
+    "research_report_label": "研究报告",
+    "review_day": "{{date}}，待复习 {{due}} 项",
+    "step_pending": "未开始",
+    "step_active": "进行中",
+    "step_done": "已完成"
+  },
   "blocks": {
     "table": {
       "empty": "暂无数据"

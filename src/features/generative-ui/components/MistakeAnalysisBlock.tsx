@@ -28,9 +28,10 @@ export function MistakeAnalysisBlock({
   severity = 'medium',
 }: MistakeAnalysisProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
   return (
-    <Alert variant={severityVariant[severity]}>
-      <AlertTitle>
+    <Alert variant={severityVariant[severity]} role="alert" aria-labelledby={titleId}>
+      <AlertTitle id={titleId}>
         {topic} · {t('mistake.error_rate', { rate: errorRate })}
         {mistakeCount != null ? t('mistake.count', { count: mistakeCount }) : ''}
       </AlertTitle>

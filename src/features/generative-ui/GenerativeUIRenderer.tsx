@@ -37,7 +37,7 @@ export function GenerativeUIRenderer({
 
   if (!intent) {
     return (
-      <Alert variant="destructive" className={className}>
+      <Alert variant="destructive" className={className} role="alert">
         <AlertTitle>{t('parse_error_title')}</AlertTitle>
         <AlertDescription>
           {parseError?.join('; ') ?? t('parse_error_invalid')}
@@ -51,6 +51,9 @@ export function GenerativeUIRenderer({
       className={cn('generative-ui-root space-y-3 min-w-0', className)}
       data-generative-ui
       data-streaming={isStreaming || undefined}
+      role="region"
+      aria-label={t('a11y.region_label')}
+      aria-busy={isStreaming || undefined}
     >
       {showChrome ? (
         <GenerativeUIChrome isStreaming={isStreaming} onAction={onAction} />
@@ -70,7 +73,7 @@ export function GenerativeUIRenderer({
           const config = generativeUIRegistry.get(block.type);
           if (!config) {
             return (
-              <Alert key={block.id ?? index} variant="warning">
+              <Alert key={block.id ?? index} variant="warning" role="alert">
                 <AlertTitle>{t('unknown_block_title', { type: block.type })}</AlertTitle>
                 <AlertDescription>{t('unknown_block_desc')}</AlertDescription>
               </Alert>
@@ -80,7 +83,7 @@ export function GenerativeUIRenderer({
           const validation = validateBlockProps(config.propsSchema, block.props ?? {});
           if (isBlockPropsValidationFailure(validation)) {
             return (
-              <Alert key={block.id ?? index} variant="destructive">
+              <Alert key={block.id ?? index} variant="destructive" role="alert">
                 <AlertTitle>{t('validation_failed_title', { type: block.type })}</AlertTitle>
                 <AlertDescription>{validation.errors.join('; ')}</AlertDescription>
               </Alert>

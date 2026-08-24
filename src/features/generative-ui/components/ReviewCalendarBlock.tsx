@@ -22,20 +22,34 @@ export const reviewCalendarPropsSchema = z.object({
 
 export type ReviewCalendarProps = z.infer<typeof reviewCalendarPropsSchema>;
 
+function toDateTime(value: string): string | undefined {
+  return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : undefined;
+}
+
 export function ReviewCalendarBlock({ title, days }: ReviewCalendarProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
   const resolvedTitle = title ?? t('review_calendar.default_title');
   return (
-    <Card className="min-w-0">
+    <Card className="min-w-0" role="region" aria-labelledby={titleId}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">{resolvedTitle}</CardTitle>
+        <CardTitle id={titleId} className="text-sm font-medium">{resolvedTitle}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         <ul className="space-y-2">
           {days.map((day, idx) => (
-            <li key={`${day.date}-${idx}`} className="flex items-center justify-between gap-2 text-sm">
+            <li
+              key={`${day.date}-${idx}`}
+              className="flex items-center justify-between gap-2 text-sm"
+              aria-label={t('a11y.review_day', {
+                date: day.label ? `${day.date} ${day.label}` : day.date,
+                due: day.dueCount,
+              })}
+            >
               <div className="min-w-0">
-                <div className="font-medium">{day.date}</div>
+                <time className="font-medium" dateTime={toDateTime(day.date)}>
+                  {day.date}
+                </time>
                 {day.label ? <div className="text-xs text-muted-foreground">{day.label}</div> : null}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">

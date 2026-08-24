@@ -22,12 +22,17 @@ export function GenerativeUIChrome({ isStreaming, onAction, className }: Generat
         className,
       )}
       data-generative-ui-chrome
+      aria-busy={isStreaming || undefined}
     >
       <div className="flex items-center gap-1.5">
         <AiContentLabel variant="badge" showIcon />
-        {isStreaming ? (
-          <span className="text-xs text-muted-foreground">{t('chrome.streaming')}</span>
-        ) : null}
+        <span
+          aria-live="polite"
+          aria-atomic="true"
+          className={cn(isStreaming ? 'text-xs text-muted-foreground' : 'sr-only')}
+        >
+          {isStreaming ? t('chrome.streaming') : ''}
+        </span>
       </div>
       {!isStreaming && onAction ? (
         <div className="flex items-center gap-1">
