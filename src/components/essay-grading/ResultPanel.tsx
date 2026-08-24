@@ -7,6 +7,7 @@ import {
   Copy,
   Check,
   Download,
+  Notebook,
   WarningCircle,
   ArrowClockwise,
   CircleNotch,
@@ -14,6 +15,7 @@ import {
   CaretRight,
 } from '@phosphor-icons/react';
 import { GradingStreamRenderer } from '../../essay-grading/GradingStreamRenderer';
+import type { SuggestionChange } from '../../essay-grading/suggestionAnchors';
 import { cn } from '@/lib/utils';
 
 interface ResultPanelProps {
@@ -29,8 +31,14 @@ interface ResultPanelProps {
   canRetry?: boolean;
   onRetry?: () => void;
   isPartialResult?: boolean;
-  /** 应用批注中的修改建议到输入区（由 Workbench 提供） */
-  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
+  /** 应用批注中的修改建议到输入区（由 Workbench 提供，前后文锚定） */
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  /** 撤销已采纳的建议 */
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+  /** 已采纳建议的稳定 key 集合 */
+  appliedSuggestionKeys?: ReadonlySet<string>;
+  /** 把当前轮批改结果存为笔记 */
+  onSaveAsNote?: () => void;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -103,6 +111,9 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   onRetry,
   isPartialResult,
   onApplySuggestion,
+  onUndoSuggestion,
+  appliedSuggestionKeys,
+  onSaveAsNote,
   roundNavigation,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
@@ -193,6 +204,20 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                   {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                 </DsButton>
               </CommonTooltip>
+              {onSaveAsNote && !isGrading && (
+                <CommonTooltip content={t('essay_grading:result_section.save_as_note')}>
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={onSaveAsNote}
+                    className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                    aria-label={t('essay_grading:result_section.save_as_note')}
+                  >
+                    <Notebook size={14} />
+                  </DsButton>
+                </CommonTooltip>
+              )}
               <CommonTooltip content={t('essay_grading:result_section.export')}>
                 <DsButton
                   variant="ghost"
@@ -260,6 +285,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               hideToolbar={false}
               hideStreamingIndicator={true}
               onApplySuggestion={onApplySuggestion}
+              onUndoSuggestion={onUndoSuggestion}
+              appliedSuggestionKeys={appliedSuggestionKeys}
             />
           </div>
         )}
