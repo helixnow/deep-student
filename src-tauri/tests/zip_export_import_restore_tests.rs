@@ -33,6 +33,7 @@ use deep_student_lib::data_governance::backup::{
     zip_export::{import_backup_from_zip, import_backup_from_zip_with_password},
     BackupKeyPolicy, BackupManager, BackupManifest, SnapshotKind, ZipExportOptions,
 };
+use deep_student_lib::data_governance::commands_zip::resolve_zip_encryption_password;
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -585,4 +586,96 @@ fn unencrypted_portable_zip_is_honestly_partial() {
     restore_manager
         .restore_with_assets(&imported_manifest, false)
         .expect_err("未加密便携 ZIP 的整槽恢复必须显式拒绝");
+}
+
+fn zip_contains_sealed_secrets(zip_path: &Path) -> bool {
+    let file = std::fs::File::open(zip_path).expect("open zip");
+    let mut archive = zip::ZipArchive::new(file).expect("parse zip");
+    (0..archive.len()).any(|index| {
+        archive
+            .by_index(index)
+            .map(|entry| entry.name() == "portable_secrets.dsbk")
+            .unwrap_or(false)
+    })
+}
+
+/// stored-password 解析接到现有 ZIP 导出模式：未配置→便携；开关+stored→加密全保真；显式覆盖 stored。
+#[test]
+fn stored_password_resolution_selects_portable_or_encrypted_export() {
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    let backup_subdir = backup_dir.join(&manifest.backup_id);
+    let export_root = TempDir::new().expect("export root");
+
+    let portable_password = resolve_zip_encryption_password(None, Some(true), None);
+    assert_eq!(portable_password, None, "未配置不得发明密码");
+    let portable_zip = export_root.path().join("resolved-portable.zip");
+    export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(portable_zip.clone()),
+            encryption_password: portable_password,
+            ..Default::default()
+        },
+    )
+    .expect("未配置应走便携导出");
+    assert!(
+        !zip_contains_sealed_secrets(&portable_zip),
+        "未配置不得写出 portable_secrets.dsbk"
+    );
+
+    let stored_password =
+        resolve_zip_encryption_password(None, Some(true), Some(ENCRYPTION_PASSWORD.to_string()));
+    assert_eq!(stored_password.as_deref(), Some(ENCRYPTION_PASSWORD));
+    let stored_zip = export_root.path().join("resolved-stored.zip");
+    export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(stored_zip.clone()),
+            encryption_password: stored_password,
+            ..Default::default()
+        },
+    )
+    .expect("stored 密码且开关打开应走加密全保真");
+    assert!(
+        zip_contains_sealed_secrets(&stored_zip),
+        "stored 密码导出必须包含 portable_secrets.dsbk"
+    );
+
+    const OVERRIDE_PASSWORD: &str = "explicit-override-pass";
+    let explicit_password = resolve_zip_encryption_password(
+        Some(OVERRIDE_PASSWORD.to_string()),
+        Some(true),
+        Some(ENCRYPTION_PASSWORD.to_string()),
+    );
+    assert_eq!(explicit_password.as_deref(), Some(OVERRIDE_PASSWORD));
+    let explicit_zip = export_root.path().join("resolved-explicit.zip");
+    export_backup_to_zip(
+        &backup_subdir,
+        &ZipExportOptions {
+            output_path: Some(explicit_zip.clone()),
+            encryption_password: explicit_password,
+            ..Default::default()
+        },
+    )
+    .expect("显式密码覆盖 stored 后仍应走加密全保真");
+    assert!(
+        zip_contains_sealed_secrets(&explicit_zip),
+        "显式密码导出必须包含 portable_secrets.dsbk"
+    );
+
+    let import_root = TempDir::new().expect("import override");
+    let explicit_import_dir = import_root.path().join("explicit");
+    import_backup_from_zip_with_password(
+        &explicit_zip,
+        &explicit_import_dir,
+        Some(OVERRIDE_PASSWORD),
+    )
+    .expect("显式覆盖密码必须能解封");
+    let stored_import_dir = import_root.path().join("stored-should-fail");
+    import_backup_from_zip_with_password(
+        &explicit_zip,
+        &stored_import_dir,
+        Some(ENCRYPTION_PASSWORD),
+    )
+    .expect_err("stored 密码不得解封被显式密码覆盖的 ZIP");
 }

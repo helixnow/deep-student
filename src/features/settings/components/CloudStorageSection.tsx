@@ -857,6 +857,22 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }));
   }, []);
 
+  // 云端整包 ZIP 密码：输入框显式密码优先；否则仅在「已配置」时让后端读安全存储。
+  // 不要把 secure store 密码读进 React state。
+  const resolveCloudZipEncryptionArgs = useCallback((): {
+    encryptionPassword?: string;
+    useStoredCloudEncryptionPassword?: boolean;
+  } => {
+    const explicit = encryptionPassword.trim();
+    if (explicit) {
+      return { encryptionPassword: explicit };
+    }
+    if (credentialStatus.encryptionPasswordConfigured) {
+      return { useStoredCloudEncryptionPassword: true };
+    }
+    return {};
+  }, [credentialStatus.encryptionPasswordConfigured, encryptionPassword]);
+
   // 备份并上传到云端
   const handleBackupAndUpload = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -887,7 +903,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setStage('upload', 2, 4, t('cloudStorage:progress.packageZip'));
       let zipPath: string;
       try {
-        const zipExportJob = await DataGovernanceApi.exportZip(backupId);
+        const zipArgs = resolveCloudZipEncryptionArgs();
+        const zipExportJob = await DataGovernanceApi.exportZip(
+          backupId,
+          undefined,
+          undefined,
+          undefined,
+          zipArgs.encryptionPassword,
+          zipArgs.useStoredCloudEncryptionPassword,
+        );
         const zipExportSummary = await waitForGovernanceJob(zipExportJob.job_id, 'export');
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
@@ -927,6 +951,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     localizeCloudError,
     refreshStatus,
     resolveBackupId,
+    resolveCloudZipEncryptionArgs,
     resolveExportZipPath,
     setStage,
     t,
@@ -968,7 +993,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setStage('download', 2, 3, t('cloudStorage:progress.importZip'));
       let importedBackupId: string;
       try {
-        const importJob = await DataGovernanceApi.importZip(downloadResult.localPath);
+        const zipArgs = resolveCloudZipEncryptionArgs();
+        const importJob = await DataGovernanceApi.importZip(
+          downloadResult.localPath,
+          undefined,
+          zipArgs.encryptionPassword,
+          zipArgs.useStoredCloudEncryptionPassword,
+        );
         const importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
@@ -1007,6 +1038,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     buildConfig,
     localizeCloudError,
     resolveBackupId,
+    resolveCloudZipEncryptionArgs,
     setStage,
     t,
     waitForGovernanceJob,

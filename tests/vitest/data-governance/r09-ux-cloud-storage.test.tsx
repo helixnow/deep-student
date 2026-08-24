@@ -264,10 +264,12 @@ describe('用户指南 16 不把默认云端整包写成可换机', () => {
     'utf-8',
   );
 
-  it('写明默认云端包不能整槽恢复，并不再说适合迁移学习数据', () => {
+  it('按是否配置 E2EE 密码分述云端整包，并不再说适合迁移学习数据', () => {
+    expect(guide).toContain('未配置云端端到端加密密码');
     expect(guide).toContain('**不会**带备份密码');
+    expect(guide).toContain('加密全保真 ZIP');
     expect(guide).toContain('校验会明确拒绝，不会覆盖当前数据');
-    expect(guide).toContain('不要指望默认云端整包能完成「从云端恢复」');
+    expect(guide).not.toContain('产物永远是便携归档');
     expect(guide).not.toContain('适合迁移学习数据本身');
     expect(guide).not.toContain('也可以走云端：老设备「立即备份到云端」');
   });
@@ -283,6 +285,13 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     expect(componentSource).toContain("t('cloudStorage:download.warning')");
     expect(componentSource).toContain("t('cloudStorage:download.partialArchiveNotice')");
     expect(componentSource).toContain("t('cloudStorage:download.restartNotice')");
+    expect(componentSource).toContain('useStoredCloudEncryptionPassword');
+    expect(componentSource).toContain('resolveCloudZipEncryptionArgs');
+    expect(componentSource).toContain('DataGovernanceApi.exportZip(');
+    expect(componentSource).toContain('DataGovernanceApi.importZip(');
+    expect(componentSource).not.toMatch(/exportZip\(\s*backupId\s*\)/);
+    expect(componentSource).not.toMatch(/importZip\(\s*downloadResult\.localPath\s*\)/);
+    expect(componentSource).not.toMatch(/getCloudCredentials\(|secure_get_cloud_credentials/);
     expect(componentSource).toContain('onConfirm={handleRestore}');
     // 恢复确认框用 warning 变体
     expect(componentSource).toMatch(
@@ -290,12 +299,16 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     );
     expect(zhLocale.download.partialArchiveNotice).toContain('便携归档');
     expect(zhLocale.download.partialArchiveNotice).toContain('整槽恢复');
-    expect(zhLocale.download.partialArchiveNotice).toContain('不会带备份密码');
-    expect(zhLocale.download.partialArchiveNotice).toContain('永远是便携归档');
+    expect(zhLocale.download.partialArchiveNotice).toContain('未配置');
+    expect(zhLocale.download.partialArchiveNotice).toContain('加密全保真');
+    expect(zhLocale.download.partialArchiveNotice).not.toContain('永远是便携归档');
+    expect(zhLocale.download.description).toContain('未配置云端端到端加密密码');
     expect(zhLocale.download.warning).toContain('通过整槽恢复校验');
     expect(zhLocale.download.restartNotice).toContain('通过整槽恢复校验');
     expect(enLocale.download.partialArchiveNotice).toMatch(/portable archive/i);
-    expect(enLocale.download.partialArchiveNotice).toMatch(/always exports/i);
+    expect(enLocale.download.partialArchiveNotice).toMatch(/full-fidelity/i);
+    expect(enLocale.download.partialArchiveNotice).not.toMatch(/always exports/i);
+    expect(enLocale.download.description).toMatch(/without a cloud end-to-end encryption password/i);
     expect(enLocale.download.warning).toMatch(/only after slot-restore validation/i);
     expect(enLocale.download.restartNotice).toMatch(/slot-restore validation/i);
     expect(Object.keys(zhLocale.download).sort()).toEqual(Object.keys(enLocale.download).sort());

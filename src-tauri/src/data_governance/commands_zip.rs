@@ -72,6 +72,55 @@ fn copy_temp_zip_to_virtual_uri(
     Ok(())
 }
 
+/// 解析 ZIP 导出/导入所用的备份密码。
+///
+/// 优先级：调用方显式传入的非空密码 >（开关打开时）安全存储里的已存密码。
+/// 空串视为未配置，不发明密码；未配置则返回 `None`，保持便携 ZIP / 无密码导入。
+pub fn resolve_zip_encryption_password(
+    explicit_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
+    stored_password: Option<String>,
+) -> Option<String> {
+    if let Some(password) = explicit_password.filter(|password| !password.trim().is_empty()) {
+        return Some(password);
+    }
+    if use_stored_cloud_encryption_password.unwrap_or(false) {
+        return stored_password.filter(|password| !password.trim().is_empty());
+    }
+    None
+}
+
+/// 从安全存储读取已存云端 E2EE 密码。空串 / 读取失败视为未配置。
+fn stored_cloud_encryption_password(app: &tauri::AppHandle) -> Option<String> {
+    let mut config = crate::cloud_storage::CloudStorageConfig::default();
+    crate::secure_store::hydrate_cloud_config(app, &mut config);
+    config
+        .encryption_password
+        .filter(|password| !password.trim().is_empty())
+}
+
+fn resolve_zip_encryption_password_from_store(
+    app: &tauri::AppHandle,
+    explicit_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
+) -> Option<String> {
+    let needs_stored = use_stored_cloud_encryption_password.unwrap_or(false)
+        && explicit_password
+            .as_deref()
+            .map(|password| password.trim().is_empty())
+            .unwrap_or(true);
+    let stored_password = if needs_stored {
+        stored_cloud_encryption_password(app)
+    } else {
+        None
+    };
+    resolve_zip_encryption_password(
+        explicit_password,
+        use_stored_cloud_encryption_password,
+        stored_password,
+    )
+}
+
 /// 一步完成「备份 + 导出 ZIP」（后台任务模式）
 ///
 /// 默认行为：完整备份（数据库 + 资产）后直接导出到指定 ZIP 路径。
@@ -524,6 +573,10 @@ async fn execute_backup_and_export_zip_with_progress(
 /// - `output_path`: 输出 ZIP 文件路径（可选，默认自动生成）
 /// - `compression_level`: 压缩级别 0-9（可选，默认 6）
 /// - `include_checksums`: 是否包含校验和文件（可选，默认 true）
+/// - `encryption_password`: 可选备份密码。非空时导出加密全保真 ZIP
+/// - `use_stored_cloud_encryption_password`: 未显式传密码时，是否从安全存储
+///   读取已存云端 E2EE 密码。显式非空密码优先；未配置则保持便携 ZIP。
+///   密码不写入日志 / Debug / job params。
 ///
 /// ## 返回
 /// - `BackupJobStartResponse`: 包含任务 ID 的响应
@@ -540,6 +593,7 @@ pub async fn data_governance_export_zip(
     compression_level: Option<u32>,
     include_checksums: Option<bool>,
     encryption_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) -> Result<BackupJobStartResponse, String> {
     let validated_backup_id = validate_backup_id(&backup_id)?;
 
@@ -566,8 +620,11 @@ pub async fn data_governance_export_zip(
     };
 
     info!(
-        "[data_governance] 启动后台 ZIP 导出任务: backup_id={}, output_path={:?}, virtual_target={:?}",
-        validated_backup_id, local_output_path, target_virtual_uri.is_some()
+        "[data_governance] 启动后台 ZIP 导出任务: backup_id={}, output_path={:?}, virtual_target={:?}, use_stored_cloud_encryption_password={}",
+        validated_backup_id,
+        local_output_path,
+        target_virtual_uri.is_some(),
+        use_stored_cloud_encryption_password.unwrap_or(false)
     );
 
     // 使用全局单例备份任务管理器
@@ -615,6 +672,7 @@ pub async fn data_governance_export_zip(
             compression_level,
             include_checksums,
             encryption_password,
+            use_stored_cloud_encryption_password,
         )
         .await;
     });
@@ -639,6 +697,7 @@ async fn execute_zip_export_with_progress(
     compression_level: u32,
     include_checksums: bool,
     encryption_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) {
     use std::fs::File;
     use std::io::Write;
@@ -647,6 +706,12 @@ async fn execute_zip_export_with_progress(
     use zip::write::FileOptions;
     use zip::CompressionMethod;
     use zip::ZipWriter;
+
+    let encryption_password = resolve_zip_encryption_password_from_store(
+        &app,
+        encryption_password,
+        use_stored_cloud_encryption_password,
+    );
 
     let start = Instant::now();
 
@@ -1550,6 +1615,10 @@ pub struct ZipExportResultResponse {
 /// - `app`: Tauri AppHandle
 /// - `zip_path`: ZIP 文件路径
 /// - `backup_id`: 解压后的备份 ID（可选，默认从文件名生成）
+/// - `password`: 可选备份密码。非空时解封加密全保真 ZIP
+/// - `use_stored_cloud_encryption_password`: 未显式传密码时，是否从安全存储
+///   读取已存云端 E2EE 密码。显式非空密码优先；未配置则保持无密码导入。
+///   密码不写入日志 / Debug / job params。
 ///
 /// ## 返回
 /// - `BackupJobStartResponse`: 包含任务 ID
@@ -1570,6 +1639,7 @@ pub async fn data_governance_import_zip(
     zip_path: String,
     backup_id: Option<String>,
     password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) -> Result<BackupJobStartResponse, String> {
     let validated_backup_id = match backup_id {
         Some(id) => Some(validate_backup_id(&id)?),
@@ -1604,9 +1674,10 @@ pub async fn data_governance_import_zip(
         };
 
     info!(
-        "[data_governance] 启动后台 ZIP 导入任务: zip_path={}, backup_id={:?}",
+        "[data_governance] 启动后台 ZIP 导入任务: zip_path={}, backup_id={:?}, use_stored_cloud_encryption_password={}",
         zip_file_path.display(),
-        validated_backup_id
+        validated_backup_id,
+        use_stored_cloud_encryption_password.unwrap_or(false)
     );
 
     // 使用全局单例备份任务管理器
@@ -1646,6 +1717,7 @@ pub async fn data_governance_import_zip(
             zip_file_path,
             validated_backup_id,
             password,
+            use_stored_cloud_encryption_password,
         )
         .await;
         // 清理从 content:// 物化的临时 ZIP 文件
@@ -1680,9 +1752,16 @@ async fn execute_zip_import_with_progress(
     zip_file_path: PathBuf,
     backup_id: Option<String>,
     password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) {
     use super::backup::zip_export::{import_backup_from_zip_with_progress, ZipImportPhase};
     use std::time::Instant;
+
+    let password = resolve_zip_encryption_password_from_store(
+        &app,
+        password,
+        use_stored_cloud_encryption_password,
+    );
 
     let start = Instant::now();
 
@@ -2196,5 +2275,66 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod resolve_zip_encryption_password_tests {
+    use super::resolve_zip_encryption_password;
+
+    #[test]
+    fn unconfigured_stays_portable() {
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(true), None),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(Some(String::new()), Some(true), Some(String::new())),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(Some("   ".into()), Some(true), Some(" \t".into())),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(None, None, Some("stored-passphrase".into())),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(false), Some("stored-passphrase".into())),
+            None
+        );
+    }
+
+    #[test]
+    fn stored_password_used_when_flag_on() {
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(true), Some("stored-passphrase".into())),
+            Some("stored-passphrase".into())
+        );
+    }
+
+    #[test]
+    fn explicit_password_overrides_stored() {
+        assert_eq!(
+            resolve_zip_encryption_password(
+                Some("explicit-passphrase".into()),
+                Some(true),
+                Some("stored-passphrase".into())
+            ),
+            Some("explicit-passphrase".into())
+        );
+    }
+
+    #[test]
+    fn empty_explicit_falls_back_to_stored() {
+        assert_eq!(
+            resolve_zip_encryption_password(
+                Some("   ".into()),
+                Some(true),
+                Some("stored-passphrase".into())
+            ),
+            Some("stored-passphrase".into())
+        );
     }
 }

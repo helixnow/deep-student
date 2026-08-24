@@ -104,6 +104,9 @@ describe('移动端指南对 Android 云存储诚实', () => {
     expect(guide).not.toMatch(/两端配置同一个 WebDAV\/S3/);
     expect(guide).not.toMatch(/一端「立即备份到云端」，另一端「从云端恢复」/);
     expect(guide).toContain('便携归档');
+    expect(guide).toContain('未配置云端端到端加密密码时');
+    expect(guide).toContain('校验会拒绝');
+    expect(guide).not.toMatch(/不要指望默认「立即备份到云端」再「从云端恢复」能整槽换机/);
   });
 
   it('隐私数据流向不把云同步写成笼统的 WebDAV/S3', () => {

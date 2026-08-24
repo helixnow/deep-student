@@ -758,6 +758,8 @@ export async function backupAndExportZip(
  *   - 7-9: 最大压缩
  * @param includeChecksums 是否包含校验和文件（可选，默认 true）
  * @param encryptionPassword 可选 E2EE 备份密码（加密全保真导出，见 backupAndExportZip）
+ * @param useStoredCloudEncryptionPassword 未显式传密码时，是否从安全存储读取已存云端 E2EE 密码。
+ *   显式非空密码优先；未配置则保持便携 ZIP。不要把安全存储密码读回前端。
  */
 export async function exportZip(
   backupId: string,
@@ -765,6 +767,7 @@ export async function exportZip(
   compressionLevel?: number,
   includeChecksums?: boolean,
   encryptionPassword?: string,
+  useStoredCloudEncryptionPassword?: boolean,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_export_zip", {
     backupId,
@@ -772,6 +775,7 @@ export async function exportZip(
     compressionLevel,
     includeChecksums,
     encryptionPassword,
+    useStoredCloudEncryptionPassword,
   });
 }
 
@@ -785,16 +789,20 @@ export async function exportZip(
  * @param backupId 解压后的备份 ID（可选，默认从时间戳生成）
  * @param password 可选 E2EE 备份密码：导入加密全保真包时必须提供与导出时
  *   相同的密码，才能解封为可整槽恢复的完整快照
+ * @param useStoredCloudEncryptionPassword 未显式传密码时，是否从安全存储读取已存云端 E2EE 密码。
+ *   显式非空密码优先；未配置则保持无密码导入。不要把安全存储密码读回前端。
  */
 export async function importZip(
   zipPath: string,
   backupId?: string,
   password?: string,
+  useStoredCloudEncryptionPassword?: boolean,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_import_zip", {
     zipPath,
     backupId,
     password,
+    useStoredCloudEncryptionPassword,
   });
 }
 
