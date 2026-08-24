@@ -114,7 +114,15 @@ impl GenerativeUiExecutor {
             return Err(format!("noteEdit.operation 无效: {}", operation));
         }
 
-        Ok(Some(raw.clone()))
+        if raw.get("isRegex").and_then(Value::as_bool) == Some(true) {
+            return Err("noteEdit.isRegex 不被支持".to_string());
+        }
+
+        let mut sanitized = raw.clone();
+        if let Some(obj) = sanitized.as_object_mut() {
+            obj.remove("isRegex");
+        }
+        Ok(Some(sanitized))
     }
 
     fn intent_has_apply_note_edit(intent: &Value) -> bool {
@@ -558,6 +566,15 @@ mod tests {
     fn parse_note_edit_rejects_invalid_operation() {
         let args = json!({ "noteEdit": { "operation": "delete" } });
         assert!(GenerativeUiExecutor::parse_note_edit(&args).is_err());
+    }
+
+    #[test]
+    fn parse_note_edit_rejects_regex_flag() {
+        let args = json!({
+            "noteEdit": { "operation": "replace", "search": "(a+)+$", "replace": "x", "isRegex": true }
+        });
+        let error = GenerativeUiExecutor::parse_note_edit(&args).expect_err("regex");
+        assert!(error.contains("isRegex"));
     }
 
     #[test]

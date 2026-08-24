@@ -1,5 +1,15 @@
 # Generative UI 进度日志
 
+## Round 52（2026-08-24）— 笔记 HITL 去掉 regex 透传
+
+CI `32711020815` 仍 queued，**本轮不 push**。
+
+1. [x] `dispatchCanvasAIEditRequest` 只转发校验后字段，事件 detail 不含 `isRegex`
+2. [x] Rust `parse_note_edit` 拒绝 `isRegex: true` 并剥离该字段
+3. [x] Skill 明确禁止 noteEdit regex
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 51（2026-08-24）— 测试卫生 / 架构文档
 
 CI `32711020815`（head `c16a4fbd`）仍 queued，**本轮不 push**。
