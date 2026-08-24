@@ -998,121 +998,13 @@ impl SyncManager {
         Ok(())
     }
 
-    /// [R07-asset-e2ee] 文件级对象下载（透明解包 + 明文哈希回验）。
-    ///
-    /// 云端对象的三种形态：
-    /// - `DSBK` 容器且本端有密码：下载密文到临时文件 → 解密 → 校验明文
-    ///   sha256 与 `expected_sha256` 一致 → 原子落盘到 `dest`；
-    /// - `DSBK` 容器但本端无密码：fail-closed 明确报错，绝不把密文当明文
-    ///   落盘（旧客户端产生的明文期望由调用方的哈希/大小校验兜底报错）；
-    /// - 明文对象（无 DSBK 魔数）：校验明文 sha256 后落盘。**注意**：与记录级
-    ///   `decode_payload` 的防降级不同，这里在本端已启用加密时也接受明文
-    ///   对象——文件级对象的完整性由清单里钉住的明文哈希保证，而清单本身
-    ///   是 DSBK（AES-GCM，带认证）加密的，攻击者无法替换对象内容并通过
-    ///   校验；同时启用加密前上传的历史明文文件必须保持可下载。
-    ///
-    /// 任何失败路径都不触碰 `dest`（临时文件自动清理），保持调用方
-    /// "下载失败保留本地既有文件"的既有语义。
-    #[cfg(feature = "data_governance")]
-    async fn get_file_decoded(
-        &self,
-        storage: &dyn CloudStorage,
-        key: &str,
-        dest: &std::path::Path,
-        expected_sha256: Option<&str>,
-        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
-    ) -> Result<(), SyncError> {
-        let parent = match dest.parent() {
-            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
-            _ => std::path::PathBuf::from("."),
-        };
-        std::fs::create_dir_all(&parent)
-            .map_err(|e| SyncError::Database(format!("创建下载目录失败 {:?}: {}", parent, e)))?;
-
-        // 与 dest 同目录的临时文件：最终 persist 是同目录原子 rename。
-        let downloaded_tmp = tempfile::Builder::new()
-            .prefix(".sync-e2ee-download-")
-            .suffix(".tmp")
-            .tempfile_in(&parent)
-            .map_err(|e| SyncError::Database(format!("创建临时下载文件失败: {}", e)))?
-            .into_temp_path();
-        storage
-            .get_file(key, &downloaded_tmp, None, progress)
-            .await
-            .map_err(|e| SyncError::Network(format!("下载文件级对象失败 {}: {}", key, e)))?;
-
-        let verify_and_persist = |plain_tmp: tempfile::TempPath,
-                                  dest: &std::path::Path|
-         -> Result<(), SyncError> {
-            if let Some(expected) = expected_sha256 {
-                let actual =
-                    crate::backup_common::calculate_file_hash(&plain_tmp).map_err(|e| {
-                        SyncError::Database(format!("计算下载对象明文校验和失败 {}: {}", key, e))
-                    })?;
-                if !actual.eq_ignore_ascii_case(expected) {
-                    return Err(SyncError::Database(format!(
-                        "文件级对象 {} 明文校验失败: 期望 {}, 实际 {}",
-                        key, expected, actual
-                    )));
-                }
-            }
-            plain_tmp
-                .persist(dest)
-                .map_err(|e| SyncError::Database(format!("保存下载文件失败 {:?}: {}", dest, e)))?;
-            Ok(())
-        };
-
-        if Self::file_has_dsbk_magic(&downloaded_tmp)? {
-            let Some(password) = self
-                .encryption_password
-                .as_deref()
-                .filter(|pw| !pw.is_empty())
-            else {
-                return Err(SyncError::Database(format!(
-                    "云端文件级对象 {} 是端到端加密的（DSBK 容器），但本机未配置加密密码。\
-                     请在云同步设置里填入正确的密码后重试。",
-                    key
-                )));
-            };
-            let decrypted_tmp = tempfile::Builder::new()
-                .prefix(".sync-e2ee-decrypt-")
-                .suffix(".tmp")
-                .tempfile_in(&parent)
-                .map_err(|e| SyncError::Database(format!("创建临时解密文件失败: {}", e)))?
-                .into_temp_path();
-            crate::crypto::backup_crypto::decrypt_backup_file(
-                &downloaded_tmp,
-                &decrypted_tmp,
-                password,
-            )
-            .map_err(|e| {
-                SyncError::Database(format!(
-                    "解密文件级对象失败 {}（密码错误或数据损坏）: {}",
-                    key, e
-                ))
-            })?;
-            verify_and_persist(decrypted_tmp, dest)
-        } else {
-            verify_and_persist(downloaded_tmp, dest)
-        }
-    }
-
-    /// 读取文件头部判断是否为 DSBK 加密容器（不足 4 字节视为非加密）。
-    #[cfg(feature = "data_governance")]
-    fn file_has_dsbk_magic(path: &std::path::Path) -> Result<bool, SyncError> {
-        use std::io::Read;
-        let mut file = std::fs::File::open(path)
-            .map_err(|e| SyncError::Database(format!("打开下载文件失败 {:?}: {}", path, e)))?;
-        let mut magic = [0u8; 4];
-        match file.read_exact(&mut magic) {
-            Ok(()) => Ok(crate::crypto::backup_crypto::is_encrypted_backup(&magic)),
-            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
-            Err(e) => Err(SyncError::Database(format!(
-                "读取下载文件头失败 {:?}: {}",
-                path, e
-            ))),
-        }
-    }
+    // [FINDINGS-R11 P2-1] 此处原有 `get_file_decoded`（文件级对象下载 + 透明
+    // DSBK 解包）：全仓零调用的死代码，且在本端启用加密时接受明文对象，与
+    // 真实下载路径 `download_file_object` 的防降级门禁（缺 cipher_sha256 的
+    // 明文遗留在启用加密时拒收）语义相悖。为避免被后来者当成可用积木接回、
+    // 静默重新打开防降级豁免，已连同其唯一消费者 `file_has_dsbk_magic` 一并
+    // 删除。文件级对象下载一律走 `download_file_object`。
+    // 锁定测：tests/sync_r12_decoded_dead.rs。
 
     /// 获取设备 ID
     pub fn device_id(&self) -> &str {

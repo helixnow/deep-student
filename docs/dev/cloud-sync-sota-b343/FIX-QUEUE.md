@@ -297,7 +297,7 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 
 模型 claude-fable-5-thinking-high。R09-restore-ops 已交付 WebDAV Range 续传 + 无密码导入早失败，本包只收增量。复审结论与修复：
 
-- **S3/FTP 半包当成功（确认存在，已修）**：`s3.rs::get_file` 与 `ftp.rs::stream_to_file`（`get` / `get_file` 共用）都以"流读到 EOF"为完成信号，从不核对实际字节数与云端声明大小。备份下载路径因带 `version.checksum` 有第二道防线，但 `data_governance/sync/mod.rs` 的 `get_file_decoded` 以 `expected=None` 调 `get_file`，FTP 数据通道被中间设备掐断（EOF 与正常结束不可区分）时半包会被 persist 成成功产物。修复：三处（含 `traits.rs` 默认实现）在 EOF 后校验 `downloaded == total_size`，不一致即 fail-closed，同时覆盖"对象在 stat 与 GET 之间被并发替换"的错版本形态；`ftp.rs::get_file` 对 `stat=None` 提前返回 not-found（原实现按 `total_size=0` 继续 RETR）。
+- **S3/FTP 半包当成功（确认存在，已修）**：`s3.rs::get_file` 与 `ftp.rs::stream_to_file`（`get` / `get_file` 共用）都以"流读到 EOF"为完成信号，从不核对实际字节数与云端声明大小。备份下载路径因带 `version.checksum` 有第二道防线，但存在 `expected=None` 调 `get_file` 的调用方（当时论证引用的 `data_governance/sync/mod.rs::get_file_decoded` 后经 FINDINGS-R11 P2-1 认定为死代码、已由 R12-decoded-dead 删除；真实的 `expected=None` 调用方是 `repo_check.rs` 的巡检下载——修复的受益结论不变），FTP 数据通道被中间设备掐断（EOF 与正常结束不可区分）时半包会被 persist 成成功产物。修复：三处（含 `traits.rs` 默认实现）在 EOF 后校验 `downloaded == total_size`，不一致即 fail-closed，同时覆盖"对象在 stat 与 GET 之间被并发替换"的错版本形态；`ftp.rs::get_file` 对 `stat=None` 提前返回 not-found（原实现按 `total_size=0` 继续 RETR）。
 - **WebDAV 损坏/对象变更 SHA256 拒绝（确认已闭环，只补锁定测）**：`sync_manager.rs::download_with_progress` 续传路径完成后整文件 SHA256 与 `version.checksum` 比对、失败即丢断点报错（R09 已实现且有损坏断点测试）；本包补"对象被同大小换包"锁定测。
 - **无密码导入所有入口早失败（确认已闭环，补入口枚举锁定测）**：四个公开导入函数（`import_backup_from_zip` / `_with_password` / `_with_progress` / `_resumable`）全部经 `precheck_sealed_payload_password` 在触碰目标目录之前失败；命令层 `data_governance_import_zip`、任务恢复续传、`cloud_sync_download` 的 DSBK 无密码路径均复核无旁路。
 
@@ -332,7 +332,7 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 | 项 | 级别 | 修复文件面 |
 |---|---|---|
 | repo_check DSBK v2 头偏移（FINDINGS-R11 P1-1） | P1 | `cloud_storage/repo_check.rs`、`sync_r11_repo_check.rs`（改真实密文 fixture）→ R12-repocheck-fix |
-| `get_file_decoded` 死代码且语义与 `download_file_object` 相悖（P2-1） | P2 | `data_governance/sync/mod.rs`（删除）；本文件 R10-download 节论据引用同步更正 |
+| `get_file_decoded` 死代码且语义与 `download_file_object` 相悖（P2-1） | P2 | ~~`data_governance/sync/mod.rs`（删除）；本文件 R10-download 节论据引用同步更正~~ **已关 → R12-decoded-dead（Round 12 回传）** |
 | WebDAV 非续传 `get_file` 无字节数核对（P2-2） | P2 | `cloud_storage/webdav.rs` + 新测；指南 16 `:80` 表述在此之前对 WebDAV 超前 |
 | 绿灯声明未经运行（P2-3，过程项） | P2 | 下一次完整 CI run（含 P1-1 修复）前，「测试 N 例」类声明一律视为「已交付未验证」 |
 
@@ -406,3 +406,15 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 **范围外（明示不做）**：`ftp.rs` 未动——FINDINGS-R11 未对 FTP 提出新增量（上传核对/死代码均无强证据），且 `ftp.rs` 与枝 `cursor/fix-sync-tombstone-db14` 合 main 必冲突，无必要不扩大冲突面；`get_file_decoded` 死代码删除（FINDINGS-R11 P2-1）属 `data_governance/sync/mod.rs`，不在本包文件面，留待认领。
 
 **文件面认领（独占）**：`cloud_storage/webdav.rs`（仅 `get_file` 字节数校验一段）、`src-tauri/tests/sync_r10_provider_contract.rs` 新文件、用户指南 16 溯源注释一条、FINDINGS-R11 P2-2/§3.2 状态回写、本节。不改 `sync_manager.rs` / `repo_check` / `ftp.rs` / RecordConflictsPanel / notes / chat / workbench。
+## Round 12 回传（增量登记）
+
+### R12-decoded-dead（分支 `cursor/cloud-sync-sota-r12-decoded-dead-b343`，关 FINDINGS-R11 P2-1）
+
+模型 claude-fable-5-thinking-high。删除文件级下载死代码，堵「启用加密时接受明文」旁路被接回的可能。交付：
+
+- **删除**：`data_governance/sync/mod.rs` 的 `get_file_decoded`（全仓零调用；本端启用加密时接受明文对象，与真实下载路径 `download_file_object` 的防降级门禁语义相悖）连同其唯一消费者 `file_has_dsbk_magic` 一并删除，原位置留墓碑注释（指向 `download_file_object` 与本锁定测）。不改 `download_file_object` / vfs_blobs 加密门禁本身（FileCipherSession 已合入，未动）。
+- **锁定测**：新文件 `src-tauri/tests/sync_r12_decoded_dead.rs` 3 例——① `src/` 全树无 `get_file_decoded` / `file_has_dsbk_magic` 的定义或调用（只匹配代码形态，允许注释提名）；② 墓碑注释存活；③ `download_file_object` 明文遗留分支（`cipher_sha256=None`）的 `encryption_enabled()` 拒收门禁与错误文案存活。全部只读源码，不触网不建库。
+- **论据更正**：`sync_r10_download.rs` 模块文档与「半包必须失败」用例注释中「`expected=None` 调用方」由死函数改为真实调用方 `repo_check.rs`（巡检下载）；本文件 R10-download 节同句更正；PROTOCOL-R10 R07-file-e2ee 段 b) 的下载侧引用由 `get_file_decoded` 改指 `download_file_object`。
+- **台账回写**：FINDINGS-R11 §2 P2-1 状态更新（已关）、§3.2 表 P2-1 行、§5 去向 5 号划线；本文件 Round 11 待修表 P2-1 行标已关。
+
+**文件面认领（独占）**：`data_governance/sync/mod.rs`（仅删两函数 + 墓碑注释）、`sync_r10_download.rs`（仅两处注释）、`sync_r12_decoded_dead.rs` 新文件、FINDINGS-R11 三处回写、PROTOCOL-R10 一句、本文件 R10-download 节一句 + 待修表一行 + 本节。不改 vfs_blobs / repo_check / webdav / notes / chat / workbench。

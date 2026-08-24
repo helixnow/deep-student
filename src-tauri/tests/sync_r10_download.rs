@@ -6,8 +6,9 @@
 //!    S3/FTP 的流式实现同规则）在响应流读到 EOF 后必须核对实际字节数与云端
 //!    声明大小，不一致（半包、或对象在 stat 与 get 之间被并发替换）即失败，
 //!    即使调用方没有传 `expected_checksum` 也绝不落盘冒充成功——
-//!    `data_governance/sync/mod.rs::get_file_decoded` 正是以 `expected=None`
-//!    调用的，后端级字节数校验是它唯一的防线；
+//!    `cloud_storage/repo_check.rs` 的巡检下载正是以 `expected=None` 调用的
+//!    （原引用的 `get_file_decoded` 系死代码，已按 FINDINGS-R11 P2-1 删除），
+//!    后端级字节数校验是这类调用方唯一的防线；
 //! 2. **WebDAV 续传路径的 SHA256 拒绝**：断点损坏（R09 已测）之外，云端对象
 //!    被**同大小**换包时续传拼装的产物必须被整文件 SHA256 校验拒绝、断点
 //!    丢弃、不产出最终文件；
@@ -249,8 +250,8 @@ async fn upload_fixture(
 // 1. S3/FTP 半包不得当成功（trait 默认 get_file 的字节数校验）
 // ============================================================================
 
-/// 无 `expected_checksum` 的半包下载必须失败——这是 `get_file_decoded`
-/// （文件级对象下载，`expected=None`）能依赖的唯一后端级防线。
+/// 无 `expected_checksum` 的半包下载必须失败——这是 `repo_check.rs` 巡检
+/// 下载（`expected=None`）能依赖的唯一后端级防线。
 #[tokio::test]
 async fn get_file_without_checksum_rejects_half_package() {
     let storage = TruncatingStorage::default();

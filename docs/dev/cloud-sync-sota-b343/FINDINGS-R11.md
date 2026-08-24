@@ -115,6 +115,8 @@ KEY-ROTATION-R11.md 四件套（用户流程 / v3 草案 / 命名元数据评估
 - 连带：R10-download 与 FIX-QUEUE 对「无 expected 的 `get_file` 调用方」的风险论证引用的正是这个死函数（`sync_r10_download.rs` 模块文档同引）；修复本身仍然有效（真实的 `expected=None` 调用方是 `repo_check.rs:484`），但台账论据应当更正。
 - 建议：直接删除 `get_file_decoded`（或接回并对齐 `download_file_object` 的防降级语义——但目前无任何调用需求，删除更优）。
 
+**状态更新（R12-decoded-dead，已关）**：按「删除更优」路线落地——`get_file_decoded` 连同其唯一消费者 `file_has_dsbk_magic`（全仓仅该函数调用）一并删除，原位置留墓碑注释指向 `download_file_object`；新锁定测 `sync_r12_decoded_dead.rs`（① `src/` 全树无两函数的定义/调用、墓碑注释存活；② `download_file_object` 明文遗留分支的 `encryption_enabled()` 拒收门禁与文案存活——钉死「不再有加密时收明文的旁路」）。连带更正：`sync_r10_download.rs` 模块文档与用例注释中「`expected=None` 调用方」的论据由死函数改为真实调用方 `repo_check.rs`（巡检下载）；FIX-QUEUE R10-download 节同步更正；PROTOCOL-R10 R07-file-e2ee 段的下载侧引用改指 `download_file_object`。
+
 ### P2-2 WebDAV 非续传 `get_file` 是四条 provider 下载路径中唯一无字节数核对的
 
 - `webdav.rs:905-995`：流读到结束即成功，`downloaded` 只用于进度回调，从不与 `total_size`（PROPFIND 声明）比对；仅当调用方传 `expected_checksum` 才有第二道防线。对照：同文件续传路径 `get_file_resumable` 有超量拒绝（`:1131-1133`）与 `written != total_size` 拒绝（`:1152-1154`）；S3/FTP/默认实现 R10 起均有核对（§1.6）。
@@ -149,7 +151,7 @@ KEY-ROTATION-R11.md 四件套（用户流程 / v3 草案 / 命名元数据评估
 | 项 | 建议测试文件 | 应补断言（意图不可少，名字可调） |
 |---|---|---|
 | P1-1 repo_check v2 头偏移 | `sync_r11_repo_check.rs`（修复时改）+ `repo_check.rs` 单测段 | ① `real_dsbk_v2_object_passes_header_check`：用 `encrypt_backup_file` 真实产物（而非手搓 fixture）跑 `run_repo_check`，加密好库必须 `Ok` 且零 `UndecodableDsbkHeader`；② 现有 44 字节头单测在修复后转绿（不许改断言迁就实现）；③ 60–63 字节 v2 对象不误报截断 |
-| P2-1 死代码 | 无需新测 | 删除 `get_file_decoded`；若保留，必须补「启用加密时拒收明文对象」断言对齐 `download_file_object`（现语义相悖） |
+| P2-1 死代码 | ~~无需新测~~ **已关（R12-decoded-dead）** | 已删除 `get_file_decoded` + `file_has_dsbk_magic`，并加码源码锁定测 `sync_r12_decoded_dead.rs`（不存在锁 + `download_file_object` 防降级门禁存活锁） |
 | P2-2 WebDAV 字节核对 | `webdav_download_resume_tests.rs` 同型新文件或同文件新段 | 假 WebDAV 服务器 PROPFIND 声明 N 字节、GET 送 M≠N（M<N 与 M>N 各一）→ 非续传 `get_file`（`expected_checksum=None`）必须 `Err` 且不落盘。**已交付（R10-providers）**：`sync_r10_provider_contract.rs` 4 例，按左述断言落地 |
 | P2-3 绿灯声明 | CI | 完整跑一次 `cargo test` + vitest 4 shard；P1-1 修复并入同一 run 验证 |
 
@@ -182,4 +184,4 @@ KEY-ROTATION-R11.md 四件套（用户流程 / v3 草案 / 命名元数据评估
 2. **CI 绿灯一次（P2-3）**：包含 1 的修复，一次完整 `cargo test` + vitest 四 shard，把 PROTOCOL-R10 与本文的「未复核/未验证」批量销账。
 3. **R12-kdf-clamp（P2-2 老项）**：按 KEY-ROTATION-R11 §6.3/6.4 落地，改写 `sync_r10_protocol_locks.rs` 1–3 号。
 4. **webdav `get_file` 字节核对（本轮 P2-2）**：可并入任一 provider 面代理；改前在 FIX-QUEUE 登记 `webdav.rs`。
-5. **删除 `get_file_decoded`（本轮 P2-1）**：一行级清理，可搭车任何 sync 面代理；FIX-QUEUE 台账中 R10-download 的论据引用同步更正。
+5. ~~**删除 `get_file_decoded`（本轮 P2-1）**：一行级清理，可搭车任何 sync 面代理；FIX-QUEUE 台账中 R10-download 的论据引用同步更正。~~ **已关（R12-decoded-dead），见 §2 P2-1 状态更新。**
