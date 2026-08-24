@@ -462,6 +462,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
             value={rangeDays}
             onValueChange={setRangeDays}
             options={rangeOptions}
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
           />
           <DsButton
             variant="ghost"
@@ -603,6 +604,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
                   value={trendRange}
                   onValueChange={setTrendRange}
                   options={rangeOptions}
+                  itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 />
               </div>
             }
