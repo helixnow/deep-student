@@ -298,12 +298,13 @@ function AutomationCard({
             {t('todo:automation.card.deleteConfirm', { name: automation.name })}
           </span>
           <div className="flex items-center gap-2">
-            <DsButton size="sm" variant="ghost" onClick={() => onRequestDelete(null)}>
+            <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={() => onRequestDelete(null)}>
               {t('common:actions.cancel')}
             </DsButton>
             <DsButton
               size="sm"
               variant="danger"
+              className="[@media(pointer:coarse)]:min-h-11"
               disabled={deleteBusy}
               onClick={() => onConfirmDelete(automation)}
             >
@@ -737,10 +738,10 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
       ) : null}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft,hsl(var(--border)))] pt-3">
-        <DsButton variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" disabled={busy} onClick={onCancel}>
           {t('common:actions.cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" disabled={busy} onClick={() => void handleSubmit()}>
+        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" disabled={busy} onClick={() => void handleSubmit()}>
           {busy ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden /> : null}
           {t('todo:automation.card.save')}
         </DsButton>
