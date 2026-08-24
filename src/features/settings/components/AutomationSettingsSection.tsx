@@ -762,7 +762,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         {/* 点击行主体展开/收起；键盘用户通过铅笔按钮（aria-expanded）操作。 */}
         <div
           className={cn(
-            'group flex w-full cursor-pointer flex-wrap items-center gap-3 px-3 py-2.5 text-left transition-opacity duration-150 sm:flex-nowrap',
+            'group flex w-full cursor-pointer flex-wrap items-center gap-3 px-3 py-2.5 text-left transition-opacity duration-150 sm:flex-nowrap [@media(pointer:coarse)]:min-h-11',
             !automation.enabled && 'opacity-60',
           )}
           onClick={() => setExpandedId(expanded ? null : automation.id)}
