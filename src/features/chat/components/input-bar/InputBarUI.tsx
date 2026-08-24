@@ -3604,7 +3604,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                                   <MagnifyingGlass className="app-menu-search-icon" />
                                   <input
                                     type="search"
-                                    className="app-menu-search-input ds-search-input"
+                                    // 📱 触控目标 + 16px 输入契约：.ds-search-input 的 coarse 规则挂在
+                                    // enhanced-pdf.css（仅 PDF 视图加载），此处内联补齐防 iOS 聚焦缩放
+                                    className="app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
                                     placeholder={runtimeModelSearchPlaceholder}
                                     value={runtimeModelSearch}
                                     onChange={(event) => setRuntimeModelSearch(event.target.value)}

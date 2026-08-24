@@ -583,7 +583,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     value={defaultRuntimeRootId}
                     onChange={(e) => handleSelectRuntimeRoot(e.target.value)}
                     disabled={rootsLoading || isAuthorizingRoot}
-                    className="h-9 [@media(pointer:coarse)]:h-11 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
+                    className="h-9 [@media(pointer:coarse)]:h-11 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm [@media(pointer:coarse)]:text-[16px] text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
                   >
                     <option value="">{t('page.groupDefaultRuntimeRootNone')}</option>
                     {defaultRuntimeRootId

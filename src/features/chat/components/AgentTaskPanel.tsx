@@ -419,8 +419,9 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 <DsButton
                   variant="ghost"
                   onClick={() => setExpanded(false)}
-                  // ★ 触控目标：18px 视觉不变，触屏伪元素扩命中区到 ≥44px
-                  className="!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
+                  // ★ 触控目标：18px 视觉不变（caret 10 + p-1 8，leading-none 无 strut），
+                  // 触屏 -inset-3.5 → 46px 命中（原 -inset-3 只有 42px）
+                  className="!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']"
                   aria-label={t('agentPanel.collapsePanel')}
                   aria-expanded={true}
                 >

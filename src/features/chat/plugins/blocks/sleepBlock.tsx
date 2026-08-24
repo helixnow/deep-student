@@ -221,7 +221,8 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
                 setIsFullHeight(!isFullHeight);
               }
             }}
-            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-['']"
+            // 触屏：本体 ~26px（icon 14 + p-1.5 12，DsButton leading-none 无 strut），-inset-2.5 → 46px 命中
+            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
             aria-label={t('sleep.toggleSize')}
           >
             {isFullHeight ? (

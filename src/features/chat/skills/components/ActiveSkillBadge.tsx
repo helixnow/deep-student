@@ -84,6 +84,8 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         'bg-muted/80 text-primary',
         'transition-all duration-200',
         !disabled && onClick && 'cursor-pointer hover:bg-[var(--interactive-hover)]',
+        // 触控目标：可点徽章（md 28px / sm 20px）触屏抬到 ≥44px
+        onClick && '[@media(pointer:coarse)]:min-h-11',
         disabled && 'opacity-50 cursor-not-allowed',
         sizeClasses[size],
         className
