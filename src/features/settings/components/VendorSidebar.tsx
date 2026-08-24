@@ -263,81 +263,11 @@ export const VendorSidebar: React.FC = () => {
     onReorderVendors(reordered);
   }, [displayVendors, onReorderVendors]);
 
-  // 渲染可拖拽供应商行（统一处理所有供应商）
-  const renderVendorRow = (vendor: VendorConfig, provided: any, snapshot: any) => {
-    const isActive = selectedVendor?.id === vendor.id;
-    const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
-    const providerLabel = getProviderDisplayName(vendor.providerType, t);
-    const vendorDisplayName = getVendorDisplayName(vendor, providerLabel);
-
-    return (
-      <div
-        ref={provided.innerRef}
-        {...provided.draggableProps}
-        {...provided.dragHandleProps}
-        style={provided.draggableProps.style}
-        onClick={() => {
-          setSelectedVendorId(vendor.id);
-          // P1-6 移动端两级导航：点击行即进入供应商详情屏
-          if (isSmallScreen) openMobileVendorDetail?.();
-        }}
-        className={cn(
-          'px-3 py-2 text-left w-full flex items-center gap-2 group',
-          // P1-8 触屏禁拖：小屏不显示抓取光标（拖拽已通过 isDragDisabled 关闭）
-          isSmallScreen ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
-          isActive
-            ? settingsQuietSelectedRowClassName
-            : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
-          // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
-          // P1-8 触控目标：小屏行高提升到 44px；触控设备（如 iPad 横屏）按 pointer:coarse 兜底
-          isSmallScreen ? 'min-h-11' : 'min-h-[32px] [@media(pointer:coarse)]:min-h-11',
-          'rounded-[var(--shell-nav-row-radius,14px)] text-sm',
-          snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
-        )}
-      >
-        <span
-          data-testid={`vendor-icon-${vendor.id}`}
-          data-icon-tone={getVendorIconTone(vendor, openAICodexAuthenticated)}
-          data-icon-chrome="badge"
-          className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
-          style={getVendorIconBadgeStyle(vendor, openAICodexAuthenticated)}
-        >
-          <ProviderIcon
-            modelId={vendor.providerType || vendor.name || ''}
-            size={14}
-            showTooltip={false}
-            variant="color"
-            renderMode="glyph"
-          />
-        </span>
-        <div className="flex-1 min-w-0 text-left">
-          <div className="flex flex-wrap items-center justify-between gap-1.5">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <span className="truncate">{vendorDisplayName}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {modelCount > 0 && (
-                <span className="text-2xs text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
-                  {modelCount}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        {/* 移动端：chevron 暗示可进入详情；桌面端：hover 显示拖拽指示 */}
-        {isSmallScreen ? (
-          <span className="shrink-0 text-muted-foreground/40" aria-hidden="true">
-            <CaretRight size={14} />
-          </span>
-        ) : (
-          // 触屏（如 iPad 横屏）无 hover 但拖拽可用，指示器需 coarse 常显
-          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
-            <DotsSixVertical size={12} />
-          </span>
-        )}
-      </div>
-    );
-  };
+  const handleSelectVendor = useCallback((vendorId: string) => {
+    setSelectedVendorId(vendorId);
+    // P1-6 移动端两级导航：点击行即进入供应商详情屏
+    if (isSmallScreen) openMobileVendorDetail?.();
+  }, [isSmallScreen, openMobileVendorDetail, setSelectedVendorId]);
 
   return (
     <div className="space-y-3 w-full min-w-0 pr-0 md:border-r md:border-border/40 md:pr-6 md:sticky md:top-4 md:self-start">

@@ -86,10 +86,6 @@ const LearningHubNavigationContext = createContext<LearningHubNavigationContextV
 export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isInLearningHub, setIsInLearningHub] = useState(false);
 
-  // ★ LH-HOST Step2：本 Provider 服务的是学习中心页顶栏，绑定 `page` 桶。
-  // workbench Files 窗（默认桶）与画布（canvas 桶）各自有自己的导航栈。
-  const useFinderStore = useHostFinderStore(FINDER_HOST_IDS.page);
-
   // ★ 性能：只订阅导航相关字段（items/selectedIds/searchQuery 等高频变化字段
   // 与本 Provider 无关，全量订阅会让 Provider 随文件列表加载/多选频繁重渲染）
   const {
