@@ -134,6 +134,15 @@
   opacity: 0.75;
 }
 
+/* 触屏：<16px 输入框在 iOS 聚焦时触发页面自动缩放；地址栏已由前文 coarse
+   min-height 升到 44px，字号跟到 16px。必须排在上方 13px 基线之后——
+   同特异性下靠源顺序取胜（R89 .wb-sys-drawer-close 同款教训） */
+@media (pointer: coarse) {
+  .wb-browser-address-input {
+    font-size: 16px;
+  }
+}
+
 .wb-browser-spinner {
   flex: 0 0 auto;
   width: 12px;
