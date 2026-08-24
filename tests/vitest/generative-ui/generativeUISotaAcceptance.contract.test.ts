@@ -499,6 +499,16 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       ]),
   },
   {
+    id: 'round74-vitest-worker-heap-and-ci-workers',
+    check: () =>
+      fileContains('vitest.config.ts', [
+        "execArgv: ['--max-old-space-size=6144']",
+      ]) &&
+      fileContains('.github/workflows/ci.yml', [
+        'npx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2',
+      ]),
+  },
+  {
     id: 'round73-foreign-session-started-isolated',
     check: () =>
       fileContains('src/stores/researchStore.ts', [

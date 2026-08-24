@@ -151,6 +151,9 @@ function findPrivateVisibleScrollbarRecipes(): string[] {
   return [...violations].sort();
 }
 
+// 全库扫描 + CSS 规则拆分在 CI 上会超过默认 5s testTimeout；放到模块加载期。
+const privateVisibleScrollbarRecipes = findPrivateVisibleScrollbarRecipes();
+
 afterEach(() => {
   delete document.documentElement.dataset.theme;
 });
@@ -299,7 +302,7 @@ describe('repository-wide scrollbar integration contract', () => {
   });
 
   it('does not introduce feature-private visible scrollbar recipes', () => {
-    expect(findPrivateVisibleScrollbarRecipes()).toEqual([]);
+    expect(privateVisibleScrollbarRecipes).toEqual([]);
   });
 
   it('does not let chat depend on the mindmap custom-scrollbar selector', () => {
