@@ -71,8 +71,16 @@ export function resolveGenerativeLayout(intent: Pick<GenerativeUIIntent, 'layout
   return { mode, columns };
 }
 
-/** 仅允许受控 Tailwind token，不把模型 class 透传到 DOM */
-export function layoutGridClassName(mode: GenerativeLayoutMode, columns: GenerativeLayoutUnit): string {
+/**
+ * 仅允许受控 Tailwind token，不把模型 class 透传到 DOM。
+ * compact=true（窄屏 < sm）强制单列 stack + gap-2，不输出 sm:grid-cols-*，桌面默认签名不变。
+ */
+export function layoutGridClassName(
+  mode: GenerativeLayoutMode,
+  columns: GenerativeLayoutUnit,
+  compact = false,
+): string {
+  if (compact) return 'grid gap-2';
   if (mode === 'grid' && columns === 2) return 'grid gap-3 sm:grid-cols-2';
   if (mode === 'grid' && columns === 3) return 'grid gap-3 sm:grid-cols-3';
   return 'grid gap-3';
@@ -81,8 +89,9 @@ export function layoutGridClassName(mode: GenerativeLayoutMode, columns: Generat
 export function layoutSpanClassName(
   mode: GenerativeLayoutMode,
   span?: GenerativeLayoutUnit,
+  compact = false,
 ): string | undefined {
-  if (mode !== 'grid') return undefined;
+  if (compact || mode !== 'grid') return undefined;
   if (span === 2) return 'sm:col-span-2';
   if (span === 3) return 'sm:col-span-3';
   return undefined;

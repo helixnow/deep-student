@@ -20,7 +20,7 @@
 | 16 (`gap-4`, `p-4`) | Card 内边距（与 shad Card 一致） |
 | 24 (`gap-6`) | 区块分隔 |
 
-不暴露任意 spacing token 给模型。
+不暴露任意 spacing token 给模型。窄屏（< `sm` / 640px）强制 stack 单列（根节点 `data-compact`），块间距降为 8（`gap-2` / `space-y-2`）；桌面端 v1.1 grid token（`sm:grid-cols-*`）不受影响。
 
 ## 3. 字号（三级）
 

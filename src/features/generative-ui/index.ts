@@ -37,6 +37,13 @@ export { GenerativeUIRenderer } from './GenerativeUIRenderer';
 export { GenerativeUIChrome } from './GenerativeUIChrome';
 export { GenerativeUIPanel } from './components/GenerativeUIPanel';
 export { useGenerativeUIStream } from './hooks/useGenerativeUIStream';
+export {
+  useGenerativeUICompact,
+  isGenerativeUICompactViewport,
+  GENERATIVE_UI_COMPACT_CLASS,
+  GENERATIVE_UI_COMPACT_MEDIA_QUERY,
+  GENERATIVE_UI_COMPACT_MAX_WIDTH,
+} from './hooks/useGenerativeUICompact';
 export { resolveEffectiveRiskLevel, withGenerativeActionInstrumentation } from './actions';
 export type { GenerativeActionInstrumentationOptions } from './actions';
 export {

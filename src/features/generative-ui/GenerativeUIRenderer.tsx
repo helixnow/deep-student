@@ -13,12 +13,26 @@ import {
 } from './schema';
 import { coercePartialIntent } from './utils/coercePartialIntent';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
+import {
+  GENERATIVE_UI_COMPACT_CLASS,
+  useGenerativeUICompact,
+} from './hooks/useGenerativeUICompact';
 import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { ActionBarBlock } from './components/ActionBarBlock';
 import { GenerativeBlockSlot } from './components/GenerativeBlockSlot';
 
 import './blocks';
+
+function generativeUIRootClassName(compact: boolean, className?: string): string {
+  return cn(
+    'generative-ui-root min-w-0',
+    compact
+      ? cn(GENERATIVE_UI_COMPACT_CLASS, 'space-y-2', '[&_[data-block-type]>div]:p-2')
+      : 'space-y-3',
+    className,
+  );
+}
 
 function normalizeIntent(input: string | GenerativeUIIntent): GenerativeUIIntent | null {
   if (typeof input === 'string') {
@@ -37,6 +51,7 @@ export function GenerativeUIRenderer({
   className,
 }: GenerativeUIRendererProps) {
   const { t } = useTranslation('generativeUi');
+  const compact = useGenerativeUICompact();
   const intent = useMemo(() => normalizeIntent(intentInput), [intentInput]);
   const parseError = useMemo(() => {
     if (typeof intentInput !== 'string') return null;
@@ -56,8 +71,9 @@ export function GenerativeUIRenderer({
     if (isStreaming) {
       return (
         <div
-          className={cn('generative-ui-root space-y-3 min-w-0', className)}
+          className={generativeUIRootClassName(compact, className)}
           data-generative-ui
+          data-compact={compact ? 'true' : undefined}
           data-streaming
           data-stream-fallback
           role="region"
@@ -82,8 +98,9 @@ export function GenerativeUIRenderer({
 
   return (
     <div
-      className={cn('generative-ui-root space-y-3 min-w-0', className)}
+      className={generativeUIRootClassName(compact, className)}
       data-generative-ui
+      data-compact={compact ? 'true' : undefined}
       data-streaming={isStreaming || undefined}
       data-stream-fallback={streamingFallback ? true : undefined}
       role="region"
@@ -104,7 +121,7 @@ export function GenerativeUIRenderer({
       ) : null}
 
       <div
-        className={layoutGridClassName(mode, columns)}
+        className={layoutGridClassName(mode, columns, compact)}
         data-layout-mode={mode}
         data-layout-columns={columns}
       >
