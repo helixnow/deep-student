@@ -195,6 +195,12 @@ describe('GenerativeBlockSlot memo — type + props + span', () => {
     expect(areGenerativeBlockSlotPropsEqual(base, slotBase({ props: { body: 'hello' } }))).toBe(
       true,
     );
+    expect(
+      areGenerativeBlockSlotPropsEqual(
+        slotBase({ focusTargetId: 'generative-ui-actions-a' }),
+        slotBase({ focusTargetId: 'generative-ui-actions-b' }),
+      ),
+    ).toBe(false);
   });
 
   it('skips re-rendering a stable block when a sibling updates', () => {
