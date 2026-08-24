@@ -608,12 +608,12 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-7"
+                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-7"
                             >
                                 {canEditTags && editingTag === tag ? (
                                     <span className="flex items-center gap-1">
                                         <Input
-                                            className="h-4 w-20 px-1 py-0 text-[11px] [@media(pointer:coarse)]:h-7"
+                                            className="h-4 w-20 px-1 py-0 text-[11px] [@media(pointer:coarse)]:min-h-11"
                                             value={renameValue}
                                             onChange={e => setRenameValue(e.target.value)}
                                             onKeyDown={e => {
