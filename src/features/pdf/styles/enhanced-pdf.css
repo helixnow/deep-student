@@ -1598,10 +1598,27 @@
     padding-bottom: 11px;
   }
 
-  /* 高亮颜色选择器放大 */
+  /* 高亮颜色选择器放大（视觉 32px），浮动菜单内用伪元素扩命中到 44px
+     （32 + 2×6，与导图色板同范式）；gap 同步加大到 12px 使相邻命中区恰好
+     相接不重叠。底部 .ds-pdf__highlight-bar 内已有各自的伪元素覆盖，
+     列表/状态条中的色点为非交互元素，均不在此扩展 */
   .ds-highlight-color {
     width: 32px;
     height: 32px;
+  }
+
+  .ds-highlight-menu {
+    gap: 12px;
+  }
+
+  .ds-highlight-menu .ds-highlight-color {
+    position: relative;
+  }
+
+  .ds-highlight-menu .ds-highlight-color::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
   }
 
   /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥44px） */
