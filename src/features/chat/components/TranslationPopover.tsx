@@ -949,7 +949,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopySource}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs"
+                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:min-h-11"
               >
                 <IconSwap
                   active={copiedSource}
@@ -968,7 +968,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopyTranslation}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs"
+                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:min-h-11"
               >
                 <IconSwap
                   active={copiedTranslation}
@@ -988,7 +988,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleAddToInput}
                   disabled={isLoading}
                   title={isLoading ? t('translation:chat_popover.add_streaming_hint') : undefined}
-                  className="gap-1.5 !px-2 text-xs"
+                  className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:min-h-11"
                 >
                   <ChatDots size={13} />
                   <span>{t('chatV2:selectionToolbar.addToChat')}</span>
