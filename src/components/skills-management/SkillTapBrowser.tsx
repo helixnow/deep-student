@@ -520,7 +520,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
               if (e.key === 'Enter') void handleBrowse();
             }}
             placeholder={t('skills:tap.url_placeholder')}
-            className="h-8 max-lg:h-11 pl-8 pr-3 text-xs"
+            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:h-11 pl-8 pr-3 text-xs"
           />
         </div>
         <DsButton
@@ -528,7 +528,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           size="sm"
           onClick={() => void handleBrowse()}
           disabled={loading || !url.trim()}
-          className="max-lg:!h-11 h-8 px-3 text-xs"
+          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-8 px-3 text-xs"
         >
           {loading ? t('skills:tap.browsing') : t('skills:tap.browse')}
         </DsButton>
@@ -659,7 +659,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             }}
             placeholder={t('skills:tap.market.search_placeholder')}
             aria-label={t('skills:tap.market.search_placeholder')}
-            className="h-8 max-lg:h-11 pl-8 pr-3 text-xs"
+            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:h-11 pl-8 pr-3 text-xs"
             data-testid="skill-market-search-input"
           />
         </div>
@@ -668,7 +668,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           size="sm"
           onClick={() => void loadSkillMarket()}
           disabled={marketLoading}
-          className="max-lg:!h-11 h-8 px-3 text-xs"
+          className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-8 px-3 text-xs"
           data-testid="skill-market-search-btn"
           aria-busy={marketLoading || undefined}
         >

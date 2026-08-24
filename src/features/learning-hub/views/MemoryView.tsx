@@ -2117,6 +2117,8 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
           tabIndex={0}
           className={cn(
             'flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md transition-colors',
+            // 触屏：文件夹行是展开/收起命中区，保证 ≥44px 触控高度
+            '[@media(pointer:coarse)]:min-h-11',
             'hover:bg-[var(--interactive-hover)]',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
             isFolderExpanded && 'bg-muted/20'
@@ -2188,6 +2190,8 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     tabIndex={0}
                     className={cn(
                       'group flex items-center gap-2 px-3 py-2 cursor-pointer rounded-md transition-colors',
+                      // 触屏：笔记行是展开命中区，保证 ≥44px 触控高度
+                      '[@media(pointer:coarse)]:min-h-11',
                       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
                       isNoteExpanded ? 'bg-muted/50' : 'hover:bg-[var(--interactive-hover)]'
                     )}
@@ -2490,6 +2494,8 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
         tabIndex={0}
         className={cn(
           'flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors',
+          // 触屏：审计日志行是展开命中区，保证 ≥44px 触控高度
+          '[@media(pointer:coarse)]:min-h-11',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50'
         )}
         onClick={() => setExpanded(!expanded)}

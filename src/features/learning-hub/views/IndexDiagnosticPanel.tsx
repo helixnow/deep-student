@@ -501,6 +501,8 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
                     <div 
                       className={cn(
                         'flex items-start gap-2 cursor-pointer hover:bg-white/5 rounded px-1',
+                        // 触屏：日志行可点展开详情，保证 ≥44px 触控高度（桌面保持紧凑）
+                        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-1.5',
                         (log.data || log.lanceData) && 'cursor-pointer'
                       )}
                       onClick={() => (log.data || log.lanceData) && setShowDetails(showDetails === index ? null : index)}

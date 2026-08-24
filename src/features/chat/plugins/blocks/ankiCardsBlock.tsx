@@ -2652,7 +2652,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={handleInvertSelection}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:min-h-11 text-xs"
                 >
                   {t('blocks.ankiCards.invertSelection')}
                 </DsButton>
@@ -2662,7 +2662,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   variant="ghost"
                   onClick={handleDeleteSelected}
                   disabled={batchAction !== null}
-                  className="min-h-8 text-xs text-destructive hover:text-destructive"
+                  className="min-h-8 [@media(pointer:coarse)]:min-h-11 text-xs text-destructive hover:text-destructive"
                 >
                   <Trash size={13} />
                   {t('blocks.ankiCards.deleteSelected')}
@@ -2674,7 +2674,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   onClick={() => void handleSaveSelected()}
                   disabled={batchAction !== null || isGenerating}
                   aria-busy={batchAction === 'save'}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:min-h-11 text-xs"
                 >
                   {batchAction === 'save' ? (
                     <CircleNotch size={13} className="animate-spin" />
@@ -2690,7 +2690,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   onClick={() => void handleExportSelected()}
                   disabled={batchAction !== null || isGenerating}
                   aria-busy={batchAction === 'export'}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:min-h-11 text-xs"
                 >
                   {batchAction === 'export' ? (
                     <CircleNotch size={13} className="animate-spin" />

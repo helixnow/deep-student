@@ -892,7 +892,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             if (browserControlsDisabled) return;
             setBrowserAdvancedOpen((prev) => !prev);
           }}
-          className="flex items-center gap-1.5 py-2 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          className="flex items-center gap-1.5 py-2 [@media(pointer:coarse)]:min-h-11 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
         >
           <span
             aria-hidden="true"

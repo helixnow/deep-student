@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–33 已落地；当前队列见下。
+- **轮次**：Round 2–34 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -43,12 +43,13 @@
 | 31 | claude-fable-5-thinking-xhigh ×10 | 迁移关闭、分组顶栏、ShadApi 输入、Changes chip、Memory icon、设置/聊天/笔记残留 | 见 ROUND-31-FIXES.md |
 | 32 | claude-fable-5-thinking-xhigh ×10 | 外搜输入、诊断钮、技能 chip、Todo 折叠、聊天筛选、PDF 色点、TabBar 伪条 | 见 ROUND-32-FIXES.md |
 | 33 | claude-fable-5-thinking-xhigh ×10 | 填空 40→44、TabBar 更多关闭加高、paperSave、EmbeddedTools、聊天展开、闪卡搜索 | 见 ROUND-33-FIXES.md |
+| 34 | claude-fable-5-thinking-xhigh ×10 | DeepSeek 刷新、复习重做、日历关闭、模型钉、标签建议、导图 Aa/ab、备份勾选 | 见 ROUND-34-FIXES.md |
 
-## 进行中的修复队列（Round 34+）
+## 进行中的修复队列（Round 35+）
 
-- DeepSeek 余额刷新 20；ReviewQuestions 重做 32；日历详情关闭
-- MultiSelectModelPanel 钉 40；TagsEditor 建议行；导图搜索 Aa/ab 宽
-- ShortcutSettings 属 #166 不碰；内联引用 chip 设计未决
+- OCR/PDF range slider 轨；fc-lib-chip 40（CSS 有意）
+- paperSave 错误展开文本钮；内联引用 chip 设计未决
+- ShortcutSettings 属 #166 不碰
 
 ## 已落地
 

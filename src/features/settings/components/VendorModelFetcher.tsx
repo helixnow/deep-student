@@ -323,7 +323,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                       onClick={() => handleAddSingle(m)}
                       disabled={addingId === m.id}
                       className={cn(
-                        "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors",
+                        "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors [@media(pointer:coarse)]:min-h-11",
                         "hover:bg-[var(--interactive-hover)] text-foreground",
                         addingId === m.id && "opacity-50 pointer-events-none"
                       )}
@@ -351,7 +351,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                     aria-expanded={existingExpanded}
                     aria-controls="vendor-model-fetcher-existing-list"
                     className={cn(
-                      'flex items-center justify-between w-full gap-2 px-3 py-1.5',
+                      'flex items-center justify-between w-full gap-2 px-3 py-1.5 [@media(pointer:coarse)]:min-h-11',
                       'text-2xs uppercase tracking-wider text-muted-foreground/60',
                       'hover:text-muted-foreground hover:bg-[var(--interactive-hover)]',
                       'transition-colors'

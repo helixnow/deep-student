@@ -682,7 +682,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             <DsButton
               variant="primary"
               onClick={handleStartReview}
-              className="min-h-10 gap-2 px-4 shadow-soft"
+              className="min-h-10 [@media(pointer:coarse)]:min-h-11 gap-2 px-4 shadow-soft"
             >
               <Play size={16} weight="fill" />
               {t('review:startReview')}
@@ -827,7 +827,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               size="sm"
               onClick={() => void handleCreatePlansForExam()}
               disabled={isCreatingPlans}
-              className="min-h-10 gap-2"
+              className="min-h-10 [@media(pointer:coarse)]:min-h-11 gap-2"
             >
               <ArrowClockwise
                 size={14}

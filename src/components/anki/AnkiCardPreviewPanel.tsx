@@ -117,7 +117,7 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
 
         {card.fields && Object.keys(card.fields).length > 0 ? (
           <details>
-            <summary className="cursor-pointer select-none py-1 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-3 text-xs text-muted-foreground">
               {t('anki:extra_fields')} ({Object.keys(card.fields).length})
             </summary>
             <div className="mt-1 space-y-1">

@@ -1292,7 +1292,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleRefresh()}
                   disabled={isLoading}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
                   aria-label={t('skills:selector.refresh')}
                 >
                   <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
@@ -1305,7 +1305,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   onClick={() => setTapBrowserOpen((v) => !v)}
                   aria-expanded={tapBrowserOpen}
                   className={cn(
-                    'max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground',
+                    'max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground',
                     tapBrowserOpen && 'bg-[color:var(--interactive-hover)] text-foreground',
                   )}
                 >
@@ -1318,7 +1318,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleCheckUpdates()}
                   disabled={updateChecking}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
                 >
                   <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
                   {t('skills:management.check_updates')}
@@ -1328,7 +1328,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="ghost"
                   size="sm"
                   onClick={handleImportZipClick}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
                 >
                   <Package size={14} className="mr-1" />
                   {t('skills:management.import_zip')}
@@ -1338,7 +1338,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="ghost"
                   size="sm"
                   onClick={handleImportClick}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
                 >
                   <Upload size={14} className="mr-1" />
                   {t('skills:management.import')}
@@ -1349,7 +1349,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={handleExportAll}
                   disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
                 >
                   <Download size={14} className="mr-1" />
                   {t('skills:management.export_all_short')}
@@ -1360,7 +1360,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   size="sm"
                   onClick={() => void handleExportTap()}
                   disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
-                  className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+                  className="max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground"
                 >
                   <UploadSimple size={14} className="mr-1" />
                   {t('skills:management.export_tap')}

@@ -143,7 +143,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
           size="sm"
           onClick={onClose}
           aria-label={t('review:calendar.closeDetail')}
-          className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground sm:h-8 sm:w-8"
+          className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground sm:h-8 sm:w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
         >
           <X size={16} />
         </DsButton>

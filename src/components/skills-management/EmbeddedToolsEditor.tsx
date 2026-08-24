@@ -343,14 +343,14 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                     onChange={(e) => updateProperty(toolIndex, propName, (e.target as HTMLInputElement).value, {})}
                                     placeholder={t('skills:editor.param_name')}
                                     disabled={disabled}
-                                    className="h-7 max-lg:min-h-11 text-xs font-mono bg-background/50"
+                                    className="h-7 max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11 text-xs font-mono bg-background/50"
 />
                                   <Input
                                     value={prop.description || ''}
                                     onChange={(e) => updateProperty(toolIndex, propName, propName, { description: (e.target as HTMLInputElement).value })}
                                     placeholder={t('skills:editor.param_description')}
                                     disabled={disabled}
-                                    className="h-7 max-lg:min-h-11 text-xs bg-background/50"
+                                    className="h-7 max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11 text-xs bg-background/50"
 />
                                 </div>
                                 <Select
@@ -358,7 +358,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   onValueChange={(value) => updateProperty(toolIndex, propName, propName, { type: value as JsonSchemaProperty['type'] })}
                                   disabled={disabled}
                                 >
-                                  <SelectTrigger className="h-7 max-lg:min-h-11 text-xs bg-background/50 border border-border/40 rounded-md px-2">
+                                  <SelectTrigger className="h-7 max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11 text-xs bg-background/50 border border-border/40 rounded-md px-2">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>

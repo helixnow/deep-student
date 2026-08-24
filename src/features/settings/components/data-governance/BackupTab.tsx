@@ -492,9 +492,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
               id="add-to-backup-list"
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={addToBackupList}
               onCheckedChange={(checked) => setAddToBackupList(Boolean(checked))}
               disabled={loading || isBackupRunning}
@@ -504,9 +505,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </Label>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
               id="use-tiered-backup"
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={useTieredBackup}
               onCheckedChange={(checked) => setUseTieredBackup(Boolean(checked))}
               disabled={loading || isBackupRunning}
@@ -563,7 +565,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   {ASSET_TYPES.map((asset) => (
                     <div
                       key={asset.value}
-                      className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${
+                      className={`flex items-center gap-2 p-2 [@media(pointer:coarse)]:min-h-11 rounded-md border cursor-pointer transition-colors ${
                         selectedAssetTypes.includes(asset.value)
                           ? 'border-primary/50 bg-primary/5'
                           : 'border-border/60 hover:border-border hover:bg-[color:var(--sidebar-quiet-hover)]'

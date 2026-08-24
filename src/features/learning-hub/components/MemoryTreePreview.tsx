@@ -103,6 +103,8 @@ const TreeNode: React.FC<{
       <div
         className={cn(
           'group flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer transition-colors',
+          // 触屏：整行是展开/导航命中区，保证 ≥44px 触控高度（桌面保持紧凑）
+          '[@media(pointer:coarse)]:min-h-11',
           'hover:bg-[var(--interactive-hover)]',
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
           isRoot && 'font-medium',

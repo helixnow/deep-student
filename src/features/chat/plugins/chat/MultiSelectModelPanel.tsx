@@ -414,8 +414,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               }}
               disabled={disabled || savingDefault}
               className={cn(
-                // 伪元素扩大触控命中区（视觉 24px）
-                'mt-0.5 !h-6 !w-6 opacity-60 relative after:absolute after:-inset-2 after:content-[\'\']',
+                // 伪元素扩大触控命中区（视觉 24px，触屏命中 44px）
+                'mt-0.5 !h-6 !w-6 opacity-60 relative after:absolute after:-inset-2 [@media(pointer:coarse)]:after:-inset-2.5 after:content-[\'\']',
                 'text-muted-foreground !hover:bg-transparent !active:bg-transparent hover:!text-muted-foreground',
                 (disabled || savingDefault) && 'cursor-not-allowed opacity-40'
               )}

@@ -2489,6 +2489,11 @@
     min-height: 44px;
   }
 
+  /* Aa/ab 开关（h-6 px-1.5）触屏补足 44px 宽度命中目标；输入框保持弹性宽度不受影响 */
+  .mm-search-popover .ds-btn {
+    min-width: 44px;
+  }
+
   /* 搜索条关闭钮（24px）与大纲多选操作钮（28px）不带 ds-btn 类，
      不被上方规则覆盖：触屏补足 44px（min-h-11）最小命中 */
   .mm-search-close,

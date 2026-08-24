@@ -404,7 +404,7 @@ const ReviewQuestionCard: React.FC<{
                     variant="warning"
                     size="sm"
                     onClick={onRedo}
-                    className="gap-1.5 !h-auto min-h-8 !px-2.5 !py-1 text-xs"
+                    className="gap-1.5 !h-auto min-h-8 [@media(pointer:coarse)]:!min-h-[44px] !px-2.5 !py-1 text-xs"
                   >
                     <ArrowClockwise size={13} />
                     {t('review:questions.redo')}

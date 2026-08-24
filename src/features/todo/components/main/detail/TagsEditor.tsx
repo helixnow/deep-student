@@ -240,7 +240,7 @@ export const TagsEditor: React.FC<{
                   onMouseEnter={() => setHighlightIndex(i)}
                   onClick={() => pickOption(i)}
                   className={cn(
-                    'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground transition-colors duration-100',
+                    'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-foreground transition-colors duration-100 [@media(pointer:coarse)]:min-h-11',
                     highlightIndex === i && 'bg-[color:var(--interactive-hover)]',
                   )}
                 >
@@ -265,7 +265,7 @@ export const TagsEditor: React.FC<{
                   onMouseEnter={() => setHighlightIndex(matched.length)}
                   onClick={() => pickOption(matched.length)}
                   className={cn(
-                    'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors duration-100',
+                    'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors duration-100 [@media(pointer:coarse)]:min-h-11',
                     highlightIndex === matched.length &&
                       'bg-[color:var(--interactive-hover)] text-foreground',
                   )}
