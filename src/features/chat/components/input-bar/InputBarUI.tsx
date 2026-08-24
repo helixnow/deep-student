@@ -2658,30 +2658,31 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             <span>{t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}</span>
           </div>
           <div className="flex items-center gap-2">
-            <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => fileInputRef.current?.click()}>
               + {t('analysis:input_bar.attachments.add')}
             </DsButton>
             {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
             <DsButton
               variant="outline"
               size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={handleOpenResourceLibrary}
             >
               <FolderOpen size={12} weight="bold" />
               {t('chatV2:inputBar.resourceLibrary')}
             </DsButton>
             {isMobileEnv && (
-              <DsButton variant="outline" size="sm" onClick={handleCameraClick}>
+              <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCameraClick}>
                 <Camera size={12} weight="bold" />
                 {t('chatV2:inputBar.camera')}
               </DsButton>
             )}
             {attachments.length > 0 && (
-              <DsButton variant="danger" size="sm" onClick={handleClearAllAttachments}>
+              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleClearAllAttachments}>
                 {t('analysis:input_bar.attachments.clear_all')}
               </DsButton>
             )}
-            <DsButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={toggleAttachmentPanel}>
               {t('common:actions.close')}
             </DsButton>
           </div>
@@ -2815,12 +2816,12 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                       variant="outline"
                       size="sm"
                       onClick={() => { void handleRetryAttachment(attachment); }}
-                      className="text-info"
+                      className="text-info [@media(pointer:coarse)]:min-h-11"
                     >
                       {t('common:retry')}
                     </DsButton>
                   )}
-                  <DsButton variant="danger" size="sm" onClick={() => {
+                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => {
                     logAttachment('ui', 'attachment_remove', {
                       attachmentId: attachment.id,
                       sourceId: attachment.sourceId,
