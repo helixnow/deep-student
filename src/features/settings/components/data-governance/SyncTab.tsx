@@ -26,6 +26,11 @@ import { DsButton, type DsButtonVariant } from "@/components/ui/DsButton";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { DsAlertDialog } from "@/components/ui/DsDialog";
 import { Badge } from "@/components/ui/shad/Badge";
+import { Switch } from "@/components/ui/shad/Switch";
+import {
+  useAutoSyncStore,
+  ensureAutoSyncSchedulerStarted,
+} from "@/stores/syncStatusStore";
 import {
   Table,
   TableBody,
@@ -125,6 +130,13 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   // 待确认的数据库级冲突解决策略：点击策略按钮先弹确认，确认后才执行
   const [pendingResolveStrategy, setPendingResolveStrategy] =
     React.useState<MergeStrategy | null>(null);
+  // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
+  const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
+  const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
+  React.useEffect(() => {
+    // 幂等：开关持久化为开时，进入本面板即恢复调度
+    ensureAutoSyncSchedulerStarted();
+  }, []);
   const syncDatabases = syncStatus?.databases ?? [];
   const showSyncProgress = syncRunning || Boolean(syncProgress?.error);
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
@@ -404,6 +416,24 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   variant="outline"
                 />
               </div>
+            </div>
+
+            {/* 自动同步（默认关闭；未配置/缺凭据时调度器会跳过，不会自动运行） */}
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border/40 bg-muted/20 p-3">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium text-foreground">
+                  {t("sync:autoSync.label")}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("sync:autoSync.description")}
+                </p>
+              </div>
+              <Switch
+                size="sm"
+                checked={autoSyncEnabled}
+                onCheckedChange={setAutoSyncEnabled}
+                aria-label={t("sync:autoSync.label")}
+              />
             </div>
 
             <div className="flex flex-wrap gap-2">

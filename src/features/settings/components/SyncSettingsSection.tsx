@@ -45,8 +45,13 @@ import {
   formatSpeed,
   formatEta,
 } from '@/types/dataGovernance';
+import { Switch } from '@/components/ui/shad/Switch';
 import { loadStoredCloudStorageConfigWithCredentials } from '@/utils/cloudStorageApi';
-import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import {
+  useGlobalSyncStore,
+  useAutoSyncStore,
+  ensureAutoSyncSchedulerStarted,
+} from '@/stores/syncStatusStore';
 import {
   DataGovernanceApi,
   listenSyncProgress,
@@ -101,6 +106,13 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   // 全局同步状态：与数据治理面板等其他入口共享，任一入口同步时本入口按钮禁用
   const isSyncing = useGlobalSyncStore((s) => s.isSyncing);
+  // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
+  const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
+  const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
+  useEffect(() => {
+    // 幂等：开关持久化为开时，进入本设置区块即恢复调度
+    ensureAutoSyncSchedulerStarted();
+  }, []);
 
   // 合并策略（与数据治理仪表盘 SyncTab 保持一致，不再硬编码 keep_latest）
   const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
@@ -450,6 +462,24 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* 自动同步（默认关闭；未配置/缺凭据时调度器会跳过，不会自动运行） */}
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/40 bg-muted/20 p-3">
+            <div className="space-y-0.5">
+              <div className="text-sm font-medium text-foreground">
+                {t('sync:autoSync.label')}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('sync:autoSync.description')}
+              </p>
+            </div>
+            <Switch
+              size="sm"
+              checked={autoSyncEnabled}
+              onCheckedChange={setAutoSyncEnabled}
+              aria-label={t('sync:autoSync.label')}
+            />
+          </div>
+
           {/* 合并策略选择 */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">

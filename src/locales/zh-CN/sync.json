@@ -23,6 +23,10 @@
   "confirmConflictResolveDescription": "将应用「{{strategy}}」策略，这会覆盖另一版本的数据且无法撤销。建议先创建本地备份再继续。",
   "confirmConflictBatchResolveDescription": "将对 {{count}} 个冲突应用“{{strategy}}”。这会覆盖另一版本且无法撤销。",
   "experimentalBadgeTooltip": "实验性功能，建议先备份数据再使用。",
+  "autoSync": {
+    "label": "自动同步",
+    "description": "默认关闭。开启后定时自动执行双向同步（保留最新策略）；失败按指数退避重试，云端配置不完整或缺少凭据时不会自动运行。"
+  },
   "severity_low": "低",
   "severity_medium": "中",
   "severity_high": "高",
