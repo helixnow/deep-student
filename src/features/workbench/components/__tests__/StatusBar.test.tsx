@@ -450,10 +450,22 @@ describe('StatusBar 学习中心 SB3', () => {
   });
 
   it('Windows 下 menubar 标记 chrome inset', () => {
-    render(<StatusBar />);
-    const bar = screen.getByTestId('wb-menubar');
-    // jsdom UA 多为 Windows / 默认 platform 为 windows
-    expect(bar.getAttribute('data-chrome-inset')).toBe('windows');
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      configurable: true,
+    });
+
+    try {
+      render(<StatusBar />);
+      const bar = screen.getByTestId('wb-menubar');
+      expect(bar.getAttribute('data-chrome-inset')).toBe('windows');
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', {
+        value: originalUserAgent,
+        configurable: true,
+      });
+    }
   });
 
   it('macOS 下状态栏与原生交通灯共面，并由空白区接管拖拽和双击缩放', () => {
