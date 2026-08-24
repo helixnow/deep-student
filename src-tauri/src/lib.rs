@@ -6,6 +6,7 @@
 pub mod adapters;
 pub mod anki;
 pub mod anki_connect_service;
+pub mod anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
 #[allow(dead_code)]
 pub mod apkg_exporter_service;
 pub mod apkg_importer_service;

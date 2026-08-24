@@ -1609,6 +1609,22 @@ impl StreamingAnkiService {
             }
         }
 
+        // Round 3 #3：确定性质检 lint（零 LLM 成本，规则见 anki_qa_lint 模块文档）。
+        // 默认 Flag 级别只标记不丢卡；merge_flags 保留 extract_fields_with_rules
+        // 已写入 _qa_flags 的字段规则违规条目并按 (code, field) 去重。
+        // extra_fields 含 _qa_flags 时，流式循环既有逻辑自动累计 StreamStats::flagged_cards。
+        let lint_issues = crate::anki_qa_lint::lint_card(
+            &crate::anki_qa_lint::CardLintInput {
+                front: &cleaned_front,
+                back: &cleaned_back,
+                text: cleaned_extra_fields.get("text").map(String::as_str),
+                tags: &cleaned_tags,
+                extra_fields: &cleaned_extra_fields,
+            },
+            &crate::anki_qa_lint::LintConfig::default(),
+        );
+        crate::anki_qa_lint::merge_flags(&mut cleaned_extra_fields, &lint_issues);
+
         // 创建卡片
         let now = Utc::now().to_rfc3339();
         let card = AnkiCard {
