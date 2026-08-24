@@ -15,6 +15,48 @@ const DEFAULT_M_COST: u32 = 65536; // 64 MB
 const DEFAULT_T_COST: u32 = 3;
 const DEFAULT_P_COST: u32 = 4;
 
+// =====================================================================================
+// [R10-verifier] 密钥派生参数的应用级上限（KEY-ROTATION-R11 §6 / FINDINGS-R07 P2-2）
+// =====================================================================================
+//
+// 密码校验子（`check_password_verifier`）与 DSBK 备份文件头（v1/v2 解密路径、
+// `FileCipherSession`）携带的 Argon2id 参数都来自**不受信任的云端对象**：内容可能
+// 损坏、被第三方工具改写或由不兼容版本写入。内存参数直接决定「这一次派生要吃多少
+// 内存/多长时间」，因此必须在任何派生开始之前用应用级上限拦截，超限立即
+// fail-closed（与未知 KDF 同路），不尝试分配内存。
+//
+// 取值依据（只许向上放宽，不许收紧——收紧会拒收自家旧备份）：
+// - 本应用自身写出的默认参数自首个加密版本起一直是 64 MiB / t=3 / p=4
+//   （`DEFAULT_M_COST` 等，从未改过）；
+// - 上限取默认写入面的 16 倍内存（1 GiB）、约 5 倍迭代（16）、2 倍并行（8），
+//   覆盖历史全部写入面并为未来调参留出充足余量，同时保证即使被拒也不会先吃掉
+//   GiB 级内存或分钟级 CPU。
+
+/// Argon2id 内存参数（KiB）应用级上限：1 GiB。
+pub const KDF_MAX_M_COST_KIB: u32 = 1024 * 1024;
+/// Argon2id 迭代次数应用级上限。
+pub const KDF_MAX_T_COST: u32 = 16;
+/// Argon2id 并行度应用级上限。
+pub const KDF_MAX_P_COST: u32 = 8;
+
+/// 超限时的用户级错误文案（不含内部参数值与实现细节）。
+pub const KDF_PARAMS_REJECTED_MESSAGE: &str =
+    "该云端数据携带的加密参数异常（数据可能已损坏、被外部工具改写，或由不兼容的版本写入），\
+     已在开始计算前停止，以避免应用长时间无响应。请检查该云端目录的内容后重试，\
+     或改用其他云端目录。";
+
+/// 在**任何派生开始前**校验参数处于应用级上限内；超限立即 fail-closed。
+///
+/// 所有派生（校验子复算、DSBK v1/v2 解密、`FileCipherSession`）都必须经过
+/// [`derive_key`]，而本检查是 `derive_key` 的第一步——两条路径共用同一组上限
+/// 常量与同一段判断，不会只堵一半。
+fn ensure_kdf_params_within_app_limits(m_cost: u32, t_cost: u32, p_cost: u32) -> Result<()> {
+    if m_cost > KDF_MAX_M_COST_KIB || t_cost > KDF_MAX_T_COST || p_cost > KDF_MAX_P_COST {
+        return Err(anyhow!("{KDF_PARAMS_REJECTED_MESSAGE}"));
+    }
+    Ok(())
+}
+
 /// 流式（分块）加密容器版本。`encrypt_backup_file` 写出此版本；
 /// `decrypt_backup_file` 同时兼容读取 v1（整文件单块）。
 const BACKUP_CRYPTO_VERSION_STREAM: u8 = 2;
@@ -31,6 +73,9 @@ fn derive_key(
     p_cost: u32,
 ) -> Result<[u8; 32]> {
     use argon2::{Algorithm, Argon2, Params, Version};
+
+    // [R10-verifier] 应用级上限先行：参数超限时在分配任何派生内存之前失败。
+    ensure_kdf_params_within_app_limits(m_cost, t_cost, p_cost)?;
 
     let params = Params::new(m_cost, t_cost, p_cost, Some(32))
         .map_err(|e| anyhow!("Argon2 参数无效: {}", e))?;
@@ -700,6 +745,119 @@ pub fn check_password_verifier(password: &str, verifier: &PasswordVerifier) -> R
     Ok(diff == 0)
 }
 
+// =====================================================================================
+// [R10-verifier] 本机「该云端目录曾经加密」记忆
+// =====================================================================================
+
+/// 根指纹的域分隔前缀：本地文件里只落指纹哈希，不落明文 endpoint/用户名/路径。
+const ENCRYPTED_ROOT_FINGERPRINT_DOMAIN: &[u8] = b"deep-student.encrypted-root-memory.v1";
+
+/// 记忆文件格式版本。
+const ENCRYPTED_ROOT_MEMORY_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptedRootMemoryFile {
+    version: u32,
+    /// 根指纹（hex SHA-256）→ 首次观察到加密的时间（RFC3339，仅诊断用）
+    roots: std::collections::BTreeMap<String, String>,
+}
+
+/// 本机持久化的「云端目录曾经加密」记忆。
+///
+/// 云端 `.encryption-marker` 是明文上传门禁的**第一道**防线，但它存放在
+/// （不受信任的）云端：被人为/意外删除后，仅靠云端状态会默许后续明文上传，
+/// 把本应加密的数据以明文混入同一恢复链。本存储在本机补第二道防线：
+///
+/// - 每当本机确认某云 root 处于加密状态（登记/校验标记成功、或读到标记），
+///   就把该 root 的**指纹**记入本地文件（[`Self::remember`]，幂等）；
+/// - 明文上传前若云端标记缺失、但本机记得该 root 曾加密，仍拒绝明文上传
+///   （[`Self::was_encrypted`]，fail-closed）。
+///
+/// 语义边界（有意为之）：
+/// - 记忆只影响**本机**的明文上传判定，不上传到云端、不影响其他设备，也不影响
+///   带密码的加密上传（加密上传走校验子门禁，标记缺失时会用本机密码重新登记）；
+/// - 记忆文件缺失 = 无记忆（全新安装/换机后由云端标记继续兜底）；
+///   文件存在但无法解析 = 全部按「曾加密」处理（fail-closed，与云端标记
+///   损坏按存在处理同一取向）。
+pub struct EncryptedRootMemory {
+    path: std::path::PathBuf,
+}
+
+impl EncryptedRootMemory {
+    /// 以指定文件路径打开（不存在时首个 [`Self::remember`] 会创建）。
+    pub fn at(path: impl Into<std::path::PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    /// 把云存储实例绑定提示（`CloudStorage::instance_binding_hint`，不含凭据）
+    /// 折叠为域分隔的 SHA-256 指纹：本地文件不落任何明文远端信息。
+    pub fn fingerprint(binding_hint: &str) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(ENCRYPTED_ROOT_FINGERPRINT_DOMAIN);
+        hasher.update(binding_hint.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    /// 读取记忆文件。`Ok(None)` = 文件不存在；`Err` = 存在但无法读取/解析。
+    fn load(&self) -> Result<Option<EncryptedRootMemoryFile>> {
+        let data = match std::fs::read(&self.path) {
+            Ok(data) => data,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(anyhow!("读取本机加密目录记忆失败: {e}")),
+        };
+        let file: EncryptedRootMemoryFile = serde_json::from_slice(&data)
+            .map_err(|e| anyhow!("本机加密目录记忆内容无法解析: {e}"))?;
+        Ok(Some(file))
+    }
+
+    /// 幂等登记「该 root 曾经加密」。原子写入（临时文件 + rename）。
+    ///
+    /// 既有文件无法解析时以全新内容覆盖重建（记忆是第二道防线，重建期间
+    /// 云端标记仍是第一道门禁；重建后本 root 的记忆立即恢复生效）。
+    pub fn remember(&self, fingerprint: &str) -> Result<()> {
+        let mut file = match self.load() {
+            Ok(Some(file)) => file,
+            Ok(None) | Err(_) => EncryptedRootMemoryFile {
+                version: ENCRYPTED_ROOT_MEMORY_VERSION,
+                roots: std::collections::BTreeMap::new(),
+            },
+        };
+        if file.roots.contains_key(fingerprint) {
+            return Ok(());
+        }
+        file.roots.insert(
+            fingerprint.to_string(),
+            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        );
+
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| anyhow!("创建本机加密目录记忆目录失败: {e}"))?;
+        }
+        let data = serde_json::to_vec_pretty(&file)
+            .map_err(|e| anyhow!("序列化本机加密目录记忆失败: {e}"))?;
+        let tmp = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp, &data).map_err(|e| anyhow!("写入本机加密目录记忆失败: {e}"))?;
+        std::fs::rename(&tmp, &self.path)
+            .map_err(|e| anyhow!("保存本机加密目录记忆失败: {e}"))?;
+        Ok(())
+    }
+
+    /// 本机是否记得该 root 曾经加密。
+    ///
+    /// 文件不存在 → `false`；文件存在但无法读取/解析 → `true`（fail-closed：
+    /// 宁可多拦一次明文上传，也不能让损坏的本地记忆悄悄放行明文）。
+    pub fn was_encrypted(&self, fingerprint: &str) -> bool {
+        match self.load() {
+            Ok(Some(file)) => file.roots.contains_key(fingerprint),
+            Ok(None) => false,
+            Err(_) => true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -927,6 +1085,111 @@ mod tests {
     #[test]
     fn session_rejects_empty_password() {
         assert!(FileCipherSession::with_params("", 8, 1, 1).is_err());
+    }
+
+    // ---------------- [R10-verifier] KDF 参数应用级上限 ----------------
+
+    #[test]
+    fn kdf_limits_cover_default_write_surface() {
+        // 上限必须显著高于自家默认写入面，否则会拒收自家旧备份。
+        assert!(DEFAULT_M_COST <= KDF_MAX_M_COST_KIB);
+        assert!(DEFAULT_T_COST <= KDF_MAX_T_COST);
+        assert!(DEFAULT_P_COST <= KDF_MAX_P_COST);
+        // 默认参数派生必须照常工作
+        assert!(derive_key("pw", &[7u8; 16], DEFAULT_M_COST, DEFAULT_T_COST, DEFAULT_P_COST).is_ok());
+    }
+
+    #[test]
+    fn kdf_oversized_params_rejected_before_derivation() {
+        for (m, t, p, label) in [
+            (KDF_MAX_M_COST_KIB + 1, 1u32, 1u32, "m_cost 超限"),
+            (u32::MAX, 1, 1, "m_cost 极大"),
+            (8, KDF_MAX_T_COST + 1, 1, "t_cost 超限"),
+            (8, 1, KDF_MAX_P_COST + 1, "p_cost 超限"),
+        ] {
+            let start = std::time::Instant::now();
+            let err = derive_key("pw", &[7u8; 16], m, t, p)
+                .expect_err(&format!("{label} 必须被拒绝"));
+            assert!(
+                start.elapsed() < std::time::Duration::from_millis(200),
+                "{label} 必须在派生开始前拒绝（亚秒返回），实际耗时 {:?}",
+                start.elapsed()
+            );
+            assert!(
+                err.to_string().contains("加密参数异常"),
+                "{label} 错误应为用户级文案: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn verifier_oversized_params_fail_closed_as_err() {
+        // 校验子路径：超限必须是 Err（无法校验，调用方 fail-closed），
+        // 不能与 Ok(false)（密码不一致）混淆。
+        let mut verifier = create_password_verifier("pw").unwrap();
+        verifier.m_cost = u32::MAX;
+        assert!(check_password_verifier("pw", &verifier).is_err());
+    }
+
+    #[test]
+    fn dsbk_headers_with_oversized_params_rejected() {
+        // v1 整块容器：改写头部 m_cost（offset 5..9，LE）为极大值
+        let mut v1 = encrypt_backup(b"payload", "pw").unwrap();
+        v1[5..9].copy_from_slice(&u32::MAX.to_le_bytes());
+        let err = decrypt_backup(&v1, "pw").expect_err("超限 v1 头必须拒绝");
+        assert!(err.to_string().contains("加密参数异常"));
+
+        // v2 流式容器：同一头部布局
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.bin");
+        let enc = dir.path().join("enc.dsbk");
+        let dec = dir.path().join("dec.bin");
+        std::fs::write(&input, vec![5u8; 4096]).unwrap();
+        encrypt_backup_file(&input, &enc, "pw").unwrap();
+        let mut bytes = std::fs::read(&enc).unwrap();
+        bytes[5..9].copy_from_slice(&u32::MAX.to_le_bytes());
+        std::fs::write(&enc, &bytes).unwrap();
+        let err = decrypt_backup_file(&enc, &dec, "pw").expect_err("超限 v2 头必须拒绝");
+        assert!(err.to_string().contains("加密参数异常"));
+        assert!(!dec.exists(), "拒绝发生在创建输出文件之前");
+    }
+
+    // ---------------- [R10-verifier] 本机加密目录记忆 ----------------
+
+    #[test]
+    fn encrypted_root_memory_roundtrip_and_isolation() {
+        let dir = tempfile::tempdir().unwrap();
+        let memory = EncryptedRootMemory::at(dir.path().join("nested").join("roots.json"));
+        let fp_a = EncryptedRootMemory::fingerprint("webdav|endpoint=https://a|root=x");
+        let fp_b = EncryptedRootMemory::fingerprint("webdav|endpoint=https://b|root=y");
+
+        assert!(!memory.was_encrypted(&fp_a), "无记忆文件时不应误报");
+        memory.remember(&fp_a).unwrap();
+        memory.remember(&fp_a).unwrap(); // 幂等
+        assert!(memory.was_encrypted(&fp_a));
+        assert!(!memory.was_encrypted(&fp_b), "记忆必须按 root 指纹隔离");
+
+        // 落盘内容不含明文远端信息
+        let raw = std::fs::read_to_string(dir.path().join("nested").join("roots.json")).unwrap();
+        assert!(!raw.contains("https://a"), "记忆文件不得落明文 endpoint");
+        assert!(raw.contains(&fp_a));
+    }
+
+    #[test]
+    fn encrypted_root_memory_corrupted_file_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("roots.json");
+        std::fs::write(&path, b"not json {{{").unwrap();
+        let memory = EncryptedRootMemory::at(&path);
+        let fp = EncryptedRootMemory::fingerprint("any");
+        assert!(
+            memory.was_encrypted(&fp),
+            "损坏的记忆文件必须按「曾加密」处理（fail-closed）"
+        );
+        // remember 可重建文件，重建后语义恢复正常
+        memory.remember(&fp).unwrap();
+        assert!(memory.was_encrypted(&fp));
+        assert!(!memory.was_encrypted(&EncryptedRootMemory::fingerprint("other")));
     }
 
     #[test]
