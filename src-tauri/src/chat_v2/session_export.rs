@@ -605,6 +605,39 @@ mod tests {
         assert_eq!(summary.bytes_written, text.len() as u64);
     }
 
+    /// 空会话仍必须生成可校验的 header + footer，所有计数为零。
+    #[test]
+    fn export_empty_session_writes_header_and_zero_count_footer() {
+        let (_tmp, db) = setup_chat_db();
+        let session = ChatSession::new(SESSION_ID.to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_v2(&db, &session).expect("persist empty session");
+
+        let (summary, lines, text) = export_to_lines(&db, &SessionExportOptions::default());
+
+        assert_eq!(lines.len(), 2, "空会话只能写出 header 与 footer");
+        assert_eq!(line_type(&lines[0]), "header");
+        assert_eq!(lines[0]["session"]["id"], SESSION_ID);
+        assert!(
+            lines[0].get("state").is_none(),
+            "没有持久化状态时不得写出空 state"
+        );
+
+        let footer = &lines[1];
+        assert_eq!(line_type(footer), "footer");
+        assert_eq!(footer["messageCount"], 0);
+        assert_eq!(footer["blockCount"], 0);
+        assert_eq!(footer["compactionCount"], 0);
+        assert_eq!(footer["truncated"], false);
+
+        assert_eq!(summary.session_id, SESSION_ID);
+        assert_eq!(summary.message_count, 0);
+        assert_eq!(summary.block_count, 0);
+        assert_eq!(summary.compaction_count, 0);
+        assert!(!summary.truncated);
+        assert_eq!(summary.bytes_written, text.len() as u64);
+        assert!(text.ends_with('\n'), "JSONL 末行必须以 LF 结束");
+    }
+
     // ------------------------------------------------------------------
     // 验收 §7.2：redact 关闭时与 load_session_full_v2 严格 round-trip
     // ------------------------------------------------------------------

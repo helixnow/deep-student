@@ -179,6 +179,37 @@ pub fn export_session_jsonl<W: std::io::Write>(
   （`handlers/export_handlers.rs`）流式写入目标 `.jsonl` 文件后
   将其直接回传前端；headless 归档钩子（R13+）复用同一函数。
 
+前端通过 Tauri `invoke` 调用；参数键使用 camelCase，`targetPath` 应来自保存
+对话框返回的绝对 `.jsonl` 路径。产品 UI 必须保持 `redactSecrets: true`：
+
+```ts
+import { invoke } from '@tauri-apps/api/core';
+
+interface SessionExportSummary {
+  sessionId: string;
+  schemaVersion: number;
+  messageCount: number;
+  blockCount: number;
+  compactionCount: number;
+  bytesWritten: number;
+  truncated: boolean;
+}
+
+const summary = await invoke<SessionExportSummary>(
+  'chat_v2_export_session_jsonl',
+  {
+    sessionId,
+    targetPath,
+    options: {
+      includeAllVariants: true,
+      includeSessionState: true,
+      includeCompactions: true,
+      redactSecrets: true,
+    },
+  },
+);
+```
+
 ## 7. 验收标准（已由 `session_export` 单测覆盖）
 
 1. 对含多变体 + 工具块 + 压缩记录的会话导出，`jq -c .type` 输出满足
