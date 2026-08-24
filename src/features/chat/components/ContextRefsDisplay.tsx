@@ -446,7 +446,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
           size="sm"
           onClick={() => setIsExpanded(!isExpanded)}
           // ★ 低-13：去掉 !py-0.5 压缩，恢复 sm 尺寸的默认高度（触控更易命中）
-          className="!px-2 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
+          className="!px-2 [@media(pointer:coarse)]:min-h-11 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
           {isExpanded ? (
             <span>{t('contextRefs.collapse')}</span>
